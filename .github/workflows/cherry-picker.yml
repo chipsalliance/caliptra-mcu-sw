@@ -1,0 +1,182 @@
+# Licensed under the Apache-2.0 license
+
+name: Backport Cherry-Pick with AI Assist
+
+on:
+  # TODO(clundin): Enable after testing
+  # pull_request:
+  #   types: [closed]
+  #   branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA to cherry-pick'
+        required: true
+      target_branch:
+        description: 'Target branch for cherry-pick'
+        required: false
+        default: 'main-2.1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  backport:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       !contains(github.event.pull_request.labels.*.name, 'no-backport'))
+    runs-on: e2-standard-e2-AI
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Determine cherry-pick parameters
+        id: params
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "commit_sha=${{ github.event.inputs.commit_sha }}" >> "$GITHUB_OUTPUT"
+            echo "target_branch=${{ github.event.inputs.target_branch }}" >> "$GITHUB_OUTPUT"
+            # Look up the GitHub login of the commit author
+            AUTHOR=$(gh api "repos/${{ github.repository }}/commits/${{ github.event.inputs.commit_sha }}" \
+              --jq '.author.login // empty' 2>/dev/null || true)
+            echo "pr_author=${AUTHOR}" >> "$GITHUB_OUTPUT"
+          else
+            echo "commit_sha=${{ github.event.pull_request.merge_commit_sha }}" >> "$GITHUB_OUTPUT"
+            echo "target_branch=main-2.1" >> "$GITHUB_OUTPUT"
+            echo "pr_author=${{ github.event.pull_request.user.login }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch all branches
+        run: git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Create backport branch and attempt cherry-pick
+        id: cherry_pick
+        run: |
+          COMMIT_SHA="${{ steps.params.outputs.commit_sha }}"
+          TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
+          SHORT_SHA="${COMMIT_SHA:0:8}"
+          BACKPORT_BRANCH="backport/${SHORT_SHA}-to-${TARGET_BRANCH}"
+
+          echo "backport_branch=${BACKPORT_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "${BACKPORT_BRANCH}" "origin/${TARGET_BRANCH}"
+
+          # Detect merge commits (need -m 1 flag for cherry-pick)
+          PARENT_COUNT=$(git rev-list --parents -n1 "${COMMIT_SHA}" | wc -w)
+          PARENT_COUNT=$((PARENT_COUNT - 1))
+
+          if [ "$PARENT_COUNT" -gt 1 ]; then
+            CHERRY_PICK_CMD="git cherry-pick -x -m 1 ${COMMIT_SHA}"
+          else
+            CHERRY_PICK_CMD="git cherry-pick -x ${COMMIT_SHA}"
+          fi
+
+          echo "Running: ${CHERRY_PICK_CMD}"
+          if ${CHERRY_PICK_CMD}; then
+            echo "status=clean" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cherry-pick applied cleanly"
+          else
+            echo "status=conflict" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cherry-pick has conflicts — Gemini will attempt to resolve"
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+
+      - name: Install Gemini CLI
+        run: npm install -g google-gemini-cli
+
+      - name: Gemini — Evaluate clean cherry-pick for adaptations
+        if: steps.cherry_pick.outputs.status == 'clean'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME: "github-actions[bot]"
+          GIT_COMMITTER_EMAIL: "github-actions[bot]@users.noreply.github.com"
+        run: |
+          COMMIT_SHA="${{ steps.params.outputs.commit_sha }}"
+          TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
+
+          gemini --model gemini-3.0-pro "A commit (${COMMIT_SHA}) was just cherry-picked cleanly from 'main' \
+          onto the '${TARGET_BRANCH}' branch. \
+
+          Review the cherry-picked changes ('git diff HEAD~1') and the surrounding code \
+          on this branch to determine if any adaptations are needed for '${TARGET_BRANCH}'. \
+          Consider version references, feature flags, API differences, or dependencies \
+          that differ between branches. \
+
+          If changes are needed, make them and create a git commit explaining the \
+          adaptations. If no changes are needed, do nothing."
+
+      - name: Gemini — Resolve cherry-pick conflicts
+        if: steps.cherry_pick.outputs.status == 'conflict'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME: "github-actions[bot]"
+          GIT_COMMITTER_EMAIL: "github-actions[bot]@users.noreply.github.com"
+          GIT_EDITOR: "true"
+        run: |
+          COMMIT_SHA="${{ steps.params.outputs.commit_sha }}"
+          TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
+
+          gemini --model gemini-3.0-pro "A cherry-pick of commit ${COMMIT_SHA} from 'main' onto \
+          '${TARGET_BRANCH}' has merge conflicts. \
+
+          Steps: \
+          1. Run 'git status' to identify conflicted files \
+          2. Run 'git diff' to see the conflict markers \
+          3. Examine the original commit with 'git show ${COMMIT_SHA}' to understand its intent \
+          4. Resolve all conflicts, preserving the original change's intent while adapting \
+             to the state of '${TARGET_BRANCH}' \
+          5. Stage resolved files with 'git add' \
+          6. Complete the cherry-pick with 'git cherry-pick --continue --no-edit' \
+          7. Review the result and make any further branch-specific adaptations in a \
+             separate commit"
+
+      - name: Gemini — Push and Create PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BACKPORT_BRANCH="${{ steps.cherry_pick.outputs.backport_branch }}"
+          TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
+          COMMIT_SHA="${{ steps.params.outputs.commit_sha }}"
+          STATUS="${{ steps.cherry_pick.outputs.status }}"
+          PR_AUTHOR="${{ steps.params.outputs.pr_author }}"
+
+          ORIGINAL_MSG=$(git log -1 --format="%s" "${COMMIT_SHA}")
+
+          PR_BODY="Backport of ${COMMIT_SHA} to \`${TARGET_BRANCH}\`."
+
+          if [ "$STATUS" = "conflict" ]; then
+            PR_BODY="${PR_BODY}\n\n> [!WARNING]\n> The original cherry-pick had conflicts that were resolved by Gemini. Please review carefully."
+          else
+            PR_BODY="${PR_BODY}\n\n> [!NOTE]\n> The cherry-pick applied cleanly."
+          fi
+
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            PR_BODY="${PR_BODY}\n\nOriginal PR: #${{ github.event.pull_request.number }}"
+          fi
+
+          gemini --model gemini-3.0-pro "Push the branch '${BACKPORT_BRANCH}' to origin. \
+          Then create a pull request to '${TARGET_BRANCH}' with the following details: \
+          Title: [Backport ${TARGET_BRANCH}] ${ORIGINAL_MSG} \
+          Body: ${PR_BODY} \
+          Labels: backport \
+          Assignee/Reviewer: ${PR_AUTHOR}"
