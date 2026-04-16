@@ -516,6 +516,15 @@ pub trait McuHwModel {
         McuBootMilestones::from((self.mci_flow_status() >> 16) as u16)
     }
 
+    /// Reads `mci_reg_fw_extended_error_info[idx]` (8 × u32 scratch words
+    /// reserved for firmware-defined error/diagnostic data). Panics if
+    /// `idx >= 8`.
+    fn mci_fw_extended_error_info(&mut self, idx: usize) -> u32 {
+        assert!(idx < 8, "fw_extended_error_info has only 8 words");
+        self.mcu_manager()
+            .with_mci(|mci| mci.fw_extended_error_info().at(idx).read())
+    }
+
     /// Executes a typed request and (on success), returns the typed response.
     /// The checksum field of the request is calculated, and the checksum of the
     /// response is validated.

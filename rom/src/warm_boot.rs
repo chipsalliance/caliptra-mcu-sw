@@ -27,6 +27,7 @@ pub struct WarmBoot {}
 
 impl BootFlow for WarmBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
+        crate::call_hook(params.hooks, |h| h.pre_warm_boot());
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::WarmResetFlowStarted.into());
         caliptra_mcu_romtime::println!("[mcu-rom] Starting warm boot flow");
@@ -37,6 +38,7 @@ impl BootFlow for WarmBoot {
         let straps = env.straps.deref();
 
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra boot go");
+        crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());
         mci.caliptra_boot_go();
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraBootGoAsserted.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
@@ -123,13 +125,16 @@ impl BootFlow for WarmBoot {
         // warm reset.
 
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra fuse write done");
+        crate::call_hook(params.hooks, |h| h.pre_populate_fuses_to_caliptra());
         soc.fuse_write_done();
         while soc.ready_for_fuses() {}
         mci.set_flow_checkpoint(McuRomBootStatus::FuseWriteComplete.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
+        crate::call_hook(params.hooks, |h| h.post_populate_fuses_to_caliptra());
 
         caliptra_mcu_romtime::println!("[mcu-rom] Waiting for Caliptra Core boot FSM to be DONE");
         soc.wait_for_bootfsm_done(10_000_000);
+        crate::call_hook(params.hooks, |h| h.post_caliptra_boot());
 
         caliptra_mcu_romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
         soc.wait_for_firmware_ready(mci);
@@ -149,6 +154,7 @@ impl BootFlow for WarmBoot {
         caliptra_mcu_romtime::println!("[mcu-rom] Resetting to boot firmware");
         mci.set_flow_checkpoint(McuRomBootStatus::WarmResetFlowComplete.into());
         mci.set_flow_milestone(McuBootMilestones::WARM_RESET_FLOW_COMPLETE.into());
+        crate::call_hook(params.hooks, |h| h.post_warm_boot());
         mci.trigger_warm_reset();
         caliptra_mcu_romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
         fatal_error(McuError::ROM_WARM_BOOT_RESET_ERROR);

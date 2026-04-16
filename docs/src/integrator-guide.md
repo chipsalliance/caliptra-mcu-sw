@@ -173,3 +173,93 @@ sequenceDiagram
 
 > Note: the development of the MCU Runtime mechanism to identify and perform the
 revocation is being tracked in [this Github issue](https://github.com/chipsalliance/caliptra-sw/issues/2441).
+
+## ROM Milestone Hooks
+
+The common ROM exposes a lightweight callback trait, `RomHooks`, that lets
+integrators observe the boot flow at major milestones without forking the
+common ROM code. Typical uses include:
+
+- Structured logging / tracing (e.g. printing to a UART at each milestone)
+- Latency measurements between phases
+- Integration tests that need to assert the ROM reached a particular state
+
+### Attaching hooks
+
+Provide an implementation of `caliptra_mcu_rom_common::RomHooks` and pass a
+reference to it via `RomParameters::hooks`:
+
+```rust
+use caliptra_mcu_rom_common::{RomHooks, RomParameters};
+
+struct LoggingRomHooks;
+
+impl RomHooks for LoggingRomHooks {
+    fn pre_cold_boot(&self) {
+        caliptra_mcu_romtime::println!("[rom-hook] pre_cold_boot");
+    }
+    fn post_cold_boot(&self) {
+        caliptra_mcu_romtime::println!("[rom-hook] post_cold_boot");
+    }
+    // ...override as few or as many methods as you need; all have no-op defaults.
+}
+
+let hooks = LoggingRomHooks;
+caliptra_mcu_rom_common::rom_start(RomParameters {
+    hooks: Some(&hooks),
+    ..Default::default()
+});
+```
+
+All `RomHooks` methods have empty default implementations, so integrators
+only override the hooks they care about. The field defaults to `None`, so
+platforms that do not need hooks are unaffected.
+
+Hook methods take `&self`. The common ROM is single-threaded, but
+`RomParameters` is passed by value through the boot flows and we do not
+want hooks to mutate it, so hook state that must change across calls should
+use an interior-mutability primitive such as `core::cell::Cell` or
+`core::cell::RefCell`.
+
+### Available hooks
+
+Pre/post pairs are invoked around each of the following milestones:
+
+| Milestone | Pre hook | Post hook |
+|---|---|---|
+| Cold-boot flow | `pre_cold_boot` | `post_cold_boot` |
+| Warm-boot flow | `pre_warm_boot` | `post_warm_boot` |
+| Firmware-boot flow | `pre_fw_boot` | `post_fw_boot` |
+| Firmware hitless update | `pre_fw_hitless_update` | `post_fw_hitless_update` |
+| Caliptra core boot-go / `BOOT_DONE` | `pre_caliptra_boot` | `post_caliptra_boot` |
+| Populating fuses to Caliptra | `pre_populate_fuses_to_caliptra` | `post_populate_fuses_to_caliptra` |
+| Loading MCU firmware into SRAM | `pre_load_firmware` | `post_load_firmware` |
+
+### Reachability caveats
+
+The `post_*` hooks for the outer boot flows (`post_cold_boot`,
+`post_warm_boot`, `post_fw_boot`, `post_fw_hitless_update`) are **best
+effort**: the common ROM invokes them as the last action before the
+terminating warm reset or jump to mutable firmware, but a fatal error
+partway through a flow can prevent the post hook from being reached. Do
+not rely on them for liveness guarantees — use them for optional telemetry
+only.
+
+Note also that on a single power-on the ROM typically exercises the
+cold-boot flow followed by the firmware-boot flow; the warm-boot and
+hitless-update hooks only fire on their corresponding reset paths.
+
+### Example in the reference platforms
+
+The emulator and FPGA reference platform ROMs include a `LoggingRomHooks`
+example that prints `[mcu-rom-hook] <name>` at every hook. It is gated
+behind the `test-rom-hooks` Cargo feature so normal production builds are
+unaffected:
+
+```sh
+cargo xtask rom-build --platform emulator --features test-rom-hooks
+```
+
+The integration test `test_rom_hooks_fire_in_order` builds this ROM and
+asserts that each expected hook marker appears exactly once in the
+expected order.

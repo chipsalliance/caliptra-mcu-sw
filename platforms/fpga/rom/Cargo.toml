@@ -27,3 +27,4 @@ rv32i.workspace = true
 core_test = ["caliptra-mcu-rom-common/core_test"]
 hw-2-1 = ["caliptra-mcu-rom-common/hw-2-1"]
 test-i3c-services = []
+test-rom-hooks = []

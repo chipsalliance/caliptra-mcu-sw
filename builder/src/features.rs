@@ -67,4 +67,5 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-i3c-services",
     "test-fw-manifest-dot",
     "test-dot-recovery",
+    "test-rom-hooks",
 ];

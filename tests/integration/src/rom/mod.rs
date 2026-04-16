@@ -6,6 +6,7 @@ mod test_i3c_services;
 mod test_lc_ctrl;
 mod test_otp_blank_check;
 mod test_otp_scramble_check;
+mod test_rom_hooks;
 mod test_sw_digest_lock;
 mod test_vendor_key_policy;
 mod test_warm_reset;

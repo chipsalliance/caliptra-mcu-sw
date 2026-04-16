@@ -770,6 +770,9 @@ pub struct RomParameters<'a> {
     /// at the appropriate point in the boot flow, regardless of whether a
     /// triggering condition (like DOT failure) occurred.
     pub force_i3c_services: bool,
+    /// Optional callbacks invoked at major ROM milestones. See
+    /// [`RomHooks`](crate::RomHooks) for the full list of hook points.
+    pub hooks: Option<&'a dyn crate::RomHooks>,
 }
 
 #[inline(always)]

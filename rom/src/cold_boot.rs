@@ -294,6 +294,7 @@ fn enter_i3c_services(
 
 impl BootFlow for ColdBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
+        crate::call_hook(params.hooks, |h| h.pre_cold_boot());
         caliptra_mcu_romtime::println!(
             "[mcu-rom] Starting cold boot flow at time {}",
             caliptra_mcu_romtime::mcycle()
@@ -329,6 +330,7 @@ impl BootFlow for ColdBoot {
 
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra boot go");
 
+        crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());
         mci.caliptra_boot_go();
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraBootGoAsserted.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
@@ -497,6 +499,7 @@ impl BootFlow for ColdBoot {
         });
 
         caliptra_mcu_romtime::println!("[mcu-rom] Populating fuses");
+        crate::call_hook(params.hooks, |h| h.pre_populate_fuses_to_caliptra());
         let pk_hash_idx = soc.populate_fuses(otp, mci, &params);
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
@@ -548,6 +551,7 @@ impl BootFlow for ColdBoot {
         while soc.ready_for_fuses() {}
         mci.set_flow_checkpoint(McuRomBootStatus::FuseWriteComplete.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
+        crate::call_hook(params.hooks, |h| h.post_populate_fuses_to_caliptra());
 
         // If testing Caliptra Core, hang here until the test signals it to continue.
         if cfg!(feature = "core_test") {
@@ -556,6 +560,7 @@ impl BootFlow for ColdBoot {
 
         caliptra_mcu_romtime::println!("[mcu-rom] Waiting for Caliptra Core boot FSM to be DONE");
         soc.wait_for_bootfsm_done(10_000_000);
+        crate::call_hook(params.hooks, |h| h.post_caliptra_boot());
 
         caliptra_mcu_romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
         while !soc.ready_for_mbox() {
@@ -685,6 +690,7 @@ impl BootFlow for ColdBoot {
 
         // tell Caliptra to download firmware from the recovery interface
         caliptra_mcu_romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command",);
+        crate::call_hook(params.hooks, |h| h.pre_load_firmware());
         if let Err(err) =
             soc_manager.start_mailbox_req(CommandId::RI_DOWNLOAD_FIRMWARE.into(), 0, [].into_iter())
         {
@@ -786,6 +792,7 @@ impl BootFlow for ColdBoot {
         }
         caliptra_mcu_romtime::println!("[mcu-rom] Firmware load detected");
         mci.set_flow_checkpoint(McuRomBootStatus::FirmwareValidationComplete.into());
+        crate::call_hook(params.hooks, |h| h.post_load_firmware());
 
         // wait for the Caliptra RT to be ready
         // this is a busy loop, but it should be very short
@@ -836,6 +843,7 @@ impl BootFlow for ColdBoot {
         caliptra_mcu_romtime::println!("[mcu-rom] Resetting to boot firmware");
         mci.set_flow_checkpoint(McuRomBootStatus::ColdBootFlowComplete.into());
         mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
+        crate::call_hook(params.hooks, |h| h.post_cold_boot());
         mci.trigger_warm_reset();
         caliptra_mcu_romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
         fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
