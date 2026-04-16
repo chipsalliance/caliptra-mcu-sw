@@ -83,7 +83,9 @@ pub struct FuseState {
 
 impl Soc {
     pub const BOOT_FSM_DONE: u32 = 4;
-    pub const PK_HASH_STRAPPING_MASK: u32 = 0x1;
+    pub const PK_HASH_SKIP_LOCK_STRAPPING_MASK: u32 = 0x1;
+    pub const PK_HASH_ROTATION_STRAPPING_MASK: u32 = 0x1 << 1;
+
     pub const fn new(registers: StaticRef<soc::regs::Soc>) -> Self {
         Soc { registers }
     }
@@ -223,7 +225,9 @@ impl Soc {
         self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
 
         // Select the vendor public key slot to use.
-        let default_policy = DefaultVendorKeyPolicy::new();
+        let default_policy = DefaultVendorKeyPolicy::new(
+            self.registers.ss_strap_generic[3].get() & Self::PK_HASH_ROTATION_STRAPPING_MASK != 0,
+        );
         let policy = params.vendor_key_policy.unwrap_or(&default_policy);
         let pk_hash_idx = policy
             .select_key(otp)
@@ -531,8 +535,8 @@ impl Soc {
 
     pub fn pk_hash_volatile_lock(&self, otp: &Otp, selected_index: usize) {
         // Read strap register to check for provisioning mode.
-        let strap_reg = self.registers.ss_strap_generic[2].get();
-        if (strap_reg & Self::PK_HASH_STRAPPING_MASK) != 0 {
+        let strap_reg = self.registers.ss_strap_generic[3].get();
+        if (strap_reg & Self::PK_HASH_SKIP_LOCK_STRAPPING_MASK) != 0 {
             romtime::println!(
               "[mcu-fuse-write] PK Hash provisioning mode detected, skipping vendor PK hash lock."
           );
