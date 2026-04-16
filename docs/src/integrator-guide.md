@@ -99,7 +99,7 @@ hardware strapping pin:
 -   **Bit 1 (Rotation)**: If this bit is set to `1`, the ROM will **skip the
     first functional slot** it finds and select the **second functional slot**.
 This allows a platform to switch to a new key without burning fuses, simply
-by changing a strapping resistor or GPIO state, provided that a second valid and
+by changing a strapping register or GPIO state, provided that a second valid and
 functional key is provisioned in the fuses. This enables rolling back to the
 previous known-good firmware image should the new one have a fatal issue.
 
