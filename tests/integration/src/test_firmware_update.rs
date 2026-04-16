@@ -339,6 +339,40 @@ mod test {
         new_opts
     }
 
+    /// Like fast_update_options but with a configurable transfer size for benchmarking.
+    /// Pre-populates secondary flash so verify/apply succeeds regardless of transfer size.
+    fn benchmark_options(success_opts: &TestOptions, transfer_size: usize) -> TestOptions {
+        let mut new_opts = success_opts.clone();
+        let update_flash_image_path = new_opts.update_flash_image_path.as_ref().unwrap().clone();
+        let flash_image =
+            std::fs::read(update_flash_image_path.clone()).expect("Failed to read flash image");
+
+        let truncated_flash_image = &flash_image[..transfer_size.min(flash_image.len())];
+        let pldm_manifest =
+            get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), truncated_flash_image);
+        let pldm_fw_pkg_path = create_pldm_fw_package(&pldm_manifest);
+        new_opts.pldm_fw_pkg_path = Some(pldm_fw_pkg_path);
+
+        let secondary_flash_image_path = tempfile::NamedTempFile::new()
+            .expect("Failed to create temp file")
+            .path()
+            .to_path_buf();
+
+        // Pre-populate secondary flash with full valid image
+        let mut secondary_flash_content = flash_image.clone().to_vec();
+        let download_partition_offset = STAGING_PARTITION.offset;
+        if secondary_flash_content.len() < download_partition_offset {
+            secondary_flash_content.resize(download_partition_offset, 0);
+        }
+        secondary_flash_content.append(&mut flash_image.clone());
+
+        std::fs::write(secondary_flash_image_path.clone(), secondary_flash_content)
+            .expect("Failed to write secondary flash image");
+
+        new_opts.secondary_flash_image_path = Some(secondary_flash_image_path.clone());
+        new_opts
+    }
+
     /// Test case: happy path
     fn test_successful_update(opts: &TestOptions) {
         let test = run_runtime_with_options(opts);
@@ -882,6 +916,18 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_firmware_update_test_options(true);
         test_invalid_soc_image(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// PLDM transfer benchmark: transfers 64KB to measure throughput.
+    /// Run with RUST_LOG=info to see KB/s output from the UA.
+    #[test]
+    fn test_firmware_update_benchmark_64k() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(true);
+        let bench_opts = benchmark_options(&opts, 64 * 1024);
+        let test = run_runtime_with_options(&bench_opts);
+        assert_eq!(0, test);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
