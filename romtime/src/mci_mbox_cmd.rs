@@ -11,17 +11,17 @@
 
 use crate::otp_provision::{fuse_lock_partition_dai, fuse_read_dai_params, fuse_write_dai};
 use crate::{HexWord, Mci, Otp};
-use caliptra_api::mailbox::{populate_checksum, MailboxReqHeader, MailboxRespHeader};
-use caliptra_api::verify_checksum;
+use caliptra_api::mailbox::populate_checksum;
 use core::cmp::Ordering;
 use core::mem::size_of;
 use mcu_error::McuError;
 use mcu_mbox_common::messages::{
-    CommandId, FuseLockPartitionReq, FuseReadReq, MAX_FUSE_DATA_WORDS,
+    verify_checksum, CommandId, FuseLockPartitionReq, FuseReadReq, MailboxReqHeader,
+    MailboxRespHeader, MAX_FUSE_DATA_WORDS,
 };
 use registers_generated::mci;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
-use zerocopy::{FromBytes, Immutable, KnownLayout};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 /// Wire-format header for MC_FUSE_WRITE requests (without the variable-length data).
 #[repr(C)]
@@ -32,6 +32,15 @@ struct FuseWriteReqHdr {
     pub entry: u32,
     pub start_bit: u32,
     pub length: u32,
+}
+
+/// Wire-format response for MC_FUSE_READ.
+#[repr(C)]
+#[derive(IntoBytes, FromBytes, KnownLayout, Immutable)]
+struct FuseReadResp {
+    pub hdr: MailboxRespHeader,
+    pub valid_bits: u32,
+    pub data: [u32; MAX_FUSE_DATA_WORDS],
 }
 
 const MAX_FUSE_REQ_BYTES: usize = size_of::<FuseWriteReqHdr>() + MAX_FUSE_DATA_WORDS * 4;
@@ -83,6 +92,12 @@ fn buf_to_sram(buf: &[u8], sram: &[tock_registers::registers::ReadWrite<u32>], b
 /// Populate the response checksum, write the buffer to SRAM, and set
 /// dlen / status in one shot.
 fn send_response(mbox: &MciMboxRegs, buf: &mut [u8], resp_len: usize, success: bool) {
+    let hdr = MailboxRespHeader::mut_from_bytes(&mut buf[..size_of::<MailboxRespHeader>()])
+        .expect("buf is AlignedBuf and always large enough for MailboxRespHeader");
+    if success {
+        hdr.fips_status = MailboxRespHeader::FIPS_STATUS_APPROVED;
+    }
+
     populate_checksum(&mut buf[..resp_len]);
     buf_to_sram(buf, mbox.sram, resp_len);
     mbox.dlen.set(resp_len as u32);
@@ -121,8 +136,16 @@ fn dispatch_fuse_command(
 
     sram_to_buf(sram, buf, input_dlen);
 
-    let chksum = u32::from_le_bytes(buf[..4].try_into().unwrap());
-    if !verify_checksum(chksum, cmd, &buf[size_of::<u32>()..input_dlen]) {
+    let chksum_bytes: [u8; 4] = buf
+        .get(..size_of::<u32>())
+        .ok_or(McuError::ROM_OTP_FUSE_INVALID_LENGTH)?
+        .try_into()
+        .unwrap();
+    let chksum = u32::from_le_bytes(chksum_bytes);
+    let payload = buf
+        .get(size_of::<u32>()..input_dlen)
+        .ok_or(McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
+    if !verify_checksum(chksum, cmd, payload) {
         crate::println!("[mci-mbox] Checksum mismatch");
         return Err(McuError::ROM_OTP_FUSE_CHECKSUM_ERROR);
     }
@@ -133,7 +156,7 @@ fn dispatch_fuse_command(
         CommandId::MC_FUSE_LOCK_PARTITION => handle_fuse_lock_partition(buf, input_dlen, otp),
         _ => {
             crate::println!("[mci-mbox] Unknown fuse command: {}", HexWord(cmd));
-            Err(McuError::ROM_OTP_FUSE_UNKNOWN_COMMAND)
+            Err(McuError::ROM_MCI_MBOX_UNKNOWN_COMMAND)
         }
     }
 }
@@ -170,14 +193,12 @@ fn handle_fuse_read(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mcu
 
     let params = fuse_read_dai_params(partition, entry, MAX_FUSE_DATA_WORDS)?;
 
-    // Response: [chksum(4)][fips_status(4)][length_bits(4)][data…]
-    buf[4..8].copy_from_slice(&MailboxRespHeader::FIPS_STATUS_APPROVED.to_le_bytes());
-    buf[8..12].copy_from_slice(&params.valid_bits.to_le_bytes());
+    let resp = FuseReadResp::mut_from_bytes(&mut buf[..size_of::<FuseReadResp>()])
+        .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
+    resp.valid_bits = params.valid_bits;
     for i in 0..params.words_to_read {
         match otp.read_word(params.base_word_addr + i) {
-            Ok(word) => {
-                buf[12 + i * 4..16 + i * 4].copy_from_slice(&word.to_le_bytes());
-            }
+            Ok(word) => resp.data[i] = word,
             Err(_) => {
                 crate::println!(
                     "[mci-mbox] IFPR: DAI read error at word addr {}",
@@ -188,7 +209,7 @@ fn handle_fuse_read(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mcu
         }
     }
 
-    let resp_bytes = 12 + params.words_to_read * 4;
+    let resp_bytes = RESP_HDR_BYTES + size_of::<u32>() + params.words_to_read * size_of::<u32>();
     crate::println!("[mci-mbox] IFPR: success, {} bits", params.valid_bits);
     Ok(resp_bytes)
 }
@@ -221,13 +242,7 @@ fn handle_fuse_write(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mc
         length
     );
 
-    let data_bytes = length
-        .checked_add(7)
-        .map(|v| (v / 8) as usize)
-        .ok_or_else(|| {
-            crate::println!("[mci-mbox] IFPW: length overflow");
-            McuError::ROM_OTP_FUSE_INVALID_LENGTH
-        })?;
+    let data_bytes = length.div_ceil(8) as usize;
     let data_words = (data_bytes + 3) / 4;
 
     if data_words > MAX_FUSE_DATA_WORDS {
@@ -272,8 +287,6 @@ fn handle_fuse_write(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mc
         )
     })?;
 
-    // Response: [chksum(4)][fips_status(4)]
-    buf[4..8].copy_from_slice(&MailboxRespHeader::FIPS_STATUS_APPROVED.to_le_bytes());
     crate::println!("[mci-mbox] IFPW: success");
     Ok(RESP_HDR_BYTES)
 }
@@ -297,8 +310,6 @@ fn handle_fuse_lock_partition(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<
 
     fuse_lock_partition_dai(otp, partition)?;
 
-    // Response: [chksum(4)][fips_status(4)]
-    buf[4..8].copy_from_slice(&MailboxRespHeader::FIPS_STATUS_APPROVED.to_le_bytes());
     crate::println!("[mci-mbox] IFPK: success");
     Ok(RESP_HDR_BYTES)
 }
@@ -389,7 +400,10 @@ pub fn process_fuse_mbox_commands(mci: &Mci, otp: &Otp) {
             Err(e) => {
                 let err_code = u32::from(e);
                 crate::println!("[mci-mbox] Command failed: {}", HexWord(err_code));
-                buf[4..8].copy_from_slice(&err_code.to_le_bytes());
+                let hdr =
+                    MailboxRespHeader::mut_from_bytes(&mut buf[..size_of::<MailboxRespHeader>()])
+                        .expect("buf is AlignedBuf and always large enough for MailboxRespHeader");
+                hdr.fips_status = err_code;
                 send_response(&active_mbox, buf, RESP_HDR_BYTES, false);
             }
         }
