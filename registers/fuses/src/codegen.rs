@@ -48,6 +48,24 @@ fn layout_to_codegen(layout: &Option<FuseLayoutPolicy>, bits: u32) -> String {
                 bits, duplication
             )
         }
+        Some(FuseLayoutPolicy::LinearOr { duplication }) => {
+            format!(
+                "FuseLayoutType::LinearOr {{ bits: {}, duplication: {} }}",
+                bits, duplication
+            )
+        }
+        Some(FuseLayoutPolicy::OneHotLinearOr { duplication }) => {
+            format!(
+                "FuseLayoutType::OneHotLinearOr {{ bits: {}, duplication: {} }}",
+                bits, duplication
+            )
+        }
+        Some(FuseLayoutPolicy::WordOr { duplication }) => {
+            format!(
+                "FuseLayoutType::WordOr {{ bits: {}, duplication: {} }}",
+                bits, duplication
+            )
+        }
     }
 }
 
@@ -97,6 +115,9 @@ pub fn generate_fuses(
             LinearMajorityVote { bits: u32, duplication: u32 },
             OneHotLinearMajorityVote { bits: u32, duplication: u32 },
             WordMajorityVote { bits: u32, duplication: u32 },
+            LinearOr { bits: u32, duplication: u32 },
+            OneHotLinearOr { bits: u32, duplication: u32 },
+            WordOr { bits: u32, duplication: u32 },
         }
         /// Entry in the fuse lookup table mapping (partition, entry) to OTP location and layout.
         #[derive(Debug, Clone)]

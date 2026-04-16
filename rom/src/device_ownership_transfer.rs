@@ -55,7 +55,7 @@ impl DotFuses {
     pub fn load_from_otp(otp: &Otp) -> McuResult<Self> {
         use caliptra_mcu_registers_generated::fuses;
 
-        // dot_initialized: LinearMajorityVote(1 bit, 3x) → logical 0 or 1
+        // dot_initialized: LinearOr(1 bit, 3x) → logical 0 or 1
         let enabled = otp.read_entry(fuses::DOT_INITIALIZED)? != 0;
 
         // dot_fuse_array: OneHot(256 bits) → count of burned bits

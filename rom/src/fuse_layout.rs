@@ -31,6 +31,15 @@ pub enum FuseLayout {
     /// the majority vote of each bit,
     /// e.g., [0b100, 0b110, 0b111] -> [0b110]
     WordMajorityVote(Bits, Duplication),
+    /// Each bit is duplicated and the result is the OR of all copies (any copy set → 1),
+    /// e.g., with 3x duplication: 0b001_000_101 -> 0b11 (bit 0 has any set, bit 2 has any set)
+    LinearOr(Bits, Duplication),
+    /// Same as LinearOr, but the end result is the count of the bits set,
+    /// e.g., with 3x duplication: 0b001_000_111 -> 2 (bit 0 OR'd to 1, bit 1 OR'd to 0, bit 2... wait)
+    OneHotLinearOr(Bits, Duplication),
+    /// u32s are duplicated, with bits OR'd across multiple u32s,
+    /// e.g., [0b100, 0b010, 0b001] -> [0b111]
+    WordOr(Bits, Duplication),
 }
 
 /// Writes a value into a u32 with majority vote duplication, returning the raw value that
@@ -82,6 +91,25 @@ fn extract_majority_vote_words(words: &[u32]) -> u32 {
     result
 }
 
+/// Reads a raw fuse value with OR duplication, returning the collapsed value.
+/// Any duplicate bit being set means the result bit is 1.
+fn extract_or_u32(bits: NonZero<usize>, dupe: NonZero<usize>, raw_value: u32) -> u32 {
+    let mut mask = (1 << dupe.get()) - 1;
+    let mut result = 0;
+    for i in 0..bits.get() {
+        if (raw_value & mask) != 0 {
+            result |= 1 << i;
+        }
+        mask <<= dupe.get();
+    }
+    result
+}
+
+/// Collapses a slice of words into a single word via OR.
+fn extract_or_words(words: &[u32]) -> u32 {
+    words.iter().fold(0, |acc, &w| acc | w)
+}
+
 /// For a value that fits into a single u32, duplicates it according to the layout
 /// and returns the raw fuse value.
 pub fn write_single_fuse_value(layout: FuseLayout, value: u32) -> McuResult<u32> {
@@ -102,6 +130,25 @@ pub fn write_single_fuse_value(layout: FuseLayout, value: u32) -> McuResult<u32>
         }
         FuseLayout::OneHotLinearMajorityVote(Bits(bits), Duplication(dupe)) => {
             // check that the duplicated bits fit in a single u32
+            if bits.get() * dupe.get() > 32 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            let value = if value == 32 {
+                0xffff_ffff
+            } else {
+                (1 << value) - 1
+            };
+            Ok(write_majority_vote_u32(bits, dupe, value))
+        }
+        // LinearOr writes identically to LinearMajorityVote (duplicate each bit)
+        FuseLayout::LinearOr(Bits(bits), Duplication(dupe)) => {
+            if bits.get() * dupe.get() > 32 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            Ok(write_majority_vote_u32(bits, dupe, value))
+        }
+        FuseLayout::OneHotLinearOr(_, _) if value > 32 => Err(McuError::ROM_FUSE_VALUE_TOO_LARGE),
+        FuseLayout::OneHotLinearOr(Bits(bits), Duplication(dupe)) => {
             if bits.get() * dupe.get() > 32 {
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
@@ -143,6 +190,19 @@ pub fn extract_single_fuse_value(layout: FuseLayout, raw_value: u32) -> McuResul
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
             let value = extract_majority_vote_u32(bits, dupe, raw_value);
+            Ok(value.count_ones())
+        }
+        FuseLayout::LinearOr(Bits(bits), Duplication(dupe)) => {
+            if bits.get() * dupe.get() > 32 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            Ok(extract_or_u32(bits, dupe, raw_value))
+        }
+        FuseLayout::OneHotLinearOr(Bits(bits), Duplication(dupe)) => {
+            if bits.get() * dupe.get() > 32 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            let value = extract_or_u32(bits, dupe, raw_value);
             Ok(value.count_ones())
         }
         _ => Err(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT),
@@ -362,6 +422,60 @@ pub fn write_fuse_value<const N: usize, const M: usize>(
                 }
             }
         }
+
+        // Or variants write identically to their MajorityVote counterparts
+        FuseLayout::LinearOr(Bits(bits), Duplication(dupe)) => {
+            if bits.get() * dupe.get() > M * 32 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            for i in 0..bits.get() {
+                let val_word = *value
+                    .get(i / 32)
+                    .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                let bit = (val_word >> (i % 32)) & 1;
+                let raw_bit = (bit << dupe.get()).saturating_sub(1);
+                inject_bits(&mut result, i * dupe.get(), dupe.get(), raw_bit)?;
+            }
+        }
+
+        FuseLayout::OneHotLinearOr(Bits(bits), Duplication(dupe)) => {
+            if N != 1 || bits.get() * dupe.get() > M * 32 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            let val = *value.first().ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+            if val > bits.get() as u32 {
+                return Err(McuError::ROM_FUSE_VALUE_TOO_LARGE);
+            }
+            let mut bits_left = val as usize * dupe.get();
+            for r in result.iter_mut() {
+                let burn = bits_left.min(32);
+                if burn == 32 {
+                    *r = 0xffff_ffff;
+                } else if burn > 0 {
+                    *r = (1 << burn) - 1;
+                }
+                bits_left -= burn;
+            }
+        }
+
+        FuseLayout::WordOr(Bits(bits), Duplication(dupe)) => {
+            let total_bits = bits.get() * dupe.get();
+            if total_bits > M * 32 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            if M % dupe.get() != 0 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            for (i, &x) in value.iter().enumerate() {
+                for j in 0..dupe.get() {
+                    let target_idx = i * dupe.get() + j;
+                    let target = result
+                        .get_mut(target_idx)
+                        .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                    *target = x;
+                }
+            }
+        }
     }
     Ok(result)
 }
@@ -463,6 +577,60 @@ pub fn extract_fuse_value<const N: usize>(
             }
             Ok(result)
         }
+        FuseLayout::LinearOr(Bits(bits), Duplication(dupe)) if dupe.get() <= 32 => {
+            let total_bits = bits.get() * dupe.get();
+            if total_bits > raw_value.len() * 32 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            for i in 0..bits.get() {
+                let offset = i * dupe.get();
+                let raw = extract_bits(raw_value, offset, dupe.get())?;
+                let bit = if raw != 0 { 1 } else { 0 };
+                let target = result
+                    .get_mut(i / 32)
+                    .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                *target |= bit << (i % 32);
+            }
+            Ok(result)
+        }
+        FuseLayout::OneHotLinearOr(Bits(bits), Duplication(dupe)) if dupe.get() <= 32 => {
+            if N != 1 {
+                Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)
+            } else {
+                let mut count = 0;
+                for i in 0..bits.get() {
+                    let offset = i * dupe.get();
+                    let raw = extract_bits(raw_value, offset, dupe.get())?;
+                    if raw != 0 {
+                        count += 1;
+                    }
+                }
+                let target = result
+                    .get_mut(0)
+                    .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                *target = count;
+                Ok(result)
+            }
+        }
+        FuseLayout::WordOr(Bits(bits), Duplication(dupe)) if dupe.get() <= 32 => {
+            let total_bits = bits.get() * dupe.get();
+            if total_bits > raw_value.len() * 32 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            if N != bits.get() / 32 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            if raw_value.len() % dupe.get() != 0 {
+                return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+            }
+            for (i, chunk) in raw_value.chunks_exact(dupe.get()).enumerate() {
+                let target = result
+                    .get_mut(i)
+                    .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                *target = extract_or_words(chunk);
+            }
+            Ok(result)
+        }
         _ => Err(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT),
     }
 }
@@ -501,6 +669,20 @@ impl FuseLayout {
                     Duplication(NonZero::new(duplication as usize)?),
                 ))
             }
+            FuseLayoutType::LinearOr { bits, duplication } => Some(FuseLayout::LinearOr(
+                Bits(NonZero::new(bits as usize)?),
+                Duplication(NonZero::new(duplication as usize)?),
+            )),
+            FuseLayoutType::OneHotLinearOr { bits, duplication } => {
+                Some(FuseLayout::OneHotLinearOr(
+                    Bits(NonZero::new(bits as usize)?),
+                    Duplication(NonZero::new(duplication as usize)?),
+                ))
+            }
+            FuseLayoutType::WordOr { bits, duplication } => Some(FuseLayout::WordOr(
+                Bits(NonZero::new(bits as usize)?),
+                Duplication(NonZero::new(duplication as usize)?),
+            )),
         }
     }
 }

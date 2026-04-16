@@ -1011,7 +1011,7 @@ mod test {
 
         let otp_memory = hw.read_otp_memory();
 
-        // Check dot_initialized is still set (LinearMajorityVote encoding)
+        // Check dot_initialized is still set (LinearOr encoding)
         let dot_initialized = otp_memory[fuses::DOT_INITIALIZED.byte_offset];
         assert_ne!(dot_initialized, 0, "DOT should still be initialized");
 
@@ -1048,7 +1048,7 @@ mod test {
         use caliptra_mcu_registers_generated::fuses;
         let mut otp =
             vec![0u8; fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
-        // Set dot_initialized = 1 via LinearMajorityVote(1 bit, 3x) encoding: 0b111
+        // Set dot_initialized = 1 via LinearOr(1 bit, 3x) encoding: 0b111
         otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
         // Set bit 0 of dot_fuse_array to 1 (burned=1, ODD/locked state)
         otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;

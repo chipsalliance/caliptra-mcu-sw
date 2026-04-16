@@ -416,5 +416,14 @@ fn format_layout(
         Some(FuseLayoutPolicy::WordMajorityVote { duplication }) => {
             format!("WordMajorityVote({}x)", duplication)
         }
+        Some(FuseLayoutPolicy::LinearOr { duplication }) => {
+            format!("LinearOr({}x)", duplication)
+        }
+        Some(FuseLayoutPolicy::OneHotLinearOr { duplication }) => {
+            format!("OneHotLinearOr({}x)", duplication)
+        }
+        Some(FuseLayoutPolicy::WordOr { duplication }) => {
+            format!("WordOr({}x)", duplication)
+        }
     }
 }

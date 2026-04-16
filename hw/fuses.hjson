@@ -32,7 +32,7 @@
         description: "DOT is enabled and initialized for this part.",
         partition: "VENDOR_NON_SECRET_PROD_PARTITION",
         otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_0",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
       name: "dot_fuse_array",
@@ -80,7 +80,7 @@
         description: "Bitmask of valid vendor PK hash slots.",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_VENDOR_PK_HASH_VALID",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_ecc_revocation_0",
@@ -88,7 +88,7 @@
         description: "Revocation bits for ECC keys in slot 0.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_0",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_0",
@@ -96,7 +96,7 @@
         description: "Revocation bits for MLDSA keys in slot 0.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_0",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_0",
@@ -104,7 +104,7 @@
         description: "Revocation bits for LMS keys in slot 0.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_0",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_1",
@@ -112,7 +112,7 @@
         description: "Revocation bits for ECC keys in slot 1.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_1",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_1",
@@ -120,7 +120,7 @@
         description: "Revocation bits for MLDSA keys in slot 1.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_1",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_1",
@@ -128,7 +128,7 @@
         description: "Revocation bits for LMS keys in slot 1.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_1",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_2",
@@ -136,7 +136,7 @@
         description: "Revocation bits for ECC keys in slot 2.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_2",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_2",
@@ -144,7 +144,7 @@
         description: "Revocation bits for MLDSA keys in slot 2.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_2",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_2",
@@ -152,7 +152,7 @@
         description: "Revocation bits for LMS keys in slot 2.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_2",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_3",
@@ -160,7 +160,7 @@
         description: "Revocation bits for ECC keys in slot 3.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_3",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_3",
@@ -168,7 +168,7 @@
         description: "Revocation bits for MLDSA keys in slot 3.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_3",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_3",
@@ -176,7 +176,7 @@
         description: "Revocation bits for LMS keys in slot 3.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_3",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_4",
@@ -184,7 +184,7 @@
         description: "Revocation bits for ECC keys in slot 4.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_4",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_4",
@@ -192,7 +192,7 @@
         description: "Revocation bits for MLDSA keys in slot 4.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_4",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_4",
@@ -200,7 +200,7 @@
         description: "Revocation bits for LMS keys in slot 4.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_4",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_5",
@@ -208,7 +208,7 @@
         description: "Revocation bits for ECC keys in slot 5.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_5",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_5",
@@ -216,7 +216,7 @@
         description: "Revocation bits for MLDSA keys in slot 5.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_5",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_5",
@@ -224,7 +224,7 @@
         description: "Revocation bits for LMS keys in slot 5.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_5",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_6",
@@ -232,7 +232,7 @@
         description: "Revocation bits for ECC keys in slot 6.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_6",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_6",
@@ -240,7 +240,7 @@
         description: "Revocation bits for MLDSA keys in slot 6.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_6",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_6",
@@ -248,7 +248,7 @@
         description: "Revocation bits for LMS keys in slot 6.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_6",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_7",
@@ -256,7 +256,7 @@
         description: "Revocation bits for ECC keys in slot 7.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_7",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_7",
@@ -264,7 +264,7 @@
         description: "Revocation bits for MLDSA keys in slot 7.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_7",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_7",
@@ -272,7 +272,7 @@
         description: "Revocation bits for LMS keys in slot 7.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_7",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_8",
@@ -280,7 +280,7 @@
         description: "Revocation bits for ECC keys in slot 8.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_8",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_8",
@@ -288,7 +288,7 @@
         description: "Revocation bits for MLDSA keys in slot 8.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_8",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_8",
@@ -296,7 +296,7 @@
         description: "Revocation bits for LMS keys in slot 8.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_8",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_9",
@@ -304,7 +304,7 @@
         description: "Revocation bits for ECC keys in slot 9.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_9",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_9",
@@ -312,7 +312,7 @@
         description: "Revocation bits for MLDSA keys in slot 9.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_9",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_9",
@@ -320,7 +320,7 @@
         description: "Revocation bits for LMS keys in slot 9.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_9",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_10",
@@ -328,7 +328,7 @@
         description: "Revocation bits for ECC keys in slot 10.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_10",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_10",
@@ -336,7 +336,7 @@
         description: "Revocation bits for MLDSA keys in slot 10.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_10",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_10",
@@ -344,7 +344,7 @@
         description: "Revocation bits for LMS keys in slot 10.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_10",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_11",
@@ -352,7 +352,7 @@
         description: "Revocation bits for ECC keys in slot 11.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_11",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_11",
@@ -360,7 +360,7 @@
         description: "Revocation bits for MLDSA keys in slot 11.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_11",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_11",
@@ -368,7 +368,7 @@
         description: "Revocation bits for LMS keys in slot 11.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_11",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_12",
@@ -376,7 +376,7 @@
         description: "Revocation bits for ECC keys in slot 12.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_12",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_12",
@@ -384,7 +384,7 @@
         description: "Revocation bits for MLDSA keys in slot 12.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_12",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_12",
@@ -392,7 +392,7 @@
         description: "Revocation bits for LMS keys in slot 12.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_12",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_13",
@@ -400,7 +400,7 @@
         description: "Revocation bits for ECC keys in slot 13.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_13",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_13",
@@ -408,7 +408,7 @@
         description: "Revocation bits for MLDSA keys in slot 13.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_13",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_13",
@@ -416,7 +416,7 @@
         description: "Revocation bits for LMS keys in slot 13.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_13",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_14",
@@ -424,7 +424,7 @@
         description: "Revocation bits for ECC keys in slot 14.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_14",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_14",
@@ -432,7 +432,7 @@
         description: "Revocation bits for MLDSA keys in slot 14.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_14",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_14",
@@ -440,7 +440,7 @@
         description: "Revocation bits for LMS keys in slot 14.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_14",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_ecc_revocation_15",
@@ -448,7 +448,7 @@
         description: "Revocation bits for ECC keys in slot 15.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_ECC_REVOCATION_15",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_mldsa_revocation_15",
@@ -456,7 +456,7 @@
         description: "Revocation bits for MLDSA keys in slot 15.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_MLDSA_REVOCATION_15",
-        layout: {type: "LinearMajorityVote", duplication: 3},
+        layout: {type: "LinearOr", duplication: 3},
     },
     {
         name: "vendor_lms_revocation_15",
@@ -464,7 +464,7 @@
         description: "Revocation bits for LMS keys in slot 15.",
         partition: "VENDOR_REVOCATIONS_PROD_PARTITION",
         otp_item: "CPTRA_CORE_LMS_REVOCATION_15",
-        layout: {type: "LinearMajorityVote", duplication: 2},
+        layout: {type: "LinearOr", duplication: 2},
     },
     {
         name: "vendor_pqc_key_type_0",
@@ -472,7 +472,7 @@
         description: "One-hot encoded PQC key type for slot 0 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_MANUF_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_0",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_1",
@@ -480,7 +480,7 @@
         description: "One-hot encoded PQC key type for slot 1 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_1",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_2",
@@ -488,7 +488,7 @@
         description: "One-hot encoded PQC key type for slot 2 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_2",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_3",
@@ -496,7 +496,7 @@
         description: "One-hot encoded PQC key type for slot 3 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_3",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_4",
@@ -504,7 +504,7 @@
         description: "One-hot encoded PQC key type for slot 4 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_4",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_5",
@@ -512,7 +512,7 @@
         description: "One-hot encoded PQC key type for slot 5 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_5",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_6",
@@ -520,7 +520,7 @@
         description: "One-hot encoded PQC key type for slot 6 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_6",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_7",
@@ -528,7 +528,7 @@
         description: "One-hot encoded PQC key type for slot 7 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_7",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_8",
@@ -536,7 +536,7 @@
         description: "One-hot encoded PQC key type for slot 8 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_8",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_9",
@@ -544,7 +544,7 @@
         description: "One-hot encoded PQC key type for slot 9 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_9",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_10",
@@ -552,7 +552,7 @@
         description: "One-hot encoded PQC key type for slot 10 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_10",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_11",
@@ -560,7 +560,7 @@
         description: "One-hot encoded PQC key type for slot 11 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_11",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_12",
@@ -568,7 +568,7 @@
         description: "One-hot encoded PQC key type for slot 12 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_12",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_13",
@@ -576,7 +576,7 @@
         description: "One-hot encoded PQC key type for slot 13 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_13",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_14",
@@ -584,7 +584,7 @@
         description: "One-hot encoded PQC key type for slot 14 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_14",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pqc_key_type_15",
@@ -592,7 +592,7 @@
         description: "One-hot encoded PQC key type for slot 15 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_15",
-        layout: {type: "OneHotLinearMajorityVote", duplication: 3},
+        layout: {type: "OneHotLinearOr", duplication: 3},
     },
   ]
 }

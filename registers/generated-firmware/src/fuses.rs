@@ -228,6 +228,9 @@ pub enum FuseLayoutType {
     LinearMajorityVote { bits: u32, duplication: u32 },
     OneHotLinearMajorityVote { bits: u32, duplication: u32 },
     WordMajorityVote { bits: u32, duplication: u32 },
+    LinearOr { bits: u32, duplication: u32 },
+    OneHotLinearOr { bits: u32, duplication: u32 },
+    WordOr { bits: u32, duplication: u32 },
 }
 /// Entry in the fuse lookup table mapping (partition, entry) to OTP location and layout.
 #[derive(Debug, Clone)]
@@ -648,7 +651,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0xa78,
         byte_size: 32,
         name: "dot_initialized",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 1,
             duplication: 3,
         },
@@ -699,7 +702,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x77c,
         byte_size: 16,
         name: "vendor_pk_hash_valid",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 3,
         },
@@ -710,7 +713,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7a4,
         byte_size: 4,
         name: "vendor_ecc_revocation_0",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -721,7 +724,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7ac,
         byte_size: 4,
         name: "vendor_mldsa_revocation_0",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -732,7 +735,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7a8,
         byte_size: 4,
         name: "vendor_lms_revocation_0",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -743,7 +746,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7b0,
         byte_size: 4,
         name: "vendor_ecc_revocation_1",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -754,7 +757,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7b8,
         byte_size: 4,
         name: "vendor_mldsa_revocation_1",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -765,7 +768,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7b4,
         byte_size: 4,
         name: "vendor_lms_revocation_1",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -776,7 +779,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7bc,
         byte_size: 4,
         name: "vendor_ecc_revocation_2",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -787,7 +790,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7c4,
         byte_size: 4,
         name: "vendor_mldsa_revocation_2",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -798,7 +801,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7c0,
         byte_size: 4,
         name: "vendor_lms_revocation_2",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -809,7 +812,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7c8,
         byte_size: 4,
         name: "vendor_ecc_revocation_3",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -820,7 +823,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7d0,
         byte_size: 4,
         name: "vendor_mldsa_revocation_3",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -831,7 +834,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7cc,
         byte_size: 4,
         name: "vendor_lms_revocation_3",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -842,7 +845,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7d4,
         byte_size: 4,
         name: "vendor_ecc_revocation_4",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -853,7 +856,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7dc,
         byte_size: 4,
         name: "vendor_mldsa_revocation_4",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -864,7 +867,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7d8,
         byte_size: 4,
         name: "vendor_lms_revocation_4",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -875,7 +878,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7e0,
         byte_size: 4,
         name: "vendor_ecc_revocation_5",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -886,7 +889,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7e8,
         byte_size: 4,
         name: "vendor_mldsa_revocation_5",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -897,7 +900,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7e4,
         byte_size: 4,
         name: "vendor_lms_revocation_5",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -908,7 +911,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7ec,
         byte_size: 4,
         name: "vendor_ecc_revocation_6",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -919,7 +922,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7f4,
         byte_size: 4,
         name: "vendor_mldsa_revocation_6",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -930,7 +933,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7f0,
         byte_size: 4,
         name: "vendor_lms_revocation_6",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -941,7 +944,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7f8,
         byte_size: 4,
         name: "vendor_ecc_revocation_7",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -952,7 +955,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x800,
         byte_size: 4,
         name: "vendor_mldsa_revocation_7",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -963,7 +966,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x7fc,
         byte_size: 4,
         name: "vendor_lms_revocation_7",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -974,7 +977,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x804,
         byte_size: 4,
         name: "vendor_ecc_revocation_8",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -985,7 +988,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x80c,
         byte_size: 4,
         name: "vendor_mldsa_revocation_8",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -996,7 +999,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x808,
         byte_size: 4,
         name: "vendor_lms_revocation_8",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -1007,7 +1010,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x810,
         byte_size: 4,
         name: "vendor_ecc_revocation_9",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1018,7 +1021,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x818,
         byte_size: 4,
         name: "vendor_mldsa_revocation_9",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1029,7 +1032,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x814,
         byte_size: 4,
         name: "vendor_lms_revocation_9",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -1040,7 +1043,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x81c,
         byte_size: 4,
         name: "vendor_ecc_revocation_10",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1051,7 +1054,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x824,
         byte_size: 4,
         name: "vendor_mldsa_revocation_10",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1062,7 +1065,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x820,
         byte_size: 4,
         name: "vendor_lms_revocation_10",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -1073,7 +1076,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x828,
         byte_size: 4,
         name: "vendor_ecc_revocation_11",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1084,7 +1087,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x830,
         byte_size: 4,
         name: "vendor_mldsa_revocation_11",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1095,7 +1098,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x82c,
         byte_size: 4,
         name: "vendor_lms_revocation_11",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -1106,7 +1109,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x834,
         byte_size: 4,
         name: "vendor_ecc_revocation_12",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1117,7 +1120,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x83c,
         byte_size: 4,
         name: "vendor_mldsa_revocation_12",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1128,7 +1131,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x838,
         byte_size: 4,
         name: "vendor_lms_revocation_12",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -1139,7 +1142,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x840,
         byte_size: 4,
         name: "vendor_ecc_revocation_13",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1150,7 +1153,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x848,
         byte_size: 4,
         name: "vendor_mldsa_revocation_13",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1161,7 +1164,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x844,
         byte_size: 4,
         name: "vendor_lms_revocation_13",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -1172,7 +1175,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x84c,
         byte_size: 4,
         name: "vendor_ecc_revocation_14",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1183,7 +1186,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x854,
         byte_size: 4,
         name: "vendor_mldsa_revocation_14",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1194,7 +1197,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x850,
         byte_size: 4,
         name: "vendor_lms_revocation_14",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -1205,7 +1208,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x858,
         byte_size: 4,
         name: "vendor_ecc_revocation_15",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1216,7 +1219,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x860,
         byte_size: 4,
         name: "vendor_mldsa_revocation_15",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 4,
             duplication: 3,
         },
@@ -1227,7 +1230,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x85c,
         byte_size: 4,
         name: "vendor_lms_revocation_15",
-        layout: FuseLayoutType::LinearMajorityVote {
+        layout: FuseLayoutType::LinearOr {
             bits: 16,
             duplication: 2,
         },
@@ -1238,7 +1241,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x428,
         byte_size: 4,
         name: "vendor_pqc_key_type_0",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1249,7 +1252,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x4a0,
         byte_size: 4,
         name: "vendor_pqc_key_type_1",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1260,7 +1263,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x4d4,
         byte_size: 4,
         name: "vendor_pqc_key_type_2",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1271,7 +1274,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x508,
         byte_size: 4,
         name: "vendor_pqc_key_type_3",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1282,7 +1285,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x53c,
         byte_size: 4,
         name: "vendor_pqc_key_type_4",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1293,7 +1296,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x570,
         byte_size: 4,
         name: "vendor_pqc_key_type_5",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1304,7 +1307,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x5a4,
         byte_size: 4,
         name: "vendor_pqc_key_type_6",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1315,7 +1318,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x5d8,
         byte_size: 4,
         name: "vendor_pqc_key_type_7",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1326,7 +1329,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x60c,
         byte_size: 4,
         name: "vendor_pqc_key_type_8",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1337,7 +1340,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x640,
         byte_size: 4,
         name: "vendor_pqc_key_type_9",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1348,7 +1351,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x674,
         byte_size: 4,
         name: "vendor_pqc_key_type_10",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1359,7 +1362,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x6a8,
         byte_size: 4,
         name: "vendor_pqc_key_type_11",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1370,7 +1373,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x6dc,
         byte_size: 4,
         name: "vendor_pqc_key_type_12",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1381,7 +1384,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x710,
         byte_size: 4,
         name: "vendor_pqc_key_type_13",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1392,7 +1395,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x744,
         byte_size: 4,
         name: "vendor_pqc_key_type_14",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1403,7 +1406,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         byte_offset: 0x778,
         byte_size: 4,
         name: "vendor_pqc_key_type_15",
-        layout: FuseLayoutType::OneHotLinearMajorityVote {
+        layout: FuseLayoutType::OneHotLinearOr {
             bits: 2,
             duplication: 3,
         },
@@ -1837,7 +1840,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_0: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x428,
     byte_size: 4,
     name: "vendor_pqc_key_type_0",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -1885,7 +1888,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_1: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x4a0,
     byte_size: 4,
     name: "vendor_pqc_key_type_1",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -1906,7 +1909,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_2: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x4d4,
     byte_size: 4,
     name: "vendor_pqc_key_type_2",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -1927,7 +1930,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_3: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x508,
     byte_size: 4,
     name: "vendor_pqc_key_type_3",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -1948,7 +1951,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_4: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x53c,
     byte_size: 4,
     name: "vendor_pqc_key_type_4",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -1969,7 +1972,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_5: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x570,
     byte_size: 4,
     name: "vendor_pqc_key_type_5",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -1990,7 +1993,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_6: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x5a4,
     byte_size: 4,
     name: "vendor_pqc_key_type_6",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -2011,7 +2014,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_7: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x5d8,
     byte_size: 4,
     name: "vendor_pqc_key_type_7",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -2032,7 +2035,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_8: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x60c,
     byte_size: 4,
     name: "vendor_pqc_key_type_8",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -2053,7 +2056,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_9: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x640,
     byte_size: 4,
     name: "vendor_pqc_key_type_9",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -2074,7 +2077,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_10: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x674,
     byte_size: 4,
     name: "vendor_pqc_key_type_10",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -2095,7 +2098,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_11: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x6a8,
     byte_size: 4,
     name: "vendor_pqc_key_type_11",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -2116,7 +2119,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_12: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x6dc,
     byte_size: 4,
     name: "vendor_pqc_key_type_12",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -2137,7 +2140,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_13: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x710,
     byte_size: 4,
     name: "vendor_pqc_key_type_13",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -2158,7 +2161,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_14: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x744,
     byte_size: 4,
     name: "vendor_pqc_key_type_14",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -2179,7 +2182,7 @@ pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_15: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x778,
     byte_size: 4,
     name: "vendor_pqc_key_type_15",
-    layout: FuseLayoutType::OneHotLinearMajorityVote {
+    layout: FuseLayoutType::OneHotLinearOr {
         bits: 2,
         duplication: 3,
     },
@@ -2191,7 +2194,7 @@ pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x77c,
     byte_size: 16,
     name: "vendor_pk_hash_valid",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 3,
     },
@@ -2230,7 +2233,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_0: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7a4,
     byte_size: 4,
     name: "vendor_ecc_revocation_0",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2242,7 +2245,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_0: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7a8,
     byte_size: 4,
     name: "vendor_lms_revocation_0",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2254,7 +2257,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_0: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7ac,
     byte_size: 4,
     name: "vendor_mldsa_revocation_0",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2266,7 +2269,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_1: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7b0,
     byte_size: 4,
     name: "vendor_ecc_revocation_1",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2278,7 +2281,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_1: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7b4,
     byte_size: 4,
     name: "vendor_lms_revocation_1",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2290,7 +2293,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_1: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7b8,
     byte_size: 4,
     name: "vendor_mldsa_revocation_1",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2302,7 +2305,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_2: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7bc,
     byte_size: 4,
     name: "vendor_ecc_revocation_2",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2314,7 +2317,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_2: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7c0,
     byte_size: 4,
     name: "vendor_lms_revocation_2",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2326,7 +2329,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_2: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7c4,
     byte_size: 4,
     name: "vendor_mldsa_revocation_2",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2338,7 +2341,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_3: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7c8,
     byte_size: 4,
     name: "vendor_ecc_revocation_3",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2350,7 +2353,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_3: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7cc,
     byte_size: 4,
     name: "vendor_lms_revocation_3",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2362,7 +2365,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_3: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7d0,
     byte_size: 4,
     name: "vendor_mldsa_revocation_3",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2374,7 +2377,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_4: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7d4,
     byte_size: 4,
     name: "vendor_ecc_revocation_4",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2386,7 +2389,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_4: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7d8,
     byte_size: 4,
     name: "vendor_lms_revocation_4",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2398,7 +2401,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_4: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7dc,
     byte_size: 4,
     name: "vendor_mldsa_revocation_4",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2410,7 +2413,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_5: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7e0,
     byte_size: 4,
     name: "vendor_ecc_revocation_5",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2422,7 +2425,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_5: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7e4,
     byte_size: 4,
     name: "vendor_lms_revocation_5",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2434,7 +2437,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_5: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7e8,
     byte_size: 4,
     name: "vendor_mldsa_revocation_5",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2446,7 +2449,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_6: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7ec,
     byte_size: 4,
     name: "vendor_ecc_revocation_6",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2458,7 +2461,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_6: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7f0,
     byte_size: 4,
     name: "vendor_lms_revocation_6",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2470,7 +2473,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_6: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7f4,
     byte_size: 4,
     name: "vendor_mldsa_revocation_6",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2482,7 +2485,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_7: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7f8,
     byte_size: 4,
     name: "vendor_ecc_revocation_7",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2494,7 +2497,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_7: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x7fc,
     byte_size: 4,
     name: "vendor_lms_revocation_7",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2506,7 +2509,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_7: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x800,
     byte_size: 4,
     name: "vendor_mldsa_revocation_7",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2518,7 +2521,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_8: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x804,
     byte_size: 4,
     name: "vendor_ecc_revocation_8",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2530,7 +2533,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_8: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x808,
     byte_size: 4,
     name: "vendor_lms_revocation_8",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2542,7 +2545,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_8: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x80c,
     byte_size: 4,
     name: "vendor_mldsa_revocation_8",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2554,7 +2557,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_9: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x810,
     byte_size: 4,
     name: "vendor_ecc_revocation_9",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2566,7 +2569,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_9: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x814,
     byte_size: 4,
     name: "vendor_lms_revocation_9",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2578,7 +2581,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_9: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x818,
     byte_size: 4,
     name: "vendor_mldsa_revocation_9",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2590,7 +2593,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_10: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x81c,
     byte_size: 4,
     name: "vendor_ecc_revocation_10",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2602,7 +2605,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_10: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x820,
     byte_size: 4,
     name: "vendor_lms_revocation_10",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2614,7 +2617,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_10: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x824,
     byte_size: 4,
     name: "vendor_mldsa_revocation_10",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2626,7 +2629,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_11: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x828,
     byte_size: 4,
     name: "vendor_ecc_revocation_11",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2638,7 +2641,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_11: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x82c,
     byte_size: 4,
     name: "vendor_lms_revocation_11",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2650,7 +2653,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_11: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x830,
     byte_size: 4,
     name: "vendor_mldsa_revocation_11",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2662,7 +2665,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_12: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x834,
     byte_size: 4,
     name: "vendor_ecc_revocation_12",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2674,7 +2677,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_12: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x838,
     byte_size: 4,
     name: "vendor_lms_revocation_12",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2686,7 +2689,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_12: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x83c,
     byte_size: 4,
     name: "vendor_mldsa_revocation_12",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2698,7 +2701,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_13: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x840,
     byte_size: 4,
     name: "vendor_ecc_revocation_13",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2710,7 +2713,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_13: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x844,
     byte_size: 4,
     name: "vendor_lms_revocation_13",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2722,7 +2725,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_13: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x848,
     byte_size: 4,
     name: "vendor_mldsa_revocation_13",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2734,7 +2737,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_14: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x84c,
     byte_size: 4,
     name: "vendor_ecc_revocation_14",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2746,7 +2749,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_14: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x850,
     byte_size: 4,
     name: "vendor_lms_revocation_14",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2758,7 +2761,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_14: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x854,
     byte_size: 4,
     name: "vendor_mldsa_revocation_14",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2770,7 +2773,7 @@ pub const OTP_CPTRA_CORE_ECC_REVOCATION_15: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x858,
     byte_size: 4,
     name: "vendor_ecc_revocation_15",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2782,7 +2785,7 @@ pub const OTP_CPTRA_CORE_LMS_REVOCATION_15: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x85c,
     byte_size: 4,
     name: "vendor_lms_revocation_15",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 16,
         duplication: 2,
     },
@@ -2794,7 +2797,7 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_15: &FuseEntryInfo = &FuseEntryInfo {
     byte_offset: 0x860,
     byte_size: 4,
     name: "vendor_mldsa_revocation_15",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 4,
         duplication: 3,
     },
@@ -2950,7 +2953,7 @@ pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_0: &FuseEntryInfo = &Fuse
     byte_offset: 0xa78,
     byte_size: 32,
     name: "dot_initialized",
-    layout: FuseLayoutType::LinearMajorityVote {
+    layout: FuseLayoutType::LinearOr {
         bits: 1,
         duplication: 3,
     },

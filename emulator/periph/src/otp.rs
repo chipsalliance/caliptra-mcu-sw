@@ -181,11 +181,14 @@ impl Otp {
                 ..fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48]
                 .copy_from_slice(&vendor_pk_hash);
         }
-        // encode as a single bit
+        // Encode as one-hot + duplication to match the fuse layout
+        // (OneHotLinear{MajorityVote,Or}, bits: 2, duplication: 3):
+        // MLDSA = thermometer value 1 (bit 0 set), duplicated 3x = 0b000111 = 0x07.
+        // LMS   = thermometer value 2 (bits 0-1 set), duplicated 3x = 0b111111 = 0x3F.
         if let Some(pqc_type) = args.vendor_pqc_type {
-            let val = match pqc_type {
-                FwVerificationPqcKeyType::MLDSA => 0,
-                FwVerificationPqcKeyType::LMS => 1,
+            let val: u8 = match pqc_type {
+                FwVerificationPqcKeyType::MLDSA => 0x07,
+                FwVerificationPqcKeyType::LMS => 0x3F,
             };
             otp.partitions.borrow_mut()[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48] =
                 val;

@@ -11,7 +11,7 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   → OTP bytes `77 a8 7c b1 cc 57 66 66 …` → `FUSE_VENDOR_PK_HASH[0] = 0xb17ca877`_
 
 - **`CPTRA_CORE_PQC_KEY_TYPE`** (selected slot) ✓ → `FUSE_PQC_KEY_TYPE`
-  `OneHotLinearMajorityVote{bits:2, dupe:3}` decoded to logical value, then mapped to a Caliptra
+  `OneHotLinearOr{bits:2, dupe:3}` decoded to logical value, then mapped to a Caliptra
   constant: MLDSA → 1, LMS → 3.
   _Example: LMS → OTP bytes `3f 00 00 00` → `FUSE_PQC_KEY_TYPE = 3`_
 
@@ -24,13 +24,13 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 - **`CPTRA_CORE_SOC_MANIFEST_MAX_SVN`** ✓ → `FUSE_SOC_MANIFEST_MAX_SVN`: raw u32
 
 - **`CPTRA_CORE_ECC_REVOCATION`** (selected slot) ✓ → `FUSE_ECC_REVOCATION`:
-  `LinearMajorityVote{bits:4, dupe:3}` → decoded u4
+  `LinearOr{bits:4, dupe:3}` → decoded u4
 
 - **`CPTRA_CORE_LMS_REVOCATION`** (selected slot) ✓ → `FUSE_LMS_REVOCATION`:
-  `LinearMajorityVote{bits:16, dupe:2}` → decoded u16
+  `LinearOr{bits:16, dupe:2}` → decoded u16
 
 - **`CPTRA_CORE_MLDSA_REVOCATION`** (selected slot) ✓ → `FUSE_MLDSA_REVOCATION`:
-  `LinearMajorityVote{bits:4, dupe:3}` → decoded u4
+  `LinearOr{bits:4, dupe:3}` → decoded u4
 
 - **`CPTRA_CORE_SOC_STEPPING_ID`** ✓ → `FUSE_SOC_STEPPING_ID`: raw u32, bits\[15:0\] only
 
@@ -58,10 +58,10 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   `CPTRA_I_TRNG_ENTROPY_CONFIG_1`: `Single{bits:32}` raw u32.
 
 - **`CPTRA_CORE_VENDOR_PK_HASH_VALID`** (all slots) — slot selection only, not written to any
-  register. `LinearMajorityVote{bits:16, dupe:3}` → decoded u16 bitmask.
+  register. `LinearOr{bits:16, dupe:3}` → decoded u16 bitmask.
 
 - **`dot_initialized`** — MCU
-  internal use only, not written to any register. `LinearMajorityVote{bits:1, dupe:3}` → logical
+  internal use only, not written to any register. `LinearOr{bits:1, dupe:3}` → logical
   0 or 1, used as the DOT flow gate.
 
 - **`dot_fuse_array`** — MCU internal
@@ -69,7 +69,7 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   the DOT state counter. Also written (next bit burned) during DOT state transitions.
 
 - **`perma_hek_en`** (2.1+) — MCU internal use only, not written to any register.
-  `LinearMajorityVote{bits:1, dupe:3}` → logical 0 or 1, indicates whether the
+  `LinearOr{bits:1, dupe:3}` → logical 0 or 1, indicates whether the
   HEK is permanently set. Used by OCP LOCK logic to determine HEK slot state.
 
 - **`CPTRA_SS_LOCK_HEK_PROD_{0..7}`** ✓ → `FUSE_HEK_SEED[0..7]` (2.1+): 8 OTP
@@ -95,15 +95,15 @@ fault tolerance without causing ECC integrity issues.
 | OTP field | ECC | Recommended layout |
 |---|:---:|---|
 | `CPTRA_CORE_VENDOR_PK_HASH_{0..N}` | ✅ | `Single{bits:384}` |
-| `CPTRA_CORE_PQC_KEY_TYPE_{0..N}` | ✅ | `OneHotLinearMajorityVote{bits:2, dupe:3}` |
-| `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` | ❌ | `LinearMajorityVote{bits:32, dupe:3}` |
-| `CPTRA_CORE_RUNTIME_SVN` | ❌ | `LinearMajorityVote{bits:128, dupe:3}` |
-| `CPTRA_CORE_SOC_MANIFEST_SVN` | ❌ | `LinearMajorityVote{bits:128, dupe:3}` |
-| `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` | ❌ | `LinearMajorityVote{bits:32, dupe:3}` |
-| `CPTRA_CORE_ECC_REVOCATION_{0..N}` | ❌ | `LinearMajorityVote{bits:4, dupe:3}` |
-| `CPTRA_CORE_LMS_REVOCATION_{0..N}` | ❌ | `LinearMajorityVote{bits:16, dupe:2}` |
-| `CPTRA_CORE_MLDSA_REVOCATION_{0..N}` | ❌ | `LinearMajorityVote{bits:4, dupe:3}` |
-| `CPTRA_CORE_VENDOR_PK_HASH_VALID` | ❌ | `LinearMajorityVote{bits:16, dupe:3}` |
+| `CPTRA_CORE_PQC_KEY_TYPE_{0..N}` | ✅ | `OneHotLinearOr{bits:2, dupe:3}` |
+| `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` | ❌ | `LinearOr{bits:32, dupe:3}` |
+| `CPTRA_CORE_RUNTIME_SVN` | ❌ | `LinearOr{bits:128, dupe:3}` |
+| `CPTRA_CORE_SOC_MANIFEST_SVN` | ❌ | `LinearOr{bits:128, dupe:3}` |
+| `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` | ❌ | `LinearOr{bits:32, dupe:3}` |
+| `CPTRA_CORE_ECC_REVOCATION_{0..N}` | ❌ | `LinearOr{bits:4, dupe:3}` |
+| `CPTRA_CORE_LMS_REVOCATION_{0..N}` | ❌ | `LinearOr{bits:16, dupe:2}` |
+| `CPTRA_CORE_MLDSA_REVOCATION_{0..N}` | ❌ | `LinearOr{bits:4, dupe:3}` |
+| `CPTRA_CORE_VENDOR_PK_HASH_VALID` | ❌ | `LinearOr{bits:16, dupe:3}` |
 | `CPTRA_CORE_SOC_STEPPING_ID` | ✅ | `Single{bits:16}` |
 | `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` | ✅ | `Single{bits:1}` |
 | `CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR` | ✅ | `Single{bits:768}` |
@@ -111,12 +111,12 @@ fault tolerance without causing ECC integrity issues.
 | `CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN` | ✅ | `Single{bits:512}` |
 | `CPTRA_SS_OWNER_PK_HASH` | ✅ | `Single{bits:384}` |
 | `CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_{0..7}` | ✅ | `Single{bits:384}` each |
-| `dot_initialized` | ✅ | `Single{bits:1}` or if no ECC, `LinearMajorityVote{bits:1, dupe:3}` |
-| `dot_fuse_array` | ❌ | `OneHot{bits:256}` or `OneHotLinearMajorityVote{bits:256, dupe: 3}` |
+| `dot_initialized` | ✅ | `Single{bits:1}` or if no ECC, `LinearOr{bits:1, dupe:3}` |
+| `dot_fuse_array` | ❌ | `OneHot{bits:256}` or `OneHotLinearOr{bits:256, dupe: 3}` |
 | `cptra_itrng_health_test_window_size` | ✅ | `Single{bits:16}` |
 | `cptra_itrng_entropy_config_0` | ✅ | `Single{bits:32}` |
 | `cptra_itrng_entropy_config_1` | ✅ | `Single{bits:32}` |
-| `perma_hek_en` (2.1 only) | ✅ | `Single{bits:1}` or if no ECC, `LinearMajorityVote{bits:1, dupe:3}` |
+| `perma_hek_en` (2.1 only) | ✅ | `Single{bits:1}` or if no ECC, `LinearOr{bits:1, dupe:3}` |
 | `CPTRA_SS_LOCK_HEK_PROD_{0..7}` (2.1 only) | ✅ | `Single{bits:384}` each |
 
 TODO: there are only 32 LMS revocation bits specificed in the reference fuse map, but with redundant encoding, we would get 16 or fewer bits, unless  they are backed with HW redundancy.
@@ -281,14 +281,14 @@ MCU ROM decode, and the final Caliptra `FUSE_PQC_KEY_TYPE` register value.
 | Partition | `VENDOR_HASHES_MANUF_PARTITION` (partition 10) |
 | OTP byte offset | `0x428` |
 | Size | 4 bytes (only 6 bits are used) |
-| Layout | `OneHotLinearMajorityVote { bits: 2, duplication: 3 }` |
+| Layout | `OneHotLinearOr { bits: 2, duplication: 3 }` |
 
-Unlike the PK hash, this field uses the `OneHotLinearMajorityVote` layout for
-fault tolerance. The `OneHotLinearMajorityVote { bits: 2, duplication: 3 }`
+Unlike the PK hash, this field uses the `OneHotLinearOr` layout for
+fault tolerance. The `OneHotLinearOr { bits: 2, duplication: 3 }`
 layout encodes a logical integer using two stages:
 
 1. **OneHot**: the logical value `n` is encoded as `n` consecutive 1-bits: `onehot = (1 << n) - 1`
-2. **LinearMajorityVote**: each bit of the OneHot value is replicated `duplication` (3) times in
+2. **LinearOr**: each bit of the OneHot value is replicated `duplication` (3) times in
    consecutive bit positions. The 2 logical bits × 3 replications = 6 physical bits, packed into
    the low 6 bits of the 4-byte field.
 
@@ -300,7 +300,7 @@ layout encodes a logical integer using two stages:
 In this example, we assume that MCU ROM is implementing this replication layout in software.
 **An integrator may choose to have this replication implemented at a
 lower level in the hardware's fuse macro layer**.
-If that is the case, then the duplication and majority vote in this example can be ignored.
+If that is the case, then the duplication and OR reduction in this example can be ignored.
 
 ### Example: CPTRA_CORE_PQC_KEY_TYPE_0 (LMS)
 
@@ -336,13 +336,13 @@ which sets `direct_access_address = 0x428` and reads `dai_rdata_0`:
 
 #### Layer 3: MCU ROM Decode
 
-`read_entry` applies `extract_single_fuse_value(OneHotLinearMajorityVote{bits:2, dupe:3}, 0x3F)`:
+`read_entry` applies `extract_single_fuse_value(OneHotLinearOr{bits:2, dupe:3}, 0x3F)`:
 
 ```
-extract_majority_vote_u32(bits=2, dupe=3, raw=0x3F):
-  bit 0: votes = (0x3F & 0x07).count_ones() = 3, threshold 2 → bit 0 = 1
-  bit 1: votes = (0x3F & 0x38).count_ones() = 3, threshold 2 → bit 1 = 1
-  majority result = 0b11
+extract_or_u32(bits=2, dupe=3, raw=0x3F):
+  bit 0: copies = (0x3F & 0x07) = 0x07, any set → bit 0 = 1
+  bit 1: copies = (0x3F & 0x38) = 0x38, any set → bit 1 = 1
+  OR result = 0b11
 
 count_ones(0b11) = 2  →  2 ≠ 1  →  PqcKeyType::LMS
 ```

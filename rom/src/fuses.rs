@@ -93,15 +93,15 @@ impl Default for McuFuseLayoutPolicy {
             soc_specific_idevid_certificate: None,
             idevid_manuf_hsm_identifier: FuseLayout::Single(Bits(NonZero::new(32).unwrap())),
             soc_stepping_id: FuseLayout::Single(Bits(NonZero::new(32).unwrap())),
-            fmc_key_manifest_svn: FuseLayout::OneHotLinearMajorityVote(
+            fmc_key_manifest_svn: FuseLayout::OneHotLinearOr(
                 Bits(NonZero::new(32).unwrap()),
                 Duplication(NonZero::new(3).unwrap()),
             ),
-            runtime_svn: FuseLayout::OneHotLinearMajorityVote(
+            runtime_svn: FuseLayout::OneHotLinearOr(
                 Bits(NonZero::new(128).unwrap()),
                 Duplication(NonZero::new(3).unwrap()),
             ),
-            soc_manifest_svn: FuseLayout::OneHotLinearMajorityVote(
+            soc_manifest_svn: FuseLayout::OneHotLinearOr(
                 Bits(NonZero::new(128).unwrap()),
                 Duplication(NonZero::new(3).unwrap()),
             ),
@@ -110,15 +110,15 @@ impl Default for McuFuseLayoutPolicy {
             owner_pk_hash_valid: FuseLayout::Single(Bits(NonZero::new(1).unwrap())),
             pqc_key_types: FuseLayout::Single(Bits(NonZero::new(16).unwrap())),
             vendor_pk_hash_valid: FuseLayout::Single(Bits(NonZero::new(16).unwrap())),
-            owner_ecc_revocation: FuseLayout::LinearMajorityVote(
+            owner_ecc_revocation: FuseLayout::LinearOr(
                 Bits(NonZero::new(1).unwrap()),
                 Duplication(NonZero::new(3).unwrap()),
             ),
-            owner_lms_revocation: FuseLayout::LinearMajorityVote(
+            owner_lms_revocation: FuseLayout::LinearOr(
                 Bits(NonZero::new(1).unwrap()),
                 Duplication(NonZero::new(3).unwrap()),
             ),
-            owner_mldsa_revocation: FuseLayout::LinearMajorityVote(
+            owner_mldsa_revocation: FuseLayout::LinearOr(
                 Bits(NonZero::new(1).unwrap()),
                 Duplication(NonZero::new(3).unwrap()),
             ),

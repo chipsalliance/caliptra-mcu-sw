@@ -252,11 +252,11 @@ mod tests {
     }
 
     /// Validates the PQC key type fuse encoding example documented in docs/src/rom-fuses.md,
-    /// tracing vendor_pqc_key_type_0 (OneHotLinearMajorityVote{bits:2,dupe:3}) at OTP byte
+    /// tracing vendor_pqc_key_type_0 (OneHotLinearOr{bits:2,dupe:3}) at OTP byte
     /// offset 0x428 through OTP bytes, vmem, and DAI read for both MLDSA and LMS. FPGA-verified.
     #[test]
     fn test_pqc_key_type_doc_example() {
-        // For OneHotLinearMajorityVote { bits: 2, duplication: 3 }:
+        // For OneHotLinearOr { bits: 2, duplication: 3 }:
         //   MLDSA logical value = 1 → onehot = 0b01 → raw = 0x00000007
         //   LMS   logical value = 2 → onehot = 0b11 → raw = 0x0000003F
         let cases: &[(&str, u32, u16)] =

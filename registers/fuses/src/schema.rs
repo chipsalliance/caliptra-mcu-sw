@@ -39,6 +39,12 @@ pub enum FuseLayoutPolicy {
     OneHotLinearMajorityVote { duplication: u32 },
     /// Words duplicated with per-bit majority vote
     WordMajorityVote { duplication: u32 },
+    /// Each bit duplicated with OR reduction (any copy set → result is 1)
+    LinearOr { duplication: u32 },
+    /// One-hot with linear OR reduction
+    OneHotLinearOr { duplication: u32 },
+    /// Words duplicated with per-bit OR reduction
+    WordOr { duplication: u32 },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
