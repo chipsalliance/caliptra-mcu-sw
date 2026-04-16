@@ -145,6 +145,24 @@ pub trait UnifiedCommandHandler {
     ) -> Result<(), CommandError>;
 }
 
+pub struct AuthorizationError;
+
 pub trait CommandAuthorizer {
-    fn is_authorized(&self, cmd_id: CommandId, msg_buf: &mut [u8], req_len: usize) -> bool;
+    /// Validates if a message is authorized.
+    ///
+    /// The request can contain authorization data (e.g. a HMAC).
+    /// This method is responsible for unpacking the contained
+    /// request message and returning it as a slice.
+    ///
+    /// # Arguments
+    /// * `cmd_id` - Command identifier
+    /// * `req` - Message to be authorized
+    ///
+    /// # Returns
+    /// * `Result<&[u8], CommandError>` - Unpacked command or Error
+    fn is_authorized<'a>(
+        &self,
+        cmd_id: CommandId,
+        req: &'a [u8],
+    ) -> Result<&'a [u8], AuthorizationError>;
 }
