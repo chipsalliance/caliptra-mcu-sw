@@ -785,6 +785,9 @@ mod test {
     /// boot status and that the blob is written to flash.
     #[test]
     fn test_dot_recovery_backup_blob_success() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         // First create a valid DOT blob
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -795,9 +798,6 @@ mod test {
         let blob_bytes = blob.as_bytes();
         let mut flash_contents = vec![0u8; 4096];
         flash_contents[2048..2048 + DOT_BLOB_SIZE].copy_from_slice(blob_bytes);
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents),
@@ -834,6 +834,9 @@ mod test {
     /// 3. Recovery should fail with the blob corrupt error
     #[test]
     fn test_dot_recovery_backup_blob_invalid_hmac() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         // Create a blob with valid structure but invalid HMAC
         let owner_pk_hash = get_owner_pk_hash();
         let blob = TestDotBlob::default()
@@ -845,9 +848,6 @@ mod test {
         let blob_bytes = blob.as_bytes();
         let mut flash_contents = vec![0u8; 4096];
         flash_contents[2048..2048 + DOT_BLOB_SIZE].copy_from_slice(blob_bytes);
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents),
@@ -2194,15 +2194,15 @@ mod test {
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
         use caliptra_mcu_romtime::McuBootMilestones;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
         let dot_flash = blob.to_flash_contents();
 
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // Boot 1: process the UNLOCK manifest — burns a fuse and writes new unlock blob.
         let mut hw = start_runtime_hw_model(TestParams {
@@ -2268,15 +2268,15 @@ mod test {
     fn test_fw_manifest_dot_unknown_command() {
         use caliptra_mcu_romtime::McuBootMilestones;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
         let dot_flash = blob.to_flash_contents();
 
         // Command 0xFF is not defined; the ROM must reject it.
         let manifest = create_manifest_section(&[0xFF], 0, [0u32; 12], [0u32; 12]);
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -2315,6 +2315,8 @@ mod test {
     /// prepended to the firmware image.
     #[test]
     fn test_fw_manifest_dot_runtime_boots() {
+        let lock = TEST_LOCK.lock().unwrap();
+
         let manifest = create_manifest_section(
             &[caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_NOP],
             0,
@@ -2322,7 +2324,6 @@ mod test {
             [0u32; 12],
         );
 
-        let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let _hw = start_runtime_hw_model(TestParams {
