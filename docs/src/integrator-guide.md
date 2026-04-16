@@ -65,3 +65,111 @@ the integration-specific fuse map.
 - If you are **not** using DOT, then `CPTRA_SS_OWNER_PK_HASH` is the sole
   source of the owner PK hash and must be provisioned or another integrator-
   specific mechanism must be used.
+
+## Vendor Public Key Selection and Rotation
+Caliptra MCU supports a vendor public key selection and rotation scheme
+based on fuses and hardware strapping pins. This section describes how the ROM
+selects the active vendor public key slot and how integrators can manage
+rotation and revocation.
+
+### Key Policy and Selection Process
+The ROM follows this process to select a vendor public key hash slot (out of 16
+available slots):
+1.  **Validity Check**: The ROM reads the `VENDOR_PK_HASH_VALID` fuse mask.
+    Each bit corresponds to a slot. If a bit is set to `1`, the slot is
+    considered invalid and skipped.
+2.  **Revocation Check**: For each valid slot, the ROM checks the revocation
+    status of the keys in the `CPTRA_CORE_ECC_REVOCATION_X`,  
+    `CPTRA_CORE_MLDSA_REVOCATION_X`, and `CPTRA_CORE_LMS_REVOCATION_X` fields:
+    -   **ECC Keys**: Checked against the ECC revocation fuses (4 bits per
+        slot).
+    -   **PQC Keys**: Checked against PQC revocation fuses (4 bits for MLDSA,
+        16 bits for LMS).
+    A slot is considered **functional** if it has at least one unrevoked ECC key
+    AND at least one unrevoked PQC key.
+3.  **Default Selection**: By default, the ROM selects the **first functional
+    slot** it encounters (searching from slot 0 to 15). However, this logic can
+    be overridden by passing a different implementation of the `VendorKeyPolicy`
+    into the ROM parameters.
+
+### Key Rotation via Strapping
+Integrators can force the ROM to rotate to the next available key by using a
+hardware strapping pin:
+-   **Strap Register**: `SS_STRAP_GENERIC[3]`
+-   **Bit 1 (Rotation)**: If this bit is set to `1`, the ROM will **skip the
+    first functional slot** it finds and select the **second functional slot**.
+This allows a platform to switch to a new key without burning fuses, simply
+by changing a strapping register or GPIO state, provided that a second valid and
+functional key is provisioned in the fuses. This enables rolling back to the
+previous known-good firmware image should the new one have a fatal issue.
+
+### Key Revocation
+Keys can be revoked permanently by burning fuses:
+-   Setting the corresponding bit in `VENDOR_PK_HASH_VALID` to `1` invalidates
+    the entire slot.
+-   Incrementing the revocation counters for ECC or PQC keys within a slot.
+    Once all bits are burned (e.g., reaching `0xF` for MLDSA or ECC), that key
+    type is fully revoked in that slot.
+
+### Key Revocation Flows
+
+Caliptra MCU supports two revocation flows depending on whether the new key is
+within the same PK hash slot or in a different slot.
+
+#### Case 1: Revocation Within the Same PK Hash Slot
+
+This flow is used when a specific sub-key within a PK hash slot needs to be
+revoked (e.g., moving to a new key version) but other keys within that PK hash
+remiain trusted.
+
+**Process**:
+1.  Push a new Runtime (RT) firmware signed with a new key.
+2.  The runtime, on startup, will identify that a key revocation is required and
+    perform the appropriate fuse burn
+
+```mermaid
+sequenceDiagram
+    participant Host
+    participant MCU_ROM as MCU ROM
+    participant MCU_RT as MCU RT
+    participant Fuses as OTP Fuses
+    
+    Host->>MCU_ROM: Push new RT FW (signed with Key N+1)
+    MCU_ROM->>Fuses: Read revocation counter (current = N)
+    MCU_ROM->>MCU_ROM: Verify signature with Key N+1
+    MCU_ROM->>MCU_RT: Boot into new MCU RT
+    MCU_RT->>Fuses: Increment revocation counter to N+1
+```
+
+#### Case 2: Revocation Across Different PK Hash Slots
+
+This flow is used when the entire PK hash slot is compromised or needs to be
+replaced, requiring a transition to a new PK hash slot.
+
+**Process**:
+1.  Push a new Runtime (RT) firmware signed with a key from a new PK hash slot.
+2.  Additionally assert the hardware strapping pin (Bit 1 of
+    `SS_STRAP_GENERIC[3]`) to enable rotation.
+3.  On reboot, the MCU ROM will select the new PK hash slot.
+4.  The MCU Runtime will then burn the old PK hash slot as invalid.
+
+```mermaid
+sequenceDiagram
+    participant Host
+    participant Strapping as Strapping Pin
+    participant MCU_ROM as MCU ROM
+    participant MCU_RT as MCU RT
+    participant Fuses as OTP Fuses
+    
+    Host->>MCU_ROM: Push new RT FW (signed with Key in Slot M+1)
+    Host->>Strapping: Assert Rotation Strap
+    Host->>MCU_ROM: Trigger Reboot
+    MCU_ROM->>Strapping: Read Strap (Rotation Enabled)
+    MCU_ROM->>Fuses: Read valid slots & functional status
+    MCU_ROM->>MCU_ROM: Skip PK Hash Slot N (first functional), Select PK Hash Slot N+1
+    MCU_ROM->>MCU_RT: Boot into new MCU RT
+    MCU_RT->>Fuses: Mark PK Hash Slot N as invalid
+```
+
+> Note: the development of the MCU Runtime mechanism to identify and perform the
+revocation is being tracked in [this Github issue](https://github.com/chipsalliance/caliptra-sw/issues/2441).
