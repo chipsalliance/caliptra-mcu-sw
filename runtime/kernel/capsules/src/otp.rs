@@ -2,6 +2,7 @@
 
 //! This provides the OTP capsule that calls the underlying OTP driver
 
+use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_RUNTIME_SVN;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
@@ -36,6 +37,8 @@ pub mod reg {
         LOCK_HEK_PROD_6,
         LOCK_HEK_PROD_7,
     ];
+
+    pub const CALIPTRA_FW_SVN: u32 = 9;
 }
 
 #[derive(Default)]
@@ -45,7 +48,7 @@ pub struct App {
 }
 
 pub struct Otp {
-    _driver: &'static caliptra_mcu_romtime::Otp,
+    driver: &'static caliptra_mcu_romtime::Otp,
     total_heks: u32,
     // Per-app state.
     apps: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
@@ -58,7 +61,7 @@ impl Otp {
         grant: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
     ) -> Otp {
         Otp {
-            _driver: driver,
+            driver,
             total_heks,
             apps: grant,
         }
@@ -66,6 +69,8 @@ impl Otp {
 
     fn read_reg(&self, processid: ProcessId) -> CommandReturn {
         match self.apps.enter(processid, |app, _| match app.reg_offset {
+            // TODO: investigate using a cache instead of the actual fuses to reduce wear and
+            // increase performance
             reg::LOCK_TOTAL_HEKS => CommandReturn::success_u32(self.total_heks),
             _hek @ reg::LOCK_HEK_PROD_0
             | _hek @ reg::LOCK_HEK_PROD_1
@@ -75,6 +80,23 @@ impl Otp {
             | _hek @ reg::LOCK_HEK_PROD_5
             | _hek @ reg::LOCK_HEK_PROD_6
             | _hek @ reg::LOCK_HEK_PROD_7 => CommandReturn::failure(ErrorCode::NOSUPPORT),
+            reg::CALIPTRA_FW_SVN => {
+                let svn_fuses = OTP_CPTRA_CORE_RUNTIME_SVN;
+                let svn_num_words = svn_fuses.byte_size / 4;
+                if app.reg_index >= svn_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                // Read the SVN from fuses
+                let svn = match self.driver.read_cptra_core_runtime_svn() {
+                    Ok(svn) => svn,
+                    Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
+                };
+                let offset = app.reg_index as usize * 4;
+                CommandReturn::success_u32(u32::from_le_bytes(
+                    svn[offset..offset + 4].try_into().unwrap(),
+                ))
+            }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }) {
             Ok(ret) => ret,
@@ -82,7 +104,7 @@ impl Otp {
         }
     }
 
-    fn write_reg(&self, _value: u32, processid: ProcessId) -> CommandReturn {
+    fn write_reg(&self, value: u32, processid: ProcessId) -> CommandReturn {
         match self.apps.enter(processid, |app, _| match app.reg_offset {
             _hek @ reg::LOCK_HEK_PROD_0
             | _hek @ reg::LOCK_HEK_PROD_1
@@ -92,6 +114,19 @@ impl Otp {
             | _hek @ reg::LOCK_HEK_PROD_5
             | _hek @ reg::LOCK_HEK_PROD_6
             | _hek @ reg::LOCK_HEK_PROD_7 => CommandReturn::failure(ErrorCode::NOSUPPORT),
+            reg::CALIPTRA_FW_SVN => {
+                let svn_fuses = OTP_CPTRA_CORE_RUNTIME_SVN;
+                let svn_num_words = svn_fuses.byte_size / 4;
+                if app.reg_index >= svn_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                let word_addr = svn_fuses.byte_offset / 4 + app.reg_index as usize;
+                match self.driver.write_word(word_addr, value) {
+                    Ok(_) => CommandReturn::success(),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }) {
             Ok(ret) => ret,
