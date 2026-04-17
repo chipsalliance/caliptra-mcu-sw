@@ -94,6 +94,13 @@ impl BootFlow for WarmBoot {
         );
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersConfigured.into());
 
+        let size_value = params.mcu_fw_sram_exec_region_size.unwrap_or(
+            unsafe { MCU_MEMORY_MAP.sram_size }
+                - crate::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS * 4096
+                - 1,
+        );
+        mci.set_fw_sram_exec_region_size(size_value);
+
         // Set SS_CONFIG_DONE_STICKY to lock MCI configuration registers
         romtime::println!("[mcu-rom] Setting SS_CONFIG_DONE_STICKY to lock configuration");
         mci.set_ss_config_done_sticky();

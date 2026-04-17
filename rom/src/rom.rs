@@ -48,6 +48,8 @@ const LMS_CALIPTRA_VALUE: u8 = 3;
 const OTP_DAI_IDLE_BIT_OFFSET: u32 = 30;
 const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
 
+pub const MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS: u32 = 8; // 32 kB / 4 kB chunks
+
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
     /// Execute the boot flow
@@ -857,6 +859,8 @@ pub struct RomParameters<'a> {
     /// Note that in 2.0, Caliptra already sets recovery status as successful so there may be a race
     /// condition depending on when a BMC reads the recovery status.
     pub recovery_status_open: bool,
+    /// Size of the executable SRAM region to pass into FW_SRAM_EXEC_REGION_SIZE
+    pub mcu_fw_sram_exec_region_size: Option<u32>,
     /// Valid AXI users for Caliptra mailbox. 0 values are ignored.
     pub cptra_mbox_axi_users: [u32; 5],
     /// Valid AXI user for Caliptra fuse registers. 0 = don't configure.
