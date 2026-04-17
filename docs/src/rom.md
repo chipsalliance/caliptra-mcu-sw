@@ -135,16 +135,24 @@ sequenceDiagram
 
 This flow is used to boot the MCU into the MCU Runtime Firmware following either a cold or warm reset. It ensures that the runtime firmware is properly loaded and ready for execution.
 
-1. Check the MCI `RESET_REASON` register for MCU status (it should be in firmware boot reset mode `FirmwareBootReset`)
-1. Set flow checkpoint to indicate firmware boot flow has started
-1. Validate that firmware was actually loaded by checking the firmware entry point is not zero
-1. Set flow milestone to indicate firmware boot flow completion
-1. Jump directly to runtime firmware at the configured SRAM offset
+1. Check the MCI `RESET_REASON` register for MCU status (it should be in firmware boot reset mode `FirmwareBootReset`).
+1. Set flow checkpoint to indicate firmware boot flow has started.
+1. Compute the firmware entry offset starting from the MCU image header size.
+1. If the DOT manifests are enabled and `fw_manifest_dot_enabled` is set, look for a firmware-manifest DOT section at the start of MCU SRAM. If found (identified by its magic value):
+    1. Advance the firmware entry offset past the DOT manifest section.
+    1. Process the DOT commands contained in the manifest section (see [DOT documentation](./dot.md)). A fatal error is raised if DOT processing fails.
+1. Validate that firmware is present by checking that the first word at the computed firmware entry point (`sram_offset + firmware_offset`) is non-zero. A fatal error (`ROM_FW_BOOT_INVALID_FIRMWARE`) is raised otherwise.
+1. Set flow milestone to indicate firmware boot flow completion.
+1. Jump directly to runtime firmware at the computed SRAM entry point.
 
 ```mermaid
 sequenceDiagram
     note right of mcu: check reset reason (FirmwareBootReset)
     note right of mcu: set flow checkpoint
+    alt DOT manifests enabled and DOT section present
+        note right of mcu: advance entry offset past DOT section
+        note right of mcu: process firmware-manifest DOT commands
+    end
     note right of mcu: validate firmware at entry point
     alt firmware valid
         note right of mcu: set completion milestone
@@ -157,37 +165,23 @@ sequenceDiagram
 
 ### Hitless Firmware Update Flow
 
-Hitless Update Flow is triggered when MCU runtime FW requests an update of the MCU FW by sending the `ACTIVATE_FIRMWARE` mailbox command to Caliptra. Upon receiving the mailbox command, Caliptra will initialize the MCU reset sequence causing the MCU to boot to ROM and run the Hitless Firmware Update Flow.
+Hitless Update Flow is triggered when MCU runtime FW requests an update of the MCU firmware by sending the `ACTIVATE_FIRMWARE` mailbox command to Caliptra. Upon receiving the mailbox command, Caliptra initiates the MCU reset sequence, which copies the new firmware image into MCU SRAM and causes the MCU to reboot into ROM with `RESET_REASON` set to `FirmwareHitlessUpdate`.
 
-1. Check the MCI `RESET_REASON` register for reset status (it should be in hitless firmware update mode `FirmwareHitlessUpdate`).
-1. Enable the `notif_cptra_mcu_reset_req_sts` interrupt.
-1. Check if firmware is already available by reading the interrupt status
-1. Clear `notif_cptra_mcu_reset_req_sts` interrupt status
-1. If firmware is available:
-    1. Wait for Caliptra to clear FW_EXEC_CTRL[2]. This will be indicated when `notif_cptra_mcu_reset_req_sts` interrupt status bit is set
-    1. Clear the `notif_cptra_mcu_reset_req_sts` interrupt. This triggers Caliptra to copy MCU FW from the staging area to MCU SRAM.
-1. Wait for Caliptra to set FW_EXEC_CTRL[2].
-1. Release Caliptra mailbox. Hitless Update is triggered by a mailbox command from MCU to Caliptra which causes it to reboot to ROM, therefore the mailbox needs to be released after the update is complete.
-1. Jump to runtime firmware at the configured SRAM offset
+1. Check the MCI `RESET_REASON` register for reset status (it should be `FirmwareHitlessUpdate`).
+1. Release the Caliptra mailbox by completing the response to the original `ACTIVATE_FIRMWARE` command. This is required because the mailbox is still held by the command that triggered this reset. A fatal error (`ROM_FW_HITLESS_UPDATE_CLEAR_MB_ERROR`) is raised if the mailbox cannot be released.
+1. Wait for Caliptra to indicate that MCU firmware is ready in SRAM (i.e., Caliptra has finished copying the new image).
+1. Compute the firmware entry offset starting from the MCU image header size. If the DOT manifests feature is enabled and `fw_manifest_dot_enabled` is set, and a DOT firmware manifest section is present at the start of SRAM (identified by its magic value), advance the entry offset past that section. Note that unlike the Firmware Boot Flow, the hitless update flow does **not** re-process the DOT manifest commands — it only skips past the section so that the entry point lands on the firmware reset vector.
+1. Jump directly to runtime firmware at the computed SRAM entry point.
 
 ```mermaid
 sequenceDiagram
     note right of mcu: check reset reason (FirmwareHitlessUpdate)
-    note right of mcu: enable reset request interrupt
-    mcu->>mci: check if firmware already available
-    mcu->>mci: clear reset request interrupt status
-    alt firmware already available
-        loop wait for Caliptra to clear FW_EXEC_CTRL[2]
-            mcu->>mci: check reset request status
-        end
-        mcu->>mci: clear reset request interrupt (triggers FW copy)
-    end
-    loop wait for Caliptra to set FW_EXEC_CTRL[2]
+    mcu->>caliptra: release mailbox (finish ACTIVATE_FIRMWARE response)
+    loop wait for firmware ready
         mcu->>caliptra: check fw_ready status
     end
-    mcu->>caliptra: release mailbox (finish response)
-    loop verify firmware ready
-        mcu->>caliptra: check fw_ready status
+    alt DOT manifest enabled and DOT section present
+        note right of mcu: advance entry offset past DOT section
     end
     note right of mcu: jump to runtime firmware
 ```
@@ -195,19 +189,32 @@ sequenceDiagram
 
 ### Warm Reset Flow
 
-Warm Reset Flow occurs when the subsystem reset is toggled while `powergood` is maintained high. This is allowed when MCU and Caliptra already loaded their respective mutable firmware, prior to the warm reset. MCU and Caliptra FW will not be reloaded in this flow.
+Warm Reset Flow occurs when the subsystem reset is toggled while `powergood` is maintained high. This is allowed when MCU and Caliptra already loaded their respective mutable firmware prior to the warm reset. MCU and Caliptra firmware will not be reloaded in this flow; the firmware image persists in MCU SRAM across the warm reset because SRAM contents are preserved while `powergood` is held high.
 
-1. Check the MCI `RESET_REASON` register for reset status (it should be in warm reset mode `WarmReset`)
+Note that `SS_CONFIG_DONE_STICKY` remains set from cold boot, so sticky registers (PK hashes, fuses, etc.) are already locked and do not need to be rewritten or reverified. However, `SS_CONFIG_DONE` is cleared on warm reset and must be re-asserted. See [Warm Reset Considerations](#warm-reset-considerations) for details on which registers need reconfiguration.
+
+1. Check the MCI `RESET_REASON` register for reset status (it should be in warm reset mode `WarmReset`).
 1. Assert Caliptra boot go signal to bring Caliptra out of reset.
-1. Wait for Caliptra to be ready for fuses (even though fuses won't be rewritten)
-1. Configure the MCU SRAM execution region size by writing to the `FW_SRAM_EXEC_REGION_SIZE` register.
-1. Set `SS_CONFIG_DONE` register to lock MCI configuration until next warm reset.
-1. Signal fuse write done to Caliptra to complete the fuse handshake protocol
-1. Wait for Caliptra to deassert ready for fuses state
-1. Wait for Caliptra to indicate that MCU firmware is ready in SRAM
-1. Validate that firmware was actually loaded by checking the firmware entry point is not zero
-1. Set flow checkpoint and milestone to indicate warm reset flow completion
-1. Trigger a warm reset to transition to `FirmwareBootReset` flow which will jump to the firmware
+1. Wait for Caliptra to be ready for fuses (even though fuses will not be rewritten — the handshake still needs to be completed).
+1. Configure the Caliptra watchdog timers (`CPTRA_WDT_CFG[0]` and `[1]`) from straps.
+1. Set the MCU NMI vector to the ROM base address.
+1. Configure the MCU watchdog timers. The values used depend on the current security state and device lifecycle:
+   * Debug unlocked: use the debug watchdog configuration.
+   * Debug locked + Manufacturing lifecycle: use the manufacturing watchdog configuration.
+   * Debug locked + other lifecycle: use the production watchdog configuration.
+1. Reconfigure Caliptra AXI user registers (mailbox users, fuse user, TRNG user, DMA user) from ROM parameters. These are non-sticky and must be re-applied on every warm reset.
+1. Reconfigure the MCU mailbox AXI users for mailbox 0 and mailbox 1.
+1. Configure the MCU SRAM execution region size by writing to the `FW_SRAM_EXEC_REGION_SIZE` register. The value comes from ROM parameters, or defaults to the SRAM size minus the protected region.
+1. Set `SS_CONFIG_DONE_STICKY` (no-op since it is already sticky from cold boot, but asserted for consistency) and then `SS_CONFIG_DONE` to lock MCI configuration until the next warm reset.
+1. Verify that both `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` are actually set. A fatal error is raised if either is not set (`ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED`).
+1. Verify that the MCU mailbox AXI user registers match what was written (detect tampering after locking).
+1. Signal fuse write done to Caliptra to complete the fuse handshake protocol. This is required per the [Caliptra integration specification](https://github.com/chipsalliance/caliptra-rtl/blob/main/docs/CaliptraIntegrationSpecification.md#fuses) even though fuses cannot be rewritten on warm reset.
+1. Wait for Caliptra to deassert the ready-for-fuses state.
+1. Wait for Caliptra boot FSM to reach the DONE state.
+1. Wait for Caliptra to indicate that MCU firmware is ready in SRAM (firmware is still present from before the warm reset).
+1. Validate that firmware is present by checking that the first word at the firmware entry point (`sram_offset + mcu_image_header_size`) is non-zero. A fatal error (`ROM_WARM_BOOT_INVALID_FIRMWARE`) is raised otherwise.
+1. Set flow checkpoint and milestone to indicate warm reset flow completion.
+1. Trigger a warm reset to transition to the `FirmwareBootReset` flow, which will jump to the firmware.
 
 ```mermaid
 sequenceDiagram
@@ -217,10 +224,22 @@ sequenceDiagram
     loop wait for ready for fuses
         mcu->>caliptra: check ready for fuses status
     end
+    mcu->>caliptra: configure Caliptra watchdog timers
+    note right of mcu: set NMI vector
+    mcu->>mci: configure MCU watchdog (by security state/lifecycle)
+    mcu->>caliptra: configure AXI users (mbox/fuse/trng/dma)
+    mcu->>mci: configure MCU mailbox AXI users
+    mcu->>mci: set FW_SRAM_EXEC_REGION_SIZE
+    mcu->>mci: set SS_CONFIG_DONE_STICKY
     mcu->>mci: set SS_CONFIG_DONE
+    mcu->>mci: verify SS_CONFIG_DONE_STICKY and SS_CONFIG_DONE set
+    mcu->>mci: verify MCU mailbox AXI users unchanged
     mcu->>caliptra: signal fuse write done
     loop wait for NOT ready for fuses
         mcu->>caliptra: check ready for fuses status
+    end
+    loop wait for Caliptra boot FSM done
+        mcu->>caliptra: check boot FSM status
     end
     loop wait for firmware ready
         mcu->>caliptra: check firmware ready status
