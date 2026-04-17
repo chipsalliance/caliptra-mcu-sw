@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::transport::McuMboxTransport;
-use caliptra_api::mailbox::{CommandId as CaliptraCommandId, MailboxReqHeader};
+use caliptra_api::mailbox::{populate_checksum, CommandId as CaliptraCommandId, MailboxReqHeader};
 use caliptra_mcu_external_cmds_common::{
     DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, UnifiedCommandHandler, MAX_UID_LEN,
 };
@@ -23,10 +23,10 @@ use caliptra_mcu_mbox_common::messages::{
     McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsSelfTestGetResultsReq,
     McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
     McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
-    McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp,
-    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    McuProdDebugUnlockTokenResp, McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq,
-    McuRandomStirResp, McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp,
+    McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuProdDebugUnlockReqReq,
+    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, McuProdDebugUnlockTokenResp,
+    McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp,
+    McuResponseVarSize, McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp,
     McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };
 #[cfg(feature = "periodic-fips-self-test")]
@@ -71,6 +71,11 @@ impl<'a> CmdInterface<'a> {
         &mut self,
         msg_buf: &mut [u8],
     ) -> Result<(), MsgHandlerError> {
+        // Make sure at least the header can be written to the buffer.
+        if msg_buf.len() < size_of::<MailboxRespHeader>() {
+            return Err(MsgHandlerError::InvalidParams);
+        }
+
         // Receive a request from the transport.
         let receive_result = self.transport.receive_request(msg_buf).await;
 
@@ -80,10 +85,17 @@ impl<'a> CmdInterface<'a> {
                 match self.process_request(msg_buf, cmd_id, req_len).await {
                     Ok((resp_len, status)) => {
                         if status == MbxCmdStatus::Complete {
-                            self.transport
-                                .send_response(&msg_buf[..resp_len])
-                                .await
-                                .map_err(|_| MsgHandlerError::Transport)?;
+                            // guarantee it is big enough to hold the header
+                            let resp_len = resp_len.max(size_of::<MailboxRespHeader>());
+                            let msg_buf = &mut msg_buf[..resp_len];
+
+                            // Generate response checksum
+                            populate_checksum(msg_buf);
+
+                            self.transport.send_response(msg_buf).await.map_err(|_| {
+                                let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                                MsgHandlerError::Transport
+                            })?;
                         }
                         status
                     }
@@ -487,25 +499,21 @@ impl<'a> CmdInterface<'a> {
             MbxCmdStatus::Failure
         };
 
-        let mut resp = if mbox_cmd_status == MbxCmdStatus::Complete {
-            McuMailboxResp::FirmwareVersion(FirmwareVersionResp {
+        let resp = if mbox_cmd_status == MbxCmdStatus::Complete {
+            FirmwareVersionResp {
                 hdr: MailboxRespHeaderVarSize {
                     data_len: version.len as u32,
                     ..Default::default()
                 },
                 version: version.ver_str,
-            })
+            }
         } else {
-            McuMailboxResp::FirmwareVersion(FirmwareVersionResp::default())
+            FirmwareVersionResp::default()
         };
-
-        // Populate the checksum for response
-        resp.populate_chksum()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
 
         // Encode the response and copy to msg_buf.
         let resp_bytes = resp
-            .as_bytes()
+            .as_bytes_partial()
             .map_err(|_| MsgHandlerError::McuMboxCommon)?;
 
         msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
@@ -534,25 +542,19 @@ impl<'a> CmdInterface<'a> {
             MbxCmdStatus::Failure
         };
 
-        let mut resp = if mbox_cmd_status == MbxCmdStatus::Complete {
+        let resp = if mbox_cmd_status == MbxCmdStatus::Complete {
             let mut c = [0u8; DEVICE_CAPS_SIZE];
             c[..caps.as_bytes().len()].copy_from_slice(caps.as_bytes());
-            McuMailboxResp::DeviceCaps(DeviceCapsResp {
+            DeviceCapsResp {
                 hdr: MailboxRespHeader::default(),
                 caps: c,
-            })
+            }
         } else {
-            McuMailboxResp::DeviceCaps(DeviceCapsResp::default())
+            DeviceCapsResp::default()
         };
 
-        // Populate the checksum for response
-        resp.populate_chksum()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
-
         // Encode the response and copy to msg_buf.
-        let resp_bytes = resp
-            .as_bytes()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        let resp_bytes = resp.as_bytes();
 
         msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
@@ -580,22 +582,16 @@ impl<'a> CmdInterface<'a> {
             MbxCmdStatus::Failure
         };
 
-        let mut resp = McuMailboxResp::DeviceId(DeviceIdResp {
+        let resp = DeviceIdResp {
             hdr: MailboxRespHeader::default(),
             vendor_id: device_id.vendor_id,
             device_id: device_id.device_id,
             subsystem_vendor_id: device_id.subsystem_vendor_id,
             subsystem_id: device_id.subsystem_id,
-        });
-
-        // Populate the checksum for response
-        resp.populate_chksum()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        };
 
         // Encode the response and copy to msg_buf.
-        let resp_bytes = resp
-            .as_bytes()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        let resp_bytes = resp.as_bytes();
 
         msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
@@ -624,28 +620,24 @@ impl<'a> CmdInterface<'a> {
             MbxCmdStatus::Failure
         };
 
-        let mut resp = if mbox_cmd_status == MbxCmdStatus::Complete {
+        let resp = if mbox_cmd_status == MbxCmdStatus::Complete {
             let DeviceInfo::Uid(uid) = &device_info;
             let mut data = [0u8; MAX_UID_LEN];
             data[..uid.len].copy_from_slice(&uid.unique_chip_id[..uid.len]);
-            McuMailboxResp::DeviceInfo(DeviceInfoResp {
+            DeviceInfoResp {
                 hdr: MailboxRespHeaderVarSize {
                     data_len: uid.len as u32,
                     ..Default::default()
                 },
                 data,
-            })
+            }
         } else {
-            McuMailboxResp::DeviceInfo(DeviceInfoResp::default())
+            DeviceInfoResp::default()
         };
-
-        // Populate the checksum for response
-        resp.populate_chksum()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
 
         // Encode the response and copy to msg_buf.
         let resp_bytes = resp
-            .as_bytes()
+            .as_bytes_partial()
             .map_err(|_| MsgHandlerError::McuMboxCommon)?;
 
         msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
@@ -703,18 +695,10 @@ impl<'a> CmdInterface<'a> {
         fips_periodic::set_enabled(req.enable != 0);
 
         // Prepare response
-        let mut resp = McuMailboxResp::FipsPeriodicEnable(McuFipsPeriodicEnableResp(
-            MailboxRespHeader::default(),
-        ));
-
-        // Populate the checksum for response
-        resp.populate_chksum()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        let resp = McuFipsPeriodicEnableResp(MailboxRespHeader::default());
 
         // Encode the response and copy to msg_buf
-        let resp_bytes = resp
-            .as_bytes()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        let resp_bytes = resp.as_bytes();
 
         msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
@@ -737,21 +721,15 @@ impl<'a> CmdInterface<'a> {
         let (enabled, iterations, last_result) = fips_periodic::get_status();
 
         // Prepare response
-        let mut resp = McuMailboxResp::FipsPeriodicStatus(McuFipsPeriodicStatusResp {
+        let resp = McuFipsPeriodicStatusResp {
             header: MailboxRespHeader::default(),
             enabled: if enabled { 1 } else { 0 },
             iterations,
             last_result,
-        });
-
-        // Populate the checksum for response
-        resp.populate_chksum()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        };
 
         // Encode the response and copy to msg_buf
-        let resp_bytes = resp
-            .as_bytes()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        let resp_bytes = resp.as_bytes();
 
         msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
