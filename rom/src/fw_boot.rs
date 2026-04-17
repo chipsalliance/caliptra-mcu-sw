@@ -14,14 +14,12 @@ Abstract:
 
 #[cfg(feature = "fw-manifest-dot")]
 use crate::device_ownership_transfer;
-use crate::{
-    fatal_error, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
-    MCU_MEMORY_MAP,
-};
+use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
 use core::fmt::Write;
 use mcu_error::McuError;
 #[cfg(feature = "fw-manifest-dot")]
 use romtime::HexWord;
+use romtime::{McuBootMilestones, McuRomBootStatus};
 #[cfg(feature = "fw-manifest-dot")]
 use zerocopy::FromBytes;
 

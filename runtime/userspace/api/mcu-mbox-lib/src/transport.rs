@@ -1,7 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use core::mem::size_of;
+use libsyscall_caliptra::mci::Mci;
 use libsyscall_caliptra::mcu_mbox::{CmdCode, MbxCmdStatus, McuMbox};
+use libsyscall_caliptra::DefaultSyscalls;
 use mcu_mbox_common::messages::{verify_checksum, MailboxReqHeader, MailboxRespHeader};
 use zerocopy::FromBytes;
 
@@ -17,12 +19,14 @@ pub enum TransportError {
 /// MCU Mailbox Transport implementation using the McuMbox syscall interface.
 pub struct McuMboxTransport {
     mbox: McuMbox,
+    ready_signaled: bool,
 }
 
 impl McuMboxTransport {
     pub fn new(drv_num: u32) -> Self {
         Self {
             mbox: McuMbox::new(drv_num),
+            ready_signaled: false,
         }
     }
 
@@ -36,9 +40,19 @@ impl McuMboxTransport {
 
         buf.fill(0);
 
+        let on_listening_cb = if !self.ready_signaled {
+            self.ready_signaled = true;
+            Some(|| {
+                let mci = Mci::<DefaultSyscalls>::new();
+                mci.set_mailbox_ready().unwrap();
+            })
+        } else {
+            None
+        };
+
         let (cmd_opcode, req_len) = self
             .mbox
-            .receive_command(buf)
+            .receive_command(buf, on_listening_cb)
             .await
             .map_err(|_| TransportError::DriverRxError)?;
 

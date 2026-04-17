@@ -103,7 +103,7 @@ jobs:
             test-flash-usermode,test-log-flash-linear,test-log-flash-circular,
             test-log-flash-usermode,test-mctp-ctrl-cmds,test-mctp-vdm-cmds,
             test-pldm-discovery,test-pldm-fw-update,test-mci,test-mcu-mbox-driver,
-            test-mcu-mbox-soc-requester-loopback,test-mbox-sram,test-warm-reset,
+            test-mcu-mbox-soc-requester-loopback,test-mbox-sram,test-warm-reset,test-mcu-mbox-cmds,
             test-ocp-lock,test-exit-immediately,test-mcu-rom-flash-access,test-mcu-svn-gt-fuse,test-mcu-svn-lt-fuse
         run: |
           # Build all test runtime features used by integration tests

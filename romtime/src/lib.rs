@@ -7,6 +7,8 @@ mod fuse_layout;
 pub use fuse_layout::*;
 mod lifecycle;
 pub use lifecycle::*;
+mod boot_status;
+pub use boot_status::*;
 mod mci;
 pub use mci::*;
 #[cfg(feature = "ocp-lock")]

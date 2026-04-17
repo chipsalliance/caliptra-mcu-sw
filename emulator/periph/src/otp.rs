@@ -12,7 +12,6 @@ Abstract:
     We only support 32-bit granularity for now.
 
 --*/
-use crate::otp_digest;
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvData};
 use caliptra_image_types::FwVerificationPqcKeyType;
@@ -20,7 +19,7 @@ use emulator_registers_generated::otp::OtpGenerated;
 use registers_generated::fuses::{self};
 use registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::Seek;
@@ -109,6 +108,7 @@ struct OtpState {
 
 #[derive(Default, Clone)]
 pub struct OtpArgs {
+    pub fips_zeroization_cmd: Rc<Cell<bool>>,
     pub file_name: Option<PathBuf>,
     pub raw_memory: Option<Vec<u8>>,
     pub owner_pk_hash: Option<[u8; 48]>,
@@ -135,6 +135,7 @@ pub struct Otp {
     /// Partitions to calculate digests for on reset.
     calculate_digests_on_reset: HashSet<usize>,
     generated: OtpGenerated,
+    fips_zeroization_cmd: Rc<Cell<bool>>,
 }
 
 // Ensure that we save the state before we drop the OTP instance.
@@ -188,6 +189,7 @@ impl Otp {
             partitions,
             digests: [0; PARTITIONS.len() * 2],
             generated: OtpGenerated::default(),
+            fips_zeroization_cmd: args.fips_zeroization_cmd.clone(),
         };
         otp.read_from_file()?;
         if let Some(mut vendor_pk_hash) = args.vendor_pk_hash {
@@ -380,6 +382,43 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
 
     /// Called by Bus::poll() to indicate that time has passed
     fn poll(&mut self) {
+        if self.fips_zeroization_cmd.get() {
+            self.fips_zeroization_cmd.set(false);
+            let mut partitions = self.partitions.borrow_mut();
+            let secret_ranges = [
+                (
+                    fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET,
+                    fuses::SECRET_MANUF_PARTITION_BYTE_SIZE,
+                ),
+                (
+                    fuses::SECRET_PROD_PARTITION_0_BYTE_OFFSET,
+                    fuses::SECRET_PROD_PARTITION_0_BYTE_SIZE,
+                ),
+                (
+                    fuses::SECRET_PROD_PARTITION_1_BYTE_OFFSET,
+                    fuses::SECRET_PROD_PARTITION_1_BYTE_SIZE,
+                ),
+                (
+                    fuses::SECRET_PROD_PARTITION_2_BYTE_OFFSET,
+                    fuses::SECRET_PROD_PARTITION_2_BYTE_SIZE,
+                ),
+                (
+                    fuses::SECRET_PROD_PARTITION_3_BYTE_OFFSET,
+                    fuses::SECRET_PROD_PARTITION_3_BYTE_SIZE,
+                ),
+                (
+                    fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET,
+                    fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE,
+                ),
+            ];
+            for (offset, size) in secret_ranges {
+                let end = (offset + size).min(partitions.len());
+                for byte in &mut partitions[offset..end] {
+                    *byte = 0;
+                }
+            }
+        }
+
         if self.direct_access_cmd.reg.read(DirectAccessCmd::Wr) == 1 {
             // clear bottom two bits
             let addr = (self.direct_access_address & 0xffff_fffc) as usize;

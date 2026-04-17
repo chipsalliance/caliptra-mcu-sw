@@ -5,7 +5,7 @@ use caliptra_image_types::FwVerificationPqcKeyType;
 use mcu_builder::flash_image::build_flash_image_bytes;
 use mcu_hw_model::McuHwModel;
 use mcu_hw_model::{new, Fuses, InitParams};
-use mcu_rom_common::McuBootMilestones;
+use romtime::McuBootMilestones;
 
 // TODO(zhalvorsen): Enable this test for emulator when it is supported
 #[cfg_attr(not(feature = "fpga_realtime"), ignore)]

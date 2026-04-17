@@ -40,27 +40,31 @@ use crate::error::CaliptraApiResult;
 use caliptra_api::mailbox::CmRandomGenerateResp;
 use caliptra_api::mailbox::{
     CmRandomStirReq, InvokeDpeResp, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
-    CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
+    MAX_CMB_DATA_SIZE,
 };
 use core::mem::size_of;
 use dpe::context::ContextHandle;
-use dpe::response::{CertifyKeyResp, GetCertificateChainResp, ResponseHdr, SignResp};
+use dpe::response::{
+    CertifyKeyResp, GetCertificateChainResp as OriginalGetCertificateChainResp, SignResp,
+};
 use dpe::DpeProfile;
 use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const MAX_CRYPTO_MBOX_DATA_SIZE: usize = 1024;
-pub const MAX_DPE_RESP_DATA_SIZE: usize = 2048;
+pub const MAX_DPE_RESP_DATA_SIZE: usize = 4096;
 pub const MAX_ECC_CERT_SIZE: usize = 1536;
 pub const MAX_MLDSA_CERT_SIZE: usize = 17 * 1024;
-pub const MAX_CERT_CHUNK_SIZE: usize = 1024;
+pub const MAX_CERT_CHUNK_SIZE: usize = 2048;
 pub const MAX_RANDOM_STIR_SIZE: usize = 48;
 pub const MAX_RANDOM_NUM_SIZE: usize = 48;
+pub const CMB_SHA_CONTEXT_SIZE: usize = 200;
 
 const _: () = assert!(MAX_CRYPTO_MBOX_DATA_SIZE <= MAX_CMB_DATA_SIZE);
 const _: () = assert!(size_of::<DpeEcResp>() <= size_of::<InvokeDpeResp>());
-const _: () = assert!(size_of::<CertificateChainResp>() <= size_of::<GetCertificateChainResp>());
+const _: () =
+    assert!(size_of::<CertificateChainResp>() <= size_of::<OriginalGetCertificateChainResp>());
 const _: () = assert!(size_of::<CertifyEcKeyResp>() <= MAX_DPE_RESP_DATA_SIZE);
 const _: () = assert!(size_of::<CertifyEcKeyResp>() <= size_of::<CertifyKeyResp>());
 const _: () = assert!(size_of::<RandomStirReq>() <= size_of::<CmRandomStirReq>());
@@ -153,12 +157,13 @@ pub(crate) enum DpeResponse {
     PartialEq,
     Eq,
     zerocopy::IntoBytes,
-    zerocopy::TryFromBytes,
+    zerocopy::FromBytes,
     zerocopy::Immutable,
     zerocopy::KnownLayout,
 )]
 pub(crate) struct CertifyEcKeyResp {
-    pub resp_hdr: ResponseHdr,
+    pub resp_hdr: MailboxRespHeader,
+    pub data_size: u32,
     pub new_context_handle: ContextHandle,
     pub derived_pubkey_x: [u8; DpeProfile::P384Sha384.ecc_int_size()],
     pub derived_pubkey_y: [u8; DpeProfile::P384Sha384.ecc_int_size()],
@@ -171,13 +176,14 @@ pub(crate) struct CertifyEcKeyResp {
     Debug,
     PartialEq,
     Eq,
-    zerocopy::TryFromBytes,
+    zerocopy::FromBytes,
     zerocopy::IntoBytes,
     zerocopy::Immutable,
     zerocopy::KnownLayout,
 )]
 pub(crate) struct CertificateChainResp {
-    pub resp_hdr: ResponseHdr,
+    pub resp_hdr: MailboxRespHeader,
+    pub data_size: u32,
     pub certificate_size: u32,
     pub certificate_chain: [u8; MAX_CERT_CHUNK_SIZE],
 }

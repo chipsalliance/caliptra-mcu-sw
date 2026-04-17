@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_api::mailbox::{CapabilitiesResp, CommandId, MailboxReqHeader};
+use caliptra_api::mailbox::{CapabilitiesResp, CommandId, HpkeAlgorithms, MailboxReqHeader};
 use caliptra_api::Capabilities;
 use core::mem::size_of;
 use libapi_caliptra::mailbox_api::execute_mailbox_cmd;
@@ -68,6 +68,52 @@ pub(crate) async fn test_get_algorithms() {
         }
         Err(err) => {
             println!("OCP_LOCK_GET_ALGORITHMS command failed with err {:?}", err);
+            System::exit(1);
+        }
+    }
+
+    println!("Test passed");
+}
+pub(crate) async fn test_get_hpke_public_key_x509() {
+    println!("Starting OCP LOCK get HPKE public key x509 test");
+
+    let mailbox = Mailbox::new();
+    let ocp_lock = OcpLock::new(&mailbox);
+
+    println!("Enumerate HPKE handles...");
+    let handles_resp = ocp_lock
+        .enumerate_hpke_handles()
+        .await
+        .unwrap_or_else(|err| {
+            println!("OCP_LOCK_ENUMERATE_HPKE_HANDLES failed with err {:?}", err);
+            System::exit(1);
+            unreachable!();
+        });
+
+    let handle = handles_resp.hpke_handles[..handles_resp.hpke_handle_count as usize]
+        .iter()
+        .find(|handle| handle.hpke_algorithm == HpkeAlgorithms::ECDH_P384_HKDF_SHA384_AES_256_GCM)
+        .unwrap();
+
+    let mut cert_buf = [0u8; OcpLock::MAX_ENDORSEMENT_CERT_SIZE];
+
+    let serial_number = 0xAAAA;
+    let subject_name = b"Sample Endorsement Cert";
+    match ocp_lock
+        .get_hpke_public_key_x509(serial_number, subject_name, handle, &mut cert_buf)
+        .await
+    {
+        Ok(cert_len) => {
+            println!(
+                "OCP LOCK get HPKE public key x509 success, size {}",
+                cert_len
+            );
+        }
+        Err(err) => {
+            println!(
+                "OCP_LOCK_GET_HPKE_PUBLIC_KEY_X509 failed with err {:x?}",
+                err
+            );
             System::exit(1);
         }
     }

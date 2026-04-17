@@ -7,7 +7,7 @@
 //! `RecoveryDeviceConfig` and `RecoveryAction` types used by integrators.
 
 use crate::cms::{FifoCmsRegion, IndirectCmsRegion};
-use crate::error::OcpError;
+use crate::error::{CmsError, OcpError};
 use crate::protocol::device_id::DeviceId;
 use crate::protocol::device_reset::{
     DeviceReset, ForcedRecoveryMode, InterfaceControl, ResetControl,
@@ -56,6 +56,28 @@ pub struct RecoveryDeviceConfig<'a> {
     pub local_c_image_support: bool,
 }
 
+/// Result of an activation attempt, reported by the integrator via
+/// [`RecoveryStateMachine::complete_activation`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActivationResult {
+    /// The activation succeeded and no more image stages are expected.
+    /// Sets recovery status to `Success` and device status to
+    /// `RunningRecoveryImage`.
+    Complete,
+
+    /// This activation stage succeeded but more image stages are needed.
+    /// Increments `recovery_image_index` and sets recovery status to
+    /// `AwaitingImage` so the host can push the next image.
+    StageSuccess,
+
+    /// The image failed its authentication requirement.  Sets recovery
+    /// status to `AuthenticationError`.
+    AuthenticationError,
+
+    /// The activation failed. Sets recovery status to `Failed`.
+    Failed,
+}
+
 /// Actions the integrator must handle after `process_command` returns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecoveryAction {
@@ -77,7 +99,8 @@ pub struct RecoveryState<'a, V: VendorHandler> {
     pub(crate) recovery_ctrl: RecoveryCtrl,
     pub(crate) device_reset: DeviceReset,
     pub(crate) indirect_ctrl: IndirectCtrl,
-    pub(crate) indirect_fifo_ctrl: IndirectFifoCtrl,
+    pub(crate) indirect_fifo_ctrl_cms: u8,
+    pub(crate) indirect_fifo_ctrl_image_size: u32,
 
     // DEVICE_STATUS fields stored individually. DeviceStatus<'a> cannot be
     // stored because its vendor_status slice comes from VendorHandler at
@@ -174,7 +197,8 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     InterfaceControl::DisableMastering,
                 ),
                 indirect_ctrl: IndirectCtrl::new(0, 0)?,
-                indirect_fifo_ctrl: IndirectFifoCtrl::new(0, false, 0),
+                indirect_fifo_ctrl_cms: 0,
+                indirect_fifo_ctrl_image_size: 0,
                 cms_count,
                 device_status_value: DeviceStatusValue::StatusPending,
                 protocol_error: ProtocolError::NoError,
@@ -204,19 +228,33 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     RecoveryCommand::DeviceStatus => state.handle_device_status_read(buf),
                     RecoveryCommand::RecoveryStatus => state.handle_recovery_status_read(buf),
                     RecoveryCommand::HwStatus => state.handle_hw_status_read(buf),
+                    RecoveryCommand::RecoveryCtrl => state.handle_recovery_ctrl_read(buf),
                     RecoveryCommand::IndirectStatus => state.handle_indirect_status_read(buf),
                     RecoveryCommand::IndirectFifoStatus => {
                         state.handle_indirect_fifo_status_read(buf)
                     }
                     RecoveryCommand::DeviceReset => state.handle_device_reset_read(buf),
-                    _ => {
-                        state.set_protocol_error(ProtocolError::UnsupportedCommand);
-                        Ok(0)
-                    }
+                    RecoveryCommand::IndirectCtrl => state.handle_indirect_ctrl_read(buf),
+                    RecoveryCommand::IndirectFifoCtrl => state.handle_indirect_fifo_ctrl_read(buf),
+                    RecoveryCommand::IndirectData => state.handle_indirect_data_read(buf),
+                    RecoveryCommand::Vendor => state.handle_vendor_read(buf),
+                    RecoveryCommand::IndirectFifoData => state.handle_indirect_fifo_data_read(buf),
                 })?;
             }
             RecoveryRequest::Write { data } => match cmd {
+                RecoveryCommand::RecoveryCtrl => {
+                    return Ok(self.state.handle_recovery_ctrl_write(data));
+                }
                 RecoveryCommand::DeviceReset => self.state.handle_device_reset_write(data),
+                RecoveryCommand::IndirectCtrl => self.state.handle_indirect_ctrl_write(data),
+                RecoveryCommand::IndirectFifoCtrl => {
+                    self.state.handle_indirect_fifo_ctrl_write(data)
+                }
+                RecoveryCommand::IndirectData => self.state.handle_indirect_data_write(data),
+                RecoveryCommand::Vendor => self.state.handle_vendor_write(data),
+                RecoveryCommand::IndirectFifoData => {
+                    self.state.handle_indirect_fifo_data_write(data);
+                }
                 _ => self
                     .state
                     .set_protocol_error(ProtocolError::UnsupportedCommand),
@@ -224,6 +262,82 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
         }
 
         Ok(RecoveryAction::None)
+    }
+
+    /// Called by the integrator after activation completes.
+    ///
+    /// Updates device status and recovery status based on the result.
+    ///
+    /// In all cases the `activate` field of `RECOVERY_CTRL` is cleared
+    /// ("Write 1, Device Clears" semantics).
+    pub fn complete_activation(&mut self, result: ActivationResult) -> Result<(), OcpError> {
+        let vendor_status = self.state.recovery_status.vendor_status;
+        let index = self.state.recovery_status.image_index();
+
+        match result {
+            ActivationResult::Complete => {
+                self.state
+                    .recovery_status
+                    .set_status(DeviceRecoveryStatus::Success);
+                self.state.device_status_value = DeviceStatusValue::RunningRecoveryImage;
+                self.state.recovery_reason = RecoveryReasonCode::NoBootFailure;
+            }
+            ActivationResult::StageSuccess => {
+                self.state.recovery_status = RecoveryStatus::new(
+                    DeviceRecoveryStatus::AwaitingImage,
+                    index + 1,
+                    vendor_status,
+                )?;
+                self.state.device_status_value = DeviceStatusValue::RecoveryMode;
+            }
+            ActivationResult::AuthenticationError => {
+                self.state
+                    .recovery_status
+                    .set_status(DeviceRecoveryStatus::AuthenticationError);
+                self.set_boot_failure(RecoveryReasonCode::AuthFailureRecoveryFirmware);
+            }
+            ActivationResult::Failed => {
+                self.state
+                    .recovery_status
+                    .set_status(DeviceRecoveryStatus::Failed);
+                self.state.device_status_value = DeviceStatusValue::BootFailure;
+                self.state.recovery_reason = RecoveryReasonCode::MissingCorruptRecoveryFirmware;
+            }
+        }
+
+        self.state.recovery_ctrl.activate = ActivateRecoveryImage::DoNotActivate;
+        Ok(())
+    }
+
+    /// Transition the device status to `DeviceHealthy`.
+    ///
+    /// Called when the device has successfully booted.
+    pub fn set_device_healthy(&mut self) {
+        self.state.device_status_value = DeviceStatusValue::DeviceHealthy;
+        self.state.recovery_reason = RecoveryReasonCode::NoBootFailure;
+    }
+
+    /// Transition the device into recovery mode with the given reason code.
+    ///
+    /// Sets `device_status_value` to `RecoveryMode`, stores the reason in
+    /// `recovery_reason` (reported via DEVICE_STATUS bytes 2-3), and sets
+    /// `recovery_status` to `AwaitingImage` with image index 0.
+    pub fn enter_recovery(&mut self, reason: RecoveryReasonCode) {
+        self.state.device_status_value = DeviceStatusValue::RecoveryMode;
+        self.state.recovery_reason = reason;
+        self.state
+            .recovery_status
+            .set_status(DeviceRecoveryStatus::AwaitingImage);
+        self.state.recovery_status.set_image_index(0);
+    }
+
+    /// Transition the device status to `BootFailure` with the given reason.
+    ///
+    /// Sets `device_status_value` to `BootFailure` and stores the reason in
+    /// `recovery_reason` (reported via DEVICE_STATUS bytes 2-3).
+    pub fn set_boot_failure(&mut self, reason: RecoveryReasonCode) {
+        self.state.device_status_value = DeviceStatusValue::BootFailure;
+        self.state.recovery_reason = reason;
     }
 }
 
@@ -361,12 +475,12 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
 
     /// Handle an INDIRECT_FIFO_STATUS (cmd=0x2E) read.
     ///
-    /// Looks up the FIFO CMS region selected by `indirect_fifo_ctrl.cms`.
+    /// Looks up the FIFO CMS region selected by `indirect_fifo_ctrl_cms`.
     /// If found, returns its status metadata. If the index doesn't match any
     /// FIFO region (including indirect-only indices), returns
     /// `FifoCmsRegionType::Unsupported`.
     fn handle_indirect_fifo_status_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
-        let cms = self.indirect_fifo_ctrl.cms;
+        let cms = self.indirect_fifo_ctrl_cms;
         match self.lookup_fifo_region(cms) {
             Some(region) => region.status().to_message(buf),
             None => IndirectFifoStatus::new(
@@ -426,6 +540,268 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
         self.device_reset = parsed;
         self.vendor.execute_reset(&self.device_reset);
     }
+
+    /// Handle a RECOVERY_CTRL (cmd=0x26) read: serialize stored state.
+    fn handle_recovery_ctrl_read(&self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        self.recovery_ctrl.to_message(buf)
+    }
+
+    /// Handle a RECOVERY_CTRL (cmd=0x26) write: parse, validate, store, and
+    /// return action.
+    ///
+    /// When `image_selection` is `MemoryWindow`, validates that the selected
+    /// CMS index refers to a CodeSpace region (indirect or FIFO). On
+    /// activation, transitions `device_status_value` to `RecoveryPending`.
+    fn handle_recovery_ctrl_write(&mut self, data: &[u8]) -> RecoveryAction {
+        let parsed = match RecoveryCtrl::from_message(data) {
+            Ok(p) => p,
+            Err(OcpError::MessageTooShort | OcpError::MessageTooLong) => {
+                self.set_protocol_error(ProtocolError::LengthWriteError);
+                return RecoveryAction::None;
+            }
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::UnsupportedParameter);
+                return RecoveryAction::None;
+            }
+        };
+
+        if parsed.image_selection == ImageSelection::MemoryWindow {
+            let is_code = self.indirect_regions.iter().any(|(idx, r)| {
+                *idx == parsed.cms && r.status().cms_region_type() == Ok(CmsRegionType::CodeSpace)
+            }) || self.fifo_regions.iter().any(|(idx, r)| {
+                *idx == parsed.cms && r.status().region_type() == FifoCmsRegionType::CodeSpace
+            });
+            if !is_code {
+                self.recovery_status
+                    .set_status(DeviceRecoveryStatus::InvalidCms);
+                self.set_protocol_error(ProtocolError::UnsupportedParameter);
+                return RecoveryAction::None;
+            }
+        }
+
+        self.recovery_ctrl = parsed;
+
+        if parsed.activate == ActivateRecoveryImage::Activate {
+            if parsed.image_selection == ImageSelection::NoOperation {
+                self.set_protocol_error(ProtocolError::UnsupportedParameter);
+                return RecoveryAction::None;
+            }
+            self.device_status_value = DeviceStatusValue::RecoveryPending;
+            self.recovery_status
+                .set_status(DeviceRecoveryStatus::BootingImage);
+            RecoveryAction::ActivateRecoveryImage
+        } else {
+            RecoveryAction::None
+        }
+    }
+    fn handle_indirect_ctrl_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        let cms = self.indirect_ctrl.cms;
+        let imo = match self.lookup_indirect_region(cms) {
+            Some(region) => region.imo(),
+            None => 0,
+        };
+        IndirectCtrl::new(cms, imo)?.to_message(buf)
+    }
+
+    fn handle_indirect_ctrl_write(&mut self, data: &[u8]) {
+        let parsed = match IndirectCtrl::from_message(data) {
+            Ok(p) => p,
+            Err(OcpError::MessageTooShort | OcpError::MessageTooLong) => {
+                self.set_protocol_error(ProtocolError::LengthWriteError);
+                return;
+            }
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::UnsupportedParameter);
+                return;
+            }
+        };
+
+        let cms_changed = parsed.cms != self.indirect_ctrl.cms;
+        self.indirect_ctrl = parsed;
+
+        if let Some(region) = self.lookup_indirect_region(parsed.cms) {
+            // According to the spec changing the CMS resets the IMO. As such do not set
+            // the imo value inside the write command if the CMS has changed.
+            if cms_changed {
+                region.reset();
+            } else {
+                region.set_imo(parsed.imo());
+            }
+        }
+    }
+
+    /// Handle an INDIRECT_FIFO_CTRL (cmd=0x2D) read: serialize stored state
+    /// with the reset byte read from the region ("Write 1, Device Clears").
+    fn handle_indirect_fifo_ctrl_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        let reset = match self.lookup_fifo_region(self.indirect_fifo_ctrl_cms) {
+            Some(region) => region.is_reset_pending(),
+            None => false,
+        };
+        IndirectFifoCtrl::new(
+            self.indirect_fifo_ctrl_cms,
+            reset,
+            self.indirect_fifo_ctrl_image_size,
+        )
+        .to_message(buf)
+    }
+
+    /// Handle an INDIRECT_FIFO_CTRL (cmd=0x2D) write: parse, optionally
+    /// reset FIFO, and store.
+    fn handle_indirect_fifo_ctrl_write(&mut self, data: &[u8]) {
+        let parsed = match IndirectFifoCtrl::from_message(data) {
+            Ok(p) => p,
+            Err(OcpError::MessageTooShort | OcpError::MessageTooLong) => {
+                self.set_protocol_error(ProtocolError::LengthWriteError);
+                return;
+            }
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::UnsupportedParameter);
+                return;
+            }
+        };
+
+        if parsed.reset {
+            if let Some(region) = self.lookup_fifo_region(parsed.cms) {
+                region.request_reset();
+            }
+        }
+
+        self.indirect_fifo_ctrl_cms = parsed.cms;
+        self.indirect_fifo_ctrl_image_size = parsed.image_size;
+    }
+
+    /// Handle an INDIRECT_DATA (cmd=0x2B) read: read from the currently
+    /// selected indirect CMS region at the current IMO.
+    ///
+    /// The region auto-increments the IMO after the read. Returns the
+    /// number of bytes read. If the CMS index doesn't match any indirect
+    /// region, returns 0 bytes. Access errors (write-only) set
+    /// `UnsupportedCommand`; any other CMS error sets
+    /// `GeneralProtocolError`.
+    fn handle_indirect_data_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        let region = match self.lookup_indirect_region(self.indirect_ctrl.cms) {
+            Some(r) => r,
+            None => return Ok(0),
+        };
+        match region.read(buf) {
+            Ok(n) => Ok(n),
+            Err(CmsError::WriteOnly) => {
+                self.set_protocol_error(ProtocolError::UnsupportedCommand);
+                Ok(0)
+            }
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::GeneralProtocolError);
+                Ok(0)
+            }
+        }
+    }
+
+    /// Handle an INDIRECT_DATA (cmd=0x2B) write: write to the currently
+    /// selected indirect CMS region at the current IMO.
+    ///
+    /// The region auto-increments the IMO after the write. If the CMS
+    /// index doesn't match any indirect region, the write is silently
+    /// dropped. Access errors (read-only) set `UnsupportedCommand`;
+    /// any other CMS error sets `GeneralProtocolError`.
+    fn handle_indirect_data_write(&mut self, data: &[u8]) {
+        let region = match self.lookup_indirect_region(self.indirect_ctrl.cms) {
+            Some(r) => r,
+            None => return,
+        };
+        match region.write(data) {
+            Ok(()) => {}
+            Err(CmsError::ReadOnly) => {
+                self.set_protocol_error(ProtocolError::UnsupportedCommand);
+            }
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::GeneralProtocolError);
+            }
+        }
+    }
+
+    /// Handle a VENDOR (cmd=0x2C) read: delegate to VendorHandler.
+    ///
+    /// If the vendor_command capability is not advertised, sets
+    /// `UnsupportedCommand` and returns 0 bytes.
+    fn handle_vendor_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        if !self.vendor.capabilities().vendor_command() {
+            self.set_protocol_error(ProtocolError::UnsupportedCommand);
+            return Ok(0);
+        }
+        match self.vendor.handle_vendor_read(buf) {
+            Ok(n) => Ok(n),
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::GeneralProtocolError);
+                Ok(0)
+            }
+        }
+    }
+
+    /// Handle a VENDOR (cmd=0x2C) write: delegate to VendorHandler.
+    ///
+    /// If the vendor_command capability is not advertised, sets
+    /// `UnsupportedCommand`.
+    fn handle_vendor_write(&mut self, data: &[u8]) {
+        if !self.vendor.capabilities().vendor_command() {
+            self.set_protocol_error(ProtocolError::UnsupportedCommand);
+            return;
+        }
+        if self.vendor.handle_vendor_write(data).is_err() {
+            self.set_protocol_error(ProtocolError::GeneralProtocolError);
+        }
+    }
+
+    /// Handle an INDIRECT_FIFO_DATA (cmd=0x2F) read: pop data from the
+    /// currently selected FIFO CMS region.
+    ///
+    /// Returns the number of bytes read. If the FIFO is empty, returns 0.
+    /// If the CMS index doesn't match any FIFO region, returns 0.
+    /// Access errors (write-only) set `UnsupportedCommand`; any other
+    /// CMS error sets `GeneralProtocolError`.
+    fn handle_indirect_fifo_data_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        let region = match self.lookup_fifo_region(self.indirect_fifo_ctrl_cms) {
+            Some(r) => r,
+            None => return Ok(0),
+        };
+        match region.pop(buf) {
+            Ok(n) => Ok(n),
+            Err(CmsError::FifoEmpty) => Ok(0),
+            Err(CmsError::WriteOnly) => {
+                self.set_protocol_error(ProtocolError::UnsupportedCommand);
+                Ok(0)
+            }
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::GeneralProtocolError);
+                Ok(0)
+            }
+        }
+    }
+
+    /// Handle an INDIRECT_FIFO_DATA (cmd=0x2F) write: push data into the
+    /// currently selected FIFO CMS region.
+    ///
+    /// Returns `true` if the data was accepted, `false` if the write must
+    /// be NACKed (FIFO full or no matching region). Access errors
+    /// (read-only) set `UnsupportedCommand`; any other CMS error sets
+    /// `GeneralProtocolError` and returns `false`.
+    fn handle_indirect_fifo_data_write(&mut self, data: &[u8]) -> bool {
+        let region = match self.lookup_fifo_region(self.indirect_fifo_ctrl_cms) {
+            Some(r) => r,
+            None => return false,
+        };
+        match region.push(data) {
+            Ok(()) => true,
+            Err(CmsError::FifoFull) => false,
+            Err(CmsError::ReadOnly) => {
+                self.set_protocol_error(ProtocolError::UnsupportedCommand);
+                false
+            }
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::GeneralProtocolError);
+                false
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -440,9 +816,12 @@ mod tests {
     use crate::protocol::device_reset::{self, DeviceReset};
     use crate::protocol::device_status;
     use crate::protocol::hw_status::{self, CompositeTemperature, HwStatus, HwStatusFlags};
+    use crate::protocol::indirect_ctrl;
+    use crate::protocol::indirect_fifo_ctrl;
     use crate::protocol::indirect_fifo_status::{self, FifoCmsRegionType};
     use crate::protocol::indirect_status::{self, CmsRegionType, IndirectStatus, StatusFlags};
     use crate::protocol::prot_cap::{self, RESPONSE_LEN};
+    use crate::protocol::recovery_ctrl;
     use crate::protocol::recovery_status;
     use crate::protocol::RecoveryCommand;
     use crate::usb::driver::{RecoveryRequest, UsbDriverError};
@@ -457,6 +836,8 @@ mod tests {
         hw_composite_temp: CompositeTemperature,
         hw_vendor_specific: Vec<u8>,
         last_reset: Option<DeviceReset>,
+        last_vendor_write: Option<Vec<u8>>,
+        vendor_read_data: Vec<u8>,
     }
 
     impl MockVendorHandler {
@@ -470,6 +851,8 @@ mod tests {
                 hw_composite_temp: CompositeTemperature::NoData,
                 hw_vendor_specific: Vec::new(),
                 last_reset: None,
+                last_vendor_write: None,
+                vendor_read_data: Vec::new(),
             }
         }
 
@@ -490,12 +873,15 @@ mod tests {
             self.last_reset = Some(*reset);
         }
 
-        fn handle_vendor_write(&mut self, _data: &[u8]) -> Result<(), OcpError> {
+        fn handle_vendor_write(&mut self, data: &[u8]) -> Result<(), OcpError> {
+            self.last_vendor_write = Some(data.to_vec());
             Ok(())
         }
 
-        fn handle_vendor_read(&self, _buf: &mut [u8]) -> Result<usize, OcpError> {
-            Ok(0)
+        fn handle_vendor_read(&self, buf: &mut [u8]) -> Result<usize, OcpError> {
+            let len = self.vendor_read_data.len().min(buf.len());
+            buf[..len].copy_from_slice(&self.vendor_read_data[..len]);
+            Ok(len)
         }
 
         fn vendor_device_status(&self, buf: &mut [u8]) -> usize {
@@ -640,9 +1026,8 @@ mod tests {
         assert_eq!(sm.state.indirect_ctrl.cms, 0);
         assert_eq!(sm.state.indirect_ctrl.imo(), 0);
 
-        assert_eq!(sm.state.indirect_fifo_ctrl.cms, 0);
-        assert!(!sm.state.indirect_fifo_ctrl.reset);
-        assert_eq!(sm.state.indirect_fifo_ctrl.image_size(), 0);
+        assert_eq!(sm.state.indirect_fifo_ctrl_cms, 0);
+        assert_eq!(sm.state.indirect_fifo_ctrl_image_size, 0);
 
         assert_eq!(sm.state.cms_count, 0);
     }
@@ -1498,7 +1883,7 @@ mod tests {
         )
         .unwrap();
 
-        sm.state.indirect_fifo_ctrl.cms = 99;
+        sm.state.indirect_fifo_ctrl_cms = 99;
         let action = sm.process_command().unwrap();
         assert_eq!(action, RecoveryAction::None);
         let msg = &sm.transport.sent[0];
@@ -1528,7 +1913,6 @@ mod tests {
         )
         .unwrap();
 
-        sm.state.indirect_fifo_ctrl.cms = 0;
         let action = sm.process_command().unwrap();
         assert_eq!(action, RecoveryAction::None);
         let msg = &sm.transport.sent[0];
@@ -1796,5 +2180,1428 @@ mod tests {
         assert_eq!(action, RecoveryAction::None);
         let msg = &sm.transport.sent[0];
         assert_eq!(msg.as_slice(), &[0x01, 0x0F, 0x01]);
+    }
+
+    // -- RECOVERY_CTRL handler tests --
+
+    #[test]
+    fn recovery_ctrl_write_activate_transitions_status() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::ActivateRecoveryImage);
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryPending
+        );
+    }
+
+    #[test]
+    fn recovery_ctrl_write_local_c_image_activate() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x02, 0x0F]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::ActivateRecoveryImage);
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryPending
+        );
+    }
+
+    #[test]
+    fn recovery_ctrl_write_invalid_cms_sets_error() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x05, 0x01, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(
+            sm.state.recovery_status.status().unwrap(),
+            DeviceRecoveryStatus::InvalidCms
+        );
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
+    }
+
+    #[test]
+    fn recovery_ctrl_write_non_code_region_sets_error() {
+        let mut buf0 = [0u8; 64];
+        let mut buf1 = [0u8; 64];
+        let mut r0 = SliceIndirectRegion::new(&mut buf0, CmsRegionType::CodeSpace).unwrap();
+        let mut r1 = SliceIndirectRegion::new(&mut buf1, CmsRegionType::Log).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 2] = [(0, &mut r0), (1, &mut r1)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x01, 0x01, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
+    }
+
+    #[test]
+    fn recovery_ctrl_write_fifo_code_region_accepted() {
+        let mut fbuf = [0u8; 64];
+        let mut fr = SliceFifoRegion::new(&mut fbuf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut fifo: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut fr)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut fifo,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+        assert_eq!(sm.state.recovery_ctrl.cms, 0);
+    }
+
+    #[test]
+    fn recovery_ctrl_write_wrong_length_sets_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::LengthWriteError);
+    }
+
+    #[test]
+    fn recovery_ctrl_read_returns_current_state() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        transport.enqueue_read(
+            RecoveryCommand::RecoveryCtrl,
+            recovery_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(&msg[..recovery_ctrl::MESSAGE_LEN], &[0x00, 0x01, 0x0F]);
+    }
+
+    #[test]
+    fn recovery_ctrl_write_activate_without_selection_sets_error() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x00, 0x0F]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
+    }
+
+    // -- ACTIVATION FLOW tests (Phase 8.2) --
+
+    #[test]
+    fn complete_activation_single_stage_success() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::ActivateRecoveryImage);
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryPending
+        );
+
+        sm.complete_activation(ActivationResult::Complete).unwrap();
+
+        assert_eq!(
+            sm.state.recovery_status.status().unwrap(),
+            DeviceRecoveryStatus::Success
+        );
+        assert_eq!(sm.state.recovery_status.image_index(), 0);
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RunningRecoveryImage
+        );
+        assert_eq!(sm.state.recovery_reason, RecoveryReasonCode::NoBootFailure);
+        assert_eq!(
+            sm.state.recovery_ctrl.activate,
+            ActivateRecoveryImage::DoNotActivate
+        );
+    }
+
+    #[test]
+    fn complete_activation_single_stage_failure() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::ActivateRecoveryImage);
+
+        sm.complete_activation(ActivationResult::Failed).unwrap();
+
+        assert_eq!(
+            sm.state.recovery_status.status().unwrap(),
+            DeviceRecoveryStatus::Failed
+        );
+        assert_eq!(sm.state.recovery_status.image_index(), 0);
+        assert_eq!(sm.state.device_status_value, DeviceStatusValue::BootFailure);
+        assert_eq!(
+            sm.state.recovery_reason,
+            RecoveryReasonCode::MissingCorruptRecoveryFirmware
+        );
+        assert_eq!(
+            sm.state.recovery_ctrl.activate,
+            ActivateRecoveryImage::DoNotActivate
+        );
+    }
+
+    #[test]
+    fn complete_activation_single_stage_authentication_failure() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::ActivateRecoveryImage);
+
+        sm.complete_activation(ActivationResult::AuthenticationError)
+            .unwrap();
+
+        assert_eq!(
+            sm.state.recovery_status.status().unwrap(),
+            DeviceRecoveryStatus::AuthenticationError
+        );
+        assert_eq!(sm.state.recovery_status.image_index(), 0);
+        assert_eq!(sm.state.device_status_value, DeviceStatusValue::BootFailure);
+        assert_eq!(
+            sm.state.recovery_reason,
+            RecoveryReasonCode::AuthFailureRecoveryFirmware
+        );
+        assert_eq!(
+            sm.state.recovery_ctrl.activate,
+            ActivateRecoveryImage::DoNotActivate
+        );
+    }
+
+    #[test]
+    fn complete_activation_multi_stage() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        // Stage 1: activate and report intermediate success.
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::ActivateRecoveryImage);
+
+        sm.complete_activation(ActivationResult::StageSuccess)
+            .unwrap();
+
+        assert_eq!(
+            sm.state.recovery_status.status().unwrap(),
+            DeviceRecoveryStatus::AwaitingImage
+        );
+        assert_eq!(sm.state.recovery_status.image_index(), 1);
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryMode
+        );
+
+        // Stage 2: activate again and report final success.
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::ActivateRecoveryImage);
+
+        sm.complete_activation(ActivationResult::Complete).unwrap();
+
+        assert_eq!(
+            sm.state.recovery_status.status().unwrap(),
+            DeviceRecoveryStatus::Success
+        );
+        assert_eq!(sm.state.recovery_status.image_index(), 1);
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RunningRecoveryImage
+        );
+        assert_eq!(sm.state.recovery_reason, RecoveryReasonCode::NoBootFailure);
+    }
+
+    #[test]
+    fn complete_activation_multi_stage_failure_on_second() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        // Stage 1 succeeds.
+        sm.process_command().unwrap();
+        sm.complete_activation(ActivationResult::StageSuccess)
+            .unwrap();
+        assert_eq!(sm.state.recovery_status.image_index(), 1);
+
+        // Stage 2 fails.
+        sm.process_command().unwrap();
+        sm.complete_activation(ActivationResult::Failed).unwrap();
+
+        assert_eq!(
+            sm.state.recovery_status.status().unwrap(),
+            DeviceRecoveryStatus::Failed
+        );
+        assert_eq!(sm.state.recovery_status.image_index(), 1);
+        assert_eq!(sm.state.device_status_value, DeviceStatusValue::BootFailure);
+        assert_eq!(
+            sm.state.recovery_reason,
+            RecoveryReasonCode::MissingCorruptRecoveryFirmware
+        );
+    }
+
+    #[test]
+    fn complete_activation_clears_activate_bit() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        transport.enqueue_read(
+            RecoveryCommand::RecoveryCtrl,
+            recovery_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(
+            sm.state.recovery_ctrl.activate,
+            ActivateRecoveryImage::Activate
+        );
+
+        sm.complete_activation(ActivationResult::Complete).unwrap();
+
+        // After completion, activate is cleared — verify via read.
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[2], 0x00);
+    }
+
+    // -- DEVICE STATUS STATE TRANSITION tests (Phase 8.3) --
+
+    #[test]
+    fn set_device_healthy_transitions_from_pending() {
+        let mut transport = MockUsbDeviceDriver::new();
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::StatusPending
+        );
+
+        sm.set_device_healthy();
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::DeviceHealthy
+        );
+        assert_eq!(sm.state.recovery_reason, RecoveryReasonCode::NoBootFailure);
+    }
+
+    #[test]
+    fn enter_recovery_sets_mode_and_reason() {
+        let mut transport = MockUsbDeviceDriver::new();
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.set_device_healthy();
+        sm.enter_recovery(RecoveryReasonCode::CorruptedMissingCriticalData);
+
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryMode
+        );
+        assert_eq!(
+            sm.state.recovery_reason,
+            RecoveryReasonCode::CorruptedMissingCriticalData
+        );
+        assert_eq!(
+            sm.state.recovery_status.status().unwrap(),
+            DeviceRecoveryStatus::AwaitingImage
+        );
+        assert_eq!(sm.state.recovery_status.image_index(), 0);
+    }
+
+    #[test]
+    fn enter_recovery_reason_visible_in_device_status() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::DeviceStatus,
+            device_status::MAX_MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.enter_recovery(RecoveryReasonCode::ForcedRecovery);
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], DeviceStatusValue::RecoveryMode as u8);
+        assert_eq!(
+            u16::from_le_bytes([msg[2], msg[3]]),
+            0x11 // ForcedRecovery
+        );
+    }
+
+    #[test]
+    fn full_recovery_flow_pending_to_successful() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        // StatusPending -> Healthy
+        sm.set_device_healthy();
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::DeviceHealthy
+        );
+
+        // Healthy -> RecoveryMode
+        sm.enter_recovery(RecoveryReasonCode::AuthFailureMainFirmware);
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryMode
+        );
+
+        // RecoveryMode -> RecoveryPending (via RECOVERY_CTRL activate)
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::ActivateRecoveryImage);
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryPending
+        );
+
+        // RecoveryPending -> RecoverySuccessful
+        sm.complete_activation(ActivationResult::Complete).unwrap();
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RunningRecoveryImage
+        );
+        assert_eq!(
+            sm.state.recovery_status.status().unwrap(),
+            DeviceRecoveryStatus::Success
+        );
+        assert_eq!(sm.state.recovery_reason, RecoveryReasonCode::NoBootFailure);
+    }
+
+    #[test]
+    fn set_boot_failure_sets_status_and_reason() {
+        let mut transport = MockUsbDeviceDriver::new();
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.set_boot_failure(RecoveryReasonCode::MissingCorruptBootLoader);
+
+        assert_eq!(sm.state.device_status_value, DeviceStatusValue::BootFailure);
+        assert_eq!(
+            sm.state.recovery_reason,
+            RecoveryReasonCode::MissingCorruptBootLoader
+        );
+    }
+
+    #[test]
+    fn set_boot_failure_reason_visible_in_device_status() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::DeviceStatus,
+            device_status::MAX_MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.set_boot_failure(RecoveryReasonCode::SelfTestFailure);
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], DeviceStatusValue::BootFailure as u8);
+        assert_eq!(
+            u16::from_le_bytes([msg[2], msg[3]]),
+            0x03 // SelfTestFailure
+        );
+    }
+
+    #[test]
+    fn forced_recovery_sets_reason_code() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x00, 0x0F, 0x00]);
+        transport.enqueue_read(
+            RecoveryCommand::DeviceStatus,
+            device_status::MAX_MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::with_all_caps(),
+        )
+        .unwrap();
+
+        // Write DEVICE_RESET with forced recovery = EnterRecovery
+        sm.process_command().unwrap();
+        assert_eq!(
+            sm.state.device_reset.forced_recovery,
+            ForcedRecoveryMode::EnterRecovery
+        );
+
+        // Simulate the integrator acting on the forced recovery after reset:
+        sm.enter_recovery(RecoveryReasonCode::ForcedRecovery);
+
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryMode
+        );
+        assert_eq!(sm.state.recovery_reason, RecoveryReasonCode::ForcedRecovery);
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], DeviceStatusValue::RecoveryMode as u8);
+        assert_eq!(
+            u16::from_le_bytes([msg[2], msg[3]]),
+            0x11 // ForcedRecovery
+        );
+    }
+
+    // -- INDIRECT_CTRL handler tests --
+
+    #[test]
+    fn indirect_ctrl_write_selects_cms_and_sets_imo() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x00, 0x00, 0x10, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectCtrl,
+            indirect_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.indirect_ctrl.cms, 0);
+        assert_eq!(sm.state.indirect_ctrl.imo(), 0x10);
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], 0);
+        assert_eq!(u32::from_le_bytes([msg[2], msg[3], msg[4], msg[5]]), 0x10);
+    }
+
+    #[test]
+    fn indirect_ctrl_write_cms_change_resets_region() {
+        let mut buf0 = [0u8; 64];
+        let mut buf1 = [0u8; 64];
+        let mut r0 = SliceIndirectRegion::new(&mut buf0, CmsRegionType::CodeSpace).unwrap();
+        let mut r1 = SliceIndirectRegion::new(&mut buf1, CmsRegionType::Log).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 2] = [(0, &mut r0), (3, &mut r1)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x00, 0x00, 0x20, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x03, 0x00, 0x04, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectCtrl,
+            indirect_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.indirect_ctrl.cms, 0);
+
+        sm.state
+            .lookup_indirect_region(0)
+            .unwrap()
+            .write(&[0xAA; 64])
+            .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.indirect_ctrl.cms, 3);
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], 3);
+        // According to spec IMO is reset on CMS change, not set to the CMS value.
+        assert_eq!(u32::from_le_bytes([msg[2], msg[3], msg[4], msg[5]]), 0);
+    }
+
+    #[test]
+    fn indirect_ctrl_read_returns_live_imo() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectCtrl,
+            indirect_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+
+        sm.state
+            .lookup_indirect_region(0)
+            .unwrap()
+            .write(&[0xBB; 4])
+            .unwrap();
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(u32::from_le_bytes([msg[2], msg[3], msg[4], msg[5]]), 4);
+    }
+
+    #[test]
+    fn indirect_ctrl_write_wrong_length_sets_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::IndirectCtrl, vec![0x00, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::LengthWriteError);
+    }
+
+    #[test]
+    fn indirect_ctrl_write_misaligned_imo_sets_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x00, 0x00, 0x01, 0x00, 0x00, 0x00],
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
+    }
+
+    // -- INDIRECT_FIFO_CTRL handler tests --
+
+    #[test]
+    fn indirect_fifo_ctrl_write_selects_cms_and_image_size() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(2, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x02, 0x00, 0x00, 0x01, 0x00, 0x00],
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.indirect_fifo_ctrl_cms, 2);
+        assert_eq!(sm.state.indirect_fifo_ctrl_image_size, 0x100);
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+    }
+
+    #[test]
+    fn indirect_fifo_ctrl_write_reset_triggers_fifo_reset() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+
+        region.push(&[0xAA; 4]).unwrap();
+        assert!(!region.is_empty());
+
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectFifoStatus,
+            indirect_fifo_status::MESSAGE_LEN as u16,
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectFifoCtrl,
+            indirect_fifo_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+
+        sm.process_command().unwrap();
+        let status_msg = &sm.transport.sent[0];
+        assert_eq!(
+            status_msg[0] & 0x01,
+            0x01,
+            "FIFO should be empty after reset"
+        );
+
+        sm.process_command().unwrap();
+        let ctrl_msg = &sm.transport.sent[1];
+        assert_eq!(ctrl_msg[1], 0x00, "reset byte should be cleared by device");
+    }
+
+    #[test]
+    fn indirect_fifo_ctrl_read_returns_current_state() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(5, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x05, 0x00, 0x10, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectFifoCtrl,
+            indirect_fifo_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], 5);
+        assert_eq!(msg[1], 0x00);
+        assert_eq!(u32::from_le_bytes([msg[2], msg[3], msg[4], msg[5]]), 0x10);
+    }
+
+    #[test]
+    fn indirect_fifo_ctrl_write_wrong_length_sets_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::IndirectFifoCtrl, vec![0x00, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::LengthWriteError);
+    }
+
+    #[test]
+    fn indirect_fifo_ctrl_write_invalid_reset_sets_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x00, 0x02, 0x00, 0x00, 0x00, 0x00],
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
+    }
+
+    // -- INDIRECT_DATA handler tests --
+
+    #[test]
+    fn indirect_data_write_and_read_back() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::IndirectData, vec![0xAA, 0xBB, 0xCC, 0xDD]);
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(RecoveryCommand::IndirectData, 4);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+
+        sm.process_command().unwrap();
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(&msg[..4], &[0xAA, 0xBB, 0xCC, 0xDD]);
+    }
+
+    #[test]
+    fn indirect_data_sequential_writes_auto_increment() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::IndirectData, vec![0x01, 0x02, 0x03, 0x04]);
+        transport.enqueue_write(RecoveryCommand::IndirectData, vec![0x05, 0x06, 0x07, 0x08]);
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(RecoveryCommand::IndirectData, 8);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(&msg[..8], &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+    }
+
+    #[test]
+    fn indirect_data_overflow_wraps_imo() {
+        let mut buf = [0u8; 8];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::IndirectData, vec![0x01, 0x02, 0x03, 0x04]);
+        transport.enqueue_write(RecoveryCommand::IndirectData, vec![0x05, 0x06, 0x07, 0x08]);
+        transport.enqueue_read(
+            RecoveryCommand::IndirectStatus,
+            indirect_status::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+
+        sm.process_command().unwrap();
+        let status_msg = &sm.transport.sent[0];
+        assert_ne!(status_msg[0] & 0x01, 0, "overflow flag should be set");
+    }
+
+    #[test]
+    fn indirect_data_write_to_read_only_sets_error() {
+        let mut code_buf = [0u8; 64];
+        let mut log_buf = [0u8; 64];
+        let mut code_r = SliceIndirectRegion::new(&mut code_buf, CmsRegionType::CodeSpace).unwrap();
+        let mut log_r = SliceIndirectRegion::new(&mut log_buf, CmsRegionType::Log).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 2] =
+            [(0, &mut code_r), (1, &mut log_r)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_write(RecoveryCommand::IndirectData, vec![0x01, 0x02, 0x03, 0x04]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+    }
+
+    #[test]
+    fn indirect_data_read_from_write_only_sets_error() {
+        let mut code_buf = [0u8; 64];
+        let mut wo_buf = [0u8; 64];
+        let mut code_r = SliceIndirectRegion::new(&mut code_buf, CmsRegionType::CodeSpace).unwrap();
+        let mut wo_r = SliceIndirectRegion::new(&mut wo_buf, CmsRegionType::VendorWo).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 2] = [(0, &mut code_r), (2, &mut wo_r)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(RecoveryCommand::IndirectData, 4);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert!(msg.is_empty());
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+    }
+
+    #[test]
+    fn indirect_data_no_region_returns_zero() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(RecoveryCommand::IndirectData, 4);
+        transport.enqueue_write(RecoveryCommand::IndirectData, vec![0x01, 0x02]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert!(msg.is_empty());
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+    }
+
+    // -- INDIRECT_FIFO_DATA handler tests --
+
+    #[test]
+    fn indirect_fifo_data_write_accepted() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoData,
+            vec![0xAA, 0xBB, 0xCC, 0xDD],
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+    }
+
+    #[test]
+    fn indirect_fifo_data_read_returns_data() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::Log, 16).unwrap();
+
+        region.push_data(&[0xAA, 0xBB, 0xCC, 0xDD]).unwrap();
+
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(RecoveryCommand::IndirectFifoData, 4);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg.as_slice(), &[0xAA, 0xBB, 0xCC, 0xDD]);
+    }
+
+    #[test]
+    fn indirect_fifo_data_push_until_full_no_error() {
+        let mut buf = [0u8; 8];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 4).unwrap();
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoData,
+            vec![0x01, 0x02, 0x03, 0x04],
+        );
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoData,
+            vec![0x05, 0x06, 0x07, 0x08],
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+    }
+
+    #[test]
+    fn indirect_fifo_data_pop_from_empty_returns_zero() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::Log, 16).unwrap();
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(RecoveryCommand::IndirectFifoData, 4);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert!(msg.is_empty());
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+    }
+
+    #[test]
+    fn indirect_fifo_data_write_to_read_only_sets_error() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::Log, 16).unwrap();
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoData,
+            vec![0x01, 0x02, 0x03, 0x04],
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+    }
+
+    #[test]
+    fn indirect_fifo_data_read_from_write_only_sets_error() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(RecoveryCommand::IndirectFifoData, 4);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert!(msg.is_empty());
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+    }
+
+    #[test]
+    fn indirect_fifo_data_no_region_returns_zero() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(RecoveryCommand::IndirectFifoData, 4);
+        transport.enqueue_write(RecoveryCommand::IndirectFifoData, vec![0x01, 0x02]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert!(msg.is_empty());
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+    }
+
+    // -- VENDOR command handler tests --
+
+    #[test]
+    fn vendor_write_forwards_data_to_handler() {
+        let mut transport = MockUsbDeviceDriver::new();
+        let mut vendor = MockVendorHandler::with_all_caps();
+        vendor.vendor_read_data = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        transport.enqueue_write(RecoveryCommand::Vendor, vec![0x01, 0x02, 0x03]);
+
+        let mut sm =
+            RecoveryStateMachine::new(test_config(), &mut transport, &mut [], &mut [], vendor)
+                .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+        assert_eq!(
+            sm.state.vendor.last_vendor_write.as_deref(),
+            Some([0x01, 0x02, 0x03].as_slice())
+        );
+    }
+
+    #[test]
+    fn vendor_read_returns_handler_data() {
+        let mut transport = MockUsbDeviceDriver::new();
+        let mut vendor = MockVendorHandler::with_all_caps();
+        vendor.vendor_read_data = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        transport.enqueue_read(RecoveryCommand::Vendor, 8);
+
+        let mut sm =
+            RecoveryStateMachine::new(test_config(), &mut transport, &mut [], &mut [], vendor)
+                .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+        let msg = &sm.transport.sent[0];
+        assert_eq!(&msg[..4], &[0xDE, 0xAD, 0xBE, 0xEF]);
+    }
+
+    #[test]
+    fn vendor_write_unsupported_when_capability_not_set() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::Vendor, vec![0x01, 0x02]);
+
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+        assert!(sm.state.vendor.last_vendor_write.is_none());
+    }
+
+    #[test]
+    fn vendor_read_unsupported_when_capability_not_set() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(RecoveryCommand::Vendor, 8);
+
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+        assert!(sm.transport.sent[0].iter().all(|&b| b == 0));
     }
 }

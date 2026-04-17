@@ -14,13 +14,11 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
-use crate::{
-    fatal_error, AxiUsers, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
-    MCU_MEMORY_MAP,
-};
+use crate::{fatal_error, AxiUsers, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use core::{fmt::Write, ops::Deref};
 use mcu_error::McuError;
+use romtime::{McuBootMilestones, McuRomBootStatus};
 
 pub struct WarmBoot {}
 

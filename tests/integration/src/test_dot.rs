@@ -18,7 +18,8 @@ mod test {
     use mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
     use mcu_error::McuError;
     use mcu_hw_model::McuHwModel;
-    use mcu_rom_common::McuRomBootStatus;
+    use romtime::McuBootMilestones;
+    use romtime::McuRomBootStatus;
     use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
     /// Size of the DOT blob structure in bytes.
@@ -716,8 +717,6 @@ mod test {
     /// successfully after the DOT fuse burn.
     #[test]
     fn test_dot_fuse_burn_and_warm_reset() {
-        use mcu_rom_common::McuBootMilestones;
-
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -882,8 +881,6 @@ mod test {
     /// - Firmware verification uses this owner key, so a successful boot confirms the CAK was applied
     #[test]
     fn test_dot_locked_state_boots_with_owner_cak() {
-        use mcu_rom_common::McuBootMilestones;
-
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -1045,8 +1042,11 @@ mod test {
     /// Expected: The manifest LOCK command burns the lock fuse (EVEN → ODD).
     #[test]
     fn test_fw_manifest_dot_lock() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_LOCK};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
         use registers_generated::fuses;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1054,9 +1054,6 @@ mod test {
 
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1111,8 +1108,11 @@ mod test {
     /// Expected: No additional fuses burned (idempotent).
     #[test]
     fn test_fw_manifest_dot_lock_idempotent() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_LOCK};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
         use registers_generated::fuses;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -1120,9 +1120,6 @@ mod test {
 
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1171,8 +1168,11 @@ mod test {
     /// Expected: One additional fuse burned (ODD → EVEN), total 2.
     #[test]
     fn test_fw_manifest_dot_unlock() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_UNLOCK};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
         use registers_generated::fuses;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -1181,9 +1181,6 @@ mod test {
         // UNLOCK needs a LAK in the manifest for writing the unlock DOT blob.
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1224,8 +1221,11 @@ mod test {
     /// Test: UNLOCK command is idempotent when device is already in EVEN (unlocked) state.
     #[test]
     fn test_fw_manifest_dot_unlock_idempotent() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_UNLOCK};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
         use registers_generated::fuses;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1233,9 +1233,6 @@ mod test {
 
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1277,8 +1274,11 @@ mod test {
     /// Test: DISABLE command burns a fuse when in EVEN (unlocked) state.
     #[test]
     fn test_fw_manifest_dot_disable() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_DISABLE};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_DISABLE;
         use registers_generated::fuses;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1286,9 +1286,6 @@ mod test {
 
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_DISABLE], 0, [0u32; 12], test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1327,8 +1324,10 @@ mod test {
     /// Test: No manifest magic means DOT commands are silently skipped.
     #[test]
     fn test_fw_manifest_dot_no_magic_skipped() {
-        use mcu_rom_common::McuBootMilestones;
         use registers_generated::fuses;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1338,9 +1337,6 @@ mod test {
         // so DOT manifest processing is entirely skipped.  This verifies
         // that the default ROM configuration never accidentally processes
         // DOT manifests.
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(dot_flash),
@@ -1381,8 +1377,11 @@ mod test {
     /// Test: ROTATE command burns 2 fuses when below min_fuse_count threshold.
     #[test]
     fn test_fw_manifest_dot_rotate() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_ROTATE};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
         use registers_generated::fuses;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1391,9 +1390,6 @@ mod test {
         // ROTATE with min_fuse_count=2 (current burned=0, so rotation will apply)
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_ROTATE], 2, owner_pk_hash, test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1431,8 +1427,11 @@ mod test {
     /// Test: ROTATE command is idempotent when burned count already meets min_fuse_count.
     #[test]
     fn test_fw_manifest_dot_rotate_idempotent() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_ROTATE};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
         use registers_generated::fuses;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -1441,9 +1440,6 @@ mod test {
         // ROTATE with min_fuse_count=1 but device already has 1 fuse burned (locked state)
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_ROTATE], 1, owner_pk_hash, test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1495,6 +1491,9 @@ mod test {
         use mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
         use zerocopy::IntoBytes;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
         let dot_flash = blob.to_flash_contents();
@@ -1513,9 +1512,6 @@ mod test {
         }
         .with_checksum();
         let manifest = section.as_bytes().to_vec();
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),

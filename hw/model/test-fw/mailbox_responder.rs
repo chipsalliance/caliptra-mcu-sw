@@ -5,8 +5,9 @@
 #![no_main]
 #![no_std]
 
-use mcu_rom_common::{McuBootMilestones, RomEnv};
+use mcu_rom_common::RomEnv;
 use registers_generated::mci;
+use romtime::McuBootMilestones;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 // Needed to bring in startup code

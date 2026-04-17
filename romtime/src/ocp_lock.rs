@@ -93,9 +93,18 @@ pub enum PermaBitStatus {
 pub struct Error(u32);
 
 impl Error {
+    // TODO(clundin): Prefix with ROM
+    // ROM Errors
     pub const INVALID_HEK_SLOT: Self = Self(0x0000_0000_0000_0001);
     pub const EXHAUSTED_HEK_SLOTS: Self = Self(0x0000_0000_0000_0002);
     pub const MISSING_PLATFORM_IMPLEMENTATION: Self = Self(0x0000_0000_0000_0003);
+
+    // Runtime Errors
+    pub const RUNTIME_HPKE_ENDORSEMENT_FAILURE: Self = Self(0x0000_0000_1000_0000);
+    pub const RUNTIME_HPKE_PUB_KEY_EMPTY: Self = Self(0x0000_0000_1000_0001);
+    pub const RUNTIME_HPKE_UNSUPPORTED_ALGORITHM: Self = Self(0x0000_0000_1000_0002);
+    pub const RUNTIME_HPKE_INVALID_CERT_FORMAT: Self = Self(0x0000_0000_1000_0003);
+    pub const RUNTIME_HPKE_CERT_SIGNING_FAILURE: Self = Self(0x0000_0000_1000_0004);
 }
 
 #[derive(Debug)]
@@ -115,6 +124,7 @@ pub trait Platform {
     /// The current HEK Seed Status of `slot`. `seed` is the fuse value of the slot.
     fn get_slot_state(
         &mut self,
+        otp: &crate::otp::Otp,
         perma_bit: &PermaBitStatus,
         slot: usize,
         seed: &[u8; 48],
@@ -123,6 +133,7 @@ pub trait Platform {
     /// Report the active slot
     fn get_active_slot(
         &mut self,
+        otp: &crate::otp::Otp,
         perma_bit: &PermaBitStatus,
         seeds: &HekSeeds,
     ) -> Result<usize, Error>;
@@ -137,6 +148,7 @@ pub struct RomConfig<'a> {
 impl RomConfig<'_> {
     pub fn get_active_slot(
         &mut self,
+        otp: &crate::otp::Otp,
         perma_bit: &PermaBitStatus,
         seeds: &HekSeeds,
     ) -> Result<usize, Error> {
@@ -144,7 +156,7 @@ impl RomConfig<'_> {
             .platform
             .as_mut()
             .ok_or(Error::MISSING_PLATFORM_IMPLEMENTATION)?;
-        platform.get_active_slot(perma_bit, seeds)
+        platform.get_active_slot(otp, perma_bit, seeds)
     }
 
     pub fn get_total_slots(&mut self) -> Result<usize, Error> {
@@ -157,6 +169,7 @@ impl RomConfig<'_> {
 
     pub fn get_slot_status(
         &mut self,
+        otp: &crate::otp::Otp,
         perma_bit: &PermaBitStatus,
         slot: usize,
         seed: &[u8; 48],
@@ -165,7 +178,7 @@ impl RomConfig<'_> {
             .platform
             .as_mut()
             .ok_or(Error::MISSING_PLATFORM_IMPLEMENTATION)?;
-        platform.get_slot_state(perma_bit, slot, seed)
+        platform.get_slot_state(otp, perma_bit, slot, seed)
     }
 }
 

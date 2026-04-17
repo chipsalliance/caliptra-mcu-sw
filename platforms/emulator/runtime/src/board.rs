@@ -43,6 +43,7 @@ use mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use mcu_tock_veer::timers::InternalTimers;
 use registers_generated::mci;
 use romtime::CaliptraSoC;
+use romtime::McuBootMilestones;
 use romtime::StaticRef;
 use rv32i::csr;
 
@@ -847,6 +848,7 @@ pub unsafe fn main() {
         unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
     let mci_wdt = romtime::Mci::new(mci);
     mci_wdt.disable_wdt();
+    mci_wdt.set_flow_milestone(McuBootMilestones::FIRMWARE_OS_INITIALIZED.into());
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
 

@@ -42,6 +42,10 @@ impl<S: Syscalls> Mci<S> {
     pub fn trigger_warm_reset(&self) -> Result<(), ErrorCode> {
         S::command(self.driver_num, cmd::MCI_TRIGGER_WARM_RESET, 0, 0).to_result::<(), ErrorCode>()
     }
+
+    pub fn set_mailbox_ready(&self) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::MCI_SET_MAILBOX_READY, 0, 0).to_result::<(), ErrorCode>()
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -56,6 +60,7 @@ pub mod cmd {
     pub const MCI_WRITE: u32 = 2;
     pub const MCI_SET_REGISTER: u32 = 3;
     pub const MCI_TRIGGER_WARM_RESET: u32 = 4;
+    pub const MCI_SET_MAILBOX_READY: u32 = 5;
 }
 
 pub mod mci_reg {

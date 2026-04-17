@@ -40,11 +40,11 @@ use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
-use mcu_rom_common::McuBootMilestones;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
 use registers_generated::fuses;
 use romtime::LifecycleControllerState;
+use romtime::McuBootMilestones;
 use semver::Version;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -187,9 +187,12 @@ impl McuHwModel for ModelEmulated {
 
         let lc = LcCtrl::new();
 
+        let fips_zeroization_cmd = Rc::new(Cell::new(false));
+
         let otp = Otp::new(
             &clock.clone(),
             OtpArgs {
+                fips_zeroization_cmd: fips_zeroization_cmd.clone(),
                 raw_memory: Some(otp_mem),
                 vendor_pk_hash: params.vendor_pk_hash,
                 vendor_pqc_type: params
@@ -288,7 +291,7 @@ impl McuHwModel for ModelEmulated {
         } else {
             [0, 0]
         };
-        let mci = Mci::new(
+        let mut mci = Mci::new(
             &clock.clone(),
             ext_mci,
             Rc::new(RefCell::new(mci_irq)),
@@ -298,6 +301,7 @@ impl McuHwModel for ModelEmulated {
             mci_generic_input_wires,
             params.fips_zeroization,
         );
+        mci.set_fips_zeroization_cmd(fips_zeroization_cmd);
 
         let usb_periph = emulator_periph::UsbDevPeriph::new();
         let usb_host_controller = usb_periph.host_controller();
