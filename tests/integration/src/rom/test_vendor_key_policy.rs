@@ -38,7 +38,7 @@ mod test {
         let otp_size = fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE;
         let mut otp = vec![0u8; otp_size];
 
-        // 1. Populate VENDOR_PK_HASH_VALID (LinearMajorityVote { bits: 16, duplication: 3 })
+        // 1. Populate VENDOR_PK_HASH_VALID (LinearOr { bits: 16, duplication: 3 })
         let valid_entry = fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID;
         let layout = FuseLayout::from_generated(&valid_entry.layout).unwrap();
         let raw_valid: [u32; 2] = write_fuse_value::<1, 2>(layout, &[valid_mask as u32]).unwrap();
@@ -57,7 +57,7 @@ mod test {
                     .copy_from_slice(&raw_pqc.to_le_bytes());
             }
 
-            // 3. Populate Revocations (LinearMajorityVote)
+            // 3. Populate Revocations (LinearOr)
             let ecc_entry =
                 vendor_ecc_revocation_entry(slot).expect("Invalid ECC Revocation entry");
             let ecc_layout = FuseLayout::from_generated(&ecc_entry.layout).unwrap();

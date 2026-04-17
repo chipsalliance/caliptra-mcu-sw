@@ -218,6 +218,35 @@ Entire u32 words are duplicated. Each bit position across the duplicated words i
 
 This is an alternative to LinearMajorityVote for larger values.
 
+#### LinearOr
+
+Like `LinearMajorityVote`, each logical bit is duplicated multiple times. However, the result bit is 1 if **any** copy is set (bitwise OR instead of majority vote). This is appropriate for OTP bits where a bit failing to flip to 1 is more likely than spontaneously flipping to 0.
+
+**Example:** With 2-bit logical value and 3x duplication:
+- Raw fuses: `0b000_001_111` (bit 0 has copies `111`, bit 1 has copies `001`)
+- Result: `0b11` (both bits have at least one copy set)
+
+With majority vote the same raw value would yield `0b01` (bit 1 fails the ≥2 threshold).
+
+#### OneHotLinearOr
+
+Combines `LinearOr` with `OneHot` encoding. First applies OR reduction to each duplicated bit, then counts the number of bits set.
+
+**Example:** With 3 logical bits and 3x duplication:
+- Raw fuses: `0b001_010_111` (bit 0 has copies `111`, bit 1 has copies `010`, bit 2 has copies `001`)
+- After OR on each bit: `0b111` (3 bits set)
+- Result: 3
+
+This is the recommended way to store incrementable counters and version numbers in OTP without ECC.
+
+#### WordOr
+
+Entire u32 words are duplicated. Each bit position across the duplicated words is decided by OR (any word having the bit set → result bit is 1).
+
+**Example:** With 3 duplicated words:
+- Raw fuses: `[0b100, 0b010, 0b001]`
+- Result: `[0b111]`
+
 ### Common Limitations
 
 - Maximum result size for single value extraction is 32 bits
@@ -225,13 +254,14 @@ This is an alternative to LinearMajorityVote for larger values.
 - All layouts return `McuError::ROM_FUSE_LAYOUT_TOO_LARGE` if constraints are violated
 - Unsupported or invalid configurations return `McuError::ROM_UNSUPPORTED_FUSE_LAYOUT`
 - Majority vote calculations use ceiling division (e.g., need ≥2 votes for 3 duplicates)
+- OR calculations treat any non-zero duplicate as a 1
 
 ### Default Platform Configuration
 
 The default `McuFuseLayoutPolicy` uses:
 - `Single`: For certificate data, identifiers, and validity flags that are assumed to be protected by ECC
-- `OneHotLinearMajorityVote` (3x): For SVN fields and counters
-- `LinearMajorityVote` (3x): for single revocation fields
+- `OneHotLinearOr` (3x): For SVN fields and counters
+- `LinearOr` (3x): for single revocation fields and flags
 - `WordMajorityVote` (3x): for revocation bitmasks
 
 This provides a balance between redundancy for critical security fields and storage efficiency for larger data structures.
