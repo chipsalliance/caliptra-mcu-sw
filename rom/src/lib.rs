@@ -24,6 +24,8 @@ mod fuse_layout;
 pub use fuse_layout::*;
 mod fuses;
 pub use fuses::*;
+mod hooks;
+pub use hooks::*;
 pub mod image_verifier;
 pub use image_verifier::ImageVerifier;
 mod rom;

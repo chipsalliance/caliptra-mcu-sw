@@ -21,8 +21,92 @@ core::arch::global_asm!(include_str!("start.s"));
 
 use mcu_config::{McuMemoryMap, McuStraps};
 use mcu_rom_common::flash::flash_partition::FlashPartition;
-use mcu_rom_common::RomParameters;
+use mcu_rom_common::{RomHooks, RomParameters};
 use romtime::{LifecycleControllerState, LifecycleHashedToken, LifecycleToken};
+
+/// Example `RomHooks` implementation for the FPGA platform. Emits a
+/// distinctive tagged log line for each milestone and records which
+/// hooks fired as a bitmask in `mci_reg_fw_extended_error_info[0]` so a
+/// host-side test can verify completion even after full-runtime boot.
+/// Attached via the `test-rom-hooks` cargo feature.
+struct LoggingRomHooks;
+
+/// Offset of `mci_reg_fw_extended_error_info[0]` within the MCI register
+/// block. This register is a writable 32-bit scratch word not touched by
+/// the common ROM on a successful boot, so it is safe to repurpose for
+/// test instrumentation.
+const HOOK_BITMASK_OFFSET: usize = 0x70;
+
+fn record_hook_bit(bit: u32) {
+    // Safety: `MCU_MEMORY_MAP.mci_offset` is a linker-provided constant
+    // and `fw_extended_error_info[0]` is a normal MMIO register. The
+    // read-modify-write is safe because no other code on this core
+    // accesses the register concurrently in a single-hart ROM.
+    let addr = (MCU_MEMORY_MAP.mci_offset as usize + HOOK_BITMASK_OFFSET) as *mut u32;
+    unsafe {
+        let cur = core::ptr::read_volatile(addr);
+        core::ptr::write_volatile(addr, cur | (1u32 << bit));
+    }
+}
+
+impl RomHooks for LoggingRomHooks {
+    fn pre_cold_boot(&self) {
+        romtime::println!("[mcu-rom-hook] pre_cold_boot");
+        record_hook_bit(0);
+    }
+    fn post_cold_boot(&self) {
+        romtime::println!("[mcu-rom-hook] post_cold_boot");
+        record_hook_bit(1);
+    }
+    fn pre_warm_boot(&self) {
+        romtime::println!("[mcu-rom-hook] pre_warm_boot");
+        record_hook_bit(2);
+    }
+    fn post_warm_boot(&self) {
+        romtime::println!("[mcu-rom-hook] post_warm_boot");
+        record_hook_bit(3);
+    }
+    fn pre_fw_boot(&self) {
+        romtime::println!("[mcu-rom-hook] pre_fw_boot");
+        record_hook_bit(4);
+    }
+    fn post_fw_boot(&self) {
+        romtime::println!("[mcu-rom-hook] post_fw_boot");
+        record_hook_bit(5);
+    }
+    fn pre_fw_hitless_update(&self) {
+        romtime::println!("[mcu-rom-hook] pre_fw_hitless_update");
+        record_hook_bit(6);
+    }
+    fn post_fw_hitless_update(&self) {
+        romtime::println!("[mcu-rom-hook] post_fw_hitless_update");
+        record_hook_bit(7);
+    }
+    fn pre_caliptra_boot(&self) {
+        romtime::println!("[mcu-rom-hook] pre_caliptra_boot");
+        record_hook_bit(8);
+    }
+    fn post_caliptra_boot(&self) {
+        romtime::println!("[mcu-rom-hook] post_caliptra_boot");
+        record_hook_bit(9);
+    }
+    fn pre_populate_fuses_to_caliptra(&self) {
+        romtime::println!("[mcu-rom-hook] pre_populate_fuses_to_caliptra");
+        record_hook_bit(10);
+    }
+    fn post_populate_fuses_to_caliptra(&self) {
+        romtime::println!("[mcu-rom-hook] post_populate_fuses_to_caliptra");
+        record_hook_bit(11);
+    }
+    fn pre_load_firmware(&self) {
+        romtime::println!("[mcu-rom-hook] pre_load_firmware");
+        record_hook_bit(12);
+    }
+    fn post_load_firmware(&self) {
+        romtime::println!("[mcu-rom-hook] post_load_firmware");
+        record_hook_bit(13);
+    }
+}
 
 // re-export these so the common ROM and runtime can use them
 #[no_mangle]
@@ -124,6 +208,8 @@ pub extern "C" fn rom_entry() -> ! {
     let axi_user1 = 2;
     let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
 
+    let hooks = LoggingRomHooks;
+
     mcu_rom_common::rom_start(RomParameters {
         lifecycle_transition,
         burn_lifecycle_tokens,
@@ -143,6 +229,11 @@ pub extern "C" fn rom_entry() -> ! {
             None
         },
         force_i3c_services: cfg!(feature = "test-i3c-services"),
+        hooks: if cfg!(feature = "test-rom-hooks") {
+            Some(&hooks)
+        } else {
+            None
+        },
         ..Default::default()
     });
 

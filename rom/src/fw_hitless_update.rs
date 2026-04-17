@@ -46,6 +46,7 @@ pub struct FwHitlessUpdate {}
 
 impl BootFlow for FwHitlessUpdate {
     fn run(env: &mut RomEnv, _params: RomParameters) -> ! {
+        crate::call_hook(_params.hooks, |h| h.pre_fw_hitless_update());
         romtime::println!("[mcu-rom] Starting fw hitless update flow");
 
         // Create local references to minimize code changes
@@ -85,6 +86,7 @@ impl BootFlow for FwHitlessUpdate {
 
         // Jump to firmware
         romtime::println!("[mcu-rom] Jumping to firmware");
+        crate::call_hook(_params.hooks, |h| h.post_fw_hitless_update());
 
         #[cfg(target_arch = "riscv32")]
         unsafe {

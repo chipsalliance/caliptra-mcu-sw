@@ -391,12 +391,7 @@ impl McuHwModel for ModelFpgaRealtime {
             caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
             mcu_firmware: Some(params.mcu_firmware.to_vec()).filter(|f| !f.is_empty()),
-<<<<<<< HEAD
             usb_host_controller,
-||||||| parent of 804e6bed3 (rom: add I3C services handler (#1199))
-=======
-            check_booted_to_runtime: params.check_booted_to_runtime,
->>>>>>> 804e6bed3 (rom: add I3C services handler (#1199))
         };
 
         // Set the FIPS zeroization PPD signal in the FPGA wrapper control
@@ -446,57 +441,6 @@ impl McuHwModel for ModelFpgaRealtime {
                 .unwrap();
         }
 
-<<<<<<< HEAD
-        if self.check_booted_to_runtime {
-            // wait until firmware is booted
-            const BOOT_CYCLES: u64 = 800_000_000;
-            self.step_until(|hw| {
-                hw.cycle_count() >= BOOT_CYCLES
-                    || hw
-                        .mci_boot_milestones()
-                        .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-            });
-            println!(
-                "Boot completed at cycle count {}, flow status {}",
-                self.cycle_count(),
-                u32::from(self.mci_flow_status())
-            );
-            assert!(self
-                .mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
-            MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
-        }
-
-        // turn off recovery
-        self.base.recovery_started = false;
-        if self.check_booted_to_runtime {
-            println!("Resetting I3C controller");
-||||||| parent of 804e6bed3 (rom: add I3C services handler (#1199))
-        // wait until firmware is booted
-        const BOOT_CYCLES: u64 = 800_000_000;
-        self.step_until(|hw| {
-            hw.cycle_count() >= BOOT_CYCLES
-                || hw
-                    .mci_boot_milestones()
-                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-        });
-        println!(
-            "Boot completed at cycle count {}, flow status {}",
-            self.cycle_count(),
-            u32::from(self.mci_flow_status())
-        );
-        assert!(self
-            .mci_boot_milestones()
-            .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
-        MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
-        // turn off recovery
-        self.base.recovery_started = false;
-        println!("Resetting I3C controller");
-        {
-            let i3c_ctrl = self.base.i3c_controller().unwrap();
-            let ctrl = i3c_ctrl.controller.lock().unwrap();
-            ctrl.ready.set(false);
-=======
         // wait until firmware is booted
         const BOOT_CYCLES: u64 = 800_000_000;
         if self.check_booted_to_runtime {
@@ -543,7 +487,6 @@ impl McuHwModel for ModelFpgaRealtime {
             // re-assigns it. This ensures the controller and target are in
             // sync for private write transactions.
             println!("Resetting I3C controller for TTI mode");
->>>>>>> 804e6bed3 (rom: add I3C services handler (#1199))
             {
                 let i3c_ctrl = self.base.i3c_controller().unwrap();
                 let ctrl = i3c_ctrl.controller.lock().unwrap();
