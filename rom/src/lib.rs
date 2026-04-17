@@ -73,7 +73,7 @@ pub fn set_fatal_error_handler(handler: &'static mut dyn FatalErrorHandler) {
 /// execution of this function.
 #[no_mangle]
 #[cfg(target_arch = "riscv32")]
-fn exception_handler() -> ! {
+pub extern "C" fn exception_handler() -> ! {
     let mut mcause: usize;
     let mut mepc: usize;
     let mut sp: usize;
