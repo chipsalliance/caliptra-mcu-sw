@@ -24,6 +24,10 @@ caliptra-util-host-session.workspace = true
 caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true
 caliptra-mcu-core-util-host-command-types.workspace = true
+caliptra-mcu-debug-unlock-signer.workspace = true
+ecdsa.workspace = true
+fips204.workspace = true
 hmac.workspace = true
+p384 = { workspace = true, features = ["ecdsa"] }
 sha2.workspace = true
 zerocopy.workspace = true

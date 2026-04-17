@@ -4,6 +4,7 @@
 members = [
     "builder",
     "common/config",
+    "common/debug-unlock-signer",
     "common/flash-image",
     "common/mcu-mbox",
     "common/otp-digest",
@@ -200,12 +201,16 @@ zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_de
 zip = { version = "4.3.0", default-features = false, features = ["chrono", "deflate"] }
 
 # local dependencies
+caliptra-mailbox-client = { path = "caliptra-util-host/apps/mailbox/client", package = "caliptra-mcu-mailbox-client" }
 caliptra-mcu-core-util-host-mailbox-test-config = { path = "caliptra-util-host/apps/mailbox/config" }
 caliptra-util-host-mctp-vdm-test-config = { path = "caliptra-util-host/apps/mctp-vdm/config" }
 caliptra-mctp-vdm-client = { path = "caliptra-util-host/apps/mctp-vdm/client" }
 caliptra-util-host-transport = { path = "caliptra-util-host/transport", package = "caliptra-mcu-core-util-host-transport" }
+caliptra-mcu-core-util-host-transport = { path = "caliptra-util-host/transport" }
 caliptra-mcu-core-util-host-command-types = { path = "caliptra-util-host/command-types" }
 caliptra-mcu-core-util-host-osal = { path = "caliptra-util-host/osal" }
+caliptra-util-host-commands = { path = "caliptra-util-host/commands" }
+caliptra-util-host-session = { path = "caliptra-util-host/session" }
 caliptra-mcu-core-mailbox-server = { path = "caliptra-util-host/apps/mailbox/server" }
 caliptra-mcu-capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
 caliptra-mcu-capsules-runtime = { path = "runtime/kernel/capsules" }
@@ -229,6 +234,7 @@ caliptra-mcu-libtockasync = { path = "runtime/userspace/libtockasync" }
 caliptra-mcu-builder = { path = "builder" }
 caliptra-mcu-components = { path = "runtime/kernel/components" }
 caliptra-mcu-config = { path = "common/config" }
+caliptra-mcu-debug-unlock-signer = { path = "common/debug-unlock-signer" }
 caliptra-mcu-config-emulator = { path = "platforms/emulator/config" }
 caliptra-mcu-config-fpga = { path = "platforms/fpga/config" }
 caliptra-mcu-error = { path = "error" }

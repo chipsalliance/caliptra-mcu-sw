@@ -15,6 +15,7 @@ pub mod crypto_delete;
 pub mod crypto_hash;
 pub mod crypto_hmac;
 pub mod crypto_import;
+pub mod debug_unlock;
 pub mod device_info;
 
 pub use caliptra_util_host_session::CommandSession;
@@ -24,6 +25,7 @@ pub use crypto_delete::*;
 pub use crypto_hash::*;
 pub use crypto_hmac::*;
 pub use crypto_import::*;
+pub use debug_unlock::*;
 pub use device_info::*;
 
 /// High-level result type for API functions

@@ -12,6 +12,11 @@ pub mod validator;
 pub use network_driver::UdpTransportDriver;
 pub use validator::{run_basic_validation, run_verbose_validation, ValidationResult, Validator};
 
+// Re-export the debug unlock signer trait and types from the common crate
+pub use caliptra_mcu_debug_unlock_signer::{
+    DebugUnlockKeys, DebugUnlockSigner, LocalDebugUnlockSigner,
+};
+
 // Re-export config from the shared library
 pub use caliptra_mcu_core_util_host_mailbox_test_config::*;
 
@@ -31,6 +36,9 @@ use caliptra_mcu_core_util_host_command_types::crypto_hmac::{
     CmKeyUsage, Cmk, HmacAlgorithm, HmacKdfCounterResponse, HmacResponse,
 };
 use caliptra_mcu_core_util_host_command_types::crypto_import::ImportResponse;
+use caliptra_mcu_core_util_host_command_types::debug_unlock::{
+    ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
+};
 use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
     GetFirmwareVersionResponse,
@@ -52,6 +60,9 @@ use caliptra_util_host_commands::api::crypto_hmac::{
     caliptra_cmd_hmac, caliptra_cmd_hmac_kdf_counter,
 };
 use caliptra_util_host_commands::api::crypto_import::caliptra_cmd_import;
+use caliptra_util_host_commands::api::debug_unlock::{
+    caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
+};
 use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
     caliptra_cmd_get_firmware_version,
@@ -836,6 +847,78 @@ impl<'a> MailboxClient<'a> {
             Err(e) => {
                 eprintln!("✗ ECDH finish failed: {:?}", e);
                 Err(anyhow::anyhow!("ECDH finish command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Request a production debug unlock challenge
+    ///
+    /// Sends a debug unlock request and receives a challenge containing
+    /// the unique device identifier and a random challenge value.
+    pub fn prod_debug_unlock_req(
+        &mut self,
+        unlock_level: u8,
+    ) -> Result<ProdDebugUnlockReqResponse> {
+        println!(
+            "Executing production debug unlock request (unlock_level={})...",
+            unlock_level
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_prod_debug_unlock_req(&mut session, unlock_level) {
+            Ok(response) => {
+                println!("✓ Production debug unlock request succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ Production debug unlock request failed: {:?}", e);
+                Err(anyhow::anyhow!(
+                    "Production debug unlock request command failed: {:?}",
+                    e
+                ))
+            }
+        }
+    }
+
+    /// Submit a production debug unlock token
+    ///
+    /// Submits a signed token to complete the debug unlock flow.
+    pub fn prod_debug_unlock_token(
+        &mut self,
+        request: &ProdDebugUnlockTokenRequest,
+    ) -> Result<ProdDebugUnlockTokenResponse> {
+        println!("Executing production debug unlock token command...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_prod_debug_unlock_token(&mut session, request) {
+            Ok(response) => {
+                println!("✓ Production debug unlock token succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ Production debug unlock token failed: {:?}", e);
+                Err(anyhow::anyhow!(
+                    "Production debug unlock token command failed: {:?}",
+                    e
+                ))
             }
         }
     }

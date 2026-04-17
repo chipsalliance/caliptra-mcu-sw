@@ -12,15 +12,17 @@ pub struct UdpTransportDriver {
     server_addr: SocketAddr,
     buffer: Vec<u8>,
     connected: bool,
+    recv_timeout: Duration,
 }
 
 impl UdpTransportDriver {
-    pub fn new(server_addr: SocketAddr) -> Self {
+    pub fn new(server_addr: SocketAddr, recv_timeout: Duration) -> Self {
         Self {
             socket: None,
             server_addr,
             buffer: vec![0u8; UDP_DRV_BUF_SIZE],
             connected: false,
+            recv_timeout,
         }
     }
 }
@@ -66,9 +68,8 @@ impl MailboxDriver for UdpTransportDriver {
     fn connect(&mut self) -> Result<(), MailboxError> {
         let socket = UdpSocket::bind("0.0.0.0:0").map_err(|_| MailboxError::CommunicationError)?;
 
-        // Set a timeout for receive operations (5 seconds)
         socket
-            .set_read_timeout(Some(Duration::from_secs(5)))
+            .set_read_timeout(Some(self.recv_timeout))
             .map_err(|_| MailboxError::CommunicationError)?;
 
         self.socket = Some(socket);

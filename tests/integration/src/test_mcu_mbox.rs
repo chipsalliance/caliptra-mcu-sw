@@ -93,6 +93,7 @@ pub mod test {
             VENDOR_MLDSA_KEY_0_PUBLIC,
         };
         use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, ECC384_SCALAR_WORD_SIZE};
+        use caliptra_mcu_debug_unlock_signer::{DebugUnlockKeys, LocalDebugUnlockSigner};
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, Ordering::Relaxed);
@@ -120,24 +121,27 @@ pub mod test {
         let mut prod_dbg_keypairs: Vec<([u8; 96], [u8; 2592])> = vec![([0u8; 96], [0u8; 2592]); 8];
         prod_dbg_keypairs[(unlock_level - 1) as usize] = (ecc_pub_key_bytes, mldsa_pub_key_bytes);
 
-        // Prepare ECC private key for signing
+        // Prepare ECC private key bytes (big-endian)
         let mut be_ecc_priv_key_bytes = [0u8; ECC384_SCALAR_BYTE_SIZE];
         for (i, word) in VENDOR_ECC_KEY_0_PRIVATE.iter().enumerate() {
             be_ecc_priv_key_bytes[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
         }
-        let ecc_private_key = p384::SecretKey::from_slice(&be_ecc_priv_key_bytes)
-            .expect("Unable to load ECC P384 private key");
 
-        // Prepare MLDSA private key for signing
+        // Prepare MLDSA private key bytes
         let mldsa_priv_key_bytes: [u8; caliptra_image_types::MLDSA87_PRIV_KEY_BYTE_SIZE] =
             VENDOR_MLDSA_KEY_0_PRIVATE
                 .0
                 .as_bytes()
                 .try_into()
                 .expect("Invalid MLDSA private key size");
-        let mldsa_private_key =
-            fips204::ml_dsa_87::PrivateKey::try_from_bytes(mldsa_priv_key_bytes)
-                .expect("Unable to load ML-DSA-87 private key");
+
+        // Build a LocalDebugUnlockSigner from the keys
+        let signer = LocalDebugUnlockSigner::new(DebugUnlockKeys {
+            ecc_private_key_bytes: be_ecc_priv_key_bytes,
+            ecc_public_key: ecc_pub_key_u32,
+            mldsa_private_key_bytes: mldsa_priv_key_bytes.to_vec(),
+            mldsa_public_key: <[u32; 648]>::try_from(mldsa_pub_key_u32.as_slice()).unwrap(),
+        });
 
         let feature = "test-mcu-mbox-cmds";
         let mut hw = start_runtime_hw_model(TestParams {
@@ -176,13 +180,7 @@ pub mod test {
             let mut test = RequestResponseTest::new(mbox_transport);
 
             if test
-                .add_prod_debug_unlock_e2e_test(
-                    unlock_level,
-                    &ecc_private_key,
-                    &mldsa_private_key,
-                    &ecc_pub_key_u32,
-                    <&[u32; 648]>::try_from(mldsa_pub_key_u32.as_slice()).unwrap(),
-                )
+                .add_prod_debug_unlock_e2e_test(unlock_level, &signer)
                 .is_err()
             {
                 println!("Failed");
@@ -2536,10 +2534,7 @@ pub mod test {
         fn add_prod_debug_unlock_e2e_test(
             &mut self,
             unlock_level: u8,
-            ecc_private_key: &p384::SecretKey,
-            mldsa_private_key: &fips204::ml_dsa_87::PrivateKey,
-            ecc_public_key: &[u32; 24],
-            mldsa_public_key: &[u32; 648],
+            signer: &dyn caliptra_mcu_debug_unlock_signer::DebugUnlockSigner,
         ) -> Result<(), ()> {
             println!("Running production debug unlock end-to-end test");
 
@@ -2586,22 +2581,34 @@ pub mod test {
                 challenge.challenge.len()
             );
 
-            // Step 3: Generate the signed token using the helper
+            // Step 3: Sign the token using the provided signer
             println!("  Generating signed token...");
-            let token = caliptra_mcu_hw_model::debug_unlock::prod_debug_unlock_gen_signed_token(
-                &challenge,
-                unlock_level,
-                ecc_private_key,
-                mldsa_private_key,
-                ecc_public_key,
-                mldsa_public_key,
-            )
-            .map_err(|e| {
-                println!("    Failed to generate signed token: {:?}", e);
-            })?;
+            let signer_challenge = caliptra_mcu_debug_unlock_signer::ProdDebugUnlockChallenge {
+                unique_device_identifier: challenge.unique_device_identifier,
+                challenge: challenge.challenge,
+            };
+            let signed_token = signer
+                .sign_debug_unlock_token(&signer_challenge, unlock_level)
+                .map_err(|e| {
+                    println!("    Failed to sign token: {:?}", e);
+                })?;
             println!("  Token generated and signed");
 
-            // Step 4: Send the signed token
+            // Step 4: Convert ProdDebugUnlockToken to ProductionAuthDebugUnlockToken
+            let token = ProductionAuthDebugUnlockToken {
+                hdr: Default::default(),
+                length: signed_token.length,
+                unique_device_identifier: signed_token.unique_device_identifier,
+                unlock_level: signed_token.unlock_level,
+                reserved: signed_token.reserved,
+                challenge: signed_token.challenge,
+                ecc_public_key: signed_token.ecc_public_key,
+                mldsa_public_key: signed_token.mldsa_public_key,
+                ecc_signature: signed_token.ecc_signature,
+                mldsa_signature: signed_token.mldsa_signature,
+            };
+
+            // Step 5: Send the signed token
             println!("  Sending signed token...");
             let mut token_req =
                 McuMailboxReq::ProdDebugUnlockToken(McuProdDebugUnlockTokenReq(token));
