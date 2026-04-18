@@ -14,33 +14,17 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
-#[cfg(any(
-    not(feature = "test-force-hitless-update"),
-    all(target_arch = "riscv32", feature = "fw-manifest-dot")
-))]
-use crate::fatal_error;
-#[cfg(target_arch = "riscv32")]
-use crate::MCU_MEMORY_MAP;
-use crate::{BootFlow, RomEnv, RomParameters};
-#[cfg(not(feature = "test-force-hitless-update"))]
-use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
-use core::fmt::Write;
-#[cfg(not(feature = "test-force-hitless-update"))]
-use mcu_error::McuError;
-#[cfg(any(
-    all(target_arch = "riscv32", feature = "fw-manifest-dot"),
-    not(feature = "test-force-hitless-update")
-))]
-use romtime::HexWord;
-#[cfg(target_arch = "riscv32")]
-use romtime::McuBootMilestones;
-#[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
-use romtime::McuRomBootStatus;
-#[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
-use zerocopy::FromBytes;
-
 #[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
 use crate::device_ownership_transfer;
+#[cfg(target_arch = "riscv32")]
+use crate::MCU_MEMORY_MAP;
+use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
+use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
+use core::fmt::Write;
+use mcu_error::McuError;
+use romtime::HexWord;
+#[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
+use zerocopy::FromBytes;
 
 pub struct FwHitlessUpdate {}
 
@@ -53,7 +37,10 @@ impl BootFlow for FwHitlessUpdate {
         let soc_manager = &mut env.soc_manager;
         let soc = &env.soc;
 
-        // Release mailbox from activate command before device reboot
+        // Release mailbox from activate command before device reboot.
+        // Skipped under the test-force-hitless-update integration test, which
+        // synthesizes the hitless reset without going through the usual
+        // PLDM activate flow, so the mailbox is not in the expected state.
         #[cfg(not(feature = "test-force-hitless-update"))]
         if let Err(err) = soc_manager.finish_mailbox_resp(
             core::mem::size_of::<MailboxRespHeader>(),
@@ -112,7 +99,7 @@ impl BootFlow for FwHitlessUpdate {
                         firmware_offset += manifest_size as u32;
 
                         env.mci.set_flow_checkpoint(
-                            McuRomBootStatus::FwManifestDotProcessingStarted.into(),
+                            romtime::McuRomBootStatus::FwManifestDotProcessingStarted.into(),
                         );
                         if let Err(err) =
                             device_ownership_transfer::process_fw_manifest_dot_commands(
@@ -128,14 +115,14 @@ impl BootFlow for FwHitlessUpdate {
                             fatal_error(err);
                         }
                         env.mci.set_flow_checkpoint(
-                            McuRomBootStatus::FwManifestDotProcessingComplete.into(),
+                            romtime::McuRomBootStatus::FwManifestDotProcessingComplete.into(),
                         );
                     }
                 }
             }
 
             env.mci
-                .set_flow_milestone(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
+                .set_flow_milestone(romtime::McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
 
             let firmware_entry = MCU_MEMORY_MAP.sram_offset + firmware_offset;
             core::arch::asm!(

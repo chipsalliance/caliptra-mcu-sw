@@ -54,6 +54,15 @@ default-filter = """
 (package(tests-integration) and test(test_mcu_mbox_fips_periodic)) |
 (package(tests-integration) and test(test_i3c_constant_writes)) |
 (package(tests-integration) and test(test_i3c_simple)) |
+(package(tests-integration) and test(test_i3c_services_ping)) |
+(package(tests-integration) and test(test_i3c_services_unknown_cmd)) |
+(package(tests-integration) and test(test_i3c_services_dot_status)) |
+(package(tests-integration) and test(test_i3c_services_dot_recovery_invalid_payload)) |
+(package(tests-integration) and test(test_i3c_services_dot_unlock_challenge)) |
+(package(tests-integration) and test(test_i3c_services_dot_override_without_challenge)) |
+(package(tests-integration) and test(test_i3c_services_error_mid_packet_then_recover)) |
+(package(tests-integration) and test(test_i3c_services_dot_error_then_continue)) |
+(package(tests-integration) and test(test_i3c_services_dot_override_full_flow)) |
 (package(tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(tests-integration) and test(test_sw_digest_lock)) |
 (package(tests-integration) and test(test_otp_blank_check))

@@ -197,12 +197,10 @@ pub extern "C" fn rom_entry() -> ! {
 
     #[cfg(feature = "ocp-lock")]
     impl romtime::ocp_lock::Platform for EmulatorOcpPlatform {
-        // This sample implementation hard codes 8 slots.
         fn get_total_slots(&self) -> usize {
             8
         }
 
-        // Sample only supports a subset of `HekSeedState`
         fn get_slot_state(
             &mut self,
             otp: &romtime::otp::Otp,
@@ -246,8 +244,6 @@ pub extern "C" fn rom_entry() -> ! {
             Ok(romtime::ocp_lock::HekSeedState::Programmed)
         }
 
-        // Simple algorithm to determine the active slot.
-        // Returns the first programmed.
         fn get_active_slot(
             &mut self,
             otp: &romtime::otp::Otp,
@@ -255,8 +251,6 @@ pub extern "C" fn rom_entry() -> ! {
             seeds: &romtime::ocp_lock::HekSeeds,
         ) -> Result<usize, romtime::ocp_lock::Error> {
             if *perma_bit == romtime::ocp_lock::PermaBitStatus::Set {
-                // If the permanent bit is set, OCP LOCK spec says the active HEK is fixed.
-                // For this emulator, we'll return the last slot.
                 return Ok(self.get_total_slots() - 1);
             }
 
@@ -282,8 +276,6 @@ pub extern "C" fn rom_entry() -> ! {
         platform: Some(&mut ocp_platform),
         ..Default::default()
     };
-
-    let hooks = LoggingRomHooks;
 
     if cfg!(feature = "test-flash-based-boot") {
         // Initialize the flash controller for testing purposes
@@ -351,6 +343,8 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
+            #[cfg(feature = "ocp-lock")]
+            ocp_lock_config,
             ..Default::default()
         });
     } else if cfg!(any(
@@ -371,6 +365,8 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
+            #[cfg(feature = "ocp-lock")]
+            ocp_lock_config,
             ..Default::default()
         };
         mcu_rom_common::rom_start(rom_parameters);
@@ -389,97 +385,109 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
-            ..Default::default()
-        });
-    } else if cfg!(feature = "test-usb-ocp-recovery") {
-        use mcu_usb_emulator::ExamplarUsbDriver;
-        use ocp::cms::slice_fifo::SliceFifoRegion;
-        use ocp::cms::slice_indirect::SliceIndirectRegion;
-        use ocp::cms::{FifoCmsRegion, IndirectCmsRegion};
-        use ocp::interface::{RecoveryDeviceConfig, RecoveryStateMachine};
-        use ocp::protocol::device_id::{DeviceDescriptor, DeviceId, PciVendorDescriptor};
-        use ocp::protocol::indirect_fifo_status::FifoCmsRegionType;
-        use ocp::protocol::indirect_status::CmsRegionType;
-        use ocp::vendor::NoopVendorHandler;
-        use registers_generated::usbdev;
-
-        romtime::println!("[mcu-rom] USB OCP Recovery boot path");
-
-        let usb_regs =
-            unsafe { romtime::StaticRef::new(usbdev::USBDEV_ADDR as *const usbdev::regs::Usbdev) };
-        let mut usb_driver = ExamplarUsbDriver::new(usb_regs);
-
-        // CMS 0: Indirect CodeSpace backed by MCI staging SRAM (required by spec).
-        // Safety: This boot path is mutually exclusive with other features via
-        // cfg, so no other component uses the staging SRAM concurrently.
-        let indirect_buf = unsafe {
-            core::slice::from_raw_parts_mut(
-                MCU_MEMORY_MAP.staging_sram_offset as *mut u8,
-                MCU_MEMORY_MAP.staging_sram_size as usize,
-            )
-        };
-
-        fn ocp_setup_failed() -> ! {
-            fatal_error(mcu_error::McuError::ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR);
-        }
-        let mut indirect = SliceIndirectRegion::new(indirect_buf, CmsRegionType::CodeSpace)
-            .ok()
-            .unwrap_or_else(|| ocp_setup_failed());
-        let mut indirect_regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut indirect)];
-
-        // CMS 1: FIFO CodeSpace for streaming recovery data.
-        let mut fifo_buf = [0u8; 4096];
-        let mut fifo = SliceFifoRegion::new(&mut fifo_buf, FifoCmsRegionType::CodeSpace, 256)
-            .ok()
-            .unwrap_or_else(|| ocp_setup_failed());
-        let mut fifo_regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(1, &mut fifo)];
-
-        let desc = DeviceDescriptor::PciVendor(PciVendorDescriptor::new(0x1209, 0x0001, 0, 0, 0));
-        let config = RecoveryDeviceConfig {
-            device_id: DeviceId::new(desc, &[])
-                .ok()
-                .unwrap_or_else(|| ocp_setup_failed()),
-            major_version: 1,
-            minor_version: 1,
-            max_response_time: 17,
-            heartbeat_period: 0,
-            local_c_image_support: false,
-        };
-
-        let sm = RecoveryStateMachine::new(
-            config,
-            &mut usb_driver,
-            &mut indirect_regions,
-            &mut fifo_regions,
-            NoopVendorHandler,
-        )
-        .ok()
-        .unwrap_or_else(|| ocp_setup_failed());
-
-        use mcu_rom_common::recovery::ocp::OcpImageProvider;
-        use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
-
-        let mut ocp_provider = OcpImageProvider::new(sm);
-        let mut entries = [ImageProviderEntry {
-            provider: &mut ocp_provider,
-            policy: ErrorPolicy::RetryForever,
-        }];
-        let manager = ImageProviderManager::new(&mut entries);
-
-        mcu_rom_common::rom_start(RomParameters {
-            image_provider_manager: Some(manager),
-            dot_flash: Some(dot_flash),
-            cptra_mbox_axi_users: mbox_axi_users,
-            cptra_fuse_axi_user: axi_user0,
-            cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
-            mci_mbox0_axi_users: mbox_axi_users,
-            mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
             ocp_lock_config,
             ..Default::default()
         });
-    } else if cfg!(feature = "hw-2-1") {
+    } else if cfg!(feature = "test-usb-ocp-recovery") {
+        #[cfg(feature = "test-usb-ocp-recovery")]
+        {
+            use mcu_usb_emulator::ExamplarUsbDriver;
+            use ocp::cms::slice_fifo::SliceFifoRegion;
+            use ocp::cms::slice_indirect::SliceIndirectRegion;
+            use ocp::cms::{FifoCmsRegion, IndirectCmsRegion};
+            use ocp::interface::{RecoveryDeviceConfig, RecoveryStateMachine};
+            use ocp::protocol::device_id::{DeviceDescriptor, DeviceId, PciVendorDescriptor};
+            use ocp::protocol::indirect_fifo_status::FifoCmsRegionType;
+            use ocp::protocol::indirect_status::CmsRegionType;
+            use ocp::vendor::NoopVendorHandler;
+            use registers_generated::usbdev;
+
+            romtime::println!("[mcu-rom] USB OCP Recovery boot path");
+
+            let usb_regs = unsafe {
+                romtime::StaticRef::new(usbdev::USBDEV_ADDR as *const usbdev::regs::Usbdev)
+            };
+            let mut usb_driver = ExamplarUsbDriver::new(usb_regs);
+
+            // CMS 0: Indirect CodeSpace backed by MCI staging SRAM (required by spec).
+            let indirect_buf = unsafe {
+                core::slice::from_raw_parts_mut(
+                    MCU_MEMORY_MAP.staging_sram_offset as *mut u8,
+                    MCU_MEMORY_MAP.staging_sram_size as usize,
+                )
+            };
+
+            fn ocp_setup_failed() -> ! {
+                fatal_error(mcu_error::McuError::ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR);
+            }
+            let mut indirect = SliceIndirectRegion::new(indirect_buf, CmsRegionType::CodeSpace)
+                .ok()
+                .unwrap_or_else(|| ocp_setup_failed());
+            let mut indirect_regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut indirect)];
+
+            // CMS 1: FIFO CodeSpace for streaming recovery data.
+            let mut fifo_buf = [0u8; 4096];
+            let mut fifo = SliceFifoRegion::new(&mut fifo_buf, FifoCmsRegionType::CodeSpace, 256)
+                .ok()
+                .unwrap_or_else(|| ocp_setup_failed());
+            let mut fifo_regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(1, &mut fifo)];
+
+            let desc =
+                DeviceDescriptor::PciVendor(PciVendorDescriptor::new(0x1209, 0x0001, 0, 0, 0));
+            let config = RecoveryDeviceConfig {
+                device_id: DeviceId::new(desc, &[])
+                    .ok()
+                    .unwrap_or_else(|| ocp_setup_failed()),
+                major_version: 1,
+                minor_version: 1,
+                max_response_time: 17,
+                heartbeat_period: 0,
+                local_c_image_support: false,
+            };
+
+            let sm = RecoveryStateMachine::new(
+                config,
+                &mut usb_driver,
+                &mut indirect_regions,
+                &mut fifo_regions,
+                NoopVendorHandler,
+            )
+            .ok()
+            .unwrap_or_else(|| ocp_setup_failed());
+
+            use mcu_rom_common::recovery::ocp::OcpImageProvider;
+            use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
+
+            let mut ocp_provider = OcpImageProvider::new(sm);
+            let mut entries = [ImageProviderEntry {
+                provider: &mut ocp_provider,
+                policy: ErrorPolicy::RetryForever,
+            }];
+            let manager = ImageProviderManager::new(&mut entries);
+
+            mcu_rom_common::rom_start(RomParameters {
+                image_provider_manager: Some(manager),
+                dot_flash: Some(dot_flash),
+                cptra_mbox_axi_users: mbox_axi_users,
+                cptra_fuse_axi_user: axi_user0,
+                cptra_trng_axi_user: axi_user0,
+                cptra_dma_axi_user: axi_user0,
+                mci_mbox0_axi_users: mbox_axi_users,
+                mci_mbox1_axi_users: mbox_axi_users,
+                #[cfg(feature = "ocp-lock")]
+                ocp_lock_config,
+                ..Default::default()
+            });
+        }
+    } else if cfg!(feature = "hw-2-1")
+        && !cfg!(any(
+            feature = "test-dot-recovery",
+            feature = "test-i3c-services",
+            feature = "test-rom-hooks",
+            feature = "test-usb-ocp-recovery",
+        ))
+    {
         // Simple flash-based boot for hw-2-1 without partition tables.
         // Uses flash image starting at offset 0.
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
@@ -494,31 +502,6 @@ pub extern "C" fn rom_entry() -> ! {
         .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionDriver.into()));
 
         romtime::println!("[mcu-rom] Booting from flash");
-
-        // Read backup blob from DOT flash region for test-dot-recovery feature
-        let recovery_backup_blob = {
-            const RECOVERY_BLOB_OFFSET: usize = 2048;
-            let mut blob = [0u8; DOT_BLOB_SIZE];
-            let mut i = 0;
-            while i < blob.len() {
-                blob[i] = unsafe { *EMULATOR_DOT_FLASH_ADDR.add(RECOVERY_BLOB_OFFSET + i) };
-                i += 1;
-            }
-            blob
-        };
-        let recovery_handler = TestDotRecoveryHandler {
-            blob: recovery_backup_blob,
-        };
-
-        // Create MCI mbox0 challenge/response transport for DOT recovery.
-        let challenge_transport = {
-            let mci_base: romtime::StaticRef<registers_generated::mci::regs::Mci> = unsafe {
-                romtime::StaticRef::new(
-                    MCU_MEMORY_MAP.mci_offset as *const registers_generated::mci::regs::Mci,
-                )
-            };
-            mcu_rom_common::Mbox0RecoveryTransport::new(mci_base)
-        };
 
         use mcu_rom_common::recovery::flash::FlashImageProvider;
         use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
@@ -543,27 +526,6 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
             ocp_lock_config,
-            dot_recovery_handler: if cfg!(feature = "test-dot-recovery") {
-                Some(&recovery_handler)
-            } else {
-                None
-            },
-            dot_recovery_transport: if cfg!(feature = "test-dot-recovery") {
-                Some(&challenge_transport)
-            } else {
-                None
-            },
-            i3c_services: if cfg!(feature = "test-i3c-services") {
-                Some(mcu_rom_common::I3cServicesModes::DOT_RECOVERY)
-            } else {
-                None
-            },
-            force_i3c_services: cfg!(feature = "test-i3c-services"),
-            hooks: if cfg!(feature = "test-rom-hooks") {
-                Some(&hooks)
-            } else {
-                None
-            },
             ..Default::default()
         });
     } else {
@@ -578,18 +540,28 @@ pub extern "C" fn rom_entry() -> ! {
             }
             blob
         };
-        let recovery_handler = TestDotRecoveryHandler {
-            blob: recovery_backup_blob,
+
+        // Store recovery handler and transport in statics so the
+        // DotLockedRecoveryHandler wrappers can reference them with
+        // 'static lifetime.
+        static mut RECOVERY_HANDLER: core::mem::MaybeUninit<TestDotRecoveryHandler> =
+            core::mem::MaybeUninit::uninit();
+        let recovery_handler = unsafe {
+            RECOVERY_HANDLER.write(TestDotRecoveryHandler {
+                blob: recovery_backup_blob,
+            })
         };
 
-        // Create MCI mbox0 transport for DOT recovery/override.
-        let recovery_transport = {
-            let mci_base: romtime::StaticRef<registers_generated::mci::regs::Mci> = unsafe {
-                romtime::StaticRef::new(
-                    MCU_MEMORY_MAP.mci_offset as *const registers_generated::mci::regs::Mci,
-                )
-            };
-            mcu_rom_common::Mbox0RecoveryTransport::new(mci_base)
+        let mci_base: romtime::StaticRef<registers_generated::mci::regs::Mci> = unsafe {
+            romtime::StaticRef::new(
+                MCU_MEMORY_MAP.mci_offset as *const registers_generated::mci::regs::Mci,
+            )
+        };
+        static mut RECOVERY_TRANSPORT: core::mem::MaybeUninit<
+            mcu_rom_common::Mbox0RecoveryTransport,
+        > = core::mem::MaybeUninit::uninit();
+        let recovery_transport = unsafe {
+            RECOVERY_TRANSPORT.write(mcu_rom_common::Mbox0RecoveryTransport::new(mci_base))
         };
 
         let hooks = LoggingRomHooks;
@@ -602,15 +574,13 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
-            #[cfg(feature = "ocp-lock")]
-            ocp_lock_config,
             dot_recovery_handler: if cfg!(feature = "test-dot-recovery") {
-                Some(&recovery_handler)
+                Some(&*recovery_handler)
             } else {
                 None
             },
             dot_recovery_transport: if cfg!(feature = "test-dot-recovery") {
-                Some(&recovery_transport)
+                Some(&*recovery_transport)
             } else {
                 None
             },
@@ -625,6 +595,73 @@ pub extern "C" fn rom_entry() -> ! {
             } else {
                 None
             },
+            dot_locked_recovery_handlers: if cfg!(feature = "test-dot-recovery") {
+                static mut BLOB_HANDLER: core::mem::MaybeUninit<
+                    mcu_rom_common::BackupBlobRecoveryHandler<'static>,
+                > = core::mem::MaybeUninit::uninit();
+                let blob_h = unsafe {
+                    BLOB_HANDLER.write(mcu_rom_common::BackupBlobRecoveryHandler {
+                        recovery_handler: &*recovery_handler,
+                    })
+                };
+                static mut OVERRIDE_HANDLER: core::mem::MaybeUninit<
+                    mcu_rom_common::OverrideChallengeRecoveryHandler<'static>,
+                > = core::mem::MaybeUninit::uninit();
+                let override_h = unsafe {
+                    OVERRIDE_HANDLER.write(mcu_rom_common::OverrideChallengeRecoveryHandler {
+                        transport: &*recovery_transport,
+                        wdt_timeout: 0,
+                    })
+                };
+                static mut HANDLER_ENTRIES: core::mem::MaybeUninit<
+                    [mcu_rom_common::DotLockedRecoveryEntry<'static>; 2],
+                > = core::mem::MaybeUninit::uninit();
+                unsafe {
+                    HANDLER_ENTRIES
+                        .write([
+                            mcu_rom_common::DotLockedRecoveryEntry {
+                                handler: blob_h,
+                                policy: mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
+                            },
+                            mcu_rom_common::DotLockedRecoveryEntry {
+                                handler: override_h,
+                                policy: mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
+                            },
+                        ])
+                        .as_slice()
+                }
+            } else if cfg!(feature = "test-i3c-services") {
+                let i3c_base = unsafe {
+                    romtime::StaticRef::new(
+                        MCU_MEMORY_MAP.i3c_offset as *const registers_generated::i3c::regs::I3c,
+                    )
+                };
+                static mut I3C_HANDLER: core::mem::MaybeUninit<
+                    mcu_rom_common::I3cDotLockedRecoveryHandler,
+                > = core::mem::MaybeUninit::uninit();
+                let handler = unsafe {
+                    I3C_HANDLER.write(mcu_rom_common::I3cDotLockedRecoveryHandler {
+                        i3c_base,
+                        services: mcu_rom_common::I3cServicesModes::DOT_RECOVERY,
+                        i3c_target_addr: 0x5a,
+                    })
+                };
+                static mut HANDLER_ENTRIES: core::mem::MaybeUninit<
+                    [mcu_rom_common::DotLockedRecoveryEntry<'static>; 1],
+                > = core::mem::MaybeUninit::uninit();
+                unsafe {
+                    HANDLER_ENTRIES
+                        .write([mcu_rom_common::DotLockedRecoveryEntry {
+                            handler,
+                            policy: mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
+                        }])
+                        .as_slice()
+                }
+            } else {
+                &[]
+            },
+            #[cfg(feature = "ocp-lock")]
+            ocp_lock_config,
             ..Default::default()
         });
     }

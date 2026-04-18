@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 
-use crate::flash::flash_drv::{FpgaFlashCtrl, PRIMARY_FLASH_CTRL_BASE};
+use crate::flash::flash_drv::{FpgaFlashCtrl, PRIMARY_FLASH_CTRL_BASE, SECONDARY_FLASH_CTRL_BASE};
 use crate::io::{print_to_console, EXITER, FATAL_ERROR_HANDLER, FPGA_WRITER};
 use core::fmt::Write;
 
@@ -21,10 +21,10 @@ core::arch::global_asm!(include_str!("start.s"));
 
 use mcu_config::{McuMemoryMap, McuStraps};
 use mcu_rom_common::flash::flash_partition::FlashPartition;
-use mcu_rom_common::recovery::flash::FlashImageProvider;
-use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
 use mcu_rom_common::{RomHooks, RomParameters};
-use romtime::{LifecycleControllerState, LifecycleHashedToken, LifecycleToken};
+use romtime::{
+    LifecycleControllerState, LifecycleHashedToken, LifecycleHashedTokens, LifecycleToken,
+};
 
 /// Example `RomHooks` implementation for the FPGA platform. Emits a
 /// distinctive tagged log line for each milestone and records which
@@ -179,7 +179,7 @@ pub extern "C" fn rom_entry() -> ! {
 
     // For now, we use the same tokens for all lifecycle transitions.
     let burn_lifecycle_tokens = if burn_tokens {
-        Some(romtime::LifecycleHashedTokens {
+        Some(LifecycleHashedTokens {
             test_unlock: [burn_hashed_token; 7],
             manuf: burn_hashed_token,
             manuf_to_prod: burn_hashed_token,
@@ -211,6 +211,13 @@ pub extern "C" fn rom_entry() -> ! {
     let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
 
     let hooks = LoggingRomHooks;
+
+    // DOT flash is backed by the secondary flash controller.
+    let secondary_flash_ctrl = FpgaFlashCtrl::initialize_flash_ctrl(SECONDARY_FLASH_CTRL_BASE);
+    let dot_flash: &dyn mcu_rom_common::hil::FlashStorage = &secondary_flash_ctrl;
+
+    use mcu_rom_common::recovery::flash::FlashImageProvider;
+    use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
 
     let mut flash_provider = FlashImageProvider::new(&mut flash_partition);
     let mut entries = [ImageProviderEntry {
@@ -334,6 +341,7 @@ pub extern "C" fn rom_entry() -> ! {
         otp_enable_integrity_check: true,
         otp_enable_consistency_check: true,
         image_provider_manager: Some(manager),
+        dot_flash: Some(dot_flash),
         cptra_mbox_axi_users: mbox_axi_users,
         cptra_fuse_axi_user: axi_user0,
         cptra_trng_axi_user: axi_user0,
