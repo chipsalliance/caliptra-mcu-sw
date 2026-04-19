@@ -38,7 +38,8 @@ jobs:
         id: sccache_bin_restore
         with:
           path: ~/.cargo/bin/sccache
-          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{
+            env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
 
       - name: Install sccache
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
@@ -130,7 +131,7 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
           CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
         run: |
-          cargo t -p tests-integration -- --test test_mctp_spdm_attestation --nocapture  --include-ignored
+          cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_attestation --nocapture  --include-ignored
 
       - name: Upload attestation logs
         if: always()

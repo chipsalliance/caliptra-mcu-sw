@@ -50,7 +50,8 @@ jobs:
         id: sccache_bin_restore
         with:
           path: ~/.cargo/bin/sccache
-          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{
+            env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
 
       - name: Install sccache
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
@@ -105,7 +106,7 @@ jobs:
           echo "SPDM_NONCE in MCTP stage: ${SPDM_NONCE}"
           echo "SPDM_NONCE length: ${#SPDM_NONCE}"
           cargo xtask all-build
-          cargo t -p tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
+          cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
       - name: Upload logs and traces for MCTP transport
@@ -151,7 +152,7 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
           cargo xtask all-build
-          cargo t -p tests-integration -- --test test_doe_spdm_responder_conformance --nocapture  --include-ignored
+          cargo t -p caliptra-mcu-tests-integration -- --test test_doe_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
       - name: Upload logs and traces for DOE transport
@@ -203,7 +204,7 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
         run: |
           cargo xtask all-build
-          cargo t -p tests-integration -- --test test_doe_spdm_tdisp_ide_validator --nocapture --include-ignored
+          cargo t -p caliptra-mcu-tests-integration -- --test test_doe_spdm_tdisp_ide_validator --nocapture --include-ignored
           sccache --show-stats
 
       - name: Display CCC spdm-requester-emu test results for TDISP+IDE
