@@ -33,6 +33,7 @@ members = [
     "hw/model/test-fw/mailbox-responder",
     "hw/model/test-fw/otp-blank-check",
     "hw/model/test-fw/otp-scramble-check",
+    "coverage",
     "hw/model/test-fw/sw-digest-lock",
     "hw/model/test-fw/usb-ocp-recovery",
     "hw/model/test-fw/usb-responder",
@@ -243,6 +244,7 @@ caliptra-mcu-config-fpga = { path = "platforms/fpga/config" }
 caliptra-mcu-error = { path = "error" }
 caliptra-mcu-firmware-bundler = { path = "firmware-bundler" }
 caliptra-mcu-fuses-generator = { path = "registers/fuses" }
+caliptra-mcu-coverage = { path = "coverage" }
 caliptra-mcu-hw-model = { path = "hw/model" }
 caliptra-mcu-test-fw-axi-bypass = { path = "hw/model/test-fw/axi-bypass" }
 caliptra-mcu-test-fw-exception-handler = { path = "hw/model/test-fw/exception-handler" }
