@@ -19,7 +19,7 @@ bindgen.workspace = true
 cc.workspace = true
 
 [features]
-default = ["alloc", "bitflags", "ipv4", "ipv6", "dhcp", "tftp"]
+default = ["alloc", "bitflags", "ipv4", "ipv6", "dhcp", "dhcp6", "tftp"]
 alloc = []
 ipv4 = []
 ipv6 = []

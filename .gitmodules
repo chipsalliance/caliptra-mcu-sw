@@ -4,4 +4,5 @@
 	branch = main
 [submodule "network/net/lwip"]
 	path = network/net/lwip
-	url = https://github.com/lwip-tcpip/lwip.git
+	url = https://github.com/chipsalliance/caliptra-lwip.git
+	branch = caliptra-main

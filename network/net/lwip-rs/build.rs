@@ -263,6 +263,10 @@ fn main() {
         bindgen_builder = bindgen_builder
             .allowlist_function("netif_create_ip6_linklocal_address")
             .allowlist_function("netif_ip6_addr_set_state")
+            .allowlist_function("dhcp6_enable_stateful")
+            .allowlist_function("dhcp6_enable_stateless")
+            .allowlist_function("dhcp6_set_struct")
+            .allowlist_function("dhcp6_disable")
             .allowlist_function("tftp_init_client")
             .allowlist_function("tftp_get")
             .allowlist_function("tftp_cleanup")
@@ -273,6 +277,7 @@ fn main() {
             .allowlist_function("ip6addr_aton")
             .allowlist_function("ethip6_output")
             .allowlist_type("ip6_addr.*")
+            .allowlist_type("dhcp6")
             .allowlist_type("tftp_context")
             .allowlist_var("IP6_ADDR_.*")
             .allowlist_var("LWIP_IPV6_NUM_ADDRESSES");

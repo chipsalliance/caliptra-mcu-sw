@@ -44,6 +44,9 @@ pub struct ServerOptions {
     pub dhcp6_prefix: String,
     /// DHCPv6 lease time
     pub dhcp6_lease_time: String,
+    /// DHCPv6 Boot File URL (Option 59, RFC 5970)
+    /// e.g. "tftp://[fd00:1234:5678::1]/boot.bin"
+    pub dhcp6_boot_file_url: Option<String>,
 
     // TFTP options
     /// Enable TFTP server
@@ -72,6 +75,7 @@ impl Default for ServerOptions {
             dhcp6_prefix_len: 64,
             dhcp6_prefix: "fd00:1234:5678::".to_string(),
             dhcp6_lease_time: "1h".to_string(),
+            dhcp6_boot_file_url: None,
 
             // TFTP defaults
             enable_tftp: true,
@@ -236,6 +240,10 @@ pub fn start(options: &ServerOptions) -> Result<()> {
             ));
         }
         args.push("--enable-ra".to_string());
+        // DHCPv6 Boot File URL (Option 59)
+        if let Some(ref url) = options.dhcp6_boot_file_url {
+            args.push(format!("--dhcp-option=option6:59,{}", url));
+        }
     }
 
     // TFTP options (if enabled)
