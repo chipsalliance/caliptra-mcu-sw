@@ -25,7 +25,7 @@ pub fn check_host_dependencies() -> Result<()> {
             "'rsync' not found on PATH. Please install rsync.",
         ),
         (
-            "cargo nextest --version",
+            "cargo-nextest --version",
             "'cargo-nextest' not found on PATH. Please install with `cargo install cargo-nextest`.",
         ),
     ];
