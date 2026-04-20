@@ -20,6 +20,10 @@ pub struct CaliptraSoC {
     soc_mbox_addr: *mut u32,
 }
 
+pub struct MailboxGuard {
+    soc: CaliptraSoC,
+}
+
 impl SocManager for CaliptraSoC {
     // we override the methods that use these
     const SOC_MBOX_ADDR: u32 = 0;
@@ -91,8 +95,14 @@ impl CaliptraSoC {
         }
     }
 
-    pub fn is_mailbox_busy(&mut self) -> bool {
-        self.soc_mbox().status().read().status().cmd_busy()
+    pub fn lock_mailbox(&mut self) -> core::result::Result<MailboxGuard, CaliptraApiError> {
+        // Read a 0 to get the lock
+        if self.soc_mbox().lock().read().lock() {
+            Err(CaliptraApiError::UnableToLockMailbox)
+        } else {
+            Ok(MailboxGuard { soc: self })
+
+        }
     }
 
     /// Send a command to the mailbox but don't wait for the response
@@ -101,14 +111,14 @@ impl CaliptraSoC {
         cmd: u32,
         len_bytes: usize,
         buf: impl Iterator<Item = u32>,
-    ) -> core::result::Result<(), CaliptraApiError> {
+    ) -> core::result::Result<MailboxGuard, CaliptraApiError> {
         if len_bytes > MAILBOX_SIZE {
             return Err(CaliptraApiError::BufferTooLargeForMailbox);
         }
 
-        self.lock_mailbox()?;
+        let mut mb_guard = self.lock_mailbox()?;
 
-        self.set_command(cmd, len_bytes)?;
+        mb_guard.set_command(cmd, len_bytes)?;
 
         for word in buf {
             self.soc_mbox().datain().write(|_| word);
@@ -117,32 +127,158 @@ impl CaliptraSoC {
         // Ask Caliptra to execute this command
         self.soc_mbox().execute().write(|w| w.execute(true));
 
-        Ok(())
+        Ok(mb_guard)
     }
 
     pub fn initiate_request(
         &mut self,
         cmd: u32,
         len_bytes: usize,
-    ) -> core::result::Result<(), CaliptraApiError> {
+    ) -> core::result::Result<MailboxGuard, CaliptraApiError> {
         if len_bytes > MAILBOX_SIZE {
             return Err(CaliptraApiError::BufferTooLargeForMailbox);
         }
 
-        self.lock_mailbox()?;
+        let mut mb_guard = self.lock_mailbox()?;
 
-        self.set_command(cmd, len_bytes)?;
+        mb_guard.set_command(cmd, len_bytes)?;
 
-        Ok(())
+        Ok(mb_guard)
     }
 
-    pub fn lock_mailbox(&mut self) -> core::result::Result<(), CaliptraApiError> {
-        // Read a 0 to get the lock
-        if self.soc_mbox().lock().read().lock() {
-            Err(CaliptraApiError::UnableToLockMailbox)
-        } else {
-            Ok(())
+    /// Executes a mailbox request assembled from a mutable header and
+    /// read-only `&[u32]` payload parts. The header's first word (the
+    /// [`MailboxReqHeader`] checksum) is computed automatically. The payload
+    /// parts are concatenated after the header in order.
+    ///
+    /// This avoids copying large buffers (e.g. MLDSA keys/signatures) onto the
+    /// stack — the caller can pass references to wherever the data already
+    /// lives (SRAM, flash, etc.).  All slices are `&[u32]` because the MCI
+    /// mailbox SRAM may not be byte-addressable.
+    pub fn exec_mailbox_req_u32_parts(
+        &mut self,
+        cmd: u32,
+        hdr: &mut [u32],
+        data_parts: &[&[u32]],
+        resp: &mut [u32],
+    ) -> core::result::Result<(), CaliptraApiError> {
+        if hdr.is_empty() {
+            return Err(CaliptraApiError::MailboxReqTypeTooSmall);
         }
+
+        // Compute total length in bytes.
+        let mut total_words: usize = hdr.len();
+        let mut pi = 0;
+        while pi < data_parts.len() {
+            total_words += data_parts[pi].len();
+            pi += 1;
+        }
+        let total_bytes = total_words * 4;
+
+        // Compute checksum: sum every byte of cmd and all payload bytes
+        // (everything after the 4-byte MailboxReqHeader checksum field).
+        // We sum by decomposing u32 words into their LE bytes.
+        fn sum_word_bytes(word: u32) -> u32 {
+            let b = word.to_le_bytes();
+            (b[0] as u32)
+                .wrapping_add(b[1] as u32)
+                .wrapping_add(b[2] as u32)
+                .wrapping_add(b[3] as u32)
+        }
+        let mut chksum = sum_word_bytes(cmd);
+        // Header: skip word 0 (the checksum slot)
+        let mut wi = 1;
+        while wi < hdr.len() {
+            chksum = chksum.wrapping_add(sum_word_bytes(hdr[wi]));
+            wi += 1;
+        }
+        // Data parts: sum all words
+        pi = 0;
+        while pi < data_parts.len() {
+            wi = 0;
+            while wi < data_parts[pi].len() {
+                chksum = chksum.wrapping_add(sum_word_bytes(data_parts[pi][wi]));
+                wi += 1;
+            }
+            pi += 1;
+        }
+        let chksum = 0u32.wrapping_sub(chksum);
+
+        // Write checksum into the header (first u32).
+        hdr[0] = chksum;
+
+        // Stream header + all data parts to the mailbox.
+        let iter = hdr
+            .iter()
+            .copied()
+            .chain(data_parts.iter().flat_map(|p| p.iter().copied()));
+        let mut mb_guard = self.start_mailbox_req(cmd, total_bytes, iter)?;
+        let resp_len_bytes = resp.len() * 4;
+        match mb_guard.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
+            Ok(Some(mut resp_iter)) => {
+                for (i, r) in resp_iter.by_ref().enumerate() {
+                    if i < resp.len() {
+                        resp[i] = r;
+                    }
+                }
+                resp_iter.verify_checksum()?;
+                Ok(())
+            }
+            Err(err) => Err(err),
+            _ => Err(CaliptraApiError::MailboxNoResponseData),
+        }
+    }
+
+    /// Executes a mailbox request that is represented as a u32 slice and
+    /// writing the response to a u32 slice.
+    /// This is useful for code size to avoid unaligned and byte-level access,
+    /// when possible.
+    pub fn exec_mailbox_req_u32(
+        &mut self,
+        cmd: u32,
+        req: &mut [u32],
+        resp: &mut [u32],
+    ) -> core::result::Result<(), CaliptraApiError> {
+        if req.len() * 4 < core::mem::size_of::<MailboxReqHeader>() {
+            return Err(CaliptraApiError::MailboxReqTypeTooSmall);
+        }
+
+        let (header_bytes, payload_bytes) = req
+            .as_mut_bytes()
+            .split_at_mut(core::mem::size_of::<MailboxReqHeader>());
+
+        let header = MailboxReqHeader::mut_from_bytes(header_bytes as &mut [u8]).unwrap();
+        header.chksum = calc_checksum(cmd, payload_bytes);
+
+        let mut mb_guard = self.start_mailbox_req(cmd, req.len() * 4, req.iter().copied())?;
+        let resp_len_bytes = resp.len() * 4;
+        match mb_guard.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
+            Ok(Some(mut resp_iter)) => {
+                for (i, r) in resp_iter.by_ref().enumerate() {
+                    if i < resp.len() {
+                        resp[i] = r;
+                    }
+                }
+                resp_iter.verify_checksum()?;
+                Ok(())
+            }
+            Err(err) => Err(err),
+            _ => Err(CaliptraApiError::MailboxNoResponseData),
+        }
+    }
+}
+
+impl MailboxGuard {
+
+    /// Maximum number of wait cycles.
+    const MAX_WAIT_CYCLES: u32 = 400_000;
+    
+    fn soc_mbox(&mut self) -> caliptra_registers::mbox::RegisterBlock<Self::TMmio<'_>> {
+        self.soc.soc_mbox()
+    }
+
+    pub fn is_mailbox_busy(&mut self) -> bool {
+        self.soc_mbox().status().read().status().cmd_busy()
     }
 
     pub fn set_command(
@@ -231,127 +367,6 @@ impl CaliptraSoC {
             checksum: 0,
             expected_checksum,
         }))
-    }
-
-    /// Executes a mailbox request assembled from a mutable header and
-    /// read-only `&[u32]` payload parts. The header's first word (the
-    /// [`MailboxReqHeader`] checksum) is computed automatically. The payload
-    /// parts are concatenated after the header in order.
-    ///
-    /// This avoids copying large buffers (e.g. MLDSA keys/signatures) onto the
-    /// stack — the caller can pass references to wherever the data already
-    /// lives (SRAM, flash, etc.).  All slices are `&[u32]` because the MCI
-    /// mailbox SRAM may not be byte-addressable.
-    pub fn exec_mailbox_req_u32_parts(
-        &mut self,
-        cmd: u32,
-        hdr: &mut [u32],
-        data_parts: &[&[u32]],
-        resp: &mut [u32],
-    ) -> core::result::Result<(), CaliptraApiError> {
-        if hdr.is_empty() {
-            return Err(CaliptraApiError::MailboxReqTypeTooSmall);
-        }
-
-        // Compute total length in bytes.
-        let mut total_words: usize = hdr.len();
-        let mut pi = 0;
-        while pi < data_parts.len() {
-            total_words += data_parts[pi].len();
-            pi += 1;
-        }
-        let total_bytes = total_words * 4;
-
-        // Compute checksum: sum every byte of cmd and all payload bytes
-        // (everything after the 4-byte MailboxReqHeader checksum field).
-        // We sum by decomposing u32 words into their LE bytes.
-        fn sum_word_bytes(word: u32) -> u32 {
-            let b = word.to_le_bytes();
-            (b[0] as u32)
-                .wrapping_add(b[1] as u32)
-                .wrapping_add(b[2] as u32)
-                .wrapping_add(b[3] as u32)
-        }
-        let mut chksum = sum_word_bytes(cmd);
-        // Header: skip word 0 (the checksum slot)
-        let mut wi = 1;
-        while wi < hdr.len() {
-            chksum = chksum.wrapping_add(sum_word_bytes(hdr[wi]));
-            wi += 1;
-        }
-        // Data parts: sum all words
-        pi = 0;
-        while pi < data_parts.len() {
-            wi = 0;
-            while wi < data_parts[pi].len() {
-                chksum = chksum.wrapping_add(sum_word_bytes(data_parts[pi][wi]));
-                wi += 1;
-            }
-            pi += 1;
-        }
-        let chksum = 0u32.wrapping_sub(chksum);
-
-        // Write checksum into the header (first u32).
-        hdr[0] = chksum;
-
-        // Stream header + all data parts to the mailbox.
-        let iter = hdr
-            .iter()
-            .copied()
-            .chain(data_parts.iter().flat_map(|p| p.iter().copied()));
-        self.start_mailbox_req(cmd, total_bytes, iter)?;
-        let resp_len_bytes = resp.len() * 4;
-        match self.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
-            Ok(Some(mut resp_iter)) => {
-                for (i, r) in resp_iter.by_ref().enumerate() {
-                    if i < resp.len() {
-                        resp[i] = r;
-                    }
-                }
-                resp_iter.verify_checksum()?;
-                Ok(())
-            }
-            Err(err) => Err(err),
-            _ => Err(CaliptraApiError::MailboxNoResponseData),
-        }
-    }
-
-    /// Executes a mailbox request that is represented as a u32 slice and
-    /// writing the response to a u32 slice.
-    /// This is useful for code size to avoid unaligned and byte-level access,
-    /// when possible.
-    pub fn exec_mailbox_req_u32(
-        &mut self,
-        cmd: u32,
-        req: &mut [u32],
-        resp: &mut [u32],
-    ) -> core::result::Result<(), CaliptraApiError> {
-        if req.len() * 4 < core::mem::size_of::<MailboxReqHeader>() {
-            return Err(CaliptraApiError::MailboxReqTypeTooSmall);
-        }
-
-        let (header_bytes, payload_bytes) = req
-            .as_mut_bytes()
-            .split_at_mut(core::mem::size_of::<MailboxReqHeader>());
-
-        let header = MailboxReqHeader::mut_from_bytes(header_bytes as &mut [u8]).unwrap();
-        header.chksum = calc_checksum(cmd, payload_bytes);
-
-        self.start_mailbox_req(cmd, req.len() * 4, req.iter().copied())?;
-        let resp_len_bytes = resp.len() * 4;
-        match self.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
-            Ok(Some(mut resp_iter)) => {
-                for (i, r) in resp_iter.by_ref().enumerate() {
-                    if i < resp.len() {
-                        resp[i] = r;
-                    }
-                }
-                resp_iter.verify_checksum()?;
-                Ok(())
-            }
-            Err(err) => Err(err),
-            _ => Err(CaliptraApiError::MailboxNoResponseData),
-        }
     }
 }
 
