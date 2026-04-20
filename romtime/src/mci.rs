@@ -5,6 +5,13 @@ use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_registers_generated::mci::bits::ResetRequest;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
+/// Offset of `mci_reg_prod_debug_unlock_pk_hash_reg` within the MCI register
+/// bank. This value is programmed into
+/// `SS_PROD_DEBUG_UNLOCK_AUTH_PK_HASH_REG_BANK_OFFSET` so Caliptra ROM can
+/// locate the PK hashes via AXI at `MCI_BASE + offset + (level - 1) * 48`.
+pub const MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG_BANK_OFFSET: u32 =
+    core::mem::offset_of!(mci::regs::Mci, mci_reg_prod_debug_unlock_pk_hash_reg) as u32;
+
 /// MCU Reset Reason
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum McuResetReason {

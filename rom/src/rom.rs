@@ -364,6 +364,26 @@ impl Soc {
         mci.registers.mci_reg_soc_prod_debug_state[0].set(0x000000FF);
         mci.registers.mci_reg_soc_prod_debug_state[1].set(0x00000000);
 
+        // Tell Caliptra where to find the prod debug unlock PK hashes and how
+        // many are valid. The offset is the address of
+        // `mci_reg_prod_debug_unlock_pk_hash_reg` within the MCI register
+        // bank; Caliptra reads `MCI_BASE + offset + (level - 1) * 48` during
+        // prod debug unlock authentication.
+        let num_pk_hashes = params
+            .prod_debug_unlock_auth_pk_hash_count
+            .unwrap_or(PROD_DEBUG_UNLOCK_PK_ENTRIES.len() as u32);
+        caliptra_mcu_romtime::println!(
+            "[mcu-fuse-write] Setting prod debug unlock PK hash bank offset to {:x}, count {}",
+            caliptra_mcu_romtime::MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG_BANK_OFFSET,
+            num_pk_hashes
+        );
+        self.registers
+            .ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset
+            .set(caliptra_mcu_romtime::MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG_BANK_OFFSET);
+        self.registers
+            .ss_num_of_prod_debug_unlock_auth_pk_hashes
+            .set(num_pk_hashes);
+
         // return pk hash index so we can lock it once it's verified
         pk_hash_idx
     }
@@ -783,6 +803,13 @@ pub struct RomParameters<'a> {
     /// Optional callbacks invoked at major ROM milestones. See
     /// [`RomHooks`](crate::RomHooks) for the full list of hook points.
     pub hooks: Option<&'a dyn crate::RomHooks>,
+    /// Number of production debug unlock authentication public key hashes
+    /// programmed into the MCI PK hash register bank. The ROM writes this
+    /// value to `SS_NUM_OF_PROD_DEBUG_UNLOCK_AUTH_PK_HASHES` so Caliptra knows
+    /// how many hashes are available for prod debug unlock. When `None`, the
+    /// ROM uses the reference fuse map count (number of entries in
+    /// `PROD_DEBUG_UNLOCK_PK_ENTRIES`).
+    pub prod_debug_unlock_auth_pk_hash_count: Option<u32>,
 }
 
 #[inline(always)]

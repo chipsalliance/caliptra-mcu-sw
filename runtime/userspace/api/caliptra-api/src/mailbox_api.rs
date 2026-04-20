@@ -41,8 +41,12 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 use core::mem::size_of;
 use dpe::context::ContextHandle;
 use dpe::response::{GetCertificateChainResp, ResponseHdr};
-use dpe::DPE_PROFILE;
+use dpe::DpeProfile;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+
+/// DPE profile used by this runtime. The `p384` feature on the `dpe` crate
+/// selects the P-384 profile.
+pub(crate) const DPE_PROFILE: DpeProfile = DpeProfile::P384Sha384;
 
 pub const MAX_CRYPTO_MBOX_DATA_SIZE: usize = 1024;
 pub const MAX_CERT_CHUNK_SIZE: usize = 1024;
@@ -120,15 +124,15 @@ impl Default for RandomGenerateResp {
     PartialEq,
     Eq,
     zerocopy::IntoBytes,
-    zerocopy::FromBytes,
+    zerocopy::TryFromBytes,
     zerocopy::Immutable,
     zerocopy::KnownLayout,
 )]
 pub(crate) struct CertifyKeyRespHdr {
     pub resp_hdr: ResponseHdr,
     pub new_context_handle: ContextHandle,
-    pub derived_pubkey_x: [u8; DPE_PROFILE.get_ecc_int_size()],
-    pub derived_pubkey_y: [u8; DPE_PROFILE.get_ecc_int_size()],
+    pub derived_pubkey_x: [u8; DPE_PROFILE.ecc_int_size()],
+    pub derived_pubkey_y: [u8; DPE_PROFILE.ecc_int_size()],
     pub cert_size: u32,
 }
 
@@ -137,7 +141,7 @@ pub(crate) struct CertifyKeyRespHdr {
     Debug,
     PartialEq,
     Eq,
-    zerocopy::FromBytes,
+    zerocopy::TryFromBytes,
     zerocopy::IntoBytes,
     zerocopy::Immutable,
     zerocopy::KnownLayout,

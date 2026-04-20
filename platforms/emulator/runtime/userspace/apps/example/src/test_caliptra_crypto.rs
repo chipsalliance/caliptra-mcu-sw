@@ -457,7 +457,7 @@ async fn test_ecdsa() {
     let mut cert_ctx = CertContext::new();
     let mut pubkey_x = [0u8; ECC_P384_PARAM_X_SIZE];
     let mut pubkey_y = [0u8; ECC_P384_PARAM_Y_SIZE];
-    let mut cert_buf = [0u8; 1024];
+    let mut cert_buf = [0u8; 2048];
 
     let message: [u8; 128] = [0x55; 128];
 

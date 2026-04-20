@@ -276,10 +276,12 @@ impl Default for InitParams<'_> {
             uds_program_req: false,
             active_mode: false,
             prod_dbg_unlock_keypairs: Default::default(),
-            num_prod_dbg_unlock_pk_hashes: 8,
-            // Must match offset of `mci_reg_prod_debug_unlock_pk_hash_reg` in
-            // `registers/generated-firmware/src/mci.rs`.
-            prod_dbg_unlock_pk_hashes_offset: 0x480,
+            // Leave these strap values at 0 so the MCU ROM is responsible for
+            // programming SS_NUM_OF_PROD_DEBUG_UNLOCK_AUTH_PK_HASHES and
+            // SS_PROD_DEBUG_UNLOCK_AUTH_PK_HASH_REG_BANK_OFFSET during cold
+            // boot.
+            num_prod_dbg_unlock_pk_hashes: 0,
+            prod_dbg_unlock_pk_hashes_offset: 0,
             rma_or_scrap_ppd: false,
             debug_intent: false,
             cptra_obf_key: DEFAULT_CPTRA_OBF_KEY,
