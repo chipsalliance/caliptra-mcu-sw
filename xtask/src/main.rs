@@ -171,6 +171,14 @@ enum Commands {
         /// Path to the PLDM manifest TOML file
         #[arg(short, long, value_name = "MANIFEST", required = false)]
         pldm_manifest: Option<String>,
+
+        /// Vendor string for firmware components (e.g. "ACME Corp")
+        #[arg(long, value_name = "VENDOR")]
+        vendor: Option<String>,
+
+        /// Device model string for firmware components (e.g. "DeviceX")
+        #[arg(long, value_name = "MODEL")]
+        model: Option<String>,
     },
     /// Generate CoRIM (Concise Reference Integrity Manifest) from build artifacts
     Corim {
@@ -477,6 +485,8 @@ fn main() {
             soc_images,
             mcu_cfgs,
             pldm_manifest,
+            vendor,
+            model,
         } => caliptra_mcu_builder::all_build(caliptra_mcu_builder::AllBuildArgs {
             output: output.as_deref(),
             platform: platform.as_deref(),
@@ -486,6 +496,8 @@ fn main() {
             soc_images: soc_images.clone(),
             mcu_cfgs: mcu_cfgs.clone(),
             pldm_manifest: pldm_manifest.as_deref(),
+            vendor: vendor.as_deref(),
+            model: model.as_deref(),
         }),
         Commands::EmulatorBuild { output } => {
             caliptra_mcu_builder::emulator_build(caliptra_mcu_builder::EmulatorBuildArgs {

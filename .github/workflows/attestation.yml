@@ -21,6 +21,10 @@ jobs:
       # Change this to a new random value if you suspect the cache is corrupted
       SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b42a6e70ec4
 
+      # Vendor / Device identity (used across build, CoRIM, and verification)
+      ATTESTATION_VENDOR: "ACME Corp"
+      ATTESTATION_MODEL: "DeviceX"
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -97,13 +101,16 @@ jobs:
       # ---- Build firmware with test features enabled -------------------------------
       - name: Build firmware with test SPDM responder features
         run: |
-          cargo xtask all-build --runtime-features test-mctp-spdm-attestation
+          cargo xtask all-build --runtime-features test-mctp-spdm-attestation \
+            --vendor "$ATTESTATION_VENDOR" --model "$ATTESTATION_MODEL"
 
       # ---- Generate reference CoRIM values -------------------------------
       - name: Generate reference-value CoRIM
         run: |
-          cat > /tmp/corim-config.json << 'EOF'
+          cat > /tmp/corim-config.json << EOF
           {
+            "vendor": "${ATTESTATION_VENDOR}",
+            "model": "${ATTESTATION_MODEL}",
             "output_dir": "attestation-artifacts/refval-corim",
             "signing": {
               "test_key": "caliptra-corim-test-signing-key"
