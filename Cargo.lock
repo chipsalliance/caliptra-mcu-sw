@@ -1706,6 +1706,7 @@ dependencies = [
  "bitflags 2.10.0",
  "caliptra-api",
  "caliptra-mcu-error",
+ "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-digest",
  "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-registers-generated",

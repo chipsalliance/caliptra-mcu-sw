@@ -283,6 +283,71 @@ impl McuError {
             "Failed to read CPTRA_ITRNG_ENTROPY_CONFIG_1 from OTP"
         ),
         (
+            ROM_OTP_FUSE_INVALID_PARTITION,
+            0x3_0010,
+            "OTP fuse provisioning: invalid partition"
+        ),
+        (
+            ROM_OTP_FUSE_ENTRY_OUT_OF_BOUNDS,
+            0x3_0011,
+            "OTP fuse provisioning: entry out of bounds"
+        ),
+        (
+            ROM_OTP_FUSE_INVALID_LENGTH,
+            0x3_0012,
+            "OTP fuse provisioning: invalid length"
+        ),
+        (
+            ROM_OTP_FUSE_INVALID_START_BIT,
+            0x3_0013,
+            "OTP fuse provisioning: invalid start bit"
+        ),
+        (
+            ROM_OTP_FUSE_DAI_READ_ERROR,
+            0x3_0014,
+            "OTP fuse provisioning: DAI read error"
+        ),
+        (
+            ROM_OTP_FUSE_DAI_WRITE_ERROR,
+            0x3_0015,
+            "OTP fuse provisioning: DAI write error"
+        ),
+        (
+            ROM_OTP_FUSE_LOCK_ERROR,
+            0x3_0016,
+            "OTP fuse provisioning: partition lock error"
+        ),
+        (
+            ROM_OTP_FUSE_SECRET_READ_DENIED,
+            0x3_0017,
+            "OTP fuse provisioning: secret partition read denied"
+        ),
+        (
+            ROM_OTP_FUSE_BIT_CLEAR_NOT_ALLOWED,
+            0x3_0018,
+            "OTP fuse provisioning: bit clear not allowed"
+        ),
+        (
+            ROM_OTP_FUSE_CHECKSUM_ERROR,
+            0x3_0019,
+            "OTP fuse provisioning: request checksum error"
+        ),
+        (
+            ROM_OTP_FUSE_DATA_TOO_LARGE,
+            0x3_001a,
+            "OTP fuse provisioning: data too large"
+        ),
+        (
+            ROM_OTP_FUSE_INPUT_TOO_SHORT,
+            0x3_001b,
+            "OTP fuse provisioning: input too short"
+        ),
+        (
+            ROM_MCI_MBOX_UNKNOWN_COMMAND,
+            0x3_001c,
+            "OTP fuse provisioning: unknown command"
+        ),
+        (
             ROM_I3C_CONFIG_RING_HEADER_ERROR,
             0x4_0000,
             "I3C config ring header error"

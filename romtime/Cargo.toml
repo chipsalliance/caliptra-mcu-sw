@@ -12,6 +12,7 @@ caliptra-api.workspace = true
 caliptra-registers.workspace = true
 caliptra-ureg.workspace = true
 caliptra-mcu-error.workspace = true
+caliptra-mcu-mbox-common.workspace = true
 caliptra-mcu-otp-digest.workspace = true
 caliptra-mcu-otp-lifecycle.workspace = true
 caliptra-mcu-registers-generated.workspace = true

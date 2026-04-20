@@ -29,6 +29,8 @@ pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 32;
 pub const MAX_UUID_SIZE: usize = 32;
+pub const MAX_FUSE_DATA_BYTES: usize = 512;
+pub const MAX_FUSE_DATA_WORDS: usize = MAX_FUSE_DATA_BYTES / 4;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct McuMboxError(pub NonZeroU32);

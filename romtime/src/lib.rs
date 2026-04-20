@@ -17,6 +17,10 @@ mod soc_manager;
 pub use soc_manager::*;
 mod static_ref;
 pub use static_ref::*;
+mod otp_provision;
+pub use otp_provision::*;
+mod mci_mbox_cmd;
+pub use mci_mbox_cmd::*;
 
 // Helpers to handle writing to the emulator UART output.
 
