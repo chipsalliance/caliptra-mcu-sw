@@ -1853,6 +1853,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-lwip-rs-example-ipv6"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-lwip-rs",
+]
+
+[[package]]
 name = "caliptra-mcu-mailbox-client"
 version = "0.1.0"
 dependencies = [

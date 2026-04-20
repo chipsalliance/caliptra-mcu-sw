@@ -41,6 +41,7 @@ members = [
     "hw/model/test-fw/usb-ocp-recovery",
     "hw/model/test-fw/usb-responder",
     "network/app/example",
+    "network/app/example-ipv6",
     "network/app/boot-source",
     "network/boot-source-protocol",
     "network/config",

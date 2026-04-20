@@ -45,6 +45,9 @@ pub mod netif;
 #[cfg(all(feature = "alloc", not(feature = "baremetal")))]
 pub mod dhcp;
 
+#[cfg(all(feature = "alloc", feature = "dhcp6", not(feature = "baremetal")))]
+pub mod dhcp6;
+
 #[cfg(feature = "baremetal")]
 pub mod netif_baremetal;
 
@@ -67,6 +70,9 @@ pub use netif::NetIf;
 
 #[cfg(all(feature = "alloc", not(feature = "baremetal")))]
 pub use dhcp::DhcpClient;
+
+#[cfg(all(feature = "alloc", feature = "dhcp6", not(feature = "baremetal")))]
+pub use dhcp6::Dhcp6Client;
 
 #[cfg(feature = "baremetal")]
 pub use netif_baremetal::BaremetalNetIf;
