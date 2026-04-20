@@ -20,8 +20,8 @@ pub struct CaliptraSoC {
     soc_mbox_addr: *mut u32,
 }
 
-pub struct MailboxGuard {
-    soc: CaliptraSoC,
+pub struct MailboxGuard<'a> {
+    pub soc_mbox: caliptra_registers::mbox::RegisterBlock<RealMmioMut<'a>>,
 }
 
 impl SocManager for CaliptraSoC {
@@ -100,7 +100,7 @@ impl CaliptraSoC {
         if self.soc_mbox().lock().read().lock() {
             Err(CaliptraApiError::UnableToLockMailbox)
         } else {
-            Ok(MailboxGuard { soc: self })
+            Ok(MailboxGuard { soc_mbox: self.soc_mbox })
 
         }
     }
@@ -212,7 +212,7 @@ impl CaliptraSoC {
             .iter()
             .copied()
             .chain(data_parts.iter().flat_map(|p| p.iter().copied()));
-        let mut mb_guard = self.start_mailbox_req(cmd, total_bytes, iter)?;
+        let mb_guard = self.start_mailbox_req(cmd, total_bytes, iter)?;
         let resp_len_bytes = resp.len() * 4;
         match mb_guard.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
             Ok(Some(mut resp_iter)) => {
@@ -250,7 +250,7 @@ impl CaliptraSoC {
         let header = MailboxReqHeader::mut_from_bytes(header_bytes as &mut [u8]).unwrap();
         header.chksum = calc_checksum(cmd, payload_bytes);
 
-        let mut mb_guard = self.start_mailbox_req(cmd, req.len() * 4, req.iter().copied())?;
+        let mb_guard = self.start_mailbox_req(cmd, req.len() * 4, req.iter().copied())?;
         let resp_len_bytes = resp.len() * 4;
         match mb_guard.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
             Ok(Some(mut resp_iter)) => {
@@ -268,17 +268,13 @@ impl CaliptraSoC {
     }
 }
 
-impl MailboxGuard {
+impl MailboxGuard<'_> {
 
     /// Maximum number of wait cycles.
     const MAX_WAIT_CYCLES: u32 = 400_000;
-    
-    fn soc_mbox(&mut self) -> caliptra_registers::mbox::RegisterBlock<Self::TMmio<'_>> {
-        self.soc.soc_mbox()
-    }
 
     pub fn is_mailbox_busy(&mut self) -> bool {
-        self.soc_mbox().status().read().status().cmd_busy()
+        self.soc_mbox.status().read().status().cmd_busy()
     }
 
     pub fn set_command(
@@ -288,38 +284,38 @@ impl MailboxGuard {
     ) -> core::result::Result<(), CaliptraApiError> {
         // Mailbox lock value should read 1 now
         // If not, the reads are likely being blocked by the PAUSER check or some other issue
-        if !(self.soc_mbox().lock().read().lock()) {
+        if !(self.soc_mbox.lock().read().lock()) {
             return Err(CaliptraApiError::UnableToLockMailbox);
         }
 
-        self.soc_mbox().cmd().write(|_| cmd);
+        self.soc_mbox.cmd().write(|_| cmd);
 
-        self.soc_mbox().dlen().write(|_| payload_len_bytes as u32);
+        self.soc_mbox.dlen().write(|_| payload_len_bytes as u32);
         Ok(())
     }
 
     pub fn write_data(&mut self, data: u32) -> core::result::Result<(), CaliptraApiError> {
-        if !(self.soc_mbox().lock().read().lock()) {
+        if !(self.soc_mbox.lock().read().lock()) {
             return Err(CaliptraApiError::UnableToLockMailbox);
         }
-        self.soc_mbox().datain().write(|_| data);
+        self.soc_mbox.datain().write(|_| data);
         Ok(())
     }
 
     pub fn execute_command(&mut self) -> core::result::Result<(), CaliptraApiError> {
-        if !(self.soc_mbox().lock().read().lock()) {
+        if !(self.soc_mbox.lock().read().lock()) {
             return Err(CaliptraApiError::UnableToLockMailbox);
         }
-        self.soc_mbox().execute().write(|w| w.execute(true));
+        self.soc_mbox.execute().write(|w| w.execute(true));
         Ok(())
     }
 
     /// Finished a mailbox request, validating the checksum of the response.
     pub fn finish_mailbox_resp(
-        &mut self,
+        self,
         resp_min_size: usize,
         resp_size: usize,
-    ) -> core::result::Result<Option<CaliptraMailboxResponse>, CaliptraApiError> {
+    ) -> core::result::Result<Option<CaliptraMailboxResponse<'_>>, CaliptraApiError> {
         if resp_size < mem::size_of::<MailboxRespHeader>() {
             return Err(CaliptraApiError::MailboxRespTypeTooSmall);
         }
@@ -329,16 +325,15 @@ impl MailboxGuard {
 
         // Wait for the microcontroller to finish executing
         let mut timeout_cycles = Self::MAX_WAIT_CYCLES; // 100ms @400MHz
-        while self.soc_mbox().status().read().status().cmd_busy() {
+        while self.soc_mbox.status().read().status().cmd_busy() {
             self.delay();
             timeout_cycles -= 1;
             if timeout_cycles == 0 {
                 return Err(CaliptraApiError::MailboxTimeout);
             }
         }
-        let status = self.soc_mbox().status().read().status();
+        let status = self.soc_mbox.status().read().status();
         if status.cmd_failure() {
-            self.soc_mbox().execute().write(|w| w.execute(false));
             let soc_ifc = self.soc_ifc();
             return Err(CaliptraApiError::MailboxCmdFailed(
                 if soc_ifc.cptra_fw_error_fatal().read() != 0 {
@@ -349,19 +344,18 @@ impl MailboxGuard {
             ));
         }
         if status.cmd_complete() {
-            self.soc_mbox().execute().write(|w| w.execute(false));
             return Ok(None);
         }
         if !status.data_ready() {
             return Err(CaliptraApiError::UnknownCommandStatus(status as u32));
         }
 
-        let dlen_bytes = self.soc_mbox().dlen().read();
+        let dlen_bytes = self.soc_mbox.dlen().read();
 
-        let expected_checksum = self.soc_mbox().dataout().read();
+        let expected_checksum = self.soc_mbox.dataout().read();
 
         Ok(Some(CaliptraMailboxResponse {
-            soc_mbox: self.soc_mbox(),
+            _guard: self,
             idx: 0,
             dlen_bytes: dlen_bytes as usize,
             checksum: 0,
@@ -370,8 +364,15 @@ impl MailboxGuard {
     }
 }
 
+impl Drop for MailboxGuard<'_> {
+    fn drop(&mut self) {
+        // Release the lock
+        self.soc_mbox.execute().write(|w| w.execute(false));
+    }
+}
+
 pub struct CaliptraMailboxResponse<'a> {
-    soc_mbox: caliptra_registers::mbox::RegisterBlock<RealMmioMut<'a>>,
+    _guard: MailboxGuard<'a>,
     idx: usize,
     dlen_bytes: usize,
     checksum: u32,
@@ -411,7 +412,7 @@ impl Iterator for CaliptraMailboxResponse<'_> {
             Some(self.expected_checksum)
         } else {
             self.idx += 1;
-            let data = self.soc_mbox.dataout().read();
+            let data = self._guard.soc_mbox.dataout().read();
 
             // Calculate the remaining bytes to process
             let remaining_bytes = self.dlen_bytes.saturating_sub((self.idx - 1) * 4);
@@ -433,9 +434,3 @@ impl Iterator for CaliptraMailboxResponse<'_> {
     }
 }
 
-impl Drop for CaliptraMailboxResponse<'_> {
-    fn drop(&mut self) {
-        // Release the lock
-        self.soc_mbox.execute().write(|w| w.execute(false));
-    }
-}
