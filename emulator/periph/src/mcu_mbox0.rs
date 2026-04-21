@@ -496,7 +496,7 @@ impl MciMailboxImpl {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, rc::Rc};
+    use std::{cell::Cell, cell::RefCell, rc::Rc};
 
     use super::*;
     use crate::mci::Mci;
@@ -540,6 +540,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
         AutoRootBus::new(
             vec![],

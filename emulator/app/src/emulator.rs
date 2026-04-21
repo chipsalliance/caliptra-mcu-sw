@@ -334,6 +334,8 @@ pub struct Emulator {
     pub step_lock: Arc<Mutex<()>>,
     #[allow(dead_code)]
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+    /// Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
+    pub cptra_boot_go: Rc<Cell<bool>>,
 }
 
 impl Emulator {
@@ -915,6 +917,8 @@ impl Emulator {
             )
         };
 
+        let cptra_boot_go = Rc::new(Cell::new(false));
+
         let mci = Mci::new(
             &clock.clone(),
             ext_mci,
@@ -924,6 +928,7 @@ impl Emulator {
             Some(soc_ifc),
             [0, 0],
             false,
+            cptra_boot_go.clone(),
         );
 
         let usb_irq = pic.register_irq(McuRootBus::USB_IRQ);
@@ -1181,6 +1186,7 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             usb_host_controller,
+            cptra_boot_go,
         ))
     }
 
@@ -1202,6 +1208,7 @@ impl Emulator {
         i3c_controller_join_handle: Option<JoinHandle<()>>,
         step_lock: Arc<Mutex<()>>,
         usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+        cptra_boot_go: Rc<Cell<bool>>,
     ) -> Self {
         // read from the console in a separate thread to prevent blocking
         let stdin_uart_clone = stdin_uart.clone();
@@ -1228,6 +1235,7 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             usb_host_controller,
+            cptra_boot_go,
         }
     }
 
@@ -1287,25 +1295,27 @@ impl Emulator {
             MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         }
 
-        let caliptra_action = if self.trace_file.is_some() {
-            let caliptra_trace_fn: &mut dyn FnMut(u32, caliptra_emu_cpu::RvInstr) =
-                &mut |pc, instr| match instr {
-                    caliptra_emu_cpu::RvInstr::Instr32(instr32) => {
-                        println!("{{caliptra cpu}} {}", disassemble(pc, instr32));
-                    }
-                    caliptra_emu_cpu::RvInstr::Instr16(instr16) => {
-                        println!("{{caliptra cpu}} {}", disassemble(pc, instr16 as u32));
-                    }
-                };
-            self.caliptra_cpu.step(Some(caliptra_trace_fn))
-        } else {
-            self.caliptra_cpu.step(None)
-        };
+        if self.cptra_boot_go.get() {
+            let caliptra_action = if self.trace_file.is_some() {
+                let caliptra_trace_fn: &mut dyn FnMut(u32, caliptra_emu_cpu::RvInstr) =
+                    &mut |pc, instr| match instr {
+                        caliptra_emu_cpu::RvInstr::Instr32(instr32) => {
+                            println!("{{caliptra cpu}} {}", disassemble(pc, instr32));
+                        }
+                        caliptra_emu_cpu::RvInstr::Instr16(instr16) => {
+                            println!("{{caliptra cpu}} {}", disassemble(pc, instr16 as u32));
+                        }
+                    };
+                self.caliptra_cpu.step(Some(caliptra_trace_fn))
+            } else {
+                self.caliptra_cpu.step(None)
+            };
 
-        match caliptra_action {
-            StepAction::Continue => {}
-            _ => {
-                println!("Caliptra CPU Halted");
+            match caliptra_action {
+                StepAction::Continue => {}
+                _ => {
+                    println!("Caliptra CPU Halted");
+                }
             }
         }
 

@@ -354,6 +354,7 @@ impl McuHwModel for ModelEmulated {
             None,
             mci_generic_input_wires,
             params.fips_zeroization,
+            Rc::new(Cell::new(true)),
         );
         mci.set_fips_zeroization_cmd(fips_zeroization_cmd);
 

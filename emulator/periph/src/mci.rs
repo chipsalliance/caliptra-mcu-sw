@@ -58,6 +58,9 @@ pub struct Mci {
     reset_requested: bool,
     fips_zeroization: bool,
     fips_zeroization_cmd: Rc<Cell<bool>>,
+
+    /// Shared flag: Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
+    cptra_boot_go: Rc<Cell<bool>>,
 }
 
 impl Mci {
@@ -71,6 +74,7 @@ impl Mci {
         soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
         generic_input_wires: [u32; 2],
         fips_zeroization: bool,
+        cptra_boot_go: Rc<Cell<bool>>,
     ) -> Self {
         // Clear the reset status, MCU and Caiptra are out of reset
         ext_mci_regs.regs.borrow_mut().reset_status = 0;
@@ -108,6 +112,8 @@ impl Mci {
             op_mtimecmp_due_action: None,
             mcu_mailbox1,
             soc_regs,
+
+            cptra_boot_go,
         }
     }
 
@@ -182,6 +188,19 @@ impl Mci {
 impl MciPeripheral for Mci {
     fn generated(&mut self) -> Option<&mut MciGenerated> {
         Some(&mut self.generated)
+    }
+
+    fn write_mci_reg_cptra_boot_go(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            caliptra_mcu_registers_generated::mci::bits::Go::Register,
+        >,
+    ) {
+        if let Some(generated) = self.generated() {
+            generated.write_mci_reg_cptra_boot_go(val);
+        }
+        self.cptra_boot_go.set(true);
     }
 
     fn read_mci_reg_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
@@ -1460,6 +1479,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
         let mut mci_bus = MciBus {
             periph: Box::new(mci_reg),
@@ -1556,6 +1576,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
         let mut mcu_mailbox = mci_reg.mcu_mailbox0.clone().unwrap();
         let mut mci_bus = MciBus {
@@ -1596,6 +1617,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
 
         let hi: u32 = 0x0022_3344;
@@ -1627,6 +1649,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
 
         let lo: u32 = 0x0000_FFFF;
@@ -1658,6 +1681,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
 
         // Seed a known value.
@@ -1687,6 +1711,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
 
         // use a safe 48-bit range: 0x0000_DEAD_FFFF_FFFE
@@ -1732,6 +1757,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
 
         // Step 1: Cold boot - reset_reason should be 0x0
@@ -1793,6 +1819,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
 
         // Cold boot: reset_reason = 0x0
@@ -1825,6 +1852,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
 
         // Initial time is 0
@@ -1853,6 +1881,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
 
         // Move time to a known value.
@@ -1890,6 +1919,7 @@ mod tests {
             None,
             [0, 0],
             false,
+            Rc::new(Cell::new(true)),
         );
 
         // Advance by 2^32 + 1 -> high = 1, low = 1, as clock start at 0
