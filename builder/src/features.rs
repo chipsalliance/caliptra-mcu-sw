@@ -66,6 +66,7 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
 pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-i3c-services",
     "test-fw-manifest-dot",
+    "test-fw-manifest-dot-hitless",
     "test-dot-recovery",
     "test-rom-hooks",
 ];

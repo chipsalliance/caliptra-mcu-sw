@@ -138,7 +138,7 @@ This flow is used to boot the MCU into the MCU Runtime Firmware following either
 1. Check the MCI `RESET_REASON` register for MCU status (it should be in firmware boot reset mode `FirmwareBootReset`).
 1. Set flow checkpoint to indicate firmware boot flow has started.
 1. Compute the firmware entry offset starting from the MCU image header size.
-1. If the DOT manifests are enabled and `fw_manifest_dot_enabled` is set, look for a firmware-manifest DOT section at the start of MCU SRAM. If found (identified by its magic value):
+1. If the DOT manifests are enabled and `fw_manifest_dot_enabled` is set, look for a firmware-manifest DOT section at the start of MCU SRAM (see [MCU Firmware Format](./firmware_format.md)). If found (identified by its magic value):
     1. Advance the firmware entry offset past the DOT manifest section.
     1. Process the DOT commands contained in the manifest section (see [DOT documentation](./dot.md)). A fatal error is raised if DOT processing fails.
 1. Validate that firmware is present by checking that the first word at the computed firmware entry point (`sram_offset + firmware_offset`) is non-zero. A fatal error (`ROM_FW_BOOT_INVALID_FIRMWARE`) is raised otherwise.
@@ -170,7 +170,7 @@ Hitless Update Flow is triggered when MCU runtime FW requests an update of the M
 1. Check the MCI `RESET_REASON` register for reset status (it should be `FirmwareHitlessUpdate`).
 1. Release the Caliptra mailbox by completing the response to the original `ACTIVATE_FIRMWARE` command. This is required because the mailbox is still held by the command that triggered this reset. A fatal error (`ROM_FW_HITLESS_UPDATE_CLEAR_MB_ERROR`) is raised if the mailbox cannot be released.
 1. Wait for Caliptra to indicate that MCU firmware is ready in SRAM (i.e., Caliptra has finished copying the new image).
-1. Compute the firmware entry offset starting from the MCU image header size. If the DOT manifests feature is enabled and `fw_manifest_dot_enabled` is set, and a DOT firmware manifest section is present at the start of SRAM (identified by its magic value), advance the entry offset past that section. Note that unlike the Firmware Boot Flow, the hitless update flow does **not** re-process the DOT manifest commands — it only skips past the section so that the entry point lands on the firmware reset vector.
+1. Compute the firmware entry offset starting from the MCU image header size. If the DOT manifests feature is enabled and `fw_manifest_dot_enabled` is set, and a DOT firmware manifest section is present at the start of SRAM (identified by its magic value), advance the entry offset past that section **and** process the DOT commands contained in the manifest, mirroring the Firmware Boot Flow. This lets a hitless-updated firmware carry new DOT commands that take effect on this boot. A fatal error is raised if DOT processing fails. See [MCU Firmware Format](./firmware_format.md) for the section layout.
 1. Jump directly to runtime firmware at the computed SRAM entry point.
 
 ```mermaid
@@ -182,6 +182,7 @@ sequenceDiagram
     end
     alt DOT manifest enabled and DOT section present
         note right of mcu: advance entry offset past DOT section
+        note right of mcu: process firmware-manifest DOT commands
     end
     note right of mcu: jump to runtime firmware
 ```

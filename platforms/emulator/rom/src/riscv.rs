@@ -254,7 +254,10 @@ pub extern "C" fn rom_entry() -> ! {
             ..Default::default()
         };
         caliptra_mcu_rom_common::rom_start(rom_parameters);
-    } else if cfg!(feature = "test-fw-manifest-dot") {
+    } else if cfg!(any(
+        feature = "test-fw-manifest-dot",
+        feature = "test-fw-manifest-dot-hitless"
+    )) {
         caliptra_mcu_rom_common::rom_start(RomParameters {
             dot_flash: Some(dot_flash),
             fw_manifest_dot_enabled: true,

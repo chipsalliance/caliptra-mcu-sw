@@ -84,6 +84,11 @@ mod test {
         pub custom_mcu_rom: Option<Vec<u8>>,
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
         pub firmware_prefix: Option<Vec<u8>>,
+        /// If true (with `firmware_prefix` set), use the DOT hitless-update
+        /// test ROM which forces the cold-boot warm reset to come back as
+        /// `FirmwareHitlessUpdate` so `FwHitlessUpdate::run` processes the
+        /// manifest instead of `FwBoot::run`.
+        pub fw_manifest_dot_hitless: bool,
         pub vendor_pqc_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
         /// Assert the debug intent strap.
         pub debug_intent: bool,
@@ -107,6 +112,7 @@ mod test {
                 lifecycle_controller_state: None,
                 custom_mcu_rom: None,
                 firmware_prefix: None,
+                fw_manifest_dot_hitless: false,
                 vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
                 debug_intent: false,
                 prod_dbg_unlock_keypairs: Vec::new(),
@@ -155,6 +161,9 @@ mod test {
     pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| get_or_compile_rom(""));
     pub static ROM_FW_MANIFEST_DOT: LazyLock<Vec<u8>> =
         LazyLock::new(|| std::fs::read(get_or_compile_rom("test-fw-manifest-dot")).unwrap());
+    pub static ROM_FW_MANIFEST_DOT_HITLESS: LazyLock<Vec<u8>> = LazyLock::new(|| {
+        std::fs::read(get_or_compile_rom("test-fw-manifest-dot-hitless")).unwrap()
+    });
 
     pub static TEST_LOCK: LazyLock<Mutex<AtomicU32>> =
         LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
@@ -357,7 +366,11 @@ mod test {
         .unwrap();
 
         let mcu_rom = if params.firmware_prefix.is_some() {
-            ROM_FW_MANIFEST_DOT.clone()
+            if params.fw_manifest_dot_hitless {
+                ROM_FW_MANIFEST_DOT_HITLESS.clone()
+            } else {
+                ROM_FW_MANIFEST_DOT.clone()
+            }
         } else if let Some(rf) = params.rom_feature {
             let rom_path = get_rom_with_feature(rf);
             std::fs::read(rom_path).unwrap()

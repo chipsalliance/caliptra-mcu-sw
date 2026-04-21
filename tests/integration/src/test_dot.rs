@@ -1732,6 +1732,92 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// Test: Firmware manifest DOT commands are applied on a hitless firmware
+    /// update boot path.
+    ///
+    /// This is a scaled-down test: rather than running a full PLDM firmware
+    /// update cycle (which the integration harness cannot exercise while
+    /// retaining OTP/flash observability), the ROM is built with the
+    /// `test-fw-manifest-dot-hitless` feature. That feature causes the
+    /// end-of-cold-boot warm reset to come back as `FirmwareHitlessUpdate`
+    /// instead of `FirmwareBootReset`, so `FwHitlessUpdate::run` is the path
+    /// that sees the SRAM firmware image + DOT manifest prefix and executes
+    /// the manifest commands.
+    ///
+    /// Setup:
+    /// - DOT enabled in fuses, EVEN state (burned=0)
+    /// - Valid DOT blob with CAK only (no LAK)
+    /// - Firmware manifest with LOCK command
+    ///
+    /// Expected: On the hitless path, the manifest LOCK command still burns
+    /// the lock fuse (EVEN → ODD) and the boot completes successfully.
+    #[test]
+    fn test_fw_manifest_dot_hitless_lock() {
+        use caliptra_mcu_registers_generated::fuses;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            fw_manifest_dot_hitless: true,
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Hitless manifest LOCK test failed with fatal error: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        assert!(
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE),
+            "Hitless boot did not complete within cycle budget"
+        );
+
+        let otp_memory = hw.read_otp_memory();
+        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
+        assert!(
+            fuse_byte & 0x01 != 0,
+            "Hitless manifest LOCK should have burned the lock fuse, got 0x{:02x}",
+            fuse_byte
+        );
+
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 1,
+            "Expected 1 fuse burned by hitless manifest LOCK, found {}",
+            burned
+        );
+
+        println!(
+            "[TEST] Hitless-path firmware manifest LOCK command successfully burned lock fuse"
+        );
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Test: LOCK command is idempotent when device is already in ODD (locked) state.
     ///
     /// Setup:

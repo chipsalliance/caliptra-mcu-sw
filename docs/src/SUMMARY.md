@@ -7,6 +7,7 @@
         - [DOT I3C Recovery Protocol](./dot_i3c.md)
     - [ROM Fuses](./rom-fuses.md)
 - [Runtime Specification](./runtime.md)
+    - [Firmware Format](./firmware_format.md)
     - [PLDM Package](./pldm_package.md)
     - [Flash Layout](./flash_layout.md)
     - [Flash Controller](./flash_controller.md)
