@@ -26,9 +26,6 @@ SECTIONS
         . = ALIGN(4);
     } > ROM
 
-    ASSERT(. <= ORIGIN(ROM) + LENGTH(ROM),
-        "ROM image would overflow the space reserved for the appended SHA-384 digest")
-
     ROM_DATA = .;
 
     .stack (NOLOAD):

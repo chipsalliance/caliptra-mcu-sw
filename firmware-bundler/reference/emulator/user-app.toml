@@ -8,7 +8,7 @@ page_size = 256
 
 [platform.rom]
 offset = 0x8000_0000
-size = 0x2_0000
+size = 0x1_0000
 
 [platform.runtime_memory]
 sram = { offset = 0x4000_0000, size = 0x8_0000 }

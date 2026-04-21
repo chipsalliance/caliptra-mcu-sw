@@ -750,10 +750,7 @@ impl BootFlow for ColdBoot {
                     );
                 }
                 _ => {
-                    caliptra_mcu_romtime::println!(
-                        "[mcu-rom] Error sending mailbox command: {:?}",
-                        err
-                    );
+                    caliptra_mcu_romtime::println!("[mcu-rom] Error sending mailbox command");
                 }
             }
             fatal_error(McuError::ROM_COLD_BOOT_START_RI_DOWNLOAD_ERROR);

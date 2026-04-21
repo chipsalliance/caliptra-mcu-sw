@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 
 use crate::utils::manifest_file;
 use crate::{CaliptraBuildArgs, PROJECT_ROOT};
@@ -56,6 +56,15 @@ pub fn append_rom_digest(binary: &PathBuf, rom_size: usize) -> Result<()> {
     let mut data = std::fs::read(binary)?;
     const DIGEST_SIZE: usize = 48;
     let digest_offset = rom_size - DIGEST_SIZE;
+    if data.len() > digest_offset {
+        bail!(
+            "ROM binary {:?} is {} bytes, which does not leave room for the {}-byte SHA-384 digest within the {}-byte ROM region. Reduce ROM size or increase the platform's rom_size.",
+            binary,
+            data.len(),
+            DIGEST_SIZE,
+            rom_size,
+        );
+    }
     data.resize(rom_size, 0);
     let crypto = Crypto::default();
     let digest = from_hw_format(&crypto.sha384_digest(&data[0..digest_offset])?);

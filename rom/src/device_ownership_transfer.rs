@@ -308,7 +308,8 @@ pub(crate) fn cm_derive_stable_key_impl(
         &mut req32,
         &mut resp,
     ) {
-        caliptra_mcu_romtime::println!("[mcu-rom] Error deriving DOT stable key: {:?}", err);
+        let _ = err;
+        caliptra_mcu_romtime::println!("[mcu-rom] Error deriving DOT stable key");
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
     let resp: CmDeriveStableKeyResp = transmute!(resp);
@@ -346,7 +347,8 @@ pub(crate) fn cm_hmac(
     if let Err(err) =
         soc_manager.exec_mailbox_req_u32(CommandId::CM_HMAC.into(), &mut req, &mut resp)
     {
-        caliptra_mcu_romtime::println!("[mcu-rom] Error computing HMAC: {:?}", err);
+        let _ = err;
+        caliptra_mcu_romtime::println!("[mcu-rom] Error computing HMAC");
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
     let resp: CmHmacResp = transmute!(resp);
@@ -726,7 +728,8 @@ pub(crate) fn cm_sha384(
         data_parts,
         &mut resp32,
     ) {
-        caliptra_mcu_romtime::println!("[mcu-rom-dot] CM_SHA failed: {:?}", err);
+        let _ = err;
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] CM_SHA failed");
         return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
     }
 
@@ -787,7 +790,8 @@ pub(crate) fn cm_random_generate(
         &mut req32,
         &mut resp32,
     ) {
-        caliptra_mcu_romtime::println!("[mcu-rom-dot] CM_RANDOM_GENERATE failed: {:?}", err);
+        let _ = err;
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] CM_RANDOM_GENERATE failed");
         return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
     }
     let resp: CmRandomResp = transmute!(resp32);
@@ -835,7 +839,8 @@ pub(crate) fn cm_ecdsa384_verify(
         &mut req32,
         &mut resp32,
     ) {
-        caliptra_mcu_romtime::println!("[mcu-rom-dot] ECDSA384_SIGNATURE_VERIFY failed: {:?}", err);
+        let _ = err;
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] ECDSA384_SIGNATURE_VERIFY failed");
         return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
     }
     Ok(())
@@ -887,7 +892,8 @@ pub(crate) fn cm_mldsa87_verify(
         data_parts,
         &mut resp32,
     ) {
-        caliptra_mcu_romtime::println!("[mcu-rom-dot] MLDSA87_SIGNATURE_VERIFY failed: {:?}", err);
+        let _ = err;
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] MLDSA87_SIGNATURE_VERIFY failed");
         return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
     }
     Ok(())
