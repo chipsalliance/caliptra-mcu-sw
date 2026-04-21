@@ -2,14 +2,13 @@
 
 use crate::cmd_interface::CmdInterface;
 use crate::transport::McuMboxTransport;
-use caliptra_mcu_external_cmds_common::UnifiedCommandHandler;
+use caliptra_mcu_external_cmds_common::{CommandAuthorizer, UnifiedCommandHandler};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_mbox_common::messages::{McuMailboxReq, McuMailboxResp};
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
-
-const MAX_MCU_MBOX_MSG_SIZE: usize = 8192;
 
 #[derive(Debug)]
 pub enum McuMboxServiceError {
@@ -34,10 +33,11 @@ pub struct McuMboxService<'a> {
 impl<'a> McuMboxService<'a> {
     pub fn init(
         non_crypto_cmd_handler: &'a dyn UnifiedCommandHandler,
+        cmd_authorizer: &'a dyn CommandAuthorizer,
         transport: &'a mut McuMboxTransport,
         spawner: Spawner,
     ) -> Self {
-        let cmd_interface = CmdInterface::new(transport, non_crypto_cmd_handler);
+        let cmd_interface = CmdInterface::new(transport, non_crypto_cmd_handler, cmd_authorizer);
         Self {
             spawner,
             cmd_interface,
@@ -82,9 +82,13 @@ pub async fn mcu_mbox_responder(
     cmd_interface: &'static mut CmdInterface<'static>,
     running: &'static AtomicBool,
 ) {
-    let mut msg_buffer = [0; MAX_MCU_MBOX_MSG_SIZE];
+    let mut req_buf = [0; size_of::<McuMailboxReq>()];
+    let mut resp_buf = [0; size_of::<McuMailboxResp>()];
     while running.load(Ordering::SeqCst) {
-        if let Err(e) = cmd_interface.handle_responder_msg(&mut msg_buffer).await {
+        if let Err(e) = cmd_interface
+            .handle_responder_msg(&mut req_buf, &mut resp_buf)
+            .await
+        {
             // Debug print on error
             writeln!(
                 Console::<DefaultSyscalls>::writer(),

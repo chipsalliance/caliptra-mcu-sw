@@ -6,6 +6,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use caliptra_mcu_mbox_common::messages::CommandId;
 use zerocopy::{Immutable, IntoBytes};
 
 pub const MAX_FW_VERSION_LEN: usize = 32;
@@ -109,4 +110,26 @@ pub trait UnifiedCommandHandler {
         &self,
         capabilities: &mut DeviceCapabilities,
     ) -> Result<(), CommandError>;
+}
+
+pub struct AuthorizationError;
+
+pub trait CommandAuthorizer {
+    /// Validates if a message is authorized.
+    ///
+    /// The request can contain authorization data (e.g. a HMAC).
+    /// This method is responsible for unpacking the contained
+    /// request message and returning it as a slice.
+    ///
+    /// # Arguments
+    /// * `cmd_id` - Command identifier
+    /// * `req` - Message to be authorized
+    ///
+    /// # Returns
+    /// * `Result<&[u8], CommandError>` - Unpacked command or Error
+    fn is_authorized<'a>(
+        &self,
+        cmd_id: CommandId,
+        req: &'a [u8],
+    ) -> Result<&'a [u8], AuthorizationError>;
 }

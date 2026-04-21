@@ -30,10 +30,10 @@ impl McuMboxTransport {
         }
     }
 
-    pub async fn receive_request(
+    pub async fn receive_request<'a>(
         &mut self,
-        buf: &mut [u8],
-    ) -> Result<(CmdCode, usize), TransportError> {
+        buf: &'a mut [u8],
+    ) -> Result<(CmdCode, &'a [u8]), TransportError> {
         if buf.len() < size_of::<MailboxReqHeader>() {
             return Err(TransportError::BufferTooSmall);
         }
@@ -68,7 +68,7 @@ impl McuMboxTransport {
             return Err(TransportError::ChkSumMismatch);
         }
 
-        Ok((cmd_opcode, req_len))
+        Ok((cmd_opcode, &buf[..req_len]))
     }
 
     pub async fn send_response(&mut self, resp: &[u8]) -> Result<(), TransportError> {
