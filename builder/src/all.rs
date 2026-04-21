@@ -470,6 +470,8 @@ pub struct AllBuildArgs<'a> {
     pub soc_images: Option<Vec<ImageCfg>>,
     pub mcu_cfgs: Option<Vec<ImageCfg>>,
     pub pldm_manifest: Option<&'a str>,
+    pub vendor: Option<&'a str>,
+    pub model: Option<&'a str>,
 }
 
 /// Build Caliptra ROM and firmware bundle, MCU ROM and runtime, and SoC manifest, and package them all together in a ZIP file.
@@ -485,6 +487,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         soc_images,
         mcu_cfgs,
         pldm_manifest,
+        vendor,
+        model,
     } = args;
 
     // TODO: use temp files
@@ -580,8 +584,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         soc_images.clone(),
         mcu_image_cfg,
         None,
-        None,
-        None,
+        vendor.map(|s| s.to_string()),
+        model.map(|s| s.to_string()),
     );
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_fw = caliptra_builder.get_caliptra_fw()?;
@@ -734,8 +738,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             feature_soc_images.clone(),
             mcu_image_cfg.clone(),
             None,
-            None,
-            None,
+            vendor.map(|s| s.to_string()),
+            model.map(|s| s.to_string()),
         );
         let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
         caliptra_builder.get_soc_manifest(feature_soc_manifest_file.path().to_str())?;
