@@ -3,9 +3,16 @@
 
 ENTRY(_start)
 
+/*
+ * The last 48 bytes of the ROM image are reserved for a SHA-384 digest that is
+ * appended by the build step (see `append_rom_digest`). Carve them out of the
+ * ROM region so the linker refuses to place code or rodata there.
+ */
+ROM_DIGEST_SIZE = 48;
+
 MEMORY
 {
-  ROM   (rx) : ORIGIN = ROM_START, LENGTH = ROM_LENGTH
+  ROM   (rx) : ORIGIN = ROM_START, LENGTH = ROM_LENGTH - ROM_DIGEST_SIZE
   RAM  (rwx) : ORIGIN = RAM_START, LENGTH = RAM_LENGTH /* dedicated SRAM for the ROM stack */
 }
 
@@ -18,6 +25,9 @@ SECTIONS
         *(.rodata*)
         . = ALIGN(4);
     } > ROM
+
+    ASSERT(. <= ORIGIN(ROM) + LENGTH(ROM),
+        "ROM image would overflow the space reserved for the appended SHA-384 digest")
 
     ROM_DATA = .;
 
