@@ -65,7 +65,6 @@ pub struct ModelFpgaRealtime {
     caliptra_firmware: Option<Vec<u8>>,
     soc_manifest: Option<Vec<u8>>,
     mcu_firmware: Option<Vec<u8>>,
-    pub usb_host_controller: emulator_periph::UsbHostController,
 }
 
 impl ModelFpgaRealtime {
@@ -374,10 +373,7 @@ impl McuHwModel for ModelFpgaRealtime {
             None
         };
 
-        let usb_periph = emulator_periph::UsbDevPeriph::new();
-        let usb_host_controller = usb_periph.host_controller();
-
-        let mut m = Self {
+        let m = Self {
             base,
 
             openocd: None,
@@ -392,7 +388,6 @@ impl McuHwModel for ModelFpgaRealtime {
             caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
             mcu_firmware: Some(params.mcu_firmware.to_vec()).filter(|f| !f.is_empty()),
-            usb_host_controller,
         };
 
         // Set the FIPS zeroization PPD signal in the FPGA wrapper control

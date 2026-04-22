@@ -4476,6 +4476,7 @@ dependencies = [
  "caliptra-api",
  "caliptra-registers",
  "mcu-error",
+ "mcu-mbox-common",
  "otp-digest",
  "registers-generated",
  "riscv-csr",
