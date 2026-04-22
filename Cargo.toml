@@ -33,7 +33,6 @@ members = [
     "platforms/emulator/config",
     "platforms/emulator/mcu-image-header",
     "platforms/emulator/rom",
-    "platforms/emulator/rom/usb",
     "platforms/emulator/runtime",
     "platforms/emulator/runtime/kernel/capsules",
     "platforms/emulator/runtime/kernel/drivers/dma",
@@ -220,10 +219,8 @@ mcu-mbox-common = { path = "common/mcu-mbox" }
 mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
 mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }
-mcu-usb-emulator = { path = "platforms/emulator/rom/usb" }
 mcu-test-harness = {path = "platforms/test_harness"}
 lwip-rs = { path = "network/net/lwip-rs" }
-ocp = { path = "common/ocp" }
 network-config = { path = "network/config" }
 network-rom = { path = "network/rom" }
 mcu-testing-common = { path = "common/testing" }

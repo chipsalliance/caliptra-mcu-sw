@@ -3272,7 +3272,6 @@ dependencies = [
  "mcu-testing-common",
  "network-config",
  "nix 0.26.4",
- "ocp",
  "p384",
  "poll-common",
  "rand 0.8.5",
@@ -3301,14 +3300,11 @@ dependencies = [
  "mcu-error",
  "mcu-rom-common",
  "mcu-test-harness",
- "mcu-usb-emulator",
- "ocp",
  "registers-generated",
  "riscv-csr",
  "romtime",
  "rv32i",
  "tock-registers",
- "zerocopy",
 ]
 
 [[package]]
@@ -3419,8 +3415,6 @@ dependencies = [
  "mcu-error",
  "mcu-image-header",
  "mcu-rom-common",
- "mcu-usb-emulator",
- "ocp",
  "registers-generated",
  "riscv-csr",
  "romtime",
@@ -3559,18 +3553,6 @@ dependencies = [
  "romtime",
  "rv32i",
  "tock-registers",
-]
-
-[[package]]
-name = "mcu-usb-emulator"
-version = "0.1.0"
-dependencies = [
- "ocp",
- "registers-generated",
- "romtime",
- "tock-registers",
- "zerocopy",
- "zeroize",
 ]
 
 [[package]]
