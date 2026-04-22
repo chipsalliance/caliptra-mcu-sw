@@ -19,4 +19,3 @@ pub mod primary_flash_ctrl;
 pub mod secondary_flash_ctrl;
 pub mod sha512_acc;
 pub mod soc;
-pub mod usbdev;

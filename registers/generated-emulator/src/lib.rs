@@ -16,4 +16,3 @@ pub mod root_bus;
 pub mod secondary_flash;
 pub mod sha512_acc;
 pub mod soc;
-pub mod usbdev;
