@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-//! CoRIM display helpers for pretty-printing decoded CoRIM payloads.
+//! Display helpers for pretty-printing decoded CoRIM payloads and EAT claims.
+
+use ocptoken::token::claims::OcpEatClaims;
 
 fn format_unix_timestamp(secs: i128) -> String {
     use chrono::DateTime;
@@ -56,8 +58,8 @@ fn print_comid_triples(triples: &corim_rs::TriplesMap) {
             println!("        [{}] Environment:", i);
             print_environment(&triple.ref_env);
             println!("            Measurements ({}):", triple.ref_claims.len());
-            for (j, meas) in triple.ref_claims.iter().enumerate() {
-                print_measurement(j, meas);
+            for meas in triple.ref_claims.iter() {
+                print_measurement(meas);
             }
         }
     }
@@ -114,7 +116,7 @@ fn print_environment(env: &corim_rs::EnvironmentMap) {
     }
 }
 
-fn print_measurement(_idx: usize, meas: &corim_rs::MeasurementMap) {
+fn print_measurement(meas: &corim_rs::MeasurementMap) {
     let mval = &meas.mval;
     if let Some(ref ver) = mval.version {
         println!("                    Version:  {:?}", ver);
@@ -133,5 +135,123 @@ fn print_measurement(_idx: usize, meas: &corim_rs::MeasurementMap) {
     }
     if let Some(ref raw) = mval.raw {
         println!("                    Raw:      {:?}", raw);
+    }
+}
+
+/// Print decoded OCP EAT claims.
+pub(crate) fn print_claims(claims: &OcpEatClaims) {
+    println!("\n=== OCP EAT Claims ===");
+
+    println!("  [Mandatory]");
+    println!("  Nonce:           {}", hex::encode(&claims.nonce));
+    println!("  Debug Status:    {}", claims.debug_status);
+    println!("  EAT Profile:     {}", claims.eat_profile);
+    println!("  Measurements:    {} bytes", claims.measurements.len());
+
+    // Decode and print evidence triples from measurements
+    print_measurements(claims);
+
+    println!("  [Optional]");
+    if let Some(ref iss) = claims.issuer {
+        println!("  Issuer:          {}", iss);
+    }
+    if let Some(ref cti) = claims.cwt_id {
+        println!("  CWT ID:          {}", hex::encode(cti));
+    }
+    if let Some(ref ueid) = claims.ueid {
+        println!("  UEID:            {}", hex::encode(ueid));
+    }
+    if let Some(ref sueid) = claims.sueid {
+        println!("  SUEID:           {}", hex::encode(sueid));
+    }
+    if let Some(ref oemid) = claims.oemid {
+        println!("  OEM ID:          {:?}", oemid);
+    }
+    if let Some(ref hw_model) = claims.hw_model {
+        println!("  HW Model:        {}", hex::encode(hw_model));
+    }
+    if let Some(uptime) = claims.uptime {
+        println!("  Uptime:          {}", uptime);
+    }
+    if let Some(boot_count) = claims.boot_count {
+        println!("  Boot Count:      {}", boot_count);
+    }
+    if let Some(ref boot_seed) = claims.boot_seed {
+        println!("  Boot Seed:       {}", hex::encode(boot_seed));
+    }
+    if let Some(ref dloas) = claims.dloas {
+        println!("  DLOAs:           {:?}", dloas);
+    }
+    if let Some(ref locs) = claims.corim_locators {
+        println!("  CoRIM Locators:  {:?}", locs);
+    }
+
+    if !claims.private_claims.is_empty() {
+        println!("  [Private]");
+        for (name, value) in &claims.private_claims {
+            println!("  {:?}: {:?}", name, value);
+        }
+    }
+
+    println!("======================\n");
+}
+
+/// Decode and print evidence triples from the measurements claim.
+fn print_measurements(claims: &OcpEatClaims) {
+    let entries = match claims.decode_measurements() {
+        Ok(e) => e,
+        Err(e) => {
+            println!("    (failed to decode measurements: {})", e);
+            return;
+        }
+    };
+
+    for (idx, entry) in entries.iter().enumerate() {
+        println!(
+            "    [{}] Content-Type: {} (concise-evidence)",
+            idx, entry.content_type
+        );
+        let coev = &entry.evidence;
+
+        if let Some(ref eid) = coev.evidence_id {
+            println!("        Evidence ID:     {:?}", eid);
+        }
+
+        if let Some(ref profile) = coev.profile {
+            println!("        Profile:         {:?}", profile);
+        }
+
+        if let Some(ref triples) = coev.ev_triples.evidence_triples {
+            println!("        Evidence Triples ({}):", triples.len());
+            for (i, triple) in triples.iter().enumerate() {
+                println!("          [{}] Environment:", i);
+                print_environment(&triple.ref_env);
+                println!("              Measurements ({}):", triple.ref_claims.len());
+                for meas in triple.ref_claims.iter() {
+                    print_measurement(meas);
+                }
+            }
+        }
+
+        if let Some(ref triples) = coev.ev_triples.identity_triples {
+            println!("        Identity Triples ({}):", triples.len());
+            for (i, triple) in triples.iter().enumerate() {
+                println!("          [{}] {:?}", i, triple);
+            }
+        }
+
+        if let Some(ref triples) = coev.ev_triples.dependency_triples {
+            println!("        Dependency Triples ({}):", triples.len());
+            for (i, triple) in triples.iter().enumerate() {
+                println!("          [{}] {:?}", i, triple);
+            }
+        }
+
+        if let Some(ref triples) = coev.ev_triples.membership_triples {
+            println!("        Membership Triples ({}):", triples.len());
+            for (i, triple) in triples.iter().enumerate() {
+                println!("          [{}] {:?}", i, triple);
+            }
+        }
     }
 }

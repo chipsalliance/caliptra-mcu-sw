@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+mod appraise;
 mod authenticate;
 mod common;
 mod display;
@@ -31,6 +32,9 @@ enum Commands {
 
     /// Authenticate the evidence with the Trust Anchor Store and verify the COSE_Sign1 signature
     Authenticate(authenticate::AuthenticateArgs),
+
+    /// Authenticate, verify, and appraise evidence against CoRIM reference values
+    Appraise(authenticate::AuthenticateArgs),
 }
 
 fn main() {
@@ -42,6 +46,10 @@ fn main() {
         Commands::Authenticate(args) => {
             let ta_store = load_fs_ta_store();
             authenticate::run(&args, ta_store.as_ref(), &verifier);
+        }
+        Commands::Appraise(args) => {
+            let ta_store = load_fs_ta_store();
+            appraise::run(&args, ta_store.as_ref(), &verifier);
         }
     }
 }

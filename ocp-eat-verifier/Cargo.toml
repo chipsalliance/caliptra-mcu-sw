@@ -21,3 +21,4 @@ openssl = { version = "0.10", features = ["vendored"] }
 clap = { version = "4", features = ["derive"] }
 corim-rs = { git = "https://github.com/parvathib/corim-rs.git", branch = "pbhogaraju/add_coev" }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+ciborium = "0.2"

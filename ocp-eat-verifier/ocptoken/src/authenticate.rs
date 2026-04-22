@@ -16,8 +16,7 @@ use ocptoken::token::evidence::Evidence;
 use crate::common::load_evidence;
 use crate::display::print_corim_payload;
 
-/// Environment variable for the signed reference-value CoRIM directory path.
-const SIGNED_REFVAL_CORIM_PATH: &str = "SIGNED_REFVAL_CORIM_PATH";
+use crate::common::SIGNED_REFVAL_CORIM_PATH;
 
 #[derive(Parser, Debug)]
 pub(crate) struct AuthenticateArgs {
@@ -120,19 +119,32 @@ fn authenticate_evidence<'a>(
 
 /// Authenticate and verify signed reference-value CoRIM files from
 /// the SIGNED_REFVAL_CORIM_PATH environment variable directory.
-/// Returns `None` if the environment variable is not set.
-/// Exits the process on failure.
+/// Returns `None` if the environment variable is not set, the path
+/// does not exist, or the directory contains no files.
 fn authenticate_refval_corims(
     ta_store: &dyn TrustAnchorStore,
     verifier: &CoseSign1Verifier<impl CryptoBackend>,
 ) -> Option<RefValCorims> {
-    let corims_path = match env::var(SIGNED_REFVAL_CORIM_PATH) {
-        Ok(p) => p,
-        Err(_) => return None,
-    };
+    let corims_path = env::var(SIGNED_REFVAL_CORIM_PATH).ok().filter(|p| !p.is_empty());
+    let corims_dir = corims_path.map(PathBuf::from);
 
-    let corims_dir = PathBuf::from(corims_path);
-    println!("\nAuthenticating Signed CoRIMs ...");
+    let has_files = corims_dir.as_ref().map_or(false, |dir| {
+        dir.is_dir()
+            && fs::read_dir(dir)
+                .ok()
+                .map_or(false, |mut e| e.any(|e| e.ok().map_or(false, |e| e.path().is_file())))
+    });
+
+    if !has_files {
+        println!("No signed reference CoRIMs found; skipping CoRIM authentication.");
+        return None;
+    }
+
+    let corims_dir = corims_dir.unwrap();
+    println!(
+        "\nAuthenticating Signed CoRIMs from '{}' ...",
+        corims_dir.display()
+    );
     match RefValCorims::decode_and_verify(&corims_dir, ta_store, verifier) {
         Ok(refval_corims) => {
             for (name, _) in refval_corims.iter() {

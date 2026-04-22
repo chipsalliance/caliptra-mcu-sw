@@ -207,3 +207,15 @@ jobs:
           ./target/release/ocptoken authenticate \
             -e $EVIDENCE_DIR/measurement_block_fd.bin \
             -c $EVIDENCE_DIR/certificate_chain_slot_00.der
+
+      # ---- Appraise evidence against reference values (OCP EAT Verifier Algorithm) -------------------------------
+      - name: Appraise evidence against reference values
+        working-directory: ocp-eat-verifier
+        env:
+          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
+          TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
+          SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
+        run: |
+          ./target/release/ocptoken appraise \
+            -e $EVIDENCE_DIR/measurement_block_fd.bin \
+            -c $EVIDENCE_DIR/certificate_chain_slot_00.der

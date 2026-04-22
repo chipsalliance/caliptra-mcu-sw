@@ -468,6 +468,13 @@ EXAMPLES:
         /// Path to JSON config file (vendor, model, hash_algo, signing, etc.)
         #[arg(long, value_name = "CONFIG")]
         config: Option<String>,
+
+        /// Feature name to select per-feature entries from the bundle
+        /// (e.g. "test-mctp-spdm-attestation").
+        /// When set, reads mcu-test-runtime-<feature>.bin and
+        /// mcu-test-soc-manifest-<feature>.bin instead of the generic entries.
+        #[arg(long, value_name = "FEATURE")]
+        feature: Option<String>,
     },
     /// Print a sample JSON config file with all fields documented
     SampleConfig,
@@ -618,10 +625,12 @@ fn main() {
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
         Commands::Corim { subcommand } => match subcommand {
-            CorimCommands::GenRefval { bundle, config } => {
-                corim::CorimConfig::load(config.as_deref())
-                    .and_then(|cfg| corim::generate(bundle, cfg))
-            }
+            CorimCommands::GenRefval {
+                bundle,
+                config,
+                feature,
+            } => corim::CorimConfig::load(config.as_deref())
+                .and_then(|cfg| corim::generate(bundle, cfg, feature.as_deref())),
             CorimCommands::SampleConfig => {
                 corim::CorimConfig::print_sample();
                 Ok(())
