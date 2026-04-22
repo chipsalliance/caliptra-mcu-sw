@@ -45,7 +45,7 @@ jobs:
       SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
       SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
       # Change this to a new random value if you suspect the cache is corrupted
-      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b63a6e70ec4
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: 62f871a3afb0
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
@@ -110,7 +110,7 @@ jobs:
       SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
       SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
       # Change this to a new random value if you suspect the cache is corrupted
-      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b63a6e70ec4
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: 62f871a3afb0
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
@@ -175,7 +175,7 @@ jobs:
       SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
       SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
       # Change this to a new random value if you suspect the cache is corrupted
-      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b63a6e70ec4
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: 62f871a3afb0
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
