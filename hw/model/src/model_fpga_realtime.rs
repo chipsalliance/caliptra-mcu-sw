@@ -373,7 +373,7 @@ impl McuHwModel for ModelFpgaRealtime {
             None
         };
 
-        let m = Self {
+        let mut m = Self {
             base,
 
             openocd: None,
