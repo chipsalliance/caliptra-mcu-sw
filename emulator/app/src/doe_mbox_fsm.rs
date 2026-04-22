@@ -1,11 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_emulator_periph::DoeMboxPeriph;
-use caliptra_mcu_testing_common::{sleep_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
+use caliptra_mcu_testing_common::{
+    is_emulator_running, sleep_emulator_ticks, spawn_with_emulator_state, stop_emulator,
+    wait_for_runtime_start,
+};
 use std::process::exit;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
 use std::time::Duration;
 
 const TEST_TIMEOUT: u64 = 120;
@@ -33,10 +34,10 @@ impl DoeMboxFsm {
         let (fsm_to_test_tx, fsm_to_test_rx) = std::sync::mpsc::channel::<Vec<u8>>();
         let doe_mbox_clone = self.doe_mbox.clone();
 
-        thread::spawn(move || {
+        spawn_with_emulator_state(move || {
             let mut fsm = DoeMboxStateMachine::new(doe_mbox_clone, fsm_to_test_tx);
 
-            while MCU_RUNNING.load(Ordering::Relaxed) {
+            while is_emulator_running() {
                 // Check for incoming messages from test
                 if let Ok(message) = test_to_fsm_rx.try_recv() {
                     fsm.handle_outgoing_message(message);
@@ -233,26 +234,26 @@ pub(crate) fn run_doe_transport_tests(
     tests: Vec<Box<dyn DoeTransportTest + Send>>,
 ) {
     // Spawn a thread to handle the timeout for the test
-    thread::spawn(move || {
+    spawn_with_emulator_state(move || {
         let timeout = Duration::from_secs(TEST_TIMEOUT);
         std::thread::sleep(timeout);
         println!(
             "DOE_TRANSPORT_TESTS Timeout after {:?} seconds",
             timeout.as_secs()
         );
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        stop_emulator();
     });
 
     // Spawn a thread to run the tests
-    thread::spawn(move || {
+    spawn_with_emulator_state(move || {
         wait_for_runtime_start();
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
+        if !is_emulator_running() {
             exit(-1);
         }
         let mut test = DoeTransportTestRunner::new(tx, rx, tests);
 
         test.run_tests();
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        stop_emulator();
         println!("DOE_TRANSPORT_TESTS: All tests completed.");
     });
 }

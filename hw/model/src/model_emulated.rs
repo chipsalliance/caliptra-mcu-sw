@@ -43,7 +43,6 @@ use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
-use caliptra_mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
 use semver::Version;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -53,7 +52,6 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -143,7 +141,7 @@ impl McuHwModel for ModelEmulated {
         let mcu_root_bus = McuRootBus::new(bus_args).unwrap();
 
         let mut i3c_controller = if let Some(i3c_port) = params.i3c_port {
-            let (rx, tx) = start_i3c_socket(&MCU_RUNNING, i3c_port);
+            let (rx, tx) = start_i3c_socket(i3c_port);
             I3cController::new(rx, tx)
         } else {
             I3cController::default()
@@ -491,7 +489,7 @@ impl McuHwModel for ModelEmulated {
             assert!(self
                 .mci_boot_milestones()
                 .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
-            MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+            caliptra_mcu_testing_common::set_runtime_started(true);
         }
 
         Ok(())
@@ -740,7 +738,7 @@ impl Drop for ModelEmulated {
                 }
             }
         }
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        caliptra_mcu_testing_common::stop_emulator();
     }
 }
 

@@ -2,8 +2,7 @@
 
 use std::net::SocketAddr;
 use std::process::{exit, Command};
-use std::sync::atomic::Ordering;
-use std::thread::{self, sleep};
+use std::thread::sleep;
 
 use caliptra_mcu_core_mailbox_server::ServerConfig;
 use caliptra_mcu_core_util_host_mailbox_test_config::{
@@ -11,16 +10,16 @@ use caliptra_mcu_core_util_host_mailbox_test_config::{
     ServerConfig as ConfigServerConfig, TestConfig, ValidationConfig,
 };
 use caliptra_mcu_emulator_mcu_mbox::mcu_mailbox_transport::{McuMailboxError, McuMailboxTransport};
-use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+use caliptra_mcu_testing_common::wait_for_runtime_start;
 use tempfile::NamedTempFile;
 
 const TEST_DEVICE_ID: u16 = 0x0010;
 const TEST_VENDOR_ID: u16 = 0x1414;
 
 pub fn run_caliptra_util_host_validator() {
-    thread::spawn(|| {
+    caliptra_mcu_testing_common::spawn_with_emulator_state(|| {
         wait_for_runtime_start();
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
+        if !caliptra_mcu_testing_common::is_emulator_running() {
             exit(-1);
         }
         sleep(std::time::Duration::from_secs(5));
@@ -116,14 +115,14 @@ pub fn run_caliptra_util_host_validator() {
             std::process::exit(-1);
         }
 
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        caliptra_mcu_testing_common::stop_emulator();
     });
 }
 
 pub fn run_mbox_responder(mbox: McuMailboxTransport) {
-    std::thread::spawn(move || {
+    caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
         wait_for_runtime_start();
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
+        if !caliptra_mcu_testing_common::is_emulator_running() {
             exit(-1);
         }
 

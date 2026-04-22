@@ -43,7 +43,7 @@ use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use caliptra_mcu_testing_common::mctp_transport::MctpTransport;
 use caliptra_mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
 use caliptra_mcu_testing_common::spdm_responder_validator::SpdmTestType;
-use caliptra_mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
+use caliptra_mcu_testing_common::{EmulatorState, MCU_RUNNING};
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
@@ -321,6 +321,10 @@ pub struct Emulator {
     pub step_lock: Arc<Mutex<()>>,
     /// Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
     pub cptra_boot_go: Rc<Cell<bool>>,
+    /// Per-instance emulator state. Multi-instance setups each get their
+    /// own state so stopping one does not stop the other.
+    /// The current thread's thread-local is set to this on construction.
+    pub state: Arc<EmulatorState>,
 }
 
 impl Emulator {
@@ -608,7 +612,7 @@ impl Emulator {
         println!("Starting I3C Socket, port {}", cli.i3c_port.unwrap_or(0));
 
         let mut i3c_controller = if let Some(i3c_port) = cli.i3c_port {
-            let (rx, tx) = start_i3c_socket(&MCU_RUNNING, i3c_port);
+            let (rx, tx) = start_i3c_socket(i3c_port);
             I3cController::new(rx, tx)
         } else {
             I3cController::default()
@@ -1103,6 +1107,7 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             cptra_boot_go,
+            EmulatorState::new_arc(),
         ))
     }
 
@@ -1123,10 +1128,16 @@ impl Emulator {
         i3c_controller_join_handle: Option<JoinHandle<()>>,
         step_lock: Arc<Mutex<()>>,
         cptra_boot_go: Rc<Cell<bool>>,
+        state: Arc<EmulatorState>,
     ) -> Self {
+        // Set thread-local so free functions use this instance's state.
+        caliptra_mcu_testing_common::init_emulator_state(state.clone());
+
         // read from the console in a separate thread to prevent blocking
         let stdin_uart_clone = stdin_uart.clone();
-        std::thread::spawn(move || read_console(stdin_uart_clone));
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+            read_console(stdin_uart_clone)
+        });
 
         let timer = Timer::new(&mcu_cpu.clock.clone());
         let trace_file = trace_path.map(|path| File::create(path).unwrap());
@@ -1148,6 +1159,7 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             cptra_boot_go,
+            state,
         }
     }
 
@@ -1162,14 +1174,17 @@ impl Emulator {
     }
 
     pub fn step(&mut self) -> StepAction {
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
+        // Check both per-instance state and the global. Test threads and
+        // emulator_trigger_exit() set the global directly; emulator_stop()
+        // sets the per-instance flag.
+        if !self.state.running.load(Ordering::Relaxed) || !MCU_RUNNING.load(Ordering::Relaxed) {
             return StepAction::Break;
         }
 
         let now = self.mcu_cpu.clock.now();
-        MCU_TICKS.store(now, Ordering::Relaxed);
+        self.state.ticks.store(now, Ordering::Relaxed);
         if now % 1000 == 0 {
-            TICK_COND.notify_all();
+            self.state.tick_cond.notify_all();
         }
 
         if let Some(ref stdin_uart) = self.stdin_uart {
@@ -1204,7 +1219,7 @@ impl Emulator {
         }
 
         if self.sram_range.contains(&self.mcu_cpu.read_pc()) {
-            MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+            self.state.runtime_started.store(true, Ordering::Relaxed);
         }
 
         if self.cptra_boot_go.get() {
@@ -1256,7 +1271,7 @@ fn disassemble(pc: u32, instr: u32) -> String {
 fn read_console(stdin_uart: Option<Arc<Mutex<Option<u8>>>>) {
     let mut buffer = vec![];
     if let Some(ref stdin_uart) = stdin_uart {
-        while MCU_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
+        while caliptra_mcu_testing_common::is_emulator_running() {
             if buffer.is_empty() {
                 match crossterm::event::read() {
                     Ok(Event::Key(KeyEvent {

@@ -35,12 +35,11 @@ Abstract:
 
 use crate::i3c::{DynamicI3cAddress, ReguDataTransferCommand};
 use crate::i3c_socket_server::{IncomingHeader, OutgoingHeader, CRC8_SMBUS};
-use crate::{wait_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
+use crate::{is_emulator_running, stop_emulator, wait_emulator_ticks, wait_for_runtime_start};
 use std::collections::VecDeque;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::process::exit;
-use std::sync::atomic::Ordering;
 use std::vec;
 use zerocopy::{transmute, FromBytes};
 
@@ -62,7 +61,7 @@ pub fn run_tests(
     let stream = TcpStream::connect(addr).unwrap();
     // cancel the test after timeout ticks
     let timeout_ticks = test_timeout_ticks.unwrap_or(DEFAULT_TEST_TIMEOUT_TICKS);
-    std::thread::spawn(move || {
+    crate::spawn_with_emulator_state(move || {
         if !wait_emulator_ticks(timeout_ticks) {
             // Emulator stopped before timeout - this is normal completion
             return;
@@ -73,9 +72,9 @@ pub fn run_tests(
         );
         exit(-1);
     });
-    std::thread::spawn(move || {
+    crate::spawn_with_emulator_state(move || {
         wait_for_runtime_start();
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
+        if !is_emulator_running() {
             exit(-1);
         }
         let mut test_runner =
@@ -127,7 +126,7 @@ impl MctpTestRunner {
             self.passed,
             self.tests.len()
         );
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        stop_emulator();
         if self.passed == self.tests.len() {
             exit(0);
         } else {
