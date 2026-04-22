@@ -49,6 +49,9 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
     * [`SS_UDS_SEED_BASE_ADDR_L/H`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_UDS_SEED_BASE_ADDR_L): UDS/FE partition base address in OTP
     * [`SS_STRAP_GENERIC`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): OTP DAI idle bit offset and direct access command register offset
     * [MCI] [`PROD_DEBUG_UNLOCK_PK_HASH_REG`](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.PROD_DEBUG_UNLOCK_PK_HASH_REG%5B0%5D%5B0%5D) Production debug unlock public key hashes (384 bytes total for 8 key hashes)
+    * [`SS_PROD_DEBUG_UNLOCK_AUTH_PK_HASH_REG_BANK_OFFSET`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_PROD_DEBUG_UNLOCK_AUTH_PK_HASH_REG_BANK_OFFSET): Offset of `PROD_DEBUG_UNLOCK_PK_HASH_REG` within the MCI register bank (`0x480`). Caliptra ROM reads the expected hash for debug level `N` from `MCI_BASE + offset + (N - 1) * 48`.
+    * [`SS_NUM_OF_PROD_DEBUG_UNLOCK_AUTH_PK_HASHES`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_NUM_OF_PROD_DEBUG_UNLOCK_AUTH_PK_HASHES): Number of production debug unlock PK hashes available (defaults to the number of entries in the reference fuse map, 8; overridable via the `prod_debug_unlock_auth_pk_hash_count` ROM parameter).
+    * See [the ROM fuses](rom-fuses.md) documentation for details on how these are read and interpreted.
 1. Configure MCU mailbox AXI users (see [Security Configuration](#security-configuration) below).
 1. Set mailbox AXI user lock registers.
 1. [2.1] Set [FC_FIPS_ZEROZATION](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) to the appropriate value.

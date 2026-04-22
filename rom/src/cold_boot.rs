@@ -1101,6 +1101,7 @@ impl BootFlow for ColdBoot {
                 #[cfg(feature = "ocp-lock")]
                 ocp_lock_config: Some(&mut params.ocp_lock_config),
                 vendor_key_policy: params.vendor_key_policy,
+                prod_debug_unlock_auth_pk_hash_count: params.prod_debug_unlock_auth_pk_hash_count,
                 ..Default::default()
             },
         );
