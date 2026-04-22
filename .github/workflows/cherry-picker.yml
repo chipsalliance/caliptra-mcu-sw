@@ -27,7 +27,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.merged == true &&
        !contains(github.event.pull_request.labels.*.name, 'no-backport'))
-    runs-on: e2-standard-e2-AI
+    runs-on: e2-standard-2-AI
     timeout-minutes: 30
 
     steps:
@@ -37,23 +37,36 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
+      - name: Install Nix
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nix-bin
+          sudo mkdir -p /nix && sudo chown -R $(whoami) /nix
+          mkdir -p ~/.config/nix
+          echo "experimental-features = nix-command flakes" > ~/.config/nix/nix.conf
+          echo "use-sqlite-wal = false" >> ~/.config/nix/nix.conf
+
       - name: Determine cherry-pick parameters
         id: params
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "commit_sha=${{ github.event.inputs.commit_sha }}" >> "$GITHUB_OUTPUT"
-            echo "target_branch=${{ github.event.inputs.target_branch }}" >> "$GITHUB_OUTPUT"
-            # Look up the GitHub login of the commit author
-            AUTHOR=$(gh api "repos/${{ github.repository }}/commits/${{ github.event.inputs.commit_sha }}" \
-              --jq '.author.login // empty' 2>/dev/null || true)
-            echo "pr_author=${AUTHOR}" >> "$GITHUB_OUTPUT"
-          else
-            echo "commit_sha=${{ github.event.pull_request.merge_commit_sha }}" >> "$GITHUB_OUTPUT"
-            echo "target_branch=main-2.1" >> "$GITHUB_OUTPUT"
-            echo "pr_author=${{ github.event.pull_request.user.login }}" >> "$GITHUB_OUTPUT"
+          INPUT_SHA="${{ github.event.inputs.commit_sha || github.event.pull_request.merge_commit_sha }}"
+          TARGET_BRANCH="${{ github.event.inputs.target_branch || 'main-2.1' }}"
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+
+          # Resolve SHA (handles URLs or partial SHAs)
+          COMMIT_SHA=$(git rev-parse "${INPUT_SHA##*/}")
+          SHORT_SHA=$(git rev-parse --short "${COMMIT_SHA}")
+
+          if [ -z "${PR_AUTHOR}" ]; then
+            PR_AUTHOR=$(nix run nixpkgs#github-cli -- api "repos/${{ github.repository }}/commits/${COMMIT_SHA}" --jq '.author.login // "ghost"')
           fi
+
+          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "target_branch=${TARGET_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "pr_author=${PR_AUTHOR}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch all branches
         run: git fetch origin '+refs/heads/*:refs/remotes/origin/*'
@@ -63,11 +76,10 @@ jobs:
         run: |
           COMMIT_SHA="${{ steps.params.outputs.commit_sha }}"
           TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
-          SHORT_SHA="${COMMIT_SHA:0:8}"
+          SHORT_SHA="${{ steps.params.outputs.short_sha }}"
           BACKPORT_BRANCH="backport/${SHORT_SHA}-to-${TARGET_BRANCH}"
 
           echo "backport_branch=${BACKPORT_BRANCH}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -93,12 +105,6 @@ jobs:
             echo "::warning::Cherry-pick has conflicts — Gemini will attempt to resolve"
           fi
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-
-      - name: Install Gemini CLI
-        run: npm install -g google-gemini-cli
-
       - name: Gemini — Evaluate clean cherry-pick for adaptations
         if: steps.cherry_pick.outputs.status == 'clean'
         continue-on-error: true
@@ -112,7 +118,7 @@ jobs:
           COMMIT_SHA="${{ steps.params.outputs.commit_sha }}"
           TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
 
-          gemini --model gemini-3.0-pro "A commit (${COMMIT_SHA}) was just cherry-picked cleanly from 'main' \
+          nix run nixpkgs#google-gemini-cli -- --model gemini-3.0-pro "A commit (${COMMIT_SHA}) was just cherry-picked cleanly from 'main' \
           onto the '${TARGET_BRANCH}' branch. \
 
           Review the cherry-picked changes ('git diff HEAD~1') and the surrounding code \
@@ -136,7 +142,7 @@ jobs:
           COMMIT_SHA="${{ steps.params.outputs.commit_sha }}"
           TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
 
-          gemini --model gemini-3.0-pro "A cherry-pick of commit ${COMMIT_SHA} from 'main' onto \
+          nix run nixpkgs#google-gemini-cli -- --model gemini-3.0-pro "A cherry-pick of commit ${COMMIT_SHA} from 'main' onto \
           '${TARGET_BRANCH}' has merge conflicts. \
 
           Steps: \
@@ -174,7 +180,7 @@ jobs:
             PR_BODY="${PR_BODY}\n\nOriginal PR: #${{ github.event.pull_request.number }}"
           fi
 
-          gemini --model gemini-3.0-pro "Push the branch '${BACKPORT_BRANCH}' to origin. \
+          nix run nixpkgs#google-gemini-cli -- --model gemini-3.0-pro "Push the branch '${BACKPORT_BRANCH}' to origin. \
           Then create a pull request to '${TARGET_BRANCH}' with the following details: \
           Title: [Backport ${TARGET_BRANCH}] ${ORIGINAL_MSG} \
           Body: ${PR_BODY} \
