@@ -14,6 +14,7 @@ default = ["openssl"]
 openssl = ["dep:openssl"]
 
 [dependencies]
+ciborium.workspace = true
 coset.workspace = true
 hex.workspace = true
 thiserror.workspace = true

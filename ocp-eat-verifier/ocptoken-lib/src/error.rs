@@ -18,6 +18,14 @@ pub enum OcpEatError {
     /// Trust anchor store error
     #[error("Trust anchor: {0}")]
     TrustAnchor(#[from] crate::ta_store::TrustAnchorError),
+
+    /// Claims decoding error
+    #[error("Claims decode: {0}")]
+    ClaimsDecode(#[from] coset::CoseError),
+
+    /// Measurements decoding error
+    #[error("Measurements decode: {0}")]
+    MeasurementsDecode(String),
 }
 
 /// Result type for OCP EAT operations

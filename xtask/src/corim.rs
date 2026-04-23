@@ -25,7 +25,6 @@ const DEFAULT_TEST_KEY_SEED: &str = "caliptra-corim-default-test-signing-key";
 /// See platforms/emulator/runtime/userspace/apps/user/src/soc_env.rs
 const CLASS_ID_FMC: &str = "FMC_INFO";
 const CLASS_ID_RT: &str = "RT_INFO";
-const CLASS_ID_SOC_MANIFEST: &str = "SOC_MANIFEST";
 
 /// MCU runtime firmware identifier.
 /// See common/flash-image/src/lib.rs: MCU_RT_IDENTIFIER = 0x00000002
@@ -165,10 +164,8 @@ struct EvidenceComponent {
     model: Option<String>,
     /// Pre-formatted digest string (e.g. "sha-384:base64...").
     digest: String,
-    /// Firmware version string.
-    version: String,
-    /// Security Version Number.
-    svn: u32,
+    /// Security Version Number (omitted for SoC firmware components).
+    svn: Option<u32>,
 }
 
 /// Compute SHA-256 digest and return as "sha-256:<base64>" string.
@@ -202,14 +199,22 @@ fn sha384_raw_to_digest_str(digest: &[u8; 48]) -> String {
 /// Returns components matching the OCP EAT evidence structure:
 ///   mkey 0: FMC_INFO      - Caliptra FMC binary (from caliptra_fw.bin)
 ///   mkey 1: RT_INFO        - Caliptra Runtime binary (from caliptra_fw.bin)
-///   mkey 2: SOC_MANIFEST   - SoC manifest / Authorization Manifest
-///   mkey 3+: SoC firmware  - Auto-discovered from AuthManifest metadata
+///   mkey 2+: SoC firmware  - Auto-discovered from AuthManifest metadata
 fn read_evidence_components(
     bundle_path: &Path,
     config: &CorimConfig,
+    feature: Option<&str>,
 ) -> Result<Vec<EvidenceComponent>> {
     let file = std::fs::File::open(bundle_path)?;
     let mut zip = zip::ZipArchive::new(file)?;
+
+    // When a feature is specified, prefer per-feature entries over generic ones.
+    let soc_manifest_name = feature
+        .map(|f| format!("mcu-test-soc-manifest-{}.bin", f))
+        .unwrap_or_else(|| SOC_MANIFEST_NAME.to_string());
+    let mcu_runtime_name = feature
+        .map(|f| format!("mcu-test-runtime-{}.bin", f))
+        .unwrap_or_else(|| MCU_RUNTIME_NAME.to_string());
 
     let mut caliptra_fw_data: Option<Vec<u8>> = None;
     let mut soc_manifest_data: Option<Vec<u8>> = None;
@@ -221,18 +226,19 @@ fn read_evidence_components(
         let mut data = Vec::new();
         file.read_to_end(&mut data)?;
 
-        match name.as_str() {
-            CALIPTRA_FW_NAME => caliptra_fw_data = Some(data),
-            SOC_MANIFEST_NAME => soc_manifest_data = Some(data),
-            MCU_RUNTIME_NAME => mcu_runtime_data = Some(data),
-            _ => {}
+        if name == CALIPTRA_FW_NAME {
+            caliptra_fw_data = Some(data);
+        } else if name == soc_manifest_name {
+            soc_manifest_data = Some(data);
+        } else if name == mcu_runtime_name {
+            mcu_runtime_data = Some(data);
         }
     }
 
     let caliptra_fw = caliptra_fw_data
         .ok_or_else(|| anyhow::anyhow!("{} not found in bundle", CALIPTRA_FW_NAME))?;
     let soc_manifest = soc_manifest_data
-        .ok_or_else(|| anyhow::anyhow!("{} not found in bundle", SOC_MANIFEST_NAME))?;
+        .ok_or_else(|| anyhow::anyhow!("{} not found in bundle", soc_manifest_name))?;
 
     // Decompose caliptra_fw.bin into FMC and Runtime
     if caliptra_fw.len() < IMAGE_MANIFEST_BYTE_SIZE {
@@ -262,10 +268,8 @@ fn read_evidence_components(
     let fmc_content = &caliptra_fw[fmc_offset..fmc_offset + fmc_size];
     let rt_content = &caliptra_fw[rt_offset..rt_offset + rt_size];
 
-    // Extract version and SVN from the Caliptra image manifest header
+    // Extract SVN from the Caliptra image manifest header
     let caliptra_fw_svn = image_manifest.header.svn;
-    let fmc_version = image_manifest.fmc.version;
-    let rt_version = image_manifest.runtime.version;
 
     // Parse AuthManifest to get preamble version/SVN and per-image metadata
     let auth_manifest = AuthorizationManifest::read_from_bytes(&soc_manifest).map_err(|e| {
@@ -274,7 +278,7 @@ fn read_evidence_components(
             e
         )
     })?;
-    // Build the fixed evidence components (mkeys 0-2)
+    // Build the fixed evidence components (mkeys 0-1)
     let mut components = vec![
         EvidenceComponent {
             class_id: CLASS_ID_FMC.to_string(),
@@ -282,8 +286,7 @@ fn read_evidence_components(
             vendor: None,
             model: None,
             digest: compute_digest(fmc_content, &config.hash_algo),
-            version: format!("{}", fmc_version),
-            svn: caliptra_fw_svn,
+            svn: Some(caliptra_fw_svn),
         },
         EvidenceComponent {
             class_id: CLASS_ID_RT.to_string(),
@@ -291,18 +294,7 @@ fn read_evidence_components(
             vendor: None,
             model: None,
             digest: compute_digest(rt_content, &config.hash_algo),
-            version: format!("{}", rt_version),
-            svn: caliptra_fw_svn,
-        },
-        // SOC_MANIFEST: version/SVN not available per-image in AuthManifestImageMetadata
-        EvidenceComponent {
-            class_id: CLASS_ID_SOC_MANIFEST.to_string(),
-            mkey: 2,
-            vendor: None,
-            model: None,
-            digest: compute_digest(&soc_manifest, &config.hash_algo),
-            version: "0".to_string(),
-            svn: 0,
+            svn: Some(caliptra_fw_svn),
         },
     ];
 
@@ -314,12 +306,17 @@ fn read_evidence_components(
         }
         let metadata = &auth_manifest.image_metadata_col.image_metadata_list[i];
 
-        // For MCU runtime, compute digest from the raw binary in the ZIP
-        // (allows using the configured hash algorithm).
+        // For MCU runtime, compute digest from the binary in the ZIP,
+        // padded to match the flash image alignment used at runtime.
+        // The flash image builder pads images to 256-byte boundaries, and
+        // Caliptra's AUTHORIZE_AND_STASH hashes the padded data.
         // For other SoC images, use the SHA-384 digest from the manifest metadata.
         let digest = if metadata.fw_id == MCU_RT_FW_ID {
             if let Some(ref mcu_rt) = mcu_runtime_data {
-                compute_digest(mcu_rt, &config.hash_algo)
+                let padded_len = mcu_rt.len().next_multiple_of(256);
+                let mut padded = mcu_rt.clone();
+                padded.resize(padded_len, 0);
+                compute_digest(&padded, &config.hash_algo)
             } else {
                 sha384_raw_to_digest_str(&metadata.digest)
             }
@@ -329,13 +326,11 @@ fn read_evidence_components(
 
         components.push(EvidenceComponent {
             class_id: format!("0x{:08X}", metadata.fw_id),
-            mkey: 3 + i,
+            mkey: 2 + i,
             vendor: Some(config.vendor.clone()),
             model: Some(config.model.clone()),
             digest,
-            // Per-image version/SVN not available in AuthManifestImageMetadata
-            version: "0".to_string(),
-            svn: 0,
+            svn: None,
         });
     }
 
@@ -346,7 +341,7 @@ fn read_evidence_components(
 /// the OCP EAT evidence triples from the device.
 ///
 /// Each evidence component gets its own environment (class-id) and measurement
-/// entry with version, svn, and digests fields.
+/// entry with svn and digests fields.
 fn generate_comid_template(components: &[EvidenceComponent]) -> serde_json::Value {
     let tag_id = uuid::Uuid::new_v4().to_string().to_uppercase();
 
@@ -379,6 +374,16 @@ fn generate_comid_template(components: &[EvidenceComponent]) -> serde_json::Valu
                 class_map["model"] = serde_json::json!(model);
             }
 
+            let mut meas_value = serde_json::json!({
+                "digests": [comp.digest]
+            });
+            if let Some(svn) = comp.svn {
+                meas_value["svn"] = serde_json::json!({
+                    "type": "exact-value",
+                    "value": svn
+                });
+            }
+
             serde_json::json!({
                 "environment": {
                     "class": class_map
@@ -389,17 +394,7 @@ fn generate_comid_template(components: &[EvidenceComponent]) -> serde_json::Valu
                             "type": "uint",
                             "value": comp.mkey
                         },
-                        "value": {
-                            "version": {
-                                "value": comp.version,
-                                "scheme": "multipartnumeric"
-                            },
-                            "svn": {
-                                "type": "exact-value",
-                                "value": comp.svn
-                            },
-                            "digests": [comp.digest]
-                        }
+                        "value": meas_value
                     }
                 ]
             })
@@ -460,6 +455,18 @@ fn generate_test_keys(
 ) -> Result<(PathBuf, PathBuf)> {
     std::fs::create_dir_all(keys_dir)?;
 
+    let jwk_path = keys_dir.join("signing-key.jwk");
+    let cert_path = keys_dir.join("signing-cert.der");
+
+    // Skip regeneration if both key and certificate already exist
+    if jwk_path.exists() && cert_path.exists() {
+        println!(
+            "  Reusing existing test signing keys in {}",
+            keys_dir.display()
+        );
+        return Ok((jwk_path, cert_path));
+    }
+
     let secret_key = p384::SecretKey::from_bytes(seed[..].into())
         .map_err(|e| anyhow::anyhow!("Failed to create P-384 key from seed: {}", e))?;
 
@@ -481,7 +488,6 @@ fn generate_test_keys(
         "y": URL_SAFE_NO_PAD.encode(&y_bytes[..]),
         "d": URL_SAFE_NO_PAD.encode(&seed[..])
     });
-    let jwk_path = keys_dir.join("signing-key.jwk");
     std::fs::write(&jwk_path, serde_json::to_string_pretty(&jwk)?)?;
 
     // Write PKCS#8 PEM (for openssl certificate generation)
@@ -499,7 +505,6 @@ fn generate_test_keys(
     std::fs::write(&pem_path, pem_string.as_bytes())?;
 
     // Generate self-signed X.509 certificate in DER format using openssl
-    let cert_path = keys_dir.join("signing-cert.der");
     let openssl_result = Command::new("openssl")
         .args([
             "req",
@@ -560,15 +565,14 @@ fn generate_meta_template(output_dir: &Path) -> Result<PathBuf> {
 ///
 ///   mkey 0: FMC_INFO      - Caliptra FMC digest
 ///   mkey 1: RT_INFO        - Caliptra Runtime digest
-///   mkey 2: SOC_MANIFEST   - Authorization Manifest digest
-///   mkey 3+: SoC FW        - Auto-discovered from AuthManifest metadata
+///   mkey 2+: SoC FW        - Auto-discovered from AuthManifest metadata
 ///
-/// Each measurement includes version, svn, and digest fields.
+/// Each measurement includes svn and digest fields.
 ///
 /// Note: integrity-registers (journey PCR values) are runtime-computed and
 /// cannot be pre-determined from static build artifacts. They are not included
 /// in the reference values.
-pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
+pub fn generate(bundle: &str, config: CorimConfig, feature: Option<&str>) -> Result<()> {
     let bundle_path = Path::new(bundle);
     if !bundle_path.exists() {
         bail!(
@@ -582,7 +586,7 @@ pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
 
     // Step 1: Read and decompose firmware binaries to match evidence structure
     println!("Reading firmware binaries from: {}", bundle);
-    let components = read_evidence_components(bundle_path, &config)?;
+    let components = read_evidence_components(bundle_path, &config, feature)?;
     for comp in &components {
         println!(
             "  [mkey {}] {} ({})",

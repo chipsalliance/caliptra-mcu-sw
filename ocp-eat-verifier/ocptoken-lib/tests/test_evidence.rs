@@ -5,6 +5,8 @@ use coset::{
 };
 
 use openssl::{
+    asn1::Asn1Time,
+    bn::BigNum,
     ec::{EcGroup, EcKey},
     ecdsa::EcdsaSig,
     hash::MessageDigest,
@@ -15,7 +17,12 @@ use openssl::{
 };
 
 use ocptoken::cose_verify::{CoseSign1Verifier, OpenSslBackend};
+use ocptoken::error::OcpEatError;
 use ocptoken::ta_store::{TrustAnchorError, TrustAnchorStore};
+use ocptoken::token::claims::{
+    CLAIM_KEY_DEBUG_STATUS, CLAIM_KEY_EAT_PROFILE, CLAIM_KEY_MEASUREMENTS, CLAIM_KEY_NONCE,
+    OCP_EAT_PROFILE_OID_STR,
+};
 use ocptoken::token::evidence::Evidence;
 
 /// In-memory Trust Anchor Store for tests.
@@ -50,146 +57,119 @@ impl TrustAnchorStore for TestTrustAnchorStore {
     }
 }
 
-#[test]
-fn decode_and_verify_ecc_p384_cose_sign1() {
-    // 1 Generate ECC P-384 key pair
+// ── Helpers ────────────────────────────────────────────────────────
+
+/// Build a valid OCP EAT CWT ClaimsSet payload (CBOR bytes).
+///
+/// Contains all four mandatory claims with sensible defaults.
+/// Use `build_claims_set_custom` to override individual claims.
+fn build_valid_cwt_payload() -> Vec<u8> {
+    build_cwt_payload_with(None, None, None, None)
+}
+
+/// Build a CWT payload (CBOR map) with optional overrides for each mandatory claim.
+/// Pass `Some(value)` to override, `None` for the default.
+fn build_cwt_payload_with(
+    nonce: Option<Value>,
+    debug_status: Option<Value>,
+    eat_profile: Option<Value>,
+    measurements: Option<Value>,
+) -> Vec<u8> {
+    let nonce_val = nonce.unwrap_or_else(|| Value::Bytes(vec![0xAA; 32]));
+    let debug_val = debug_status.unwrap_or_else(|| Value::Integer(1.into())); // disabled
+    let profile_val =
+        eat_profile.unwrap_or_else(|| Value::Bytes(OCP_EAT_PROFILE_OID_STR.as_bytes().to_vec()));
+    let meas_val = measurements.unwrap_or_else(|| Value::Bytes(vec![0xBB; 16]));
+
+    let map = Value::Map(vec![
+        (Value::Integer(CLAIM_KEY_NONCE.into()), nonce_val),
+        (Value::Integer(CLAIM_KEY_DEBUG_STATUS.into()), debug_val),
+        (Value::Integer(CLAIM_KEY_EAT_PROFILE.into()), profile_val),
+        (Value::Integer(CLAIM_KEY_MEASUREMENTS.into()), meas_val),
+    ]);
+
+    let mut buf = Vec::new();
+    ciborium::into_writer(&map, &mut buf).unwrap();
+    buf
+}
+
+/// Build a CWT payload that omits a specific claim key.
+fn build_cwt_payload_without(omit_key: i64) -> Vec<u8> {
+    let all_claims: Vec<(i64, Value)> = vec![
+        (CLAIM_KEY_NONCE, Value::Bytes(vec![0xAA; 32])),
+        (CLAIM_KEY_DEBUG_STATUS, Value::Integer(1.into())),
+        (
+            CLAIM_KEY_EAT_PROFILE,
+            Value::Bytes(OCP_EAT_PROFILE_OID_STR.as_bytes().to_vec()),
+        ),
+        (CLAIM_KEY_MEASUREMENTS, Value::Bytes(vec![0xBB; 16])),
+    ];
+
+    let map = Value::Map(
+        all_claims
+            .into_iter()
+            .filter(|(k, _)| *k != omit_key)
+            .map(|(k, v)| (Value::Integer(k.into()), v))
+            .collect(),
+    );
+
+    let mut buf = Vec::new();
+    ciborium::into_writer(&map, &mut buf).unwrap();
+    buf
+}
+
+/// Generate an ECC P-384 key pair and self-signed X.509 certificate.
+/// Returns (PKey, DER-encoded cert).
+fn generate_key_and_cert(cn: &str) -> (PKey<openssl::pkey::Private>, Vec<u8>) {
     let group = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
     let ec_key = EcKey::generate(&group).unwrap();
     let pkey = PKey::from_ec_key(ec_key).unwrap();
 
-    use openssl::asn1::Asn1Time;
-    use openssl::bn::BigNum;
-
-    // 2 Create self-signed X.509 certificate
     let mut name = X509NameBuilder::new().unwrap();
-    name.append_entry_by_text("CN", "test-cert").unwrap();
+    name.append_entry_by_text("CN", cn).unwrap();
     let name = name.build();
 
-    let mut cert_builder = X509::builder().unwrap();
-
-    cert_builder.set_version(2).unwrap();
-
-    // serial number
+    let mut builder = X509::builder().unwrap();
+    builder.set_version(2).unwrap();
     let mut serial = BigNum::new().unwrap();
     serial
         .rand(64, openssl::bn::MsbOption::MAYBE_ZERO, false)
         .unwrap();
-    let serial = serial.to_asn1_integer().unwrap();
-    cert_builder.set_serial_number(&serial).unwrap();
+    builder
+        .set_serial_number(&serial.to_asn1_integer().unwrap())
+        .unwrap();
+    builder.set_subject_name(&name).unwrap();
+    builder.set_issuer_name(&name).unwrap();
+    builder
+        .set_not_before(&Asn1Time::days_from_now(0).unwrap())
+        .unwrap();
+    builder
+        .set_not_after(&Asn1Time::days_from_now(365).unwrap())
+        .unwrap();
+    builder.set_pubkey(&pkey).unwrap();
+    builder.sign(&pkey, MessageDigest::sha384()).unwrap();
 
-    // Subject / issuer
-    cert_builder.set_subject_name(&name).unwrap();
-    cert_builder.set_issuer_name(&name).unwrap();
+    let cert_der = builder.build().to_der().unwrap();
+    (pkey, cert_der)
+}
 
-    // validity
-    let not_before = Asn1Time::days_from_now(0).unwrap();
-    let not_after = Asn1Time::days_from_now(365).unwrap();
-    cert_builder.set_not_before(&not_before).unwrap();
-    cert_builder.set_not_after(&not_after).unwrap();
-
-    // Public key
-    cert_builder.set_pubkey(&pkey).unwrap();
-
-    // Sign certificate
-    cert_builder.sign(&pkey, MessageDigest::sha384()).unwrap();
-
-    let cert = cert_builder.build();
-    let cert_der = cert.to_der().unwrap();
-
-    // 3 Create Trust Anchor Store with the self-signed cert as root
-    let ta_store = TestTrustAnchorStore::new(vec![cert_der.clone()]);
-
-    // Dummy payload
-    let payload = b"dummy payload for COSE signature";
-
-    // 4 Create COSE_Sign1 structure
+/// Build a COSE_Sign1 (CBOR bytes) with the given payload, signed with `pkey`,
+/// and the cert in the x5chain unprotected header.
+fn build_signed_cose(
+    payload: &[u8],
+    pkey: &PKey<openssl::pkey::Private>,
+    cert_der: &[u8],
+) -> Vec<u8> {
     let cose = CoseSign1Builder::new()
         .payload(payload.to_vec())
         .protected(HeaderBuilder::new().algorithm(Algorithm::ES384).build())
         .unprotected(
             HeaderBuilder::new()
-                // x5chain = label 33
-                .value(33, Value::Array(vec![Value::Bytes(cert_der.clone())]))
+                .value(33, Value::Array(vec![Value::Bytes(cert_der.to_vec())]))
                 .build(),
         )
         .create_signature(&[], |msg| {
-            let mut signer = Signer::new(MessageDigest::sha384(), &pkey).unwrap();
-            signer.update(msg).unwrap();
-
-            let der_sig = signer.sign_to_vec().unwrap();
-
-            // DER → raw r||s (COSE format)
-            let sig = EcdsaSig::from_der(&der_sig).unwrap();
-            let r = sig.r().to_vec_padded(48).unwrap();
-            let s = sig.s().to_vec_padded(48).unwrap();
-            [r, s].concat()
-        })
-        .build();
-
-    // 5 Encode to CBOR
-    let encoded = cose.to_vec().unwrap();
-
-    // 6 Decode
-    let evidence =
-        Evidence::decode(&encoded, &ta_store).expect("Evidence::decode should succeed");
-
-    // 7 Verify
-    let verifier = CoseSign1Verifier::new(OpenSslBackend);
-    evidence
-        .verify(&[], &verifier)
-        .expect("COSE_Sign1 signature verification should succeed");
-}
-
-#[test]
-fn reject_untrusted_cert_chain() {
-    // Generate a key + self-signed cert
-    let group = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
-    let ec_key = EcKey::generate(&group).unwrap();
-    let pkey = PKey::from_ec_key(ec_key).unwrap();
-
-    use openssl::asn1::Asn1Time;
-    use openssl::bn::BigNum;
-
-    let mut name = X509NameBuilder::new().unwrap();
-    name.append_entry_by_text("CN", "untrusted-cert").unwrap();
-    let name = name.build();
-
-    let mut cert_builder = X509::builder().unwrap();
-    cert_builder.set_version(2).unwrap();
-    let mut serial = BigNum::new().unwrap();
-    serial
-        .rand(64, openssl::bn::MsbOption::MAYBE_ZERO, false)
-        .unwrap();
-    cert_builder
-        .set_serial_number(&serial.to_asn1_integer().unwrap())
-        .unwrap();
-    cert_builder.set_subject_name(&name).unwrap();
-    cert_builder.set_issuer_name(&name).unwrap();
-    cert_builder
-        .set_not_before(&Asn1Time::days_from_now(0).unwrap())
-        .unwrap();
-    cert_builder
-        .set_not_after(&Asn1Time::days_from_now(365).unwrap())
-        .unwrap();
-    cert_builder.set_pubkey(&pkey).unwrap();
-    cert_builder.sign(&pkey, MessageDigest::sha384()).unwrap();
-
-    let cert = cert_builder.build();
-    let cert_der = cert.to_der().unwrap();
-
-    // TA store has NO trusted roots -- empty
-    let ta_store = TestTrustAnchorStore::new(vec![]);
-
-    let cose = CoseSign1Builder::new()
-        .payload(b"payload".to_vec())
-        .protected(HeaderBuilder::new().algorithm(Algorithm::ES384).build())
-        .unprotected(
-            HeaderBuilder::new()
-                .value(33, Value::Array(vec![Value::Bytes(cert_der.clone())]))
-                .build(),
-        )
-        .create_signature(&[], |msg| {
-            let mut signer = Signer::new(MessageDigest::sha384(), &pkey).unwrap();
+            let mut signer = Signer::new(MessageDigest::sha384(), pkey).unwrap();
             signer.update(msg).unwrap();
             let der_sig = signer.sign_to_vec().unwrap();
             let sig = EcdsaSig::from_der(&der_sig).unwrap();
@@ -198,19 +178,48 @@ fn reject_untrusted_cert_chain() {
             [r, s].concat()
         })
         .build();
-
-    let encoded = cose.to_vec().unwrap();
-    let evidence = Evidence::decode(&encoded, &ta_store).unwrap();
-
-    // Verify should fail because the cert is not trusted
-    let verifier = CoseSign1Verifier::new(OpenSslBackend);
-    assert!(
-        evidence.verify(&[], &verifier).is_err(),
-        "Verification should fail with untrusted certificate chain"
-    );
+    cose.to_vec().unwrap()
 }
 
-mod tag_order_tests {
+mod cose_verify_tests {
+    use super::*;
+
+    #[test]
+    fn decode_and_verify_ecc_p384_cose_sign1() {
+        let (pkey, cert_der) = generate_key_and_cert("test-cert");
+        let ta_store = TestTrustAnchorStore::new(vec![cert_der.clone()]);
+        let payload = build_valid_cwt_payload();
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        let evidence =
+            Evidence::decode(&encoded, &ta_store).expect("Evidence::decode should succeed");
+
+        let verifier = CoseSign1Verifier::new(OpenSslBackend);
+        evidence
+            .verify(&[], &verifier)
+            .expect("COSE_Sign1 signature verification should succeed");
+    }
+
+    #[test]
+    fn reject_untrusted_cert_chain() {
+        let (pkey, cert_der) = generate_key_and_cert("untrusted-cert");
+
+        // TA store has NO trusted roots -- empty
+        let ta_store = TestTrustAnchorStore::new(vec![]);
+        let payload = build_valid_cwt_payload();
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+        let evidence = Evidence::decode(&encoded, &ta_store).unwrap();
+
+        // Verify should fail because the cert is not trusted
+        let verifier = CoseSign1Verifier::new(OpenSslBackend);
+        assert!(
+            evidence.verify(&[], &verifier).is_err(),
+            "Verification should fail with untrusted certificate chain"
+        );
+    }
+}
+
+mod eat_tag_order_tests {
     use super::*;
     use coset::cbor::value::Value;
     use ocptoken::error::OcpEatError;
@@ -307,5 +316,219 @@ mod tag_order_tests {
             Ok(_) => panic!("Unexpected success with missing required CBOR tag"),
             Err(e) => panic!("Unexpected error variant: {:?}", e),
         }
+    }
+}
+
+// ── Claims validation corner-case tests ────────────────────────────
+
+mod eat_claims_tests {
+    use super::*;
+    use ocptoken::token::claims::DebugStatus;
+
+    fn ta_store_for(cert_der: &[u8]) -> TestTrustAnchorStore {
+        TestTrustAnchorStore::new(vec![cert_der.to_vec()])
+    }
+
+    // ── Happy path ──
+
+    #[test]
+    fn decode_valid_claims_mandatory_only() {
+        let (pkey, cert_der) = generate_key_and_cert("valid-claims");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_valid_cwt_payload();
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        let ev = Evidence::decode(&encoded, &ta).expect("decode should succeed");
+        let c = ev.claims();
+        assert_eq!(c.nonce, vec![0xAA; 32]);
+        assert_eq!(c.debug_status, DebugStatus::Disabled);
+        assert_eq!(c.eat_profile, "1.3.6.1.4.1.42623.1.3");
+        assert_eq!(c.measurements.len(), 16);
+    }
+
+    #[test]
+    fn measurements_as_cbor_array_accepted() {
+        let meas_array = Value::Array(vec![Value::Integer(1.into()), Value::Bytes(vec![0xCC; 8])]);
+        let (pkey, cert_der) = generate_key_and_cert("meas-array");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_cwt_payload_with(None, None, None, Some(meas_array));
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        let ev = Evidence::decode(&encoded, &ta).expect("array measurements should decode");
+        assert!(!ev.claims().measurements.is_empty());
+    }
+
+    // ── Missing mandatory claims ──
+
+    #[test]
+    fn reject_missing_nonce() {
+        let (pkey, cert_der) = generate_key_and_cert("no-nonce");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_cwt_payload_without(CLAIM_KEY_NONCE);
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        match Evidence::decode(&encoded, &ta) {
+            Err(OcpEatError::InvalidToken(msg)) => {
+                assert!(msg.contains("nonce"), "expected nonce error, got: {msg}");
+            }
+            Err(e) => panic!("Expected missing-nonce error, got: {e}"),
+            Ok(_) => panic!("Expected missing-nonce error, got Ok"),
+        }
+    }
+
+    #[test]
+    fn reject_missing_debug_status() {
+        let (pkey, cert_der) = generate_key_and_cert("no-dbg");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_cwt_payload_without(CLAIM_KEY_DEBUG_STATUS);
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        match Evidence::decode(&encoded, &ta) {
+            Err(OcpEatError::InvalidToken(msg)) => {
+                assert!(
+                    msg.contains("dbgstat"),
+                    "expected dbgstat error, got: {msg}"
+                );
+            }
+            Err(e) => panic!("Expected missing-dbgstat error, got: {e}"),
+            Ok(_) => panic!("Expected missing-dbgstat error, got Ok"),
+        }
+    }
+
+    #[test]
+    fn reject_missing_eat_profile() {
+        let (pkey, cert_der) = generate_key_and_cert("no-profile");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_cwt_payload_without(CLAIM_KEY_EAT_PROFILE);
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        match Evidence::decode(&encoded, &ta) {
+            Err(OcpEatError::InvalidToken(msg)) => {
+                assert!(
+                    msg.contains("eat_profile"),
+                    "expected eat_profile error, got: {msg}"
+                );
+            }
+            Err(e) => panic!("Expected missing-eat_profile error, got: {e}"),
+            Ok(_) => panic!("Expected missing-eat_profile error, got Ok"),
+        }
+    }
+
+    #[test]
+    fn reject_missing_measurements() {
+        let (pkey, cert_der) = generate_key_and_cert("no-meas");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_cwt_payload_without(CLAIM_KEY_MEASUREMENTS);
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        match Evidence::decode(&encoded, &ta) {
+            Err(OcpEatError::InvalidToken(msg)) => {
+                assert!(
+                    msg.contains("measurements"),
+                    "expected measurements error, got: {msg}"
+                );
+            }
+            Err(e) => panic!("Expected missing-measurements error, got: {e}"),
+            Ok(_) => panic!("Expected missing-measurements error, got Ok"),
+        }
+    }
+
+    // ── Wrong eat_profile OID ──
+
+    #[test]
+    fn reject_wrong_eat_profile_oid() {
+        let wrong_oid = Value::Bytes(b"1.2.3.4.5".to_vec());
+        let (pkey, cert_der) = generate_key_and_cert("wrong-oid");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_cwt_payload_with(None, None, Some(wrong_oid), None);
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        match Evidence::decode(&encoded, &ta) {
+            Err(OcpEatError::InvalidToken(msg)) => {
+                assert!(
+                    msg.contains("does not match"),
+                    "expected OID mismatch error, got: {msg}"
+                );
+            }
+            Err(e) => panic!("Expected wrong-OID error, got: {e}"),
+            Ok(_) => panic!("Expected wrong-OID error, got Ok"),
+        }
+    }
+
+    // ── Invalid debug_status value ──
+
+    #[test]
+    fn reject_invalid_debug_status() {
+        let bad_dbg = Value::Integer(99.into());
+        let (pkey, cert_der) = generate_key_and_cert("bad-dbg");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_cwt_payload_with(None, Some(bad_dbg), None, None);
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        match Evidence::decode(&encoded, &ta) {
+            Err(OcpEatError::InvalidToken(msg)) => {
+                assert!(
+                    msg.contains("debug-status"),
+                    "expected debug-status error, got: {msg}"
+                );
+            }
+            Err(e) => panic!("Expected bad debug-status error, got: {e}"),
+            Ok(_) => panic!("Expected bad debug-status error, got Ok"),
+        }
+    }
+
+    // ── All five debug-status values accepted ──
+
+    #[test]
+    fn all_debug_status_values_accepted() {
+        for (val, expected) in [
+            (0, DebugStatus::Enabled),
+            (1, DebugStatus::Disabled),
+            (2, DebugStatus::DisabledSinceBoot),
+            (3, DebugStatus::DisabledPermanently),
+            (4, DebugStatus::DisabledFullyAndPermanently),
+        ] {
+            let (pkey, cert_der) = generate_key_and_cert("dbg-val");
+            let ta = ta_store_for(&cert_der);
+            let payload =
+                build_cwt_payload_with(None, Some(Value::Integer(val.into())), None, None);
+            let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+            let ev = Evidence::decode(&encoded, &ta)
+                .unwrap_or_else(|e| panic!("debug_status={val} should succeed: {e}"));
+            assert_eq!(ev.claims().debug_status, expected, "debug_status={val}");
+        }
+    }
+
+    // ── Nonce wrong type ──
+
+    #[test]
+    fn reject_nonce_wrong_type() {
+        let bad_nonce = Value::Text("not bytes".into());
+        let (pkey, cert_der) = generate_key_and_cert("bad-nonce");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_cwt_payload_with(Some(bad_nonce), None, None, None);
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        assert!(
+            Evidence::decode(&encoded, &ta).is_err(),
+            "nonce with wrong type should fail"
+        );
+    }
+
+    // ── Measurements wrong type ──
+
+    #[test]
+    fn reject_measurements_wrong_type() {
+        let bad_meas = Value::Text("not-measurements".into());
+        let (pkey, cert_der) = generate_key_and_cert("bad-meas");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_cwt_payload_with(None, None, None, Some(bad_meas));
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        assert!(
+            Evidence::decode(&encoded, &ta).is_err(),
+            "measurements with wrong type should fail"
+        );
     }
 }

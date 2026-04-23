@@ -11,6 +11,9 @@ use ocptoken::ta_store::{FsTrustAnchorStore, TrustAnchorStore};
 /// Environment variable for the trust anchor store path.
 const TA_STORE_PATH_ENV: &str = "TA_STORE_PATH";
 
+/// Environment variable for the signed reference-value CoRIM directory path.
+pub(crate) const SIGNED_REFVAL_CORIM_PATH: &str = "SIGNED_REFVAL_CORIM_PATH";
+
 /// Load the Trust Anchor Store from a local directory specified by
 /// the TA_STORE_PATH environment variable.  Exits the process on failure.
 pub(crate) fn load_fs_ta_store() -> Box<dyn TrustAnchorStore> {
