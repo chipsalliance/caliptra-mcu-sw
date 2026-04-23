@@ -9,6 +9,7 @@ use caliptra_mcu_common_commands::{
 use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
+use caliptra_mcu_libsyscall_caliptra::otp::Otp;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_libsyscall_caliptra::{mailbox::Mailbox, DefaultSyscalls};
 use caliptra_mcu_mbox_common::messages::{
@@ -25,7 +26,8 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsSelfTestStartReq, McuHkdfExpandReq, McuHkdfExtractReq, McuHmacKdfCounterReq, McuHmacReq,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq,
     McuResponseVarSize, McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, RevokeVendorPubKeyType,
-    DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    RotateVendorPkHashReq, RotateVendorPkHashResp, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -728,11 +730,20 @@ impl<'a> CmdInterface<'a> {
 
     async fn handle_rotate_vendor_pk_hash<'r>(
         &self,
-        _req: &[u8],
-        _resp_buf: &'r mut [u8],
+        req: &[u8],
+        resp_buf: &'r mut [u8],
     ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        // TODO
-        Err(MsgHandlerError::UnsupportedCommand)
+        let req = RotateVendorPkHashReq::ref_from_bytes(req)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        let otp: Otp<DefaultSyscalls> = Otp::new();
+        let res = match otp.rotate_vendor_pk_hash(&req.hash) {
+            Ok(_) => MbxCmdStatus::Complete,
+            Err(_) => MbxCmdStatus::Failure,
+        };
+        let resp = RotateVendorPkHashResp::default();
+        let resp_slice = &mut resp_buf[..size_of::<RotateVendorPkHashResp>()];
+        resp.write_to(resp_slice).unwrap();
+        Ok((resp_slice, res))
     }
 
     async fn handle_increase_caliptra_min_svn<'r>(

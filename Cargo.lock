@@ -1493,6 +1493,7 @@ name = "caliptra-mcu-mbox-common"
 version = "0.1.0"
 dependencies = [
  "caliptra-api",
+ "caliptra-mcu-registers-generated",
  "zerocopy",
 ]
 

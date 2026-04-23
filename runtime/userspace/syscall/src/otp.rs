@@ -5,6 +5,7 @@
 use crate::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
 use caliptra_mcu_mbox_common::messages::RevokeVendorPubKeyType;
+use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0;
 use core::marker::PhantomData;
 
 pub const VENDOR_PK_HASH_SIZE: usize =
@@ -116,6 +117,15 @@ impl<S: Syscalls> Otp<S> {
         }
 
         self.write(reg_offset, vendor_pk_hash_slot, to_write)
+    }
+
+    pub fn rotate_vendor_pk_hash(
+        &self,
+        new_hash: &[u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size],
+    ) -> Result<(), ErrorCode> {
+        let otp: Otp<DefaultSyscalls> = Otp::new();
+        let _valid_mask = otp.read(reg::VENDOR_PK_HASH_VALID, 0)?;
+        todo!()
     }
 }
 
