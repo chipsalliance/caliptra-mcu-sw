@@ -14,14 +14,33 @@ use caliptra_mcu_romtime::McuBootMilestones;
 use std::io::Write;
 
 fn test_rom_hw_error(inject_val: u32, expected_error: u32, expected_message: &str) -> Result<()> {
-    let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env()?;
+    // Use the prebuilt firmware bundle if available; otherwise compile.
+    let (caliptra_rom, mcu_rom, caliptra_fw, soc_manifest, mcu_runtime, vendor_pk_hash_u8) =
+        if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
+            (
+                binaries.caliptra_rom.clone(),
+                binaries.mcu_rom.clone(),
+                binaries.caliptra_fw.clone(),
+                binaries.soc_manifest.clone(),
+                binaries.mcu_runtime.clone(),
+                binaries.vendor_pk_hash().unwrap().to_vec(),
+            )
+        } else {
+            println!("Could not find prebuilt firmware binaries, building firmware...");
+            let tb = crate::test::build_test_binaries(&crate::test::TestParams::default());
+            (
+                tb.caliptra_rom,
+                tb.mcu_rom,
+                tb.caliptra_fw,
+                tb.soc_manifest,
+                tb.mcu_runtime,
+                tb.vendor_pk_hash_u8,
+            )
+        };
 
     // Build flash image from firmware binaries
-    let flash_image = build_flash_image_bytes(
-        Some(&binaries.caliptra_fw),
-        Some(&binaries.soc_manifest),
-        Some(&binaries.mcu_runtime),
-    );
+    let flash_image =
+        build_flash_image_bytes(Some(&caliptra_fw), Some(&soc_manifest), Some(&mcu_runtime));
 
     // Instantiate the hw model.
     let mut hw = new(InitParams {
@@ -29,9 +48,7 @@ fn test_rom_hw_error(inject_val: u32, expected_error: u32, expected_message: &st
             fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
             vendor_pk_hash: {
                 let mut vendor_pk_hash = [0u32; 12];
-                binaries
-                    .vendor_pk_hash()
-                    .unwrap()
+                vendor_pk_hash_u8
                     .chunks(4)
                     .enumerate()
                     .for_each(|(i, chunk)| {
@@ -43,9 +60,9 @@ fn test_rom_hw_error(inject_val: u32, expected_error: u32, expected_message: &st
             },
             ..Default::default()
         },
-        caliptra_rom: &binaries.caliptra_rom,
-        mcu_rom: &binaries.mcu_rom,
-        vendor_pk_hash: binaries.vendor_pk_hash(),
+        caliptra_rom: &caliptra_rom,
+        mcu_rom: &mcu_rom,
+        vendor_pk_hash: Some(vendor_pk_hash_u8.as_slice().try_into().unwrap()),
         active_mode: true,
         vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
         primary_flash_initial_contents: Some(flash_image),
