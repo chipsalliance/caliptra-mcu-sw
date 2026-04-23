@@ -443,20 +443,12 @@ impl Soc {
             romtime::ocp_lock::PermaBitStatus::Unset
         };
 
-        let fuses = otp
-            .read_fuses()
-            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        let mut seeds = [[0u8; 48]; 8];
+        for (i, seed) in seeds.iter_mut().enumerate() {
+            otp.read_hek_seed(i, seed)
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        }
 
-        let seeds = [
-            &fuses.cptra_ss_lock_hek_prod_0,
-            &fuses.cptra_ss_lock_hek_prod_1,
-            &fuses.cptra_ss_lock_hek_prod_2,
-            &fuses.cptra_ss_lock_hek_prod_3,
-            &fuses.cptra_ss_lock_hek_prod_4,
-            &fuses.cptra_ss_lock_hek_prod_5,
-            &fuses.cptra_ss_lock_hek_prod_6,
-            &fuses.cptra_ss_lock_hek_prod_7,
-        ];
         let total_slots = seeds.len();
 
         let hek_seeds = romtime::ocp_lock::HekSeeds::new(&seeds[..]);

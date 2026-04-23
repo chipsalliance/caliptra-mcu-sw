@@ -4,7 +4,7 @@ use crate::{HexBytes, HexWord, StaticRef};
 use core::fmt::Write;
 use mcu_error::{McuError, McuResult};
 use registers_generated::fuses;
-use registers_generated::fuses::{FuseEntryInfo, Fuses};
+use registers_generated::fuses::FuseEntryInfo;
 use registers_generated::otp_ctrl;
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -705,6 +705,16 @@ impl Otp {
         )
     }
 
+    /// Read a specific HEK seed partition from OTP.
+    /// index must be between 0 and 7.
+    pub fn read_hek_seed(&self, index: usize, data: &mut [u8; 48]) -> McuResult<()> {
+        if index > 7 {
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+        let offset = HEK_OFFSETS[index];
+        self.read_data(offset, data.len(), data)
+    }
+
     // -------------------------------------------------------------------------
     // Generic fuse entry read/write using generated FuseEntryInfo
     // -------------------------------------------------------------------------
@@ -781,95 +791,6 @@ impl Otp {
     pub fn set_hek_perma(&self) -> McuResult<()> {
         self.write_entry(fuses::PERMA_HEK_EN, 1)?;
         Ok(())
-    }
-
-    pub fn read_fuses(&self) -> McuResult<Fuses> {
-        let mut fuses = Fuses::default();
-
-        crate::println!("[mcu-rom-otp] Reading partitions");
-        self.read_data(
-            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
-            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
-            &mut fuses.sw_test_unlock_partition,
-        )?;
-        self.read_data(
-            fuses::SW_MANUF_PARTITION_BYTE_OFFSET,
-            fuses::SW_MANUF_PARTITION_BYTE_SIZE,
-            &mut fuses.sw_manuf_partition,
-        )?;
-        self.read_data(
-            fuses::SVN_PARTITION_BYTE_OFFSET,
-            fuses::SVN_PARTITION_BYTE_SIZE,
-            &mut fuses.svn_partition,
-        )?;
-        self.read_data(
-            fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_TEST_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_test_partition,
-        )?;
-        self.read_data(
-            fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_hashes_manuf_partition,
-        )?;
-        // TODO: read these again when the offsets are fixed
-        self.read_data(
-            fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_hashes_prod_partition,
-        )?;
-        self.read_data(
-            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_revocations_prod_partition,
-        )?;
-        self.read_data(
-            fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET,
-            fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE,
-            &mut fuses.cptra_ss_lock_hek_prod_0,
-        )?;
-        self.read_data(
-            fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET,
-            fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_SIZE,
-            &mut fuses.cptra_ss_lock_hek_prod_1,
-        )?;
-        self.read_data(
-            fuses::CPTRA_SS_LOCK_HEK_PROD_2_BYTE_OFFSET,
-            fuses::CPTRA_SS_LOCK_HEK_PROD_2_BYTE_SIZE,
-            &mut fuses.cptra_ss_lock_hek_prod_2,
-        )?;
-        self.read_data(
-            fuses::CPTRA_SS_LOCK_HEK_PROD_3_BYTE_OFFSET,
-            fuses::CPTRA_SS_LOCK_HEK_PROD_3_BYTE_SIZE,
-            &mut fuses.cptra_ss_lock_hek_prod_3,
-        )?;
-        self.read_data(
-            fuses::CPTRA_SS_LOCK_HEK_PROD_4_BYTE_OFFSET,
-            fuses::CPTRA_SS_LOCK_HEK_PROD_4_BYTE_SIZE,
-            &mut fuses.cptra_ss_lock_hek_prod_4,
-        )?;
-        self.read_data(
-            fuses::CPTRA_SS_LOCK_HEK_PROD_5_BYTE_OFFSET,
-            fuses::CPTRA_SS_LOCK_HEK_PROD_5_BYTE_SIZE,
-            &mut fuses.cptra_ss_lock_hek_prod_5,
-        )?;
-        self.read_data(
-            fuses::CPTRA_SS_LOCK_HEK_PROD_6_BYTE_OFFSET,
-            fuses::CPTRA_SS_LOCK_HEK_PROD_6_BYTE_SIZE,
-            &mut fuses.cptra_ss_lock_hek_prod_6,
-        )?;
-        self.read_data(
-            fuses::CPTRA_SS_LOCK_HEK_PROD_7_BYTE_OFFSET,
-            fuses::CPTRA_SS_LOCK_HEK_PROD_7_BYTE_SIZE,
-            &mut fuses.cptra_ss_lock_hek_prod_7,
-        )?;
-        crate::println!("[mcu-rom-otp] Reading vendor non-secret production partition");
-        self.read_data(
-            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_non_secret_prod_partition,
-        )?;
-        Ok(fuses)
     }
 
     /// Compute the software digest of an OTP partition by reading its data

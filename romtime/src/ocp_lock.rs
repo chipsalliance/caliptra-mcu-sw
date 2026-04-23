@@ -61,11 +61,11 @@ impl AsRef<[u8]> for HekSeed<'_> {
 
 /// A collection of HEK Seed buffers
 pub struct HekSeeds<'a> {
-    bufs: &'a [&'a [u8; 48]],
+    bufs: &'a [[u8; 48]],
 }
 
 impl<'a> HekSeeds<'a> {
-    pub fn new(bufs: &'a [&'a [u8; 48]]) -> Self {
+    pub fn new(bufs: &'a [[u8; 48]]) -> Self {
         Self { bufs }
     }
 
@@ -78,7 +78,7 @@ impl<'a> HekSeeds<'a> {
     }
 
     pub fn get(&self, slot: usize) -> Option<&'a [u8; 48]> {
-        self.bufs.get(slot).copied()
+        self.bufs.get(slot)
     }
 }
 
