@@ -510,6 +510,11 @@ impl Otp {
         self.read_entry_raw(entry, buf)
     }
 
+    /// Read vendor public key hash valid.
+    pub fn read_vendor_pk_hash_valid(&self) -> McuResult<u32> {
+        self.read_entry(fuses::VENDOR_PK_HASH_VALID)
+    }
+
     /// Read cptra_core_runtime_svn (16 bytes).
     pub fn read_cptra_core_runtime_svn(
         &self,

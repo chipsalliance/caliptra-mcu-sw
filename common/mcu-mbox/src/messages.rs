@@ -21,6 +21,7 @@ pub use caliptra_api::mailbox::{
     MAX_CMB_DATA_SIZE,
 };
 pub use caliptra_api::{calc_checksum, verify_checksum};
+use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0;
 use core::convert::From;
 use core::num::NonZeroU32;
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout};
@@ -1345,6 +1346,28 @@ pub struct FuseLockPartitionResp {
     pub hdr: MailboxRespHeader,
 }
 impl Response for FuseLockPartitionResp {}
+
+/// MC_ROTATE_VENDOR_PK_HASH request: Rotate the vendor PK hash
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct RotateVendorPkHashReq {
+    pub hdr: MailboxReqHeader,
+    /// New hash to burn into the next unused fuse
+    pub hash: [u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size],
+}
+impl Request for RotateVendorPkHashReq {
+    const ID: CommandId = CommandId::MC_ROTATE_VENDOR_PK_HASH;
+
+    type Resp = RotateVendorPkHashResp;
+}
+
+/// MC_ROTATE_VENDOR_PK_HASH response: Rotate the vendor PK hash
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct RotateVendorPkHashResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for RotateVendorPkHashResp {}
 
 #[cfg(test)]
 mod tests {
