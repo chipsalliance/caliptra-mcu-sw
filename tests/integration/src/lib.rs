@@ -233,13 +233,13 @@ mod test {
         }
     }
 
-    struct TestBinaries {
-        vendor_pk_hash_u8: Vec<u8>,
-        caliptra_rom: Vec<u8>,
-        caliptra_fw: Vec<u8>,
-        mcu_rom: Vec<u8>,
-        soc_manifest: Vec<u8>,
-        mcu_runtime: Vec<u8>,
+    pub struct TestBinaries {
+        pub vendor_pk_hash_u8: Vec<u8>,
+        pub caliptra_rom: Vec<u8>,
+        pub caliptra_fw: Vec<u8>,
+        pub mcu_rom: Vec<u8>,
+        pub soc_manifest: Vec<u8>,
+        pub mcu_runtime: Vec<u8>,
     }
 
     fn prebuilt_binaries(
@@ -271,7 +271,7 @@ mod test {
         test_binaries
     }
 
-    fn build_test_binaries(params: &TestParams) -> TestBinaries {
+    pub fn build_test_binaries(params: &TestParams) -> TestBinaries {
         // Get MCU runtime: prefer prebuilt, fall back to compilation
         let mcu_runtime_path = if let Ok(binaries) = FirmwareBinaries::from_env() {
             let runtime_bytes = if let Some(feature) = params.feature {
