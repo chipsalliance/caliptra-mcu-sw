@@ -410,6 +410,7 @@ mod test {
             None,
             None,
             None,
+            None,
         );
         let caliptra_rom = std::fs::read(
             builder
@@ -757,6 +758,7 @@ mod test {
                 None,
                 None,
                 None,
+                None,
             )
         };
 
@@ -956,6 +958,7 @@ mod test {
             Some(soc_manifest_path),
             vendor_pk_hash,
             Some(runtime_path),
+            None,
             None,
             None,
             None,

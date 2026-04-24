@@ -845,6 +845,7 @@ mod test {
             None,
             None,
             None,
+            None,
         );
 
         // Create partition table matching what's used in the build path
@@ -974,6 +975,7 @@ mod test {
             prebuilt_vendor_pk_hash,
             Some(test_runtime.clone()),
             Some(soc_images.clone()),
+            None,
             None,
             None,
             None,

@@ -115,6 +115,7 @@ mod test {
             None,
             None,
             None,
+            None,
         );
         let fw_path = builder
             .get_caliptra_fw()
@@ -392,6 +393,7 @@ mod test {
             None,
             prebuilt_vendor_pk_hash,
             Some(mcu_runtime_path),
+            None,
             None,
             None,
             None,

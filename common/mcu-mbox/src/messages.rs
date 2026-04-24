@@ -121,6 +121,7 @@ impl CommandId {
 
     // Authorized commands
     pub const MC_ROTATE_VENDOR_PK_HASH: Self = Self(0x4D56_504B); // "MVPK"
+    pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
 }
 
 impl From<u32> for CommandId {
@@ -182,6 +183,7 @@ pub enum McuMailboxReq {
     FuseRead(FuseReadReq),
     FuseWrite(FuseWriteReq),
     FuseLockPartition(FuseLockPartitionReq),
+    FuseIncreaseCaliptraMinSvn(FuseIncreaseCaliptraMinSvnReq),
 }
 
 impl McuMailboxReq {
@@ -229,6 +231,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -276,6 +279,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -323,6 +327,9 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(_) => CommandId::MC_FUSE_READ,
             McuMailboxReq::FuseWrite(_) => CommandId::MC_FUSE_WRITE,
             McuMailboxReq::FuseLockPartition(_) => CommandId::MC_FUSE_LOCK_PARTITION,
+            McuMailboxReq::FuseIncreaseCaliptraMinSvn(_) => {
+                CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
+            }
         }
     }
 
@@ -1347,6 +1354,27 @@ pub struct FuseLockPartitionResp {
     pub hdr: MailboxRespHeader,
 }
 impl Response for FuseLockPartitionResp {}
+
+/// MC_FUSE_INCREASE_CALIPTRA_MIN_SVN request: Increases the Caliptra min bootable SVN
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseIncreaseCaliptraMinSvnReq {
+    pub hdr: MailboxReqHeader,
+    pub flags: u32,
+    pub svn: u32,
+}
+impl Request for FuseIncreaseCaliptraMinSvnReq {
+    const ID: CommandId = CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN;
+    type Resp = FuseIncreaseCaliptraMinSvnResp;
+}
+
+/// MC_FUSE_INCREASE_CALIPTRA_MIN_SVN response: Indicates success or failure.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseIncreaseCaliptraMinSvnResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for FuseIncreaseCaliptraMinSvnResp {}
 
 #[cfg(test)]
 mod tests {

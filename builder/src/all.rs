@@ -232,6 +232,8 @@ pub struct FirmwareBinaries {
     pub caliptra_rom: Vec<u8>,
     pub caliptra_fw: Vec<u8>,
     pub caliptra_fw_ocp_lock: Vec<u8>,
+    pub caliptra_fw_svn7: Vec<u8>,
+    pub caliptra_fw_svn128: Vec<u8>,
     pub mcu_rom: Vec<u8>,
     pub mcu_runtime: Vec<u8>,
     pub mcu_bare_metal: Vec<u8>,
@@ -252,6 +254,8 @@ impl FirmwareBinaries {
     const CALIPTRA_ROM_NAME: &'static str = "caliptra_rom.bin";
     const CALIPTRA_FW_NAME: &'static str = "caliptra_fw.bin";
     const CALIPTRA_FW_OCP_LOCK_NAME: &'static str = "caliptra_fw_ocp_lock.bin";
+    const CALIPTRA_FW_SVN7_NAME: &'static str = "caliptra_fw_svn7.bin";
+    const CALIPTRA_FW_SVN128_NAME: &'static str = "caliptra_fw_svn128.bin";
     const MCU_ROM_NAME: &'static str = "mcu_rom.bin";
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
     const MCU_BARE_METAL_NAME: &'static str = "mcu_bare_metal.bin";
@@ -294,6 +298,8 @@ impl FirmwareBinaries {
                 Self::CALIPTRA_ROM_NAME => binaries.caliptra_rom = data,
                 Self::CALIPTRA_FW_NAME => binaries.caliptra_fw = data,
                 Self::CALIPTRA_FW_OCP_LOCK_NAME => binaries.caliptra_fw_ocp_lock = data,
+                Self::CALIPTRA_FW_SVN7_NAME => binaries.caliptra_fw_svn7 = data,
+                Self::CALIPTRA_FW_SVN128_NAME => binaries.caliptra_fw_svn128 = data,
                 Self::MCU_ROM_NAME => binaries.mcu_rom = data,
                 Self::MCU_RUNTIME_NAME => binaries.mcu_runtime = data,
                 Self::MCU_BARE_METAL_NAME => binaries.mcu_bare_metal = data,
@@ -696,12 +702,47 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         None,
         vendor.map(|s| s.to_string()),
         model.map(|s| s.to_string()),
+        None,
     );
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_fw = caliptra_builder.get_caliptra_fw()?;
     let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?.to_string();
     println!("Vendor PK hash: {:x?}", vendor_pk_hash);
     let soc_manifest = caliptra_builder.get_soc_manifest(None)?;
+
+    let mut builder_svn7 = crate::CaliptraBuilder::new(
+        fpga,
+        false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(7),
+    );
+    let caliptra_fw_svn7 = builder_svn7.get_caliptra_fw()?;
+
+    let mut builder_svn128 = crate::CaliptraBuilder::new(
+        fpga,
+        false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(128),
+    );
+    let caliptra_fw_svn128 = builder_svn128.get_caliptra_fw()?;
 
     let flash_image = create_flash_image(
         Some(caliptra_fw.clone()),
@@ -861,6 +902,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             None,
             vendor.map(|s| s.to_string()),
             model.map(|s| s.to_string()),
+            None,
         );
         let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
         caliptra_builder.get_soc_manifest(feature_soc_manifest_file.path().to_str())?;
@@ -958,6 +1000,18 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     add_to_zip(
         &caliptra_fw,
         FirmwareBinaries::CALIPTRA_FW_OCP_LOCK_NAME,
+        &mut zip,
+        options,
+    )?;
+    add_to_zip(
+        &caliptra_fw_svn7,
+        FirmwareBinaries::CALIPTRA_FW_SVN7_NAME,
+        &mut zip,
+        options,
+    )?;
+    add_to_zip(
+        &caliptra_fw_svn128,
+        FirmwareBinaries::CALIPTRA_FW_SVN128_NAME,
         &mut zip,
         options,
     )?;

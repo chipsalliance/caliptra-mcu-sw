@@ -29,6 +29,7 @@ pub(crate) fn rom_run(trace: bool) -> Result<()> {
         None,
         None,
         None,
+        None,
     );
 
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
