@@ -350,5 +350,4 @@ jobs:
             --workspace-remap . \
             --test-threads=1 \
             --profile=nightly-emulator \
-            --no-capture \
             --partition hash:${{ matrix.shard }}/4
