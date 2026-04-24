@@ -39,6 +39,9 @@ pub struct BaremetalNetIf {
     netif: MaybeUninit<ffi::netif>,
     /// lwIP DHCP state — lwIP holds raw pointers to this
     dhcp: MaybeUninit<ffi::dhcp>,
+    /// lwIP DHCPv6 state — lwIP holds raw pointers to this
+    #[cfg(feature = "baremetal-dhcp6-stateful")]
+    dhcp6: MaybeUninit<ffi::dhcp6>,
     /// Hardware driver callbacks (None until `init()` is called)
     callbacks: Option<BaremetalCallbacks>,
     /// Whether DHCP has been started
@@ -59,6 +62,8 @@ impl BaremetalNetIf {
         Self {
             netif: MaybeUninit::uninit(),
             dhcp: MaybeUninit::uninit(),
+            #[cfg(feature = "baremetal-dhcp6-stateful")]
+            dhcp6: MaybeUninit::uninit(),
             callbacks: None,
             dhcp_started: false,
             initialized: false,
@@ -290,6 +295,77 @@ impl BaremetalNetIf {
         }
     }
 
+    /// Enable stateful DHCPv6 (RFC 8415).
+    ///
+    /// The client waits for a Router Advertisement with the Managed Address
+    /// Configuration (M) flag set, then performs a Solicit→Advertise→Request→Reply
+    /// exchange to acquire an IPv6 address and boot file URL (Option 59).
+    #[cfg(feature = "baremetal-dhcp6-stateful")]
+    pub fn dhcp6_enable_stateful(&mut self) -> Result<()> {
+        unsafe {
+            let netif_ptr = self.netif.as_mut_ptr();
+            let dhcp6_ptr = self.dhcp6.as_mut_ptr();
+            ptr::write_bytes(dhcp6_ptr, 0, 1);
+            ffi::dhcp6_set_struct(netif_ptr, dhcp6_ptr);
+            let err = ffi::dhcp6_enable_stateful(netif_ptr);
+            check_err(err)?;
+            Ok(())
+        }
+    }
+
+    /// Get the Boot File URL from DHCPv6 Option 59 (RFC 5970).
+    ///
+    /// Returns the raw URL bytes (e.g. `b"tftp://[fd00::1]/boot.bin"`) if the
+    /// server provided it, or `None` if the option was not received.
+    #[cfg(feature = "baremetal-dhcp6-stateful")]
+    pub fn dhcp6_boot_file_url(&self) -> Option<&[u8]> {
+        unsafe {
+            let dhcp6_ptr = self.dhcp6.as_ptr();
+            let len = (*dhcp6_ptr).boot_file_url_len as usize;
+            if len == 0 {
+                return None;
+            }
+            let bytes = &(*dhcp6_ptr).boot_file_url[..len];
+            Some(core::slice::from_raw_parts(
+                bytes.as_ptr() as *const u8,
+                len,
+            ))
+        }
+    }
+
+    /// Parse the Boot File URL (Option 59) into a server IPv6 address and file path.
+    ///
+    /// Expects format: `tftp://[<ipv6-addr>]/<path>`
+    /// Returns `(Ipv6Addr, &[u8])` where the slice is the null-terminated file path.
+    #[cfg(feature = "baremetal-dhcp6-stateful")]
+    pub fn dhcp6_parse_boot_file_url(&self) -> Option<(Ipv6Addr, &[u8])> {
+        let url = self.dhcp6_boot_file_url()?;
+
+        // Strip "tftp://[" prefix
+        let prefix = b"tftp://[";
+        if url.len() < prefix.len() || &url[..prefix.len()] != prefix {
+            return None;
+        }
+        let rest = &url[prefix.len()..];
+
+        // Find the closing ']'
+        let bracket_end = rest.iter().position(|&b| b == b']')?;
+        let addr_bytes = &rest[..bracket_end];
+        let after_bracket = &rest[bracket_end + 1..];
+
+        // Parse the IPv6 address
+        let server_addr = parse_ipv6_addr_bytes(addr_bytes)?;
+
+        // The path follows: "/path"
+        let path = if !after_bracket.is_empty() && after_bracket[0] == b'/' {
+            &after_bracket[1..]
+        } else {
+            after_bracket
+        };
+
+        Some((server_addr, path))
+    }
+
     /// Check if the interface has a valid global IPv6 address (SLAAC PREFERRED state).
     #[cfg(feature = "baremetal-ipv6")]
     pub fn has_global_ipv6_address(&self) -> bool {
@@ -331,6 +407,92 @@ impl BaremetalNetIf {
             Ipv6Addr((*netif_ptr).ip6_addr[1].u_addr.ip6)
         }
     }
+}
+
+/// Parse an IPv6 address from a byte slice (e.g. `b"fd00:1234:5678::1"`).
+/// Supports `::` shorthand. No-alloc implementation for bare-metal.
+#[cfg(feature = "baremetal-dhcp6-stateful")]
+fn parse_ipv6_addr_bytes(s: &[u8]) -> Option<Ipv6Addr> {
+    let mut segments = [0u16; 8];
+
+    // Find "::" position
+    let double_colon = s.windows(2).position(|w| w == b"::");
+
+    if let Some(dc_pos) = double_colon {
+        let left = &s[..dc_pos];
+        let right_start = dc_pos + 2;
+        let right = if right_start < s.len() {
+            &s[right_start..]
+        } else {
+            &[]
+        };
+
+        let left_count = if left.is_empty() {
+            0
+        } else {
+            parse_hex_segments(left, &mut segments, 0)?
+        };
+
+        if !right.is_empty() {
+            let mut right_segs = [0u16; 8];
+            let right_count = parse_hex_segments(right, &mut right_segs, 0)?;
+            if left_count + right_count > 8 {
+                return None;
+            }
+            let right_start_idx = 8 - right_count;
+            segments[right_start_idx..8].copy_from_slice(&right_segs[..right_count]);
+        }
+    } else {
+        let count = parse_hex_segments(s, &mut segments, 0)?;
+        if count != 8 {
+            return None;
+        }
+    }
+
+    Some(Ipv6Addr::new(segments))
+}
+
+/// Parse colon-separated hex segments from a byte slice into `out` starting at `start`.
+/// Returns the number of segments parsed.
+#[cfg(feature = "baremetal-dhcp6-stateful")]
+fn parse_hex_segments(s: &[u8], out: &mut [u16; 8], start: usize) -> Option<usize> {
+    let mut idx = start;
+    let mut val: u16 = 0;
+    let mut has_digit = false;
+
+    for &b in s {
+        if b == b':' {
+            if !has_digit {
+                return None;
+            }
+            if idx >= 8 {
+                return None;
+            }
+            out[idx] = val;
+            idx += 1;
+            val = 0;
+            has_digit = false;
+        } else {
+            let digit = match b {
+                b'0'..=b'9' => b - b'0',
+                b'a'..=b'f' => b - b'a' + 10,
+                b'A'..=b'F' => b - b'A' + 10,
+                _ => return None,
+            };
+            val = val.checked_shl(4)?.checked_add(digit as u16)?;
+            has_digit = true;
+        }
+    }
+
+    if has_digit {
+        if idx >= 8 {
+            return None;
+        }
+        out[idx] = val;
+        idx += 1;
+    }
+
+    Some(idx - start)
 }
 
 /// lwIP netif initialization callback.

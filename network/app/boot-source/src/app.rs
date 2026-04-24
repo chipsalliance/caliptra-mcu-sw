@@ -18,6 +18,16 @@ use crate::handler;
 use crate::network;
 use crate::toc::Toc;
 
+/// IP version to use for network boot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IpVersion {
+    /// Use IPv4 (DHCPv4 + TFTP over IPv4).
+    V4,
+    /// Use IPv6 (Stateful DHCPv6 + TFTP over IPv6).
+    #[cfg(feature = "ipv6-boot")]
+    V6,
+}
+
 /// Minimum free space in the TFTP chunk buffer before accepting another RX packet.
 const TFTP_RX_THRESHOLD: usize = 512;
 
@@ -53,10 +63,12 @@ pub struct BootSourceApp<'a, M: NetworkMailbox<'a>> {
     dhcp_result: UnsafeCell<Option<network::DhcpResult>>,
     /// Whether the TFTP GET for the current image has been started.
     tftp_started: Cell<bool>,
+    /// IP version to use for network boot.
+    ip_version: IpVersion,
 }
 
 impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
-    pub fn new(mbox: &'a M, max_chunk_size: usize) -> Self {
+    pub fn new(mbox: &'a M, max_chunk_size: usize, ip_version: IpVersion) -> Self {
         Self {
             mbox,
             state: Cell::new(AppState::Idle),
@@ -68,6 +80,7 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
             max_chunk_size,
             dhcp_result: UnsafeCell::new(None),
             tftp_started: Cell::new(false),
+            ip_version,
         }
     }
 
@@ -145,9 +158,20 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
     /// `DhcpInProgress`. When an address is obtained, starts the TFTP TOC
     /// download and transitions to `TftpTocInProgress`.
     fn poll_dhcp(&self) {
-        if network::dhcp_has_address() {
+        let has_addr = match self.ip_version {
+            IpVersion::V4 => network::dhcp_has_address(),
+            #[cfg(feature = "ipv6-boot")]
+            IpVersion::V6 => network::dhcp6_has_address(),
+        };
+
+        if has_addr {
             caliptra_mcu_network_drivers::println!("[boot-src] DHCP complete");
-            let result = match network::take_dhcp_result() {
+            let result = match self.ip_version {
+                IpVersion::V4 => network::take_dhcp_result(),
+                #[cfg(feature = "ipv6-boot")]
+                IpVersion::V6 => network::take_dhcp6_result(),
+            };
+            let result = match result {
                 Some(r) => r,
                 None => {
                     let _ = handler::send_error(
@@ -319,7 +343,7 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
 
         match (self.state.get(), msg_type) {
             (AppState::Idle, MessageType::InitiateBootRequest) => {
-                handler::handle_initiate_boot_start(data, &self.boot_flags)?;
+                handler::handle_initiate_boot_start(data, &self.boot_flags, self.ip_version)?;
                 self.state.set(AppState::DhcpInProgress);
                 Ok(())
             }

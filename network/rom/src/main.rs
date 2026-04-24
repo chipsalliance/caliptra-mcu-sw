@@ -100,7 +100,7 @@ pub extern "C" fn exception_handler() {
 
 #[cfg(all(target_arch = "riscv32", feature = "network-boot"))]
 fn run_boot_source_app() {
-    use caliptra_mcu_network_app_boot_source::app::BootSourceApp;
+    use caliptra_mcu_network_app_boot_source::app::{BootSourceApp, IpVersion};
     use caliptra_mcu_network_drivers::network_mbox::NetworkMboxDriver;
     use caliptra_mcu_network_drivers::{EthernetDriver, TimerDriver};
 
@@ -116,7 +116,11 @@ fn run_boot_source_app() {
         unsafe { (*core::ptr::addr_of!(TIMER_STORAGE)).as_ref().unwrap() };
 
     let driver = NetworkMboxDriver::new();
-    let app = BootSourceApp::new(&driver, 1024);
+    #[cfg(feature = "test-network-boot-ipv6")]
+    let ip_version = IpVersion::V6;
+    #[cfg(not(feature = "test-network-boot-ipv6"))]
+    let ip_version = IpVersion::V4;
+    let app = BootSourceApp::new(&driver, 1024, ip_version);
 
     if let Err(e) = app.init(eth_ref, timer_ref) {
         println!("[boot-src] ERROR: init failed: {:?}", e);

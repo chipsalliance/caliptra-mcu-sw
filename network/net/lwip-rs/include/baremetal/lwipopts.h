@@ -98,7 +98,11 @@
 #ifdef LWIP_BAREMETAL_IPV6
 #define LWIP_IPV6_NUM_ADDRESSES         3
 #define LWIP_IPV6_DHCP6                 1
+#ifdef LWIP_BAREMETAL_DHCP6_STATEFUL
+#define LWIP_IPV6_DHCP6_STATEFUL        1
+#else
 #define LWIP_IPV6_DHCP6_STATEFUL        0
+#endif
 #define LWIP_IPV6_AUTOCONFIG            1
 #define LWIP_IPV6_FORWARD               0
 #define LWIP_ICMP6                      1

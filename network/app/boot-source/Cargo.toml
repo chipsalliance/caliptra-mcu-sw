@@ -10,6 +10,10 @@ description = "Boot source provider application for the Network Coprocessor"
 caliptra-mcu-flash-image.workspace = true
 zerocopy.workspace = true
 
+[features]
+default = []
+ipv6-boot = ["caliptra-mcu-lwip-rs/baremetal-dhcp6-stateful"]
+
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 caliptra-mcu-boot-source-protocol.workspace = true
 caliptra-mcu-lwip-rs = { workspace = true, default-features = false, features = ["baremetal-tftp", "baremetal-tftpv6"] }
