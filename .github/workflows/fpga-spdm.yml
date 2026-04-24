@@ -3,13 +3,12 @@
 name: FPGA SPDM Tests
 
 on:
-  schedule:
-    - cron: "0 0 * * *"
+  pull_request:
   workflow_dispatch:
 
 jobs:
   build_test_binaries:
-    runs-on: [e2-standard-8-big-disk]
+    runs-on: [ e2-standard-8-big-disk ]
     timeout-minutes: 60
     env:
       SCCACHE_VERSION: 0.10.0
@@ -36,7 +35,8 @@ jobs:
         id: sccache_bin_restore
         with:
           path: ~/.cargo/bin/sccache
-          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{
+            env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
 
       - name: Install sccache
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
@@ -264,7 +264,7 @@ jobs:
           echo mount squashfs
           sudo mount /tmp/caliptra-test-binaries.sqsh/caliptra-test-binaries.sqsh /tmp/caliptra-test-binaries -t squashfs -o loop
 
-      - name: Execute SPDM attestation tests
+      - name: Execute SPDM responder tests on MCTP transport
         run: |
           export RUST_BACKTRACE=1
           TEST_BIN=/tmp/caliptra-test-binaries
