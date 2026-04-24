@@ -140,7 +140,7 @@ impl MctpUtil {
         let mut i3c_state = I3cControllerState::Start;
         let msg_type = msg[0];
 
-        let mut retry = 100;
+        let mut retry = 500;
         // Buffer for accumulating multi-packet responses. The first packet
         // matching `msg_type` (post-MCTP-header byte) starts the message;
         // subsequent packets without SOM are appended until EOM is seen.
@@ -157,7 +157,9 @@ impl MctpUtil {
                 I3cControllerState::Start => {
                     // Add some delay before sending the first packet.
                     // The MCU might need some time to boot up and be ready to receive the request.
-                    sleep_emulator_ticks(5_000_000);
+                    // Firmware update tests need extra time because the ROM processes
+                    // recovery images (multiple indices) before the runtime starts.
+                    sleep_emulator_ticks(50_000_000);
                     i3c_state = I3cControllerState::SendPrivateWrite;
                 }
 

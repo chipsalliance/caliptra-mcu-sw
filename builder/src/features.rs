@@ -59,4 +59,6 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-mbox-fips-self-test",
     "test-mcu-mbox-fips-periodic",
     "test-exit-immediately",
+    "test-mctp-spdm-attestation",
+    "test-mctp-spdm-responder-conformance",
 ];

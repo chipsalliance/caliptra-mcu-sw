@@ -35,6 +35,7 @@ mod test {
 
         let mut hw = start_runtime_hw_model(TestParams {
             i3c_port: Some(PortPicker::new().pick().unwrap()),
+            use_strap_secrets: true,
             ..Default::default()
         });
 

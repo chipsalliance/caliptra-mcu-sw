@@ -20,6 +20,7 @@ use caliptra_emu_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, MailboxRequester,
     Mci, ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
 };
+use caliptra_hw_model_types::DEFAULT_UDS_SEED;
 use std::cell::Cell;
 use std::io::{self, ErrorKind, Write};
 use std::path::PathBuf;
@@ -70,6 +71,7 @@ pub struct StartCaliptraArgs<'a> {
     pub ocp_lock_en: bool,
     pub debug_intent: bool,
     pub prod_dbg_unlock_keypairs: Vec<(&'a [u8; 96], &'a [u8; 2592])>,
+    pub cptra_obf_key: [u32; 8],
 }
 
 register_bitfields! [
@@ -191,10 +193,14 @@ pub fn start_caliptra(
         ocp_lock_en: args.ocp_lock_en,
         debug_intent: args.debug_intent,
         prod_dbg_unlock_keypairs: args.prod_dbg_unlock_keypairs.clone(),
+        cptra_obf_key: args.cptra_obf_key,
         ..Default::default()
     };
 
-    let root_bus = CaliptraRootBus::new(bus_args);
+    let mut root_bus = CaliptraRootBus::new(bus_args);
+    // Set UDS seed directly — matches the caliptra-sw standalone emulator
+    // behavior where fuse_uds_seed = DEFAULT_UDS_SEED (via SocRegistersImpl::UDS default).
+    root_bus.soc_reg.set_uds_seed(&DEFAULT_UDS_SEED);
     let soc_ifc = unsafe {
         caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
             0x3003_0000 as *mut u32,

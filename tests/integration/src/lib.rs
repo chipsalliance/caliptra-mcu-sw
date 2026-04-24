@@ -102,6 +102,7 @@ mod test {
         pub debug_intent: bool,
         /// Production debug unlock keypairs (ECC384 pub key bytes, MLDSA87 pub key bytes).
         pub prod_dbg_unlock_keypairs: Vec<([u8; 96], [u8; 2592])>,
+        pub use_strap_secrets: bool,
     }
 
     impl Default for TestParams<'_> {
@@ -129,6 +130,7 @@ mod test {
                 vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
                 debug_intent: false,
                 prod_dbg_unlock_keypairs: Vec::new(),
+                use_strap_secrets: false,
             }
         }
     }
@@ -588,6 +590,7 @@ mod test {
                 .map(|(ecc, mldsa)| (ecc as &[u8; 96], mldsa as &[u8; 2592]))
                 .collect(),
             active_i3c1: params.active_i3c1,
+            use_strap_secrets: params.use_strap_secrets,
             ..Default::default()
         })
         .unwrap()
