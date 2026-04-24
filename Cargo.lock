@@ -1370,6 +1370,7 @@ dependencies = [
  "caliptra-mcu-libtock_runtime",
  "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-libtockasync",
+ "caliptra-mcu-registers-generated",
  "embassy-sync",
 ]
 
@@ -1490,6 +1491,7 @@ name = "caliptra-mcu-mbox-common"
 version = "0.1.0"
 dependencies = [
  "caliptra-api",
+ "caliptra-mcu-registers-generated",
  "zerocopy",
 ]
 
