@@ -312,6 +312,7 @@ impl McuHwModel for ModelEmulated {
                 ocp_lock_en: params.ocp_lock_en,
                 debug_intent: params.debug_intent,
                 prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs.clone(),
+                cptra_obf_key: params.cptra_obf_key,
             })
             .expect("Failed to start Caliptra CPU");
         let soc_to_caliptra_bus = soc_to_caliptra_bus.unwrap();

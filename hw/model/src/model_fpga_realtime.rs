@@ -346,6 +346,10 @@ impl McuHwModel for ModelFpgaRealtime {
                 num_prod_dbg_unlock_pk_hashes: params.num_prod_dbg_unlock_pk_hashes,
                 prod_dbg_unlock_pk_hashes_offset: params.prod_dbg_unlock_pk_hashes_offset,
                 primary_flash_initial_contents: params.primary_flash_initial_contents.as_deref(),
+                lc_state: params
+                    .lifecycle_controller_state
+                    .map(|s| caliptra_hw_model::LifecycleControllerState::from(u8::from(s))),
+                use_strap_secrets: params.use_strap_secrets,
                 ..Default::default()
             },
         };
@@ -361,6 +365,15 @@ impl McuHwModel for ModelFpgaRealtime {
         if let Some(otp_mem) = params.otp_memory {
             base.set_otp_init(otp_mem.to_vec());
             base.cold_reset();
+        }
+
+        // In Manufacturing lifecycle, enable IDevID CSR generation by writing
+        // the GENERATE_IDEVID_CSR flag to cptra_dbg_manuf_service_reg.
+        if matches!(
+            params.lifecycle_controller_state,
+            Some(LifecycleControllerState::Dev)
+        ) {
+            base.soc_ifc().cptra_dbg_manuf_service_reg().write(|_| 1);
         }
 
         let (i3c_rx, i3c_tx) = if let Some(i3c_port) = params.i3c_port {
