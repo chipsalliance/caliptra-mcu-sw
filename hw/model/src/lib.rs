@@ -242,6 +242,13 @@ pub struct InitParams<'a> {
 
     /// Override the default AXI user that the model uses to access the Caliptra SoC interface.
     pub caliptra_soc_axi_user: Option<u32>,
+
+    /// Initial contents of the vendor test partition in OTP.
+    pub vendor_test_partition: Option<Vec<u8>>,
+
+    /// When true, set secrets_valid so DOE reads UDS/FE from strap registers
+    /// for deterministic IDevID on FPGA (needed for attestation tests).
+    pub use_strap_secrets: bool,
 }
 
 impl InitParams<'_> {
@@ -319,6 +326,8 @@ impl Default for InitParams<'_> {
             flash_boot: false,
             fips_zeroization: false,
             caliptra_soc_axi_user: None,
+            vendor_test_partition: None,
+            use_strap_secrets: false,
         }
     }
 }

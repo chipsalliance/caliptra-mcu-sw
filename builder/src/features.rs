@@ -82,6 +82,8 @@ pub const EMULATOR_TEST_FEATURES: &[&str] = &[
     "test-pldm-fw-update-e2e",
     "test-pldm-streaming-boot",
     "test-warm-reset",
+    "test-mctp-spdm-attestation",
+    "test-mctp-spdm-responder-conformance",
 ];
 
 pub const ROM_TEST_FEATURES: &[&str] = &["test-usb-ocp-recovery"];
