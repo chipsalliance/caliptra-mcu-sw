@@ -325,12 +325,22 @@ impl McuHwModel for ModelFpgaRealtime {
                 lc_state: params
                     .lifecycle_controller_state
                     .map(|s| caliptra_hw_model::LifecycleControllerState::from(u8::from(s))),
+                use_strap_secrets: params.use_strap_secrets,
                 ..Default::default()
             },
         };
         println!("Starting base model");
-        let base = ModelFpgaSubsystem::new_unbooted(cptra_init)
+        let mut base = ModelFpgaSubsystem::new_unbooted(cptra_init)
             .map_err(|e| anyhow::anyhow!("Failed to initialized base model: {e}"))?;
+
+        // In Manufacturing lifecycle, enable IDevID CSR generation by writing
+        // the GENERATE_IDEVID_CSR flag to cptra_dbg_manuf_service_reg.
+        if matches!(
+            params.lifecycle_controller_state,
+            Some(LifecycleControllerState::Dev)
+        ) {
+            base.soc_ifc().cptra_dbg_manuf_service_reg().write(|_| 1);
+        }
 
         let (i3c_rx, i3c_tx) = if let Some(i3c_port) = params.i3c_port {
             println!(

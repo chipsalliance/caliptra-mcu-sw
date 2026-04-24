@@ -230,6 +230,10 @@ pub struct InitParams<'a> {
 
     /// Initial contents of the vendor test partition in OTP.
     pub vendor_test_partition: Option<Vec<u8>>,
+
+    /// When true, set secrets_valid so DOE reads UDS/FE from strap registers
+    /// for deterministic IDevID on FPGA (needed for attestation tests).
+    pub use_strap_secrets: bool,
 }
 
 impl InitParams<'_> {
@@ -304,6 +308,7 @@ impl Default for InitParams<'_> {
             flash_boot: false,
             active_i3c1: false,
             vendor_test_partition: None,
+            use_strap_secrets: false,
         }
     }
 }
