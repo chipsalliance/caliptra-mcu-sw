@@ -28,3 +28,4 @@ test-network-rom-lwip-dhcp6 = ["caliptra-mcu-network-app-rom-test/lwip-dhcp6", "
 test-network-rom-lwip-tftp = ["caliptra-mcu-network-app-rom-test/lwip-tftp", "caliptra-mcu-network-app-rom-test"]
 test-network-rom-lwip-tftpv6 = ["caliptra-mcu-network-app-rom-test/lwip-tftpv6", "caliptra-mcu-network-app-rom-test"]
 test-network-mbox-comm = ["caliptra-mcu-network-app-rom-test/test-network-mbox-comm", "caliptra-mcu-network-app-rom-test"]
+test-network-boot-ipv6 = ["network-boot", "caliptra-mcu-network-app-boot-source/ipv6-boot"]

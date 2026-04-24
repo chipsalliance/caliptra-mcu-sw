@@ -278,9 +278,27 @@ pub fn start_dhcp() -> Result<(), NetworkError> {
     })
 }
 
+/// Start stateful DHCPv6 discovery. Call [`dhcp6_has_address`] from the main loop
+/// to check when a global IPv6 address has been obtained.
+#[cfg(feature = "ipv6-boot")]
+pub fn start_dhcp6() -> Result<(), NetworkError> {
+    LWIP.lock(|s| {
+        s.netif
+            .borrow_mut()
+            .dhcp6_enable_stateful()
+            .map_err(|_| NetworkError::Dhcpv6Failed)
+    })
+}
+
 /// Returns true when DHCPv4 has obtained an IP address.
 pub fn dhcp_has_address() -> bool {
     LWIP.lock(|s| s.netif.borrow().dhcp_has_address())
+}
+
+/// Returns true when stateful DHCPv6 has obtained a global IPv6 address.
+#[cfg(feature = "ipv6-boot")]
+pub fn dhcp6_has_address() -> bool {
+    LWIP.lock(|s| s.netif.borrow().has_global_ipv6_address())
 }
 
 /// Extract the DHCP result (server IP, boot file) after [`dhcp_has_address`]
@@ -302,6 +320,34 @@ pub fn take_dhcp_result() -> Option<DhcpResult> {
 
         Some(DhcpResult {
             server_ip: ServerAddr::V4(server_ip),
+            boot_file,
+            boot_file_len: len,
+        })
+    })
+}
+
+/// Extract the DHCPv6 result (server IP from Option 59, boot file path) after
+/// [`dhcp6_has_address`] returns true. The TFTP server address and boot file
+/// path are parsed from the Boot File URL (DHCPv6 Option 59, RFC 5970).
+///
+/// Returns `None` if no Boot File URL was provided.
+#[cfg(feature = "ipv6-boot")]
+pub fn take_dhcp6_result() -> Option<DhcpResult> {
+    LWIP.lock(|s| {
+        let netif = s.netif.borrow();
+
+        let (server_addr, path) = netif.dhcp6_parse_boot_file_url()?;
+
+        let mut boot_file = [0u8; 128];
+        let len = path.len().min(127);
+        boot_file[..len].copy_from_slice(&path[..len]);
+        // Ensure null-termination for TFTP filename.
+        if len < 128 {
+            boot_file[len] = 0;
+        }
+
+        Some(DhcpResult {
+            server_ip: ServerAddr::V6(server_addr),
             boot_file,
             boot_file_len: len,
         })

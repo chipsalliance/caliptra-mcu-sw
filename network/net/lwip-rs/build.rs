@@ -16,6 +16,7 @@ fn main() {
     let target = env::var("TARGET").unwrap_or_default();
     let is_baremetal = env::var("CARGO_FEATURE_BAREMETAL").is_ok();
     let is_baremetal_ipv6 = env::var("CARGO_FEATURE_BAREMETAL_IPV6").is_ok();
+    let is_baremetal_dhcp6_stateful = env::var("CARGO_FEATURE_BAREMETAL_DHCP6_STATEFUL").is_ok();
     let is_baremetal_tftp = env::var("CARGO_FEATURE_BAREMETAL_TFTP").is_ok();
 
     // Paths to lwIP
@@ -38,6 +39,11 @@ fn main() {
         // Enable IPv6 for baremetal-ipv6 feature
         if is_baremetal_ipv6 {
             builder.define("LWIP_BAREMETAL_IPV6", "1");
+        }
+
+        // Enable stateful DHCPv6 for baremetal-dhcp6-stateful feature
+        if is_baremetal_dhcp6_stateful {
+            builder.define("LWIP_BAREMETAL_DHCP6_STATEFUL", "1");
         }
 
         // Enable TFTP for baremetal-tftp feature
@@ -199,6 +205,11 @@ fn main() {
             bindgen_builder = bindgen_builder.clang_arg("-DLWIP_BAREMETAL_IPV6=1");
         }
 
+        // Enable stateful DHCPv6 defines for bindgen
+        if is_baremetal_dhcp6_stateful {
+            bindgen_builder = bindgen_builder.clang_arg("-DLWIP_BAREMETAL_DHCP6_STATEFUL=1");
+        }
+
         // Enable TFTP defines for bindgen when baremetal-tftp
         if is_baremetal_tftp {
             bindgen_builder = bindgen_builder.clang_arg("-DLWIP_BAREMETAL_TFTP=1");
@@ -295,6 +306,14 @@ fn main() {
             .allowlist_type("ip6_addr.*")
             .allowlist_var("IP6_ADDR_.*")
             .allowlist_var("LWIP_IPV6_NUM_ADDRESSES");
+    }
+
+    // Baremetal stateful DHCPv6 bindings (Option 59 boot file URL)
+    if is_baremetal_dhcp6_stateful {
+        bindgen_builder = bindgen_builder
+            .allowlist_function("dhcp6_enable_stateful")
+            .allowlist_function("dhcp6_set_struct")
+            .allowlist_type("dhcp6");
     }
 
     // Baremetal TFTP bindings
