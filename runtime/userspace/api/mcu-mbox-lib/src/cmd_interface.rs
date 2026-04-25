@@ -9,23 +9,23 @@ use caliptra_mcu_external_cmds_common::{
 use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
-use caliptra_mcu_libsyscall_caliptra::otp;
+use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_libsyscall_caliptra::{mailbox::Mailbox, DefaultSyscalls};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
     DeviceInfoResp, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
     FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
-    FuseWriteResp, GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, MailboxRespHeader,
-    MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq, McuAesEncryptInitReq,
-    McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq,
-    McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq,
-    McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq, McuCmStatusReq, McuEcdhFinishReq,
-    McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq,
-    McuFeProgReq, McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuHkdfExpandReq,
-    McuHkdfExtractReq, McuHmacKdfCounterReq, McuHmacReq, McuProdDebugUnlockReqReq,
-    McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq, McuResponseVarSize,
-    McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp, FuseWriteResp, GetAuthCmdChallengeReq,
+    GetAuthCmdChallengeResp, MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq,
+    McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
+    McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
+    McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
+    McuCmStatusReq, McuEcdhFinishReq, McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq,
+    McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsSelfTestGetResultsReq,
+    McuFipsSelfTestStartReq, McuHkdfExpandReq, McuHkdfExtractReq, McuHmacKdfCounterReq, McuHmacReq,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq,
+    McuResponseVarSize, McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, RevokeVendorPubKeyType,
+    DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -422,7 +422,8 @@ impl<'a> CmdInterface<'a> {
             }
             cmd_id @ CommandId::MC_ROTATE_VENDOR_PK_HASH
             | cmd_id @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
-            | cmd_id @ CommandId::MC_FE_PROG => {
+            | cmd_id @ CommandId::MC_FE_PROG
+            | cmd_id @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
                 self.handle_authorized_command(cmd_id, req, resp_buf).await
             }
             // Certificate commands
@@ -721,6 +722,9 @@ impl<'a> CmdInterface<'a> {
                 self.handle_increase_caliptra_min_svn(cmd, resp_buf).await
             }
             CommandId::MC_FE_PROG => self.handle_fe_prog(cmd, resp_buf).await,
+            CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
+                self.handle_revoke_vendor_pub_key(cmd, resp_buf).await
+            }
             _ => Err(MsgHandlerError::UnsupportedCommand),
         }
     }
@@ -848,6 +852,71 @@ impl<'a> CmdInterface<'a> {
         *resp = FuseWriteResp::default();
         let resp_len = resp.as_bytes().len();
         Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_revoke_vendor_pub_key<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+        let req = FuseRevokeVendorPubKeyReq::ref_from_bytes(req)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        let (resp, _) = FuseRevokeVendorPubKeyResp::mut_from_prefix(resp_buf)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        let key_type = RevokeVendorPubKeyType::try_from(req.key_type)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        // Check the given slot has a valid PK hash provisioned
+        let otp = otp::Otp::<DefaultSyscalls>::new();
+        if !otp.valid_vendor_pk_hash_slot(req.vendor_pk_hash_slot) {
+            Err(MsgHandlerError::InvalidParams)?;
+        }
+
+        let caliptra_info = self.get_caliptra_fw_info().await?;
+
+        // Check if the key to be revoked was a key used to boot. If so, return an error as a form
+        // of proof of possession for other keys.
+        let same_key_used_to_boot = || {
+            let caliptra_soc = caliptra::Caliptra::<DefaultSyscalls>::new();
+            let booted_pk_hash = caliptra_soc
+                .read_vendor_pk_hash()
+                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+            let pk_hash_from_slot = otp
+                .read_vendor_pk_hash(req.vendor_pk_hash_slot)
+                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+            // Check if the requested slot was the one used to boot
+            if booted_pk_hash != pk_hash_from_slot {
+                return Ok(false);
+            }
+
+            const FW_VERIFICATION_PQC_TYPE_MLDSA: u32 = 1;
+            const FW_VERIFICATION_PQC_TYPE_LMS: u32 = 3;
+            let same_key = match (key_type, caliptra_info.image_manifest_pqc_type) {
+                (RevokeVendorPubKeyType::Ecdsa384, _) => {
+                    req.key_index == caliptra_info.vendor_ecc384_pub_key_index
+                }
+                // Same PQC type
+                (RevokeVendorPubKeyType::Lms, FW_VERIFICATION_PQC_TYPE_LMS)
+                | (RevokeVendorPubKeyType::Mldsa87, FW_VERIFICATION_PQC_TYPE_MLDSA) => {
+                    req.key_index == caliptra_info.vendor_pqc_pub_key_index
+                }
+                // Different PQC types
+                _ => false,
+            };
+            Ok(same_key)
+        };
+
+        if same_key_used_to_boot()? {
+            Err(MsgHandlerError::InvalidParams)?;
+        }
+
+        otp.revoke_vendor_pub_key(req.vendor_pk_hash_slot, key_type, req.key_index)
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        *resp = FuseRevokeVendorPubKeyResp::default();
+        let len = size_of_val(resp);
+        Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
     }
 
     async fn get_caliptra_fw_info(

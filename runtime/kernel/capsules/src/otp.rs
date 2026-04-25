@@ -94,6 +94,10 @@ pub mod reg {
             _ => None,
         }
     }
+
+    pub const VENDOR_ECC_REVOCATION: u32 = 27;
+    pub const VENDOR_LMS_REVOCATION: u32 = 28;
+    pub const VENDOR_MLDSA_REVOCATION: u32 = 29;
 }
 
 #[derive(Default)]
@@ -193,6 +197,33 @@ impl Otp {
                     hash[offset..offset + 4].try_into().unwrap(),
                 ))
             }
+            reg::VENDOR_ECC_REVOCATION => {
+                match self
+                    .driver
+                    .read_vendor_ecc_revocation(app.reg_index as usize)
+                {
+                    Ok(val) => CommandReturn::success_u32(val),
+                    Err(_) => CommandReturn::failure(ErrorCode::INVAL),
+                }
+            }
+            reg::VENDOR_LMS_REVOCATION => {
+                match self
+                    .driver
+                    .read_vendor_lms_revocation(app.reg_index as usize)
+                {
+                    Ok(val) => CommandReturn::success_u32(val),
+                    Err(_) => CommandReturn::failure(ErrorCode::INVAL),
+                }
+            }
+            reg::VENDOR_MLDSA_REVOCATION => {
+                match self
+                    .driver
+                    .read_vendor_mldsa_revocation(app.reg_index as usize)
+                {
+                    Ok(val) => CommandReturn::success_u32(val),
+                    Err(_) => CommandReturn::failure(ErrorCode::INVAL),
+                }
+            }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }) {
             Ok(ret) => ret,
@@ -262,6 +293,33 @@ impl Otp {
                 match self.driver.write_word(word_addr, value) {
                     Ok(_) => CommandReturn::success(),
                     Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            reg::VENDOR_ECC_REVOCATION => {
+                match self
+                    .driver
+                    .write_vendor_ecc_revocation(app.reg_index as usize, value)
+                {
+                    Ok(()) => CommandReturn::success(),
+                    Err(_) => CommandReturn::failure(ErrorCode::INVAL),
+                }
+            }
+            reg::VENDOR_LMS_REVOCATION => {
+                match self
+                    .driver
+                    .write_vendor_lms_revocation(app.reg_index as usize, value)
+                {
+                    Ok(()) => CommandReturn::success(),
+                    Err(_) => CommandReturn::failure(ErrorCode::INVAL),
+                }
+            }
+            reg::VENDOR_MLDSA_REVOCATION => {
+                match self
+                    .driver
+                    .write_vendor_mldsa_revocation(app.reg_index as usize, value)
+                {
+                    Ok(()) => CommandReturn::success(),
+                    Err(_) => CommandReturn::failure(ErrorCode::INVAL),
                 }
             }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),

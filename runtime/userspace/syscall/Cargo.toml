@@ -14,6 +14,7 @@ caliptra-mcu-libtock_console.workspace = true
 caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtockasync.workspace = true
 caliptra-mcu-libtock_runtime.workspace = true
+caliptra-mcu-mbox-common.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]

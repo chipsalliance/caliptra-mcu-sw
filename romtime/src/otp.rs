@@ -512,7 +512,8 @@ impl Otp {
 
     /// Read vendor public key hash valid.
     pub fn read_vendor_pk_hash_valid(&self) -> McuResult<u32> {
-        self.read_entry(fuses::VENDOR_PK_HASH_VALID)
+        let val = self.read_entry_multi::<1>(fuses::VENDOR_PK_HASH_VALID)?;
+        Ok(val[0])
     }
 
     /// Read cptra_core_runtime_svn (16 bytes).
@@ -565,6 +566,24 @@ impl Otp {
     pub fn read_vendor_mldsa_revocation(&self, index: usize) -> McuResult<u32> {
         let entry = vendor_mldsa_revocation_entry(index)?;
         self.read_entry(entry)
+    }
+
+    /// Write vendor ECC revocation (4 bytes).
+    pub fn write_vendor_ecc_revocation(&self, index: usize, value: u32) -> McuResult<()> {
+        let entry = vendor_ecc_revocation_entry(index)?;
+        self.write_entry(entry, value)
+    }
+
+    /// Write vendor LMS revocation (4 bytes).
+    pub fn write_vendor_lms_revocation(&self, index: usize, value: u32) -> McuResult<()> {
+        let entry = vendor_lms_revocation_entry(index)?;
+        self.write_entry(entry, value)
+    }
+
+    /// Write vendor MLDSA revocation (4 bytes).
+    pub fn write_vendor_mldsa_revocation(&self, index: usize, value: u32) -> McuResult<()> {
+        let entry = vendor_mldsa_revocation_entry(index)?;
+        self.write_entry(entry, value)
     }
 
     /// Read cptra_ss_owner_pk_hash (48 bytes).

@@ -124,6 +124,7 @@ impl CommandId {
     pub const MC_ROTATE_VENDOR_PK_HASH: Self = Self(0x4D56_504B); // "MVPK"
     pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
     pub const MC_FE_PROG: Self = Self(0x4D43_4650); // "MCFP"
+    pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY: Self = Self(0x4D52_564B); // "MRVK"
 
     // Certificate commands
     pub const MC_EXPORT_ATTESTED_CSR: Self = Self(0x4D45_4143); // "MEAC"
@@ -191,6 +192,7 @@ pub enum McuMailboxReq {
     FuseIncreaseCaliptraMinSvn(FuseIncreaseCaliptraMinSvnReq),
     FeProg(McuFeProgReq),
     GetAuthCmdChallenge(GetAuthCmdChallengeReq),
+    FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyReq),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
 }
@@ -243,6 +245,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
         }
     }
@@ -294,6 +297,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
         }
     }
@@ -347,6 +351,7 @@ impl McuMailboxReq {
             }
             McuMailboxReq::FeProg(_) => CommandId::MC_FE_PROG,
             McuMailboxReq::GetAuthCmdChallenge(_) => CommandId::MC_GET_AUTH_CMD_CHALLENGE,
+            McuMailboxReq::FuseRevokeVendorPubKey(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
         }
     }
@@ -421,6 +426,7 @@ pub enum McuMailboxResp {
     FuseWrite(FuseWriteResp),
     FuseLockPartition(FuseLockPartitionResp),
     GetAuthCmdChallenge(GetAuthCmdChallengeResp),
+    FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
 }
@@ -532,6 +538,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
         }
     }
@@ -582,6 +589,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
         }
     }
@@ -1434,6 +1442,55 @@ pub struct McuFeProgReq {
 impl Request for McuFeProgReq {
     const ID: CommandId = CommandId::MC_FE_PROG;
     type Resp = FuseWriteResp; // Reuse FuseWriteResp as it only contains header
+}
+
+/// MC_FUSE_REVOKE_VENDOR_PUB_KEY request: Revoke a vendor firmware verification key.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseRevokeVendorPubKeyReq {
+    pub hdr: MailboxReqHeader,
+    pub reserved: u32,
+    pub vendor_pk_hash_slot: u32,
+    pub key_type: u32,
+    pub key_index: u32,
+}
+impl Request for FuseRevokeVendorPubKeyReq {
+    const ID: CommandId = CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY;
+    type Resp = FuseRevokeVendorPubKeyResp;
+}
+
+/// MC_FUSE_LOCK_PARTITION response: Indicates success or failure.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseRevokeVendorPubKeyResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for FuseRevokeVendorPubKeyResp {}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum RevokeVendorPubKeyType {
+    Ecdsa384,
+    Lms,
+    Mldsa87,
+}
+
+impl TryFrom<u32> for RevokeVendorPubKeyType {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Ecdsa384),
+            1 => Ok(Self::Lms),
+            2 => Ok(Self::Mldsa87),
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<RevokeVendorPubKeyType> for u32 {
+    fn from(value: RevokeVendorPubKeyType) -> Self {
+        value as u32
+    }
 }
 
 // ============================================================================

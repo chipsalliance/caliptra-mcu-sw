@@ -4,10 +4,15 @@
 
 use crate::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
+use caliptra_mcu_mbox_common::messages::RevokeVendorPubKeyType;
 use core::marker::PhantomData;
 
 pub const VENDOR_PK_HASH_SIZE: usize =
     caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size;
+pub const MAX_NUM_VENDOR_PK_HASH: usize = 16;
+pub const VENDOR_ECC_MAX_KEY_COUNT: u32 = 4;
+pub const VENDOR_LMS_MAX_KEY_COUNT: u32 = 32;
+pub const VENDOR_MLDSA_MAX_KEY_COUNT: u32 = 4;
 
 pub struct Otp<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,
@@ -44,14 +49,15 @@ impl<S: Syscalls> Otp<S> {
 
     /// Check whether a given slot has a valid PK hash
     pub fn valid_vendor_pk_hash_slot(&self, slot: u32) -> bool {
-        if slot >= 16 {
+        if slot as usize >= MAX_NUM_VENDOR_PK_HASH {
             return false;
         }
 
         let Ok(valid_mask) = self.read(reg::VENDOR_PK_HASH_VALID, 0) else {
             return false;
         };
-        (valid_mask & (1 << slot)) != 0
+        // Bit value `1` means revoked
+        (valid_mask & (1 << slot)) == 0
     }
 
     /// Read a vendor PK hash from fuses
@@ -70,6 +76,47 @@ impl<S: Syscalls> Otp<S> {
 
         Ok(fuse_value)
     }
+
+    /// Revoke an individual key within a PK hash slot
+    pub fn revoke_vendor_pub_key(
+        &self,
+        vendor_pk_hash_slot: u32,
+        key_type: RevokeVendorPubKeyType,
+        key_index: u32,
+    ) -> Result<(), ErrorCode> {
+        if !self.valid_vendor_pk_hash_slot(vendor_pk_hash_slot) {
+            Err(ErrorCode::Invalid)?;
+        }
+
+        // Check the index is valid.
+        // NOTE: the last index can not be revoked per Caliptra
+        match key_type {
+            RevokeVendorPubKeyType::Ecdsa384 => {
+                if key_index >= VENDOR_ECC_MAX_KEY_COUNT - 1 {
+                    Err(ErrorCode::Invalid)?;
+                }
+            }
+            RevokeVendorPubKeyType::Lms => {
+                if key_index >= VENDOR_LMS_MAX_KEY_COUNT - 1 {
+                    Err(ErrorCode::Invalid)?;
+                }
+            }
+            RevokeVendorPubKeyType::Mldsa87 => {
+                if key_index >= VENDOR_MLDSA_MAX_KEY_COUNT - 1 {
+                    Err(ErrorCode::Invalid)?;
+                }
+            }
+        }
+
+        let reg_offset = reg::vendor_revocation_by_type(key_type);
+        let current = self.read(reg_offset, vendor_pk_hash_slot)?;
+        let to_write = current | (1 << key_index);
+        if current == to_write {
+            return Ok(());
+        }
+
+        self.write(reg_offset, vendor_pk_hash_slot, to_write)
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -86,6 +133,8 @@ pub mod cmd {
 }
 
 pub mod reg {
+    use super::*;
+
     pub const LOCK_TOTAL_HEKS: u32 = 0;
     pub const LOCK_HEK_PROD_0: u32 = 1;
     pub const LOCK_HEK_PROD_1: u32 = 2;
@@ -146,6 +195,18 @@ pub mod reg {
             14 => Some(VENDOR_PK_HASH_14),
             15 => Some(VENDOR_PK_HASH_15),
             _ => None,
+        }
+    }
+
+    pub const VENDOR_ECC_REVOCATION: u32 = 27;
+    pub const VENDOR_LMS_REVOCATION: u32 = 28;
+    pub const VENDOR_MLDSA_REVOCATION: u32 = 29;
+
+    pub(super) fn vendor_revocation_by_type(key_type: RevokeVendorPubKeyType) -> u32 {
+        match key_type {
+            RevokeVendorPubKeyType::Ecdsa384 => VENDOR_ECC_REVOCATION,
+            RevokeVendorPubKeyType::Lms => VENDOR_LMS_REVOCATION,
+            RevokeVendorPubKeyType::Mldsa87 => VENDOR_MLDSA_REVOCATION,
         }
     }
 }
