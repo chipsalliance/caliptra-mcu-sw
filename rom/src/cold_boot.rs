@@ -8,7 +8,8 @@ File Name:
 
 Abstract:
 
-    Cold Boot Flow - Handles initial boot when MCU powers on
+    Cold Boot Flow - Handles initial boot when MCU powers on.
+    Entry point for the MCU reset vector on power-on-reset.
 
 --*/
 
