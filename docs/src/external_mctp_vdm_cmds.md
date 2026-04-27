@@ -74,13 +74,46 @@ The following table describes the commands defined under this specification. The
 | Device Capabilities           | 02h     | R   | Retrieve device capabilities.                       |
 | Device ID                     | 03h     | R   | Retrieve device ID.                                 |
 | Device Information            | 04h     | R   | Retrieve device information.                        |
-| Export CSR                    | 05h     | R   | Export CSR for device keys.                         |
-| Import Certificate            | 06h     | R   | Import CA-signed certificate.                       |
-| Get Certificate State         | 07h     | R   | Check the state of the signed certificate chain.    |
-| Get Log                       | 08h     | R   | Retrieve debug log or attestation log.              |
-| Clear Log                     | 09h     | R   | Clear log information.                              |
+
+**Logging**
+
+| Message Name                  | Command | R/O | Description                                         |
+|-------------------------------|---------|-----|-----------------------------------------------------|
+| Get Debug Log                 | 05h     | R   | Retrieve debug log.                                 |
+| Clear Debug Log               | 06h     | R   | Clear debug log.                                    |
+| Get Attestation Log           | 07h     | O   | Retrieve attestation measurement log.               |
+| Clear Attestation Log         | 08h     | O   | Clear attestation log (requires authorization).     |
+
+**Attestation**
+
+| Message Name                  | Command | R/O | Description                                         |
+|-------------------------------|---------|-----|-----------------------------------------------------|
+| Get Attestation               | 09h     | O   | Retrieve attestation evidence. Supports OCP EAT claims token and signed PCR quote formats. |
+
+**Debug Unlock**
+
+| Message Name                  | Command | R/O | Description                                         |
+|-------------------------------|---------|-----|-----------------------------------------------------|
 | Request Debug Unlock          | 0Ah     | O   | Request debug unlock in production environment.     |
 | Authorize Debug Unlock Token  | 0Bh     | O   | Send debug unlock token to device for authorization. |
+
+**Lifecycle & Provisioning**
+
+*Certificate Provisioning*
+
+| Message Name                  | Command | R/O | Description                                         |
+|-------------------------------|---------|-----|-----------------------------------------------------|
+| Export IDevID CSR             | 0Ch     | R   | Export IDevID self-signed certificate signing request. Only available when device lifecycle state is Manufacturing. |
+| Set Slot 0 Cert               | 0Dh     | R   | Set CA-signed IDevID certificate in slot 0 (Vendor PKI). |
+| Get Slot 0 State              | 0Eh     | O   | Check the provisioning state of certificate slot 0 (Vendor PKI). |
+| Export Attested CSR           | 0Fh     | O   | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias). |
+
+*Device Lifecycle*
+
+| Message Name                  | Command | R/O | Description                                         |
+|-------------------------------|---------|-----|-----------------------------------------------------|
+| Program Field Entropy         | 10h     | O   | Program field entropy into the device. Requires authorization. |
+| Device Ownership Transfer     | 11h     | O   | Transfer device ownership. Requires authorization.  |
 
 ## Command Format
 
@@ -148,15 +181,15 @@ This command retrieves information about the target device.
 | 4:7     | data_size       | u32          | Size of the requested data in bytes           |
 | 8:N     | data            | u8[data_size]| Requested information in binary format        |
 
-### Export CSR
+### Export IDevID CSR
 
-Exports the IDEVID Self-Signed Certificate Signing Request.
+Exports the IDevID Certificate Signing Request(CSR) so that a Certificate Authority (CA) can endorse it and issue an IDevID certificate. The CSR is available in two algorithm variants: ECC P-384 and ML-DSA (post-quantum). This command is only available when the device lifecycle state is `Manufacturing`.
 
 **Request Payload**:
 
 | Byte(s) | Name  | Type | Description |
 |---------|-------|------|-------------|
-| 0:3     | index | u32  | Index: Default = `0` <br>- `00h` = IDEVID ECC CSR <br>- `01h` = IDEVID MLDSA CSR |
+| 0:3     | index | u32  | Index: Default = `0` <br>- `00h` = IDevID ECC P-384 CSR <br>- `01h` = IDevID ML-DSA CSR |
 
 **Response Payload**:
 
@@ -166,16 +199,16 @@ Exports the IDEVID Self-Signed Certificate Signing Request.
 | 4:7     | data_size       | u32          | Length in bytes of the valid data in the data field |
 | 8:N     | data            | u8[data_size]| DER-encoded IDevID certificate signing request|
 
-### Import Certificate
+### Set Slot 0 Cert
 
-Allows SoC to import DER-encoded IDevId certificate on every boot. The IDevId certificate is added to the start of the certificate chain.
+Sets the CA-signed IDevID certificate in certificate slot 0 (Vendor PKI). This is a one-time operation performed during manufacturing — the command will fail if slot 0 has already been provisioned.
 
 **Request Payload**:
 
 | Byte(s) | Name         | Type        | Description                                 |
 |---------|--------------|-------------|---------------------------------------------|
 | 0:3     | cert_size    | u32         | Size of the DER-encoded IDevID certificate. |
-| 4:N     | cert         | u8[cert_size]| DER-encoded certificate                    |
+| 4:N     | cert         | u8[cert_size]| DER-encoded CA-signed IDevID certificate   |
 
 **Response Payload**:
 
@@ -183,9 +216,9 @@ Allows SoC to import DER-encoded IDevId certificate on every boot. The IDevId ce
 |---------|-----------------|------|----------------------------|
 | 0:3     | completion_code | u32  | Command completion status  |
 
-### Get Certificate State
+### Get Slot 0 State
 
-Determines the state of the certificate chain for signed certificates that have been sent to the device. The request for this command contains no additional payload.
+Determines the provisioning state of certificate slot 0 (Vendor PKI). This slot holds the device identity certificate provisioned during manufacturing. For other certificate slots (Owner, Tenant), use the SPDM `GET_DIGESTS` command.
 
 **Request Payload**: Empty
 
@@ -194,25 +227,13 @@ Determines the state of the certificate chain for signed certificates that have 
 | Byte(s) | Name            | Type | Description                |
 |---------|-----------------|------|----------------------------|
 | 0:3     | completion_code | u32  | Command completion status  |
-| 4:7     | state           | u32  | State: <br>- `0` = A valid chain has been provisioned. <br>- `1` = A valid chain has not been provisioned. <br>- `2` = The stored chain is being validated. |
-| 8:11    | error_details   | u32  | Error details if chain validation has failed. |
+| 4:7     | state           | u32  | Slot State (per SPDM slot provisioning model): <br>- `0` = Does not exist — slot is not supported. <br>- `1` = Exists and empty — slot is supported but not provisioned. <br>- `2` = Exists with key — slot has a key but no certificate. <br>- `3` = Exists with key and cert — slot has both a key and a certificate. |
 
-### Get Log
+### Get Debug Log
 
-Retrieves the internal log for the RoT. There are two types of logs available: the Debug Log, which contains RoT application information and machine state and the Attestation Measurement Log, which is similar to the TCG log.
+Retrieves the debug log for the RoT. The debug log contains RoT application information and machine state, useful for diagnostics and troubleshooting.
 
-*Table: log types*
-
-| Log Type | Description          |
-|----------|----------------------|
-| 0        | Debug Log            |
-| 1        | Attestation Log      |
-
-**Request Payload**:
-
-| Byte(s) | Name     | Type | Description |
-|---------|----------|------|-------------|
-| 0:3     | log_type | u32  | Type of log to retrieve <br>- `0` = Debug Log <br>- `1` = Attestation Log |
+**Request Payload**: Empty
 
 **Response Payload**:
 
@@ -220,7 +241,7 @@ Retrieves the internal log for the RoT. There are two types of logs available: t
 |---------|-----------------|--------------|-----------------------------------------------|
 | 0:3     | completion_code | u32          | Command completion status                     |
 | 4:7     | data_size       | u32          | Size of the log data in bytes                 |
-| 8:N     | data            | u8[data_size]| Log contents                                  |
+| 8:N     | data            | u8[data_size]| Debug log contents                            |
 
 The length is determined by the end of the log or the packet size based on device capabilities. If the response spans multiple MCTP messages, the end of the response will be determined by an MCTP message with a payload smaller than the maximum payload supported by both devices. To guarantee a response will never fall exactly on the max payload boundary, the responder must send back an extra packet with zero payload.
 
@@ -238,15 +259,11 @@ The debug log reported by the device has no specified format, as this can vary b
 | 13:16      | Message-specific argument               |
 | 17:20      | Message-specific argument               |
 
-### Clear Log
+### Clear Debug Log
 
-Clears the log in the RoT subsystem.
+Clears the debug log in the RoT subsystem. No authorization is required.
 
-**Request Payload**:
-
-| Byte(s) | Name     | Type | Description |
-|---------|----------|------|-------------|
-| 0:3     | log_type | u32  | Log Type: <br>- `0` = Debug Log <br>- `1` = Attestation Log |
+**Request Payload**: Empty
 
 **Response Payload**:
 
@@ -299,3 +316,22 @@ Authorizes the debug unlock token.
 | Byte(s) | Name            | Type | Description                |
 |---------|-----------------|------|----------------------------|
 | 0:3     | completion_code | u32  | Command completion status  |
+
+### Export Attested CSR
+
+Exports an attested Certificate Signing Request (CSR) for a specified device key.
+
+**Request Payload**:
+
+| Byte(s) | Name          | Type | Description                                                                 |
+|---------|---------------|------|-----------------------------------------------------------------------------|
+| 0:3     | device_key_id | u32  | Device Key Identifier: <br>- `0x0001` = LDevID <br>- `0x0002` = FMC Alias <br>- `0x0003` = RT Alias |
+| 4:7     | algorithm     | u32  | Asymmetric Algorithm: <br>- `0x0001` = ECC P-384 <br>- `0x0002` = ML-DSA-87 |
+
+**Response Payload**:
+
+| Byte(s) | Name            | Type          | Description                                   |
+|---------|-----------------|---------------|-----------------------------------------------|
+| 0:3     | completion_code | u32           | Command completion status                     |
+| 4:7     | data_size       | u32           | Length in bytes of the attested CSR data       |
+| 8:N     | data            | u8[data_size] | Attested CSR data blob                        |
