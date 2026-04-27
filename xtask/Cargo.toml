@@ -46,7 +46,9 @@ proc-macro2.workspace = true
 quote.workspace = true
 caliptra-mcu-registers-generator.workspace = true
 caliptra-mcu-registers-systemrdl.workspace = true
-caliptra-mcu-romtime.workspace = true
+# SVP: caliptra-mcu-romtime dep removed; not used by xtask source and pulls
+# in firmware code that fails to compile against the SVP fuse layout.
+# caliptra-mcu-romtime.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true

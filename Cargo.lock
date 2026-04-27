@@ -6037,7 +6037,6 @@ dependencies = [
  "caliptra-mcu-registers-generator",
  "caliptra-mcu-registers-systemrdl",
  "caliptra-mcu-rom-common",
- "caliptra-mcu-romtime",
  "cargo_metadata",
  "cc",
  "clap 4.5.51",
