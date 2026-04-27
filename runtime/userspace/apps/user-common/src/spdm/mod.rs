@@ -35,7 +35,7 @@ const SECURE_SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12];
 const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
 
 #[embassy_executor::task]
-pub(crate) async fn spdm_task(spawner: Spawner) {
+pub async fn spdm_task(spawner: Spawner) {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "SPDM_TASK: Running SPDM-TASK...").unwrap();
 

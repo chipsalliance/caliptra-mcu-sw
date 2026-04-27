@@ -2114,6 +2114,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "fpga-user-app"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "async-trait",
+ "caliptra-api",
+ "critical-section",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+ "external-cmds-common",
+ "libapi-caliptra",
+ "libsyscall-caliptra",
+ "libtock",
+ "libtock_console",
+ "libtock_debug_panic",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtock_unittest",
+ "libtockasync",
+ "mctp-vdm-common",
+ "mctp-vdm-lib",
+ "mcu-config",
+ "mcu-config-fpga",
+ "mcu-mbox-common",
+ "mcu-mbox-lib",
+ "ocp-eat",
+ "pldm-common",
+ "pldm-lib",
+ "portable-atomic",
+ "romtime",
+ "spdm-lib",
+ "static_cell",
+ "user-app-common",
+ "zerocopy",
+]
+
+[[package]]
 name = "fs2"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5709,6 +5747,38 @@ dependencies = [
  "mcu-config",
  "mcu-config-emulator",
  "mcu-config-fpga",
+ "mcu-mbox-common",
+ "mcu-mbox-lib",
+ "ocp-eat",
+ "pldm-common",
+ "pldm-lib",
+ "portable-atomic",
+ "romtime",
+ "spdm-lib",
+ "static_cell",
+ "user-app-common",
+ "zerocopy",
+]
+
+[[package]]
+name = "user-app-common"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "async-trait",
+ "caliptra-api",
+ "critical-section",
+ "embassy-executor",
+ "embassy-sync",
+ "external-cmds-common",
+ "libapi-caliptra",
+ "libsyscall-caliptra",
+ "libtock_console",
+ "libtock_platform",
+ "libtockasync",
+ "mctp-vdm-common",
+ "mctp-vdm-lib",
+ "mcu-config",
  "mcu-mbox-common",
  "mcu-mbox-lib",
  "ocp-eat",
