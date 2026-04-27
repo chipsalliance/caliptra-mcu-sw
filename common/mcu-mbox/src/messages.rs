@@ -122,6 +122,7 @@ impl CommandId {
     // Authorized commands
     pub const MC_ROTATE_VENDOR_PK_HASH: Self = Self(0x4D56_504B); // "MVPK"
     pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
+    pub const MC_FE_PROG: Self = Self(0x4D43_4650); // "MCFP"
 }
 
 impl From<u32> for CommandId {
@@ -184,6 +185,7 @@ pub enum McuMailboxReq {
     FuseWrite(FuseWriteReq),
     FuseLockPartition(FuseLockPartitionReq),
     FuseIncreaseCaliptraMinSvn(FuseIncreaseCaliptraMinSvnReq),
+    FeProg(McuFeProgReq),
 }
 
 impl McuMailboxReq {
@@ -232,6 +234,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FeProg(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -280,6 +283,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FeProg(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -330,6 +334,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(_) => {
                 CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
             }
+            McuMailboxReq::FeProg(_) => CommandId::MC_FE_PROG,
         }
     }
 
@@ -1375,6 +1380,18 @@ pub struct FuseIncreaseCaliptraMinSvnResp {
     pub hdr: MailboxRespHeader,
 }
 impl Response for FuseIncreaseCaliptraMinSvnResp {}
+
+/// MC_FE_PROG request: Program field entropy.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFeProgReq {
+    pub hdr: MailboxReqHeader,
+    pub partition: u32,
+}
+impl Request for McuFeProgReq {
+    const ID: CommandId = CommandId::MC_FE_PROG;
+    type Resp = FuseWriteResp; // Reuse FuseWriteResp as it only contains header
+}
 
 #[cfg(test)]
 mod tests {
