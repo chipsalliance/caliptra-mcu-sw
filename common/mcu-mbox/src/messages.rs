@@ -119,7 +119,7 @@ impl CommandId {
     pub const MC_FUSE_LOCK_PARTITION: Self = Self(0x4946_504B); // "IFPK"
 
     // Authorized commands
-    pub const MC_ROTATE_VENDOR_PK_HASH: Self = Self(0x4D56_504B); // "MVPK"
+    pub const MC_PROVISION_VENDOR_PK_HASH: Self = Self(0x4D56_504B); // "PVPK"
 }
 
 impl From<u32> for CommandId {
@@ -1352,11 +1352,13 @@ impl Response for FuseLockPartitionResp {}
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct RotateVendorPkHashReq {
     pub hdr: MailboxReqHeader,
-    /// New hash to burn into the next unused fuse
+    /// The vendor PK hash slot to use
+    pub slot: u32,
+    /// New vendor PK hash
     pub hash: [u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size],
 }
 impl Request for RotateVendorPkHashReq {
-    const ID: CommandId = CommandId::MC_ROTATE_VENDOR_PK_HASH;
+    const ID: CommandId = CommandId::MC_PROVISION_VENDOR_PK_HASH;
 
     type Resp = RotateVendorPkHashResp;
 }

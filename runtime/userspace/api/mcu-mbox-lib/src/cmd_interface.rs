@@ -414,7 +414,7 @@ impl<'a> CmdInterface<'a> {
                 )
                 .await
             }
-            cmd_id @ CommandId::MC_ROTATE_VENDOR_PK_HASH => {
+            cmd_id @ CommandId::MC_PROVISION_VENDOR_PK_HASH => {
                 self.handle_authorized_command(cmd_id, req, resp_buf).await
             }
             // TODO: add more command handlers.
@@ -637,14 +637,14 @@ impl<'a> CmdInterface<'a> {
             .is_authorized(cmd_id, req)
             .map_err(|_| MsgHandlerError::UnauthorizedCommand)?;
         match cmd_id {
-            CommandId::MC_ROTATE_VENDOR_PK_HASH => {
-                self.handle_rotate_vendor_pk_hash(cmd, resp_buf).await
+            CommandId::MC_PROVISION_VENDOR_PK_HASH => {
+                self.handle_provision_vendor_pk_hash(cmd, resp_buf).await
             }
             _ => Err(MsgHandlerError::UnsupportedCommand),
         }
     }
 
-    async fn handle_rotate_vendor_pk_hash<'r>(
+    async fn handle_provision_vendor_pk_hash<'r>(
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
@@ -652,7 +652,7 @@ impl<'a> CmdInterface<'a> {
         let req = RotateVendorPkHashReq::ref_from_bytes(req)
             .map_err(|_| MsgHandlerError::InvalidParams)?;
         let otp: Otp<DefaultSyscalls> = Otp::new();
-        let res = match otp.rotate_vendor_pk_hash(&req.hash) {
+        let res = match otp.provision_vendor_pk_hash(req.slot, &req.hash) {
             Ok(_) => MbxCmdStatus::Complete,
             Err(_) => MbxCmdStatus::Failure,
         };
