@@ -758,6 +758,10 @@ impl<'a> CmdInterface<'a> {
             owner_pub_key_hash: Default::default(),
             authman_sha384_digest: Default::default(),
             most_recent_fw_error: Default::default(),
+            vendor_pub_key_hash: Default::default(),
+            image_manifest_pqc_type: Default::default(),
+            vendor_ecc384_pub_key_index: Default::default(),
+            vendor_pqc_pub_key_index: Default::default(),
         };
 
         // Invoke Caliptra mailbox API
