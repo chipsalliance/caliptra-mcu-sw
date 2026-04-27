@@ -119,13 +119,45 @@ impl<S: Syscalls> Otp<S> {
         self.write(reg_offset, vendor_pk_hash_slot, to_write)
     }
 
-    pub fn rotate_vendor_pk_hash(
+    /// Provision a new vendor PK hash into the next unused fuse
+    pub fn provision_vendor_pk_hash(
         &self,
+        slot: u32,
         new_hash: &[u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size],
     ) -> Result<(), ErrorCode> {
-        let otp: Otp<DefaultSyscalls> = Otp::new();
-        let _valid_mask = otp.read(reg::VENDOR_PK_HASH_VALID, 0)?;
-        todo!()
+        if slot > 15 {
+            return Err(ErrorCode::Invalid);
+        }
+
+        let valid_mask = self.read(reg::VENDOR_PK_HASH_VALID, 0)?;
+        let slot_used = (valid_mask & (1 << slot)) != 0;
+        if slot_used {
+            return Err(ErrorCode::Invalid);
+        }
+
+        let reg = reg::vendor_pk_hash_reg_by_slot(slot).ok_or(ErrorCode::Invalid)?;
+
+        // Write fuse
+        for (i, chunk) in new_hash.chunks(4).enumerate() {
+            let word = u32::from_le_bytes(chunk.try_into().map_err(|_| ErrorCode::Fail)?);
+            self.write(reg, i as u32, word)?;
+        }
+
+        // Read back the fuse and compare to validate writing was successfull
+        let mut fuse_value = [0u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size];
+        for (i, chunk) in fuse_value.chunks_mut(4).enumerate() {
+            let word = self.read(reg, i as u32)?;
+            let bytes = word.to_le_bytes();
+            chunk.copy_from_slice(&bytes);
+        }
+        if new_hash != &fuse_value {
+            return Err(ErrorCode::Fail);
+        }
+
+        // Set valid bit
+        self.write(reg::VENDOR_PK_HASH_VALID, 0, valid_mask | (1 << slot))?;
+
+        Ok(())
     }
 }
 

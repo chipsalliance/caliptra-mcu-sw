@@ -25,8 +25,8 @@ use caliptra_mcu_mbox_common::messages::{
     McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsSelfTestGetResultsReq,
     McuFipsSelfTestStartReq, McuHkdfExpandReq, McuHkdfExtractReq, McuHmacKdfCounterReq, McuHmacReq,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq,
-    McuResponseVarSize, McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, RevokeVendorPubKeyType,
-    RotateVendorPkHashReq, RotateVendorPkHashResp, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    McuResponseVarSize, McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, ProvisionVendorPkHashReq,
+    ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
     MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
@@ -422,7 +422,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_GET_AUTH_CMD_CHALLENGE => {
                 self.handle_get_auth_cmd_challenge(req, resp_buf).await
             }
-            cmd_id @ CommandId::MC_ROTATE_VENDOR_PK_HASH
+            cmd_id @ CommandId::MC_PROVISION_VENDOR_PK_HASH
             | cmd_id @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
             | cmd_id @ CommandId::MC_FE_PROG
             | cmd_id @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
@@ -714,8 +714,8 @@ impl<'a> CmdInterface<'a> {
             .await
             .map_err(|_| MsgHandlerError::UnauthorizedCommand)?;
         match cmd_id {
-            CommandId::MC_ROTATE_VENDOR_PK_HASH => {
-                self.handle_rotate_vendor_pk_hash(cmd, resp_buf).await
+            CommandId::MC_PROVISION_VENDOR_PK_HASH => {
+                self.handle_provision_vendor_pk_hash(cmd, resp_buf).await
             }
             CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
                 self.handle_increase_caliptra_min_svn(cmd, resp_buf).await
@@ -728,20 +728,20 @@ impl<'a> CmdInterface<'a> {
         }
     }
 
-    async fn handle_rotate_vendor_pk_hash<'r>(
+    async fn handle_provision_vendor_pk_hash<'r>(
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        let req = RotateVendorPkHashReq::ref_from_bytes(req)
+        let req = ProvisionVendorPkHashReq::ref_from_bytes(req)
             .map_err(|_| MsgHandlerError::InvalidParams)?;
         let otp: Otp<DefaultSyscalls> = Otp::new();
-        let res = match otp.rotate_vendor_pk_hash(&req.hash) {
+        let res = match otp.provision_vendor_pk_hash(req.slot, &req.hash) {
             Ok(_) => MbxCmdStatus::Complete,
             Err(_) => MbxCmdStatus::Failure,
         };
-        let resp = RotateVendorPkHashResp::default();
-        let resp_slice = &mut resp_buf[..size_of::<RotateVendorPkHashResp>()];
+        let resp = ProvisionVendorPkHashResp::default();
+        let resp_slice = &mut resp_buf[..size_of::<ProvisionVendorPkHashResp>()];
         resp.write_to(resp_slice).unwrap();
         Ok((resp_slice, res))
     }
