@@ -87,6 +87,11 @@ mod test {
         pub custom_mcu_rom: Option<Vec<u8>>,
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
         pub firmware_prefix: Option<Vec<u8>>,
+        /// If true (with `firmware_prefix` set), use the DOT hitless-update
+        /// test ROM which forces the cold-boot warm reset to come back as
+        /// `FirmwareHitlessUpdate` so `FwHitlessUpdate::run` processes the
+        /// manifest instead of `FwBoot::run`.
+        pub fw_manifest_dot_hitless: bool,
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -146,6 +151,9 @@ mod test {
     pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| get_or_compile_rom(""));
     pub static ROM_FW_MANIFEST_DOT: LazyLock<Vec<u8>> =
         LazyLock::new(|| std::fs::read(get_or_compile_rom("test-fw-manifest-dot")).unwrap());
+    pub static ROM_FW_MANIFEST_DOT_HITLESS: LazyLock<Vec<u8>> = LazyLock::new(|| {
+        std::fs::read(get_or_compile_rom("test-fw-manifest-dot-hitless")).unwrap()
+    });
 
     pub static TEST_LOCK: LazyLock<Mutex<AtomicU32>> =
         LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
@@ -373,7 +381,11 @@ mod test {
         .unwrap();
 
         let mcu_rom = if params.firmware_prefix.is_some() {
-            ROM_FW_MANIFEST_DOT.clone()
+            if params.fw_manifest_dot_hitless {
+                ROM_FW_MANIFEST_DOT_HITLESS.clone()
+            } else {
+                ROM_FW_MANIFEST_DOT.clone()
+            }
         } else if let Some(f) = params.rom_feature {
             std::fs::read(compile_rom(f)).unwrap()
         } else if params.rom_only && params.feature.is_some() {

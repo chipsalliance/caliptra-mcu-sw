@@ -35,3 +35,8 @@ hw-2-1 = []
 core_test = ["romtime/core_test"]
 fw-manifest-dot = []
 ocp-lock = ["romtime/ocp-lock"]
+# Test-only: at the end of cold boot, rewrite the reset-reason register to
+# force the next boot entry to `FirmwareHitlessUpdate` instead of
+# `FirmwareBootReset`. Used by the DOT manifest hitless-update integration
+# test to exercise `FwHitlessUpdate::run` without a real PLDM update flow.
+test-force-hitless-update = []

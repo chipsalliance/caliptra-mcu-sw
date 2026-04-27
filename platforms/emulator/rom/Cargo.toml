@@ -42,6 +42,10 @@ test-mcu-svn-gt-fuse = []
 test-mcu-svn-lt-fuse = []
 test-flash-based-boot = ["hw-2-1"]
 test-fw-manifest-dot = ["mcu-rom-common/fw-manifest-dot"]
+test-fw-manifest-dot-hitless = [
+    "mcu-rom-common/fw-manifest-dot",
+    "mcu-rom-common/test-force-hitless-update",
+]
 test-pldm-streaming-boot = []
 test-ocp-lock = []
 active-i3c1 = ["mcu-config-emulator/active-i3c1"]

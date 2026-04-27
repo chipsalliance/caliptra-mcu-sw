@@ -1323,6 +1323,21 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Resetting to boot firmware");
         mci.set_flow_checkpoint(McuRomBootStatus::ColdBootFlowComplete.into());
         mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
+
+        #[cfg(feature = "test-force-hitless-update")]
+        {
+            use registers_generated::mci::bits::ResetReason;
+            use tock_registers::interfaces::ReadWriteable;
+            // Replace FwBootUpdReset with FwHitlessUpdReset so the emulator
+            // preserves the hitless bit across this MCU reset and the ROM
+            // re-enters as `FirmwareHitlessUpdate`. Only used by the
+            // fw-manifest-dot hitless integration test.
+            romtime::println!("[mcu-rom] test-force-hitless-update: forcing hitless reset reason");
+            mci.registers
+                .mci_reg_reset_reason
+                .modify(ResetReason::FwBootUpdReset::CLEAR + ResetReason::FwHitlessUpdReset::SET);
+        }
+
         mci.trigger_warm_reset();
         romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
         fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
