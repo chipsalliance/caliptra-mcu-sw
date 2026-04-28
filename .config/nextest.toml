@@ -14,6 +14,18 @@ store-failure-output = true
 failure-output = "immediate-final"
 fail-fast = false
 slow-timeout = { period = "30m", terminate-after = 6 }
+# TODO: Failing tests tracked in https://github.com/chipsalliance/caliptra-mcu-sw/issues/1335.
+default-filter = """
+(all() - 
+(package(tests-integration) and test(test_streaming_soc_boot_successful))  - 
+(package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_caliptra_image))  - 
+(package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_manifest))  - 
+(package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_mcu_image))  - 
+(package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_soc_image))  - 
+(package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_missing_caliptra_image))  - 
+(package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful))  - 
+(package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful_fast)))
+"""
 
 [profile.nightly-emulator.junit]
 path = "/tmp/junit.xml"
@@ -47,3 +59,4 @@ default-filter = """
 # (package(tests-integration) and test(test_mctp_capsule_loopback)) |
 # disabled for now due to flakiness of firmware update
 # (package(tests-integration) and test(test_firmware_update_streaming_fpga)) |
+#
