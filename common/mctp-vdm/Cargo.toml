@@ -7,5 +7,6 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+caliptra-api.workspace = true
 zerocopy.workspace = true
 bitfield.workspace = true

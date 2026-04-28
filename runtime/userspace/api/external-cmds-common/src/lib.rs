@@ -9,10 +9,9 @@ use async_trait::async_trait;
 use caliptra_mcu_mbox_common::messages::CommandId;
 use zerocopy::{Immutable, IntoBytes};
 
+pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_CSR_DATA_LEN;
 pub const MAX_FW_VERSION_LEN: usize = 32;
 pub const MAX_UID_LEN: usize = 32;
-// TODO: Replace with imported constant from Caliptra core crate when available.
-pub const MAX_ATTESTED_CSR_DATA_LEN: usize = 12800;
 
 /// Common error type for unified commands.
 #[derive(Debug)]

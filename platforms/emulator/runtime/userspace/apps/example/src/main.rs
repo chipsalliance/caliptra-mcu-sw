@@ -184,6 +184,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_certs::test_get_cert_chain().await;
         test_caliptra_certs::test_certify_key().await;
         test_caliptra_certs::test_sign_with_test_key().await;
+        test_caliptra_certs::test_get_attested_csr().await;
         System::exit(0);
     }
     #[cfg(feature = "test-dma")]

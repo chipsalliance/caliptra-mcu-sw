@@ -1,12 +1,14 @@
 // Licensed under the Apache-2.0 license
 
+pub use crate::crypto::asym::AsymAlgo;
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::{
     execute_mailbox_cmd, CertificateChainResp, CertifyKeyRespHdr, DPE_PROFILE,
 };
 use caliptra_api::mailbox::{
-    CommandId, GetFmcAliasEcc384CertReq, GetIdevCsrReq, GetIdevCsrResp, GetLdevCertResp,
-    GetLdevEcc384CertReq, GetRtAliasEcc384CertReq, InvokeDpeReq, InvokeDpeResp, MailboxRespHeader,
+    AttestedCsrResp, CommandId, GetAttestedEccCsrReq, GetAttestedMldsaCsrReq,
+    GetFmcAliasEcc384CertReq, GetIdevCsrReq, GetIdevCsrResp, GetLdevCertResp, GetLdevEcc384CertReq,
+    GetRtAliasEcc384CertReq, InvokeDpeReq, InvokeDpeResp, MailboxRespHeader,
     PopulateIdevEcc384CertReq, Request, VarSizeDataResp,
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
@@ -20,6 +22,7 @@ use zerocopy::{FromBytes, FromZeros, IntoBytes, TryFromBytes};
 
 pub const IDEV_ECC_CSR_MAX_SIZE: usize = GetIdevCsrResp::DATA_MAX_SIZE;
 pub const MAX_ECC_CERT_SIZE: usize = GetLdevCertResp::DATA_MAX_SIZE;
+pub const MAX_ATTESTED_CSR_SIZE: usize = AttestedCsrResp::DATA_MAX_SIZE;
 pub const MAX_CERT_CHUNK_SIZE: usize = 1024;
 pub const KEY_LABEL_SIZE: usize = DPE_PROFILE.hash_size();
 
@@ -113,6 +116,33 @@ impl CertContext {
         cert: &mut [u8; MAX_ECC_CERT_SIZE],
     ) -> CaliptraApiResult<usize> {
         self.get_ecc384_cert::<GetRtAliasEcc384CertReq>(cert).await
+    }
+
+    pub async fn get_attested_csr(
+        &mut self,
+        algo: AsymAlgo,
+        key_id: u32,
+        nonce: &[u8; 32],
+        csr_data: &mut [u8; MAX_ATTESTED_CSR_SIZE],
+    ) -> CaliptraApiResult<usize> {
+        match algo {
+            AsymAlgo::EccP384 => {
+                let mut req = GetAttestedEccCsrReq {
+                    key_id,
+                    nonce: *nonce,
+                    ..Default::default()
+                };
+                self.get_attested_csr_inner(&mut req, csr_data).await
+            }
+            AsymAlgo::MlDsa87 => {
+                let mut req = GetAttestedMldsaCsrReq {
+                    key_id,
+                    nonce: *nonce,
+                    ..Default::default()
+                };
+                self.get_attested_csr_inner(&mut req, csr_data).await
+            }
+        }
     }
 
     pub async fn certify_key(
@@ -292,6 +322,29 @@ impl CertContext {
         }
         cert[..resp.data_size as usize].copy_from_slice(&resp.data[..resp.data_size as usize]);
         Ok(resp.data_size as usize)
+    }
+
+    async fn get_attested_csr_inner<R: Request<Resp = AttestedCsrResp>>(
+        &mut self,
+        req: &mut R,
+        csr_data: &mut [u8; MAX_ATTESTED_CSR_SIZE],
+    ) -> CaliptraApiResult<usize> {
+        let mut resp = AttestedCsrResp::new_zeroed();
+        let req_bytes = req.as_mut_bytes();
+        let resp_bytes = resp.as_mut_bytes();
+        let cmd = R::ID.into();
+
+        execute_mailbox_cmd(&self.mbox, cmd, req_bytes, resp_bytes).await?;
+
+        let resp = AttestedCsrResp::ref_from_bytes(resp_bytes)
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+        let size = resp.data_size as usize;
+        if size == 0 || size > MAX_ATTESTED_CSR_SIZE {
+            return Err(CaliptraApiError::InvalidResponse);
+        }
+
+        csr_data[..size].copy_from_slice(&resp.data[..size]);
+        Ok(size)
     }
 
     async fn send_dpe_cmd(
