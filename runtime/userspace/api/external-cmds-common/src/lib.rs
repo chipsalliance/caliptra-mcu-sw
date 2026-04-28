@@ -81,7 +81,7 @@ pub struct DeviceCapabilities {
 /// Each function represents a protocol-agnostic command handler. Implementors should provide
 /// the specific logic for each command as required by their application.
 #[async_trait]
-pub trait UnifiedCommandHandler {
+pub trait UnifiedCommandHandler: Send + Sync {
     /// Retrieves the firmware version for the given index.
     ///
     /// # Arguments
