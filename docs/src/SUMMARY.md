@@ -2,6 +2,7 @@
 
 - [MCU Specification](./mcu.md)
 - [Reference ROM Specification](./rom.md)
+    - [OCP LOCK Integrator Guide](./ocp_lock_integrator_guide.md)
     - [Device Ownership Transfer](./dot.md)
 - [Runtime Specification](./runtime.md)
     - [PLDM Package](./pldm_package.md)
