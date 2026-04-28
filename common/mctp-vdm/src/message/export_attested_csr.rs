@@ -10,9 +10,8 @@ use crate::protocol::{VdmCommand, VdmMsgHeader};
 use core::convert::TryFrom;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-/// Maximum size of attested CSR response data (from Caliptra core), 32-bit aligned.
-// TODO: Replace with actual max attested CSR response size from Caliptra mailbox commands.
-pub const MAX_ATTESTED_CSR_SIZE: usize = 12800;
+/// Re-exported from `caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE`.
+pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_CSR_SIZE;
 
 /// Device Key ID values for Export Attested CSR.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
