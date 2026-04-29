@@ -61,7 +61,6 @@ statemachine! {
         WaitForRecoveryStatus + RecoveryStatus(RecoveryStatus) [check_recovery_status_awaiting]
              = TransferringImage,
 
-
         TransferringImage + TransferComplete  = WaitForRecoveryPending,
 
         // activate the recovery image after it has been processed
@@ -71,14 +70,14 @@ statemachine! {
         // check if we need to send another recovery image (if awaiting image is set and running recovery)
         Activate + CheckFwActivation = CheckFwActivation,
 
+        // Use device_status to detect when Caliptra has processed the activation
+        // and is ready for the next image. This avoids acting on a stale
+        // recovery_status that still shows AWAITING_IMAGE from the previous
+        // request_image call.
+        CheckFwActivation + DeviceStatus(DeviceStatus0) [check_device_status_recovery]
+             = WaitForRecoveryStatus,
 
-        CheckFwActivation + RecoveryStatus(RecoveryStatus) [check_fw_booting_image]
-            = ActivateCheckRecoveryStatus,
-
-        ActivateCheckRecoveryStatus + RecoveryStatus(RecoveryStatus) [check_recovery_status_awaiting]
-             = ReadDeviceStatus,
-
-        ActivateCheckRecoveryStatus + RecoveryStatus(RecoveryStatus) [check_recovery_status_booting_mcu_img]
+        CheckFwActivation + RecoveryStatus(RecoveryStatus) [check_recovery_status_booting_mcu_img]
              = Done,
 
     }
@@ -210,17 +209,14 @@ impl StateMachineContext for Context {
         }
     }
 
-    fn check_fw_booting_image(&self, status: &RecoveryStatus) -> Result<bool, ()> {
-        if status.dev_rec_status() == dev_rec_status_code::BOOTING_IMAGE as u32 {
+    fn check_recovery_status_booting_mcu_img(&self, status: &RecoveryStatus) -> Result<bool, ()> {
+        if status.dev_rec_status() == dev_rec_status_code::BOOTING_IMAGE as u32
+            && status.rec_img_index() == rec_img_index::MCU_IMG_INDEX as u32
+        {
             Ok(true)
         } else {
             Ok(false)
         }
-    }
-
-    fn check_recovery_status_booting_mcu_img(&self, status: &RecoveryStatus) -> Result<bool, ()> {
-        Ok(self.check_fw_booting_image(status)?
-            && status.rec_img_index() == rec_img_index::MCU_IMG_INDEX as u32)
     }
 }
 
@@ -354,19 +350,15 @@ pub fn load_flash_image_to_recovery<'a>(
             }
 
             States::CheckFwActivation => {
-                // Check if the device is running recovery
-                let recovery_status =
-                    RecoveryStatus(i3c_periph.sec_fw_recovery_if_recovery_status.get());
-                let _ = state_machine.process_event(Events::RecoveryStatus(recovery_status));
+                let device_status = i3c_periph.sec_fw_recovery_if_device_status_0.get();
+                let result =
+                    state_machine.process_event(Events::DeviceStatus(DeviceStatus0(device_status)));
+                if result.is_err() {
+                    let recovery_status =
+                        RecoveryStatus(i3c_periph.sec_fw_recovery_if_recovery_status.get());
+                    let _ = state_machine.process_event(Events::RecoveryStatus(recovery_status));
+                }
             }
-
-            States::ActivateCheckRecoveryStatus => {
-                // Check the recovery status after activation
-                let recovery_status =
-                    RecoveryStatus(i3c_periph.sec_fw_recovery_if_recovery_status.get());
-                let _ = state_machine.process_event(Events::RecoveryStatus(recovery_status));
-            }
-
             _ => {}
         }
     }
