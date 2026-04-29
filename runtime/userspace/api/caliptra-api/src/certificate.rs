@@ -277,10 +277,7 @@ impl CertContext {
         offset: usize,
         cert_chunk: &mut [u8],
     ) -> CaliptraApiResult<usize> {
-        let size = cert_chunk.len();
-        if size > MAX_CERT_CHUNK_SIZE {
-            Err(CaliptraApiError::InvalidArgument("Chunk size is too large"))?;
-        }
+        let size = cert_chunk.len().min(MAX_CERT_CHUNK_SIZE);
 
         let dpe_cmd = GetCertificateChainCmd {
             offset: offset as u32,
