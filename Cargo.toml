@@ -377,3 +377,11 @@ codegen-units = 1
 
 [patch.crates-io]
 openssl = { git = "https://github.com/clundin25/rust-openssl.git", rev = "4ada1c1d7c264e052e7bb71ecddbd196a5c2a0c7" } # MLDSA
+
+# Isolation test: timer-reset + RO-write only (no CPU interrupt fix)
+[patch."https://github.com/chipsalliance/caliptra-sw"]
+caliptra-emu-bus    = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "219d11e9c027b4543c7ff7f57fa88a9880ff7faa" }
+caliptra-emu-cpu    = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "219d11e9c027b4543c7ff7f57fa88a9880ff7faa" }
+caliptra-emu-types  = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "219d11e9c027b4543c7ff7f57fa88a9880ff7faa" }
+caliptra-emu-derive = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "219d11e9c027b4543c7ff7f57fa88a9880ff7faa" }
+caliptra-emu-periph = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "219d11e9c027b4543c7ff7f57fa88a9880ff7faa" }
