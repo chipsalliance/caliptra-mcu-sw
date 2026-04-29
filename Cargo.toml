@@ -380,8 +380,28 @@ openssl = { git = "https://github.com/clundin25/rust-openssl.git", rev = "4ada1c
 
 # Isolation test: CPU interrupt fix + RO-write only (no timer reset fix)
 [patch."https://github.com/chipsalliance/caliptra-sw"]
-caliptra-emu-bus    = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
-caliptra-emu-cpu    = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
-caliptra-emu-types  = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-api = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-api-types = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-auth-man-gen = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-auth-man-types = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-builder = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-drivers = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-emu-bus = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-emu-cpu = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
 caliptra-emu-derive = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
 caliptra-emu-periph = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-emu-types = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-error = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-hw-model = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-hw-model-types = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-image-crypto = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-image-fake-keys = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-image-gen = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-image-types = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-ocp-eat = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-registers = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-test = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-test-harness = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-test-harness-types = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+caliptra-ureg = { git = "https://github.com/v-ramalleti/caliptra-sw", rev = "2544db2bee99ae8bcc189bfd9690b8230a54d630" }
+
