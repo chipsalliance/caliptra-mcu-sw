@@ -1,16 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
-use caliptra_mcu_libsyscall_caliptra::dma::{
-    AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
-};
+use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use zerocopy::FromBytes;
 
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
 
-/// This is the size of the buffer used for DMA transfers.
-const MAX_DMA_TRANSFER_SIZE: usize = 128;
+use super::dma_transfer::DmaTransfer;
 
 const FLASH_HEADER_OFFSET: usize = 0;
 
@@ -52,31 +49,21 @@ pub async fn flash_read_toc(
 }
 
 pub async fn flash_load_image(
-    flash: &FlashSyscall,
+    dma_transfer: &impl DmaTransfer,
     load_address: AXIAddr,
     offset: usize,
     img_size: usize,
-    dma_mapping: &impl DMAMapping,
 ) -> Result<(), ErrorCode> {
-    let dma_syscall: DMASyscall = DMASyscall::new();
+    let max_xfer = dma_transfer.max_transfer_size();
     let mut remaining_size = img_size;
     let mut current_offset = offset;
     let mut current_address = load_address;
 
     while remaining_size > 0 {
-        let transfer_size = remaining_size.min(MAX_DMA_TRANSFER_SIZE);
-        let mut buffer = [0; MAX_DMA_TRANSFER_SIZE];
-        flash
-            .read(current_offset, transfer_size, &mut buffer)
+        let transfer_size = remaining_size.min(max_xfer);
+        dma_transfer
+            .transfer(current_offset, current_address, transfer_size)
             .await?;
-
-        let source_address = dma_mapping.mcu_sram_to_mcu_axi(buffer.as_ptr() as u32)?;
-        let transaction = DMATransaction {
-            byte_count: transfer_size,
-            source: DMASource::Address(source_address),
-            dest_addr: current_address,
-        };
-        dma_syscall.xfer(&transaction).await?;
         remaining_size -= transfer_size;
         current_offset += transfer_size;
         current_address += transfer_size as u64;

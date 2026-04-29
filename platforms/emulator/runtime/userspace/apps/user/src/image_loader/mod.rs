@@ -1,5 +1,8 @@
 // Licensed under the Apache-2.0 license
 
+extern crate alloc;
+use alloc::boxed::Box;
+
 #[cfg(any(
     feature = "test-pldm-discovery",
     feature = "test-pldm-fw-update",
@@ -9,6 +12,7 @@ mod pldm_fdops_mock;
 
 mod config;
 
+use async_trait::async_trait;
 use caliptra_api::mailbox::{
     ActivateFirmwareReq, ActivateFirmwareResp, CommandId, MailboxReqHeader,
 };
@@ -40,7 +44,8 @@ use core::fmt::Write;
 use crate::EXECUTOR;
 #[allow(unused)]
 use caliptra_mcu_libapi_caliptra::image_loading::{
-    FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams, PldmImageLoader,
+    dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams,
+    PldmImageLoader,
 };
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 #[allow(unused)]
@@ -176,8 +181,10 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             active
         };
 
+        let buffered_dma =
+            FlashReaderDma::new(SpiFlash::new(load_partition.1.driver_num), dma_mapping);
         let flash_syscall = SpiFlash::new(load_partition.1.driver_num);
-        let flash_image_loader = FlashImageLoader::new(flash_syscall, dma_mapping);
+        let flash_image_loader = FlashImageLoader::new(flash_syscall, &buffered_dma);
 
         if let Some(pending) = pending {
             // Set the new Auth Manifest from the pending partition
@@ -279,3 +286,62 @@ impl DMAMapping for EmulatedDMAMap {
 
 #[allow(dead_code)]
 pub static EMULATED_DMA_MAPPING: EmulatedDMAMap = EmulatedDMAMap {};
+
+/// This is the size of the buffer used for DMA transfers.
+const MAX_DMA_TRANSFER_SIZE: usize = 128;
+
+/// Flash-backed DmaTransfer that buffers through SRAM.
+/// Reads from SPI flash into a stack buffer, then
+/// DMAs from the buffer to the destination.
+pub struct FlashReaderDma<D: DMAMapping + 'static> {
+    flash: SpiFlash,
+    dma_mapping: &'static D,
+}
+
+#[allow(dead_code)]
+impl<D: DMAMapping + 'static> FlashReaderDma<D> {
+    pub fn new(flash: SpiFlash, dma_mapping: &'static D) -> Self {
+        Self { flash, dma_mapping }
+    }
+}
+
+impl<D: DMAMapping + 'static> DMAMapping for FlashReaderDma<D> {
+    fn mcu_sram_to_mcu_axi(&self, sram_addr: u32) -> Result<AXIAddr, ErrorCode> {
+        self.dma_mapping.mcu_sram_to_mcu_axi(sram_addr)
+    }
+
+    fn cptra_axi_to_mcu_axi(&self, cptra_addr: u64) -> Result<AXIAddr, ErrorCode> {
+        self.dma_mapping.cptra_axi_to_mcu_axi(cptra_addr)
+    }
+}
+
+#[async_trait(?Send)]
+impl<D: DMAMapping + 'static> DmaTransfer for FlashReaderDma<D> {
+    fn max_transfer_size(&self) -> usize {
+        MAX_DMA_TRANSFER_SIZE
+    }
+
+    async fn transfer(
+        &self,
+        src_offset: usize,
+        dest_addr: AXIAddr,
+        length: usize,
+    ) -> Result<(), ErrorCode> {
+        use caliptra_mcu_libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
+        let dma_syscall: DMASyscall = DMASyscall::new();
+        let mut buffer = [0u8; MAX_DMA_TRANSFER_SIZE];
+        self.flash
+            .read(src_offset, length, &mut buffer[..length])
+            .await?;
+        let source_address = self
+            .dma_mapping
+            .mcu_sram_to_mcu_axi(buffer.as_ptr() as u32)?;
+        dma_syscall
+            .xfer(&DMATransaction {
+                byte_count: length,
+                source: DMASource::Address(source_address),
+                dest_addr,
+            })
+            .await
+    }
+}
