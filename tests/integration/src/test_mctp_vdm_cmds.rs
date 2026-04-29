@@ -25,12 +25,11 @@ pub mod test {
     use caliptra_mcu_testing_common::mctp_vdm_transport::{
         MctpVdmSocket, MctpVdmTransport, VdmClient, VdmTransportError,
     };
-    use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use caliptra_mcu_testing_common::wait_for_runtime_start;
     use log::{info, LevelFilter};
     use random_port::PortPicker;
     use simple_logger::SimpleLogger;
     use std::process::exit;
-    use std::sync::atomic::Ordering;
 
     /// Maximum buffer size for encoding VDM requests.
     const MAX_REQUEST_BUF_SIZE: usize = 1024;
@@ -262,9 +261,9 @@ pub mod test {
 
         /// Spawn test thread and run tests.
         pub fn run(socket: MctpVdmSocket, debug_level: LevelFilter) {
-            std::thread::spawn(move || {
+            caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
                 wait_for_runtime_start();
-                if !MCU_RUNNING.load(Ordering::Relaxed) {
+                if !caliptra_mcu_testing_common::is_emulator_running() {
                     exit(-1);
                 }
 
@@ -279,7 +278,7 @@ pub mod test {
                     exit(-1);
                 } else {
                     info!("All VDM tests passed!");
-                    MCU_RUNNING.store(false, Ordering::Relaxed);
+                    caliptra_mcu_testing_common::stop_emulator();
                     exit(0);
                 }
             });
@@ -308,7 +307,7 @@ pub mod test {
         let test = finish_runtime_hw_model(&mut hw);
 
         assert_eq!(0, test);
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        caliptra_mcu_testing_common::stop_emulator();
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

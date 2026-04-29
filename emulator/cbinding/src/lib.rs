@@ -829,14 +829,55 @@ pub unsafe extern "C" fn emulator_start_i3c_controller(
     }
 }
 
-/// Trigger an exit request by setting EMULATOR_RUNNING to false
-/// This will cause any loops waiting on EMULATOR_RUNNING to exit
+/// Trigger an exit request by setting the global EMULATOR_RUNNING to false.
+/// This stops ALL emulator instances sharing the default state.
+/// For multi-instance setups, prefer
+/// emulator_stop() which only stops one instance.
 ///
 /// # Returns
 /// * `EmulatorError::Success` on success
 #[no_mangle]
 pub extern "C" fn emulator_trigger_exit() -> EmulatorError {
     MCU_RUNNING.store(false, Ordering::Relaxed);
+    EmulatorError::Success
+}
+
+/// Stop a specific emulator instance without affecting other instances.
+///
+/// Sets the per-instance running flag to false. The next call to
+/// emulator_step() for this instance will return CStepAction::Break.
+/// Other emulator instances in the same process are unaffected.
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator to stop
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * `EmulatorError::NullPointer` if emulator_memory is null
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+#[no_mangle]
+pub unsafe extern "C" fn emulator_stop(emulator_memory: *mut CEmulator) -> EmulatorError {
+    if emulator_memory.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &*emulator_ptr;
+
+    match &emulator_state.wrapper {
+        EmulatorWrapper::Normal(emulator) => {
+            emulator.state.running.store(false, Ordering::Relaxed);
+        }
+        EmulatorWrapper::Gdb(gdb_target) => {
+            gdb_target
+                .emulator()
+                .state
+                .running
+                .store(false, Ordering::Relaxed);
+        }
+    }
     EmulatorError::Success
 }
 

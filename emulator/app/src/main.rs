@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 // CPU Main Loop (free_run no GDB)
 fn free_run(mut emulator: Emulator) {
-    while MCU_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
+    while caliptra_mcu_testing_common::is_emulator_running() {
         match emulator.step() {
             StepAction::Break => break,
             StepAction::Fatal => break,
@@ -38,14 +38,6 @@ fn main() -> io::Result<()> {
 }
 
 fn run(cli: EmulatorArgs, capture_uart_output: bool) -> io::Result<Vec<u8>> {
-    // exit cleanly on Ctrl-C so that we save any state.
-    if io::stdout().is_terminal() {
-        ctrlc::set_handler(move || {
-            MCU_RUNNING.store(false, std::sync::atomic::Ordering::Relaxed);
-        })
-        .unwrap();
-    }
-
     let uart_output = if capture_uart_output {
         Some(Rc::new(RefCell::new(Vec::new())))
     } else {
@@ -53,6 +45,19 @@ fn run(cli: EmulatorArgs, capture_uart_output: bool) -> io::Result<Vec<u8>> {
     };
 
     let emulator = Emulator::from_args(cli.clone(), capture_uart_output)?;
+
+    // exit cleanly on Ctrl-C so that we save any state.
+    // Sets both per-instance and global state.
+    if io::stdout().is_terminal() {
+        let state = emulator.state.clone();
+        ctrlc::set_handler(move || {
+            state
+                .running
+                .store(false, std::sync::atomic::Ordering::Relaxed);
+            MCU_RUNNING.store(false, std::sync::atomic::Ordering::Relaxed);
+        })
+        .unwrap();
+    }
 
     // Check if Optional GDB Port is passed
     match cli.gdb_port {

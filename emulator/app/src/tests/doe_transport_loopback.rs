@@ -1,12 +1,11 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
-use caliptra_mcu_testing_common::{sleep_emulator_ticks, MCU_RUNNING};
+use caliptra_mcu_testing_common::sleep_emulator_ticks;
 use rand::Rng;
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 2; // minimum size of test vectors
 const MAX_TEST_DATA_DWORDS: usize = 128; // maximum size of test vectors
-use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
 
 struct Test {
@@ -46,7 +45,7 @@ impl DoeTransportTest for Test {
 
         self.state = DoeTestState::Start;
 
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while caliptra_mcu_testing_common::is_emulator_running() {
             match self.state {
                 DoeTestState::Start => {
                     // waits for the responder to be ready if this is the first message to send

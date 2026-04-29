@@ -7,12 +7,11 @@ use crate::spdm_responder_validator::common::{
 };
 use crate::spdm_responder_validator::transport::{Transport, SOCKET_TRANSPORT_TYPE_PCI_DOE};
 use crate::spdm_responder_validator::SpdmTestType;
-use crate::{sleep_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
+use crate::{sleep_emulator_ticks, wait_for_runtime_start};
 use std::net::TcpListener;
 use std::process::exit;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
 use std::time::Duration;
 
 const TEST_NAME: &str = "DOE-SPDM-RESPONDER-VALIDATOR";
@@ -48,7 +47,7 @@ impl Transport for DoeTransport {
         let mut resp = None;
         let mut retry_count = 0;
 
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while crate::is_emulator_running() {
             match self.tx_rx_state {
                 TxRxState::Start => {
                     if wait_for_responder {
@@ -115,8 +114,8 @@ pub fn run_doe_spdm_conformance_test(
 ) {
     let transport = DoeTransport::new(tx, rx, 1);
     // Spawn a thread to handle the timeout for the test
-    thread::spawn(move || {
-        thread::sleep(test_timeout_seconds);
+    crate::spawn_with_emulator_state(move || {
+        std::thread::sleep(test_timeout_seconds);
         println!(
             "[{}] TIMED OUT AFTER {:?} SECONDS",
             TEST_NAME,
@@ -126,12 +125,12 @@ pub fn run_doe_spdm_conformance_test(
     });
 
     // Spawn a thread to run the tests
-    thread::spawn(move || {
+    crate::spawn_with_emulator_state(move || {
         wait_for_runtime_start();
         // give time for the app to be loaded and ready
         sleep_emulator_ticks(1_000_000);
 
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
+        if !crate::is_emulator_running() {
             exit(-1);
         }
 

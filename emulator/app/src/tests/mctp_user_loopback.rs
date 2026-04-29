@@ -2,8 +2,6 @@
 
 use caliptra_mcu_testing_common::i3c_socket::{BufferedStream, MctpTestState, MctpTransportTest};
 use caliptra_mcu_testing_common::mctp_util::common::MctpUtil;
-use caliptra_mcu_testing_common::MCU_RUNNING;
-use std::sync::atomic::Ordering;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -108,7 +106,7 @@ impl Test {
 
     fn run_loopback_test(&mut self, stream: &mut BufferedStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while caliptra_mcu_testing_common::is_emulator_running() {
             match self.test_state {
                 MctpTestState::Start => {
                     self.test_state = MctpTestState::SendReq;

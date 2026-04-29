@@ -5,8 +5,6 @@ use crate::mctp_util::common::MctpUtil;
 use crate::spdm_responder_validator::transport::{
     Transport, MAX_CMD_TIMEOUT_SECONDS, SOCKET_TRANSPORT_TYPE_MCTP,
 };
-use crate::MCU_RUNNING;
-use std::sync::atomic::Ordering;
 
 const TEST_NAME: &str = "MCTP-SPDM-RESPONDER-VALIDATOR";
 
@@ -46,7 +44,7 @@ impl MctpTransport {
         let mut resp = None;
         let mut cur_retry_count = 0;
 
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while crate::is_emulator_running() {
             match self.tx_rx_state {
                 TxRxState::Start => {
                     // This is to give some time for send_done upcall to be invoked by the kernel to the app.

@@ -23,7 +23,6 @@ pub mod test {
     use caliptra_mcu_testing_common::mctp_transport::{MctpPldmSocket, MctpTransport};
     use caliptra_mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
-        MCU_RUNNING,
     };
     use chrono::{TimeZone, Utc};
     use lazy_static::lazy_static;
@@ -60,7 +59,7 @@ pub mod test {
         let test = finish_runtime_hw_model(&mut hw);
 
         assert_eq!(0, test);
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        caliptra_mcu_testing_common::stop_emulator();
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -219,9 +218,9 @@ pub mod test {
         }
 
         pub fn run(socket: MctpPldmSocket, debug_level: LevelFilter) {
-            std::thread::spawn(move || {
+            caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
                 wait_for_runtime_start();
-                if !MCU_RUNNING.load(Ordering::Relaxed) {
+                if !caliptra_mcu_testing_common::is_emulator_running() {
                     exit(-1);
                 }
                 print!("Emulator: Running PLDM Loopback Test: ",);
@@ -231,7 +230,7 @@ pub mod test {
                     exit(-1);
                 } else {
                     println!("Passed");
-                    MCU_RUNNING.store(false, Ordering::Relaxed);
+                    caliptra_mcu_testing_common::stop_emulator();
                     exit(0);
                 }
             });

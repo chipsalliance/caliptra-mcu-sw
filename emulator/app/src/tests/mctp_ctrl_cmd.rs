@@ -6,8 +6,6 @@ use caliptra_mcu_testing_common::mctp_util::base_protocol::{
 };
 use caliptra_mcu_testing_common::mctp_util::common::MctpUtil;
 use caliptra_mcu_testing_common::mctp_util::ctrl_protocol::*;
-use caliptra_mcu_testing_common::MCU_RUNNING;
-use std::sync::atomic::Ordering;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use zerocopy::IntoBytes;
@@ -252,7 +250,7 @@ impl MctpTransportTest for Test {
 
     fn run_test(&mut self, stream: &mut BufferedStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while caliptra_mcu_testing_common::is_emulator_running() {
             match self.test_state {
                 MctpTestState::Start => {
                     println!("Starting test: {}", self.name);

@@ -17,7 +17,6 @@ use caliptra_mcu_mbox_common::messages::calc_checksum;
 pub use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 use caliptra_mcu_romtime::McuBootMilestones;
 pub use caliptra_mcu_romtime::{LifecycleRawTokens, LifecycleToken};
-use caliptra_mcu_testing_common::MCU_RUNNING;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 use caliptra_ureg::MmioMut;
 pub use mcu_mgr::McuManager;
@@ -28,7 +27,6 @@ use std::io::Write;
 use std::io::{stdout, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 pub use vmem::read_otp_vmem_data;
 use zerocopy::FromBytes;
@@ -411,7 +409,7 @@ pub trait McuHwModel {
 
     fn exit_status(&self) -> Option<ExitStatus> {
         // tests trigger success by stopping the emulator or FPGA.
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
+        if !caliptra_mcu_testing_common::is_emulator_running() {
             Some(ExitStatus::Passed)
         } else {
             None
