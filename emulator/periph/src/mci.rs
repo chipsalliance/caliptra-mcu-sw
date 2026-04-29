@@ -38,6 +38,10 @@ pub struct Mci {
     /// distinguish fresh FW update bits (written by Caliptra via DMA
     /// for the current reset) from stale bits left over from a previous cycle.
     reset_cycle_complete: bool,
+    /// Snapshot of reset_reason at the time reset_cycle_complete was set.
+    /// Used to detect when Caliptra writes new FW update bits via DMA
+    /// (which bypasses write_mci_reg_reset_reason).
+    reason_at_cycle_complete: u32,
     irq: Rc<RefCell<Irq>>,
     mcu_mailbox0: Option<McuMailbox0Internal>,
 
@@ -88,6 +92,7 @@ impl Mci {
             op_wdt_timer2_expired_action: None,
             reset_reason,
             reset_cycle_complete: false,
+            reason_at_cycle_complete: 0,
             irq,
             mcu_mailbox0,
             reset_requested: false,
@@ -613,9 +618,17 @@ impl MciPeripheral for Mci {
                     || reg.reg.is_set(ResetReason::FwHitlessUpdReset)
             };
 
-            if has_fw_update_bits && !self.reset_cycle_complete {
-                // Caliptra wrote FW update bits for this reset cycle
-                // (first reset after cold boot). Preserve them.
+            // Detect whether FW update bits are fresh: either this is the
+            // first reset cycle (!reset_cycle_complete), or Caliptra wrote
+            // new FW bits via DMA since the last cycle completed (the value
+            // changed from what we saved at cycle completion).
+            let fw_bits_are_fresh = has_fw_update_bits
+                && (!self.reset_cycle_complete || reason != self.reason_at_cycle_complete);
+
+            if fw_bits_are_fresh {
+                // Caliptra wrote FW update bits for this reset cycle.
+                // Preserve them and reset the cycle tracker.
+                self.reset_cycle_complete = false;
             } else {
                 // Either no FW update bits (plain warm reset), or
                 // FW bits are stale from the previous reset cycle.
@@ -1356,6 +1369,7 @@ impl MciPeripheral for Mci {
                 println!("MCI: MCU proceeding with reboot");
                 self.reset_requested = false;
                 self.reset_cycle_complete = true;
+                self.reason_at_cycle_complete = self.reset_reason.get();
                 self.timer.schedule_action_in(0, TimerAction::UpdateReset);
                 self.op_wdt_timer2_expired_action = None;
             }
@@ -1740,6 +1754,7 @@ mod tests {
         // Simulate poll() completing the reset
         mci.reset_requested = false;
         mci.reset_cycle_complete = true;
+        mci.reason_at_cycle_complete = mci.reset_reason.get();
 
         // Step 4: Second MCU_REQ (no new FW update bits written by Caliptra)
         // The stale FW_BOOT_UPD_RESET should be cleared and WARM_RESET set
