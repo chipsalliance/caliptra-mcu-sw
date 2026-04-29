@@ -2028,6 +2028,7 @@ dependencies = [
  "async-trait",
  "bitfield",
  "caliptra-api",
+ "caliptra-mcu-external-cmds-common",
  "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_console",
