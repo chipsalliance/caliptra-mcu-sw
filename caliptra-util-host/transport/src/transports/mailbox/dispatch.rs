@@ -13,6 +13,7 @@ use super::aes::{
     AesGcmDecryptFinalCmd, AesGcmDecryptInitCmd, AesGcmDecryptUpdateCmd, AesGcmEncryptFinalCmd,
     AesGcmEncryptInitCmd, AesGcmEncryptUpdateCmd,
 };
+use super::certificate::ExportAttestedCsrCmd;
 use super::crypto_asymmetric::{
     EcdhFinishCmd, EcdhGenerateCmd, EcdsaPublicKeyCmd, EcdsaSignCmd, EcdsaVerifyCmd,
 };
@@ -79,6 +80,8 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         // Debug Unlock Commands (0x7010-0x7011)
         0x7010 => Some(process_command_with_metadata::<ProdDebugUnlockReqCmd>), // ProdDebugUnlockReq
         0x7011 => Some(process_command_with_metadata::<ProdDebugUnlockTokenCmd>), // ProdDebugUnlockToken
+        // Certificate Commands (0x1005)
+        0x1005 => Some(process_command_with_metadata::<ExportAttestedCsrCmd>), // ExportAttestedCsr
         _ => None,
     }
 }
@@ -130,6 +133,8 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         // Debug Unlock Commands
         0x7010 => Some(0x4D50_5552), // ProdDebugUnlockReq -> MC_PROD_DEBUG_UNLOCK_REQ ("MPUR")
         0x7011 => Some(0x4D50_5554), // ProdDebugUnlockToken -> MC_PROD_DEBUG_UNLOCK_TOKEN ("MPUT")
+        // Certificate Commands
+        0x1005 => Some(0x4D45_4143), // ExportAttestedCsr -> MC_EXPORT_ATTESTED_CSR ("MEAC")
         _ => None,
     }
 }

@@ -185,6 +185,10 @@ impl Validator {
         let debug_unlock_result = self.validate_prod_debug_unlock(&mut client);
         results.push(debug_unlock_result);
 
+        // Run ExportAttestedCsr validation tests for all key IDs and algorithms
+        let export_csr_results = self.validate_export_attested_csr_all(&mut client);
+        results.extend(export_csr_results);
+
         if self.verbose {
             self.print_summary(&results);
         }
@@ -1593,6 +1597,103 @@ impl Validator {
                     test_name,
                     passed: true,
                     error_message: None,
+                }
+            }
+        }
+    }
+
+    /// Validate ExportAttestedCsr command
+    fn validate_export_attested_csr_all(
+        &self,
+        client: &mut MailboxClient,
+    ) -> Vec<ValidationResult> {
+        const KEY_IDS: &[(u32, &str)] = &[
+            (0x0001, "LDevID"),
+            (0x0002, "FMC Alias"),
+            (0x0003, "RT Alias"),
+        ];
+        const ALGORITHMS: &[(u32, &str)] = &[
+            (0x0001, "ECC384"),
+            // TODO: enable MLDSA87 when support is verified in emulator
+            // (0x0002, "MLDSA87"),
+        ];
+
+        let mut results = Vec::new();
+        let nonce: [u8; 32] = [0x42; 32];
+
+        for &(key_id, key_name) in KEY_IDS {
+            for &(algorithm, algo_name) in ALGORITHMS {
+                let result = self.validate_export_attested_csr(
+                    client, key_id, key_name, algorithm, algo_name, &nonce,
+                );
+                results.push(result);
+            }
+        }
+
+        results
+    }
+
+    fn validate_export_attested_csr(
+        &self,
+        client: &mut MailboxClient,
+        device_key_id: u32,
+        key_name: &str,
+        algorithm: u32,
+        algo_name: &str,
+        nonce: &[u8; 32],
+    ) -> ValidationResult {
+        let test_name = format!("ExportAttestedCsr({}/{})", key_name, algo_name);
+
+        if self.verbose {
+            println!(
+                "\n=== Validating ExportAttestedCsr: {} {} ===",
+                key_name, algo_name
+            );
+        }
+
+        match client.export_attested_csr(device_key_id, algorithm, nonce) {
+            Ok(response) => {
+                if response.data_len == 0 {
+                    let error_msg = "attested CSR data_len is 0".to_string();
+                    eprintln!("✗ {} validation FAILED: {}", test_name, error_msg);
+                    return ValidationResult {
+                        test_name,
+                        passed: false,
+                        error_message: Some(error_msg),
+                    };
+                }
+
+                if response.data_len as usize
+                    > caliptra_mcu_core_util_host_command_types::certificate::MAX_CSR_DATA_SIZE
+                {
+                    let error_msg = format!(
+                        "attested CSR data_len {} exceeds maximum",
+                        response.data_len
+                    );
+                    eprintln!("✗ {} validation FAILED: {}", test_name, error_msg);
+                    return ValidationResult {
+                        test_name,
+                        passed: false,
+                        error_message: Some(error_msg),
+                    };
+                }
+
+                println!(
+                    "✓ {} validation PASSED (attested CSR size: {} bytes)",
+                    test_name, response.data_len
+                );
+                ValidationResult {
+                    test_name,
+                    passed: true,
+                    error_message: None,
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ {} validation FAILED: {}", test_name, e);
+                ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(e.to_string()),
                 }
             }
         }
