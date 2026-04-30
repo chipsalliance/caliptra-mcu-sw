@@ -10,6 +10,9 @@ use caliptra_mcu_external_cmds_common::{
 };
 use caliptra_mcu_mbox_common::config;
 
+use crate::caliptra_cmd_handler::CaliptraCmdHandler;
+
+// TODO: Remove this mock and use CaliptraCmdHandler directly.
 #[derive(Default)]
 pub struct NonCryptoCmdHandlerMock;
 
@@ -87,10 +90,15 @@ impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
 
     async fn export_attested_csr(
         &self,
-        _device_key_id: u32,
-        _algorithm: u32,
-        _csr_data: &mut AttestedCsrData,
+        device_key_id: u32,
+        algorithm: u32,
+        nonce: &[u8; 32],
+        csr_data: &mut AttestedCsrData,
     ) -> Result<(), CommandError> {
-        Err(CommandError::NotSupported)
+        // Delegate to real CaliptraCmdHandler for actual Caliptra mailbox interaction
+        let handler = CaliptraCmdHandler;
+        handler
+            .export_attested_csr(device_key_id, algorithm, nonce, csr_data)
+            .await
     }
 }

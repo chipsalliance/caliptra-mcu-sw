@@ -9,6 +9,7 @@
 // Re-export types that API consumers might need
 // Note: These imports might appear unused but are used by other modules or re-exports
 
+pub mod certificate;
 pub mod crypto_aes;
 pub mod crypto_asymmetric;
 pub mod crypto_delete;
@@ -19,6 +20,7 @@ pub mod debug_unlock;
 pub mod device_info;
 
 pub use caliptra_util_host_session::CommandSession;
+pub use certificate::*;
 pub use crypto_aes::*;
 pub use crypto_asymmetric::*;
 pub use crypto_delete::*;

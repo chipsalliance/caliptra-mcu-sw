@@ -3,13 +3,12 @@
 use crate::error::VdmLibError;
 use crate::transport::MctpVdmTransport;
 use caliptra_mcu_external_cmds_common::{
-    AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
-    UnifiedCommandHandler, MAX_ATTESTED_CSR_DATA_LEN, MAX_UID_LEN,
+    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid, UnifiedCommandHandler,
+    MAX_UID_LEN,
 };
 use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 use caliptra_mcu_mctp_vdm_common::message::{
-    AsymAlgorithm, DeviceCapabilitiesResponse, DeviceIdResponse, DeviceInfoRequest,
-    DeviceInfoResponse, ExportAttestedCsrRequest, ExportAttestedCsrResponse,
+    DeviceCapabilitiesResponse, DeviceIdResponse, DeviceInfoRequest, DeviceInfoResponse,
     FirmwareVersionRequest, FirmwareVersionResponse, DEVICE_CAPS_SIZE,
 };
 use caliptra_mcu_mctp_vdm_common::protocol::{
@@ -120,9 +119,6 @@ impl<'a> CmdInterface<'a> {
             }
             VdmCommand::DeviceId => self.handle_device_id(msg_buf, vdm_req_len).await,
             VdmCommand::DeviceInfo => self.handle_device_info(msg_buf, vdm_req_len).await,
-            VdmCommand::ExportAttestedCsr => {
-                self.handle_export_attested_csr(msg_buf, vdm_req_len).await
-            }
             _ => self.send_error_response(
                 msg_buf,
                 hdr.command_code,
@@ -300,75 +296,6 @@ impl<'a> CmdInterface<'a> {
         &self,
         msg_buf: &mut [u8],
         resp: &DeviceInfoResponse,
-    ) -> Result<usize, VdmLibError> {
-        // Construct MCTP header and get VDM message slice.
-        let vdm_msg = construct_mctp_vdm_msg(msg_buf).map_err(|_| VdmLibError::EncodingError)?;
-
-        // Encode the response.
-        let resp_len = resp
-            .encode(vdm_msg)
-            .map_err(|_| VdmLibError::EncodingError)?;
-
-        // Return total MCTP payload length (1 byte MCTP header + VDM response).
-        Ok(VDM_MSG_OFFSET + resp_len)
-    }
-
-    /// Handle Export Attested CSR command.
-    async fn handle_export_attested_csr(
-        &self,
-        msg_buf: &mut [u8],
-        req_len: usize,
-    ) -> Result<usize, VdmLibError> {
-        // Extract VDM message portion.
-        let vdm_msg = extract_vdm_msg(msg_buf).map_err(|_| VdmLibError::DecodingError)?;
-
-        // Decode the request.
-        let req = ExportAttestedCsrRequest::decode(&vdm_msg[..req_len])
-            .map_err(|_| VdmLibError::DecodingError)?;
-
-        let device_key_id = req.device_key_id;
-        let algorithm = req.algorithm;
-
-        // Validate algorithm at protocol layer since ECC384 and MLDSA-87
-        // map to different Caliptra backend commands.
-        if AsymAlgorithm::try_from(algorithm).is_err() {
-            let resp = ExportAttestedCsrResponse::new(VdmCompletionCode::InvalidData as u32, &[]);
-            return self.encode_export_attested_csr_response(msg_buf, &resp);
-        }
-
-        // Get the attested CSR using the unified handler.
-        // device_key_id validation is delegated to the Caliptra backend.
-        let mut csr_data = AttestedCsrData::default();
-        let result = self
-            .unified_handler
-            .export_attested_csr(device_key_id, algorithm, &mut csr_data)
-            .await;
-
-        // Build the response with appropriate completion code per error type.
-        let (completion_code, data) = match result {
-            Ok(()) => {
-                let len = csr_data.len.min(MAX_ATTESTED_CSR_DATA_LEN);
-                (VdmCompletionCode::Success, csr_data.data[..len].to_vec())
-            }
-            Err(CommandError::InvalidParams) => (VdmCompletionCode::InvalidData, alloc::vec![]),
-            Err(CommandError::NotSupported) => {
-                (VdmCompletionCode::UnsupportedCommand, alloc::vec![])
-            }
-            Err(CommandError::Busy) => (VdmCompletionCode::NotReady, alloc::vec![]),
-            Err(_) => (VdmCompletionCode::GeneralError, alloc::vec![]),
-        };
-
-        let resp = ExportAttestedCsrResponse::new(completion_code as u32, &data);
-
-        // Encode the response into the MCTP payload.
-        self.encode_export_attested_csr_response(msg_buf, &resp)
-    }
-
-    /// Encode an ExportAttestedCsrResponse (variable length) into the MCTP payload buffer.
-    fn encode_export_attested_csr_response(
-        &self,
-        msg_buf: &mut [u8],
-        resp: &ExportAttestedCsrResponse,
     ) -> Result<usize, VdmLibError> {
         // Construct MCTP header and get VDM message slice.
         let vdm_msg = construct_mctp_vdm_msg(msg_buf).map_err(|_| VdmLibError::EncodingError)?;

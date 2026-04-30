@@ -79,3 +79,48 @@ impl CommandRequest for SetCertificateRequest {
 }
 
 impl CommandResponse for SetCertificateResponse {}
+
+// ============================================================================
+// ExportAttestedCsr Command
+// ============================================================================
+
+/// Maximum CSR data size (matches MAX_RESP_DATA_SIZE on MCU side)
+pub const MAX_CSR_DATA_SIZE: usize = 4 * 1024;
+
+/// Export Attested CSR request
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExportAttestedCsrRequest {
+    /// Device key identifier (0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias)
+    pub device_key_id: u32,
+    /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
+    pub algorithm: u32,
+    /// 32-byte nonce for freshness
+    pub nonce: [u8; 32],
+}
+
+/// Export Attested CSR response
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExportAttestedCsrResponse {
+    pub common: CommonResponse,
+    /// Length of CSR data
+    pub data_len: u32,
+    /// CSR data (variable length, up to MAX_CSR_DATA_SIZE)
+    pub csr_data: [u8; MAX_CSR_DATA_SIZE],
+}
+
+impl CommandRequest for ExportAttestedCsrRequest {
+    type Response = ExportAttestedCsrResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::ExportAttestedCsr;
+}
+
+impl CommandResponse for ExportAttestedCsrResponse {}
+
+impl ExportAttestedCsrResponse {
+    /// Returns the attested CSR payload as a byte slice (CoseSign1 structure).
+    pub fn csr_bytes(&self) -> &[u8] {
+        let len = (self.data_len as usize).min(MAX_CSR_DATA_SIZE);
+        &self.csr_data[..len]
+    }
+}

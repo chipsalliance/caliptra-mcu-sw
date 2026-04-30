@@ -122,6 +122,9 @@ impl CommandId {
     // Authorized commands
     pub const MC_ROTATE_VENDOR_PK_HASH: Self = Self(0x4D56_504B); // "MVPK"
     pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
+
+    // Certificate commands
+    pub const MC_EXPORT_ATTESTED_CSR: Self = Self(0x4D45_4143); // "MEAC"
 }
 
 impl From<u32> for CommandId {
@@ -184,6 +187,8 @@ pub enum McuMailboxReq {
     FuseWrite(FuseWriteReq),
     FuseLockPartition(FuseLockPartitionReq),
     FuseIncreaseCaliptraMinSvn(FuseIncreaseCaliptraMinSvnReq),
+    // Certificate commands
+    ExportAttestedCsr(ExportAttestedCsrReq),
 }
 
 impl McuMailboxReq {
@@ -232,6 +237,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_bytes()),
+            McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -280,6 +286,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -330,6 +337,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(_) => {
                 CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
             }
+            McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
         }
     }
 
@@ -402,6 +410,8 @@ pub enum McuMailboxResp {
     FuseRead(FuseReadResp),
     FuseWrite(FuseWriteResp),
     FuseLockPartition(FuseLockPartitionResp),
+    // Certificate commands
+    ExportAttestedCsr(ExportAttestedCsrResp),
 }
 
 /// A trait for responses with variable size data.
@@ -510,6 +520,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
         }
     }
 
@@ -558,6 +569,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
         }
     }
 
@@ -1375,6 +1387,42 @@ pub struct FuseIncreaseCaliptraMinSvnResp {
     pub hdr: MailboxRespHeader,
 }
 impl Response for FuseIncreaseCaliptraMinSvnResp {}
+
+// ============================================================================
+// MC_EXPORT_ATTESTED_CSR Command (0x4D45_4143 - "MEAC")
+// ============================================================================
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct ExportAttestedCsrReq {
+    pub hdr: MailboxReqHeader,
+    /// Device key identifier (0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias)
+    pub device_key_id: u32,
+    /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
+    pub algorithm: u32,
+    /// 32-byte nonce for freshness
+    pub nonce: [u8; 32],
+}
+impl Request for ExportAttestedCsrReq {
+    const ID: CommandId = CommandId::MC_EXPORT_ATTESTED_CSR;
+    type Resp = ExportAttestedCsrResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct ExportAttestedCsrResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub data: [u8; MAX_RESP_DATA_SIZE],
+}
+impl Default for ExportAttestedCsrResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            data: [0u8; MAX_RESP_DATA_SIZE],
+        }
+    }
+}
+impl McuResponseVarSize for ExportAttestedCsrResp {}
 
 #[cfg(test)]
 mod tests {

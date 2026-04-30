@@ -132,6 +132,7 @@ pub trait UnifiedCommandHandler: Send + Sync {
     /// # Arguments
     /// * `device_key_id` - The device key identifier (0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias).
     /// * `algorithm` - The asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87).
+    /// * `nonce` - A 32-byte nonce provided by the requester for freshness.
     /// * `csr_data` - Mutable reference to store the attested CSR data.
     ///
     /// # Returns
@@ -140,6 +141,7 @@ pub trait UnifiedCommandHandler: Send + Sync {
         &self,
         device_key_id: u32,
         algorithm: u32,
+        nonce: &[u8; 32],
         csr_data: &mut AttestedCsrData,
     ) -> Result<(), CommandError>;
 }
