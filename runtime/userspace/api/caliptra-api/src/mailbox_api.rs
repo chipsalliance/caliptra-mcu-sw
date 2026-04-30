@@ -129,7 +129,7 @@ impl Default for RandomGenerateResp {
 
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
-pub(crate) struct DpeEcResp {
+pub struct DpeEcResp {
     pub hdr: MailboxRespHeader,
     pub data_size: u32,
     pub data: [u8; MAX_DPE_RESP_DATA_SIZE], // variable length

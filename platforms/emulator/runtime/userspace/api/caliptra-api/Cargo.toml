@@ -12,6 +12,7 @@ caliptra-mcu-libsyscall-caliptra.workspace = true
 caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-config.workspace = true
 caliptra-mcu-config-emulator.workspace = true
+caliptra-mcu-libapi-caliptra = { workspace = true }
 zerocopy.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]

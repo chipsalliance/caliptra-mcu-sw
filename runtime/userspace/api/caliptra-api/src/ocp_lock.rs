@@ -1,8 +1,14 @@
 // Licensed under the Apache-2.0 license
 
+extern crate alloc;
+
 use crate::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use crate::error::{CaliptraApiError, CaliptraApiResult};
-use crate::mailbox_api::{execute_mailbox_cmd, DpeEcResp, MAX_DPE_RESP_DATA_SIZE};
+use crate::mailbox_api::{execute_mailbox_cmd, DpeEcResp, DPE_PROFILE};
+use crate::signer::DpeTransport;
+use alloc::boxed::Box;
+use async_trait::async_trait;
+use caliptra_api::mailbox::MailboxRespHeader;
 pub use caliptra_api::mailbox::{
     HpkeAlgorithms, HpkeHandle, InvokeDpeReq, OcpLockClearKeyCacheReq, OcpLockClearKeyCacheResp,
     OcpLockDeriveMekReq, OcpLockDeriveMekResp, OcpLockEnableMpkReq, OcpLockEnableMpkResp,
@@ -17,13 +23,13 @@ pub use caliptra_api::mailbox::{
     Request, Response, SealedAccessKey, WrappedKey,
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::mailbox::MailboxError;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_romtime::ocp_lock::Error as OcpLockError;
 use core::mem::size_of;
 use core::str::FromStr;
-use dpe::commands::{Command, CommandHdr, SignFlags, SignP384Cmd};
-use dpe::context::ContextHandle;
-use dpe::response::SignP384Resp;
-use dpe::DpeProfile;
+use dpe::commands::{Command, CommandHdr};
+use dpe::response::ResponseHdr;
 
 use zerocopy::{IntoBytes, TryFromBytes};
 
@@ -38,7 +44,6 @@ use spki::{AlgorithmIdentifier, SubjectPublicKeyInfo};
 // TODO(clundin): Do we need to allow externally supplied labels (I don't think so)?
 
 /// Label used for DPE KDF
-const DPE_LABEL: &[u8; 23] = b"MCU FW HPKE Endorsement";
 
 #[derive(Clone, Debug, Eq, PartialEq, Sequence)]
 pub struct Validity {
@@ -63,6 +68,12 @@ pub struct Certificate<'a> {
     pub tbs_certificate: TbsCertificate<'a>,
     pub signature_algorithm: AlgorithmIdentifier<AnyRef<'a>>,
     pub signature: BitStringRef<'a>,
+}
+
+#[async_trait]
+pub trait OcpLockSigner {
+    async fn sign(&self, label: &[u8], data: &[u8], signature: &mut [u8]) -> CaliptraApiResult<()>;
+    fn signature_size(&self) -> usize;
 }
 
 pub struct OcpLock<'a> {
@@ -152,41 +163,6 @@ impl<'a> OcpLock<'a> {
         self.execute(req).await
     }
 
-    async fn execute_dpe_cmd(&self, dpe_cmd: &mut Command<'_>) -> CaliptraApiResult<DpeEcResp> {
-        let mut mbox_req = InvokeDpeReq::default();
-        let cmd_hdr = CommandHdr::new(DpeProfile::P384Sha384, dpe_cmd.id());
-
-        let cmd_hdr_bytes = cmd_hdr.as_bytes();
-        mbox_req.data[..cmd_hdr_bytes.len()].copy_from_slice(cmd_hdr_bytes);
-
-        let dpe_cmd_bytes = dpe_cmd.as_bytes();
-        mbox_req.data[cmd_hdr_bytes.len()..cmd_hdr_bytes.len() + dpe_cmd_bytes.len()]
-            .copy_from_slice(dpe_cmd_bytes);
-        mbox_req.data_size = (cmd_hdr_bytes.len() + dpe_cmd_bytes.len()) as u32;
-
-        let mut mbox_resp = DpeEcResp::default();
-
-        execute_mailbox_cmd(
-            self.mailbox,
-            InvokeDpeReq::ID.into(),
-            mbox_req.as_mut_bytes(),
-            mbox_resp.as_mut_bytes(),
-        )
-        .await?;
-
-        Ok(mbox_resp)
-    }
-
-    // TODO(clundin): Support ML-DSA
-    pub async fn sign_with_dpe(&self, dpe_cmd: SignP384Cmd) -> CaliptraApiResult<SignP384Resp> {
-        let mbox_resp = self.execute_dpe_cmd(&mut Command::from(&dpe_cmd)).await?;
-        let data = &mbox_resp.data[..MAX_DPE_RESP_DATA_SIZE.min(mbox_resp.data_size as usize)];
-        let signature = SignP384Resp::try_read_from_bytes(&data[..size_of::<SignP384Resp>()])
-            .map_err(|_| CaliptraApiError::InvalidResponse)?;
-
-        Ok(signature)
-    }
-
     /// TODO(clundin): Add HPKE Identifiers
     /// TODO(clundin): This certificate should pass the test parser in caliptra-sw. I think a
     /// mailbox command to return it should unblock those tests.
@@ -198,6 +174,7 @@ impl<'a> OcpLock<'a> {
         subject_name: &[u8],
         handle: &HpkeHandle,
         cert_buf: &mut [u8],
+        signer: &dyn OcpLockSigner,
     ) -> CaliptraApiResult<usize> {
         let mut req = OcpLockGetHpkePubKeyReq {
             hpke_handle: handle.handle,
@@ -260,27 +237,17 @@ impl<'a> OcpLock<'a> {
         let mut digest = [0u8; SHA384_HASH_SIZE];
         HashContext::hash_all(HashAlgoType::SHA384, &tbs_der[..tbs_len], &mut digest).await?;
 
-        let label = {
-            let mut label = [0; 48];
-            label[..DPE_LABEL.len()].clone_from_slice(DPE_LABEL);
-            label
-        };
+        let sig_len = signer.signature_size();
 
-        let dpe_cmd = SignP384Cmd {
-            handle: ContextHandle::default(),
-            label,
-            flags: SignFlags::empty(),
-            digest,
-        };
+        let mut signature_bytes = [0u8; 128];
+        if sig_len > signature_bytes.len() {
+            return Err(CaliptraApiError::InvalidResponse);
+        }
 
-        let dpe_resp = self.sign_with_dpe(dpe_cmd).await?;
-        let signature_bytes = {
-            let mut signature_bytes = [0; 97];
-            signature_bytes[0] = 0x4;
-            signature_bytes[1..49].clone_from_slice(&dpe_resp.sig_r);
-            signature_bytes[49..].clone_from_slice(&dpe_resp.sig_s);
-            signature_bytes
-        };
+        const DPE_LABEL: &[u8] = b"MCU FW HPKE Endorsement";
+        signer
+            .sign(DPE_LABEL, &digest, &mut signature_bytes[..sig_len])
+            .await?;
 
         let cert = Certificate {
             tbs_certificate: tbs,
@@ -288,7 +255,7 @@ impl<'a> OcpLock<'a> {
                 oid: ECDSA_WITH_SHA_384,
                 parameters: None,
             },
-            signature: BitStringRef::new(0, &signature_bytes)?,
+            signature: BitStringRef::new(0, &signature_bytes[..sig_len])?,
         };
 
         let mut writer = der::SliceWriter::new(cert_buf);
@@ -343,5 +310,60 @@ impl<'a> OcpLock<'a> {
         req: &mut OcpLockUnloadMekReq,
     ) -> CaliptraApiResult<OcpLockUnloadMekResp> {
         self.execute(req).await
+    }
+}
+
+#[async_trait]
+impl DpeTransport for Mailbox {
+    async fn invoke(&self, cmd: &Command, resp_buf: &mut [u8]) -> CaliptraApiResult<usize> {
+        let mut mbox_req = InvokeDpeReq::default();
+        let cmd_hdr = CommandHdr::new(DPE_PROFILE, cmd.id());
+
+        let cmd_hdr_bytes = cmd_hdr.as_bytes();
+        let dpe_cmd_bytes = cmd.as_bytes();
+        let total_req_len = cmd_hdr_bytes.len() + dpe_cmd_bytes.len();
+        if total_req_len > mbox_req.data.len() {
+            return Err(CaliptraApiError::InvalidArgBufferTooSmall);
+        }
+        mbox_req.data[..cmd_hdr_bytes.len()].copy_from_slice(cmd_hdr_bytes);
+        mbox_req.data[cmd_hdr_bytes.len()..total_req_len].copy_from_slice(dpe_cmd_bytes);
+        mbox_req.data_size = total_req_len as u32;
+
+        let mut mbox_resp = DpeEcResp::default();
+
+        self.populate_checksum(InvokeDpeReq::ID.into(), mbox_req.as_mut_bytes())
+            .map_err(CaliptraApiError::Syscall)?;
+
+        let size = self
+            .execute(
+                InvokeDpeReq::ID.into(),
+                mbox_req.as_mut_bytes(),
+                mbox_resp.as_mut_bytes(),
+            )
+            .await
+            .map_err(|e| match e {
+                MailboxError::ErrorCode(ErrorCode::Busy) => CaliptraApiError::MailboxBusy,
+                _ => CaliptraApiError::Mailbox(e),
+            })?;
+
+        let dpe_resp_len = mbox_resp.data_size as usize;
+        let expected_min_mbox_size = size_of::<MailboxRespHeader>() + size_of::<u32>(); // MailboxRespHeader + data_size field
+        if size < expected_min_mbox_size || dpe_resp_len < size_of::<ResponseHdr>() {
+            return Err(CaliptraApiError::InvalidResponse);
+        }
+
+        let hdr = ResponseHdr::try_read_from_bytes(&mbox_resp.data[..size_of::<ResponseHdr>()])
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+
+        if hdr.status != 0 {
+            return Err(CaliptraApiError::InvalidResponse);
+        }
+
+        if resp_buf.len() < dpe_resp_len {
+            return Err(CaliptraApiError::InvalidArgBufferTooSmall);
+        }
+        resp_buf[..dpe_resp_len].copy_from_slice(&mbox_resp.data[..dpe_resp_len]);
+
+        Ok(dpe_resp_len)
     }
 }

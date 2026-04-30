@@ -14,6 +14,7 @@ caliptra-auth-man-types.workspace = true
 critical-section.workspace = true
 embassy-executor.workspace = true
 caliptra-mcu-libapi-caliptra.workspace = true
+caliptra-mcu-libapi-emulated-caliptra.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true
 const-oid.workspace = true
 der.workspace = true
@@ -44,7 +45,10 @@ default = []
 debug = []
 doe = []
 hw-2-1 = []
-ocp-lock = ["caliptra-mcu-libapi-caliptra/ocp-lock", "caliptra-mcu-romtime/ocp-lock"]
+ocp-lock = [
+    "caliptra-mcu-libapi-caliptra/ocp-lock",
+    "caliptra-mcu-romtime/ocp-lock",
+]
 # No-op stub forwarded through `runtime_build_with_apps`; size optimization
 # lives in `mcu-runtime-emulator`/`mcu-runtime-fpga`.
 release = []
@@ -89,7 +93,7 @@ test-mcu-mbox-cmds = []
 test-mcu-rom-flash-access = []
 test-mcu-svn-gt-fuse = []
 test-mcu-svn-lt-fuse = []
-test-ocp-lock = ["caliptra-mcu-libapi-caliptra/ocp-lock", "caliptra-mcu-romtime/ocp-lock"]
+test-ocp-lock = ["ocp-lock"]
 test-pldm-request-response = []
 test-pldm-discovery = []
 test-pldm-fw-update = []
