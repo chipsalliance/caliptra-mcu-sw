@@ -62,7 +62,9 @@ caliptra-ocp-eat.workspace = true
 [features]
 default = []
 hw-2-1 = []
-ocp-lock = []
+ocp-lock = [
+    "caliptra-mcu-libapi-caliptra/ocp-lock",
+]
 doe = []
 userspace-log = ["dep:defmt", "dep:caliptra-mcu-userlog"]
 # Production / minimal-size build for user-app.  Activated automatically by

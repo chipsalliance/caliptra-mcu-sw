@@ -4,6 +4,7 @@ use caliptra_api::mailbox::{CapabilitiesResp, CommandId, HpkeAlgorithms, Mailbox
 use caliptra_api::Capabilities;
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libapi_caliptra::ocp_lock::OcpLock;
+use caliptra_mcu_libapi_caliptra::signer::CaliptraDpeSigner;
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_romtime::println;
@@ -79,6 +80,7 @@ pub(crate) async fn test_get_hpke_public_key_x509() {
 
     let mailbox = Mailbox::new();
     let ocp_lock = OcpLock::new(&mailbox);
+    let signer = CaliptraDpeSigner::new(&mailbox);
 
     println!("Enumerate HPKE handles...");
     let handles_resp = ocp_lock
@@ -100,7 +102,7 @@ pub(crate) async fn test_get_hpke_public_key_x509() {
     let serial_number = 0xAAAA;
     let subject_name = b"Sample Endorsement Cert";
     match ocp_lock
-        .get_hpke_public_key_x509(serial_number, subject_name, handle, &mut cert_buf)
+        .get_hpke_public_key_x509(serial_number, subject_name, handle, &mut cert_buf, &signer)
         .await
     {
         Ok(cert_len) => {
