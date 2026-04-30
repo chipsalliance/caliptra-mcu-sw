@@ -89,6 +89,7 @@ impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
         &self,
         _device_key_id: u32,
         _algorithm: u32,
+        _nonce: &[u8; 32],
         _csr_data: &mut AttestedCsrData,
     ) -> Result<(), CommandError> {
         Err(CommandError::NotSupported)

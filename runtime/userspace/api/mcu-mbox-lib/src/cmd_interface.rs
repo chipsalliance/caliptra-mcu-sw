@@ -3,7 +3,7 @@
 use crate::transport::McuMboxTransport;
 use caliptra_api::mailbox::{populate_checksum, CommandId as CaliptraCommandId, MailboxReqHeader};
 use caliptra_mcu_external_cmds_common::{
-    CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion,
+    AttestedCsrData, CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion,
     UnifiedCommandHandler, MAX_UID_LEN,
 };
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
@@ -12,17 +12,18 @@ use caliptra_mcu_libsyscall_caliptra::otp;
 use caliptra_mcu_libsyscall_caliptra::{mailbox::Mailbox, DefaultSyscalls};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
-    DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
-    FuseIncreaseCaliptraMinSvnResp, MailboxRespHeader, MailboxRespHeaderVarSize,
-    McuAesDecryptInitReq, McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
-    McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq,
-    McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq,
-    McuCmImportReq, McuCmStatusReq, McuEcdhFinishReq, McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq,
+    DeviceInfoResp, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
+    FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
+    McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
+    McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
+    McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
+    McuCmStatusReq, McuEcdhFinishReq, McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq,
     McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq, McuFipsSelfTestGetResultsReq,
     McuFipsSelfTestStartReq, McuHkdfExpandReq, McuHkdfExtractReq, McuHmacKdfCounterReq, McuHmacReq,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq,
     McuResponseVarSize, McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, DEVICE_CAPS_SIZE,
-    MAX_FW_VERSION_STR_LEN,
+    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -418,6 +419,10 @@ impl<'a> CmdInterface<'a> {
             | cmd_id @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
                 self.handle_authorized_command(cmd_id, req, resp_buf).await
             }
+            // Certificate commands
+            CommandId::MC_EXPORT_ATTESTED_CSR => {
+                self.handle_export_attested_csr(req, resp_buf).await
+            }
             // TODO: add more command handlers.
             // TODO: DOT runtime commands (DOT_CAK_INSTALL, DOT_LOCK, DOT_DISABLE,
             // DOT_UNLOCK_CHALLENGE, DOT_UNLOCK) are not yet handled here. These require
@@ -587,6 +592,50 @@ impl<'a> CmdInterface<'a> {
         };
 
         // Encode the response and copy to resp_buf.
+        let resp_bytes = resp
+            .as_bytes_partial()
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+
+        Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+    }
+
+    async fn handle_export_attested_csr<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+        let req = ExportAttestedCsrReq::ref_from_bytes(req)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        let mut csr_data = AttestedCsrData::default();
+        let ret = self
+            .non_crypto_cmds_handler
+            .export_attested_csr(req.device_key_id, req.algorithm, &req.nonce, &mut csr_data)
+            .await;
+
+        let mbox_cmd_status = if ret.is_ok() {
+            MbxCmdStatus::Complete
+        } else {
+            MbxCmdStatus::Failure
+        };
+
+        let resp = if mbox_cmd_status == MbxCmdStatus::Complete {
+            let data_len = csr_data.len.min(MAX_RESP_DATA_SIZE);
+            let mut data = [0u8; MAX_RESP_DATA_SIZE];
+            data[..data_len].copy_from_slice(&csr_data.data[..data_len]);
+            ExportAttestedCsrResp {
+                hdr: MailboxRespHeaderVarSize {
+                    data_len: data_len as u32,
+                    ..Default::default()
+                },
+                data,
+            }
+        } else {
+            ExportAttestedCsrResp::default()
+        };
+
         let resp_bytes = resp
             .as_bytes_partial()
             .map_err(|_| MsgHandlerError::McuMboxCommon)?;

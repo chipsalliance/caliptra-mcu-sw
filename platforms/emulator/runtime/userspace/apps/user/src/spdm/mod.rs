@@ -98,6 +98,17 @@ async fn spdm_mctp_responder() {
         device_measurements::ocp_eat::create_manifest_with_ocp_eat();
     let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_ocp_eat);
 
+    // Caliptra VDM handler for SPDM over MCTP transport
+    let caliptra_cmd_handler = crate::caliptra_cmd_handler::CaliptraCmdHandler;
+    let mut caliptra_vdm_handler =
+        caliptra_mcu_spdm_lib::vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdmHandler::new(
+            &caliptra_cmd_handler,
+        );
+    let mut handlers_array: [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler; 1] =
+        [&mut caliptra_vdm_handler as &mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler];
+    let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> =
+        Some(&mut handlers_array);
+
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
         SECURE_SPDM_VERSIONS,
@@ -106,7 +117,7 @@ async fn spdm_mctp_responder() {
         local_algorithms,
         &shared_cert_store,
         device_measurements,
-        None, // VDM handlers are not supported for MCTP transport in this configuration
+        vdm_handlers,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {

@@ -11,6 +11,7 @@ use caliptra_mcu_libtockasync::TockExecutor;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
+mod caliptra_cmd_handler;
 #[cfg(any(
     feature = "test-firmware-update-streaming",
     feature = "test-firmware-update-flash"
