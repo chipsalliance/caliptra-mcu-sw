@@ -8,6 +8,8 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+dpe.workspace = true
+libapi-caliptra = { workspace = true, features = ["ocp-lock"] }
 libsyscall-caliptra.workspace = true
 libtock_platform.workspace = true
 mcu-config.workspace = true

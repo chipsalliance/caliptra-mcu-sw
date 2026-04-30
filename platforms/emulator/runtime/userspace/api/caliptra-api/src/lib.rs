@@ -3,3 +3,4 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
 pub mod image_loading;
+pub mod signer;

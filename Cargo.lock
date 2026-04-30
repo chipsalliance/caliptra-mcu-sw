@@ -1968,6 +1968,7 @@ dependencies = [
  "embassy-executor",
  "embedded-alloc",
  "libapi-caliptra",
+ "libapi-emulated-caliptra",
  "libsyscall-caliptra",
  "libtock",
  "libtock_alarm",
@@ -2858,8 +2859,10 @@ name = "libapi-emulated-caliptra"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "dpe",
  "embassy-executor",
  "embedded-alloc",
+ "libapi-caliptra",
  "libsyscall-caliptra",
  "libtock_platform",
  "mcu-config",
