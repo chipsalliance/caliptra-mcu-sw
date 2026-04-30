@@ -2159,6 +2159,17 @@ logic cptra_ss_mcu_halt_ack;
 logic i3c_recovery_payload_available;
 logic i3c_recovery_image_activated;
 
+// OCP Lock status
+logic ocp_lock_rdy;
+always_ff @(posedge core_clk or negedge hwif_out.interface_regs.control.cptra_ss_rst_b.value) begin
+    if (!hwif_out.interface_regs.control.cptra_ss_rst_b.value) begin
+        ocp_lock_rdy <= 1'b0;
+    end else if (caliptra_ss_top_0.caliptra_top_dut.soc_ifc_top1.ss_ocp_lock_in_progress) begin
+        ocp_lock_rdy <= 1'b1;
+    end
+end
+assign hwif_in.interface_regs.ocp_lock_control_reg.rdy.next = ocp_lock_rdy;
+
 // TODO: Unconnected signals issue: https://github.com/chipsalliance/caliptra-mcu-sw/issues/370
 caliptra_ss_top #(
     .MCU_MBOX0_SIZE_KB(16),
