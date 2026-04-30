@@ -84,6 +84,8 @@ mod test {
         pub custom_mcu_rom: Option<Vec<u8>>,
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
         pub firmware_prefix: Option<Vec<u8>>,
+        /// ROM feature flag. If set, compiles a ROM with this feature enabled.
+        pub rom_feature: Option<&'a str>,
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -270,7 +272,6 @@ mod test {
                 let bytes = std::fs::read(&mcu_runtime_path).unwrap();
                 (mcu_runtime_path, bytes)
             };
-
         let mut builder = CaliptraBuilder::new(
             cfg!(feature = "fpga_realtime"),
             params
@@ -351,7 +352,7 @@ mod test {
             mcu_runtime,
             network_rom,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) if params.firmware_prefix.is_none() => {
+            Ok(binaries) if params.firmware_prefix.is_none() && params.rom_feature.is_none() => {
                 prebuilt_binaries(&params, binaries)
             }
             _ => {

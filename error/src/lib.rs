@@ -139,6 +139,41 @@ impl McuError {
             "Failed to report HEK state"
         ),
         (
+            ROM_DOT_RECOVERY_BLOB_AUTH_ERROR,
+            0x1_001A,
+            "DOT recovery blob authentication failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_FLASH_WRITE_ERROR,
+            0x1_001B,
+            "DOT recovery flash write failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_PK_HASH_MISMATCH,
+            0x1_001C,
+            "DOT recovery PK hash mismatch"
+        ),
+        (
+            ROM_DOT_RECOVERY_CHALLENGE_FAILED,
+            0x1_001D,
+            "DOT recovery challenge generation failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_SIG_VERIFY_FAILED,
+            0x1_001E,
+            "DOT recovery signature verification failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_NO_RECOVERY_PK_HASH,
+            0x1_001F,
+            "DOT recovery no recovery PK hash in fuses"
+        ),
+        (
+            ROM_DOT_RECOVERY_TRANSPORT_ERROR,
+            0x1_0020,
+            "DOT recovery transport error"
+        ),
+        (
             ROM_LC_TRANSITION_ERROR,
             0x2_0000,
             "Lifecycle transition error"

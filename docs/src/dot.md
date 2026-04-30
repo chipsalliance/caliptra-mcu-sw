@@ -1201,7 +1201,7 @@ participant Caliptra_Core
 group Locked
     Caliptra_MCU -> Caliptra_MCU : MCU boots to ROM but DOT_BLOB is corrupted, ROM boots up to FMC or RT for DOT recovery
     note across : DOT_FUSE_ARRAY is in ODD state, Ownership_Storage has no CAK, Device boot up with FMC without CAK in DOT recovery mode
-    note across : Either MCU notify BMC or BMC detects that the silicon is in DOT recovery mode.  This is a silicon specific function, examples can be BMC tracking boot progress/error codes of the silicon boot
+    note across : Either MCU notify BMC or BMC detects that the silicon is in DOT recovery mode. This is a silicon-specific function, examples can be BMC tracking boot progress/error codes of the silicon boot
     alt BMC / platform has a backup copy of DOT_BLOB
         BMC -> Caliptra_MCU : DOT_RECOVERY
         Caliptra_MCU -> Caliptra_Core : authenticate to ensure DOT_BLOB is valid
@@ -1239,6 +1239,89 @@ note across : DOT_RECOVERY will cause the system to go back to mutable lock stat
 - DOT_BLOB must match current DOT_FUSE_ARRAY state
 - Cannot recover if backup is also corrupted
 
+#### Challenge/Response Recovery via MCI Mailbox
+
+An example specific implementation of the DOT_RECOVERY method using the MCI mailbox is provided below.
+
+**When:** The platform provides an external recovery agent (e.g., BMC or host) that controls (or can ask for signatures) using the vendor ECDSA P-384 and MLDSA-87 private keys.
+
+The reference MCU ROM uses MCI mailbox 0 (`mcu_mbox0`) to perform a
+two-transaction challenge/response protocol with the external agent.
+The agent provides public keys and signs the challenge externally; the ROM
+verifies the signatures using Caliptra's `CM_ECDSA384_VERIFY` and
+`CM_MLDSA87_VERIFY` mailbox commands.
+
+**Protocol:**
+
+#### Transaction 1: DOT_RECOVERY_REQUEST
+
+Command Code: `0x444F_5451` ("DOTQ")
+
+*Table: `DOT_RECOVERY_REQUEST` input arguments*
+
+| **Name**        | **Type**     | **Description**                     |
+| --------------- | ------------ | ----------------------------------- |
+| chksum          | u32          | Checksum (Caliptra standard formula)|
+| ecc_pub_key_x   | u8[48]       | ECDSA P-384 public key X coordinate |
+| ecc_pub_key_y   | u8[48]       | ECDSA P-384 public key Y coordinate |
+| mldsa_pub_key   | u8[2592]     | MLDSA-87 public key                 |
+| cak             | u8[48]       | New Code Authentication Key hash    |
+| lak             | u8[48]       | New Lock Authentication Key hash    |
+
+*Table: `DOT_RECOVERY_REQUEST` output arguments*
+
+| **Name**        | **Type**     | **Description**                      |
+| --------------- | ------------ | ------------------------------------ |
+| challenge       | u8[48]       | Random 48-byte challenge for signing |
+
+The ROM computes SHA-384 of the concatenated public keys (ECC X ‖ ECC Y ‖ MLDSA)
+and verifies the hash against the vendor recovery PK hash stored in OTP fuses.
+If the hash matches, the ROM generates a random 48-byte challenge and returns it
+via `DataReady` status.
+
+#### Transaction 2: DOT_CHALLENGE_RESPONSE
+
+Command Code: `0x444F_5452` ("DOTR")
+
+*Table: `DOT_CHALLENGE_RESPONSE` input arguments*
+
+| **Name**        | **Type**     | **Description**                     |
+| --------------- | ------------ | ----------------------------------- |
+| chksum          | u32          | Checksum (Caliptra standard formula)|
+| ecc_sig_r       | u8[48]       | ECDSA P-384 signature R component   |
+| ecc_sig_s       | u8[48]       | ECDSA P-384 signature S component   |
+| mldsa_pub_key   | u8[2592]     | MLDSA-87 public key                 |
+| mldsa_signature | u8[4627]     | MLDSA-87 signature                  |
+| padding         | u8           | Padding for MLDSA signature         |
+
+The ECDSA signature is over `SHA-384(challenge)`. The MLDSA signature is
+over the raw challenge bytes.
+
+The ROM verifies both signatures over the challenge. The ROM
+intentionally does **not** set `CmdComplete` after reading this transaction
+so that the SRAM data remains valid during signature verification (the
+MLDSA pub key and signature are read directly from SRAM in zero-copy mode).
+
+**Flow:**
+1. ROM boots and detects DOT recovery mode (corrupted DOT_BLOB)
+2. ROM polls MCI mbox0 for `DOT_RECOVERY_REQUEST` command
+3. Agent writes pub keys + new DOT blob data → mbox0 SRAM
+4. ROM hashes pub keys and verifies against vendor recovery PK hash in OTP
+5. ROM generates random 48-byte challenge → responds via mbox0 `DataReady`
+6. Agent signs challenge with ECC and MLDSA private keys
+7. Agent writes signatures + MLDSA pub key → mbox0 as `DOT_CHALLENGE_RESPONSE`
+8. ROM verifies ECC signature via `CM_ECDSA384_VERIFY`
+9. ROM verifies MLDSA signature via `CM_MLDSA87_VERIFY`
+10. If both pass: ROM writes new DOT_BLOB and requests subsystem reset
+11. **Result:** Device returns to Locked state with new ownership keys
+
+**Requirements:**
+- External agent must hold vendor ECDSA P-384 and MLDSA-87 private keys
+- Vendor recovery PK hash must be burned in OTP fuses
+- MCI mbox0 must be accessible to the agent
+- Public key hash must match the OTP vendor recovery PK hash
+
+
 ### Option 2: DOT_OVERRIDE Command
 
 **When:** BMC does not have backup DOT_BLOB (catastrophic recovery, RMA to vendor)
@@ -1265,7 +1348,7 @@ Locked (ODD, n) + Corrupted BLOB
     ↓
 Recovery Mode
     ├─→ [DOT_RECOVERY with valid backup] → Locked (ODD, n) [restored]
-    └─→ [DOT_OVERRIDE with Vendor key] → Uninitialized (EVEN, n+1) [ownership lost]
+    ├─→ [Challenge/Response via MCI mbox0] → Locked (ODD, n) [new ownership]
 ```
 
 ---
@@ -1388,6 +1471,7 @@ Example with 128-bit fuse array:
 | DOT_UNLOCK | ODD | LAK.priv | Yes (n→n+1) | Unlock ownership from silicon |
 | DOT_RECOVERY | ODD (Recovery) | DOT_BLOB HMAC | No | Restore corrupted DOT_BLOB |
 | DOT_OVERRIDE | ODD (Recovery) | VendorKey.priv | Yes (n→n+1) | Force unlock (destructive) |
+| DOT_RECOVERY_REQUEST | ODD (Recovery) | VendorKey (ECC+MLDSA) | No | Challenge/response recovery |
 
 ### State Transition Table
 
@@ -1400,4 +1484,5 @@ Example with 128-bit fuse array:
 | Locked (ODD) | DOT_UNLOCK | Volatile (EVEN) | ODD→EVEN | Delete DOT_BLOB |
 | Locked (ODD) | Corrupted BLOB | Recovery (ODD) | No | None |
 | Recovery (ODD) | DOT_RECOVERY | Locked (ODD) | No | Restore DOT_BLOB |
+| Recovery (ODD) | DOT_RECOVERY_REQUEST | Locked (ODD) | No | New DOT_BLOB via challenge/response |
 | Recovery (ODD) | DOT_OVERRIDE | Uninitialized (EVEN) | ODD→EVEN | Delete DOT_BLOB |
