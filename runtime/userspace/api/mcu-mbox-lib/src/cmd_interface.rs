@@ -14,12 +14,12 @@ use caliptra_mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
     DeviceInfoResp, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
     FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
-    McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
+    FuseWriteResp, MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq,
+    McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
     McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
     McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
     McuCmStatusReq, McuEcdhFinishReq, McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq,
-    McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq, McuFipsSelfTestGetResultsReq,
+    McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsSelfTestGetResultsReq,
     McuFipsSelfTestStartReq, McuHkdfExpandReq, McuHkdfExtractReq, McuHmacKdfCounterReq, McuHmacReq,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq,
     McuResponseVarSize, McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, DEVICE_CAPS_SIZE,
@@ -416,7 +416,8 @@ impl<'a> CmdInterface<'a> {
                 .await
             }
             cmd_id @ CommandId::MC_ROTATE_VENDOR_PK_HASH
-            | cmd_id @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
+            | cmd_id @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
+            | cmd_id @ CommandId::MC_FE_PROG => {
                 self.handle_authorized_command(cmd_id, req, resp_buf).await
             }
             // Certificate commands
@@ -693,6 +694,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
                 self.handle_increase_caliptra_min_svn(cmd, resp_buf).await
             }
+            CommandId::MC_FE_PROG => self.handle_fe_prog(cmd, resp_buf).await,
             _ => Err(MsgHandlerError::UnsupportedCommand),
         }
     }
@@ -785,6 +787,41 @@ impl<'a> CmdInterface<'a> {
         let resp_bytes = resp.as_bytes();
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_fe_prog<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+        // Decode the request
+        let req = McuFeProgReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+        let (resp, _) =
+            FuseWriteResp::mut_from_prefix(resp_buf).map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        // Prepare Caliptra request
+        let mut caliptra_req = caliptra_api::mailbox::FeProgReq {
+            partition: req.partition,
+            ..Default::default()
+        };
+
+        // Calculate checksum
+        caliptra_req.hdr.chksum =
+            caliptra_api::calc_checksum(CaliptraCommandId::FE_PROG.into(), caliptra_req.as_bytes());
+
+        // Invoke Caliptra mailbox API
+        let _caliptra_resp_len = execute_mailbox_cmd(
+            &self.caliptra_mbox,
+            CaliptraCommandId::FE_PROG.into(),
+            caliptra_req.as_mut_bytes(),
+            resp.as_mut_bytes(),
+        )
+        .await
+        .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        *resp = FuseWriteResp::default();
+        let resp_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
     }
 
     async fn get_caliptra_fw_info(
