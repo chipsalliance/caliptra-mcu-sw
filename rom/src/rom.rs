@@ -506,8 +506,9 @@ impl Soc {
         romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
 
         Ok(romtime::ocp_lock::HekState {
-            active_slot,
-            total_slots,
+            active_slot: active_slot as u32,
+            reserved: 0,
+            total_slots: total_slots as u32,
             active_state,
         })
     }
