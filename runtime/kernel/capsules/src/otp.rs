@@ -2,7 +2,10 @@
 
 //! This provides the OTP capsule that calls the underlying OTP driver
 
-use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_RUNTIME_SVN;
+use caliptra_mcu_registers_generated::fuses::{
+    OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
+    OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID,
+};
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
@@ -17,6 +20,17 @@ pub mod cmd {
 }
 
 pub mod reg {
+    use caliptra_mcu_registers_generated::fuses::{
+        FuseEntryInfo, OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_CORE_VENDOR_PK_HASH_1,
+        OTP_CPTRA_CORE_VENDOR_PK_HASH_10, OTP_CPTRA_CORE_VENDOR_PK_HASH_11,
+        OTP_CPTRA_CORE_VENDOR_PK_HASH_12, OTP_CPTRA_CORE_VENDOR_PK_HASH_13,
+        OTP_CPTRA_CORE_VENDOR_PK_HASH_14, OTP_CPTRA_CORE_VENDOR_PK_HASH_15,
+        OTP_CPTRA_CORE_VENDOR_PK_HASH_2, OTP_CPTRA_CORE_VENDOR_PK_HASH_3,
+        OTP_CPTRA_CORE_VENDOR_PK_HASH_4, OTP_CPTRA_CORE_VENDOR_PK_HASH_5,
+        OTP_CPTRA_CORE_VENDOR_PK_HASH_6, OTP_CPTRA_CORE_VENDOR_PK_HASH_7,
+        OTP_CPTRA_CORE_VENDOR_PK_HASH_8, OTP_CPTRA_CORE_VENDOR_PK_HASH_9,
+    };
+
     pub const LOCK_TOTAL_HEKS: u32 = 0;
     pub const LOCK_HEK_PROD_0: u32 = 1;
     pub const LOCK_HEK_PROD_1: u32 = 2;
@@ -39,6 +53,47 @@ pub mod reg {
     ];
 
     pub const CALIPTRA_FW_SVN: u32 = 9;
+
+    pub const VENDOR_PK_HASH_0: u32 = 10;
+    pub const VENDOR_PK_HASH_1: u32 = 11;
+    pub const VENDOR_PK_HASH_2: u32 = 12;
+    pub const VENDOR_PK_HASH_3: u32 = 13;
+    pub const VENDOR_PK_HASH_4: u32 = 14;
+    pub const VENDOR_PK_HASH_5: u32 = 15;
+    pub const VENDOR_PK_HASH_6: u32 = 16;
+    pub const VENDOR_PK_HASH_7: u32 = 17;
+    pub const VENDOR_PK_HASH_8: u32 = 18;
+    pub const VENDOR_PK_HASH_9: u32 = 19;
+    pub const VENDOR_PK_HASH_10: u32 = 20;
+    pub const VENDOR_PK_HASH_11: u32 = 21;
+    pub const VENDOR_PK_HASH_12: u32 = 22;
+    pub const VENDOR_PK_HASH_13: u32 = 23;
+    pub const VENDOR_PK_HASH_14: u32 = 24;
+    pub const VENDOR_PK_HASH_15: u32 = 25;
+    pub const VENDOR_PK_HASH_VALID: u32 = 26;
+
+    /// Return the entry info corresponding to the VENDOR_PK_HASH_X register.
+    pub(super) fn vendor_pk_hash_entry_info(reg: u32) -> Option<&'static FuseEntryInfo> {
+        match reg {
+            VENDOR_PK_HASH_0 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_0),
+            VENDOR_PK_HASH_1 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_1),
+            VENDOR_PK_HASH_2 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_2),
+            VENDOR_PK_HASH_3 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_3),
+            VENDOR_PK_HASH_4 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_4),
+            VENDOR_PK_HASH_5 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_5),
+            VENDOR_PK_HASH_6 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_6),
+            VENDOR_PK_HASH_7 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_7),
+            VENDOR_PK_HASH_8 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_8),
+            VENDOR_PK_HASH_9 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_9),
+            VENDOR_PK_HASH_10 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_10),
+            VENDOR_PK_HASH_11 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_11),
+            VENDOR_PK_HASH_12 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_12),
+            VENDOR_PK_HASH_13 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_13),
+            VENDOR_PK_HASH_14 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_14),
+            VENDOR_PK_HASH_15 => Some(OTP_CPTRA_CORE_VENDOR_PK_HASH_15),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -97,6 +152,47 @@ impl Otp {
                     svn[offset..offset + 4].try_into().unwrap(),
                 ))
             }
+            reg::VENDOR_PK_HASH_VALID => match self.driver.read_vendor_pk_hash_valid() {
+                Ok(valid) => CommandReturn::success_u32(valid),
+                Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+            },
+            vendor_pk_hash @ reg::VENDOR_PK_HASH_0
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_1
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_2
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_3
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_4
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_5
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_6
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_7
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_8
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_9
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_10
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_11
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_12
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_13
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_14
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_15 => {
+                let mut hash = [0u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size];
+                let Some(entry_info) = reg::vendor_pk_hash_entry_info(vendor_pk_hash) else {
+                    // Internal error: vendor_pk_hash_entry_info() should match all defined VENDOR_PK_HASH_[0-X]
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                };
+
+                let hash_num_words = entry_info.byte_size / 4;
+                if app.reg_index >= hash_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                match self.driver.read_entry_raw(entry_info, &mut hash) {
+                    Ok(_) => {}
+                    Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
+                }
+
+                let offset = app.reg_index as usize * 4;
+                CommandReturn::success_u32(u32::from_le_bytes(
+                    hash[offset..offset + 4].try_into().unwrap(),
+                ))
+            }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }) {
             Ok(ret) => ret,
@@ -122,6 +218,47 @@ impl Otp {
                 }
 
                 let word_addr = svn_fuses.byte_offset / 4 + app.reg_index as usize;
+                match self.driver.write_word(word_addr, value) {
+                    Ok(_) => CommandReturn::success(),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            reg::VENDOR_PK_HASH_VALID => {
+                match self
+                    .driver
+                    .write_entry(OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID, value)
+                {
+                    Ok(_) => CommandReturn::success(),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            vendor_pk_hash @ reg::VENDOR_PK_HASH_0
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_1
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_2
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_3
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_4
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_5
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_6
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_7
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_8
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_9
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_10
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_11
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_12
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_13
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_14
+            | vendor_pk_hash @ reg::VENDOR_PK_HASH_15 => {
+                let Some(entry_info) = reg::vendor_pk_hash_entry_info(vendor_pk_hash) else {
+                    // Internal error: vendor_pk_hash_entry_info() should match all defined VENDOR_PK_HASH_[0-X]
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                };
+
+                let hash_num_words = entry_info.byte_size / 4;
+                if app.reg_index >= hash_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                let word_addr = entry_info.byte_offset / 4 + app.reg_index as usize;
                 match self.driver.write_word(word_addr, value) {
                     Ok(_) => CommandReturn::success(),
                     Err(_) => CommandReturn::failure(ErrorCode::FAIL),

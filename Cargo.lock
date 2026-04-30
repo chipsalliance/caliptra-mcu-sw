@@ -1371,6 +1371,7 @@ dependencies = [
  "caliptra-mcu-libtock_runtime",
  "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-libtockasync",
+ "caliptra-mcu-registers-generated",
  "embassy-sync",
 ]
 
