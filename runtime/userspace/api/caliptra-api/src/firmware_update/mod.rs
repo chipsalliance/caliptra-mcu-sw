@@ -109,15 +109,15 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         let img_len = pldm_total_component_size();
         self.staging_memory.image_valid(img_len).await?;
 
+        pldm_client::pldm_set_apply_result(ApplyResult::ApplySuccess);
+        pldm_client::pldm_wait(State::Activate).await?;
+
         // Update Caliptra
         let result = self.update_caliptra(&flash_header).await;
         if result.is_err() {
-            pldm_client::pldm_set_apply_result(ApplyResult::ApplyGenericError);
             // Abort firmware update
             return Err(ErrorCode::Fail);
         }
-        pldm_client::pldm_set_apply_result(ApplyResult::ApplySuccess);
-        pldm_client::pldm_wait(State::Activate).await?;
 
         self.set_auth_manifest().await?;
 
