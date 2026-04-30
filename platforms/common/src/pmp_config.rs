@@ -1,7 +1,35 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_config::McuMemoryMap;
-use caliptra_mcu_tock_veer::pmp::PMPRegionList;
+use caliptra_mcu_tock_veer::pmp::{PMPRegionList, MAX_KERNEL_REGIONS};
+
+/// Upper bound on the number of MMIO regions contributed by the MCU memory
+/// map (rom/sram/dccm are filtered out, the remaining entries are MMIO).
+/// Used by a `debug_assert!` to catch the case where the memory map grows
+/// past what the platform-region pipeline expects.
+const MCU_MEMORY_MAP_MAX_MMIO_REGIONS: usize = 16;
+
+/// Size of the temporary buffer used to collect raw `PlatformRegion`s before
+/// they are filtered, coalesced (`coalesce_regions_in_place`), optionally
+/// upgraded to NAPOT (`optimize_mmio_napot`), and finally converted to
+/// `PMPRegion`s.
+///
+/// Conceptually distinct from `MAX_KERNEL_REGIONS` (which is the *output*
+/// PMP-side capacity): this buffer holds *input* regions that may still be
+/// reduced before reaching the PMP. Sized to `2 × MAX_KERNEL_REGIONS` to
+/// give the input pipeline head-room — `coalesce_regions_in_place` may
+/// merge adjacent same-property regions, so the input count can legitimately
+/// exceed the PMP-side capacity as long as the merged result fits. The real
+/// admission constraint (PMP hardware entries) is still enforced by
+/// `PMPRegionList::add_region` against `MAX_KERNEL_ENTRIES`.
+const MAX_PLATFORM_REGIONS: usize = MAX_KERNEL_REGIONS * 2;
+
+// Compile-time invariant: the input buffer must be able to hold at least
+// the MCU memory-map MMIO regions plus the PMP-side capacity, so that no
+// legitimate configuration is rejected before the optimizer (coalescing /
+// NAPOT upgrade) has a chance to shrink the working set. This bound also
+// implies `MAX_PLATFORM_REGIONS >= MAX_KERNEL_REGIONS`.
+const _: () = assert!(MAX_PLATFORM_REGIONS >= MCU_MEMORY_MAP_MAX_MMIO_REGIONS + MAX_KERNEL_REGIONS);
 
 /// Input from platform: a memory region with its properties
 #[derive(Debug, Clone, Copy)]
@@ -89,7 +117,10 @@ fn try_convert_to_napot(region: PlatformRegion) -> Result<PlatformRegion, Platfo
 }
 
 /// Convert MMIO regions to NAPOT where possible (best effort)
-fn optimize_mmio_napot(regions: &mut [Option<PlatformRegion>; 32], region_count: usize) -> usize {
+fn optimize_mmio_napot(
+    regions: &mut [Option<PlatformRegion>; MAX_PLATFORM_REGIONS],
+    region_count: usize,
+) -> usize {
     // Try to convert each MMIO region to NAPOT (best effort)
     for i in 0..region_count {
         if let Some(original_region) = regions[i] {
@@ -127,9 +158,14 @@ fn optimize_mmio_napot(regions: &mut [Option<PlatformRegion>; 32], region_count:
     region_count
 }
 
-/// Coalesce adjacent regions with identical properties in-place
+/// Coalesce adjacent regions with identical properties in-place.
+///
+/// May reduce `region_count`. This is what allows `MAX_PLATFORM_REGIONS`
+/// (the input buffer size) to be larger than `MAX_KERNEL_REGIONS` (the
+/// final PMP-side capacity): inputs can temporarily exceed the PMP budget
+/// and still produce a valid configuration after merging.
 fn coalesce_regions_in_place(
-    regions: &mut [Option<PlatformRegion>; 32],
+    regions: &mut [Option<PlatformRegion>; MAX_PLATFORM_REGIONS],
     region_count: usize,
 ) -> usize {
     if region_count <= 1 {
@@ -395,8 +431,9 @@ fn convert_platform_regions_to_pmp(
 /// - Non-MMIO regions must have valid permission combinations: R+X, R+W, or R (hard error)
 /// - Non-MMIO region overlaps are allowed with priority-based resolution (warning)
 pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList, ()> {
-    // Step 1: Create static array to collect all regions (assume max 32 regions)
-    let mut all_regions: [Option<PlatformRegion>; 32] = [None; 32];
+    // Step 1: Create static array to collect all regions
+    let mut all_regions: [Option<PlatformRegion>; MAX_PLATFORM_REGIONS] =
+        [None; MAX_PLATFORM_REGIONS];
     let mut region_count = 0;
 
     // Step 2: Add MCU memory map regions to array
@@ -406,7 +443,7 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
     let mut add_region =
         |offset: u32, size: u32, properties: caliptra_mcu_config::MemoryRegionType| {
             // Only add MMIO regions (side_effect = true)
-            if size > 0 && region_count < 32 && properties.side_effect {
+            if size > 0 && region_count < MAX_PLATFORM_REGIONS && properties.side_effect {
                 all_regions[region_count] = Some(PlatformRegion {
                     start_addr: offset as *const u8,
                     size: size as usize,
@@ -469,10 +506,11 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
         memory_map.lc_properties,
     ); // MMIO - will be added
 
-    // Assert MCU memory map didn't exceed expected region count
-    // MCU memory map has at most 7 MMIO regions, so this should never fail
+    // Assert MCU memory map didn't exceed expected region count.
+    // MCU memory map has at most 7 MMIO regions today, so this should never
+    // fail unless the map grows beyond `MCU_MEMORY_MAP_MAX_MMIO_REGIONS`.
     debug_assert!(
-        region_count <= 16,
+        region_count <= MCU_MEMORY_MAP_MAX_MMIO_REGIONS,
         "MCU memory map generated too many regions: {}",
         region_count
     );
@@ -483,7 +521,7 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
             continue; // Skip empty regions
         }
 
-        if region_count >= 32 {
+        if region_count >= MAX_PLATFORM_REGIONS {
             return Err(()); // Too many regions to fit in array
         }
 
