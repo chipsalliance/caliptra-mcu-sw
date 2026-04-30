@@ -21,6 +21,7 @@ pub use caliptra_mcu_debug_unlock_signer::{
 pub use caliptra_mcu_core_util_host_mailbox_test_config::*;
 
 use anyhow::Result;
+use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
 use caliptra_mcu_core_util_host_command_types::crypto_aes::{
     AesMode, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE,
 };
@@ -44,6 +45,7 @@ use caliptra_mcu_core_util_host_command_types::{
     GetFirmwareVersionResponse,
 };
 use caliptra_mcu_core_util_host_transport::Mailbox;
+use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
     AesEncryptResult, AesGcmDecryptResult, AesGcmEncryptResult,
@@ -919,6 +921,38 @@ impl<'a> MailboxClient<'a> {
                     "Production debug unlock token command failed: {:?}",
                     e
                 ))
+            }
+        }
+    }
+
+    /// Export an attested CSR from the device
+    pub fn export_attested_csr(
+        &mut self,
+        device_key_id: u32,
+        algorithm: u32,
+        nonce: &[u8; 32],
+    ) -> Result<ExportAttestedCsrResponse> {
+        println!("Executing ExportAttestedCsr command...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_export_attested_csr(&mut session, device_key_id, algorithm, nonce) {
+            Ok(response) => {
+                println!("✓ ExportAttestedCsr succeeded!");
+                println!("  CSR data length: {} bytes", response.data_len);
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ ExportAttestedCsr failed: {:?}", e);
+                Err(anyhow::anyhow!("ExportAttestedCsr command failed: {:?}", e))
             }
         }
     }

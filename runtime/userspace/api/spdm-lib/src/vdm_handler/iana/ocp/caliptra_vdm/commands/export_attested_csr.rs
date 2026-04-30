@@ -15,6 +15,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 struct ExportAttestedCsrReq {
     device_key_id: u32,
     algorithm: u32,
+    nonce: [u8; 32],
 }
 
 impl CommonCodec for ExportAttestedCsrReq {}
@@ -28,7 +29,7 @@ pub(crate) async fn handle_export_attested_csr(
 
     let mut csr_data = AttestedCsrData::default();
     match handler
-        .export_attested_csr(req.device_key_id, req.algorithm, &mut csr_data)
+        .export_attested_csr(req.device_key_id, req.algorithm, &req.nonce, &mut csr_data)
         .await
     {
         Ok(()) => {
