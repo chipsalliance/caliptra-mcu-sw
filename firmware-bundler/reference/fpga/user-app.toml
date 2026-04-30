@@ -14,8 +14,12 @@ size = 0x2_0000
 sram = { offset = 0xa8c0_0000, size = 0x8_0000 }
 
 [platform.dccm]
-offset = 0x5000_0000
-size = 0x4000
+offset = 0x50000000
+size = 0x3C00
+
+[platform.handoff]
+offset = 0x50003C00
+size = 1024
 
 # This section is optional.
 [rom]

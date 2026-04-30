@@ -142,6 +142,9 @@ pub struct Platform {
     /// Location of flash memory.  This can be used for persistent storage, e.g. logs.  Defaults to
     /// a size and offset of 0 if not defined.
     pub flash: Option<Memory>,
+
+    /// Location of the handoff table.  This is used to pass data between ROM and Runtime.
+    pub handoff: Option<Memory>,
 }
 
 impl Platform {
@@ -164,6 +167,13 @@ impl Platform {
     /// Retrieve the dccm memory layout.  If not specified it is empty.
     pub fn flash(&self) -> Memory {
         self.flash.clone().unwrap_or(Memory { offset: 0, size: 0 })
+    }
+
+    /// Retrieve the handoff memory layout.  If not specified it is empty.
+    pub fn handoff(&self) -> Memory {
+        self.handoff
+            .clone()
+            .unwrap_or(Memory { offset: 0, size: 0 })
     }
 }
 

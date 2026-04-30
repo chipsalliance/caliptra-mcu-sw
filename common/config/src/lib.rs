@@ -26,6 +26,9 @@ pub struct McuMemoryMap {
     pub dccm_size: u32,
     pub dccm_properties: MemoryRegionType,
 
+    pub handoff_offset: u32,
+    pub handoff_size: u32,
+
     pub i3c_offset: u32,
     pub i3c_size: u32,
     pub i3c_properties: MemoryRegionType,
@@ -66,6 +69,9 @@ impl Default for McuMemoryMap {
             dccm_offset: 0x5000_0000,
             dccm_size: 256 * 1024,
             dccm_properties: MemoryRegionType::MEMORY,
+
+            handoff_offset: 0x5000_3C00,
+            handoff_size: 1024,
 
             sram_offset: 0x4000_0000,
             sram_size: 512 * 1024,
@@ -283,6 +289,15 @@ impl McuMemoryMap {
             format!("0x{:x}", self.dccm_offset),
         );
         map.insert("DCCM_SIZE".to_string(), format!("0x{:x}", self.dccm_size));
+
+        map.insert(
+            "HANDOFF_OFFSET".to_string(),
+            format!("0x{:x}", self.handoff_offset),
+        );
+        map.insert(
+            "HANDOFF_SIZE".to_string(),
+            format!("0x{:x}", self.handoff_size),
+        );
 
         // The computed MRAC value (derived from all memory region properties)
         map.insert(

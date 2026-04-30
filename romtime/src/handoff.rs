@@ -69,8 +69,8 @@ impl Default for RuntimeHandoffTable {
 /// Top-level handoff structure stored in DCCM.
 /// Resident at a well-known location in DCCM.
 ///
-/// SAFETY: This structure MUST NOT exceed the reserved memory region size (4KB)
-/// defined in the linker scripts and memory map. Exceeding this size will cause
+/// SAFETY: This structure MUST NOT exceed the reserved memory region size (1 KB)
+/// at the end of DCCM defined in the linker scripts. Exceeding this size will cause
 /// memory corruption or linker errors.
 ///
 /// ALIGNMENT: This structure is explicitly 4-byte aligned.
@@ -84,8 +84,8 @@ pub struct HandoffData {
     pub runtime: RuntimeHandoffTable,
 }
 
-// Enforce that the handoff data structure fits within the reserved 4KB region.
-const _: () = assert!(core::mem::size_of::<HandoffData>() <= 4096);
+// Enforce that the handoff data structure fits within the reserved 1KB region.
+const _: () = assert!(core::mem::size_of::<HandoffData>() <= 1024);
 
 // Enforce 4-byte alignment of the data structure.
 const _: () = assert!(core::mem::align_of::<HandoffData>() == 4);

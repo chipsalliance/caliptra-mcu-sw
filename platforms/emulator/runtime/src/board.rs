@@ -810,7 +810,7 @@ pub unsafe fn main() {
                 use romtime::ocp_lock::HekSeedState;
 
                 let ho_addr = ho.addr() as u32;
-                let expected_addr = 0x5000_0000;
+                let expected_addr = 0x5000_3C00;
                 if ho.rom.hek_state.active_slot == 2
                     && ho.rom.hek_state.active_state == HekSeedState::Programmed
                     && ho.rom.hek_state.total_slots == 8

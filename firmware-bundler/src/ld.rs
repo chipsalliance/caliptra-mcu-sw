@@ -189,7 +189,14 @@ impl<'a> LdGeneration<'a> {
         // Then generate a kernel linker file with the entirety of ITCM and DTCM space.
         let kernel = &self.manifest.kernel;
         let content = self
-            .kernel_linker_content(itcm.clone(), None, dtcm.clone(), itcm.clone(), dtcm.clone())
+            .kernel_linker_content(
+                itcm.clone(),
+                None,
+                dtcm.clone(),
+                itcm.clone(),
+                dtcm.clone(),
+                self.manifest.platform.handoff(),
+            )
             .with_context(|| binary_context(&kernel.name, "context generation"))?;
         let path = self.output_ld_file(kernel, &content)?;
         let kernel_def = LinkerScript {
@@ -325,6 +332,7 @@ impl<'a> LdGeneration<'a> {
                 data,
                 initial_itcm,
                 initial_dtcm,
+                self.manifest.platform.handoff(),
             )
             .with_context(|| binary_context(&kernel.name, "context generation"))?;
         let path = self.output_ld_file(kernel, &content)?;
@@ -380,6 +388,8 @@ ROM_START = $ROM_START;
 ROM_LENGTH = $ROM_LENGTH;
 RAM_START = $RAM_START;
 RAM_LENGTH = $RAM_LENGTH;
+HANDOFF_ADDR = $HANDOFF_ADDR;
+HANDOFF_SIZE = $HANDOFF_SIZE;
 STACK_SIZE = $STACK_SIZE;
 ESTACK_SIZE = $ESTACK_SIZE;
 INCLUDE $BASE_LD_CONTENTS
@@ -392,6 +402,10 @@ INCLUDE $BASE_LD_CONTENTS
         sub_map.insert("ROM_LENGTH", format!("{:#x}", instructions.size));
         sub_map.insert("RAM_START", format!("{:#x}", data.offset));
         sub_map.insert("RAM_LENGTH", format!("{:#x}", data.size));
+
+        let handoff = self.manifest.platform.handoff();
+        sub_map.insert("HANDOFF_ADDR", format!("{:#x}", handoff.offset));
+        sub_map.insert("HANDOFF_SIZE", format!("{:#x}", handoff.size));
         // If the stack isn't specified we are in a sizing build, and it doesnt matter.  Therefore
         // default to 0.
         sub_map.insert(
@@ -414,6 +428,7 @@ INCLUDE $BASE_LD_CONTENTS
         kernel_data: Memory,
         itcm: Memory,
         dtcm: Memory,
+        handoff: Memory,
     ) -> Result<String> {
         const KERNEL_LD_TEMPLATE: &str = r#"
 /* Licensed under the Apache-2.0 license. */
@@ -431,18 +446,23 @@ MEMORY
     app_ram(rwx) : ORIGIN = $APP_RAM_START, LENGTH = $APP_RAM_LENGTH
     dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_LENGTH
     flash (r) : ORIGIN = $FLASH_OFFSET, LENGTH = $FLASH_LENGTH
-}
-
-SECTIONS
-{
-    .handoff (NOLOAD) : {
-        KEEP(*(.handoff))
-    } > dccm
+    HANDOFF (rw) : ORIGIN = $HANDOFF_ADDR, LENGTH = $HANDOFF_SIZE
 }
 
 $PAGE_SIZE
 
 INCLUDE $BASE_LD_CONTENTS
+
+SECTIONS
+{
+    /* We reserve 1 KB at the end of DCCM for the handoff table.
+       This must be 1KB aligned because the runtime requires DCCM regions
+       to be 1KB aligned for MEIVT (Machine External Interrupt Vector Table). */
+    .handoff (NOLOAD) :
+    {
+        KEEP(*(.handoff))
+    } > HANDOFF
+}
 "#;
         let base_ld_file = self.linker_dir.join(&self.base_kernel);
 
@@ -473,6 +493,8 @@ INCLUDE $BASE_LD_CONTENTS
         let dccm = self.manifest.platform.dccm();
         sub_map.insert("DCCM_OFFSET", format!("{:#x}", dccm.offset));
         sub_map.insert("DCCM_LENGTH", format!("{:#x}", dccm.size));
+        sub_map.insert("HANDOFF_ADDR", format!("{:#x}", handoff.offset));
+        sub_map.insert("HANDOFF_SIZE", format!("{:#x}", handoff.size));
 
         let flash = self.manifest.platform.flash();
         sub_map.insert("FLASH_OFFSET", format!("{:#x}", flash.offset));
@@ -623,6 +645,7 @@ mod tests {
                 size: dccm_size,
             }),
             flash: None,
+            handoff: None,
         }
     }
 

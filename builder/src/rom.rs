@@ -148,6 +148,7 @@ MEMORY
 {
   ROM   (rx) : ORIGIN = $ROM_OFFSET, LENGTH = $ROM_SIZE
   RAM  (rwx) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_SIZE /* dedicated SRAM for the ROM stack */
+  HANDOFF (rw) : ORIGIN = $HANDOFF_OFFSET, LENGTH = $HANDOFF_SIZE
 }
 
 SECTIONS
@@ -200,6 +201,11 @@ SECTIONS
         . = ALIGN(4);
         PROVIDE(ESTACK_START = . );
     }
+
+    .handoff (NOLOAD) :
+    {
+        KEEP(*(.handoff))
+    } > HANDOFF
 
     _end = . ;
 

@@ -8,7 +8,6 @@ use romtime::handoff::HandoffData;
 /// Marker for read-only access to the handoff table.
 pub struct ReadOnly;
 /// Marker for read-write access to the handoff table.
-#[allow(dead_code)]
 pub struct ReadWrite;
 
 /// Access to the handoff table.
@@ -43,6 +42,10 @@ impl HandOff<ReadOnly> {
     pub fn new() -> Option<Self> {
         // Safety: Linker MUST place this static object in the `.handoff` section.
         let data = unsafe { &mut *addr_of_mut!(romtime::handoff::HANDOFF) };
+        romtime::println!(
+            "[mcu-runtime] Checking handoff at {:p}",
+            addr_of!(romtime::handoff::HANDOFF)
+        );
         if data.rom.fht_marker != romtime::handoff::FHT_MARKER {
             return None;
         }
@@ -59,7 +62,6 @@ impl HandOff<ReadOnly> {
     }
 }
 
-#[allow(dead_code)]
 impl HandOff<ReadWrite> {
     /// Read the handoff data from DCCM for mutation
     ///
@@ -77,7 +79,6 @@ impl HandOff<ReadWrite> {
 
 impl<Access> HandOff<Access> {
     /// Get the address of the handoff table.
-    #[allow(dead_code)]
     pub fn addr(&self) -> *const HandoffData {
         // Safety: Linker MUST place this static object in the `.handoff` section.
         addr_of!(romtime::handoff::HANDOFF)
