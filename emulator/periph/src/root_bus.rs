@@ -465,7 +465,7 @@ impl Bus for McuRootBus {
                         .read_mcu_mbox0_csr_mbox_sram(index)
                 });
                 let data: Vec<u8> = data
-                    .flat_map(|val| val.to_le_bytes().to_vec())
+                    .flat_map(|val| val.to_be_bytes().to_vec())
                     .take(len)
                     .collect();
 
@@ -503,7 +503,7 @@ impl Bus for McuRootBus {
                         .read_mcu_mbox0_csr_mbox_sram(index.div_ceil(4))
                 });
                 let data: Vec<u8> = data
-                    .flat_map(|val| val.to_le_bytes().to_vec())
+                    .flat_map(|val| val.to_be_bytes().to_vec())
                     .take(len)
                     .collect();
 
