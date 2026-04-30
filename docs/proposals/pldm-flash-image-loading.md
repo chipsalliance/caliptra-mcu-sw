@@ -127,6 +127,42 @@ sequenceDiagram
     Note over Flash: SPI flash now contains the<br/>verified flash image
 ```
 
+#### SDK Layers Sequence Diagram
+
+The following diagram shows the flow from the application's perspective
+using MCU SDK components. After Runtime SoC Image Loading completes,
+the application has two options:
+
+1. **Flash persistence (streaming boot + write-back)**: Call
+   `FirmwareUpdater` with `SpiFlashStagingMemory` to re-download the
+   full image and write it to flash.
+2. **Hitless update (no flash write)**: Call `FirmwareUpdater` with a
+   custom `StagingMemory` implementation (e.g., `NullStagingMemory`)
+   that discards writes, so the update is applied in-memory without
+   touching flash.
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant IL as ImageLoading
+    participant FU as FirmwareUpdater
+    participant Flash as Flash
+
+    Note over App,Flash: Phase 1: Runtime SoC Image Loading
+
+    Note over App: System is now running from streamed images
+
+        Note over App,Flash: Phase 2a: Re-download full image to flash
+        App->>FU: FirmwareUpdater::new(SpiFlashStagingMemory, skip_activation=true, verify_same_image=true)
+        App->>FU: start()
+        FU->>Flash: write chunks (via StagingMemory trait)
+        FU->>FU: verify()
+        FU->>FU: verify_running_image_match()
+        FU-->>App: Ok
+        Note over Flash: Flash now matches running firmware
+
+```
+
 ### Running Image Verification (`verify_same_image`)
 
 When `verify_same_image` is `true`, the updater compares the downloaded
