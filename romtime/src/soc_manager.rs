@@ -530,6 +530,10 @@ impl CaliptraSoC {
         self.start_mailbox_req_bytes(cmd, req)?;
         self.finish_mailbox_resp_bytes(resp)
     }
+
+    pub fn read_vendor_pk_hash(&mut self) -> [u32; 12] {
+        self.soc_ifc().fuse_vendor_pk_hash().read()
+    }
 }
 
 pub struct CaliptraMailboxResponse<'a> {
