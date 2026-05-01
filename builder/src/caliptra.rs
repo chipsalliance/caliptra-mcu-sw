@@ -87,6 +87,7 @@ pub struct CaliptraBuilder {
     /// If provided, the auth manifest will be signed with these owner keys.
     auth_manifest_owner_config: Option<AuthManifestOwnerConfig>,
     svn: Option<u16>,
+    use_second_key: bool,
 }
 
 use crate::CaliptraBuildArgs;
@@ -115,6 +116,7 @@ impl CaliptraBuilder {
             owner_config: None,
             auth_manifest_owner_config: None,
             svn: args.svn,
+            use_second_key: args.use_second_key,
         }
     }
 
@@ -159,7 +161,8 @@ impl CaliptraBuilder {
             }
             caliptra_firmware.clone()
         } else {
-            let (path, vendor_pk_hash) = Self::compile_caliptra_fw_cached(self.fpga, self.svn)?;
+            let (path, vendor_pk_hash) =
+                Self::compile_caliptra_fw_cached(self.fpga, self.svn, self.use_second_key)?;
             self.vendor_pk_hash = Some(vendor_pk_hash);
             self.caliptra_firmware = Some(path.clone());
             path
@@ -486,13 +489,18 @@ impl CaliptraBuilder {
         Ok(path)
     }
 
-    fn compile_caliptra_fw_cached(fpga: bool, svn: Option<u16>) -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_cached(
+        fpga: bool,
+        svn: Option<u16>,
+        use_second_key: bool,
+    ) -> Result<(PathBuf, String)> {
         let platform = if fpga { "fpga" } else { "emulator" };
         if let Some(version) = Self::caliptra_version() {
             let svn_or_default = svn.unwrap_or_default();
+            let key_str = if use_second_key { "key2" } else { "key1" };
             let path = target_dir().join(format!(
-                "caliptra-fw-bundle-{}-{}-{}.bin",
-                version, platform, svn_or_default
+                "caliptra-fw-bundle-{}-{}-{}-{}.bin",
+                version, platform, svn_or_default, key_str
             ));
             if path.exists() {
                 println!("Using cached Caliptra FW bundle at {:?}", path);
@@ -502,7 +510,8 @@ impl CaliptraBuilder {
                 "Caliptra FW bundle version {} not found in cache, compiling...",
                 version
             );
-            let compiled_fw_bundle = Self::compile_caliptra_fw_uncached(fpga, svn)?.0;
+            let compiled_fw_bundle =
+                Self::compile_caliptra_fw_uncached(fpga, svn, use_second_key)?.0;
             // std::fs::copy truncates the file to 0 bytes if both paths are the same
             if compiled_fw_bundle != path {
                 std::fs::copy(compiled_fw_bundle, &path)?;
@@ -510,7 +519,7 @@ impl CaliptraBuilder {
             Self::parse_fw_bundle(path)
         } else {
             println!("Caliptra version not found so cannot use cached FW bundle");
-            Self::compile_caliptra_fw_uncached(fpga, svn)
+            Self::compile_caliptra_fw_uncached(fpga, svn, use_second_key)
         }
     }
 
@@ -626,10 +635,19 @@ impl CaliptraBuilder {
         Ok((new_bundle, vendor_hash, owner_hash))
     }
 
-    fn compile_caliptra_fw_uncached(fpga: bool, svn: Option<u16>) -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_uncached(
+        fpga: bool,
+        svn: Option<u16>,
+        use_second_key: bool,
+    ) -> Result<(PathBuf, String)> {
         let opts = caliptra_builder::ImageOptions {
             pqc_key_type: FwVerificationPqcKeyType::LMS,
             fw_svn: svn.unwrap_or(0) as u32,
+            vendor_config: if use_second_key {
+                caliptra_image_fake_keys::VENDOR_CONFIG_KEY_1
+            } else {
+                caliptra_image_fake_keys::VENDOR_CONFIG_KEY_0
+            },
             ..Default::default()
         };
 
@@ -650,9 +668,10 @@ impl CaliptraBuilder {
         let platform = if fpga { "fpga" } else { "emulator" };
         let version = Self::caliptra_version().unwrap_or("no_version".to_string());
         let svn_or_default = svn.unwrap_or_default();
+        let key_str = if use_second_key { "key2" } else { "key1" };
         let path = target_dir().join(format!(
-            "caliptra-fw-bundle-{}-{}-{}.bin",
-            version, platform, svn_or_default
+            "caliptra-fw-bundle-{}-{}-{}-{}.bin",
+            version, platform, svn_or_default, key_str
         ));
         std::fs::write(&path, fw_bytes)?;
         Ok((path, Self::vendor_pk_hash_str(bundle.manifest)?))

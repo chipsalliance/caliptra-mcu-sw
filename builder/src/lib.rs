@@ -39,6 +39,7 @@ pub struct CaliptraBuildArgs<'a> {
     pub offset: usize,
     pub output_path: Option<String>,
     pub soc_image_paths: Option<Vec<String>>,
+    pub use_second_key: bool,
 }
 
 use anyhow::{anyhow, Result};
