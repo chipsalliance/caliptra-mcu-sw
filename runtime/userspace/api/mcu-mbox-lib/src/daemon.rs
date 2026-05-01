@@ -2,7 +2,7 @@
 
 use crate::cmd_interface::CmdInterface;
 use crate::transport::McuMboxTransport;
-use caliptra_mcu_external_cmds_common::{CommandAuthorizer, UnifiedCommandHandler};
+use caliptra_mcu_common_commands::{CaliptraCmdHandler, CommandAuthorizer};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_mbox_common::messages::{McuMailboxReq, McuMailboxResp};
@@ -32,7 +32,7 @@ pub struct McuMboxService<'a> {
 
 impl<'a> McuMboxService<'a> {
     pub fn init(
-        non_crypto_cmd_handler: &'a dyn UnifiedCommandHandler,
+        non_crypto_cmd_handler: &'a dyn CaliptraCmdHandler,
         cmd_authorizer: &'a mut dyn CommandAuthorizer,
         transport: &'a mut McuMboxTransport,
         spawner: Spawner,

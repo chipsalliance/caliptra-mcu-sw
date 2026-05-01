@@ -20,6 +20,7 @@ pub enum CaliptraApiError {
     AesGcmTagVerifyFailed,
     AsymAlgoUnsupported,
     InvalidResponse,
+    BufferTooSmall,
     UnprovisionedCsr,
     Eat(EatError),
 }

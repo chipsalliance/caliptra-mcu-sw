@@ -13,15 +13,38 @@ pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_C
 pub const MAX_FW_VERSION_LEN: usize = 32;
 pub const MAX_UID_LEN: usize = 32;
 
-/// Common error type for unified commands.
-#[derive(Debug)]
-pub enum CommandError {
-    InvalidParams,
-    RespLengthTooLarge,
-    InternalError,
-    NotSupported,
-    Busy,
+/// Caliptra command completion codes.
+/// Standard codes (0x00-0x0F) follow the OCP command registry:
+/// https://github.com/opencomputeproject/ocp-registry/blob/main/command-registry.md
+/// Codes 0xC0-0xFF: Reserved for Caliptra project-specific error codes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CaliptraCompletionCode {
+    // OCP standard codes (0x00-0x0F)
+    Success = 0x00,
+    GeneralError = 0x01,
+    InvalidParameter = 0x02,
+    InvalidLength = 0x03,
+    InvalidIdentifier = 0x04,
+    OperationFailed = 0x05,
+    InsufficientResources = 0x06,
+    UnsupportedOperation = 0x07,
+    DeviceNotReady = 0x08,
+    InvalidCommandVersion = 0x09,
+    InvalidPayloadSize = 0x0A,
+    Timeout = 0x0B,
+    AccessDenied = 0x0C,
+    ResourceUnavailable = 0x0D,
+    PolicyViolation = 0x0E,
+    InvalidState = 0x0F,
+
+    // Caliptra project-specific codes (0xC0-0xFF)
+    CaliptraMailboxBusy = 0xC0,
+    CaliptraBufferTooSmall = 0xC1,
 }
+
+/// Result type for Caliptra command handlers.
+pub type CaliptraCmdResult<T> = Result<T, CaliptraCompletionCode>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttestedCsrData {
@@ -76,12 +99,12 @@ pub struct DeviceCapabilities {
     pub reserved: [u8; 4],     // Bytes [28:31]
 }
 
-/// Asynchronous trait for handling commands common to both external MCU mailbox and MCTP VDM protocols.
+/// Asynchronous trait for handling Caliptra common commands across all transport protocols.
 ///
-/// Each function represents a protocol-agnostic command handler. Implementors should provide
+/// Each function represents a transport-agnostic command handler. Implementors should provide
 /// the specific logic for each command as required by their application.
 #[async_trait]
-pub trait UnifiedCommandHandler: Send + Sync {
+pub trait CaliptraCmdHandler: Send + Sync {
     /// Retrieves the firmware version for the given index.
     ///
     /// # Arguments
@@ -89,12 +112,12 @@ pub trait UnifiedCommandHandler: Send + Sync {
     /// * `version` - Mutable reference to store the firmware version.
     ///
     /// # Returns
-    /// * `Result<(), CommandError>` - Ok on success, or an error.
+    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
     async fn get_firmware_version(
         &self,
         index: u32,
         version: &mut FirmwareVersion,
-    ) -> Result<(), CommandError>;
+    ) -> CaliptraCmdResult<()>;
 
     /// Retrieves the device ID.
     ///
@@ -102,8 +125,8 @@ pub trait UnifiedCommandHandler: Send + Sync {
     /// * `device_id` - Mutable reference to store the device ID.
     ///
     /// # Returns
-    /// * `Result<(), CommandError>` - Ok on success, or an error.
-    async fn get_device_id(&self, device_id: &mut DeviceId) -> Result<(), CommandError>;
+    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
+    async fn get_device_id(&self, device_id: &mut DeviceId) -> CaliptraCmdResult<()>;
 
     /// Retrieves device information for the given index.
     ///
@@ -112,8 +135,8 @@ pub trait UnifiedCommandHandler: Send + Sync {
     /// * `info` - Mutable reference to store the device info.
     ///
     /// # Returns
-    /// * `Result<(), CommandError>` - Ok on success, or an error.
-    async fn get_device_info(&self, index: u32, info: &mut DeviceInfo) -> Result<(), CommandError>;
+    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
+    async fn get_device_info(&self, index: u32, info: &mut DeviceInfo) -> CaliptraCmdResult<()>;
 
     /// Retrieves the device capabilities.
     ///
@@ -121,11 +144,11 @@ pub trait UnifiedCommandHandler: Send + Sync {
     /// * `capabilities` - Mutable reference to store the device capabilities.
     ///
     /// # Returns
-    /// * `Result<(), CommandError>` - Ok on success, or an error.
+    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
     async fn get_device_capabilities(
         &self,
         capabilities: &mut DeviceCapabilities,
-    ) -> Result<(), CommandError>;
+    ) -> CaliptraCmdResult<()>;
 
     /// Exports an attested CSR for the specified device key.
     ///
@@ -133,20 +156,22 @@ pub trait UnifiedCommandHandler: Send + Sync {
     /// * `device_key_id` - The device key identifier (0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias).
     /// * `algorithm` - The asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87).
     /// * `nonce` - A 32-byte nonce provided by the requester for freshness.
-    /// * `csr_data` - Mutable reference to store the attested CSR data.
+    /// * `csr_buf` - Mutable buffer to write the CSR DER data into directly.
     ///
     /// # Returns
-    /// * `Result<(), CommandError>` - Ok on success, or an error.
+    /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
     async fn export_attested_csr(
         &self,
         device_key_id: u32,
         algorithm: u32,
         nonce: &[u8; 32],
-        csr_data: &mut AttestedCsrData,
-    ) -> Result<(), CommandError>;
+        csr_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize>;
 }
 
 pub struct AuthorizationError;
+
+pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 
 pub trait CommandAuthorizer {
     /// Validates if a message is authorized.

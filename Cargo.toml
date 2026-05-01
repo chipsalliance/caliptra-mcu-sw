@@ -67,7 +67,7 @@ members = [
     "runtime/kernel/drivers/mcu_mbox",
     "runtime/kernel/veer",
     "runtime/userspace/api/caliptra-api",
-    "runtime/userspace/api/external-cmds-common",
+    "runtime/userspace/api/caliptra-common-commands",
     "runtime/userspace/api/mcu-mbox-lib",
     "runtime/userspace/api/mctp-vdm-lib",
     "runtime/userspace/api/pldm-lib",
@@ -259,7 +259,7 @@ caliptra-mcu-registers-systemrdl-new = { path = "registers/systemrdl-new" }
 caliptra-mcu-romtime = { path = "romtime" }
 
 # App related dependencies
-caliptra-mcu-external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }
+caliptra-mcu-common-commands = { path = "runtime/userspace/api/caliptra-common-commands" }
 caliptra-mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
 caliptra-mcu-mctp-vdm-lib = { path = "runtime/userspace/api/mctp-vdm-lib" }
 caliptra-mcu-pldm-lib = { path = "runtime/userspace/api/pldm-lib" }

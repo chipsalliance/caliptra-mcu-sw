@@ -123,7 +123,7 @@ impl CertContext {
         algo: AsymAlgo,
         key_id: u32,
         nonce: &[u8; 32],
-        csr_data: &mut [u8; MAX_ATTESTED_CSR_SIZE],
+        csr_data: &mut [u8],
     ) -> CaliptraApiResult<usize> {
         match algo {
             AsymAlgo::EccP384 => {
@@ -327,7 +327,7 @@ impl CertContext {
     async fn get_attested_csr_inner<R: Request<Resp = AttestedCsrResp>>(
         &mut self,
         req: &mut R,
-        csr_data: &mut [u8; MAX_ATTESTED_CSR_SIZE],
+        csr_data: &mut [u8],
     ) -> CaliptraApiResult<usize> {
         let mut resp = AttestedCsrResp::new_zeroed();
         let req_bytes = req.as_mut_bytes();
@@ -341,6 +341,9 @@ impl CertContext {
         let size = resp.data_size as usize;
         if size == 0 || size > MAX_ATTESTED_CSR_SIZE {
             return Err(CaliptraApiError::InvalidResponse);
+        }
+        if size > csr_data.len() {
+            return Err(CaliptraApiError::BufferTooSmall);
         }
 
         csr_data[..size].copy_from_slice(&resp.data[..size]);
