@@ -458,6 +458,11 @@ impl McuError {
             "Caliptra WDT config index out of range"
         ),
         (
+            ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR,
+            0x1_001a,
+            "Stable owner key derivation failed during cold boot"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"

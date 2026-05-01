@@ -31,6 +31,7 @@ pub use rom_env::*;
 mod i3c;
 mod mailbox;
 mod recovery;
+mod stable_owner_key;
 
 // Boot flow modules
 mod cold_boot;

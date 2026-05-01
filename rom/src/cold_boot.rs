@@ -1002,6 +1002,16 @@ impl BootFlow for ColdBoot {
             env.soc.lock_owner_pk_hash();
         }
 
+        // Derive stable owner key using the temporary ROM-local personalization seed.
+        if let Err(err) = crate::stable_owner_key::derive_stable_owner_key(env) {
+            // TODO: Make stable owner key command failures fatal once the
+            // Caliptra Core support and fuse plumbing are fully enabled.
+            romtime::println!(
+                "[mcu-rom] Stable owner key derivation failed, continuing: {}",
+                HexWord(err.into())
+            );
+        }
+
         // Re-borrow after DOT flow (which took &mut env).
         let mci = &env.mci;
         let soc = &env.soc;
