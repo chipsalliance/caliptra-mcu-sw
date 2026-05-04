@@ -5,7 +5,6 @@
 use crate::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
 use caliptra_mcu_mbox_common::messages::RevokeVendorPubKeyType;
-use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0;
 use core::marker::PhantomData;
 
 pub const VENDOR_PK_HASH_SIZE: usize =
@@ -123,33 +122,34 @@ impl<S: Syscalls> Otp<S> {
     pub fn provision_vendor_pk_hash(
         &self,
         slot: u32,
-        new_hash: &[u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size],
+        new_hash: &[u8; VENDOR_PK_HASH_SIZE],
     ) -> Result<(), ErrorCode> {
         if slot > 15 {
             return Err(ErrorCode::Invalid);
         }
 
+        let reg = reg::vendor_pk_hash_reg_by_slot(slot).ok_or(ErrorCode::Invalid)?;
+
         let valid_mask = self.read(reg::VENDOR_PK_HASH_VALID, 0)?;
         let slot_used = (valid_mask & (1 << slot)) != 0;
         if slot_used {
-            return Err(ErrorCode::Invalid);
+            let fuse_value = self.read_vendor_pk_hash(slot)?;
+            if new_hash == &fuse_value {
+                // Return early when the fuse already contains the hash
+                return Ok(());
+            } else {
+                return Err(ErrorCode::Invalid);
+            }
         }
 
-        let reg = reg::vendor_pk_hash_reg_by_slot(slot).ok_or(ErrorCode::Invalid)?;
-
         // Write fuse
-        for (i, chunk) in new_hash.chunks(4).enumerate() {
+        for (i, chunk) in new_hash.chunks_exact(4).enumerate() {
             let word = u32::from_le_bytes(chunk.try_into().map_err(|_| ErrorCode::Fail)?);
             self.write(reg, i as u32, word)?;
         }
 
         // Read back the fuse and compare to validate writing was successfull
-        let mut fuse_value = [0u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size];
-        for (i, chunk) in fuse_value.chunks_mut(4).enumerate() {
-            let word = self.read(reg, i as u32)?;
-            let bytes = word.to_le_bytes();
-            chunk.copy_from_slice(&bytes);
-        }
+        let fuse_value = self.read_vendor_pk_hash(slot)?;
         if new_hash != &fuse_value {
             return Err(ErrorCode::Fail);
         }
