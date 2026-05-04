@@ -33,7 +33,7 @@ pub struct McuMboxService<'a> {
 impl<'a> McuMboxService<'a> {
     pub fn init(
         non_crypto_cmd_handler: &'a dyn UnifiedCommandHandler,
-        cmd_authorizer: &'a dyn CommandAuthorizer,
+        cmd_authorizer: &'a mut dyn CommandAuthorizer,
         transport: &'a mut McuMboxTransport,
         spawner: Spawner,
     ) -> Self {
