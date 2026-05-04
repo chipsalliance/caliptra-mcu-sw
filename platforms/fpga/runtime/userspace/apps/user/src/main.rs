@@ -9,11 +9,6 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::lazy_lock::LazyLock;
 use libtockasync::TockExecutor;
-#[cfg(any(
-    feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash"
-))]
-pub(crate) mod firmware_update;
 mod image_loader;
 
 #[cfg(target_arch = "riscv32")]
