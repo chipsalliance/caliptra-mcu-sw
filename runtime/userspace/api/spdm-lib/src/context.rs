@@ -122,7 +122,7 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    pub(crate) async fn handle_request(&mut self, buf: &mut MessageBuf<'a>) -> CommandResult<()> {
+    async fn handle_request(&mut self, buf: &mut MessageBuf<'a>) -> CommandResult<()> {
         let (req_msg_header, req_code) = self.decode_and_validate_request(buf)?;
 
         if req_code == ReqRespCode::ChunkSend {
@@ -130,8 +130,7 @@ impl<'a> SpdmContext<'a> {
             return Ok(());
         }
 
-        self.handle_non_chunk_send_request(req_msg_header, req_code, buf)
-            .await
+        self.dispatch_request(req_msg_header, req_code, buf).await
     }
 
     pub(crate) async fn handle_large_request_payload(
@@ -144,8 +143,7 @@ impl<'a> SpdmContext<'a> {
             return Err((false, CommandError::UnsupportedRequest));
         }
 
-        self.handle_non_chunk_send_request(req_msg_header, req_code, buf)
-            .await
+        self.dispatch_request(req_msg_header, req_code, buf).await
     }
 
     fn decode_and_validate_request(
@@ -176,7 +174,7 @@ impl<'a> SpdmContext<'a> {
         Ok((req_msg_header, req_code))
     }
 
-    async fn handle_non_chunk_send_request(
+    async fn dispatch_request(
         &mut self,
         req_msg_header: SpdmMsgHdr,
         req_code: ReqRespCode,
