@@ -6,6 +6,7 @@ use caliptra_mcu_external_cmds_common::{
     AttestedCsrData, CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion,
     UnifiedCommandHandler, MAX_UID_LEN,
 };
+use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_libsyscall_caliptra::otp;
@@ -14,16 +15,17 @@ use caliptra_mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
     DeviceInfoResp, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
     FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
-    FuseWriteResp, MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq,
-    McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
-    McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
-    McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
-    McuCmStatusReq, McuEcdhFinishReq, McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq,
-    McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsSelfTestGetResultsReq,
-    McuFipsSelfTestStartReq, McuHkdfExpandReq, McuHkdfExtractReq, McuHmacKdfCounterReq, McuHmacReq,
-    McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq,
-    McuResponseVarSize, McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, DEVICE_CAPS_SIZE,
-    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    FuseWriteResp, GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, MailboxRespHeader,
+    MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq, McuAesEncryptInitReq,
+    McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq,
+    McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq,
+    McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq, McuCmStatusReq, McuEcdhFinishReq,
+    McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq,
+    McuFeProgReq, McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuHkdfExpandReq,
+    McuHkdfExtractReq, McuHmacKdfCounterReq, McuHmacReq, McuProdDebugUnlockReqReq,
+    McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq, McuResponseVarSize,
+    McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -47,7 +49,7 @@ pub enum MsgHandlerError {
 pub struct CmdInterface<'a> {
     transport: &'a mut McuMboxTransport,
     non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
-    cmd_authorizer: &'a dyn CommandAuthorizer,
+    cmd_authorizer: &'a mut dyn CommandAuthorizer,
     caliptra_mbox: caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
     busy: AtomicBool,
 }
@@ -56,7 +58,7 @@ impl<'a> CmdInterface<'a> {
     pub fn new(
         transport: &'a mut McuMboxTransport,
         non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
-        cmd_authorizer: &'a dyn CommandAuthorizer,
+        cmd_authorizer: &'a mut dyn CommandAuthorizer,
     ) -> Self {
         Self {
             transport,
@@ -415,6 +417,9 @@ impl<'a> CmdInterface<'a> {
                 )
                 .await
             }
+            CommandId::MC_GET_AUTH_CMD_CHALLENGE => {
+                self.handle_get_auth_cmd_challenge(req, resp_buf).await
+            }
             cmd_id @ CommandId::MC_ROTATE_VENDOR_PK_HASH
             | cmd_id @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
             | cmd_id @ CommandId::MC_FE_PROG => {
@@ -644,6 +649,27 @@ impl<'a> CmdInterface<'a> {
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+    }
+
+    async fn handle_get_auth_cmd_challenge<'r>(
+        &mut self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+        // Decode the request
+        let _req = GetAuthCmdChallengeReq::ref_from_bytes(req)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        let (resp, _) = GetAuthCmdChallengeResp::mut_from_prefix(resp_buf)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        *resp = GetAuthCmdChallengeResp::default();
+
+        Rng::generate_random_number(&mut resp.challenge)
+            .await
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        self.cmd_authorizer.set_challenge(resp.challenge);
+        let len = size_of_val(resp);
+        Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
     }
 
     pub async fn handle_crypto_passthrough<'r, T: Default + IntoBytes + FromBytes>(

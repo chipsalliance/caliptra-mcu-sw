@@ -47,13 +47,13 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
     ))]
     {
         let handler = cmd_handler_mock::NonCryptoCmdHandlerMock::default();
-        let cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer::default();
         let mut transport = caliptra_mcu_mbox_lib::transport::McuMboxTransport::new(
             caliptra_mcu_libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         );
         let mut mcu_mbox_service = caliptra_mcu_mbox_lib::daemon::McuMboxService::init(
             &handler,
-            &cmd_authorizer,
+            &mut cmd_authorizer,
             &mut transport,
             crate::EXECUTOR.get().spawner(),
         );
