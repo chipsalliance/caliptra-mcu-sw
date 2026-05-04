@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cert_store::*;
-use crate::chunk_ctx::LargeResponseCtx;
+use crate::chunk_ctx::{LargeRequestCtx, LargeResponseCtx};
 use crate::codec::{encode_u8_slice, Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
     algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, chunk_get_rsp,
-    digests_rsp, end_session_ack_rsp, finish_rsp, key_exchange_rsp, measurements_rsp,
-    vendor_defined_rsp, version_rsp,
+    chunk_send_ack_rsp, digests_rsp, end_session_ack_rsp, finish_rsp, key_exchange_rsp,
+    measurements_rsp, vendor_defined_rsp, version_rsp,
 };
 use crate::error::*;
 use crate::measurements::SpdmMeasurements;
@@ -39,6 +39,7 @@ pub struct SpdmContext<'a> {
     pub(crate) device_certs_store: &'a dyn SpdmCertStore,
     pub(crate) measurements: SpdmMeasurements<'a>,
     pub(crate) large_resp_context: LargeResponseCtx,
+    pub(crate) large_req_context: LargeRequestCtx,
     pub(crate) session_mgr: SessionManager,
     pub(crate) vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
 }
@@ -70,6 +71,7 @@ impl<'a> SpdmContext<'a> {
             device_certs_store,
             measurements,
             large_resp_context: LargeResponseCtx::default(),
+            large_req_context: LargeRequestCtx::default(),
             session_mgr: SessionManager::new(),
             vdm_handlers,
         })
@@ -121,8 +123,33 @@ impl<'a> SpdmContext<'a> {
     }
 
     async fn handle_request(&mut self, buf: &mut MessageBuf<'a>) -> CommandResult<()> {
-        let req = buf;
+        let (req_msg_header, req_code) = self.decode_and_validate_request(buf)?;
 
+        if req_code == ReqRespCode::ChunkSend {
+            chunk_send_ack_rsp::handle_chunk_send(self, req_msg_header, buf).await?;
+            return Ok(());
+        }
+
+        self.dispatch_request(req_msg_header, req_code, buf).await
+    }
+
+    pub(crate) async fn handle_large_request_payload(
+        &mut self,
+        buf: &mut MessageBuf<'a>,
+    ) -> CommandResult<()> {
+        let (req_msg_header, req_code) = self.decode_and_validate_request(buf)?;
+
+        if req_code == ReqRespCode::ChunkSend {
+            return Err((false, CommandError::UnsupportedRequest));
+        }
+
+        self.dispatch_request(req_msg_header, req_code, buf).await
+    }
+
+    fn decode_and_validate_request(
+        &mut self,
+        req: &mut MessageBuf<'a>,
+    ) -> CommandResult<(SpdmMsgHdr, ReqRespCode)> {
         let req_msg_header: SpdmMsgHdr =
             SpdmMsgHdr::decode(req).map_err(|e| (false, CommandError::Codec(e)))?;
 
@@ -130,14 +157,29 @@ impl<'a> SpdmContext<'a> {
             .req_resp_code()
             .map_err(|_| (false, CommandError::UnsupportedRequest))?;
 
-        if req_code != ReqRespCode::ChunkGet && self.large_resp_context.in_progress() {
-            // Reset large response context if the request is not a CHUNK_GET
+        if !matches!(req_code, ReqRespCode::ChunkGet | ReqRespCode::ChunkSend)
+            && self.large_resp_context.in_progress()
+        {
+            // Reset large response context if the request is not a CHUNK_GET/CHUNK_SEND.
             self.large_resp_context.reset();
+        }
+
+        if req_code != ReqRespCode::ChunkSend && self.large_req_context.in_progress() {
+            // Reset large request context if the next request is not a CHUNK_SEND.
+            self.large_req_context.reset();
         }
 
         // Check for requests prohibited within session
         self.validate_request_in_session_context(req_code, req)?;
+        Ok((req_msg_header, req_code))
+    }
 
+    async fn dispatch_request(
+        &mut self,
+        req_msg_header: SpdmMsgHdr,
+        req_code: ReqRespCode,
+        req: &mut MessageBuf<'a>,
+    ) -> CommandResult<()> {
         match req_code {
             ReqRespCode::GetVersion => {
                 version_rsp::handle_get_version(self, req_msg_header, req).await?
@@ -206,6 +248,8 @@ impl<'a> SpdmContext<'a> {
 
     pub(crate) fn reset(&mut self) {
         self.state.reset();
+        self.large_resp_context.reset();
+        self.large_req_context.reset();
         self.session_mgr.reset();
     }
 
