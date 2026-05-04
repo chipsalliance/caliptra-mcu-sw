@@ -140,6 +140,9 @@ impl NetworkRootBus {
 
     /// Load data into ICCM at the specified offset
     pub fn load_iccm(&mut self, offset: usize, data: &[u8]) {
+        if self.offsets.iccm_size == 0 {
+            panic!("Cannot load ICCM: ICCM is disabled (size=0)");
+        }
         if offset + data.len() > self.iccm.borrow().len() as usize {
             panic!("Data exceeds ICCM size");
         }
