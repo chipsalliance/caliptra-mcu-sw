@@ -162,12 +162,16 @@ fn process_chunk_send(
     let chunk_seq_num = chunk_send_req.chunk_seq_num;
     let chunk_size = chunk_send_req.chunk_size as usize;
     let last_chunk = chunk_send_req.chunk_sender_attr.last_chunk() != 0;
+    let has_reserved_bits =
+        chunk_send_req.reserved != 0 || chunk_send_req.chunk_sender_attr.reserved() != 0;
 
     let available_chunk_len = req.data_len();
     let chunk_send_msg_len =
         size_of::<SpdmMsgHdr>() + size_of::<ChunkSendReq>() + available_chunk_len;
 
-    let invalid = if !ctx.large_req_context.in_progress() {
+    let invalid = if has_reserved_bits {
+        true
+    } else if !ctx.large_req_context.in_progress() {
         if available_chunk_len < size_of::<u32>() {
             true
         } else {
@@ -183,7 +187,7 @@ fn process_chunk_send(
             let invalid = chunk_seq_num != 0
                 || last_chunk
                 || chunk_size < min_first_chunk_size
-                || chunk_size > available_chunk_len
+                || chunk_size != available_chunk_len
                 || chunk_send_msg_len > ctx.local_capabilities.data_transfer_size as usize
                 || large_message_size > ctx.local_capabilities.max_spdm_msg_size as usize
                 || large_message_size > crate::protocol::MAX_MCTP_SPDM_MSG_SIZE
@@ -210,7 +214,7 @@ fn process_chunk_send(
         let end = transferred.saturating_add(chunk_size);
 
         let invalid = chunk_seq_num == 0
-            || chunk_size > available_chunk_len
+            || chunk_size != available_chunk_len
             || chunk_send_msg_len > ctx.local_capabilities.data_transfer_size as usize
             || ctx
                 .large_req_context
@@ -527,19 +531,20 @@ mod tests {
     fn build_chunk_send<'a>(
         storage: &'a mut [u8],
         sender_attr: u8,
-        handle: u8,
         seq: u16,
+        reserved: u16,
         large_message_size: Option<u32>,
         chunk: &[u8],
+        extra_payload: &[u8],
     ) -> MessageBuf<'a> {
         let mut offset = 0;
         storage[offset] = SpdmVersion::V12.into();
         storage[offset + 1] = ReqRespCode::ChunkSend.into();
         offset += size_of::<SpdmMsgHdr>();
         storage[offset] = sender_attr;
-        storage[offset + 1] = handle;
+        storage[offset + 1] = 7;
         storage[offset + 2..offset + 4].copy_from_slice(&seq.to_le_bytes());
-        storage[offset + 4..offset + 6].copy_from_slice(&0u16.to_le_bytes());
+        storage[offset + 4..offset + 6].copy_from_slice(&reserved.to_le_bytes());
         storage[offset + 6..offset + 10].copy_from_slice(&(chunk.len() as u32).to_le_bytes());
         offset += size_of::<ChunkSendReq>();
         if let Some(size) = large_message_size {
@@ -548,6 +553,8 @@ mod tests {
         }
         storage[offset..offset + chunk.len()].copy_from_slice(chunk);
         offset += chunk.len();
+        storage[offset..offset + extra_payload.len()].copy_from_slice(extra_payload);
+        offset += extra_payload.len();
 
         MessageBuf::from(&mut storage[..offset])
     }
@@ -561,7 +568,8 @@ mod tests {
 
         let first_chunk = [0xAA; 30];
         let mut first_storage = [0u8; 96];
-        let mut first_msg = build_chunk_send(&mut first_storage, 0, 7, 0, Some(80), &first_chunk);
+        let mut first_msg =
+            build_chunk_send(&mut first_storage, 0, 0, 0, Some(80), &first_chunk, &[]);
         let first_hdr = decode_header(&mut first_msg);
         let first_result = process_chunk_send(&mut ctx, first_hdr, &mut first_msg)
             .expect("first chunk should be accepted");
@@ -578,7 +586,8 @@ mod tests {
 
         let second_chunk = [0xBB; 50];
         let mut second_storage = [0u8; 96];
-        let mut second_msg = build_chunk_send(&mut second_storage, 1, 7, 1, None, &second_chunk);
+        let mut second_msg =
+            build_chunk_send(&mut second_storage, 1, 1, 0, None, &second_chunk, &[]);
         let second_hdr = decode_header(&mut second_msg);
         let second_result = process_chunk_send(&mut ctx, second_hdr, &mut second_msg)
             .expect("last chunk should be accepted");
@@ -603,14 +612,16 @@ mod tests {
 
         let first_chunk = [0xAA; 30];
         let mut first_storage = [0u8; 96];
-        let mut first_msg = build_chunk_send(&mut first_storage, 0, 7, 0, Some(80), &first_chunk);
+        let mut first_msg =
+            build_chunk_send(&mut first_storage, 0, 0, 0, Some(80), &first_chunk, &[]);
         let first_hdr = decode_header(&mut first_msg);
         process_chunk_send(&mut ctx, first_hdr, &mut first_msg)
             .expect("first chunk should be accepted");
 
         let second_chunk = [0xBB; 50];
         let mut second_storage = [0u8; 96];
-        let mut second_msg = build_chunk_send(&mut second_storage, 1, 7, 2, None, &second_chunk);
+        let mut second_msg =
+            build_chunk_send(&mut second_storage, 1, 2, 0, None, &second_chunk, &[]);
         let second_hdr = decode_header(&mut second_msg);
         let second_result = process_chunk_send(&mut ctx, second_hdr, &mut second_msg)
             .expect("bad chunk should produce early-error ack state");
@@ -623,6 +634,69 @@ mod tests {
             } => {
                 assert_eq!(handle, 7);
                 assert_eq!(chunk_seq_num, 2);
+            }
+        }
+        assert!(!ctx.large_req_context.in_progress());
+    }
+
+    #[test]
+    fn test_process_chunk_send_rejects_reserved_fields() {
+        let mut transport = TestTransport;
+        let cert_store = TestCertStore;
+        let mut measurements = TestMeasurements;
+        let mut ctx = test_context(&mut transport, &cert_store, &mut measurements);
+
+        let first_chunk = [0xAA; 30];
+        let mut storage = [0u8; 96];
+        let mut msg = build_chunk_send(&mut storage, 0b10, 0, 1, Some(80), &first_chunk, &[]);
+        let hdr = decode_header(&mut msg);
+        let result = process_chunk_send(&mut ctx, hdr, &mut msg)
+            .expect("reserved fields should produce early-error ack state");
+
+        match result {
+            ChunkSendProcessResult::Ack(_) => panic!("reserved fields should not be accepted"),
+            ChunkSendProcessResult::EarlyError {
+                handle,
+                chunk_seq_num,
+            } => {
+                assert_eq!(handle, 7);
+                assert_eq!(chunk_seq_num, 0);
+            }
+        }
+        assert!(!ctx.large_req_context.in_progress());
+    }
+
+    #[test]
+    fn test_process_chunk_send_rejects_extra_payload() {
+        let mut transport = TestTransport;
+        let cert_store = TestCertStore;
+        let mut measurements = TestMeasurements;
+        let mut ctx = test_context(&mut transport, &cert_store, &mut measurements);
+
+        let first_chunk = [0xAA; 30];
+        let extra_payload = [0xCC; 1];
+        let mut storage = [0u8; 96];
+        let mut msg = build_chunk_send(
+            &mut storage,
+            0,
+            0,
+            0,
+            Some(80),
+            &first_chunk,
+            &extra_payload,
+        );
+        let hdr = decode_header(&mut msg);
+        let result = process_chunk_send(&mut ctx, hdr, &mut msg)
+            .expect("extra payload should produce early-error ack state");
+
+        match result {
+            ChunkSendProcessResult::Ack(_) => panic!("extra payload should not be accepted"),
+            ChunkSendProcessResult::EarlyError {
+                handle,
+                chunk_seq_num,
+            } => {
+                assert_eq!(handle, 7);
+                assert_eq!(chunk_seq_num, 0);
             }
         }
         assert!(!ctx.large_req_context.in_progress());

@@ -8,8 +8,8 @@ use crate::protocol::MAX_MCTP_SPDM_MSG_SIZE;
 
 #[derive(Debug, PartialEq)]
 pub enum ChunkError {
-    /// Error initializing a large response context
-    LargeResponseInitError,
+    /// Error initializing a large message context
+    LargeMessageInitError,
     /// No large response is currently in progress
     NoLargeResponseInProgress,
     /// Invalid chunk handle provided
@@ -76,7 +76,7 @@ impl LargeRequestCtx {
 
     pub fn init(&mut self, handle: u8, large_msg_size: usize, chunk: &[u8]) -> ChunkResult<()> {
         if large_msg_size > self.buffer.len() || chunk.len() > large_msg_size {
-            return Err(ChunkError::LargeResponseInitError);
+            return Err(ChunkError::LargeMessageInitError);
         }
 
         self.chunk_state.init(large_msg_size, handle);
