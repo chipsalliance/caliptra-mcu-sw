@@ -27,6 +27,9 @@ use caliptra_mcu_network_drivers::{exit_emulator, println};
 #[cfg(target_arch = "riscv32")]
 global_asm!(include_str!("start.s"));
 
+#[cfg(target_arch = "riscv32")]
+mod tests;
+
 /// Main entry point called from assembly startup code
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
@@ -36,6 +39,22 @@ pub extern "C" fn main() -> ! {
     println!("  Network Coprocessor ROM Started!  ");
     println!("=====================================");
     println!();
+
+    // Run the appropriate test based on feature flags
+    #[cfg(feature = "test-hello-world")]
+    {
+        tests::hello_world::run();
+    }
+
+    #[cfg(feature = "test-dccm")]
+    {
+        tests::dccm::run();
+    }
+
+    #[cfg(feature = "test-exception")]
+    {
+        tests::exception::run();
+    }
 
     #[cfg(feature = "test-network-rom-dhcp-discover")]
     {

@@ -19,4 +19,7 @@ test = false
 
 [features]
 default = []
+test-hello-world = []
+test-dccm = []
+test-exception = []
 test-network-rom-dhcp-discover = ["caliptra-mcu-network-app-rom-test"]
