@@ -132,8 +132,8 @@ impl SpdmCertStore for SharedCertStore {
 
     async fn get_cert_chain<'a>(
         &self,
-        slot_id: u8,
         asym_algo: AsymAlgo,
+        slot_id: u8,
         offset: usize,
         cert_portion: &'a mut [u8],
     ) -> CertStoreResult<usize> {
@@ -149,8 +149,8 @@ impl SpdmCertStore for SharedCertStore {
 
     async fn root_cert_hash<'a>(
         &self,
-        slot_id: u8,
         asym_algo: AsymAlgo,
+        slot_id: u8,
         cert_hash: &'a mut [u8; SHA384_HASH_SIZE],
     ) -> CertStoreResult<()> {
         let cert_store = SHARED_CERT_STORE.lock().await;
@@ -165,8 +165,8 @@ impl SpdmCertStore for SharedCertStore {
 
     async fn sign_hash<'a>(
         &self,
-        slot_id: u8,
         asym_algo: AsymAlgo,
+        slot_id: u8,
         hash: &'a [u8; SHA384_HASH_SIZE],
         signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
     ) -> CertStoreResult<()> {
@@ -190,5 +190,20 @@ impl SpdmCertStore for SharedCertStore {
 
     async fn key_usage_mask(&self, _slot_id: u8) -> Option<KeyUsageMask> {
         None
+    }
+
+    async fn write_cert_chain(
+        &self,
+        _asym_algo: AsymAlgo,
+        _slot_id: u8,
+        _key_pair_id: u8,
+        _cert_model: CertificateInfo,
+        _cert_chain: &[u8],
+    ) -> CertStoreResult<()> {
+        Err(CertStoreError::OperationFailed)
+    }
+
+    async fn erase_cert_chain(&self, _asym_algo: AsymAlgo, _slot_id: u8) -> CertStoreResult<()> {
+        Err(CertStoreError::OperationFailed)
     }
 }
