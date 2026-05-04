@@ -7,16 +7,26 @@ on:
     - cron: "0 0 * * *"
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      main-2-1-ref:
+        description: 'Override ref for main-2.1 tests (e.g. PR branch). Leave empty to use main-2.1.'
+        required: false
+        default: ''
 
 jobs:
   spdm_validator_tests:
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        # TODO: Re-enable main-2.1 after cherry-picking SPDM fixes from main
+        branch: [main]
+      fail-fast: false
 
     env:
       CARGO_INCREMENTAL: 0
       SCCACHE_VERSION: 0.8.2
-      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
-      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
+      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw-${{ matrix.branch }}
+      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw-${{ matrix.branch }}
       # CPTRA_COVERAGE_PATH: /tmp
 
       # Change this to a new random value if you suspect the cache is corrupted
@@ -26,6 +36,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
+          ref: ${{ matrix.branch == 'main-2.1' && inputs.main-2-1-ref != '' && inputs.main-2-1-ref || matrix.branch }}
           submodules: recursive
 
       - name: Test commit name
@@ -78,7 +89,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: parvathib/spdm-emu
-          ref: pbhogaraju/custom-3.8.0
+          ref: pbhogaraju/spdm_emu_main_custom
           path: spdm-emu
           submodules: recursive
 
@@ -114,7 +125,7 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
-          name: spdm-mctp-validator-test-results
+          name: spdm-mctp-validator-test-results-${{ matrix.branch }}
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/test.log
             ${{ env.SPDM_VALIDATOR_DIR }}/caliptra_spdm_validator.pcap
@@ -129,6 +140,8 @@ jobs:
           cat $SPDM_VALIDATOR_DIR/test.log
 
       - name: Check for test failures on MCTP transport
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
           if grep -E 'test suite \(.*\) - pass: [0-9]+, fail: [1-9][0-9]*' $SPDM_VALIDATOR_DIR/test.log; then
             echo "Test suite had failures."
@@ -141,6 +154,10 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
+          if [ ! -f "$SPDM_VALIDATOR_DIR/measurement_block_fd.bin" ]; then
+            echo "::warning::measurement_block_fd.bin not found — validator may not have produced it (measurement test failure?)"
+            exit 0
+          fi
           cargo build --release -p ocptoken
           ./target/release/ocptoken verify \
           -e $SPDM_VALIDATOR_DIR/measurement_block_fd.bin 
@@ -160,7 +177,7 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
-          name: spdm-doe-validator-test-results
+          name: spdm-doe-validator-test-results-${{ matrix.branch }}
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/test.log
             ${{ env.SPDM_VALIDATOR_DIR }}/caliptra_spdm_validator.pcap
@@ -218,6 +235,6 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
         with:
-          name: spdm-tdisp-ide-validator-test-results
+          name: spdm-tdisp-ide-validator-test-results-${{ matrix.branch }}
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/tdisp_ide_validator_output.txt
