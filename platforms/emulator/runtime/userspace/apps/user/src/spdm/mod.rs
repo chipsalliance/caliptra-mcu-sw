@@ -85,7 +85,7 @@ async fn spdm_mctp_responder() {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
         flags: CapabilityFlags::default(),
         data_transfer_size: max_mctp_spdm_msg_size,
-        max_spdm_msg_size: max_mctp_spdm_msg_size,
+        max_spdm_msg_size: MAX_MCTP_SPDM_MSG_SIZE as u32,
     };
 
     let local_algorithms = LocalDeviceAlgorithms::default();
@@ -163,7 +163,7 @@ async fn spdm_doe_responder() {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
         flags: doe_capability_flags,
         data_transfer_size: max_doe_spdm_msg_size,
-        max_spdm_msg_size: max_doe_spdm_msg_size,
+        max_spdm_msg_size: MAX_MCTP_SPDM_MSG_SIZE as u32,
     };
 
     let mut device_doe_algorithms = DeviceAlgorithms::default();

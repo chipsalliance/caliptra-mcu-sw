@@ -1,13 +1,15 @@
 // Licensed under the Apache-2.0 license
 
+use crate::codec::{CodecResult, MessageBuf};
 use crate::commands::certificate_rsp::CertificateResponse;
 use crate::commands::measurements_rsp::MeasurementsResponse;
 use crate::commands::vendor_defined_rsp::VendorLargeResponse;
+use crate::protocol::MAX_MCTP_SPDM_MSG_SIZE;
 
 #[derive(Debug, PartialEq)]
 pub enum ChunkError {
-    /// Error initializing a large response context
-    LargeResponseInitError,
+    /// Error initializing a large message context
+    LargeMessageInitError,
     /// No large response is currently in progress
     NoLargeResponseInProgress,
     /// Invalid chunk handle provided
@@ -34,6 +36,7 @@ impl ChunkState {
         self.handle = 0;
         self.seq_num = 0;
         self.bytes_transferred = 0;
+        self.large_msg_size = 0;
     }
 
     pub fn init(&mut self, large_msg_size: usize, handle: u8) {
@@ -46,6 +49,107 @@ impl ChunkState {
 }
 
 pub type ChunkResult<T> = Result<T, ChunkError>;
+
+/// Manages the context for an incoming large SPDM request sent with CHUNK_SEND.
+pub(crate) struct LargeRequestCtx {
+    chunk_state: ChunkState,
+    buffer: [u8; MAX_MCTP_SPDM_MSG_SIZE],
+}
+
+impl Default for LargeRequestCtx {
+    fn default() -> Self {
+        Self {
+            chunk_state: ChunkState::default(),
+            buffer: [0; MAX_MCTP_SPDM_MSG_SIZE],
+        }
+    }
+}
+
+impl LargeRequestCtx {
+    pub fn reset(&mut self) {
+        self.chunk_state.reset();
+    }
+
+    pub fn in_progress(&self) -> bool {
+        self.chunk_state.in_use
+    }
+
+    pub fn init(&mut self, handle: u8, large_msg_size: usize, chunk: &[u8]) -> ChunkResult<()> {
+        if large_msg_size > self.buffer.len() || chunk.len() > large_msg_size {
+            return Err(ChunkError::LargeMessageInitError);
+        }
+
+        self.chunk_state.init(large_msg_size, handle);
+        self.buffer[..chunk.len()].copy_from_slice(chunk);
+        self.chunk_state.bytes_transferred = chunk.len();
+        Ok(())
+    }
+
+    pub fn append_chunk(
+        &mut self,
+        handle: u8,
+        chunk_seq_num: u16,
+        chunk: &[u8],
+    ) -> ChunkResult<()> {
+        self.validate_chunk(handle, chunk_seq_num)?;
+
+        let end = self
+            .chunk_state
+            .bytes_transferred
+            .checked_add(chunk.len())
+            .ok_or(ChunkError::InvalidMessageOffset)?;
+        if end > self.chunk_state.large_msg_size || end > self.buffer.len() {
+            return Err(ChunkError::InvalidMessageOffset);
+        }
+
+        self.buffer[self.chunk_state.bytes_transferred..end].copy_from_slice(chunk);
+        self.chunk_state.bytes_transferred = end;
+        self.chunk_state.seq_num = self.chunk_state.seq_num.wrapping_add(1);
+        Ok(())
+    }
+
+    pub fn validate_chunk(&self, handle: u8, chunk_seq_num: u16) -> ChunkResult<()> {
+        if !self.chunk_state.in_use {
+            return Err(ChunkError::NoLargeResponseInProgress);
+        }
+        if self.chunk_state.handle != handle {
+            return Err(ChunkError::InvalidChunkHandle);
+        }
+        if self.chunk_state.seq_num.wrapping_add(1) != chunk_seq_num {
+            return Err(ChunkError::InvalidChunkSeqNum);
+        }
+        Ok(())
+    }
+
+    pub fn large_request_size(&self) -> usize {
+        self.chunk_state.large_msg_size
+    }
+
+    pub fn bytes_transferred(&self) -> usize {
+        self.chunk_state.bytes_transferred
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.chunk_state.in_use
+            && self.chunk_state.bytes_transferred == self.chunk_state.large_msg_size
+    }
+
+    pub fn request_code(&self) -> Option<u8> {
+        if self.chunk_state.large_msg_size < 2 {
+            return None;
+        }
+        Some(self.buffer[1])
+    }
+
+    pub fn copy_message_to(&self, dst: &mut MessageBuf<'_>) -> CodecResult<()> {
+        let msg_len = self.chunk_state.large_msg_size;
+        dst.reset();
+        dst.put_data(msg_len)?;
+        dst.data_mut(msg_len)?
+            .copy_from_slice(&self.buffer[..msg_len]);
+        Ok(())
+    }
+}
 
 /// Represents a large message response type that can be split into chunks
 pub(crate) enum LargeResponse {
