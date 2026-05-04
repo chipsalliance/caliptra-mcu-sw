@@ -64,7 +64,7 @@ jobs:
           
           caliptra-bitstream-downloader bundle-manifest \
             --repository "${{ github.repository }}" \
-            --hw-major-version "2.0" \
+            --hw-major-version "2.1" \
             --target-branch "${{ github.base_ref || github.ref_name }}" \
             --caliptra-variant "subsystem" \
             --commit-hash "${{ github.sha }}" \
