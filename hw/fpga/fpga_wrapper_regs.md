@@ -283,7 +283,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 #### cptra_ss_mcu_halt_status_o field
 
-<p>RSVD in SS</p>
+<p>RSVD in core</p>
 
 ### arm_user register
 
@@ -1838,11 +1838,16 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
-|31:0|   ctrl   |  rw  | 0x0 |  — |
+|  0 |    rdy   |   r  | 0x0 |  — |
+|31:1| reserved |  rw  | 0x0 |  — |
 
-#### ctrl field
+#### rdy field
 
-<p>OCP LOCK Control</p>
+<p>OCP LOCK Ready bit. Sticky bit indicating the engine has processed the MEK.</p>
+
+#### reserved field
+
+<p>Reserved bits for OCP LOCK Control</p>
 
 ## fifo_regs register file
 
