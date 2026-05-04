@@ -166,7 +166,7 @@ async fn encode_m1_signature<'a>(
     let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
 
     ctx.device_certs_store
-        .sign_hash(slot_id, asym_algo, &tbs, &mut signature)
+        .sign_hash(asym_algo, slot_id, &tbs, &mut signature)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
 

@@ -24,6 +24,10 @@ pub enum CertStoreError {
     BufferTooSmall,
     InvalidOffset,
     CertReadError,
+    CertWriteError,
+    SlotBusy,
+    OperationFailed,
+    ResetRequired,
     CaliptraApi(CaliptraApiError),
 }
 pub type CertStoreResult<T> = Result<T, CertStoreError>;
@@ -62,8 +66,8 @@ pub trait SpdmCertStore {
     /// The type of the certificate chain is indicated by the asym_algo parameter.
     ///
     /// # Arguments
-    /// * `slot_id` - The slot ID of the certificate chain.
     /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
+    /// * `slot_id` - The slot ID of the certificate chain.
     /// * `offset` - The offset in bytes to start reading from.
     /// * `cert_portion` - The buffer to read the certificate chain into.
     ///
@@ -73,8 +77,8 @@ pub trait SpdmCertStore {
     /// indicating the end of the cert chain.
     async fn get_cert_chain<'a>(
         &self,
-        slot_id: u8,
         asym_algo: AsymAlgo,
+        slot_id: u8,
         offset: usize,
         cert_portion: &'a mut [u8],
     ) -> CertStoreResult<usize>;
@@ -83,24 +87,24 @@ pub trait SpdmCertStore {
     /// The hash algorithm is always SHA-384. The type of the certificate chain is indicated by the asym_algo parameter.
     ///
     /// # Arguments
-    /// * `slot_id` - The slot ID of the certificate chain.
     /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
+    /// * `slot_id` - The slot ID of the certificate chain.
     /// * `cert_hash` - The buffer to store the hash of the root certificate.
     ///
     /// # Returns
     /// * `()` - Ok if successful, error otherwise.
     async fn root_cert_hash<'a>(
         &self,
-        slot_id: u8,
         asym_algo: AsymAlgo,
+        slot_id: u8,
         cert_hash: &'a mut [u8; SHA384_HASH_SIZE],
     ) -> CertStoreResult<()>;
 
     /// Sign hash with leaf certificate key
     ///
     /// # Arguments
-    /// * `slot_id` - The slot ID of the certificate chain.
     /// * `asym_algo` - Asymmetric algorithm to sign with.
+    /// * `slot_id` - The slot ID of the certificate chain.
     /// * `hash` - The hash to sign.
     /// * `signature` - The output buffer to store the ECC384 signature.
     ///
@@ -108,20 +112,20 @@ pub trait SpdmCertStore {
     /// * `()` - Ok if successful, error otherwise.
     async fn sign_hash<'a>(
         &self,
-        slot_id: u8,
         asym_algo: AsymAlgo,
+        slot_id: u8,
         hash: &'a [u8; SHA384_HASH_SIZE],
         signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
     ) -> CertStoreResult<()>;
 
     /// Get the KeyPairID associated with the certificate chain if SPDM responder supports
-    /// multiple assymmetric keys in connection.
+    /// multiple asymmetric keys in connection.
     ///
     /// # Arguments
     /// * `slot_id` - The slot ID of the certificate chain.
     ///
     /// # Returns
-    /// * u8 - The KeyPairID associated with the certificate chain or None if not supported or not found.
+    /// * `u8` - The KeyPairID associated with the certificate chain or None if not supported or not found.
     async fn key_pair_id(&self, slot_id: u8) -> Option<u8>;
 
     /// Retrieve the `CertificateInfo` associated with the certificate chain for the given slot.
@@ -144,6 +148,42 @@ pub trait SpdmCertStore {
     /// # Returns
     /// * `KeyUsageMask` - The KeyUsageMask associated with the certificate chain or None if not supported or not found.
     async fn key_usage_mask(&self, slot_id: u8) -> Option<KeyUsageMask>;
+
+    /// Write a certificate chain to a slot. The certificate chain is in ASN.1 DER-encoded
+    /// X.509 v3 format and includes the root certificate as required by SPDM SET_CERTIFICATE.
+    ///
+    /// The implementation should validate that the leaf certificate's public key matches
+    /// the key pair identified by `key_pair_id` before committing. On success, the slot
+    /// is marked as provisioned with the given metadata.
+    ///
+    /// # Arguments
+    /// * `asym_algo` - The asymmetric algorithm indicating the type of certificate chain.
+    /// * `slot_id` - The slot ID where the certificate chain will be written.
+    /// * `key_pair_id` - The key pair ID to associate with this slot.
+    /// * `cert_model` - The certificate model (DeviceCert, AliasCert, GenericCert).
+    /// * `cert_chain` - The complete certificate chain data.
+    ///
+    /// # Returns
+    /// * `()` - Ok if successful, error otherwise.
+    async fn write_cert_chain(
+        &self,
+        asym_algo: AsymAlgo,
+        slot_id: u8,
+        key_pair_id: u8,
+        cert_model: CertificateInfo,
+        cert_chain: &[u8],
+    ) -> CertStoreResult<()>;
+
+    /// Erase the certificate chain from a slot. The slot is marked as unpopulated
+    /// until it is re-provisioned. The key pair associated with the slot is not erased.
+    ///
+    /// # Arguments
+    /// * `asym_algo` - The asymmetric algorithm indicating the type of certificate chain.
+    /// * `slot_id` - The slot ID of the certificate chain to erase.
+    ///
+    /// # Returns
+    /// * `()` - Ok if successful, error otherwise.
+    async fn erase_cert_chain(&self, asym_algo: AsymAlgo, slot_id: u8) -> CertStoreResult<()>;
 }
 
 pub(crate) fn validate_cert_store(cert_store: &dyn SpdmCertStore) -> SpdmResult<()> {
@@ -206,7 +246,7 @@ pub(crate) async fn spdm_cert_chain_hash(
 
     loop {
         let bytes_read = cert_store
-            .get_cert_chain(slot_id, asym_algo, offset, &mut cert_portion)
+            .get_cert_chain(asym_algo, slot_id, offset, &mut cert_portion)
             .await?;
 
         hash_ctx
@@ -251,7 +291,7 @@ async fn spdm_cert_chain_hdr(
 
     // Get the root certificate hash
     cert_store
-        .root_cert_hash(slot_id, asym_algo, &mut header.root_hash)
+        .root_cert_hash(asym_algo, slot_id, &mut header.root_hash)
         .await?;
 
     Ok(header)
@@ -296,7 +336,7 @@ pub(crate) async fn spdm_read_cert_chain(
 
         // Read the certificate chain portion
         let bytes_read = cert_store
-            .get_cert_chain(slot_id, asym_algo, certchain_offset, rem_buffer)
+            .get_cert_chain(asym_algo, slot_id, certchain_offset, rem_buffer)
             .await?;
 
         data_len += bytes_read;
