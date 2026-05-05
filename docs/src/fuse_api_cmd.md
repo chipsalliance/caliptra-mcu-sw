@@ -96,3 +96,27 @@ Command Code: `0x5056_504b` ("PVPK")
 
 Caveats:
 * Fails if the slot already contains data
+
+### MC_FUSE_REVOKE_VENDOR_PK_HASH
+
+Revoke a vendor PK hash.
+Marks a vendor PK hash as invalid, revoking all of the associated keys.
+
+Command Code: `0x5256_4b48` ("RVKH")
+
+*Table: `MC_FUSE_REVOKE_VENDOR_PK_HASH` input arguments*
+| **Name**             | **Type**       | **Description**               |
+| -------------------- | -------------- | ----------------------------- |
+| chksum               |  u32           |                               |
+| vendor_pk_hash_slot  |  u32           | Vendor PK hash slot to revoke |
+
+
+*Table: `MC_FUSE_REVOKE_VENDOR_PK_HASH` output arguments*
+| **Name**      | **Type**       | **Description**                         |
+| ------------- | -------------- | --------------------------------------- |
+| chksum        |  u32           |                                         |
+| fips_status   |  u32           | FIPS approved or an error               |
+
+Caveats:
+* This command is **idempotent**, so that revoking a slot twice has no effect.
+* Trying to revoke an empty slot will result in an error

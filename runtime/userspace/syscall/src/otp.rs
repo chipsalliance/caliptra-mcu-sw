@@ -163,6 +163,30 @@ impl<S: Syscalls> Otp<S> {
 
         Ok(())
     }
+
+    /// Revoke a vendor PK hash
+    pub fn revoke_vendor_pk_hash(&self, vendor_pk_hash_slot: u32) -> Result<(), ErrorCode> {
+        if vendor_pk_hash_slot as usize >= MAX_NUM_VENDOR_PK_HASH {
+            Err(ErrorCode::Invalid)?
+        }
+
+        if !self.valid_vendor_pk_hash_slot(vendor_pk_hash_slot) {
+            // Return early if the slot is already marked invalid
+            Ok(())?;
+        }
+
+        // Check if the slot is provisioned to not burn an empty slot
+        let pk_hash = self.read_vendor_pk_hash(vendor_pk_hash_slot)?;
+        if pk_hash.iter().eq(repeat(&0)) {
+            Err(ErrorCode::Invalid)?
+        }
+
+        let valid_mask = self.read(reg::VENDOR_PK_HASH_VALID, 0)?;
+
+        let valid_mask = valid_mask | (1 << vendor_pk_hash_slot);
+
+        self.write(reg::VENDOR_PK_HASH_VALID, 0, valid_mask)
+    }
 }
 
 // -----------------------------------------------------------------------------
