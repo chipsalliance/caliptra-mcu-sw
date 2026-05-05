@@ -11,7 +11,7 @@ use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA3
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 use zerocopy::IntoBytes;
 
-pub const MAX_CERT_SLOTS_SUPPORTED: u8 = 2;
+pub const MAX_CERT_SLOTS_SUPPORTED: u8 = 4;
 
 #[derive(Debug, PartialEq)]
 pub enum CertStoreError {
@@ -161,7 +161,8 @@ pub trait SpdmCertStore {
     /// * `slot_id` - The slot ID where the certificate chain will be written.
     /// * `key_pair_id` - The key pair ID to associate with this slot.
     /// * `cert_model` - The certificate model (DeviceCert, AliasCert, GenericCert).
-    /// * `cert_chain` - The complete certificate chain data.
+    /// * `root_cert_hash` - The RootHash field from the SPDM certificate chain.
+    /// * `cert_chain` - The complete ASN.1 DER-encoded certificate chain data.
     ///
     /// # Returns
     /// * `()` - Ok if successful, error otherwise.
@@ -171,6 +172,7 @@ pub trait SpdmCertStore {
         slot_id: u8,
         key_pair_id: u8,
         cert_model: CertificateInfo,
+        root_cert_hash: &[u8; SHA384_HASH_SIZE],
         cert_chain: &[u8],
     ) -> CertStoreResult<()>;
 

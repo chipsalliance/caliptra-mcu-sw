@@ -31,8 +31,8 @@ bitfield! {
 pub struct CertificateInfo(u8);
 impl Debug;
 u8;
-pub cert_model, set_cert_model: 0,2;
-reserved, _: 3,7;
+pub cert_model, set_cert_model: 2,0;
+reserved, _: 7,3;
 }
 
 // SPDM KeyUsageMask fields

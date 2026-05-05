@@ -362,11 +362,12 @@ pub trait SpdmCertStore {
     async fn key_usage_mask(&self, slot_id: u8) -> Option<KeyUsageMask>;
 
     /// Write a certificate chain to a slot (SET_CERTIFICATE).
+    /// The root_cert_hash is copied from the SPDM certificate-chain header.
     /// The cert_chain slice is a zero-copy reference into the SPDM message buffer.
     /// The implementation should validate the leaf cert matches the key pair.
     async fn write_cert_chain(
         &self, asym_algo: AsymAlgo, slot_id: u8, key_pair_id: u8,
-        cert_model: CertificateInfo, cert_chain: &[u8],
+        cert_model: CertificateInfo, root_cert_hash: &[u8; SHA384_HASH_SIZE], cert_chain: &[u8],
     ) -> CertStoreResult<()>;
 
     /// Erase a certificate chain from a slot. The key pair is not erased.
