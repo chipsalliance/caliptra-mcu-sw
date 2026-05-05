@@ -605,7 +605,10 @@ mod test {
             flash_image,
         } = match FirmwareBinaries::from_env() {
             Ok(binaries)
-                if params.firmware_prefix.is_none() && params.custom_mcu_runtime.is_none() =>
+                if params.firmware_prefix.is_none()
+                    && params.custom_mcu_runtime.is_none()
+                    && (params.feature.is_none()
+                        || has_prebuilt_binaries(params.feature.unwrap())) =>
             {
                 if let Some(rom_feature) = params.rom_feature {
                     // Use prebuilt base binaries with a feature-specific ROM
