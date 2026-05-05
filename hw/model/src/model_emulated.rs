@@ -91,6 +91,7 @@ pub struct ModelEmulated {
     i3c_controller_join_handle: Option<JoinHandle<()>>,
     dot_flash: Rc<RefCell<Ram>>,
     otp_partitions: Rc<RefCell<Vec<u8>>>,
+    otp_dai_log: Rc<RefCell<Vec<String>>>,
     check_booted_to_runtime: bool,
     mcu_uart_output: Rc<RefCell<Vec<u8>>>,
     pub usb_host_controller: emulator_periph::UsbHostController,
@@ -216,6 +217,7 @@ impl McuHwModel for ModelEmulated {
 
         // Get the partitions reference before passing OTP to the bus
         let otp_partitions = otp.partitions_ref();
+        let otp_dai_log = otp.dai_log_ref();
 
         let create_flash_controller =
             |default_path: &str,
@@ -457,6 +459,7 @@ impl McuHwModel for ModelEmulated {
             i3c_controller_join_handle: None,
             dot_flash,
             otp_partitions,
+            otp_dai_log,
             check_booted_to_runtime: params.check_booted_to_runtime,
             mcu_uart_output,
             usb_host_controller,
@@ -592,6 +595,10 @@ impl McuHwModel for ModelEmulated {
 
     fn read_otp_memory(&self) -> Vec<u8> {
         self.otp_partitions.borrow().clone()
+    }
+
+    fn take_otp_dai_log(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.otp_dai_log.borrow_mut())
     }
 
     fn read_dot_flash(&self) -> Vec<u8> {

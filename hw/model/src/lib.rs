@@ -367,6 +367,12 @@ pub trait McuHwModel {
     fn save_otp_memory(&self, path: &Path) -> Result<()>;
     fn read_otp_memory(&self) -> Vec<u8>;
 
+    /// Drain accumulated OTP DAI operation log entries (read/write/digest commands).
+    /// Returns the entries since the last call. Default impl returns empty.
+    fn take_otp_dai_log(&mut self) -> Vec<String> {
+        Vec::new()
+    }
+
     fn read_dot_flash(&self) -> Vec<u8>;
     fn write_dot_flash(&mut self, data: &[u8]) -> Result<()>;
 

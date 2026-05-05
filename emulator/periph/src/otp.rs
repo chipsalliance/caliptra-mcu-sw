@@ -135,6 +135,9 @@ pub struct Otp {
     /// Partitions to calculate digests for on reset.
     calculate_digests_on_reset: HashSet<usize>,
     generated: OtpGenerated,
+    /// Optional log of DAI operations (enabled by setting via `dai_log_ref`).
+    /// When `Some`, each `Rd`/`Wr`/`Digest` DAI command appends an entry.
+    dai_log: Rc<RefCell<Vec<String>>>,
 }
 
 // Ensure that we save the state before we drop the OTP instance.
@@ -188,6 +191,7 @@ impl Otp {
             partitions,
             digests: [0; PARTITIONS.len() * 2],
             generated: OtpGenerated::default(),
+            dai_log: Rc::new(RefCell::new(Vec::new())),
         };
         otp.read_from_file()?;
         if let Some(mut vendor_pk_hash) = args.vendor_pk_hash {
@@ -243,6 +247,11 @@ impl Otp {
     /// This allows the model to hold a reference to the OTP memory.
     pub fn partitions_ref(&self) -> Rc<RefCell<Vec<u8>>> {
         self.partitions.clone()
+    }
+
+    /// Returns a clone of the shared DAI operation log.
+    pub fn dai_log_ref(&self) -> Rc<RefCell<Vec<String>>> {
+        self.dai_log.clone()
     }
 
     fn calculate_digests(&mut self) -> Result<(), std::io::Error> {
@@ -383,6 +392,8 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
         if self.direct_access_cmd.reg.read(DirectAccessCmd::Wr) == 1 {
             // clear bottom two bits
             let addr = (self.direct_access_address & 0xffff_fffc) as usize;
+            let buf = self.direct_access_buffer;
+            let mut new_value = 0u32;
             if addr + 4 <= TOTAL_SIZE {
                 // OTP can only burn bits from 0 to 1, never clear bits.
                 // We OR the new value with the existing value to emulate this behavior.
@@ -393,9 +404,13 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
                     partitions[addr + 2],
                     partitions[addr + 3],
                 ]);
-                let new_value = current | self.direct_access_buffer;
+                new_value = current | buf;
                 partitions[addr..addr + 4].copy_from_slice(&new_value.to_le_bytes());
             }
+            self.dai_log.borrow_mut().push(format!(
+                "DAI WR  @ 0x{:04x}: data=0x{:08x} -> 0x{:08x}",
+                addr, buf, new_value
+            ));
             // reset direct access
             self.direct_access_cmd.reg.set(0);
             self.direct_access_address = 0;
@@ -404,12 +419,18 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
             self.direct_access_cmd.reg.set(0);
             // clear bottom two bits
             let addr = (self.direct_access_address & 0xffff_fffc) as usize;
+            let mut data = 0u32;
             if addr + 4 <= TOTAL_SIZE {
                 let mut buf = [0; 4];
                 let partitions = self.partitions.borrow();
                 buf.copy_from_slice(&partitions[addr..addr + 4]);
-                self.direct_access_buffer = u32::from_le_bytes(buf);
+                data = u32::from_le_bytes(buf);
+                self.direct_access_buffer = data;
             }
+            self.dai_log.borrow_mut().push(format!(
+                "DAI RD  @ 0x{:04x}: data=0x{:08x}",
+                addr, data
+            ));
             // reset direct access
             self.direct_access_cmd.reg.set(0);
             self.direct_access_address = 0;
@@ -423,6 +444,10 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
                     break;
                 }
             }
+            self.dai_log.borrow_mut().push(format!(
+                "DAI DIG @ 0x{:04x}: partition={}",
+                addr, partition
+            ));
             // cowardly refuse to calculate digests for the lifecycle partition
             if partition != PARTITIONS.len() - 1 {
                 self.calculate_digests_on_reset.insert(partition);
