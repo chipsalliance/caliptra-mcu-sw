@@ -11,6 +11,7 @@ mod lifecycle;
 pub use lifecycle::*;
 mod fuse_layout;
 pub use fuse_layout::*;
+pub mod handoff;
 mod mci;
 pub use mci::*;
 mod otp;

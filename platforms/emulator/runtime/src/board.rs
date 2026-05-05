@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::handoff::HandOff;
 use crate::interrupts::EmulatorPeripherals;
 use crate::MCU_MEMORY_MAP;
 #[cfg(any(
@@ -415,6 +416,17 @@ pub unsafe fn main() {
     caliptra_mcu_romtime::set_printer(&mut EMULATOR_WRITER);
     #[allow(static_mut_refs)]
     caliptra_mcu_romtime::set_exiter(&mut EMULATOR_EXITER);
+
+    // Read handoff data before PMP setup.
+    let handoff = HandOff::new();
+    if let Some(ref handoff) = handoff {
+        caliptra_mcu_romtime::println!(
+            "[mcu-runtime] HandOff marker: 0x{:08x}",
+            handoff.rom.fht_marker
+        );
+    } else {
+        caliptra_mcu_romtime::println!("[mcu-runtime] Handoff is None");
+    }
 
     // Set up memory protection immediately after setting the trap handler, to
     // ensure that much of the board initialization routine runs with ePMP

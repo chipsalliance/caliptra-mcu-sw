@@ -207,6 +207,9 @@ pub struct Platform {
     /// the layout stays consistent with the VeeR `mcu_fw_sram_exec_region_size`
     /// parameter, which is programmed in 4 KiB units.
     pub storage_size: Option<u64>,
+
+    /// Location of the handoff table used to pass data between ROM and Runtime.
+    pub handoff: Option<Memory>,
 }
 
 impl Platform {
@@ -229,6 +232,13 @@ impl Platform {
     /// Retrieve the storage size.  Defaults to 0 if not specified.
     pub fn storage_size(&self) -> u64 {
         self.storage_size.unwrap_or(0)
+    }
+
+    /// Retrieve the handoff memory layout. If not specified it is empty.
+    pub fn handoff(&self) -> Memory {
+        self.handoff
+            .clone()
+            .unwrap_or(Memory { offset: 0, size: 0 })
     }
 }
 

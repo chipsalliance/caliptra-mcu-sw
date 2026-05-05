@@ -52,6 +52,9 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     lc_offset: 0xa404_0000,
     lc_size: 0x8c,
     lc_properties: MemoryRegionType::MMIO,
+
+    handoff_offset: 0x5000_3C00,
+    handoff_size: 1024,
 };
 
 pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {

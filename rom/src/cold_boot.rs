@@ -694,6 +694,11 @@ impl BootFlow for ColdBoot {
         caliptra_mcu_romtime::println!("[mcu-rom] Populating fuses");
         crate::call_hook(params.hooks, |h| h.pre_populate_fuses_to_caliptra());
         let pk_hash_idx = soc.populate_fuses(otp, mci, &params);
+
+        caliptra_mcu_romtime::handoff::HandoffData::write(
+            caliptra_mcu_romtime::handoff::HandoffArgs::default(),
+        );
+
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
         // Configure MCU mailbox AXI users before locking

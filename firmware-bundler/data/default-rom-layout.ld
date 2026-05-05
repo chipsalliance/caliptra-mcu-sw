@@ -14,10 +14,12 @@ MEMORY
 {
   ROM   (rx) : ORIGIN = ROM_START, LENGTH = ROM_LENGTH - ROM_DIGEST_SIZE
   RAM  (rwx) : ORIGIN = RAM_START, LENGTH = RAM_LENGTH /* dedicated SRAM for the ROM stack */
+  HANDOFF (rw) : ORIGIN = HANDOFF_ADDR, LENGTH = HANDOFF_SIZE
 }
 
 SECTIONS
 {
+
     .text :
     {
         *(.text.init )
@@ -66,6 +68,15 @@ SECTIONS
         *(COMMON)
         . = ALIGN(4);
     } > RAM
+
+    /* We reserve 1 KB at the end of DCCM for the handoff table.
+       This must be 1KB aligned because the runtime requires DCCM regions
+       to be 1KB aligned for MEIVT (Machine External Interrupt Vector Table). */
+    . = HANDOFF_ADDR;
+    .handoff (NOLOAD) :
+    {
+        KEEP(*(.handoff))
+    } > HANDOFF
 
     _end = . ;
 
