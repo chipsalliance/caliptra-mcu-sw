@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cert_store::SpdmCertStore;
-use crate::chunk_ctx::{ChunkError, LargeResponse};
+use crate::chunk_ctx::ChunkError;
 use crate::codec::{encode_u8_slice, Codec, CommonCodec, MessageBuf};
 use crate::commands::algorithms_rsp::selected_measurement_specification;
 use crate::commands::error_rsp::ErrorCode;
@@ -94,7 +94,7 @@ pub(crate) struct MeasurementsResponse {
 }
 
 impl MeasurementsResponse {
-    pub async fn get_chunk(
+    pub async fn encode_response(
         &self,
         measurements: &mut SpdmMeasurements<'_>,
         shared_transcript: &mut Transcript,
@@ -500,9 +500,37 @@ pub(crate) async fn generate_measurements_response<'a>(
     };
 
     if rsp_len > ctx.min_data_transfer_size() {
-        // If the response is larger than the minimum data transfer size, use chunked response
-        let large_rsp = LargeResponse::Measurements(rsp_ctx);
-        let handle = ctx.large_resp_context.init(large_rsp, rsp_len);
+        // Check buffer capacity before acquiring mutable borrows.
+        if rsp_len > ctx.large_resp_context.buf.len() {
+            Err(ctx.generate_error_response(rsp, ErrorCode::ResponseTooLarge, 0, None))?;
+        }
+
+        // Pre-serialize the full response into the shared buffer.
+        // Use borrow splitting to access disjoint fields of ctx simultaneously.
+        let session_info = match ctx.session_mgr.active_session_id() {
+            Some(session_id) => match ctx.session_mgr.session_info_mut(session_id) {
+                Ok(info) => Some(info),
+                Err(e) => Err((false, CommandError::Session(e)))?,
+            },
+            None => None,
+        };
+
+        let buf = &mut ctx.large_resp_context.buf[..rsp_len];
+        let payload_len = rsp_ctx
+            .encode_response(
+                &mut ctx.measurements,
+                &mut ctx.shared_transcript,
+                ctx.device_certs_store,
+                0,
+                buf,
+                session_info,
+            )
+            .await?;
+
+        let handle = ctx
+            .large_resp_context
+            .init_buffered(payload_len)
+            .map_err(|e| (false, CommandError::Chunk(e)))?;
         Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, 0, Some(&[handle])))?
     } else {
         let session_info = match ctx.session_mgr.active_session_id() {
@@ -521,7 +549,7 @@ pub(crate) async fn generate_measurements_response<'a>(
             .data_mut(rsp_len)
             .map_err(|e| (false, CommandError::Codec(e)))?;
         let payload_len = rsp_ctx
-            .get_chunk(
+            .encode_response(
                 &mut ctx.measurements,
                 &mut ctx.shared_transcript,
                 ctx.device_certs_store,

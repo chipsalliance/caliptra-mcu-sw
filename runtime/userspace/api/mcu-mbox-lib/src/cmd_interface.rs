@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::transport::McuMboxTransport;
-use caliptra_api::mailbox::{populate_checksum, CommandId as CaliptraCommandId, MailboxReqHeader};
-use caliptra_mcu_external_cmds_common::{
-    CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion,
-    UnifiedCommandHandler, MAX_UID_LEN,
+use caliptra_api::mailbox::{CommandId as CaliptraCommandId, MailboxReqHeader};
+use caliptra_mcu_common_commands::{
+    CaliptraCmdHandler, CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo,
+    FirmwareVersion, MAX_UID_LEN,
 };
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
@@ -43,8 +43,8 @@ pub enum MsgHandlerError {
 /// Command interface for handling MCU mailbox commands.
 pub struct CmdInterface<'a> {
     transport: &'a mut McuMboxTransport,
-    non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
-    cmd_authorizer: &'a dyn CommandAuthorizer,
+    non_crypto_cmds_handler: &'a dyn CaliptraCmdHandler,
+    cmd_authorizer: &'a mut dyn CommandAuthorizer,
     caliptra_mbox: caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
     busy: AtomicBool,
 }
@@ -52,8 +52,8 @@ pub struct CmdInterface<'a> {
 impl<'a> CmdInterface<'a> {
     pub fn new(
         transport: &'a mut McuMboxTransport,
-        non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
-        cmd_authorizer: &'a dyn CommandAuthorizer,
+        non_crypto_cmds_handler: &'a dyn CaliptraCmdHandler,
+        cmd_authorizer: &'a mut dyn CommandAuthorizer,
     ) -> Self {
         Self {
             transport,
