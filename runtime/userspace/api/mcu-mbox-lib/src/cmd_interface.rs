@@ -2,9 +2,9 @@
 
 use crate::transport::McuMboxTransport;
 use caliptra_api::mailbox::{populate_checksum, CommandId as CaliptraCommandId, MailboxReqHeader};
-use caliptra_mcu_external_cmds_common::{
-    AttestedCsrData, CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion,
-    UnifiedCommandHandler, MAX_UID_LEN,
+use caliptra_mcu_common_commands::{
+    CaliptraCmdHandler, CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo,
+    FirmwareVersion, MAX_UID_LEN,
 };
 use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
@@ -48,7 +48,7 @@ pub enum MsgHandlerError {
 /// Command interface for handling MCU mailbox commands.
 pub struct CmdInterface<'a> {
     transport: &'a mut McuMboxTransport,
-    non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
+    non_crypto_cmds_handler: &'a dyn CaliptraCmdHandler,
     cmd_authorizer: &'a mut dyn CommandAuthorizer,
     caliptra_mbox: caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
     busy: AtomicBool,
@@ -57,7 +57,7 @@ pub struct CmdInterface<'a> {
 impl<'a> CmdInterface<'a> {
     pub fn new(
         transport: &'a mut McuMboxTransport,
-        non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
+        non_crypto_cmds_handler: &'a dyn CaliptraCmdHandler,
         cmd_authorizer: &'a mut dyn CommandAuthorizer,
     ) -> Self {
         Self {
@@ -616,22 +616,18 @@ impl<'a> CmdInterface<'a> {
         let req = ExportAttestedCsrReq::ref_from_bytes(req)
             .map_err(|_| MsgHandlerError::InvalidParams)?;
 
-        let mut csr_data = AttestedCsrData::default();
+        let mut data = [0u8; MAX_RESP_DATA_SIZE];
         let ret = self
             .non_crypto_cmds_handler
-            .export_attested_csr(req.device_key_id, req.algorithm, &req.nonce, &mut csr_data)
+            .export_attested_csr(req.device_key_id, req.algorithm, &req.nonce, &mut data)
             .await;
 
-        let mbox_cmd_status = if ret.is_ok() {
-            MbxCmdStatus::Complete
-        } else {
-            MbxCmdStatus::Failure
+        let (mbox_cmd_status, data_len) = match ret {
+            Ok(len) => (MbxCmdStatus::Complete, len.min(MAX_RESP_DATA_SIZE)),
+            Err(_) => (MbxCmdStatus::Failure, 0),
         };
 
         let resp = if mbox_cmd_status == MbxCmdStatus::Complete {
-            let data_len = csr_data.len.min(MAX_RESP_DATA_SIZE);
-            let mut data = [0u8; MAX_RESP_DATA_SIZE];
-            data[..data_len].copy_from_slice(&csr_data.data[..data_len]);
             ExportAttestedCsrResp {
                 hdr: MailboxRespHeaderVarSize {
                     data_len: data_len as u32,

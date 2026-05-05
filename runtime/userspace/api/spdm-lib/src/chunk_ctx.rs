@@ -2,9 +2,6 @@
 
 use crate::codec::{CodecResult, MessageBuf};
 use crate::commands::certificate_rsp::CertificateResponse;
-use crate::commands::measurements_rsp::MeasurementsResponse;
-use crate::commands::vendor_defined_rsp::VendorLargeResponse;
-use crate::protocol::MAX_MCTP_SPDM_MSG_SIZE;
 
 #[derive(Debug, PartialEq)]
 pub enum ChunkError {
@@ -18,6 +15,8 @@ pub enum ChunkError {
     InvalidChunkSeqNum,
     /// Invalid message offset provided
     InvalidMessageOffset,
+    /// Response data exceeds the shared buffer capacity
+    BufferCapacityExceeded,
 }
 
 /// Stores state and metadata for managing ongoing large message requests and responses.
@@ -51,23 +50,26 @@ impl ChunkState {
 pub type ChunkResult<T> = Result<T, ChunkError>;
 
 /// Manages the context for an incoming large SPDM request sent with CHUNK_SEND.
-pub(crate) struct LargeRequestCtx {
+pub(crate) struct LargeRequestCtx<'a> {
     chunk_state: ChunkState,
-    buffer: [u8; MAX_MCTP_SPDM_MSG_SIZE],
+    buffer: &'a mut [u8],
 }
 
-impl Default for LargeRequestCtx {
-    fn default() -> Self {
+impl<'a> LargeRequestCtx<'a> {
+    /// Create a new context with the given app-provided buffer.
+    pub fn new(buf: &'a mut [u8]) -> Self {
         Self {
             chunk_state: ChunkState::default(),
-            buffer: [0; MAX_MCTP_SPDM_MSG_SIZE],
+            buffer: buf,
         }
     }
-}
 
-impl LargeRequestCtx {
     pub fn reset(&mut self) {
         self.chunk_state.reset();
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.buffer.len()
     }
 
     pub fn in_progress(&self) -> bool {
@@ -151,42 +153,59 @@ impl LargeRequestCtx {
     }
 }
 
-/// Represents a large message response type that can be split into chunks
+/// Represents a large message response type that can be split into chunks.
+/// `Buffered` responses have their data pre-serialized in the shared buffer.
+/// `Certificate` responses stream from the certificate store.
 pub(crate) enum LargeResponse {
     Certificate(CertificateResponse),
-    Measurements(MeasurementsResponse),
-    Vdm(VendorLargeResponse),
+    /// Pre-serialized data lives in `LargeResponseCtx.buf[..data_len]`.
+    /// Shared by both measurements and VDM large responses.
+    Buffered,
 }
 
-/// Manages the context for ongoing large message responses
-pub(crate) struct LargeResponseCtx {
+/// Manages the context for ongoing large message responses.
+///
+/// Holds an app-provided shared buffer used by `Buffered` large responses.
+/// Only one large response is active at a time, so the buffer is shared
+/// between measurements and VDM responses.
+///
+/// TODO: Refactor `buf` to use `MessageBuf` instead of raw `&mut [u8]` to align
+/// with the process_message pattern (reserve/put_data/encode) and simplify
+/// header construction in vendor_defined_rsp.rs.
+pub(crate) struct LargeResponseCtx<'a> {
     chunk_state: ChunkState,
     response: Option<LargeResponse>,
     /// Global handle counter for large responses (incremented for each new response)
     global_handle: u8,
+    /// App-provided shared buffer for pre-serialized large response data
+    pub(crate) buf: &'a mut [u8],
+    /// Number of valid bytes in `buf`
+    pub(crate) data_len: usize,
 }
 
-impl Default for LargeResponseCtx {
-    fn default() -> Self {
+impl<'a> LargeResponseCtx<'a> {
+    /// Create a new context with the given app-provided shared buffer.
+    pub fn new(buf: &'a mut [u8]) -> Self {
         Self {
             chunk_state: ChunkState::default(),
             response: None,
             global_handle: 1,
+            buf,
+            data_len: 0,
         }
     }
-}
 
-impl LargeResponseCtx {
-    /// Reset the context to its initial state
-    /// This action increments the global handle for the next large response
+    /// Reset the context to its initial state.
+    /// This action increments the global handle for the next large response.
     pub(crate) fn reset(&mut self) {
         self.chunk_state.reset();
         self.response = None;
+        self.data_len = 0;
         // Increment global handle for next large response
         self.global_handle = self.global_handle.wrapping_add(1);
     }
 
-    /// Initialize the context for a large response
+    /// Initialize the context for a large response.
     ///
     /// # Arguments
     /// * `large_rsp` - The large message response to be sent
@@ -198,6 +217,30 @@ impl LargeResponseCtx {
         self.response = Some(large_rsp);
         self.chunk_state.init(large_rsp_size, self.global_handle);
         self.global_handle
+    }
+
+    /// Initialize a buffered large response.
+    /// The caller must have already written `data_len` bytes into `self.buf`.
+    ///
+    /// # Arguments
+    /// * `data_len` - Number of valid bytes written into the shared buffer
+    ///
+    /// # Returns
+    /// The handle for this large response, or error if data exceeds buffer capacity.
+    pub fn init_buffered(&mut self, data_len: usize) -> ChunkResult<u8> {
+        if data_len > self.buf.len() {
+            return Err(ChunkError::BufferCapacityExceeded);
+        }
+        self.data_len = data_len;
+        self.response = Some(LargeResponse::Buffered);
+        self.chunk_state.init(data_len, self.global_handle);
+        Ok(self.global_handle)
+    }
+
+    /// Returns a reference to the valid buffered data.
+    #[allow(dead_code)]
+    pub fn buffered_data(&self) -> &[u8] {
+        &self.buf[..self.data_len]
     }
 
     /// Is large message response in progress
@@ -245,6 +288,7 @@ impl LargeResponseCtx {
             // Transfer complete - reset chunk state but keep global handle for next response
             self.chunk_state.reset();
             self.response = None;
+            self.data_len = 0;
         }
     }
 

@@ -9,7 +9,7 @@ authors.workspace = true
 [dependencies]
 embassy-executor.workspace = true
 embassy-sync.workspace = true
-caliptra-mcu-external-cmds-common.workspace = true
+caliptra-mcu-common-commands.workspace = true
 caliptra-api.workspace = true
 caliptra-mcu-libapi-caliptra.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true

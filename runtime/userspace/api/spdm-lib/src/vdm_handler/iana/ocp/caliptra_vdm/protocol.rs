@@ -2,10 +2,11 @@
 
 use crate::codec::{CommonCodec, DataKind};
 use crate::vdm_handler::VdmError;
+pub use caliptra_mcu_common_commands::CaliptraCompletionCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 /// OCP Vendor ID for Caliptra Working Group (IANA assigned).
-pub const OCP_VENDOR_ID: u16 = 42623; // 0xA67F
+pub const OCP_VENDOR_ID: u32 = 42623; // 0xA67F
 
 /// Caliptra VDM command version (first byte of every VDM payload).
 pub const CALIPTRA_VDM_COMMAND_VERSION: u8 = 0x01;
@@ -66,19 +67,6 @@ impl CaliptraVdmCommand {
     }
 }
 
-/// Caliptra VDM error codes (completion codes in response payload).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-#[allow(dead_code)]
-pub enum CaliptraVdmError {
-    Success = 0x00,
-    InvalidCommand = 0x01,
-    InvalidLength = 0x02,
-    NotReady = 0x03,
-    InvalidData = 0x04,
-    GeneralError = 0x05,
-}
-
 /// Caliptra VDM message header: [command_version, command_code].
 #[derive(FromBytes, IntoBytes, Immutable, Debug)]
 #[repr(C)]
@@ -110,9 +98,10 @@ impl CaliptraVdmMsgHeader {
 }
 
 /// Result type for individual command handlers.
+#[derive(Debug)]
 pub enum CaliptraVdmCmdResult {
     Response(usize),
-    ErrorResponse(CaliptraVdmError),
+    ErrorResponse(CaliptraCompletionCode),
 }
 
 #[cfg(test)]

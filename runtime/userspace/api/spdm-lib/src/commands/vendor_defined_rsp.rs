@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-use crate::chunk_ctx::LargeResponse;
 use crate::codec::*;
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
@@ -8,7 +7,7 @@ use crate::error::{CommandError, CommandResult};
 use crate::protocol::*;
 use crate::session::SessionState;
 use crate::state::ConnectionState;
-use crate::vdm_handler::{VdmError, VdmLargeRespCtx};
+use crate::vdm_handler::VdmError;
 use core::mem::size_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -151,31 +150,9 @@ impl Codec for VendorDefRespHdr {
 }
 
 #[allow(dead_code)]
-pub(crate) struct VendorLargeResponse {
-    spdm_version: SpdmVersion,
-    standard_id: StandardsBodyId,
-    vendor_id_len: u8,
-    vendor_id: [u8; MAX_SPDM_VENDOR_ID_LEN as usize],
-    request_ctx: VdmLargeRespCtx,
-}
-
-impl VendorLargeResponse {
-    fn new(
-        spdm_version: SpdmVersion,
-        standard_id: StandardsBodyId,
-        vendor_id: &[u8],
-        request_ctx: VdmLargeRespCtx,
-    ) -> Self {
-        let mut vendor_id_data = [0u8; MAX_SPDM_VENDOR_ID_LEN as usize];
-        vendor_id_data[..vendor_id.len()].copy_from_slice(vendor_id);
-        Self {
-            spdm_version,
-            standard_id,
-            vendor_id_len: vendor_id.len() as u8,
-            vendor_id: vendor_id_data,
-            request_ctx,
-        }
-    }
+/// Compute the VendorDefRespHdr wire length for a given vendor_id_len.
+fn vendor_def_resp_hdr_len(vendor_id_len: u8) -> usize {
+    size_of::<VendorDefRespHdr>() - MAX_SPDM_VENDOR_ID_LEN as usize + vendor_id_len as usize
 }
 
 async fn process_vendor_defined_request<'a>(
@@ -287,7 +264,16 @@ async fn generate_vendor_defined_response<'a>(
             return Err((false, CommandError::MissingVdmHandler));
         }
     };
-    match vdm_handler.handle_request(vdm_req_buf, rsp).await {
+    // Pass shared buffer sub-slice starting after the VendorDefRspHdr reservation.
+    // The temporary borrow ends after the await, so we can re-borrow in the match arms.
+    match vdm_handler
+        .handle_request(
+            vdm_req_buf,
+            rsp,
+            &mut ctx.large_resp_context.buf[resp_hdr_len..],
+        )
+        .await
+    {
         Ok(len) => {
             resp_hdr.set_resp_len(len as u16);
             resp_hdr
@@ -295,26 +281,25 @@ async fn generate_vendor_defined_response<'a>(
                 .map_err(|e| (false, CommandError::Codec(e)))?;
             Ok(())
         }
-        Err(VdmError::LargeResp(large_rsp_len, resp_ctx)) => {
-            // Only allow supported large response types
-            match &resp_ctx {
-                VdmLargeRespCtx::EnvelopeSignedCsr(_) | VdmLargeRespCtx::Evidence(_) => {
-                    // Supported large response types, return context for chunking
-                    let large_rsp_ctx = VendorLargeResponse::new(
-                        connection_version,
-                        standard_id,
-                        &vendor_id[..vendor_id_len as usize],
-                        resp_ctx,
-                    );
-                    let large_rsp = LargeResponse::Vdm(large_rsp_ctx);
-                    let handle = ctx.large_resp_context.init(large_rsp, large_rsp_len);
-                    Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, handle, None))
-                }
-                _ => {
-                    // Unsupported large response type
-                    Err((false, CommandError::UnsupportedLargeResponse))
-                }
-            }
+        Err(VdmError::LargeResp(payload_len)) => {
+            // Handler has written payload_len bytes into large_rsp_buf (which starts at buf[hdr_len..]).
+            // Now encode VendorDefRspHdr at the start of the shared buffer.
+            let total_len = resp_hdr_len + payload_len;
+            resp_hdr.set_resp_len(payload_len as u16);
+            // TODO: Refactor large_resp_context.buf to use MessageBuf directly,
+            // eliminating this temporary MessageBuf + reserve dance.
+            let mut hdr_buf = MessageBuf::new(&mut ctx.large_resp_context.buf[..resp_hdr_len]);
+            hdr_buf
+                .reserve(resp_hdr_len)
+                .map_err(|e| (false, CommandError::Codec(e)))?;
+            resp_hdr
+                .encode(&mut hdr_buf)
+                .map_err(|e| (false, CommandError::Codec(e)))?;
+            let handle = ctx
+                .large_resp_context
+                .init_buffered(total_len)
+                .map_err(|e| (false, CommandError::Chunk(e)))?;
+            Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, 0, Some(&[handle])))
         }
         Err(e) => {
             // Handle all other errors
