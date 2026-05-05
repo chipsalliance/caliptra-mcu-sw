@@ -148,6 +148,11 @@ pub struct BufferedStream {
 
 impl BufferedStream {
     pub fn new(stream: TcpStream) -> Self {
+        // Pin the socket to nonblocking mode for its lifetime. set_nonblocking()
+        // modifies the open file description, which is shared across every dup'd FD —
+        // toggling it from one clone parks any concurrent read on a sibling clone in the
+        // kernel until both the flag is restored AND data arrives. Keep the flag stable.
+        stream.set_nonblocking(true).unwrap();
         Self {
             stream,
             read_buffer: VecDeque::new(),
@@ -161,20 +166,52 @@ impl BufferedStream {
         })
     }
 
+    fn read_all(stream: &mut TcpStream, buf: &mut [u8]) -> std::io::Result<()> {
+        let mut off = 0;
+        while off < buf.len() {
+            match stream.read(&mut buf[off..]) {
+                Ok(0) => return Err(std::io::Error::new(ErrorKind::UnexpectedEof, "peer closed")),
+                Ok(n) => off += n,
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
+    fn write_all_nb(stream: &mut TcpStream, buf: &[u8]) -> std::io::Result<()> {
+        let mut off = 0;
+        while off < buf.len() {
+            match stream.write(&buf[off..]) {
+                Ok(0) => return Err(std::io::Error::new(ErrorKind::WriteZero, "no progress")),
+                Ok(n) => off += n,
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
     fn read_packet(&mut self) -> Option<Packet> {
         let mut out_header_bytes: [u8; 6] = [0u8; 6];
-        match self.stream.read_exact(&mut out_header_bytes) {
-            Ok(()) => {
+        match self.stream.read(&mut out_header_bytes[..1]) {
+            Ok(0) => panic!("peer closed mid-header"),
+            Ok(n) => {
+                if n < out_header_bytes.len() {
+                    Self::read_all(&mut self.stream, &mut out_header_bytes[n..])
+                        .expect("Failed to read header from socket");
+                }
                 let header: OutgoingHeader = transmute!(out_header_bytes);
                 let desc = header.response_descriptor;
                 let data_len = desc.data_length() as usize;
                 let mut data = vec![0u8; data_len];
                 if data_len > 0 {
-                    self.stream.set_nonblocking(false).unwrap();
-                    self.stream
-                        .read_exact(&mut data)
+                    Self::read_all(&mut self.stream, &mut data)
                         .expect("Failed to read message from socket");
-                    self.stream.set_nonblocking(true).unwrap();
                 }
                 Some(Packet { header, data })
             }
@@ -199,10 +236,8 @@ impl BufferedStream {
         pkt.push(pec);
 
         let pvt_write_cmd = prepare_private_write_cmd(addr, pkt.len() as u16);
-        self.stream.set_nonblocking(false).unwrap();
-        self.stream.write_all(&pvt_write_cmd).unwrap();
-        self.stream.set_nonblocking(true).unwrap();
-        self.stream.write_all(&pkt).unwrap();
+        Self::write_all_nb(&mut self.stream, &pvt_write_cmd).unwrap();
+        Self::write_all_nb(&mut self.stream, &pkt).unwrap();
         true
     }
 
@@ -215,9 +250,7 @@ impl BufferedStream {
             {
                 self.read_buffer.remove(i);
                 let pvt_read_cmd = prepare_private_read_cmd(target_addr);
-                self.stream.set_nonblocking(false).unwrap();
-                self.stream.write_all(&pvt_read_cmd).unwrap();
-                self.stream.set_nonblocking(true).unwrap();
+                Self::write_all_nb(&mut self.stream, &pvt_read_cmd).unwrap();
                 return true;
             }
             i += 1;
