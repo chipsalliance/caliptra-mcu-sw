@@ -57,6 +57,9 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     lc_offset: 0x7000_0400,
     lc_size: 0x8c,
     lc_properties: MemoryRegionType::MMIO,
+
+    handoff_offset: 0x5000_3C00,
+    handoff_size: 1024,
 };
 
 const ACTIVE_I3C: u8 = if cfg!(feature = "active-i3c1") { 1 } else { 0 };
