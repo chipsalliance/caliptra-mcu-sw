@@ -5,7 +5,7 @@
 use crate::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
 use caliptra_mcu_mbox_common::messages::RevokeVendorPubKeyType;
-use core::marker::PhantomData;
+use core::{iter::repeat, marker::PhantomData};
 
 pub const VENDOR_PK_HASH_SIZE: usize =
     caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size;
@@ -48,6 +48,10 @@ impl<S: Syscalls> Otp<S> {
     }
 
     /// Check whether a given slot has a valid PK hash
+    ///
+    /// # Returns
+    /// - `true` if the slot is valid
+    /// - `false` if the slot has been marked as revoked
     pub fn valid_vendor_pk_hash_slot(&self, slot: u32) -> bool {
         if slot as usize >= MAX_NUM_VENDOR_PK_HASH {
             return false;
@@ -130,16 +134,19 @@ impl<S: Syscalls> Otp<S> {
 
         let reg = reg::vendor_pk_hash_reg_by_slot(slot).ok_or(ErrorCode::Invalid)?;
 
-        let valid_mask = self.read(reg::VENDOR_PK_HASH_VALID, 0)?;
-        let slot_used = (valid_mask & (1 << slot)) != 0;
-        if slot_used {
-            let fuse_value = self.read_vendor_pk_hash(slot)?;
-            if new_hash == &fuse_value {
-                // Return early when the fuse already contains the hash
-                return Ok(());
-            } else {
-                return Err(ErrorCode::Invalid);
-            }
+        if !self.valid_vendor_pk_hash_slot(slot) {
+            // Error when the slot was already marked as invalid
+            return Err(ErrorCode::Invalid);
+        }
+
+        let fuse_value = self.read_vendor_pk_hash(slot)?;
+        if new_hash == &fuse_value {
+            // Return early when the fuse already contains the hash
+            return Ok(());
+        }
+        if fuse_value.iter().ne(repeat(&0)) {
+            // Error if the fuse is already containing something
+            return Err(ErrorCode::Invalid);
         }
 
         // Write fuse
@@ -153,9 +160,6 @@ impl<S: Syscalls> Otp<S> {
         if new_hash != &fuse_value {
             return Err(ErrorCode::Fail);
         }
-
-        // Set valid bit
-        self.write(reg::VENDOR_PK_HASH_VALID, 0, valid_mask | (1 << slot))?;
 
         Ok(())
     }
