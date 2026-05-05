@@ -219,6 +219,7 @@ impl<'a> LdGeneration<'a> {
                 dtcm.clone(),
                 itcm.clone(),
                 dtcm.clone(),
+                self.manifest.platform.handoff(),
             )
         }
         .with_context(|| binary_context(&runtime_binary.name, "context generation"))?;
@@ -367,6 +368,7 @@ impl<'a> LdGeneration<'a> {
                 data,
                 initial_itcm,
                 initial_dtcm,
+                self.manifest.platform.handoff(),
             )
         }
         .with_context(|| binary_context(&runtime_binary.name, "context generation"))?;
@@ -429,6 +431,8 @@ ROM_START = $ROM_START;
 ROM_LENGTH = $ROM_LENGTH;
 RAM_START = $RAM_START;
 RAM_LENGTH = $RAM_LENGTH;
+HANDOFF_ADDR = $HANDOFF_ADDR;
+HANDOFF_SIZE = $HANDOFF_SIZE;
 STACK_SIZE = $STACK_SIZE;
 ESTACK_SIZE = $ESTACK_SIZE;
 INCLUDE $BASE_LD_CONTENTS
@@ -441,6 +445,9 @@ INCLUDE $BASE_LD_CONTENTS
         sub_map.insert("ROM_LENGTH", format!("{:#x}", instructions.size));
         sub_map.insert("RAM_START", format!("{:#x}", data.offset));
         sub_map.insert("RAM_LENGTH", format!("{:#x}", data.size));
+        let handoff = self.manifest.platform.handoff();
+        sub_map.insert("HANDOFF_ADDR", format!("{:#x}", handoff.offset));
+        sub_map.insert("HANDOFF_SIZE", format!("{:#x}", handoff.size));
         // If the stack isn't specified we are in a sizing build, and it doesnt matter.  Therefore
         // default to 0.
         sub_map.insert(
@@ -501,6 +508,7 @@ INCLUDE $BASE_LD_CONTENTS
         kernel_data: Memory,
         itcm: Memory,
         dtcm: Memory,
+        handoff: Memory,
     ) -> Result<String> {
         const KERNEL_LD_TEMPLATE: &str = r#"
 /* Licensed under the Apache-2.0 license. */
@@ -518,11 +526,20 @@ MEMORY
     app_ram(rwx) : ORIGIN = $APP_RAM_START, LENGTH = $APP_RAM_LENGTH
     storage (rw) : ORIGIN = $STORAGE_START, LENGTH = $STORAGE_LENGTH
     dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_LENGTH
+    HANDOFF (rw) : ORIGIN = $HANDOFF_ADDR, LENGTH = $HANDOFF_SIZE
 }
 
 $PAGE_SIZE
 
 INCLUDE $BASE_LD_CONTENTS
+
+SECTIONS
+{
+    .handoff (NOLOAD) :
+    {
+        KEEP(*(.handoff))
+    } > HANDOFF
+}
 "#;
         let base_ld_file = self.linker_dir.join(&self.base_kernel);
 
@@ -574,6 +591,8 @@ INCLUDE $BASE_LD_CONTENTS
         let dccm = self.manifest.platform.dccm();
         sub_map.insert("DCCM_OFFSET", format!("{:#x}", dccm.offset));
         sub_map.insert("DCCM_LENGTH", format!("{:#x}", dccm.size));
+        sub_map.insert("HANDOFF_ADDR", format!("{:#x}", handoff.offset));
+        sub_map.insert("HANDOFF_SIZE", format!("{:#x}", handoff.size));
 
         sub_map.insert(
             "BASE_LD_CONTENTS",
@@ -716,6 +735,7 @@ mod tests {
                 size: dccm_size,
             }),
             storage_size: None,
+            handoff: None,
         }
     }
 
