@@ -4,40 +4,40 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_mcu_external_cmds_common::{
-    AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
-    UnifiedCommandHandler, MAX_FW_VERSION_LEN, MAX_UID_LEN,
+use caliptra_mcu_common_commands::{
+    CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DeviceCapabilities, DeviceId,
+    DeviceInfo, FirmwareVersion, Uid, MAX_FW_VERSION_LEN, MAX_UID_LEN,
 };
 use caliptra_mcu_mbox_common::config;
 
-use crate::caliptra_cmd_handler::CaliptraCmdHandler;
+use crate::caliptra_cmd_handler::CaliptraCmdBackend;
 
-// TODO: Remove this mock and use CaliptraCmdHandler directly.
+// TODO: Remove this mock and use CaliptraCmdBackend directly.
 #[derive(Default)]
 pub struct NonCryptoCmdHandlerMock;
 
-/// Mock implementation of the `UnifiedCommandHandler` trait.
+/// Mock implementation of the `CaliptraCmdHandler` trait.
 ///
 /// This handler provides mock responses for firmware version queries,
 /// device ID, device information, and device capabilities. Intended to use for
 /// integration testing on the emulator platform.
 #[async_trait]
-impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
+impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
     async fn get_firmware_version(
         &self,
         index: u32,
         version: &mut FirmwareVersion,
-    ) -> Result<(), CommandError> {
+    ) -> CaliptraCmdResult<()> {
         let s = match index {
             0 => config::TEST_FIRMWARE_VERSIONS[0],
             1 => config::TEST_FIRMWARE_VERSIONS[1],
             2 => config::TEST_FIRMWARE_VERSIONS[2],
-            _ => return Err(CommandError::InvalidParams),
+            _ => return Err(CaliptraCompletionCode::InvalidParameter),
         };
 
         let bytes = s.as_bytes();
         if bytes.len() > MAX_FW_VERSION_LEN {
-            return Err(CommandError::RespLengthTooLarge);
+            return Err(CaliptraCompletionCode::InvalidPayloadSize);
         }
         let len = bytes.len().min(version.ver_str.len());
         version.ver_str[..len].copy_from_slice(&bytes[..len]);
@@ -45,7 +45,7 @@ impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
         Ok(())
     }
 
-    async fn get_device_id(&self, device_id: &mut DeviceId) -> Result<(), CommandError> {
+    async fn get_device_id(&self, device_id: &mut DeviceId) -> CaliptraCmdResult<()> {
         let test_device_id = &config::TEST_DEVICE_ID;
         device_id.vendor_id = test_device_id.vendor_id;
         device_id.device_id = test_device_id.device_id;
@@ -54,12 +54,12 @@ impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
         Ok(())
     }
 
-    async fn get_device_info(&self, index: u32, info: &mut DeviceInfo) -> Result<(), CommandError> {
+    async fn get_device_info(&self, index: u32, info: &mut DeviceInfo) -> CaliptraCmdResult<()> {
         match index {
             0 => {
                 let test_uid = &config::TEST_UID;
                 if test_uid.len() > MAX_UID_LEN {
-                    return Err(CommandError::RespLengthTooLarge);
+                    return Err(CaliptraCompletionCode::InvalidPayloadSize);
                 }
                 let mut unique_chip_id = [0u8; MAX_UID_LEN];
                 unique_chip_id[..test_uid.len()].copy_from_slice(&test_uid[..]);
@@ -70,14 +70,14 @@ impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
                 *info = DeviceInfo::Uid(uid);
                 Ok(())
             }
-            _ => Err(CommandError::InvalidParams),
+            _ => Err(CaliptraCompletionCode::InvalidParameter),
         }
     }
 
     async fn get_device_capabilities(
         &self,
         capabilities: &mut DeviceCapabilities,
-    ) -> Result<(), CommandError> {
+    ) -> CaliptraCmdResult<()> {
         let test_capabilities = &config::TEST_DEVICE_CAPABILITIES;
         capabilities.caliptra_rt = test_capabilities.caliptra_rt;
         capabilities.caliptra_fmc = test_capabilities.caliptra_fmc;
@@ -93,12 +93,12 @@ impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
         device_key_id: u32,
         algorithm: u32,
         nonce: &[u8; 32],
-        csr_data: &mut AttestedCsrData,
-    ) -> Result<(), CommandError> {
-        // Delegate to real CaliptraCmdHandler for actual Caliptra mailbox interaction
-        let handler = CaliptraCmdHandler;
+        csr_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        // Delegate to real CaliptraCmdBackend for actual Caliptra mailbox interaction
+        let handler = CaliptraCmdBackend;
         handler
-            .export_attested_csr(device_key_id, algorithm, nonce, csr_data)
+            .export_attested_csr(device_key_id, algorithm, nonce, csr_buf)
             .await
     }
 }

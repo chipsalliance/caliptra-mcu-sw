@@ -39,6 +39,7 @@ impl VdmResponder for IdeKmResponder<'_> {
         &mut self,
         req_buf: &mut MessageBuf<'_>,
         rsp_buf: &mut MessageBuf<'_>,
+        _large_rsp_buf: &mut [u8],
     ) -> VdmResult<usize> {
         let hdr = IdeKmHdr::decode(req_buf).map_err(VdmError::Codec)?;
 

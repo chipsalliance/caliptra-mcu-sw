@@ -916,6 +916,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-common-commands"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-mbox-common",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-compliance-test"
 version = "0.1.0"
 dependencies = [
@@ -1266,15 +1275,6 @@ dependencies = [
  "embedded-alloc",
  "portable-atomic",
  "spki 0.7.3",
- "zerocopy",
-]
-
-[[package]]
-name = "caliptra-mcu-external-cmds-common"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "caliptra-mcu-mbox-common",
  "zerocopy",
 ]
 
@@ -1663,7 +1663,7 @@ name = "caliptra-mcu-mbox-lib"
 version = "0.1.0"
 dependencies = [
  "caliptra-api",
- "caliptra-mcu-external-cmds-common",
+ "caliptra-mcu-common-commands",
  "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_alarm",
@@ -1690,7 +1690,7 @@ name = "caliptra-mcu-mctp-vdm-lib"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "caliptra-mcu-external-cmds-common",
+ "caliptra-mcu-common-commands",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_alarm",
  "caliptra-mcu-libtock_console",
@@ -2030,7 +2030,7 @@ dependencies = [
  "async-trait",
  "bitfield",
  "caliptra-api",
- "caliptra-mcu-external-cmds-common",
+ "caliptra-mcu-common-commands",
  "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_console",
@@ -2308,10 +2308,10 @@ dependencies = [
  "arrayvec",
  "async-trait",
  "caliptra-api",
+ "caliptra-mcu-common-commands",
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
- "caliptra-mcu-external-cmds-common",
  "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libapi-emulated-caliptra",
  "caliptra-mcu-libsyscall-caliptra",

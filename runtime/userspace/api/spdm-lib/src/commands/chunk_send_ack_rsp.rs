@@ -190,7 +190,7 @@ fn process_chunk_send(
                 || chunk_size != available_chunk_len
                 || chunk_send_msg_len > ctx.local_capabilities.data_transfer_size as usize
                 || large_message_size > ctx.local_capabilities.max_spdm_msg_size as usize
-                || large_message_size > crate::protocol::MAX_MCTP_SPDM_MSG_SIZE
+                || large_message_size > ctx.large_req_context.capacity()
                 || large_message_size <= MIN_DATA_TRANSFER_SIZE_V12 as usize
                 || chunk_size > large_message_size;
 
@@ -364,6 +364,8 @@ mod tests {
     use caliptra_mcu_libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
     use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 
+    const TEST_MAX_SPDM_MSG_SIZE: usize = 2048;
+
     struct TestTransport;
 
     #[async_trait]
@@ -491,6 +493,8 @@ mod tests {
         transport: &'a mut TestTransport,
         cert_store: &'a TestCertStore,
         measurements: &'a mut TestMeasurements,
+        large_resp_buf: &'a mut [u8],
+        large_req_buf: &'a mut [u8],
     ) -> SpdmContext<'a> {
         let mut flags = CapabilityFlags::default();
         flags.set_chunk_cap(1);
@@ -498,7 +502,7 @@ mod tests {
             ct_exponent: 0,
             flags,
             data_transfer_size: 64,
-            max_spdm_msg_size: MAX_MCTP_SPDM_MSG_SIZE as u32,
+            max_spdm_msg_size: TEST_MAX_SPDM_MSG_SIZE as u32,
         };
 
         let mut ctx = SpdmContext::new(
@@ -510,6 +514,8 @@ mod tests {
             cert_store,
             crate::measurements::SpdmMeasurements::new(&[], measurements),
             None,
+            large_resp_buf,
+            large_req_buf,
         )
         .expect("test context should be valid");
         ctx.state
@@ -564,7 +570,15 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut ctx = test_context(&mut transport, &cert_store, &mut measurements);
+        let mut large_resp_buf = [0u8; 1024];
+        let mut large_req_buf = [0u8; 2048];
+        let mut ctx = test_context(
+            &mut transport,
+            &cert_store,
+            &mut measurements,
+            &mut large_resp_buf,
+            &mut large_req_buf,
+        );
 
         let first_chunk = [0xAA; 30];
         let mut first_storage = [0u8; 96];
@@ -608,7 +622,15 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut ctx = test_context(&mut transport, &cert_store, &mut measurements);
+        let mut large_resp_buf = [0u8; 1024];
+        let mut large_req_buf = [0u8; 2048];
+        let mut ctx = test_context(
+            &mut transport,
+            &cert_store,
+            &mut measurements,
+            &mut large_resp_buf,
+            &mut large_req_buf,
+        );
 
         let first_chunk = [0xAA; 30];
         let mut first_storage = [0u8; 96];
@@ -644,7 +666,15 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut ctx = test_context(&mut transport, &cert_store, &mut measurements);
+        let mut large_resp_buf = [0u8; 1024];
+        let mut large_req_buf = [0u8; 2048];
+        let mut ctx = test_context(
+            &mut transport,
+            &cert_store,
+            &mut measurements,
+            &mut large_resp_buf,
+            &mut large_req_buf,
+        );
 
         let first_chunk = [0xAA; 30];
         let mut storage = [0u8; 96];
@@ -671,7 +701,15 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut ctx = test_context(&mut transport, &cert_store, &mut measurements);
+        let mut large_resp_buf = [0u8; 1024];
+        let mut large_req_buf = [0u8; 2048];
+        let mut ctx = test_context(
+            &mut transport,
+            &cert_store,
+            &mut measurements,
+            &mut large_resp_buf,
+            &mut large_req_buf,
+        );
 
         let first_chunk = [0xAA; 30];
         let extra_payload = [0xCC; 1];
@@ -707,7 +745,15 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut ctx = test_context(&mut transport, &cert_store, &mut measurements);
+        let mut large_resp_buf = [0u8; 1024];
+        let mut large_req_buf = [0u8; 2048];
+        let mut ctx = test_context(
+            &mut transport,
+            &cert_store,
+            &mut measurements,
+            &mut large_resp_buf,
+            &mut large_req_buf,
+        );
         let mut storage = [0u8; 64];
         let mut msg = MessageBuf::new(&mut storage);
         ctx.prepare_response_buffer(&mut msg)

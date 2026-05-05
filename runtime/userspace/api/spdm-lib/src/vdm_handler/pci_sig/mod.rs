@@ -63,6 +63,7 @@ impl VdmResponder for PciSigCmdHandler<'_> {
         &mut self,
         req_buf: &mut MessageBuf<'_>,
         rsp_buf: &mut MessageBuf<'_>,
+        large_rsp_buf: &mut [u8],
     ) -> VdmResult<usize> {
         let pcisig_hdr = PciSigProtocolHdr::decode(req_buf).map_err(VdmError::Codec)?;
         let protocol_id = pcisig_hdr.protocol_id;
@@ -71,7 +72,9 @@ impl VdmResponder for PciSigCmdHandler<'_> {
         for handler in self.protocol_handlers.iter_mut().flatten() {
             if handler.match_protocol(protocol_id) {
                 rsp_buf.reserve(hdr_len).map_err(VdmError::Codec)?;
-                let mut len = handler.handle_request(req_buf, rsp_buf).await?;
+                let mut len = handler
+                    .handle_request(req_buf, rsp_buf, large_rsp_buf)
+                    .await?;
                 let hdr = PciSigProtocolHdr { protocol_id };
                 len += hdr.encode(rsp_buf).map_err(VdmError::Codec)?;
                 return Ok(len);

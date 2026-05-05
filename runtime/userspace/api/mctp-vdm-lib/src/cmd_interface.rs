@@ -2,9 +2,8 @@
 
 use crate::error::VdmLibError;
 use crate::transport::MctpVdmTransport;
-use caliptra_mcu_external_cmds_common::{
-    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid, UnifiedCommandHandler,
-    MAX_UID_LEN,
+use caliptra_mcu_common_commands::{
+    CaliptraCmdHandler, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid, MAX_UID_LEN,
 };
 use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 use caliptra_mcu_mctp_vdm_common::message::{
@@ -23,14 +22,14 @@ use zerocopy::IntoBytes;
 /// Command interface for handling VDM commands.
 pub struct CmdInterface<'a> {
     transport: &'a mut MctpVdmTransport,
-    unified_handler: &'a dyn UnifiedCommandHandler,
+    unified_handler: &'a dyn CaliptraCmdHandler,
 }
 
 impl<'a> CmdInterface<'a> {
     /// Create a new command interface.
     pub fn new(
         transport: &'a mut MctpVdmTransport,
-        unified_handler: &'a dyn UnifiedCommandHandler,
+        unified_handler: &'a dyn CaliptraCmdHandler,
     ) -> Self {
         Self {
             transport,
