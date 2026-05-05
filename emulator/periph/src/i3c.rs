@@ -23,6 +23,7 @@ use registers_generated::i3c::bits::{
 };
 use semver::Version;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -31,13 +32,12 @@ use zerocopy::FromBytes;
 const I3C_REC_INT_BYPASS_I3C_CORE: u32 = 0x0;
 const I3C_REC_INT_BYPASS_AXI_DIRECT: u32 = 0x1;
 struct PollScheduler {
-    timer: Timer,
+    pending: Arc<AtomicBool>,
 }
 
 impl I3cIncomingCommandClient for PollScheduler {
     fn incoming(&self) {
-        // trigger interrupt check next tick
-        self.timer.schedule_poll_in(1);
+        self.pending.store(true, Ordering::Relaxed);
     }
 }
 
@@ -90,6 +90,8 @@ pub struct I3c {
     events_from_caliptra: Option<mpsc::Receiver<Event>>,
     events_to_mcu: Option<mpsc::Sender<Event>>,
     events_from_mcu: Option<mpsc::Receiver<Event>>,
+
+    incoming_poll_pending: Arc<AtomicBool>,
 }
 
 impl I3c {
@@ -107,8 +109,9 @@ impl I3c {
         controller.attach_target(i3c_target.clone()).unwrap();
         let timer = Timer::new(clock);
         timer.schedule_poll_in(Self::HCI_TICKS);
+        let incoming_poll_pending = Arc::new(AtomicBool::new(false));
         let poll_scheduler = PollScheduler {
-            timer: timer.clone(),
+            pending: incoming_poll_pending.clone(),
         };
         i3c_target.set_incoming_command_client(Arc::new(poll_scheduler));
 
@@ -146,6 +149,7 @@ impl I3c {
             events_from_caliptra: None,
             events_to_mcu: None,
             events_from_mcu: None,
+            incoming_poll_pending,
         }
     }
 
@@ -996,7 +1000,12 @@ impl I3cPeripheral for I3c {
         self.check_interrupts();
         self.read_rx_data_into_buffer();
         self.write_tx_data_into_target();
-        self.timer.schedule_poll_in(Self::HCI_TICKS);
+        let next_poll = if self.incoming_poll_pending.swap(false, Ordering::Relaxed) {
+            1
+        } else {
+            Self::HCI_TICKS
+        };
+        self.timer.schedule_poll_in(next_poll);
 
         if let Some(events_from_caliptra) = &self.events_from_caliptra {
             // Collect all events first to avoid borrowing issues
