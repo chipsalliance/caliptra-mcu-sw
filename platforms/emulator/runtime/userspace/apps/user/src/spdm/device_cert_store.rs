@@ -86,6 +86,7 @@ pub async fn initialize_cert_store() -> CertStoreResult<()> {
     // Store everything in DeviceCertStore
     let mut cert_store = DeviceCertStore::new();
     cert_store.set_cert_chain(0, slot0_cert_chain)?;
+    cert_store.load_cert_chains_from_flash().await?;
 
     initialize_shared_cert_store(cert_store).await?;
     Ok(())
@@ -212,14 +213,16 @@ impl SpdmCertStore for SharedCertStore {
     ) -> CertStoreResult<()> {
         let mut cert_store = SHARED_CERT_STORE.lock().await;
         if let Some(cert_store) = cert_store.as_mut() {
-            cert_store.write_cert_chain(
-                asym_algo,
-                slot_id,
-                key_pair_id,
-                cert_model,
-                root_cert_hash,
-                cert_chain,
-            )
+            cert_store
+                .write_cert_chain(
+                    asym_algo,
+                    slot_id,
+                    key_pair_id,
+                    cert_model,
+                    root_cert_hash,
+                    cert_chain,
+                )
+                .await
         } else {
             Err(CertStoreError::NotInitialized)
         }
@@ -228,7 +231,7 @@ impl SpdmCertStore for SharedCertStore {
     async fn erase_cert_chain(&self, asym_algo: AsymAlgo, slot_id: u8) -> CertStoreResult<()> {
         let mut cert_store = SHARED_CERT_STORE.lock().await;
         if let Some(cert_store) = cert_store.as_mut() {
-            cert_store.erase_cert_chain(asym_algo, slot_id)
+            cert_store.erase_cert_chain(asym_algo, slot_id).await
         } else {
             Err(CertStoreError::NotInitialized)
         }

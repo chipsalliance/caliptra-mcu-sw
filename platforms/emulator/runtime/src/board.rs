@@ -15,7 +15,7 @@ use caliptra_mcu_components::{
     mcu_mbox_component_static,
 };
 use caliptra_mcu_config_emulator::flash::{
-    IMAGE_A_PARTITION, IMAGE_B_PARTITION, PARTITION_TABLE, STAGING_PARTITION,
+    CERT_STORE_PARTITION, IMAGE_A_PARTITION, IMAGE_B_PARTITION, PARTITION_TABLE, STAGING_PARTITION,
 };
 use caliptra_mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;

@@ -5,11 +5,11 @@ use caliptra_mcu_config::flash::FlashPartition;
 use core::mem::offset_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-pub const FLASH_PARTITIONS_COUNT: usize = 4; // Number of flash partitions
+pub const FLASH_PARTITIONS_COUNT: usize = 5; // Number of flash partitions
 
 // Allocate driver numbers for flash partitions
 pub const DRIVER_NUM_START: usize = 0x7000_0006; // Base driver number for flash partitions
-pub const DRIVER_NUM_END: usize = 0x7000_0009; // End driver number for flash partitions
+pub const DRIVER_NUM_END: usize = 0x7000_000A; // End driver number for flash partitions
 
 pub const BLOCK_SIZE: usize = 64 * 1024; // Block size for flash partitions
 
@@ -41,6 +41,13 @@ pub const STAGING_PARTITION: FlashPartition = FlashPartition {
     driver_num: 0x7000_0009,
 };
 
+pub const CERT_STORE_PARTITION: FlashPartition = FlashPartition {
+    name: "cert_store",
+    offset: STAGING_PARTITION.offset + STAGING_PARTITION.size,
+    size: (BLOCK_SIZE * 0x8),
+    driver_num: 0x7000_000A,
+};
+
 #[macro_export]
 macro_rules! flash_partition_list_primary {
     ($macro:ident) => {{
@@ -54,6 +61,7 @@ macro_rules! flash_partition_list_secondary {
     ($macro:ident) => {{
         $macro!(2, image_b, IMAGE_B_PARTITION);
         $macro!(3, staging, STAGING_PARTITION);
+        $macro!(4, cert_store, CERT_STORE_PARTITION);
     }};
 }
 
