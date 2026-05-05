@@ -78,7 +78,7 @@ Caveats:
 
 Provision a new vendor PK hash.
 
-Command Code: `0x4D56_504B` ("PVPK")
+Command Code: `0x5056_504b` ("PVPK")
 
 *Table: `MC_PROVISION_VENDOR_PK_HASH` input arguments*
 | **Name**   | **Type**       | **Description**                |
