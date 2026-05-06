@@ -110,6 +110,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x154|       cptra_ss_raw_unlock_token_hash[2]      |  — |
 | 0x158|       cptra_ss_raw_unlock_token_hash[3]      |  — |
 | 0x15C|             spare_i3c_control_sts            |  — |
+| 0x1F0|              ss_strap_generic[0]             |  — |
+| 0x1F4|              ss_strap_generic[1]             |  — |
+| 0x1F8|              ss_strap_generic[2]             |  — |
+| 0x1FC|              ss_strap_generic[3]             |  — |
 | 0x200|          ocp_lock_key_release_reg[0]         |  — |
 | 0x204|          ocp_lock_key_release_reg[1]         |  — |
 | 0x208|          ocp_lock_key_release_reg[2]         |  — |
@@ -1317,6 +1321,58 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 #### recovery_image_activated_o field
 
 <p>RSVD in core</p>
+
+### ss_strap_generic register
+
+- Absolute Address: 0xA40101F0
+- Base Offset: 0x1F0
+- Size: 0x4
+- Array Dimensions: [4]
+- Array Stride: 0x4
+- Total Size: 0x10
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   value  |  rw  | 0x0 |  — |
+
+### ss_strap_generic register
+
+- Absolute Address: 0xA40101F4
+- Base Offset: 0x1F0
+- Size: 0x4
+- Array Dimensions: [4]
+- Array Stride: 0x4
+- Total Size: 0x10
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   value  |  rw  | 0x0 |  — |
+
+### ss_strap_generic register
+
+- Absolute Address: 0xA40101F8
+- Base Offset: 0x1F0
+- Size: 0x4
+- Array Dimensions: [4]
+- Array Stride: 0x4
+- Total Size: 0x10
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   value  |  rw  | 0x0 |  — |
+
+### ss_strap_generic register
+
+- Absolute Address: 0xA40101FC
+- Base Offset: 0x1F0
+- Size: 0x4
+- Array Dimensions: [4]
+- Array Stride: 0x4
+- Total Size: 0x10
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   value  |  rw  | 0x0 |  — |
 
 ### ocp_lock_key_release_reg register
 

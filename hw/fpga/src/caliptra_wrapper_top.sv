@@ -2285,10 +2285,10 @@ caliptra_ss_top #(
     .cptra_ss_strap_prod_debug_unlock_auth_pk_hash_reg_bank_offset_i(hwif_out.interface_regs.prod_debug_unlock_auth_pk_hash_reg_bank_offset.prod_debug_unlock_auth_pk_hash_reg_bank_offset.value),
     .cptra_ss_strap_num_of_prod_debug_unlock_auth_pk_hashes_i(hwif_out.interface_regs.num_of_prod_debug_unlock_auth_pk_hashes.num_of_prod_debug_unlock_auth_pk_hashes.value),
     .cptra_ss_strap_caliptra_dma_axi_user_i(hwif_out.interface_regs.dma_axi_user.dma_axi_user.value),
-    .cptra_ss_strap_generic_0_i(32'h0),
-    .cptra_ss_strap_generic_1_i(32'h0),
-    .cptra_ss_strap_generic_2_i(32'h0),
-    .cptra_ss_strap_generic_3_i(32'h0),
+    .cptra_ss_strap_generic_0_i(hwif_out.interface_regs.ss_strap_generic[0].value.value),
+    .cptra_ss_strap_generic_1_i(hwif_out.interface_regs.ss_strap_generic[1].value.value),
+    .cptra_ss_strap_generic_2_i(hwif_out.interface_regs.ss_strap_generic[2].value.value),
+    .cptra_ss_strap_generic_3_i(hwif_out.interface_regs.ss_strap_generic[3].value.value),
     .cptra_ss_debug_intent_i(hwif_out.interface_regs.control.ss_debug_intent.value),            // Debug intent signal
 
     // TODO: Connect
