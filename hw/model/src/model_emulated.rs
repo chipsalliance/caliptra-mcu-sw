@@ -658,6 +658,12 @@ impl ModelEmulated {
     fn caliptra_axi_bus(&mut self) -> EmulatedAxiBus<'_> {
         EmulatedAxiBus { model: self }
     }
+
+    /// Snapshot of the Caliptra Key Vault (keys, PCRs, control registers).
+    /// Forwarded to consumers of the WASM demo UI.
+    pub fn key_vault_snapshot(&self) -> caliptra_emu_periph::KeyVaultSnapshot {
+        self.caliptra_cpu.bus.key_vault.snapshot()
+    }
 }
 
 pub struct EmulatedAxiBus<'a> {
