@@ -64,7 +64,6 @@ SECTIONS
     /* We reserve 1 KB at the end of DCCM for the handoff table.
        This must be 1KB aligned because the runtime requires DCCM regions
        to be 1KB aligned for MEIVT (Machine External Interrupt Vector Table). */
-    . = HANDOFF_ADDR;
     .handoff (NOLOAD) :
     {
         KEEP(*(.handoff))
