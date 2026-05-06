@@ -5532,6 +5532,7 @@ dependencies = [
  "caliptra-mcu-romtime",
  "caliptra-mcu-spdm-lib",
  "caliptra-ocp-eat",
+ "constant_time_eq 0.4.2",
  "critical-section",
  "embassy-executor",
  "embassy-sync",

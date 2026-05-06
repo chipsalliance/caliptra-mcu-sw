@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::runtime::execute_authorized_req;
 use crate::test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams};
 use anyhow::Result;
 use caliptra_api::{calc_checksum, error::CaliptraError, mailbox::FwInfoResp, SocManager};
@@ -65,7 +66,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 0,
         ..Default::default()
     };
-    let result = hw.mailbox_execute_req(cmd);
+    let result = execute_authorized_req(&mut hw, cmd);
     assert!(result.is_err());
 
     // Check requesting to increase SVN past what is currently running returns an error.
@@ -74,7 +75,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 8,
         ..Default::default()
     };
-    let result = hw.mailbox_execute_req(cmd);
+    let result = execute_authorized_req(&mut hw, cmd);
     assert!(result.is_err());
 
     // Check trying to burn a value greater than 128 returns an error.
@@ -82,7 +83,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 129,
         ..Default::default()
     };
-    let result = hw.mailbox_execute_req(cmd);
+    let result = execute_authorized_req(&mut hw, cmd);
     assert!(result.is_err());
 
     // Send a command to increase the Caliptra minimum SVN fuses to 7.
@@ -90,14 +91,14 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 7,
         ..Default::default()
     };
-    let _resp = hw.mailbox_execute_req(cmd)?;
+    let _resp = execute_authorized_req(&mut hw, cmd)?;
 
     // Check requesting twice to burn the SVN of the value currently in fuses passes.
     let cmd = FuseIncreaseCaliptraMinSvnReq {
         svn: 7,
         ..Default::default()
     };
-    let _resp = hw.mailbox_execute_req(cmd)?;
+    let _resp = execute_authorized_req(&mut hw, cmd)?;
 
     // Read OTP memory so we can use the same config in later boots.
     let otp = hw.read_otp_memory();
@@ -139,7 +140,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 6,
         ..Default::default()
     };
-    let resp = hw.mailbox_execute_req(cmd);
+    let resp = execute_authorized_req(&mut hw, cmd);
     assert!(resp.is_err());
 
     // Step 3: Negative test. Build firmware with SVN = 0 (less than fuse value 7)
@@ -227,7 +228,7 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
         svn: 128,
         ..Default::default()
     };
-    let _resp = hw.mailbox_execute_req(cmd)?;
+    let _resp = execute_authorized_req(&mut hw, cmd)?;
 
     // Read OTP memory immediately after the command to verify fuses were burned.
     let otp = hw.read_otp_memory();
