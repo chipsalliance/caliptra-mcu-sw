@@ -5,6 +5,8 @@
 /// Offsets for peripherals mounted to the root bus.
 #[derive(Clone, Debug)]
 pub struct AutoRootBusOffsets {
+    pub usbdev_offset: u32,
+    pub usbdev_size: u32,
     pub i3c_offset: u32,
     pub i3c_size: u32,
     pub primary_flash_offset: u32,
@@ -33,6 +35,8 @@ pub struct AutoRootBusOffsets {
 impl Default for AutoRootBusOffsets {
     fn default() -> Self {
         Self {
+            usbdev_offset: 0x900_0000,
+            usbdev_size: 0x1000,
             i3c_offset: 0x2000_4000,
             i3c_size: 0x1000,
             primary_flash_offset: 0x2000_8000,
@@ -63,6 +67,7 @@ impl Default for AutoRootBusOffsets {
 pub struct AutoRootBus {
     delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
     offsets: AutoRootBusOffsets,
+    pub usbdev_periph: Option<crate::usbdev::UsbdevBus>,
     pub i3c_periph: Option<crate::i3c::I3cBus>,
     pub primary_flash_periph: Option<crate::primary_flash::PrimaryFlashBus>,
     pub secondary_flash_periph: Option<crate::secondary_flash::SecondaryFlashBus>,
@@ -81,6 +86,7 @@ impl AutoRootBus {
     pub fn new(
         delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
         offsets: Option<AutoRootBusOffsets>,
+        usbdev_periph: Option<Box<dyn crate::usbdev::UsbdevPeripheral>>,
         i3c_periph: Option<Box<dyn crate::i3c::I3cPeripheral>>,
         primary_flash_periph: Option<Box<dyn crate::primary_flash::PrimaryFlashPeripheral>>,
         secondary_flash_periph: Option<Box<dyn crate::secondary_flash::SecondaryFlashPeripheral>>,
@@ -97,6 +103,7 @@ impl AutoRootBus {
         Self {
             delegates,
             offsets: offsets.unwrap_or_default(),
+            usbdev_periph: usbdev_periph.map(|p| crate::usbdev::UsbdevBus { periph: p }),
             i3c_periph: i3c_periph.map(|p| crate::i3c::I3cBus { periph: p }),
             primary_flash_periph: primary_flash_periph
                 .map(|p| crate::primary_flash::PrimaryFlashBus { periph: p }),
@@ -121,6 +128,13 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
     ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
+        if addr >= self.offsets.usbdev_offset
+            && addr < self.offsets.usbdev_offset + self.offsets.usbdev_size
+        {
+            if let Some(periph) = self.usbdev_periph.as_mut() {
+                return periph.read(size, addr - self.offsets.usbdev_offset);
+            }
+        }
         if addr >= self.offsets.i3c_offset && addr < self.offsets.i3c_offset + self.offsets.i3c_size
         {
             if let Some(periph) = self.i3c_periph.as_mut() {
@@ -213,6 +227,13 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         addr: caliptra_emu_types::RvAddr,
         val: caliptra_emu_types::RvData,
     ) -> Result<(), caliptra_emu_bus::BusError> {
+        if addr >= self.offsets.usbdev_offset
+            && addr < self.offsets.usbdev_offset + self.offsets.usbdev_size
+        {
+            if let Some(periph) = self.usbdev_periph.as_mut() {
+                return periph.write(size, addr - self.offsets.usbdev_offset, val);
+            }
+        }
         if addr >= self.offsets.i3c_offset && addr < self.offsets.i3c_offset + self.offsets.i3c_size
         {
             if let Some(periph) = self.i3c_periph.as_mut() {
@@ -300,6 +321,9 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         Err(caliptra_emu_bus::BusError::StoreAccessFault)
     }
     fn poll(&mut self) {
+        if let Some(periph) = self.usbdev_periph.as_mut() {
+            periph.poll();
+        }
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.poll();
         }
@@ -341,6 +365,9 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         }
     }
     fn warm_reset(&mut self) {
+        if let Some(periph) = self.usbdev_periph.as_mut() {
+            periph.warm_reset();
+        }
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.warm_reset();
         }
@@ -382,6 +409,9 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         }
     }
     fn update_reset(&mut self) {
+        if let Some(periph) = self.usbdev_periph.as_mut() {
+            periph.update_reset();
+        }
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.update_reset();
         }
@@ -423,6 +453,9 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         }
     }
     fn incoming_event(&mut self, event: std::rc::Rc<caliptra_emu_bus::Event>) {
+        if let Some(periph) = self.usbdev_periph.as_mut() {
+            periph.incoming_event(event.clone());
+        }
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.incoming_event(event.clone());
         }
@@ -467,6 +500,9 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         &mut self,
         sender: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
     ) {
+        if let Some(periph) = self.usbdev_periph.as_mut() {
+            periph.register_outgoing_events(sender.clone());
+        }
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.register_outgoing_events(sender.clone());
         }

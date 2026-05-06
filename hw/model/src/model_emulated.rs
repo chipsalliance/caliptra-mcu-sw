@@ -89,6 +89,7 @@ pub struct ModelEmulated {
     dot_flash: Rc<RefCell<Ram>>,
     otp_partitions: Rc<RefCell<Vec<u8>>>,
     check_booted_to_runtime: bool,
+    pub usb_host_controller: emulator_periph::UsbHostController,
 }
 
 fn hash_slice(slice: &[u8]) -> u64 {
@@ -302,12 +303,16 @@ impl McuHwModel for ModelEmulated {
         );
         mci.set_fips_zeroization_cmd(fips_zeroization_cmd);
 
+        let usb_periph = emulator_periph::UsbDevPeriph::new();
+        let usb_host_controller = usb_periph.host_controller();
+
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
             vec![Box::new(mcu_root_bus), Box::new(soc_to_caliptra)];
 
         let auto_root_bus = AutoRootBus::new(
             delegates,
             None,
+            Some(Box::new(usb_periph)),
             Some(Box::new(i3c)),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
@@ -433,6 +438,7 @@ impl McuHwModel for ModelEmulated {
             dot_flash,
             otp_partitions,
             check_booted_to_runtime: params.check_booted_to_runtime,
+            usb_host_controller,
         };
         // Turn tracing on if the trace path was set
         m.tracing_hint(true);

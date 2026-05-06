@@ -17,3 +17,4 @@ pub mod secondary_flash;
 pub mod sha512_acc;
 pub mod soc;
 pub mod stub_warnings;
+pub mod usbdev;

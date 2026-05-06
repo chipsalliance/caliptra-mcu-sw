@@ -29,6 +29,7 @@ pub use otp_digest::{otp_digest, otp_scramble, otp_unscramble};
 mod reset_reason;
 mod root_bus;
 mod uart;
+mod usbdev;
 
 pub use axicdma::AxiCDMA;
 pub use caliptra_to_ext_bus::CaliptraToExtBus;
@@ -49,3 +50,4 @@ pub use otp::{Otp, OtpArgs};
 pub use reset_reason::ResetReasonEmulator;
 pub use root_bus::{McuRootBus, McuRootBusArgs, McuRootBusOffsets};
 pub use uart::Uart;
+pub use usbdev::{UsbDevPeriph, UsbHostController, UsbTransactionError};
