@@ -257,30 +257,30 @@ libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
 tbf-header = { path = "runtime/userspace/libtock/tbf-header" }
 
 # caliptra-sw dependencies; keep git revs in sync
-caliptra-api = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-api-types = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-auth-man-gen = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-auth-man-types = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-builder = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-drivers = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-emu-bus = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-emu-cpu = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-emu-derive = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-emu-periph = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-emu-types = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-error = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324", default-features = false }
-caliptra-hw-model = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324", default-features = false, features = ["ocp-lock"] }
-caliptra-hw-model-types = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-image-crypto = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324", default-features = false, features = ["rustcrypto"] }
-caliptra-image-fake-keys = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-image-gen = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-image-types = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-registers = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-test = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-test-harness = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-caliptra-test-harness-types = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
-ocp-eat = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324", default-features = false }
-ureg = { git = "https://github.com/swenson/caliptra-sw", rev = "aaa0fc25fd578f497b6a42145fd5c253dec57324" }
+caliptra-api = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-api-types = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-auth-man-gen = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-auth-man-types = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-builder = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-drivers = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-emu-bus = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-emu-cpu = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-emu-derive = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-emu-periph = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-emu-types = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-error = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e", default-features = false }
+caliptra-hw-model = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e", default-features = false, features = ["ocp-lock"] }
+caliptra-hw-model-types = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-image-crypto = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e", default-features = false, features = ["rustcrypto"] }
+caliptra-image-fake-keys = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-image-gen = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-image-types = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-registers = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-test = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-test-harness = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+caliptra-test-harness-types = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
+ocp-eat = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e", default-features = false }
+ureg = { git = "https://github.com/swenson/caliptra-sw", rev = "0615298556a83be37a4e9962787478d955ef548e" }
 
 # caliptra-dpe dependencies; keep git revs in sync with version pulled into caliptra-sw
 dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "4986ac50d82b415d69eb73a44dfff1d776d5f762", default-features = false, features = ["p384"] }
