@@ -2,6 +2,7 @@
 
 use crate::{MailboxClient, TestConfig, UdpTransportDriver};
 use anyhow::Result;
+use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 use caliptra_mcu_core_util_host_command_types::crypto_aes::AesMode;
 use caliptra_mcu_core_util_host_command_types::crypto_hmac::CmKeyUsage;
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
@@ -1652,42 +1653,37 @@ impl Validator {
         }
 
         match client.export_attested_csr(device_key_id, algorithm, nonce) {
-            Ok(response) => {
-                if response.data_len == 0 {
-                    let error_msg = "attested CSR data_len is 0".to_string();
-                    eprintln!("✗ {} validation FAILED: {}", test_name, error_msg);
-                    return ValidationResult {
-                        test_name,
-                        passed: false,
-                        error_message: Some(error_msg),
-                    };
-                }
-
-                if response.data_len as usize
-                    > caliptra_mcu_core_util_host_command_types::certificate::MAX_CSR_DATA_SIZE
-                {
-                    let error_msg = format!(
-                        "attested CSR data_len {} exceeds maximum",
-                        response.data_len
+            Ok(response) => match response.validate_csr_payload() {
+                Ok(_len) => {
+                    println!(
+                        "✓ {} validation PASSED (attested CSR size: {} bytes)",
+                        test_name, response.data_len
                     );
-                    eprintln!("✗ {} validation FAILED: {}", test_name, error_msg);
-                    return ValidationResult {
+                    ValidationResult {
+                        test_name,
+                        passed: true,
+                        error_message: None,
+                    }
+                }
+                Err(AttestedCsrValidationError::Empty) => {
+                    let detail = "CSR data is empty".to_string();
+                    eprintln!("✗ {} validation FAILED: {}", test_name, detail);
+                    ValidationResult {
                         test_name,
                         passed: false,
-                        error_message: Some(error_msg),
-                    };
+                        error_message: Some(detail),
+                    }
                 }
-
-                println!(
-                    "✓ {} validation PASSED (attested CSR size: {} bytes)",
-                    test_name, response.data_len
-                );
-                ValidationResult {
-                    test_name,
-                    passed: true,
-                    error_message: None,
+                Err(AttestedCsrValidationError::TooLarge(len)) => {
+                    let detail = format!("CSR data_len {} exceeds maximum", len);
+                    eprintln!("✗ {} validation FAILED: {}", test_name, detail);
+                    ValidationResult {
+                        test_name,
+                        passed: false,
+                        error_message: Some(detail),
+                    }
                 }
-            }
+            },
             Err(e) => {
                 eprintln!("✗ {} validation FAILED: {}", test_name, e);
                 ValidationResult {

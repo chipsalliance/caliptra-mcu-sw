@@ -30,8 +30,39 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git && \
+          sudo apt-get install -qy build-essential cmake clang libclang-dev openssl libssl-dev libudev-dev libpci-dev pkg-config curl git && \
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Fetch cargo git dependencies
+        run: |
+          pushd caliptra-util-host
+          cargo fetch
+          popd
+
+      - name: Build libspdm
+        run: |
+          SPDM_UTILS_DIR=$(find ~/.cargo/git/checkouts -maxdepth 3 -name "Cargo.toml" -path "*spdm-utils*" -exec dirname {} \; | head -1)
+          if [ -z "${SPDM_UTILS_DIR}" ]; then echo "ERROR: SPDM-Utils checkout not found"; exit 1; fi
+          LIBSPDM_SRC="${SPDM_UTILS_DIR}/third-party/libspdm"
+          BUILD_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-build"
+          export LIBSPDM_LIB_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-lib"
+          mkdir -p "${BUILD_DIR}"
+          cd "${BUILD_DIR}"
+          cmake \
+            -DARCH=x64 \
+            -DTOOLCHAIN=GCC \
+            -DTARGET=Debug \
+            -DCRYPTO=openssl \
+            -DENABLE_BINARY_BUILD=1 \
+            -DCOMPILED_LIBCRYPTO_PATH=/usr/lib/ \
+            -DCOMPILED_LIBSSL_PATH=/usr/lib/ \
+            -DDISABLE_TESTS=1 \
+            -DCMAKE_C_FLAGS="-DLIBSPDM_ENABLE_CAPABILITY_EVENT_CAP=0 -DLIBSPDM_ENABLE_CAPABILITY_MEL_CAP=0 -DLIBSPDM_HAL_PASS_SPDM_CONTEXT=1 -DLIBSPDM_ENABLE_CAPABILITY_GET_KEY_PAIR_INFO_CAP=0 -DLIBSPDM_ENABLE_CAPABILITY_SET_KEY_PAIR_INFO_CAP=0" \
+            "${LIBSPDM_SRC}"
+          make -j$(nproc)
+          mkdir -p "${LIBSPDM_LIB_DIR}"
+          find "${BUILD_DIR}/lib" -name "*.a" -exec cp {} "${LIBSPDM_LIB_DIR}/" \;
+          echo "LIBSPDM_LIB_DIR=${LIBSPDM_LIB_DIR}" >> $GITHUB_ENV
 
       - name: Run caliptra-util-host precheckin
         run: |
@@ -66,8 +97,39 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
+          sudo apt-get install -qy build-essential cmake clang libclang-dev openssl libssl-dev libudev-dev libpci-dev pkg-config curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Fetch cargo git dependencies
+        run: |
+          pushd caliptra-util-host
+          cargo fetch
+          popd
+
+      - name: Build libspdm
+        run: |
+          SPDM_UTILS_DIR=$(find ~/.cargo/git/checkouts -maxdepth 3 -name "Cargo.toml" -path "*spdm-utils*" -exec dirname {} \; | head -1)
+          if [ -z "${SPDM_UTILS_DIR}" ]; then echo "ERROR: SPDM-Utils checkout not found"; exit 1; fi
+          LIBSPDM_SRC="${SPDM_UTILS_DIR}/third-party/libspdm"
+          BUILD_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-build"
+          export LIBSPDM_LIB_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-lib"
+          mkdir -p "${BUILD_DIR}"
+          cd "${BUILD_DIR}"
+          cmake \
+            -DARCH=x64 \
+            -DTOOLCHAIN=GCC \
+            -DTARGET=Debug \
+            -DCRYPTO=openssl \
+            -DENABLE_BINARY_BUILD=1 \
+            -DCOMPILED_LIBCRYPTO_PATH=/usr/lib/ \
+            -DCOMPILED_LIBSSL_PATH=/usr/lib/ \
+            -DDISABLE_TESTS=1 \
+            -DCMAKE_C_FLAGS="-DLIBSPDM_ENABLE_CAPABILITY_EVENT_CAP=0 -DLIBSPDM_ENABLE_CAPABILITY_MEL_CAP=0 -DLIBSPDM_HAL_PASS_SPDM_CONTEXT=1 -DLIBSPDM_ENABLE_CAPABILITY_GET_KEY_PAIR_INFO_CAP=0 -DLIBSPDM_ENABLE_CAPABILITY_SET_KEY_PAIR_INFO_CAP=0" \
+            "${LIBSPDM_SRC}"
+          make -j$(nproc)
+          mkdir -p "${LIBSPDM_LIB_DIR}"
+          find "${BUILD_DIR}/lib" -name "*.a" -exec cp {} "${LIBSPDM_LIB_DIR}/" \;
+          echo "LIBSPDM_LIB_DIR=${LIBSPDM_LIB_DIR}" >> $GITHUB_ENV
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v3
@@ -103,6 +165,7 @@ jobs:
           pushd caliptra-util-host
           cargo xtask build
           popd
+          echo "SPDM_VALIDATOR_BIN=${GITHUB_WORKSPACE}/target/caliptra-util-host/debug/caliptra-spdm-validator" >> $GITHUB_ENV
 
       - name: Run Caliptra Util Host tests
         run: |
@@ -119,6 +182,11 @@ jobs:
       - name: Run Caliptra Util Host MCTP VDM validator tests
         run: |
           cargo test --package caliptra-mcu-tests-integration --lib -- test_mctp_vdm_validator::test::test_caliptra_util_host_mctp_vdm_validator --nocapture --include-ignored
+          sccache --show-stats
+
+      - name: Run Caliptra Util Host SPDM VDM validator tests
+        run: |
+          cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator --nocapture --include-ignored
           sccache --show-stats
 
       - name: Upload test results and logs

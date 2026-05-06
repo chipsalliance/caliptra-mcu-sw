@@ -1,0 +1,28 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-spdm-vdm-client"
+version.workspace = true
+edition.workspace = true
+description = "Caliptra SPDM VDM Client Library with Validation Support"
+
+[lib]
+name = "caliptra_spdm_vdm_client"
+path = "src/lib.rs"
+
+[[bin]]
+name = "caliptra-spdm-validator"
+path = "src/main.rs"
+
+[dependencies]
+caliptra-spdm-requester.workspace = true
+caliptra-mcu-core-util-host-transport.workspace = true
+caliptra-mcu-core-util-host-command-types.workspace = true
+caliptra-util-host-commands.workspace = true
+caliptra-util-host-session.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+log.workspace = true
+serde.workspace = true
+simple_logger.workspace = true
+toml.workspace = true

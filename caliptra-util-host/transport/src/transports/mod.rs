@@ -6,3 +6,4 @@
 
 pub mod mailbox;
 pub mod mctp_vdm;
+pub mod spdm_vdm;

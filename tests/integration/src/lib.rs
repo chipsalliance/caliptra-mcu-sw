@@ -10,6 +10,7 @@ mod runtime;
 mod test_active_i3c;
 mod test_bare_metal;
 mod test_caliptra_util_host_mcu_mailbox_validator;
+mod test_caliptra_util_host_spdm_vdm_validator;
 mod test_dot;
 mod test_exception_handler;
 mod test_firmware_update;

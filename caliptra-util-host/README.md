@@ -7,12 +7,13 @@ A robust library for communicating with Caliptra devices using different transpo
 The library is organized into several focused crates:
 
 - `command-types`: Command structures and types with zerocopy support
-- `transport`: Transport abstractions including the Mailbox transport layer
+- `transport`: Transport abstractions (Mailbox, MCTP VDM, SPDM VDM)
 - `session`: Session management for command execution
 - `commands`: High-level API functions for device commands
 - `osal`: OS abstraction layer for cross-platform compatibility
 - `cbinding`: C bindings providing a C-compatible API
-- `apps/mailbox`: Example applications demonstrating client/server usage
+- `apps/mailbox`: Mailbox client/server applications
+- `apps/spdm`: SPDM VDM client and requester library for Caliptra VDM over SPDM
 
 ## Quick Start
 
@@ -193,4 +194,24 @@ cargo xtask test --c-only
 
 - **Rust Integration Tests**: `tests/` - Test command execution and session management
 - **C Binding Tests**: `cbinding/tests/` - Verify C API functionality  
+
+## SPDM VDM Applications
+
+The `apps/spdm/` directory contains tools for sending Caliptra VDM commands over SPDM transport:
+
+### SPDM Requester (`apps/spdm/requester`)
+
+A reusable library wrapping libspdm FFI. Implements the `SpdmVdmDriver` trait for sending Caliptra VDM commands over SPDM VENDOR_DEFINED_REQUEST messages.
+
+### SPDM Validator (`apps/spdm/client`)
+
+A CLI tool for validating Caliptra VDM commands over SPDM/MCTP transport. See `apps/spdm/client/README.md` for full usage details.
+
+```bash
+# Build (requires pre-built libspdm)
+LIBSPDM_LIB_DIR=$PWD/target/libspdm-lib cargo build -p caliptra-spdm-vdm-client
+
+# Run validator
+./target/debug/caliptra-spdm-validator --config apps/spdm/test-config.toml
+```
 

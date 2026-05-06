@@ -117,10 +117,31 @@ impl CommandRequest for ExportAttestedCsrRequest {
 
 impl CommandResponse for ExportAttestedCsrResponse {}
 
+/// Errors from CSR payload validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttestedCsrValidationError {
+    /// CSR data is empty (data_len == 0)
+    Empty,
+    /// CSR data exceeds maximum allowed size
+    TooLarge(usize),
+}
+
 impl ExportAttestedCsrResponse {
     /// Returns the attested CSR payload as a byte slice (CoseSign1 structure).
     pub fn csr_bytes(&self) -> &[u8] {
         let len = (self.data_len as usize).min(MAX_CSR_DATA_SIZE);
         &self.csr_data[..len]
+    }
+
+    /// Validates the CSR payload, returning Ok with the byte length on success.
+    pub fn validate_csr_payload(&self) -> Result<usize, AttestedCsrValidationError> {
+        let csr = self.csr_bytes();
+        if csr.is_empty() {
+            return Err(AttestedCsrValidationError::Empty);
+        }
+        if csr.len() > MAX_CSR_DATA_SIZE {
+            return Err(AttestedCsrValidationError::TooLarge(csr.len()));
+        }
+        Ok(csr.len())
     }
 }

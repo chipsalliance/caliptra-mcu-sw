@@ -1,0 +1,18 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-spdm-requester"
+version.workspace = true
+edition.workspace = true
+description = "SPDM requester library for Caliptra host-side utilities"
+
+[dependencies]
+SPDM-Utils.workspace = true
+caliptra-mcu-core-util-host-transport.workspace = true
+anyhow.workspace = true
+log.workspace = true
+zerocopy.workspace = true
+
+[features]
+default = ["std"]
+std = ["SPDM-Utils/std"]

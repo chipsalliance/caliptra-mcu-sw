@@ -14,8 +14,11 @@ members = [
     "apps/mailbox/client",
     "apps/mailbox/server",
     "apps/mctp-vdm/config",
-    "apps/mctp-vdm/client"
+    "apps/mctp-vdm/client",
+    "apps/spdm/requester",
+    "apps/spdm/client"
 ]
+
 
 [workspace.package]
 version = "0.1.0"
@@ -35,9 +38,12 @@ caliptra-mailbox-client = { path = "apps/mailbox/client" }
 caliptra-mcu-core-mailbox-server = { path = "apps/mailbox/server" }
 caliptra-mcu-core-util-host-mctp-vdm-test-config = { path = "apps/mctp-vdm/config" }
 caliptra-mcu-core-mctp-vdm-client = { path = "apps/mctp-vdm/client" }
+caliptra-spdm-requester = { path = "apps/spdm/requester" }
+caliptra-spdm-vdm-client = { path = "apps/spdm/client" }
 caliptra-mcu-debug-unlock-signer = { path = "../common/debug-unlock-signer" }
 
 # External dependencies
+SPDM-Utils = { git = "https://github.com/westerndigitalcorporation/spdm-utils.git", tag = "v0.7.1" }
 anyhow = "1.0.97"
 cargo_metadata = "0.18.1"
 cc = "1.0"
@@ -60,6 +66,8 @@ serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
 sha2 = "0.10"
 toml = "0.8.19"
+log = "0.4"
+simple_logger = "4"
 zerocopy = { version = "0.8.17", features = ["derive"] }
 
 [package]
