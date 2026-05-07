@@ -174,6 +174,37 @@ mod test {
         lock.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Activating RECOVERY_CTRL with an unmapped CMS index must be recoverable:
+    /// the state machine sets RECOVERY_STATUS=InvalidCms and
+    /// ProtocolError::UnsupportedParameter without notifying the ROM, and a
+    /// subsequent valid 3-stage indirect load completes the recovery boot flow.
+    #[test]
+    fn test_usb_ocp_recovery_invalid_cms_recovers() {
+        let lock = TEST_LOCK.lock().unwrap();
+
+        let (mut hw, caliptra_fw, soc_manifest, mcu_runtime) = build_and_start_usb_ocp_recovery();
+        let host = hw.usb_host_controller.clone();
+
+        assert_awaiting_image(&mut hw, &host);
+
+        // Trigger: activate via MemoryWindow on an unmapped CMS index.  Only
+        // CMS 0 (indirect) and CMS 1 (FIFO) are configured; CMS 7 is unmapped.
+        ocp_activate_recovery(&mut hw, &host, 7, IMAGE_LOAD_TIMEOUT);
+
+        // RECOVERY_CTRL's MemoryWindow path rejects an unmapped CMS by setting
+        // both RECOVERY_STATUS=InvalidCms and ProtocolError::UnsupportedParameter.
+        // Read RECOVERY_STATUS first since expect_protocol_error reads
+        // DEVICE_STATUS, which clears the protocol error byte.
+        expect_recovery_status(&mut hw, &host, DeviceRecoveryStatus::InvalidCms);
+        expect_protocol_error(&mut hw, &host, ProtocolError::UnsupportedParameter);
+
+        // Recover with a normal indirect load.  Successful activation
+        // overwrites RECOVERY_STATUS back to AwaitingImage between stages.
+        complete_recovery_indirect(&mut hw, &host, &caliptra_fw, &soc_manifest, &mcu_runtime);
+
+        lock.fetch_add(1, Ordering::Relaxed);
+    }
+
     // ---- Image load helpers ------------------------------------------------
 
     /// Push a complete image via the indirect (memory-window) interface and
