@@ -9,7 +9,7 @@
 
 use anyhow::Result;
 use caliptra_spdm_requester::{SpdmConfig, SpdmRequester, SpdmSocketDeviceIo, SpdmVdmDriverImpl};
-use caliptra_spdm_vdm_client::config::{self, TestConfig};
+use caliptra_spdm_vdm_client::config::{self, DeviceMode, TestConfig};
 use caliptra_spdm_vdm_client::{validator, SpdmVdmClient};
 use clap::Parser;
 
@@ -29,6 +29,10 @@ struct Args {
     #[arg(long)]
     config: Option<String>,
 
+    /// Device mode: production or manufacturing
+    #[arg(long, value_enum, default_value_t = DeviceMode::Production)]
+    mode: DeviceMode,
+
     /// Key IDs to test for ExportAttestedCsr (comma-separated)
     #[arg(long)]
     key_ids: Option<String>,
@@ -36,6 +40,9 @@ struct Args {
     /// Algorithm ID for ExportAttestedCsr (1=EccP384, 2=MlDsa87)
     #[arg(long)]
     algorithm: Option<u32>,
+    /// Algorithm IDs for ExportIdevidCsr (comma-separated)
+    #[arg(long)]
+    idevid_algorithms: Option<String>,
 }
 
 impl Args {
@@ -51,20 +58,23 @@ impl Args {
                 spdm: config::SpdmTestConfig {
                     slot_id: self.slot_id,
                 },
+                mode: self.mode,
                 ..TestConfig::default()
             }
         };
 
-        // CLI args override config file values when explicitly provided.
-        if self.config.is_none() {
-            config.network.server_address = self.server;
-            config.spdm.slot_id = self.slot_id;
-        }
+        // CLI args always override config file values for server and mode.
+        config.network.server_address = self.server;
+        config.spdm.slot_id = self.slot_id;
+        config.mode = self.mode;
         if let Some(key_ids) = &self.key_ids {
             config.export_attested_csr.key_ids = parse_key_ids(key_ids)?;
         }
         if let Some(algorithm) = self.algorithm {
             config.export_attested_csr.algorithm = algorithm;
+        }
+        if let Some(algorithms) = &self.idevid_algorithms {
+            config.export_idevid_csr.algorithms = parse_key_ids(algorithms)?;
         }
 
         Ok(config)

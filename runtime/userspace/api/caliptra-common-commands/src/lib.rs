@@ -167,6 +167,20 @@ pub trait CaliptraCmdHandler: Send + Sync {
         nonce: &[u8; 32],
         csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize>;
+
+    /// Exports an IDevID CSR (manufacturing mode only).
+    ///
+    /// # Arguments
+    /// * `algorithm` - The asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87).
+    /// * `csr_buf` - Mutable buffer to write the CSR DER data into directly.
+    ///
+    /// # Returns
+    /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
+    async fn export_idevid_csr(
+        &self,
+        algorithm: u32,
+        csr_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize>;
 }
 
 pub struct AuthorizationError;

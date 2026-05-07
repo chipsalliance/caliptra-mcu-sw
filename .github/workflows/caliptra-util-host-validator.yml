@@ -184,9 +184,14 @@ jobs:
           cargo test --package caliptra-mcu-tests-integration --lib -- test_mctp_vdm_validator::test::test_caliptra_util_host_mctp_vdm_validator --nocapture --include-ignored
           sccache --show-stats
 
-      - name: Run Caliptra Util Host SPDM VDM validator tests
+      - name: Run Caliptra Util Host SPDM VDM validator tests (production mode)
         run: |
-          cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator --nocapture --include-ignored
+          cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator --exact --nocapture --include-ignored
+          sccache --show-stats
+
+      - name: Run Caliptra Util Host SPDM VDM validator tests (manufacturing mode)
+        run: |
+          cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator_mfg_mode --exact --nocapture --include-ignored
           sccache --show-stats
 
       - name: Upload test results and logs

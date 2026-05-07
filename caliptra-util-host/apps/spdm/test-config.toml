@@ -2,6 +2,8 @@
 
 # SPDM Client Test Configuration
 
+mode = "production"
+
 [network]
 # Server address for the SPDM-over-MCTP bridge (emulator I3C controller socket)
 server_address = "127.0.0.1:63333"
@@ -15,6 +17,11 @@ timeout_seconds = 30
 verbose_output = false
 
 [export_attested_csr]
+# 1 = LDevID, 2 = FMC Alias, 3 = RT Alias
+key_ids = [1, 2, 3]
 # ECC384 = 1, MlDsa87 = 2
-key_ids = [0, 1, 2]
 algorithm = 1
+
+[export_idevid_csr]
+# ECC384 = 1, MlDsa87 = 2
+algorithms = [1]

@@ -14,7 +14,7 @@ use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DeviceCapabilities, DeviceId,
     DeviceInfo, FirmwareVersion,
 };
-use caliptra_mcu_libapi_caliptra::certificate::CertContext;
+use caliptra_mcu_libapi_caliptra::certificate::{CertContext, IDEV_ECC_CSR_MAX_SIZE};
 use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 
@@ -75,5 +75,44 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             })?;
 
         Ok(len)
+    }
+
+    async fn export_idevid_csr(
+        &self,
+        algorithm: u32,
+        csr_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let algo =
+            AsymAlgo::try_from_u32(algorithm).ok_or(CaliptraCompletionCode::InvalidParameter)?;
+
+        let mut cert_ctx = CertContext::new();
+
+        match algo {
+            AsymAlgo::EccP384 => {
+                let mut csr_der = [0u8; IDEV_ECC_CSR_MAX_SIZE];
+                let len = cert_ctx
+                    .get_idev_csr(&mut csr_der)
+                    .await
+                    .map_err(|e| match e {
+                        CaliptraApiError::MailboxBusy => {
+                            CaliptraCompletionCode::CaliptraMailboxBusy
+                        }
+                        CaliptraApiError::UnprovisionedCsr => CaliptraCompletionCode::InvalidState,
+                        CaliptraApiError::BufferTooSmall => {
+                            CaliptraCompletionCode::CaliptraBufferTooSmall
+                        }
+                        _ => CaliptraCompletionCode::GeneralError,
+                    })?;
+                if len > csr_buf.len() {
+                    return Err(CaliptraCompletionCode::CaliptraBufferTooSmall);
+                }
+                csr_buf[..len].copy_from_slice(&csr_der[..len]);
+                Ok(len)
+            }
+            AsymAlgo::MlDsa87 => {
+                // MLDSA IDevID CSR not yet supported at the mailbox level
+                Err(CaliptraCompletionCode::UnsupportedOperation)
+            }
+        }
     }
 }

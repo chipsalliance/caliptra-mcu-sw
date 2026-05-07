@@ -5,7 +5,8 @@ extern crate alloc;
 use crate::codec::{Codec, MessageBuf};
 use crate::protocol::StandardsBodyId;
 use crate::vdm_handler::iana::ocp::caliptra_vdm::commands::{
-    device_capabilities, device_id, device_info, export_attested_csr, firmware_version,
+    device_capabilities, device_id, device_info, export_attested_csr, export_idevid_csr,
+    firmware_version,
 };
 use crate::vdm_handler::iana::ocp::caliptra_vdm::protocol::*;
 use crate::vdm_handler::{VdmError, VdmHandler, VdmRegistryMatcher, VdmResponder, VdmResult};
@@ -76,6 +77,15 @@ impl VdmResponder for CaliptraVdmHandler<'_> {
             }
             CaliptraVdmCommand::ExportAttestedCsr => {
                 export_attested_csr::handle_export_attested_csr(
+                    self.handler,
+                    req_buf,
+                    rsp_buf,
+                    large_rsp_buf,
+                )
+                .await?
+            }
+            CaliptraVdmCommand::ExportIdevidCsr => {
+                export_idevid_csr::handle_export_idevid_csr(
                     self.handler,
                     req_buf,
                     rsp_buf,

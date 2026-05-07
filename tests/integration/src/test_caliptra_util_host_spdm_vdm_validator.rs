@@ -174,6 +174,20 @@ mod test {
 
     // --- Test cases ---
 
+    /// Path to test-config.toml relative to the repository root.
+    fn test_config_path() -> String {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let repo_root = std::path::Path::new(manifest_dir)
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
+        repo_root
+            .join("caliptra-util-host/apps/spdm/test-config.toml")
+            .to_string_lossy()
+            .to_string()
+    }
+
     #[ignore]
     #[test]
     fn test_caliptra_util_host_spdm_vdm_validator() {
@@ -188,11 +202,41 @@ mod test {
 
         hw.start_i3c_controller();
 
+        let config_path = test_config_path();
         run_spdm_vdm_test(
             hw.i3c_port().unwrap(),
             hw.i3c_address().unwrap().into(),
             Duration::from_secs(120),
-            &["--key-ids", "1,2,3", "--algorithm", "1"],
+            &["--config", &config_path],
+        );
+
+        let test = finish_runtime_hw_model(&mut hw);
+        assert_eq!(0, test);
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[ignore]
+    #[test]
+    fn test_caliptra_util_host_spdm_vdm_validator_mfg_mode() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            i3c_port: Some(PortPicker::new().pick().unwrap()),
+            use_strap_secrets: true,
+            lifecycle_controller_state: Some(caliptra_mcu_hw_model::LifecycleControllerState::Dev),
+            ..Default::default()
+        });
+
+        hw.start_i3c_controller();
+
+        let config_path = test_config_path();
+        run_spdm_vdm_test(
+            hw.i3c_port().unwrap(),
+            hw.i3c_address().unwrap().into(),
+            Duration::from_secs(120),
+            &["--config", &config_path, "--mode", "manufacturing"],
         );
 
         let test = finish_runtime_hw_model(&mut hw);

@@ -94,4 +94,12 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
     ) -> CaliptraCmdResult<usize> {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
+
+    async fn export_idevid_csr(
+        &self,
+        _algorithm: u32,
+        _csr_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 }
