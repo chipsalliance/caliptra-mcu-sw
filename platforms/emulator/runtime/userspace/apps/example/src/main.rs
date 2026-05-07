@@ -44,6 +44,9 @@ mod test_mcu_mbox_usermode;
 #[cfg(feature = "test-mbox-sram")]
 mod test_mbox_sram;
 
+#[cfg(feature = "test-external-otp")]
+mod test_external_otp;
+
 #[cfg(any(feature = "test-flash-usermode", feature = "test-fpga-flash-ctrl"))]
 mod test_flash_io;
 
@@ -221,6 +224,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
     {
         writeln!(console_writer, "Running MEM-REG read/write test").unwrap();
         test_mbox_sram::test_mem_reg_read_write().await;
+        System::exit(0);
+    }
+    #[cfg(feature = "test-external-otp")]
+    {
+        writeln!(console_writer, "Running ExternalOTP read/write test").unwrap();
+        test_external_otp::test_external_otp();
         System::exit(0);
     }
     #[cfg(feature = "test-warm-reset")]

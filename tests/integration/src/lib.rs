@@ -972,6 +972,7 @@ mod test {
     run_test!(test_mcu_mbox_driver);
     run_test!(test_mcu_mbox_soc_requester_loopback, example_app);
     run_test!(test_mbox_sram, example_app);
+    run_test!(test_external_otp, example_app);
     run_test!(test_warm_reset, example_app);
 
     /// This tests a full active mode boot run through with Caliptra, including

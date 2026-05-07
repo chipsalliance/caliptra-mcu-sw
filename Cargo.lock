@@ -836,6 +836,7 @@ dependencies = [
  "bitfield",
  "caliptra-api",
  "caliptra-mcu-doe-transport",
+ "caliptra-mcu-external-otp-driver",
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
  "caliptra-mcu-mbox-comm",
@@ -868,6 +869,7 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-doe-transport",
+ "caliptra-mcu-external-otp-driver",
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
  "caliptra-mcu-mbox-comm",
@@ -1171,6 +1173,21 @@ dependencies = [
 [[package]]
 name = "caliptra-mcu-error"
 version = "0.1.0"
+
+[[package]]
+name = "caliptra-mcu-external-otp-driver"
+version = "0.1.0"
+dependencies = [
+ "kernel",
+]
+
+[[package]]
+name = "caliptra-mcu-external-otp-emulator"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-dma-driver",
+ "caliptra-mcu-external-otp-driver",
+]
 
 [[package]]
 name = "caliptra-mcu-firmware-bundler"
@@ -3685,6 +3702,8 @@ dependencies = [
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-doe-mbox-driver",
  "caliptra-mcu-doe-transport",
+ "caliptra-mcu-external-otp-driver",
+ "caliptra-mcu-external-otp-emulator",
  "caliptra-mcu-flash-ctrl-emulator",
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",

@@ -41,6 +41,7 @@ members = [
     "platforms/emulator/runtime/kernel/capsules",
     "platforms/emulator/runtime/kernel/drivers/dma",
     "platforms/emulator/runtime/kernel/drivers/doe_mbox",
+    "platforms/emulator/runtime/kernel/drivers/external_otp",
     "platforms/emulator/runtime/kernel/drivers/mcu_mbox",
     "platforms/emulator/runtime/userspace/api/caliptra-api",
     "platforms/emulator/runtime/userspace/apps/example",
@@ -63,6 +64,7 @@ members = [
     "runtime/kernel/capsules",
     "runtime/kernel/components",
     "runtime/kernel/drivers/doe",
+    "runtime/kernel/drivers/external_otp",
     "runtime/kernel/drivers/i3c",
     "runtime/kernel/drivers/mcu_mbox",
     "runtime/kernel/veer",
@@ -203,6 +205,8 @@ caliptra-mcu-capsules-runtime = { path = "runtime/kernel/capsules" }
 caliptra-mcu-dma-driver = { path = "platforms/emulator/runtime/kernel/drivers/dma" }
 caliptra-mcu-doe-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/doe_mbox" }
 caliptra-mcu-doe-transport = { path = "runtime/kernel/drivers/doe"}
+caliptra-mcu-external-otp-driver = { path = "runtime/kernel/drivers/external_otp" }
+caliptra-mcu-external-otp-emulator = { path = "platforms/emulator/runtime/kernel/drivers/external_otp" }
 caliptra-mcu-emulator = { path = "emulator/app" }
 caliptra-mcu-emulator-bmc = { path = "emulator/bmc" }
 caliptra-mcu-emulator-caliptra = { "path" = "emulator/caliptra" }
