@@ -7,10 +7,11 @@ slow-timeout = { period = "5m", terminate-after = 6 }
 
 [profile.nightly.junit]
 path = "/tmp/junit.xml"
-store-success-output = true
+store-success-output = false
 store-failure-output = true
 
 [profile.nightly-emulator]
+store-success-output = false
 failure-output = "immediate-final"
 fail-fast = false
 slow-timeout = { period = "30m", terminate-after = 6 }
@@ -29,7 +30,7 @@ default-filter = """
 
 [profile.nightly-emulator.junit]
 path = "/tmp/junit.xml"
-store-success-output = true
+store-success-output = false
 store-failure-output = true
 
 [profile.nightly-ci]
