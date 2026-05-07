@@ -5,7 +5,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-static WARN_ON_STUB: AtomicBool = AtomicBool::new(true);
+static WARN_ON_STUB: AtomicBool = AtomicBool::new(false);
 
 /// Enable or disable warning logs when auto-generated register stubs
 /// handle a read/write that was not overridden by the peripheral implementation.
