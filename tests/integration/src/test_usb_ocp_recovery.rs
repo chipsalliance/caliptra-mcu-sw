@@ -370,4 +370,35 @@ mod test {
 
         lock.fetch_add(1, Ordering::Relaxed);
     }
+
+    /// Writing INDIRECT_CTRL with a malformed length must be recoverable: the
+    /// state machine records ProtocolError::LengthWriteError without changing
+    /// recovery status, and a subsequent valid 3-stage indirect load completes
+    /// the recovery boot flow.
+    #[test]
+    fn test_usb_ocp_recovery_malformed_indirect_ctrl_recovers() {
+        let lock = TEST_LOCK.lock().unwrap();
+
+        let (mut hw, caliptra_fw, soc_manifest, mcu_runtime) = build_and_start_usb_ocp_recovery();
+        let host = hw.usb_host_controller.clone();
+
+        assert_awaiting_image(&mut hw, &host);
+
+        // Trigger: send INDIRECT_CTRL with 5 bytes instead of the required 6.
+        // handle_indirect_ctrl_write maps MessageTooShort to LengthWriteError.
+        ocp_write_data(
+            &mut hw,
+            &host,
+            RecoveryCommand::IndirectCtrl,
+            &[0u8; 5],
+            IMAGE_LOAD_TIMEOUT,
+        );
+
+        expect_protocol_error(&mut hw, &host, ProtocolError::LengthWriteError);
+        expect_recovery_status(&mut hw, &host, DeviceRecoveryStatus::AwaitingImage);
+
+        complete_recovery_indirect(&mut hw, &host, &caliptra_fw, &soc_manifest, &mcu_runtime);
+
+        lock.fetch_add(1, Ordering::Relaxed);
+    }
 }
