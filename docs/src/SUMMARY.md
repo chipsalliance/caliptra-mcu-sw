@@ -6,6 +6,7 @@
     - [Device Ownership Transfer](./dot.md)
         - [DOT I3C Recovery Protocol](./dot_i3c.md)
     - [ROM Fuses](./rom-fuses.md)
+    - [SVN Anti-Rollback](./svn.md)
 - [Runtime Specification](./runtime.md)
     - [Firmware Format](./firmware_format.md)
     - [PLDM Package](./pldm_package.md)
