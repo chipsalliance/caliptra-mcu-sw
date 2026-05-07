@@ -146,17 +146,7 @@ mod test {
         let mut hw = start_usb_ocp_recovery();
         let host = hw.usb_host_controller.clone();
 
-        // Read RECOVERY_STATUS
-        let setup = ocp_read(RecoveryCommand::RecoveryStatus, 2);
-        poll_setup(&mut hw, &host, &setup, TIMEOUT);
-        let status = poll_in(&mut hw, &host, TIMEOUT);
-        poll_out(&mut hw, &host, &[], TIMEOUT);
-
-        assert_eq!(
-            status[0] & 0x0F,
-            DeviceRecoveryStatus::AwaitingImage as u8,
-            "recovery status should be AwaitingImage"
-        );
+        expect_recovery_status(&mut hw, &host, DeviceRecoveryStatus::AwaitingImage);
 
         lock.fetch_add(1, Ordering::Relaxed);
     }
@@ -179,18 +169,7 @@ mod test {
         assert!(resp.is_empty() || resp.iter().all(|&b| b == 0));
         poll_out(&mut hw, &host, &[], TIMEOUT);
 
-        // Read DEVICE_STATUS to verify protocol error was set.
-        let setup = ocp_read(RecoveryCommand::DeviceStatus, 7);
-        poll_setup(&mut hw, &host, &setup, TIMEOUT);
-        let status = poll_in(&mut hw, &host, TIMEOUT);
-        poll_out(&mut hw, &host, &[], TIMEOUT);
-
-        // Byte 1 is the protocol error field; UnsupportedCommand = 0x04.
-        assert_eq!(
-            status[1],
-            ProtocolError::UnsupportedCommand as u8,
-            "protocol error should be UnsupportedCommand"
-        );
+        expect_protocol_error(&mut hw, &host, ProtocolError::UnsupportedCommand);
 
         lock.fetch_add(1, Ordering::Relaxed);
     }
@@ -234,13 +213,80 @@ mod test {
             DeviceStatusValue::RecoveryMode as u8,
             "device should be in RecoveryMode"
         );
+        expect_recovery_status(hw, host, DeviceRecoveryStatus::AwaitingImage);
+    }
 
+    /// Read DEVICE_STATUS and assert the protocol error byte matches.  This
+    /// read also clears the protocol error register (clear-on-read).
+    fn expect_protocol_error(
+        hw: &mut DefaultHwModel,
+        host: &UsbHostController,
+        expected: ProtocolError,
+    ) {
+        let status = ocp_read_data(hw, host, RecoveryCommand::DeviceStatus, 7, TIMEOUT);
+        assert_eq!(
+            status[1], expected as u8,
+            "expected protocol error {:?} (0x{:02x}), got 0x{:02x}",
+            expected, expected as u8, status[1]
+        );
+    }
+
+    /// Read RECOVERY_STATUS and assert the lower nibble matches the expected
+    /// status value.
+    fn expect_recovery_status(
+        hw: &mut DefaultHwModel,
+        host: &UsbHostController,
+        expected: DeviceRecoveryStatus,
+    ) {
         let rec_status = ocp_read_data(hw, host, RecoveryCommand::RecoveryStatus, 2, TIMEOUT);
         assert_eq!(
             rec_status[0] & 0x0F,
-            DeviceRecoveryStatus::AwaitingImage as u8,
-            "recovery status should be AwaitingImage"
+            expected as u8,
+            "expected recovery status {:?} (0x{:02x}), got 0x{:02x}",
+            expected,
+            expected as u8,
+            rec_status[0] & 0x0F
         );
+    }
+
+    // We cannot use finish_runtime_hw_model() / step_until_exit_success() here
+    // because the emulator's EmuCtrl exit handler calls std::process::exit(),
+    // which would kill the entire test runner process instead of just this test.
+    fn wait_for_boot_complete(hw: &mut DefaultHwModel) {
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+        });
+    }
+
+    /// Send all three recovery stages (caliptra_fw, soc_manifest, mcu_runtime)
+    /// via the indirect (memory-window) interface and wait for boot completion.
+    fn complete_recovery_indirect(
+        hw: &mut DefaultHwModel,
+        host: &UsbHostController,
+        caliptra_fw: &[u8],
+        soc_manifest: &[u8],
+        mcu_runtime: &[u8],
+    ) {
+        for image in [caliptra_fw, soc_manifest, mcu_runtime] {
+            send_image_indirect(hw, host, image);
+        }
+        wait_for_boot_complete(hw);
+    }
+
+    /// Send all three recovery stages via the FIFO interface and wait for boot
+    /// completion.  Each image must be 4-byte aligned.
+    fn complete_recovery_fifo(
+        hw: &mut DefaultHwModel,
+        host: &UsbHostController,
+        caliptra_fw: &[u8],
+        soc_manifest: &[u8],
+        mcu_runtime: &[u8],
+    ) {
+        for image in [caliptra_fw, soc_manifest, mcu_runtime] {
+            send_image_fifo(hw, host, image);
+        }
+        wait_for_boot_complete(hw);
     }
 
     // ---- Image load tests --------------------------------------------------
@@ -265,26 +311,7 @@ mod test {
         let host = hw.usb_host_controller.clone();
 
         assert_awaiting_image(&mut hw, &host);
-
-        // Send each image as a separate recovery stage.  Between stages the
-        // ROM's I3C state machine activates the image and loops back to
-        // AwaitingImage.  The poll_* retry loops step the emulator so the
-        // ROM progresses through the I3C side while the host waits to send
-        // the next image.
-        for image in [&caliptra_fw, &soc_manifest, &mcu_runtime] {
-            send_image_indirect(&mut hw, &host, image);
-            println!("Got to image");
-        }
-
-        // Wait for the firmware boot flow to complete by polling the MCI
-        // milestone register. We cannot use finish_runtime_hw_model() /
-        // step_until_exit_success() here because the emulator's EmuCtrl
-        // exit handler calls std::process::exit(), which would kill the
-        // entire test runner process instead of just this test.
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-        });
+        complete_recovery_indirect(&mut hw, &host, &caliptra_fw, &soc_manifest, &mcu_runtime);
 
         lock.fetch_add(1, Ordering::Relaxed);
     }
@@ -308,20 +335,7 @@ mod test {
         let host = hw.usb_host_controller.clone();
 
         assert_awaiting_image(&mut hw, &host);
-
-        for image in [&caliptra_fw, &soc_manifest, &mcu_runtime] {
-            send_image_fifo(&mut hw, &host, image);
-        }
-
-        // Wait for the firmware boot flow to complete by polling the MCI
-        // milestone register. We cannot use finish_runtime_hw_model() /
-        // step_until_exit_success() here because the emulator's EmuCtrl
-        // exit handler calls std::process::exit(), which would kill the
-        // entire test runner process instead of just this test.
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-        });
+        complete_recovery_fifo(&mut hw, &host, &caliptra_fw, &soc_manifest, &mcu_runtime);
 
         lock.fetch_add(1, Ordering::Relaxed);
     }
