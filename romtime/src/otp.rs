@@ -18,6 +18,9 @@ const OTP_CONSISTENCY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_INTEGRITY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_CHECK_TIMEOUT: u32 = 0x10_0000;
 const OTP_PENDING_CHECK_MAX_ITERATIONS: u32 = 1_000_000;
+// These defaults are defined in the caliptra-ss RTL (otp_ctrl_part_pkg.sv).
+const OTP_DIGEST_IV: u64 = 0x90C7F21F6224F027u64;
+const OTP_DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266Fu128;
 pub const HEK_ZEROIZATION_VALID_BOUND: u32 = 64 - 6;
 
 // HEK partition metadata offsets
@@ -791,6 +794,24 @@ impl Otp {
     pub fn set_hek_perma(&self) -> McuResult<()> {
         self.write_entry(fuses::PERMA_HEK_EN, 1)?;
         Ok(())
+    }
+
+    pub fn is_valid_hek_seed(&self, slot: usize, seed: &[u8; 48]) -> McuResult<bool> {
+        let byte_offset = *HEK_OFFSETS
+            .get(slot)
+            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+        let partition = OtpPartition {
+            byte_offset,
+            byte_size: HEK_ZER_MARKER_OFFSET,
+            sw_digest: true,
+        };
+        let expected_digest = u64::from_le_bytes(
+            seed[HEK_SEED_SIZE..HEK_ZER_MARKER_OFFSET]
+                .try_into()
+                .map_err(|_| McuError::ROM_OTP_INVALID_DATA_ERROR)?,
+        );
+
+        Ok(self.compute_sw_digest(&partition, OTP_DIGEST_IV, OTP_DIGEST_CONST)? == expected_digest)
     }
 
     /// Compute the software digest of an OTP partition by reading its data

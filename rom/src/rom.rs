@@ -37,6 +37,8 @@ use romtime::otp::{
     VENDOR_HASHES_MANUF_PQC_KEY_TYPE_0_OFFSET, VENDOR_REVOCATIONS_ECC_REVOCATION_0_OFFSET,
     VENDOR_REVOCATIONS_LMS_REVOCATION_0_OFFSET, VENDOR_REVOCATIONS_MLDSA_REVOCATION_0_OFFSET,
 };
+#[cfg(feature = "stable-owner-key")]
+use romtime::otp::{HEK_OFFSETS, HEK_SEED_SIZE};
 use romtime::LifecycleControllerState;
 use romtime::LifecycleHashedTokens;
 use romtime::LifecycleToken;
@@ -157,6 +159,74 @@ impl Soc {
 
     pub fn set_ss_caliptra_dma_axi_user(&self, value: u32) {
         self.registers.ss_caliptra_dma_axi_user.set(value);
+    }
+
+    #[cfg(feature = "stable-owner-key")]
+    fn write_hek_seed(&self, seed: &[u8]) {
+        for (reg, word) in self.registers.fuse_hek_seed.iter().zip(
+            seed.chunks_exact(core::mem::size_of::<u32>()).map(|w| {
+                u32::from_le_bytes(
+                    w.try_into()
+                        .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_WRITE_WORD_ERROR)),
+                )
+            }),
+        ) {
+            reg.set(word);
+        }
+    }
+
+    #[cfg(feature = "stable-owner-key")]
+    fn fill_hek_seed(&self, value: u32) {
+        for word in self.registers.fuse_hek_seed.iter() {
+            word.set(value);
+        }
+    }
+
+    #[cfg(feature = "stable-owner-key")]
+    fn set_stable_owner_key_hek_fuses(&self, otp: &Otp) {
+        romtime::println!("[mcu-fuse-write] Attempting to write stable owner key HEK fuses");
+
+        if otp
+            .is_hek_perma_set()
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
+        {
+            self.fill_hek_seed(0xFFFF_FFFF);
+            romtime::println!(
+                "[mcu-fuse-write] Finished writing permanent stable owner key HEK fuse"
+            );
+            return;
+        }
+
+        let mut seed = [0u8; 48];
+        for slot in 0..HEK_OFFSETS.len() {
+            otp.read_hek_seed(slot, &mut seed)
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+
+            if seed.iter().all(|&byte| byte == 0) || seed.iter().all(|&byte| byte == 0xFF) {
+                continue;
+            }
+
+            let valid_seed = otp
+                .is_valid_hek_seed(slot, &seed)
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+
+            if valid_seed {
+                self.write_hek_seed(&seed[..HEK_SEED_SIZE]);
+                romtime::println!(
+                    "[mcu-fuse-write] Finished writing stable owner key HEK fuse slot {}",
+                    slot
+                );
+                return;
+            }
+
+            romtime::println!(
+                "[mcu-fuse-write] HEK software digest mismatch! Slot {}",
+                slot
+            );
+        }
+
+        self.fill_hek_seed(0);
+        romtime::println!("[mcu-fuse-write] No valid stable owner key HEK fuse slot found");
     }
 
     #[inline(never)]
@@ -295,7 +365,11 @@ impl Soc {
         // Owner PK Hash is written separately after Device Ownership Transfer flow.
         // See set_owner_pk_hash() method.
 
-        // TODO: load HEK Seed CSRs.
+        // Stable owner key builds forward HEK for derivation here.
+        // OCP LOCK keeps its HEK selection and handoff metadata in the OCP path below.
+        #[cfg(feature = "stable-owner-key")]
+        self.set_stable_owner_key_hek_fuses(otp);
+
         // SoC Stepping ID (only 16-bits are relevant).
         let word = otp
             .read_u32_at(registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET + 120)

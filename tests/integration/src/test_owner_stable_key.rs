@@ -20,6 +20,7 @@ mod test {
         println!("[TEST] Starting HEK owner key derivation test");
         let mut hw = start_runtime_hw_model(TestParams {
             rom_only: true,
+            rom_feature: Some("stable-owner-key"),
             ..Default::default()
         });
 
