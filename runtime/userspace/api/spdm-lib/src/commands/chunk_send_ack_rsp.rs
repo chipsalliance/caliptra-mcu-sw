@@ -2,7 +2,7 @@
 
 use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
-use crate::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
+use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
 use crate::protocol::*;
 use crate::state::ConnectionState;
@@ -141,7 +141,7 @@ fn validate_common(
 
     if ctx.state.connection_info.state() < ConnectionState::AfterCapabilities
         || !ctx.support_large_msg_chunking()
-        || ctx.large_resp_context.in_progress()
+        || ctx.large_msg_ctx.response_in_progress()
     {
         Err(ctx.generate_error_response(req, ErrorCode::UnexpectedRequest, 0, None))?;
     }
@@ -171,7 +171,7 @@ fn process_chunk_send(
 
     let invalid = if has_reserved_bits {
         true
-    } else if !ctx.large_req_context.in_progress() {
+    } else if !ctx.large_msg_ctx.request_in_progress() {
         if available_chunk_len < size_of::<u32>() {
             true
         } else {
@@ -190,7 +190,7 @@ fn process_chunk_send(
                 || chunk_size != available_chunk_len
                 || chunk_send_msg_len > ctx.local_capabilities.data_transfer_size as usize
                 || large_message_size > ctx.local_capabilities.max_spdm_msg_size as usize
-                || large_message_size > ctx.large_req_context.capacity()
+                || large_message_size > ctx.large_msg_ctx.request_capacity()
                 || large_message_size <= MIN_DATA_TRANSFER_SIZE_V12 as usize
                 || chunk_size > large_message_size;
 
@@ -198,8 +198,8 @@ fn process_chunk_send(
                 let chunk = req
                     .data(chunk_size)
                     .map_err(|e| (false, CommandError::Codec(e)))?;
-                ctx.large_req_context
-                    .init(handle, large_message_size, chunk)
+                ctx.large_msg_ctx
+                    .init_request(handle, large_message_size, chunk)
                     .is_err()
             } else {
                 true
@@ -209,16 +209,16 @@ fn process_chunk_send(
         let min_chunk_size = MIN_DATA_TRANSFER_SIZE_V12 as usize
             - size_of::<SpdmMsgHdr>()
             - size_of::<ChunkSendReq>();
-        let transferred = ctx.large_req_context.bytes_transferred();
-        let large_message_size = ctx.large_req_context.large_request_size();
+        let transferred = ctx.large_msg_ctx.request_bytes_transferred();
+        let large_message_size = ctx.large_msg_ctx.request_size();
         let end = transferred.saturating_add(chunk_size);
 
         let invalid = chunk_seq_num == 0
             || chunk_size != available_chunk_len
             || chunk_send_msg_len > ctx.local_capabilities.data_transfer_size as usize
             || ctx
-                .large_req_context
-                .validate_chunk(handle, chunk_seq_num)
+                .large_msg_ctx
+                .validate_request_chunk(handle, chunk_seq_num)
                 .is_err()
             || end > large_message_size
             || (last_chunk && end != large_message_size)
@@ -228,8 +228,8 @@ fn process_chunk_send(
             let chunk = req
                 .data(chunk_size)
                 .map_err(|e| (false, CommandError::Codec(e)))?;
-            ctx.large_req_context
-                .append_chunk(handle, chunk_seq_num, chunk)
+            ctx.large_msg_ctx
+                .append_request_chunk(handle, chunk_seq_num, chunk)
                 .is_err()
         } else {
             true
@@ -237,7 +237,7 @@ fn process_chunk_send(
     };
 
     if invalid {
-        ctx.large_req_context.reset();
+        ctx.large_msg_ctx.reset_request();
         return Ok(ChunkSendProcessResult::EarlyError {
             handle,
             chunk_seq_num,
@@ -247,49 +247,8 @@ fn process_chunk_send(
     Ok(ChunkSendProcessResult::Ack(ChunkSendInfo {
         handle,
         chunk_seq_num,
-        complete: ctx.large_req_context.is_complete(),
+        complete: ctx.large_msg_ctx.request_is_complete(),
     }))
-}
-
-async fn process_large_request<'a>(
-    ctx: &mut SpdmContext<'a>,
-    req: &mut MessageBuf<'a>,
-    response: &mut [u8],
-) -> CommandResult<usize> {
-    let version = ctx.state.connection_info.version_number();
-    let request_code = ctx.large_req_context.request_code();
-
-    if matches!(
-        request_code,
-        Some(code) if code == ReqRespCode::ChunkSend.into() || code == ReqRespCode::ChunkGet.into()
-    ) {
-        ctx.large_req_context.reset();
-        return encode_error_response_to_slice(version, ErrorCode::InvalidRequest, response);
-    }
-
-    if ctx.large_req_context.copy_message_to(req).is_err() {
-        ctx.large_req_context.reset();
-        return encode_error_response_to_slice(version, ErrorCode::RequestTooLarge, response);
-    }
-    ctx.large_req_context.reset();
-
-    match ctx.handle_large_request_payload(req).await {
-        Ok(()) => {}
-        Err((true, _)) => {}
-        Err((false, _)) => {
-            return encode_error_response_to_slice(version, ErrorCode::InvalidRequest, response);
-        }
-    }
-
-    let response_len = req.data_len();
-    if response_len > response.len() {
-        return encode_error_response_to_slice(version, ErrorCode::ResponseTooLarge, response);
-    }
-    let inner_response = req
-        .data(response_len)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-    response[..response_len].copy_from_slice(inner_response);
-    Ok(response_len)
 }
 
 async fn generate_chunk_send_ack<'a>(
@@ -298,24 +257,45 @@ async fn generate_chunk_send_ack<'a>(
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     let version = ctx.state.connection_info.version_number();
-    let mut response_to_large_request = [0u8; MAX_SPDM_RESPONDER_BUF_SIZE];
-    let response_to_large_request_len = if info.complete {
-        Some(process_large_request(ctx, rsp, &mut response_to_large_request).await?)
+
+    if info.complete {
+        // Validate request code before dispatch
+        let request_code = ctx.large_msg_ctx.request_code();
+        if matches!(
+            request_code,
+            Some(code) if code == ReqRespCode::ChunkSend.into() || code == ReqRespCode::ChunkGet.into()
+        ) {
+            ctx.large_msg_ctx.reset_request();
+            ctx.prepare_response_buffer(rsp)?;
+            let header_size = size_of::<ChunkSendAckHdr>();
+            rsp.reserve(header_size)
+                .map_err(|e| (false, CommandError::Codec(e)))?;
+            append_error_response(version, ErrorCode::InvalidRequest, rsp)?;
+            encode_chunk_send_ack_hdr(version, true, info.handle, info.chunk_seq_num, rsp)?;
+            return Ok(());
+        }
+
+        // Prepare response buffer: transport header + CHUNK_SEND_ACK header reserved
+        ctx.prepare_response_buffer(rsp)?;
+        let header_size = size_of::<ChunkSendAckHdr>();
+        rsp.reserve(header_size)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+
+        // Dispatch the large request — handler writes ResponseToLargeRequest into rsp
+        ctx.handle_large_request_payload(rsp).await?;
+
+        // Encode the CHUNK_SEND_ACK header (fills in the reserved space)
+        encode_chunk_send_ack_hdr(version, false, info.handle, info.chunk_seq_num, rsp)?;
+        Ok(())
     } else {
-        None
-    };
-
-    ctx.prepare_response_buffer(rsp)?;
-    let header_size = size_of::<ChunkSendAckHdr>();
-    rsp.reserve(header_size)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-
-    if let Some(len) = response_to_large_request_len {
-        append_bytes_without_advancing_data(rsp, &response_to_large_request[..len])?;
+        // Non-final chunk — just send CHUNK_SEND_ACK with no ResponseToLargeRequest
+        ctx.prepare_response_buffer(rsp)?;
+        let header_size = size_of::<ChunkSendAckHdr>();
+        rsp.reserve(header_size)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        encode_chunk_send_ack_hdr(version, false, info.handle, info.chunk_seq_num, rsp)?;
+        Ok(())
     }
-
-    encode_chunk_send_ack_hdr(version, false, info.handle, info.chunk_seq_num, rsp)?;
-    Ok(())
 }
 
 fn generate_chunk_send_early_error_ack(
@@ -493,8 +473,7 @@ mod tests {
         transport: &'a mut TestTransport,
         cert_store: &'a TestCertStore,
         measurements: &'a mut TestMeasurements,
-        large_resp_buf: &'a mut [u8],
-        large_req_buf: &'a mut [u8],
+        large_msg_buf: &'a mut [u8],
     ) -> SpdmContext<'a> {
         let mut flags = CapabilityFlags::default();
         flags.set_chunk_cap(1);
@@ -514,8 +493,7 @@ mod tests {
             cert_store,
             crate::measurements::SpdmMeasurements::new(&[], measurements),
             None,
-            large_resp_buf,
-            large_req_buf,
+            large_msg_buf,
         )
         .expect("test context should be valid");
         ctx.state
@@ -570,14 +548,12 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut large_resp_buf = [0u8; 1024];
-        let mut large_req_buf = [0u8; 2048];
+        let mut large_msg_buf = [0u8; 2048];
         let mut ctx = test_context(
             &mut transport,
             &cert_store,
             &mut measurements,
-            &mut large_resp_buf,
-            &mut large_req_buf,
+            &mut large_msg_buf,
         );
 
         let first_chunk = [0xAA; 30];
@@ -596,7 +572,7 @@ mod tests {
             }
             ChunkSendProcessResult::EarlyError { .. } => panic!("unexpected early error"),
         }
-        assert_eq!(ctx.large_req_context.bytes_transferred(), 30);
+        assert_eq!(ctx.large_msg_ctx.request_bytes_transferred(), 30);
 
         let second_chunk = [0xBB; 50];
         let mut second_storage = [0u8; 96];
@@ -614,7 +590,7 @@ mod tests {
             }
             ChunkSendProcessResult::EarlyError { .. } => panic!("unexpected early error"),
         }
-        assert_eq!(ctx.large_req_context.bytes_transferred(), 80);
+        assert_eq!(ctx.large_msg_ctx.request_bytes_transferred(), 80);
     }
 
     #[test]
@@ -622,14 +598,12 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut large_resp_buf = [0u8; 1024];
-        let mut large_req_buf = [0u8; 2048];
+        let mut large_msg_buf = [0u8; 2048];
         let mut ctx = test_context(
             &mut transport,
             &cert_store,
             &mut measurements,
-            &mut large_resp_buf,
-            &mut large_req_buf,
+            &mut large_msg_buf,
         );
 
         let first_chunk = [0xAA; 30];
@@ -658,7 +632,7 @@ mod tests {
                 assert_eq!(chunk_seq_num, 2);
             }
         }
-        assert!(!ctx.large_req_context.in_progress());
+        assert!(!ctx.large_msg_ctx.request_in_progress());
     }
 
     #[test]
@@ -666,14 +640,12 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut large_resp_buf = [0u8; 1024];
-        let mut large_req_buf = [0u8; 2048];
+        let mut large_msg_buf = [0u8; 2048];
         let mut ctx = test_context(
             &mut transport,
             &cert_store,
             &mut measurements,
-            &mut large_resp_buf,
-            &mut large_req_buf,
+            &mut large_msg_buf,
         );
 
         let first_chunk = [0xAA; 30];
@@ -693,7 +665,7 @@ mod tests {
                 assert_eq!(chunk_seq_num, 0);
             }
         }
-        assert!(!ctx.large_req_context.in_progress());
+        assert!(!ctx.large_msg_ctx.request_in_progress());
     }
 
     #[test]
@@ -701,14 +673,12 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut large_resp_buf = [0u8; 1024];
-        let mut large_req_buf = [0u8; 2048];
+        let mut large_msg_buf = [0u8; 2048];
         let mut ctx = test_context(
             &mut transport,
             &cert_store,
             &mut measurements,
-            &mut large_resp_buf,
-            &mut large_req_buf,
+            &mut large_msg_buf,
         );
 
         let first_chunk = [0xAA; 30];
@@ -737,7 +707,7 @@ mod tests {
                 assert_eq!(chunk_seq_num, 0);
             }
         }
-        assert!(!ctx.large_req_context.in_progress());
+        assert!(!ctx.large_msg_ctx.request_in_progress());
     }
 
     #[test]
@@ -745,14 +715,12 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut large_resp_buf = [0u8; 1024];
-        let mut large_req_buf = [0u8; 2048];
+        let mut large_msg_buf = [0u8; 2048];
         let mut ctx = test_context(
             &mut transport,
             &cert_store,
             &mut measurements,
-            &mut large_resp_buf,
-            &mut large_req_buf,
+            &mut large_msg_buf,
         );
         let mut storage = [0u8; 64];
         let mut msg = MessageBuf::new(&mut storage);

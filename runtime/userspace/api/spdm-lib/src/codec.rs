@@ -338,6 +338,11 @@ impl<'a> MessageBuf<'a> {
     pub fn msg_len(&self) -> usize {
         self.tail
     }
+
+    /// Consumes the MessageBuf and returns the underlying buffer.
+    pub fn into_inner(self) -> &'a mut [u8] {
+        self.buffer
+    }
 }
 
 #[cfg(test)]

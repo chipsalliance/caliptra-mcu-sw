@@ -267,11 +267,7 @@ async fn generate_vendor_defined_response<'a>(
     // Pass shared buffer sub-slice starting after the VendorDefRspHdr reservation.
     // The temporary borrow ends after the await, so we can re-borrow in the match arms.
     match vdm_handler
-        .handle_request(
-            vdm_req_buf,
-            rsp,
-            &mut ctx.large_resp_context.buf[resp_hdr_len..],
-        )
+        .handle_request(vdm_req_buf, rsp, &mut ctx.large_msg_ctx.buf[resp_hdr_len..])
         .await
     {
         Ok(len) => {
@@ -286,9 +282,9 @@ async fn generate_vendor_defined_response<'a>(
             // Now encode VendorDefRspHdr at the start of the shared buffer.
             let total_len = resp_hdr_len + payload_len;
             resp_hdr.set_resp_len(payload_len as u16);
-            // TODO: Refactor large_resp_context.buf to use MessageBuf directly,
+            // TODO: Refactor large_msg_ctx.buf to use MessageBuf directly,
             // eliminating this temporary MessageBuf + reserve dance.
-            let mut hdr_buf = MessageBuf::new(&mut ctx.large_resp_context.buf[..resp_hdr_len]);
+            let mut hdr_buf = MessageBuf::new(&mut ctx.large_msg_ctx.buf[..resp_hdr_len]);
             hdr_buf
                 .reserve(resp_hdr_len)
                 .map_err(|e| (false, CommandError::Codec(e)))?;
@@ -296,8 +292,8 @@ async fn generate_vendor_defined_response<'a>(
                 .encode(&mut hdr_buf)
                 .map_err(|e| (false, CommandError::Codec(e)))?;
             let handle = ctx
-                .large_resp_context
-                .init_buffered(total_len)
+                .large_msg_ctx
+                .init_buffered_response(total_len)
                 .map_err(|e| (false, CommandError::Chunk(e)))?;
             Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, 0, Some(&[handle])))
         }

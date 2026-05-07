@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cert_store::*;
-use crate::chunk_ctx::{LargeRequestCtx, LargeResponseCtx};
+use crate::chunk_ctx::LargeMessageCtx;
 use crate::codec::{encode_u8_slice, Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
@@ -38,8 +38,7 @@ pub struct SpdmContext<'a> {
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
     pub(crate) device_certs_store: &'a dyn SpdmCertStore,
     pub(crate) measurements: SpdmMeasurements<'a>,
-    pub(crate) large_resp_context: LargeResponseCtx<'a>,
-    pub(crate) large_req_context: LargeRequestCtx<'a>,
+    pub(crate) large_msg_ctx: LargeMessageCtx<'a>,
     pub(crate) session_mgr: SessionManager,
     pub(crate) vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
 }
@@ -55,8 +54,7 @@ impl<'a> SpdmContext<'a> {
         device_certs_store: &'a dyn SpdmCertStore,
         measurements: SpdmMeasurements<'a>,
         vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
-        large_resp_buf: &'a mut [u8],
-        large_req_buf: &'a mut [u8],
+        large_msg_buf: &'a mut [u8],
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -72,8 +70,7 @@ impl<'a> SpdmContext<'a> {
             local_algorithms,
             device_certs_store,
             measurements,
-            large_resp_context: LargeResponseCtx::new(large_resp_buf),
-            large_req_context: LargeRequestCtx::new(large_req_buf),
+            large_msg_ctx: LargeMessageCtx::new(large_msg_buf),
             session_mgr: SessionManager::new(),
             vdm_handlers,
         })
@@ -135,17 +132,75 @@ impl<'a> SpdmContext<'a> {
         self.dispatch_request(req_msg_header, req_code, buf).await
     }
 
+    /// Handle a fully reassembled large request (from CHUNK_SEND).
+    ///
+    /// Detaches the large message buffer, creates a request MessageBuf from it,
+    /// dispatches to the appropriate handler, and writes the response into `rsp`.
+    /// The caller must have already reserved space for the CHUNK_SEND_ACK header in `rsp`.
     pub(crate) async fn handle_large_request_payload(
         &mut self,
-        buf: &mut MessageBuf<'a>,
+        rsp: &mut MessageBuf<'a>,
     ) -> CommandResult<()> {
-        let (req_msg_header, req_code) = self.decode_and_validate_request(buf)?;
+        let request_size = self.large_msg_ctx.request_size();
 
-        if req_code == ReqRespCode::ChunkSend {
-            return Err((false, CommandError::UnsupportedRequest));
+        // Take the buffer containing the reassembled request
+        let taken_buf = self.large_msg_ctx.take_buf();
+        self.large_msg_ctx.reset_request();
+
+        // Create a MessageBuf from the taken buffer with request data loaded
+        let mut req = MessageBuf::new(taken_buf);
+        if req.put_data(request_size).is_err() {
+            let buf = req.into_inner();
+            self.large_msg_ctx.replace_buf(buf);
+            return Err((false, CommandError::BufferTooSmall));
         }
 
-        self.dispatch_request(req_msg_header, req_code, buf).await
+        let (req_msg_header, req_code) = match self.decode_and_validate_request(&mut req) {
+            Ok(v) => v,
+            Err((_send, _e)) => {
+                let buf = req.into_inner();
+                self.large_msg_ctx.replace_buf(buf);
+                let version = self.state.connection_info.version_number();
+                encode_error_response(rsp, version, ErrorCode::InvalidRequest, 0, None);
+                return Ok(());
+            }
+        };
+
+        if req_code == ReqRespCode::ChunkSend || req_code == ReqRespCode::ChunkGet {
+            let buf = req.into_inner();
+            self.large_msg_ctx.replace_buf(buf);
+            let version = self.state.connection_info.version_number();
+            encode_error_response(rsp, version, ErrorCode::InvalidRequest, 0, None);
+            return Ok(());
+        }
+
+        let result = self
+            .dispatch_large_request(req_msg_header, req_code, &mut req, rsp)
+            .await;
+
+        let buf = req.into_inner();
+        self.large_msg_ctx.replace_buf(buf);
+
+        result
+    }
+
+    /// Dispatch a large request to the appropriate handler.
+    ///
+    /// Commands with dedicated large-request handlers read from `req` and write
+    /// their response directly into `rsp`. When a command gains large-request
+    /// support (e.g. SET_CERTIFICATE, VDM), add it as a match arm here.
+    async fn dispatch_large_request(
+        &mut self,
+        _req_msg_header: SpdmMsgHdr,
+        _req_code: ReqRespCode,
+        _req: &mut MessageBuf<'a>,
+        rsp: &mut MessageBuf<'a>,
+    ) -> CommandResult<()> {
+        // No commands currently support large-request handling.
+        // As handlers are implemented, add match arms here.
+        let version = self.state.connection_info.version_number();
+        encode_error_response(rsp, version, ErrorCode::UnsupportedRequest, 0, None);
+        Ok(())
     }
 
     fn decode_and_validate_request(
@@ -160,15 +215,15 @@ impl<'a> SpdmContext<'a> {
             .map_err(|_| (false, CommandError::UnsupportedRequest))?;
 
         if !matches!(req_code, ReqRespCode::ChunkGet | ReqRespCode::ChunkSend)
-            && self.large_resp_context.in_progress()
+            && self.large_msg_ctx.response_in_progress()
         {
             // Reset large response context if the request is not a CHUNK_GET/CHUNK_SEND.
-            self.large_resp_context.reset();
+            self.large_msg_ctx.reset_response();
         }
 
-        if req_code != ReqRespCode::ChunkSend && self.large_req_context.in_progress() {
+        if req_code != ReqRespCode::ChunkSend && self.large_msg_ctx.request_in_progress() {
             // Reset large request context if the next request is not a CHUNK_SEND.
-            self.large_req_context.reset();
+            self.large_msg_ctx.reset_request();
         }
 
         // Check for requests prohibited within session
@@ -250,8 +305,8 @@ impl<'a> SpdmContext<'a> {
 
     pub(crate) fn reset(&mut self) {
         self.state.reset();
-        self.large_resp_context.reset();
-        self.large_req_context.reset();
+        self.large_msg_ctx.reset_response();
+        self.large_msg_ctx.reset_request();
         self.session_mgr.reset();
     }
 
