@@ -347,6 +347,36 @@ mod test {
         lock.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// A class-OUT write to a read-only command (PROT_CAP) records
+    /// `UnsupportedCommand` but the device remains in RecoveryMode/AwaitingImage,
+    /// so a subsequent valid 3-stage indirect load still completes recovery.
+    #[test]
+    fn test_usb_ocp_recovery_write_to_readonly_recovers() {
+        let lock = TEST_LOCK.lock().unwrap();
+
+        let (mut hw, caliptra_fw, soc_manifest, mcu_runtime) = build_and_start_usb_ocp_recovery();
+        let host = hw.usb_host_controller.clone();
+
+        assert_awaiting_image(&mut hw, &host);
+
+        // Class-OUT write to read-only PROT_CAP: dispatch falls through to the
+        // catch-all arm in the OCP state machine which records UnsupportedCommand.
+        ocp_write_data(
+            &mut hw,
+            &host,
+            RecoveryCommand::ProtCap,
+            &[0u8; 4],
+            IMAGE_LOAD_TIMEOUT,
+        );
+
+        expect_protocol_error(&mut hw, &host, ProtocolError::UnsupportedCommand);
+        expect_recovery_status(&mut hw, &host, DeviceRecoveryStatus::AwaitingImage);
+
+        complete_recovery_indirect(&mut hw, &host, &caliptra_fw, &soc_manifest, &mcu_runtime);
+
+        lock.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Load recovery images via the FIFO interface and verify the ROM
     /// completes the recovery boot flow.
     ///
