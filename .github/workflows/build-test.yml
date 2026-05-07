@@ -291,7 +291,7 @@ jobs:
           retention-days: 1
 
   test_emulator:
-    runs-on: e2-standard-2
+    runs-on: e2-standard-4
     needs: [precheckin, build-firmware, build-emulators, build-tests]
     timeout-minutes: 90
     strategy:
