@@ -17,6 +17,9 @@ pub mod cmd {
     pub const OTP_READ: u32 = 1;
     pub const OTP_WRITE: u32 = 2;
     pub const OTP_SET_REGISTER: u32 = 3;
+    pub const OTP_READ_RAW: u32 = 4;
+    pub const OTP_WRITE_RAW: u32 = 5;
+    pub const OTP_LOCK_PARTITION: u32 = 6;
 }
 
 pub mod reg {
@@ -365,6 +368,18 @@ impl Otp {
             _ => Err(ErrorCode::INVAL),
         }
     }
+    fn read_otp_raw(&self, base_word_addr: usize, offset: usize) -> CommandReturn {
+        match self.driver.read_word(base_word_addr + offset) {
+            Ok(value) => CommandReturn::success_u32(value),
+            Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+        }
+    }
+    fn write_otp_raw(&self, _processid: ProcessId) -> CommandReturn {
+        todo!()
+    }
+    fn lock_otp_partition(&self, _partition: u32) -> CommandReturn {
+        todo!()
+    }
 }
 
 /// Provide an interface for userland.
@@ -374,6 +389,9 @@ impl SyscallDriver for Otp {
             cmd::OTP_READ => self.read_reg(processid),
             cmd::OTP_WRITE => self.write_reg(arg1 as u32, processid),
             cmd::OTP_SET_REGISTER => self.set_reg(arg1 as u32, arg2 as u32, processid),
+            cmd::OTP_READ_RAW => self.read_otp_raw(arg1, arg2),
+            cmd::OTP_WRITE_RAW => self.write_otp_raw(processid),
+            cmd::OTP_LOCK_PARTITION => self.lock_otp_partition(arg1 as u32),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }

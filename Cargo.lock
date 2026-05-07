@@ -1540,6 +1540,7 @@ dependencies = [
  "caliptra-mcu-libtock_runtime",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
+ "caliptra-mcu-romtime",
  "embassy-executor",
  "embassy-sync",
  "zerocopy",

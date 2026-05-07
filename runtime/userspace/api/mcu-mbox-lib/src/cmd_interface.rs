@@ -16,17 +16,20 @@ use caliptra_mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
     DeviceInfoResp, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
     FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
+    FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
-    FuseRevokeVendorPubKeyResp, FuseWriteResp, GetAuthCmdChallengeReq, GetAuthCmdChallengeResp,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuResponseVarSize,
-    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE,
-    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
+    GetAuthCmdChallengeResp, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq,
+    McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
+    RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
     McuFipsPeriodicStatusResp,
 };
+use caliptra_mcu_romtime::fuse_read_dai_params;
 use core::sync::atomic::{AtomicBool, Ordering};
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -166,6 +169,9 @@ impl<'a> CmdInterface<'a> {
                 | inner @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
                 | inner @ CommandId::MC_FE_PROG
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH
+                | inner @ CommandId::MC_FUSE_READ
+                | inner @ CommandId::MC_FUSE_WRITE
+                | inner @ CommandId::MC_FUSE_LOCK_PARTITION
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
@@ -456,8 +462,73 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => {
                 self.handle_revoke_vendor_pk_hash(cmd, resp_buf).await
             }
+            CommandId::MC_FUSE_READ => self.handle_fuse_read(cmd, resp_buf).await,
+            CommandId::MC_FUSE_WRITE => self.handle_fuse_write(cmd, resp_buf).await,
+            CommandId::MC_FUSE_LOCK_PARTITION => {
+                self.handle_fuse_lock_partition(cmd, resp_buf).await
+            }
             _ => Err(MsgHandlerError::UnsupportedCommand),
         }
+    }
+
+    async fn handle_fuse_read<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+        // Decode the request
+        let req = FuseReadReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+        let (resp, _) =
+            FuseReadResp::mut_from_prefix(resp_buf).map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        *resp = FuseReadResp::default();
+
+        let params = fuse_read_dai_params(req.partition, req.entry, MAX_FUSE_DATA_SIZE / 4)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
+
+        // Create a iterator over the words in the response that yields at most `params.words_to_read`
+        // (which is less or equal to the words in resp.data).
+        let words = resp.data.chunks_exact_mut(4).take(params.words_to_read);
+        for (i, word) in words.enumerate() {
+            let data = otp
+                .read_raw(params.base_word_addr as u32, i as u32)
+                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+            let bytes = data.to_ne_bytes();
+            word.copy_from_slice(&bytes);
+        }
+
+        resp.length_bits = params.valid_bits;
+
+        Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
+    }
+
+    async fn handle_fuse_write<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+        // Decode the request
+        let _req = FuseWriteReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+        let (_resp, _) =
+            FuseWriteResp::mut_from_prefix(resp_buf).map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        Err(MsgHandlerError::UnsupportedCommand)
+    }
+
+    async fn handle_fuse_lock_partition<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+        // Decode the request
+        let _req = FuseLockPartitionReq::ref_from_bytes(req)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        let (_resp, _) = FuseLockPartitionResp::mut_from_prefix(resp_buf)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        Err(MsgHandlerError::UnsupportedCommand)
     }
 
     async fn handle_provision_vendor_pk_hash<'r>(

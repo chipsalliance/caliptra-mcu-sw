@@ -40,6 +40,12 @@ impl<S: Syscalls> Otp<S> {
         S::command(self.driver_num, cmd::OTP_READ, reg_offset, index).to_result::<u32, ErrorCode>()
     }
 
+    /// Read a word form the otp controller at a specific word address.
+    pub fn read_raw(&self, base_word_addr: u32, offset: u32) -> Result<u32, ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_READ_RAW, base_word_addr, offset)
+            .to_result::<u32, ErrorCode>()
+    }
+
     pub fn write(&self, reg_offset: u32, index: u32, value: u32) -> Result<(), ErrorCode> {
         S::command(self.driver_num, cmd::OTP_SET_REGISTER, reg_offset, index)
             .to_result::<(), ErrorCode>()?;
@@ -204,6 +210,9 @@ pub mod cmd {
     pub const OTP_READ: u32 = 1;
     pub const OTP_WRITE: u32 = 2;
     pub const OTP_SET_REGISTER: u32 = 3;
+    pub const OTP_READ_RAW: u32 = 4;
+    pub const OTP_WRITE_RAW: u32 = 5;
+    pub const OTP_LOCK_PARTITION: u32 = 6;
 }
 
 pub mod reg {
@@ -283,4 +292,8 @@ pub mod reg {
             RevokeVendorPubKeyType::Mldsa87 => VENDOR_MLDSA_REVOCATION,
         }
     }
+
+    pub const FUSE_READ: u32 = 30;
+    pub const FUSE_WRITE: u32 = 31;
+    pub const FUSE_LOCK_PARTITION: u32 = 32;
 }
