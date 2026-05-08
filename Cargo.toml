@@ -47,6 +47,8 @@ members = [
     "platforms/fpga/rom",
     "platforms/fpga/runtime",
     "platforms/test_harness",
+    "provisioning/fuses/fusegen",
+    "provisioning/fuses/lib",
     "registers/fuses",
     "registers/generated-emulator",
     "registers/generated-firmware",
@@ -203,6 +205,7 @@ flash-ctrl-emulator = { path = "platforms/emulator/runtime/kernel/drivers/flash_
 flash-ctrl-fpga = { path = "platforms/fpga/runtime/drivers/flash_ctrl"}
 flash-driver = { path = "runtime/kernel/drivers/flash" }
 flash-image = { path = "common/flash-image" }
+fusegen = { path = "provisioning/fuses/fusegen" }
 i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 libtockasync = { path = "runtime/userspace/libtockasync" }
 mcu-builder = { path = "builder" }
@@ -237,6 +240,7 @@ pldm-common = { path = "common/pldm"}
 pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 pldm-ua = { path = "emulator/bmc/pldm-ua"}
 poll-common = { path = "common/poll"}
+provisioning-fuses = { path = "provisioning/fuses/lib" }
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }

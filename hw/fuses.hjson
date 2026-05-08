@@ -1,4 +1,7 @@
-// Example fuses for MCU based on the default caliptra-ss fuse map (otp_ctrl.hjson).
+// Example in-field programmable fuses for MCU based on the default caliptra-ss fuse map (otp_ctrl.hjson).
+//
+// Note: not all fuses in the default caliptra-ss fuse map are designed to be programmable in-field.
+// Some require provisioning during post-silicon manufacturing, and are not described below.
 
 {
   // Vendor-specific secret fuses for DOT operations

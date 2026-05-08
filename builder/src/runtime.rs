@@ -34,6 +34,7 @@ pub fn runtime_build_with_apps(
     svn: Option<u16>,
 ) -> Result<PathBuf> {
     let manifest = manifest_file(platform, example_app)?;
+    let platform_str = platform.unwrap_or("emulator");
     let platform = platform.unwrap_or("emulator");
     let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform));
 
@@ -42,7 +43,8 @@ pub fn runtime_build_with_apps(
         svn,
         ..Default::default()
     };
-    let runtime_bin = common.release_dir()?.join(&output_name);
+    let release_dir = common.release_dir()?;
+    let runtime_bin = release_dir.join(&output_name);
 
     let runtime_features = if features.is_empty() {
         None
@@ -62,5 +64,15 @@ pub fn runtime_build_with_apps(
     };
 
     mcu_firmware_bundler::execute(bundle_cmd)?;
+
+    // The bundle step rebuilds the ROM via objcopy, which strips the SHA-384
+    // digest appended by rom_build(). Re-apply the digest so the ROM binary
+    // stays valid regardless of build order.
+    let rom_binary = release_dir.join(format!("mcu-rom-{platform_str}.bin"));
+    if rom_binary.exists() {
+        let rom_size = crate::rom::rom_size_for_platform(platform_str);
+        crate::rom::append_rom_digest(&rom_binary, rom_size)?;
+    }
+
     Ok(runtime_bin)
 }

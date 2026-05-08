@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
+use fusegen::{HEADER_PREFIX, HEADER_SUFFIX};
 use mcu_builder::PROJECT_ROOT;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
@@ -20,14 +21,6 @@ use std::str::FromStr;
 use std::sync::LazyLock;
 
 use crate::fuses::autogen_fuses;
-
-pub(crate) static HEADER_PREFIX: &str = r"/*
-Licensed under the Apache-2.0 license.
-";
-
-pub(crate) static HEADER_SUFFIX: &str = r"
-*/
-";
 
 static SKIP_TYPES: LazyLock<HashSet<&str>> = LazyLock::new(|| {
     HashSet::from([
@@ -324,7 +317,7 @@ fn generate_emulator_types(
     let stub_warnings_code = r#"
 use std::sync::atomic::{AtomicBool, Ordering};
 
-static WARN_ON_STUB: AtomicBool = AtomicBool::new(true);
+static WARN_ON_STUB: AtomicBool = AtomicBool::new(false);
 
 /// Enable or disable warning logs when auto-generated register stubs
 /// handle a read/write that was not overridden by the peripheral implementation.

@@ -2134,6 +2134,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fusegen"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hex",
+ "serde",
+ "serde-hjson",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4175,6 +4185,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "provisioning-fuses"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fusegen",
+ "registers-generated",
+]
+
+[[package]]
 name = "quinn"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6202,6 +6221,7 @@ dependencies = [
  "clap 4.5.51",
  "clap-num",
  "elf",
+ "fusegen",
  "hex",
  "mcu-builder",
  "mcu-config-emulator",
