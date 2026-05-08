@@ -162,6 +162,14 @@ pub mod test {
         for (idx, &byte) in hek_seed.as_bytes().iter().enumerate() {
             assert_eq!(byte, ((active_slot + 1) ^ idx) as u8);
         }
+
+        let stable_owner_key_strap = hw
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .ss_strap_generic()
+            .at(3)
+            .read();
+        assert_eq!(stable_owner_key_strap & 1, 1);
     }
 
     #[test]

@@ -54,6 +54,10 @@ const MLDSA_CALIPTRA_VALUE: u8 = 1;
 const LMS_CALIPTRA_VALUE: u8 = 3;
 const OTP_DAI_IDLE_BIT_OFFSET: u32 = 30;
 const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
+#[cfg(feature = "stable-owner-key")]
+const STABLE_OWNER_KEY_STRAP_INDEX: usize = 3;
+#[cfg(feature = "stable-owner-key")]
+const STABLE_OWNER_KEY_STRAP_MASK: u32 = 1;
 
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
@@ -255,6 +259,14 @@ impl Soc {
         );
         self.registers.ss_strap_generic[0].set(OTP_DAI_IDLE_BIT_OFFSET << 16);
         self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
+
+        #[cfg(feature = "stable-owner-key")]
+        {
+            // Caliptra ROM gates owner stable key availability on SS_STRAP_GENERIC[3] bit 0.
+            let strap = self.registers.ss_strap_generic[STABLE_OWNER_KEY_STRAP_INDEX].get();
+            self.registers.ss_strap_generic[STABLE_OWNER_KEY_STRAP_INDEX]
+                .set(strap | STABLE_OWNER_KEY_STRAP_MASK);
+        }
 
         // PQC Key Type.
         let pqc_word = otp
