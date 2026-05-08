@@ -416,8 +416,8 @@ mod tests {
 
         async fn get_cert_chain<'a>(
             &self,
-            _slot_id: u8,
             _asym_algo: AsymAlgo,
+            _slot_id: u8,
             _offset: usize,
             _cert_portion: &'a mut [u8],
         ) -> CertStoreResult<usize> {
@@ -426,8 +426,8 @@ mod tests {
 
         async fn root_cert_hash<'a>(
             &self,
-            _slot_id: u8,
             _asym_algo: AsymAlgo,
+            _slot_id: u8,
             _cert_hash: &'a mut [u8; SHA384_HASH_SIZE],
         ) -> CertStoreResult<()> {
             Err(CertStoreError::UnprovisionedSlot)
@@ -435,10 +435,29 @@ mod tests {
 
         async fn sign_hash<'a>(
             &self,
-            _slot_id: u8,
             _asym_algo: AsymAlgo,
+            _slot_id: u8,
             _hash: &'a [u8; SHA384_HASH_SIZE],
             _signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
+        ) -> CertStoreResult<()> {
+            Err(CertStoreError::UnprovisionedSlot)
+        }
+
+        async fn write_cert_chain(
+            &self,
+            _asym_algo: AsymAlgo,
+            _slot_id: u8,
+            _key_pair_id: u8,
+            _cert_model: CertificateInfo,
+            _cert_chain: &[u8],
+        ) -> CertStoreResult<()> {
+            Err(CertStoreError::UnprovisionedSlot)
+        }
+
+        async fn erase_cert_chain(
+            &self,
+            _asym_algo: AsymAlgo,
+            _slot_id: u8,
         ) -> CertStoreResult<()> {
             Err(CertStoreError::UnprovisionedSlot)
         }
