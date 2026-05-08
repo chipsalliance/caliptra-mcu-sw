@@ -1005,7 +1005,7 @@ impl BootFlow for ColdBoot {
         // OCP LOCK and stable owner key are mutually exclusive HEK consumers.
         #[cfg(feature = "stable-owner-key")]
         {
-            // Derive stable owner key using the temporary ROM-local personalization seed.
+            // Derive stable owner key using the OTP personalization seed.
             if let Err(err) = crate::stable_owner_key::derive_stable_owner_key(env) {
                 romtime::println!(
                     "[mcu-rom] Stable owner key derivation failed, continuing: {}",
