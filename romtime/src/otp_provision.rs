@@ -23,7 +23,7 @@ use caliptra_mcu_registers_generated::fuses;
 // cherry-picked to the 2.1 branch.
 #[repr(u32)]
 #[derive(Clone, Copy)]
-enum PartitionId {
+pub enum PartitionId {
     SwTestUnlock = 0x00,
     SecretManuf = 0x01,
     SecretProd0 = 0x02,

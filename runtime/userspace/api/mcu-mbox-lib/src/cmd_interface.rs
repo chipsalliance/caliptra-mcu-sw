@@ -29,7 +29,7 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
     McuFipsPeriodicStatusResp,
 };
-use caliptra_mcu_romtime::fuse_read_dai_params;
+use caliptra_mcu_romtime::{fuse_read_dai_params, PartitionId};
 use core::sync::atomic::{AtomicBool, Ordering};
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -523,12 +523,19 @@ impl<'a> CmdInterface<'a> {
         resp_buf: &'r mut [u8],
     ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
         // Decode the request
-        let _req = FuseLockPartitionReq::ref_from_bytes(req)
+        let req = FuseLockPartitionReq::ref_from_bytes(req)
             .map_err(|_| MsgHandlerError::InvalidParams)?;
-        let (_resp, _) = FuseLockPartitionResp::mut_from_prefix(resp_buf)
+        let (resp, _) = FuseLockPartitionResp::mut_from_prefix(resp_buf)
             .map_err(|_| MsgHandlerError::InvalidParams)?;
 
-        Err(MsgHandlerError::UnsupportedCommand)
+        PartitionId::try_from(req.partition).map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
+        otp.lock_partition(req.partition)
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        *resp = FuseLockPartitionResp::default();
+        Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
     }
 
     async fn handle_provision_vendor_pk_hash<'r>(

@@ -197,6 +197,16 @@ impl<S: Syscalls> Otp<S> {
 
         self.write(reg::VENDOR_PK_HASH_VALID, 0, valid_mask)
     }
+
+    /// Lock a partition
+    ///
+    /// Idempotent: locking a locked partition has no effect.
+    ///
+    /// Locking does not fully take effect until the next reset.
+    pub fn lock_partition(&self, partition: u32) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_LOCK_PARTITION, partition, 0)
+            .to_result::<(), ErrorCode>()
+    }
 }
 
 // -----------------------------------------------------------------------------

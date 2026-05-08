@@ -10,6 +10,8 @@ use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
 
+use caliptra_mcu_romtime::fuse_lock_partition_dai;
+
 /// The driver number for Caliptra OTP commands.
 pub const DRIVER_NUM: usize = 0xD000_0000;
 
@@ -377,8 +379,11 @@ impl Otp {
     fn write_otp_raw(&self, _processid: ProcessId) -> CommandReturn {
         todo!()
     }
-    fn lock_otp_partition(&self, _partition: u32) -> CommandReturn {
-        todo!()
+    fn lock_otp_partition(&self, partition: u32) -> CommandReturn {
+        match fuse_lock_partition_dai(self.driver, partition) {
+            Ok(_) => CommandReturn::success(),
+            Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+        }
     }
 }
 
