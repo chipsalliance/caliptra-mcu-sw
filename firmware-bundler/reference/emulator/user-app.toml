@@ -36,7 +36,7 @@ name = "caliptra-mcu-runtime-emulator"
 stack = 0x0_7000
 
 [[app]]
-name = "caliptra-mcu-user-app"
-stack = 0x10000
+name = "user-app"
+stack = 0xa000
 grant_space = 0x4000
 

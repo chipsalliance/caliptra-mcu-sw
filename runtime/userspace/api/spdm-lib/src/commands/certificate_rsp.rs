@@ -187,7 +187,7 @@ async fn generate_certificate_response<'a>(
     if portion_len > SPDM_MAX_CERT_CHAIN_PORTION_LEN {
         let large_rsp_len = CERTIFICATE_RESP_HEADER_SIZE + portion_len as usize;
         let large_rsp = LargeResponse::Certificate(rsp_ctx.clone());
-        let handle = ctx.large_resp_context.init(large_rsp, large_rsp_len);
+        let handle = ctx.large_msg_ctx.init_response(large_rsp, large_rsp_len);
         Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, 0, Some(&[handle])))?;
     }
 

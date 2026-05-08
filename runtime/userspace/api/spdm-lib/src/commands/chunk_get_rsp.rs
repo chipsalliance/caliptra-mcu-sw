@@ -75,7 +75,7 @@ fn compute_chunk_size(ctx: &SpdmContext, chunk_seq_num: u16) -> CommandResult<(u
         .saturating_sub(size_of::<ChunkResponseHdr>() + extra_field_size);
 
     let (is_last_chunk, remaining_len) = ctx
-        .large_resp_context
+        .large_msg_ctx
         .next_chunk_info(max_chunk_size)
         .map_err(|_| (false, CommandError::InvalidChunkContext))?;
 
@@ -103,8 +103,8 @@ fn process_chunk_get<'a>(
     })?;
 
     if ctx
-        .large_resp_context
-        .validate_chunk(chunk_get_req.handle, chunk_get_req.chunk_seq_num)
+        .large_msg_ctx
+        .validate_response_chunk(chunk_get_req.handle, chunk_get_req.chunk_seq_num)
         .is_err()
     {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
@@ -113,7 +113,7 @@ fn process_chunk_get<'a>(
     // compute max possible response size that can be transferred in chunks is less than the large response size
     let max_large_rsp_size = max_chunked_resp_size(ctx);
 
-    if ctx.large_resp_context.large_response_size() > max_large_rsp_size {
+    if ctx.large_msg_ctx.response_size() > max_large_rsp_size {
         Err(ctx.generate_error_response(req_payload, ErrorCode::ResponseTooLarge, 0, None))?;
     }
 
@@ -155,7 +155,7 @@ async fn encode_chunk_data(
     rsp: &mut MessageBuf<'_>,
 ) -> CommandResult<usize> {
     // Get the chunk data from the large response context
-    let offset = ctx.large_resp_context.bytes_transferred();
+    let offset = ctx.large_msg_ctx.response_bytes_transferred();
     rsp.put_data(chunk_size)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
@@ -163,7 +163,7 @@ async fn encode_chunk_data(
         .data_mut(chunk_size)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    let bytes_copied = if let Some(response) = ctx.large_resp_context.response() {
+    let bytes_copied = if let Some(response) = ctx.large_msg_ctx.response() {
         match response {
             LargeResponse::Certificate(cert_rsp) => {
                 // Get the chunk data from the certificate response
@@ -178,7 +178,7 @@ async fn encode_chunk_data(
             }
             LargeResponse::Buffered => {
                 // Simple memcpy from the pre-serialized shared buffer
-                let data = &ctx.large_resp_context.buf[..ctx.large_resp_context.data_len];
+                let data = &ctx.large_msg_ctx.buf[..ctx.large_msg_ctx.data_len];
                 let available = data.len().saturating_sub(offset);
                 let copy_len = chunk_buf.len().min(available);
                 chunk_buf[..copy_len].copy_from_slice(&data[offset..offset + copy_len]);
@@ -222,7 +222,7 @@ async fn generate_chunk_response<'a>(
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
     let (chunk_size, last_chunk) = compute_chunk_size(ctx, chunk_seq_num)?;
-    if chunk_size > ctx.large_resp_context.large_response_size() {
+    if chunk_size > ctx.large_msg_ctx.response_size() {
         Err((false, CommandError::InvalidChunkContext))?;
     }
 
@@ -230,14 +230,13 @@ async fn generate_chunk_response<'a>(
     let actual_chunk_size = encode_chunk_data(ctx, chunk_size, rsp).await?;
 
     // Mark this chunk as sent with actual bytes transferred
-    ctx.large_resp_context.next_chunk_sent(actual_chunk_size);
+    ctx.large_msg_ctx.next_chunk_sent(actual_chunk_size);
 
     // Now prepend headers in reverse order (innermost first)
 
     // Prepend LargeResponseSize for the first chunk
     if chunk_seq_num == 0 {
-        let large_response_size =
-            LargeResponseSize(ctx.large_resp_context.large_response_size() as u32);
+        let large_response_size = LargeResponseSize(ctx.large_msg_ctx.response_size() as u32);
         large_response_size
             .encode(rsp)
             .map_err(|e| (false, CommandError::Codec(e)))?;
@@ -270,7 +269,7 @@ pub(crate) async fn handle_chunk_get<'a>(
     // 3. Check if a large response is in progress
     if ctx.state.connection_info.state() < ConnectionState::AfterCapabilities
         || ctx.local_capabilities.flags.chunk_cap() == 0
-        || !ctx.large_resp_context.in_progress()
+        || !ctx.large_msg_ctx.response_in_progress()
     {
         error_code = Some(ErrorCode::UnexpectedRequest);
     }

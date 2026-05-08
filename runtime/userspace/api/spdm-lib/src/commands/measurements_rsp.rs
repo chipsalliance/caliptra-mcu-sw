@@ -501,7 +501,7 @@ pub(crate) async fn generate_measurements_response<'a>(
 
     if rsp_len > ctx.min_data_transfer_size() {
         // Check buffer capacity before acquiring mutable borrows.
-        if rsp_len > ctx.large_resp_context.buf.len() {
+        if rsp_len > ctx.large_msg_ctx.buf.len() {
             Err(ctx.generate_error_response(rsp, ErrorCode::ResponseTooLarge, 0, None))?;
         }
 
@@ -515,7 +515,7 @@ pub(crate) async fn generate_measurements_response<'a>(
             None => None,
         };
 
-        let buf = &mut ctx.large_resp_context.buf[..rsp_len];
+        let buf = &mut ctx.large_msg_ctx.buf[..rsp_len];
         let payload_len = rsp_ctx
             .encode_response(
                 &mut ctx.measurements,
@@ -528,8 +528,8 @@ pub(crate) async fn generate_measurements_response<'a>(
             .await?;
 
         let handle = ctx
-            .large_resp_context
-            .init_buffered(payload_len)
+            .large_msg_ctx
+            .init_buffered_response(payload_len)
             .map_err(|e| (false, CommandError::Chunk(e)))?;
         Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, 0, Some(&[handle])))?
     } else {
