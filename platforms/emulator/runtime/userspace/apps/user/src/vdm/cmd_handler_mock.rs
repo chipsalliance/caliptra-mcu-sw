@@ -6,9 +6,11 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DeviceCapabilities, DeviceId,
-    DeviceInfo, FirmwareVersion, Uid, MAX_FW_VERSION_LEN, MAX_UID_LEN,
+    DeviceInfo, FirmwareVersion, GetLogResult, Uid, MAX_FW_VERSION_LEN, MAX_UID_LEN,
 };
 use caliptra_mcu_mbox_common::config;
+
+use crate::caliptra_cmd_handler::CaliptraCmdBackend;
 
 #[derive(Default)]
 pub struct NonCryptoCmdHandlerMock;
@@ -101,5 +103,16 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         _csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    async fn get_log(&self, log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
+        // Delegate to the production backend so the real Tock logging-flash
+        // path is exercised end-to-end. The seeder in `crate::log_seed`
+        // populates the log before the responder accepts requests.
+        CaliptraCmdBackend.get_log(log_type, data).await
+    }
+
+    async fn clear_log(&self, log_type: u32) -> CaliptraCmdResult<()> {
+        CaliptraCmdBackend.clear_log(log_type).await
     }
 }

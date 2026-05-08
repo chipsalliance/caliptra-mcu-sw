@@ -98,6 +98,10 @@ mod test {
         /// Production debug unlock keypairs (ECC384 pub key bytes, MLDSA87 pub key bytes).
         pub prod_dbg_unlock_keypairs: Vec<([u8; 96], [u8; 2592])>,
         pub use_strap_secrets: bool,
+        /// If set, the kernel logging-flash partition is host-side seeded
+        /// with these entries before the firmware boots. Honored on both
+        /// emulator and FPGA via `BootParams::primary_flash_initial_contents`.
+        pub seeded_log_entries: Option<&'static [&'static [u8]]>,
     }
 
     impl Default for TestParams<'_> {
@@ -121,6 +125,7 @@ mod test {
                 debug_intent: false,
                 prod_dbg_unlock_keypairs: Vec::new(),
                 use_strap_secrets: false,
+                seeded_log_entries: None,
             }
         }
     }
@@ -486,6 +491,25 @@ mod test {
                 // For streaming boot, pass individual images to BMC
                 (None, caliptra_fw, soc_manifest, mcu_runtime)
             };
+
+        // Optionally splice a host-seeded LOGGING_PARTITION into the flash
+        // image. Same encoded bytes work for emulator (`DummyFlashCtrl`) and
+        // FPGA (`ImaginaryFlashController`) — both consume `initial_content`
+        // and use a 256-byte page size.
+        let flash_image = if let Some(entries) = params.seeded_log_entries {
+            use caliptra_mcu_config_emulator::flash::LOGGING_PARTITION;
+            Some(
+                caliptra_mcu_testing_common::logging_seed::splice_logging_partition_into_flash_image(
+                    flash_image,
+                    entries,
+                    LOGGING_PARTITION.offset,
+                    LOGGING_PARTITION.size,
+                    256,
+                ),
+            )
+        } else {
+            flash_image
+        };
 
         caliptra_mcu_hw_model::new(InitParams {
             fuses: Fuses {

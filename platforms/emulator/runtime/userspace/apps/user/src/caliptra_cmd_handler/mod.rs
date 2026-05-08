@@ -1,27 +1,19 @@
 // Licensed under the Apache-2.0 license
 
-//! Baseline Caliptra MCU implementation of `CaliptraCmdHandler`.
-//!
-//! This module provides the production command handler backed by the Caliptra
-//! mailbox API. It is consumed by both the SPDM VDM handler and the MCU
-//! mailbox command interface.
-
 extern crate alloc;
+
+mod debug_log;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DeviceCapabilities, DeviceId,
-    DeviceInfo, FirmwareVersion,
+    DeviceInfo, FirmwareVersion, GetLogResult, LogType,
 };
 use caliptra_mcu_libapi_caliptra::certificate::{CertContext, IDEV_ECC_CSR_MAX_SIZE};
 use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 
-/// Production command handler that delegates to the Caliptra mailbox API.
-///
-/// Currently only `export_attested_csr` is implemented; all other commands
-/// return `NotSupported` until their backend integrations are complete.
 pub struct CaliptraCmdBackend;
 
 #[async_trait]
@@ -117,6 +109,30 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
                 // MLDSA IDevID CSR not yet supported at the mailbox level
                 Err(CaliptraCompletionCode::UnsupportedOperation)
             }
+        }
+    }
+
+    /// Drain entries of `log_type` from the backing store.
+    ///
+    /// `LogType::Debug` is backed by the Tock logging-flash capsule via
+    /// [`LoggingSyscall`](caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall);
+    /// the kernel cursor is advanced as entries are consumed and any entry
+    /// that does not fit is held over for the next call.
+    ///
+    /// `LogType::Attestation` returns `UnsupportedOperation` until the
+    /// Caliptra-mailbox-backed implementation lands.
+    async fn get_log(&self, log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
+        match LogType::try_from(log_type)? {
+            LogType::Debug => debug_log::drain(data).await,
+            LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
+        }
+    }
+
+    /// Erase the log of `log_type` and reset the read cursor.
+    async fn clear_log(&self, log_type: u32) -> CaliptraCmdResult<()> {
+        match LogType::try_from(log_type)? {
+            LogType::Debug => debug_log::clear().await,
+            LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
         }
     }
 }

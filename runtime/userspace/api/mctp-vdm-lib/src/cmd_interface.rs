@@ -3,12 +3,15 @@
 use crate::error::VdmLibError;
 use crate::transport::MctpVdmTransport;
 use caliptra_mcu_common_commands::{
-    CaliptraCmdHandler, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid, MAX_UID_LEN,
+    CaliptraCmdHandler, CaliptraCompletionCode, DeviceCapabilities, DeviceId, DeviceInfo,
+    FirmwareVersion, GetLogResult, LogType, Uid, MAX_UID_LEN,
 };
 use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 use caliptra_mcu_mctp_vdm_common::message::{
-    DeviceCapabilitiesResponse, DeviceIdResponse, DeviceInfoRequest, DeviceInfoResponse,
-    FirmwareVersionRequest, FirmwareVersionResponse, DEVICE_CAPS_SIZE,
+    ClearAttestationLogResponse, ClearDebugLogResponse, DeviceCapabilitiesResponse,
+    DeviceIdResponse, DeviceInfoRequest, DeviceInfoResponse, FirmwareVersionRequest,
+    FirmwareVersionResponse, GetAttestationLogResponse, GetDebugLogResponse, DEVICE_CAPS_SIZE,
+    MAX_LOG_DATA_SIZE,
 };
 use caliptra_mcu_mctp_vdm_common::protocol::{
     VdmCommand, VdmCompletionCode, VdmFailureResponse, VdmMsgHeader, VDM_MSG_HEADER_LEN,
@@ -118,6 +121,14 @@ impl<'a> CmdInterface<'a> {
             }
             VdmCommand::DeviceId => self.handle_device_id(msg_buf, vdm_req_len).await,
             VdmCommand::DeviceInfo => self.handle_device_info(msg_buf, vdm_req_len).await,
+            VdmCommand::GetDebugLog => self.handle_get_log(msg_buf, LogType::Debug).await,
+            VdmCommand::ClearDebugLog => self.handle_clear_log(msg_buf, LogType::Debug).await,
+            VdmCommand::GetAttestationLog => {
+                self.handle_get_log(msg_buf, LogType::Attestation).await
+            }
+            VdmCommand::ClearAttestationLog => {
+                self.handle_clear_log(msg_buf, LogType::Attestation).await
+            }
             _ => self.send_error_response(
                 msg_buf,
                 hdr.command_code,
@@ -306,5 +317,132 @@ impl<'a> CmdInterface<'a> {
 
         // Return total MCTP payload length (1 byte MCTP header + VDM response).
         Ok(VDM_MSG_OFFSET + resp_len)
+    }
+
+    /// Handle Get Debug/Attestation Log command.
+    ///
+    /// Drains entries from the requested log into the response buffer.
+    /// Sets the `more_data` flag in the response if at least one further
+    /// entry remains. Same handler is reused for both log types — the log
+    /// type is implied by the command code.
+    async fn handle_get_log(
+        &self,
+        msg_buf: &mut [u8],
+        log_type: LogType,
+    ) -> Result<usize, VdmLibError> {
+        let mut data = [0u8; MAX_LOG_DATA_SIZE];
+        let result = self
+            .unified_handler
+            .get_log(log_type as u32, &mut data)
+            .await;
+
+        match (log_type, result) {
+            (
+                LogType::Debug,
+                Ok(GetLogResult {
+                    bytes_written,
+                    more_data,
+                }),
+            ) => {
+                let resp = GetDebugLogResponse::new(
+                    VdmCompletionCode::Success as u32,
+                    more_data,
+                    &data[..bytes_written],
+                );
+                self.encode_get_debug_log_response(msg_buf, &resp)
+            }
+            (
+                LogType::Attestation,
+                Ok(GetLogResult {
+                    bytes_written,
+                    more_data,
+                }),
+            ) => {
+                let resp = GetAttestationLogResponse::new(
+                    VdmCompletionCode::Success as u32,
+                    more_data,
+                    &data[..bytes_written],
+                );
+                self.encode_get_attestation_log_response(msg_buf, &resp)
+            }
+            (_, Err(err)) => {
+                let cc = map_caliptra_to_vdm(err);
+                let cmd_code = match log_type {
+                    LogType::Debug => VdmCommand::GetDebugLog as u8,
+                    LogType::Attestation => VdmCommand::GetAttestationLog as u8,
+                };
+                self.send_error_response(msg_buf, cmd_code, cc)
+            }
+        }
+    }
+
+    /// Handle Clear Debug/Attestation Log command.
+    async fn handle_clear_log(
+        &self,
+        msg_buf: &mut [u8],
+        log_type: LogType,
+    ) -> Result<usize, VdmLibError> {
+        let result = self.unified_handler.clear_log(log_type as u32).await;
+
+        match (log_type, result) {
+            (LogType::Debug, Ok(())) => {
+                let resp = ClearDebugLogResponse::new(VdmCompletionCode::Success as u32);
+                self.encode_response(msg_buf, &resp)
+            }
+            (LogType::Attestation, Ok(())) => {
+                let resp = ClearAttestationLogResponse::new(VdmCompletionCode::Success as u32);
+                self.encode_response(msg_buf, &resp)
+            }
+            (_, Err(err)) => {
+                let cc = map_caliptra_to_vdm(err);
+                let cmd_code = match log_type {
+                    LogType::Debug => VdmCommand::ClearDebugLog as u8,
+                    LogType::Attestation => VdmCommand::ClearAttestationLog as u8,
+                };
+                self.send_error_response(msg_buf, cmd_code, cc)
+            }
+        }
+    }
+
+    /// Encode a GetDebugLogResponse (variable length) into the MCTP payload buffer.
+    fn encode_get_debug_log_response(
+        &self,
+        msg_buf: &mut [u8],
+        resp: &GetDebugLogResponse,
+    ) -> Result<usize, VdmLibError> {
+        let vdm_msg = construct_mctp_vdm_msg(msg_buf).map_err(|_| VdmLibError::EncodingError)?;
+        let resp_len = resp
+            .encode(vdm_msg)
+            .map_err(|_| VdmLibError::EncodingError)?;
+        Ok(VDM_MSG_OFFSET + resp_len)
+    }
+
+    /// Encode a GetAttestationLogResponse (variable length) into the MCTP payload buffer.
+    fn encode_get_attestation_log_response(
+        &self,
+        msg_buf: &mut [u8],
+        resp: &GetAttestationLogResponse,
+    ) -> Result<usize, VdmLibError> {
+        let vdm_msg = construct_mctp_vdm_msg(msg_buf).map_err(|_| VdmLibError::EncodingError)?;
+        let resp_len = resp
+            .encode(vdm_msg)
+            .map_err(|_| VdmLibError::EncodingError)?;
+        Ok(VDM_MSG_OFFSET + resp_len)
+    }
+}
+
+/// Map a `CaliptraCompletionCode` from the unified handler into the
+/// MCTP VDM completion code space.
+fn map_caliptra_to_vdm(err: CaliptraCompletionCode) -> VdmCompletionCode {
+    match err {
+        CaliptraCompletionCode::InvalidParameter | CaliptraCompletionCode::InvalidIdentifier => {
+            VdmCompletionCode::InvalidData
+        }
+        CaliptraCompletionCode::UnsupportedOperation => VdmCompletionCode::UnsupportedCommand,
+        CaliptraCompletionCode::DeviceNotReady => VdmCompletionCode::NotReady,
+        CaliptraCompletionCode::InvalidLength | CaliptraCompletionCode::InvalidPayloadSize => {
+            VdmCompletionCode::InvalidLength
+        }
+        _ => VdmCompletionCode::GeneralError,
     }
 }
