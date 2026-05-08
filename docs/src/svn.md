@@ -250,12 +250,75 @@ entry with `min_svn > 0`:
 2. If `entry.min_svn > fuse_min_svn` and anti-rollback is not disabled:
    burn the fuse.
 
-### Runtime — SoC Image SVN Enforcement (Optional)
+### PLDM Firmware Update — SVN Verification
 
-When MCU Runtime loads SoC images, for each image whose `component_id` is in
-both the MCU Component SVN Manifest and `SVN_FUSE_MAP`:
+When firmware is delivered via PLDM (covering both initial provisioning and
+hitless updates that drive the Activate-then-reset flow), MCU Runtime performs
+SVN checks during the **Verify Component** phase of the PLDM update flow,
+alongside the existing digest checks (see
+[Firmware Update](firmware_update.md)). Failing the SVN check at this stage
+rejects the bundle before it can be applied or activated, so a downgrade
+attempt never makes it to the hitless reset.
 
-1. Look up `current_svn` in the manifest.
+For each component in the bundle:
+
+1. **MCU Runtime image** — read `McuImageHeader.current_svn` and
+   `header.min_svn` from the new image. Reject if `current_svn < fuse_min_svn`,
+   if `min_svn > current_svn`, or if either value exceeds the
+   `MCU_RT_MIN_SVN` one-hot range.
+2. **SoC component images** — for each component whose `component_id` is in
+   both the MCU Component SVN Manifest and `SVN_FUSE_MAP`:
+   - Use the platform's `SocComponentSvn` trait (below) to extract the SVN
+     directly from the component bytes.
+   - Verify the trait-extracted SVN matches the MCU Component SVN Manifest's
+     `current_svn` for that component. A mismatch means the manifest and
+     image disagree — reject the bundle.
+   - Reject if `current_svn < fuse_min_svn`, or if either `current_svn` or
+     `min_svn` exceeds the slot's one-hot range.
+3. **MCU Component SVN Manifest itself** — verify the per-entry constraints
+   (see [Format](#format)). Reject the bundle on any violation.
+
+Components without a `SocComponentSvn` implementation skip the
+manifest-vs-image cross-check (a logged warning) but still get the
+`current_svn < fuse_min_svn` check using the manifest's value. This allows
+opaque or pre-existing component formats to participate in fuse-level
+rollback protection without forcing the integrator to parse them.
+
+After PLDM verification succeeds, the bundle is applied and activated. The
+hitless update reset then triggers MCU ROM, which performs the actual
+fuse burns described in
+[Cold Boot and Hitless Update — MCU Runtime SVN](#cold-boot-and-hitless-update--mcu-runtime-svn)
+and
+[Cold Boot and Hitless Update — SoC Component min_svn Burn](#cold-boot-and-hitless-update--soc-component-min_svn-burn).
+
+#### `SocComponentSvn` Trait
+
+Integrators provide an implementation per SoC component type so the SDK can
+extract the running SVN from the component's binary without knowing the
+internal format:
+
+```rust
+pub trait SocComponentSvn {
+    /// Extract the current SVN encoded in this component's image bytes.
+    /// Returns `None` if the component has no embedded SVN (in which case
+    /// the manifest cross-check is skipped for this component).
+    fn current_svn(&self, image: &[u8]) -> Option<u16>;
+}
+```
+
+The platform registers a `SocComponentSvn` per `component_id` (typically in
+the same place as `SVN_FUSE_MAP`).
+
+### Runtime — SoC Image SVN Enforcement on Loading (Optional)
+
+When MCU Runtime loads SoC images at boot (after a cold boot or after the
+hitless update reset has placed new images in their flash partitions), it
+enforces per-component SVN before each image is loaded to its target. For
+each image whose `component_id` is in both the MCU Component SVN Manifest and
+`SVN_FUSE_MAP`:
+
+1. Read `current_svn` from the manifest (and optionally cross-check against
+   the trait, as in PLDM verify).
 2. Read the corresponding `SOC_IMAGE_MIN_SVN[i]` fuse.
 3. If `current_svn < fuse_min_svn`: reject the image.
 
