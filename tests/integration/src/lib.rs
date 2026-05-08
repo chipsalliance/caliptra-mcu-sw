@@ -236,7 +236,11 @@ mod test {
         }
 
         if let Some(rom_feature) = params.rom_feature {
-            test_binaries.mcu_rom = binaries.test_feature_rom(rom_feature);
+            test_binaries.mcu_rom = binaries
+                .test_feature_rom(rom_feature)
+                .unwrap_or_else(|err| {
+                    panic!("Failed to get MCU ROM for feature {rom_feature}: {err}")
+                });
         }
 
         // check for prebuilt network ROM with feature

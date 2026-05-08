@@ -565,8 +565,10 @@ mod test {
 
         // Get prebuilt feature-specific MCU ROM from the bundle
         let mcu_rom_path = std::env::temp_dir().join(format!("fw-update-mcu-rom-{}.bin", feature));
-        std::fs::write(&mcu_rom_path, binaries.test_feature_rom(feature))
-            .expect("Failed to write MCU ROM");
+        let mcu_rom_data = binaries
+            .test_feature_rom(feature)
+            .unwrap_or_else(|err| panic!("Prebuilt MCU ROM not found for {feature}: {err}"));
+        std::fs::write(&mcu_rom_path, mcu_rom_data).expect("Failed to write MCU ROM");
         let mcu_rom = mcu_rom_path;
 
         // Get prebuilt Caliptra ROM (needed for CaliptraBuilder)
