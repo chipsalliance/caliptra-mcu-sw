@@ -510,11 +510,22 @@ impl<'a> CmdInterface<'a> {
         resp_buf: &'r mut [u8],
     ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
         // Decode the request
-        let _req = FuseWriteReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
-        let (_resp, _) =
+        let req = FuseWriteReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+        let (resp, _) =
             FuseWriteResp::mut_from_prefix(resp_buf).map_err(|_| MsgHandlerError::InvalidParams)?;
 
-        Err(MsgHandlerError::UnsupportedCommand)
+        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
+
+        otp.write_raw(req.word_addr, req.data, req.mask)
+            .map_err(|e| match e {
+                caliptra_mcu_libtock_platform::ErrorCode::Fail => MsgHandlerError::McuMboxCommon,
+                caliptra_mcu_libtock_platform::ErrorCode::Invalid => MsgHandlerError::InvalidParams,
+                _ => MsgHandlerError::McuMboxCommon,
+            })?;
+
+        *resp = FuseWriteResp::default();
+
+        Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
     }
 
     async fn handle_fuse_lock_partition<'r>(

@@ -53,6 +53,26 @@ impl<S: Syscalls> Otp<S> {
         S::command(self.driver_num, cmd::OTP_WRITE, value, 0).to_result::<(), ErrorCode>()
     }
 
+    /// Writes a word to an OTP word address.
+    ///
+    /// Only bits specified with `mask` are written.
+    /// Bits outside of `mask` are ignored.
+    ///
+    /// # Arguments
+    /// - `word_addr`: word address to write to
+    /// - `data`: the data to write
+    /// - `mask`: the bitmask to apply to the data
+    ///
+    /// # Errors
+    /// - When `word_addr` is not a valid address
+    /// - When any of the existing data is `1` but is set to `0` in the input data
+    pub fn write_raw(&self, word_addr: u32, data: u32, mask: u32) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_SET_REGISTER, word_addr, 0)
+            .to_result::<(), ErrorCode>()?;
+
+        S::command(self.driver_num, cmd::OTP_WRITE_RAW, data, mask).to_result::<(), ErrorCode>()
+    }
+
     /// Check whether a given vendor pk hash slot is marked valid (has not been marked invalid).
     ///
     /// Also returns `false` if the slot ID is invalid or reading of the mask fails.
