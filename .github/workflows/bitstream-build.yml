@@ -12,10 +12,14 @@ on:
 
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-bitstream:
     runs-on: [bitstream-builder]
-    timeout-minutes: 1440 
+    timeout-minutes: 1440
     strategy:
       matrix:
         segmented: [true, false]
@@ -49,7 +53,7 @@ jobs:
           if [ "${{ matrix.segmented }}" = "true" ]; then
             SEGMENTED_ARG="--segmented"
           fi
-          
+
           # Find the xsa and pdi files in /tmp
           XSA_FILE=$(ls /tmp/*.xsa 2>/dev/null | head -n 1)
           PDI_FILE=$(ls /tmp/*.pdi 2>/dev/null | head -n 1)
@@ -61,7 +65,7 @@ jobs:
 
           # Leave a copy for the uploader
           mkdir manifest-bundle
-          
+
           caliptra-bitstream-downloader bundle-manifest \
             --repository "${{ github.repository }}" \
             --hw-major-version "2.0" \
