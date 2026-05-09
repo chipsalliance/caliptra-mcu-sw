@@ -1,5 +1,5 @@
 [package]
-name = "caliptra-mcu-libtock_console"
+name = "libtock_console"
 version = "0.1.0"
 authors = [
     "Tock Project Developers <tock-dev@googlegroups.com>",
@@ -11,7 +11,7 @@ repository = "https://www.github.com/tock/libtock-rs"
 description = "libtock console driver"
 
 [dependencies]
-caliptra-mcu-libtock_platform = { path = "../../../platform" }
+libtock_platform = { path = "../../../platform" }
 
 [dev-dependencies]
-caliptra-mcu-libtock_unittest = { path = "../../../unittest" }
+libtock_unittest = { path = "../../../unittest" }

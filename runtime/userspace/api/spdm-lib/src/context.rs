@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cert_store::*;
-use crate::chunk_ctx::LargeMessageCtx;
+use crate::chunk_ctx::LargeResponseCtx;
 use crate::codec::{encode_u8_slice, Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
     algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, chunk_get_rsp,
-    chunk_send_ack_rsp, digests_rsp, end_session_ack_rsp, finish_rsp, key_exchange_rsp,
-    measurements_rsp, vendor_defined_rsp, version_rsp,
+    digests_rsp, end_session_ack_rsp, finish_rsp, key_exchange_rsp, measurements_rsp,
+    vendor_defined_rsp, version_rsp,
 };
 use crate::error::*;
 use crate::measurements::SpdmMeasurements;
@@ -20,12 +20,14 @@ use crate::state::{ConnectionState, State};
 use crate::transcript::{Transcript, TranscriptContext};
 use crate::transport::common::SpdmTransport;
 use crate::vdm_handler::VdmHandler;
-use caliptra_mcu_libapi_caliptra::crypto::aes_gcm::Aes256GcmTag;
-use caliptra_mcu_libapi_caliptra::crypto::asym::*;
-use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
-use core::mem::size_of;
+use libapi_caliptra::crypto::asym::*;
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 
 // Maximum SPDM responder buffer size
+#[cfg(feature = "large-buffer")]
+pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 2048;
+
+#[cfg(not(feature = "large-buffer"))]
 pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 1024;
 
 pub struct SpdmContext<'a> {
@@ -38,7 +40,7 @@ pub struct SpdmContext<'a> {
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
     pub(crate) device_certs_store: &'a dyn SpdmCertStore,
     pub(crate) measurements: SpdmMeasurements<'a>,
-    pub(crate) large_msg_ctx: LargeMessageCtx<'a>,
+    pub(crate) large_resp_context: LargeResponseCtx,
     pub(crate) session_mgr: SessionManager,
     pub(crate) vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
 }
@@ -54,7 +56,6 @@ impl<'a> SpdmContext<'a> {
         device_certs_store: &'a dyn SpdmCertStore,
         measurements: SpdmMeasurements<'a>,
         vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
-        large_msg_buf: &'a mut [u8],
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -70,7 +71,7 @@ impl<'a> SpdmContext<'a> {
             local_algorithms,
             device_certs_store,
             measurements,
-            large_msg_ctx: LargeMessageCtx::new(large_msg_buf),
+            large_resp_context: LargeResponseCtx::default(),
             session_mgr: SessionManager::new(),
             vdm_handlers,
         })
@@ -122,91 +123,8 @@ impl<'a> SpdmContext<'a> {
     }
 
     async fn handle_request(&mut self, buf: &mut MessageBuf<'a>) -> CommandResult<()> {
-        let (req_msg_header, req_code) = self.decode_and_validate_request(buf)?;
+        let req = buf;
 
-        if req_code == ReqRespCode::ChunkSend {
-            chunk_send_ack_rsp::handle_chunk_send(self, req_msg_header, buf).await?;
-            return Ok(());
-        }
-
-        self.dispatch_request(req_msg_header, req_code, buf).await
-    }
-
-    /// Handle a fully reassembled large request (from CHUNK_SEND).
-    ///
-    /// Detaches the large message buffer, creates a request MessageBuf from it,
-    /// dispatches to the appropriate handler, and writes the response into `rsp`.
-    /// The caller must have already reserved space for the CHUNK_SEND_ACK header in `rsp`.
-    pub(crate) async fn handle_large_request_payload(
-        &mut self,
-        rsp: &mut MessageBuf<'a>,
-    ) -> CommandResult<()> {
-        let request_size = self.large_msg_ctx.request_size();
-
-        // Take the buffer containing the reassembled request
-        let taken_buf = self.large_msg_ctx.take_buf();
-        self.large_msg_ctx.reset_request();
-
-        // Create a MessageBuf from the taken buffer with request data loaded
-        let mut req = MessageBuf::new(taken_buf);
-        if req.put_data(request_size).is_err() {
-            let buf = req.into_inner();
-            self.large_msg_ctx.replace_buf(buf);
-            return Err((false, CommandError::BufferTooSmall));
-        }
-
-        let (req_msg_header, req_code) = match self.decode_and_validate_request(&mut req) {
-            Ok(v) => v,
-            Err((_send, _e)) => {
-                let buf = req.into_inner();
-                self.large_msg_ctx.replace_buf(buf);
-                let version = self.state.connection_info.version_number();
-                encode_error_response(rsp, version, ErrorCode::InvalidRequest, 0, None);
-                return Ok(());
-            }
-        };
-
-        if req_code == ReqRespCode::ChunkSend || req_code == ReqRespCode::ChunkGet {
-            let buf = req.into_inner();
-            self.large_msg_ctx.replace_buf(buf);
-            let version = self.state.connection_info.version_number();
-            encode_error_response(rsp, version, ErrorCode::InvalidRequest, 0, None);
-            return Ok(());
-        }
-
-        let result = self
-            .dispatch_large_request(req_msg_header, req_code, &mut req, rsp)
-            .await;
-
-        let buf = req.into_inner();
-        self.large_msg_ctx.replace_buf(buf);
-
-        result
-    }
-
-    /// Dispatch a large request to the appropriate handler.
-    ///
-    /// Commands with dedicated large-request handlers read from `req` and write
-    /// their response directly into `rsp`. When a command gains large-request
-    /// support (e.g. SET_CERTIFICATE, VDM), add it as a match arm here.
-    async fn dispatch_large_request(
-        &mut self,
-        _req_msg_header: SpdmMsgHdr,
-        _req_code: ReqRespCode,
-        _req: &mut MessageBuf<'a>,
-        rsp: &mut MessageBuf<'a>,
-    ) -> CommandResult<()> {
-        // No commands currently support large-request handling.
-        // As handlers are implemented, add match arms here.
-        let version = self.state.connection_info.version_number();
-        encode_error_response(rsp, version, ErrorCode::UnsupportedRequest, 0, None);
-        Ok(())
-    }
-
-    fn decode_and_validate_request(
-        &mut self,
-        req: &mut MessageBuf<'a>,
-    ) -> CommandResult<(SpdmMsgHdr, ReqRespCode)> {
         let req_msg_header: SpdmMsgHdr =
             SpdmMsgHdr::decode(req).map_err(|e| (false, CommandError::Codec(e)))?;
 
@@ -214,29 +132,14 @@ impl<'a> SpdmContext<'a> {
             .req_resp_code()
             .map_err(|_| (false, CommandError::UnsupportedRequest))?;
 
-        if !matches!(req_code, ReqRespCode::ChunkGet | ReqRespCode::ChunkSend)
-            && self.large_msg_ctx.response_in_progress()
-        {
-            // Reset large response context if the request is not a CHUNK_GET/CHUNK_SEND.
-            self.large_msg_ctx.reset_response();
-        }
-
-        if req_code != ReqRespCode::ChunkSend && self.large_msg_ctx.request_in_progress() {
-            // Reset large request context if the next request is not a CHUNK_SEND.
-            self.large_msg_ctx.reset_request();
+        if req_code != ReqRespCode::ChunkGet && self.large_resp_context.in_progress() {
+            // Reset large response context if the request is not a CHUNK_GET
+            self.large_resp_context.reset();
         }
 
         // Check for requests prohibited within session
         self.validate_request_in_session_context(req_code, req)?;
-        Ok((req_msg_header, req_code))
-    }
 
-    async fn dispatch_request(
-        &mut self,
-        req_msg_header: SpdmMsgHdr,
-        req_code: ReqRespCode,
-        req: &mut MessageBuf<'a>,
-    ) -> CommandResult<()> {
         match req_code {
             ReqRespCode::GetVersion => {
                 version_rsp::handle_get_version(self, req_msg_header, req).await?
@@ -305,8 +208,6 @@ impl<'a> SpdmContext<'a> {
 
     pub(crate) fn reset(&mut self) {
         self.state.reset();
-        self.large_msg_ctx.reset_response();
-        self.large_msg_ctx.reset_request();
         self.session_mgr.reset();
     }
 
@@ -333,33 +234,14 @@ impl<'a> SpdmContext<'a> {
         encode_error_response(msg_buf, spdm_version, error_code, error_data, extended_data)
     }
 
-    /// Returns the effective minimum data transfer size for SPDM payloads.
-    /// Takes the minimum of local and peer capabilities, then subtracts
-    /// session encryption overhead when an active session exists.
+    /// Returns the minimum data transfer size based on local and peer capabilities.
     pub(crate) fn min_data_transfer_size(&self) -> usize {
-        let raw = self.local_capabilities.data_transfer_size.min(
+        self.local_capabilities.data_transfer_size.min(
             self.state
                 .connection_info
                 .peer_capabilities()
                 .data_transfer_size,
-        ) as usize;
-
-        // When a response is sent within a session, the encrypted message wraps:
-        //   session_id + [sequence_num] + length + encrypted(app_data_length + app_data + [random_data]) + aead_tag
-        // The overhead beyond the SPDM payload (app_data) is:
-        // Fixed overhead: session_id (u32) + length (u16) + app_data_length (u16) + AEAD tag
-        const FIXED_SESSION_OVERHEAD: usize =
-            size_of::<u32>() + size_of::<u16>() + size_of::<u16>() + size_of::<Aes256GcmTag>();
-
-        let session_overhead = if self.session_mgr.active_session_id().is_some() {
-            FIXED_SESSION_OVERHEAD
-            + self.transport.sequence_num_size_bytes()   // sequence number (transport-specific)
-            + self.transport.random_data_size_bytes() // random data (transport-specific)
-        } else {
-            0
-        };
-
-        raw.saturating_sub(session_overhead)
+        ) as usize
     }
 
     pub(crate) fn support_large_msg_chunking(&self) -> bool {

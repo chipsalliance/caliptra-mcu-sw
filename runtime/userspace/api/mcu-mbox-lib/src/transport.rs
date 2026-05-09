@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_mcu_libsyscall_caliptra::mci::Mci;
-use caliptra_mcu_libsyscall_caliptra::mcu_mbox::{CmdCode, MbxCmdStatus, McuMbox};
-use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_mbox_common::messages::{verify_checksum, MailboxReqHeader, MailboxRespHeader};
 use core::mem::size_of;
+use libsyscall_caliptra::mci::Mci;
+use libsyscall_caliptra::mcu_mbox::{CmdCode, MbxCmdStatus, McuMbox};
+use libsyscall_caliptra::DefaultSyscalls;
+use mcu_mbox_common::messages::{verify_checksum, MailboxReqHeader, MailboxRespHeader};
 use zerocopy::FromBytes;
 
 pub enum TransportError {
@@ -30,10 +30,10 @@ impl McuMboxTransport {
         }
     }
 
-    pub async fn receive_request<'a>(
+    pub async fn receive_request(
         &mut self,
-        buf: &'a mut [u8],
-    ) -> Result<(CmdCode, &'a [u8]), TransportError> {
+        buf: &mut [u8],
+    ) -> Result<(CmdCode, usize), TransportError> {
         if buf.len() < size_of::<MailboxReqHeader>() {
             return Err(TransportError::BufferTooSmall);
         }
@@ -68,7 +68,7 @@ impl McuMboxTransport {
             return Err(TransportError::ChkSumMismatch);
         }
 
-        Ok((cmd_opcode, &buf[..req_len]))
+        Ok((cmd_opcode, req_len))
     }
 
     pub async fn send_response(&mut self, resp: &[u8]) -> Result<(), TransportError> {

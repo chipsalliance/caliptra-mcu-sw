@@ -2,21 +2,21 @@
 
 // Component for DMA driver.
 
-use caliptra_mcu_dma_driver::hil::DMA;
+use capsules_runtime::dma::hil::Dma as DmaHal;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::create_capability;
 
 pub struct DmaComponent {
-    driver: &'static dyn caliptra_mcu_dma_driver::hil::DMA,
+    driver: &'static dyn DmaHal,
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
 }
 
 impl DmaComponent {
     pub fn new(
-        driver: &'static dyn DMA,
+        driver: &'static dyn DmaHal,
         board_kernel: &'static kernel::Kernel,
         driver_num: usize,
     ) -> Self {
@@ -29,14 +29,14 @@ impl DmaComponent {
 }
 
 impl Component for DmaComponent {
-    type StaticInput = &'static mut MaybeUninit<caliptra_mcu_capsules_emulator::dma::Dma<'static>>;
+    type StaticInput = &'static mut MaybeUninit<capsules_emulator::dma::Dma<'static>>;
 
-    type Output = &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>;
+    type Output = &'static capsules_emulator::dma::Dma<'static>;
 
     fn finalize(self, static_buffer: Self::StaticInput) -> Self::Output {
         let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
-        let dma: &caliptra_mcu_capsules_emulator::dma::Dma<'_> =
-            static_buffer.write(caliptra_mcu_capsules_emulator::dma::Dma::new(
+        let dma: &capsules_emulator::dma::Dma<'_> =
+            static_buffer.write(capsules_emulator::dma::Dma::new(
                 self.driver,
                 self.board_kernel.create_grant(self.driver_num, &grant_cap),
             ));

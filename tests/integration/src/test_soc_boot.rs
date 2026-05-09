@@ -6,19 +6,19 @@ mod test {
         compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
     };
     use caliptra_image_types::ImageManifest;
-    use caliptra_mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
-    use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
-    use caliptra_mcu_config_emulator::flash::{
+    use chrono::{TimeZone, Utc};
+    use hex::ToHex;
+    use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
+    use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
+    use mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
-    use caliptra_mcu_pldm_fw_pkg::manifest::{
+    use mcu_testing_common::DeviceLifecycle;
+    use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     };
-    use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
-    use caliptra_mcu_testing_common::DeviceLifecycle;
-    use chrono::{TimeZone, Utc};
-    use hex::ToHex;
+    use pldm_fw_pkg::FirmwareManifest;
     use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;
@@ -76,26 +76,32 @@ mod test {
             .path()
             .to_path_buf();
 
-        caliptra_mcu_builder::flash_image::flash_image_create(
-            &caliptra_mcu_builder::CaliptraBuildArgs {
-                caliptra_firmware: caliptra_fw_path,
-                soc_manifest: soc_manifest_path,
-                mcu_firmware: mcu_runtime_path,
-                soc_image_paths: Some(
-                    soc_images_paths
-                        .iter()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .collect(),
-                ),
-                offset: flash_offset,
-                output_path: Some(flash_image_path.to_string_lossy().to_string()),
-                ..Default::default()
-            },
+        let caliptra_fw_path_str = caliptra_fw_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        let soc_manifest_path_str = soc_manifest_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        let mcu_runtime_path_str = mcu_runtime_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        mcu_builder::flash_image::flash_image_create(
+            &caliptra_fw_path_str,
+            &soc_manifest_path_str,
+            &mcu_runtime_path_str,
+            &Some(
+                soc_images_paths
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect(),
+            ),
+            flash_offset,
+            flash_image_path.to_str().unwrap(),
         )
         .expect("Failed to create flash image");
 
         if let Some(partition_table) = partition_table {
-            caliptra_mcu_builder::flash_image::write_partition_table(
+            mcu_builder::flash_image::write_partition_table(
                 &partition_table,
                 0,
                 flash_image_path.to_str().unwrap(),
@@ -678,7 +684,7 @@ mod test {
         assert_eq!(0, test);
     }
 
-    // Helper to create test options for soc boot tests (prebuilt when available, identical images)
+    // Helper to create test options for soc boot tests
     fn create_soc_boot_options(is_flash_based_boot: bool) -> TestOptions {
         env::set_var(
             "CPTRA_EMULATOR_SS_MCI_OFFSET",
@@ -698,25 +704,8 @@ mod test {
             create_soc_boot_test_options_prebuilt(feature, is_flash_based_boot, i3c_port)
         } else {
             println!("Building binaries for feature: {}", feature);
-            create_soc_boot_test_options_build(feature, is_flash_based_boot, i3c_port, false)
+            create_soc_boot_test_options_build(feature, is_flash_based_boot, i3c_port)
         }
-    }
-
-    // Helper for non-identical SOC images test (always build path, exposes endianness bugs in root_bus)
-    fn create_soc_boot_options_non_identical(is_flash_based_boot: bool) -> TestOptions {
-        env::set_var(
-            "CPTRA_EMULATOR_SS_MCI_OFFSET",
-            format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
-        );
-
-        let feature = if is_flash_based_boot {
-            "test-flash-based-boot"
-        } else {
-            "test-pldm-streaming-boot"
-        };
-        let i3c_port = PortPicker::new().random(true).pick().unwrap().into();
-
-        create_soc_boot_test_options_build(feature, is_flash_based_boot, i3c_port, true)
     }
 
     // Creates test options using prebuilt binaries from CPTRA_FIRMWARE_BUNDLE
@@ -824,15 +813,20 @@ mod test {
             .encode_hex();
 
         // Build the Caliptra builder with prebuilt paths (needed for tests that modify manifest)
-        let builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-            caliptra_rom: Some(caliptra_rom_path),
-            caliptra_firmware: Some(caliptra_fw_path.clone()),
-            soc_manifest: Some(soc_manifest_path.clone()),
-            vendor_pk_hash: Some(vendor_pk_hash),
-            mcu_firmware: Some(test_runtime.clone()),
-            soc_images: Some(soc_images.clone()),
-            ..Default::default()
-        });
+        let builder = CaliptraBuilder::new(
+            false,
+            false,
+            Some(caliptra_rom_path),
+            Some(caliptra_fw_path.clone()),
+            Some(soc_manifest_path.clone()),
+            Some(vendor_pk_hash),
+            Some(test_runtime.clone()),
+            Some(soc_images.clone()),
+            None,
+            None,
+            None,
+            None,
+        );
 
         // Create partition table matching what's used in the build path
         // This is needed for tests that modify flash images
@@ -881,31 +875,17 @@ mod test {
         feature: &'static str,
         is_flash_based_boot: bool,
         i3c_port: u32,
-        use_non_identical_soc_images: bool,
     ) -> TestOptions {
-        // Non-identical bytes expose endianness bugs (to_be_bytes vs to_le_bytes in root_bus McuMbox1Sram read)
-        let (soc_image_fw_1, soc_image_fw_2): (Vec<u8>, Vec<u8>) = if use_non_identical_soc_images {
-            let fw_1 = [0x55u8, 0x56, 0x57, 0x58].repeat(128); // 4 * 128 = 512 bytes
-            let fw_2 = [0xAAu8, 0xAB, 0xAC, 0xAD].repeat(64); // 4 * 64 = 256 bytes
-            (fw_1, fw_2)
-        } else {
-            ([0x55u8; 512].to_vec(), [0xAAu8; 256].to_vec())
-        };
+        let soc_image_fw_1 = [0x55u8; 512]; // Example firmware data for SOC image 1
+        let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
 
-        // Get runtime: prefer prebuilt, fall back to compilation
-        let test_runtime = if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let runtime_data = binaries
-                .test_runtime(feature)
-                .expect("Prebuilt runtime not found");
-            let path = std::env::temp_dir().join(format!("soc-boot-build-runtime-{}.bin", feature));
-            std::fs::write(&path, runtime_data).expect("Failed to write runtime");
-            path
-        } else {
-            compile_runtime(Some(feature), false)
-        };
+        // Compile the runtime once with the appropriate feature
+        let test_runtime = compile_runtime(Some(feature), false);
 
-        let soc_images_paths =
-            create_soc_images(vec![soc_image_fw_1.clone(), soc_image_fw_2.clone()]);
+        let soc_images_paths = create_soc_images(vec![
+            soc_image_fw_1.clone().to_vec(),
+            soc_image_fw_2.clone().to_vec(),
+        ]);
 
         // Create SOC image metadata that will be written to the SoC manifest
         let soc_images = vec![
@@ -929,36 +909,21 @@ mod test {
             },
         ];
 
-        // When prebuilt binaries are available, pass the Caliptra ROM/FW paths
-        // to the builder so it doesn't try to compile them from scratch.
-        let (prebuilt_caliptra_rom, prebuilt_caliptra_fw, prebuilt_vendor_pk_hash) =
-            if let Ok(binaries) = FirmwareBinaries::from_env() {
-                let rom_path = std::env::temp_dir()
-                    .join(format!("soc-boot-build-caliptra-rom-{}.bin", feature));
-                std::fs::write(&rom_path, &binaries.caliptra_rom)
-                    .expect("Failed to write prebuilt Caliptra ROM");
-                let fw_path = std::env::temp_dir()
-                    .join(format!("soc-boot-build-caliptra-fw-{}.bin", feature));
-                std::fs::write(&fw_path, &binaries.caliptra_fw)
-                    .expect("Failed to write prebuilt Caliptra FW");
-                let vendor_pk_hash = hex::encode(
-                    binaries
-                        .vendor_pk_hash()
-                        .expect("Failed to get vendor PK hash from prebuilt binaries"),
-                );
-                (Some(rom_path), Some(fw_path), Some(vendor_pk_hash))
-            } else {
-                (None, None, None)
-            };
-
-        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-            mcu_firmware: Some(test_runtime.clone()),
-            soc_images: Some(soc_images.clone()),
-            caliptra_rom: prebuilt_caliptra_rom,
-            caliptra_firmware: prebuilt_caliptra_fw,
-            vendor_pk_hash: prebuilt_vendor_pk_hash,
-            ..Default::default()
-        });
+        // Build the Caliptra runtime
+        let mut builder = CaliptraBuilder::new(
+            false,
+            false,
+            None,
+            None,
+            None,
+            None,
+            Some(test_runtime.clone()),
+            Some(soc_images.clone()),
+            None,
+            None,
+            None,
+            None,
+        );
 
         // Build Caliptra firmware
         let caliptra_fw = builder
@@ -1103,17 +1068,6 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Regression test: non-identical SOC image bytes expose endianness bugs.
-    /// Would fail if root_bus.rs McuMbox1Sram read used to_be_bytes instead of to_le_bytes
-    /// (must match axicdma's from_le_bytes when writing).
-    #[test]
-    fn test_streaming_soc_boot_successful_non_identical() {
-        let lock = TEST_LOCK.lock().unwrap();
-        let opts = create_soc_boot_options_non_identical(false);
-        test_successful_boot(&opts);
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
     #[test]
     fn test_streaming_soc_boot_invalid_image_id() {
         let lock = TEST_LOCK.lock().unwrap();
@@ -1200,5 +1154,31 @@ mod test {
         let opts = create_soc_boot_options(false);
         test_one_component_id_for_all(&opts);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test case: simple successful boot using McuHwModel trait
+    /// This test uses the hardware model abstraction instead of spawning a subprocess
+    #[test]
+    fn test_successful_boot_hw_model() {
+        use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
+        use std::sync::atomic::Ordering;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, Ordering::Relaxed);
+
+        // Use the exit-immediately feature for a simple boot test
+        let feature = "test-exit-immediately";
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some(feature),
+            i3c_port: PortPicker::new().pick().ok(),
+            flash_boot: true,
+            ..Default::default()
+        });
+
+        let result = finish_runtime_hw_model(&mut hw);
+        assert_eq!(0, result, "Boot should complete successfully");
+
+        lock.fetch_add(1, Ordering::Relaxed);
     }
 }

@@ -2,12 +2,9 @@
 
 use crate::{MailboxClient, TestConfig, UdpTransportDriver};
 use anyhow::Result;
-use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
-use caliptra_mcu_core_util_host_command_types::crypto_aes::AesMode;
-use caliptra_mcu_core_util_host_command_types::crypto_hmac::CmKeyUsage;
-use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
+use caliptra_util_host_command_types::crypto_aes::AesMode;
+use caliptra_util_host_command_types::crypto_hmac::CmKeyUsage;
 use std::net::SocketAddr;
-use std::time::Duration;
 
 /// Hardcoded fallback expected device responses for validation (when config is not available)
 pub const DEFAULT_EXPECTED_DEVICE_ID: u16 = 0x1234;
@@ -32,12 +29,7 @@ pub struct Validator {
     expected_device_id: Option<u16>,
     expected_vendor_id: Option<u16>,
     config: Option<TestConfig>,
-    recv_timeout: Duration,
-    debug_unlock_signer: Option<Box<dyn DebugUnlockSigner>>,
 }
-
-/// Default UDP receive timeout (5 seconds).
-const DEFAULT_RECV_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl Validator {
     /// Create a new validator instance with default values
@@ -48,8 +40,6 @@ impl Validator {
             expected_device_id: Some(DEFAULT_EXPECTED_DEVICE_ID),
             expected_vendor_id: Some(DEFAULT_EXPECTED_VENDOR_ID),
             config: None,
-            recv_timeout: DEFAULT_RECV_TIMEOUT,
-            debug_unlock_signer: None,
         }
     }
 
@@ -67,8 +57,6 @@ impl Validator {
             expected_device_id: Some(config.device.device_id),
             expected_vendor_id: Some(config.device.vendor_id),
             config: Some(config.clone()),
-            recv_timeout: Duration::from_secs(config.validation.timeout_seconds),
-            debug_unlock_signer: None,
         })
     }
 
@@ -90,26 +78,12 @@ impl Validator {
             expected_device_id,
             expected_vendor_id,
             config: None,
-            recv_timeout: DEFAULT_RECV_TIMEOUT,
-            debug_unlock_signer: None,
         }
     }
 
     /// Enable or disable verbose logging
     pub fn set_verbose(mut self, verbose: bool) -> Self {
         self.verbose = verbose;
-        self
-    }
-
-    /// Set the UDP receive timeout for each command.
-    pub fn set_recv_timeout(mut self, timeout: Duration) -> Self {
-        self.recv_timeout = timeout;
-        self
-    }
-
-    /// Set the debug unlock signer for full end-to-end token signing.
-    pub fn set_debug_unlock_signer(mut self, signer: Box<dyn DebugUnlockSigner>) -> Self {
-        self.debug_unlock_signer = Some(signer);
         self
     }
 
@@ -121,8 +95,8 @@ impl Validator {
         }
 
         // Create UDP transport driver and connect
-        let mut udp_driver = UdpTransportDriver::new(self.server_addr, self.recv_timeout);
-        use caliptra_mcu_core_util_host_transport::MailboxDriver;
+        let mut udp_driver = UdpTransportDriver::new(self.server_addr);
+        use caliptra_util_host_transport::MailboxDriver;
         udp_driver
             .connect()
             .map_err(|e| anyhow::anyhow!("Failed to connect UDP driver: {:?}", e))?;
@@ -181,14 +155,6 @@ impl Validator {
         // Run ECDH validation tests
         let ecdh_result = self.validate_ecdh(&mut client);
         results.push(ecdh_result);
-
-        // Run Production Debug Unlock validation test
-        let debug_unlock_result = self.validate_prod_debug_unlock(&mut client);
-        results.push(debug_unlock_result);
-
-        // Run ExportAttestedCsr validation tests for all key IDs and algorithms
-        let export_csr_results = self.validate_export_attested_csr_all(&mut client);
-        results.extend(export_csr_results);
 
         if self.verbose {
             self.print_summary(&results);
@@ -441,7 +407,7 @@ impl Validator {
 
     /// Validate SHA384 hash command
     fn validate_sha384(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_mcu_core_util_host_command_types::crypto_hash::ShaAlgorithm;
+        use caliptra_util_host_command_types::crypto_hash::ShaAlgorithm;
         use sha2::{Digest, Sha384};
 
         let test_name = "SHA384".to_string();
@@ -475,7 +441,7 @@ impl Validator {
                     };
                 }
 
-                if response.hash[..48] != expected[..] {
+                if &response.hash[..48] != expected.as_slice() {
                     let error_msg = format!(
                         "SHA384 hash mismatch: expected {:02X?}..., got {:02X?}...",
                         &expected[..8],
@@ -512,7 +478,7 @@ impl Validator {
 
     /// Validate SHA512 hash command
     fn validate_sha512(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_mcu_core_util_host_command_types::crypto_hash::ShaAlgorithm;
+        use caliptra_util_host_command_types::crypto_hash::ShaAlgorithm;
         use sha2::{Digest, Sha512};
 
         let test_name = "SHA512".to_string();
@@ -546,7 +512,7 @@ impl Validator {
                     };
                 }
 
-                if response.hash[..64] != expected[..] {
+                if &response.hash[..64] != expected.as_slice() {
                     let error_msg = format!(
                         "SHA512 hash mismatch: expected {:02X?}..., got {:02X?}...",
                         &expected[..8],
@@ -583,7 +549,7 @@ impl Validator {
 
     /// Validate HMAC-SHA384 command
     fn validate_hmac_sha384(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_mcu_core_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
+        use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
 
         let test_name = "HMAC-SHA384".to_string();
 
@@ -669,7 +635,7 @@ impl Validator {
 
     /// Validate HMAC-SHA512 command
     fn validate_hmac_sha512(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_mcu_core_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
+        use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
 
         let test_name = "HMAC-SHA512".to_string();
 
@@ -753,7 +719,7 @@ impl Validator {
 
     /// Validate HMAC KDF Counter command
     fn validate_hmac_kdf_counter(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_mcu_core_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
+        use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
 
         let test_name = "HMAC-KDF-Counter".to_string();
 
@@ -1472,226 +1438,6 @@ impl Validator {
             test_name,
             passed: true,
             error_message: None,
-        }
-    }
-
-    /// Validate Production Debug Unlock commands
-    ///
-    /// When a [`DebugUnlockSigner`] has been provided via [`Validator::set_debug_unlock_signer`],
-    /// performs a full end-to-end debug unlock: request a challenge, sign a token
-    /// with both ECDSA (P-384) and ML-DSA-87, and submit the token.
-    ///
-    /// Without keys, sends a zeroed token (expected to be rejected) to confirm
-    /// the command dispatch works.
-    fn validate_prod_debug_unlock(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_mcu_core_util_host_command_types::debug_unlock::ProdDebugUnlockTokenRequest;
-
-        let test_name = "ProdDebugUnlock".to_string();
-
-        if self.verbose {
-            println!("\n=== Validating Production Debug Unlock Commands ===");
-        }
-
-        let unlock_level = 1u8;
-
-        match client.prod_debug_unlock_req(unlock_level) {
-            Ok(response) => {
-                if self.verbose {
-                    println!("  Got challenge response:");
-                    println!(
-                        "    UDI: {:02X?}...",
-                        &response.unique_device_identifier[..8]
-                    );
-                    println!("    Challenge: {:02X?}...", &response.challenge[..8]);
-                }
-
-                if let Some(signer) = &self.debug_unlock_signer {
-                    // Full end-to-end: construct and sign a real token.
-                    if self.verbose {
-                        println!("  Signing token with provided signer...");
-                    }
-
-                    let challenge = ProdDebugUnlockChallenge {
-                        unique_device_identifier: response.unique_device_identifier,
-                        challenge: response.challenge,
-                    };
-
-                    let token_req = match signer.sign_debug_unlock_token(&challenge, unlock_level) {
-                        Ok(t) => ProdDebugUnlockTokenRequest {
-                            length: t.length,
-                            unique_device_identifier: t.unique_device_identifier,
-                            unlock_level: t.unlock_level,
-                            reserved: t.reserved,
-                            challenge: t.challenge,
-                            ecc_public_key: t.ecc_public_key,
-                            mldsa_public_key: t.mldsa_public_key,
-                            ecc_signature: t.ecc_signature,
-                            mldsa_signature: t.mldsa_signature,
-                        },
-                        Err(e) => {
-                            let msg = format!("Failed to sign token: {}", e);
-                            eprintln!("  {}", msg);
-                            return ValidationResult {
-                                test_name,
-                                passed: false,
-                                error_message: Some(msg),
-                            };
-                        }
-                    };
-
-                    match client.prod_debug_unlock_token(&token_req) {
-                        Ok(_) => {
-                            println!("✓ ProdDebugUnlock validation PASSED (token accepted)");
-                            ValidationResult {
-                                test_name,
-                                passed: true,
-                                error_message: None,
-                            }
-                        }
-                        Err(e) => {
-                            let msg = format!("Signed token rejected by device: {}", e);
-                            eprintln!("✗ ProdDebugUnlock validation FAILED: {}", msg);
-                            ValidationResult {
-                                test_name,
-                                passed: false,
-                                error_message: Some(msg),
-                            }
-                        }
-                    }
-                } else {
-                    // No keys — send a zeroed token (expected to fail).
-                    let token_req = ProdDebugUnlockTokenRequest::default();
-                    match client.prod_debug_unlock_token(&token_req) {
-                        Ok(_) => {
-                            if self.verbose {
-                                println!("  Token submission accepted (unexpected in test mode)");
-                            }
-                        }
-                        Err(_) => {
-                            if self.verbose {
-                                println!(
-                                    "  Token submission correctly rejected (no valid signature) ✓"
-                                );
-                            }
-                        }
-                    }
-
-                    println!("✓ ProdDebugUnlock validation PASSED");
-                    ValidationResult {
-                        test_name,
-                        passed: true,
-                        error_message: None,
-                    }
-                }
-            }
-            Err(e) => {
-                let error_str = e.to_string();
-                if self.verbose {
-                    println!(
-                        "  Debug unlock request returned error: {} (may be expected due to lifecycle)",
-                        error_str
-                    );
-                }
-
-                println!("✓ ProdDebugUnlock validation PASSED (command dispatched, rejected by device as expected)");
-                ValidationResult {
-                    test_name,
-                    passed: true,
-                    error_message: None,
-                }
-            }
-        }
-    }
-
-    /// Validate ExportAttestedCsr command
-    fn validate_export_attested_csr_all(
-        &self,
-        client: &mut MailboxClient,
-    ) -> Vec<ValidationResult> {
-        const KEY_IDS: &[(u32, &str)] = &[
-            (0x0001, "LDevID"),
-            (0x0002, "FMC Alias"),
-            (0x0003, "RT Alias"),
-        ];
-        const ALGORITHMS: &[(u32, &str)] = &[
-            (0x0001, "ECC384"),
-            // TODO: enable MLDSA87 when support is verified in emulator
-            // (0x0002, "MLDSA87"),
-        ];
-
-        let mut results = Vec::new();
-        let nonce: [u8; 32] = [0x42; 32];
-
-        for &(key_id, key_name) in KEY_IDS {
-            for &(algorithm, algo_name) in ALGORITHMS {
-                let result = self.validate_export_attested_csr(
-                    client, key_id, key_name, algorithm, algo_name, &nonce,
-                );
-                results.push(result);
-            }
-        }
-
-        results
-    }
-
-    fn validate_export_attested_csr(
-        &self,
-        client: &mut MailboxClient,
-        device_key_id: u32,
-        key_name: &str,
-        algorithm: u32,
-        algo_name: &str,
-        nonce: &[u8; 32],
-    ) -> ValidationResult {
-        let test_name = format!("ExportAttestedCsr({}/{})", key_name, algo_name);
-
-        if self.verbose {
-            println!(
-                "\n=== Validating ExportAttestedCsr: {} {} ===",
-                key_name, algo_name
-            );
-        }
-
-        match client.export_attested_csr(device_key_id, algorithm, nonce) {
-            Ok(response) => match response.validate_csr_payload() {
-                Ok(_len) => {
-                    println!(
-                        "✓ {} validation PASSED (attested CSR size: {} bytes)",
-                        test_name, response.data_len
-                    );
-                    ValidationResult {
-                        test_name,
-                        passed: true,
-                        error_message: None,
-                    }
-                }
-                Err(AttestedCsrValidationError::Empty) => {
-                    let detail = "CSR data is empty".to_string();
-                    eprintln!("✗ {} validation FAILED: {}", test_name, detail);
-                    ValidationResult {
-                        test_name,
-                        passed: false,
-                        error_message: Some(detail),
-                    }
-                }
-                Err(AttestedCsrValidationError::TooLarge(len)) => {
-                    let detail = format!("CSR data_len {} exceeds maximum", len);
-                    eprintln!("✗ {} validation FAILED: {}", test_name, detail);
-                    ValidationResult {
-                        test_name,
-                        passed: false,
-                        error_message: Some(detail),
-                    }
-                }
-            },
-            Err(e) => {
-                eprintln!("✗ {} validation FAILED: {}", test_name, e);
-                ValidationResult {
-                    test_name,
-                    passed: false,
-                    error_message: Some(e.to_string()),
-                }
-            }
         }
     }
 }

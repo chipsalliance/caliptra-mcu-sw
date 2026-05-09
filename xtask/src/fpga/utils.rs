@@ -10,7 +10,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use caliptra_mcu_builder::PROJECT_ROOT;
+use mcu_builder::PROJECT_ROOT;
 
 const BUILDER_IMAGE: &str = "ghcr.io/chipsalliance/caliptra-builder:latest";
 
@@ -25,7 +25,7 @@ pub fn check_host_dependencies() -> Result<()> {
             "'rsync' not found on PATH. Please install rsync.",
         ),
         (
-            "cargo-nextest --version",
+            "cargo nextest --version",
             "'cargo-nextest' not found on PATH. Please install with `cargo install cargo-nextest`.",
         ),
     ];
@@ -340,13 +340,11 @@ pub fn run_test_suite(
     target_host: Option<&str>,
     default_test_profile: &str,
 ) -> Result<()> {
-    let archive = std::env::var("CPTRA_TEST_ARCHIVE")
-        .unwrap_or_else(|_| "$HOME/caliptra-test-binaries.tar.zst".to_string());
     let mut test_command = format!(
         "(cd {test_dir} && \
                 sudo {prelude} \
                 cargo-nextest nextest run \
-                --workspace-remap=. --archive-file {archive} \
+                --workspace-remap=. --archive-file $HOME/caliptra-test-binaries.tar.zst \
                 {test_output} --no-fail-fast "
     );
     if let Some(filters) = test_filters {
@@ -410,7 +408,10 @@ pub fn caliptra_sw_workspace_root() -> PathBuf {
 }
 
 /// Download a bitstream from a Caliptra bitstream manifest
-pub fn download_bitstream<P: AsRef<Path>>(target_host: Option<&str>, manifest: P) -> Result<()> {
+pub fn download_bitstream_pdi<P: AsRef<Path>>(
+    target_host: Option<&str>,
+    manifest: P,
+) -> Result<()> {
     // Assumes bitstream file is placed in the current directory.
     let bitstream = caliptra_bitstream_downloader::download_bitstream(manifest.as_ref())?;
 
@@ -425,11 +426,7 @@ pub fn download_bitstream<P: AsRef<Path>>(target_host: Option<&str>, manifest: P
     } else {
         std::fs::rename(&bitstream, "caliptra-bitstream.pdi").context("rename bitstream pdi")?;
     }
-    Ok(())
-}
 
-/// Load a bitstream into the FPGA hardware.
-pub fn load_bitstream(target_host: Option<&str>) -> Result<()> {
     run_command(target_host, "sudo mkdir -p /lib/firmware")?;
     run_command(target_host, "sudo mv caliptra-bitstream.pdi /lib/firmware")?;
     run_command(

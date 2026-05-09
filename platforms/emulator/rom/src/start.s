@@ -35,11 +35,10 @@ _start:
     # MRAC controls cacheability and side effects for 16 memory regions (256MB each)
     # The value is computed from the memory map at build time
     # CSR address 0x7c0 = MRAC register
-    #
-    # The MRAC_VALUE is defined by the emulator config library, based on the used memory windows.
-    la     t0, MRAC_VALUE
-    lw     t1, 0(t0)
-    csrw   0x7c0, t1
+    # Use lui/addi to load the 32-bit constant properly
+    lui     t0, %hi(MRAC_VALUE)
+    addi    t0, t0, %lo(MRAC_VALUE)
+    csrw    0x7c0, t0
 
     # Copy BSS
     la t0, BSS_START

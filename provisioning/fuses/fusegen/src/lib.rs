@@ -48,6 +48,7 @@ pub struct OtpPartition {
     pub desc: String,
     pub sw_digest: bool,
     pub hw_digest: bool,
+    pub zeroizable: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -272,6 +273,7 @@ mod tests {
                 desc: "".to_string(),
                 sw_digest: false,
                 hw_digest: false,
+                zeroizable: false,
             }],
         };
 
@@ -315,6 +317,7 @@ mod tests {
                 desc: "".to_string(),
                 sw_digest: false,
                 hw_digest: false,
+                zeroizable: false,
             }],
         };
 

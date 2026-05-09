@@ -21,7 +21,7 @@ extern "C" fn start_prototype(
     _app_break: usize,
 ) -> ! {
     use crate::TockSyscalls;
-    use caliptra_mcu_libtock_platform::{syscall_class, RawSyscalls};
+    use libtock_platform::{syscall_class, RawSyscalls};
 
     let pc: usize;
     unsafe {

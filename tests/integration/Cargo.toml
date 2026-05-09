@@ -1,13 +1,13 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mcu-tests-integration"
+name = "tests-integration"
 version = "0.1.0"
 edition = "2021"
 
 [features]
 default = []
-fpga_realtime = ["dep:uio", "caliptra-mcu-hw-model/fpga_realtime"]
+fpga_realtime = ["dep:uio", "mcu-hw-model/fpga_realtime"]
 itrng = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -24,46 +24,41 @@ caliptra-hw-model.workspace = true
 caliptra-image-gen.workspace = true
 caliptra-image-types.workspace = true
 caliptra-image-fake-keys.workspace = true
+caliptra-registers.workspace = true
 chrono.workspace = true
 crc.workspace = true
 ecdsa.workspace = true
 fips204.workspace = true
-caliptra-mcu-flash-image.workspace = true
+flash-image.workspace = true
 hex.workspace = true
 hkdf.workspace = true
 hmac.workspace = true
 lazy_static.workspace = true
 log.workspace = true
-caliptra-mcu-builder.workspace = true
-caliptra-mcu-config.workspace = true
-caliptra-mcu-config-emulator.workspace = true
-caliptra-mcu-config-fpga.workspace = true
-caliptra-mcu-mctp-vdm-common.workspace = true
-caliptra-mailbox-client.workspace = true
-caliptra-mcu-core-mctp-vdm-client.workspace = true
-caliptra-mcu-core-util-host-mctp-vdm-test-config.workspace = true
-caliptra-mcu-core-util-host-transport.workspace = true
-caliptra-mcu-error.workspace = true
-caliptra-mcu-otp-digest.workspace = true
-caliptra-mcu-otp-lifecycle.workspace = true
-caliptra-mcu-firmware-bundler.workspace = true
-caliptra-mcu-hw-model.workspace = true
-caliptra-mcu-image-header.workspace = true
-caliptra-mcu-mbox-common.workspace = true
-caliptra-mcu-debug-unlock-signer.workspace = true
-caliptra-mcu-rom-common.workspace = true
-caliptra-mcu-testing-common.workspace = true
+mcu-builder.workspace = true
+mcu-config.workspace = true
+mcu-config-emulator.workspace = true
+mcu-config-fpga.workspace = true
+mctp-vdm-common.workspace = true
+mcu-error.workspace = true
+otp-digest.workspace = true
+mcu-firmware-bundler.workspace = true
+mcu-hw-model.workspace = true
+mcu-image-header.workspace = true
+mcu-mbox-common.workspace = true
+mcu-rom-common.workspace = true
+mcu-testing-common.workspace = true
+openssl.workspace = true
 p384 = { workspace = true, features = ["ecdsa"] }
-caliptra-mcu-pldm-common.workspace = true
-caliptra-mcu-pldm-fw-pkg.workspace = true
-caliptra-mcu-pldm-ua.workspace = true
+pldm-common.workspace = true
+pldm-fw-pkg.workspace = true
+pldm-ua.workspace = true
 rand.workspace = true
 random-port.workspace = true
-caliptra-mcu-registers-generated.workspace = true
+registers-generated.workspace = true
+romtime.workspace = true
 sha2.workspace = true
 simple_logger.workspace = true
-openssl.workspace = true
-caliptra-mcu-romtime.workspace = true
 tempfile.workspace = true
 uio = { workspace = true, optional = true }
 uuid.workspace = true

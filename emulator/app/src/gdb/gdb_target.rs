@@ -25,8 +25,6 @@ use gdbstub::target::ext::breakpoints::WatchKind;
 use gdbstub::target::Target;
 use gdbstub::target::TargetResult;
 use gdbstub_arch;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use crate::emulator::Emulator;
 use caliptra_emu_cpu::StepAction as SystemStepAction;
@@ -36,22 +34,11 @@ pub enum ExecMode {
     Continue,
 }
 
-#[derive(Clone, Debug)]
-pub enum GdbStopReason {
-    Breakpoint,
-    SingleStep,
-    Interrupt,
-    Watchpoint { addr: u32, kind: WatchKind },
-    Exit,
-}
-
 pub struct GdbTarget {
     emulator: Emulator,
     exec_mode: ExecMode,
     breakpoints: Vec<u32>,
-    interrupt_requested: Arc<AtomicBool>,
-    should_stop: Arc<AtomicBool>,
-    last_stop_reason: Option<GdbStopReason>,
+    interrupt_requested: bool,
 }
 
 impl GdbTarget {
@@ -61,9 +48,7 @@ impl GdbTarget {
             emulator,
             exec_mode: ExecMode::Continue,
             breakpoints: Vec::new(),
-            interrupt_requested: Arc::new(AtomicBool::new(false)),
-            should_stop: Arc::new(AtomicBool::new(false)),
-            last_stop_reason: None,
+            interrupt_requested: false,
         }
     }
 
@@ -84,193 +69,7 @@ impl GdbTarget {
 
     // Signal an interrupt request (called when Ctrl+C is received)
     pub fn request_interrupt(&mut self) {
-        self.interrupt_requested.store(true, Ordering::Relaxed);
-    }
-
-    // Get a clone of the interrupt flag for non-blocking access
-    pub fn get_interrupt_flag(&self) -> Arc<AtomicBool> {
-        self.interrupt_requested.clone()
-    }
-
-    // Get a clone of the stop flag for non-blocking access
-    pub fn get_stop_flag(&self) -> Arc<AtomicBool> {
-        self.should_stop.clone()
-    }
-
-    // Check if execution should stop (non-blocking)
-    pub fn should_stop(&self) -> bool {
-        self.should_stop.load(Ordering::Relaxed)
-    }
-
-    // Set the stop flag
-    pub fn set_should_stop(&self, value: bool) {
-        self.should_stop.store(value, Ordering::Relaxed);
-    }
-
-    // Set the interrupt and stop flags (for integration with controlled server)
-    pub fn set_interrupt_flag(&mut self, flag: Arc<AtomicBool>) {
-        self.interrupt_requested = flag;
-    }
-
-    pub fn set_stop_flag(&mut self, flag: Arc<AtomicBool>) {
-        self.should_stop = flag;
-    }
-
-    // Check for stop conditions after the emulator has already been stepped by C code
-    pub fn check_stop_conditions(
-        &mut self,
-        step_action: SystemStepAction,
-    ) -> Option<SingleThreadStopReason<u32>> {
-        // Check for interrupt request first
-        if self.interrupt_requested.load(Ordering::Relaxed) {
-            self.interrupt_requested.store(false, Ordering::Relaxed);
-            self.last_stop_reason = Some(GdbStopReason::Interrupt);
-            return Some(SingleThreadStopReason::Signal(Signal::SIGINT));
-        }
-
-        // Check for external stop request
-        if self.should_stop.load(Ordering::Relaxed) {
-            self.should_stop.store(false, Ordering::Relaxed);
-            self.last_stop_reason = Some(GdbStopReason::Interrupt);
-            return Some(SingleThreadStopReason::Signal(Signal::SIGINT));
-        }
-
-        // Check the result of the step that was already performed
-        match step_action {
-            SystemStepAction::Continue => {
-                let current_pc = self.emulator.mcu_cpu.read_pc();
-                if self.breakpoints.contains(&current_pc) {
-                    self.last_stop_reason = Some(GdbStopReason::Breakpoint);
-                    return Some(SingleThreadStopReason::SwBreak(()));
-                }
-            }
-            SystemStepAction::Break => {
-                let watch = self.emulator.mcu_cpu.get_watchptr_hit().unwrap();
-                let kind = if watch.kind == WatchPtrKind::Write {
-                    WatchKind::Write
-                } else {
-                    WatchKind::Read
-                };
-                self.last_stop_reason = Some(GdbStopReason::Watchpoint {
-                    addr: watch.addr,
-                    kind,
-                });
-                return Some(SingleThreadStopReason::Watch {
-                    tid: (),
-                    kind,
-                    addr: watch.addr,
-                });
-            }
-            SystemStepAction::Fatal => {
-                self.last_stop_reason = Some(GdbStopReason::Exit);
-                return Some(SingleThreadStopReason::Exited(0));
-            }
-        }
-
-        // Check for single step mode
-        if matches!(self.exec_mode, ExecMode::Step) {
-            self.last_stop_reason = Some(GdbStopReason::SingleStep);
-            return Some(SingleThreadStopReason::DoneStep);
-        }
-
-        None
-    }
-
-    // Check if we should stop before executing the next instruction
-    // This helps catch breakpoints immediately when they're hit
-    pub fn should_stop_before_step(&mut self) -> Option<SingleThreadStopReason<u32>> {
-        // Check for interrupt request first
-        if self.interrupt_requested.load(Ordering::Relaxed) {
-            self.interrupt_requested.store(false, Ordering::Relaxed);
-            self.last_stop_reason = Some(GdbStopReason::Interrupt);
-            return Some(SingleThreadStopReason::Signal(Signal::SIGINT));
-        }
-
-        // Check for external stop request
-        if self.should_stop.load(Ordering::Relaxed) {
-            self.should_stop.store(false, Ordering::Relaxed);
-            self.last_stop_reason = Some(GdbStopReason::Interrupt);
-            return Some(SingleThreadStopReason::Signal(Signal::SIGINT));
-        }
-
-        // Check if we're at a breakpoint before executing
-        let current_pc = self.emulator.mcu_cpu.read_pc();
-        if self.breakpoints.contains(&current_pc) {
-            self.last_stop_reason = Some(GdbStopReason::Breakpoint);
-            return Some(SingleThreadStopReason::SwBreak(()));
-        }
-
-        None
-    }
-
-    // Check if we're in single step mode and should stop after executing one instruction
-    pub fn is_single_step_mode(&self) -> bool {
-        matches!(self.exec_mode, ExecMode::Step)
-    }
-
-    // Check if we should stop after executing the next instruction (for single stepping)
-    // This should be called after emulator_step() when in single step mode
-    pub fn should_stop_after_step(&mut self) -> Option<SingleThreadStopReason<u32>> {
-        // In single step mode, we should always stop after one instruction
-        if matches!(self.exec_mode, ExecMode::Step) {
-            self.last_stop_reason = Some(GdbStopReason::SingleStep);
-            return Some(SingleThreadStopReason::DoneStep);
-        }
-        None
-    }
-
-    // Perform a single step and check for stop conditions
-    pub fn step_and_check(&mut self) -> Option<SingleThreadStopReason<u32>> {
-        // Check for interrupt request first
-        if self.interrupt_requested.load(Ordering::Relaxed) {
-            self.interrupt_requested.store(false, Ordering::Relaxed);
-            self.last_stop_reason = Some(GdbStopReason::Interrupt);
-            return Some(SingleThreadStopReason::Signal(Signal::SIGINT));
-        }
-
-        // Check for external stop request
-        if self.should_stop.load(Ordering::Relaxed) {
-            self.should_stop.store(false, Ordering::Relaxed);
-            self.last_stop_reason = Some(GdbStopReason::Interrupt);
-            return Some(SingleThreadStopReason::Signal(Signal::SIGINT));
-        }
-
-        match self.emulator.step() {
-            SystemStepAction::Continue => {
-                if self.breakpoints.contains(&self.emulator.mcu_cpu.read_pc()) {
-                    self.last_stop_reason = Some(GdbStopReason::Breakpoint);
-                    return Some(SingleThreadStopReason::SwBreak(()));
-                }
-            }
-            SystemStepAction::Break => {
-                let watch = self.emulator.mcu_cpu.get_watchptr_hit().unwrap();
-                let kind = if watch.kind == WatchPtrKind::Write {
-                    WatchKind::Write
-                } else {
-                    WatchKind::Read
-                };
-                self.last_stop_reason = Some(GdbStopReason::Watchpoint {
-                    addr: watch.addr,
-                    kind,
-                });
-                return Some(SingleThreadStopReason::Watch {
-                    tid: (),
-                    kind,
-                    addr: watch.addr,
-                });
-            }
-            SystemStepAction::Fatal => {
-                self.last_stop_reason = Some(GdbStopReason::Exit);
-                return Some(SingleThreadStopReason::Exited(0));
-            }
-        }
-
-        if matches!(self.exec_mode, ExecMode::Step) {
-            self.last_stop_reason = Some(GdbStopReason::SingleStep);
-            return Some(SingleThreadStopReason::DoneStep);
-        }
-
-        None
+        self.interrupt_requested = true;
     }
 
     // Execute the target with responsive interrupt checking
@@ -283,8 +82,37 @@ impl GdbTarget {
             ExecMode::Continue => {
                 // Execute with interrupt checking every few steps
                 for _ in 0..1000 {
-                    if let Some(stop_reason) = self.step_and_check() {
-                        return stop_reason;
+                    // Check for interrupts every 1000 steps
+                    // Check for interrupt request (Ctrl+C) first
+                    if self.interrupt_requested {
+                        self.interrupt_requested = false;
+                        println!("Interrupt request detected, stopping execution");
+                        return SingleThreadStopReason::Signal(Signal::SIGINT);
+                    }
+
+                    match self.emulator.step() {
+                        SystemStepAction::Continue => {
+                            if self.breakpoints.contains(&self.emulator.mcu_cpu.read_pc()) {
+                                println!(
+                                    "Hit breakpoint at PC: 0x{:08X}",
+                                    self.emulator.mcu_cpu.read_pc()
+                                );
+                                return SingleThreadStopReason::SwBreak(());
+                            }
+                        }
+                        SystemStepAction::Break => {
+                            let watch = self.emulator.mcu_cpu.get_watchptr_hit().unwrap();
+                            return SingleThreadStopReason::Watch {
+                                tid: (),
+                                kind: if watch.kind == WatchPtrKind::Write {
+                                    WatchKind::Write
+                                } else {
+                                    WatchKind::Read
+                                },
+                                addr: watch.addr,
+                            };
+                        }
+                        SystemStepAction::Fatal => return SingleThreadStopReason::Exited(0),
                     }
                 }
 
@@ -402,6 +230,7 @@ impl target::ext::base::singlethread::SingleThreadSingleStep for GdbTarget {
             }
             Some(Signal::SIGINT) => {
                 // SIGINT can be safely ignored when stepping - just step normally
+                println!("Single stepping after SIGINT");
                 self.exec_mode = ExecMode::Step;
             }
             Some(Signal::SIGALRM) => {
@@ -428,6 +257,7 @@ impl SingleThreadResume for GdbTarget {
             }
             Some(Signal::SIGINT) => {
                 // SIGINT can be safely ignored when resuming - just continue normally
+                println!("Resuming execution after SIGINT");
                 self.exec_mode = ExecMode::Continue;
             }
             Some(Signal::SIGALRM) => {
@@ -477,6 +307,7 @@ impl target::ext::breakpoints::SwBreakpoint for GdbTarget {
             None => return Ok(false),
             Some(pos) => self.breakpoints.remove(pos),
         };
+
         Ok(true)
     }
 }

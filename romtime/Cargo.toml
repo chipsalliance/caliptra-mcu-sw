@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mcu-romtime"
+name = "romtime"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -10,19 +10,19 @@ edition.workspace = true
 bitflags.workspace = true
 caliptra-api.workspace = true
 caliptra-registers.workspace = true
-caliptra-ureg.workspace = true
-caliptra-mcu-error.workspace = true
-caliptra-mcu-mbox-common.workspace = true
-caliptra-mcu-otp-digest.workspace = true
-caliptra-mcu-otp-lifecycle.workspace = true
-caliptra-mcu-registers-generated.workspace = true
+mcu-error.workspace = true
+mcu-mbox-common.workspace = true
+otp-digest.workspace = true
+registers-generated.workspace = true
 tock-registers.workspace = true
+ureg.workspace = true
 zerocopy.workspace = true
-
-[target.'cfg(target_arch = "riscv32")'.dependencies]
-riscv-csr.workspace = true
-rv32i.workspace = true
 
 [features]
 default = []
 core_test = []
+ocp-lock = []
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+riscv-csr.workspace = true
+rv32i.workspace = true

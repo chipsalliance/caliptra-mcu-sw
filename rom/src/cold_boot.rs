@@ -18,24 +18,142 @@ use crate::mailbox;
 use crate::{
     configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
-    I3cMailboxHandler, I3cServicesModes, RomEnv, RomParameters, MCU_MEMORY_MAP,
+    FuseParams, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{
-    CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader, StashMeasurementReq,
-    StashMeasurementResp,
+    CmImportReq, CmImportResp, CmKeyUsage, CmStableKeyType, Cmk, CommandId, FeProgReq,
+    MailboxReqHeader, MailboxRespHeader, StashMeasurementReq, StashMeasurementResp, CMK_SIZE_BYTES,
+    MAX_CMB_DATA_SIZE,
 };
-use caliptra_api::CaliptraApiError;
-use caliptra_api::SocManager;
+#[cfg(feature = "ocp-lock")]
+use caliptra_api::mailbox::{
+    OcpLockReportHekMetadataReq, OcpLockReportHekMetadataResp, OcpLockReportHekMetadataRespFlags,
+};
+use caliptra_api::{calc_checksum, CaliptraApiError};
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
-use caliptra_mcu_error::McuError;
-use caliptra_mcu_registers_generated::fuses;
-use caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg;
-use caliptra_mcu_registers_generated::mci::bits::{MboxExecute, MboxLock};
-use caliptra_mcu_romtime::{CaliptraSoC, HexBytes, HexWord, McuBootMilestones, McuRomBootStatus};
 use core::fmt::Write;
 use core::ops::Deref;
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
-use zerocopy::{transmute, IntoBytes};
+use mcu_error::McuError;
+#[cfg(feature = "ocp-lock")]
+use romtime::ocp_lock::HekState;
+use romtime::{
+    CaliptraSoC, HexBytes, HexWord, LifecycleControllerState, LifecycleToken, McuBootMilestones,
+    McuRomBootStatus,
+};
+use tock_registers::interfaces::Readable;
+use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
+
+// TODO: Remove these local CM_AES_GCM_DECRYPT_DMA definitions once caliptra-sw
+// includes the DMA decrypt command and the caliptra-sw git pointer is updated.
+
+/// Command ID for CM_AES_GCM_DECRYPT_DMA ("CMDD").
+const CMD_CM_AES_GCM_DECRYPT_DMA: u32 = 0x434D_4444;
+
+/// Maximum AAD size for CM_AES_GCM_DECRYPT_DMA command.
+const CM_AES_GCM_DECRYPT_DMA_MAX_AAD_SIZE: usize = MAX_CMB_DATA_SIZE;
+
+/// Request struct for the CM_AES_GCM_DECRYPT_DMA mailbox command.
+///
+/// This command performs in-place AES-GCM decryption of data at an AXI address
+/// using DMA. It first verifies the SHA-384 of the encrypted data, then
+/// performs decryption.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+struct CmAesGcmDecryptDmaReq {
+    pub hdr: MailboxReqHeader,
+    /// CMK (Cryptographic Mailbox Key) - 128 bytes
+    pub cmk: Cmk,
+    /// AES-GCM IV (12 bytes, as 3 x u32)
+    pub iv: [u32; 3],
+    /// AES-GCM tag (16 bytes, as 4 x u32)
+    pub tag: [u32; 4],
+    /// SHA-384 hash of the encrypted data (48 bytes)
+    pub encrypted_data_sha384: [u8; 48],
+    /// AXI address low 32 bits
+    pub axi_addr_lo: u32,
+    /// AXI address high 32 bits
+    pub axi_addr_hi: u32,
+    /// Length of data to decrypt in bytes
+    pub length: u32,
+    /// Length of AAD in bytes
+    pub aad_length: u32,
+    /// AAD data (0..=4095 bytes)
+    pub aad: [u8; CM_AES_GCM_DECRYPT_DMA_MAX_AAD_SIZE],
+}
+
+impl Default for CmAesGcmDecryptDmaReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            cmk: Cmk::default(),
+            iv: [0u32; 3],
+            tag: [0u32; 4],
+            encrypted_data_sha384: [0u8; 48],
+            axi_addr_lo: 0,
+            axi_addr_hi: 0,
+            length: 0,
+            aad_length: 0,
+            aad: [0u8; CM_AES_GCM_DECRYPT_DMA_MAX_AAD_SIZE],
+        }
+    }
+}
+
+/// Response struct for the CM_AES_GCM_DECRYPT_DMA mailbox command.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+struct CmAesGcmDecryptDmaResp {
+    pub hdr: MailboxRespHeader,
+    /// Indicates whether the GCM tag was verified (1 = success, 0 = failure)
+    pub tag_verified: u32,
+}
+
+/// Command ID for GET_MCU_FW_SIZE ("GMFS").
+///
+/// MCU ROM issues this command after Caliptra RT is ready for runtime mailbox
+/// commands. Caliptra RT responds with the size of the MCU firmware image
+/// (ciphertext + GCM tag) that was downloaded during the recovery flow.
+// TODO: Remove once the caliptra-sw git pointer includes GET_MCU_FW_SIZE.
+const CMD_GET_MCU_FW_SIZE: u32 = 0x474D_4653;
+
+/// Response struct for GET_MCU_FW_SIZE mailbox command.
+// TODO: Remove once the caliptra-sw git pointer includes GetMcuFwSizeResp.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+struct GetMcuFwSizeResp {
+    pub hdr: MailboxRespHeader,
+    /// Ciphertext size in bytes (GCM tag excluded).
+    pub size: u32,
+    /// SHA-384 digest of the ciphertext (computed by Caliptra RT).
+    pub sha384: [u8; 48],
+}
+
+impl Default for GetMcuFwSizeResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            size: 0,
+            sha384: [0u8; 48],
+        }
+    }
+}
+
+/// Bit in `mci_reg_generic_input_wires[1]` that signals encrypted firmware boot.
+/// When set, MCU ROM sends `RI_DOWNLOAD_ENCRYPTED_FIRMWARE` instead of `RI_DOWNLOAD_FIRMWARE`,
+/// then decrypts the firmware in MCU SRAM after Caliptra RT finishes loading.
+const ENCRYPTED_BOOT_WIRE_BIT: u32 = 1 << 28;
+
+/// Test AES-256 key used for encrypted MCU firmware in sw-emulated models.
+/// Must match `MCU_TEST_AES_KEY` in caliptra-sw hw-model.
+const MCU_TEST_AES_KEY: [u8; 32] = [0xaa; 32];
+
+/// Test AES-GCM IV used for encrypted MCU firmware in sw-emulated models.
+/// Must match `MCU_TEST_IV` in caliptra-sw hw-model.
+const MCU_TEST_IV: [u8; 12] = [
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+];
+
+/// GCM authentication tag size in bytes.
+const GCM_TAG_SIZE: usize = 16;
 
 pub struct ColdBoot {}
 
@@ -43,62 +161,60 @@ impl ColdBoot {
     fn program_field_entropy(
         program_field_entropy: &[bool; 4],
         soc_manager: &mut CaliptraSoC,
-        mci: &caliptra_mcu_romtime::Mci,
+        mci: &romtime::Mci,
     ) {
         for (partition, _) in program_field_entropy
             .iter()
             .enumerate()
             .filter(|(_, partition)| **partition)
         {
-            caliptra_mcu_romtime::println!(
+            romtime::println!(
                 "[mcu-rom] Executing FE_PROG command for partition {}",
                 partition
             );
 
-            let req = FeProgReq {
+            let mut req = FeProgReq {
                 partition: partition as u32,
                 ..Default::default()
             };
-            let req = req.as_bytes();
-            let chksum = caliptra_api::calc_checksum(CommandId::FE_PROG.into(), req);
-            // set the checksum
-            let req = FeProgReq {
-                hdr: MailboxReqHeader { chksum },
-                partition: partition as u32,
-            };
-            let req: [u32; 2] = transmute!(req);
-            if let Err(err) = soc_manager.start_mailbox_req(
+            let chksum = caliptra_api::calc_checksum(
                 CommandId::FE_PROG.into(),
-                req.len() * 4,
-                req.iter().copied(),
-            ) {
+                &req.as_bytes()[core::mem::size_of::<MailboxReqHeader>()..],
+            );
+            req.hdr.chksum = chksum;
+            if let Err(err) =
+                soc_manager.start_mailbox_req_bytes(CommandId::FE_PROG.into(), req.as_bytes())
+            {
                 match err {
                     CaliptraApiError::MailboxCmdFailed(code) => {
-                        caliptra_mcu_romtime::println!(
+                        romtime::println!(
                             "[mcu-rom] Error sending mailbox command: {}",
                             HexWord(code)
                         );
                     }
                     _ => {
-                        caliptra_mcu_romtime::println!("[mcu-rom] Error sending mailbox command");
+                        romtime::println!("[mcu-rom] Error sending mailbox command");
                     }
                 }
                 fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_START);
             }
-            if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
-                match err {
-                    CaliptraApiError::MailboxCmdFailed(code) => {
-                        caliptra_mcu_romtime::println!(
-                            "[mcu-rom] Error finishing mailbox command: {}",
-                            HexWord(code)
-                        );
+            {
+                let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+                if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+                    match err {
+                        CaliptraApiError::MailboxCmdFailed(code) => {
+                            romtime::println!(
+                                "[mcu-rom] Error finishing mailbox command: {}",
+                                HexWord(code)
+                            );
+                        }
+                        _ => {
+                            romtime::println!("[mcu-rom] Error finishing mailbox command");
+                        }
                     }
-                    _ => {
-                        caliptra_mcu_romtime::println!("[mcu-rom] Error finishing mailbox command");
-                    }
+                    fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
                 }
-                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
-            };
+            }
 
             // Set status for each partition completion
             let partition_status = match partition {
@@ -112,6 +228,53 @@ impl ColdBoot {
         }
     }
 
+    /// Decrypt the encrypted MCU firmware in SRAM using DMA-based decryption:
+    ///   1. Import the AES key via CM_IMPORT
+    ///   2. Issue CM_AES_GCM_DECRYPT_DMA to decrypt in-place via DMA
+    ///
+    /// The firmware image in SRAM is formatted as `ciphertext || 16-byte GCM tag`.
+    /// `ciphertext_size` is the ciphertext length only (GCM tag excluded), as
+    /// returned by GET_MCU_FW_SIZE. Caliptra RT already strips the tag from the
+    /// size in recovery_flow.rs.
+    /// `sha384` is the SHA-384 digest of the ciphertext, obtained from the
+    /// GET_MCU_FW_SIZE response (computed by Caliptra RT during the recovery flow).
+    /// After decryption the plaintext replaces the ciphertext in SRAM.
+    fn decrypt_firmware(soc_manager: &mut CaliptraSoC, ciphertext_size: u32, sha384: &[u8; 48]) {
+        if ciphertext_size == 0 {
+            romtime::println!("[mcu-rom] Encrypted firmware ciphertext size is zero");
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+        let sram_base = unsafe { MCU_MEMORY_MAP.sram_offset } as usize;
+
+        // Use the MCU SRAM address for in-place DMA decryption.
+        // Caliptra RT downloaded the ciphertext here via the recovery interface,
+        // so the DMA decrypt must target the same AXI address.
+        // On both emulator and FPGA, sram_offset is the AXI bus address
+        // (FPGA: mci_base + 0xc0_0000; emulator: identity-mapped).
+        let sram_axi_addr = sram_base as u64;
+
+        // Extract GCM tag (16 bytes immediately after ciphertext in SRAM)
+        let tag: [u8; GCM_TAG_SIZE] = unsafe {
+            let tag_ptr = (sram_base + ciphertext_size as usize) as *const [u8; GCM_TAG_SIZE];
+            core::ptr::read_volatile(tag_ptr)
+        };
+
+        // Step 1: Import the test AES key
+        let cmk = Self::cm_import_aes_key(soc_manager);
+
+        // Step 2: Issue CM_AES_GCM_DECRYPT_DMA to decrypt in-place in MCU SRAM
+        // The length must match what Caliptra RT used for sha384_mcu_sram(),
+        // which is the ciphertext size (excluding the 16-byte GCM tag).
+        Self::cm_aes_gcm_decrypt_dma(
+            soc_manager,
+            &cmk,
+            &tag,
+            sha384,
+            sram_axi_addr,
+            ciphertext_size,
+        );
+    }
+
     /// Calculate SHA384 hash of ROM and compare it against the stored value. Optionally stash it.
     fn rom_digest_integrity(soc_manager: &mut CaliptraSoC, stash: bool) {
         const DIGEST_SIZE: usize = 48;
@@ -123,18 +286,18 @@ impl ColdBoot {
         };
 
         let digest = mailbox::cm_sha384(soc_manager, rom);
-        caliptra_mcu_romtime::println!("[mcu-rom] MCU ROM digest: {}", HexBytes(&digest));
+        romtime::println!("[mcu-rom] MCU ROM digest: {}", HexBytes(&digest));
 
         let expected_digest: &[u8; DIGEST_SIZE] = unsafe {
             &*((MCU_MEMORY_MAP.rom_offset as usize + hashable_len) as *const [u8; DIGEST_SIZE])
         };
-        caliptra_mcu_romtime::println!(
+        romtime::println!(
             "[mcu-rom] MCU ROM expected digest: {}",
             HexBytes(expected_digest)
         );
 
         if digest != *expected_digest {
-            caliptra_mcu_romtime::println!("[mcu-rom] MCU ROM digest mismatch");
+            romtime::println!("[mcu-rom] MCU ROM digest mismatch");
             fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH);
         }
 
@@ -144,207 +307,462 @@ impl ColdBoot {
     }
 
     fn stash_measurement(soc_manager: &mut CaliptraSoC, measurement: &[u8; 48]) {
-        let req = StashMeasurementReq {
+        let mut req = StashMeasurementReq {
             hdr: MailboxReqHeader { chksum: 0 },
             metadata: [0u8; 4],
             measurement: *measurement,
             context: [0u8; 48],
             svn: 0,
         };
-        let mut req_u32: [u32; core::mem::size_of::<StashMeasurementReq>() / 4] =
-            zerocopy::transmute!(req);
-        let mut resp_u32 = [0u32; core::mem::size_of::<StashMeasurementResp>() / 4];
+        let cmd: u32 = CommandId::STASH_MEASUREMENT.into();
+        let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
+        req.hdr.chksum = chksum;
 
-        if let Err(err) = soc_manager.exec_mailbox_req_u32(
-            CommandId::STASH_MEASUREMENT.into(),
-            &mut req_u32,
-            &mut resp_u32,
-        ) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] STASH_MEASUREMENT error: {}",
-                HexWord(crate::err_code(&err))
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] STASH_MEASUREMENT start error: {}",
+                HexWord(Self::err_code(&err))
             );
             fatal_error(McuError::GENERIC_EXCEPTION);
         }
 
-        // StashMeasurementResp: hdr(2 u32) + dpe_result(1 u32)
-        let dpe_result = resp_u32[2];
+        let mut resp_buf = [0u8; core::mem::size_of::<StashMeasurementResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] STASH_MEASUREMENT finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::GENERIC_EXCEPTION);
+        }
+
+        let dpe_result = match resp_buf.get(8..12) {
+            Some(b) => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
+            None => {
+                romtime::println!("[mcu-rom] STASH_MEASUREMENT response too short");
+                fatal_error(McuError::GENERIC_EXCEPTION);
+            }
+        };
+
         if dpe_result != 0 {
-            caliptra_mcu_romtime::println!(
+            romtime::println!(
                 "[mcu-rom] Stash Measurement failed: dpe_result={}",
                 dpe_result
             );
             fatal_error(McuError::GENERIC_EXCEPTION);
         }
     }
+
+    /// Import the test AES key via CM_IMPORT and return the CMK handle.
+    fn cm_import_aes_key(soc_manager: &mut CaliptraSoC) -> Cmk {
+        let mut input = [0u8; 64]; // MAX_KEY_SIZE = 64
+        match input.get_mut(..32) {
+            Some(dst) => dst.copy_from_slice(&MCU_TEST_AES_KEY),
+            None => fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR),
+        }
+
+        let mut req = CmImportReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            key_usage: CmKeyUsage::Aes.into(),
+            input_size: 32,
+            input,
+        };
+        let cmd: u32 = CommandId::CM_IMPORT.into();
+        let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
+        req.hdr.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] CM_IMPORT start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+
+        let mut resp_buf = [0u8; core::mem::size_of::<CmImportResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] CM_IMPORT finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+
+        // Extract CMK from response: hdr(8) + cmk(128)
+        let mut cmk_bytes = [0u8; CMK_SIZE_BYTES];
+        match resp_buf.get(8..8 + CMK_SIZE_BYTES) {
+            Some(src) => cmk_bytes.copy_from_slice(src),
+            None => fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR),
+        }
+        Cmk(cmk_bytes)
+    }
+
+    /// Issue CM_AES_GCM_DECRYPT_DMA to decrypt firmware in-place via DMA.
+    fn cm_aes_gcm_decrypt_dma(
+        soc_manager: &mut CaliptraSoC,
+        cmk: &Cmk,
+        tag: &[u8; GCM_TAG_SIZE],
+        encrypted_data_sha384: &[u8; 48],
+        axi_addr: u64,
+        ciphertext_len: u32,
+    ) {
+        let tag_u32: [u32; 4] = transmute!(*tag);
+        let iv_u32: [u32; 3] = transmute!(MCU_TEST_IV);
+
+        let mut req = CmAesGcmDecryptDmaReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            cmk: cmk.clone(),
+            iv: iv_u32,
+            tag: tag_u32,
+            encrypted_data_sha384: *encrypted_data_sha384,
+            axi_addr_lo: axi_addr as u32,
+            axi_addr_hi: (axi_addr >> 32) as u32,
+            length: ciphertext_len,
+            aad_length: 0,
+            aad: [0u8; CM_AES_GCM_DECRYPT_DMA_MAX_AAD_SIZE],
+        };
+        let cmd: u32 = CMD_CM_AES_GCM_DECRYPT_DMA;
+        let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
+        req.hdr.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] CM_AES_GCM_DECRYPT_DMA start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+
+        let mut resp_buf = [0u8; core::mem::size_of::<CmAesGcmDecryptDmaResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] CM_AES_GCM_DECRYPT_DMA finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_FINISH_ERROR);
+        }
+
+        // CmAesGcmDecryptDmaResp: hdr(8) + tag_verified(4)
+        let tag_verified = match resp_buf.get(8..12) {
+            Some(b) => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
+            None => {
+                romtime::println!("[mcu-rom] CM_AES_GCM_DECRYPT_DMA response too short");
+                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_FINISH_ERROR);
+            }
+        };
+        if tag_verified != 1 {
+            romtime::println!(
+                "[mcu-rom] GCM tag verification failed: tag_verified={}",
+                tag_verified
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_TAG_MISMATCH);
+        }
+    }
+
+    /// Query the MCU firmware ciphertext size and SHA-384 digest from Caliptra RT
+    /// via the GET_MCU_FW_SIZE mailbox command.
+    ///
+    /// Returns `(ciphertext_size, sha384)` where `ciphertext_size` is the
+    /// ciphertext length in bytes (GCM tag excluded — Caliptra RT strips it)
+    /// and `sha384` is the SHA-384 digest of the ciphertext only, computed
+    /// by Caliptra RT during the recovery flow.
+    fn get_mcu_fw_size(soc_manager: &mut CaliptraSoC) -> (u32, [u8; 48]) {
+        let mut req = MailboxReqHeader { chksum: 0 };
+        let chksum = calc_checksum(CMD_GET_MCU_FW_SIZE, &[]);
+        req.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(CMD_GET_MCU_FW_SIZE, req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] GET_MCU_FW_SIZE start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_START_ERROR);
+        }
+
+        let mut resp_buf = [0u8; core::mem::size_of::<GetMcuFwSizeResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] GET_MCU_FW_SIZE finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR);
+        }
+
+        // GetMcuFwSizeResp: hdr(8) + size(4) + sha384(48)
+        let size = match resp_buf.get(8..12) {
+            Some(b) => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
+            None => {
+                romtime::println!("[mcu-rom] GET_MCU_FW_SIZE response too short");
+                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR);
+            }
+        };
+        let mut sha384 = [0u8; 48];
+        match resp_buf.get(12..60) {
+            Some(src) => sha384.copy_from_slice(src),
+            None => {
+                romtime::println!("[mcu-rom] GET_MCU_FW_SIZE response missing sha384");
+                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR);
+            }
+        }
+        (size, sha384)
+    }
+
+    /// Extract a u32 error code from a CaliptraApiError for logging.
+    fn err_code(err: &CaliptraApiError) -> u32 {
+        match err {
+            CaliptraApiError::MailboxCmdFailed(c) => *c,
+            _ => 0xdead_ffff,
+        }
+    }
+
+    /// Execute the FIPS zeroization flow (continued).
+    ///
+    /// Per the Caliptra SS Hardware Specification, when the PPD signal is
+    /// asserted the MCU ROM must:
+    ///   1. Write 0xFFFF_FFFF to FC_FIPS_ZEROZATION mask to authorize the
+    ///      fuse controller to zeroize non-secret fuses.  (**Done earlier in
+    ///      `ColdBoot::run`, before `SS_CONFIG_DONE_STICKY` locks the
+    ///      register.**)
+    ///   2. Command Caliptra to zeroize UDS and field entropy via
+    ///      ZEROIZE_UDS_FE (secret fuses can only be zeroized by Caliptra).
+    ///   3. Request an LC transition to SCRAP (no token required).
+    ///   4. Halt, waiting for the SoC to issue a cold reset.
+    ///
+    /// This function handles steps 2-4 and never returns.
+    fn handle_fips_zeroization(
+        mci: &romtime::Mci,
+        lc: &romtime::Lifecycle,
+        soc_manager: &mut CaliptraSoC,
+    ) -> ! {
+        romtime::println!("[mcu-rom] Executing FIPS zeroization flow");
+
+        // Step 1: Command Caliptra to zeroize UDS and all field entropy partitions.
+        romtime::println!("[mcu-rom] Sending ZEROIZE_UDS_FE to Caliptra");
+        mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationUdsFeStarted.into());
+
+        let flags = caliptra_api::mailbox::ZEROIZE_UDS_FLAG
+            | caliptra_api::mailbox::ZEROIZE_FE0_FLAG
+            | caliptra_api::mailbox::ZEROIZE_FE1_FLAG
+            | caliptra_api::mailbox::ZEROIZE_FE2_FLAG
+            | caliptra_api::mailbox::ZEROIZE_FE3_FLAG;
+
+        let mut req = caliptra_api::mailbox::ZeroizeUdsFeReq {
+            flags,
+            ..Default::default()
+        };
+        let chksum = calc_checksum(
+            CommandId::ZEROIZE_UDS_FE.into(),
+            &req.as_bytes()[core::mem::size_of::<MailboxReqHeader>()..],
+        );
+        req.hdr.chksum = chksum;
+
+        if let Err(err) =
+            soc_manager.start_mailbox_req_bytes(CommandId::ZEROIZE_UDS_FE.into(), req.as_bytes())
+        {
+            romtime::println!(
+                "[mcu-rom] FIPS zeroization: ZEROIZE_UDS_FE send failed: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_FIPS_ZEROIZATION_UDS_FE_START_ERROR);
+        }
+        {
+            let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+            if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+                romtime::println!(
+                    "[mcu-rom] FIPS zeroization: ZEROIZE_UDS_FE finish failed: {}",
+                    HexWord(Self::err_code(&err))
+                );
+                fatal_error(McuError::ROM_FIPS_ZEROIZATION_UDS_FE_FINISH_ERROR);
+            }
+        }
+        romtime::println!("[mcu-rom] ZEROIZE_UDS_FE completed successfully");
+        mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationUdsFeComplete.into());
+
+        // Note: FC_FIPS_ZEROZATION mask was already set before
+        // SS_CONFIG_DONE_STICKY (in ColdBoot::run) because the register is
+        // locked once SS_CONFIG_DONE is asserted.
+
+        // Step 2: Request LC transition to SCRAP. The transition is recorded
+        // in OTP and takes effect permanently after the next cold reset.
+        romtime::println!("[mcu-rom] Requesting LC transition to SCRAP for FIPS zeroization");
+        mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationScrapTransitionStarted.into());
+        if let Err(err) = lc.transition(LifecycleControllerState::Scrap, &LifecycleToken([0u8; 16]))
+        {
+            romtime::println!(
+                "[mcu-rom] FIPS zeroization: LC SCRAP transition failed: {:?}",
+                err
+            );
+            fatal_error(McuError::ROM_FIPS_ZEROIZATION_LC_TRANSITION_ERROR);
+        }
+
+        // Step 3: Halt. The SoC must issue a cold reset for the SCRAP
+        // transition and fuse zeroization to take effect.
+        romtime::println!("[mcu-rom] FIPS zeroization complete; halting for cold reset");
+        mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationComplete.into());
+        loop {}
+    }
+
+    /// Report HEK metadata to Caliptra ROM via the REPORT_HEK_METADATA mailbox command.
+    #[cfg(feature = "ocp-lock")]
+    fn report_hek_metadata(hek_state: Option<HekState>, soc_manager: &mut romtime::CaliptraSoC) {
+        if cfg!(feature = "core_test") {
+            return;
+        }
+
+        let Some(hek_state) = hek_state else {
+            romtime::println!(
+                "[mcu-rom] No valid active HEK state. Skipping reporting HEK metadata."
+            );
+            return;
+        };
+
+        romtime::println!("[mcu-rom] Reporting HEK metadata");
+
+        let mut req = OcpLockReportHekMetadataReq {
+            total_slots: hek_state.total_slots as u16,
+            active_slots: hek_state.active_slot as u16,
+            seed_state: hek_state.active_state.into(),
+            ..Default::default()
+        };
+        let cmd: u32 = CommandId::OCP_LOCK_REPORT_HEK_METADATA.into();
+        let chksum = calc_checksum(
+            cmd,
+            &req.as_bytes()[core::mem::size_of::<MailboxReqHeader>()..],
+        );
+        req.hdr.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] REPORT_HEK_METADATA start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_HEK_REPORT_ERROR);
+        }
+
+        let mut resp_buf = [0u8; core::mem::size_of::<OcpLockReportHekMetadataResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] REPORT_HEK_METADATA finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_HEK_REPORT_ERROR);
+        }
+
+        let resp: OcpLockReportHekMetadataResp = transmute!(resp_buf);
+        let caliptra_hek_available = resp
+            .flags
+            .contains(OcpLockReportHekMetadataRespFlags::HEK_AVAILABLE);
+        romtime::println!(
+            "[mcu-rom] Caliptra HEK available: {}",
+            caliptra_hek_available
+        );
+    }
 }
 
-/// Run integrator-configured DOT locked-state recovery handlers in sequence.
-///
-/// Each handler that succeeds triggers a warm reset and never returns.
-/// The integrator controls the order and retry policy via
-/// `RomParameters::dot_locked_recovery_handlers`.
-fn attempt_dot_locked_recovery(
+/// Attempts DOT recovery using available recovery mechanisms.
+/// The order is determined by `params.dot_recovery_policy`.
+/// If recovery succeeds, triggers a warm reset (never returns).
+/// If recovery fails or no handler is available, returns the last error (if any).
+fn attempt_dot_recovery(
     env: &mut RomEnv,
     dot_fuses: &crate::DotFuses,
     params: &RomParameters,
     dot_flash: &dyn crate::hil::FlashStorage,
     key_type: CmStableKeyType,
-) -> McuError {
-    use crate::device_ownership_transfer::{DotLockedRecoveryContext, DotLockedRecoveryManager};
+) -> Option<McuError> {
+    use crate::DotRecoveryPolicy;
 
-    if params.dot_locked_recovery_handlers.is_empty() {
-        return McuError::ROM_COLD_BOOT_DOT_ERROR;
-    }
-
-    let ctx = DotLockedRecoveryContext {
-        dot_fuses,
-        dot_flash,
-        key_type,
-    };
-    let mut manager = DotLockedRecoveryManager::new(params.dot_locked_recovery_handlers);
-    match manager.run(env, &ctx) {
-        Ok(()) => {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] DOT locked-state recovery succeeded, resetting"
-            );
-            env.mci.trigger_warm_reset();
-            fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
-        }
-        Err(err) => err,
-    }
-}
-
-/// [`DotLockedRecoveryHandler`] that enters the I3C services mailbox loop.
-///
-/// The handler runs the interactive I3C command loop (DOT_RECOVERY,
-/// DOT_OVERRIDE, etc.) and returns success if the loop completes
-/// without error.
-pub struct I3cDotLockedRecoveryHandler {
-    pub i3c_base: caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::i3c::regs::I3c>,
-    pub services: crate::I3cServicesModes,
-    pub i3c_target_addr: u8,
-}
-
-impl crate::device_ownership_transfer::DotLockedRecoveryHandler for I3cDotLockedRecoveryHandler {
-    fn attempt(
-        &self,
+    fn try_challenge(
         env: &mut RomEnv,
-        ctx: &crate::device_ownership_transfer::DotLockedRecoveryContext<'_>,
-    ) -> caliptra_mcu_error::McuResult<()> {
-        let dot_ctx = crate::DotContext {
-            soc_manager: &mut env.soc_manager,
-            mci: &env.mci,
-            otp: &env.otp,
-            dot_fuses: ctx.dot_fuses,
-            dot_flash: ctx.dot_flash,
-            key_type: ctx.key_type,
-        };
-        enter_i3c_services(
-            &env.mci,
-            self.i3c_base,
-            self.services,
-            self.i3c_target_addr,
-            Some(dot_ctx),
-        );
-        Ok(())
-    }
-}
-
-/// Enter I3C services mode if enabled in `RomParameters`.
-///
-/// Runs the I3C mailbox handler loop, processing commands until completion
-/// or timeout. Sets boot status checkpoints on entry and exit.
-fn enter_i3c_services(
-    mci: &caliptra_mcu_romtime::Mci,
-    i3c_base: caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::i3c::regs::I3c>,
-    services: I3cServicesModes,
-    target_addr: u8,
-    dot_ctx: Option<crate::DotContext<'_>>,
-) {
-    // Extend the watchdog timeout for I3C services since the loop may run
-    // for an extended period waiting for commands from the BMC.
-    mci.configure_wdt(u32::MAX as u64, 1);
-
-    // Disable the recovery interface status registers.
-    i3c_base
-        .sec_fw_recovery_if_recovery_status
-        .write(caliptra_mcu_registers_generated::i3c::bits::RecoveryStatus::DevRecStatus.val(3));
-    i3c_base
-        .sec_fw_recovery_if_device_status_0
-        .write(caliptra_mcu_registers_generated::i3c::bits::DeviceStatus0::DevStatus.val(0));
-
-    // Clear the virtual device address to fully deactivate the recovery
-    // device on the I3C bus.
-    i3c_base.stdby_ctrl_mode_stby_cr_virt_device_addr.set(0);
-
-    caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Recovery disabled");
-
-    mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesStarted.into());
-
-    // Acquire the MCI mailbox lock so we can use its SRAM as a word-aligned
-    // reassembly buffer for multi-packet I3C commands.
-    //
-    // On HW the lock is forced to 1 on reset, so reading it will return
-    // 1 (locked). We release any stale lock by writing execute=0, then retry.
-    // See issue #1220.
-
-    // Reading the lock register atomically acquires it when it returns 0.
-    // Loop until acquired or give up after a bounded number of attempts.
-    // On the first failure we release a potentially stale lock.
-    let mut lock_acquired = false;
-    let mut released_stale = false;
-    for _ in 0..100 {
-        if mci.registers.mcu_mbox0_csr_mbox_lock.read(MboxLock::Lock) == 0 {
-            lock_acquired = true;
-            break;
+        dot_fuses: &crate::DotFuses,
+        params: &RomParameters,
+        dot_flash: &dyn crate::hil::FlashStorage,
+        key_type: CmStableKeyType,
+    ) -> Option<McuError> {
+        let transport = params.dot_recovery_transport?;
+        if params.dot_recovery_wdt_timeout > 0 {
+            env.mci.configure_wdt(params.dot_recovery_wdt_timeout, 1);
         }
-        // First failed attempt: release a possibly stale lock from a prior run
-        if !released_stale {
-            released_stale = true;
-            mci.registers
-                .mcu_mbox0_csr_mbox_execute
-                .write(MboxExecute::Execute::CLEAR);
-        }
-    }
-    if !lock_acquired {
-        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Warning: could not acquire mailbox lock");
-    }
-
-    let reassembly_buf = unsafe {
-        core::slice::from_raw_parts_mut(
-            mci.registers.mcu_mbox0_csr_mbox_sram.as_ptr() as *mut u32,
-            crate::i3c_mailbox::MAX_REASSEMBLY_WORDS,
-        )
-    };
-
-    let mut handler =
-        I3cMailboxHandler::new(i3c_base, services, target_addr, dot_ctx, reassembly_buf);
-    match handler.run(|| {
-        mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesReady.into());
-    }) {
-        Ok(()) => {
-            mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesComplete.into());
-        }
-        Err(err) => {
-            caliptra_mcu_romtime::println!("[mcu-rom] I3C services error: {}", HexWord(err.into()));
+        romtime::println!("[mcu-rom] Attempting DOT recovery via challenge/response");
+        match device_ownership_transfer::dot_recovery_challenge_flow(
+            env, dot_fuses, transport, dot_flash, key_type,
+        ) {
+            Ok(()) => {
+                romtime::println!("[mcu-rom] DOT challenge recovery succeeded, resetting");
+                env.mci.trigger_warm_reset();
+                fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
+            }
+            Err(err) => {
+                romtime::println!(
+                    "[mcu-rom] DOT challenge recovery failed: {}",
+                    HexWord(err.into())
+                );
+                Some(err)
+            }
         }
     }
 
-    // Release mailbox lock if we acquired it
-    if lock_acquired {
-        mci.registers
-            .mcu_mbox0_csr_mbox_execute
-            .write(MboxExecute::Execute::CLEAR);
+    fn try_backup_blob(
+        env: &mut RomEnv,
+        dot_fuses: &crate::DotFuses,
+        params: &RomParameters,
+        dot_flash: &dyn crate::hil::FlashStorage,
+        key_type: CmStableKeyType,
+    ) -> Option<McuError> {
+        let recovery_handler = params.dot_recovery_handler?;
+        romtime::println!("[mcu-rom] Attempting DOT recovery via backup blob");
+        match device_ownership_transfer::dot_recovery_flow(
+            env,
+            dot_fuses,
+            recovery_handler,
+            dot_flash,
+            key_type,
+        ) {
+            Ok(()) => {
+                romtime::println!("[mcu-rom] DOT backup recovery succeeded, resetting");
+                env.mci.trigger_warm_reset();
+                fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
+            }
+            Err(err) => {
+                romtime::println!(
+                    "[mcu-rom] DOT backup recovery failed: {}",
+                    HexWord(err.into())
+                );
+                Some(err)
+            }
+        }
     }
+
+    let mut last_err = None;
+    match params.dot_recovery_policy {
+        DotRecoveryPolicy::ChallengeFirst => {
+            last_err = try_challenge(env, dot_fuses, params, dot_flash, key_type);
+            last_err = try_backup_blob(env, dot_fuses, params, dot_flash, key_type).or(last_err);
+        }
+        DotRecoveryPolicy::BackupBlobFirst => {
+            last_err = try_backup_blob(env, dot_fuses, params, dot_flash, key_type);
+            last_err = try_challenge(env, dot_fuses, params, dot_flash, key_type).or(last_err);
+        }
+        DotRecoveryPolicy::ChallengeOnly => {
+            last_err = try_challenge(env, dot_fuses, params, dot_flash, key_type);
+        }
+        DotRecoveryPolicy::BackupBlobOnly => {
+            last_err = try_backup_blob(env, dot_fuses, params, dot_flash, key_type);
+        }
+        DotRecoveryPolicy::None => {}
+    }
+
+    romtime::println!("[mcu-rom] DOT recovery failed: no recovery mechanism succeeded");
+    last_err
 }
 
 impl BootFlow for ColdBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
-        crate::call_hook(params.hooks, |h| h.pre_cold_boot());
-        caliptra_mcu_romtime::println!(
+        #[cfg(feature = "ocp-lock")]
+        let mut params = params;
+
+        romtime::println!(
             "[mcu-rom] Starting cold boot flow at time {}",
-            caliptra_mcu_romtime::mcycle()
+            romtime::mcycle()
         );
 
         env.mci
@@ -356,33 +774,11 @@ impl BootFlow for ColdBoot {
         let lc = &env.lc;
         let otp = &mut env.otp;
         let i3c = &mut env.i3c;
-        let i3c1 = &mut env.i3c1;
+        let i3c_base = env.i3c_base;
         let straps = env.straps.deref();
-        if straps.active_i3c > 1 {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] WARNING: invalid active_i3c value {}, falling back to 0",
-                straps.active_i3c
-            );
-        }
-        // Select which I3C core to use for recovery based on platform strap.
-        let i3c_base = if straps.active_i3c == 1 {
-            env.i3c1_base
-        } else {
-            env.i3c_base
-        };
-        let i3c_target_addr = if straps.active_i3c == 1 {
-            straps.i3c1_static_addr
-        } else {
-            straps.i3c_static_addr
-        };
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom] Active I3C core for recovery: {}",
-            straps.active_i3c
-        );
 
-        caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra boot go");
+        romtime::println!("[mcu-rom] Setting Caliptra boot go");
 
-        crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());
         mci.caliptra_boot_go();
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraBootGoAsserted.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
@@ -395,16 +791,31 @@ impl BootFlow for ColdBoot {
         lc.init().unwrap();
         mci.set_flow_checkpoint(McuRomBootStatus::LifecycleControllerInitialized.into());
 
+        // Check for FIPS zeroization PPD signal early. The full zeroization
+        // flow (including the Caliptra ZEROIZE_UDS_FE command) runs later,
+        // after Caliptra is ready for mailbox commands.
+        //
+        // The FC_FIPS_ZEROZATION mask register must be written here, before
+        // SS_CONFIG_DONE_STICKY is set, because that lock makes the register
+        // read-only.
+        let fips_zeroization = mci.fips_zeroization_requested();
+        if fips_zeroization {
+            romtime::println!(
+                "[mcu-rom] FIPS zeroization PPD signal detected; \
+                 will execute zeroization after Caliptra boot"
+            );
+            mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationDetected.into());
+            mci.set_fips_zeroization_mask();
+            mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
+        }
+
         if let Some((state, token)) = params.lifecycle_transition {
             mci.set_flow_checkpoint(McuRomBootStatus::LifecycleTransitionStarted.into());
             if let Err(err) = lc.transition(state, &token) {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] Error transitioning lifecycle: {:?}",
-                    err
-                );
+                romtime::println!("[mcu-rom] Error transitioning lifecycle: {:?}", err);
                 fatal_error(err);
             }
-            caliptra_mcu_romtime::println!("Lifecycle transition successful; halting");
+            romtime::println!("Lifecycle transition successful; halting");
             mci.set_flow_checkpoint(McuRomBootStatus::LifecycleTransitionComplete.into());
             loop {}
         }
@@ -415,54 +826,51 @@ impl BootFlow for ColdBoot {
             params.otp_enable_integrity_check,
             params.otp_check_timeout_override,
         ) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] Error initializing OTP: {}",
-                HexWord(err.into())
-            );
+            romtime::println!("[mcu-rom] Error initializing OTP: {}", HexWord(err.into()));
             fatal_error(err);
         }
         mci.set_flow_checkpoint(McuRomBootStatus::OtpControllerInitialized.into());
 
         if let Some(tokens) = params.burn_lifecycle_tokens.as_ref() {
-            caliptra_mcu_romtime::println!("[mcu-rom] Burning lifecycle tokens");
+            romtime::println!("[mcu-rom] Burning lifecycle tokens");
             mci.set_flow_checkpoint(McuRomBootStatus::LifecycleTokenBurningStarted.into());
 
             if otp.check_error().is_some() {
-                caliptra_mcu_romtime::println!("[mcu-rom] OTP error: {}", HexWord(otp.status()));
+                romtime::println!("[mcu-rom] OTP error: {}", HexWord(otp.status()));
                 otp.print_errors();
-                caliptra_mcu_romtime::println!("[mcu-rom] Halting");
-                caliptra_mcu_romtime::test_exit(1);
+                romtime::println!("[mcu-rom] Halting");
+                romtime::test_exit(1);
             }
 
             if let Err(err) = otp.burn_lifecycle_tokens(tokens) {
-                caliptra_mcu_romtime::println!(
+                romtime::println!(
                     "[mcu-rom] Error burning lifecycle tokens {:?}; OTP status: {}",
                     err,
                     HexWord(otp.status())
                 );
                 otp.print_errors();
-                caliptra_mcu_romtime::println!("[mcu-rom] Halting");
-                caliptra_mcu_romtime::test_exit(1);
+                romtime::println!("[mcu-rom] Halting");
+                romtime::test_exit(1);
             }
-            caliptra_mcu_romtime::println!("[mcu-rom] Lifecycle token burning successful; halting");
+            romtime::println!("[mcu-rom] Lifecycle token burning successful; halting");
             mci.set_flow_checkpoint(McuRomBootStatus::LifecycleTokenBurningComplete.into());
             loop {}
         }
 
-        caliptra_mcu_romtime::println!("[mcu-rom] OTP initialized");
+        romtime::println!("[mcu-rom] OTP initialized");
 
         let flash_boot = ((mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 29)) != 0)
             || params.request_flash_boot;
 
         if flash_boot && (params.flash_partition_driver.is_none() || !cfg!(feature = "hw-2-1")) {
-            caliptra_mcu_romtime::println!(
+            romtime::println!(
                 "Flash boot requested but missing flash driver or AXI bypass not enabled in ROM"
             );
             fatal_error(McuError::ROM_COLD_BOOT_FLASH_NOT_CONFIGURED_ERROR);
         }
 
         if flash_boot {
-            caliptra_mcu_romtime::println!(
+            romtime::println!(
                 "[mcu-rom] Configurating Caliptra watchdog timers for flash boot: {} {}",
                 straps.cptra_wdt_cfg0,
                 straps.cptra_wdt_cfg1
@@ -490,7 +898,7 @@ impl BootFlow for ColdBoot {
                 }
             }
         } else {
-            caliptra_mcu_romtime::println!(
+            romtime::println!(
                 "[mcu-rom] Configurating Caliptra watchdog timers for streaming boot: {} {}",
                 800_000_000,
                 800_000_000,
@@ -502,23 +910,18 @@ impl BootFlow for ColdBoot {
         mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
         mci.set_flow_checkpoint(McuRomBootStatus::WatchdogConfigured.into());
 
-        caliptra_mcu_romtime::println!("[mcu-rom] Initializing I3C");
-        if straps.active_i3c == 1 {
-            caliptra_mcu_romtime::println!("[mcu-rom] Initializing I3C1 (active)");
-            i3c1.configure(straps.i3c1_static_addr, true);
-        } else {
-            i3c.configure(straps.i3c_static_addr, true);
-        }
+        romtime::println!("[mcu-rom] Initializing I3C");
+        i3c.configure(straps.i3c_static_addr, true);
         mci.set_flow_checkpoint(McuRomBootStatus::I3cInitialized.into());
 
-        caliptra_mcu_romtime::println!(
+        romtime::println!(
             "[mcu-rom] Waiting for Caliptra to be ready for fuses: {}",
             soc.ready_for_fuses()
         );
         while !soc.ready_for_fuses() {}
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForFuses.into());
 
-        caliptra_mcu_romtime::println!("[mcu-rom] Writing fuses to Caliptra");
+        romtime::println!("[mcu-rom] Writing fuses to Caliptra");
 
         soc.set_axi_users(AxiUsers {
             mbox_users: params
@@ -530,33 +933,27 @@ impl BootFlow for ColdBoot {
         });
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
-        // Configure iTRNG
-        let Ok(window_size) = otp.read_entry(fuses::CPTRA_ITRNG_HEALTH_TEST_WINDOW_SIZE) else {
-            caliptra_mcu_romtime::println!("[mcu-rom] Error reading CPTRA_ITRNG_WINDOW_SIZE");
-            fatal_error(McuError::ROM_OTP_READ_CPTRA_ITRNG_WINDOW_SIZE_ERROR);
-        };
-        let Ok(config0) = otp.read_entry(fuses::CPTRA_ITRNG_ENTROPY_CONFIG_0) else {
-            caliptra_mcu_romtime::println!("[mcu-rom] Error reading CPTRA_ITRNG_ENTROPY_CONFIG_0");
-            fatal_error(McuError::ROM_OTP_READ_CPTRA_ITRNG_CONFIG0_ERROR);
-        };
-        let Ok(config1) = otp.read_entry(fuses::CPTRA_ITRNG_ENTROPY_CONFIG_1) else {
-            caliptra_mcu_romtime::println!("[mcu-rom] Error reading CPTRA_ITRNG_ENTROPY_CONFIG_1");
-            fatal_error(McuError::ROM_OTP_READ_CPTRA_ITRNG_CONFIG1_ERROR);
-        };
-        soc.configure_itrng(crate::CptraItrngArgs {
-            bypass_mode: params.itrng_entropy_bypass_mode,
-            window_size: window_size as u16,
-            config0,
-            config1,
+        romtime::println!("[mcu-rom] Populating fuses");
+        let _fuse_state = soc.populate_fuses(
+            otp,
+            mci,
+            &mut FuseParams {
+                #[cfg(feature = "ocp-lock")]
+                ocp_lock_config: Some(&mut params.ocp_lock_config),
+                ..Default::default()
+            },
+        );
+
+        // Create handoff data
+        romtime::handoff::HandoffData::write(romtime::handoff::HandoffArgs {
+            #[cfg(feature = "ocp-lock")]
+            hek_state: _fuse_state.hek_state.unwrap_or_default(),
         });
 
-        caliptra_mcu_romtime::println!("[mcu-rom] Populating fuses");
-        crate::call_hook(params.hooks, |h| h.pre_populate_fuses_to_caliptra());
-        let pk_hash_idx = soc.populate_fuses(otp, mci, &params);
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
         // Configure MCU mailbox AXI users before locking
-        caliptra_mcu_romtime::println!("[mcu-rom] Configuring MCU mailbox AXI users");
+        romtime::println!("[mcu-rom] Configuring MCU mailbox AXI users");
         let mcu_mbox_config = configure_mcu_mbox_axi_users(
             mci,
             &params.mci_mbox0_axi_users,
@@ -564,91 +961,86 @@ impl BootFlow for ColdBoot {
         );
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersConfigured.into());
 
-        let size_value = params.mcu_fw_sram_exec_region_size.unwrap_or(
-            unsafe { MCU_MEMORY_MAP.sram_size }
-                - crate::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS * 4096
-                - 1,
-        );
-        mci.set_fw_sram_exec_region_size(size_value);
-
         // Set SS_CONFIG_DONE_STICKY to lock MCI configuration registers
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom] Setting SS_CONFIG_DONE_STICKY to lock configuration"
-        );
+        romtime::println!("[mcu-rom] Setting SS_CONFIG_DONE_STICKY to lock configuration");
         mci.set_ss_config_done_sticky();
         mci.set_flow_checkpoint(McuRomBootStatus::SsConfigDoneStickySet.into());
 
         // Set SS_CONFIG_DONE to lock MCI configuration registers until warm reset
-        caliptra_mcu_romtime::println!("[mcu-rom] Setting SS_CONFIG_DONE");
+        romtime::println!("[mcu-rom] Setting SS_CONFIG_DONE");
         mci.set_ss_config_done();
         mci.set_flow_checkpoint(McuRomBootStatus::SsConfigDoneSet.into());
 
         // Verify that SS_CONFIG_DONE_STICKY and SS_CONFIG_DONE are actually set
         if !mci.is_ss_config_done_sticky() || !mci.is_ss_config_done() {
-            caliptra_mcu_romtime::println!("[mcu-rom] SS_CONFIG_DONE verification failed");
+            romtime::println!("[mcu-rom] SS_CONFIG_DONE verification failed");
             fatal_error(McuError::ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED);
         }
 
         // Verify PK hashes haven't been tampered with after locking
-        caliptra_mcu_romtime::println!("[mcu-rom] Verifying production debug unlock PK hashes");
+        romtime::println!("[mcu-rom] Verifying production debug unlock PK hashes");
         if let Err(err) = verify_prod_debug_unlock_pk_hash(mci, otp) {
-            caliptra_mcu_romtime::println!("[mcu-rom] PK hash verification failed");
+            romtime::println!("[mcu-rom] PK hash verification failed");
             fatal_error(err);
         }
         mci.set_flow_checkpoint(McuRomBootStatus::PkHashVerified.into());
 
         // Verify MCU mailbox AXI users haven't been tampered with after locking
-        caliptra_mcu_romtime::println!("[mcu-rom] Verifying MCU mailbox AXI users");
+        romtime::println!("[mcu-rom] Verifying MCU mailbox AXI users");
         if let Err(err) = verify_mcu_mbox_axi_users(mci, &mcu_mbox_config) {
-            caliptra_mcu_romtime::println!("[mcu-rom] MCU mailbox AXI user verification failed");
+            romtime::println!("[mcu-rom] MCU mailbox AXI user verification failed");
             fatal_error(err);
         }
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersVerified.into());
 
-        caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra fuse write done");
+        romtime::println!("[mcu-rom] Setting Caliptra fuse write done");
         soc.fuse_write_done();
         while soc.ready_for_fuses() {}
         mci.set_flow_checkpoint(McuRomBootStatus::FuseWriteComplete.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
-        crate::call_hook(params.hooks, |h| h.post_populate_fuses_to_caliptra());
 
         // If testing Caliptra Core, hang here until the test signals it to continue.
         if cfg!(feature = "core_test") {
             while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {}
         }
 
-        caliptra_mcu_romtime::println!("[mcu-rom] Waiting for Caliptra Core boot FSM to be DONE");
-        soc.wait_for_bootfsm_done(10_000_000);
-        crate::call_hook(params.hooks, |h| h.post_caliptra_boot());
-
-        caliptra_mcu_romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
+        romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
         while !soc.ready_for_mbox() {
             if soc.cptra_fw_fatal_error() {
-                caliptra_mcu_romtime::println!("[mcu-rom] Caliptra reported a fatal error");
+                romtime::println!("[mcu-rom] Caliptra reported a fatal error");
                 fatal_error(McuError::ROM_COLD_BOOT_CALIPTRA_FATAL_ERROR_BEFORE_MB_READY);
             }
-            soc.check_hw_errors();
         }
 
-        caliptra_mcu_romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
+        romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForMailbox.into());
+
+        // Execute full FIPS zeroization flow now that Caliptra is ready for
+        // mailbox commands. This never returns (halts for cold reset).
+        if fips_zeroization {
+            ColdBoot::handle_fips_zeroization(mci, lc, &mut env.soc_manager);
+        }
+
+        // Report HEK metadata to Caliptra ROM
+        #[cfg(feature = "ocp-lock")]
+        Self::report_hek_metadata(_fuse_state.hek_state, &mut env.soc_manager);
 
         // Load DOT fuses from vendor non-secret partition
         // TODO: read these from a place specified by ROM configuration
         let dot_fuses = match device_ownership_transfer::DotFuses::load_from_otp(&env.otp) {
             Ok(dot_fuses) => dot_fuses,
             Err(_) => {
-                caliptra_mcu_romtime::println!("[mcu-rom] Error reading DOT fuses");
+                romtime::println!("[mcu-rom] Error reading DOT fuses");
                 fatal_error(McuError::ROM_OTP_READ_ERROR);
             }
         };
 
         // Determine owner PK hash: from DOT flow if available, otherwise from fuses
         let owner_pk_hash = if let Some(dot_flash) = params.dot_flash {
-            caliptra_mcu_romtime::println!("[mcu-rom] Reading DOT blob");
+            romtime::println!("[mcu-rom] Reading DOT blob");
             let mut dot_blob = [0u8; device_ownership_transfer::DOT_BLOB_SIZE];
             if let Err(err) = dot_flash.read(&mut dot_blob, 0) {
-                caliptra_mcu_romtime::println!(
+                romtime::println!(
                     "[mcu-rom] Fatal error reading DOT blob from flash: {}",
                     HexWord(usize::from(err) as u32)
                 );
@@ -658,20 +1050,22 @@ impl BootFlow for ColdBoot {
 
             if dot_blob.iter().all(|&b| b == 0) || dot_blob.iter().all(|&b| b == 0xFF) {
                 if dot_fuses.enabled && dot_fuses.is_locked() {
+                    // DOT is in ODD state but blob is empty/corrupt - attempt recovery
                     let key_type = params
                         .dot_stable_key_type
                         .unwrap_or(CmStableKeyType::IDevId);
-                    caliptra_mcu_romtime::println!(
+                    let recovery_err =
+                        attempt_dot_recovery(env, &dot_fuses, &params, dot_flash, key_type);
+                    // If recovery didn't reset, it's a fatal error
+                    romtime::println!(
                         "[mcu-rom] DOT fuses are initialized but DOT blob is empty/corrupt"
                     );
-                    let err =
-                        attempt_dot_locked_recovery(env, &dot_fuses, &params, dot_flash, key_type);
-                    fatal_error(err);
+                    fatal_error(recovery_err.unwrap_or(McuError::ROM_COLD_BOOT_DOT_ERROR));
                 }
-                caliptra_mcu_romtime::println!("[mcu-rom] DOT blob is empty; skipping DOT flow");
+                romtime::println!("[mcu-rom] DOT blob is empty; skipping DOT flow");
                 device_ownership_transfer::load_owner_pkhash(&env.otp)
             } else {
-                let dot_blob: DotBlob = transmute!(dot_blob);
+                let dot_blob = DotBlob::read_from_bytes(&dot_blob).unwrap();
                 match device_ownership_transfer::dot_flow(
                     env,
                     &dot_fuses,
@@ -682,17 +1076,21 @@ impl BootFlow for ColdBoot {
                 ) {
                     Ok(owner) => owner,
                     Err(err) => {
+                        // DOT flow failed (e.g., HMAC verification) - attempt recovery if in ODD state
                         if dot_fuses.is_locked() {
                             let key_type = params
                                 .dot_stable_key_type
                                 .unwrap_or(CmStableKeyType::IDevId);
-                            // Try locked-state recovery; if it succeeds it
-                            // resets and never returns.
-                            let _recovery_err = attempt_dot_locked_recovery(
-                                env, &dot_fuses, &params, dot_flash, key_type,
-                            );
+                            let recovery_err =
+                                attempt_dot_recovery(env, &dot_fuses, &params, dot_flash, key_type);
+                            if let Some(e) = recovery_err {
+                                romtime::println!(
+                                    "[mcu-rom] DOT recovery failed: {}",
+                                    HexWord(e.into())
+                                );
+                            }
                         }
-                        caliptra_mcu_romtime::println!(
+                        romtime::println!(
                             "[mcu-rom] Fatal error performing Device Ownership Transfer: {}",
                             HexWord(err.into())
                         );
@@ -711,71 +1109,56 @@ impl BootFlow for ColdBoot {
             env.soc.lock_owner_pk_hash();
         }
 
-        // Enter I3C services unconditionally if force_i3c_services is set
-        if params.force_i3c_services {
-            if let Some(services) = params.i3c_services {
-                let dot_ctx = params.dot_flash.map(|dot_flash| {
-                    let key_type = params
-                        .dot_stable_key_type
-                        .unwrap_or(CmStableKeyType::IDevId);
-                    crate::DotContext {
-                        soc_manager: &mut env.soc_manager,
-                        mci: &env.mci,
-                        otp: &env.otp,
-                        dot_fuses: &dot_fuses,
-                        dot_flash,
-                        key_type,
-                    }
-                });
-                enter_i3c_services(&env.mci, i3c_base, services, i3c_target_addr, dot_ctx);
-            }
-        }
-
         // Re-borrow after DOT flow (which took &mut env).
         let mci = &env.mci;
         let soc = &env.soc;
-        let soc_manager = &mut env.soc_manager;
 
-        // tell Caliptra to download firmware from the recovery interface
-        caliptra_mcu_romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command",);
-        crate::call_hook(params.hooks, |h| h.pre_load_firmware());
-        if let Err(err) =
-            soc_manager.start_mailbox_req(CommandId::RI_DOWNLOAD_FIRMWARE.into(), 0, [].into_iter())
-        {
+        // Check GPIO wire for encrypted firmware boot mode (core_test only).
+        // When the encrypted boot wire is set, MCU ROM sends RI_DOWNLOAD_ENCRYPTED_FIRMWARE
+        // which tells Caliptra RT to load firmware without activating MCU.
+        let encrypted_boot = cfg!(feature = "core_test")
+            && mci.registers.mci_reg_generic_input_wires[1].get() & ENCRYPTED_BOOT_WIRE_BIT != 0;
+
+        // Tell Caliptra to download firmware from the recovery interface.
+        // Use RI_DOWNLOAD_ENCRYPTED_FIRMWARE when encrypted boot is requested.
+        romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command");
+        let ri_cmd = if encrypted_boot {
+            //romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_ENCRYPTED_FIRMWARE command");
+            CommandId::RI_DOWNLOAD_ENCRYPTED_FIRMWARE.into()
+        } else {
+            //romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command");
+            CommandId::RI_DOWNLOAD_FIRMWARE.into()
+        };
+
+        if let Err(err) = env.soc_manager.start_mailbox_req_bytes(ri_cmd, &[]) {
             match err {
                 CaliptraApiError::MailboxCmdFailed(code) => {
-                    caliptra_mcu_romtime::println!(
-                        "[mcu-rom] Error sending mailbox command: {}",
-                        HexWord(code)
-                    );
+                    romtime::println!("[mcu-rom] Error sending mailbox command: {}", HexWord(code));
                 }
                 _ => {
-                    caliptra_mcu_romtime::println!("[mcu-rom] Error sending mailbox command");
+                    romtime::println!("[mcu-rom] Error sending mailbox command: {:?}", err);
                 }
             }
             fatal_error(McuError::ROM_COLD_BOOT_START_RI_DOWNLOAD_ERROR);
         }
         mci.set_flow_checkpoint(McuRomBootStatus::RiDownloadFirmwareCommandSent.into());
 
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom] Done sending RI_DOWNLOAD_FIRMWARE command: status {}",
-            HexWord(u32::from(
-                soc_manager.soc_mbox().status().read().mbox_fsm_ps()
-            ))
-        );
-        if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
-            match err {
-                CaliptraApiError::MailboxCmdFailed(code) => {
-                    caliptra_mcu_romtime::println!(
-                        "[mcu-rom] Error finishing mailbox command: {}",
-                        HexWord(code)
-                    );
+        {
+            let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+            if let Err(err) = env.soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+                match err {
+                    CaliptraApiError::MailboxCmdFailed(code) => {
+                        romtime::println!(
+                            "[mcu-rom] Error finishing mailbox command: {}",
+                            HexWord(code)
+                        );
+                    }
+                    _ => {
+                        romtime::println!("[mcu-rom] Error finishing mailbox command");
+                    }
                 }
-                _ => {
-                    caliptra_mcu_romtime::println!("[mcu-rom] Error finishing mailbox command");
-                }
+                fatal_error(McuError::ROM_COLD_BOOT_FINISH_RI_DOWNLOAD_ERROR);
             }
-            fatal_error(McuError::ROM_COLD_BOOT_FINISH_RI_DOWNLOAD_ERROR);
         }
         mci.set_flow_checkpoint(McuRomBootStatus::RiDownloadFirmwareComplete.into());
         mci.set_flow_milestone(McuBootMilestones::RI_DOWNLOAD_COMPLETED.into());
@@ -783,74 +1166,84 @@ impl BootFlow for ColdBoot {
         // Loading flash into the recovery flow is only possible in 2.1+.
         if flash_boot {
             if let Some(flash_driver) = params.flash_partition_driver {
-                caliptra_mcu_romtime::println!("[mcu-rom] Starting Flash recovery flow");
+                romtime::println!("[mcu-rom] Starting Flash recovery flow");
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowStarted.into());
-
-                // Set AXI bypass mode once before the recovery flow
-                i3c_base
-                    .soc_mgmt_if_rec_intf_cfg
-                    .modify(RecIntfCfg::RecIntfBypass::SET);
 
                 crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_COLD_BOOT_LOAD_IMAGE_ERROR));
 
-                caliptra_mcu_romtime::println!("[mcu-rom] Flash Recovery flow complete");
+                romtime::println!("[mcu-rom] Flash Recovery flow complete");
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowComplete.into());
                 mci.set_flow_milestone(McuBootMilestones::FLASH_RECOVERY_FLOW_COMPLETED.into());
             }
         }
 
-        caliptra_mcu_romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
-        soc.wait_for_firmware_ready(mci);
-        caliptra_mcu_romtime::println!("[mcu-rom] Firmware is ready");
-        mci.set_flow_checkpoint(McuRomBootStatus::FirmwareReadyDetected.into());
+        if encrypted_boot {
+            // --- Encrypted firmware boot flow ---
+            // In encrypted mode, Caliptra RT loads firmware to MCU SRAM but does NOT
+            // set FW_EXEC_CTRL[2] and does NOT reset MCU. We skip wait_for_firmware_ready()
+            // and instead wait for Caliptra RT to be ready for runtime commands, then
+            // decrypt the firmware ourselves.
+            romtime::println!("[mcu-rom] Encrypted boot: waiting for Caliptra RT to be ready");
+            while !soc.ready_for_runtime() {}
+            mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
 
-        soc.pk_hash_volatile_lock(&env.otp, pk_hash_idx);
-        if env.otp.check_error().is_some() {
-            caliptra_mcu_romtime::println!("[mcu-rom] OTP error: {}", HexWord(env.otp.status()));
-            env.otp.print_errors();
-        }
+            // Query ciphertext size and SHA-384 digest via GET_MCU_FW_SIZE.
+            // Caliptra RT strips the 16-byte GCM tag from the size and
+            // computes SHA-384 over the ciphertext only during the recovery
+            // flow, so MCU ROM can forward both directly to CM_AES_GCM_DECRYPT_DMA.
+            let (ciphertext_size, sha384) = Self::get_mcu_fw_size(&mut env.soc_manager);
+            romtime::println!(
+                "[mcu-rom] Encrypted boot: ciphertext size = {} bytes",
+                ciphertext_size
+            );
 
-        if let Some(image_verifier) = params.mcu_image_verifier {
-            let header = unsafe {
-                core::slice::from_raw_parts(
-                    MCU_MEMORY_MAP.sram_offset as *const u8,
-                    params.mcu_image_header_size,
-                )
-            };
+            // Decrypt firmware in MCU SRAM via CM_IMPORT + CM_AES_GCM_DECRYPT_DMA
+            Self::decrypt_firmware(&mut env.soc_manager, ciphertext_size, &sha384);
+        } else {
+            // --- Normal (unencrypted) firmware boot flow ---
+            romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
+            soc.wait_for_firmware_ready(mci);
+            romtime::println!("[mcu-rom] Firmware is ready");
+            mci.set_flow_checkpoint(McuRomBootStatus::FirmwareReadyDetected.into());
 
-            caliptra_mcu_romtime::println!("[mcu-rom] Verifying firmware header");
-            if !image_verifier.verify_header(header, &env.otp) {
-                caliptra_mcu_romtime::println!("Firmware header verification failed; halting");
-                fatal_error(McuError::ROM_COLD_BOOT_HEADER_VERIFY_ERROR);
+            if let Some(image_verifier) = params.mcu_image_verifier {
+                let header = unsafe {
+                    core::slice::from_raw_parts(
+                        MCU_MEMORY_MAP.sram_offset as *const u8,
+                        params.mcu_image_header_size,
+                    )
+                };
+
+                romtime::println!("[mcu-rom] Verifying firmware header");
+                if !image_verifier.verify_header(header, &env.otp) {
+                    romtime::println!("Firmware header verification failed; halting");
+                    fatal_error(McuError::ROM_COLD_BOOT_HEADER_VERIFY_ERROR);
+                }
             }
+
+            // Check that the firmware was actually loaded before jumping to it
+            let firmware_ptr = unsafe {
+                (MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32) as *const u32
+            };
+            // Safety: this address is valid
+            if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
+                romtime::println!("Invalid firmware detected; halting");
+                fatal_error(McuError::ROM_COLD_BOOT_INVALID_FIRMWARE);
+            }
+            romtime::println!("[mcu-rom] Firmware load detected");
+            mci.set_flow_checkpoint(McuRomBootStatus::FirmwareValidationComplete.into());
+
+            // wait for the Caliptra RT to be ready
+            romtime::println!(
+                "[mcu-rom] Waiting for Caliptra RT to be ready for runtime mailbox commands"
+            );
+            while !soc.ready_for_runtime() {}
+            mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
         }
 
-        // Check that the firmware was actually loaded before jumping to it
-        let firmware_ptr = unsafe {
-            (MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32) as *const u32
-        };
-        // Safety: this address is valid
-        if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
-            caliptra_mcu_romtime::println!("Invalid firmware detected; halting");
-            fatal_error(McuError::ROM_COLD_BOOT_INVALID_FIRMWARE);
-        }
-        caliptra_mcu_romtime::println!("[mcu-rom] Firmware load detected");
-        mci.set_flow_checkpoint(McuRomBootStatus::FirmwareValidationComplete.into());
-        crate::call_hook(params.hooks, |h| h.post_load_firmware());
-
-        // wait for the Caliptra RT to be ready
-        // this is a busy loop, but it should be very short
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom] Waiting for Caliptra RT to be ready for runtime mailbox commands"
-        );
-        while !soc.ready_for_runtime() {
-            soc.check_hw_errors();
-        }
-        mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
-
-        let stash_rom_digest = params.stash_rom_digest.unwrap_or(false);
-        Self::rom_digest_integrity(soc_manager, stash_rom_digest);
+        let stash_rom_digest = params.stash_rom_digest.unwrap_or(true);
+        Self::rom_digest_integrity(&mut env.soc_manager, stash_rom_digest);
 
         // NOTE: Firmware manifest DOT command processing is intentionally
         // handled in FwBoot (fw_boot.rs), not here.  FwBoot runs after the
@@ -858,56 +1251,34 @@ impl BootFlow for ColdBoot {
         // that point – even during encrypted boot.  Processing is gated by
         // `params.fw_manifest_dot_enabled` so integrators can opt in.
 
-        caliptra_mcu_romtime::println!("[mcu-rom] Finished common initialization");
+        // Re-borrow for the common tail section.
+        let mci = &env.mci;
+
+        // --- Common tail: field entropy, disable recovery, reset ---
+        romtime::println!("[mcu-rom] Finished boot-mode-specific initialization");
 
         // program field entropy if requested
         if params.program_field_entropy.iter().any(|x| *x) {
-            caliptra_mcu_romtime::println!("[mcu-rom] Programming field entropy");
+            romtime::println!("[mcu-rom] Programming field entropy");
             mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingStarted.into());
             Self::program_field_entropy(&params.program_field_entropy, &mut env.soc_manager, mci);
             mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
         }
 
         if params.recovery_status_open {
-            caliptra_mcu_romtime::println!("[mcu-rom] Leaving recovery interface open");
-            if env.straps.active_i3c == 1 {
-                env.i3c1.set_recovery_status_open();
-            } else {
-                env.i3c.set_recovery_status_open();
-            }
+            romtime::println!("[mcu-rom] Leaving recovery interface open");
+            env.i3c.set_recovery_status_open();
         } else {
-            caliptra_mcu_romtime::println!("[mcu-rom] Disabling recovery interface");
-            if env.straps.active_i3c == 1 {
-                env.i3c1.disable_recovery();
-            } else {
-                env.i3c.disable_recovery();
-            }
+            romtime::println!("[mcu-rom] Disabling recovery interface");
+            env.i3c.disable_recovery();
         }
 
         // Reset so FirmwareBootReset can jump to firmware
-        caliptra_mcu_romtime::println!("[mcu-rom] Resetting to boot firmware");
+        romtime::println!("[mcu-rom] Resetting to boot firmware");
         mci.set_flow_checkpoint(McuRomBootStatus::ColdBootFlowComplete.into());
         mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
-        crate::call_hook(params.hooks, |h| h.post_cold_boot());
-
-        #[cfg(feature = "test-force-hitless-update")]
-        {
-            use caliptra_mcu_registers_generated::mci::bits::ResetReason;
-            use tock_registers::interfaces::ReadWriteable;
-            // Replace FwBootUpdReset with FwHitlessUpdReset so the emulator
-            // preserves the hitless bit across this MCU reset and the ROM
-            // re-enters as `FirmwareHitlessUpdate`. Only used by the
-            // fw-manifest-dot hitless integration test.
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] test-force-hitless-update: forcing hitless reset reason"
-            );
-            mci.registers
-                .mci_reg_reset_reason
-                .modify(ResetReason::FwBootUpdReset::CLEAR + ResetReason::FwHitlessUpdReset::SET);
-        }
-
         mci.trigger_warm_reset();
-        caliptra_mcu_romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
+        romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
         fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
     }
 }

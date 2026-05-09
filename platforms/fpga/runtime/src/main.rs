@@ -25,15 +25,12 @@ pub use board::*;
 #[cfg(target_arch = "riscv32")]
 mod tests;
 
-use caliptra_mcu_config::{McuMemoryMap, McuStraps};
+use mcu_config::McuMemoryMap;
 
 // re-export this so the common runtime code can use it
 #[no_mangle]
 #[used]
-pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_fpga::FPGA_MEMORY_MAP;
-#[no_mangle]
-#[used]
-pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_fpga::FPGA_MCU_STRAPS;
+pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_fpga::FPGA_MEMORY_MAP;
 
 // Define the timer frequency for the FPGA.
 #[no_mangle]

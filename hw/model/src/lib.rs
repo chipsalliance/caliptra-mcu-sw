@@ -8,21 +8,19 @@ use caliptra_api::{self as api, SocManager};
 use caliptra_api_types as api_types;
 use caliptra_emu_bus::Event;
 pub use caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
-use caliptra_hw_model::{ExitStatus, ModelError, Output};
+use caliptra_hw_model::{ExitStatus, ModelCallback, ModelError, Output};
 use caliptra_hw_model_types::{
     EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
 use caliptra_image_types::FwVerificationPqcKeyType;
-use caliptra_mcu_mbox_common::messages::calc_checksum;
-pub use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
-use caliptra_mcu_romtime::McuBootMilestones;
-pub use caliptra_mcu_romtime::{LifecycleRawTokens, LifecycleToken};
-use caliptra_mcu_testing_common::MCU_RUNNING;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
-use caliptra_ureg::MmioMut;
+use mcu_mbox_common::messages::calc_checksum;
 pub use mcu_mgr::McuManager;
+use mcu_testing_common::MCU_RUNNING;
 pub use model_emulated::ModelEmulated;
 use rand::{rngs::StdRng, SeedableRng};
+use romtime::McuBootMilestones;
+use romtime::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 use sha2::Digest;
 use std::io::Write;
 use std::io::{stdout, ErrorKind};
@@ -30,11 +28,12 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
+use ureg::MmioMut;
 pub use vmem::read_otp_vmem_data;
 use zerocopy::FromBytes;
 
 // Re-export flash image builder for creating flash images from firmware bytes
-pub use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
+pub use mcu_builder::flash_image::build_flash_image_bytes;
 
 mod bus_logger;
 #[cfg(feature = "fpga_realtime")]
@@ -51,7 +50,8 @@ mod mcu_mgr;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
 mod model_fpga_realtime;
-pub mod otp_provision;
+mod otp_provision;
+pub mod usb_ctrl;
 mod vmem;
 
 pub enum ShaAccMode {
@@ -155,6 +155,7 @@ pub struct InitParams<'a> {
     pub dbg_manuf_service: DbgManufServiceRegReq,
 
     pub active_mode: bool,
+    pub ocp_lock_en: bool,
 
     // Keypairs for production debug unlock levels, from low to high
     // ECC384 and MLDSA87 keypairs
@@ -221,19 +222,16 @@ pub struct InitParams<'a> {
 
     pub check_booted_to_runtime: bool,
 
-    /// Override the default AXI user that the model uses to access the Caliptra SoC interface.
-    pub caliptra_soc_axi_user: Option<u32>,
+    pub rom_callback: Option<ModelCallback>,
 
     pub flash_boot: bool,
 
-    pub active_i3c1: bool,
+    /// When true, the emulator pre-sets the `FC_FIPS_ZEROZATION_STS` register
+    /// so that MCU ROM detects FIPS zeroization on cold boot.
+    pub fips_zeroization: bool,
 
-    /// Initial contents of the vendor test partition in OTP.
-    pub vendor_test_partition: Option<Vec<u8>>,
-
-    /// When true, set secrets_valid so DOE reads UDS/FE from strap registers
-    /// for deterministic IDevID on FPGA (needed for attestation tests).
-    pub use_strap_secrets: bool,
+    /// Override the default AXI user that the model uses to access the Caliptra SoC interface.
+    pub caliptra_soc_axi_user: Option<u32>,
 }
 
 impl InitParams<'_> {
@@ -275,18 +273,17 @@ impl Default for InitParams<'_> {
             log_writer: Box::new(stdout()),
             dbg_manuf_service: Default::default(),
             uds_granularity_32: false, // 64-bit granularity
-            otp_dai_idle_bit_offset: 22,
-            otp_direct_access_cmd_reg_offset: 0x60,
+            otp_dai_idle_bit_offset: 30,
+            otp_direct_access_cmd_reg_offset: 0x80,
             bootfsm_break: false,
             uds_program_req: false,
             active_mode: false,
+            ocp_lock_en: false,
             prod_dbg_unlock_keypairs: Default::default(),
-            // Leave these strap values at 0 so the MCU ROM is responsible for
-            // programming SS_NUM_OF_PROD_DEBUG_UNLOCK_AUTH_PK_HASHES and
-            // SS_PROD_DEBUG_UNLOCK_AUTH_PK_HASH_REG_BANK_OFFSET during cold
-            // boot.
-            num_prod_dbg_unlock_pk_hashes: 0,
-            prod_dbg_unlock_pk_hashes_offset: 0,
+            num_prod_dbg_unlock_pk_hashes: 8,
+            // Must match offset of `mci_reg_prod_debug_unlock_pk_hash_reg` in
+            // `registers/generated-firmware/src/mci.rs`.
+            prod_dbg_unlock_pk_hashes_offset: 0x480,
             rma_or_scrap_ppd: false,
             debug_intent: false,
             cptra_obf_key: DEFAULT_CPTRA_OBF_KEY,
@@ -304,11 +301,10 @@ impl Default for InitParams<'_> {
             dot_flash_initial_contents: None,
             primary_flash_initial_contents: None,
             check_booted_to_runtime: true,
-            caliptra_soc_axi_user: None,
+            rom_callback: None,
             flash_boot: false,
-            active_i3c1: false,
-            vendor_test_partition: None,
-            use_strap_secrets: false,
+            fips_zeroization: false,
+            caliptra_soc_axi_user: None,
         }
     }
 }
@@ -524,19 +520,10 @@ pub trait McuHwModel {
         McuBootMilestones::from((self.mci_flow_status() >> 16) as u16)
     }
 
-    /// Reads `mci_reg_fw_extended_error_info[idx]` (8 × u32 scratch words
-    /// reserved for firmware-defined error/diagnostic data). Panics if
-    /// `idx >= 8`.
-    fn mci_fw_extended_error_info(&mut self, idx: usize) -> u32 {
-        assert!(idx < 8, "fw_extended_error_info has only 8 words");
-        self.mcu_manager()
-            .with_mci(|mci| mci.fw_extended_error_info().at(idx).read())
-    }
-
     /// Executes a typed request and (on success), returns the typed response.
     /// The checksum field of the request is calculated, and the checksum of the
     /// response is validated.
-    fn mailbox_execute_req<R: caliptra_mcu_mbox_common::messages::Request>(
+    fn mailbox_execute_req<R: mcu_mbox_common::messages::Request>(
         &mut self,
         mut req: R,
     ) -> Result<R::Resp> {
@@ -876,7 +863,7 @@ fn mbox_read_fifo(mbox: caliptra_registers::mbox::RegisterBlock<impl MmioMut>) -
 #[ignore]
 #[test]
 fn reg_access_test() {
-    let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
+    let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
 
     // Build flash image from firmware binaries
     let flash_image = build_flash_image_bytes(
@@ -925,7 +912,7 @@ fn reg_access_test() {
     // Check Caliptra reports 2.x
     assert_eq!(
         u32::from(hw.caliptra_soc_manager().soc_ifc().cptra_hw_rev_id().read()),
-        0x102
+        2
     );
 
     let mut mcu_mgr = hw.mcu_manager();
@@ -946,7 +933,7 @@ fn reg_access_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliptra_mcu_builder::firmware;
+    use mcu_builder::firmware;
 
     fn platform() -> &'static str {
         if cfg!(feature = "fpga_realtime") {
@@ -958,15 +945,13 @@ mod tests {
 
     #[test]
     pub fn test_mailbox_execute() -> Result<()> {
-        let mcu_rom = if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
+        let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
             binaries.test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)?
         } else {
-            let rom_file =
-                caliptra_mcu_builder::test_rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
-                    platform: Some(platform()),
-                    fwid: Some(&firmware::hw_model_tests::MAILBOX_RESPONDER),
-                    ..Default::default()
-                })?;
+            let rom_file = mcu_builder::test_rom_build(
+                Some(platform()),
+                &firmware::hw_model_tests::MAILBOX_RESPONDER,
+            )?;
             std::fs::read(&rom_file)?
         };
 
@@ -1020,6 +1005,169 @@ mod tests {
 
         // Send command that returns failure
         assert!(model.mailbox_execute(0x4000_0000, &message).is_err());
+        Ok(())
+    }
+
+    #[cfg(not(feature = "fpga_realtime"))]
+    #[test]
+    pub fn test_usb_loopback() -> Result<()> {
+        let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+            binaries.test_rom(&firmware::hw_model_tests::USB_RESPONDER)?
+        } else {
+            let rom_file = mcu_builder::test_rom_build(
+                Some(platform()),
+                &firmware::hw_model_tests::USB_RESPONDER,
+            )?;
+            std::fs::read(&rom_file)?
+        };
+
+        let mut model = new(InitParams {
+            mcu_rom: &mcu_rom,
+            check_booted_to_runtime: false,
+            ..Default::default()
+        })?;
+
+        let host = model.usb_host_controller.clone();
+
+        // Run the CPU until the firmware sets usbctrl.enable
+        for _ in 0..10_000_000 {
+            model.step();
+            if host.device_enabled() {
+                break;
+            }
+        }
+        assert!(host.device_enabled(), "firmware did not enable USB device");
+
+        // Test 1: SETUP echo
+        let setup_data = [0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 0x40, 0x00];
+        host.host_setup(0, &setup_data).unwrap();
+
+        // Step the CPU until it processes the packet and prepares a response
+        let mut in_data = None;
+        for _ in 0..1_000_000 {
+            model.step();
+            match host.host_in(0) {
+                Ok(data) => {
+                    in_data = Some(data);
+                    break;
+                }
+                Err(emulator_periph::UsbTransactionError::Nak) => continue,
+                Err(e) => panic!("unexpected error from host_in: {:?}", e),
+            }
+        }
+        let in_data = in_data.expect("firmware did not respond to SETUP with IN data");
+        assert_eq!(in_data, setup_data, "SETUP echo mismatch");
+
+        // Test 2: OUT echo with a different payload
+        let out_payload = [0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE];
+        host.host_out(0, &out_payload).unwrap();
+
+        let mut in_data = None;
+        for _ in 0..1_000_000 {
+            model.step();
+            match host.host_in(0) {
+                Ok(data) => {
+                    in_data = Some(data);
+                    break;
+                }
+                Err(emulator_periph::UsbTransactionError::Nak) => continue,
+                Err(e) => panic!("unexpected error from host_in: {:?}", e),
+            }
+        }
+        let in_data = in_data.expect("firmware did not respond to OUT with IN data");
+        assert_eq!(in_data, out_payload, "OUT echo mismatch");
+
+        Ok(())
+    }
+
+    #[cfg(not(feature = "fpga_realtime"))]
+    #[test]
+    pub fn test_usb_ocp_recovery() -> Result<()> {
+        let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+            binaries.test_rom(&firmware::hw_model_tests::USB_OCP_RECOVERY)?
+        } else {
+            let rom_file = mcu_builder::test_rom_build(
+                Some(platform()),
+                &firmware::hw_model_tests::USB_OCP_RECOVERY,
+            )?;
+            std::fs::read(&rom_file)?
+        };
+
+        let mut model = new(InitParams {
+            mcu_rom: &mcu_rom,
+            check_booted_to_runtime: false,
+            ..Default::default()
+        })?;
+
+        let host = model.usb_host_controller.clone();
+
+        // Wait for firmware to enable USB
+        for _ in 0..10_000_000 {
+            model.step();
+            if host.device_enabled() {
+                break;
+            }
+        }
+        assert!(host.device_enabled(), "firmware did not enable USB device");
+
+        // Trigger a bus reset so the firmware can proceed past its LinkReset wait.
+        host.bus_reset();
+
+        use crate::usb_ctrl::*;
+        use ocp::protocol::device_status::{
+            DeviceStatus, DeviceStatusValue, ProtocolError, RecoveryReasonCode,
+        };
+        use ocp::protocol::prot_cap::{self, ProtCap, RecoveryProtocolCapabilities};
+        use ocp::protocol::RecoveryCommand;
+        use zerocopy::IntoBytes;
+
+        const TIMEOUT: usize = 1_000_000;
+
+        enumerate(&mut model, &host, TIMEOUT);
+
+        // --- OCP Recovery Commands ---
+
+        // PROT_CAP read
+        let mut expected_caps = RecoveryProtocolCapabilities(0);
+        expected_caps.set_identification(true);
+        expected_caps.set_device_status(true);
+        expected_caps.set_push_c_image_support(true);
+        expected_caps.set_recovery_memory_access(true);
+        let expected_prot_cap = ProtCap::new(1, 0, expected_caps, 1, 0, 0);
+
+        let setup = ocp_read(RecoveryCommand::ProtCap, prot_cap::RESPONSE_LEN as u16);
+        poll_setup(&mut model, &host, &setup, TIMEOUT);
+        let prot_cap = poll_in(&mut model, &host, TIMEOUT);
+        assert_eq!(prot_cap, expected_prot_cap.as_bytes(), "PROT_CAP mismatch");
+        poll_out(&mut model, &host, &[], TIMEOUT);
+
+        // DEVICE_STATUS read
+        let expected_ds = DeviceStatus::new(
+            DeviceStatusValue::StatusPending,
+            ProtocolError::NoError,
+            RecoveryReasonCode::NoBootFailure,
+            0,
+            &[],
+        )
+        .unwrap();
+        let mut expected_ds_buf = [0u8; 7];
+        let expected_ds_len = expected_ds.to_message(&mut expected_ds_buf).unwrap();
+
+        let setup = ocp_read(RecoveryCommand::DeviceStatus, expected_ds_len as u16);
+        poll_setup(&mut model, &host, &setup, TIMEOUT);
+        let status = poll_in(&mut model, &host, TIMEOUT);
+        assert_eq!(
+            status,
+            &expected_ds_buf[..expected_ds_len],
+            "DEVICE_STATUS mismatch"
+        );
+        poll_out(&mut model, &host, &[], TIMEOUT);
+
+        // Unsupported read (Vendor) → expect STALL
+        let setup = ocp_read(RecoveryCommand::Vendor, 4);
+        poll_setup(&mut model, &host, &setup, TIMEOUT);
+        poll_in_stall(&mut model, &host, TIMEOUT);
+
         Ok(())
     }
 }

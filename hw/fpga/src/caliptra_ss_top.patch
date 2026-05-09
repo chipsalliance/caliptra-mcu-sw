@@ -10,12 +10,9 @@
 39a47,48
 >     // TODO: Hacking in this i3c clock
 >     input logic cptra_i3c_clk_i,
-363d371
-<     logic cptra_in_debug_mode;
-561,562d568
-<     assign cptra_in_debug_mode = !mci_cptra_security_state.debug_locked; // Debug mode if not locked
-< 
-878a885,920
+895c904,959
+<     
+---
 >     logic i3c_rst_sync;
 >     xpm_cdc_async_rst #(
 >     .DEST_SYNC_FF(4),    // DECIMAL; range: 2-10
@@ -52,7 +49,7 @@
 >     .src_in(  {cptra_ss_i3c_recovery_payload_available_o_presync, cptra_ss_i3c_recovery_image_activated_o_presync, i3c_peripheral_reset_presync, i3c_escalated_reset_presync, i3c_irq_o_presync}),
 >     .dest_out({cptra_ss_i3c_recovery_payload_available_o,         cptra_ss_i3c_recovery_image_activated_o,         i3c_peripheral_reset,         i3c_escalated_reset,         i3c_irq_o})
 >     );
-879a922,939
+> 
 >     // SS CLK -> I3C CLK
 >     logic [31:0]  cptra_ss_strap_caliptra_dma_axi_user_i_synch;
 >     logic [31:0] cptra_ss_strap_mcu_lsu_axi_user_i_synch;
@@ -71,37 +68,38 @@
 >         .src_in(  {cptra_ss_strap_caliptra_dma_axi_user_i,       cptra_ss_strap_mcu_lsu_axi_user_i,       disable_id_filtering_i}),
 >         .dest_out({cptra_ss_strap_caliptra_dma_axi_user_i_synch, cptra_ss_strap_mcu_lsu_axi_user_i_synch, disable_id_filtering_i_synch})
 >     );
-883,884c943,944
+> 
+898,899c962,963
 <     assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i;
 <     assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i;
 ---
 >     assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i_synch;
 >     assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i_synch;
-894,895c954,955
+909,911c973,975
 <         .clk_i                          (cptra_ss_clk_i),
 <         .rst_ni                         (cptra_ss_rst_b_o),
+<     
 ---
->         .clk_i (cptra_i3c_clk_i),
->         .rst_ni(i3c_rst_sync),
-954,958c1014,1018
+>         .clk_i                          (cptra_i3c_clk_i),
+>         .rst_ni                         (i3c_rst_sync),
+> 
+969,971c1033,1035
 <         .recovery_payload_available_o   (cptra_ss_i3c_recovery_payload_available_o),
 <         .recovery_image_activated_o     (cptra_ss_i3c_recovery_image_activated_o),
 <         .peripheral_reset_o             (i3c_peripheral_reset),
-<         .peripheral_reset_done_i        (1'b1),
+---
+>         .recovery_payload_available_o   (cptra_ss_i3c_recovery_payload_available_o_presync),
+>         .recovery_image_activated_o     (cptra_ss_i3c_recovery_image_activated_o_presync),
+>         .peripheral_reset_o             (i3c_peripheral_reset_presync),
+973c1037
 <         .escalated_reset_o              (i3c_escalated_reset),
 ---
->         .recovery_payload_available_o(cptra_ss_i3c_recovery_payload_available_o_presync),
->         .recovery_image_activated_o(cptra_ss_i3c_recovery_image_activated_o_presync),
->         .peripheral_reset_o(i3c_peripheral_reset_presync),
->         .peripheral_reset_done_i(1'b1),
->         .escalated_reset_o(i3c_escalated_reset_presync),
-961c1021
+>         .escalated_reset_o              (i3c_escalated_reset_presync),
+976c1040
 <         .irq_o                          (i3c_irq_o),
 ---
 >         .irq_o                          (i3c_irq_o_presync),
-964c1024
+979c1043
 <         .disable_id_filtering_i         (disable_id_filtering_i),
 ---
 >         .disable_id_filtering_i         (disable_id_filtering_i_synch),
-1241d1300
-<         .cptra_in_debug_mode_i      (cptra_in_debug_mode),

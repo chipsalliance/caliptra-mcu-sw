@@ -3,19 +3,16 @@
 use anyhow::{bail, Result};
 use caliptra_builder::FwId;
 use caliptra_image_types::ImageManifest;
-use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
-use caliptra_mcu_config_emulator::flash::{
-    PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION,
-};
-use caliptra_mcu_flash_image::MCU_RT_IDENTIFIER;
-use caliptra_mcu_pldm_fw_pkg::{
+use chrono::{TimeZone, Utc};
+use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
+use mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION};
+use pldm_fw_pkg::{
     manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     },
     FirmwareManifest,
 };
-use chrono::{TimeZone, Utc};
 use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -28,30 +25,9 @@ use zip::{
 
 use crate::PROJECT_ROOT;
 use crate::TARGET;
-use crate::{firmware, ImageCfg};
-use crate::{CaliptraBuildArgs, CaliptraBuilder};
+use crate::{firmware, CaliptraBuilder, ImageCfg};
 
 use std::{env::var, sync::OnceLock};
-
-struct FeatureTestResource {
-    feature: String,
-    runtime_file: tempfile::NamedTempFile,
-    soc_manifest_file: tempfile::NamedTempFile,
-    flash_image: PathBuf,
-    pldm_fw_pkg: tempfile::NamedTempFile,
-    update_flash_image: Option<PathBuf>,
-}
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "parallel-build")] {
-        use rayon::prelude::*;
-        fn maybe_par_iter<'a, T: Sync + 'a>(slice: &'a [T]) -> impl ParallelIterator<Item = &'a T> { slice.par_iter() }
-        fn maybe_into_par_iter<T: Send + 'static>(v: Vec<T>) -> impl ParallelIterator<Item = T> { v.into_par_iter() }
-    } else {
-        fn maybe_par_iter<'a, T: 'a>(slice: &'a [T]) -> impl Iterator<Item = &'a T> { slice.iter() }
-        fn maybe_into_par_iter<T: 'static>(v: Vec<T>) -> impl Iterator<Item = T> { v.into_iter() }
-    }
-}
 
 /// Features that require the example app to be included
 /// These are determined by which tests use `run_test!(test_name, example_app)` in tests/integration/src/lib.rs
@@ -65,13 +41,14 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-doe-user-loopback",
     "test-flash-usermode",
     "test-fpga-flash-ctrl",
+    "test-handoff",
     "test-get-device-state",
     "test-log-flash-usermode",
     "test-mbox-sram",
     "test-mci",
-    "test-mctp-user-loopback",
     "test-mcu-mbox-soc-requester-loopback",
     "test-mcu-mbox-usermode",
+    "test-ocp-lock",
     "test-warm-reset",
 ];
 
@@ -81,7 +58,6 @@ const FEATURES_REQUIRING_SOC_IMAGES: &[&str] = &[
     "test-pldm-streaming-boot",
     "test-firmware-update-flash",
     "test-firmware-update-streaming",
-    "test-mctp-spdm-attestation",
 ];
 
 /// Features that require flash-based boot (partition table at offset 0)
@@ -90,25 +66,25 @@ const FEATURES_REQUIRING_FLASH_BOOT: &[&str] =
 
 /// MCI base address for SoC image load addresses.
 /// Uses FPGA memory map since the emulator's AXI simulation uses FPGA-like addresses.
-const MCI_BASE_AXI_ADDRESS: u64 = caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.mci_offset as u64;
+const MCI_BASE_AXI_ADDRESS: u64 = mcu_config_fpga::FPGA_MEMORY_MAP.mci_offset as u64;
 
 /// Build the emulator with a specific feature flag.
 /// Returns the path to the built emulator binary, or None if the feature is not supported by the emulator.
 pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
     use std::process::Command;
 
+    println!("Building emulator with feature: {}", feature);
+
     let mut cmd = Command::new("cargo");
     cmd.current_dir(&*PROJECT_ROOT).args([
         "build",
         "-p",
-        "caliptra-mcu-emulator",
+        "emulator",
         "--profile",
         "test",
+        "--features",
+        feature,
     ]);
-
-    if !feature.is_empty() {
-        cmd.args(["--features", feature]);
-    }
 
     let output = cmd.output()?;
     if !output.status.success() {
@@ -139,7 +115,7 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
 }
 
 /// MCU MBOX SRAM1 offset from MCI base.
-/// Matches caliptra_mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET (0x80_0000).
+/// Matches mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET (0x80_0000).
 const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
 
 /// Creates default SoC images for tests that require them.
@@ -178,80 +154,13 @@ fn create_default_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
     (soc_images, soc_images_paths)
 }
 
-/// Creates a single dummy SoC image for the attestation demo.
-/// Uses fw_id 0x0003 so it appears as a distinct SoC firmware component
-/// in the auth manifest, evidence, and reference value CoRIM.
-fn create_attestation_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
-    let soc_image_fw = vec![0xDEu8; 512];
-    let soc_image_path = std::env::temp_dir().join("attestation-soc-image.bin");
-    std::fs::write(&soc_image_path, &soc_image_fw).expect("Failed to write attestation SoC image");
-
-    let soc_images = vec![ImageCfg {
-        path: soc_image_path.clone(),
-        load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
-        image_id: 0x0003,
-        component_id: 0x0003,
-        exec_bit: 5,
-        ..Default::default()
-    }];
-
-    (soc_images, vec![soc_image_path])
-}
-
-/// Pre-generate `target/generated/soc_env_config.rs` so the runtime build picks up the correct
-/// fw component IDs.  Must be called BEFORE `runtime_build_with_apps()`.
-fn pre_generate_soc_env_config(
-    vendor: &str,
-    model: &str,
-    mcu_fw_id: u32,
-    soc_images: &[ImageCfg],
-) -> Result<()> {
-    let mut fw_ids: Vec<u32> = vec![mcu_fw_id];
-    fw_ids.extend(soc_images.iter().map(|img| img.image_id));
-    let num = fw_ids.len();
-
-    let mut s = String::new();
-    s.push_str("// Licensed under the Apache-2.0 license\n");
-    s.push_str("// AUTO-GENERATED FILE. DO NOT EDIT.\n");
-    s.push_str("// Generated by pre_generate_soc_env_config\n");
-    s.push_str(&format!("pub const VENDOR: &str = \"{}\";\n", vendor));
-    s.push_str(&format!("pub const MODEL: &str = \"{}\";\n", model));
-    s.push_str(&format!("pub const NUM_FW_COMPONENTS: usize = {};\n", num));
-    s.push_str("pub const NUM_FW_IDS: usize = NUM_FW_COMPONENTS;\n");
-    s.push_str("pub const FW_IDS: [u32; NUM_FW_COMPONENTS] = [");
-    for (i, id) in fw_ids.iter().enumerate() {
-        if i > 0 {
-            s.push_str(", ");
-        }
-        s.push_str(&format!("0x{:08X}", id));
-    }
-    s.push_str("];\n");
-    s.push_str("pub const FW_ID_STRS: [&str; NUM_FW_COMPONENTS] = [");
-    for (i, id) in fw_ids.iter().enumerate() {
-        if i > 0 {
-            s.push_str(", ");
-        }
-        s.push_str(&format!("\"0x{:08X}\"", id));
-    }
-    s.push_str("];\n");
-
-    let generated_dir = crate::target_dir().join("generated");
-    std::fs::create_dir_all(&generated_dir)?;
-    let path = generated_dir.join("soc_env_config.rs");
-    std::fs::write(&path, &s)?;
-    println!("Pre-generated soc_env_config.rs at: {}", path.display());
-    Ok(())
-}
-
 #[derive(Default)]
 pub struct FirmwareBinaries {
     pub caliptra_rom: Vec<u8>,
     pub caliptra_fw: Vec<u8>,
-    pub caliptra_fw_svn7: Vec<u8>,
-    pub caliptra_fw_svn128: Vec<u8>,
+    pub caliptra_fw_ocp_lock: Vec<u8>,
     pub mcu_rom: Vec<u8>,
     pub mcu_runtime: Vec<u8>,
-    pub mcu_bare_metal_runtime: Vec<u8>,
     pub soc_manifest: Vec<u8>,
     pub test_roms: Vec<(String, Vec<u8>)>,
     pub caliptra_test_roms: Vec<(String, Vec<u8>)>,
@@ -266,11 +175,9 @@ pub struct FirmwareBinaries {
 impl FirmwareBinaries {
     const CALIPTRA_ROM_NAME: &'static str = "caliptra_rom.bin";
     const CALIPTRA_FW_NAME: &'static str = "caliptra_fw.bin";
-    const CALIPTRA_FW_SVN7_NAME: &'static str = "caliptra_fw_svn7.bin";
-    const CALIPTRA_FW_SVN128_NAME: &'static str = "caliptra_fw_svn128.bin";
+    const CALIPTRA_FW_OCP_LOCK_NAME: &'static str = "caliptra_fw_ocp_lock.bin";
     const MCU_ROM_NAME: &'static str = "mcu_rom.bin";
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
-    const MCU_BARE_METAL_RUNTIME_NAME: &'static str = "mcu_bare_metal_runtime.bin";
     const SOC_MANIFEST_NAME: &'static str = "soc_manifest.bin";
     const FLASH_IMAGE_NAME: &'static str = "flash_image.bin";
     const PLDM_FW_PKG_NAME: &'static str = "pldm_fw_pkg.bin";
@@ -308,11 +215,9 @@ impl FirmwareBinaries {
             match name.as_str() {
                 Self::CALIPTRA_ROM_NAME => binaries.caliptra_rom = data,
                 Self::CALIPTRA_FW_NAME => binaries.caliptra_fw = data,
-                Self::CALIPTRA_FW_SVN7_NAME => binaries.caliptra_fw_svn7 = data,
-                Self::CALIPTRA_FW_SVN128_NAME => binaries.caliptra_fw_svn128 = data,
+                Self::CALIPTRA_FW_OCP_LOCK_NAME => binaries.caliptra_fw_ocp_lock = data,
                 Self::MCU_ROM_NAME => binaries.mcu_rom = data,
                 Self::MCU_RUNTIME_NAME => binaries.mcu_runtime = data,
-                Self::MCU_BARE_METAL_RUNTIME_NAME => binaries.mcu_bare_metal_runtime = data,
                 Self::SOC_MANIFEST_NAME => binaries.soc_manifest = data,
                 name if name.contains("mcu-test-soc-manifest") => {
                     binaries.test_soc_manifests.push((name.to_string(), data));
@@ -503,7 +408,7 @@ impl EmulatorBinaries {
             let mut data = Vec::new();
             file.read_to_end(&mut data)?;
 
-            if name == "emulator" {
+            if name.starts_with("emulator-") {
                 binaries.emulators.push((name, data));
             }
         }
@@ -511,15 +416,17 @@ impl EmulatorBinaries {
         Ok(binaries)
     }
 
-    /// Get the prebuilt emulator binary.
-    pub fn emulator(&self) -> Result<Vec<u8>> {
+    /// Get the prebuilt emulator binary for a specific test feature.
+    pub fn emulator(&self, feature: &str) -> Result<Vec<u8>> {
+        let expected_name = format!("emulator-{}", feature);
         for (name, data) in self.emulators.iter() {
-            if name == "emulator" {
+            if &expected_name == name {
                 return Ok(data.clone());
             }
         }
-
-        Err(anyhow::anyhow!("Emulator binary not found in bundle"))
+        Err(anyhow::anyhow!(
+            "Emulator not found. File name: {expected_name}, feature: {feature}"
+        ))
     }
 }
 
@@ -533,8 +440,6 @@ pub struct AllBuildArgs<'a> {
     pub soc_images: Option<Vec<ImageCfg>>,
     pub mcu_cfgs: Option<Vec<ImageCfg>>,
     pub pldm_manifest: Option<&'a str>,
-    pub vendor: Option<&'a str>,
-    pub model: Option<&'a str>,
 }
 
 /// Build Caliptra ROM and firmware bundle, MCU ROM and runtime, and SoC manifest, and package them all together in a ZIP file.
@@ -548,76 +453,47 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         soc_images,
         mcu_cfgs,
         pldm_manifest,
-        vendor,
-        model,
     } = args;
 
     // TODO: use temp files
     let platform = platform.unwrap_or("emulator");
     let rom_features = rom_features.unwrap_or_default();
-    let mcu_rom = crate::rom_build(&CaliptraBuildArgs {
-        platform: Some(platform),
-        features: Some(rom_features),
-        ..Default::default()
-    })?;
+    let mcu_rom = crate::rom_build(Some(platform.to_string()), Some(rom_features.to_string()))?;
 
-    let test_roms: Result<Vec<(PathBuf, String)>> =
-        maybe_into_par_iter(firmware::REGISTERED_FW.to_vec())
-            .map(|fwid| {
-                let target_dir = if cfg!(feature = "parallel-build") {
-                    Some(
-                        crate::target_dir()
-                            .join(format!("target-rom-{}-{}", fwid.crate_name, fwid.bin_name)),
-                    )
-                } else {
-                    None
-                };
-                let bin_path = PathBuf::from(crate::test_rom_build(&CaliptraBuildArgs {
-                    platform: Some(platform),
-                    fwid: Some(fwid),
-                    target_dir,
-                    ..Default::default()
-                })?);
+    let mut used_filenames = std::collections::HashSet::new();
+    let mut test_roms = vec![];
+    for fwid in firmware::REGISTERED_FW {
+        let bin_path = PathBuf::from(crate::test_rom_build(Some(platform), fwid)?);
+        let filename = bin_path.file_name().unwrap().to_str().unwrap().to_string();
+        if !used_filenames.insert(filename.clone()) {
+            panic!("Multiple fwids with filename {filename}")
+        }
 
-                let filename = bin_path.file_name().unwrap().to_str().unwrap().to_string();
-                Ok((bin_path, filename))
-            })
-            .collect();
-    let mut test_roms = test_roms?;
+        test_roms.push((bin_path, filename));
+    }
 
-    let cptra_test_roms: Result<Vec<(PathBuf, String)>> =
-        maybe_into_par_iter(firmware::CPTRA_REGISTERED_FW.to_vec())
-            .map(|fwid| {
-                let filename = format!("cptra-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
-                let target_dir = if cfg!(feature = "parallel-build") {
-                    crate::target_dir().join(format!("target-cptra-rom-{}", filename))
-                } else {
-                    crate::target_dir()
-                };
-                let release_dir = target_dir.join(TARGET).join("release");
+    for fwid in firmware::CPTRA_REGISTERED_FW {
+        let filename = format!("cptra-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
+        if !used_filenames.insert(filename.clone()) {
+            panic!("Multiple fwids with filename {filename}")
+        }
+        let bin_path = PROJECT_ROOT
+            .join("target")
+            .join(TARGET)
+            .join("release")
+            .join(&filename);
+        let rom_bytes = caliptra_builder::build_firmware_rom(fwid)?;
+        std::fs::write(&bin_path, rom_bytes)?;
+        test_roms.push((bin_path, filename));
+    }
 
-                std::fs::create_dir_all(&release_dir)?;
-                let bin_path = release_dir.join(&filename);
-                let rom_bytes = caliptra_builder::build_firmware_rom(fwid)?;
-                std::fs::write(&bin_path, rom_bytes)?;
-                Ok((bin_path, filename))
-            })
-            .collect();
-    test_roms.extend(cptra_test_roms?);
+    if separate_runtimes && (runtime_features.is_none() || runtime_features.unwrap().is_empty()) {
+        bail!("Must specify runtime features when building separate runtimes");
+    }
 
     let runtime_features = match runtime_features {
         Some(r) if !r.is_empty() => r.split(",").collect::<Vec<&str>>(),
-        _ => {
-            if separate_runtimes {
-                if platform == "fpga" {
-                    crate::features::FPGA_RUNTIME_TEST_FEATURES.to_vec()
-                } else {
-                    crate::features::EMULATOR_RUNTIME_TEST_FEATURES.to_vec()
-                }
-            } else {
-                vec![]
-            }
-        }
+        _ => vec![],
     };
 
     let mut base_runtime_features = vec![];
@@ -630,100 +506,44 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         base_runtime_features = runtime_features;
     }
 
-    // Determine effective SoC images for base runtime features.
-    // When the caller didn't supply --soc_image args, auto-create them for
-    // features that need SoC images (e.g. attestation).
-    let effective_soc_images = if soc_images.is_none() {
-        let needs_soc = base_runtime_features
-            .iter()
-            .any(|f| FEATURES_REQUIRING_SOC_IMAGES.contains(f));
-        if needs_soc {
-            let is_attestation = base_runtime_features
-                .iter()
-                .any(|f| *f == "test-mctp-spdm-attestation");
-            let (images, _paths) = if is_attestation {
-                create_attestation_soc_images()
-            } else {
-                create_default_soc_images()
-            };
-            Some(images)
-        } else {
-            None
-        }
-    } else {
-        soc_images.clone()
-    };
-
-    // Pre-generate soc_env_config.rs with the correct FW IDs so the runtime
-    // build picks them up (must happen BEFORE runtime_build_with_apps).
-    let effective_vendor = vendor.unwrap_or("ChipsAlliance");
-    let effective_model = model.unwrap_or("Caliptra-SS");
-    pre_generate_soc_env_config(
-        effective_vendor,
-        effective_model,
-        MCU_RT_IDENTIFIER,
-        effective_soc_images.as_deref().unwrap_or(&[]),
-    )?;
-
     let base_runtime_file = tempfile::NamedTempFile::new().unwrap();
     let base_runtime_path = base_runtime_file.path().to_str().unwrap();
 
-    let base_runtime_features_str = if base_runtime_features.is_empty() {
-        None
-    } else {
-        Some(base_runtime_features.join(","))
-    };
+    let mcu_runtime = &crate::runtime_build_with_apps(
+        &base_runtime_features,
+        Some(base_runtime_path.to_string()),
+        false,
+        Some(platform),
+        None,
+    )?;
 
-    let mcu_runtime = &crate::runtime_build_with_apps(&CaliptraBuildArgs {
-        features: base_runtime_features_str.as_deref(),
-        output_name: Some(base_runtime_path.to_string()),
-        example_app: false,
-        platform: Some(platform),
-        ..Default::default()
-    })?;
-
-    // Only build the bare-metal runtime for the emulator platform, as it
-    // is currently only configured and supported for the emulator.
-    let mcu_bare_metal_runtime = if platform == "emulator" {
-        Some(crate::bare_metal_build()?)
-    } else {
-        None
-    };
-
+    let fpga = platform == "fpga";
     let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
-    let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
-        fpga: platform == "fpga",
-        mcu_firmware: Some(mcu_runtime.into()),
-        soc_images: effective_soc_images.clone(),
+    let mut caliptra_builder = CaliptraBuilder::new(
+        fpga,
+        true,
+        None,
+        None,
+        None,
+        None,
+        Some(mcu_runtime.into()),
+        soc_images.clone(),
         mcu_image_cfg,
-        vendor: vendor.map(|s| s.to_string()),
-        model: model.map(|s| s.to_string()),
-        ..Default::default()
-    });
+        None,
+        None,
+        None,
+    );
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_fw = caliptra_builder.get_caliptra_fw()?;
     let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?.to_string();
     println!("Vendor PK hash: {:x?}", vendor_pk_hash);
     let soc_manifest = caliptra_builder.get_soc_manifest(None)?;
 
-    let mut builder_svn7 = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
-        fpga: platform == "fpga",
-        svn: Some(7),
-        ..Default::default()
-    });
-    let caliptra_fw_svn7 = builder_svn7.get_caliptra_fw()?;
-
-    let mut builder_svn128 = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
-        fpga: platform == "fpga",
-        svn: Some(128),
-        ..Default::default()
-    });
-    let caliptra_fw_svn128 = builder_svn128.get_caliptra_fw()?;
     let flash_image = create_flash_image(
         Some(caliptra_fw.clone()),
         Some(soc_manifest.clone()),
         Some(mcu_runtime.into()),
-        effective_soc_images
+        soc_images
             .clone()
             .unwrap_or_default()
             .iter()
@@ -757,179 +577,145 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // Build feature-specific MCU ROMs so tests don't need to compile at runtime.
     // Only builds for features that the ROM crate supports; tests using other features
     // will fall back to the generic MCU ROM.
-    // Include both runtime features (which may have matching ROM features) and
-    // ROM-only test features that don't have a corresponding runtime feature.
-    //
-    // Preserve the base ROM binary: feature ROM builds reuse the same bundler
-    // output path (`mcu-rom-<platform>.bin`) and rename it to the feature-specific
-    // name, which would delete the base ROM that `mcu_rom` still references.
-    let mcu_rom_preserved = tempfile::NamedTempFile::new()?;
-    std::fs::copy(&mcu_rom, mcu_rom_preserved.path())?;
-    let mcu_rom = mcu_rom_preserved.path().to_path_buf();
-
-    let rom_features_to_build: Vec<&str> = separate_features
-        .iter()
-        .copied()
-        .chain(crate::features::ROM_ONLY_TEST_FEATURES.iter().copied())
-        .collect();
-    let feature_roms: Result<Vec<(PathBuf, String)>> = maybe_par_iter(&rom_features_to_build)
-        .filter_map(|feature| {
-            let target_dir = if cfg!(feature = "parallel-build") {
-                Some(crate::target_dir().join(format!("target-feature-rom-{}", feature)))
-            } else {
-                None
-            };
-            match crate::rom_build(&CaliptraBuildArgs {
-                platform: Some(platform),
-                features: Some(feature),
-                target_dir,
-                ..Default::default()
-            }) {
-                Ok(rom_path) => {
-                    let rom_name = format!("mcu-test-rom-feature-{}.bin", feature);
-                    println!("Built feature ROM: {rom_path:?} -> {}", rom_name);
-                    Some(Ok((rom_path, rom_name)))
-                }
-                Err(e) => {
-                    println!(
-                        "Skipping feature ROM for {}: {} (will use generic ROM)",
-                        feature, e
-                    );
-                    None
-                }
+    for feature in separate_features.iter() {
+        match crate::rom_build(Some(platform.to_string()), Some(feature.to_string())) {
+            Ok(rom_path) => {
+                let rom_name = format!("mcu-test-rom-feature-{}.bin", feature);
+                println!("Built feature ROM: {rom_path:?} -> {}", rom_name);
+                test_roms.push((rom_path, rom_name));
             }
-        })
-        .collect();
-    test_roms.extend(feature_roms?);
+            Err(e) => {
+                println!(
+                    "Skipping feature ROM for {}: {} (will use generic ROM)",
+                    feature, e
+                );
+            }
+        }
+    }
 
-    let test_runtimes: Result<Vec<FeatureTestResource>> = maybe_par_iter(&separate_features)
-        .map(|feature| {
-            let target_dir = if cfg!(feature = "parallel-build") {
-                Some(crate::target_dir().join(format!("target-runtime-{}", feature)))
+    let mut test_runtimes = vec![];
+    for feature in separate_features.iter() {
+        let feature_runtime_file = tempfile::NamedTempFile::new().unwrap();
+        let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
+        let include_example_app = FEATURES_WITH_EXAMPLE_APP.contains(feature);
+
+        let mut runtime_features = vec![feature.to_string()];
+        if feature.contains("ocp-lock") {
+            runtime_features.push("ocp-lock".to_string());
+        }
+        let runtime_features_ref: Vec<&str> = runtime_features.iter().map(|s| s.as_str()).collect();
+
+        crate::runtime_build_with_apps(
+            &runtime_features_ref,
+            Some(feature_runtime_path),
+            include_example_app,
+            Some(platform),
+            None,
+        )?;
+
+        let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature);
+
+        // For features that require SoC images, create default ones if not provided
+        let (feature_soc_images, feature_soc_images_paths) =
+            if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) && soc_images.is_none() {
+                let (images, paths) = create_default_soc_images();
+                (Some(images), paths)
             } else {
-                None
+                (
+                    soc_images.clone(),
+                    soc_images
+                        .clone()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|img| img.path.clone())
+                        .collect(),
+                )
             };
-            let feature_runtime_file = tempfile::NamedTempFile::new().unwrap();
-            let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
-            let include_example_app = FEATURES_WITH_EXAMPLE_APP.contains(feature);
 
-            crate::runtime_build_with_apps(&CaliptraBuildArgs {
-                features: Some(feature),
-                output_name: Some(feature_runtime_path),
-                example_app: include_example_app,
-                platform: Some(platform),
-                target_dir,
-                ..Default::default()
-            })?;
+        let mut caliptra_builder = CaliptraBuilder::new(
+            fpga,
+            feature.contains("ocp-lock"),
+            Some(caliptra_rom.clone()),
+            Some(caliptra_fw.clone()),
+            None,
+            Some(vendor_pk_hash.clone()),
+            Some(feature_runtime_file.path().to_path_buf()),
+            feature_soc_images.clone(),
+            mcu_image_cfg.clone(),
+            None,
+            None,
+            None,
+        );
+        let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
+        caliptra_builder.get_soc_manifest(feature_soc_manifest_file.path().to_str())?;
 
-            let mcu_image_cfg =
-                get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature);
+        // Flash-based boot features require partition table at offset 0
+        let is_flash_based_boot = FEATURES_REQUIRING_FLASH_BOOT.contains(feature);
 
-            // For features that require SoC images, create default ones if not provided
-            let (feature_soc_images, feature_soc_images_paths) =
-                if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) && soc_images.is_none() {
-                    let (images, paths) = if *feature == "test-mctp-spdm-attestation" {
-                        create_attestation_soc_images()
-                    } else {
-                        create_default_soc_images()
-                    };
-                    (Some(images), paths)
-                } else {
-                    (
-                        soc_images.clone(),
-                        soc_images
-                            .clone()
-                            .unwrap_or_default()
-                            .iter()
-                            .map(|img| img.path.clone())
-                            .collect(),
-                    )
-                };
+        // Clone paths for potential second use
+        let feature_soc_images_paths_clone = feature_soc_images_paths.clone();
 
-            let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
-                fpga: platform == "fpga",
-                caliptra_rom: Some(caliptra_rom.clone()),
-                caliptra_firmware: Some(caliptra_fw.clone()),
-                vendor_pk_hash: Some(vendor_pk_hash.clone()),
-                mcu_firmware: Some(feature_runtime_file.path().to_path_buf()),
-                soc_images: feature_soc_images.clone(),
-                mcu_image_cfg: mcu_image_cfg.clone(),
-                vendor: vendor.map(|s| s.to_string()),
-                model: model.map(|s| s.to_string()),
-                ..Default::default()
-            });
-            let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
-            caliptra_builder.get_soc_manifest(feature_soc_manifest_file.path().to_str())?;
+        let feature_flash_image = create_flash_image(
+            Some(caliptra_fw.clone()),
+            Some(feature_soc_manifest_file.path().to_path_buf()),
+            Some(feature_runtime_file.path().to_path_buf()),
+            feature_soc_images_paths,
+            is_flash_based_boot,
+        )?;
 
-            // Flash-based boot features require partition table at offset 0
-            let is_flash_based_boot = FEATURES_REQUIRING_FLASH_BOOT.contains(feature);
-
-            // Clone paths for potential second use
-            let feature_soc_images_paths_clone = feature_soc_images_paths.clone();
-
-            let feature_flash_image = create_flash_image(
+        // For firmware update tests, create a separate "update" flash image WITHOUT partition table
+        // This is used for the PLDM update package (the downloaded firmware)
+        let is_firmware_update_feature = *feature == "test-firmware-update-flash"
+            || *feature == "test-firmware-update-streaming";
+        let feature_update_flash_image = if is_firmware_update_feature {
+            Some(create_flash_image(
                 Some(caliptra_fw.clone()),
                 Some(feature_soc_manifest_file.path().to_path_buf()),
                 Some(feature_runtime_file.path().to_path_buf()),
-                feature_soc_images_paths,
-                is_flash_based_boot,
-            )?;
+                feature_soc_images_paths_clone,
+                false, // No partition table for update image
+            )?)
+        } else {
+            None
+        };
 
-            // For firmware update tests, create a separate "update" flash image WITHOUT partition table
-            // This is used for the PLDM update package (the downloaded firmware)
-            let is_firmware_update_feature = *feature == "test-firmware-update-flash"
-                || *feature == "test-firmware-update-streaming";
-            let feature_update_flash_image = if is_firmware_update_feature {
-                Some(create_flash_image(
-                    Some(caliptra_fw.clone()),
-                    Some(feature_soc_manifest_file.path().to_path_buf()),
-                    Some(feature_runtime_file.path().to_path_buf()),
-                    feature_soc_images_paths_clone,
-                    false, // No partition table for update image
-                )?)
-            } else {
-                None
-            };
+        // For PLDM package, use the update flash image (without partition table) if available
+        let pldm_source_image = feature_update_flash_image
+            .as_ref()
+            .unwrap_or(&feature_flash_image);
 
-            // For PLDM package, use the update flash image (without partition table) if available
-            let pldm_source_image = feature_update_flash_image
-                .as_ref()
-                .unwrap_or(&feature_flash_image);
+        let feature_pldm_manifest = match pldm_manifest {
+            Some(path) => {
+                let mut file = std::fs::File::open(path)?;
+                let mut data = Vec::new();
+                file.read_to_end(&mut data)?;
+                FirmwareManifest::decode_firmware_package(&path.to_string(), None)?
+            }
+            None => {
+                let dev_uuid = get_device_uuid();
+                let mut file = std::fs::File::open(pldm_source_image.clone())?;
+                let mut data = Vec::new();
+                file.read_to_end(&mut data)?;
+                get_default_pldm_fw_manifest(&dev_uuid, &data)
+            }
+        };
+        let feature_pldm_fw_pkg = tempfile::NamedTempFile::new().unwrap();
+        let pldm_fw_pkg_path = feature_pldm_fw_pkg
+            .path()
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
+            .to_string();
+        feature_pldm_manifest.generate_firmware_package(&pldm_fw_pkg_path)?;
 
-            let feature_pldm_manifest = match pldm_manifest {
-                Some(path) => {
-                    let mut file = std::fs::File::open(path)?;
-                    let mut data = Vec::new();
-                    file.read_to_end(&mut data)?;
-                    FirmwareManifest::decode_firmware_package(&path.to_string(), None)?
-                }
-                None => {
-                    let dev_uuid = get_device_uuid();
-                    let mut file = std::fs::File::open(pldm_source_image.clone())?;
-                    let mut data = Vec::new();
-                    file.read_to_end(&mut data)?;
-                    get_default_pldm_fw_manifest(&dev_uuid, &data)
-                }
-            };
-            let feature_pldm_fw_pkg = tempfile::NamedTempFile::new().unwrap();
-            let pldm_fw_pkg_path = feature_pldm_fw_pkg
-                .path()
-                .to_str()
-                .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
-                .to_string();
-            feature_pldm_manifest.generate_firmware_package(&pldm_fw_pkg_path)?;
-
-            Ok(FeatureTestResource {
-                feature: feature.to_string(),
-                runtime_file: feature_runtime_file,
-                soc_manifest_file: feature_soc_manifest_file,
-                flash_image: feature_flash_image,
-                pldm_fw_pkg: feature_pldm_fw_pkg,
-                update_flash_image: feature_update_flash_image,
-            })
-        })
-        .collect();
-    let test_runtimes = test_runtimes?;
+        test_runtimes.push((
+            feature.to_string(),
+            feature_runtime_file,
+            feature_soc_manifest_file,
+            feature_flash_image,
+            feature_pldm_fw_pkg,
+            feature_update_flash_image,
+        ));
+    }
 
     let default_path = crate::target_dir().join("all-fw.zip");
     let path = output.map(Path::new).unwrap_or(&default_path);
@@ -954,14 +740,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         options,
     )?;
     add_to_zip(
-        &caliptra_fw_svn7,
-        FirmwareBinaries::CALIPTRA_FW_SVN7_NAME,
-        &mut zip,
-        options,
-    )?;
-    add_to_zip(
-        &caliptra_fw_svn128,
-        FirmwareBinaries::CALIPTRA_FW_SVN128_NAME,
+        &caliptra_fw,
+        FirmwareBinaries::CALIPTRA_FW_OCP_LOCK_NAME,
         &mut zip,
         options,
     )?;
@@ -972,14 +752,6 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         &mut zip,
         options,
     )?;
-    if let Some(bare_metal) = mcu_bare_metal_runtime {
-        add_to_zip(
-            &bare_metal,
-            FirmwareBinaries::MCU_BARE_METAL_RUNTIME_NAME,
-            &mut zip,
-            options,
-        )?;
-    }
     add_to_zip(
         &soc_manifest,
         FirmwareBinaries::SOC_MANIFEST_NAME,
@@ -1002,14 +774,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         add_to_zip(&test_rom, &name, &mut zip, options)?;
     }
 
-    for FeatureTestResource {
-        feature,
-        runtime_file: runtime,
-        soc_manifest_file: soc_manifest,
-        flash_image,
-        pldm_fw_pkg,
-        update_flash_image,
-    } in test_runtimes
+    for (feature, runtime, soc_manifest, flash_image, pldm_fw_pkg, update_flash_image) in
+        test_runtimes
     {
         let runtime_name = format!("mcu-test-runtime-{}.bin", feature);
         println!("Adding {} -> {}", runtime.path().display(), runtime_name);
@@ -1074,15 +840,28 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 #[derive(Default)]
 pub struct EmulatorBuildArgs<'a> {
     pub output: Option<&'a str>,
+    pub features: Option<&'a str>,
 }
 
-/// Build the emulator binary and package it in emulators.zip.
+/// Build emulator binaries for all specified features and package them in emulators.zip.
 pub fn emulator_build(args: EmulatorBuildArgs) -> Result<()> {
-    let EmulatorBuildArgs { output } = args;
+    let EmulatorBuildArgs { output, features } = args;
 
-    // Build the emulator (no features needed anymore)
-    let emulator_path = build_emulator_with_feature("")?
-        .ok_or_else(|| anyhow::anyhow!("Failed to build emulator"))?;
+    let features = match features {
+        Some(f) if !f.is_empty() => f.split(",").collect::<Vec<&str>>(),
+        _ => bail!("Must specify features to build emulators for"),
+    };
+
+    let mut emulators: Vec<(String, PathBuf)> = vec![];
+
+    for feature in features.iter() {
+        if let Some(emulator_path) = build_emulator_with_feature(feature)? {
+            // Copy to a unique path so we can keep all emulators
+            let emulator_dest = crate::target_dir().join(format!("emulator-{}", feature));
+            std::fs::copy(&emulator_path, &emulator_dest)?;
+            emulators.push((feature.to_string(), emulator_dest));
+        }
+    }
 
     let default_path = crate::target_dir().join("emulators.zip");
     let path = output.map(Path::new).unwrap_or(&default_path);
@@ -1091,11 +870,14 @@ pub fn emulator_build(args: EmulatorBuildArgs) -> Result<()> {
     let mut zip = ZipWriter::new(file);
     let options = SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
-        .unix_permissions(0o755) // Make emulator executable
+        .unix_permissions(0o755) // Make emulators executable
         .last_modified_time(zip::DateTime::try_from(chrono::Local::now().naive_local())?);
 
-    println!("Adding {} -> emulator", emulator_path.display());
-    add_to_zip(&emulator_path, "emulator", &mut zip, options)?;
+    for (feature, emulator_path) in emulators {
+        let emulator_name = format!("emulator-{}", feature);
+        println!("Adding {} -> {}", emulator_path.display(), emulator_name);
+        add_to_zip(&emulator_path, &emulator_name, &mut zip, options)?;
+    }
 
     zip.finish()?;
     println!("Emulator build complete: {}", path.display());
@@ -1146,20 +928,19 @@ fn create_flash_image(
         0
     };
 
-    crate::flash_image::flash_image_create(&CaliptraBuildArgs {
-        caliptra_firmware: caliptra_fw_path,
-        soc_manifest: soc_manifest_path,
-        mcu_firmware: mcu_runtime_path,
-        soc_image_paths: Some(
+    crate::flash_image::flash_image_create(
+        &caliptra_fw_path.map(|p| p.to_string_lossy().to_string()),
+        &soc_manifest_path.map(|p| p.to_string_lossy().to_string()),
+        &mcu_runtime_path.map(|p| p.to_string_lossy().to_string()),
+        &Some(
             soc_images_paths
                 .iter()
                 .map(|p| p.to_string_lossy().to_string())
                 .collect(),
         ),
-        offset: flash_offset,
-        output_path: Some(flash_image_path.to_string_lossy().to_string()),
-        ..Default::default()
-    })?;
+        flash_offset,
+        flash_image_path.to_str().unwrap(),
+    )?;
 
     // For flash-based boot, write a valid partition table at offset 0
     if is_flash_based_boot {

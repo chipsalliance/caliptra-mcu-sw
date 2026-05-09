@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mcu-emulator-periph"
+name = "emulator-periph"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,15 +16,14 @@ caliptra-emu-derive.workspace = true
 caliptra-image-types.workspace = true
 caliptra-emu-periph.workspace = true
 caliptra-registers.workspace = true
-caliptra-mcu-emulator-consts.workspace = true
-caliptra-mcu-emulator-registers-generated.workspace = true
+emulator-consts.workspace = true
+emulator-registers-generated.workspace = true
 lazy_static.workspace = true
-caliptra-mcu-config.workspace = true
-caliptra-mcu-testing-common.workspace = true
+mcu-config-emulator.workspace = true
+mcu-testing-common.workspace = true
 num_enum.workspace = true
-caliptra-mcu-otp-digest.workspace = true
-caliptra-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
-caliptra-mcu-registers-generated.workspace = true
+otp-digest.workspace = true
+registers-generated.workspace = true
 semver.workspace = true
 serde_json.workspace = true
 serde.workspace = true
@@ -36,3 +35,39 @@ tempfile.workspace = true
 
 [features]
 default = []
+test-caliptra-util-host-validator = []
+test-dma = []
+test-doe-transport-loopback = []
+test-doe-discovery = []
+test-doe-user-loopback = []
+test-flash-based-boot = []
+test-flash-ctrl-init = []
+test-flash-ctrl-read-write-page = []
+test-flash-ctrl-erase-page = []
+test-flash-storage-read-write = []
+test-flash-storage-erase = []
+test-flash-usermode = []
+test-firmware-update-flash = []
+test-firmware-update-streaming = []
+test-fpga-flash-ctrl = []
+test-log-flash-linear = []
+test-log-flash-circular = []
+test-log-flash-usermode = []
+test-mctp-ctrl-cmds = []
+test-mctp-user-loopback = []
+test-mcu-mbox-driver = []
+test-mcu-mbox-cmds = []
+test-mcu-mbox-fips-self-test = []
+test-mcu-mbox-soc-requester-loopback = []
+test-mcu-mbox-usermode = []
+test-mcu-rom-flash-access = []
+test-mcu-svn-gt-fuse = []
+test-mcu-svn-lt-fuse = []
+test-pldm-request-response = []
+test-pldm-discovery = []
+test-pldm-fw-update = []
+test-pldm-fw-update-e2e = []
+test-pldm-streaming-boot = []
+test-mctp-spdm-responder-conformance = []
+test-doe-spdm-responder-conformance = []
+test-doe-spdm-tdisp-ide-validator = []

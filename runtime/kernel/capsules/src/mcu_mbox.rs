@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_mcu_mbox_comm::hil;
-use caliptra_mcu_romtime::println;
 use core::cell::Cell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, GrantKernelData, UpcallCount};
 use kernel::processbuffer::{ReadableProcessBuffer, ReadableProcessSlice, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::OptionalCell;
 use kernel::{ErrorCode, ProcessId};
+use mcu_mbox_comm::hil;
+use romtime::println;
 
 pub const MCU_MBOX0_DRIVER_NUM: usize = 0x8000_0010;
 
@@ -30,9 +30,8 @@ mod upcall {
     pub const COUNT: u8 = 2;
 }
 
-// Adjust as needed - must be large enough for CmShaInitReq (4108 bytes = 1027 dwords)
-// but small enough to fit in the Tock Grant per-process memory
-const MAX_DATA_SIZE_DWORDS: usize = 2048;
+// Adjust as needed
+const MAX_DATA_SIZE_DWORDS: usize = 1024;
 struct BufferedMessage {
     pub command: u32,
     pub data: [u32; MAX_DATA_SIZE_DWORDS],

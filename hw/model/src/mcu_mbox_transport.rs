@@ -1,11 +1,11 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_mcu_registers_generated::mci;
-use caliptra_mcu_registers_generated::mci::bits::{MboxCmdStatus, MboxExecute, Notif0IntrTrigT};
-use caliptra_mcu_romtime::StaticRef;
+use registers_generated::mci;
+use registers_generated::mci::bits::{MboxCmdStatus, MboxExecute, Notif0IntrTrigT};
+use romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
-const MCU_MAILBOX0_SRAM_SIZE: u32 = 16 * 1024; // MCU Mailbox0 SRAM size is 16KB on FPGA
+const MCU_MAILBOX0_SRAM_SIZE: u32 = 4 * 1024; // MCU Mailbox0 SRAM size is 4KB on FPGA
 
 pub struct McuMailboxResponse {
     pub status_code: u32,

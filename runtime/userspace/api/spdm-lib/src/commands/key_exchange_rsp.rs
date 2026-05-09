@@ -18,10 +18,10 @@ use crate::state::ConnectionInfo;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
-use caliptra_mcu_libapi_caliptra::crypto::asym::ecdh::CMB_ECDH_EXCHANGE_DATA_MAX_SIZE;
-use caliptra_mcu_libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
-use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
-use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
+use libapi_caliptra::crypto::asym::ecdh::CMB_ECDH_EXCHANGE_DATA_MAX_SIZE;
+use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const RANDOM_DATA_LEN: usize = 32;
@@ -293,7 +293,7 @@ async fn th1_signature(
 
     let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
     ctx.device_certs_store
-        .sign_hash(asym_algo, slot_id, &tbs, &mut signature)
+        .sign_hash(slot_id, asym_algo, &tbs, &mut signature)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
     Ok(signature)

@@ -2,7 +2,6 @@
 
 #![no_std]
 
-pub mod caliptra;
 pub mod dma;
 pub mod doe;
 pub mod flash;
@@ -12,11 +11,10 @@ pub mod mbox_sram;
 pub mod mci;
 pub mod mctp;
 pub mod mcu_mbox;
-pub mod otp;
 pub mod system;
 
 #[cfg(target_arch = "riscv32")]
-pub type DefaultSyscalls = caliptra_mcu_libtock_runtime::TockSyscalls;
+pub type DefaultSyscalls = libtock_runtime::TockSyscalls;
 
 #[cfg(not(target_arch = "riscv32"))]
-pub type DefaultSyscalls = caliptra_mcu_libtock_unittest::fake::Syscalls;
+pub type DefaultSyscalls = libtock_unittest::fake::Syscalls;

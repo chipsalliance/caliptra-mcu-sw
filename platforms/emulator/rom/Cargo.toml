@@ -7,18 +7,20 @@ authors.workspace = true
 edition.workspace = true
 
 [build-dependencies]
-caliptra-mcu-builder.workspace = true
-caliptra-mcu-config-emulator.workspace = true
+mcu-builder.workspace = true
+mcu-config-emulator.workspace = true
 
 [dependencies]
 bitfield.workspace = true
-caliptra-mcu-config.workspace = true
-caliptra-mcu-config-emulator.workspace = true
-caliptra-mcu-error.workspace = true
-caliptra-mcu-image-header.workspace = true
-caliptra-mcu-rom-common.workspace = true
-caliptra-mcu-registers-generated.workspace = true
-caliptra-mcu-romtime.workspace = true
+mcu-config.workspace = true
+mcu-config-emulator.workspace = true
+mcu-error.workspace = true
+mcu-usb-emulator.workspace = true
+ocp.workspace = true
+mcu-image-header.workspace = true
+mcu-rom-common.workspace = true
+registers-generated.workspace = true
+romtime.workspace = true
 tock-registers.workspace = true
 zeroize.workspace = true
 zerocopy.workspace = true
@@ -29,21 +31,16 @@ rv32i.workspace = true
 
 [features]
 default = []
-core_test = ["caliptra-mcu-rom-common/core_test"]
-hw-2-1 = ["caliptra-mcu-rom-common/hw-2-1"]
+core_test = ["mcu-rom-common/core_test"]
+ocp-lock = ["mcu-rom-common/ocp-lock"]
+hw-2-1 = ["mcu-rom-common/hw-2-1"]
 test-dot-recovery = []
-test-firmware-update-flash = []
+test-firmware-update-flash = ["test-flash-based-boot"]
 test-firmware-update-streaming = []
 test-mcu-rom-flash-access = []
 test-mcu-svn-gt-fuse = []
 test-mcu-svn-lt-fuse = []
 test-flash-based-boot = ["hw-2-1"]
-test-fw-manifest-dot = ["caliptra-mcu-rom-common/fw-manifest-dot"]
-test-fw-manifest-dot-hitless = [
-    "caliptra-mcu-rom-common/fw-manifest-dot",
-    "caliptra-mcu-rom-common/test-force-hitless-update",
-]
+test-fw-manifest-dot = ["mcu-rom-common/fw-manifest-dot"]
 test-pldm-streaming-boot = []
-active-i3c1 = ["caliptra-mcu-config-emulator/active-i3c1"]
-test-i3c-services = []
-test-rom-hooks = []
+test-ocp-lock = []

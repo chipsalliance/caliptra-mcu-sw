@@ -5,7 +5,9 @@ mod common;
 
 use std::cmp::min;
 
-use caliptra_mcu_pldm_common::{
+use chrono::Utc;
+use common::CustomDiscoverySm;
+use pldm_common::{
     codec::PldmCodec,
     message::firmware_update::{
         get_fw_params::GetFirmwareParametersResponse,
@@ -20,16 +22,14 @@ use caliptra_mcu_pldm_common::{
         firmware_update::{ComponentResponseCode, FwUpdateCmd},
     },
 };
-use caliptra_mcu_pldm_fw_pkg::{
+use pldm_fw_pkg::{
     manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     },
     FirmwareManifest,
 };
-use caliptra_mcu_pldm_ua::{daemon::Options, events::PldmEvents, transport::PldmSocket, update_sm};
-use chrono::Utc;
-use common::CustomDiscoverySm;
+use pldm_ua::{daemon::Options, events::PldmEvents, transport::PldmSocket, update_sm};
 use uuid::Uuid;
 
 // Test UUID
@@ -45,11 +45,8 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
         &mut self,
         ctx: &mut update_sm::InnerContext<impl PldmSocket>,
     ) -> Result<(), ()> {
-        ctx.device_id = Some(ctx.caliptra_mcu_pldm_fw_pkg.firmware_device_id_records[0].clone());
-        ctx.components = ctx
-            .caliptra_mcu_pldm_fw_pkg
-            .component_image_information
-            .clone();
+        ctx.device_id = Some(ctx.pldm_fw_pkg.firmware_device_id_records[0].clone());
+        ctx.components = ctx.pldm_fw_pkg.component_image_information.clone();
         for _ in &ctx.components {
             ctx.component_response_codes
                 .push(ComponentResponseCode::CompCanBeUpdated);
@@ -91,7 +88,7 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
     fn on_get_firmware_parameters_response(
         &mut self,
         ctx: &mut update_sm::InnerContext<impl PldmSocket>,
-        _response: caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
+        _response: pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
     ) -> Result<(), ()> {
         ctx.event_queue
             .send(PldmEvents::Update(update_sm::Events::SendRequestUpdate))
@@ -150,7 +147,7 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
 
 #[test]
 fn test_download_size_divisible_by_transfer_size() {
-    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
+    let pldm_fw_pkg = FirmwareManifest {
         package_header_information: PackageHeaderInformation {
             package_header_identifier: Uuid::parse_str("7B291C996DB64208801B02026E463C78").unwrap(),
             package_header_format_revision: 1,
@@ -191,7 +188,7 @@ fn test_download_size_divisible_by_transfer_size() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
+        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
@@ -202,11 +199,10 @@ fn test_download_size_divisible_by_transfer_size() {
     let mut instance_id = 0u8;
     let mut downloaded_data: Vec<u8> = Vec::new();
     let mut offset = 0u32;
-    while offset < caliptra_mcu_pldm_fw_pkg.component_image_information[0].size {
+    while offset < pldm_fw_pkg.component_image_information[0].size {
         let length = min(
             BASELINE_TRANSFER_SIZE,
-            caliptra_mcu_pldm_fw_pkg.component_image_information[0].size + BASELINE_TRANSFER_SIZE
-                - offset,
+            pldm_fw_pkg.component_image_information[0].size + BASELINE_TRANSFER_SIZE - offset,
         );
 
         let request =
@@ -237,14 +233,11 @@ fn test_download_size_divisible_by_transfer_size() {
         offset += length;
     }
 
-    assert!(
-        downloaded_data.len()
-            >= caliptra_mcu_pldm_fw_pkg.component_image_information[0].size as usize
-    );
+    assert!(downloaded_data.len() >= pldm_fw_pkg.component_image_information[0].size as usize);
 
     assert_eq!(
-        downloaded_data[..caliptra_mcu_pldm_fw_pkg.component_image_information[0].size as usize],
-        caliptra_mcu_pldm_fw_pkg.component_image_information[0]
+        downloaded_data[..pldm_fw_pkg.component_image_information[0].size as usize],
+        pldm_fw_pkg.component_image_information[0]
             .image_data
             .as_ref()
             .unwrap()[..]
@@ -268,7 +261,7 @@ fn test_download_size_not_divisible_by_transfer_size() {
     let mut image_data = vec![0x55u8; 128];
     image_data.extend(vec![0xAAu8, 129]);
 
-    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
+    let pldm_fw_pkg = FirmwareManifest {
         package_header_information: PackageHeaderInformation {
             package_header_identifier: Uuid::parse_str("7B291C996DB64208801B02026E463C78").unwrap(),
             package_header_format_revision: 1,
@@ -309,7 +302,7 @@ fn test_download_size_not_divisible_by_transfer_size() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
+        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
@@ -320,11 +313,10 @@ fn test_download_size_not_divisible_by_transfer_size() {
     let mut instance_id = 0u8;
     let mut offset = 0u32;
     let mut downloaded_data: Vec<u8> = Vec::new();
-    while offset < caliptra_mcu_pldm_fw_pkg.component_image_information[0].size {
+    while offset < pldm_fw_pkg.component_image_information[0].size {
         let length = min(
             BASELINE_TRANSFER_SIZE,
-            caliptra_mcu_pldm_fw_pkg.component_image_information[0].size + BASELINE_TRANSFER_SIZE
-                - offset,
+            pldm_fw_pkg.component_image_information[0].size + BASELINE_TRANSFER_SIZE - offset,
         );
 
         let request =
@@ -355,14 +347,11 @@ fn test_download_size_not_divisible_by_transfer_size() {
         offset += length;
     }
 
-    assert!(
-        downloaded_data.len()
-            >= caliptra_mcu_pldm_fw_pkg.component_image_information[0].size as usize
-    );
+    assert!(downloaded_data.len() >= pldm_fw_pkg.component_image_information[0].size as usize);
 
     assert_eq!(
-        downloaded_data[..caliptra_mcu_pldm_fw_pkg.component_image_information[0].size as usize],
-        caliptra_mcu_pldm_fw_pkg.component_image_information[0]
+        downloaded_data[..pldm_fw_pkg.component_image_information[0].size as usize],
+        pldm_fw_pkg.component_image_information[0]
             .image_data
             .as_ref()
             .unwrap()[..]

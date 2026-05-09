@@ -5,11 +5,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-use caliptra_mcu_capsules_emulator::logging::logging_flash as log;
-use caliptra_mcu_capsules_emulator::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
-use caliptra_mcu_platforms_common::{read_volatile_at, read_volatile_slice};
-use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use capsules_emulator::logging::logging_flash as log;
+use capsules_emulator::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
 use core::cell::Cell;
 use core::ptr::addr_of_mut;
 use kernel::debug;
@@ -20,6 +18,8 @@ use kernel::static_init;
 use kernel::storage_volume;
 use kernel::utilities::cells::{NumericCellExt, TakeCell};
 use kernel::ErrorCode;
+use mcu_platforms_common::{read_volatile_at, read_volatile_slice};
+use mcu_tock_veer::timers::InternalTimers;
 
 // Allocate 1KB storage volume for the linear log test. It resides on flash.
 storage_volume!(LINEAR_TEST_LOG, 1);
@@ -29,17 +29,16 @@ const USABLE_PER_PAGE: usize = PAGE_SIZE - PAGE_HEADER_SIZE;
 const MAX_ENTRY_SIZE: usize = USABLE_PER_PAGE - ENTRY_HEADER_SIZE;
 const SMALL_ENTRY_SIZE: usize = 32;
 const MEDIUM_ENTRY_SIZE: usize = 64;
-const LOG_FLASH_BASE_ADDR: u32 =
-    caliptra_mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
+const LOG_FLASH_BASE_ADDR: u32 = mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
 
 pub unsafe fn run(
     mux_alarm: &'static MuxAlarm<'static, InternalTimers>,
-    flash_controller: &'static caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl,
+    flash_controller: &'static flash_ctrl_emulator::EmulatedFlashCtrl,
 ) -> Option<u32> {
     flash_controller.init();
     let pagebuffer = static_init!(
-        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
-        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
+        flash_ctrl_emulator::EmulatedFlashPage,
+        flash_ctrl_emulator::EmulatedFlashPage::default()
     );
     // Create actual log storage abstraction on top of flash.
     let log: &'static mut Log = static_init!(
@@ -122,7 +121,7 @@ enum TestOp {
     Erase,
 }
 
-type Log = log::Log<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl<'static>>;
+type Log = log::Log<'static, flash_ctrl_emulator::EmulatedFlashCtrl<'static>>;
 struct LogTest<A: 'static + Alarm<'static>> {
     log: &'static Log,
     buffer: TakeCell<'static, [u8]>,
@@ -138,7 +137,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
         alarm: &'static A,
         ops: &'static [TestOp],
     ) -> LogTest<A> {
-        caliptra_mcu_romtime::println!(
+        romtime::println!(
             "Log recovered from flash (Start and end entry IDs: {:?} to {:?})",
             log.log_start(),
             log.log_end()
@@ -160,7 +159,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
     fn run(&self) {
         let op_index = self.op_index.get();
         if self.finished() {
-            caliptra_mcu_romtime::println!("Linear Log Storage test succeeded!");
+            romtime::println!("Linear Log Storage test succeeded!");
             return;
         }
         match self.ops[op_index] {

@@ -12,13 +12,8 @@ members = [
     "xtask",
     "apps/mailbox/config",
     "apps/mailbox/client",
-    "apps/mailbox/server",
-    "apps/mctp-vdm/config",
-    "apps/mctp-vdm/client",
-    "apps/spdm/requester",
-    "apps/spdm/client"
+    "apps/mailbox/server"
 ]
-
 
 [workspace.package]
 version = "0.1.0"
@@ -27,23 +22,17 @@ authors = ["Caliptra contributors"]
 
 [workspace.dependencies]
 # Internal workspace dependencies
-caliptra-mcu-core-util-host-osal = { path = "osal" }
-caliptra-mcu-core-util-host-command-types = { path = "command-types" }
+caliptra-util-host-osal = { path = "osal" }
+caliptra-util-host-command-types = { path = "command-types" }
 caliptra-util-host-commands = { path = "commands" }
 caliptra-util-host-session = { path = "session" }
-caliptra-mcu-core-util-host-transport = { path = "transport" }
+caliptra-util-host-transport = { path = "transport" }
 caliptra-util-host-cbinding = { path = "cbinding" }
-caliptra-mcu-core-util-host-mailbox-test-config = { path = "apps/mailbox/config" }
+caliptra-util-host-mailbox-test-config = { path = "apps/mailbox/config" }
 caliptra-mailbox-client = { path = "apps/mailbox/client" }
-caliptra-mcu-core-mailbox-server = { path = "apps/mailbox/server" }
-caliptra-mcu-core-util-host-mctp-vdm-test-config = { path = "apps/mctp-vdm/config" }
-caliptra-mcu-core-mctp-vdm-client = { path = "apps/mctp-vdm/client" }
-caliptra-spdm-requester = { path = "apps/spdm/requester" }
-caliptra-spdm-vdm-client = { path = "apps/spdm/client" }
-caliptra-mcu-debug-unlock-signer = { path = "../common/debug-unlock-signer" }
+caliptra-mailbox-server = { path = "apps/mailbox/server" }
 
 # External dependencies
-SPDM-Utils = { git = "https://github.com/westerndigitalcorporation/spdm-utils.git", tag = "v0.7.1" }
 anyhow = "1.0.97"
 cargo_metadata = "0.18.1"
 cc = "1.0"
@@ -56,18 +45,11 @@ clap = { version = "4.5.23", features = [
     "unicode",
     "wrap_help",
 ] }
-ecdsa = { version = "0.16.9", features = ["pem"] }
-fips204 = "0.4.6"
 hmac = "0.12"
-caliptra-mcu-mctp-vdm-common = { path = "../common/mctp-vdm" }
-caliptra-mcu-testing-common = { path = "../common/testing" }
-p384 = "0.13.0"
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
 sha2 = "0.10"
 toml = "0.8.19"
-log = "0.4"
-simple_logger = "4"
 zerocopy = { version = "0.8.17", features = ["derive"] }
 
 [package]
@@ -79,17 +61,17 @@ description = "Caliptra Utility Host Library - A flexible framework for communic
 [dependencies]
 # Test dependencies to allow running tests from workspace root
 caliptra-util-host-session.workspace = true
-caliptra-mcu-core-util-host-transport.workspace = true
+caliptra-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true
-caliptra-mcu-core-util-host-command-types.workspace = true
+caliptra-util-host-command-types.workspace = true
 zerocopy.workspace = true
 
 [dev-dependencies]
 # Same dependencies for test builds  
 caliptra-util-host-session.workspace = true
-caliptra-mcu-core-util-host-transport.workspace = true
+caliptra-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true
-caliptra-mcu-core-util-host-command-types.workspace = true
+caliptra-util-host-command-types.workspace = true
 zerocopy.workspace = true
 
 [features]

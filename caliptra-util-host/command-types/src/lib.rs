@@ -21,7 +21,6 @@ pub mod crypto_hash;
 pub mod crypto_hmac;
 pub mod crypto_import;
 pub mod debug;
-pub mod debug_unlock;
 pub mod device_info;
 pub mod error;
 pub mod fuse;
@@ -35,7 +34,6 @@ pub use crypto_hash::*;
 pub use crypto_hmac::*;
 pub use crypto_import::*;
 pub use debug::*;
-pub use debug_unlock::*;
 pub use device_info::*;
 pub use error::*;
 pub use fuse::*;
@@ -55,7 +53,6 @@ pub enum CaliptraCommandId {
     GetLdevidCert = 0x1002,
     GetFmcAliasCert = 0x1003,
     GetRtAliasCert = 0x1004,
-    ExportAttestedCsr = 0x1005,
     GetCertChain = 0x1010,
     StoreCertificate = 0x1011,
     GetCertificate = 0x1012, // Generic get certificate
@@ -105,10 +102,6 @@ pub enum CaliptraCommandId {
     DebugGetLog = 0x7005,
     DebugSetConfig = 0x7006,
     DebugReset = 0x7007,
-
-    // Debug Unlock Commands (0x7010-0x7011)
-    ProdDebugUnlockReq = 0x7010,
-    ProdDebugUnlockToken = 0x7011,
 
     // Fuse Commands (0x8001-0x801F)
     FuseRead = 0x8001,

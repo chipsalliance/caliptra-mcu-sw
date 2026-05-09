@@ -1,8 +1,8 @@
 //! Tests for the Memop system call implementation in
-//! `caliptra_mcu_libtock_platform::Syscalls`.
+//! `libtock_platform::Syscalls`.
 
-use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
-use caliptra_mcu_libtock_unittest::{fake, ExpectedSyscall, SyscallLogEntry};
+use libtock_platform::{ErrorCode, Syscalls};
+use libtock_unittest::{fake, ExpectedSyscall, SyscallLogEntry};
 
 #[test]
 fn memop() {

@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use crate::io::SemihostUart;
-use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
 use kernel::platform::chip::InterruptService;
+use mcu_tock_veer::timers::InternalTimers;
 
 pub const UART_IRQ: u8 = 0x10;
 pub const MAIN_FLASH_CTRL_ERROR_IRQ: u8 = 0x13;
@@ -16,29 +16,29 @@ pub const DOE_MBOX_EVENT_IRQ: u8 = 0x19;
 
 pub struct EmulatorPeripherals<'a> {
     pub uart: SemihostUart<'a>,
-    pub primary_flash_ctrl: caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl<'a>,
-    pub secondary_flash_ctrl: caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl<'a>,
-    pub dma: caliptra_mcu_dma_driver::axicdma::AxiCDMA<'a, InternalTimers<'a>>,
-    pub doe_transport: caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport<'a, InternalTimers<'a>>,
+    pub primary_flash_ctrl: flash_ctrl_emulator::EmulatedFlashCtrl<'a>,
+    pub secondary_flash_ctrl: flash_ctrl_emulator::EmulatedFlashCtrl<'a>,
+    pub dma: dma_driver::axicdma::AxiCDMA<'a, InternalTimers<'a>>,
+    pub doe_transport: doe_mbox_driver::EmulatedDoeTransport<'a, InternalTimers<'a>>,
 }
 
 impl<'a> EmulatorPeripherals<'a> {
     pub fn new(alarm: &'a MuxAlarm<'a, InternalTimers<'a>>) -> Self {
         Self {
             uart: SemihostUart::new(),
-            primary_flash_ctrl: caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl::new(
-                caliptra_mcu_flash_ctrl_emulator::PRIMARY_FLASH_CTRL_BASE,
+            primary_flash_ctrl: flash_ctrl_emulator::EmulatedFlashCtrl::new(
+                flash_ctrl_emulator::PRIMARY_FLASH_CTRL_BASE,
             ),
-            secondary_flash_ctrl: caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl::new(
-                caliptra_mcu_flash_ctrl_emulator::SECONDARY_FLASH_CTRL_BASE,
+            secondary_flash_ctrl: flash_ctrl_emulator::EmulatedFlashCtrl::new(
+                flash_ctrl_emulator::SECONDARY_FLASH_CTRL_BASE,
             ),
-            dma: caliptra_mcu_dma_driver::axicdma::AxiCDMA::new(
-                caliptra_mcu_dma_driver::axicdma::DMA_CTRL_BASE,
+            dma: dma_driver::axicdma::AxiCDMA::new(
+                dma_driver::axicdma::DMA_CTRL_BASE,
                 false,
-                alarm,
+                Some(alarm),
             ),
-            doe_transport: caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport::new(
-                caliptra_mcu_doe_mbox_driver::DOE_MBOX_BASE,
+            doe_transport: doe_mbox_driver::EmulatedDoeTransport::new(
+                doe_mbox_driver::DOE_MBOX_BASE,
                 alarm,
             ),
         }

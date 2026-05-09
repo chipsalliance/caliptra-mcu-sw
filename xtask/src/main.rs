@@ -1,17 +1,15 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_api_types::DeviceLifecycle;
-use caliptra_mcu_builder::ImageCfg;
-use caliptra_mcu_firmware_bundler::args::Commands as BundleCommands;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
+use mcu_builder::ImageCfg;
+use mcu_firmware_bundler::args::Commands as BundleCommands;
 use std::path::PathBuf;
 
 mod auth_manifest;
 mod cargo_lock;
 mod clippy;
-mod corim;
-mod coverage;
 mod deps;
 mod docs;
 mod emulator_cbinding;
@@ -129,10 +127,14 @@ enum Commands {
         #[arg(short, long, default_value_t = false)]
         trace: bool,
     },
-    /// Build emulator binary and package it in emulators.zip
+    /// Build emulator binaries for test features and package them in emulators.zip
     EmulatorBuild {
         #[arg(long)]
         output: Option<String>,
+
+        /// Comma-separated list of features to build emulators for
+        #[arg(long)]
+        features: Option<String>,
     },
     /// Build Caliptra ROM, firmware bundle, MCU ROM, runtime, and SoC manifest and package them together
     AllBuild {
@@ -171,19 +173,6 @@ enum Commands {
         /// Path to the PLDM manifest TOML file
         #[arg(short, long, value_name = "MANIFEST", required = false)]
         pldm_manifest: Option<String>,
-
-        /// Vendor string for firmware components (e.g. "ACME Corp")
-        #[arg(long, value_name = "VENDOR")]
-        vendor: Option<String>,
-
-        /// Device model string for firmware components (e.g. "DeviceX")
-        #[arg(long, value_name = "MODEL")]
-        model: Option<String>,
-    },
-    /// Generate CoRIM (Concise Reference Integrity Manifest) from build artifacts
-    Corim {
-        #[command(subcommand)]
-        subcommand: CorimCommands,
     },
     /// Commands related to flash images
     FlashImage {
@@ -200,49 +189,13 @@ enum Commands {
     Precheckin,
     /// Check cargo lock
     CargoLock,
-    /// Run code coverage analysis
-    Coverage {
-        /// Only analyze existing coverage data (skip test run)
-        #[arg(long, default_value_t = false)]
-        analyze_only: bool,
-    },
     /// Check files for Apache license header
     HeaderCheck,
     /// Add Apache license header to files where it is missing
     HeaderFix,
-    /// Run tests (or from an archive)
-    Test {
-        /// File path to a pre-built test archive
-        #[arg(long)]
-        archive: Option<PathBuf>,
-
-        /// Run tests in a shard (e.g., "hash:1/4")
-        #[arg(long)]
-        shard: Option<String>,
-
-        /// Remap workspace path for archived tests
-        #[arg(long)]
-        workspace_remap: Option<PathBuf>,
-
-        /// Path to the firmware bundle ZIP
-        #[arg(long)]
-        firmware_bundle: Option<PathBuf>,
-
-        /// Path to the emulator bundle ZIP
-        #[arg(long)]
-        emulator_bundle: Option<PathBuf>,
-
-        /// A specific test filter to apply (e.g., "test(my_test)")
-        #[arg(long)]
-        test_filter: Option<String>,
-    },
-    /// Archive tests to a file
-    TestArchive {
-        /// Archive tests to a file
-        #[arg(long)]
-        archive: String,
-    },
-    /// Autogenerate register files, fuse files and emulator bus from RDL
+    /// Run tests
+    Test,
+    /// Autogenerate register files and emulator bus from RDL
     RegistersAutogen {
         /// Check output only
         #[arg(short, long, default_value_t = false)]
@@ -424,62 +377,6 @@ enum EmulatorCbindingCommands {
     },
 }
 
-#[derive(Subcommand)]
-enum CorimCommands {
-    /// Generate a reference-value CoRIM from a firmware bundle
-    #[command(long_about = "\
-Generate a reference-value CoRIM from a firmware bundle.
-
-Reads the all-build ZIP bundle (from `cargo xtask all-build`) and produces
-CoMID/CoRIM CBOR files with reference value digests for each firmware component.
-
-Components are auto-discovered from the bundle:
-  mkey 0: FMC_INFO      - Caliptra FMC (from caliptra_fw.bin)
-  mkey 1: RT_INFO        - Caliptra Runtime (from caliptra_fw.bin)
-  mkey 2: SOC_MANIFEST   - Authorization Manifest (soc_manifest.bin)
-  mkey 3+: SoC firmware  - Auto-discovered from AuthManifest metadata
-
-CONFIG FILE (--config):
-  Optional JSON file controlling vendor/model, hash algorithm, output
-  directory, and signing. Run `cargo xtask corim sample-config` to see
-  a fully annotated sample. All fields are optional with defaults:
-
-    vendor      \"ChipsAlliance\"    Vendor string for SoC components
-    model       \"Caliptra-SS\"      Model string for SoC components
-    hash_algo   \"sha-384\"          Digest algorithm (sha-256 or sha-384)
-    output_dir  \"target/corim\"     Output directory
-    signing     (default test key)  Always signs; uses deterministic P-384 test key by default
-
-  Signing modes (mutually exclusive):
-    test_key    Seed string for deterministic P-384 test key generation (default if omitted)
-    key + cert  Paths to external JWK (RFC 7517) key and DER certificate
-
-EXAMPLES:
-  # Signed with default test key, all defaults:
-  cargo xtask corim gen-refval --bundle target/all-fw.zip
-
-  # With custom config (signing, vendor, etc.):
-  cargo xtask corim gen-refval --bundle target/all-fw.zip --config config.json")]
-    GenRefval {
-        /// Path to the firmware bundle ZIP (from `cargo xtask all-build`)
-        #[arg(long, value_name = "BUNDLE", required = true)]
-        bundle: String,
-
-        /// Path to JSON config file (vendor, model, hash_algo, signing, etc.)
-        #[arg(long, value_name = "CONFIG")]
-        config: Option<String>,
-
-        /// Feature name to select per-feature entries from the bundle
-        /// (e.g. "test-mctp-spdm-attestation").
-        /// When set, reads mcu-test-runtime-<feature>.bin and
-        /// mcu-test-soc-manifest-<feature>.bin instead of the generic entries.
-        #[arg(long, value_name = "FEATURE")]
-        feature: Option<String>,
-    },
-    /// Print a sample JSON config file with all fields documented
-    SampleConfig,
-}
-
 fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
@@ -492,9 +389,7 @@ fn main() {
             soc_images,
             mcu_cfgs,
             pldm_manifest,
-            vendor,
-            model,
-        } => caliptra_mcu_builder::all_build(caliptra_mcu_builder::AllBuildArgs {
+        } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
             output: output.as_deref(),
             platform: platform.as_deref(),
             rom_features: rom_features.as_deref(),
@@ -503,12 +398,11 @@ fn main() {
             soc_images: soc_images.clone(),
             mcu_cfgs: mcu_cfgs.clone(),
             pldm_manifest: pldm_manifest.as_deref(),
-            vendor: vendor.as_deref(),
-            model: model.as_deref(),
         }),
-        Commands::EmulatorBuild { output } => {
-            caliptra_mcu_builder::emulator_build(caliptra_mcu_builder::EmulatorBuildArgs {
+        Commands::EmulatorBuild { output, features } => {
+            mcu_builder::emulator_build(mcu_builder::EmulatorBuildArgs {
                 output: output.as_deref(),
+                features: features.as_deref(),
             })
         }
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
@@ -517,25 +411,19 @@ fn main() {
             output,
             platform,
         } => {
-            let features_str = features.join(",");
-            caliptra_mcu_builder::runtime_build_with_apps(
-                &caliptra_mcu_builder::CaliptraBuildArgs {
-                    features: Some(&features_str),
-                    output_name: output.clone(),
-                    platform: platform.as_deref(),
-                    ..Default::default()
-                },
+            let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
+            mcu_builder::runtime_build_with_apps(
+                &features,
+                output.clone(),
+                false,
+                platform.as_deref(),
+                None,
             )
             .map(|_| ())
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {
-            caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
-                platform: platform.as_deref(),
-                features: features.as_deref(),
-                ..Default::default()
-            })
-            .map(|_| ())
+            mcu_builder::rom_build(platform.clone(), features.clone()).map(|_| ())
         }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
@@ -544,19 +432,16 @@ fn main() {
                 mcu_runtime,
                 soc_images,
                 output,
-            } => caliptra_mcu_builder::flash_image::flash_image_create(
-                &caliptra_mcu_builder::CaliptraBuildArgs {
-                    caliptra_firmware: caliptra_fw.clone().map(PathBuf::from),
-                    soc_manifest: soc_manifest.clone().map(PathBuf::from),
-                    mcu_firmware: mcu_runtime.clone().map(PathBuf::from),
-                    soc_image_paths: soc_images.clone(),
-                    offset: 0,
-                    output_path: Some(output.clone()),
-                    ..Default::default()
-                },
+            } => mcu_builder::flash_image::flash_image_create(
+                caliptra_fw,
+                soc_manifest,
+                mcu_runtime,
+                soc_images,
+                0,
+                output,
             ),
             FlashImageCommands::Verify { file, offset } => {
-                caliptra_mcu_builder::flash_image::flash_image_verify(file, *offset)
+                mcu_builder::flash_image::flash_image_verify(file, *offset)
             }
         },
         Commands::Clippy => clippy::clippy(),
@@ -564,25 +449,9 @@ fn main() {
         Commands::Precheckin => precheckin::precheckin(),
         Commands::Format => format::format(),
         Commands::CargoLock => cargo_lock::cargo_lock(),
-        Commands::Coverage { analyze_only } => coverage::coverage(*analyze_only),
         Commands::HeaderFix => header::fix(),
         Commands::HeaderCheck => header::check(),
-        Commands::Test {
-            archive,
-            shard,
-            workspace_remap,
-            firmware_bundle,
-            emulator_bundle,
-            test_filter,
-        } => test::test(test::TestArgs {
-            archive: archive.as_deref().and_then(|p| p.to_str()),
-            shard: shard.as_deref(),
-            workspace_remap: workspace_remap.as_deref().and_then(|p| p.to_str()),
-            firmware_bundle: firmware_bundle.as_deref().and_then(|p| p.to_str()),
-            emulator_bundle: emulator_bundle.as_deref().and_then(|p| p.to_str()),
-            test_filter: test_filter.as_deref(),
-        }),
-        Commands::TestArchive { archive } => test::test_archive(archive.clone()),
+        Commands::Test => test::test(),
         Commands::RegistersAutogen {
             check,
             files,
@@ -624,19 +493,7 @@ fn main() {
             } => auth_manifest::create(images, mcu_image, output),
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
-        Commands::Corim { subcommand } => match subcommand {
-            CorimCommands::GenRefval {
-                bundle,
-                config,
-                feature,
-            } => corim::CorimConfig::load(config.as_deref())
-                .and_then(|cfg| corim::generate(bundle, cfg, feature.as_deref())),
-            CorimCommands::SampleConfig => {
-                corim::CorimConfig::print_sample();
-                Ok(())
-            }
-        },
-        Commands::FirmwareBundler { cmd } => caliptra_mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::FirmwareBundler { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);

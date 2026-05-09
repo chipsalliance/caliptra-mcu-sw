@@ -1,6 +1,6 @@
 # Licensed under the Apache-2.0 license
 [package]
-name = "caliptra-mcu-error"
+name = "mcu-error"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

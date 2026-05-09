@@ -8,8 +8,8 @@
 use crate::i3c::DynamicI3cAddress;
 use crate::i3c_socket::BufferedStream;
 use crate::mctp_util::common::MctpUtil;
-use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
-use caliptra_mcu_mctp_vdm_common::protocol::header::{
+use mctp_vdm_common::codec::VdmCodec;
+use mctp_vdm_common::protocol::header::{
     VdmCompletionCode, VdmMsgHeader, MCTP_VDM_MSG_TYPE, VDM_MSG_HEADER_LEN,
 };
 use std::net::{SocketAddr, TcpStream};
@@ -81,6 +81,7 @@ impl MctpVdmSocket {
     /// Returns the response payload (header + data).
     pub fn send_request(&mut self, request: &[u8]) -> Result<Vec<u8>, VdmTransportError> {
         let mut mctp_util = MctpUtil::new();
+        mctp_util.set_pkt_payload_size(MAX_VDM_PAYLOAD_SIZE);
 
         // Build MCTP payload: common header + VDM request
         let mut mctp_payload: Vec<u8> = Vec::new();

@@ -1,8 +1,8 @@
 #![no_std]
 
-use caliptra_mcu_libtock_low_level_debug::{AlertCode, LowLevelDebug};
-use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
-use caliptra_mcu_libtock_runtime::TockSyscalls;
+use libtock_low_level_debug::{AlertCode, LowLevelDebug};
+use libtock_platform::{ErrorCode, Syscalls};
+use libtock_runtime::TockSyscalls;
 
 #[allow(dead_code)]
 #[cfg_attr(target_arch = "riscv32", panic_handler)]

@@ -6,36 +6,51 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use crate::utils::manifest_file;
-use crate::{CaliptraBuildArgs, PROJECT_ROOT};
-use anyhow::Result;
-use caliptra_mcu_firmware_bundler::args::{
+use crate::{objcopy, target_binary, target_dir, OBJCOPY_FLAGS, PROJECT_ROOT, SYSROOT, TARGET};
+use anyhow::{anyhow, bail, Result};
+use elf::endian::AnyEndian;
+use elf::ElfBytes;
+use mcu_config::McuMemoryMap;
+use mcu_config_emulator::flash::LoggingFlashConfig;
+use mcu_firmware_bundler::args::{
     BuildArgs, BundleArgs, Commands as BundleCommands, Common, LdArgs,
 };
+use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::process::Command;
 
-pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
-    let features = args.features;
-    let output_name = args.output_name.clone();
-    let example_app = args.example_app;
-    let platform = args.platform;
-    let svn = args.svn;
-    let target_dir = args.target_dir.clone();
-
+pub fn runtime_build_with_apps(
+    features: &[&str],
+    output_name: Option<String>,
+    example_app: bool,
+    platform: Option<&str>,
+    svn: Option<u16>,
+) -> Result<PathBuf> {
     let manifest = manifest_file(platform, example_app)?;
     let platform_str = platform.unwrap_or("emulator");
-    let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform_str));
+    let platform = platform.unwrap_or("emulator");
+    let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform));
 
     let common = Common {
         manifest,
         svn,
-        target_dir,
         ..Default::default()
     };
     let release_dir = common.release_dir()?;
     let runtime_bin = release_dir.join(&output_name);
 
-    let runtime_features = features.filter(|s| !s.is_empty()).map(|f| f.to_string());
+    let runtime_features = if features.is_empty() {
+        None
+    } else {
+        Some(features.join(","))
+    };
     let bundle_cmd = BundleCommands::Bundle {
         common,
         ld: LdArgs::default(),
@@ -48,7 +63,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
         },
     };
 
-    caliptra_mcu_firmware_bundler::execute(bundle_cmd)?;
+    mcu_firmware_bundler::execute(bundle_cmd)?;
 
     // The bundle step rebuilds the ROM via objcopy, which strips the SHA-384
     // digest appended by rom_build(). Re-apply the digest so the ROM binary
@@ -59,28 +74,5 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
         crate::rom::append_rom_digest(&rom_binary, rom_size)?;
     }
 
-    Ok(runtime_bin)
-}
-
-pub fn bare_metal_build() -> Result<PathBuf> {
-    let manifest = PROJECT_ROOT.join("runtime/bare-metal/manifest.toml");
-    let output_name = "runtime-bare-metal.bin".to_string();
-
-    let common = Common {
-        manifest,
-        ..Default::default()
-    };
-    let runtime_bin = common.release_dir()?.join(&output_name);
-
-    let bundle_cmd = BundleCommands::Bundle {
-        common,
-        ld: LdArgs::default(),
-        build: BuildArgs::default(),
-        bundle: BundleArgs {
-            bundle_name: Some(output_name),
-        },
-    };
-
-    caliptra_mcu_firmware_bundler::execute(bundle_cmd)?;
     Ok(runtime_bin)
 }

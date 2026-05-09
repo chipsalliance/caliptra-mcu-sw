@@ -6,26 +6,26 @@ mod common;
 use std::thread::sleep;
 use std::time::Duration;
 
-use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::{
+use common::CustomDiscoverySm;
+use pldm_common::message::firmware_update::get_fw_params::{
     FirmwareParameters, GetFirmwareParametersRequest, GetFirmwareParametersResponse,
 };
-use caliptra_mcu_pldm_common::message::firmware_update::query_devid::QueryDeviceIdentifiersResponse;
-use caliptra_mcu_pldm_common::protocol::base::PldmBaseCompletionCode;
-use caliptra_mcu_pldm_common::protocol::firmware_update::{
+use pldm_common::message::firmware_update::query_devid::QueryDeviceIdentifiersResponse;
+use pldm_common::protocol::base::PldmBaseCompletionCode;
+use pldm_common::protocol::firmware_update::{
     ComponentActivationMethods, ComponentClassification, ComponentParameterEntry,
     ComponentParameterEntryFixed, FirmwareDeviceCapability, FwUpdateCmd, PldmFirmwareString,
     VersionStringType, PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN,
 };
-use caliptra_mcu_pldm_fw_pkg::manifest::{
+use pldm_fw_pkg::manifest::{
     ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
 };
-use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
-use caliptra_mcu_pldm_ua::events::PldmEvents;
-use common::CustomDiscoverySm;
+use pldm_fw_pkg::FirmwareManifest;
+use pldm_ua::events::PldmEvents;
 
-use caliptra_mcu_pldm_ua::daemon::Options;
-use caliptra_mcu_pldm_ua::transport::PldmSocket;
-use caliptra_mcu_pldm_ua::update_sm;
+use pldm_ua::daemon::Options;
+use pldm_ua::transport::PldmSocket;
+use pldm_ua::update_sm;
 
 // Test UUID
 pub const TEST_UUID: [u8; 16] = [
@@ -150,8 +150,7 @@ fn get_pldm_fw_pkg_caliptra_only(comp_stamp: Option<u32>) -> FirmwareManifest {
                 descriptor_type: DescriptorType::Uuid,
                 descriptor_data: TEST_UUID.to_vec(),
             },
-            component_image_set_version_string_type:
-                caliptra_mcu_pldm_fw_pkg::manifest::StringType::Utf8,
+            component_image_set_version_string_type: pldm_fw_pkg::manifest::StringType::Utf8,
             component_image_set_version_string: Some(COMPONENT_ACTIVE_VER_STR.to_string()),
             applicable_components: Some(vec![0]),
             ..Default::default()
@@ -176,8 +175,7 @@ fn get_pldm_fw_pkg_caliptra_and_manifest(
                 descriptor_type: DescriptorType::Uuid,
                 descriptor_data: TEST_UUID.to_vec(),
             },
-            component_image_set_version_string_type:
-                caliptra_mcu_pldm_fw_pkg::manifest::StringType::Utf8,
+            component_image_set_version_string_type: pldm_fw_pkg::manifest::StringType::Utf8,
             component_image_set_version_string: Some(COMPONENT_ACTIVE_VER_STR.to_string()),
             applicable_components: Some(vec![0, 1]),
             ..Default::default()
@@ -203,12 +201,11 @@ fn get_pldm_fw_pkg_caliptra_and_manifest(
 #[test]
 fn test_caliptra_fw_update() {
     // PLDM firmware package contains Caliptra Firmware with current active version + 1
-    let caliptra_mcu_pldm_fw_pkg =
-        get_pldm_fw_pkg_caliptra_only(Some(CALIPTRA_FW_ACTIVE_COMP_STAMP + 1));
+    let pldm_fw_pkg = get_pldm_fw_pkg_caliptra_only(Some(CALIPTRA_FW_ACTIVE_COMP_STAMP + 1));
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
+        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassQueryDevId {
             expected_num_components_to_update: 1,
@@ -246,12 +243,11 @@ fn test_caliptra_fw_update() {
 #[test]
 fn test_caliptra_fw_update_with_timeout() {
     // PLDM firmware package contains Caliptra Firmware with current active version + 1
-    let caliptra_mcu_pldm_fw_pkg =
-        get_pldm_fw_pkg_caliptra_only(Some(CALIPTRA_FW_ACTIVE_COMP_STAMP + 1));
+    let pldm_fw_pkg = get_pldm_fw_pkg_caliptra_only(Some(CALIPTRA_FW_ACTIVE_COMP_STAMP + 1));
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
+        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassQueryDevId {
             expected_num_components_to_update: 1,
@@ -295,12 +291,11 @@ fn test_caliptra_fw_update_with_timeout() {
 
 #[test]
 fn test_caliptra_fw_incorrect_id() {
-    let caliptra_mcu_pldm_fw_pkg =
-        get_pldm_fw_pkg_caliptra_only(Some(CALIPTRA_FW_ACTIVE_COMP_STAMP + 1));
+    let pldm_fw_pkg = get_pldm_fw_pkg_caliptra_only(Some(CALIPTRA_FW_ACTIVE_COMP_STAMP + 1));
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
+        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassQueryDevId {
             expected_num_components_to_update: 0,
@@ -340,12 +335,11 @@ fn test_caliptra_fw_incorrect_id() {
 
 #[test]
 fn test_caliptra_fw_update_same_version() {
-    let caliptra_mcu_pldm_fw_pkg =
-        get_pldm_fw_pkg_caliptra_only(Some(CALIPTRA_FW_ACTIVE_COMP_STAMP));
+    let pldm_fw_pkg = get_pldm_fw_pkg_caliptra_only(Some(CALIPTRA_FW_ACTIVE_COMP_STAMP));
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
+        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassQueryDevId {
             expected_num_components_to_update: 0,
@@ -382,14 +376,14 @@ fn test_caliptra_fw_update_same_version() {
 
 #[test]
 fn test_caliptra_fw_caliptra_and_manifest() {
-    let caliptra_mcu_pldm_fw_pkg = get_pldm_fw_pkg_caliptra_and_manifest(
+    let pldm_fw_pkg = get_pldm_fw_pkg_caliptra_and_manifest(
         Some(CALIPTRA_FW_ACTIVE_COMP_STAMP + 1),
         Some(SOC_MANIFEST_ACTIVE_COMP_STAMP + 1),
     );
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
+        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassQueryDevId {
             expected_num_components_to_update: 2,
@@ -427,14 +421,14 @@ fn test_caliptra_fw_caliptra_and_manifest() {
 
 #[test]
 fn test_caliptra_fw_caliptra_same_version_and_manifest_diff_version() {
-    let caliptra_mcu_pldm_fw_pkg = get_pldm_fw_pkg_caliptra_and_manifest(
+    let pldm_fw_pkg = get_pldm_fw_pkg_caliptra_and_manifest(
         Some(CALIPTRA_FW_ACTIVE_COMP_STAMP),
         Some(SOC_MANIFEST_ACTIVE_COMP_STAMP + 1),
     );
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
+        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassQueryDevId {
             expected_num_components_to_update: 1,

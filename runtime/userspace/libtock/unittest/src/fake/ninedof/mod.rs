@@ -5,7 +5,7 @@
 //! and a function 'set_value_sync' used to call the upcall when the read command is received.
 
 use crate::{DriverInfo, DriverShareRef};
-use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
+use libtock_platform::{CommandReturn, ErrorCode};
 use std::cell::Cell;
 
 pub struct NineDof {

@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_mcu_rom_common::ImageVerifier;
-use caliptra_mcu_romtime::Otp;
+use mcu_rom_common::ImageVerifier;
+use romtime::otp::Otp;
 
 pub struct McuImageVerifier;
 
@@ -10,10 +10,10 @@ impl ImageVerifier for McuImageVerifier {
         // TODO: make this unconditional and use proper fuses for it instead of test fuses
         #[cfg(any(feature = "test-mcu-svn-gt-fuse", feature = "test-mcu-svn-lt-fuse"))]
         {
-            use caliptra_mcu_image_header::McuImageHeader;
+            use mcu_image_header::McuImageHeader;
             use zerocopy::FromBytes;
             let Ok((header, _)) = McuImageHeader::ref_from_prefix(_header) else {
-                caliptra_mcu_romtime::println!("[mcu-rom] Invalid MCU image header");
+                romtime::println!("[mcu-rom] Invalid MCU image header");
                 return false;
             };
 
@@ -21,7 +21,7 @@ impl ImageVerifier for McuImageVerifier {
             let mut fuse_vendor_svn: u16 = 0;
             for word_idx in 0..4 {
                 let Ok(word) = _otp.read_vendor_test_word(word_idx) else {
-                    caliptra_mcu_romtime::println!("[mcu-rom] Error reading vendor test fuse");
+                    romtime::println!("[mcu-rom] Error reading vendor test fuse");
                     return false;
                 };
                 // Process each byte in the word
@@ -41,7 +41,7 @@ impl ImageVerifier for McuImageVerifier {
             }
 
             if header.svn < fuse_vendor_svn {
-                caliptra_mcu_romtime::println!(
+                romtime::println!(
                     "[mcu-rom] Image SVN {} is less than fuse vendor test SVN {}",
                     header.svn,
                     fuse_vendor_svn

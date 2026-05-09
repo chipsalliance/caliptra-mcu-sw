@@ -3,12 +3,12 @@
 #![allow(static_mut_refs)]
 
 extern crate alloc;
-use caliptra_mcu_libtock::console::Console;
-use caliptra_mcu_libtock::runtime::set_main;
 use core::fmt::Write;
 use core::mem::MaybeUninit;
 use embedded_alloc::Heap;
-const HEAP_SIZE: usize = 0x6000;
+use libtock::console::Console;
+use libtock::runtime::set_main;
+const HEAP_SIZE: usize = 0x4000;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
@@ -26,5 +26,5 @@ fn main() {
     let mut console_writer = Console::writer();
     writeln!(console_writer, "Hello world! from SPDM main").unwrap();
 
-    caliptra_mcu_libtockasync::start_async(crate::start());
+    libtockasync::start_async(crate::start());
 }

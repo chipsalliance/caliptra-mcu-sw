@@ -4,7 +4,7 @@
 // tests.
 
 use crate::{fake, SyscallLogEntry};
-use caliptra_mcu_libtock_platform::{syscall_class, RawSyscalls};
+use libtock_platform::{syscall_class, RawSyscalls};
 
 #[test]
 fn allow_ro() {

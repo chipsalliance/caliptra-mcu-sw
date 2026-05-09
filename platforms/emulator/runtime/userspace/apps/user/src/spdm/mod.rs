@@ -7,24 +7,25 @@ mod endorsement_certs;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 mod integration_example;
 
+#[cfg(feature = "test-mctp-spdm-responder-conformance")]
 use crate::spdm::device_measurements::ocp_eat::init_target_env_claims;
-use caliptra_mcu_libsyscall_caliptra::doe;
-use caliptra_mcu_libsyscall_caliptra::mctp;
-use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_libtock_console::Console;
-use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_mcu_spdm_lib::codec::MessageBuf;
-use caliptra_mcu_spdm_lib::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
-use caliptra_mcu_spdm_lib::error::SpdmError;
-use caliptra_mcu_spdm_lib::measurements::SpdmMeasurements;
-use caliptra_mcu_spdm_lib::protocol::*;
-use caliptra_mcu_spdm_lib::transport::common::SpdmTransport;
-use caliptra_mcu_spdm_lib::transport::common::TransportError;
-use caliptra_mcu_spdm_lib::transport::doe::DoeTransport;
-use caliptra_mcu_spdm_lib::transport::mctp::MctpTransport;
 use core::fmt::Write;
 use device_cert_store::{initialize_cert_store, SharedCertStore};
 use embassy_executor::Spawner;
+use libsyscall_caliptra::doe;
+use libsyscall_caliptra::mctp;
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::Console;
+use libtock_platform::ErrorCode;
+use spdm_lib::codec::MessageBuf;
+use spdm_lib::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
+use spdm_lib::error::SpdmError;
+use spdm_lib::measurements::SpdmMeasurements;
+use spdm_lib::protocol::*;
+use spdm_lib::transport::common::SpdmTransport;
+use spdm_lib::transport::common::TransportError;
+use spdm_lib::transport::doe::DoeTransport;
+use spdm_lib::transport::mctp::MctpTransport;
 
 // Caliptra supported SPDM and Secure SPDM versions
 const SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12, SpdmVersion::V13];
@@ -32,12 +33,6 @@ const SECURE_SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12];
 
 // Caliptra Crypto timeout exponent (2^20 us)
 const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
-
-/// Shared buffer size for large SPDM messages (request reassembly and response chunking).
-/// Only one direction is active at a time, so a single buffer is shared.
-/// Sized for ECC-P384 certificate chain + signature + overhead.
-/// TODO: Increase for ML-DSA support once memory optimization (static buffers) is implemented.
-const LARGE_MSG_BUF_SIZE: usize = 4096;
 
 #[embassy_executor::task]
 pub(crate) async fn spdm_task(spawner: Spawner) {
@@ -56,8 +51,10 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
     }
 
     // initialize target environment for claims
+    #[cfg(feature = "test-mctp-spdm-responder-conformance")]
     init_target_env_claims();
 
+    #[cfg(feature = "test-mctp-spdm-responder-conformance")]
     if let Err(e) = spawner.spawn(spdm_mctp_responder()) {
         writeln!(
             console_writer,
@@ -66,8 +63,6 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
         )
         .unwrap();
     }
-
-    #[cfg(feature = "doe")]
     if let Err(e) = spawner.spawn(spdm_doe_responder()) {
         writeln!(
             console_writer,
@@ -91,7 +86,7 @@ async fn spdm_mctp_responder() {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
         flags: CapabilityFlags::default(),
         data_transfer_size: max_mctp_spdm_msg_size,
-        max_spdm_msg_size: LARGE_MSG_BUF_SIZE as u32,
+        max_spdm_msg_size: max_mctp_spdm_msg_size,
     };
 
     let local_algorithms = LocalDeviceAlgorithms::default();
@@ -100,24 +95,17 @@ async fn spdm_mctp_responder() {
     let shared_cert_store = SharedCertStore::new();
 
     // Measurements in OCP EAT format
+    #[cfg(feature = "test-mctp-spdm-responder-conformance")]
     let (mut device_ocp_eat, meas_value_info) =
         device_measurements::ocp_eat::create_manifest_with_ocp_eat();
+    #[cfg(feature = "test-mctp-spdm-responder-conformance")]
     let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_ocp_eat);
 
-    // Caliptra VDM handler for SPDM over MCTP transport
-    let caliptra_cmd_handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
-    let mut caliptra_vdm_handler =
-        caliptra_mcu_spdm_lib::vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdmHandler::new(
-            &caliptra_cmd_handler,
-        );
-    let mut handlers_array: [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler; 1] =
-        [&mut caliptra_vdm_handler as &mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler];
-    let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> =
-        Some(&mut handlers_array);
-
-    // Shared buffer for large SPDM messages (request reassembly + response chunking).
-    // Only one direction is active at a time, so a single buffer is shared.
-    let mut large_msg_buf = [0u8; LARGE_MSG_BUF_SIZE];
+    #[cfg(not(feature = "test-mctp-spdm-responder-conformance"))]
+    let (mut device_pcr_quote, meas_value_info) =
+        device_measurements::pcr_quote::create_manifest_with_pcr_quote();
+    #[cfg(not(feature = "test-mctp-spdm-responder-conformance"))]
+    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_pcr_quote);
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
@@ -127,8 +115,7 @@ async fn spdm_mctp_responder() {
         local_algorithms,
         &shared_cert_store,
         device_measurements,
-        vdm_handlers,
-        &mut large_msg_buf,
+        None, // VDM handlers are not supported for MCTP transport in this configuration
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
@@ -174,7 +161,7 @@ async fn spdm_doe_responder() {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
         flags: doe_capability_flags,
         data_transfer_size: max_doe_spdm_msg_size,
-        max_spdm_msg_size: LARGE_MSG_BUF_SIZE as u32,
+        max_spdm_msg_size: max_doe_spdm_msg_size,
     };
 
     let mut device_doe_algorithms = DeviceAlgorithms::default();
@@ -199,50 +186,40 @@ async fn spdm_doe_responder() {
         integration_example::vdm_handlers::create_test_pci_sig_drivers();
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let mut tdisp_responder =
-        caliptra_mcu_spdm_lib::vdm_handler::pci_sig::tdisp::TdispResponder::new(
-            integration_example::vdm_handlers::tdisp_driver::SUPPORTED_TDISP_VERSIONS,
-            &mut tdisp_driver,
-        );
+    let mut tdisp_responder = spdm_lib::vdm_handler::pci_sig::tdisp::TdispResponder::new(
+        integration_example::vdm_handlers::tdisp_driver::SUPPORTED_TDISP_VERSIONS,
+        &mut tdisp_driver,
+    );
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
     let mut ide_km_responder =
-        caliptra_mcu_spdm_lib::vdm_handler::pci_sig::ide_km::IdeKmResponder::new(
-            &mut ide_km_driver,
-        );
+        spdm_lib::vdm_handler::pci_sig::ide_km::IdeKmResponder::new(&mut ide_km_driver);
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let protocol_handlers: [Option<
-        &mut (dyn caliptra_mcu_spdm_lib::vdm_handler::VdmProtocolHandler + Sync),
-    >; 2] = [
+    let protocol_handlers: [Option<&mut (dyn spdm_lib::vdm_handler::VdmProtocolHandler + Sync)>;
+        2] = [
         tdisp_responder
             .as_mut()
-            .map(|r| r as &mut (dyn caliptra_mcu_spdm_lib::vdm_handler::VdmProtocolHandler + Sync)),
-        Some(
-            &mut ide_km_responder
-                as &mut (dyn caliptra_mcu_spdm_lib::vdm_handler::VdmProtocolHandler + Sync),
-        ),
+            .map(|r| r as &mut (dyn spdm_lib::vdm_handler::VdmProtocolHandler + Sync)),
+        Some(&mut ide_km_responder as &mut (dyn spdm_lib::vdm_handler::VdmProtocolHandler + Sync)),
     ];
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let mut pci_sig_handler = caliptra_mcu_spdm_lib::vdm_handler::pci_sig::PciSigCmdHandler::new(
+    let mut pci_sig_handler = spdm_lib::vdm_handler::pci_sig::PciSigCmdHandler::new(
         0x0001, // TEST_PCI_SIG_VENDOR_ID
         protocol_handlers,
     );
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let mut handlers_array: [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler; 1] =
-        [&mut pci_sig_handler as &mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler];
+    let mut handlers_array: [&mut dyn spdm_lib::vdm_handler::VdmHandler; 1] =
+        [&mut pci_sig_handler as &mut dyn spdm_lib::vdm_handler::VdmHandler];
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> =
+    let vdm_handlers: Option<&mut [&mut dyn spdm_lib::vdm_handler::VdmHandler]> =
         Some(&mut handlers_array);
 
     #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
-    let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> = None;
-
-    // Shared buffer for large SPDM messages (request reassembly + response chunking).
-    let mut large_msg_buf = [0u8; LARGE_MSG_BUF_SIZE];
+    let vdm_handlers: Option<&mut [&mut dyn spdm_lib::vdm_handler::VdmHandler]> = None;
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
@@ -253,7 +230,6 @@ async fn spdm_doe_responder() {
         &shared_cert_store,
         device_measurements,
         vdm_handlers,
-        &mut large_msg_buf,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {

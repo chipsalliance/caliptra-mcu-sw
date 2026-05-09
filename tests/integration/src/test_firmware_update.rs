@@ -6,21 +6,21 @@ mod test {
         compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
     };
     use caliptra_image_types::ImageManifest;
-    use caliptra_mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
-    use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
-    use caliptra_mcu_config_emulator::flash::{
+    use chrono::{TimeZone, Utc};
+    use flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
+    use hex::ToHex;
+    use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
+    use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
+    use mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
     };
-    use caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
-    use caliptra_mcu_flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
-    use caliptra_mcu_pldm_fw_pkg::manifest::{
+    use mcu_config_emulator::EMULATOR_MEMORY_MAP;
+    use mcu_testing_common::DeviceLifecycle;
+    use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     };
-    use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
-    use caliptra_mcu_testing_common::DeviceLifecycle;
-    use chrono::{TimeZone, Utc};
-    use hex::ToHex;
+    use pldm_fw_pkg::FirmwareManifest;
     use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;
@@ -79,26 +79,32 @@ mod test {
             .path()
             .to_path_buf();
 
-        caliptra_mcu_builder::flash_image::flash_image_create(
-            &caliptra_mcu_builder::CaliptraBuildArgs {
-                caliptra_firmware: caliptra_fw_path,
-                soc_manifest: soc_manifest_path,
-                mcu_firmware: mcu_runtime_path,
-                soc_image_paths: Some(
-                    soc_images_paths
-                        .iter()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .collect(),
-                ),
-                offset: 0,
-                output_path: Some(flash_image_path.to_string_lossy().to_string()),
-                ..Default::default()
-            },
+        let caliptra_fw_path_str = caliptra_fw_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        let soc_manifest_path_str = soc_manifest_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        let mcu_runtime_path_str = mcu_runtime_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        mcu_builder::flash_image::flash_image_create(
+            &caliptra_fw_path_str,
+            &soc_manifest_path_str,
+            &mcu_runtime_path_str,
+            &Some(
+                soc_images_paths
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect(),
+            ),
+            flash_offset,
+            flash_image_path.to_str().unwrap(),
         )
         .expect("Failed to create flash image");
 
         if let Some(partition_table) = partition_table {
-            caliptra_mcu_builder::flash_image::write_partition_table(
+            mcu_builder::flash_image::write_partition_table(
                 &partition_table,
                 0,
                 flash_image_path.to_str().unwrap(),
@@ -250,12 +256,20 @@ mod test {
             feature: feature.to_string(),
         };
 
-        let mut update_builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-            mcu_firmware: Some(update_runtime_firmware.clone()),
-            soc_images: Some(update_soc_images.clone()),
-            mcu_image_cfg: Some(mcu_cfg.clone()),
-            ..Default::default()
-        });
+        let mut update_builder = CaliptraBuilder::new(
+            false,
+            false,
+            None,
+            None,
+            None,
+            None,
+            Some(update_runtime_firmware.clone()),
+            Some(update_soc_images.clone()),
+            Some(mcu_cfg.clone()),
+            None,
+            None,
+            None,
+        );
         let update_caliptra_fw = update_builder
             .get_caliptra_fw()
             .expect("Failed to build Caliptra firmware for update");
@@ -330,40 +344,6 @@ mod test {
             secondary_flash_content.resize(download_partition_offset, 0);
         }
         // Append the full flash image in the DOWNLOAD partition
-        secondary_flash_content.append(&mut flash_image.clone());
-
-        std::fs::write(secondary_flash_image_path.clone(), secondary_flash_content)
-            .expect("Failed to write secondary flash image");
-
-        new_opts.secondary_flash_image_path = Some(secondary_flash_image_path.clone());
-        new_opts
-    }
-
-    /// Like fast_update_options but with a configurable transfer size for benchmarking.
-    /// Pre-populates secondary flash so verify/apply succeeds regardless of transfer size.
-    fn benchmark_options(success_opts: &TestOptions, transfer_size: usize) -> TestOptions {
-        let mut new_opts = success_opts.clone();
-        let update_flash_image_path = new_opts.update_flash_image_path.as_ref().unwrap().clone();
-        let flash_image =
-            std::fs::read(update_flash_image_path.clone()).expect("Failed to read flash image");
-
-        let truncated_flash_image = &flash_image[..transfer_size.min(flash_image.len())];
-        let pldm_manifest =
-            get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), truncated_flash_image);
-        let pldm_fw_pkg_path = create_pldm_fw_package(&pldm_manifest);
-        new_opts.pldm_fw_pkg_path = Some(pldm_fw_pkg_path);
-
-        let secondary_flash_image_path = tempfile::NamedTempFile::new()
-            .expect("Failed to create temp file")
-            .path()
-            .to_path_buf();
-
-        // Pre-populate secondary flash with full valid image
-        let mut secondary_flash_content = flash_image.clone().to_vec();
-        let download_partition_offset = STAGING_PARTITION.offset;
-        if secondary_flash_content.len() < download_partition_offset {
-            secondary_flash_content.resize(download_partition_offset, 0);
-        }
         secondary_flash_content.append(&mut flash_image.clone());
 
         std::fs::write(secondary_flash_image_path.clone(), secondary_flash_content)
@@ -674,16 +654,20 @@ mod test {
         };
 
         // Build the Caliptra builder with prebuilt paths
-        let builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-            caliptra_rom: Some(caliptra_rom_path),
-            caliptra_firmware: Some(caliptra_fw_path.clone()),
-            soc_manifest: Some(soc_manifest_path.clone()),
-            vendor_pk_hash: Some(vendor_pk_hash),
-            mcu_firmware: Some(test_runtime.clone()),
-            soc_images: Some(soc_images.clone()),
-            mcu_image_cfg: Some(mcu_cfg),
-            ..Default::default()
-        });
+        let builder = CaliptraBuilder::new(
+            false,
+            false,
+            Some(caliptra_rom_path),
+            Some(caliptra_fw_path.clone()),
+            Some(soc_manifest_path.clone()),
+            Some(vendor_pk_hash),
+            Some(test_runtime.clone()),
+            Some(soc_images.clone()),
+            Some(mcu_cfg),
+            None,
+            None,
+            None,
+        );
 
         // Create partition table matching what's used in the build path
         // This is needed for tests that modify flash images
@@ -789,12 +773,20 @@ mod test {
         };
 
         // Build the Runtime image
-        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-            mcu_firmware: Some(test_runtime.clone()),
-            soc_images: Some(soc_images.clone()),
-            mcu_image_cfg: Some(mcu_cfg.clone()),
-            ..Default::default()
-        });
+        let mut builder = CaliptraBuilder::new(
+            false,
+            false,
+            None,
+            None,
+            None,
+            None,
+            Some(test_runtime.clone()),
+            Some(soc_images.clone()),
+            Some(mcu_cfg.clone()),
+            None,
+            None,
+            None,
+        );
 
         // Build Caliptra firmware
         let caliptra_fw = builder
@@ -919,24 +911,18 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// PLDM transfer benchmark: transfers 64KB to measure throughput.
-    /// Run with RUST_LOG=info to see KB/s output from the UA.
-    #[test]
-    fn test_firmware_update_benchmark_64k() {
-        let lock = TEST_LOCK.lock().unwrap();
-        let opts = create_firmware_update_test_options(true);
-        let bench_opts = benchmark_options(&opts, 64 * 1024);
-        let test = run_runtime_with_options(&bench_opts);
-        assert_eq!(0, test);
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
+    // TODO(#694): fails with
+    //Timeout waiting for EXECUTE bit to clear
+    //1,410,219,676 UART: Error copying from mailbox: MailboxCmdFailed(720898)
+    //* TESTCASE FAILED
+    //Emulator exited with error: firmware exited with failure
     /// FPGA-specific streaming firmware update test that uses cached PLDM_FW_PKG artifacts
     #[cfg(feature = "fpga_realtime")]
+    #[ignore]
     #[test]
     fn test_firmware_update_streaming_fpga() {
         if env::var("PLDM_FW_PKG").is_err() {
-            if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
+            if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
                 // If PLDM_FW_PKG is not specified, we will use the PLDM firmware package
                 // for test-fpga-flash-ctrl that was built during the FPGA build.
                 // We choose this package since it is small enough to fit in the

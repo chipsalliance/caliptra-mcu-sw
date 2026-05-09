@@ -2,7 +2,7 @@
 
 // Component for flash-based logging driver.
 
-use caliptra_mcu_capsules_emulator::logging;
+use capsules_emulator::logging;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
@@ -10,19 +10,15 @@ use kernel::create_capability;
 use kernel::hil;
 use kernel::hil::log::{LogRead, LogWrite};
 
-const LOG_FLASH_BASE_ADDR: u32 =
-    caliptra_mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
+const LOG_FLASH_BASE_ADDR: u32 = mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
 
 #[macro_export]
 macro_rules! logging_flash_component_static {
     ($F:ty, $buf_len:expr $(,)?) => {{
         let page = kernel::static_buf!(<$F as kernel::hil::flash::Flash>::Page);
-        let log = kernel::static_buf!(
-            caliptra_mcu_capsules_emulator::logging::logging_flash::Log<'static, $F>
-        );
-        let driver = kernel::static_buf!(
-            caliptra_mcu_capsules_emulator::logging::driver::LoggingFlashDriver<'static>
-        );
+        let log = kernel::static_buf!(capsules_emulator::logging::logging_flash::Log<'static, $F>);
+        let driver =
+            kernel::static_buf!(capsules_emulator::logging::driver::LoggingFlashDriver<'static>);
         let buffer = kernel::static_buf!([u8; $buf_len]);
 
         (page, log, driver, buffer)

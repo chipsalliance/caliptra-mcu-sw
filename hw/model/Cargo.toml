@@ -1,16 +1,15 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mcu-hw-model"
+name = "mcu-hw-model"
 version.workspace = true
 edition.workspace = true
 
 [features]
-default = ["coverage"]
-coverage = ["dep:caliptra-mcu-coverage"]
+default = []
 fpga_realtime = [
     "dep:uio",
-    "dep:caliptra-mcu-config-fpga",
+    "dep:mcu-config-fpga",
     "caliptra-hw-model/fpga_subsystem",
 ]
 itrng = []
@@ -28,34 +27,34 @@ caliptra-hw-model-types.workspace = true
 caliptra-hw-model.workspace = true
 caliptra-image-types.workspace = true
 caliptra-registers.workspace = true
-caliptra-ureg.workspace = true
 ecdsa.workspace = true
-caliptra-mcu-emulator-bmc.workspace = true
-caliptra-mcu-emulator-caliptra.workspace = true
-caliptra-mcu-coverage = { workspace = true, optional = true }
-caliptra-mcu-emulator-periph.workspace = true
-caliptra-mcu-emulator-registers-generated.workspace = true
+emulator-bmc.workspace = true
+emulator-caliptra.workspace = true
+emulator-periph.workspace = true
+emulator-registers-generated.workspace = true
 fips204.workspace = true
 hex.workspace = true
 int-enum.workspace = true
-caliptra-mcu-builder.workspace = true
-caliptra-mcu-config-fpga = { workspace = true, optional = true }
-caliptra-mcu-config.workspace = true
-caliptra-mcu-mbox-common.workspace = true
-caliptra-mcu-rom-common.workspace = true
-caliptra-mcu-testing-common.workspace = true
-caliptra-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
+libc.workspace = true
+mcu-builder.workspace = true
+mcu-config-fpga = { workspace = true, optional = true }
+mcu-config.workspace = true
+mcu-mbox-common.workspace = true
+mcu-rom-common.workspace = true
+mcu-testing-common.workspace = true
+ocp.workspace = true
 p384.workspace = true
-caliptra-mcu-poll-common.workspace = true
+poll-common.workspace = true
 rand.workspace = true
-caliptra-mcu-registers-generated.workspace = true
-caliptra-mcu-romtime.workspace = true
+registers-generated.workspace = true
+romtime.workspace = true
 semver.workspace = true
 sha2.workspace = true
 sha3.workspace = true
 thiserror.workspace = true
 tock-registers.workspace = true
 uio = { workspace = true, optional = true }
+ureg.workspace = true
 zerocopy.workspace = true
 
 [dev-dependencies]

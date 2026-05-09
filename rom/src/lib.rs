@@ -16,14 +16,14 @@ Abstract:
 
 mod device_ownership_transfer;
 pub use device_ownership_transfer::*;
-mod dot_override;
-pub use dot_override::*;
+mod dot_recovery;
+pub use dot_recovery::*;
 pub mod flash;
 pub use flash::*;
+mod fuse_layout;
+pub use fuse_layout::*;
 mod fuses;
 pub use fuses::*;
-mod hooks;
-pub use hooks::*;
 pub mod image_verifier;
 pub use image_verifier::ImageVerifier;
 mod rom;
@@ -31,8 +31,6 @@ pub use rom::*;
 mod rom_env;
 pub use rom_env::*;
 mod i3c;
-mod i3c_mailbox;
-pub use i3c_mailbox::{DotContext, I3cMailboxHandler};
 mod mailbox;
 mod recovery;
 
@@ -41,7 +39,6 @@ mod cold_boot;
 mod fw_boot;
 mod warm_boot;
 pub use cold_boot::ColdBoot;
-pub use cold_boot::I3cDotLockedRecoveryHandler;
 pub use fw_boot::FwBoot;
 pub use warm_boot::WarmBoot;
 
@@ -49,6 +46,9 @@ mod fw_hitless_update;
 pub use fw_hitless_update::FwHitlessUpdate;
 
 use caliptra_api::CaliptraApiError;
+
+#[cfg(feature = "ocp-lock")]
+pub use romtime::ocp_lock;
 
 pub trait FatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> !;
@@ -75,7 +75,7 @@ pub fn set_fatal_error_handler(handler: &'static mut dyn FatalErrorHandler) {
 /// execution of this function.
 #[no_mangle]
 #[cfg(target_arch = "riscv32")]
-pub extern "C" fn exception_handler() -> ! {
+fn exception_handler() -> ! {
     let mut mcause: usize;
     let mut mepc: usize;
     let mut sp: usize;
@@ -93,10 +93,8 @@ pub extern "C" fn exception_handler() -> ! {
         )
     };
 
-    caliptra_mcu_romtime::println!(
-        "EXCEPTION mcause={mcause:#08X} mepc={mepc:#08X} sp={sp:#08X} ra={ra:#08X}"
-    );
-    fatal_error(caliptra_mcu_error::McuError::GENERIC_EXCEPTION)
+    romtime::println!("EXCEPTION mcause={mcause:#08X} mepc={mepc:#08X} sp={sp:#08X} ra={ra:#08X}");
+    fatal_error(mcu_error::McuError::GENERIC_EXCEPTION)
 }
 
 #[no_mangle]
@@ -132,7 +130,7 @@ fn fatal_error_raw(code: u32) -> ! {
 
 #[inline(never)]
 #[allow(dead_code)]
-pub fn fatal_error(error: caliptra_mcu_error::McuError) -> ! {
+pub fn fatal_error(error: mcu_error::McuError) -> ! {
     fatal_error_raw(error.into())
 }
 

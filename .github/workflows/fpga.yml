@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 jobs:
   build_test_binaries:
-    runs-on: [e2-standard-8-big-disk]
+    runs-on: [e2-standard-8]
     timeout-minutes: 60
     env:
       SCCACHE_VERSION: 0.10.0
@@ -118,12 +118,13 @@ jobs:
           path: /tmp/openssl.tar
           key: openssl-${{ env.CACHE_BUSTER }}
 
-      - name: Download bitstream
-        run: |
-          cargo xtask-fpga fpga download-bitstream
-          mv caliptra-bitstream.pdi /tmp/caliptra-bitstream.pdi
-
       - name: Build test firmware
+        env:
+          RUNTIME_FEATURES: >-
+            test-i3c-simple,test-i3c-constant-writes,test-mctp-capsule-loopback,
+            test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming,
+            test-mcu-mbox-usermode,test-mcu-mbox-cmds,test-mctp-vdm-cmds,
+            test-mcu-mbox-fips-self-test,test-mcu-mbox-fips-periodic
         run: |
           # In the CI we really want to avoid lengthy build steps.
           # Vendoring OpenSSL is a huge time sink, and instead linking a prebuilt
@@ -138,28 +139,37 @@ jobs:
 
           # Build ROM and runtime binaries
           echo "Cross compiling FPGA binaries"
-          cargo xtask-fpga fpga build \
-            --configuration subsystem \
+
+          export MCU_STAGING_ADDR=0xB00C0000
+          cargo xtask-fpga all-build --platform fpga \
             --rom-features "core_test" \
-            --mcu_cfg mcu,0x0,0xB00C0000,2,2,2,test-fpga-flash-ctrl \
+            --runtime-features "${RUNTIME_FEATURES// /}" \
+            --mcu_cfg mcu,0x0,$MCU_STAGING_ADDR,2,2,2,test-fpga-flash-ctrl \
             --separate-runtimes
           sccache --show-stats
 
           mkdir -p /tmp/caliptra-binaries
           tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz \
-            all-fw.zip
+            target/all-fw.zip
 
           echo "Cross compiling test binaries"
-          cargo xtask-fpga fpga build-test --configuration subsystem
+          FEATURES="fpga_realtime"
+          cargo nextest archive \
+            --features=${FEATURES} \
+            --release \
+            --target=aarch64-unknown-linux-gnu \
+            --archive-file=/tmp/caliptra-test-binaries.tar.zst
           sccache --show-stats
 
-          echo "Cross compiling xtask for FPGA"
-          cargo build --package xtask --features=fpga_realtime --target aarch64-unknown-linux-gnu
-          mv target/aarch64-unknown-linux-gnu/debug/xtask /tmp/caliptra-binaries/xtask
-
           mkdir /tmp/caliptra-test-binaries/
-          tar xvf caliptra-test-binaries.tar.zst -C /tmp/caliptra-test-binaries/
+          tar xvf /tmp/caliptra-test-binaries.tar.zst -C /tmp/caliptra-test-binaries/
           mksquashfs /tmp/caliptra-test-binaries /tmp/caliptra-test-binaries.sqsh -comp zstd
+
+      - name: Download bitstream
+        run: |
+          cargo install --git https://github.com/chipsalliance/caliptra-infra caliptra-bitstream-downloader --root /tmp/bitstream-downloader --rev 3db904cf9cd704fcf890da32fd61dd30bfce8d11
+          /tmp/bitstream-downloader/bin/caliptra-bitstream-downloader --bitstream-manifest hw/fpga/bitstream_manifests/subsystem.toml
+          mv subsystem.pdi /tmp/caliptra-bitstream.pdi
 
       - name: 'Upload bitstream'
         uses: actions/upload-artifact@v4
@@ -214,8 +224,10 @@ jobs:
 
       - name: Load bitstream
         run: |
-          chmod +x /tmp/caliptra-binaries/xtask
-          /tmp/caliptra-binaries/xtask fpga bootstrap --bitstream /tmp/caliptra-bitstream/caliptra-bitstream.pdi
+          sudo mkdir -p /lib/firmware
+          ls /tmp/caliptra-bitstream
+          sudo cp /tmp/caliptra-bitstream/caliptra-bitstream.pdi /lib/firmware
+          sudo bash -c 'echo "caliptra-bitstream.pdi" > /sys/class/fpga_manager/fpga0/firmware'
 
       - name: Mount binaries
         run: |
@@ -224,26 +236,30 @@ jobs:
           sudo mkdir /tmp/caliptra-test-binaries
           echo mount squashfs
           sudo mount /tmp/caliptra-test-binaries.sqsh/caliptra-test-binaries.sqsh /tmp/caliptra-test-binaries -t squashfs -o loop
+          find /tmp/caliptra-test-binaries
 
       - name: Execute tests
         run: |
           export RUST_BACKTRACE=1
-          export TEST_BIN=/tmp/caliptra-test-binaries
-          export CPTRA_FIRMWARE_BUNDLE="${PWD}/all-fw.zip"
+          export RUST_TEST_THREADS=1
+          TEST_BIN=/tmp/caliptra-test-binaries
 
-          # Generate nextest metadata using the mounted binaries for CI reporting
-          # and observability. This helps verify test discovery on the FPGA.
+          COMMON_ARGS=(
+              --cargo-metadata="${TEST_BIN}/target/nextest/cargo-metadata.json"
+              --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json"
+              --target-dir-remap="${TEST_BIN}/target"
+              --workspace-remap=.
+              --profile=nightly-ci
+          )
+
           cargo-nextest nextest list \
-            --cargo-metadata="${TEST_BIN}/target/nextest/cargo-metadata.json" \
-            --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json" \
-            --target-dir-remap="${TEST_BIN}/target" \
-            --workspace-remap=. \
-            --profile=nightly-ci \
-            --message-format json > /tmp/nextest-list.json
+              "${COMMON_ARGS[@]}" \
+              --message-format json > /tmp/nextest-list.json
 
-          # all-fw.zip is in current directory after tar -xvf
-          chmod +x /tmp/caliptra-binaries/xtask
-          /tmp/caliptra-binaries/xtask fpga test
+          sudo CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip" cargo-nextest nextest run \
+              "${COMMON_ARGS[@]}" \
+              --test-threads=${RUST_TEST_THREADS} \
+              --no-fail-fast
 
       - name: 'Upload test results'
         uses: actions/upload-artifact@v4

@@ -12,26 +12,6 @@ fn present_64bit_encrypt(plain: u64, key: u128) -> u64 {
     Present::new_128(&key.to_le_bytes()).encrypt_block(plain)
 }
 
-/// Per-partition scrambling keys from the caliptra-ss RTL (otp_ctrl_part_pkg.sv).
-/// These are in reverse order from the RTL.
-/// Index mapping to secret partitions:
-///   0: SecretManufPartition (UDS)
-///   1: SecretProdPartition0 (Field Entropy 0)
-///   2: SecretProdPartition1 (Field Entropy 1)
-///   3: SecretProdPartition2 (Field Entropy 2)
-///   4: SecretProdPartition3 (Field Entropy 3)
-///   5: VendorSecretProdPartition
-///   6: SecretLcTransitionPartition
-pub const OTP_SCRAMBLE_KEYS: [u128; 7] = [
-    0x3BA121C5E097DDEB7768B4C666E9C3DA,
-    0xEFFA6D736C5EFF49AE7B70F9C46E5A62,
-    0x85A9E830BC059BA9286D6E2856A05CC3,
-    0xBEAD91D5FA4E09150E95F517CB98955B,
-    0x4D5A89AA9109294AE048B657396B4B83,
-    0x277195FC471E4B26B6641214B61D1B43,
-    0x0B7474D640F8A7F5D60822E1FAEC5C72,
-];
-
 pub fn otp_scramble(data: u64, key: u128) -> u64 {
     Present::new_128(&key.to_le_bytes()).encrypt_block(data)
 }
@@ -40,7 +20,7 @@ pub fn otp_unscramble(data: u64, key: u128) -> u64 {
     Present::new_128(&key.to_le_bytes()).decrypt_block(data)
 }
 
-pub fn caliptra_mcu_otp_digest(data: &[u8], iv: u64, cnst: u128) -> u64 {
+pub fn otp_digest(data: &[u8], iv: u64, cnst: u128) -> u64 {
     assert_eq!(data.len() % 8, 0);
 
     let blocks = data.chunks_exact(8).map(|chunk| {
@@ -54,7 +34,7 @@ pub fn caliptra_mcu_otp_digest(data: &[u8], iv: u64, cnst: u128) -> u64 {
 
 /// Compute an OTP digest over an iterator of little-endian 64-bit data blocks.
 ///
-/// This is equivalent to [`caliptra_mcu_otp_digest`] but avoids requiring all data in memory
+/// This is equivalent to [`otp_digest`] but avoids requiring all data in memory
 /// at once — the caller can stream blocks from OTP word-by-word.
 pub fn otp_digest_iter(blocks: impl Iterator<Item = u64>, iv: u64, cnst: u128) -> u64 {
     let mut state = iv;
@@ -339,7 +319,7 @@ mod test {
         let data: Vec<u8> = (0..32).collect();
         let iv = 0x1234567890abcdef;
         let cnst = 0xfedcba0987654321fedcba0987654321u128;
-        let expected = caliptra_mcu_otp_digest(&data, iv, cnst);
+        let expected = otp_digest(&data, iv, cnst);
         let blocks = data
             .chunks_exact(8)
             .map(|c| u64::from_le_bytes(c.try_into().unwrap()));
@@ -347,7 +327,7 @@ mod test {
 
         // Odd number of blocks
         let data: Vec<u8> = (0..24).collect();
-        let expected = caliptra_mcu_otp_digest(&data, iv, cnst);
+        let expected = otp_digest(&data, iv, cnst);
         let blocks = data
             .chunks_exact(8)
             .map(|c| u64::from_le_bytes(c.try_into().unwrap()));
@@ -355,14 +335,14 @@ mod test {
 
         // Single block
         let data = [0u8; 8];
-        let expected = caliptra_mcu_otp_digest(&data, iv, cnst);
+        let expected = otp_digest(&data, iv, cnst);
         let blocks = data
             .chunks_exact(8)
             .map(|c| u64::from_le_bytes(c.try_into().unwrap()));
         assert_eq!(otp_digest_iter(blocks, iv, cnst), expected);
 
         // Empty
-        let expected = caliptra_mcu_otp_digest(&[], iv, cnst);
+        let expected = otp_digest(&[], iv, cnst);
         assert_eq!(otp_digest_iter(core::iter::empty(), iv, cnst), expected);
     }
 }

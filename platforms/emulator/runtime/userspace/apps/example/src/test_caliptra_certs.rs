@@ -1,11 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_mcu_libapi_caliptra::certificate::{
-    AsymAlgo, CertContext, IDEV_ECC_CSR_MAX_SIZE, KEY_LABEL_SIZE, MAX_ATTESTED_CSR_SIZE,
-    MAX_ECC_CERT_SIZE,
-};
-use caliptra_mcu_romtime::println;
-use caliptra_mcu_romtime::test_exit;
+use libapi_caliptra::certificate::{CertContext, IDEV_ECC_CSR_MAX_SIZE, KEY_LABEL_SIZE};
+use libapi_caliptra::mailbox_api::MAX_ECC_CERT_SIZE;
+use romtime::println;
+use romtime::test_exit;
 
 const TEST_KEY_LABEL: [u8; KEY_LABEL_SIZE] = [
     48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25,
@@ -50,6 +48,7 @@ const SIGNED_IDEV_CERT_DER: [u8; 541] = [
 ];
 
 // test get idev_csr
+#[inline(never)]
 pub async fn test_get_idev_csr() {
     println!("Starting Caliptra mailbox get idev csr test");
 
@@ -78,6 +77,7 @@ pub async fn test_get_idev_csr() {
     println!("Get idev csr test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_populate_idev_ecc384_cert() {
     println!("Starting Caliptra mailbox populate idev cert test");
 
@@ -103,6 +103,7 @@ pub async fn test_populate_idev_ecc384_cert() {
     println!("Populate idev cert test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_get_ldev_ecc384_cert() {
     println!("Starting Caliptra mailbox get ldev cert test");
 
@@ -128,6 +129,7 @@ pub async fn test_get_ldev_ecc384_cert() {
     println!("Get ldev cert test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_get_fmc_alias_ecc384cert() {
     println!("Starting Caliptra mailbox get FMC alias cert test");
 
@@ -153,6 +155,7 @@ pub async fn test_get_fmc_alias_ecc384cert() {
     println!("Get FMC alias cert test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_get_rt_alias_ecc384cert() {
     println!("Starting Caliptra mailbox get FMC cert test");
 
@@ -178,11 +181,12 @@ pub async fn test_get_rt_alias_ecc384cert() {
     println!("Get RT alias cert test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_get_cert_chain() {
     println!("Starting Caliptra mailbox get cert chain test");
 
     let mut cert_chain = [0u8; 4098];
-    const CERT_CHUNK_SIZE: usize = 1024;
+    const CERT_CHUNK_SIZE: usize = 2048;
 
     let mut cert_mgr = CertContext::new();
     let mut cert_chunk = [0u8; CERT_CHUNK_SIZE];
@@ -228,6 +232,7 @@ pub async fn test_get_cert_chain() {
     println!("Cert chain data: {:?}", &cert_chain[..offset]);
 }
 
+#[inline(never)]
 pub async fn test_certify_key() {
     println!("Starting Caliptra mailbox certify attestation key test");
 
@@ -268,6 +273,7 @@ pub async fn test_certify_key() {
     println!("Certify attestation key test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_sign_with_test_key() {
     println!("Starting Caliptra mailbox sign with attestation key test");
 
@@ -302,55 +308,4 @@ pub async fn test_sign_with_test_key() {
         }
     }
     println!("Sign with attestation key test completed successfully");
-}
-
-// Key IDs for attested CSR requests (matches DeviceKeyId in VDM protocol)
-const KEY_ID_LDEVID: u32 = 0x0001;
-const KEY_ID_FMC_ALIAS: u32 = 0x0002;
-const KEY_ID_RT_ALIAS: u32 = 0x0003;
-
-const TEST_NONCE: [u8; 32] = [
-    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-    0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
-];
-
-fn key_type_name(key_id: u32) -> &'static str {
-    match key_id {
-        KEY_ID_LDEVID => "LDevID",
-        KEY_ID_FMC_ALIAS => "FMC Alias",
-        KEY_ID_RT_ALIAS => "RT Alias",
-        _ => "Unknown",
-    }
-}
-
-async fn test_get_attested_csr_for(algo: AsymAlgo, key_id: u32) {
-    println!(
-        "Starting get attested {:?} CSR test for key: {} (0x{:04x})",
-        algo,
-        key_type_name(key_id),
-        key_id
-    );
-    let mut cert_mgr = CertContext::new();
-    let mut csr_data = [0u8; MAX_ATTESTED_CSR_SIZE];
-    match cert_mgr
-        .get_attested_csr(algo, key_id, &TEST_NONCE, &mut csr_data)
-        .await
-    {
-        Ok(size) => {
-            println!("Retrieved attested {:?} CSR of size: {}", algo, size);
-            println!("Attested {:?} CSR data: {:?}", algo, &csr_data[..size]);
-        }
-        Err(e) => {
-            println!("Failed to get attested {:?} CSR: {:?}", algo, e);
-            test_exit(1);
-        }
-    }
-    println!("Get attested {:?} CSR test completed successfully", algo);
-}
-
-pub async fn test_get_attested_csr() {
-    for &key_id in &[KEY_ID_LDEVID, KEY_ID_FMC_ALIAS, KEY_ID_RT_ALIAS] {
-        test_get_attested_csr_for(AsymAlgo::EccP384, key_id).await;
-        test_get_attested_csr_for(AsymAlgo::MlDsa87, key_id).await;
-    }
 }

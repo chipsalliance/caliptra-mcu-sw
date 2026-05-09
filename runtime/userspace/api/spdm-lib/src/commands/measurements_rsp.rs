@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cert_store::SpdmCertStore;
-use crate::chunk_ctx::ChunkError;
+use crate::chunk_ctx::{ChunkError, LargeResponse};
 use crate::codec::{encode_u8_slice, Codec, CommonCodec, MessageBuf};
 use crate::commands::algorithms_rsp::selected_measurement_specification;
 use crate::commands::error_rsp::ErrorCode;
@@ -13,9 +13,9 @@ use crate::session::SessionInfo;
 use crate::state::ConnectionState;
 use crate::transcript::{Transcript, TranscriptContext};
 use bitfield::bitfield;
-use caliptra_mcu_libapi_caliptra::crypto::asym::*;
-use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
-use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
+use libapi_caliptra::crypto::asym::*;
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 const RESPONSE_FIXED_FIELDS_SIZE: usize = 8;
@@ -84,6 +84,7 @@ impl Default for MeasurementsRspFixed<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
 
 impl CommonCodec for MeasurementsRspFixed<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {}
 
+#[derive(Debug)]
 pub(crate) struct MeasurementsResponse {
     spdm_version: SpdmVersion,
     req_attr: GetMeasurementsReqAttr,
@@ -94,7 +95,7 @@ pub(crate) struct MeasurementsResponse {
 }
 
 impl MeasurementsResponse {
-    pub async fn encode_response(
+    pub async fn get_chunk(
         &self,
         measurements: &mut SpdmMeasurements<'_>,
         shared_transcript: &mut Transcript,
@@ -120,25 +121,8 @@ impl MeasurementsResponse {
             .measurement_block_size(self.meas_op, raw_bitstream_requested)
             .await
             .map_err(|e| (false, CommandError::Measurement(e)))?;
-
-        let record_start = RESPONSE_FIXED_FIELDS_SIZE;
-        let record_end = record_start + measurement_record_len;
-        let trailer_start = record_end;
-        let (variable_fields, trailer_len) = self.response_variable_fields().await?;
-        let signature_start = trailer_start + trailer_len;
-
-        // If signature is requested, avoid splitting it across chunks.
-        // If this chunk would partially overlap the signature, truncate to
-        // stop at the signature boundary so the next chunk gets the full signature.
-        if self.req_attr.signature_requested() == 1
-            && offset < signature_start
-            && offset + rem_len > signature_start
-            && offset + rem_len < signature_start + ECC_P384_SIGNATURE_SIZE
-        {
-            rem_len = signature_start - offset;
-        }
-
         // Fill the chunk buffer with the appropriate response sections
+        // Instead of a while loop, use a single-pass approach for clarity and efficiency.
         let mut copied = 0;
 
         // 1. Copy from the fixed response fields
@@ -153,6 +137,8 @@ impl MeasurementsResponse {
         }
 
         // 2. Copy from the measurement record
+        let record_start = RESPONSE_FIXED_FIELDS_SIZE;
+        let record_end = record_start + measurement_record_len;
         if rem_len > 0 && offset + copied < record_end {
             let meas_block_offset = (offset + copied).saturating_sub(record_start);
             let bytes_to_copy = (measurement_record_len - meas_block_offset).min(rem_len);
@@ -170,11 +156,10 @@ impl MeasurementsResponse {
         }
 
         // 3. Copy from the variable/trailer fields
-        if rem_len > 0
-            && offset + copied >= trailer_start
-            && offset + copied < trailer_start + trailer_len
-        {
+        let trailer_start = record_end;
+        if rem_len > 0 && offset + copied >= trailer_start {
             let trailer_offset = (offset + copied) - trailer_start;
+            let (variable_fields, trailer_len) = self.response_variable_fields().await?;
             let end = (trailer_len).min(trailer_offset + rem_len);
             let copy_len = end - trailer_offset;
             chunk_buf[copied..copied + copy_len]
@@ -192,9 +177,8 @@ impl MeasurementsResponse {
             .await
             .map_err(|e| (false, CommandError::Transcript(e)))?;
 
-        // 4. Copy from the signature if requested.
-        // Due to the truncation above, the signature is always fully contained
-        // within a single chunk (offset + copied == signature_start).
+        // 4. Copy from the signature if requested
+        let signature_start = trailer_start + self.response_variable_fields().await?.1;
         if rem_len > 0
             && self.req_attr.signature_requested() == 1
             && offset + copied >= signature_start
@@ -202,9 +186,8 @@ impl MeasurementsResponse {
             let signature = self
                 .l1_signature(self.asym_algo, shared_transcript, session_info, cert_store)
                 .await?;
-
             let sig_offset = (offset + copied) - signature_start;
-            let copy_len = (ECC_P384_SIGNATURE_SIZE - sig_offset).min(rem_len);
+            let copy_len = (signature.len() - sig_offset).min(rem_len);
             chunk_buf[copied..copied + copy_len]
                 .copy_from_slice(&signature[sig_offset..sig_offset + copy_len]);
             copied += copy_len;
@@ -370,7 +353,7 @@ impl MeasurementsResponse {
 
         let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
         cert_store
-            .sign_hash(asym_algo, slot_id, &tbs, &mut signature)
+            .sign_hash(slot_id, asym_algo, &tbs, &mut signature)
             .await
             .map_err(|e| (false, CommandError::CertStore(e)))?;
 
@@ -491,46 +474,12 @@ pub(crate) async fn generate_measurements_response<'a>(
     rsp_ctx: MeasurementsResponse,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    let rsp_len = match rsp_ctx.response_size(&mut ctx.measurements).await {
-        Ok(len) => len,
-        Err((_, CommandError::Measurement(MeasurementsError::InvalidIndex))) => {
-            Err(ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?
-        }
-        Err(e) => Err(e)?,
-    };
+    let rsp_len = rsp_ctx.response_size(&mut ctx.measurements).await?;
 
     if rsp_len > ctx.min_data_transfer_size() {
-        // Check buffer capacity before acquiring mutable borrows.
-        if rsp_len > ctx.large_msg_ctx.buf.len() {
-            Err(ctx.generate_error_response(rsp, ErrorCode::ResponseTooLarge, 0, None))?;
-        }
-
-        // Pre-serialize the full response into the shared buffer.
-        // Use borrow splitting to access disjoint fields of ctx simultaneously.
-        let session_info = match ctx.session_mgr.active_session_id() {
-            Some(session_id) => match ctx.session_mgr.session_info_mut(session_id) {
-                Ok(info) => Some(info),
-                Err(e) => Err((false, CommandError::Session(e)))?,
-            },
-            None => None,
-        };
-
-        let buf = &mut ctx.large_msg_ctx.buf[..rsp_len];
-        let payload_len = rsp_ctx
-            .encode_response(
-                &mut ctx.measurements,
-                &mut ctx.shared_transcript,
-                ctx.device_certs_store,
-                0,
-                buf,
-                session_info,
-            )
-            .await?;
-
-        let handle = ctx
-            .large_msg_ctx
-            .init_buffered_response(payload_len)
-            .map_err(|e| (false, CommandError::Chunk(e)))?;
+        // If the response is larger than the minimum data transfer size, use chunked response
+        let large_rsp = LargeResponse::Measurements(rsp_ctx);
+        let handle = ctx.large_resp_context.init(large_rsp, rsp_len);
         Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, 0, Some(&[handle])))?
     } else {
         let session_info = match ctx.session_mgr.active_session_id() {
@@ -549,7 +498,7 @@ pub(crate) async fn generate_measurements_response<'a>(
             .data_mut(rsp_len)
             .map_err(|e| (false, CommandError::Codec(e)))?;
         let payload_len = rsp_ctx
-            .encode_response(
+            .get_chunk(
                 &mut ctx.measurements,
                 &mut ctx.shared_transcript,
                 ctx.device_certs_store,

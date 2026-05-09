@@ -16,8 +16,8 @@ Abstract:
 
 use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
-use crate::fuses::{DefaultVendorKeyPolicy, VendorKeyPolicy};
 use crate::hil::FlashStorage;
+
 use crate::ColdBoot;
 use crate::FwBoot;
 use crate::FwHitlessUpdate;
@@ -25,28 +25,29 @@ use crate::ImageVerifier;
 use crate::RomEnv;
 use crate::WarmBoot;
 use caliptra_api::mailbox::CmStableKeyType;
-use caliptra_mcu_error::McuError;
-use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
-use caliptra_mcu_registers_generated::fuses;
-use caliptra_mcu_registers_generated::mci;
-use caliptra_mcu_registers_generated::mci::bits::SecurityState::DeviceLifecycle;
-use caliptra_mcu_registers_generated::soc;
-use caliptra_mcu_romtime::LifecycleHashedTokens;
-use caliptra_mcu_romtime::LifecycleToken;
-use caliptra_mcu_romtime::PqcKeyType;
-use caliptra_mcu_romtime::{HexWord, McuBootMilestones, StaticRef};
-use caliptra_mcu_romtime::{Otp, PROD_DEBUG_UNLOCK_PK_ENTRIES};
 use core::fmt::Write;
+use core::marker::PhantomData;
+use mcu_error::McuError;
+use registers_generated::fuses;
+use registers_generated::mci;
+use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
+use registers_generated::soc;
+use romtime::otp::{Otp, PROD_DEBUG_UNLOCK_PK_ENTRIES};
+use romtime::LifecycleControllerState;
+use romtime::LifecycleHashedTokens;
+use romtime::LifecycleToken;
+use romtime::{HexWord, McuBootMilestones, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
 
+// values in fuses
+const LMS_FUSE_VALUE: u8 = 1;
+const MLDSA_FUSE_VALUE: u8 = 0;
 // values when setting in Caliptra
 const MLDSA_CALIPTRA_VALUE: u8 = 1;
 const LMS_CALIPTRA_VALUE: u8 = 3;
-const OTP_DAI_IDLE_BIT_OFFSET: u32 = 22;
-const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x60;
-
-pub const MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS: u32 = 8; // 32 kB / 4 kB chunks
+const OTP_DAI_IDLE_BIT_OFFSET: u32 = 30;
+const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
 
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
@@ -55,19 +56,29 @@ pub trait BootFlow {
 }
 
 extern "C" {
-    pub static MCU_MEMORY_MAP: caliptra_mcu_config::McuMemoryMap;
-    pub static MCU_STRAPS: caliptra_mcu_config::McuStraps;
+    pub static MCU_MEMORY_MAP: mcu_config::McuMemoryMap;
+    pub static MCU_STRAPS: mcu_config::McuStraps;
 }
 
 pub struct Soc {
     registers: StaticRef<soc::regs::Soc>,
 }
 
-impl Soc {
-    pub const BOOT_FSM_DONE: u32 = 4;
-    pub const PK_HASH_SKIP_LOCK_STRAPPING_MASK: u32 = 0x1;
-    pub const PK_HASH_ROTATION_STRAPPING_MASK: u32 = 0x1 << 1;
+#[derive(Default)]
+pub struct FuseParams<'a, 'b> {
+    #[cfg(feature = "ocp-lock")]
+    pub ocp_lock_config: Option<&'b mut romtime::ocp_lock::RomConfig<'a>>,
+    // Used to prevent compiler warnings for unused lifetime.
+    pub _inner: PhantomData<(&'a (), &'b ())>,
+}
 
+/// Reports the state of Fuses back to the caller
+pub struct FuseState {
+    #[cfg(feature = "ocp-lock")]
+    pub hek_state: Option<romtime::ocp_lock::HekState>,
+}
+
+impl Soc {
     pub const fn new(registers: StaticRef<soc::regs::Soc>) -> Self {
         Soc { registers }
     }
@@ -86,30 +97,6 @@ impl Soc {
         self.registers.cptra_flow_status.get()
     }
 
-    pub fn boot_fsm_ps(&self) -> u32 {
-        self.registers
-            .cptra_flow_status
-            .read(soc::bits::CptraFlowStatus::BootFsmPs)
-    }
-
-    pub fn wait_for_bootfsm_done(&self, timeout_cycles: u64) {
-        let start = caliptra_mcu_romtime::mcycle();
-        while self.boot_fsm_ps() != Self::BOOT_FSM_DONE {
-            if self.cptra_fw_fatal_error() {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] Caliptra reported a fatal error during boot FSM transition"
-                );
-                fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
-            }
-            if caliptra_mcu_romtime::mcycle() - start > timeout_cycles {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] Caliptra Core boot FSM timed out waiting for BOOT_DONE"
-                );
-                fatal_error(McuError::ROM_BOOTFSM_TIMEOUT);
-            }
-        }
-    }
-
     pub fn ready_for_mbox(&self) -> bool {
         self.registers
             .cptra_flow_status
@@ -126,24 +113,12 @@ impl Soc {
         self.registers.cptra_fw_error_fatal.get() != 0
     }
 
-    pub fn check_hw_errors(&self) {
-        let hw_error = self.registers.cptra_hw_error_fatal.extract();
-        if hw_error.is_set(soc::bits::CptraHwErrorFatal::IccmEccUnc) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] Caliptra reported an ICCM ECC uncorrectable error"
-            );
-            fatal_error(McuError::ROM_SOC_ICCM_ECC_UNC);
-        }
-        if hw_error.is_set(soc::bits::CptraHwErrorFatal::DccmEccUnc) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] Caliptra reported a DCCM ECC uncorrectable error"
-            );
-            fatal_error(McuError::ROM_SOC_DCCM_ECC_UNC);
-        }
-    }
-
     pub fn set_cptra_wdt_cfg(&self, index: usize, value: u32) {
-        self.registers.cptra_wdt_cfg[index].set(value);
+        if let Some(reg) = self.registers.cptra_wdt_cfg.get(index) {
+            reg.set(value);
+        } else {
+            fatal_error(McuError::ROM_SOC_WDT_CFG_OUT_OF_RANGE);
+        }
     }
 
     pub fn set_cptra_mbox_valid_axi_user(&self, index: usize, value: u32) {
@@ -184,21 +159,22 @@ impl Soc {
     pub fn populate_fuses(
         &self,
         otp: &Otp,
-        mci: &caliptra_mcu_romtime::Mci,
-        params: &RomParameters,
-    ) -> usize {
+        mci: &romtime::Mci,
+        params: &mut FuseParams,
+    ) -> FuseState {
+        let _ = params;
         // secret fuses are populated by a hardware state machine, so we can skip those
 
         // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
         let offset = fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
-        caliptra_mcu_romtime::println!(
+        romtime::println!(
             "[mcu-fuse-write] Setting UDS/FE base address to {:x}",
             offset
         );
         self.registers.ss_uds_seed_base_addr_l.set(offset as u32);
         self.registers.ss_uds_seed_base_addr_h.set(0);
 
-        caliptra_mcu_romtime::println!(
+        romtime::println!(
             "[mcu-fuse-write] Setting UDS/FE DAI idle bit offset to {} and direct access cmd reg offset to {}",
             OTP_DAI_IDLE_BIT_OFFSET,
             OTP_DIRECT_ACCESS_CMD_REG_OFFSET
@@ -206,31 +182,17 @@ impl Soc {
         self.registers.ss_strap_generic[0].set(OTP_DAI_IDLE_BIT_OFFSET << 16);
         self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
 
-        // Select the vendor public key slot to use.
-        let default_policy = DefaultVendorKeyPolicy::new(
-            self.registers.ss_strap_generic[3].get() & Self::PK_HASH_ROTATION_STRAPPING_MASK != 0,
-        );
-        let policy = params.vendor_key_policy.unwrap_or(&default_policy);
-        let pk_hash_idx = policy
-            .select_key(otp)
-            .unwrap_or_else(|_| fatal_error(McuError::ROM_PK_HASH_SELECTION_FAILED));
-        caliptra_mcu_romtime::println!("[mcu-fuse-write] Selected vendor PK slot {}", pk_hash_idx);
-
         // PQC Key Type.
-        let pqc_type = otp
-            .read_pqc_key_type(pk_hash_idx)
+        let pqc_word = otp
+            .read_u32_at(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_0.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        let pqc_caliptra_val = match pqc_type {
-            PqcKeyType::MLDSA => MLDSA_CALIPTRA_VALUE,
-            PqcKeyType::LMS => LMS_CALIPTRA_VALUE,
+        let pqc_type = match (pqc_word as u8) & 1 {
+            MLDSA_FUSE_VALUE => MLDSA_CALIPTRA_VALUE,
+            LMS_FUSE_VALUE => LMS_CALIPTRA_VALUE,
+            _ => unreachable!(),
         };
-        self.registers
-            .fuse_pqc_key_type
-            .set(pqc_caliptra_val as u32);
-        caliptra_mcu_romtime::println!(
-            "[mcu-fuse-write] Setting vendor PQC type to {}",
-            pqc_caliptra_val
-        );
+        self.registers.fuse_pqc_key_type.set(pqc_type as u32);
+        romtime::println!("[mcu-fuse-write] Setting vendor PQC type to {}", pqc_type);
 
         // FMC Key Manifest SVN.
         let svn = otp
@@ -239,16 +201,15 @@ impl Soc {
         self.registers.fuse_fmc_key_manifest_svn.set(svn);
 
         // Vendor PK Hash.
-        caliptra_mcu_romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
-        let mut hash_buf = [0u8; 48];
-        otp.read_vendor_pk_hash(pk_hash_idx, &mut hash_buf)
-            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        for (i, word_bytes) in hash_buf.chunks_exact(4).enumerate() {
-            let word = u32::from_le_bytes(word_bytes.try_into().unwrap());
-            caliptra_mcu_romtime::print!("{}", HexWord(word));
+        romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
+        for i in 0..self.registers.fuse_vendor_pk_hash.len() {
+            let word = otp
+                .read_u32_at(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_offset + i * 4)
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            romtime::print!("{}", HexWord(word));
             self.registers.fuse_vendor_pk_hash[i].set(word);
         }
-        caliptra_mcu_romtime::println!("");
+        romtime::println!("");
 
         // Runtime SVN.
         for i in 0..self.registers.fuse_runtime_svn.len() {
@@ -284,19 +245,19 @@ impl Soc {
         // Load Owner ECC/LMS/MLDSA revocation CSRs.
         // ECC Revocation.
         let word = otp
-            .read_vendor_ecc_revocation(pk_hash_idx)
+            .read_u32_at(fuses::OTP_CPTRA_CORE_ECC_REVOCATION_0.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_ecc_revocation.set(word);
 
         // LMS Revocation.
         let word = otp
-            .read_vendor_lms_revocation(pk_hash_idx)
+            .read_u32_at(fuses::OTP_CPTRA_CORE_LMS_REVOCATION_0.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_lms_revocation.set(word);
 
         // MLDSA Revocation.
         let word = otp
-            .read_vendor_mldsa_revocation(pk_hash_idx)
+            .read_u32_at(fuses::OTP_CPTRA_CORE_MLDSA_REVOCATION_0.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_mldsa_revocation.set(word);
 
@@ -349,9 +310,12 @@ impl Soc {
                     .read_u32_at(hash_base_offset + word_idx * 4)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
                 let reg_idx = hash_idx * 12 + word_idx;
-                mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg[reg_idx].set(word);
+                if !mci.write_prod_debug_unlock_pk_hash(reg_idx, word) {
+                    fatal_error(McuError::ROM_SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH);
+                }
             }
         }
+
         // Set the debug enablement masks for: DFT, HW Debug, Prod Debug.
         //
         // Note: this enables all 8 debug levels (supported by the 8 prod debug
@@ -365,44 +329,150 @@ impl Soc {
         mci.registers.mci_reg_soc_prod_debug_state[0].set(0x000000FF);
         mci.registers.mci_reg_soc_prod_debug_state[1].set(0x00000000);
 
-        // Tell Caliptra where to find the prod debug unlock PK hashes and how
-        // many are valid. The offset is the address of
-        // `mci_reg_prod_debug_unlock_pk_hash_reg` within the MCI register
-        // bank; Caliptra reads `MCI_BASE + offset + (level - 1) * 48` during
-        // prod debug unlock authentication.
-        let num_pk_hashes = params
-            .prod_debug_unlock_auth_pk_hash_count
-            .unwrap_or(PROD_DEBUG_UNLOCK_PK_ENTRIES.len() as u32);
-        caliptra_mcu_romtime::println!(
-            "[mcu-fuse-write] Setting prod debug unlock PK hash bank offset to {:x}, count {}",
-            caliptra_mcu_romtime::MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG_BANK_OFFSET,
-            num_pk_hashes
-        );
-        self.registers
-            .ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset
-            .set(caliptra_mcu_romtime::MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG_BANK_OFFSET);
-        self.registers
-            .ss_num_of_prod_debug_unlock_auth_pk_hashes
-            .set(num_pk_hashes);
+        // We use non secret production fuses to have caliptra tests pass some initial fuse values
+        if cfg!(feature = "core_test") {
+            // UDS Seed from vendor_non_secret_prod_partition (first 64 bytes)
+            romtime::println!("[mcu-fuse-write] Writing UDS seed");
+            for i in 0..self.registers.fuse_uds_seed.len() {
+                let word = otp
+                    .read_u32_at(
+                        registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET
+                            + i * 4,
+                    )
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+                self.registers.fuse_uds_seed[i].set(word);
+            }
 
-        // return pk hash index so we can lock it once it's verified
-        pk_hash_idx
+            // Field Entropy from vendor_non_secret_prod_partition (32 bytes after UDS)
+            romtime::println!("[mcu-fuse-write] Writing field entropy");
+            for i in 0..self.registers.fuse_field_entropy.len() {
+                let word = otp
+                    .read_u32_at(
+                        registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET
+                            + 64
+                            + i * 4,
+                    )
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+                self.registers.fuse_field_entropy[i].set(word);
+            }
+        }
+
+        romtime::println!("");
+
+        #[cfg(feature = "ocp-lock")]
+        let hek_state = if let Some(ref mut config) = params.ocp_lock_config {
+            romtime::println!("[mcu-rom] OCP LOCK enabled");
+            // TODO(clundin): Need to communicate HEK availability to firmware.
+            match self.set_ocp_lock_fuses(otp, config) {
+                Ok(state) => Some(state),
+                Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS) => None,
+                Err(_) => fatal_error(McuError::ROM_OTP_OCP_LOCK_FAILURE),
+            }
+        } else {
+            fatal_error(McuError::OCP_LOCK_ROM_MISSING_CONFIG)
+        };
+
+        FuseState {
+            #[cfg(feature = "ocp-lock")]
+            hek_state,
+        }
     }
 
-    pub fn pk_hash_volatile_lock(&self, otp: &Otp, selected_index: usize) {
-        // Read strap register to check for provisioning mode.
-        let strap_reg = self.registers.ss_strap_generic[3].get();
-        if (strap_reg & Self::PK_HASH_SKIP_LOCK_STRAPPING_MASK) != 0 {
-            caliptra_mcu_romtime::println!(
-              "[mcu-fuse-write] PK Hash provisioning mode detected, skipping vendor PK hash lock."
-          );
+    /// OCP LOCK Fuses.
+    #[cfg(feature = "ocp-lock")]
+    pub fn set_ocp_lock_fuses(
+        &self,
+        otp: &Otp,
+        config: &mut romtime::ocp_lock::RomConfig,
+    ) -> Result<romtime::ocp_lock::HekState, romtime::ocp_lock::Error> {
+        romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
+        // Key release is always 64 bytes currently
+        self.registers.ss_key_release_size.set(config.mek_size);
+
+        self.registers
+            .ss_key_release_base_addr_h
+            .set((config.key_release_addr >> 32) as u32);
+        self.registers
+            .ss_key_release_base_addr_l
+            .set(config.key_release_addr as u32);
+
+        let perma_status = if otp
+            .is_hek_perma_set()
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
+        {
+            romtime::ocp_lock::PermaBitStatus::Set
         } else {
-            caliptra_mcu_romtime::println!(
-                "[mcu-fuse-write] Locking vendor PK hash slots from index {}",
-                selected_index
-            );
-            otp.volatile_lock(selected_index as u32);
+            romtime::ocp_lock::PermaBitStatus::Unset
+        };
+
+        let mut seeds = [[0u8; 48]; 8];
+        for (i, seed) in seeds.iter_mut().enumerate() {
+            otp.read_hek_seed(i, seed)
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         }
+
+        let total_slots = seeds.len();
+
+        let hek_seeds = romtime::ocp_lock::HekSeeds::new(&seeds[..]);
+        let active_slot = match config.get_active_slot(otp, &perma_status, &hek_seeds) {
+            Ok(slot) => slot,
+            Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS) => {
+                return Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS)
+            }
+            Err(_) => fatal_error(McuError::ROM_OTP_READ_ERROR),
+        };
+
+        let platform = config
+            .platform
+            .as_mut()
+            .ok_or(romtime::ocp_lock::Error::MISSING_PLATFORM_IMPLEMENTATION)?;
+
+        let (active_slot, active_state, seed_buf) = {
+            let buf = hek_seeds
+                .get(active_slot)
+                .ok_or(romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
+            let state = platform.get_slot_state(otp, &perma_status, active_slot, buf)?;
+            (active_slot, state, buf)
+        };
+
+        match active_state {
+            romtime::ocp_lock::HekSeedState::Permanent
+            | romtime::ocp_lock::HekSeedState::Sanitized => {
+                for word in self.registers.fuse_hek_seed.iter() {
+                    word.set(0xFFFF_FFFF);
+                }
+            }
+            romtime::ocp_lock::HekSeedState::ProgrammedCorrupted
+            | romtime::ocp_lock::HekSeedState::SanitizedPendingReset
+            | romtime::ocp_lock::HekSeedState::ProgrammedPendingReset
+            | romtime::ocp_lock::HekSeedState::SanitizedCorrupted
+            | romtime::ocp_lock::HekSeedState::Unused => {
+                for word in self.registers.fuse_hek_seed.iter() {
+                    word.set(0);
+                }
+            }
+            romtime::ocp_lock::HekSeedState::Programmed => {
+                for (reg, word) in
+                    self.registers.fuse_hek_seed.iter().zip(
+                        seed_buf.chunks_exact(core::mem::size_of::<u32>()).map(|w| {
+                            u32::from_le_bytes(w.try_into().unwrap_or_else(|_| {
+                                fatal_error(McuError::ROM_OTP_WRITE_WORD_ERROR)
+                            }))
+                        }),
+                    )
+                {
+                    reg.set(word);
+                }
+            }
+        };
+        romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
+
+        Ok(romtime::ocp_lock::HekState {
+            active_slot: active_slot as u32,
+            reserved: 0,
+            total_slots: total_slots as u32,
+            active_state,
+        })
     }
 
     pub fn set_axi_users(&self, users: AxiUsers) {
@@ -415,30 +485,30 @@ impl Soc {
 
         for (i, user) in mbox_users.iter().enumerate() {
             if let Some(user) = *user {
-                caliptra_mcu_romtime::println!(
+                romtime::println!(
                     "[mcu-rom] Setting Caliptra mailbox user {i} to {}",
                     HexWord(user)
                 );
                 self.set_cptra_mbox_valid_axi_user(i, user);
-                caliptra_mcu_romtime::println!("[mcu-rom] Locking Caliptra mailbox user {i}");
+                romtime::println!("[mcu-rom] Locking Caliptra mailbox user {i}");
                 self.set_cptra_mbox_axi_user_lock(i, 1);
             }
         }
 
         if fuse_user != 0 {
-            caliptra_mcu_romtime::println!("[mcu-rom] Setting fuse user");
+            romtime::println!("[mcu-rom] Setting fuse user");
             self.set_cptra_fuse_valid_axi_user(fuse_user);
-            caliptra_mcu_romtime::println!("[mcu-rom] Locking fuse user");
+            romtime::println!("[mcu-rom] Locking fuse user");
             self.set_cptra_fuse_axi_user_lock(1);
         }
         if trng_user != 0 {
-            caliptra_mcu_romtime::println!("[mcu-rom] Setting TRNG user");
+            romtime::println!("[mcu-rom] Setting TRNG user");
             self.set_cptra_trng_valid_axi_user(trng_user);
-            caliptra_mcu_romtime::println!("[mcu-rom] Locking TRNG user");
+            romtime::println!("[mcu-rom] Locking TRNG user");
             self.set_cptra_trng_axi_user_lock(1);
         }
         if dma_user != 0 {
-            caliptra_mcu_romtime::println!("[mcu-rom] Setting DMA user");
+            romtime::println!("[mcu-rom] Setting DMA user");
             self.set_ss_caliptra_dma_axi_user(dma_user);
         }
     }
@@ -451,12 +521,12 @@ impl Soc {
     /// # Arguments
     /// * `owner_pk_hash` - The owner public key hash to set.
     pub fn set_owner_pk_hash(&self, owner_pk_hash: &crate::fuses::OwnerPkHash) {
-        caliptra_mcu_romtime::print!("[mcu-fuse-write] Writing owner PK hash: ");
+        romtime::print!("[mcu-fuse-write] Writing owner PK hash: ");
         for (i, word) in owner_pk_hash.0.iter().enumerate() {
-            caliptra_mcu_romtime::print!("{}", HexWord(*word));
+            romtime::print!("{}", HexWord(*word));
             self.registers.cptra_owner_pk_hash[i].set(*word);
         }
-        caliptra_mcu_romtime::println!("");
+        romtime::println!("");
     }
 
     /// Locks the owner public key hash register.
@@ -472,44 +542,19 @@ impl Soc {
 
     /// Waits for Caliptra to indicate MCU firmware is ready through the `NotifCptraMcuResetReqSts`
     /// interrupt.
-    pub fn wait_for_firmware_ready(&self, mci: &caliptra_mcu_romtime::Mci) {
+    pub fn wait_for_firmware_ready(&self, mci: &romtime::Mci) {
         let notif0 = &mci.registers.intr_block_rf_notif0_internal_intr_r;
         // TODO(zhalvorsen): use interrupt instead of fw_exec_ctrl register when the emulator supports it
         // Wait for a reset request from Caliptra
         while !self.fw_ready() {
             if self.cptra_fw_fatal_error() {
-                caliptra_mcu_romtime::println!("[mcu-rom] Caliptra reported a fatal error");
+                romtime::println!("[mcu-rom] Caliptra reported a fatal error");
                 fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
             }
-            self.check_hw_errors();
         }
         // Clear the reset request interrupt
         notif0.modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
     }
-
-    /// Configure the Caliptra iTRNG parameters.
-    pub fn configure_itrng(&self, args: CptraItrngArgs) {
-        let bypass_mode = u32::from(args.bypass_mode) << 31;
-        let window_size = u32::from(args.window_size);
-        self.registers.ss_strap_generic[2].set(bypass_mode | window_size);
-        self.registers
-            .cptra_i_trng_entropy_config_0
-            .set(args.config0);
-        self.registers
-            .cptra_i_trng_entropy_config_1
-            .set(args.config1);
-    }
-}
-
-/// Caliptra iTRNG configuration parameters.
-///
-/// See the [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers)
-/// for more details.
-pub struct CptraItrngArgs {
-    pub bypass_mode: bool,
-    pub window_size: u16,
-    pub config0: u32,
-    pub config1: u32,
 }
 
 /// Number of users supported by the MCU MBOX ACL mechanism.
@@ -531,7 +576,7 @@ pub struct McuMboxAxiUserConfig {
 
 /// Configures MCU mailbox AXI users in MCI and returns the configuration for later verification.
 pub fn configure_mcu_mbox_axi_users(
-    mci: &caliptra_mcu_romtime::Mci,
+    mci: &romtime::Mci,
     mbox0_axi_users: &[u32; 5],
     mbox1_axi_users: &[u32; 5],
 ) -> McuMboxAxiUserConfig {
@@ -541,7 +586,7 @@ pub fn configure_mcu_mbox_axi_users(
     for (i, user) in mbox0_axi_users.iter().enumerate() {
         // skip unconfigured users and avoid impossible panics
         if *user != 0 && i < config.mbox0_users.len() && i < config.mbox0_locks.len() {
-            caliptra_mcu_romtime::println!(
+            romtime::println!(
                 "[mcu-rom] Setting MCI mailbox 0 user {} to {}",
                 i,
                 HexWord(*user)
@@ -557,7 +602,7 @@ pub fn configure_mcu_mbox_axi_users(
     for (i, user) in mbox1_axi_users.iter().enumerate() {
         // skip unconfigured users and avoid impossible panics
         if *user != 0 && i < config.mbox1_users.len() && i < config.mbox1_locks.len() {
-            caliptra_mcu_romtime::println!(
+            romtime::println!(
                 "[mcu-rom] Setting MCI mailbox 1 user {} to {}",
                 i,
                 HexWord(*user)
@@ -578,14 +623,11 @@ pub fn configure_mcu_mbox_axi_users(
 /// This function compares the current MCI register values against the expected values
 /// read from OTP word-by-word to minimize stack usage.
 #[inline(never)]
-pub fn verify_prod_debug_unlock_pk_hash(
-    mci: &caliptra_mcu_romtime::Mci,
-    otp: &Otp,
-) -> Result<(), McuError> {
+pub fn verify_prod_debug_unlock_pk_hash(mci: &romtime::Mci, otp: &Otp) -> Result<(), McuError> {
     // Verify length matches: 384 bytes = 96 u32 words
     let pk_hash_len = mci.prod_debug_unlock_pk_hash_len();
     if pk_hash_len != 96 {
-        caliptra_mcu_romtime::println!(
+        romtime::println!(
             "[mcu-rom] PK hash length mismatch: expected 96, got {}",
             pk_hash_len
         );
@@ -612,17 +654,17 @@ pub fn verify_prod_debug_unlock_pk_hash(
     }
 
     if mismatch {
-        caliptra_mcu_romtime::println!("[mcu-rom] Prod debug unlock PK hash verification failed");
+        romtime::println!("[mcu-rom] Prod debug unlock PK hash verification failed");
         return Err(McuError::ROM_SOC_PK_HASH_VERIFY_FAILED);
     }
-    caliptra_mcu_romtime::println!("[mcu-rom] Prod debug unlock PK hash verification passed");
+    romtime::println!("[mcu-rom] Prod debug unlock PK hash verification passed");
     Ok(())
 }
 
 /// Verifies that the MCU mailbox AXI user configuration hasn't been tampered with
 /// after SS_CONFIG_DONE_STICKY is set.
 pub fn verify_mcu_mbox_axi_users(
-    mci: &caliptra_mcu_romtime::Mci,
+    mci: &romtime::Mci,
     expected: &McuMboxAxiUserConfig,
 ) -> Result<(), McuError> {
     // Verify MBOX0 AXI users and locks
@@ -636,7 +678,7 @@ pub fn verify_mcu_mbox_axi_users(
         if let Some(expected_val) = *expected_user {
             let actual_val = mci.read_mbox0_valid_axi_user(i).unwrap_or(0);
             if expected_val != actual_val {
-                caliptra_mcu_romtime::println!(
+                romtime::println!(
                     "[mcu-rom] MCU mailbox 0 user {} verification failed: expected {}, got {}",
                     i,
                     HexWord(expected_val),
@@ -648,7 +690,7 @@ pub fn verify_mcu_mbox_axi_users(
         // Verify lock status matches expected
         let actual_locked = mci.read_mbox0_axi_user_lock(i).unwrap_or(false);
         if *expected_lock != actual_locked {
-            caliptra_mcu_romtime::println!(
+            romtime::println!(
                 "[mcu-rom] MCU mailbox 0 user {} lock verification failed: expected {}, got {}",
                 i,
                 expected_lock,
@@ -669,7 +711,7 @@ pub fn verify_mcu_mbox_axi_users(
         if let Some(expected_val) = *expected_user {
             let actual_val = mci.read_mbox1_valid_axi_user(i).unwrap_or(0);
             if expected_val != actual_val {
-                caliptra_mcu_romtime::println!(
+                romtime::println!(
                     "[mcu-rom] MCU mailbox 1 user {} verification failed: expected {}, got {}",
                     i,
                     HexWord(expected_val),
@@ -681,7 +723,7 @@ pub fn verify_mcu_mbox_axi_users(
         // Verify lock status matches expected
         let actual_locked = mci.read_mbox1_axi_user_lock(i).unwrap_or(false);
         if *expected_lock != actual_locked {
-            caliptra_mcu_romtime::println!(
+            romtime::println!(
                 "[mcu-rom] MCU mailbox 1 user {} lock verification failed: expected {}, got {}",
                 i,
                 expected_lock,
@@ -691,36 +733,28 @@ pub fn verify_mcu_mbox_axi_users(
         }
     }
 
-    caliptra_mcu_romtime::println!("[mcu-rom] MCU mailbox AXI user verification passed");
+    romtime::println!("[mcu-rom] MCU mailbox AXI user verification passed");
     Ok(())
 }
 
-bitflags::bitflags! {
-    /// Bitmask of I3C service modes the ROM may enter when appropriate.
-    ///
-    /// Each flag enables a category of I3C mailbox commands that the ROM will
-    /// accept. The ROM enters I3C services mode either when a relevant
-    /// condition is met (e.g., DOT recovery needed) or unconditionally when
-    /// `force_i3c_services` is set on `RomParameters`.
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub struct I3cServicesModes: u32 {
-        /// Enable DOT recovery commands over I3C.
-        const DOT_RECOVERY = 1 << 0;
-    }
-}
-
-/// Policy controlling whether DOT backup-blob recovery is attempted.
+/// Policy controlling which DOT recovery mechanisms are attempted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DotRecoveryPolicy {
-    /// Attempt backup blob recovery (default).
-    BackupBlob,
+    /// Try challenge/response first, then backup blob (default).
+    ChallengeFirst,
+    /// Try backup blob first, then challenge/response.
+    BackupBlobFirst,
+    /// Only attempt challenge/response recovery.
+    ChallengeOnly,
+    /// Only attempt backup blob recovery.
+    BackupBlobOnly,
     /// Do not attempt any recovery.
     None,
 }
 
 impl Default for DotRecoveryPolicy {
     fn default() -> Self {
-        Self::BackupBlob
+        Self::ChallengeFirst
     }
 }
 
@@ -737,27 +771,22 @@ pub struct RomParameters<'a> {
     pub dot_stable_key_type: Option<CmStableKeyType>,
     /// Flash storage interface for DOT blob.
     pub dot_flash: Option<&'a dyn FlashStorage>,
-    /// Recovery handler for recovering from corrupted DOT blob in ODD state (backup blob flow).
-    pub dot_recovery_handler: Option<&'a dyn crate::DotRecoveryHandler>,
-    /// Whether to attempt backup-blob recovery.
-    pub dot_recovery_policy: DotRecoveryPolicy,
     /// Whether to check for and process firmware manifest DOT commands.
     /// When true, the ROM will look for a FwManifestDotSection at the start
     /// of MCU SRAM during FwBoot and process any DOT commands found.
     /// Default: false (opt-in by platform integrators).
     pub fw_manifest_dot_enabled: bool,
-    /// Recovery/override transport for DOT challenge/response protocol (e.g., MCI mbox0, I3C).
+    /// Recovery handler for recovering from corrupted DOT blob in ODD state (backup blob flow).
+    pub dot_recovery_handler: Option<&'a dyn crate::DotRecoveryHandler>,
+    /// Recovery transport for full challenge/response DOT recovery protocol.
     pub dot_recovery_transport: Option<&'a dyn crate::RecoveryTransport>,
-    /// DOT recovery/override watchdog timeout in clock cycles. If non-zero,
-    /// the MCU watchdog is configured with this value before waiting for
-    /// mbox0 commands during recovery or override. 0 = no watchdog.
+    /// DOT recovery watchdog timeout in clock cycles. If non-zero, the MCU
+    /// watchdog is configured with this value before waiting for mbox0
+    /// commands during challenge/response recovery. 0 = no watchdog.
     pub dot_recovery_wdt_timeout: u64,
-    /// Integrator-ordered list of DOT locked-state recovery handlers.
-    /// When DOT is in ODD state, the ROM iterates through these in order,
-    /// respecting each entry's error policy. The first handler that succeeds
-    /// triggers a warm reset. If empty, no locked-state recovery is attempted.
-    pub dot_locked_recovery_handlers:
-        &'a [crate::device_ownership_transfer::DotLockedRecoveryEntry<'a>],
+    /// Which DOT recovery mechanisms to attempt and in what order.
+    /// Defaults to challenge/response first, then backup blob.
+    pub dot_recovery_policy: DotRecoveryPolicy,
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,
@@ -768,8 +797,6 @@ pub struct RomParameters<'a> {
     /// Note that in 2.0, Caliptra already sets recovery status as successful so there may be a race
     /// condition depending on when a BMC reads the recovery status.
     pub recovery_status_open: bool,
-    /// Size of the executable SRAM region to pass into FW_SRAM_EXEC_REGION_SIZE
-    pub mcu_fw_sram_exec_region_size: Option<u32>,
     /// Valid AXI users for Caliptra mailbox. 0 values are ignored.
     pub cptra_mbox_axi_users: [u32; 5],
     /// Valid AXI user for Caliptra fuse registers. 0 = don't configure.
@@ -782,40 +809,17 @@ pub struct RomParameters<'a> {
     pub mci_mbox0_axi_users: [u32; 5],
     /// Valid AXI users for MCI mailbox 1. 0 values are ignored.
     pub mci_mbox1_axi_users: [u32; 5],
-    /// Policy for selecting the vendor public key slot.
-    pub vendor_key_policy: Option<&'a dyn VendorKeyPolicy>,
+    pub stash_rom_digest: Option<bool>,
+    #[cfg(feature = "ocp-lock")]
+    pub ocp_lock_config: romtime::ocp_lock::RomConfig<'a>,
     /// OTP digest IV and finalization constant (platform-specific RTL constants).
     /// Required to use `Otp::compute_sw_digest` and `Otp::write_sw_digest_and_lock`.
     pub otp_digest_iv: Option<u64>,
     pub otp_digest_const: Option<u128>,
-    /// Caliptra entropy bypass mode. See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers)
-    /// for more details.
-    pub itrng_entropy_bypass_mode: bool,
-    pub stash_rom_digest: Option<bool>,
-    /// Optional bitmask of I3C service modes the ROM may enter.
-    /// When `None`, no I3C services are available. When set, the ROM will
-    /// enter the I3C mailbox handler for the enabled services when the
-    /// appropriate condition is met (e.g., DOT recovery needed).
-    pub i3c_services: Option<I3cServicesModes>,
-    /// When true, the ROM unconditionally enters the I3C services handler
-    /// at the appropriate point in the boot flow, regardless of whether a
-    /// triggering condition (like DOT failure) occurred.
-    pub force_i3c_services: bool,
-    /// Optional callbacks invoked at major ROM milestones. See
-    /// [`RomHooks`](crate::RomHooks) for the full list of hook points.
-    pub hooks: Option<&'a dyn crate::RomHooks>,
-    /// Number of production debug unlock authentication public key hashes
-    /// programmed into the MCI PK hash register bank. The ROM writes this
-    /// value to `SS_NUM_OF_PROD_DEBUG_UNLOCK_AUTH_PK_HASHES` so Caliptra knows
-    /// how many hashes are available for prod debug unlock. When `None`, the
-    /// ROM uses the reference fuse map count (number of entries in
-    /// `PROD_DEBUG_UNLOCK_PK_ENTRIES`).
-    pub prod_debug_unlock_auth_pk_hash_count: Option<u32>,
 }
 
-#[inline(always)]
 pub fn rom_start(params: RomParameters) {
-    caliptra_mcu_romtime::println!("[mcu-rom] Hello from ROM");
+    romtime::println!("[mcu-rom] Hello from ROM");
 
     // Create ROM environment with all peripherals
     let mut env = RomEnv::new();
@@ -824,7 +828,7 @@ pub fn rom_start(params: RomParameters) {
     let mci = &env.mci;
     mci.set_flow_milestone(McuBootMilestones::ROM_STARTED.into());
 
-    caliptra_mcu_romtime::println!(
+    romtime::println!(
         "[mcu-rom] Device lifecycle: {}",
         match mci.device_lifecycle_state() {
             DeviceLifecycle::Value::DeviceUnprovisioned => "Unprovisioned",
@@ -833,40 +837,40 @@ pub fn rom_start(params: RomParameters) {
         }
     );
 
-    caliptra_mcu_romtime::println!(
+    romtime::println!(
         "[mcu-rom] MCI generic input wires[0]: {}",
         HexWord(mci.registers.mci_reg_generic_input_wires[0].get())
     );
-    caliptra_mcu_romtime::println!(
+    romtime::println!(
         "[mcu-rom] MCI generic input wires[1]: {}",
         HexWord(mci.registers.mci_reg_generic_input_wires[1].get())
     );
 
     // Read and print the reset reason register
     let reset_reason = mci.registers.mci_reg_reset_reason.get();
-    caliptra_mcu_romtime::println!("[mcu-rom] MCI RESET_REASON: 0x{:08x}", reset_reason);
+    romtime::println!("[mcu-rom] MCI RESET_REASON: 0x{:08x}", reset_reason);
 
     // Handle different reset reasons
-    use caliptra_mcu_romtime::McuResetReason;
+    use romtime::McuResetReason;
     match mci.reset_reason_enum() {
         McuResetReason::ColdBoot => {
-            caliptra_mcu_romtime::println!("[mcu-rom] Cold boot detected");
+            romtime::println!("[mcu-rom] Cold boot detected");
             ColdBoot::run(&mut env, params);
         }
         McuResetReason::WarmReset => {
-            caliptra_mcu_romtime::println!("[mcu-rom] Warm reset detected");
+            romtime::println!("[mcu-rom] Warm reset detected");
             WarmBoot::run(&mut env, params);
         }
         McuResetReason::FirmwareBootReset => {
-            caliptra_mcu_romtime::println!("[mcu-rom] Firmware boot reset detected");
+            romtime::println!("[mcu-rom] Firmware boot reset detected");
             FwBoot::run(&mut env, params);
         }
         McuResetReason::FirmwareHitlessUpdate => {
-            caliptra_mcu_romtime::println!("[mcu-rom] Starting firmware hitless update flow");
+            romtime::println!("[mcu-rom] Starting firmware hitless update flow");
             FwHitlessUpdate::run(&mut env, params);
         }
         McuResetReason::Invalid => {
-            caliptra_mcu_romtime::println!("[mcu-rom] Invalid reset reason: multiple bits set");
+            romtime::println!("[mcu-rom] Invalid reset reason: multiple bits set");
             fatal_error(McuError::ROM_ROM_INVALID_RESET_REASON);
         }
     }

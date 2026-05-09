@@ -1,8 +1,8 @@
 //! Tests for the Command system call implementation in
-//! `caliptra_mcu_libtock_platform::Syscalls`.
+//! `libtock_platform::Syscalls`.
 
-use caliptra_mcu_libtock_platform::Syscalls;
-use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall, SyscallLogEntry};
+use libtock_platform::Syscalls;
+use libtock_unittest::{command_return, fake, ExpectedSyscall, SyscallLogEntry};
 
 #[test]
 fn command() {

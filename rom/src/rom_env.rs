@@ -13,9 +13,10 @@ Abstract:
 --*/
 
 use crate::Soc;
-use caliptra_mcu_registers_generated::{i3c, lc_ctrl, mci, otp_ctrl, soc};
-use caliptra_mcu_romtime::{CaliptraSoC, Lifecycle, Mci, Otp, StaticRef};
 use core::ptr::addr_of;
+use registers_generated::{i3c, lc_ctrl, mci, otp_ctrl, soc};
+use romtime::{CaliptraSoC, Mci, StaticRef};
+use romtime::{Lifecycle, Otp};
 
 /// ROM Environment containing all peripherals and managers
 pub struct RomEnv {
@@ -25,17 +26,15 @@ pub struct RomEnv {
     pub otp: Otp,
     pub i3c: crate::i3c::I3c,
     pub i3c_base: StaticRef<i3c::regs::I3c>,
-    pub i3c1: crate::i3c::I3c,
-    pub i3c1_base: StaticRef<i3c::regs::I3c>,
     pub soc_manager: CaliptraSoC,
-    pub straps: StaticRef<caliptra_mcu_config::McuStraps>,
+    pub straps: StaticRef<mcu_config::McuStraps>,
 }
 
 impl RomEnv {
     /// Create a new ROM environment with all peripherals initialized
     pub fn new() -> Self {
         // Get straps
-        let straps: StaticRef<caliptra_mcu_config::McuStraps> =
+        let straps: StaticRef<mcu_config::McuStraps> =
             unsafe { StaticRef::new(addr_of!(crate::MCU_STRAPS)) };
 
         // Get base addresses from MCU memory map
@@ -46,8 +45,6 @@ impl RomEnv {
                 StaticRef::new(crate::MCU_MEMORY_MAP.otp_offset as *const otp_ctrl::regs::OtpCtrl);
             let i3c_base: StaticRef<i3c::regs::I3c> =
                 StaticRef::new(crate::MCU_MEMORY_MAP.i3c_offset as *const i3c::regs::I3c);
-            let i3c1_base: StaticRef<i3c::regs::I3c> =
-                StaticRef::new(crate::MCU_MEMORY_MAP.i3c1_offset as *const i3c::regs::I3c);
             let soc_base: StaticRef<soc::regs::Soc> =
                 StaticRef::new(crate::MCU_MEMORY_MAP.soc_offset as *const soc::regs::Soc);
             let mci_base: StaticRef<mci::regs::Mci> =
@@ -66,7 +63,6 @@ impl RomEnv {
             let lc = Lifecycle::new(lc_base);
             let otp = Otp::new(otp_base);
             let i3c = crate::i3c::I3c::new(i3c_base);
-            let i3c1 = crate::i3c::I3c::new(i3c1_base);
 
             Self {
                 mci,
@@ -75,8 +71,6 @@ impl RomEnv {
                 otp,
                 i3c,
                 i3c_base,
-                i3c1,
-                i3c1_base,
                 soc_manager,
                 straps,
             }

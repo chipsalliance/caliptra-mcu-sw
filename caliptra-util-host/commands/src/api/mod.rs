@@ -9,25 +9,21 @@
 // Re-export types that API consumers might need
 // Note: These imports might appear unused but are used by other modules or re-exports
 
-pub mod certificate;
 pub mod crypto_aes;
 pub mod crypto_asymmetric;
 pub mod crypto_delete;
 pub mod crypto_hash;
 pub mod crypto_hmac;
 pub mod crypto_import;
-pub mod debug_unlock;
 pub mod device_info;
 
 pub use caliptra_util_host_session::CommandSession;
-pub use certificate::*;
 pub use crypto_aes::*;
 pub use crypto_asymmetric::*;
 pub use crypto_delete::*;
 pub use crypto_hash::*;
 pub use crypto_hmac::*;
 pub use crypto_import::*;
-pub use debug_unlock::*;
 pub use device_info::*;
 
 /// High-level result type for API functions
@@ -37,7 +33,7 @@ pub type CaliptraResult<T> = Result<T, CaliptraApiError>;
 #[derive(Debug, Clone, PartialEq)]
 pub enum CaliptraApiError {
     /// OSAL error
-    Osal(caliptra_mcu_core_util_host_osal::OsalError),
+    Osal(caliptra_util_host_osal::OsalError),
     /// Invalid parameter
     InvalidParameter(&'static str),
     /// Session not initialized
@@ -50,14 +46,14 @@ pub enum CaliptraApiError {
     SessionError(&'static str),
 }
 
-impl From<caliptra_mcu_core_util_host_osal::OsalError> for CaliptraApiError {
-    fn from(err: caliptra_mcu_core_util_host_osal::OsalError) -> Self {
+impl From<caliptra_util_host_osal::OsalError> for CaliptraApiError {
+    fn from(err: caliptra_util_host_osal::OsalError) -> Self {
         CaliptraApiError::Osal(err)
     }
 }
 
-impl From<caliptra_mcu_core_util_host_command_types::CommandError> for CaliptraApiError {
-    fn from(_err: caliptra_mcu_core_util_host_command_types::CommandError) -> Self {
+impl From<caliptra_util_host_command_types::CommandError> for CaliptraApiError {
+    fn from(_err: caliptra_util_host_command_types::CommandError) -> Self {
         CaliptraApiError::CommandFailed("Command execution failed")
     }
 }

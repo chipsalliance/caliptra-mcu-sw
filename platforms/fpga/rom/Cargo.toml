@@ -7,16 +7,15 @@ authors.workspace = true
 edition.workspace = true
 
 [build-dependencies]
-caliptra-mcu-builder.workspace = true
-caliptra-mcu-config-fpga.workspace = true
+mcu-builder.workspace = true
+mcu-config-fpga.workspace = true
 
 [dependencies]
-caliptra-mcu-config.workspace = true
-caliptra-mcu-config-fpga.workspace = true
-caliptra-mcu-otp-lifecycle.workspace = true
-caliptra-mcu-rom-common.workspace = true
-caliptra-mcu-registers-generated.workspace = true
-caliptra-mcu-romtime.workspace = true
+mcu-config.workspace = true
+mcu-config-fpga.workspace = true
+mcu-rom-common.workspace = true
+registers-generated.workspace = true
+romtime.workspace = true
 tock-registers.workspace = true
 zeroize.workspace = true
 
@@ -25,7 +24,5 @@ riscv-csr.workspace = true
 rv32i.workspace = true
 
 [features]
-core_test = ["caliptra-mcu-rom-common/core_test"]
-hw-2-1 = ["caliptra-mcu-rom-common/hw-2-1"]
-test-i3c-services = []
-test-rom-hooks = []
+core_test = ["mcu-rom-common/core_test"]
+hw-2-1 = ["mcu-rom-common/hw-2-1"]

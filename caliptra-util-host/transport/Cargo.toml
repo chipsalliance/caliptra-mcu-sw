@@ -1,15 +1,14 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mcu-core-util-host-transport"
+name = "caliptra-util-host-transport"
 version.workspace = true
 edition.workspace = true
 description = "Transport layer for Caliptra Utility Host Library"
 
 [dependencies]
-caliptra-mcu-core-util-host-osal.workspace = true
-caliptra-mcu-core-util-host-command-types.workspace = true
-caliptra-mcu-mctp-vdm-common.workspace = true
+caliptra-util-host-osal.workspace = true
+caliptra-util-host-command-types.workspace = true
 zerocopy.workspace = true
 
 [features]

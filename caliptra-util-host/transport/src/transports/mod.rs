@@ -2,8 +2,6 @@
 
 //! Transport modules
 //!
-//! Mailbox and MCTP VDM transport implementations
+//! Mailbox transport implementation
 
 pub mod mailbox;
-pub mod mctp_vdm;
-pub mod spdm_vdm;

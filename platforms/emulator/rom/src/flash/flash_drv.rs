@@ -2,15 +2,15 @@
 
 // Emulated flash controller driver for MCU ROM.
 
-use caliptra_mcu_registers_generated::primary_flash_ctrl::{
+use core::fmt::Write;
+use core::ops::{Index, IndexMut};
+use mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
+use registers_generated::primary_flash_ctrl::{
     self,
     bits::{CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus},
     regs::PrimaryFlashCtrl,
 };
-use caliptra_mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
-use caliptra_mcu_romtime::StaticRef;
-use core::fmt::Write;
-use core::ops::{Index, IndexMut};
+use romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 #[allow(dead_code)]
@@ -21,7 +21,7 @@ pub const PRIMARY_FLASH_CTRL_BASE: StaticRef<PrimaryFlashCtrl> = unsafe {
 #[allow(dead_code)]
 pub const SECONDARY_FLASH_CTRL_BASE: StaticRef<PrimaryFlashCtrl> = unsafe {
     StaticRef::new(
-        caliptra_mcu_registers_generated::secondary_flash_ctrl::SECONDARY_FLASH_CTRL_ADDR
+        registers_generated::secondary_flash_ctrl::SECONDARY_FLASH_CTRL_ADDR
             as *const PrimaryFlashCtrl,
     )
 };
@@ -357,7 +357,7 @@ impl EmulatedFlashCtrl {
                 self.clear_error_interrupt();
                 self.disable_interrupts();
 
-                caliptra_mcu_romtime::println!("Flash IO failed");
+                romtime::println!("Flash IO failed");
                 return Err(FlashDrvError::FAIL);
             }
         }

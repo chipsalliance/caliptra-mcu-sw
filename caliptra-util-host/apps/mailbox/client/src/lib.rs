@@ -12,40 +12,29 @@ pub mod validator;
 pub use network_driver::UdpTransportDriver;
 pub use validator::{run_basic_validation, run_verbose_validation, ValidationResult, Validator};
 
-// Re-export the debug unlock signer trait and types from the common crate
-pub use caliptra_mcu_debug_unlock_signer::{
-    DebugUnlockKeys, DebugUnlockSigner, LocalDebugUnlockSigner,
-};
-
 // Re-export config from the shared library
-pub use caliptra_mcu_core_util_host_mailbox_test_config::*;
+pub use caliptra_util_host_mailbox_test_config::*;
 
 use anyhow::Result;
-use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
-use caliptra_mcu_core_util_host_command_types::crypto_aes::{
+use caliptra_util_host_command_types::crypto_aes::{
     AesMode, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE,
 };
-use caliptra_mcu_core_util_host_command_types::crypto_asymmetric::{
+use caliptra_util_host_command_types::crypto_asymmetric::{
     EcdhFinishResponse, EcdhGenerateResponse, EcdsaPublicKeyResponse, EcdsaSignResponse,
     CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, ECC384_SCALAR_BYTE_SIZE,
 };
-use caliptra_mcu_core_util_host_command_types::crypto_delete::DeleteResponse;
-use caliptra_mcu_core_util_host_command_types::crypto_hash::{
+use caliptra_util_host_command_types::crypto_delete::DeleteResponse;
+use caliptra_util_host_command_types::crypto_hash::{
     ShaAlgorithm, ShaFinalResponse, ShaInitResponse, ShaUpdateResponse, SHA_CONTEXT_SIZE,
 };
-use caliptra_mcu_core_util_host_command_types::crypto_hmac::{
+use caliptra_util_host_command_types::crypto_hmac::{
     CmKeyUsage, Cmk, HmacAlgorithm, HmacKdfCounterResponse, HmacResponse,
 };
-use caliptra_mcu_core_util_host_command_types::crypto_import::ImportResponse;
-use caliptra_mcu_core_util_host_command_types::debug_unlock::{
-    ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
-};
-use caliptra_mcu_core_util_host_command_types::{
+use caliptra_util_host_command_types::crypto_import::ImportResponse;
+use caliptra_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
     GetFirmwareVersionResponse,
 };
-use caliptra_mcu_core_util_host_transport::Mailbox;
-use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
     AesEncryptResult, AesGcmDecryptResult, AesGcmEncryptResult,
@@ -62,14 +51,12 @@ use caliptra_util_host_commands::api::crypto_hmac::{
     caliptra_cmd_hmac, caliptra_cmd_hmac_kdf_counter,
 };
 use caliptra_util_host_commands::api::crypto_import::caliptra_cmd_import;
-use caliptra_util_host_commands::api::debug_unlock::{
-    caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
-};
 use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
     caliptra_cmd_get_firmware_version,
 };
 use caliptra_util_host_session::CaliptraSession;
+use caliptra_util_host_transport::Mailbox;
 
 /// High-level Mailbox Client for communicating with Caliptra devices
 pub struct MailboxClient<'a> {
@@ -78,18 +65,15 @@ pub struct MailboxClient<'a> {
 
 impl<'a> MailboxClient<'a> {
     /// Create a new MailboxClient with the provided mailbox driver
-    pub fn new(
-        mailbox_driver: &'a mut dyn caliptra_mcu_core_util_host_transport::MailboxDriver,
-    ) -> Self {
+    pub fn new(mailbox_driver: &'a mut dyn caliptra_util_host_transport::MailboxDriver) -> Self {
         let transport = Mailbox::new(mailbox_driver);
         Self { transport }
     }
 
     /// Create a new MailboxClient with UDP transport
     pub fn with_udp_driver(udp_driver: &'a mut UdpTransportDriver) -> Self {
-        let transport = Mailbox::new(
-            udp_driver as &mut dyn caliptra_mcu_core_util_host_transport::MailboxDriver,
-        );
+        let transport =
+            Mailbox::new(udp_driver as &mut dyn caliptra_util_host_transport::MailboxDriver);
         Self { transport }
     }
 
@@ -100,7 +84,7 @@ impl<'a> MailboxClient<'a> {
         // Create session with Mailbox transport
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -169,7 +153,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -203,7 +187,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -237,7 +221,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -281,7 +265,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -313,7 +297,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -348,7 +332,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -400,7 +384,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -443,7 +427,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -483,7 +467,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -512,7 +496,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -549,7 +533,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -590,7 +574,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -630,7 +614,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -672,7 +656,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -704,7 +688,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -732,7 +716,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -769,7 +753,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -797,7 +781,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -833,7 +817,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -849,110 +833,6 @@ impl<'a> MailboxClient<'a> {
             Err(e) => {
                 eprintln!("✗ ECDH finish failed: {:?}", e);
                 Err(anyhow::anyhow!("ECDH finish command failed: {:?}", e))
-            }
-        }
-    }
-
-    /// Request a production debug unlock challenge
-    ///
-    /// Sends a debug unlock request and receives a challenge containing
-    /// the unique device identifier and a random challenge value.
-    pub fn prod_debug_unlock_req(
-        &mut self,
-        unlock_level: u8,
-    ) -> Result<ProdDebugUnlockReqResponse> {
-        println!(
-            "Executing production debug unlock request (unlock_level={})...",
-            unlock_level
-        );
-
-        let mut session = CaliptraSession::new(
-            1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
-
-        session
-            .connect()
-            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
-
-        match caliptra_cmd_prod_debug_unlock_req(&mut session, unlock_level) {
-            Ok(response) => {
-                println!("✓ Production debug unlock request succeeded!");
-                Ok(response)
-            }
-            Err(e) => {
-                eprintln!("✗ Production debug unlock request failed: {:?}", e);
-                Err(anyhow::anyhow!(
-                    "Production debug unlock request command failed: {:?}",
-                    e
-                ))
-            }
-        }
-    }
-
-    /// Submit a production debug unlock token
-    ///
-    /// Submits a signed token to complete the debug unlock flow.
-    pub fn prod_debug_unlock_token(
-        &mut self,
-        request: &ProdDebugUnlockTokenRequest,
-    ) -> Result<ProdDebugUnlockTokenResponse> {
-        println!("Executing production debug unlock token command...");
-
-        let mut session = CaliptraSession::new(
-            1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
-
-        session
-            .connect()
-            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
-
-        match caliptra_cmd_prod_debug_unlock_token(&mut session, request) {
-            Ok(response) => {
-                println!("✓ Production debug unlock token succeeded!");
-                Ok(response)
-            }
-            Err(e) => {
-                eprintln!("✗ Production debug unlock token failed: {:?}", e);
-                Err(anyhow::anyhow!(
-                    "Production debug unlock token command failed: {:?}",
-                    e
-                ))
-            }
-        }
-    }
-
-    /// Export an attested CSR from the device
-    pub fn export_attested_csr(
-        &mut self,
-        device_key_id: u32,
-        algorithm: u32,
-        nonce: &[u8; 32],
-    ) -> Result<ExportAttestedCsrResponse> {
-        println!("Executing ExportAttestedCsr command...");
-
-        let mut session = CaliptraSession::new(
-            1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
-
-        session
-            .connect()
-            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
-
-        match caliptra_cmd_export_attested_csr(&mut session, device_key_id, algorithm, nonce) {
-            Ok(response) => {
-                println!("✓ ExportAttestedCsr succeeded!");
-                println!("  CSR data length: {} bytes", response.data_len);
-                Ok(response)
-            }
-            Err(e) => {
-                eprintln!("✗ ExportAttestedCsr failed: {:?}", e);
-                Err(anyhow::anyhow!("ExportAttestedCsr command failed: {:?}", e))
             }
         }
     }

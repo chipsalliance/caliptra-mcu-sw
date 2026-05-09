@@ -16,13 +16,14 @@ use bitflags::bitflags;
 
 const ROM_INITIALIZATION_BASE: u16 = 1;
 const LIFECYCLE_MANAGEMENT_BASE: u16 = 65;
+const FIPS_ZEROIZATION_BASE: u16 = 97;
 const OTP_FUSE_OPERATIONS_BASE: u16 = 129;
 const CALIPTRA_SETUP_BASE: u16 = 193;
 const FIRMWARE_LOADING_BASE: u16 = 257;
 const FIELD_ENTROPY_BASE: u16 = 321;
 const DOT_RECOVERY_BASE: u16 = 385;
-const DOT_OVERRIDE_BASE: u16 = 417;
 const BOOT_FLOW_BASE: u16 = 449;
+const ENCRYPTED_FIRMWARE_BASE: u16 = 513;
 
 /// Status codes used by MCU ROM to log boot progress.
 #[repr(u16)]
@@ -43,6 +44,20 @@ pub enum McuRomBootStatus {
     LifecycleTransitionComplete = LIFECYCLE_MANAGEMENT_BASE + 2,
     LifecycleTokenBurningStarted = LIFECYCLE_MANAGEMENT_BASE + 3,
     LifecycleTokenBurningComplete = LIFECYCLE_MANAGEMENT_BASE + 4,
+
+    // FIPS Zeroization Flow Statuses
+    /// FIPS zeroization PPD signal detected; MCU ROM is authorizing zeroization.
+    FipsZeroizationDetected = FIPS_ZEROIZATION_BASE,
+    /// Caliptra ZEROIZE_UDS_FE command sent to zeroize UDS and field entropy.
+    FipsZeroizationUdsFeStarted = FIPS_ZEROIZATION_BASE + 1,
+    /// Caliptra ZEROIZE_UDS_FE command completed.
+    FipsZeroizationUdsFeComplete = FIPS_ZEROIZATION_BASE + 2,
+    /// MCU ROM zeroization mask register set to 0xFFFF_FFFF.
+    FipsZeroizationMaskSet = FIPS_ZEROIZATION_BASE + 3,
+    /// LC transition to SCRAP state started (takes effect after cold reset).
+    FipsZeroizationScrapTransitionStarted = FIPS_ZEROIZATION_BASE + 4,
+    /// FIPS zeroization flow complete; MCU ROM is halted waiting for cold reset.
+    FipsZeroizationComplete = FIPS_ZEROIZATION_BASE + 5,
 
     // OTP and Fuse Operations
     OtpControllerInitialized = OTP_FUSE_OPERATIONS_BASE,
@@ -67,9 +82,6 @@ pub enum McuRomBootStatus {
     DeviceOwnershipBurnFuses = CALIPTRA_SETUP_BASE + 15,
     DeviceOwnershipDetermineOwner = CALIPTRA_SETUP_BASE + 16,
     DeviceOwnershipTransferComplete = CALIPTRA_SETUP_BASE + 17,
-    I3cServicesStarted = CALIPTRA_SETUP_BASE + 18,
-    I3cServicesReady = CALIPTRA_SETUP_BASE + 19,
-    I3cServicesComplete = CALIPTRA_SETUP_BASE + 20,
 
     // Firmware Loading Statuses
     RiDownloadFirmwareCommandSent = FIRMWARE_LOADING_BASE,
@@ -96,15 +108,9 @@ pub enum McuRomBootStatus {
     DotRecoveryBlobWritten = DOT_RECOVERY_BASE + 2,
     DotRecoveryComplete = DOT_RECOVERY_BASE + 3,
     DotRecoveryFailed = DOT_RECOVERY_BASE + 4,
-
-    // DOT Override Statuses
-    DotOverrideStarted = DOT_OVERRIDE_BASE,
-    DotOverrideChallengeSent = DOT_OVERRIDE_BASE + 1,
-    DotOverrideSigVerified = DOT_OVERRIDE_BASE + 2,
-    DotOverrideFuseBurned = DOT_OVERRIDE_BASE + 3,
-    DotOverrideBlobWritten = DOT_OVERRIDE_BASE + 4,
-    DotOverrideComplete = DOT_OVERRIDE_BASE + 5,
-    DotOverrideFailed = DOT_OVERRIDE_BASE + 6,
+    DotRecoveryPkHashVerified = DOT_RECOVERY_BASE + 5,
+    DotRecoveryChallengeSent = DOT_RECOVERY_BASE + 6,
+    DotRecoveryChallengeResponseVerified = DOT_RECOVERY_BASE + 7,
 
     // Boot Flow Completion
     ColdBootFlowStarted = BOOT_FLOW_BASE,
@@ -115,6 +121,12 @@ pub enum McuRomBootStatus {
     FirmwareBootFlowComplete = BOOT_FLOW_BASE + 5,
     HitlessUpdateFlowStarted = BOOT_FLOW_BASE + 6,
     HitlessUpdateFlowComplete = BOOT_FLOW_BASE + 7,
+
+    // Encrypted Firmware Boot (core_test only)
+    EncryptedFirmwareDecryptStarted = ENCRYPTED_FIRMWARE_BASE,
+    EncryptedFirmwareDecryptComplete = ENCRYPTED_FIRMWARE_BASE + 1,
+    EncryptedFirmwareActivateStarted = ENCRYPTED_FIRMWARE_BASE + 2,
+    EncryptedFirmwareActivateComplete = ENCRYPTED_FIRMWARE_BASE + 3,
 }
 
 impl From<McuRomBootStatus> for u16 {

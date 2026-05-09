@@ -16,38 +16,8 @@ use crate::{err_code, fatal_error};
 use caliptra_api::mailbox::{
     CmShaFinalResp, CmShaInitResp, CommandId, CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };
-use caliptra_mcu_error::McuError;
-use caliptra_mcu_romtime::{CaliptraSoC, HexWord};
-
-/// Read mailbox response words into a u8 buffer.
-fn read_resp(soc_manager: &mut CaliptraSoC, resp_buf: &mut [u8], label: &str) {
-    let resp_size = resp_buf.len();
-    match soc_manager.finish_mailbox_resp(resp_size, resp_size) {
-        Err(err) => {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] {} finish error: {}",
-                label,
-                HexWord(err_code(&err))
-            );
-            fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH);
-        }
-        Ok(Some(resp_iter)) => {
-            let mut offset = 0;
-            for word in resp_iter {
-                for &b in &word.to_le_bytes() {
-                    if offset < resp_buf.len() {
-                        resp_buf[offset] = b;
-                        offset += 1;
-                    }
-                }
-            }
-        }
-        Ok(None) => {
-            caliptra_mcu_romtime::println!("[mcu-rom] {} no response", label);
-            fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH);
-        }
-    }
-}
+use mcu_error::McuError;
+use romtime::{CaliptraSoC, HexWord};
 
 /// CmHashAlgorithm::Sha384 value (matches caliptra-api enum).
 const CM_HASH_ALGORITHM_SHA384: u32 = 1;
@@ -130,7 +100,7 @@ fn cm_sha_init(soc_manager: &mut CaliptraSoC, chunk: &[u32]) -> [u8; CMB_SHA_CON
         .chain(core::iter::repeat(0u32).take(padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
-        caliptra_mcu_romtime::println!(
+        romtime::println!(
             "[mcu-rom] CM_SHA_INIT start error: {}",
             HexWord(err_code(&err))
         );
@@ -138,17 +108,17 @@ fn cm_sha_init(soc_manager: &mut CaliptraSoC, chunk: &[u32]) -> [u8; CMB_SHA_CON
     }
 
     let mut resp_buf = [0u8; core::mem::size_of::<CmShaInitResp>()];
-    read_resp(soc_manager, &mut resp_buf, "CM_SHA_INIT");
+    if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+        romtime::println!(
+            "[mcu-rom] CM_SHA_INIT finish error: {}",
+            HexWord(err_code(&err))
+        );
+        fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH);
+    }
 
     let mut sha_context = [0u8; CMB_SHA_CONTEXT_SIZE];
     match resp_buf.get(8..8 + CMB_SHA_CONTEXT_SIZE) {
-        Some(src) => unsafe {
-            core::ptr::copy_nonoverlapping(
-                src.as_ptr(),
-                sha_context.as_mut_ptr(),
-                CMB_SHA_CONTEXT_SIZE,
-            )
-        },
+        Some(src) => sha_context.copy_from_slice(src),
         None => fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH),
     }
     sha_context
@@ -181,7 +151,7 @@ fn cm_sha_update(
         .chain(core::iter::repeat(0u32).take(padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
-        caliptra_mcu_romtime::println!(
+        romtime::println!(
             "[mcu-rom] CM_SHA_UPDATE start error: {}",
             HexWord(err_code(&err))
         );
@@ -189,16 +159,16 @@ fn cm_sha_update(
     }
 
     let mut resp_buf = [0u8; core::mem::size_of::<CmShaInitResp>()];
-    read_resp(soc_manager, &mut resp_buf, "CM_SHA_UPDATE");
+    if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+        romtime::println!(
+            "[mcu-rom] CM_SHA_UPDATE finish error: {}",
+            HexWord(err_code(&err))
+        );
+        fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH);
+    }
 
     match resp_buf.get(8..8 + CMB_SHA_CONTEXT_SIZE) {
-        Some(src) => unsafe {
-            core::ptr::copy_nonoverlapping(
-                src.as_ptr(),
-                sha_context.as_mut_ptr(),
-                CMB_SHA_CONTEXT_SIZE,
-            )
-        },
+        Some(src) => sha_context.copy_from_slice(src),
         None => fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH),
     }
 }
@@ -230,7 +200,7 @@ fn cm_sha_final(
         .chain(core::iter::repeat(0u32).take(padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
-        caliptra_mcu_romtime::println!(
+        romtime::println!(
             "[mcu-rom] CM_SHA_FINAL start error: {}",
             HexWord(err_code(&err))
         );
@@ -238,14 +208,18 @@ fn cm_sha_final(
     }
 
     let mut resp_buf = [0u8; core::mem::size_of::<CmShaFinalResp>()];
-    read_resp(soc_manager, &mut resp_buf, "CM_SHA_FINAL");
+    if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+        romtime::println!(
+            "[mcu-rom] CM_SHA_FINAL finish error: {}",
+            HexWord(err_code(&err))
+        );
+        fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH);
+    }
 
     // CmShaFinalResp: hdr(8) + data_len(4) + hash(64)
     let mut digest = [0u8; 48];
     match resp_buf.get(12..12 + 48) {
-        Some(src) => unsafe {
-            core::ptr::copy_nonoverlapping(src.as_ptr(), digest.as_mut_ptr(), 48)
-        },
+        Some(src) => digest.copy_from_slice(src),
         None => fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH),
     }
     digest

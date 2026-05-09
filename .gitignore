@@ -43,9 +43,6 @@ platforms/fpga/runtime/user-app-layout.ld
 **/*.tar.zst
 **/*.zip
 
-# Generated JSON files (e.g. for any configurations or test results)
-*.json
-
 cross-target/
 
 # Test logs
@@ -56,7 +53,3 @@ docs/*.jar
 
 # FPGA bitstreams
 subsystem.pdi
-
-# CoRIM test signing keys (generated on-the-fly, never commit)
-fake_keys/
-attestation-artifacts/*

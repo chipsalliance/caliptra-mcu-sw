@@ -10,10 +10,6 @@
 use crate::pic::Pic;
 use crate::pmp::{VeeRPMP, VeeRProtectionMMLEPMP};
 use crate::timers::{InternalTimers, TimerInterrupts};
-use caliptra_mcu_config::McuMemoryMap;
-use caliptra_mcu_registers_generated::i3c::regs::I3c;
-use caliptra_mcu_registers_generated::mci;
-use caliptra_mcu_registers_generated::otp_ctrl;
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
 use core::fmt::Write;
 use core::ptr::addr_of;
@@ -21,6 +17,10 @@ use kernel::debug;
 use kernel::platform::chip::{Chip, InterruptService};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::StaticRef;
+use mcu_config::McuMemoryMap;
+use registers_generated::i3c::regs::I3c;
+use registers_generated::mci;
+use registers_generated::otp_ctrl;
 use rv32i::csr::{mcause, mie::mie, CSR};
 use rv32i::syscall::SysCall;
 
@@ -34,8 +34,7 @@ pub static mut TIMERS: InternalTimers<'static> = InternalTimers::new();
 // TODO: these should be part of the memory map
 pub const MCI_IRQ: u8 = 0x1;
 pub const I3C_IRQ: u8 = 0x2;
-pub const I3C1_IRQ: u8 = 0x3;
-pub const LSB_IRG: u8 = 0x4;
+pub const LSB_IRG: u8 = 0x3;
 
 pub struct VeeR<'a, I: InterruptService + 'a> {
     userspace_kernel_boundary: SysCall,
@@ -46,12 +45,11 @@ pub struct VeeR<'a, I: InterruptService + 'a> {
 }
 
 pub struct VeeRDefaultPeripherals<'a> {
-    pub i3c: caliptra_mcu_i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
-    pub i3c1: caliptra_mcu_i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
-    pub mci: caliptra_mcu_romtime::Mci,
-    pub mcu_mbox0: caliptra_mcu_mbox_driver::McuMailbox<'a, InternalTimers<'a>>,
+    pub i3c: i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
+    pub mci: romtime::Mci,
+    pub mcu_mbox0: mcu_mbox_driver::McuMailbox<'a, InternalTimers<'a>>,
     pub additional_interrupt_handler: &'static dyn InterruptService,
-    pub otp: caliptra_mcu_romtime::Otp,
+    pub otp: romtime::Otp,
 }
 
 impl<'a> VeeRDefaultPeripherals<'a> {
@@ -59,28 +57,22 @@ impl<'a> VeeRDefaultPeripherals<'a> {
         additional_interrupt_handler: &'static dyn InterruptService,
         alarm: &'a MuxAlarm<'a, InternalTimers<'a>>,
         memory_map: &McuMemoryMap,
-        mci_regs: caliptra_mcu_romtime::StaticRef<mci::regs::Mci>,
+        mci_regs: romtime::StaticRef<mci::regs::Mci>,
     ) -> Self {
-        let mci_driver = caliptra_mcu_romtime::Mci::new(mci_regs);
-        let otp: caliptra_mcu_romtime::StaticRef<otp_ctrl::regs::OtpCtrl> = unsafe {
-            caliptra_mcu_romtime::StaticRef::new(
-                memory_map.otp_offset as *const otp_ctrl::regs::OtpCtrl,
-            )
+        let mci_driver = romtime::Mci::new(mci_regs);
+        let otp: romtime::StaticRef<otp_ctrl::regs::OtpCtrl> = unsafe {
+            romtime::StaticRef::new(memory_map.otp_offset as *const otp_ctrl::regs::OtpCtrl)
         };
-        let otp_driver = caliptra_mcu_romtime::Otp::new(otp);
+        let otp_driver = romtime::Otp::new(otp);
         Self {
-            i3c: caliptra_mcu_i3c_driver::core::I3CCore::new(
+            i3c: i3c_driver::core::I3CCore::new(
                 unsafe { StaticRef::new(memory_map.i3c_offset as *const I3c) },
                 alarm,
             ),
-            i3c1: caliptra_mcu_i3c_driver::core::I3CCore::new(
-                unsafe { StaticRef::new(memory_map.i3c1_offset as *const I3c) },
-                alarm,
-            ),
             mci: mci_driver,
-            mcu_mbox0: caliptra_mcu_mbox_driver::McuMailbox::new(
+            mcu_mbox0: mcu_mbox_driver::McuMailbox::new(
                 mci_regs,
-                memory_map.mci_offset + caliptra_mcu_mbox_driver::MCU_MBOX0_SRAM_OFFSET,
+                memory_map.mci_offset + mcu_mbox_driver::MCU_MBOX0_SRAM_OFFSET,
                 alarm,
             ),
             additional_interrupt_handler,
@@ -90,7 +82,6 @@ impl<'a> VeeRDefaultPeripherals<'a> {
 
     pub fn init(&'static self) {
         self.i3c.init();
-        self.i3c1.init();
         self.mcu_mbox0.init();
     }
 }
@@ -104,9 +95,6 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
             return true;
         } else if interrupt == I3C_IRQ as u32 {
             self.i3c.handle_interrupt();
-            return true;
-        } else if interrupt == I3C1_IRQ as u32 {
-            self.i3c1.handle_interrupt();
             return true;
         } else if interrupt == MCI_IRQ as u32 {
             self.mci.handle_interrupt();

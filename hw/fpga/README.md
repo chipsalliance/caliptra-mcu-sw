@@ -130,6 +130,19 @@ Here is a link with more information about segmented bitstreams: https://github.
 
 Please checkout the FPGA section of the MCU [spec](https://chipsalliance.github.io/caliptra-mcu-sw/fpga.html).
 
+### Adding registers to the FPGA wrapper. ###
+The FPGA wrapper module contains several registers that interface with the
+hardware model to enable various test cases to drive signals/data in/out of the
+Caliptra Subsystem toplevel. To add additional registers simply:
+
+1. Ensure you have the `peakrdl` and `peakrdl-markdown` python packages installed: `pip install peakrdl peakrdl-markdown`.
+2. Modify the RDL file in `hw/fpga/src/caliptra_fpga_realtime_regs.rdl` to add the new register descriptions.
+3. rerun the autogeneration script:
+    a. `cd hw/fpga/src`
+    b. `./gen.sh`
+4. [optional]: connect the new registers Caliptra Subsystem toplevel if needed
+5. Rebuild the bitstream. 
+
 ### Common Issues ###
 - Caliptra logic missing or system hang when attempting to access FPGA Wrapper
   - ```sudo shutdown now``` and use power switch to reboot system

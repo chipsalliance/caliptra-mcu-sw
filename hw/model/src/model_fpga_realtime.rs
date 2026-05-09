@@ -13,13 +13,13 @@ use caliptra_hw_model::{
     DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
     SecurityState, SubsystemInitParams, XI3CWrapper,
 };
-use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
-use caliptra_mcu_romtime::McuBootMilestones;
-use caliptra_mcu_testing_common::i3c::{
+use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
+use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
-use caliptra_mcu_testing_common::{update_ticks, MCU_RUNNING, MCU_RUNTIME_STARTED};
-use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
+use mcu_testing_common::{update_ticks, MCU_RUNNING, MCU_RUNTIME_STARTED};
+use romtime::LifecycleControllerState;
+use romtime::McuBootMilestones;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::marker::PhantomData;
@@ -39,18 +39,14 @@ struct CaliptraMmio {
 
 impl CaliptraMmio {
     #[allow(unused)]
-    fn mbox(&self) -> &mut caliptra_mcu_registers_generated::mbox::regs::Mbox {
+    fn mbox(&self) -> &mut registers_generated::mbox::regs::Mbox {
         unsafe {
-            &mut *(self.ptr.offset(0x2_0000 / 4)
-                as *mut caliptra_mcu_registers_generated::mbox::regs::Mbox)
+            &mut *(self.ptr.offset(0x2_0000 / 4) as *mut registers_generated::mbox::regs::Mbox)
         }
     }
     #[allow(unused)]
-    fn soc(&self) -> &mut caliptra_mcu_registers_generated::soc::regs::Soc {
-        unsafe {
-            &mut *(self.ptr.offset(0x3_0000 / 4)
-                as *mut caliptra_mcu_registers_generated::soc::regs::Soc)
-        }
+    fn soc(&self) -> &mut registers_generated::soc::regs::Soc {
+        unsafe { &mut *(self.ptr.offset(0x3_0000 / 4) as *mut registers_generated::soc::regs::Soc) }
     }
 }
 
@@ -65,13 +61,34 @@ pub struct ModelFpgaRealtime {
     // queue of IBIs to handle, in order
     pending_ibi: VecDeque<u16>,
     flash_boot: bool,
+    check_booted_to_runtime: bool,
     caliptra_firmware: Option<Vec<u8>>,
     soc_manifest: Option<Vec<u8>>,
     mcu_firmware: Option<Vec<u8>>,
-    check_booted_to_runtime: bool,
+    pub usb_host_controller: emulator_periph::UsbHostController,
 }
 
 impl ModelFpgaRealtime {
+    /// Set or clear the FIPS zeroization PPD signal in the FPGA wrapper
+    /// control register (bit 20).
+    fn set_fips_zeroization_ppd(&mut self, val: bool) {
+        let ctrl = self.base.wrapper.regs().control.get();
+        const FIPS_ZEROIZATION_PPD_BIT: u32 = 1 << 20;
+        if val {
+            self.base
+                .wrapper
+                .regs()
+                .control
+                .set(ctrl | FIPS_ZEROIZATION_PPD_BIT);
+        } else {
+            self.base
+                .wrapper
+                .regs()
+                .control
+                .set(ctrl & !FIPS_ZEROIZATION_PPD_BIT);
+        }
+    }
+
     pub fn set_subsystem_reset(&mut self, reset: bool) {
         self.base.set_subsystem_reset(reset);
     }
@@ -152,11 +169,12 @@ impl ModelFpgaRealtime {
         i3c_rx: mpsc::Receiver<I3cBusCommand>,
         controller: XI3CWrapper,
     ) {
+        // check if we need to write any I3C packets to Caliptra
         while running.load(Ordering::Relaxed) {
             for rx in i3c_rx.try_iter() {
                 match rx.cmd.cmd {
                     I3cTcriCommand::Regular(_cmd) => {
-                        if !rx.cmd.data.is_empty() {
+                        if rx.cmd.data.len() > 0 {
                             // wait for space in the write FIFOs
                             while controller.cmd_fifo_level() == 0
                                 || controller.write_fifo_level() < 16
@@ -268,7 +286,7 @@ impl McuHwModel for ModelFpgaRealtime {
         let security_state_prod =
             *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Production);
         let security_state_raw =
-            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Unprovisioned);
+            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Reserved2);
 
         let security_state = match params
             .lifecycle_controller_state
@@ -294,12 +312,13 @@ impl McuHwModel for ModelFpgaRealtime {
             fuses: params.fuses,
             rom: params.caliptra_rom,
             dccm: params.caliptra_dccm,
+            rom_callback: None,
             iccm: params.caliptra_iccm,
             log_writer: params.log_writer,
             security_state,
             dbg_manuf_service: params.dbg_manuf_service,
             subsystem_mode: true,
-            uds_granularity_64: !params.uds_granularity_32,
+            uds_fuse_row_granularity_64: !params.uds_granularity_32,
             otp_dai_idle_bit_offset: params.otp_dai_idle_bit_offset,
             otp_direct_access_cmd_reg_offset: params.otp_direct_access_cmd_reg_offset,
             prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs,
@@ -315,6 +334,7 @@ impl McuHwModel for ModelFpgaRealtime {
             stack_info: params.stack_info,
             soc_user: MailboxRequester::SocUser(DEFAULT_AXI_PAUSER),
             test_sram: None,
+            ocp_lock_en: params.ocp_lock_en,
             ss_init_params: SubsystemInitParams {
                 mcu_rom: Some(params.mcu_rom),
                 enable_mcu_uart_log: params.enable_mcu_uart_log,
@@ -322,35 +342,20 @@ impl McuHwModel for ModelFpgaRealtime {
                 num_prod_dbg_unlock_pk_hashes: params.num_prod_dbg_unlock_pk_hashes,
                 prod_dbg_unlock_pk_hashes_offset: params.prod_dbg_unlock_pk_hashes_offset,
                 primary_flash_initial_contents: params.primary_flash_initial_contents.as_deref(),
-                lc_state: params
-                    .lifecycle_controller_state
-                    .map(|s| caliptra_hw_model::LifecycleControllerState::from(u8::from(s))),
-                use_strap_secrets: params.use_strap_secrets,
                 ..Default::default()
             },
         };
         println!("Starting base model");
-        let mut base = ModelFpgaSubsystem::new_unbooted(cptra_init)
+        let base = ModelFpgaSubsystem::new_unbooted(cptra_init)
             .map_err(|e| anyhow::anyhow!("Failed to initialized base model: {e}"))?;
-
-        // In Manufacturing lifecycle, enable IDevID CSR generation by writing
-        // the GENERATE_IDEVID_CSR flag to cptra_dbg_manuf_service_reg.
-        if matches!(
-            params.lifecycle_controller_state,
-            Some(LifecycleControllerState::Dev)
-        ) {
-            base.soc_ifc().cptra_dbg_manuf_service_reg().write(|_| 1);
-        }
 
         let (i3c_rx, i3c_tx) = if let Some(i3c_port) = params.i3c_port {
             println!(
                 "Starting I3C socket on port {} and connected to hardware",
                 i3c_port
             );
-            let (rx, tx) = caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket(
-                &MCU_RUNNING,
-                i3c_port,
-            );
+            let (rx, tx) =
+                mcu_testing_common::i3c_socket_server::start_i3c_socket(&MCU_RUNNING, i3c_port);
 
             (Some(rx), Some(tx))
         } else {
@@ -369,6 +374,9 @@ impl McuHwModel for ModelFpgaRealtime {
             None
         };
 
+        let usb_periph = emulator_periph::UsbDevPeriph::new();
+        let usb_host_controller = usb_periph.host_controller();
+
         let mut m = Self {
             base,
 
@@ -380,14 +388,17 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_next_private_read_len: None,
             pending_ibi: VecDeque::new(),
             flash_boot: params.flash_boot,
+            check_booted_to_runtime: params.check_booted_to_runtime,
             caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
             mcu_firmware: Some(params.mcu_firmware.to_vec()).filter(|f| !f.is_empty()),
-            check_booted_to_runtime: params.check_booted_to_runtime,
+            usb_host_controller,
         };
 
-        if let Some(dot_flash_data) = params.dot_flash_initial_contents.as_deref() {
-            m.write_dot_flash(dot_flash_data)?;
+        // Set the FIPS zeroization PPD signal in the FPGA wrapper control
+        // register before the SoC boots, so MCI latches the request.
+        if params.fips_zeroization {
+            m.set_fips_zeroization_ppd(true);
         }
 
         Ok(m)
@@ -431,9 +442,9 @@ impl McuHwModel for ModelFpgaRealtime {
                 .unwrap();
         }
 
-        // wait until firmware is booted
-        const BOOT_CYCLES: u64 = 800_000_000;
         if self.check_booted_to_runtime {
+            // wait until firmware is booted
+            const BOOT_CYCLES: u64 = 800_000_000;
             self.step_until(|hw| {
                 hw.cycle_count() >= BOOT_CYCLES
                     || hw
@@ -449,34 +460,12 @@ impl McuHwModel for ModelFpgaRealtime {
                 .mci_boot_milestones()
                 .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
             MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
-            // turn off recovery
-            self.base.recovery_started = false;
+        }
+
+        // turn off recovery
+        self.base.recovery_started = false;
+        if self.check_booted_to_runtime {
             println!("Resetting I3C controller");
-            {
-                let i3c_ctrl = self.base.i3c_controller().unwrap();
-                let ctrl = i3c_ctrl.controller.lock().unwrap();
-                ctrl.ready.set(false);
-            }
-            self.base.i3c_controller().unwrap().configure();
-        } else {
-            // ROM-only mode: wait for recovery to deliver firmware, but don't
-            // assert FIRMWARE_BOOT_FLOW_COMPLETE since the ROM may stay in a
-            // service loop instead of booting the runtime.
-            const ROM_ONLY_WAIT_CYCLES: u64 = 50_000_000;
-            let start_cycle = self.cycle_count();
-            self.step_until(|hw| hw.cycle_count() - start_cycle >= ROM_ONLY_WAIT_CYCLES);
-            println!(
-                "ROM-only boot wait completed at cycle count {}, flow status {}",
-                self.cycle_count(),
-                u32::from(self.mci_flow_status())
-            );
-            self.base.recovery_started = false;
-            // Reconfigure the I3C controller (RSTDAA+ENTDAA) so the bus
-            // transitions from recovery state to normal TTI operation.
-            // The RSTDAA strips the target's dynamic address, then ENTDAA
-            // re-assigns it. This ensures the controller and target are in
-            // sync for private write transactions.
-            println!("Resetting I3C controller for TTI mode");
             {
                 let i3c_ctrl = self.base.i3c_controller().unwrap();
                 let ctrl = i3c_ctrl.controller.lock().unwrap();
@@ -595,18 +584,11 @@ impl McuHwModel for ModelFpgaRealtime {
     }
 
     fn read_dot_flash(&self) -> Vec<u8> {
-        // DOT flash is backed by the secondary flash controller.
-        self.base.secondary_flash.clone()
+        todo!()
     }
 
-    fn write_dot_flash(&mut self, data: &[u8]) -> Result<()> {
-        // DOT flash is backed by the secondary flash controller.
-        let flash = &mut self.base.secondary_flash;
-        if data.len() > flash.len() {
-            flash.resize(data.len(), 0xFF);
-        }
-        flash[..data.len()].copy_from_slice(data);
-        Ok(())
+    fn write_dot_flash(&mut self, _data: &[u8]) -> Result<()> {
+        todo!()
     }
 }
 
@@ -731,11 +713,11 @@ mod tests {
     #[cfg(feature = "fpga_realtime")]
     #[test]
     fn test_mctp() {
-        use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
+        use mcu_builder::flash_image::build_flash_image_bytes;
 
         use crate::DefaultHwModel;
 
-        let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
+        let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
 
         // Build flash image from firmware binaries
         let flash_image = build_flash_image_bytes(

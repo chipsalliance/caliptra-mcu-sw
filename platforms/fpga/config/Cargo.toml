@@ -1,10 +1,10 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mcu-config-fpga"
+name = "mcu-config-fpga"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-caliptra-mcu-config.workspace = true
+mcu-config.workspace = true

@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mcu-libapi-caliptra"
+name = "libapi-caliptra"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -11,23 +11,29 @@ async-trait.workspace = true
 caliptra-api.workspace = true
 caliptra-auth-man-types.workspace = true
 caliptra-error.workspace = true
-caliptra-ocp-eat.workspace = true
+const-oid.workspace = true
+der.workspace = true
 dpe.workspace = true
 embassy-executor.workspace = true
 embassy-sync.workspace = true
-caliptra-mcu-flash-image.workspace = true
-caliptra-mcu-libtockasync.workspace = true
-caliptra-mcu-libsyscall-caliptra.workspace = true
-caliptra-mcu-libtock_console.workspace = true
-caliptra-mcu-libtock_platform.workspace = true
-caliptra-mcu-libtock_runtime.workspace = true
-caliptra-mcu-pldm-common.workspace = true
-caliptra-mcu-pldm-lib.workspace = true
+flash-image.workspace = true
+libtockasync.workspace = true
+libsyscall-caliptra.workspace = true
+libtock_console.workspace = true
+libtock_platform.workspace = true
+libtock_runtime.workspace = true
+pldm-common.workspace = true
+pldm-lib.workspace = true
+romtime.workspace = true
+spki.workspace = true
 zerocopy.workspace = true
+ocp-eat.workspace = true
 
+[features]
+ocp-lock = ["romtime/ocp-lock"]
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
-caliptra-mcu-libtock_unittest.workspace = true
+libtock_unittest.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
@@ -35,5 +41,5 @@ embedded-alloc.workspace = true
 
 
 [dev-dependencies]
-caliptra-mcu-libtock_unittest.workspace = true
+libtock_unittest.workspace = true
 futures.workspace = true

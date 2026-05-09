@@ -1,10 +1,11 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mcu-registers-generated"
+name = "registers-generated"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 
 [dependencies]
 tock-registers.workspace = true
+zeroize.workspace = true

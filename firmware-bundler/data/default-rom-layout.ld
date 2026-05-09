@@ -3,27 +3,21 @@
 
 ENTRY(_start)
 
-/*
- * The last 48 bytes of the ROM image are reserved for a SHA-384 digest that is
- * appended by the build step (see `append_rom_digest`). Carve them out of the
- * ROM region so the linker refuses to place code or rodata there.
- */
-ROM_DIGEST_SIZE = 48;
-
 MEMORY
 {
-  ROM   (rx) : ORIGIN = ROM_START, LENGTH = ROM_LENGTH - ROM_DIGEST_SIZE
+  ROM   (rx) : ORIGIN = ROM_START, LENGTH = ROM_LENGTH
   RAM  (rwx) : ORIGIN = RAM_START, LENGTH = RAM_LENGTH /* dedicated SRAM for the ROM stack */
+  HANDOFF (rw) : ORIGIN = HANDOFF_ADDR, LENGTH = HANDOFF_SIZE
 }
 
 SECTIONS
 {
+
     .text :
     {
         *(.text.init )
         *(.text*)
         *(.rodata*)
-        . = ALIGN(4);
     } > ROM
 
     ROM_DATA = .;
@@ -67,6 +61,15 @@ SECTIONS
         . = ALIGN(4);
     } > RAM
 
+    /* We reserve 1 KB at the end of DCCM for the handoff table.
+       This must be 1KB aligned because the runtime requires DCCM regions
+       to be 1KB aligned for MEIVT (Machine External Interrupt Vector Table). */
+    . = HANDOFF_ADDR;
+    .handoff (NOLOAD) :
+    {
+        KEEP(*(.handoff))
+    } > HANDOFF
+
     _end = . ;
 
     /DISCARD/ :
@@ -82,3 +85,4 @@ DATA_END = DATA_START + SIZEOF(.data);
 ROM_DATA_START = LOADADDR(.data);
 STACK_TOP = ORIGIN(RAM) + SIZEOF(.stack);
 STACK_ORIGIN = ORIGIN(RAM);
+MRAC_VALUE = 0xaaa9a5aa;

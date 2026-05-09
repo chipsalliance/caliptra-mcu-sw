@@ -4,21 +4,21 @@ extern crate alloc;
 
 use super::pldm_client::{FW_UPDATE_TASK_YIELD, PLDM_DAEMON_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
-use crate::MAX_PLDM_TRANSFER_SIZE;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
-use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
-use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
-use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
-use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult;
-use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use caliptra_mcu_pldm_common::protocol::firmware_update::{
+use flash_image::{FlashHeader, ImageHeader};
+use pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use pldm_common::message::firmware_update::get_status::ProgressPercent;
+use pldm_common::message::firmware_update::transfer_complete::TransferResult;
+use pldm_common::message::firmware_update::verify_complete::VerifyResult;
+use pldm_common::protocol::firmware_update::{
     ComponentResponseCode, Descriptor, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
 };
-use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
-use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
+use pldm_common::util::fw_component::FirmwareComponent;
+use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 
+const MAX_PLDM_TRANSFER_SIZE: usize = 196; // This should be smaller than I3C MAX_READ_WRITE_SIZE
 const ESTIMATED_ACTIVATION_TIME_SECS: u16 = 600; // 10 minutes estimated activation time including reset
 
 pub struct UpdateFdOps {}
@@ -83,8 +83,10 @@ impl FdOps for UpdateFdOps {
         }
     }
 
-    async fn get_xfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError> {
-        Ok(ua_transfer_size.min(MAX_PLDM_TRANSFER_SIZE))
+    async fn get_xfer_size(&self, _ua_transfer_size: usize) -> Result<usize, FdOpsError> {
+        // Return the minimum of requested and baseline transfer size
+        let size = MAX_PLDM_TRANSFER_SIZE;
+        Ok(size)
     }
 
     fn handle_component(

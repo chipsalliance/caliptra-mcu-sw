@@ -9,9 +9,8 @@
 use std::{path::PathBuf, process::Command};
 
 use anyhow::{anyhow, bail, Result};
-use caliptra_mcu_tbf_header::TbfHeader;
+use tbf_header::TbfHeader;
 
-use crate::manifest::RuntimeVariant;
 use crate::{
     args::{BuildArgs, Common},
     ld::{BuildDefinition, LinkerScript},
@@ -24,7 +23,6 @@ const ROM_OBJCOPY_FLAGS: &str = "--strip-sections --strip-all";
 const KERNEL_OBJCOPY_FLAGS: &str =
     "--strip-sections --strip-all --remove-section .apps --remove-section .attributes";
 const APP_OBJCOPY_FLAGS: &str = "--strip-sections --strip-all";
-const RUNTIME_OBJCOPY_FLAGS: &str = "--strip-sections --strip-all";
 
 /// A pairing of application name to the linker script it should be built with.
 #[derive(Debug, Clone)]
@@ -47,7 +45,7 @@ pub struct BuiltApp {
 #[derive(Debug, Clone)]
 pub struct BuildOutput {
     pub rom: Option<BuiltBinary>,
-    pub runtime: RuntimeVariant<(BuiltBinary, Memory)>,
+    pub kernel: (BuiltBinary, Memory),
     pub apps: Vec<BuiltApp>,
 }
 
@@ -90,19 +88,11 @@ pub fn build_single_target(
         .iter()
         .map(|a| (a.linker.clone(), &build.runtime_features, APP_OBJCOPY_FLAGS))
         .collect::<Vec<_>>();
-
-    let runtime_linker = &build_definition.runtime.inner().0;
-    let runtime_objcopy_flags = if build_definition.runtime.is_bare_metal() {
-        RUNTIME_OBJCOPY_FLAGS
-    } else {
-        KERNEL_OBJCOPY_FLAGS
-    };
     binaries.push((
-        runtime_linker.clone(),
+        build_definition.kernel.0.clone(),
         &build.runtime_features,
-        runtime_objcopy_flags,
+        KERNEL_OBJCOPY_FLAGS,
     ));
-
     if let Some(rom) = &build_definition.rom {
         binaries.push((rom.clone(), &build.rom_features, ROM_OBJCOPY_FLAGS));
     }
@@ -124,7 +114,6 @@ struct BuildPass<'a> {
     build_definition: &'a BuildDefinition,
     build_args: &'a BuildArgs,
     binary_dir: PathBuf,
-    target_dir: PathBuf,
     objcopy: PathBuf,
 }
 
@@ -139,7 +128,6 @@ impl<'a> BuildPass<'a> {
         // Determine the release directory which elf files will be placed by `rustc` and where we
         // wish to place binaries.
         let binary_dir = common.release_dir()?;
-        let target_dir = common.target_dir()?;
 
         let objcopy = match &build_args.objcopy {
             Some(o) => o.clone(),
@@ -151,7 +139,6 @@ impl<'a> BuildPass<'a> {
             build_definition,
             build_args,
             binary_dir,
-            target_dir,
             objcopy,
         })
     }
@@ -159,38 +146,22 @@ impl<'a> BuildPass<'a> {
     /// Execute a BuildPass run.  This will include both building the elf with the specified linker
     /// file via `rustc` and then using `objcopy` to produce a binary file from that elf.
     fn run(&self) -> Result<BuildOutput> {
-        let rom = if let Some(r) = &self.build_definition.rom {
-            Some(self.build_binary(r, &self.build_args.rom_features, ROM_OBJCOPY_FLAGS)?)
-        } else {
-            None
-        };
-
-        let runtime_objcopy_flags = if self.build_definition.runtime.is_bare_metal() {
-            RUNTIME_OBJCOPY_FLAGS
-        } else {
-            KERNEL_OBJCOPY_FLAGS
-        };
-
-        let runtime: RuntimeVariant<Result<(BuiltBinary, Memory)>> = self
+        let rom = self
             .build_definition
-            .runtime
-            .clone()
-            .map(|(linker, instructions)| {
-                Ok((
-                    self.build_binary(
-                        &linker,
-                        &self.build_args.runtime_features,
-                        runtime_objcopy_flags,
-                    )?,
-                    instructions,
-                ))
-            });
+            .rom
+            .as_ref()
+            .map(|r| self.build_binary(r, &self.build_args.rom_features, ROM_OBJCOPY_FLAGS))
+            .transpose()?;
 
-        // Convert RuntimeVariant<Result<...>> to Result<RuntimeVariant<...>>
-        let runtime = match runtime {
-            RuntimeVariant::Kernel(r) => RuntimeVariant::Kernel(r?),
-            RuntimeVariant::BareMetal(r) => RuntimeVariant::BareMetal(r?),
-        };
+        let (kernal_linker, kernel_instructions) = &self.build_definition.kernel;
+        let kernel = (
+            self.build_binary(
+                kernal_linker,
+                &self.build_args.runtime_features,
+                KERNEL_OBJCOPY_FLAGS,
+            )?,
+            kernel_instructions.clone(),
+        );
 
         let apps = self
             .build_definition
@@ -209,7 +180,7 @@ impl<'a> BuildPass<'a> {
             })
             .collect::<Result<_>>()?;
 
-        Ok(BuildOutput { rom, runtime, apps })
+        Ok(BuildOutput { rom, kernel, apps })
     }
 
     /// Execute the build step for a single binary.
@@ -237,8 +208,6 @@ impl<'a> BuildPass<'a> {
             .arg(&app.name)
             .arg("--target")
             .arg(&self.manifest.platform.tuple)
-            .arg("--target-dir")
-            .arg(&self.target_dir)
             .arg("--release");
 
         if let Some(f) = features {

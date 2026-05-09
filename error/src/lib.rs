@@ -135,48 +135,43 @@ impl McuError {
         ),
         (
             ROM_DOT_RECOVERY_BLOB_AUTH_ERROR,
-            0x1_0011,
+            0x1_001a,
             "DOT recovery blob authentication failed"
         ),
         (
             ROM_DOT_RECOVERY_FLASH_WRITE_ERROR,
-            0x1_0012,
+            0x1_001b,
             "DOT recovery flash write failed"
         ),
         (
+            ROM_DOT_RECOVERY_PK_HASH_MISMATCH,
+            0x1_001c,
+            "DOT recovery PK hash mismatch"
+        ),
+        (
+            ROM_DOT_RECOVERY_CHALLENGE_FAILED,
+            0x1_001d,
+            "DOT recovery challenge generation failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_SIG_VERIFY_FAILED,
+            0x1_001e,
+            "DOT recovery signature verification failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_NO_RECOVERY_PK_HASH,
+            0x1_001f,
+            "DOT recovery no recovery PK hash in fuses"
+        ),
+        (
             ROM_DOT_RECOVERY_TRANSPORT_ERROR,
-            0x1_0013,
+            0x1_0020,
             "DOT recovery transport error"
         ),
         (
-            ROM_DOT_OVERRIDE_CHALLENGE_FAILED,
-            0x1_0014,
-            "DOT override challenge failed"
-        ),
-        (
-            ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED,
-            0x1_0015,
-            "DOT override signature verification failed"
-        ),
-        (
-            ROM_DOT_OVERRIDE_NOT_LOCKED,
+            ROM_COLD_BOOT_HEK_REPORT_ERROR,
             0x1_0016,
-            "DOT override requested but device not in locked state"
-        ),
-        (
-            ROM_DOT_OVERRIDE_NO_RECOVERY_PK_HASH,
-            0x1_0017,
-            "DOT override no vendor recovery PK hash in OTP fuses"
-        ),
-        (
-            ROM_DOT_OVERRIDE_PK_HASH_MISMATCH,
-            0x1_0018,
-            "DOT override vendor recovery PK hash mismatch"
-        ),
-        (
-            ROM_COLD_BOOT_ROM_DIGEST_MISMATCH,
-            0x1_0019,
-            "Cold boot ROM integrity check failed"
+            "Failed to report HEK state"
         ),
         (
             ROM_LC_TRANSITION_ERROR,
@@ -205,6 +200,21 @@ impl McuError {
             ROM_LC_OTP_PARTITION_ERROR,
             0x2_0007,
             "Lifecycle OTP partition error"
+        ),
+        (
+            ROM_FIPS_ZEROIZATION_LC_TRANSITION_ERROR,
+            0x2_0008,
+            "FIPS zeroization lifecycle transition to SCRAP failed"
+        ),
+        (
+            ROM_FIPS_ZEROIZATION_UDS_FE_START_ERROR,
+            0x2_0009,
+            "FIPS zeroization failed to start ZEROIZE_UDS_FE command"
+        ),
+        (
+            ROM_FIPS_ZEROIZATION_UDS_FE_FINISH_ERROR,
+            0x2_000a,
+            "FIPS zeroization failed to finish ZEROIZE_UDS_FE command"
         ),
         (
             ROM_OTP_INIT_STATUS_ERROR,
@@ -263,89 +273,79 @@ impl McuError {
             "OTP pending check exceeded maximum iterations"
         ),
         (
-            ROM_OTP_DIGEST_VERIFY_ERROR,
+            ROM_OTP_OCP_LOCK_FAILURE,
             0x3_000c,
-            "OTP SW digest readback verification failed"
-        ),
-        (
-            ROM_OTP_READ_CPTRA_ITRNG_WINDOW_SIZE_ERROR,
-            0x3_000d,
-            "Failed to read CPTRA_ITRNG_WINDOW_SIZE from OTP"
-        ),
-        (
-            ROM_OTP_READ_CPTRA_ITRNG_CONFIG0_ERROR,
-            0x3_000e,
-            "Failed to read CPTRA_ITRNG_ENTROPY_CONFIG_0 from OTP"
-        ),
-        (
-            ROM_OTP_READ_CPTRA_ITRNG_CONFIG1_ERROR,
-            0x3_000f,
-            "Failed to read CPTRA_ITRNG_ENTROPY_CONFIG_1 from OTP"
+            "OTP failure in OCP LOCK"
         ),
         (
             ROM_OTP_FUSE_INVALID_PARTITION,
-            0x3_0010,
+            0x3_000d,
             "OTP fuse provisioning: invalid partition"
         ),
         (
             ROM_OTP_FUSE_ENTRY_OUT_OF_BOUNDS,
-            0x3_0011,
+            0x3_000e,
             "OTP fuse provisioning: entry out of bounds"
         ),
         (
             ROM_OTP_FUSE_INVALID_LENGTH,
-            0x3_0012,
+            0x3_000f,
             "OTP fuse provisioning: invalid length"
         ),
         (
             ROM_OTP_FUSE_INVALID_START_BIT,
-            0x3_0013,
+            0x3_0010,
             "OTP fuse provisioning: invalid start bit"
         ),
         (
             ROM_OTP_FUSE_DAI_READ_ERROR,
-            0x3_0014,
+            0x3_0011,
             "OTP fuse provisioning: DAI read error"
         ),
         (
             ROM_OTP_FUSE_DAI_WRITE_ERROR,
-            0x3_0015,
+            0x3_0012,
             "OTP fuse provisioning: DAI write error"
         ),
         (
             ROM_OTP_FUSE_LOCK_ERROR,
-            0x3_0016,
+            0x3_0013,
             "OTP fuse provisioning: partition lock error"
         ),
         (
             ROM_OTP_FUSE_SECRET_READ_DENIED,
-            0x3_0017,
+            0x3_0014,
             "OTP fuse provisioning: secret partition read denied"
         ),
         (
             ROM_OTP_FUSE_BIT_CLEAR_NOT_ALLOWED,
-            0x3_0018,
+            0x3_0015,
             "OTP fuse provisioning: bit clear not allowed"
         ),
         (
             ROM_OTP_FUSE_CHECKSUM_ERROR,
-            0x3_0019,
+            0x3_0016,
             "OTP fuse provisioning: request checksum error"
         ),
         (
             ROM_OTP_FUSE_DATA_TOO_LARGE,
-            0x3_001a,
+            0x3_0017,
             "OTP fuse provisioning: data too large"
         ),
         (
             ROM_OTP_FUSE_INPUT_TOO_SHORT,
-            0x3_001b,
+            0x3_0018,
             "OTP fuse provisioning: input too short"
         ),
         (
             ROM_MCI_MBOX_UNKNOWN_COMMAND,
-            0x3_001c,
+            0x3_0019,
             "OTP fuse provisioning: unknown command"
+        ),
+        (
+            ROM_OTP_DIGEST_VERIFY_ERROR,
+            0x3_001a,
+            "OTP SW digest readback verification failed"
         ),
         (
             ROM_I3C_CONFIG_RING_HEADER_ERROR,
@@ -443,34 +443,59 @@ impl McuError {
             "SS_CONFIG_DONE or SS_CONFIG_DONE_STICKY verification failed after setting"
         ),
         (
-            ROM_SOC_ICCM_ECC_UNC,
+            ROM_SOC_UDS_SEED_LEN_MISMATCH,
             0x5_0011,
-            "ICCM uncorrectable ECC error"
+            "SOC UDS seed length mismatch"
         ),
         (
-            ROM_SOC_DCCM_ECC_UNC,
+            ROM_SOC_FIELD_ENTROPY_LEN_MISMATCH,
             0x5_0012,
-            "DCCM uncorrectable ECC error"
+            "SOC field entropy length mismatch"
+        ),
+        (
+            ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR,
+            0x1_0011,
+            "Cold boot encrypted firmware decrypt DMA start error"
+        ),
+        (
+            ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_FINISH_ERROR,
+            0x1_0012,
+            "Cold boot encrypted firmware decrypt DMA finish error"
+        ),
+        (
+            ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_TAG_MISMATCH,
+            0x1_0013,
+            "Cold boot encrypted firmware GCM tag verification failed"
+        ),
+        (
+            ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_START_ERROR,
+            0x1_0014,
+            "Cold boot encrypted firmware activate start error"
+        ),
+        (
+            ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR,
+            0x1_0015,
+            "Cold boot encrypted firmware activate finish error"
+        ),
+        (
+            ROM_COLD_BOOT_ROM_DIGEST_MISMATCH,
+            0x1_0017,
+            "Cold boot ROM integrity check failed"
+        ),
+        (
+            ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR,
+            0x1_0018,
+            "Firmware manifest DOT command processing error"
+        ),
+        (
+            OCP_LOCK_ROM_MISSING_CONFIG,
+            0x1_0019,
+            "Missing OCP LOCK ROM Config"
         ),
         (
             ROM_SOC_WDT_CFG_OUT_OF_RANGE,
             0x5_0013,
             "Caliptra WDT config index out of range"
-        ),
-        (
-            ROM_BOOTFSM_TIMEOUT,
-            0x5_0014,
-            "Caliptra Core boot FSM timed out"
-        ),
-        (
-            ROM_PK_HASH_SELECTION_FAILED,
-            0x5_0015,
-            "Failed to select a valid and functional vendor PK slot"
-        ),
-        (
-            ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR,
-            0x1_001a,
-            "Firmware manifest DOT command processing error"
         ),
         (
             GENERIC_EXCEPTION,

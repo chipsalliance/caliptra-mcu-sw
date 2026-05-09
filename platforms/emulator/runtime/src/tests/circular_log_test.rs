@@ -5,11 +5,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-use caliptra_mcu_capsules_emulator::logging::logging_flash as log;
-use caliptra_mcu_capsules_emulator::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
-use caliptra_mcu_platforms_common::{read_volatile_at, read_volatile_slice};
-use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use capsules_emulator::logging::logging_flash as log;
+use capsules_emulator::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
 use core::cell::Cell;
 use core::ptr::addr_of_mut;
 use kernel::debug;
@@ -20,6 +18,8 @@ use kernel::static_init;
 use kernel::storage_volume;
 use kernel::utilities::cells::{NumericCellExt, TakeCell};
 use kernel::ErrorCode;
+use mcu_platforms_common::{read_volatile_at, read_volatile_slice};
+use mcu_tock_veer::timers::InternalTimers;
 
 // Allocate 1KB storage volume for the circular log test. It resides on flash.
 storage_volume!(CIRCULAR_TEST_LOG, 1);
@@ -35,8 +35,7 @@ static mut DUMMY_BUFFER: [u8; PAGE_SIZE * 2] = [0; PAGE_SIZE * 2];
 const WAIT_MS: u32 = 50;
 // Number of entries to write per write operation.
 const ENTRIES_PER_WRITE: u64 = 10;
-const LOG_FLASH_BASE_ADDR: u32 =
-    caliptra_mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
+const LOG_FLASH_BASE_ADDR: u32 = mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
 
 // Test's current state.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -60,12 +59,12 @@ enum TestOp {
 
 pub unsafe fn run(
     mux_alarm: &'static MuxAlarm<'static, InternalTimers>,
-    flash_controller: &'static caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl,
+    flash_controller: &'static flash_ctrl_emulator::EmulatedFlashCtrl,
 ) -> Option<u32> {
     flash_controller.init();
     let pagebuffer = static_init!(
-        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
-        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
+        flash_ctrl_emulator::EmulatedFlashPage,
+        flash_ctrl_emulator::EmulatedFlashPage::default()
     );
     // Create actual log storage abstraction on top of flash.
     let log: &'static mut Log = static_init!(
@@ -142,7 +141,7 @@ static TEST_OPS: [TestOp; 25] = [
     TestOp::Erase,
 ];
 
-type Log = log::Log<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl<'static>>;
+type Log = log::Log<'static, flash_ctrl_emulator::EmulatedFlashCtrl<'static>>;
 struct LogTest<A: 'static + Alarm<'static>> {
     log: &'static Log,
     buffer: TakeCell<'static, [u8]>,
@@ -166,7 +165,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
         let read_val = entry_id_to_test_value(log.next_read_entry_id());
         let write_val = entry_id_to_test_value(log.log_end());
 
-        caliptra_mcu_romtime::println!(
+        romtime::println!(
             "Log recovered from flash (Start and end entry IDs: {:?} to {:?}; read and write values: {} and {})",
             log.next_read_entry_id(),
             log.log_end(),
@@ -210,7 +209,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
                 }
             }
             TestState::CleanUp => {
-                caliptra_mcu_romtime::println!(
+                romtime::println!(
                     "Circular Log Storage test succeeded! (Final log start and end entry IDs: {:?} to {:?})",
                     self.log.next_read_entry_id(),
                     self.log.log_end()
@@ -240,7 +239,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
         if self.op_start.get() {
             let next_read_val = entry_id_to_test_value(self.log.next_read_entry_id());
             if self.read_val.get() < next_read_val {
-                caliptra_mcu_romtime::println!(
+                romtime::println!(
                     "Increasing read value from {} to {} due to clobbering (read entry ID is {:?})!",
                     self.read_val.get(),
                     next_read_val,
@@ -261,7 +260,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
                     match error {
                         ErrorCode::FAIL => {
                             // No more entries, start writing again.
-                            caliptra_mcu_romtime::println!(
+                            romtime::println!(
                                 "READ DONE: READ OFFSET: {:?} / WRITE OFFSET: {:?}",
                                 self.log.next_read_entry_id(),
                                 self.log.log_end()
@@ -270,9 +269,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
                             self.schedule_next();
                         }
                         ErrorCode::BUSY => {
-                            caliptra_mcu_romtime::println!(
-                                "Flash busy, waiting before reattempting read"
-                            );
+                            romtime::println!("Flash busy, waiting before reattempting read");
                             self.wait();
                         }
                         _ => panic!("READ #{} FAILED: {:?}", self.read_val.get(), error),
@@ -393,7 +390,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
     fn seek_beginning(&self) {
         let entry_id = self.log.log_start();
         match self.log.seek(entry_id) {
-            Ok(()) => caliptra_mcu_romtime::println!("Seeking to {:?}...", entry_id),
+            Ok(()) => romtime::println!("Seeking to {:?}...", entry_id),
             error => panic!("Seek failed: {:?}", error),
         }
     }
@@ -474,7 +471,7 @@ impl<A: Alarm<'static>> LogReadClient for LogTest<A> {
 
     fn seek_done(&self, error: Result<(), ErrorCode>) {
         if error == Ok(()) {
-            caliptra_mcu_romtime::println!("Seeked");
+            romtime::println!("Seeked");
             self.read_val
                 .set(entry_id_to_test_value(self.log.next_read_entry_id()));
         } else {
@@ -523,7 +520,7 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
 
                 // Stop writing after `ENTRIES_PER_WRITE` entries have been written.
                 if (self.write_val.get() + 1) % ENTRIES_PER_WRITE == 0 {
-                    caliptra_mcu_romtime::println!(
+                    romtime::println!(
                         "WRITE DONE: READ OFFSET: {:?} / WRITE OFFSET: {:?}",
                         self.log.next_read_entry_id(),
                         self.log.log_end()
@@ -536,7 +533,7 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
             Err(ErrorCode::FAIL) => {
                 assert_eq!(length, 0);
                 assert!(!records_lost);
-                caliptra_mcu_romtime::println!("Append failed due to flash error, retrying...");
+                romtime::println!("Append failed due to flash error, retrying...");
             }
             error => panic!("UNEXPECTED APPEND FAILURE: {:?}", error),
         }
@@ -546,7 +543,7 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
 
     fn sync_done(&self, error: Result<(), ErrorCode>) {
         if error == Ok(()) {
-            caliptra_mcu_romtime::println!(
+            romtime::println!(
                 "SYNC DONE: READ OFFSET: {:?} / WRITE OFFSET: {:?}",
                 self.log.next_read_entry_id(),
                 self.log.log_end()
@@ -595,7 +592,7 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
                 });
 
                 // Move to next operation.
-                caliptra_mcu_romtime::println!("Log Storage erased");
+                romtime::println!("Log Storage erased");
                 //self.state.set(TestState::Operate);
                 self.next_op();
                 self.schedule_next();

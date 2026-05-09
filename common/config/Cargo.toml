@@ -1,10 +1,10 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mcu-config"
+name = "mcu-config"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-caliptra-mcu-registers-generated.workspace = true
+registers-generated.workspace = true

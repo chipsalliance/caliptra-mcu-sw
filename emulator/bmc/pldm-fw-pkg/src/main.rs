@@ -3,6 +3,7 @@
 Licensed under the Apache-2.0 license.
 
 --*/
+use clap::{Arg, Command};
 /// PLDM Firmware Tool
 ///
 /// This tool is designed to work with PLDM (Platform Level Data Model) firmware packages.
@@ -18,16 +19,15 @@ Licensed under the Apache-2.0 license.
 ///
 /// Encode a manifest file:
 /// ```bash
-/// caliptra_mcu_pldm_fw_pkg encode --manifest manifest.toml --file firmware.bin
+/// pldm_fw_pkg encode --manifest manifest.toml --file firmware.bin
 /// ```
 ///
 /// Decode a firmware package:
 /// ```bash
-/// caliptra_mcu_pldm_fw_pkg decode --file firmware.bin --directory output
+/// pldm_fw_pkg decode --file firmware.bin --directory output
 /// ```
 ///
-use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
-use clap::{Arg, Command};
+use pldm_fw_pkg::FirmwareManifest;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("PLDM Firmware Tool")

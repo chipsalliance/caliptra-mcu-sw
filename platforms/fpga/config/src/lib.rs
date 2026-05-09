@@ -3,13 +3,13 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
 pub mod flash;
-use caliptra_mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
+use mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
 
 pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     rom_offset: 0xb004_0000,
     rom_size: 128 * 1024,
     rom_stack_size: 0x2d00,
-    rom_estack_size: 0x200,
+    rom_estack_size: 0x100,
     rom_properties: MemoryRegionType::MEMORY,
 
     dccm_offset: 0x5000_0000,
@@ -26,10 +26,6 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     i3c_offset: 0xa403_0000,
     i3c_size: 0x1000,
     i3c_properties: MemoryRegionType::MMIO,
-
-    i3c1_offset: 0xa403_1000,
-    i3c1_size: 0x1000,
-    i3c1_properties: MemoryRegionType::MMIO,
 
     mci_offset: 0xa800_0000,
     mci_size: 0xa0_0028,
@@ -50,12 +46,15 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     lc_offset: 0xa404_0000,
     lc_size: 0x8c,
     lc_properties: MemoryRegionType::MMIO,
+    handoff_offset: 0x5000_3C00,
+    handoff_size: 1024,
+
+    staging_sram_offset: 0xb00c_0000,
+    staging_sram_size: 256 * 1024,
 };
 
 pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {
     i3c_static_addr: 0x3a,
-    i3c1_static_addr: 0x3c,
-    active_i3c: 0,
     cptra_wdt_cfg0: 200_000_000,
     cptra_wdt_cfg1: 200_000_000,
     mcu_wdt_cfg0: 800_000_000, // the FPGA is slower to boot
@@ -65,8 +64,3 @@ pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {
     mcu_wdt_cfg0_debug: 800_000_000,
     mcu_wdt_cfg1_debug: 1,
 };
-
-/// The MRAC value which should be populated for this memory map.  This corresponds to a value
-/// utilized within the global start assembly and thus must be unmangled.
-#[no_mangle]
-pub static FPGA_MRAC_VALUE: u32 = FPGA_MEMORY_MAP.compute_mrac();

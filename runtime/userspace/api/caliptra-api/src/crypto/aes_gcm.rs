@@ -11,11 +11,12 @@ use caliptra_api::mailbox::{
     CmAesGcmSpdmEncryptInitResp, Cmk, MailboxReqHeader, Request,
     CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };
-use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use core::mem::size_of;
+use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
-pub type Aes256GcmIv = [u8; 12];
-pub type Aes256GcmTag = [u8; 16];
+pub type Aes256GcmIv = [u32; 3];
+pub type Aes256GcmTag = [u32; 4];
 
 pub struct AesGcm {
     context: Option<[u8; CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE]>,
@@ -86,7 +87,9 @@ impl AesGcm {
 
         self.context = Some(init_resp.context);
         self.encrypt = true;
-        Ok(init_resp.iv)
+        let iv = Aes256GcmIv::read_from_bytes(init_resp.iv.as_bytes())
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+        Ok(iv)
     }
 
     /// Initializes the SPDM AES-GCM encryption/decryption context.
@@ -302,7 +305,9 @@ impl AesGcm {
 
         self.reset();
 
-        Ok((encryptdata_size, final_hdr.tag))
+        let tag = Aes256GcmTag::read_from_bytes(final_hdr.tag.as_bytes())
+            .map_err(|_| CaliptraApiError::AesGcmInvalidDataLength)?;
+        Ok((encryptdata_size, tag))
     }
 
     /// Initializes the AES-GCM decryption context.
@@ -326,6 +331,8 @@ impl AesGcm {
             Err(CaliptraApiError::AesGcmInvalidAadLength)?;
         }
 
+        let iv = <[u32; 3]>::read_from_bytes(iv.as_bytes())
+            .map_err(|_| CaliptraApiError::AesGcmInvalidAadLength)?;
         let mut req = CmAesGcmDecryptInitReq {
             hdr: MailboxReqHeader::default(),
             cmk,
@@ -353,7 +360,9 @@ impl AesGcm {
 
         self.context = Some(init_resp.context);
         self.encrypt = false;
-        Ok(init_resp.iv)
+        let iv = Aes256GcmIv::read_from_bytes(init_resp.iv.as_bytes())
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+        Ok(iv)
     }
 
     /// Decrypts the given ciphertext using AES-256-GCM in an update operation.
@@ -443,7 +452,7 @@ impl AesGcm {
         let mut req = CmAesGcmDecryptFinalReq {
             hdr: MailboxReqHeader::default(),
             context,
-            tag_len: tag.len() as u32,
+            tag_len: size_of::<Aes256GcmTag>() as u32,
             tag,
             ciphertext_size: 0,
             ciphertext: [0; MAX_CMB_DATA_SIZE],

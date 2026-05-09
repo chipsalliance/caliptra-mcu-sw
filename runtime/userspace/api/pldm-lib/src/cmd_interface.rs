@@ -4,15 +4,15 @@ use crate::control_context::{ControlContext, CtrlCmdResponder, ProtocolCapabilit
 use crate::error::MsgHandlerError;
 use crate::firmware_device::fd_context::FirmwareDeviceContext;
 use crate::transport::MctpTransport;
-use caliptra_mcu_pldm_common::codec::PldmCodec;
-use caliptra_mcu_pldm_common::protocol::base::{
+use core::sync::atomic::{AtomicBool, Ordering};
+use pldm_common::codec::PldmCodec;
+use pldm_common::protocol::base::{
     PldmBaseCompletionCode, PldmControlCmd, PldmFailureResponse, PldmMsgHeader, PldmSupportedType,
 };
-use caliptra_mcu_pldm_common::protocol::firmware_update::FwUpdateCmd;
-use caliptra_mcu_pldm_common::util::mctp_transport::{
-    construct_mctp_pldm_msg, extract_pldm_msg, MCTP_PLDM_MSG_HDR_LEN,
+use pldm_common::protocol::firmware_update::FwUpdateCmd;
+use pldm_common::util::mctp_transport::{
+    construct_mctp_pldm_msg, extract_pldm_msg, PLDM_MSG_OFFSET,
 };
-use core::sync::atomic::{AtomicBool, Ordering};
 
 pub type PldmCompletionErrorCode = u8;
 
@@ -79,7 +79,7 @@ impl<'a> CmdInterface<'a> {
 
         // Prepare the request payload
         let payload = construct_mctp_pldm_msg(msg_buf).map_err(MsgHandlerError::Util)?;
-        let reserved_len = MCTP_PLDM_MSG_HDR_LEN;
+        let reserved_len = PLDM_MSG_OFFSET;
 
         // Generate the request
         let req_len = self.fd_ctx.fd_progress(payload).await?;
@@ -136,7 +136,7 @@ impl<'a> CmdInterface<'a> {
     }
 
     /// Get current timestamp.
-    pub fn now(&self) -> caliptra_mcu_pldm_common::protocol::firmware_update::PldmFdTime {
+    pub fn now(&self) -> pldm_common::protocol::firmware_update::PldmFdTime {
         self.fd_ctx.now()
     }
 
@@ -154,8 +154,8 @@ impl<'a> CmdInterface<'a> {
         self.busy.store(true, Ordering::SeqCst);
 
         // Get the pldm payload from msg_buf
-        let payload = &mut msg_buf[MCTP_PLDM_MSG_HDR_LEN..];
-        let reserved_len = MCTP_PLDM_MSG_HDR_LEN;
+        let payload = &mut msg_buf[PLDM_MSG_OFFSET..];
+        let reserved_len = PLDM_MSG_OFFSET;
 
         let (pldm_type, cmd_opcode) = match self.preprocess_request(payload) {
             Ok(result) => result,

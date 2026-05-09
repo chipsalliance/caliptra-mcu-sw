@@ -10,11 +10,11 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use caliptra_mcu_tbf_header::TbfHeader;
+use tbf_header::TbfHeader;
 
 use crate::{
     args::{Common, LdArgs},
-    manifest::{Binary, Manifest, Memory, RuntimeMemory, RuntimeVariant},
+    manifest::{Binary, Manifest, Memory, RuntimeMemory},
     tbf::create_tbf_header,
     TOCK_ALIGNMENT,
 };
@@ -28,11 +28,9 @@ use crate::{
 const BASE_ROM_LD_PREFIX: &str = "bundler-rom-layout";
 const BASE_KERNEL_LD_PREFIX: &str = "bundler-kernel-layout";
 const BASE_APP_LD_PREFIX: &str = "bundler-app-layout";
-const BASE_BARE_METAL_LD_PREFIX: &str = "bundler-bare-metal-layout";
 const BASE_ROM_LD_CONTENTS: &str = include_str!("../data/default-rom-layout.ld");
 const BASE_KERNEL_LD_CONTENTS: &str = include_str!("../data/default-kernel-layout.ld");
 const BASE_APP_LD_CONTENTS: &str = include_str!("../data/default-app-layout.ld");
-const BASE_BARE_METAL_LD_CONTENTS: &str = include_str!("../data/default-bare-metal-layout.ld");
 
 /// A pairing of application name to the linker script it should be built with.
 #[derive(Debug, Clone)]
@@ -54,7 +52,7 @@ pub struct App {
 #[derive(Debug, Clone)]
 pub struct BuildDefinition {
     pub rom: Option<LinkerScript>,
-    pub runtime: RuntimeVariant<(LinkerScript, Memory)>,
+    pub kernel: (LinkerScript, Memory),
     pub apps: Vec<App>,
 }
 
@@ -95,7 +93,6 @@ struct LdGeneration<'a> {
     base_rom: PathBuf,
     base_kernel: PathBuf,
     base_app: PathBuf,
-    base_bare_metal: PathBuf,
 }
 
 impl<'a> LdGeneration<'a> {
@@ -133,20 +130,12 @@ impl<'a> LdGeneration<'a> {
         };
         let base_app = content_aware_write(BASE_APP_LD_PREFIX, app_contents, &linker_dir)?;
 
-        let bare_metal_contents = match &ld.bare_metal_ld_base {
-            Some(user_base) => &String::from_utf8(std::fs::read(user_base)?)?,
-            None => BASE_BARE_METAL_LD_CONTENTS,
-        };
-        let base_bare_metal =
-            content_aware_write(BASE_BARE_METAL_LD_PREFIX, bare_metal_contents, &linker_dir)?;
-
         Ok(LdGeneration {
             manifest,
             linker_dir,
             base_rom,
             base_kernel,
             base_app,
-            base_bare_metal,
         })
     }
 
@@ -197,30 +186,27 @@ impl<'a> LdGeneration<'a> {
             });
         }
 
-        let runtime_binary = self.manifest.runtime.inner();
-        let content = if self.manifest.runtime.is_bare_metal() {
-            let mut combined = itcm.clone();
-            combined.size += dtcm.size;
-            self.bare_metal_linker_content(runtime_binary, itcm.clone(), combined)
-        } else {
-            self.kernel_linker_content(itcm.clone(), None, dtcm.clone(), itcm.clone(), dtcm.clone())
-        }
-        .with_context(|| binary_context(&runtime_binary.name, "context generation"))?;
-
-        let path = self.output_ld_file(runtime_binary, &content)?;
-        let runtime_def = self.manifest.runtime.clone().map(|_| {
-            (
-                LinkerScript {
-                    name: runtime_binary.name.clone(),
-                    linker_script: path,
-                },
+        // Then generate a kernel linker file with the entirety of ITCM and DTCM space.
+        let kernel = &self.manifest.kernel;
+        let content = self
+            .kernel_linker_content(
                 itcm.clone(),
+                None,
+                dtcm.clone(),
+                itcm.clone(),
+                dtcm.clone(),
+                self.manifest.platform.handoff(),
             )
-        });
+            .with_context(|| binary_context(&kernel.name, "context generation"))?;
+        let path = self.output_ld_file(kernel, &content)?;
+        let kernel_def = LinkerScript {
+            name: kernel.name.clone(),
+            linker_script: path,
+        };
 
         Ok(BuildDefinition {
             rom: None,
-            runtime: runtime_def,
+            kernel: (kernel_def, itcm.clone()),
             apps: app_defs,
         })
     }
@@ -261,14 +247,16 @@ impl<'a> LdGeneration<'a> {
             })
             .transpose()?;
 
+        let kernel = &self.manifest.kernel;
+        let kernel_exec_mem = kernel.exec_mem()?;
+
         // Now get trackers for runtime instruction and data memory.
         let (mut itcm_tracker, mut dtcm_tracker) =
             match self.manifest.platform.runtime_memory.clone() {
                 RuntimeMemory::Sram(mut mem) => {
                     // Determine the amount of space required within SRAM for the instructions.  It is
-                    // equal to the runtime binary imem plus each apps imem, with padding for Tock alignment.
-                    let mut split = self.manifest.runtime.inner().exec_mem()?.size;
-
+                    // equal to the kernel imem plus each apps imem, with padding for Tock alignment.
+                    let mut split = kernel_exec_mem.size;
                     for app in &self.manifest.apps {
                         split += app.binary.exec_mem()?.size;
                     }
@@ -283,50 +271,47 @@ impl<'a> LdGeneration<'a> {
         let initial_itcm = itcm_tracker.clone();
         let initial_dtcm = dtcm_tracker.clone();
 
-        let mut first_app_instructions = None;
-
-        let runtime_binary = self.manifest.runtime.inner();
-        let runtime_exec_mem = runtime_binary.exec_mem()?;
-        // The runtime should be the first element in both ITCM and RAM, therefore allocate it.  Wait
+        // The kernel should be the first element in both ITCM and RAM, therefore allocate it.  Wait
         // before creating the LD file, as application alignment can effect the value of some LD
         // variables.
         let instructions = self
             .get_mem_block(
-                runtime_exec_mem.size,
-                runtime_exec_mem.alignment,
+                kernel_exec_mem.size,
+                kernel_exec_mem.alignment,
                 &mut itcm_tracker,
             )
-            .with_context(|| binary_context(&runtime_binary.name, "instruction allocation"))?;
-        let runtime_data_mem = runtime_binary.data_mem()?;
+            .with_context(|| binary_context(&kernel.name, "instruction allocation"))?;
+        let kernel_data_mem = kernel.data_mem()?;
         let data = self
             .get_mem_block(
-                runtime_data_mem.size,
-                runtime_data_mem.alignment,
+                kernel_data_mem.size,
+                kernel_data_mem.alignment,
                 &mut dtcm_tracker,
             )
-            .with_context(|| binary_context(&runtime_binary.name, "data allocation"))?;
+            .with_context(|| binary_context(&kernel.name, "data allocation"))?;
 
         // Now iterate through each application and allocate its ITCM and RAM requirements.
+        let mut first_app_instructions = None;
         let mut app_defs = Vec::new();
         for app in &self.manifest.apps {
             let binary = &app.binary;
             let header = create_tbf_header(binary)?;
 
             let exec_mem = binary.exec_mem()?;
-            let app_instructions = self
+            let instructions = self
                 .get_mem_block(exec_mem.size, exec_mem.alignment, &mut itcm_tracker)
                 .with_context(|| binary_context(&binary.name, "instruction allocation"))?;
             let data_mem = binary.data_mem()?;
-            let app_data = self
+            let data = self
                 .get_mem_block(data_mem.size, data_mem.alignment, &mut dtcm_tracker)
                 .with_context(|| binary_context(&binary.name, "data allocation"))?;
 
             if first_app_instructions.is_none() {
-                first_app_instructions = Some(app_instructions.clone());
+                first_app_instructions = Some(instructions.clone());
             }
 
             let content = self
-                .app_linker_content(binary, &header, app_instructions.clone(), app_data)
+                .app_linker_content(binary, &header, instructions.clone(), data)
                 .with_context(|| binary_context(&binary.name, "context generation"))?;
             let path = self.output_ld_file(binary, &content)?;
             app_defs.push(App {
@@ -335,40 +320,30 @@ impl<'a> LdGeneration<'a> {
                     linker_script: path,
                 },
                 header,
-                instruction_block: app_instructions,
+                instruction_block: instructions,
             });
         }
 
-        // Finally generate the linker file for the runtime.
-        let content = if self.manifest.runtime.is_bare_metal() {
-            let mut combined = instructions.clone();
-            combined.size += data.size;
-            self.bare_metal_linker_content(runtime_binary, instructions.clone(), combined)
-        } else {
-            self.kernel_linker_content(
+        // Finally generate the linker file for the kernel.
+        let content = self
+            .kernel_linker_content(
                 instructions.clone(),
                 first_app_instructions,
                 data,
                 initial_itcm,
                 initial_dtcm,
+                self.manifest.platform.handoff(),
             )
-        }
-        .with_context(|| binary_context(&runtime_binary.name, "context generation"))?;
-
-        let path = self.output_ld_file(runtime_binary, &content)?;
-        let runtime_def = self.manifest.runtime.clone().map(|_| {
-            (
-                LinkerScript {
-                    name: runtime_binary.name.clone(),
-                    linker_script: path,
-                },
-                instructions,
-            )
-        });
+            .with_context(|| binary_context(&kernel.name, "context generation"))?;
+        let path = self.output_ld_file(kernel, &content)?;
+        let kernel_def = LinkerScript {
+            name: kernel.name.clone(),
+            linker_script: path,
+        };
 
         Ok(BuildDefinition {
             rom: rom_def,
-            runtime: runtime_def,
+            kernel: (kernel_def, instructions),
             apps: app_defs,
         })
     }
@@ -413,6 +388,8 @@ ROM_START = $ROM_START;
 ROM_LENGTH = $ROM_LENGTH;
 RAM_START = $RAM_START;
 RAM_LENGTH = $RAM_LENGTH;
+HANDOFF_ADDR = $HANDOFF_ADDR;
+HANDOFF_SIZE = $HANDOFF_SIZE;
 STACK_SIZE = $STACK_SIZE;
 ESTACK_SIZE = $ESTACK_SIZE;
 INCLUDE $BASE_LD_CONTENTS
@@ -425,6 +402,10 @@ INCLUDE $BASE_LD_CONTENTS
         sub_map.insert("ROM_LENGTH", format!("{:#x}", instructions.size));
         sub_map.insert("RAM_START", format!("{:#x}", data.offset));
         sub_map.insert("RAM_LENGTH", format!("{:#x}", data.size));
+
+        let handoff = self.manifest.platform.handoff();
+        sub_map.insert("HANDOFF_ADDR", format!("{:#x}", handoff.offset));
+        sub_map.insert("HANDOFF_SIZE", format!("{:#x}", handoff.size));
         // If the stack isn't specified we are in a sizing build, and it doesnt matter.  Therefore
         // default to 0.
         sub_map.insert(
@@ -440,44 +421,6 @@ INCLUDE $BASE_LD_CONTENTS
         subst::substitute(ROM_LD_TEMPLATE, &sub_map).map_err(|e| e.into())
     }
 
-    fn bare_metal_linker_content(
-        &self,
-        binary: &Binary,
-        instructions: Memory,
-        data: Memory,
-    ) -> Result<String> {
-        const BARE_METAL_LD_TEMPLATE: &str = r#"
-ROM_START = $ROM_START;
-ROM_LENGTH = $ROM_LENGTH;
-RAM_START = $RAM_START;
-RAM_LENGTH = $RAM_LENGTH;
-STACK_SIZE = $STACK_SIZE;
-ESTACK_SIZE = $ESTACK_SIZE;
-INCLUDE $BASE_LD_CONTENTS
-"#;
-
-        let base_ld_file = self.linker_dir.join(&self.base_bare_metal);
-
-        let mut sub_map = HashMap::new();
-        sub_map.insert("ROM_START", format!("{:#x}", instructions.offset));
-        sub_map.insert("ROM_LENGTH", format!("{:#x}", instructions.size));
-        sub_map.insert("RAM_START", format!("{:#x}", data.offset));
-        sub_map.insert("RAM_LENGTH", format!("{:#x}", data.size));
-        // If the stack isn't specified we are in a sizing build, and it doesnt matter.  Therefore
-        // default to 0.
-        sub_map.insert(
-            "STACK_SIZE",
-            format!("{:#x}", binary.stack().unwrap_or_default()),
-        );
-        sub_map.insert("ESTACK_SIZE", format!("{:#x}", binary.exception_stack));
-        sub_map.insert(
-            "BASE_LD_CONTENTS",
-            base_ld_file.to_string_lossy().to_string(),
-        );
-
-        subst::substitute(BARE_METAL_LD_TEMPLATE, &sub_map).map_err(|e| e.into())
-    }
-
     fn kernel_linker_content(
         &self,
         instructions: Memory,
@@ -485,6 +428,7 @@ INCLUDE $BASE_LD_CONTENTS
         kernel_data: Memory,
         itcm: Memory,
         dtcm: Memory,
+        handoff: Memory,
     ) -> Result<String> {
         const KERNEL_LD_TEMPLATE: &str = r#"
 /* Licensed under the Apache-2.0 license. */
@@ -502,11 +446,23 @@ MEMORY
     app_ram(rwx) : ORIGIN = $APP_RAM_START, LENGTH = $APP_RAM_LENGTH
     dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_LENGTH
     flash (r) : ORIGIN = $FLASH_OFFSET, LENGTH = $FLASH_LENGTH
+    HANDOFF (rw) : ORIGIN = $HANDOFF_ADDR, LENGTH = $HANDOFF_SIZE
 }
 
 $PAGE_SIZE
 
 INCLUDE $BASE_LD_CONTENTS
+
+SECTIONS
+{
+    /* We reserve 1 KB at the end of DCCM for the handoff table.
+       This must be 1KB aligned because the runtime requires DCCM regions
+       to be 1KB aligned for MEIVT (Machine External Interrupt Vector Table). */
+    .handoff (NOLOAD) :
+    {
+        KEEP(*(.handoff))
+    } > HANDOFF
+}
 "#;
         let base_ld_file = self.linker_dir.join(&self.base_kernel);
 
@@ -537,6 +493,8 @@ INCLUDE $BASE_LD_CONTENTS
         let dccm = self.manifest.platform.dccm();
         sub_map.insert("DCCM_OFFSET", format!("{:#x}", dccm.offset));
         sub_map.insert("DCCM_LENGTH", format!("{:#x}", dccm.size));
+        sub_map.insert("HANDOFF_ADDR", format!("{:#x}", handoff.offset));
+        sub_map.insert("HANDOFF_SIZE", format!("{:#x}", handoff.size));
 
         let flash = self.manifest.platform.flash();
         sub_map.insert("FLASH_OFFSET", format!("{:#x}", flash.offset));
@@ -553,6 +511,11 @@ INCLUDE $BASE_LD_CONTENTS
             .map(|pg| format!("PAGE_SIZE = {};", pg))
             .unwrap_or_default();
         sub_map.insert("PAGE_SIZE", page_size);
+
+        sub_map.insert(
+            "BASE_LD_CONTENTS",
+            base_ld_file.to_string_lossy().to_string(),
+        );
 
         subst::substitute(KERNEL_LD_TEMPLATE, &sub_map).map_err(|e| e.into())
     }
@@ -602,57 +565,56 @@ INCLUDE $BASE_LD_CONTENTS
 
 /// Output a linker file for the application.
 fn content_aware_write(prefix: &str, content: &str, linker_dir: &Path) -> Result<PathBuf> {
-    // Determine if any previous files matching this prefix have already been generated.
-    let mut matching_content_file = None;
-    let mut files_to_remove = Vec::new();
+    // Determine if a previous file matching this prefix has already been generated.
+    // First read through the linker-script directory
+    let maybe_previous_file = std::fs::read_dir(linker_dir)?
+        .find(|f| {
+            f.as_ref()
+                .map(|f| {
+                    // Then check if each entry has a name which starts with the same name as
+                    // this linker file.  If so return it as the previous file.
+                    f.file_name()
+                        .to_str()
+                        .map(|n| n.starts_with(prefix))
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false)
+        })
+        .transpose()?;
 
-    for entry in std::fs::read_dir(linker_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.starts_with(prefix) && name.ends_with(".ld") {
-                    if matching_content_file.is_none() {
-                        if let Ok(prev_content) = std::fs::read_to_string(&path) {
-                            if prev_content == content {
-                                matching_content_file = Some(path.clone());
-                                continue;
-                            }
-                        }
-                    }
-                    files_to_remove.push(path);
-                }
-            }
+    // To keep incremental builds fast, only output the linker contents if they differ from the
+    // previously existing file.
+    if let Some(previous_file) = maybe_previous_file {
+        let previous_file = previous_file.path();
+        // If the contents match exactly, just use the previous file, and perhaps the cached
+        // build.
+        if std::fs::read_to_string(&previous_file)
+            .map(|prev| prev == content)
+            .unwrap_or(false)
+        {
+            return Ok(previous_file);
+        } else {
+            // If they are different clean up the old file to avoid confusing multiple entries
+            // within the linker-script directory.
+            std::fs::remove_file(previous_file)?;
         }
     }
 
-    if let Some(file) = matching_content_file {
-        // We found a file with matching content. We can ignore other files with the same prefix.
-        return Ok(file);
-    }
-
-    // If we didn't find a matching file, we need to write a new one.
-    // Use a unique UUID with each linker script generated.
+    // Finally output the linker script file if we need to.  Use a unique UUID with each linker
+    // script generated.  This allows the `rustc` compiler to recognize when different scripts
+    // are used, and thus trigger a new build when memory space allocations change.
+    //
+    // If this is not done, compilation can diverge from the actual status of the Manifest toml
+    // until `cargo clean` is executed which can be quite confusing.
     let output_file = linker_dir.join(format!("{}-{}.ld", prefix, uuid::Uuid::new_v4()));
     std::fs::write(&output_file, content)?;
-
-    // Only remove OLD files AFTER we've successfully written the new one,
-    // and ideally we should be careful here. For now, let's remove them
-    // to keep the directory clean, but this is still slightly risky if
-    // another process just started using one of them.
-    // However, since we just wrote a NEW one with a NEW UUID, any OTHER
-    // process will either find this one or write its own.
-    for path in files_to_remove {
-        let _ = std::fs::remove_file(path);
-    }
-
     Ok(output_file)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manifest::{App, Platform, Runtime};
+    use crate::manifest::{App, Platform};
     use tempfile::TempDir;
 
     /// Create a platform with configurable memory sizes.
@@ -683,6 +645,7 @@ mod tests {
                 size: dccm_size,
             }),
             flash: None,
+            handoff: None,
         }
     }
 
@@ -710,7 +673,6 @@ mod tests {
             rom_ld_base: None,
             kernel_ld_base: None,
             app_ld_base: None,
-            bare_metal_ld_base: None,
         }
     }
 
@@ -718,13 +680,13 @@ mod tests {
     fn test_manifest(
         platform: Platform,
         rom: Option<Binary>,
-        runtime: Runtime,
+        kernel: Binary,
         apps: Vec<App>,
     ) -> Manifest {
         Manifest {
             platform,
             rom,
-            runtime,
+            kernel,
             apps,
         }
     }
@@ -737,7 +699,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x1000, 0x1000, 0x1000),
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![],
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());
@@ -745,25 +707,7 @@ mod tests {
 
         let build_def = result.unwrap();
         assert!(build_def.rom.is_none());
-        assert_eq!(build_def.runtime.inner().0.name, "kernel");
-        assert!(build_def.apps.is_empty());
-    }
-
-    #[test]
-    fn bare_metal_only_fits() {
-        let temp = TempDir::new().unwrap();
-        let manifest = test_manifest(
-            test_platform(0x1000, 0x1000, 0x1000, 0x1000),
-            None,
-            RuntimeVariant::BareMetal(test_binary("bare_metal", 0x100, 0x100)),
-            vec![],
-        );
-        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
-        assert!(result.is_ok());
-
-        let build_def = result.unwrap();
-        assert!(build_def.rom.is_none());
-        assert_eq!(build_def.runtime.inner().0.name, "bare_metal");
+        assert_eq!(build_def.kernel.0.name, "kernel");
         assert!(build_def.apps.is_empty());
     }
 
@@ -773,7 +717,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x1000, 0x1000, 0x1000),
             Some(test_binary("rom", 0x100, 0x100)),
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![],
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());
@@ -782,7 +726,7 @@ mod tests {
         let build_def = result.unwrap();
         assert!(build_def.rom.is_some());
         assert_eq!(build_def.rom.as_ref().unwrap().name, "rom");
-        assert_eq!(build_def.runtime.inner().0.name, "kernel");
+        assert_eq!(build_def.kernel.0.name, "kernel");
         assert!(build_def.apps.is_empty());
     }
 
@@ -792,7 +736,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x1000, 0x1000, 0x1000),
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![test_app("app1", 0x100, 0x100)],
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());
@@ -800,7 +744,7 @@ mod tests {
 
         let build_def = result.unwrap();
         assert!(build_def.rom.is_none());
-        assert_eq!(build_def.runtime.inner().0.name, "kernel");
+        assert_eq!(build_def.kernel.0.name, "kernel");
         assert_eq!(build_def.apps.len(), 1);
         assert_eq!(build_def.apps[0].linker.name, "app1");
     }
@@ -811,7 +755,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x2000, 0x2000, 0x1000),
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![
                 test_app("app1", 0x100, 0x100),
                 test_app("app2", 0x100, 0x100),
@@ -834,7 +778,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x2000, 0x2000, 0x1000),
             Some(test_binary("rom", 0x200, 0x200)),
-            RuntimeVariant::Kernel(test_binary("kernel", 0x200, 0x200)),
+            test_binary("kernel", 0x200, 0x200),
             vec![
                 test_app("app1", 0x100, 0x100),
                 test_app("app2", 0x100, 0x100),
@@ -846,7 +790,7 @@ mod tests {
         let build_def = result.unwrap();
         assert!(build_def.rom.is_some());
         assert_eq!(build_def.rom.as_ref().unwrap().name, "rom");
-        assert_eq!(build_def.runtime.inner().0.name, "kernel");
+        assert_eq!(build_def.kernel.0.name, "kernel");
         assert_eq!(build_def.apps.len(), 2);
     }
 
@@ -859,14 +803,14 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x200, 0x200, 0x1000),
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![test_app("app1", 0x100, 0x100)],
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_ok());
 
         let build_def = result.unwrap();
-        assert_eq!(build_def.runtime.inner().0.name, "kernel");
+        assert_eq!(build_def.kernel.0.name, "kernel");
         assert_eq!(build_def.apps.len(), 1);
     }
 
@@ -876,7 +820,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x1000, 0x1000, 0x1000),
             Some(test_binary("my_rom", 0x100, 0x100)),
-            RuntimeVariant::Kernel(test_binary("my_kernel", 0x100, 0x100)),
+            test_binary("my_kernel", 0x100, 0x100),
             vec![test_app("my_app", 0x100, 0x100)],
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());
@@ -886,7 +830,7 @@ mod tests {
 
         // Verify linker script files exist on disk
         assert!(build_def.rom.as_ref().unwrap().linker_script.exists());
-        assert!(build_def.runtime.inner().0.linker_script.exists());
+        assert!(build_def.kernel.0.linker_script.exists());
         assert!(build_def.apps[0].linker.linker_script.exists());
 
         // Verify base layout files also exist (with UUID suffixes)
@@ -918,7 +862,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x100, 0x1000, 0x1000), // Small ITCM
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x200, 0x100)), // Kernel exec_mem > ITCM
+            test_binary("kernel", 0x200, 0x100), // Kernel exec_mem > ITCM
             vec![],
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());
@@ -931,7 +875,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x1000, 0x100, 0x1000), // Small RAM
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x200)), // Kernel RAM > platform RAM
+            test_binary("kernel", 0x100, 0x200), // Kernel RAM > platform RAM
             vec![],
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());
@@ -944,7 +888,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x100, 0x1000, 0x1000, 0x1000), // Small ROM
             Some(test_binary("rom", 0x200, 0x100)),       // ROM exec_mem > platform ROM
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![],
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());
@@ -957,7 +901,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x1000, 0x100, 0x100), // Small RAM and DCCM
             Some(test_binary("rom", 0x100, 0x200)),      // ROM RAM > platform DCCM
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![],
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());
@@ -971,7 +915,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x200, 0x1000, 0x1000),
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![test_app("app1", 0x200, 0x100)], // App needs 0x200, only 0x100 available
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());
@@ -985,7 +929,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x1000, 0x200, 0x1000),
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![test_app("app1", 0x100, 0x200)], // App needs 0x200 RAM, only 0x100 available
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());
@@ -1000,7 +944,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x300, 0x1000, 0x1000),
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![
                 test_app("app1", 0x100, 0x50),
                 test_app("app2", 0x100, 0x50),
@@ -1019,7 +963,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x1000, 0x300, 0x1000),
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![
                 test_app("app1", 0x50, 0x100),
                 test_app("app2", 0x50, 0x100),
@@ -1038,7 +982,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x280, 0x1000, 0x1000),
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![
                 test_app("app1", 0x80, 0x50),
                 test_app("app2", 0x80, 0x50),
@@ -1057,7 +1001,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x1000, 0x280, 0x1000),
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![
                 test_app("app1", 0x50, 0x80),
                 test_app("app2", 0x50, 0x80),
@@ -1075,7 +1019,7 @@ mod tests {
         let manifest = test_manifest(
             test_platform(0x1000, 0x0, 0x1000, 0x1000),
             None,
-            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
             vec![],
         );
         let result = generate(&manifest, &test_common(&temp), &test_ld_args());

@@ -4,13 +4,13 @@
 #![cfg_attr(target_arch = "riscv32", no_main)]
 #![allow(static_mut_refs)]
 
-use caliptra_mcu_libsyscall_caliptra::system::System;
-use caliptra_mcu_libtock::alarm::*;
-use caliptra_mcu_libtock_console::Console;
-use caliptra_mcu_libtock_platform::{self as platform};
-use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
-use caliptra_mcu_libtockasync::TockSubscribe;
 use core::fmt::Write;
+use libsyscall_caliptra::system::System;
+use libtock::alarm::*;
+use libtock_console::Console;
+use libtock_platform::{self as platform};
+use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
+use libtockasync::TockSubscribe;
 
 #[cfg(feature = "test-pldm-request-response")]
 mod test_pldm_request_response;
@@ -44,6 +44,9 @@ mod test_mcu_mbox_usermode;
 #[cfg(feature = "test-mbox-sram")]
 mod test_mbox_sram;
 
+#[cfg(feature = "test-ocp-lock")]
+mod test_ocp_lock;
+
 #[cfg(any(feature = "test-flash-usermode", feature = "test-fpga-flash-ctrl"))]
 mod test_flash_io;
 
@@ -51,8 +54,8 @@ mod test_flash_io;
 mod riscv;
 
 #[cfg(not(target_arch = "riscv32"))]
-pub(crate) fn kernel() -> caliptra_mcu_libtock_unittest::fake::Kernel {
-    use caliptra_mcu_libtock_unittest::fake;
+pub(crate) fn kernel() -> libtock_unittest::fake::Kernel {
+    use libtock_unittest::fake;
     let kernel = fake::Kernel::new();
     let alarm = fake::Alarm::new(1_000_000);
     let console = fake::Console::new();
@@ -66,19 +69,19 @@ fn main() {
     // build a fake kernel so that the app will at least start without Tock
     let _kernel = kernel();
     // call the main function
-    caliptra_mcu_libtockasync::start_async(start());
+    libtockasync::start_async(start());
 }
 
 #[cfg(target_arch = "riscv32")]
 #[embassy_executor::task]
 async fn start() {
-    async_main::<caliptra_mcu_libtock_runtime::TockSyscalls>().await;
+    async_main::<libtock_runtime::TockSyscalls>().await;
 }
 
 #[cfg(not(target_arch = "riscv32"))]
 #[embassy_executor::task]
 async fn start() {
-    async_main::<caliptra_mcu_libtock_unittest::fake::Syscalls>().await;
+    async_main::<libtock_unittest::fake::Syscalls>().await;
 }
 
 #[allow(unreachable_code)]
@@ -184,7 +187,6 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_certs::test_get_cert_chain().await;
         test_caliptra_certs::test_certify_key().await;
         test_caliptra_certs::test_sign_with_test_key().await;
-        test_caliptra_certs::test_get_attested_csr().await;
         System::exit(0);
     }
     #[cfg(feature = "test-dma")]
@@ -229,6 +231,13 @@ pub(crate) async fn async_main<S: Syscalls>() {
         System::exit(0);
     }
 
+    #[cfg(feature = "test-ocp-lock")]
+    {
+        test_ocp_lock::test_get_algorithms().await;
+        test_ocp_lock::test_get_hpke_public_key_x509().await;
+        System::exit(0);
+    }
+
     #[cfg(feature = "test-fpga-flash-ctrl")]
     {
         writeln!(
@@ -248,7 +257,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
 #[allow(dead_code)]
 async fn test_mctp_loopback() {
-    use caliptra_mcu_libsyscall_caliptra::mctp::{driver_num, Mctp};
+    use libsyscall_caliptra::mctp::{driver_num, Mctp};
     let mctp_caliptra: Mctp = Mctp::new(driver_num::MCTP_CALIPTRA);
     loop {
         let mut msg_buffer: [u8; 1024] = [0; 1024];
@@ -343,10 +352,10 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
 #[cfg(test)]
 mod test {
     use super::{command, kernel, sleep};
-    use caliptra_mcu_libtock_alarm::Milliseconds;
-    use caliptra_mcu_libtock_unittest::fake;
-    use caliptra_mcu_libtock_unittest::fake::Alarm;
-    use caliptra_mcu_libtockasync::TockExecutor;
+    use libtock_alarm::Milliseconds;
+    use libtock_unittest::fake;
+    use libtock_unittest::fake::Alarm;
+    use libtockasync::TockExecutor;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{LazyLock, Mutex};
 

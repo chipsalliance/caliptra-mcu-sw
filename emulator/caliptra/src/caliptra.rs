@@ -20,7 +20,6 @@ use caliptra_emu_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, MailboxRequester,
     Mci, ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
 };
-use caliptra_hw_model_types::DEFAULT_UDS_SEED;
 use std::io::{self, ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::exit;
@@ -61,15 +60,13 @@ impl BytesOrPath {
 }
 
 #[derive(Default)]
-pub struct StartCaliptraArgs<'a> {
+pub struct StartCaliptraArgs {
     pub rom: BytesOrPath,
     pub req_idevid_csr: Option<bool>,
     pub device_lifecycle: Option<String>,
     pub use_mcu_recovery_interface: bool,
     pub extra_soc_bus: Option<u32>,
-    pub debug_intent: bool,
-    pub prod_dbg_unlock_keypairs: Vec<(&'a [u8; 96], &'a [u8; 2592])>,
-    pub cptra_obf_key: [u32; 8],
+    pub ocp_lock_en: bool,
 }
 
 register_bitfields! [
@@ -87,7 +84,7 @@ register_bitfields! [
 
 /// Creates and returns an initialized a Caliptra emulator CPU.
 pub fn start_caliptra(
-    args: &StartCaliptraArgs<'_>,
+    args: &StartCaliptraArgs,
 ) -> io::Result<(
     Cpu<CaliptraRootBus>,
     SocToCaliptraBus,
@@ -127,38 +124,18 @@ pub fn start_caliptra(
     let pic = Rc::new(Pic::new());
 
     let mut security_state = SecurityState::default();
-    let requested_lifecycle = match args_device_lifecycle.to_ascii_lowercase().as_str() {
-        "manufacturing" => DeviceLifecycle::Manufacturing,
-        "production" => DeviceLifecycle::Production,
-        "unprovisioned" | "" => DeviceLifecycle::Unprovisioned,
-        other => Err(io::Error::new(
-            ErrorKind::InvalidInput,
-            format!("Unknown device lifecycle {:?}", other),
-        ))?,
-    };
+    security_state.set_device_lifecycle(
+        match args_device_lifecycle.to_ascii_lowercase().as_str() {
+            "manufacturing" => DeviceLifecycle::Manufacturing,
+            "production" => DeviceLifecycle::Production,
+            "unprovisioned" | "" => DeviceLifecycle::Unprovisioned,
+            other => Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                format!("Unknown device lifecycle {:?}", other),
+            ))?,
+        },
+    );
 
-    // If debug intent is not set or unlock level 0 is not set, then the security state
-    // should be latched as production.
-    // In the emulator, we don't easily have access to the register state before Caliptra starts.
-    // However, we can simulate the latching logic by defaulting to Production unless
-    // specifically overridden by a mechanism that represents "unlocked".
-
-    // For now, we follow the RTL logic: it is unlocked if (debug_intent AND SS_SOC_DBG_UNLOCK_LEVEL[0])
-    // OR ss_dbg_manuf_enable.
-    // Since we don't have registers yet, we'll assume it's locked unless debug_intent is set
-    // AND some other condition we can pass in.
-    // But the user said "if the debug_intent and SS_SOC_DBG_UNLOCK_LEVEL are not set ... report the correct security state"
-    // This implies that if they ARE set, it should NOT be Production.
-
-    // Since we are at reset deassertion, SS_SOC_DBG_UNLOCK_LEVEL is 0.
-    // So it should ALWAYS be locked at reset deassertion.
-    let is_unlocked = false;
-
-    if !is_unlocked {
-        security_state.set_device_lifecycle(DeviceLifecycle::Production);
-    } else {
-        security_state.set_device_lifecycle(requested_lifecycle);
-    }
     // in active mode, we don't upload the firmware here, as MCU ROM will trigger it
     let ready_for_fw_cb = ReadyForFwCb::new(|_| {});
     // in active mode, we don't update firmware here, as MCU will trigger it
@@ -188,16 +165,11 @@ pub fn start_caliptra(
         ),
         subsystem_mode: true,
         use_mcu_recovery_interface: args_use_mcu_recovery_interface,
-        debug_intent: args.debug_intent,
-        prod_dbg_unlock_keypairs: args.prod_dbg_unlock_keypairs.clone(),
-        cptra_obf_key: args.cptra_obf_key,
+        ocp_lock_en: args.ocp_lock_en,
         ..Default::default()
     };
 
-    let mut root_bus = CaliptraRootBus::new(bus_args);
-    // Set UDS seed directly — matches the caliptra-sw standalone emulator
-    // behavior where fuse_uds_seed = DEFAULT_UDS_SEED (via SocRegistersImpl::UDS default).
-    root_bus.soc_reg.set_uds_seed(&DEFAULT_UDS_SEED);
+    let root_bus = CaliptraRootBus::new(bus_args);
     let soc_ifc = unsafe {
         caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
             0x3003_0000 as *mut u32,
@@ -207,7 +179,13 @@ pub fn start_caliptra(
     let ext_mci = root_bus.mci_external_regs();
 
     {
-        ext_mci.regs.borrow_mut().security_state = security_state.into();
+        let lifecycle_val = match args_device_lifecycle.to_ascii_lowercase().as_str() {
+            "unprovisioned" | "" => 0,
+            "manufacturing" => 1,
+            "production" => 3,
+            _ => 0,
+        };
+        ext_mci.regs.borrow_mut().security_state = lifecycle_val;
     }
 
     // Populate DBG_MANUF_SERVICE_REG

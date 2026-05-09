@@ -11,8 +11,8 @@
 // (read_word, write_word, finalize_digest).
 
 use crate::{HexWord, Otp};
-use caliptra_mcu_error::McuError;
-use caliptra_mcu_registers_generated::fuses;
+use mcu_error::McuError;
+use registers_generated::fuses;
 
 // ---------------------------------------------------------------------------
 // Partition identifiers (same numbering as the Fuse definition script)
@@ -39,6 +39,14 @@ enum PartitionId {
     VendorRevocationsProd = 0x0C,
     VendorSecretProd = 0x0D,
     VendorNonSecretProd = 0x0E,
+    CptraSsLockHekProd0 = 0x0F,
+    CptraSsLockHekProd1 = 0x10,
+    CptraSsLockHekProd2 = 0x11,
+    CptraSsLockHekProd3 = 0x12,
+    CptraSsLockHekProd4 = 0x13,
+    CptraSsLockHekProd5 = 0x14,
+    CptraSsLockHekProd6 = 0x15,
+    CptraSsLockHekProd7 = 0x16,
 }
 
 impl TryFrom<u32> for PartitionId {
@@ -61,6 +69,14 @@ impl TryFrom<u32> for PartitionId {
             0x0C => Ok(Self::VendorRevocationsProd),
             0x0D => Ok(Self::VendorSecretProd),
             0x0E => Ok(Self::VendorNonSecretProd),
+            0x0F => Ok(Self::CptraSsLockHekProd0),
+            0x10 => Ok(Self::CptraSsLockHekProd1),
+            0x11 => Ok(Self::CptraSsLockHekProd2),
+            0x12 => Ok(Self::CptraSsLockHekProd3),
+            0x13 => Ok(Self::CptraSsLockHekProd4),
+            0x14 => Ok(Self::CptraSsLockHekProd5),
+            0x15 => Ok(Self::CptraSsLockHekProd6),
+            0x16 => Ok(Self::CptraSsLockHekProd7),
             _ => Err(McuError::ROM_OTP_FUSE_INVALID_PARTITION),
         }
     }
@@ -154,6 +170,46 @@ impl PartitionId {
                 byte_offset: fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
                 byte_size: fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
                 is_secret: false,
+            },
+            CptraSsLockHekProd0 => PartitionInfo {
+                byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET,
+                byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE,
+                is_secret: true,
+            },
+            CptraSsLockHekProd1 => PartitionInfo {
+                byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET,
+                byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_SIZE,
+                is_secret: true,
+            },
+            CptraSsLockHekProd2 => PartitionInfo {
+                byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_2_BYTE_OFFSET,
+                byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_2_BYTE_SIZE,
+                is_secret: true,
+            },
+            CptraSsLockHekProd3 => PartitionInfo {
+                byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_3_BYTE_OFFSET,
+                byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_3_BYTE_SIZE,
+                is_secret: true,
+            },
+            CptraSsLockHekProd4 => PartitionInfo {
+                byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_4_BYTE_OFFSET,
+                byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_4_BYTE_SIZE,
+                is_secret: true,
+            },
+            CptraSsLockHekProd5 => PartitionInfo {
+                byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_5_BYTE_OFFSET,
+                byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_5_BYTE_SIZE,
+                is_secret: true,
+            },
+            CptraSsLockHekProd6 => PartitionInfo {
+                byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_6_BYTE_OFFSET,
+                byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_6_BYTE_SIZE,
+                is_secret: true,
+            },
+            CptraSsLockHekProd7 => PartitionInfo {
+                byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_7_BYTE_OFFSET,
+                byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_7_BYTE_SIZE,
+                is_secret: true,
             },
         }
     }

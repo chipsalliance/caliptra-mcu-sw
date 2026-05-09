@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mcu-rom-common"
+name = "mcu-rom-common"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -13,13 +13,12 @@ caliptra-api.workspace = true
 caliptra-api-types.workspace = true
 caliptra-drivers.workspace = true
 constant_time_eq.workspace = true
-caliptra-mcu-flash-image.workspace = true
-caliptra-mcu-config.workspace = true
-caliptra-mcu-error.workspace = true
-caliptra-mcu-otp-digest.workspace = true
-caliptra-mcu-otp-lifecycle.workspace = true
-caliptra-mcu-registers-generated.workspace = true
-caliptra-mcu-romtime.workspace = true
+flash-image.workspace = true
+mcu-config.workspace = true
+mcu-error.workspace = true
+otp-digest.workspace = true
+registers-generated.workspace = true
+romtime.workspace = true
 smlang.workspace = true
 tock-registers.workspace = true
 zeroize.workspace = true
@@ -30,12 +29,8 @@ riscv-csr.workspace = true
 rv32i.workspace = true
 
 [features]
-default = []   # default is 2.0
+default = ["hw-2-1"]              # default is 2.1
 hw-2-1 = []
-core_test = ["caliptra-mcu-romtime/core_test"]
+core_test = ["romtime/core_test"]
 fw-manifest-dot = []
-# Test-only: at the end of cold boot, rewrite the reset-reason register to
-# force the next boot entry to `FirmwareHitlessUpdate` instead of
-# `FirmwareBootReset`. Used by the DOT manifest hitless-update integration
-# test to exercise `FwHitlessUpdate::run` without a real PLDM update flow.
-test-force-hitless-update = []
+ocp-lock = ["romtime/ocp-lock"]

@@ -1,8 +1,11 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_mcu_libsyscall_caliptra::mailbox::MailboxError;
-use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_ocp_eat::EatError;
+use libsyscall_caliptra::mailbox::MailboxError;
+use libtock_platform::ErrorCode;
+use ocp_eat::EatError;
+
+#[cfg(feature = "ocp-lock")]
+use romtime::ocp_lock::Error as OcpLockError;
 
 pub type CaliptraApiResult<T> = Result<T, CaliptraApiError>;
 
@@ -20,7 +23,16 @@ pub enum CaliptraApiError {
     AesGcmTagVerifyFailed,
     AsymAlgoUnsupported,
     InvalidResponse,
-    BufferTooSmall,
     UnprovisionedCsr,
     Eat(EatError),
+    #[cfg(feature = "ocp-lock")]
+    OcpLock(OcpLockError),
+}
+
+#[cfg(feature = "ocp-lock")]
+impl From<der::Error> for CaliptraApiError {
+    fn from(_: der::Error) -> Self {
+        // TODO(clundin): Inspect error kind and create more fine-grained errors.
+        CaliptraApiError::OcpLock(OcpLockError::RUNTIME_HPKE_INVALID_CERT_FORMAT)
+    }
 }

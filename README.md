@@ -34,16 +34,6 @@ cargo xtask runtime
 
 This uses the full [active, or subsystem, mode boot flow](https://chipsalliance.github.io/caliptra-mcu-sw/rom.html#cold-boot-flow).
 
-## Testing
-
-The primary way to run integration tests with the emulator is using the `test` xtask:
-
-```shell
-cargo xtask test
-```
-
-For more details on how to run tests locally, how CI works, and how to add new tests, see the [Testing chapter](https://chipsalliance.github.io/caliptra-mcu-sw/testing.html) in the documentation.
-
 ## Hardware revisions
 
 Currently, two hardware revisions are supported: 2.0 and 2.1.
@@ -58,15 +48,6 @@ By default, the emulator and firmware use the 2.0 hardware features.
 For the emulator, there is a `--hw-revision 2.1.0` flag that can be used to select the 2.1 hardware when running (`cargo xtask runtime` also supports this flag).
 
 For firmware, 2.1 features can be enabled using the `hw-2-1` feature flag when specifying dependencies.
-
-### Branch versions
-
-The table below details which versions of Caliptra are compatible with each other.
-
-| caliptra-mcu-sw | caliptra-sw  | core/subsystem |
-|-----------------|--------------|----------------|
-| main-2.1        | main         | 2.1.x RTL      |
-| main            | caliptra-2.0 | 2.0.x RTL      |
 
 ## Documentation
 
@@ -98,14 +79,14 @@ Some ROM and runtime shared code resides under `romtime/`.
 
 The general structure of any platform-specific ROM entry point should be:
 
-* At some point, call `caliptra_mcu_rom_common::set_fatal_error_handler()` to set a fatal error handler. (By default, the handler will simply loop forever.)
-* At some point, call `caliptra_mcu_romtime::set_printer` if you want the debugging logs to be sent somewhere (by default, the logs will simply be ignored).
+* At some point, call `mcu_rom_common::set_fatal_error_handler()` to set a fatal error handler. (By default, the handler will simply loop forever.)
+* At some point, call `romtime::set_printer` if you want the debugging logs to be sent somewhere (by default, the logs will simply be ignored).
 * Do any platform-specific initialization
-* Call `caliptra_mcu_rom_common::rom_start()`.
+* Call `mcu_rom_common::rom_start()`.
 * Do any other platform-specific code, including clearing any state.
 * Jump to the firmware.
 
-The `caliptra_mcu_rom_common::rom_start()` will handle the standard [MCU ROM boot flow](https://chipsalliance.github.io/caliptra-mcu-sw/rom.html).
+The `mcu_rom_common::rom_start()` will handle the standard [MCU ROM boot flow](https://chipsalliance.github.io/caliptra-mcu-sw/rom.html).
 
 Additional callbacks and handlers may be defined in the future for the common MCU ROM to utilize.
 

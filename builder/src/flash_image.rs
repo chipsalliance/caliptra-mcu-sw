@@ -1,12 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use caliptra_mcu_config_emulator::flash::{
-    PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
-};
-use caliptra_mcu_flash_image::{
+use flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, FLASH_IMAGE_MAGIC_NUMBER, HEADER_VERSION,
     MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
+};
+use mcu_config_emulator::flash::{
+    PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
 };
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error, ErrorKind, Read, Seek, Write};
@@ -195,36 +195,31 @@ fn load_file(filename: &str) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
-use crate::CaliptraBuildArgs;
-
-pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
-    let caliptra_fw_path = &args.caliptra_firmware;
-    let soc_manifest_path = &args.soc_manifest;
-    let mcu_runtime_path = &args.mcu_firmware;
-    let soc_image_paths = &args.soc_image_paths;
-    let offset = args.offset;
-    let output_path = args
-        .output_path
-        .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("output_path is required for flash_image_create"))?;
-
+pub fn flash_image_create(
+    caliptra_fw_path: &Option<String>,
+    soc_manifest_path: &Option<String>,
+    mcu_runtime_path: &Option<String>,
+    soc_image_paths: &Option<Vec<String>>,
+    offset: usize,
+    output_path: &str,
+) -> Result<()> {
     let mut images: Vec<FirmwareImage> = Vec::new();
 
     let content;
     if let Some(caliptra_fw_path) = caliptra_fw_path {
-        content = load_file(&caliptra_fw_path.to_string_lossy())?;
+        content = load_file(caliptra_fw_path)?;
         images.push(FirmwareImage::new(CALIPTRA_FMC_RT_IDENTIFIER, &content)?);
     }
 
     let content;
     if let Some(soc_manifest_path) = soc_manifest_path {
-        content = load_file(&soc_manifest_path.to_string_lossy())?;
+        content = load_file(soc_manifest_path)?;
         images.push(FirmwareImage::new(SOC_MANIFEST_IDENTIFIER, &content)?);
     }
 
     let content;
     if let Some(mcu_runtime_path) = mcu_runtime_path {
-        content = load_file(&mcu_runtime_path.to_string_lossy())?;
+        content = load_file(mcu_runtime_path)?;
         images.push(FirmwareImage::new(MCU_RT_IDENTIFIER, &content)?);
     }
 
@@ -428,15 +423,14 @@ mod tests {
         let output_path = output_file.path().to_str().unwrap();
 
         // Build the flash image
-        flash_image_create(&CaliptraBuildArgs {
-            caliptra_firmware: Some(caliptra_fw.path().to_path_buf()),
-            soc_manifest: Some(soc_manifest.path().to_path_buf()),
-            mcu_firmware: Some(mcu_runtime.path().to_path_buf()),
-            soc_image_paths,
-            offset: 0,
-            output_path: Some(output_path.to_string()),
-            ..Default::default()
-        })
+        flash_image_create(
+            &Some(caliptra_fw.path().to_str().unwrap().to_string()),
+            &Some(soc_manifest.path().to_str().unwrap().to_string()),
+            &Some(mcu_runtime.path().to_str().unwrap().to_string()),
+            &soc_image_paths,
+            0,
+            output_path,
+        )
         .expect("Failed to build flash image");
 
         // Read and verify the generated flash image

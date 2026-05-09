@@ -16,39 +16,37 @@ use crate::dis;
 use crate::doe_mbox_fsm;
 use crate::elf;
 use crate::tests;
+use crate::tests::spdm_responder_validator::SpdmTestType;
 use caliptra_api_types::DeviceLifecycle;
 use caliptra_emu_bus::BusMmio;
 use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::MailboxRequester;
-use caliptra_hw_model_types::DEFAULT_CPTRA_OBF_KEY;
 use caliptra_image_types::FwVerificationPqcKeyType;
-use caliptra_mcu_emulator_bmc::Bmc;
-use caliptra_mcu_emulator_caliptra::BytesOrPath;
-use caliptra_mcu_emulator_caliptra::{start_caliptra, StartCaliptraArgs};
-use caliptra_mcu_emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
-#[allow(unused_imports)]
-use caliptra_mcu_emulator_periph::MciMailboxRequester;
-use caliptra_mcu_emulator_periph::{
-    CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
-    McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp, OtpArgs,
-};
-use caliptra_mcu_emulator_registers_generated::axicdma::AxicdmaPeripheral;
-use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
-use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
-use caliptra_mcu_pldm_ua::daemon::PldmDaemon;
-use caliptra_mcu_pldm_ua::transport::{EndpointId, PldmTransport};
-use caliptra_mcu_testing_common::i3c_socket;
-use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
-use caliptra_mcu_testing_common::mctp_transport::MctpTransport;
-use caliptra_mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
-use caliptra_mcu_testing_common::spdm_responder_validator::SpdmTestType;
-use caliptra_mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
-use std::cell::Cell;
+use emulator_bmc::Bmc;
+use emulator_caliptra::BytesOrPath;
+use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
+use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
+#[allow(unused_imports)]
+use emulator_periph::MciMailboxRequester;
+use emulator_periph::{
+    CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
+    McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp, OtpArgs,
+};
+use emulator_registers_generated::axicdma::AxicdmaPeripheral;
+use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
+use mcu_testing_common::i3c_socket;
+use mcu_testing_common::i3c_socket_server::start_i3c_socket;
+use mcu_testing_common::mctp_transport::MctpTransport;
+use mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
+use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
+use pldm_fw_pkg::FirmwareManifest;
+use pldm_ua::daemon::PldmDaemon;
+use pldm_ua::transport::{EndpointId, PldmTransport};
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{self, IsTerminal, Read, Write};
@@ -80,19 +78,6 @@ fn parse_vendor_pqc_type(s: &str) -> Result<FwVerificationPqcKeyType, String> {
             "Invalid vendor PQC type: {}. Supported types are 'mldsa' and 'lms'.",
             s
         )),
-    }
-}
-
-/// Map an LC state index (0–20) to the Caliptra device lifecycle string per the HW spec.
-/// TestUnlocked* → "unprovisioned", Dev → "manufacturing", all others → "production".
-fn lc_state_to_device_lifecycle_str(lc_state_index: u32) -> &'static str {
-    match lc_state_index {
-        // TestUnlocked0..TestUnlocked7 = indices 1,3,5,7,9,11,13,15
-        1 | 3 | 5 | 7 | 9 | 11 | 13 | 15 => "unprovisioned",
-        // Dev = index 16
-        16 => "manufacturing",
-        // Raw, TestLocked*, Prod, ProdEnd, Rma, Scrap, PostTransition → production
-        _ => "production",
     }
 }
 
@@ -130,10 +115,6 @@ pub struct EmulatorArgs {
     // this is used only to set stdin_uart to false
     #[arg(long = "stdin-uart", overrides_with = "stdin_uart")]
     pub _no_stdin_uart: bool,
-
-    /// Allow writing to the ROM while the emulator is running.
-    #[arg(long, action = ArgAction::SetTrue, default_value_t = false)]
-    pub allow_sideloaded_rom: bool,
 
     /// Enable flash based boot (default false).
     #[arg(long, default_value_t = false)]
@@ -176,6 +157,10 @@ pub struct EmulatorArgs {
 
     #[arg(long)]
     pub secondary_flash_image: Option<PathBuf>,
+
+    /// Enable OCP LOCK support (default false, or true if built with ocp-lock feature).
+    #[arg(long, default_value_t = cfg!(feature = "ocp-lock"))]
+    pub ocp_lock: bool,
 
     /// HW revision in semver format (e.g., "2.0.0")
     #[arg(long, value_parser = semver::Version::parse, default_value = "2.0.0")]
@@ -287,14 +272,6 @@ pub struct EmulatorArgs {
     /// Enable warning prints when auto-generated register stubs handle a read/write.
     #[arg(long, default_value_t = false)]
     pub stub_warnings: bool,
-
-    /// Test feature to enable at runtime.
-    #[arg(long)]
-    pub test_feature: Option<String>,
-
-    /// Selects which I3C core is used for MCTP transport.
-    #[arg(long, default_value_t = false)]
-    pub active_i3c1: bool,
 }
 
 pub struct Emulator {
@@ -317,11 +294,8 @@ pub struct Emulator {
     pub doe_mbox_fsm: doe_mbox_fsm::DoeMboxFsm,
     pub i3c_address: Option<u8>,
     pub i3c_controller_join_handle: Option<JoinHandle<()>>,
-    // Synchronizes cross-thread timer scheduling (I3C / DOE controller
-    // threads) with the CPU step that advances the clock.
-    pub step_lock: Arc<Mutex<()>>,
-    /// Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
-    pub cptra_boot_go: Rc<Cell<bool>>,
+    #[allow(dead_code)]
+    pub usb_host_controller: emulator_periph::UsbHostController,
 }
 
 impl Emulator {
@@ -337,13 +311,14 @@ impl Emulator {
         external_read_callback: Option<ExternalReadCallback>,
         external_write_callback: Option<ExternalWriteCallback>,
     ) -> std::io::Result<Self> {
-        let test_feature = cli.test_feature.as_deref().unwrap_or("");
-        let is_flash_based_boot = cli.flash_based_boot || test_feature == "test-flash-based-boot";
+        #[cfg(feature = "test-flash-based-boot")]
+        let is_flash_based_boot = true;
+
+        #[cfg(not(feature = "test-flash-based-boot"))]
+        let is_flash_based_boot = cli.flash_based_boot;
 
         // Configure stub warnings based on CLI flag
-        caliptra_mcu_emulator_registers_generated::stub_warnings::set_stub_warnings(
-            cli.stub_warnings,
-        );
+        emulator_registers_generated::stub_warnings::set_stub_warnings(cli.stub_warnings);
 
         let args_rom = &cli.rom;
         let args_log_dir = &cli.log_dir.unwrap_or_else(|| PathBuf::from("/tmp"));
@@ -362,60 +337,20 @@ impl Emulator {
                 ),
             )
         })?;
-        if device_lifecycle == DeviceLifecycle::Reserved2 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Reserved device lifecycle value (2) is not supported by the emulator",
-            ));
-        }
 
-        // Determine lifecycle state from OTP fuses (source of truth) or CLI arg.
-        // If OTP file has lifecycle fuses, decode the state from them.
-        // Otherwise, generate fuse data from the --device-security-state CLI arg.
-        let (lc_state_index, lc_transition_cnt, lifecycle_fuse_data) = if let Some(lc_bytes) = cli
-            .otp
-            .as_ref()
-            .and_then(|p| Otp::read_lifecycle_from_file(p))
-        {
-            let mem: [u8; caliptra_mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE] =
-                lc_bytes.try_into().map_err(|_| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "OTP lifecycle partition has wrong size",
-                    )
-                })?;
-            let (state, count) =
-                caliptra_mcu_otp_lifecycle::lc_decode_memory(&mem).map_err(|e| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("Failed to decode lifecycle from OTP fuses: {e}"),
-                    )
-                })?;
-            (state as u32, count as u32, None)
-        } else {
-            // No existing fuses — generate from CLI arg.
-            let (idx, cnt) = match device_lifecycle {
-                DeviceLifecycle::Unprovisioned => (1u8, 1u8), // TestUnlocked0
-                DeviceLifecycle::Manufacturing => (16u8, 1u8), // Dev
-                DeviceLifecycle::Production => (17u8, 1u8),   // Prod
-                _ => (17u8, 1u8),
-            };
-            let fuse_data =
-                caliptra_mcu_otp_lifecycle::lc_generate_memory(idx, cnt).map_err(|e| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("Failed to generate lifecycle fuses: {e}"),
-                    )
-                })?;
-            (idx as u32, cnt as u32, Some(fuse_data.to_vec()))
+        let device_lifecycle_str: Option<String> = match device_lifecycle {
+            DeviceLifecycle::Manufacturing => Some("manufacturing".into()),
+            DeviceLifecycle::Production => Some("production".into()),
+            DeviceLifecycle::Unprovisioned => Some("unprovisioned".into()),
+            DeviceLifecycle::Reserved2 => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Reserved device lifecycle value (2) is not supported by the emulator",
+                ))
+            }
         };
 
-        // Map LC state index to Caliptra device lifecycle string per the HW spec.
-        let device_lifecycle_str: Option<String> =
-            Some(lc_state_to_device_lifecycle_str(lc_state_index).into());
-
-        let req_idevid_csr: Option<bool> = if lc_state_index == 16 {
-            // Dev state → manufacturing
+        let req_idevid_csr: Option<bool> = if device_lifecycle == DeviceLifecycle::Manufacturing {
             Some(true)
         } else {
             None
@@ -429,9 +364,7 @@ impl Emulator {
             req_idevid_csr,
             use_mcu_recovery_interface,
             extra_soc_bus: None,
-            debug_intent: true, // Emulator app defaults to debug intent enabled
-            prod_dbg_unlock_keypairs: vec![],
-            cptra_obf_key: DEFAULT_CPTRA_OBF_KEY,
+            ocp_lock_en: cli.ocp_lock,
         })
         .expect("Failed to start Caliptra CPU");
 
@@ -556,11 +489,6 @@ impl Emulator {
             auto_root_bus_offsets.lc_size = lc_size;
         }
 
-        let mut straps = caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS;
-        if cli.active_i3c1 {
-            straps.active_i3c = 1;
-        }
-
         let bus_args = McuRootBusArgs {
             offsets: mcu_root_bus_offsets.clone(),
             rom: rom_buffer,
@@ -569,26 +497,8 @@ impl Emulator {
             uart_rx: stdin_uart.clone(),
             pic: pic.clone(),
             clock: clock.clone(),
-            allow_sideloaded_rom: cli.allow_sideloaded_rom,
-            straps,
         };
         let root_bus = McuRootBus::new(bus_args).unwrap();
-
-        // Set test_mcu_mbox_driver if requested
-        if test_feature == "test-mcu-mbox-driver" {
-            root_bus
-                .mcu_mailbox0
-                .regs
-                .lock()
-                .unwrap()
-                .test_mcu_mbox_driver = true;
-            root_bus
-                .mcu_mailbox1
-                .regs
-                .lock()
-                .unwrap()
-                .test_mcu_mbox_driver = true;
-        }
 
         // Create external communication bus
         let mut caliptra_to_ext = CaliptraToExtBus::new();
@@ -615,17 +525,12 @@ impl Emulator {
         } else {
             I3cController::default()
         };
-
-        let step_lock = Arc::new(Mutex::new(()));
-
         let i3c = I3c::new(
             &clock.clone(),
             &mut i3c_controller,
             i3c_irq,
             cli.hw_revision.clone(),
-            step_lock.clone(),
         );
-
         let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
 
         let doe_event_irq = pic.register_irq(McuRootBus::DOE_MBOX_EVENT_IRQ);
@@ -633,37 +538,29 @@ impl Emulator {
 
         let mut doe_mbox_fsm = doe_mbox_fsm::DoeMboxFsm::new(doe_mbox_periph.clone());
 
-        let doe_mbox = DummyDoeMbox::new(
-            &clock.clone(),
-            doe_event_irq,
-            doe_mbox_periph,
-            step_lock.clone(),
-        );
+        let doe_mbox = DummyDoeMbox::new(&clock.clone(), doe_event_irq, doe_mbox_periph);
 
         println!("Starting DOE mailbox transport thread");
 
         let mut i3c_controller_join_handle = None;
 
         // Feature flag based test setup
-        if test_feature == "test-doe-transport-loopback" {
+        if cfg!(feature = "test-doe-transport-loopback") {
             let (test_rx, test_tx) = doe_mbox_fsm.start();
             println!("Starting DOE transport loopback test thread");
             let tests = tests::doe_transport_loopback::generate_tests();
             doe_mbox_fsm::run_doe_transport_tests(test_tx, test_rx, tests);
-        }
-        if test_feature == "test-doe-discovery" {
+        } else if cfg!(feature = "test-doe-discovery") {
             let (test_rx, test_tx) = doe_mbox_fsm.start();
             println!("Starting DOE discovery test thread");
             let tests = tests::doe_discovery::DoeDiscoveryTest::generate_tests();
             doe_mbox_fsm::run_doe_transport_tests(test_tx, test_rx, tests);
-        }
-        if test_feature == "test-doe-user-loopback" {
+        } else if cfg!(feature = "test-doe-user-loopback") {
             let (test_rx, test_tx) = doe_mbox_fsm.start();
             println!("Starting DOE user loopback test thread");
             let tests = tests::doe_user_loopback::generate_tests();
             doe_mbox_fsm::run_doe_transport_tests(test_tx, test_rx, tests);
-        }
-        if test_feature == "test-mctp-ctrl-cmds" {
+        } else if cfg!(feature = "test-mctp-ctrl-cmds") {
             i3c_controller_join_handle = Some(i3c_controller.start());
             println!(
                 "Starting test-mctp-ctrl-cmds test thread for testing target {:?}",
@@ -677,8 +574,7 @@ impl Emulator {
                 tests,
                 None,
             );
-        }
-        if test_feature == "test-mctp-user-loopback" {
+        } else if cfg!(feature = "test-mctp-user-loopback") {
             i3c_controller_join_handle = Some(i3c_controller.start());
             println!(
                 "Starting loopback test thread for testing target {:?}",
@@ -686,7 +582,7 @@ impl Emulator {
             );
 
             let spdm_loopback_tests = tests::mctp_user_loopback::MctpUserAppTests::generate_tests(
-                caliptra_mcu_testing_common::mctp_util::base_protocol::MctpMsgType::Caliptra as u8,
+                mcu_testing_common::mctp_util::base_protocol::MctpMsgType::Caliptra as u8,
             );
 
             i3c_socket::run_tests(
@@ -695,27 +591,37 @@ impl Emulator {
                 spdm_loopback_tests,
                 None,
             );
-        }
-        if test_feature == "test-doe-spdm-responder-conformance" {
+        } else if cfg!(feature = "test-mctp-spdm-responder-conformance") {
+            if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
+                println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
+                exit(0);
+            }
+            i3c_controller_join_handle = Some(i3c_controller.start());
+            crate::tests::spdm_responder_validator::mctp::run_mctp_spdm_conformance_test(
+                cli.i3c_port.unwrap(),
+                i3c.get_dynamic_address().unwrap(),
+                SpdmTestType::SpdmResponderConformance,
+                std::time::Duration::from_secs(9000), // timeout in seconds
+            );
+        } else if cfg!(feature = "test-doe-spdm-responder-conformance") {
             if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
                 println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
                 exit(0);
             }
             let (test_rx, test_tx) = doe_mbox_fsm.start();
-            caliptra_mcu_testing_common::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
+            crate::tests::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
                 test_tx,
                 test_rx,
                 SpdmTestType::SpdmResponderConformance,
                 std::time::Duration::from_secs(9000), // timeout in seconds
             );
-        }
-        if test_feature == "test-doe-spdm-tdisp-ide-validator" {
+        } else if cfg!(feature = "test-doe-spdm-tdisp-ide-validator") {
             if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
                 println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
                 exit(0);
             }
             let (test_rx, test_tx) = doe_mbox_fsm.start();
-            caliptra_mcu_testing_common::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
+            crate::tests::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
                 test_tx,
                 test_rx,
                 SpdmTestType::SpdmTeeIoValidator,
@@ -723,17 +629,18 @@ impl Emulator {
             );
         }
 
-        if test_feature == "test-pldm-request-response"
-            || test_feature == "test-pldm-discovery"
-            || test_feature == "test-pldm-fw-update"
-        {
+        if cfg!(any(
+            feature = "test-pldm-request-response",
+            feature = "test-pldm-discovery",
+            feature = "test-pldm-fw-update",
+        )) {
             i3c_controller_join_handle = Some(i3c_controller.start());
             let pldm_transport =
                 MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
             let pldm_socket = pldm_transport
                 .create_socket(EndpointId(0), EndpointId(1))
                 .unwrap();
-            PldmRequestResponseTest::run(pldm_socket, test_feature.to_string());
+            PldmRequestResponseTest::run(pldm_socket);
         }
 
         let create_flash_controller =
@@ -743,18 +650,18 @@ impl Emulator {
              initial_content: Option<&[u8]>,
              direct_read_region: Option<Rc<RefCell<caliptra_emu_bus::Ram>>>| {
                 // Use a temporary file for flash storage if we're running a test
-                let is_test = test_feature == "test-flash-ctrl-init"
-                    || test_feature == "test-flash-ctrl-read-write-page"
-                    || test_feature == "test-flash-ctrl-erase-page"
-                    || test_feature == "test-flash-storage-read-write"
-                    || test_feature == "test-flash-storage-erase"
-                    || test_feature == "test-flash-usermode"
-                    || test_feature == "test-mcu-rom-flash-access"
-                    || test_feature == "test-log-flash-linear"
-                    || test_feature == "test-log-flash-circular"
-                    || test_feature == "test-log-flash-usermode";
-
-                let flash_file = if is_test {
+                let flash_file = if cfg!(any(
+                    feature = "test-flash-ctrl-init",
+                    feature = "test-flash-ctrl-read-write-page",
+                    feature = "test-flash-ctrl-erase-page",
+                    feature = "test-flash-storage-read-write",
+                    feature = "test-flash-storage-erase",
+                    feature = "test-flash-usermode",
+                    feature = "test-mcu-rom-flash-access",
+                    feature = "test-log-flash-linear",
+                    feature = "test-log-flash-circular",
+                    feature = "test-log-flash-usermode",
+                )) {
                     Some(
                         tempfile::NamedTempFile::new()
                             .unwrap()
@@ -827,7 +734,7 @@ impl Emulator {
             None,
         );
 
-        let mut dma_ctrl = caliptra_mcu_emulator_periph::AxiCDMA::new(
+        let mut dma_ctrl = emulator_periph::AxiCDMA::new(
             &clock.clone(),
             pic.register_irq(McuRootBus::DMA_ERROR_IRQ),
             pic.register_irq(McuRootBus::DMA_EVENT_IRQ),
@@ -837,7 +744,7 @@ impl Emulator {
         )
         .unwrap();
 
-        caliptra_mcu_emulator_periph::AxiCDMA::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
+        emulator_periph::AxiCDMA::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
         let mci_irq = root_bus.mci_irq.clone();
 
         let mcu_mailbox0 = root_bus.mcu_mailbox0.clone();
@@ -864,10 +771,7 @@ impl Emulator {
             .fuse_vendor_test_partition
             .map(|fuse| hex::decode(fuse).expect("Invalid hex in vendor_test_partition"));
 
-        // Map DeviceLifecycle to LC state index per the Caliptra SS HW spec
-        // (caliptra-ss docs/CaliptraSSHardwareSpecification.md, LCC state table).
-        // The lifecycle state was already resolved above from fuses or CLI arg.
-        let lc = LcCtrl::with_state(lc_state_index, lc_transition_cnt);
+        let lc = LcCtrl::new();
 
         let otp = Otp::new(
             &clock.clone(),
@@ -875,19 +779,18 @@ impl Emulator {
                 file_name: cli.otp,
                 owner_pk_hash,
                 vendor_pk_hash,
-                vendor_pqc_type: Some(cli.vendor_pqc_type),
+                vendor_pqc_type: cli.vendor_pqc_type,
                 soc_manifest_svn: cli.fuse_soc_manifest_svn.map(|v| v as u8),
                 soc_manifest_max_svn: cli.fuse_soc_manifest_max_svn.map(|v| v as u8),
                 vendor_hashes_prod_partition: fuse_vendor_hashes_prod_partition,
                 vendor_test_partition: fuse_vendor_test_partition,
-                lifecycle_state: lifecycle_fuse_data,
                 ..Default::default()
             },
         )?;
-
-        // Share OTP partition data with the LC controller for transitions.
-        let mut lc = lc;
-        lc.set_otp_partitions(otp.partitions_ref());
+        #[cfg(any(
+            feature = "test-mcu-mbox-soc-requester-loopback",
+            feature = "test-caliptra-util-host-validator",
+        ))]
         let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
         let soc_ifc = unsafe {
             caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
@@ -900,8 +803,6 @@ impl Emulator {
             )
         };
 
-        let cptra_boot_go = Rc::new(Cell::new(false));
-
         let mci = Mci::new(
             &clock.clone(),
             ext_mci,
@@ -910,14 +811,18 @@ impl Emulator {
             Some(mcu_mailbox1),
             Some(soc_ifc),
             [0, 0],
-            cptra_boot_go.clone(),
+            false,
         );
+
+        let usb_irq = pic.register_irq(McuRootBus::USB_IRQ);
+        let usb_periph = emulator_periph::UsbDevPeriph::new_with_irq(usb_irq);
+        let usb_host_controller = usb_periph.host_controller();
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
             Some(auto_root_bus_offsets),
+            Some(Box::new(usb_periph)),
             Some(Box::new(i3c)),
-            Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),
@@ -1010,19 +915,23 @@ impl Emulator {
             println!("Active mode enabled with 3 recovery images");
         }
 
-        if test_feature == "test-mcu-mbox-soc-requester-loopback"
-            || test_feature == "test-mcu-mbox-usermode"
-            || test_feature == "test-mcu-mbox-cmds"
+        #[cfg(any(
+            feature = "test-mcu-mbox-soc-requester-loopback",
+            feature = "test-mcu-mbox-usermode",
+            feature = "test-mcu-mbox-cmds",
+        ))]
         {
-            use caliptra_mcu_emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
-            let transport = McuMailboxTransport::new(ext_mcu_mailbox0.clone());
+            const SOC_AGENT_ID: u32 = 0x1;
+            use emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
+            let transport = McuMailboxTransport::new(ext_mcu_mailbox0);
             let test = crate::tests::emulator_mcu_mailbox_test::RequestResponseTest::new(transport);
-            test.run(test_feature.to_string());
+            test.run();
         }
 
-        if test_feature == "test-caliptra-util-host-validator" {
-            use caliptra_mcu_emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
-            let transport = McuMailboxTransport::new(ext_mcu_mailbox0.clone());
+        #[cfg(feature = "test-caliptra-util-host-validator")]
+        {
+            use emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
+            let transport = McuMailboxTransport::new(ext_mcu_mailbox0);
             crate::tests::caliptra_util_host_validator::run_mbox_responder(transport);
             crate::tests::caliptra_util_host_validator::run_caliptra_util_host_validator();
         }
@@ -1038,11 +947,11 @@ impl Emulator {
             );
 
             // Parse PLDM Firmware Package
-            let caliptra_mcu_pldm_fw_pkg = FirmwareManifest::decode_firmware_package(
+            let pldm_fw_pkg = FirmwareManifest::decode_firmware_package(
                 &pldm_fw_pkg_path.to_str().unwrap().to_string(),
                 None,
             );
-            if caliptra_mcu_pldm_fw_pkg.is_err() {
+            if pldm_fw_pkg.is_err() {
                 println!("Failed to parse PLDM firmware package");
                 exit(-1);
             }
@@ -1051,28 +960,27 @@ impl Emulator {
             i3c_controller_join_handle = Some(i3c_controller.start());
             let pldm_transport = MctpTransport::new(cli.i3c_port.unwrap(), i3c_dynamic_address);
             let pldm_socket = pldm_transport
-                .create_socket(EndpointId(LOCAL_TEST_ENDPOINT_EID), EndpointId(0))
+                .create_socket(EndpointId(LOCAL_TEST_ENDPOINT_EID), EndpointId(1))
                 .unwrap();
-            if test_feature == "test-pldm-streaming-boot" {
+            if cfg!(feature = "test-pldm-streaming-boot") {
                 // If we are running the PLDM daemon from an integration test,
                 // we need to set the update state machine to exit on error
                 let _ = PldmDaemon::run(
                     pldm_socket,
-                    caliptra_mcu_pldm_ua::daemon::Options {
-                        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.unwrap()),
-                        discovery_sm_actions: caliptra_mcu_pldm_ua::discovery_sm::DefaultActions {},
-                        update_sm_actions:
-                            caliptra_mcu_pldm_ua::update_sm::DefaultActionsExitOnError {},
+                    pldm_ua::daemon::Options {
+                        pldm_fw_pkg: Some(pldm_fw_pkg.unwrap()),
+                        discovery_sm_actions: pldm_ua::discovery_sm::DefaultActions {},
+                        update_sm_actions: pldm_ua::update_sm::DefaultActionsExitOnError {},
                         fd_tid: 0x01,
                     },
                 );
             } else {
                 let _ = PldmDaemon::run(
                     pldm_socket,
-                    caliptra_mcu_pldm_ua::daemon::Options {
-                        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.unwrap()),
-                        discovery_sm_actions: caliptra_mcu_pldm_ua::discovery_sm::DefaultActions {},
-                        update_sm_actions: caliptra_mcu_pldm_ua::update_sm::DefaultActions {},
+                    pldm_ua::daemon::Options {
+                        pldm_fw_pkg: Some(pldm_fw_pkg.unwrap()),
+                        discovery_sm_actions: pldm_ua::discovery_sm::DefaultActions {},
+                        update_sm_actions: pldm_ua::update_sm::DefaultActions {},
                         fd_tid: 0x01,
                     },
                 );
@@ -1103,8 +1011,7 @@ impl Emulator {
             doe_mbox_fsm,
             Some(i3c_dynamic_address.into()),
             i3c_controller_join_handle,
-            step_lock,
-            cptra_boot_go,
+            usb_host_controller,
         ))
     }
 
@@ -1123,8 +1030,7 @@ impl Emulator {
         doe_mbox_fsm: doe_mbox_fsm::DoeMboxFsm,
         i3c_address: Option<u8>,
         i3c_controller_join_handle: Option<JoinHandle<()>>,
-        step_lock: Arc<Mutex<()>>,
-        cptra_boot_go: Rc<Cell<bool>>,
+        usb_host_controller: emulator_periph::UsbHostController,
     ) -> Self {
         // read from the console in a separate thread to prevent blocking
         let stdin_uart_clone = stdin_uart.clone();
@@ -1148,8 +1054,7 @@ impl Emulator {
             doe_mbox_fsm,
             i3c_address,
             i3c_controller_join_handle,
-            step_lock,
-            cptra_boot_go,
+            usb_host_controller,
         }
     }
 
@@ -1180,11 +1085,6 @@ impl Emulator {
             }
         }
 
-        // Hold the step lock while advancing clocks so that cross-thread
-        // callers (I3C / DOE PollScheduler::incoming) cannot observe a
-        // mid-step clock value.
-        let _step_guard = self.step_lock.lock().unwrap();
-
         let action = if let Some(ref mut trace_file) = self.trace_file {
             let trace_fn: &mut dyn FnMut(u32, RvInstr) = &mut |pc, instr| match instr {
                 RvInstr::Instr32(instr32) => {
@@ -1209,27 +1109,25 @@ impl Emulator {
             MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         }
 
-        if self.cptra_boot_go.get() {
-            let caliptra_action = if self.trace_file.is_some() {
-                let caliptra_trace_fn: &mut dyn FnMut(u32, caliptra_emu_cpu::RvInstr) =
-                    &mut |pc, instr| match instr {
-                        caliptra_emu_cpu::RvInstr::Instr32(instr32) => {
-                            println!("{{caliptra cpu}} {}", disassemble(pc, instr32));
-                        }
-                        caliptra_emu_cpu::RvInstr::Instr16(instr16) => {
-                            println!("{{caliptra cpu}} {}", disassemble(pc, instr16 as u32));
-                        }
-                    };
-                self.caliptra_cpu.step(Some(caliptra_trace_fn))
-            } else {
-                self.caliptra_cpu.step(None)
-            };
+        let caliptra_action = if self.trace_file.is_some() {
+            let caliptra_trace_fn: &mut dyn FnMut(u32, caliptra_emu_cpu::RvInstr) =
+                &mut |pc, instr| match instr {
+                    caliptra_emu_cpu::RvInstr::Instr32(instr32) => {
+                        println!("{{caliptra cpu}} {}", disassemble(pc, instr32));
+                    }
+                    caliptra_emu_cpu::RvInstr::Instr16(instr16) => {
+                        println!("{{caliptra cpu}} {}", disassemble(pc, instr16 as u32));
+                    }
+                };
+            self.caliptra_cpu.step(Some(caliptra_trace_fn))
+        } else {
+            self.caliptra_cpu.step(None)
+        };
 
-            match caliptra_action {
-                StepAction::Continue => {}
-                _ => {
-                    println!("Caliptra CPU Halted");
-                }
+        match caliptra_action {
+            StepAction::Continue => {}
+            _ => {
+                println!("Caliptra CPU Halted");
             }
         }
 

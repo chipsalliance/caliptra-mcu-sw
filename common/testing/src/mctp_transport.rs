@@ -8,12 +8,12 @@
 use crate::i3c::DynamicI3cAddress;
 use crate::i3c_socket::BufferedStream;
 use crate::mctp_util::common::MctpUtil;
-use caliptra_mcu_pldm_common::util::mctp_transport::{MctpCommonHeader, MCTP_PLDM_MSG_TYPE};
-use caliptra_mcu_pldm_ua::transport::{
+use core::time::Duration;
+use pldm_common::util::mctp_transport::{MctpCommonHeader, MCTP_PLDM_MSG_TYPE};
+use pldm_ua::transport::{
     EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket,
     MAX_PLDM_PAYLOAD_SIZE,
 };
-use core::time::Duration;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, Condvar, Mutex};
 
@@ -32,7 +32,8 @@ pub struct MctpPldmSocket {
     target_addr: u8,
     msg_tag: u8,
     context: Arc<(Mutex<MctpPldmSocketData>, Condvar)>,
-    stream: BufferedStream,
+    rx_stream: Arc<Mutex<BufferedStream>>,
+    tx_stream: BufferedStream,
     response_msg_tag: Arc<Mutex<u8>>,
 }
 
@@ -44,6 +45,7 @@ struct MctpPldmSocketData {
 impl PldmSocket for MctpPldmSocket {
     fn send(&self, payload: &[u8]) -> Result<(), PldmTransportError> {
         let mut mctp_util = MctpUtil::new();
+        mctp_util.set_pkt_payload_size(MAX_PLDM_PAYLOAD_SIZE);
         let mut mctp_common_header = MctpCommonHeader(0);
         mctp_common_header.set_ic(0);
         mctp_common_header.set_msg_type(MCTP_PLDM_MSG_TYPE);
@@ -52,40 +54,45 @@ impl PldmSocket for MctpPldmSocket {
         mctp_payload.push(mctp_common_header.0);
         mctp_payload.extend_from_slice(payload);
 
-        let mut stream = self
-            .stream
-            .try_clone()
-            .map_err(|_| PldmTransportError::Disconnected)?;
         let (context_lock, cvar) = &*self.context;
         let context = &mut *context_lock.lock().unwrap();
         if context.state == MctpPldmSocketState::Idle {
             /* If this is the first time we are sending a request,
              * we need to make sure that the responder is ready
-             * so we wait for a response for the first message
+             * so we wait for a response for the first message.
+             * Read through the shared rx_stream so any packets fill_buffer drains
+             * past the first response stay buffered for the rx_loop to consume.
              */
+            let mut rx = self.rx_stream.lock().unwrap();
             mctp_util.new_req(self.msg_tag);
             let response = mctp_util.wait_for_responder(
                 self.msg_tag,
                 mctp_payload.as_mut_slice(),
-                &mut stream,
+                &mut rx,
                 self.target_addr,
             );
             context.first_response.replace(response.unwrap());
             context.state = MctpPldmSocketState::FirstResponse;
             cvar.notify_all();
-        } else if payload[0] & 0x80 == 0x80 {
-            mctp_util.send_request(
-                self.msg_tag,
-                mctp_payload.as_mut_slice(),
-                &mut stream,
-                self.target_addr,
-            );
         } else {
-            let msg_tag = *self.response_msg_tag.lock().unwrap();
-            mctp_util.set_src_eid(self.dest.0);
-            mctp_util.set_dest_eid(self.source.0);
-            mctp_util.set_msg_tag(msg_tag & MCTP_TAG_MASK);
-            mctp_util.send_response(mctp_payload.as_mut_slice(), &mut stream, self.target_addr);
+            let mut stream = self
+                .tx_stream
+                .try_clone()
+                .map_err(|_| PldmTransportError::Disconnected)?;
+            if payload[0] & 0x80 == 0x80 {
+                mctp_util.send_request(
+                    self.msg_tag,
+                    mctp_payload.as_mut_slice(),
+                    &mut stream,
+                    self.target_addr,
+                );
+            } else {
+                let msg_tag = *self.response_msg_tag.lock().unwrap();
+                mctp_util.set_src_eid(self.dest.0);
+                mctp_util.set_dest_eid(self.source.0);
+                mctp_util.set_msg_tag(msg_tag & MCTP_TAG_MASK);
+                mctp_util.send_response(mctp_payload.as_mut_slice(), &mut stream, self.target_addr);
+            }
         }
 
         Ok(())
@@ -127,11 +134,9 @@ impl PldmSocket for MctpPldmSocket {
         // We are in duplex mode, so we can receive packets
         // without waiting for the first response
         let mut mctp_util = MctpUtil::new();
-        let mut stream = self
-            .stream
-            .try_clone()
-            .map_err(|_| PldmTransportError::Disconnected)?;
-        let raw_pkt: Vec<u8> = mctp_util.receive(&mut stream, self.target_addr, None);
+        mctp_util.set_pkt_payload_size(MAX_PLDM_PAYLOAD_SIZE);
+        let mut rx = self.rx_stream.lock().unwrap();
+        let raw_pkt: Vec<u8> = mctp_util.receive(&mut rx, self.target_addr, None);
         if raw_pkt.is_empty() {
             return Err(PldmTransportError::Underflow);
         }
@@ -163,7 +168,8 @@ impl PldmSocket for MctpPldmSocket {
             target_addr: self.target_addr,
             msg_tag: self.msg_tag,
             context: self.context.clone(),
-            stream: self.stream.try_clone().unwrap(),
+            rx_stream: self.rx_stream.clone(),
+            tx_stream: self.tx_stream.try_clone().unwrap(),
             response_msg_tag: self.response_msg_tag.clone(),
         }
     }
@@ -190,13 +196,17 @@ impl PldmTransport<MctpPldmSocket> for MctpTransport {
         let addr = SocketAddr::from(([127, 0, 0, 1], self.port));
         let stream = TcpStream::connect(addr).map_err(|_| PldmTransportError::Disconnected)?;
         let stream = BufferedStream::new(stream);
+        let tx_stream = stream
+            .try_clone()
+            .map_err(|_| PldmTransportError::Disconnected)?;
         let msg_tag = 0u8;
         Ok(MctpPldmSocket {
             source,
             dest,
             target_addr: self.target_addr.into(),
             msg_tag,
-            stream,
+            rx_stream: Arc::new(Mutex::new(stream)),
+            tx_stream,
             context: Arc::new((
                 Mutex::new(MctpPldmSocketData {
                     state: MctpPldmSocketState::Idle,

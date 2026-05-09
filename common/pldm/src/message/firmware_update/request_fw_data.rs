@@ -5,13 +5,9 @@ use crate::protocol::base::{
     InstanceId, PldmMsgHeader, PldmMsgType, PldmSupportedType, PLDM_MSG_HEADER_LEN,
 };
 use crate::protocol::firmware_update::FwUpdateCmd;
-use crate::util::mctp_transport::{MAX_MCTP_PLDM_MSG_SIZE, MCTP_PLDM_MSG_HDR_LEN};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-/// Maximum firmware data bytes in a single RequestFirmwareData response.
-/// Derived from: MAX_MCTP_PLDM_MSG_SIZE - MCTP_PLDM_MSG_HDR_LEN(1) - sizeof(ResponseFixed: hdr(3) + completion_code(1))
-pub const MAX_PLDM_FW_DATA_SIZE: usize =
-    MAX_MCTP_PLDM_MSG_SIZE - MCTP_PLDM_MSG_HDR_LEN - PLDM_MSG_HEADER_LEN - 1;
+pub const MAX_TRANSFER_SIZE: usize = 512; // Define an appropriate size
 
 #[derive(Debug, Clone, FromBytes, IntoBytes, Immutable, PartialEq)]
 #[repr(C, packed)]
@@ -95,7 +91,7 @@ impl PldmCodec for RequestFirmwareDataResponse<'_> {
         offset += bytes;
 
         let data_len = self.data.len();
-        if data_len > MAX_PLDM_FW_DATA_SIZE {
+        if data_len > MAX_TRANSFER_SIZE {
             return Err(PldmCodecError::BufferTooShort);
         }
         buffer[offset..offset + data_len].copy_from_slice(self.data);

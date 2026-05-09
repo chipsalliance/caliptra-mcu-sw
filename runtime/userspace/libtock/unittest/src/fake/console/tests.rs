@@ -1,7 +1,7 @@
 use crate::fake;
 use crate::{RoAllowBuffer, RwAllowBuffer};
-use caliptra_mcu_libtock_platform::share;
-use caliptra_mcu_libtock_platform::DefaultConfig;
+use libtock_platform::share;
+use libtock_platform::DefaultConfig;
 
 // Tests the command implementation.
 #[test]
@@ -19,10 +19,10 @@ fn command() {
 }
 
 // Integration test that verifies Console works with fake::Kernel and
-// caliptra_mcu_libtock_platform::Syscalls.
+// libtock_platform::Syscalls.
 #[test]
 fn kernel_integration() {
-    use caliptra_mcu_libtock_platform::Syscalls;
+    use libtock_platform::Syscalls;
     let kernel = fake::Kernel::new();
     let console = fake::Console::new();
     kernel.add_driver(&console);

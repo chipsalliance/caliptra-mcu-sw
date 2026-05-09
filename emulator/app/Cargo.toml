@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mcu-emulator"
+name = "emulator"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,11 +12,10 @@ bitfield.workspace = true
 caliptra-emu-bus.workspace = true
 caliptra-emu-cpu.workspace = true
 caliptra-emu-periph.workspace = true
-caliptra-mcu-core-util-host-mailbox-test-config.workspace = true
-caliptra-mcu-core-mailbox-server.workspace = true
+caliptra-util-host-mailbox-test-config.workspace = true
+caliptra-mailbox-server.workspace = true
 caliptra-emu-types.workspace = true
 caliptra-api-types.workspace = true
-caliptra-hw-model-types.workspace = true
 caliptra-image-types.workspace = true
 caliptra-registers.workspace = true
 chrono.workspace = true
@@ -27,29 +26,25 @@ crossterm.workspace = true
 ctrlc.workspace = true
 ecdsa.workspace = true
 elf.workspace = true
-caliptra-mcu-emulator-bmc.workspace = true
-caliptra-mcu-emulator-caliptra.workspace = true
-caliptra-mcu-emulator-consts.workspace = true
-caliptra-mcu-emulator-mcu-mbox.workspace = true
-caliptra-mcu-emulator-periph.workspace = true
-caliptra-mcu-emulator-registers-generated.workspace = true
+emulator-bmc.workspace = true
+emulator-caliptra.workspace = true
+emulator-consts.workspace = true
+emulator-mcu-mbox.workspace = true
+emulator-periph.workspace = true
+emulator-registers-generated.workspace = true
 gdbstub_arch.workspace = true
 gdbstub.workspace = true
 hex.workspace = true
 log.workspace = true
 lazy_static.workspace = true
-caliptra-mcu-config.workspace = true
-caliptra-mcu-config-emulator.workspace = true
-caliptra-mcu-mbox-common.workspace = true
-
-caliptra-mcu-testing-common.workspace = true
-caliptra-mcu-otp-lifecycle.workspace = true
+mcu-mbox-common.workspace = true
+mcu-testing-common.workspace = true
 p384.workspace = true
-caliptra-mcu-pldm-common.workspace = true
-caliptra-mcu-pldm-fw-pkg.workspace = true
-caliptra-mcu-pldm-ua.workspace = true
+pldm-common.workspace = true
+pldm-fw-pkg.workspace = true
+pldm-ua.workspace = true
 rand.workspace = true
-caliptra-mcu-registers-generated.workspace = true
+registers-generated.workspace = true
 sec1.workspace = true
 sha2.workspace = true
 semver.workspace = true
@@ -70,8 +65,60 @@ name = "emulator"
 path = "src/main.rs"
 
 [lib]
-name = "caliptra_mcu_emulator"
+name = "emulator"
 path = "src/lib.rs"
 
 [features]
-default = []
+default = ["ocp-lock"]
+ocp-lock = []
+test-caliptra-certs = []
+test-caliptra-crypto = []
+test-caliptra-mailbox = []
+test-caliptra-util-host-validator = []
+test-get-device-state = []
+test-dma = []
+test-doe-transport-loopback = ["emulator-periph/test-doe-transport-loopback"]
+test-doe-discovery = ["emulator-periph/test-doe-discovery"]
+test-doe-spdm-responder-conformance = [
+    "emulator-periph/test-doe-spdm-responder-conformance",
+]
+test-doe-spdm-tdisp-ide-validator = [
+    "emulator-periph/test-doe-spdm-tdisp-ide-validator",
+]
+test-doe-user-loopback = ["emulator-periph/test-doe-user-loopback"]
+test-flash-based-boot = []
+test-flash-ctrl-init = []
+test-flash-ctrl-read-write-page = []
+test-flash-ctrl-erase-page = []
+test-flash-storage-read-write = []
+test-flash-storage-erase = []
+test-flash-usermode = []
+test-firmware-update-flash = ["test-flash-based-boot"]
+test-firmware-update-streaming = []
+test-fpga-flash-ctrl = []
+test-log-flash-linear = []
+test-log-flash-circular = []
+test-log-flash-usermode = []
+test-mbox-sram = []
+test-mci = []
+test-mctp-ctrl-cmds = ["emulator-periph/test-mctp-ctrl-cmds"]
+test-mctp-user-loopback = ["emulator-periph/test-mctp-user-loopback"]
+test-mctp-spdm-responder-conformance = [
+    "emulator-periph/test-mctp-spdm-responder-conformance",
+]
+test-mcu-mbox-driver = ["emulator-periph/test-mcu-mbox-driver"]
+test-mcu-mbox-soc-requester-loopback = []
+test-mcu-mbox-usermode = []
+test-mcu-mbox-cmds = []
+test-mcu-mbox-fips-self-test = []
+test-mcu-rom-flash-access = []
+test-mcu-svn-gt-fuse = []
+test-mcu-svn-lt-fuse = []
+test-ocp-lock = []
+test-exit-immediately = []
+test-pldm-request-response = []
+test-pldm-discovery = []
+test-pldm-fw-update = []
+test-pldm-fw-update-e2e = []
+test-pldm-streaming-boot = []
+test-warm-reset = []

@@ -1,21 +1,21 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Context, Result};
-use caliptra_mcu_builder::{AllBuildArgs, ImageCfg, PROJECT_ROOT};
 use clap::ValueEnum;
+use mcu_builder::{AllBuildArgs, ImageCfg, PROJECT_ROOT};
 
 use super::{
     run_command, run_command_with_output,
     utils::{
         build_base_container_command, build_caliptra_firmware, caliptra_sw_workspace_root,
-        check_ssh_access, download_bitstream, load_bitstream, rsync_file, run_test_suite,
+        check_ssh_access, download_bitstream_pdi, rsync_file, run_test_suite,
         NextestArchiveCommand,
     },
-    ActionHandler, BootstrapArgs, BuildArgs, BuildTestArgs, TestArgs,
+    ActionHandler, BuildArgs, BuildTestArgs, TestArgs,
 };
 
 /// The FPGA configuration mode
-#[derive(Copy, Clone, ValueEnum, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, ValueEnum, Debug)]
 pub enum Configuration {
     /// Testing FPGA in Subsystem mode. For example running tests in caliptra-mcu-sw.
     Subsystem,
@@ -83,39 +83,17 @@ impl<'a> Configuration {
         Self::from_cache(cache_contents)
     }
 
-    /// Attempts to retrieve the FPGA configuration from the target host.
-    /// Returns `Ok(None)` if the configuration file is missing.
-    pub fn from_cmd_optional(target_host: Option<&str>) -> Result<Option<Self>> {
-        check_ssh_access(target_host)?;
-        // cat will fail if file doesn't exist, run_command_with_output returns empty stdout in that case
-        let cache_contents =
-            run_command_with_output(target_host, "cat /dev/shm/fpga-config || true")?;
-        let cache_contents = cache_contents.trim_end();
-        if cache_contents.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(Self::from_cache(cache_contents)?))
-    }
-
     pub fn executor(self) -> CommandExecutor {
         self.into()
     }
 }
 
 impl<'a> ActionHandler<'a> for CommandExecutor {
-    fn bootstrap(&self, args: &'a BootstrapArgs<'a>) -> Result<()> {
+    fn bootstrap(&self) -> Result<()> {
         match self {
-            Self::Subsystem(sub) => sub.bootstrap(args),
-            Self::CoreOnSubsystem(core) => core.bootstrap(args),
-            Self::Core(core) => core.bootstrap(args),
-        }
-    }
-
-    fn download_bitstream(&self) -> Result<()> {
-        match self {
-            Self::Subsystem(sub) => sub.download_bitstream(),
-            Self::CoreOnSubsystem(core) => core.download_bitstream(),
-            Self::Core(core) => core.download_bitstream(),
+            Self::Subsystem(sub) => sub.bootstrap(),
+            Self::CoreOnSubsystem(core) => core.bootstrap(),
+            Self::Core(core) => core.bootstrap(),
         }
     }
 
@@ -184,7 +162,7 @@ impl Subsystem {
 }
 
 impl<'a> ActionHandler<'a> for Subsystem {
-    fn bootstrap(&self, args: &'a BootstrapArgs<'a>) -> Result<()> {
+    fn bootstrap(&self) -> Result<()> {
         let bootstrap_cmd= "[ -d caliptra-mcu-sw ] || git clone https://github.com/chipsalliance/caliptra-mcu-sw --branch=main --depth=1";
         let target_host = self.target_host.as_deref();
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-mcu-sw repo")?;
@@ -194,45 +172,36 @@ impl<'a> ActionHandler<'a> for Subsystem {
             return Ok(());
         }
 
-        handle_bitstream_bootstrap(
-            target_host,
-            args.bitstream.as_deref(),
-            &bitstream_manifest_path(&PROJECT_ROOT, "subsystem.toml"),
-        )?;
+        let subsystem_bitstream = PROJECT_ROOT
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("subsystem.toml");
+        download_bitstream_pdi(self.target_host.as_deref(), &subsystem_bitstream)?;
         Ok(())
     }
 
-    fn download_bitstream(&self) -> Result<()> {
-        download_bitstream(
-            None,
-            &bitstream_manifest_path(&PROJECT_ROOT, "subsystem.toml"),
-        )?;
-        Ok(())
-    }
-
-    fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
-        // TODO(clundin): Modify `caliptra_mcu_builder::all_build` to return the zip instead of writing it?
+    fn build(&self, _: &'a BuildArgs<'a>) -> Result<()> {
+        // TODO(clundin): Modify `mcu_builder::all_build` to return the zip instead of writing it?
         // TODO(clundin): Place FPGA xtask artifacts in a specific folder?
-        let mcu_cfgs = args.mcu_cfgs.clone().or_else(|| {
-            Some(vec![ImageCfg {
-                path: "mcu".into(),
-                load_addr: 0x0,
-                staging_addr: 0xB00C0000,
-                image_id: 2,
-                exec_bit: 2,
-                component_id: 2,
-                feature: "test-fpga-flash-ctrl".to_string(),
-            }])
-        });
+        let mcu_cfgs = Some(vec![ImageCfg {
+            path: "mcu".into(),
+            load_addr: 0x0,
+            staging_addr: 0xB00C0000,
+            image_id: 2,
+            exec_bit: 2,
+            component_id: 2,
+            feature: "test-fpga-flash-ctrl".to_string(),
+        }]);
         let args = AllBuildArgs {
             output: Some("all-fw.zip"),
             platform: Some("fpga"),
-            rom_features: args.rom_features.as_deref(),
+            runtime_features: Some("test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming"),
             mcu_cfgs: mcu_cfgs,
-            separate_runtimes: args.separate_runtimes,
+            separate_runtimes: true,
             ..Default::default()
         };
-        caliptra_mcu_builder::all_build(args)?;
+        mcu_builder::all_build(args)?;
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "all-fw.zip", ".", false)?;
         }
@@ -240,12 +209,12 @@ impl<'a> ActionHandler<'a> for Subsystem {
     }
 
     fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
+        let mut container = build_base_container_command()?;
         let cmd = NextestArchiveCommand::new("/work-dir")
             .feature("fpga_realtime")
             .package_filter(args.package_filter.as_deref())
             .build();
 
-        let mut container = build_base_container_command()?;
         container.arg(&cmd);
         container
             .status()
@@ -268,12 +237,10 @@ impl<'a> ActionHandler<'a> for Subsystem {
             "--test-threads=1"
         };
 
-        let bundle = std::env::var("CPTRA_FIRMWARE_BUNDLE")
-            .unwrap_or_else(|_| "$HOME/all-fw.zip".to_string());
-        let prelude = format!("CPTRA_FIRMWARE_BUNDLE={bundle}");
+        let prelude = "CPTRA_FIRMWARE_BUNDLE=$HOME/all-fw.zip";
         run_test_suite(
             "caliptra-mcu-sw",
-            &prelude,
+            prelude,
             test_filters,
             to,
             self.target_host.as_deref(),
@@ -300,8 +267,8 @@ impl CoreOnSubsystem {
 }
 
 impl<'a> ActionHandler<'a> for CoreOnSubsystem {
-    fn bootstrap(&self, args: &'a BootstrapArgs<'a>) -> Result<()> {
-        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=caliptra-2.0 --depth=1";
+    fn bootstrap(&self) -> Result<()> {
+        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main --depth=1";
         let target_host = self.target_host.as_deref();
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
 
@@ -310,28 +277,19 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             return Ok(());
         }
 
-        handle_bitstream_bootstrap(
-            target_host,
-            args.bitstream.as_deref(),
-            &bitstream_manifest_path(&caliptra_sw_workspace_root(), "subsystem.toml"),
-        )?;
-        Ok(())
-    }
-
-    fn download_bitstream(&self) -> Result<()> {
-        download_bitstream(
-            None,
-            &bitstream_manifest_path(&caliptra_sw_workspace_root(), "subsystem.toml"),
-        )?;
+        let caliptra_sw = caliptra_sw_workspace_root();
+        let subsystem_bitstream = caliptra_sw
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("subsystem.toml");
+        download_bitstream_pdi(self.target_host.as_deref(), &subsystem_bitstream)?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
         let caliptra_sw = caliptra_sw_workspace_root();
-        let rom_path = caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
-            platform: Some("fpga"),
-            features: args.rom_features.as_deref().or(Some("core_test")),
-            ..Default::default()
-        })?;
+        let rom_path =
+            mcu_builder::rom_build(Some("fpga".to_string()), Some("core_test".to_string()))?;
         if !args.mcu {
             build_caliptra_firmware(&caliptra_sw, args.fw_id.as_deref())?;
         }
@@ -356,12 +314,12 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         let caliptra_sw = caliptra_sw_workspace_root();
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
 
+        let mut container = build_base_container_command()?;
         let cmd = NextestArchiveCommand::new(&format!("/{base_name}"))
-            .features(&["fpga_subsystem", "itrng"])
+            .features(&["fpga_subsystem", "itrng", "ocp-lock"])
             .package_filter(args.package_filter.as_deref())
             .build();
 
-        let mut container = build_base_container_command()?;
         container.arg(&cmd);
         container
             .status()
@@ -385,15 +343,10 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             "--test-threads=1"
         };
 
-        let mcu_rom = std::env::var("CPTRA_MCU_ROM")
-            .unwrap_or_else(|_| "/home/runner/mcu-rom-fpga.bin".to_string());
-        let uio_num = std::env::var("CPTRA_UIO_NUM").unwrap_or_else(|_| "0".to_string());
-        let fw_dir = std::env::var("CALIPTRA_PREBUILT_FW_DIR")
-            .unwrap_or_else(|_| "/tmp/caliptra-test-firmware/caliptra-test-firmware".to_string());
-        let prelude = format!("CPTRA_MCU_ROM={mcu_rom} CPTRA_UIO_NUM={uio_num} CALIPTRA_PREBUILT_FW_DIR={fw_dir} CALIPTRA_IMAGE_NO_GIT_REVISION=1");
+        let prelude = "CPTRA_MCU_ROM=/home/runner/mcu-rom-fpga.bin CPTRA_UIO_NUM=0 CALIPTRA_PREBUILT_FW_DIR=/tmp/caliptra-test-firmware/caliptra-test-firmware CALIPTRA_IMAGE_NO_GIT_REVISION=1";
         run_test_suite(
             "caliptra-sw",
-            &prelude,
+            prelude,
             test_filters,
             to,
             self.target_host.as_deref(),
@@ -420,8 +373,8 @@ impl Core {
 }
 
 impl<'a> ActionHandler<'a> for Core {
-    fn bootstrap(&self, args: &'a BootstrapArgs<'a>) -> Result<()> {
-        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=caliptra-2.0 --depth=1";
+    fn bootstrap(&self) -> Result<()> {
+        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main --depth=1";
         let target_host = self.target_host.as_deref();
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
 
@@ -430,19 +383,13 @@ impl<'a> ActionHandler<'a> for Core {
             return Ok(());
         }
 
-        handle_bitstream_bootstrap(
-            target_host,
-            args.bitstream.as_deref(),
-            &bitstream_manifest_path(&caliptra_sw_workspace_root(), "core.toml"),
-        )?;
-        Ok(())
-    }
-
-    fn download_bitstream(&self) -> Result<()> {
-        download_bitstream(
-            None,
-            &bitstream_manifest_path(&caliptra_sw_workspace_root(), "core.toml"),
-        )?;
+        let caliptra_sw = caliptra_sw_workspace_root();
+        let core_bitstream = caliptra_sw
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("core.toml");
+        download_bitstream_pdi(self.target_host.as_deref(), &core_bitstream)?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
@@ -465,12 +412,12 @@ impl<'a> ActionHandler<'a> for Core {
         let caliptra_sw = caliptra_sw_workspace_root();
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
 
+        let mut container = build_base_container_command()?;
         let cmd = NextestArchiveCommand::new(&format!("/{base_name}"))
             .features(&["fpga_realtime", "itrng"])
             .package_filter(args.package_filter.as_deref())
             .build();
 
-        let mut container = build_base_container_command()?;
         container.arg(&cmd);
         container
             .status()
@@ -494,13 +441,10 @@ impl<'a> ActionHandler<'a> for Core {
             "--test-threads=1"
         };
 
-        let uio_num = std::env::var("CPTRA_UIO_NUM").unwrap_or_else(|_| "0".to_string());
-        let fw_dir = std::env::var("CALIPTRA_PREBUILT_FW_DIR")
-            .unwrap_or_else(|_| "/tmp/caliptra-test-firmware/caliptra-test-firmware".to_string());
-        let prelude = format!("CPTRA_UIO_NUM={uio_num} CALIPTRA_PREBUILT_FW_DIR={fw_dir} CALIPTRA_IMAGE_NO_GIT_REVISION=1");
+        let prelude = "CPTRA_UIO_NUM=0 CALIPTRA_PREBUILT_FW_DIR=/tmp/caliptra-test-firmware/caliptra-test-firmware CALIPTRA_IMAGE_NO_GIT_REVISION=1";
         run_test_suite(
             "caliptra-sw",
-            &prelude,
+            prelude,
             test_filters,
             to,
             self.target_host.as_deref(),
@@ -508,35 +452,4 @@ impl<'a> ActionHandler<'a> for Core {
         )?;
         Ok(())
     }
-}
-
-fn bitstream_manifest_path(root: &std::path::Path, toml_name: &str) -> std::path::PathBuf {
-    root.join("hw")
-        .join("fpga")
-        .join("bitstream_manifests")
-        .join(toml_name)
-}
-
-fn handle_bitstream_bootstrap(
-    target_host: Option<&str>,
-    bitstream_arg: Option<&std::path::Path>,
-    manifest_path: &std::path::Path,
-) -> Result<()> {
-    if let Some(bitstream) = bitstream_arg {
-        if let Some(target_host) = target_host {
-            rsync_file(
-                target_host,
-                &bitstream.display().to_string(),
-                "caliptra-bitstream.pdi",
-                false,
-            )
-            .context("failed to copy bitstream to fpga")?;
-        } else {
-            std::fs::copy(bitstream, "caliptra-bitstream.pdi").context("copy bitstream pdi")?;
-        }
-    } else {
-        download_bitstream(target_host, manifest_path)?;
-    }
-    load_bitstream(target_host)?;
-    Ok(())
 }

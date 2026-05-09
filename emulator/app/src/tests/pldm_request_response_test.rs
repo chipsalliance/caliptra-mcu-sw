@@ -2,19 +2,19 @@
 //! This module tests the PLDM request/response interaction between the emulator and the device.
 //! The emulator sends out different PLDM requests and expects a corresponding response for those requests.
 
-use caliptra_mcu_pldm_common::codec::PldmCodec;
-use caliptra_mcu_pldm_common::message::control::*;
-use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::{
+use mcu_testing_common::mctp_transport::MctpPldmSocket;
+use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+use pldm_common::codec::PldmCodec;
+use pldm_common::message::control::*;
+use pldm_common::message::firmware_update::get_fw_params::{
     FirmwareParameters, GetFirmwareParametersRequest, GetFirmwareParametersResponse,
 };
-use caliptra_mcu_pldm_common::message::firmware_update::query_devid::{
+use pldm_common::message::firmware_update::query_devid::{
     QueryDeviceIdentifiersRequest, QueryDeviceIdentifiersResponse,
 };
-use caliptra_mcu_pldm_common::protocol::base::*;
-use caliptra_mcu_pldm_common::protocol::firmware_update::*;
-use caliptra_mcu_pldm_ua::transport::PldmSocket;
-use caliptra_mcu_testing_common::mctp_transport::MctpPldmSocket;
-use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+use pldm_common::protocol::base::*;
+use pldm_common::protocol::firmware_update::*;
+use pldm_ua::transport::PldmSocket;
 use std::process::exit;
 use std::sync::atomic::Ordering;
 
@@ -31,10 +31,10 @@ pub struct PldmExpectedMessagePair {
 }
 
 impl PldmRequestResponseTest {
-    fn new(socket: MctpPldmSocket, test_feature: &str) -> Self {
+    fn new(socket: MctpPldmSocket) -> Self {
         let mut test_messages: Vec<PldmExpectedMessagePair> = Vec::new();
 
-        if test_feature == "test-pldm-request-response" {
+        if cfg!(feature = "test-pldm-request-response") {
             println!("Emulator: Running PLDM Request Response Test");
             // Add the PLDM requests to send, and the expected responses
             Self::add_test_message(
@@ -48,10 +48,10 @@ impl PldmRequestResponseTest {
                 SetTidRequest::new(2u8, PldmMsgType::Request, 2u8),
                 SetTidResponse::new(2u8, 0u8),
             );
-        } else if test_feature == "test-pldm-discovery" {
+        } else if cfg!(feature = "test-pldm-discovery") {
             println!("Emulator: Running PLDM discovery Test");
             Self::add_pldm_discovery_test_message(&mut test_messages);
-        } else if test_feature == "test-pldm-fw-update" {
+        } else if cfg!(feature = "test-pldm-fw-update") {
             println!("Emulator: Running PLDM Firmware Update Test");
             Self::add_pldm_fw_update_test_message(&mut test_messages);
         }
@@ -89,14 +89,14 @@ impl PldmRequestResponseTest {
         Ok(())
     }
 
-    pub fn run(socket: MctpPldmSocket, test_feature: String) {
+    pub fn run(socket: MctpPldmSocket) {
         std::thread::spawn(move || {
             wait_for_runtime_start();
             if !MCU_RUNNING.load(Ordering::Relaxed) {
                 exit(-1);
             }
             print!("Emulator: Running PLDM Loopback Test: ",);
-            let mut test = PldmRequestResponseTest::new(socket, &test_feature);
+            let mut test = PldmRequestResponseTest::new(socket);
             if test.test_send_receive().is_err() {
                 println!("Failed");
                 exit(-1);

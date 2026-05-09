@@ -44,14 +44,15 @@ source adams-bridge-files.tcl
 
 # Add Caliptra headers and packages
 add_files [ glob $caliptrartlDir/src/*/rtl/*.svh ]
+add_files [ glob $caliptrartlDir/src/integration/rtl/caliptra_reg_ss/*.svh ]
 add_files [ glob $caliptrartlDir/src/*/rtl/*_pkg.sv ]
 # Add Caliptra sources
-add_files [ lsearch -inline -all -not [ glob $caliptrartlDir/src/*/rtl/*.sv ] *_pkg.sv ]
+add_files [ glob $caliptrartlDir/src/*/rtl/*.sv ]
 add_files [ glob $caliptrartlDir/src/*/rtl/*.v ]
 
 # Add ss RTL
 # Add MCU VEER Headers
-add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/pic_map_auto.h
+add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/css_mcu0_pic_map_auto.h
 add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/css_mcu0_el2_pdef.vh
 add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/css_mcu0_el2_param.vh
 add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/css_mcu0_common_defines.vh
@@ -82,9 +83,9 @@ add_files [ glob $i3cDir/src/*/*/*_pkg.sv ]
 add_files [ glob $i3cDir/src/*/*_pkg.sv ]
 add_files [ glob $i3cDir/src/*_pkg.sv ]
 # Then the rest of the sv files
-add_files [ lsearch -inline -all -not [ glob $i3cDir/src/*/*/*.sv ] *_pkg.sv ]
-add_files [ lsearch -inline -all -not [ glob $i3cDir/src/*/*.sv ] *_pkg.sv ]
-add_files [ lsearch -inline -all -not [ glob $i3cDir/src/*.sv ] *_pkg.sv ]
+add_files [ glob $i3cDir/src/*/*/*.sv ]
+add_files [ glob $i3cDir/src/*/*.sv ]
+add_files [ glob $i3cDir/src/*.sv ]
 
 # Remove unused spi_host files.
 remove_files [ glob $caliptrartlDir/src/spi_host/rtl/*.sv ]
@@ -102,11 +103,23 @@ exec patch $outputDir/caliptra_ss_top.sv $fpgaDir/src/caliptra_ss_top.patch
 remove_files [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ]
 add_files $outputDir/caliptra_ss_top.sv
 
-# TODO: Should the RTL be changed? Copy aes_clp_wrapper.sv to apply workaround: https://github.com/chipsalliance/caliptra-rtl/issues/977
-file copy [ glob $caliptrartlDir/src/aes/rtl/aes_clp_wrapper.sv ] $outputDir/aes_clp_wrapper.sv
-exec sed -i {1i `include \"kv_macros.svh\"\n`include \"caliptra_reg_field_defines.svh\"} $outputDir/aes_clp_wrapper.sv
-remove_files [ glob $caliptrartlDir/src/aes/rtl/aes_clp_wrapper.sv ]
-add_files $outputDir/aes_clp_wrapper.sv
+# Hack version to 2.1.1
+file copy [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_reg.sv ] $outputDir/soc_ifc_reg.sv
+exec sed -i {s/\(CPTRA_HW_REV_ID.*16'h\)12/\1112/g} $outputDir/soc_ifc_reg.sv
+remove_files [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_reg.sv ]
+add_files $outputDir/soc_ifc_reg.sv
+
+# Add missing include
+file copy [ glob $caliptrartlDir/src/ahb_lite_bus/rtl/ahb_lite_address_decoder.sv ] $outputDir/ahb_lite_address_decoder.sv
+exec sed -i {1i `include \"config_defines.svh\"} $outputDir/ahb_lite_address_decoder.sv
+remove_files [ glob $caliptrartlDir/src/ahb_lite_bus/rtl/ahb_lite_address_decoder.sv ]
+add_files $outputDir/ahb_lite_address_decoder.sv
+
+# Change soc_ifc to assign generic_input_wires[1] to CALIPTRA_FUSE_GRANULARITY
+file copy [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_top.sv ] $outputDir/soc_ifc_top.sv
+exec sed -i {/`ifdef CALIPTRA_FUSE_GRANULARITY_32/,/`endif/calways_comb soc_ifc_reg_hwif_in.CPTRA_HW_CONFIG.Fuse_Granularity.next = generic_input_wires[0][1];} $outputDir/soc_ifc_top.sv
+remove_files [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_top.sv ]
+add_files $outputDir/soc_ifc_top.sv
 
 # Mark all Verilog sources as SystemVerilog because some of them have SystemVerilog syntax.
 set_property file_type SystemVerilog [get_files *.v]

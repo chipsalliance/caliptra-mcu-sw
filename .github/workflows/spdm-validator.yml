@@ -50,8 +50,7 @@ jobs:
         id: sccache_bin_restore
         with:
           path: ~/.cargo/bin/sccache
-          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{
-            env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
 
       - name: Install sccache
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
@@ -79,7 +78,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: parvathib/spdm-emu
-          ref: pbhogaraju/spdm_emu_main_custom
+          ref: pbhogaraju/custom-3.8.0
           path: spdm-emu
           submodules: recursive
 
@@ -106,7 +105,7 @@ jobs:
           echo "SPDM_NONCE in MCTP stage: ${SPDM_NONCE}"
           echo "SPDM_NONCE length: ${#SPDM_NONCE}"
           cargo xtask all-build
-          cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
+          cargo t -p tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
       - name: Upload logs and traces for MCTP transport
@@ -130,13 +129,12 @@ jobs:
           cat $SPDM_VALIDATOR_DIR/test.log
 
       - name: Check for test failures on MCTP transport
-        env:
-          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
           if grep -E 'test suite \(.*\) - pass: [0-9]+, fail: [1-9][0-9]*' $SPDM_VALIDATOR_DIR/test.log; then
             echo "Test suite had failures."
             exit 1
           fi
+
 
       - name: Verify EAT from measurement block for SPDM-MCTP
         working-directory: ocp-eat-verifier
@@ -145,14 +143,15 @@ jobs:
         run: |
           cargo build --release -p ocptoken
           ./target/release/ocptoken verify \
-          -e $SPDM_VALIDATOR_DIR/measurement_block_fd.bin
+          -e $SPDM_VALIDATOR_DIR/measurement_block_fd.bin 
+
 
       - name: Run SPDM validator tests on DOE transport
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
           cargo xtask all-build
-          cargo t -p caliptra-mcu-tests-integration -- --test test_doe_spdm_responder_conformance --nocapture  --include-ignored
+          cargo t -p tests-integration -- --test test_doe_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
       - name: Upload logs and traces for DOE transport
@@ -199,17 +198,12 @@ jobs:
           cp -r test_key target/debug/
           ls -l target/debug/test_key/ecp384/
 
-      - name: Copy caliptra root CA cert into spdm-rs test_key
-        run: |
-          cp ${{ github.workspace }}/ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der \
-             ${{ github.workspace }}/spdm-rs/target/debug/test_key/ecp384/ca.cert.der
-
       - name: Run CCC spdm-requester-emu tests for TDISP+IDE
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
         run: |
           cargo xtask all-build
-          cargo t -p caliptra-mcu-tests-integration -- --test test_doe_spdm_tdisp_ide_validator --nocapture --include-ignored
+          cargo t -p tests-integration -- --test test_doe_spdm_tdisp_ide_validator --nocapture --include-ignored
           sccache --show-stats
 
       - name: Display CCC spdm-requester-emu test results for TDISP+IDE

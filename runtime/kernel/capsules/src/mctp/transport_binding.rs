@@ -1,17 +1,18 @@
 // Licensed under the Apache-2.0 license
 
 use crate::mctp::base_protocol::{MCTP_BASELINE_TRANSMISSION_UNIT, MCTP_HDR_SIZE};
-use caliptra_mcu_i3c_driver::hil::{I3CTarget, RxClient, TxClient};
-use caliptra_mcu_romtime::println;
 use core::cell::Cell;
+use core::fmt::Write;
+use i3c_driver::hil::{I3CTarget, RxClient, TxClient};
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::cells::TakeCell;
 use kernel::ErrorCode;
+use romtime::println;
 
-pub const MCTP_I3C_MAXBUF: usize = MCTP_HDR_SIZE + MCTP_BASELINE_TRANSMISSION_UNIT + 1;
+// TODO: Set the correct value for MCTP_I3C_MAXBUF.
+pub const MCTP_I3C_MAXBUF: usize = MCTP_HDR_SIZE + MCTP_BASELINE_TRANSMISSION_UNIT + 1; // 4 MCTP header + 64 baseline payload + 1 (PEC)
 
-// Max MTU excludes the PEC byte appended by the transport binding layer.
-pub const MCTP_I3C_MAXMTU: usize = MCTP_I3C_MAXBUF - 1;
+pub const MCTP_I3C_MAXMTU: usize = MCTP_I3C_MAXBUF - 1; // 68 bytes
 pub const MCTP_I3C_MINMTU: usize = MCTP_HDR_SIZE + MCTP_BASELINE_TRANSMISSION_UNIT;
 
 /// This trait contains the interface definition
@@ -100,10 +101,10 @@ impl<'a> MCTPI3CBinding<'a> {
     fn compute_pec(addr: u8, buf: &[u8], len: usize) -> u8 {
         let mut crc = 0u8;
 
-        crc = caliptra_mcu_romtime::crc8(crc, addr);
+        crc = romtime::crc8(crc, addr);
 
         for byte in buf.iter().take(len) {
-            crc = caliptra_mcu_romtime::crc8(crc, *byte);
+            crc = romtime::crc8(crc, *byte);
         }
         crc
     }
@@ -142,7 +143,7 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
         let addr = (self.device_address.get() << 1) | 0x01;
         match self.tx_buffer.take() {
             Some(tx_buffer) => {
-                if tx_buffer.len() > len {
+                if tx_buffer.len() > len + 1 {
                     let pec = MCTPI3CBinding::compute_pec(addr, tx_buffer, len);
                     tx_buffer[len] = pec;
 
@@ -208,11 +209,10 @@ impl RxClient for MCTPI3CBinding<'_> {
             });
         } else {
             println!(
-                "MCTPI3CBinding: Invalid PEC {:02x} (expected {:02x}) for address {:02x}. Dropping packet. len={}",
+                "MCTPI3CBinding: Invalid PEC {:02x} (expected {:02x}) for address {:02x}. Dropping packet.",
                 rx_buffer[len - 1],
                 pec,
                 addr >> 1,
-                len,
             );
             self.i3c_target.set_rx_buffer(rx_buffer);
         }

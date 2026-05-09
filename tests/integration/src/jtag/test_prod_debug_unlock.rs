@@ -18,12 +18,12 @@ mod test {
     use caliptra_image_types::{
         ECC384_SCALAR_BYTE_SIZE, ECC384_SCALAR_WORD_SIZE, MLDSA87_PRIV_KEY_BYTE_SIZE,
     };
-    use caliptra_mcu_hw_model::debug_unlock::{
+    use mcu_hw_model::debug_unlock::{
         prod_debug_unlock_gen_signed_token, prod_debug_unlock_get_challenge,
         prod_debug_unlock_send_request, prod_debug_unlock_send_token,
         prod_debug_unlock_wait_for_in_progress,
     };
-    use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
+    use romtime::LifecycleControllerState;
 
     use fips204::ml_dsa_87::PrivateKey as MldsaPrivateKey;
     use fips204::traits::SerDes;

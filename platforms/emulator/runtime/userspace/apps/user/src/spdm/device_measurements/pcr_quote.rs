@@ -1,15 +1,12 @@
 // Licensed under the Apache-2.0 license
 
-// TODO: should we remove this in favor of EAT?
-#![allow(unused)]
-
 extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
-use caliptra_mcu_libapi_caliptra::evidence::pcr_quote::PcrQuote;
-use caliptra_mcu_spdm_lib::measurements::{
+use libapi_caliptra::crypto::asym::AsymAlgo;
+use libapi_caliptra::evidence::pcr_quote::PcrQuote;
+use spdm_lib::measurements::{
     MeasurementValueInfo, MeasurementsError, MeasurementsResult, SpdmMeasurementValue,
 };
 

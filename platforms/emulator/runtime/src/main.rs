@@ -17,6 +17,8 @@ mod board;
 #[cfg(target_arch = "riscv32")]
 mod components;
 #[cfg(target_arch = "riscv32")]
+mod handoff;
+#[cfg(target_arch = "riscv32")]
 mod interrupts;
 #[cfg(target_arch = "riscv32")]
 pub mod io;
@@ -27,15 +29,12 @@ mod tests;
 #[cfg(target_arch = "riscv32")]
 pub use board::*;
 
-use caliptra_mcu_config::{McuMemoryMap, McuStraps};
+use mcu_config::McuMemoryMap;
 
 // re-export this so the common runtime code can use it
 #[no_mangle]
 #[used]
-pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
-#[no_mangle]
-#[used]
-pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS;
+pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_emulator::EMULATOR_MEMORY_MAP;
 
 // Define the timer frequency for the emulator. This is roughly the emulation speed
 // for a reasonable processor and does not have to be exact.

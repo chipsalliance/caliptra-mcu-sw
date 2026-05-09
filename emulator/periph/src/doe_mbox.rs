@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
-use caliptra_mcu_emulator_registers_generated::doe_mbox::{DoeMboxGenerated, DoeMboxPeripheral};
-use caliptra_mcu_registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
+use emulator_registers_generated::doe_mbox::{DoeMboxGenerated, DoeMboxPeripheral};
+use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
 use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -15,13 +15,10 @@ pub struct DummyDoeMbox {
 
 struct PollScheduler {
     timer: Timer,
-    // Held while scheduling to prevent the clock from advancing mid-operation.
-    step_lock: Arc<Mutex<()>>,
 }
 
 impl IncomingDoeMboxWrite for PollScheduler {
     fn incoming(&self) {
-        let _guard = self.step_lock.lock().unwrap();
         println!("Incoming write to DOE mailbox detected, scheduling poll.");
         // trigger interrupt check next tick
         self.timer.schedule_poll_in(1);
@@ -33,17 +30,11 @@ pub trait IncomingDoeMboxWrite {
 
 impl DummyDoeMbox {
     const DOE_MBOX_TICKS: u64 = 1000; // Example value, adjust as needed
-    pub fn new(
-        clock: &Clock,
-        event_irq: Irq,
-        mut periph: DoeMboxPeriph,
-        step_lock: Arc<Mutex<()>>,
-    ) -> Self {
+    pub fn new(clock: &Clock, event_irq: Irq, mut periph: DoeMboxPeriph) -> Self {
         let timer = Timer::new(clock);
         timer.schedule_poll_in(Self::DOE_MBOX_TICKS);
         let poll_scheduler = PollScheduler {
             timer: timer.clone(),
-            step_lock,
         };
         periph.set_incoming_write_client(Arc::new(poll_scheduler));
 
@@ -78,7 +69,7 @@ impl DoeMboxPeripheral for DummyDoeMbox {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
+        registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.periph.inner.lock().unwrap().mbox_status.reg.get(),
@@ -89,7 +80,7 @@ impl DoeMboxPeripheral for DummyDoeMbox {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
+            registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
         >,
     ) {
         // STATUS register uses normal read/write semantics
@@ -107,7 +98,7 @@ impl DoeMboxPeripheral for DummyDoeMbox {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
+        registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.periph.inner.lock().unwrap().mbox_event.reg.get(),
@@ -118,7 +109,7 @@ impl DoeMboxPeripheral for DummyDoeMbox {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
+            registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
         >,
     ) {
         self.periph
@@ -157,30 +148,27 @@ impl DoeMboxPeriph {
     }
 
     pub fn write_data(&mut self, data: Vec<u8>) -> Result<(), String> {
-        {
-            let mut inner = self.inner.lock().unwrap();
-            if data.len() > inner.max_sram_dword_size * 4 {
-                return Err(format!(
-                    "invalida data length: {} bytes exceeds maximum allowed size: {} bytes",
-                    data.len(),
-                    inner.max_sram_dword_size * 4
-                ));
-            }
-            // Write the data to SRAM as u32 words, chunking every 4 bytes
-            for (word_idx, chunk) in data.chunks(4).enumerate() {
-                let mut buf = [0u8; 4];
-                for (i, &b) in chunk.iter().enumerate() {
-                    buf[i] = b;
-                }
-                let word = u32::from_le_bytes(buf);
-                inner.write_doe_sram(word, word_idx);
-            }
-            let data_len = data.len() / 4;
-            inner.mbox_dlen.reg.set(data_len as u32);
-            inner.set_event_data_ready();
+        let mut inner = self.inner.lock().unwrap();
+        if data.len() > inner.max_sram_dword_size * 4 {
+            return Err(format!(
+                "invalida data length: {} bytes exceeds maximum allowed size: {} bytes",
+                data.len(),
+                inner.max_sram_dword_size * 4
+            ));
         }
-        // Release the inner lock before calling incoming() to avoid a
-        // lock-ordering inversion with the emulator step lock.
+        // Write the data to SRAM as u32 words, chunking every 4 bytes
+        for (word_idx, chunk) in data.chunks(4).enumerate() {
+            let mut buf = [0u8; 4];
+            for (i, &b) in chunk.iter().enumerate() {
+                buf[i] = b;
+            }
+            let word = u32::from_le_bytes(buf);
+            inner.write_doe_sram(word, word_idx);
+        }
+        let data_len = data.len() / 4;
+        inner.mbox_dlen.reg.set(data_len as u32);
+        inner.set_event_data_ready();
+
         if let Some(client) = self.incoming_write_client.lock().unwrap().clone() {
             client.incoming();
         }
@@ -189,13 +177,10 @@ impl DoeMboxPeriph {
     }
 
     pub fn request_reset(&mut self) {
-        {
-            let mut inner = self.inner.lock().unwrap();
-            // PERIPHERAL LOGIC: Set EVENT.RESET_REQ bit
-            inner.set_event_reset_req();
-        }
-        // Release the inner lock before calling incoming() to avoid a
-        // lock-ordering inversion with the emulator step lock.
+        let mut inner = self.inner.lock().unwrap();
+        // PERIPHERAL LOGIC: Set EVENT.RESET_REQ bit
+        inner.set_event_reset_req();
+
         if let Some(client) = self.incoming_write_client.lock().unwrap().clone() {
             client.incoming();
         }
@@ -361,9 +346,9 @@ mod tests {
     use caliptra_emu_bus::{Bus, Clock};
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
-    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
-    use caliptra_mcu_registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
-    use caliptra_mcu_registers_generated::doe_mbox::DOE_MBOX_ADDR;
+    use emulator_registers_generated::root_bus::AutoRootBus;
+    use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
+    use registers_generated::doe_mbox::DOE_MBOX_ADDR;
 
     const DOE_MBOX_BASE_ADDR: u32 = DOE_MBOX_ADDR;
     const DOE_MBOX_DLEN_REG_OFFSET: u32 = 0x04;
@@ -381,13 +366,7 @@ mod tests {
             incoming_write_client: Arc::new(Mutex::new(None)),
         };
 
-        let step_lock = Arc::new(Mutex::new(()));
-        let doe_mbox = Box::new(DummyDoeMbox::new(
-            clock,
-            doe_event_irq,
-            doe_periph,
-            step_lock,
-        ));
+        let doe_mbox = Box::new(DummyDoeMbox::new(clock, doe_event_irq, doe_periph));
 
         AutoRootBus::new(
             vec![],

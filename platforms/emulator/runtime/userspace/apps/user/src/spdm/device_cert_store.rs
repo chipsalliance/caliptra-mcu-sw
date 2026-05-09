@@ -8,14 +8,14 @@ use crate::spdm::cert_store::DeviceCertStore;
 use crate::spdm::endorsement_certs::EndorsementCertChain;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_mcu_libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
-use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
-use caliptra_mcu_spdm_lib::cert_store::{CertStoreError, CertStoreResult, SpdmCertStore};
-use caliptra_mcu_spdm_lib::protocol::{CertificateInfo, KeyUsageMask};
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
+use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use spdm_lib::cert_store::{CertStoreError, CertStoreResult, SpdmCertStore};
+use spdm_lib::protocol::{CertificateInfo, KeyUsageMask};
 
 /// Static storage just for the endorsement chain (since it needs static lifetime)
 static mut SLOT0_ENDORSEMENT: MaybeUninit<EndorsementCertChain> = MaybeUninit::uninit();
@@ -132,8 +132,8 @@ impl SpdmCertStore for SharedCertStore {
 
     async fn get_cert_chain<'a>(
         &self,
-        asym_algo: AsymAlgo,
         slot_id: u8,
+        asym_algo: AsymAlgo,
         offset: usize,
         cert_portion: &'a mut [u8],
     ) -> CertStoreResult<usize> {
@@ -149,8 +149,8 @@ impl SpdmCertStore for SharedCertStore {
 
     async fn root_cert_hash<'a>(
         &self,
-        asym_algo: AsymAlgo,
         slot_id: u8,
+        asym_algo: AsymAlgo,
         cert_hash: &'a mut [u8; SHA384_HASH_SIZE],
     ) -> CertStoreResult<()> {
         let cert_store = SHARED_CERT_STORE.lock().await;
@@ -165,8 +165,8 @@ impl SpdmCertStore for SharedCertStore {
 
     async fn sign_hash<'a>(
         &self,
-        asym_algo: AsymAlgo,
         slot_id: u8,
+        asym_algo: AsymAlgo,
         hash: &'a [u8; SHA384_HASH_SIZE],
         signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
     ) -> CertStoreResult<()> {
@@ -190,20 +190,5 @@ impl SpdmCertStore for SharedCertStore {
 
     async fn key_usage_mask(&self, _slot_id: u8) -> Option<KeyUsageMask> {
         None
-    }
-
-    async fn write_cert_chain(
-        &self,
-        _asym_algo: AsymAlgo,
-        _slot_id: u8,
-        _key_pair_id: u8,
-        _cert_model: CertificateInfo,
-        _cert_chain: &[u8],
-    ) -> CertStoreResult<()> {
-        Err(CertStoreError::OperationFailed)
-    }
-
-    async fn erase_cert_chain(&self, _asym_algo: AsymAlgo, _slot_id: u8) -> CertStoreResult<()> {
-        Err(CertStoreError::OperationFailed)
     }
 }

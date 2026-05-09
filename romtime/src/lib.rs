@@ -3,15 +3,18 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(static_mut_refs)]
 
-mod boot_status;
-pub use boot_status::*;
-mod lifecycle;
-pub use lifecycle::*;
 mod fuse_layout;
 pub use fuse_layout::*;
+pub mod handoff;
+mod lifecycle;
+pub use lifecycle::*;
+mod boot_status;
+pub use boot_status::*;
 mod mci;
 pub use mci::*;
-mod otp;
+#[cfg(feature = "ocp-lock")]
+pub mod ocp_lock;
+pub mod otp;
 pub use otp::*;
 mod soc_manager;
 pub use soc_manager::*;

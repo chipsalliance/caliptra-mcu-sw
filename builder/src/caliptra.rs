@@ -21,8 +21,8 @@ use caliptra_image_gen::{
 use caliptra_image_types::{
     FwVerificationPqcKeyType, ImageBundle, ImageManifest, ImageRevision, IMAGE_MANIFEST_BYTE_SIZE,
 };
-use caliptra_mcu_flash_image::MCU_RT_IDENTIFIER;
 use cargo_metadata::MetadataCommand;
+use flash_image::MCU_RT_IDENTIFIER;
 use hex::ToHex;
 use std::{num::ParseIntError, path::PathBuf, str::FromStr};
 use zerocopy::{transmute, FromBytes, IntoBytes};
@@ -69,6 +69,7 @@ pub struct AuthManifestOwnerConfig {
 #[derive(Clone)]
 pub struct CaliptraBuilder {
     fpga: bool,
+    ocp_lock: bool,
     caliptra_rom: Option<PathBuf>,
     caliptra_firmware: Option<PathBuf>,
     soc_manifest: Option<PathBuf>,
@@ -86,35 +87,40 @@ pub struct CaliptraBuilder {
     /// Optional custom owner configuration for re-signing auth manifests (SoC manifest).
     /// If provided, the auth manifest will be signed with these owner keys.
     auth_manifest_owner_config: Option<AuthManifestOwnerConfig>,
-    svn: Option<u16>,
 }
 
-use crate::CaliptraBuildArgs;
-
 impl CaliptraBuilder {
-    pub fn new(args: &CaliptraBuildArgs) -> Self {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        fpga: bool,
+        ocp_lock: bool,
+        caliptra_rom: Option<PathBuf>,
+        caliptra_firmware: Option<PathBuf>,
+        soc_manifest: Option<PathBuf>,
+        vendor_pk_hash: Option<String>,
+        mcu_firmware: Option<PathBuf>,
+        soc_images: Option<Vec<ImageCfg>>,
+        mcu_image_cfg: Option<ImageCfg>,
+        soc_manifest_svn: Option<u32>,
+        vendor: Option<String>,
+        model: Option<String>,
+    ) -> Self {
         Self {
-            fpga: args.fpga,
-            caliptra_rom: args.caliptra_rom.clone(),
-            caliptra_firmware: args.caliptra_firmware.clone(),
-            soc_manifest: args.soc_manifest.clone(),
-            vendor_pk_hash: args.vendor_pk_hash.clone(),
+            fpga,
+            ocp_lock,
+            caliptra_rom,
+            caliptra_firmware,
+            soc_manifest,
+            vendor_pk_hash,
             owner_pk_hash: None,
-            mcu_firmware: args.mcu_firmware.clone(),
-            soc_images: args.soc_images.clone(),
-            mcu_image_cfg: args.mcu_image_cfg.clone(),
-            soc_manifest_svn: args.soc_manifest_svn,
-            vendor: args
-                .vendor
-                .clone()
-                .unwrap_or_else(|| "ChipsAlliance".to_string()),
-            model: args
-                .model
-                .clone()
-                .unwrap_or_else(|| "Caliptra-SS".to_string()),
+            mcu_firmware,
+            soc_images,
+            mcu_image_cfg,
+            soc_manifest_svn,
+            vendor: vendor.unwrap_or_else(|| "ChipsAlliance".to_string()),
+            model: model.unwrap_or_else(|| "Caliptra-SS".to_string()),
             owner_config: None,
             auth_manifest_owner_config: None,
-            svn: args.svn,
         }
     }
 
@@ -159,7 +165,8 @@ impl CaliptraBuilder {
             }
             caliptra_firmware.clone()
         } else {
-            let (path, vendor_pk_hash) = Self::compile_caliptra_fw_cached(self.fpga, self.svn)?;
+            let (path, vendor_pk_hash) =
+                Self::compile_caliptra_fw_cached(self.fpga, self.ocp_lock)?;
             self.vendor_pk_hash = Some(vendor_pk_hash);
             self.caliptra_firmware = Some(path.clone());
             path
@@ -174,9 +181,6 @@ impl CaliptraBuilder {
             // Write the re-signed bundle to a new path
             let path = target_dir().join("caliptra-fw-bundle-resigned.bin");
             let fw_bytes = new_bundle.to_bytes()?;
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
             std::fs::write(&path, fw_bytes)?;
 
             self.vendor_pk_hash = Some(vendor_hash);
@@ -295,7 +299,7 @@ impl CaliptraBuilder {
                 component_id: MCU_RT_IDENTIFIER,
                 exec_bit: 2,
                 // MCU staging address in SRAM region (FPGA memory map)
-                staging_addr: caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64,
+                staging_addr: mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64,
                 ..Default::default()
             }
         };
@@ -357,9 +361,6 @@ impl CaliptraBuilder {
         let path = name
             .map(PathBuf::from)
             .unwrap_or(target_dir().join("soc-manifest"));
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
         std::fs::write(&path, manifest.as_bytes())?;
         Ok(path)
     }
@@ -477,22 +478,26 @@ impl CaliptraBuilder {
 
     fn compile_caliptra_rom_uncached(fpga: bool) -> Result<PathBuf> {
         let rom_bytes = if fpga {
-            caliptra_builder::build_firmware_rom(&caliptra_builder::firmware::ROM_FPGA_WITH_UART)?
+            caliptra_builder::build_firmware_rom(
+                &caliptra_builder::firmware::ROM_FPGA_WITH_UART,
+                // TODO: use &caliptra_builder::firmware::ROM_FPGA_WITH_UART_SS,
+            )?
         } else {
             caliptra_builder::rom_for_fw_integration_tests()?.to_vec()
+            // TODO: use caliptra_builder::ss_rom_for_fw_integration_tests()?.to_vec()
         };
         let path = target_dir().join("caliptra-rom.bin");
         std::fs::write(&path, rom_bytes)?;
         Ok(path)
     }
 
-    fn compile_caliptra_fw_cached(fpga: bool, svn: Option<u16>) -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_cached(fpga: bool, ocp_lock: bool) -> Result<(PathBuf, String)> {
         let platform = if fpga { "fpga" } else { "emulator" };
+        let ocp_lock_suffix = if ocp_lock { "-ocp-lock" } else { "" };
         if let Some(version) = Self::caliptra_version() {
-            let svn_or_default = svn.unwrap_or_default();
             let path = target_dir().join(format!(
-                "caliptra-fw-bundle-{}-{}-{}.bin",
-                version, platform, svn_or_default
+                "caliptra-fw-bundle-{}-{}{}.bin",
+                version, platform, ocp_lock_suffix
             ));
             if path.exists() {
                 println!("Using cached Caliptra FW bundle at {:?}", path);
@@ -502,15 +507,12 @@ impl CaliptraBuilder {
                 "Caliptra FW bundle version {} not found in cache, compiling...",
                 version
             );
-            let compiled_fw_bundle = Self::compile_caliptra_fw_uncached(fpga, svn)?.0;
-            // std::fs::copy truncates the file to 0 bytes if both paths are the same
-            if compiled_fw_bundle != path {
-                std::fs::copy(compiled_fw_bundle, &path)?;
-            }
+            let compiled_fw_bundle = Self::compile_caliptra_fw_uncached(fpga, ocp_lock)?.0;
+            std::fs::copy(compiled_fw_bundle, &path)?;
             Self::parse_fw_bundle(path)
         } else {
             println!("Caliptra version not found so cannot use cached FW bundle");
-            Self::compile_caliptra_fw_uncached(fpga, svn)
+            Self::compile_caliptra_fw_uncached(fpga, ocp_lock)
         }
     }
 
@@ -626,34 +628,37 @@ impl CaliptraBuilder {
         Ok((new_bundle, vendor_hash, owner_hash))
     }
 
-    fn compile_caliptra_fw_uncached(fpga: bool, svn: Option<u16>) -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_uncached(fpga: bool, ocp_lock: bool) -> Result<(PathBuf, String)> {
         let opts = caliptra_builder::ImageOptions {
             pqc_key_type: FwVerificationPqcKeyType::LMS,
-            fw_svn: svn.unwrap_or(0) as u32,
             ..Default::default()
         };
 
         let bundle = if fpga {
+            let app = if ocp_lock {
+                &caliptra_builder::firmware::APP_WITH_UART_OCP_LOCK_FPGA
+            } else {
+                &caliptra_builder::firmware::APP_WITH_UART_FPGA
+            };
             caliptra_builder::build_and_sign_image(
                 &caliptra_builder::firmware::FMC_FPGA_WITH_UART,
-                &caliptra_builder::firmware::APP_WITH_UART_FPGA,
+                app,
                 opts,
             )?
         } else {
+            let app = if ocp_lock {
+                &caliptra_builder::firmware::APP_WITH_UART_OCP_LOCK
+            } else {
+                &caliptra_builder::firmware::APP_WITH_UART
+            };
             caliptra_builder::build_and_sign_image(
                 &caliptra_builder::firmware::FMC_WITH_UART,
-                &caliptra_builder::firmware::APP_WITH_UART,
+                app,
                 opts,
             )?
         };
         let fw_bytes = bundle.to_bytes()?;
-        let platform = if fpga { "fpga" } else { "emulator" };
-        let version = Self::caliptra_version().unwrap_or("no_version".to_string());
-        let svn_or_default = svn.unwrap_or_default();
-        let path = target_dir().join(format!(
-            "caliptra-fw-bundle-{}-{}-{}.bin",
-            version, platform, svn_or_default
-        ));
+        let path = target_dir().join("caliptra-fw-bundle.bin");
         std::fs::write(&path, fw_bytes)?;
         Ok((path, Self::vendor_pk_hash_str(bundle.manifest)?))
     }

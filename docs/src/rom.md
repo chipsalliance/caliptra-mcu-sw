@@ -47,34 +47,15 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
     * [`FUSE_IDEVID_CERT_ATTR`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_idevid_cert_attr): IDevID certificate attributes (768 bits)
     * [`FUSE_IDEVID_MANUF_HSM_ID`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_idevid_manuf_hsm_id): IDevID manufacturing HSM identifier (128 bits)
     * [`SS_UDS_SEED_BASE_ADDR_L/H`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_UDS_SEED_BASE_ADDR_L): UDS/FE partition base address in OTP
-    * [`SS_STRAP_GENERIC[0]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): OTP DAI idle bit offset (bits\[31:16\])
-    * [`SS_STRAP_GENERIC[1]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): OTP direct access command register offset
-    * [`SS_STRAP_GENERIC[2]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): iTRNG health test window size from OTP (bits\[15:0\]) and bypass mode flag (bit\[31\], from ROM parameters)
-    * [`CPTRA_I_TRNG_ENTROPY_CONFIG_0`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.CPTRA_I_TRNG_ENTROPY_CONFIG_0): iTRNG entropy configuration word 0, from OTP `cptra_itrng_entropy_config_0`
-    * [`CPTRA_I_TRNG_ENTROPY_CONFIG_1`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.CPTRA_I_TRNG_ENTROPY_CONFIG_1): iTRNG entropy configuration word 1, from OTP `cptra_itrng_entropy_config_1`
+    * [`SS_STRAP_GENERIC`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): OTP DAI idle bit offset and direct access command register offset
     * [MCI] [`PROD_DEBUG_UNLOCK_PK_HASH_REG`](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.PROD_DEBUG_UNLOCK_PK_HASH_REG%5B0%5D%5B0%5D) Production debug unlock public key hashes (384 bytes total for 8 key hashes)
-    * [`SS_PROD_DEBUG_UNLOCK_AUTH_PK_HASH_REG_BANK_OFFSET`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_PROD_DEBUG_UNLOCK_AUTH_PK_HASH_REG_BANK_OFFSET): Offset of `PROD_DEBUG_UNLOCK_PK_HASH_REG` within the MCI register bank (`0x480`). Caliptra ROM reads the expected hash for debug level `N` from `MCI_BASE + offset + (N - 1) * 48`.
-    * [`SS_NUM_OF_PROD_DEBUG_UNLOCK_AUTH_PK_HASHES`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_NUM_OF_PROD_DEBUG_UNLOCK_AUTH_PK_HASHES): Number of production debug unlock PK hashes available (defaults to the number of entries in the reference fuse map, 8; overridable via the `prod_debug_unlock_auth_pk_hash_count` ROM parameter).
-    * See [the ROM fuses](rom-fuses.md) documentation for details on how these are read and interpreted.
 1. Configure MCU mailbox AXI users (see [Security Configuration](#security-configuration) below).
 1. Set mailbox AXI user lock registers.
 1. [2.1] Set [FC_FIPS_ZEROZATION](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) to the appropriate value.
-1. Configure the MCU SRAM execution region size by writing to the `FW_SRAM_EXEC_REGION_SIZE` register. If not specified in `RomParameters`, it defaults to reserving 32KB at the top of SRAM for the Protected Data Region.
 1. Set `SS_CONFIG_DONE_STICKY`, `SS_CONFIG_DONE` registers to lock MCI configuration.
 1. Verify PK hashes and MCU mailbox AXI users after locking (see [Security Configuration](#security-configuration) below).
 1. Poll on Caliptra `FLOW_STATUS` registers for Caliptra to deassert the Ready for Fuses state.
-1. **Determine owner public key hash.** The ROM determines which owner public key hash to write to Caliptra's [`CPTRA_OWNER_PK_HASH`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.CPTRA_OWNER_PK_HASH) register. The source depends on whether [Device Ownership Transfer (DOT)](./dot.md) is configured and the current DOT state:
-    1. **DOT configured and DOT blob present**: The ROM runs the full DOT flow — derives the `DOT_EFFECTIVE_KEY`, verifies the DOT blob's HMAC, and determines the owner from the blob's state:
-        * **Locked state (ODD, blob has CAK)**: The Code Authentication Key (CAK) from the DOT blob is used as the owner PK hash.
-        * **Disabled state (ODD, no CAK)**: The DOT blob is authentic but contains no CAK. The ROM falls back to reading `CPTRA_SS_OWNER_PK_HASH` from OTP fuses.
-        * **EVEN state (Uninitialized/Volatile)**: DOT does not provide a persistent owner. The ROM falls back to reading `CPTRA_SS_OWNER_PK_HASH` from OTP fuses.
-    1. **DOT blob empty or corrupt in Locked (ODD) state**: The ROM attempts DOT recovery (challenge/response or backup blob, depending on the platform's recovery policy). If recovery fails, this is a fatal error.
-    1. **DOT not configured**: The ROM skips DOT entirely and reads the owner PK hash from `CPTRA_SS_OWNER_PK_HASH` in OTP.
-
-    In summary, `CPTRA_SS_OWNER_PK_HASH` in OTP serves as a **fallback** whenever DOT does not provide an owner. When DOT is in the Locked state, the CAK from the DOT blob **supersedes** the fuse value.
-
-    > **Note:** Revocation or rotation of the `CPTRA_SS_OWNER_PK_HASH` fuse value is outside the scope of DOT. DOT provides its own key lifecycle (install, lock, unlock, disable) through the DOT blob and fuse array. If an integrator needs to revoke or rotate the fuse-based owner key independently, that must be managed through a separate platform-specific mechanism.
-
+1. Handle [device ownership transfer](./dot.md), if applicable.
 1. Send the `RI_DOWNLOAD_FIRMWARE` command to Caliptra to start the firmware loading process. Caliptra will:
    1. Follow all of the [steps](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#firmware-processor-stage) in the Caliptra ROM documentation for firmware loading in the ROM cold reset.
    1. Transition to Caliptra runtime firmware.
@@ -105,7 +86,6 @@ sequenceDiagram
     mcu->>caliptra: set non-secret fuses
     mcu->>mci: configure MCU mailbox AXI users
     mcu->>mci: lock MCU mailbox AXI users
-    mcu->>mci: set FW_SRAM_EXEC_REGION_SIZE
     mcu->>mci: set SS_CONFIG_DONE_STICKY
     mcu->>mci: set SS_CONFIG_DONE
     mcu->>mci: verify PK hashes
@@ -113,8 +93,6 @@ sequenceDiagram
     loop wait for NOT ready for fuses
     mcu->>caliptra: read flow status
     end
-    note right of mcu: determine owner PK hash (DOT or fuse fallback)
-    mcu->>caliptra: set owner PK hash
     mcu->>caliptra: RI_DOWNLOAD_FIRMWARE command
     note right of caliptra: authenticate FW header/TOC
     note right of caliptra: verify signatures
@@ -137,24 +115,16 @@ sequenceDiagram
 
 This flow is used to boot the MCU into the MCU Runtime Firmware following either a cold or warm reset. It ensures that the runtime firmware is properly loaded and ready for execution.
 
-1. Check the MCI `RESET_REASON` register for MCU status (it should be in firmware boot reset mode `FirmwareBootReset`).
-1. Set flow checkpoint to indicate firmware boot flow has started.
-1. Compute the firmware entry offset starting from the MCU image header size.
-1. If the DOT manifests are enabled and `fw_manifest_dot_enabled` is set, look for a firmware-manifest DOT section at the start of MCU SRAM (see [MCU Firmware Format](./firmware_format.md)). If found (identified by its magic value):
-    1. Advance the firmware entry offset past the DOT manifest section.
-    1. Process the DOT commands contained in the manifest section (see [DOT documentation](./dot.md)). A fatal error is raised if DOT processing fails.
-1. Validate that firmware is present by checking that the first word at the computed firmware entry point (`sram_offset + firmware_offset`) is non-zero. A fatal error (`ROM_FW_BOOT_INVALID_FIRMWARE`) is raised otherwise.
-1. Set flow milestone to indicate firmware boot flow completion.
-1. Jump directly to runtime firmware at the computed SRAM entry point.
+1. Check the MCI `RESET_REASON` register for MCU status (it should be in firmware boot reset mode `FirmwareBootReset`)
+1. Set flow checkpoint to indicate firmware boot flow has started
+1. Validate that firmware was actually loaded by checking the firmware entry point is not zero
+1. Set flow milestone to indicate firmware boot flow completion
+1. Jump directly to runtime firmware at the configured SRAM offset
 
 ```mermaid
 sequenceDiagram
     note right of mcu: check reset reason (FirmwareBootReset)
     note right of mcu: set flow checkpoint
-    alt DOT manifests enabled and DOT section present
-        note right of mcu: advance entry offset past DOT section
-        note right of mcu: process firmware-manifest DOT commands
-    end
     note right of mcu: validate firmware at entry point
     alt firmware valid
         note right of mcu: set completion milestone
@@ -167,24 +137,37 @@ sequenceDiagram
 
 ### Hitless Firmware Update Flow
 
-Hitless Update Flow is triggered when MCU runtime FW requests an update of the MCU firmware by sending the `ACTIVATE_FIRMWARE` mailbox command to Caliptra. Upon receiving the mailbox command, Caliptra initiates the MCU reset sequence, which copies the new firmware image into MCU SRAM and causes the MCU to reboot into ROM with `RESET_REASON` set to `FirmwareHitlessUpdate`.
+Hitless Update Flow is triggered when MCU runtime FW requests an update of the MCU FW by sending the `ACTIVATE_FIRMWARE` mailbox command to Caliptra. Upon receiving the mailbox command, Caliptra will initialize the MCU reset sequence causing the MCU to boot to ROM and run the Hitless Firmware Update Flow.
 
-1. Check the MCI `RESET_REASON` register for reset status (it should be `FirmwareHitlessUpdate`).
-1. Release the Caliptra mailbox by completing the response to the original `ACTIVATE_FIRMWARE` command. This is required because the mailbox is still held by the command that triggered this reset. A fatal error (`ROM_FW_HITLESS_UPDATE_CLEAR_MB_ERROR`) is raised if the mailbox cannot be released.
-1. Wait for Caliptra to indicate that MCU firmware is ready in SRAM (i.e., Caliptra has finished copying the new image).
-1. Compute the firmware entry offset starting from the MCU image header size. If the DOT manifests feature is enabled and `fw_manifest_dot_enabled` is set, and a DOT firmware manifest section is present at the start of SRAM (identified by its magic value), advance the entry offset past that section **and** process the DOT commands contained in the manifest, mirroring the Firmware Boot Flow. This lets a hitless-updated firmware carry new DOT commands that take effect on this boot. A fatal error is raised if DOT processing fails. See [MCU Firmware Format](./firmware_format.md) for the section layout.
-1. Jump directly to runtime firmware at the computed SRAM entry point.
+1. Check the MCI `RESET_REASON` register for reset status (it should be in hitless firmware update mode `FirmwareHitlessUpdate`).
+1. Enable the `notif_cptra_mcu_reset_req_sts` interrupt.
+1. Check if firmware is already available by reading the interrupt status
+1. Clear `notif_cptra_mcu_reset_req_sts` interrupt status
+1. If firmware is available:
+    1. Wait for Caliptra to clear FW_EXEC_CTRL[2]. This will be indicated when `notif_cptra_mcu_reset_req_sts` interrupt status bit is set
+    1. Clear the `notif_cptra_mcu_reset_req_sts` interrupt. This triggers Caliptra to copy MCU FW from the staging area to MCU SRAM.
+1. Wait for Caliptra to set FW_EXEC_CTRL[2].
+1. Release Caliptra mailbox. Hitless Update is triggered by a mailbox command from MCU to Caliptra which causes it to reboot to ROM, therefore the mailbox needs to be released after the update is complete.
+1. Jump to runtime firmware at the configured SRAM offset
 
 ```mermaid
 sequenceDiagram
     note right of mcu: check reset reason (FirmwareHitlessUpdate)
-    mcu->>caliptra: release mailbox (finish ACTIVATE_FIRMWARE response)
-    loop wait for firmware ready
+    note right of mcu: enable reset request interrupt
+    mcu->>mci: check if firmware already available
+    mcu->>mci: clear reset request interrupt status
+    alt firmware already available
+        loop wait for Caliptra to clear FW_EXEC_CTRL[2]
+            mcu->>mci: check reset request status
+        end
+        mcu->>mci: clear reset request interrupt (triggers FW copy)
+    end
+    loop wait for Caliptra to set FW_EXEC_CTRL[2]
         mcu->>caliptra: check fw_ready status
     end
-    alt DOT manifest enabled and DOT section present
-        note right of mcu: advance entry offset past DOT section
-        note right of mcu: process firmware-manifest DOT commands
+    mcu->>caliptra: release mailbox (finish response)
+    loop verify firmware ready
+        mcu->>caliptra: check fw_ready status
     end
     note right of mcu: jump to runtime firmware
 ```
@@ -192,32 +175,18 @@ sequenceDiagram
 
 ### Warm Reset Flow
 
-Warm Reset Flow occurs when the subsystem reset is toggled while `powergood` is maintained high. This is allowed when MCU and Caliptra already loaded their respective mutable firmware prior to the warm reset. MCU and Caliptra firmware will not be reloaded in this flow; the firmware image persists in MCU SRAM across the warm reset because SRAM contents are preserved while `powergood` is held high.
+Warm Reset Flow occurs when the subsystem reset is toggled while `powergood` is maintained high. This is allowed when MCU and Caliptra already loaded their respective mutable firmware, prior to the warm reset. MCU and Caliptra FW will not be reloaded in this flow.
 
-Note that `SS_CONFIG_DONE_STICKY` remains set from cold boot, so sticky registers (PK hashes, fuses, etc.) are already locked and do not need to be rewritten or reverified. However, `SS_CONFIG_DONE` is cleared on warm reset and must be re-asserted. See [Warm Reset Considerations](#warm-reset-considerations) for details on which registers need reconfiguration.
-
-1. Check the MCI `RESET_REASON` register for reset status (it should be in warm reset mode `WarmReset`).
+1. Check the MCI `RESET_REASON` register for reset status (it should be in warm reset mode `WarmReset`)
 1. Assert Caliptra boot go signal to bring Caliptra out of reset.
-1. Wait for Caliptra to be ready for fuses (even though fuses will not be rewritten — the handshake still needs to be completed).
-1. Configure the Caliptra watchdog timers (`CPTRA_WDT_CFG[0]` and `[1]`) from straps.
-1. Set the MCU NMI vector to the ROM base address.
-1. Configure the MCU watchdog timers. The values used depend on the current security state and device lifecycle:
-   * Debug unlocked: use the debug watchdog configuration.
-   * Debug locked + Manufacturing lifecycle: use the manufacturing watchdog configuration.
-   * Debug locked + other lifecycle: use the production watchdog configuration.
-1. Reconfigure Caliptra AXI user registers (mailbox users, fuse user, TRNG user, DMA user) from ROM parameters. These are non-sticky and must be re-applied on every warm reset.
-1. Reconfigure the MCU mailbox AXI users for mailbox 0 and mailbox 1.
-1. Configure the MCU SRAM execution region size by writing to the `FW_SRAM_EXEC_REGION_SIZE` register. The value comes from ROM parameters, or defaults to the SRAM size minus the protected region.
-1. Set `SS_CONFIG_DONE_STICKY` (no-op since it is already sticky from cold boot, but asserted for consistency) and then `SS_CONFIG_DONE` to lock MCI configuration until the next warm reset.
-1. Verify that both `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` are actually set. A fatal error is raised if either is not set (`ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED`).
-1. Verify that the MCU mailbox AXI user registers match what was written (detect tampering after locking).
-1. Signal fuse write done to Caliptra to complete the fuse handshake protocol. This is required per the [Caliptra integration specification](https://github.com/chipsalliance/caliptra-rtl/blob/main/docs/CaliptraIntegrationSpecification.md#fuses) even though fuses cannot be rewritten on warm reset.
-1. Wait for Caliptra to deassert the ready-for-fuses state.
-1. Wait for Caliptra boot FSM to reach the DONE state.
-1. Wait for Caliptra to indicate that MCU firmware is ready in SRAM (firmware is still present from before the warm reset).
-1. Validate that firmware is present by checking that the first word at the firmware entry point (`sram_offset + mcu_image_header_size`) is non-zero. A fatal error (`ROM_WARM_BOOT_INVALID_FIRMWARE`) is raised otherwise.
-1. Set flow checkpoint and milestone to indicate warm reset flow completion.
-1. Trigger a warm reset to transition to the `FirmwareBootReset` flow, which will jump to the firmware.
+1. Wait for Caliptra to be ready for fuses (even though fuses won't be rewritten)
+1. Set `SS_CONFIG_DONE` register to lock MCI configuration until next warm reset.
+1. Signal fuse write done to Caliptra to complete the fuse handshake protocol
+1. Wait for Caliptra to deassert ready for fuses state
+1. Wait for Caliptra to indicate that MCU firmware is ready in SRAM
+1. Validate that firmware was actually loaded by checking the firmware entry point is not zero
+1. Set flow checkpoint and milestone to indicate warm reset flow completion
+1. Trigger a warm reset to transition to `FirmwareBootReset` flow which will jump to the firmware
 
 ```mermaid
 sequenceDiagram
@@ -227,22 +196,11 @@ sequenceDiagram
     loop wait for ready for fuses
         mcu->>caliptra: check ready for fuses status
     end
-    mcu->>caliptra: configure Caliptra watchdog timers
-    note right of mcu: set NMI vector
-    mcu->>mci: configure MCU watchdog (by security state/lifecycle)
-    mcu->>caliptra: configure AXI users (mbox/fuse/trng/dma)
-    mcu->>mci: configure MCU mailbox AXI users
-    mcu->>mci: set FW_SRAM_EXEC_REGION_SIZE
-    mcu->>mci: set SS_CONFIG_DONE_STICKY
     mcu->>mci: set SS_CONFIG_DONE
-    mcu->>mci: verify SS_CONFIG_DONE_STICKY and SS_CONFIG_DONE set
-    mcu->>mci: verify MCU mailbox AXI users unchanged
+    mcu->>mci: set SS_CONFIG_DONE
     mcu->>caliptra: signal fuse write done
     loop wait for NOT ready for fuses
         mcu->>caliptra: check ready for fuses status
-    end
-    loop wait for Caliptra boot FSM done
-        mcu->>caliptra: check boot FSM status
     end
     loop wait for firmware ready
         mcu->>caliptra: check firmware ready status
@@ -283,8 +241,10 @@ The `PROD_DEBUG_UNLOCK_PK_HASH_REG` registers in MCI store the public key hashes
 
 The verification process:
 1. MCU ROM writes PK hash values from fuses to `PROD_DEBUG_UNLOCK_PK_HASH_REG` registers
+1. [2.1] MCU ROM writes the [FC_FIPS_ZEROZATION](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) register
 1. MCU ROM sets `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` to lock the registers
 1. MCU ROM reads back the PK hash register values and compares them against the original fuse values
+1. [2.1] MCU ROM reads back the FC_FIPS_ZEROIZATION register and verifies its value.
 1. If any mismatch is detected, MCU ROM reports a fatal error (`ROM_SOC_PK_HASH_VERIFY_FAILED`)
 
 ### MCU Mailbox AXI User Verification
@@ -301,18 +261,6 @@ The verification process:
 5. MCU ROM reads back the `MBOX[0,1]_VALID_AXI_USER` register values and compares them against the expected configuration
 6. MCU ROM reads back the `MBOX[0,1]_AXI_USER_LOCK` register values and verifies they match the expected lock status
 7. If any mismatch is detected in either the AXI user values or lock status, MCU ROM reports a fatal error (`ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED`)
-
-### Vendor PK Hash Volatile Lock
-
-The MCU ROM supports locking the selected vendor public key hash slot (and all higher order slots) to prevent post-ROM manipulation. This is controlled by writing to the `VENDOR_PK_HASH_VOLATILE_LOCK` register.
-
-**Strapping Override**:
-The locking behavior is gated by bit 0 of the hardware strapping register `SS_STRAP_GENERIC[3]`.
-*   **Production Mode** (Bit 0 is `0`): The ROM automatically applies the volatile lock to the selected key slot index (locking that slot and all higher slots).
-*   **Provisioning Mode** (Bit 0 is `1`): The ROM skips applying the lock, allowing potential post-ROM code to provision higher order hash slots.
-
-> **Note:** In the current version, the lock register remains mutable past the ROM; therefore, the runtime firmware must be trusted to not overwrite the lock and corrupt the hashes.
-
 
 ### Warm Reset Considerations
 

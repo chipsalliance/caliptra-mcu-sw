@@ -4,10 +4,8 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_mcu_spdm_lib::vdm_handler::pci_sig::ide_km::driver::{
-    IdeDriver, IdeDriverError, IdeDriverResult,
-};
-use caliptra_mcu_spdm_lib::vdm_handler::pci_sig::ide_km::protocol::*;
+use spdm_lib::vdm_handler::pci_sig::ide_km::driver::{IdeDriver, IdeDriverError, IdeDriverResult};
+use spdm_lib::vdm_handler::pci_sig::ide_km::protocol::*;
 
 pub struct TestIdeDriver {
     port_index: u8,

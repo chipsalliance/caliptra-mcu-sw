@@ -6,11 +6,13 @@ pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use aes_gcm::{aead::AeadMutInPlace, Aes256Gcm, Key, KeyInit};
     use caliptra_api::mailbox::CmHashAlgorithm;
-    use caliptra_mcu_hw_model::mcu_mbox_transport::{
+    use hkdf::Hkdf;
+    use hmac::{Hmac, Mac};
+    use mcu_hw_model::mcu_mbox_transport::{
         McuMailboxError, McuMailboxResponse, McuMailboxTransport,
     };
-    use caliptra_mcu_hw_model::McuHwModel;
-    use caliptra_mcu_mbox_common::messages::{
+    use mcu_hw_model::McuHwModel;
+    use mcu_mbox_common::messages::{
         CmAesDecryptInitReq, CmAesDecryptUpdateReq, CmAesEncryptInitReq,
         CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq, CmAesGcmDecryptFinalReq,
         CmAesGcmDecryptFinalRespHeader, CmAesGcmDecryptInitReq, CmAesGcmDecryptUpdateReq,
@@ -33,29 +35,24 @@ pub mod test {
         McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
         McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
         McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
-        McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq, McuRandomGenerateReq,
-        McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp,
-        McuShaUpdateReq, ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
-        ProductionAuthDebugUnlockToken, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
+        McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
+        McuShaInitResp, McuShaUpdateReq, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
         CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
     };
-    use caliptra_mcu_registers_generated::mci;
-    use caliptra_mcu_testing_common::{
+    use mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
         MCU_RUNNING,
     };
-    use fips204::traits::SerDes;
-    use hkdf::Hkdf;
-    use hmac::{Hmac, Mac};
     use p384::ecdsa::signature::hazmat::PrehashSigner;
     use p384::ecdsa::{Signature, SigningKey};
     use rand::prelude::*;
     use rand::rngs::StdRng;
     use random_port::PortPicker;
+    use registers_generated::mci;
     use sha2::{Digest, Sha384, Sha512};
     use std::process::exit;
     use std::sync::atomic::Ordering;
-    use zerocopy::{FromBytes, FromZeros, IntoBytes};
+    use zerocopy::{FromBytes, IntoBytes};
 
     type HmacSha384 = Hmac<Sha384>;
     type HmacSha512 = Hmac<Sha512>;
@@ -86,116 +83,6 @@ pub mod test {
         start_mcu_mbox_tests("test-mcu-mbox-fips-periodic");
     }
 
-    #[test]
-    pub fn test_mcu_mbox_prod_debug_unlock() {
-        use caliptra_image_fake_keys::{
-            VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC, VENDOR_MLDSA_KEY_0_PRIVATE,
-            VENDOR_MLDSA_KEY_0_PUBLIC,
-        };
-        use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, ECC384_SCALAR_WORD_SIZE};
-        use caliptra_mcu_debug_unlock_signer::{DebugUnlockKeys, LocalDebugUnlockSigner};
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, Ordering::Relaxed);
-
-        // Prepare ECC public key in hardware format (big-endian u32 words)
-        let mut ecc_pub_key_u32 = [0u32; ECC384_SCALAR_WORD_SIZE * 2];
-        ecc_pub_key_u32[..12].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.x);
-        ecc_pub_key_u32[12..].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.y);
-        let ecc_pub_key_bytes: [u8; 96] = ecc_pub_key_u32.as_bytes().try_into().unwrap();
-
-        // Prepare MLDSA public key in hardware format (little-endian u32 words)
-        let mldsa_pub_key_raw = VENDOR_MLDSA_KEY_0_PUBLIC.0.as_bytes();
-        let mldsa_pub_key_u32: Vec<u32> = mldsa_pub_key_raw
-            .chunks(4)
-            .map(|chunk| {
-                let mut arr = [0u8; 4];
-                arr.copy_from_slice(chunk);
-                u32::from_le_bytes(arr)
-            })
-            .collect();
-        let mldsa_pub_key_bytes: [u8; 2592] = mldsa_pub_key_u32.as_bytes().try_into().unwrap();
-
-        // Set up keypairs for unlock level 1 (index 0)
-        let unlock_level = 1u8;
-        let mut prod_dbg_keypairs: Vec<([u8; 96], [u8; 2592])> = vec![([0u8; 96], [0u8; 2592]); 8];
-        prod_dbg_keypairs[(unlock_level - 1) as usize] = (ecc_pub_key_bytes, mldsa_pub_key_bytes);
-
-        // Prepare ECC private key bytes (big-endian)
-        let mut be_ecc_priv_key_bytes = [0u8; ECC384_SCALAR_BYTE_SIZE];
-        for (i, word) in VENDOR_ECC_KEY_0_PRIVATE.iter().enumerate() {
-            be_ecc_priv_key_bytes[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
-        }
-
-        // Prepare MLDSA private key bytes
-        let mldsa_priv_key_bytes: [u8; caliptra_image_types::MLDSA87_PRIV_KEY_BYTE_SIZE] =
-            VENDOR_MLDSA_KEY_0_PRIVATE
-                .0
-                .as_bytes()
-                .try_into()
-                .expect("Invalid MLDSA private key size");
-
-        // Build a LocalDebugUnlockSigner from the keys
-        let signer = LocalDebugUnlockSigner::new(DebugUnlockKeys {
-            ecc_private_key_bytes: be_ecc_priv_key_bytes,
-            ecc_public_key: ecc_pub_key_u32,
-            mldsa_private_key_bytes: mldsa_priv_key_bytes.to_vec(),
-            mldsa_public_key: <[u32; 648]>::try_from(mldsa_pub_key_u32.as_slice()).unwrap(),
-        });
-
-        let feature = "test-mcu-mbox-cmds";
-        let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some(feature),
-            i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
-            lifecycle_controller_state: Some(caliptra_mcu_hw_model::LifecycleControllerState::Prod),
-            debug_intent: true,
-            prod_dbg_unlock_keypairs: prod_dbg_keypairs,
-            ..Default::default()
-        });
-
-        hw.start_i3c_controller();
-        let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
-        let caliptra_mmio_ptr = hw.base.mmio.caliptra_mmio().unwrap() as u64;
-
-        std::thread::spawn(move || {
-            wait_for_runtime_start();
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
-                exit(-1);
-            }
-            sleep_emulator_ticks(5_000_000);
-
-            // Set PROD_DBG_UNLOCK_REQ bit (bit 1 = 0x2) in SsDbgManufServiceRegReq register.
-            // SoC IFC registers are at caliptra_mmio + 0x3_0000, and
-            // ss_dbg_manuf_service_reg_req is at offset 0x5c0 within the SoC register block.
-            unsafe {
-                let soc_base = (caliptra_mmio_ptr as *mut u32).offset(0x3_0000 / 4);
-                let dbg_manuf_req = soc_base.offset(0x5c0 / 4);
-                std::ptr::write_volatile(dbg_manuf_req, 0x2);
-            }
-
-            let mci_base =
-                unsafe { caliptra_mcu_romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
-            let mbox_transport = McuMailboxTransport::new(mci_base);
-            println!("MCU MBOX Prod Debug Unlock Test Thread Starting:");
-            let mut test = RequestResponseTest::new(mbox_transport);
-
-            if test
-                .add_prod_debug_unlock_e2e_test(unlock_level, &signer)
-                .is_err()
-            {
-                println!("Failed");
-                exit(-1);
-            }
-            println!("Passed");
-            MCU_RUNNING.store(false, Ordering::Relaxed);
-        });
-
-        let test = finish_runtime_hw_model(&mut hw);
-        assert_eq!(0, test);
-
-        lock.fetch_add(1, Ordering::Relaxed);
-    }
-
     fn start_mcu_mbox_tests(feature: &str) {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, Ordering::Relaxed);
@@ -217,8 +104,7 @@ pub mod test {
             }
             // Wait for firmware to initialize
             sleep_emulator_ticks(5_000_000);
-            let mci_base =
-                unsafe { caliptra_mcu_romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
+            let mci_base = unsafe { romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
             let mbox_transport = McuMailboxTransport::new(mci_base);
             println!("MCU MBOX Test Thread Starting:");
             let mut test = RequestResponseTest::new(mbox_transport);
@@ -367,7 +253,6 @@ pub mod test {
             self.prep_test_messages(feature);
             let test_messages = self.test_messages.clone();
             for message_pair in &test_messages {
-                println!("Checking cmd: {:#X}", message_pair.cmd);
                 let actual_response = self
                     .process_message(message_pair.cmd, &message_pair.request)
                     .map_err(|_| ())?;
@@ -388,7 +273,6 @@ pub mod test {
                 self.add_hmac_tests()?;
                 self.add_hmac_kdf_counter_tests()?;
                 self.add_hkdf_tests()?;
-                self.add_debug_unlock_tests()?;
                 Ok(())
             } else if feature == "test-mcu-mbox-fips-self-test" {
                 self.add_fips_self_test_tests()?;
@@ -418,9 +302,9 @@ pub mod test {
             // Add firmware version test messages
             for idx in 0..=2 {
                 let version_str = match idx {
-                    0 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[0],
-                    1 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[1],
-                    2 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[2],
+                    0 => mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[0],
+                    1 => mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[1],
+                    2 => mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[2],
                     _ => unreachable!(),
                 };
 
@@ -458,7 +342,7 @@ pub mod test {
             let cmd = device_caps_req.cmd_code();
             device_caps_req.populate_chksum().unwrap();
 
-            let test_capabilities = &caliptra_mcu_mbox_common::config::TEST_DEVICE_CAPABILITIES;
+            let test_capabilities = &mcu_mbox_common::config::TEST_DEVICE_CAPABILITIES;
             let mut device_caps_resp = McuMailboxResp::DeviceCaps(DeviceCapsResp {
                 hdr: MailboxRespHeader::default(),
                 caps: {
@@ -483,7 +367,7 @@ pub mod test {
             let cmd = device_id_req.cmd_code();
             device_id_req.populate_chksum().unwrap();
 
-            let test_device_id = &caliptra_mcu_mbox_common::config::TEST_DEVICE_ID;
+            let test_device_id = &mcu_mbox_common::config::TEST_DEVICE_ID;
             let mut device_id_resp = McuMailboxResp::DeviceId(DeviceIdResp {
                 hdr: MailboxRespHeader::default(),
                 vendor_id: test_device_id.vendor_id,
@@ -507,7 +391,7 @@ pub mod test {
             let cmd = device_info_req.cmd_code();
             device_info_req.populate_chksum().unwrap();
 
-            let test_uid = &caliptra_mcu_mbox_common::config::TEST_UID;
+            let test_uid = &mcu_mbox_common::config::TEST_UID;
             let mut device_info_resp = McuMailboxResp::DeviceInfo(DeviceInfoResp {
                 hdr: MailboxRespHeaderVarSize {
                     data_len: test_uid.len() as u32,
@@ -1412,7 +1296,8 @@ pub mod test {
             ciphertext
                 .extend_from_slice(&final_resp.data[FINAL_HEADER_SIZE..FINAL_HEADER_SIZE + ct_len]);
 
-            Ok((iv, final_hdr.tag, ciphertext))
+            let tag: [u8; 16] = FromBytes::read_from_bytes(final_hdr.tag.as_bytes()).unwrap();
+            Ok((iv, tag, ciphertext))
         }
 
         /// Perform AES-GCM decryption using Init, Update (optional), and Final commands.
@@ -1432,7 +1317,7 @@ pub mod test {
                 hdr: MailboxReqHeader::default(),
                 flags: 0,
                 cmk: cmk.clone(),
-                iv: *iv,
+                iv: FromBytes::read_from_bytes(iv.as_bytes()).unwrap(),
                 aad_size: aad.len() as u32,
                 aad: [0u8; MAX_CMB_DATA_SIZE],
             };
@@ -1522,7 +1407,7 @@ pub mod test {
                 hdr: MailboxReqHeader::default(),
                 context,
                 tag_len: 16,
-                tag: *tag,
+                tag: FromBytes::read_from_bytes(tag.as_bytes()).unwrap(),
                 ciphertext_size: remaining.len() as u32,
                 ciphertext: [0u8; MAX_CMB_DATA_SIZE],
             };
@@ -2448,191 +2333,6 @@ pub mod test {
             );
 
             Ok(expand_resp.0.okm)
-        }
-
-        /// Test debug unlock passthrough commands.
-        fn add_debug_unlock_tests(&mut self) -> Result<(), ()> {
-            println!("Running debug unlock passthrough tests");
-
-            // Test 1: Production debug unlock request
-            // This command is supported by the Caliptra runtime but requires
-            // Production lifecycle. In the default test configuration, the device
-            // is not in production mode, so the command will be rejected.
-            println!("  Testing prod debug unlock request passthrough...");
-            let mut prod_req = McuMailboxReq::ProdDebugUnlockReq(McuProdDebugUnlockReqReq(
-                ProductionAuthDebugUnlockReq {
-                    hdr: MailboxReqHeader::default(),
-                    length: 2,
-                    unlock_level: 1,
-                    reserved: [0; 3],
-                },
-            ));
-            prod_req.populate_chksum().unwrap();
-
-            let prod_resp =
-                self.process_message(prod_req.cmd_code().0, prod_req.as_bytes().unwrap());
-            // Expect failure due to lifecycle mismatch (not Production).
-            // A response confirms the passthrough dispatch and Caliptra handling works.
-            match prod_resp {
-                Ok(resp) => {
-                    println!(
-                        "    Prod debug unlock request: got response (status={})",
-                        resp.status_code
-                    );
-                    assert_eq!(
-                        resp.status_code,
-                        MbxCmdStatus::Failure as u32,
-                        "Prod debug unlock request should fail (not in Production lifecycle)"
-                    );
-                }
-                Err(e) => {
-                    println!("    Prod debug unlock request: got error {:?} (expected due to lifecycle mismatch)", e);
-                }
-            }
-            println!("  Prod debug unlock request passthrough test passed");
-
-            // Test 2: Production debug unlock token
-            // This command is supported by the Caliptra runtime but requires
-            // a valid challenge-response flow. Sending a zeroed token will be
-            // rejected, confirming the passthrough dispatch works.
-            println!("  Testing prod debug unlock token passthrough...");
-            let mut prod_token_req = McuMailboxReq::ProdDebugUnlockToken(
-                McuProdDebugUnlockTokenReq(ProductionAuthDebugUnlockToken::new_zeroed()),
-            );
-            prod_token_req.populate_chksum().unwrap();
-
-            let prod_token_resp = self.process_message(
-                prod_token_req.cmd_code().0,
-                prod_token_req.as_bytes().unwrap(),
-            );
-            // Expect failure due to invalid token (no prior challenge).
-            match prod_token_resp {
-                Ok(resp) => {
-                    println!(
-                        "    Prod debug unlock token: got response (status={})",
-                        resp.status_code
-                    );
-                    assert_eq!(
-                        resp.status_code,
-                        MbxCmdStatus::Failure as u32,
-                        "Prod debug unlock token should fail (invalid token, no challenge)"
-                    );
-                }
-                Err(e) => {
-                    println!("    Prod debug unlock token: got error {:?} (expected due to invalid token)", e);
-                }
-            }
-            println!("  Prod debug unlock token passthrough test passed");
-
-            println!("Debug unlock passthrough tests passed");
-            Ok(())
-        }
-
-        /// End-to-end production debug unlock test with full challenge-response flow.
-        /// Requires the HW model to be configured with Production lifecycle,
-        /// debug_intent=true, and valid prod_dbg_unlock_keypairs.
-        fn add_prod_debug_unlock_e2e_test(
-            &mut self,
-            unlock_level: u8,
-            signer: &dyn caliptra_mcu_debug_unlock_signer::DebugUnlockSigner,
-        ) -> Result<(), ()> {
-            println!("Running production debug unlock end-to-end test");
-
-            // Step 1: Send production debug unlock request to get challenge
-            println!(
-                "  Sending prod debug unlock request (unlock_level={})...",
-                unlock_level
-            );
-            let mut prod_req = McuMailboxReq::ProdDebugUnlockReq(McuProdDebugUnlockReqReq(
-                ProductionAuthDebugUnlockReq {
-                    hdr: MailboxReqHeader::default(),
-                    length: 2,
-                    unlock_level,
-                    reserved: [0; 3],
-                },
-            ));
-            prod_req.populate_chksum().unwrap();
-
-            let resp = self
-                .process_message_with_options(
-                    prod_req.cmd_code().0,
-                    prod_req.as_bytes().unwrap(),
-                    60_000_000, // 60 seconds — debug unlock may take time
-                    false,
-                )
-                .map_err(|e| {
-                    println!("    Failed to send prod debug unlock request: {:?}", e);
-                })?;
-
-            assert_eq!(
-                resp.status_code,
-                MbxCmdStatus::Complete as u32,
-                "Prod debug unlock request should succeed in Production lifecycle"
-            );
-
-            // Step 2: Parse the challenge response
-            let challenge = ProductionAuthDebugUnlockChallenge::read_from_bytes(&resp.data)
-                .map_err(|e| {
-                    println!("    Failed to parse challenge: {:?}", e);
-                })?;
-            println!(
-                "  Received challenge (UDI len={}, challenge len={})",
-                challenge.unique_device_identifier.len(),
-                challenge.challenge.len()
-            );
-
-            // Step 3: Sign the token using the provided signer
-            println!("  Generating signed token...");
-            let signer_challenge = caliptra_mcu_debug_unlock_signer::ProdDebugUnlockChallenge {
-                unique_device_identifier: challenge.unique_device_identifier,
-                challenge: challenge.challenge,
-            };
-            let signed_token = signer
-                .sign_debug_unlock_token(&signer_challenge, unlock_level)
-                .map_err(|e| {
-                    println!("    Failed to sign token: {:?}", e);
-                })?;
-            println!("  Token generated and signed");
-
-            // Step 4: Convert ProdDebugUnlockToken to ProductionAuthDebugUnlockToken
-            let token = ProductionAuthDebugUnlockToken {
-                hdr: Default::default(),
-                length: signed_token.length,
-                unique_device_identifier: signed_token.unique_device_identifier,
-                unlock_level: signed_token.unlock_level,
-                reserved: signed_token.reserved,
-                challenge: signed_token.challenge,
-                ecc_public_key: signed_token.ecc_public_key,
-                mldsa_public_key: signed_token.mldsa_public_key,
-                ecc_signature: signed_token.ecc_signature,
-                mldsa_signature: signed_token.mldsa_signature,
-            };
-
-            // Step 5: Send the signed token
-            println!("  Sending signed token...");
-            let mut token_req =
-                McuMailboxReq::ProdDebugUnlockToken(McuProdDebugUnlockTokenReq(token));
-            token_req.populate_chksum().unwrap();
-
-            let token_resp = self
-                .process_message_with_options(
-                    token_req.cmd_code().0,
-                    token_req.as_bytes().unwrap(),
-                    60_000_000, // 60 seconds — signature verification may take time
-                    false,
-                )
-                .map_err(|e| {
-                    println!("    Failed to send prod debug unlock token: {:?}", e);
-                })?;
-
-            assert_eq!(
-                token_resp.status_code,
-                MbxCmdStatus::Complete as u32,
-                "Prod debug unlock token should succeed with valid signature"
-            );
-
-            println!("Production debug unlock end-to-end test passed");
-            Ok(())
         }
     }
 

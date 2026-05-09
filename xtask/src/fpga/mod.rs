@@ -3,12 +3,12 @@
 use anyhow::{anyhow, bail, Result};
 use caliptra_image_gen::to_hw_format;
 use caliptra_image_types::FwVerificationPqcKeyType;
-use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
-use caliptra_mcu_builder::{FirmwareBinaries, ImageCfg};
-use caliptra_mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
-use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 use clap::Subcommand;
 use configurations::Configuration;
+use mcu_builder::flash_image::build_flash_image_bytes;
+use mcu_builder::FirmwareBinaries;
+use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
+use romtime::LifecycleControllerState;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use utils::{
@@ -23,13 +23,6 @@ mod utils;
 struct BuildArgs<'a> {
     mcu: bool,
     fw_id: &'a Option<String>,
-    rom_features: &'a Option<String>,
-    separate_runtimes: bool,
-    mcu_cfgs: &'a Option<Vec<ImageCfg>>,
-}
-
-struct BootstrapArgs<'a> {
-    bitstream: &'a Option<PathBuf>,
 }
 
 struct BuildTestArgs<'a> {
@@ -41,8 +34,7 @@ struct TestArgs<'a> {
     default_test_profile: &'a str,
 }
 trait ActionHandler<'a> {
-    fn bootstrap(&self, args: &'a BootstrapArgs<'a>) -> Result<()>;
-    fn download_bitstream(&self) -> Result<()>;
+    fn bootstrap(&self) -> Result<()>;
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()>;
     fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()>;
     fn test(&self, args: &'a TestArgs) -> Result<()>;
@@ -54,14 +46,6 @@ pub(crate) enum Fpga {
     Bootstrap {
         #[arg(long)]
         target_host: Option<String>,
-        #[arg(long, default_value_t = Configuration::Subsystem, value_enum)]
-        configuration: Configuration,
-        /// Path to a bitstream pdi file. If provided, don't download it.
-        #[arg(long)]
-        bitstream: Option<PathBuf>,
-    },
-    /// Download an FPGA bitstream.
-    DownloadBitstream {
         #[arg(long, default_value_t = Configuration::Subsystem, value_enum)]
         configuration: Configuration,
     },
@@ -86,11 +70,11 @@ pub(crate) enum Fpga {
         otp: Option<PathBuf>,
 
         /// Save OTP memory to a file after running.
-        #[arg(long)]
+        #[arg(long, default_value_t = false)]
         save_otp: bool,
 
         /// Run UDS provisioning flow
-        #[arg(long)]
+        #[arg(long, default_value_t = false)]
         uds: bool,
 
         /// Number of "steps" to run the FPGA before stopping
@@ -98,7 +82,7 @@ pub(crate) enum Fpga {
         steps: u64,
 
         /// Whether to disable the recovery interface and I3C
-        #[arg(long)]
+        #[arg(long, default_value_t = false)]
         no_recovery: bool,
 
         /// Lifecycle controller state to set (raw, test_unlocked0, manufacturing, prod, etc.).
@@ -107,52 +91,24 @@ pub(crate) enum Fpga {
     },
     /// Build FPGA firmware
     Build {
-        /// The FPGA configuration mode
-        #[arg(long, value_enum)]
-        configuration: Option<Configuration>,
-
         /// When set copy firmware to `target_host`
         #[arg(long)]
         target_host: Option<String>,
 
         /// Only Build MCU binaries
-        #[arg(long)]
+        #[arg(long, default_value_t = false)]
         mcu: bool,
 
         /// Only build the specified Caliptra Firmware
         /// By default all Caliptra firmware binaries are built
         #[arg(long)]
         fw_id: Option<String>,
-
-        /// Rom features to build with
-        #[arg(long)]
-        rom_features: Option<String>,
-
-        /// Build a separate runtime for each feature flag
-        #[arg(long)]
-        separate_runtimes: bool,
-
-        // MCU configuration to include in the SoC manifest
-        // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>
-        // Example: --mcu_cfg mcu,0x10000000,0x10000000,1,1,1,test-dma
-        #[arg(
-            long = "mcu_cfg",
-            value_name = "MCU_CFG",
-            num_args = 1..,
-            required = false
-        )]
-        mcu_cfgs: Option<Vec<ImageCfg>>,
     },
     /// Build FPGA test binaries
     BuildTest {
-        /// The FPGA configuration mode
-        #[arg(long, value_enum)]
-        configuration: Option<Configuration>,
-
         /// When set copy test binaries to `target_host`
         #[arg(long)]
         target_host: Option<String>,
-
         /// Filter packages for the test archive. This can be used to reduce the total archive
         /// size and speed up `build-test` commands.
         ///
@@ -165,12 +121,11 @@ pub(crate) enum Fpga {
         /// When set run commands over ssh to `target_host`
         #[arg(long)]
         target_host: Option<String>,
-
         /// A specific test filter to apply.
         #[arg(long)]
         test_filter: Option<String>,
         /// Print test output during execution.
-        #[arg(long)]
+        #[arg(long, default_value_t = false)]
         test_output: bool,
     },
 }
@@ -241,34 +196,26 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
     check_host_dependencies()?;
     match args {
         Fpga::Build {
-            configuration,
             target_host,
             mcu,
-            fw_id,
-            rom_features,
-            separate_runtimes,
-            mcu_cfgs,
+            fw_id: calitpra_fw_id,
         } => {
             println!("Building FPGA firmware");
-            let config = get_and_validate_configuration(*configuration, target_host.as_deref())?;
+            let config = Configuration::from_cmd(target_host.as_deref())?;
             config
                 .executor()
                 .set_target_host(target_host.as_deref())
                 .build(&BuildArgs {
                     mcu: *mcu,
-                    fw_id,
-                    rom_features,
-                    separate_runtimes: *separate_runtimes,
-                    mcu_cfgs,
+                    fw_id: calitpra_fw_id,
                 })?;
         }
         Fpga::BuildTest {
-            configuration,
             target_host,
             package_filter,
         } => {
             println!("Building FPGA tests");
-            let config = get_and_validate_configuration(*configuration, target_host.as_deref())?;
+            let config = Configuration::from_cmd(target_host.as_deref())?;
             config
                 .executor()
                 .set_target_host(target_host.as_deref())
@@ -277,7 +224,6 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
         Fpga::Bootstrap {
             target_host,
             configuration,
-            bitstream,
         } => {
             println!("Bootstrapping FPGA");
             println!("configuration: {:?}", configuration);
@@ -307,13 +253,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 .executor()
                 .set_target_host(target_host)
                 .set_caliptra_fpga(caliptra_fpga)
-                .bootstrap(&BootstrapArgs { bitstream })?;
-        }
-        Fpga::DownloadBitstream { configuration } => {
-            println!("Downloading FPGA bitstream");
-            println!("configuration: {:?}", configuration);
-
-            configuration.executor().download_bitstream()?;
+                .bootstrap()?;
         }
         Fpga::Test {
             target_host,
@@ -396,15 +336,21 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         FirmwareBinaries {
             mcu_rom,
             mcu_runtime: blank.to_vec(),
-            mcu_bare_metal_runtime: blank.to_vec(),
             caliptra_rom,
             caliptra_fw: blank.to_vec(),
+            caliptra_fw_ocp_lock: blank.to_vec(),
             soc_manifest: blank.to_vec(),
-            ..Default::default()
+            test_roms: vec![],
+            caliptra_test_roms: vec![],
+            test_runtimes: vec![],
+            test_soc_manifests: vec![],
+            test_pldm_fw_pkgs: vec![],
+            test_flash_images: vec![],
+            test_update_flash_images: vec![],
         }
     };
     let otp_memory = if otp_file.is_some() && otp_file.unwrap().exists() {
-        caliptra_mcu_hw_model::read_otp_vmem_data(&std::fs::read(otp_file.unwrap())?)?
+        mcu_hw_model::read_otp_vmem_data(&std::fs::read(otp_file.unwrap())?)?
     } else {
         vec![]
     };
@@ -484,26 +430,5 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         );
         model.save_otp_memory(otp_file.as_ref().unwrap())?;
     }
-
     Ok(())
-}
-
-/// Validates the provided configuration against the configuration on the target host.
-/// If no configuration is provided, attempts to retrieve it from the target host.
-fn get_and_validate_configuration(
-    provided: Option<Configuration>,
-    target_host: Option<&str>,
-) -> Result<Configuration> {
-    let host_config = Configuration::from_cmd_optional(target_host)?;
-    match (provided, host_config) {
-        (Some(p), Some(h)) => {
-            if p != h {
-                bail!("Provided configuration {:?} does not match FPGA configuration {:?} on host", p, h);
-            }
-            Ok(p)
-        }
-        (Some(p), None) => Ok(p),
-        (None, Some(h)) => Ok(h),
-        (None, None) => bail!("FPGA is not bootstrapped. Need to run `xtask fpga bootstrap` or provide `--configuration`"),
-    }
 }

@@ -12,33 +12,40 @@ Abstract:
 
 --*/
 
-use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
-use caliptra_mcu_error::McuError;
-#[cfg(feature = "fw-manifest-dot")]
-use caliptra_mcu_romtime::HexWord;
-use caliptra_mcu_romtime::{McuBootMilestones, McuRomBootStatus};
-use core::fmt::Write;
-#[cfg(feature = "fw-manifest-dot")]
-use zerocopy::FromBytes;
-
 #[cfg(feature = "fw-manifest-dot")]
 use crate::device_ownership_transfer;
+use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
+use core::fmt::Write;
+use mcu_error::McuError;
+#[cfg(feature = "fw-manifest-dot")]
+use romtime::HexWord;
+use romtime::{McuBootMilestones, McuRomBootStatus};
+#[cfg(feature = "fw-manifest-dot")]
+use zerocopy::FromBytes;
 
 pub struct FwBoot {}
 
 impl BootFlow for FwBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
-        crate::call_hook(params.hooks, |h| h.pre_fw_boot());
-        caliptra_mcu_romtime::println!("[mcu-rom] Starting fw boot reset flow");
+        romtime::println!("[mcu-rom] Starting fw boot reset flow");
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::FirmwareBootFlowStarted.into());
 
-        // Start with the static header offset; the DOT section (if present)
-        // is detected dynamically and added below.
-        #[allow(unused_mut)]
-        let mut firmware_offset = params.mcu_image_header_size as u32;
+        // Check that the firmware was actually loaded before jumping to it
+        let firmware_ptr = unsafe {
+            (MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32) as *const u32
+        };
+        // Safety: this address is valid
+        if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
+            romtime::println!("Invalid firmware detected; halting");
+            fatal_error(McuError::ROM_FW_BOOT_INVALID_FIRMWARE);
+        }
 
         // --- Process optional firmware manifest DOT commands ---
+        // Runs during FwBoot so that firmware is always decrypted in SRAM
+        // (for encrypted boot, decryption happens during ColdBoot before the
+        // warm reset chain reaches FwBoot).
+        //
         // Compile-gated by the fw-manifest-dot feature so ROMs that do not
         // need this feature stay panic-free and pay no code-size cost.
         // Additionally gated at runtime by fw_manifest_dot_enabled.
@@ -53,8 +60,6 @@ impl BootFlow for FwBoot {
                 device_ownership_transfer::FwManifestDotSection::ref_from_prefix(sram)
             {
                 if section.magic == device_ownership_transfer::FW_MANIFEST_DOT_MAGIC {
-                    firmware_offset += manifest_size as u32;
-
                     env.mci.set_flow_checkpoint(
                         McuRomBootStatus::FwManifestDotProcessingStarted.into(),
                     );
@@ -63,7 +68,7 @@ impl BootFlow for FwBoot {
                         section,
                         params.dot_flash,
                     ) {
-                        caliptra_mcu_romtime::println!(
+                        romtime::println!(
                             "[mcu-rom] Error in firmware manifest DOT: {}",
                             HexWord(err.into())
                         );
@@ -76,23 +81,14 @@ impl BootFlow for FwBoot {
             }
         }
 
-        // Check that the firmware was actually loaded before jumping to it
-        let firmware_ptr = unsafe { (MCU_MEMORY_MAP.sram_offset + firmware_offset) as *const u32 };
-        // Safety: this address is valid
-        if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
-            caliptra_mcu_romtime::println!("Invalid firmware detected; halting");
-            fatal_error(McuError::ROM_FW_BOOT_INVALID_FIRMWARE);
-        }
-
         // Jump to firmware
-        caliptra_mcu_romtime::println!("[mcu-rom] Jumping to firmware");
+        romtime::println!("[mcu-rom] Jumping to firmware");
         env.mci
             .set_flow_milestone(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
-        crate::call_hook(params.hooks, |h| h.post_fw_boot());
 
         #[cfg(target_arch = "riscv32")]
         unsafe {
-            let firmware_entry = MCU_MEMORY_MAP.sram_offset + firmware_offset;
+            let firmware_entry = MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32;
             core::arch::asm!(
                 "jr {0}",
                 in(reg) firmware_entry,

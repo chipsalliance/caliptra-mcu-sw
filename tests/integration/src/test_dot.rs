@@ -15,11 +15,11 @@ mod test {
     use caliptra_auth_man_types::{AuthManifestPrivKeysConfig, AuthManifestPubKeysConfig};
     use caliptra_image_gen::ImageGeneratorOwnerConfig;
     use caliptra_image_types::{ImageManifest, ImageOwnerPrivKeys, OwnerPubKeyConfig};
-    use caliptra_mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
-    use caliptra_mcu_error::McuError;
-    use caliptra_mcu_hw_model::McuHwModel;
-    use caliptra_mcu_romtime::McuBootMilestones;
-    use caliptra_mcu_romtime::McuRomBootStatus;
+    use mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
+    use mcu_error::McuError;
+    use mcu_hw_model::McuHwModel;
+    use romtime::McuBootMilestones;
+    use romtime::McuRomBootStatus;
     use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
     /// Size of the DOT blob structure in bytes.
@@ -102,10 +102,20 @@ mod test {
         }
 
         // Fall back to computing from compiled FW bundle
-        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-            fpga: cfg!(feature = "fpga_realtime"),
-            ..Default::default()
-        });
+        let mut builder = CaliptraBuilder::new(
+            cfg!(feature = "fpga_realtime"),
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         let fw_path = builder
             .get_caliptra_fw()
             .expect("Failed to get Caliptra FW");
@@ -349,38 +359,37 @@ mod test {
         };
 
         // Build the FW bundle and SoC manifest with custom owner keys.
-        // When prebuilt binaries are available, pass the Caliptra FW/ROM paths
-        // to the builder so it doesn't try to compile them from scratch.
-        let (mcu_runtime_path, prebuilt_caliptra_fw, prebuilt_vendor_pk_hash) =
-            if let Ok(binaries) = FirmwareBinaries::from_env() {
-                let rt_path = std::env::temp_dir().join("test_dot_mcu_runtime.bin");
-                std::fs::write(&rt_path, &binaries.mcu_runtime)
-                    .expect("Failed to write MCU runtime");
-                let fw_path = std::env::temp_dir().join("test_dot_custom_owner_caliptra_fw.bin");
-                std::fs::write(&fw_path, &binaries.caliptra_fw)
-                    .expect("Failed to write prebuilt Caliptra FW");
-                let vendor_pk_hash = hex::encode(
-                    binaries
-                        .vendor_pk_hash()
-                        .expect("Failed to get vendor PK hash from prebuilt binaries"),
-                );
-                (rt_path, Some(fw_path), Some(vendor_pk_hash))
+        // We need to provide the MCU runtime path for the SoC manifest generation.
+        let mcu_runtime_path = {
+            // Try to get prebuilt MCU runtime, or compile it
+            let mcu_runtime_bytes = if let Ok(binaries) = FirmwareBinaries::from_env() {
+                binaries.mcu_runtime.clone()
             } else {
+                // Fall back to compiling the runtime
                 let runtime_path = crate::test::compile_runtime(None, false);
-                let rt_bytes =
-                    std::fs::read(&runtime_path).expect("Failed to read compiled runtime");
-                let rt_path = std::env::temp_dir().join("test_dot_mcu_runtime.bin");
-                std::fs::write(&rt_path, &rt_bytes).expect("Failed to write MCU runtime");
-                (rt_path, None, None)
+                std::fs::read(&runtime_path).expect("Failed to read compiled runtime")
             };
 
-        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-            fpga: cfg!(feature = "fpga_realtime"),
-            mcu_firmware: Some(mcu_runtime_path),
-            caliptra_firmware: prebuilt_caliptra_fw,
-            vendor_pk_hash: prebuilt_vendor_pk_hash,
-            ..Default::default()
-        })
+            // Write to a temp file for CaliptraBuilder
+            let temp_path = std::env::temp_dir().join("test_dot_mcu_runtime.bin");
+            std::fs::write(&temp_path, &mcu_runtime_bytes).expect("Failed to write MCU runtime");
+            temp_path
+        };
+
+        let mut builder = CaliptraBuilder::new(
+            cfg!(feature = "fpga_realtime"),
+            false,
+            None,
+            None,
+            None,
+            None,
+            Some(mcu_runtime_path),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
         .with_owner_config(custom_owner_config)
         .with_auth_manifest_owner_config(auth_manifest_owner_config);
 
@@ -785,9 +794,6 @@ mod test {
     /// boot status and that the blob is written to flash.
     #[test]
     fn test_dot_recovery_backup_blob_success() {
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
         // First create a valid DOT blob
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -798,6 +804,9 @@ mod test {
         let blob_bytes = blob.as_bytes();
         let mut flash_contents = vec![0u8; 4096];
         flash_contents[2048..2048 + DOT_BLOB_SIZE].copy_from_slice(blob_bytes);
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents),
@@ -834,9 +843,6 @@ mod test {
     /// 3. Recovery should fail with the blob corrupt error
     #[test]
     fn test_dot_recovery_backup_blob_invalid_hmac() {
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
         // Create a blob with valid structure but invalid HMAC
         let owner_pk_hash = get_owner_pk_hash();
         let blob = TestDotBlob::default()
@@ -849,6 +855,9 @@ mod test {
         let mut flash_contents = vec![0u8; 4096];
         flash_contents[2048..2048 + DOT_BLOB_SIZE].copy_from_slice(blob_bytes);
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
@@ -860,12 +869,20 @@ mod test {
         // Run until error or timeout
         hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 50_000_000);
 
-        // Should have a fatal error — recovery handlers all failed.
-        // The exact error depends on the last handler in the chain.
+        // Should have a fatal error - backup blob HMAC doesn't match
         let fatal_error = hw.mci_fw_fatal_error();
         assert!(
             fatal_error.is_some(),
             "Recovery with invalid HMAC should cause fatal error"
+        );
+
+        // The error should be the blob corrupt error (HMAC mismatch)
+        let error_code = fatal_error.unwrap();
+        let expected_error: u32 = McuError::ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR.into();
+        assert_eq!(
+            error_code, expected_error,
+            "Expected ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR (0x{:x}), got 0x{:x}",
+            expected_error, error_code
         );
 
         // Verify the blob was NOT written to flash (offset 0 should still be zeros)
@@ -999,11 +1016,11 @@ mod test {
         println!("[TEST] Reset completed successfully - runtime booted after DOT fuse burn");
 
         // Verify that the DOT lock fuse was actually burned
-        use caliptra_mcu_registers_generated::fuses;
+        use registers_generated::fuses;
 
         let otp_memory = hw.read_otp_memory();
 
-        // Check dot_initialized is still set (LinearOr encoding)
+        // Check dot_initialized is still set (LinearMajorityVote encoding)
         let dot_initialized = otp_memory[fuses::DOT_INITIALIZED.byte_offset];
         assert_ne!(dot_initialized, 0, "DOT should still be initialized");
 
@@ -1036,29 +1053,13 @@ mod test {
     /// Creates OTP memory with DOT in locked state (ODD, 1 fuse bit burned).
     /// Uses the generated fuse entry offsets for correct placement.
     fn create_locked_otp_memory() -> Vec<u8> {
-        use caliptra_mcu_otp_digest::{otp_scramble, OTP_SCRAMBLE_KEYS};
-        use caliptra_mcu_registers_generated::fuses;
+        use registers_generated::fuses;
         let mut otp =
             vec![0u8; fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
-        // Set dot_initialized = 1 via LinearOr(1 bit, 3x) encoding: 0b111
+        // Set dot_initialized = 1 via LinearMajorityVote(1 bit, 3x) encoding: 0b111
         otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
         // Set bit 0 of dot_fuse_array to 1 (burned=1, ODD/locked state)
         otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
-
-        // VendorSecretProdPartition (partition index 13) is scrambled.
-        // Pre-scramble zero blocks so the DAI read path unscrambles them
-        // back to zeros, ensuring recovery_pk_hash reads as all-zeros (None).
-        let key = OTP_SCRAMBLE_KEYS[5];
-        let part_start = fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET;
-        let part_end = part_start + fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE;
-        let end = part_end.min(otp.len());
-        for off in (part_start..end).step_by(8) {
-            let scrambled = otp_scramble(0, key);
-            let bytes = scrambled.to_le_bytes();
-            let copy_len = bytes.len().min(otp.len() - off);
-            otp[off..off + copy_len].copy_from_slice(&bytes[..copy_len]);
-        }
-
         otp
     }
 
@@ -1188,448 +1189,6 @@ mod test {
     }
 
     // -----------------------------------------------------------------------
-    // DOT Override Challenge/Response Tests (ECDSA P-384)
-    // -----------------------------------------------------------------------
-
-    /// Generates a random ECC P-384 key pair, returning the public key
-    /// coordinates as raw big-endian bytes (SEC1 format) and the raw private
-    /// key bytes for signing.
-    fn generate_random_ecc_keys() -> (
-        [u8; 48], // pub_key_x (big-endian)
-        [u8; 48], // pub_key_y (big-endian)
-        [u8; 48], // private key
-    ) {
-        use p384::elliptic_curve::sec1::ToEncodedPoint;
-        let secret_key = p384::SecretKey::random(&mut rand::thread_rng());
-        let pub_point = secret_key.public_key().to_encoded_point(false);
-
-        let x_bytes: [u8; 48] = pub_point.x().unwrap().as_slice().try_into().unwrap();
-        let y_bytes: [u8; 48] = pub_point.y().unwrap().as_slice().try_into().unwrap();
-        let priv_bytes: [u8; 48] = secret_key.to_bytes().into();
-        (x_bytes, y_bytes, priv_bytes)
-    }
-
-    /// Generates a random MLDSA-87 key pair, returning the public key as raw
-    /// bytes (FIPS 204 format) and the private key for signing.
-    fn generate_random_mldsa_keys() -> (Vec<u8>, fips204::ml_dsa_87::PrivateKey) {
-        use fips204::ml_dsa_87;
-        use fips204::traits::SerDes;
-
-        let (pk, sk) =
-            ml_dsa_87::try_keygen_with_rng(&mut rand::thread_rng()).expect("MLDSA keygen failed");
-        let pk_bytes = pk.into_bytes();
-        (pk_bytes.to_vec(), sk)
-    }
-
-    /// Computes SHA-384 hash of the combined vendor public keys (ECC + MLDSA).
-    fn compute_recovery_pk_hash(
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8],
-    ) -> [u8; 48] {
-        use sha2::{Digest, Sha384};
-
-        let mut hasher = Sha384::new();
-        hasher.update(ecc_pub_x);
-        hasher.update(ecc_pub_y);
-        hasher.update(mldsa_pub);
-        let result = hasher.finalize();
-        let mut hash = [0u8; 48];
-        hash.copy_from_slice(&result);
-        hash
-    }
-
-    /// Creates OTP memory for override testing.
-    /// Includes locked state fuses AND the vendor recovery PK hash.
-    fn create_challenge_recovery_otp_memory(pk_hash: &[u8; 48]) -> Vec<u8> {
-        use caliptra_mcu_otp_digest::{otp_scramble, OTP_SCRAMBLE_KEYS};
-        use caliptra_mcu_registers_generated::fuses;
-
-        let required_size = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset
-            + fuses::VENDOR_RECOVERY_PK_HASH.byte_size
-            + 16;
-        let otp_size =
-            required_size.max(fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size);
-        let mut otp = vec![0u8; otp_size];
-
-        // Set DOT locked state (partition 14, not scrambled)
-        otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
-        otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
-
-        // Write recovery PK hash into partition 13 (VendorSecretProdPartition),
-        // which is scrambled. Pre-scramble each 8-byte block so the DAI read
-        // path unscrambles back to the original plaintext.
-        let key = OTP_SCRAMBLE_KEYS[5]; // VendorSecretProdPartition
-        let hash_offset = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset;
-        for (i, chunk) in pk_hash.chunks(8).enumerate() {
-            let off = hash_offset + i * 8;
-            let mut block = [0u8; 8];
-            block[..chunk.len()].copy_from_slice(chunk);
-            let plaintext = u64::from_le_bytes(block);
-            let scrambled = otp_scramble(plaintext, key);
-            let scrambled_bytes = scrambled.to_le_bytes();
-            otp[off..off + 8].copy_from_slice(&scrambled_bytes);
-        }
-
-        otp
-    }
-
-    /// Compute the Caliptra-standard mailbox checksum.
-    fn calc_dot_checksum(cmd: u32, data: &[u8]) -> u32 {
-        let mut sum = 0u32;
-        for &b in cmd.to_le_bytes().iter() {
-            sum = sum.wrapping_add(b as u32);
-        }
-        for &b in data {
-            sum = sum.wrapping_add(b as u32);
-        }
-        0u32.wrapping_sub(sum)
-    }
-
-    /// MCI mbox0 command IDs for DOT_UNLOCK_CHALLENGE / DOT_OVERRIDE.
-    const CMD_DOT_UNLOCK_CHALLENGE: u32 = 0x444F_5457;
-    const CMD_DOT_OVERRIDE: u32 = 0x444F_5458;
-
-    /// Challenge type field values for DOT_UNLOCK_CHALLENGE.
-    const CHALLENGE_TYPE_OVERRIDE: u32 = 0x02;
-
-    /// Build the mbox0 SRAM payload for DOT_UNLOCK_CHALLENGE (override type).
-    fn build_override_challenge_payload(
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8],
-    ) -> Vec<u8> {
-        let mut payload = Vec::new();
-        // Reserve space for checksum (filled below)
-        payload.extend_from_slice(&[0u8; 4]);
-        // challenge_type = OVERRIDE
-        payload.extend_from_slice(&CHALLENGE_TYPE_OVERRIDE.to_le_bytes());
-        payload.extend_from_slice(ecc_pub_x);
-        payload.extend_from_slice(ecc_pub_y);
-        let mldsa_expected = 2592;
-        payload.extend_from_slice(mldsa_pub);
-        if mldsa_pub.len() < mldsa_expected {
-            payload.resize(payload.len() + mldsa_expected - mldsa_pub.len(), 0);
-        }
-
-        // Compute and fill checksum
-        let chksum = calc_dot_checksum(CMD_DOT_UNLOCK_CHALLENGE, &payload[4..]);
-        payload[..4].copy_from_slice(&chksum.to_le_bytes());
-        payload
-    }
-
-    /// Build the mbox0 SRAM payload for DOT_OVERRIDE.
-    fn build_override_response_payload(
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        ecc_sig_r: &[u8; 48],
-        ecc_sig_s: &[u8; 48],
-        mldsa_pub: &[u8],
-        mldsa_sig: &[u8],
-    ) -> Vec<u8> {
-        let mut payload = Vec::new();
-        // Reserve space for checksum (filled below)
-        payload.extend_from_slice(&[0u8; 4]);
-        payload.extend_from_slice(ecc_pub_x);
-        payload.extend_from_slice(ecc_pub_y);
-        payload.extend_from_slice(ecc_sig_r);
-        payload.extend_from_slice(ecc_sig_s);
-        let mldsa_pk_expected = 2592;
-        payload.extend_from_slice(mldsa_pub);
-        if mldsa_pub.len() < mldsa_pk_expected {
-            payload.resize(payload.len() + mldsa_pk_expected - mldsa_pub.len(), 0);
-        }
-        let mldsa_sig_expected = 4628;
-        payload.extend_from_slice(mldsa_sig);
-        if mldsa_sig.len() < mldsa_sig_expected {
-            payload.resize(payload.len() + mldsa_sig_expected - mldsa_sig.len(), 0);
-        }
-
-        // Compute and fill checksum
-        let chksum = calc_dot_checksum(CMD_DOT_OVERRIDE, &payload[4..]);
-        payload[..4].copy_from_slice(&chksum.to_le_bytes());
-        payload
-    }
-
-    /// Test DOT override challenge/response success.
-    ///
-    /// Host sends override challenge request via MCI mbox0 with vendor public keys,
-    /// ROM generates challenge, host signs challenge with VendorKey.priv (ECDSA + MLDSA),
-    /// ROM verifies both signatures, burns fuse, and erases DOT blob.
-    #[test]
-    fn test_dot_override_challenge_success() {
-        use ecdsa::signature::hazmat::PrehashSigner;
-        use fips204::traits::Signer;
-        use p384::ecdsa::SigningKey;
-        use sha2::{Digest, Sha384};
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        // Generate random ECC P-384 key pair for VendorKey
-        println!("[TEST] Generating random VendorKey ECC key pair...");
-        let (vendor_pub_x, vendor_pub_y, vendor_priv_bytes) = generate_random_ecc_keys();
-
-        // Generate random MLDSA-87 key pair for VendorKey
-        println!("[TEST] Generating random VendorKey MLDSA key pair...");
-        let (mldsa_pub, mldsa_priv) = generate_random_mldsa_keys();
-
-        // Compute vendor PK hash (ECC + MLDSA) for OTP fuses
-        let vendor_pk_hash = compute_recovery_pk_hash(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
-
-        // Set up recovery mode: corrupted/empty blob, locked fuses, vendor PK hash in OTP
-        let flash_contents = vec![0u8; DOT_BLOB_SIZE];
-
-        println!("[TEST] Created recovery mode setup for override test");
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            dot_flash_initial_contents: Some(flash_contents),
-            rom_only: true,
-            otp_memory: Some(create_challenge_recovery_otp_memory(&vendor_pk_hash)),
-            rom_feature: Some("test-dot-recovery"),
-            ..Default::default()
-        });
-
-        // Step 1: Send DOT_OVERRIDE_CHALLENGE via mbox0 with vendor public keys
-        let override_payload =
-            build_override_challenge_payload(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
-        hw.start_mailbox_execute(CMD_DOT_UNLOCK_CHALLENGE, &override_payload)
-            .expect("Failed to send DOT_UNLOCK_CHALLENGE");
-
-        // Step 2: Wait for ROM to process and send challenge via DataReady
-        let challenge_data = hw
-            .finish_mailbox_execute()
-            .expect("Failed to get override challenge response");
-        let challenge = challenge_data.expect("Expected challenge data from ROM");
-        assert_eq!(challenge.len(), 48, "Challenge should be 48 bytes");
-        println!(
-            "[TEST] Received override challenge ({} bytes)",
-            challenge.len()
-        );
-
-        // Step 3: Sign the challenge with VendorKey.priv (ECDSA + MLDSA)
-        println!("[TEST] Signing challenge with ECDSA...");
-        let challenge_hash: [u8; 48] = {
-            let mut hasher = Sha384::new();
-            hasher.update(&challenge);
-            hasher.finalize().into()
-        };
-        let vendor_secret_key =
-            p384::SecretKey::from_slice(&vendor_priv_bytes).expect("Invalid vendor private key");
-        let vendor_signing_key = SigningKey::from(&vendor_secret_key);
-        let ecc_sig: p384::ecdsa::Signature = vendor_signing_key
-            .sign_prehash(&challenge_hash)
-            .expect("ECDSA signing failed");
-        let ecc_r_bytes: [u8; 48] = ecc_sig.r().to_bytes().into();
-        let ecc_s_bytes: [u8; 48] = ecc_sig.s().to_bytes().into();
-        println!("[TEST] ECDSA signing complete");
-
-        println!("[TEST] Signing challenge with MLDSA...");
-        let mldsa_sig_bytes = mldsa_priv
-            .try_sign_with_seed(&[0u8; 32], &challenge, &[])
-            .expect("MLDSA signing failed");
-        println!("[TEST] MLDSA signing complete");
-
-        // Step 4: Send signed challenge response via mbox0
-        let response_payload = build_override_response_payload(
-            &vendor_pub_x,
-            &vendor_pub_y,
-            &ecc_r_bytes,
-            &ecc_s_bytes,
-            &mldsa_pub,
-            &mldsa_sig_bytes,
-        );
-        hw.start_mailbox_execute(CMD_DOT_OVERRIDE, &response_payload)
-            .expect("Failed to send DOT_OVERRIDE");
-
-        // Step 5: Let the ROM verify signatures, burn fuse, write new blob, and complete.
-        let start = hw.cycle_count();
-        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() - start > 20_000_000);
-
-        // Verify a new DOT blob was written to flash (non-empty, HMAC'd for EVEN state)
-        let dot_flash = hw.read_dot_flash();
-        let written_blob = &dot_flash[..DOT_BLOB_SIZE];
-        assert!(
-            !written_blob.iter().all(|&b| b == 0) && !written_blob.iter().all(|&b| b == 0xFF),
-            "DOT blob should have been written (not erased) after override"
-        );
-        // Verify the blob has empty CAK/LAK (unlocked state)
-        let blob_bytes: [u8; DOT_BLOB_SIZE] = written_blob.try_into().unwrap();
-        let blob: TestDotBlob = zerocopy::transmute!(blob_bytes);
-        assert_eq!(blob.cak, [0u32; 12], "Override blob should have empty CAK");
-        assert_eq!(
-            blob.lak_pub, [0u32; 12],
-            "Override blob should have empty LAK"
-        );
-        assert_eq!(blob.version, 1, "Override blob should have version 1");
-        // HMAC should be non-zero (computed with EVEN-state key)
-        assert!(
-            !blob.hmac.iter().all(|&w| w == 0),
-            "Override blob should have a valid HMAC"
-        );
-
-        // Verify the DOT fuse was burned (bit 1 should now be set, total burned = 2)
-        let otp_memory = hw.read_otp_memory();
-        let fuse_array_offset = caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
-        let lock_fuse_byte = otp_memory[fuse_array_offset];
-        assert!(
-            lock_fuse_byte & 0x03 == 0x03,
-            "DOT fuse should have 2 bits burned after override (was 1, now 2), got: 0x{:02x}",
-            lock_fuse_byte
-        );
-
-        println!("[TEST] DOT override succeeded: new unlocked blob written and fuse burned");
-
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test that DOT override fails when the vendor PK hash doesn't match OTP fuses.
-    #[test]
-    fn test_dot_override_wrong_pk_hash_fails() {
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        // Generate vendor key pairs for the OTP fuses
-        let (vendor_pub_x, vendor_pub_y, _) = generate_random_ecc_keys();
-        let (mldsa_pub, _) = generate_random_mldsa_keys();
-        let vendor_pk_hash = compute_recovery_pk_hash(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
-
-        // Set up recovery mode: corrupted/empty blob, locked fuses
-        let flash_contents = vec![0u8; DOT_BLOB_SIZE];
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            dot_flash_initial_contents: Some(flash_contents),
-            rom_only: true,
-            otp_memory: Some(create_challenge_recovery_otp_memory(&vendor_pk_hash)),
-            rom_feature: Some("test-dot-recovery"),
-            ..Default::default()
-        });
-
-        // Generate DIFFERENT key pairs for the override request (wrong vendor keys)
-        let (wrong_pub_x, wrong_pub_y, _) = generate_random_ecc_keys();
-        let (wrong_mldsa_pub, _) = generate_random_mldsa_keys();
-
-        // Send override challenge with wrong vendor public keys
-        let override_payload =
-            build_override_challenge_payload(&wrong_pub_x, &wrong_pub_y, &wrong_mldsa_pub);
-        hw.start_mailbox_execute(CMD_DOT_UNLOCK_CHALLENGE, &override_payload)
-            .expect("Failed to send DOT_UNLOCK_CHALLENGE");
-
-        // The ROM should fail during vendor PK hash verification.
-        // In recovery mode (empty blob, locked fuses), override failure leads
-        // to a fatal error because no recovery mechanism remains.
-        let start = hw.cycle_count();
-        hw.step_until(|m| {
-            m.mci_fw_fatal_error().is_some()
-                || m.cmd_status().cmd_failure()
-                || m.cmd_status().data_ready()
-                || m.cycle_count() - start > 50_000_000
-        });
-
-        // Verify the DOT blob was NOT erased (should still be in flash)
-        let dot_flash = hw.read_dot_flash();
-        assert!(
-            dot_flash[..DOT_BLOB_SIZE].iter().all(|&b| b == 0),
-            "DOT blob should still be empty (was already empty in recovery mode)"
-        );
-
-        // Verify the fuse was NOT burned (should still be 1)
-        let otp_memory = hw.read_otp_memory();
-        let fuse_array_offset = caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
-        let lock_fuse_byte = otp_memory[fuse_array_offset];
-        assert_eq!(
-            lock_fuse_byte & 0x03,
-            0x01,
-            "DOT fuse should still have only 1 bit burned, got: 0x{:02x}",
-            lock_fuse_byte
-        );
-
-        println!("[TEST] DOT override correctly failed with wrong vendor PK hash");
-
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test that DOT override aborts when PK hash matches but signatures are invalid.
-    ///
-    /// The ROM should accept the vendor public keys (PK hash matches OTP) and
-    /// issue a challenge, but reject the response because the signatures don't
-    /// verify. The fuse must NOT be burned.
-    #[test]
-    fn test_dot_override_invalid_signatures_fails() {
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        // Generate correct vendor key pairs and burn their PK hash into OTP.
-        let (vendor_pub_x, vendor_pub_y, _vendor_priv_bytes) = generate_random_ecc_keys();
-        let (mldsa_pub, _mldsa_priv) = generate_random_mldsa_keys();
-        let vendor_pk_hash = compute_recovery_pk_hash(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
-
-        let flash_contents = vec![0u8; DOT_BLOB_SIZE];
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            dot_flash_initial_contents: Some(flash_contents),
-            rom_only: true,
-            otp_memory: Some(create_challenge_recovery_otp_memory(&vendor_pk_hash)),
-            rom_feature: Some("test-dot-recovery"),
-            ..Default::default()
-        });
-
-        // Send DOT_UNLOCK_CHALLENGE with correct vendor public keys.
-        let override_payload =
-            build_override_challenge_payload(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
-        hw.start_mailbox_execute(CMD_DOT_UNLOCK_CHALLENGE, &override_payload)
-            .expect("Failed to send DOT_UNLOCK_CHALLENGE");
-
-        // Wait for the ROM to verify PK hash and return a challenge.
-        let challenge_data = hw
-            .finish_mailbox_execute()
-            .expect("Failed to get override challenge response");
-        let challenge = challenge_data.expect("Expected challenge data from ROM");
-        assert_eq!(challenge.len(), 48, "Challenge should be 48 bytes");
-        println!(
-            "[TEST] Received override challenge ({} bytes), sending bogus signatures",
-            challenge.len()
-        );
-
-        // Send a response with garbage signatures (correct PK, wrong sigs).
-        let bogus_ecc_r = [0xABu8; 48];
-        let bogus_ecc_s = [0xCDu8; 48];
-        let bogus_mldsa_sig = vec![0xEFu8; 4628];
-        let response_payload = build_override_response_payload(
-            &vendor_pub_x,
-            &vendor_pub_y,
-            &bogus_ecc_r,
-            &bogus_ecc_s,
-            &mldsa_pub,
-            &bogus_mldsa_sig,
-        );
-        hw.start_mailbox_execute(CMD_DOT_OVERRIDE, &response_payload)
-            .expect("Failed to send DOT_OVERRIDE");
-
-        // The ROM should reject the signatures and hit a fatal error.
-        let start = hw.cycle_count();
-        hw.step_until(|m| {
-            m.mci_fw_fatal_error().is_some()
-                || m.cmd_status().cmd_failure()
-                || m.cycle_count() - start > 50_000_000
-        });
-
-        // Verify the fuse was NOT burned (should still be 1 = ODD/locked).
-        let otp_memory = hw.read_otp_memory();
-        let fuse_array_offset = caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
-        let lock_fuse_byte = otp_memory[fuse_array_offset];
-        assert_eq!(
-            lock_fuse_byte & 0x03,
-            0x01,
-            "DOT fuse should still have only 1 bit burned after sig verify failure, got: 0x{:02x}",
-            lock_fuse_byte
-        );
-
-        println!("[TEST] DOT override correctly aborted with invalid signatures (fuse not burned)");
-
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
     // Firmware manifest DOT command tests
     // -----------------------------------------------------------------------
 
@@ -1641,7 +1200,7 @@ mod test {
         cak: [u32; 12],
         lak: [u32; 12],
     ) -> Vec<u8> {
-        use caliptra_mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
+        use mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
         use zerocopy::IntoBytes;
 
         let mut cmd_array = [0u8; 8];
@@ -1675,9 +1234,8 @@ mod test {
     /// Expected: The manifest LOCK command burns the lock fuse (EVEN → ODD).
     #[test]
     fn test_fw_manifest_dot_lock() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
-        use caliptra_mcu_romtime::McuBootMilestones;
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
+        use registers_generated::fuses;
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1732,92 +1290,6 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Test: Firmware manifest DOT commands are applied on a hitless firmware
-    /// update boot path.
-    ///
-    /// This is a scaled-down test: rather than running a full PLDM firmware
-    /// update cycle (which the integration harness cannot exercise while
-    /// retaining OTP/flash observability), the ROM is built with the
-    /// `test-fw-manifest-dot-hitless` feature. That feature causes the
-    /// end-of-cold-boot warm reset to come back as `FirmwareHitlessUpdate`
-    /// instead of `FirmwareBootReset`, so `FwHitlessUpdate::run` is the path
-    /// that sees the SRAM firmware image + DOT manifest prefix and executes
-    /// the manifest commands.
-    ///
-    /// Setup:
-    /// - DOT enabled in fuses, EVEN state (burned=0)
-    /// - Valid DOT blob with CAK only (no LAK)
-    /// - Firmware manifest with LOCK command
-    ///
-    /// Expected: On the hitless path, the manifest LOCK command still burns
-    /// the lock fuse (EVEN → ODD) and the boot completes successfully.
-    #[test]
-    fn test_fw_manifest_dot_hitless_lock() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
-        let dot_flash = blob.to_flash_contents();
-
-        let manifest =
-            create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            fw_manifest_dot_hitless: true,
-            dot_flash_initial_contents: Some(dot_flash),
-            dot_enabled: true,
-            rom_only: true,
-            ..Default::default()
-        });
-
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
-
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_none(),
-            "Hitless manifest LOCK test failed with fatal error: 0x{:x}",
-            fatal_error.unwrap_or(0)
-        );
-
-        assert!(
-            hw.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE),
-            "Hitless boot did not complete within cycle budget"
-        );
-
-        let otp_memory = hw.read_otp_memory();
-        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
-        assert!(
-            fuse_byte & 0x01 != 0,
-            "Hitless manifest LOCK should have burned the lock fuse, got 0x{:02x}",
-            fuse_byte
-        );
-
-        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
-            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
-        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
-        assert_eq!(
-            burned, 1,
-            "Expected 1 fuse burned by hitless manifest LOCK, found {}",
-            burned
-        );
-
-        println!(
-            "[TEST] Hitless-path firmware manifest LOCK command successfully burned lock fuse"
-        );
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
     /// Test: LOCK command is idempotent when device is already in ODD (locked) state.
     ///
     /// Setup:
@@ -1828,9 +1300,8 @@ mod test {
     /// Expected: No additional fuses burned (idempotent).
     #[test]
     fn test_fw_manifest_dot_lock_idempotent() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
-        use caliptra_mcu_romtime::McuBootMilestones;
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
+        use registers_generated::fuses;
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1889,9 +1360,8 @@ mod test {
     /// Expected: One additional fuse burned (ODD → EVEN), total 2.
     #[test]
     fn test_fw_manifest_dot_unlock() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
-        use caliptra_mcu_romtime::McuBootMilestones;
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
+        use registers_generated::fuses;
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1943,9 +1413,8 @@ mod test {
     /// Test: UNLOCK command is idempotent when device is already in EVEN (unlocked) state.
     #[test]
     fn test_fw_manifest_dot_unlock_idempotent() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
-        use caliptra_mcu_romtime::McuBootMilestones;
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
+        use registers_generated::fuses;
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1997,9 +1466,8 @@ mod test {
     /// Test: DISABLE command burns a fuse when in EVEN (unlocked) state.
     #[test]
     fn test_fw_manifest_dot_disable() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_DISABLE;
-        use caliptra_mcu_romtime::McuBootMilestones;
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_DISABLE;
+        use registers_generated::fuses;
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -2048,8 +1516,7 @@ mod test {
     /// Test: No manifest magic means DOT commands are silently skipped.
     #[test]
     fn test_fw_manifest_dot_no_magic_skipped() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_romtime::McuBootMilestones;
+        use registers_generated::fuses;
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -2102,9 +1569,8 @@ mod test {
     /// Test: ROTATE command burns 2 fuses when below min_fuse_count threshold.
     #[test]
     fn test_fw_manifest_dot_rotate() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
-        use caliptra_mcu_romtime::McuBootMilestones;
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
+        use registers_generated::fuses;
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -2153,9 +1619,8 @@ mod test {
     /// Test: ROTATE command is idempotent when burned count already meets min_fuse_count.
     #[test]
     fn test_fw_manifest_dot_rotate_idempotent() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
-        use caliptra_mcu_romtime::McuBootMilestones;
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
+        use registers_generated::fuses;
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -2215,7 +1680,7 @@ mod test {
     /// Expected: ROM halts with ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR.
     #[test]
     fn test_fw_manifest_dot_bad_version() {
-        use caliptra_mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
+        use mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
         use zerocopy::IntoBytes;
 
         let lock = TEST_LOCK.lock().unwrap();
@@ -2257,7 +1722,7 @@ mod test {
         );
         assert_eq!(
             fatal_error.unwrap(),
-            u32::from(caliptra_mcu_error::McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
+            u32::from(mcu_error::McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
             "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR, got 0x{:x}",
             fatal_error.unwrap()
         );
@@ -2266,150 +1731,321 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Test: After UNLOCK command, the device boots successfully on the next cold boot.
+    // -----------------------------------------------------------------------
+    // Challenge/Response DOT Recovery Tests (ECDSA P-384 + MLDSA-87)
+    // -----------------------------------------------------------------------
+
+    /// MCI mbox0 command IDs matching the ROM's TestRecoveryTransport.
+    const CMD_DOT_RECOVERY_REQUEST: u32 = 0x444F_5451;
+    const CMD_DOT_CHALLENGE_RESPONSE: u32 = 0x444F_5452;
+
+    /// Generates a random ECC P-384 key pair, returning the public key
+    /// coordinates as raw big-endian bytes (SEC1 format) and the raw private
+    /// key bytes for signing.
+    fn generate_random_ecc_keys() -> (
+        [u8; 48], // pub_key_x (big-endian)
+        [u8; 48], // pub_key_y (big-endian)
+        [u8; 48], // private key
+    ) {
+        use p384::elliptic_curve::sec1::ToEncodedPoint;
+        let secret_key = p384::SecretKey::random(&mut rand::thread_rng());
+        let pub_point = secret_key.public_key().to_encoded_point(false);
+
+        let x_bytes: [u8; 48] = pub_point.x().unwrap().as_slice().try_into().unwrap();
+        let y_bytes: [u8; 48] = pub_point.y().unwrap().as_slice().try_into().unwrap();
+        let priv_bytes: [u8; 48] = secret_key.to_bytes().into();
+        (x_bytes, y_bytes, priv_bytes)
+    }
+
+    /// Generates a random MLDSA-87 key pair, returning the public key as raw
+    /// bytes (FIPS 204 format) and the private key for signing.
+    fn generate_random_mldsa_keys() -> (Vec<u8>, fips204::ml_dsa_87::PrivateKey) {
+        use fips204::ml_dsa_87;
+        use fips204::traits::SerDes;
+
+        let (pk, sk) =
+            ml_dsa_87::try_keygen_with_rng(&mut rand::thread_rng()).expect("MLDSA keygen failed");
+        let pk_bytes = pk.into_bytes();
+        (pk_bytes.to_vec(), sk)
+    }
+
+    /// Computes SHA-384 hash of the combined recovery public keys (ECC + MLDSA).
+    fn compute_recovery_pk_hash(
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8],
+    ) -> [u8; 48] {
+        use sha2::{Digest, Sha384};
+
+        let mut hasher = Sha384::new();
+        hasher.update(ecc_pub_x);
+        hasher.update(ecc_pub_y);
+        hasher.update(mldsa_pub);
+        let result = hasher.finalize();
+        let mut hash = [0u8; 48];
+        hash.copy_from_slice(&result);
+        hash
+    }
+
+    /// Creates OTP memory for challenge/response recovery testing.
+    /// Includes locked state fuses AND the recovery PK hash.
+    fn create_challenge_recovery_otp_memory(pk_hash: &[u8; 48]) -> Vec<u8> {
+        use registers_generated::fuses;
+
+        let required_size = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset
+            + fuses::VENDOR_RECOVERY_PK_HASH.byte_size
+            + 16;
+        let otp_size =
+            required_size.max(fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size);
+        let mut otp = vec![0u8; otp_size];
+
+        // Set DOT locked state
+        otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
+        otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
+
+        // Set recovery PK hash (48 bytes split across 2 OTP slots of 32 bytes)
+        let hash_offset = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset;
+        otp[hash_offset..hash_offset + 32].copy_from_slice(&pk_hash[..32]);
+        let next_offset = hash_offset + fuses::VENDOR_RECOVERY_PK_HASH.byte_size;
+        otp[next_offset..next_offset + 16].copy_from_slice(&pk_hash[32..48]);
+
+        otp
+    }
+
+    /// Build the mbox0 SRAM payload for DOT_RECOVERY_REQUEST.
+    fn build_recovery_request_payload(
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8],
+        cak: &[u8; 48],
+        lak: &[u8; 48],
+    ) -> Vec<u8> {
+        let mut payload = Vec::new();
+        // Reserve space for checksum (filled below)
+        payload.extend_from_slice(&[0u8; 4]);
+        payload.extend_from_slice(ecc_pub_x);
+        payload.extend_from_slice(ecc_pub_y);
+        payload.extend_from_slice(mldsa_pub);
+        let mldsa_expected = 2592;
+        if mldsa_pub.len() < mldsa_expected {
+            payload.resize(payload.len() + mldsa_expected - mldsa_pub.len(), 0);
+        }
+        payload.extend_from_slice(cak);
+        payload.extend_from_slice(lak);
+
+        // Compute and fill checksum
+        let chksum = calc_dot_checksum(CMD_DOT_RECOVERY_REQUEST, &payload[4..]);
+        payload[..4].copy_from_slice(&chksum.to_le_bytes());
+        payload
+    }
+
+    /// Build the mbox0 SRAM payload for DOT_CHALLENGE_RESPONSE.
+    fn build_challenge_response_payload(
+        ecc_sig_r: &[u8; 48],
+        ecc_sig_s: &[u8; 48],
+        mldsa_pub: &[u8],
+        mldsa_sig: &[u8],
+    ) -> Vec<u8> {
+        let mut payload = Vec::new();
+        // Reserve space for checksum (filled below)
+        payload.extend_from_slice(&[0u8; 4]);
+        payload.extend_from_slice(ecc_sig_r);
+        payload.extend_from_slice(ecc_sig_s);
+        let mldsa_pk_expected = 2592;
+        payload.extend_from_slice(mldsa_pub);
+        if mldsa_pub.len() < mldsa_pk_expected {
+            payload.resize(payload.len() + mldsa_pk_expected - mldsa_pub.len(), 0);
+        }
+        let mldsa_sig_expected = 4628;
+        payload.extend_from_slice(mldsa_sig);
+        if mldsa_sig.len() < mldsa_sig_expected {
+            payload.resize(payload.len() + mldsa_sig_expected - mldsa_sig.len(), 0);
+        }
+
+        // Compute and fill checksum
+        let chksum = calc_dot_checksum(CMD_DOT_CHALLENGE_RESPONSE, &payload[4..]);
+        payload[..4].copy_from_slice(&chksum.to_le_bytes());
+        payload
+    }
+
+    /// Compute the Caliptra-standard mailbox checksum.
+    fn calc_dot_checksum(cmd: u32, data: &[u8]) -> u32 {
+        let mut sum = 0u32;
+        for &b in cmd.to_le_bytes().iter() {
+            sum = sum.wrapping_add(b as u32);
+        }
+        for &b in data {
+            sum = sum.wrapping_add(b as u32);
+        }
+        0u32.wrapping_sub(sum)
+    }
+
+    /// Test challenge/response DOT recovery with both ECDSA and MLDSA signatures.
+    ///
+    /// Host sends recovery request via MCI mbox0, ROM generates challenge,
+    /// host signs challenge with ECDSA + MLDSA, ROM verifies and writes new DOT blob.
+    /// Uses randomly generated keys each run.
     #[test]
-    fn test_fw_manifest_dot_unlock_second_boot_succeeds() {
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
-        use caliptra_mcu_romtime::McuBootMilestones;
+    fn test_dot_challenge_recovery_success() {
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let owner_pk_hash = get_owner_pk_hash();
+        let cak: [u8; 48] = transmute!(owner_pk_hash);
+        let lak_u32 = test_lak();
+        let lak: [u8; 48] = transmute!(lak_u32);
+
+        // Generate random key pairs
+        println!("[TEST] Generating random ECC key pair...");
+        let (ecc_pub_x, ecc_pub_y, ecc_priv_bytes) = generate_random_ecc_keys();
+        println!("[TEST] Generating random MLDSA key pair...");
+        let (mldsa_pub, mldsa_priv) = generate_random_mldsa_keys();
+        println!("[TEST] Key generation complete");
+
+        // Compute PK hash for OTP fuses
+        let pk_hash = compute_recovery_pk_hash(&ecc_pub_x, &ecc_pub_y, &mldsa_pub);
+
+        // DOT flash: offset 0 empty (triggers recovery), offset 2048 has valid backup blob
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
-        let dot_flash = blob.to_flash_contents();
+        let blob_bytes = blob.as_bytes();
+        let mut flash_contents = vec![0u8; 4096];
+        flash_contents[2048..2048 + DOT_BLOB_SIZE].copy_from_slice(blob_bytes);
 
-        let manifest =
-            create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
-
-        // Boot 1: process the UNLOCK manifest — burns a fuse and writes new unlock blob.
         let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            dot_flash_initial_contents: Some(dot_flash),
+            dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
-            otp_memory: Some(create_locked_otp_memory()),
+            otp_memory: Some(create_challenge_recovery_otp_memory(&pk_hash)),
+            rom_feature: Some("test-dot-recovery"),
             ..Default::default()
         });
 
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
+        // Step 1: Send recovery request via mbox0
+        let request_payload =
+            build_recovery_request_payload(&ecc_pub_x, &ecc_pub_y, &mldsa_pub, &cak, &lak);
+        hw.start_mailbox_execute(CMD_DOT_RECOVERY_REQUEST, &request_payload)
+            .expect("Failed to send DOT_RECOVERY_REQUEST");
 
-        let fatal_error = hw.mci_fw_fatal_error();
+        // Step 2: Wait for ROM to process and send challenge via DataReady
+        let challenge_data = hw
+            .finish_mailbox_execute()
+            .expect("Failed to get challenge response");
+        let challenge = challenge_data.expect("Expected challenge data from ROM");
+        assert_eq!(challenge.len(), 48, "Challenge should be 48 bytes");
+        println!("[TEST] Received challenge ({} bytes)", challenge.len());
+
+        // Step 3: Sign the challenge
+        // ECDSA: sign SHA-384(challenge) with prehash
+        println!("[TEST] Signing challenge with ECDSA...");
+        let challenge_hash: [u8; 48] = {
+            let mut hasher = Sha384::new();
+            hasher.update(&challenge);
+            hasher.finalize().into()
+        };
+        let ecc_secret_key =
+            p384::SecretKey::from_slice(&ecc_priv_bytes).expect("Invalid ECC private key");
+        let ecc_signing_key = SigningKey::from(&ecc_secret_key);
+        let ecc_sig: p384::ecdsa::Signature = ecc_signing_key
+            .sign_prehash(&challenge_hash)
+            .expect("ECDSA signing failed");
+        let ecc_r_bytes: [u8; 48] = ecc_sig.r().to_bytes().into();
+        let ecc_s_bytes: [u8; 48] = ecc_sig.s().to_bytes().into();
+        println!("[TEST] ECDSA signing complete");
+
+        // MLDSA: sign the raw challenge bytes
+        println!("[TEST] Signing challenge with MLDSA...");
+        let mldsa_sig_bytes = mldsa_priv
+            .try_sign_with_seed(&[0u8; 32], &challenge, &[])
+            .expect("MLDSA signing failed");
+        println!("[TEST] MLDSA signing complete");
+
+        // Step 4: Send signed challenge response via mbox0
+        let response_payload = build_challenge_response_payload(
+            &ecc_r_bytes,
+            &ecc_s_bytes,
+            &mldsa_pub,
+            &mldsa_sig_bytes,
+        );
+        hw.start_mailbox_execute(CMD_DOT_CHALLENGE_RESPONSE, &response_payload)
+            .expect("Failed to send DOT_CHALLENGE_RESPONSE");
+
+        // Step 5: Let the ROM verify signatures, write DOT blob, and complete.
+        // We don't call finish_mailbox_execute() because the ROM transport
+        // intentionally leaves the mbox0 transaction open so the SRAM data
+        // (MLDSA pub key and signature) stays valid during verification.
+        // The ROM will eventually trigger a warm reset or hit a fatal error.
+        let start = hw.cycle_count();
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() - start > 20_000_000);
+
+        // Verify a DOT blob was written to flash at offset 0
+        let dot_flash = hw.read_dot_flash();
+        let written_blob = &dot_flash[..DOT_BLOB_SIZE];
         assert!(
-            fatal_error.is_none(),
-            "Boot 1 (UNLOCK manifest) failed: 0x{:x}",
-            fatal_error.unwrap_or(0)
+            !written_blob.iter().all(|&b| b == 0),
+            "Challenge recovery should have written a DOT blob to flash"
         );
 
-        // Extract post-UNLOCK OTP and flash state.
-        let otp_after_unlock = hw.read_otp_memory();
-        let dot_flash_after_unlock = hw.read_dot_flash();
-
-        // Boot 2: boot again with the post-UNLOCK state and no firmware manifest.
-        // The blob written during boot 1 must be correctly sealed for the new EVEN
-        // state (burned=2, derivation_value=3) so this boot can verify it.
-        let mut hw2 = start_runtime_hw_model(TestParams {
-            dot_flash_initial_contents: Some(dot_flash_after_unlock),
-            rom_only: true,
-            otp_memory: Some(otp_after_unlock),
-            ..Default::default()
-        });
-
-        hw2.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
-
-        let fatal_error2 = hw2.mci_fw_fatal_error();
-        assert!(
-            fatal_error2.is_none(),
-            "Boot 2 (post-UNLOCK) failed: 0x{:x} — blob was not correctly sealed for the new EVEN state",
-            fatal_error2.unwrap_or(0)
-        );
-
-        println!("[TEST] Firmware manifest UNLOCK: second boot succeeds with post-UNLOCK blob");
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Test: An unknown DOT command code triggers a fatal error.
-    ///
-    /// Command codes outside the defined set (NOP/LOCK/UNLOCK/ROTATE/DISABLE) must
-    /// not be silently ignored; the ROM should return an error so a malformed or
-    /// future-version manifest is not silently accepted on an older ROM.
+    /// Test that challenge/response recovery fails when the PK hash doesn't match fuses.
+    /// Uses randomly generated keys each run.
     #[test]
-    fn test_fw_manifest_dot_unknown_command() {
-        use caliptra_mcu_romtime::McuBootMilestones;
-
+    fn test_dot_challenge_recovery_wrong_pk_hash() {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
-        let dot_flash = blob.to_flash_contents();
+        let cak: [u8; 48] = transmute!(owner_pk_hash);
+        let lak_u32 = test_lak();
+        let lak: [u8; 48] = transmute!(lak_u32);
 
-        // Command 0xFF is not defined; the ROM must reject it.
-        let manifest = create_manifest_section(&[0xFF], 0, [0u32; 12], [0u32; 12]);
+        // Generate random keys
+        let (ecc_pub_x, ecc_pub_y, _) = generate_random_ecc_keys();
+        let (mldsa_pub, _) = generate_random_mldsa_keys();
 
+        // DOT flash: empty (no backup blob — only challenge recovery available)
+        let flash_contents = vec![0u8; 4096];
+
+        // Burn a WRONG recovery PK hash in fuses — the generated keys won't
+        // match this hash, so the challenge flow should fail with PK_HASH_MISMATCH.
+        let wrong_pk_hash = [0xABu8; 48];
         let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            dot_flash_initial_contents: Some(dot_flash),
-            dot_enabled: true,
+            dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
+            otp_memory: Some(create_challenge_recovery_otp_memory(&wrong_pk_hash)),
+            rom_feature: Some("test-dot-recovery"),
             ..Default::default()
         });
 
-        hw.step_until(|m| {
-            m.mci_fw_fatal_error().is_some()
-                || m.mci_boot_milestones()
-                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.cycle_count() > 100_000_000
-        });
+        // Send recovery request — the ROM should fail during PK hash verification
+        let request_payload =
+            build_recovery_request_payload(&ecc_pub_x, &ecc_pub_y, &mldsa_pub, &cak, &lak);
+        hw.start_mailbox_execute(CMD_DOT_RECOVERY_REQUEST, &request_payload)
+            .expect("Failed to send DOT_RECOVERY_REQUEST");
+
+        // The ROM should detect PK hash mismatch and set a fatal error.
+        // The mbox0 transaction may complete with CmdFailure or the ROM may
+        // crash before responding. Either way, step until fatal error.
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 100_000_000);
 
         let fatal_error = hw.mci_fw_fatal_error();
         assert!(
             fatal_error.is_some(),
-            "Expected fatal error for unknown DOT command, but boot completed"
-        );
-        assert_eq!(
-            fatal_error.unwrap(),
-            u32::from(caliptra_mcu_error::McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
-            "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR for unknown command, got 0x{:x}",
-            fatal_error.unwrap()
+            "Challenge recovery with wrong PK hash should fail"
         );
 
-        println!(
-            "[TEST] Unknown DOT command correctly triggers ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR"
-        );
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test: The runtime actually boots when a DOT manifest header (NOP) is
-    /// prepended to the firmware image.
-    #[test]
-    fn test_fw_manifest_dot_runtime_boots() {
-        let lock = TEST_LOCK.lock().unwrap();
-
-        let manifest = create_manifest_section(
-            &[caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_NOP],
-            0,
-            [0u32; 12],
-            [0u32; 12],
+        // Verify flash was not written
+        let dot_flash = hw.read_dot_flash();
+        assert!(
+            dot_flash[..DOT_BLOB_SIZE].iter().all(|&b| b == 0),
+            "Flash should not be written when PK hash doesn't match"
         );
 
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let _hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            ..Default::default()
-        });
-
-        println!("[TEST] Runtime boots correctly with DOT manifest header prepended");
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }

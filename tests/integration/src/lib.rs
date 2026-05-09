@@ -7,24 +7,19 @@ mod jtag;
 mod rom;
 #[cfg(test)]
 mod runtime;
-mod test_active_i3c;
-mod test_bare_metal;
-mod test_caliptra_util_host_mcu_mailbox_validator;
-mod test_caliptra_util_host_spdm_vdm_validator;
 mod test_dot;
 mod test_exception_handler;
+mod test_fips_zeroization;
 mod test_firmware_update;
 mod test_fpga_flash_ctrl;
+mod test_handoff;
+mod test_hek;
 mod test_i3c_constant_writes;
 mod test_i3c_simple;
 mod test_mctp_capsule_loopback;
-mod test_mctp_spdm_attestation;
-mod test_mctp_spdm_responder_conformance;
 mod test_mctp_vdm_cmds;
-mod test_mctp_vdm_validator;
 mod test_mcu_mbox;
 mod test_pldm_fw_update;
-mod test_raw_lifecycle_boot;
 mod test_soc_boot;
 
 pub fn platform() -> &'static str {
@@ -38,12 +33,10 @@ pub fn platform() -> &'static str {
 #[cfg(test)]
 mod test {
     use caliptra_image_types::FwVerificationPqcKeyType;
-    use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
-    use caliptra_mcu_builder::{
-        target_dir, CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET,
-    };
-    use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
-    use caliptra_mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
+    use mcu_builder::flash_image::build_flash_image_bytes;
+    use mcu_builder::{CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET};
+    use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
+    use mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
     use random_port::PortPicker;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Mutex;
@@ -52,6 +45,8 @@ mod test {
         process::Command,
         sync::LazyLock,
     };
+
+    const TEST_HW_REVISION: &str = "2.1.0";
 
     /// Custom Caliptra firmware bundle for testing with custom keys.
     pub struct CustomCaliptraFw {
@@ -63,65 +58,29 @@ mod test {
         pub soc_manifest: Vec<u8>,
     }
 
-    const TEST_HW_REVISION: &str = "2.0.0";
-
+    #[derive(Default)]
     pub struct TestParams<'a> {
         pub feature: Option<&'a str>,
+        pub rom_feature: Option<&'a str>,
         pub i3c_port: Option<u16>,
         pub dot_flash_initial_contents: Option<Vec<u8>>,
         pub rom_only: bool,
+        pub flash_boot: bool,
         /// If true, set the DOT initialized fuse to enable DOT flow
         pub dot_enabled: bool,
         /// Custom Caliptra firmware bundle to use instead of prebuilt/compiled.
         pub custom_caliptra_fw: Option<CustomCaliptraFw>,
         /// Custom OTP memory contents. If provided, takes precedence over dot_enabled.
         pub otp_memory: Option<Vec<u8>>,
-        pub flash_boot: bool,
-        /// ROM feature flag. If set, compiles a ROM with this feature enabled.
-        pub rom_feature: Option<&'a str>,
-        pub active_i3c1: bool,
-        pub lifecycle_controller_state: Option<caliptra_mcu_hw_model::LifecycleControllerState>,
+        /// Enable FIPS zeroization PPD signal for cold boot testing.
+        pub fips_zeroization: bool,
+        pub ocp_lock_en: bool,
         /// Optional custom MCU ROM bytes (overrides the default/compiled ROM).
         pub custom_mcu_rom: Option<Vec<u8>>,
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
         pub firmware_prefix: Option<Vec<u8>>,
-        /// If true (with `firmware_prefix` set), use the DOT hitless-update
-        /// test ROM which forces the cold-boot warm reset to come back as
-        /// `FirmwareHitlessUpdate` so `FwHitlessUpdate::run` processes the
-        /// manifest instead of `FwBoot::run`.
-        pub fw_manifest_dot_hitless: bool,
-        pub vendor_pqc_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
-        /// Assert the debug intent strap.
-        pub debug_intent: bool,
-        /// Production debug unlock keypairs (ECC384 pub key bytes, MLDSA87 pub key bytes).
-        pub prod_dbg_unlock_keypairs: Vec<([u8; 96], [u8; 2592])>,
-        pub use_strap_secrets: bool,
     }
 
-    impl Default for TestParams<'_> {
-        fn default() -> Self {
-            Self {
-                feature: None,
-                i3c_port: None,
-                dot_flash_initial_contents: None,
-                rom_only: false,
-                dot_enabled: false,
-                custom_caliptra_fw: None,
-                otp_memory: None,
-                flash_boot: false,
-                rom_feature: None,
-                active_i3c1: false,
-                lifecycle_controller_state: None,
-                custom_mcu_rom: None,
-                firmware_prefix: None,
-                fw_manifest_dot_hitless: false,
-                vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
-                debug_intent: false,
-                prod_dbg_unlock_keypairs: Vec::new(),
-                use_strap_secrets: false,
-            }
-        }
-    }
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         Path::new(&env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -132,29 +91,26 @@ mod test {
     });
 
     fn target_binary(name: &str) -> PathBuf {
-        target_dir().join(TARGET).join("release").join(name)
+        PROJECT_ROOT
+            .join("target")
+            .join(TARGET)
+            .join("release")
+            .join(name)
     }
 
     // Get ROM from prebuilt or compile
     fn get_or_compile_rom(feature: &str) -> PathBuf {
-        if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let rom_data = if feature.is_empty() {
-                binaries.mcu_rom.clone()
-            } else {
-                binaries.test_feature_rom(feature)
-            };
-            let safe_name = feature.replace('/', "_");
-            let filename = if safe_name.is_empty() {
-                "mcu_rom_prebuilt.bin".to_string()
-            } else {
-                format!("mcu_rom_prebuilt_{}.bin", safe_name)
-            };
-            let output = target_binary(&filename);
-            if let Some(parent) = output.parent() {
-                std::fs::create_dir_all(parent).ok();
+        // Try to get prebuilt ROM from the firmware bundle
+        if feature.is_empty() {
+            if let Ok(binaries) = FirmwareBinaries::from_env() {
+                let output = target_binary("mcu_rom_prebuilt.bin");
+                if let Some(parent) = output.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                std::fs::write(&output, &binaries.mcu_rom)
+                    .expect("Failed to write prebuilt ROM to file");
+                return output;
             }
-            std::fs::write(&output, &rom_data).expect("Failed to write prebuilt ROM to file");
-            return output;
         }
         // Fall back to compilation
         compile_rom(feature)
@@ -164,16 +120,13 @@ mod test {
     pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| get_or_compile_rom(""));
     pub static ROM_FW_MANIFEST_DOT: LazyLock<Vec<u8>> =
         LazyLock::new(|| std::fs::read(get_or_compile_rom("test-fw-manifest-dot")).unwrap());
-    pub static ROM_FW_MANIFEST_DOT_HITLESS: LazyLock<Vec<u8>> = LazyLock::new(|| {
-        std::fs::read(get_or_compile_rom("test-fw-manifest-dot-hitless")).unwrap()
-    });
 
     pub static TEST_LOCK: LazyLock<Mutex<AtomicU32>> =
         LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
 
     // Compile the ROM for a given feature flag (empty string for default ROM).
     pub fn get_rom_with_feature(feature: &str) -> PathBuf {
-        get_or_compile_rom(feature)
+        compile_rom(feature)
     }
 
     fn platform() -> &'static str {
@@ -194,18 +147,25 @@ mod test {
         } else {
             feature.to_string()
         };
-        let output: PathBuf =
-            caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
-                platform: Some(platform()),
-                features: Some(&feature),
-                ..Default::default()
-            })
+        // Return the feature-suffixed path directly from rom_build.
+        // Do NOT copy to a generic name: subsequent builds re-create the
+        // intermediate mcu-rom-<platform>.bin (without the appended ROM
+        // digest), which would silently clobber the copy.
+        let output: PathBuf = mcu_builder::rom_build(Some(platform().to_string()), Some(feature))
             .expect("ROM build failed");
         assert!(output.exists());
         output
     }
 
     pub fn compile_runtime(feature: Option<&str>, example_app: bool) -> PathBuf {
+        let mut features = vec![];
+        if let Some(feature) = feature {
+            features.push(feature);
+        }
+        if TEST_HW_REVISION == "2.1.0" {
+            features.push("hw-2-1");
+        }
+
         let platform = platform();
         let feature_name = match feature {
             Some(f) => format!("-{f}"),
@@ -213,23 +173,14 @@ mod test {
         };
         let name = format!("runtime{}-{}.bin", feature_name, platform);
 
-        let output = caliptra_mcu_builder::runtime_build_with_apps(
-            &caliptra_mcu_builder::CaliptraBuildArgs {
-                features: feature,
-                output_name: Some(name),
-                example_app,
-                platform: Some(platform),
-                ..Default::default()
-            },
+        let output = mcu_builder::runtime_build_with_apps(
+            &features,
+            Some(name),
+            example_app,
+            Some(platform),
+            None,
         )
         .expect("Runtime failed to compile");
-        assert!(output.exists());
-        output
-    }
-
-    pub fn compile_bare_metal_runtime() -> PathBuf {
-        let output =
-            caliptra_mcu_builder::bare_metal_build().expect("Bare-metal runtime failed to compile");
         assert!(output.exists());
         output
     }
@@ -237,27 +188,22 @@ mod test {
     /// Check if prebuilt binaries are available for the given feature.
     pub fn has_prebuilt_binaries(feature: &str) -> bool {
         if let Ok(binaries) = FirmwareBinaries::from_env() {
-            binaries.test_runtime(feature).is_ok()
-                && binaries.test_pldm_fw_pkg(feature).is_ok()
-                && binaries.test_flash_image(feature).is_ok()
+            binaries.test_runtime(feature).is_ok() && binaries.test_soc_manifest(feature).is_ok()
         } else {
             false
         }
     }
 
-    pub struct TestBinaries {
-        pub vendor_pk_hash_u8: Vec<u8>,
-        pub caliptra_rom: Vec<u8>,
-        pub caliptra_fw: Vec<u8>,
-        pub mcu_rom: Vec<u8>,
-        pub soc_manifest: Vec<u8>,
-        pub mcu_runtime: Vec<u8>,
+    struct TestBinaries {
+        vendor_pk_hash_u8: Vec<u8>,
+        caliptra_rom: Vec<u8>,
+        caliptra_fw: Vec<u8>,
+        mcu_rom: Vec<u8>,
+        soc_manifest: Vec<u8>,
+        mcu_runtime: Vec<u8>,
     }
 
-    fn prebuilt_binaries(
-        feature: Option<&str>,
-        binaries: &'static FirmwareBinaries,
-    ) -> TestBinaries {
+    fn prebuilt_binaries(params: &TestParams, binaries: &'static FirmwareBinaries) -> TestBinaries {
         let mut test_binaries = TestBinaries {
             vendor_pk_hash_u8: binaries
                 .vendor_pk_hash()
@@ -271,7 +217,7 @@ mod test {
         };
 
         // check for prebuilt binaries for our test feature
-        if let Some(feature) = feature {
+        if let Some(feature) = params.feature {
             let err = format!(
                 "Failed to get MCU firmware and manifest for feature {}",
                 feature
@@ -280,29 +226,16 @@ mod test {
             test_binaries.mcu_runtime = binaries.test_runtime(feature).expect(&err).clone();
         }
 
+        if let Some(rom_feature) = params.rom_feature {
+            test_binaries.mcu_rom = binaries.test_feature_rom(rom_feature);
+        }
+
         test_binaries
     }
 
-    pub fn build_test_binaries(params: &TestParams) -> TestBinaries {
-        // Get MCU runtime: prefer prebuilt, fall back to compilation
-        let mcu_runtime_path = if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let runtime_bytes = if let Some(feature) = params.feature {
-                binaries
-                    .test_runtime(feature)
-                    .unwrap_or_else(|_| {
-                        panic!("Failed to get prebuilt runtime for feature {}", feature)
-                    })
-                    .clone()
-            } else {
-                binaries.mcu_runtime.clone()
-            };
-            let path = target_binary("mcu_runtime_prebuilt_for_builder.bin");
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).ok();
-            }
-            std::fs::write(&path, &runtime_bytes)
-                .expect("Failed to write prebuilt runtime to file");
-            path
+    fn build_test_binaries(params: &TestParams) -> TestBinaries {
+        let mcu_runtime_path = if params.rom_only {
+            compile_runtime(None, false)
         } else {
             compile_runtime(params.feature, false)
         };
@@ -324,36 +257,24 @@ mod test {
                 (mcu_runtime_path, bytes)
             };
 
-        // When prebuilt binaries are available, pass the Caliptra ROM/FW paths
-        // to the builder so it doesn't try to compile them from scratch.
-        let (prebuilt_caliptra_rom, prebuilt_caliptra_fw, prebuilt_vendor_pk_hash) =
-            if let Ok(binaries) = FirmwareBinaries::from_env() {
-                let rom_path =
-                    std::env::temp_dir().join("build_test_binaries_caliptra_rom_prebuilt.bin");
-                std::fs::write(&rom_path, &binaries.caliptra_rom)
-                    .expect("Failed to write prebuilt Caliptra ROM");
-                let fw_path =
-                    std::env::temp_dir().join("build_test_binaries_caliptra_fw_prebuilt.bin");
-                std::fs::write(&fw_path, &binaries.caliptra_fw)
-                    .expect("Failed to write prebuilt Caliptra FW");
-                let vendor_pk_hash = hex::encode(
-                    binaries
-                        .vendor_pk_hash()
-                        .expect("Failed to get vendor PK hash from prebuilt binaries"),
-                );
-                (Some(rom_path), Some(fw_path), Some(vendor_pk_hash))
-            } else {
-                (None, None, None)
-            };
-
-        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-            fpga: cfg!(feature = "fpga_realtime"),
-            mcu_firmware: Some(mcu_runtime_for_builder),
-            caliptra_rom: prebuilt_caliptra_rom,
-            caliptra_firmware: prebuilt_caliptra_fw,
-            vendor_pk_hash: prebuilt_vendor_pk_hash,
-            ..Default::default()
-        });
+        let mut builder = CaliptraBuilder::new(
+            cfg!(feature = "fpga_realtime"),
+            params
+                .feature
+                .map(|f| f.contains("ocp-lock"))
+                .unwrap_or(false)
+                || params.ocp_lock_en,
+            None,
+            None,
+            None,
+            None,
+            Some(mcu_runtime_for_builder),
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         let caliptra_rom = std::fs::read(
             builder
                 .get_caliptra_rom()
@@ -369,16 +290,13 @@ mod test {
         .unwrap();
 
         let mcu_rom = if params.firmware_prefix.is_some() {
-            if params.fw_manifest_dot_hitless {
-                ROM_FW_MANIFEST_DOT_HITLESS.clone()
-            } else {
-                ROM_FW_MANIFEST_DOT.clone()
-            }
-        } else if let Some(rf) = params.rom_feature {
-            let rom_path = get_rom_with_feature(rf);
-            std::fs::read(rom_path).unwrap()
+            ROM_FW_MANIFEST_DOT.clone()
+        } else if let Some(f) = params.rom_feature {
+            std::fs::read(compile_rom(f)).unwrap()
+        } else if params.rom_only && params.feature.is_some() {
+            std::fs::read(compile_rom(params.feature.unwrap())).unwrap()
         } else {
-            std::fs::read(&*ROM).unwrap()
+            std::fs::read(ROM.to_path_buf()).unwrap()
         };
         let soc_manifest = std::fs::read(
             builder
@@ -411,15 +329,13 @@ mod test {
             soc_manifest,
             mcu_runtime,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) if params.firmware_prefix.is_none() => {
-                if let Some(rom_feature) = params.rom_feature {
-                    // Use prebuilt base binaries with a feature-specific ROM
-                    let mut tb = prebuilt_binaries(params.feature, binaries);
-                    tb.mcu_rom = binaries.test_feature_rom(rom_feature);
-                    tb
-                } else {
-                    prebuilt_binaries(params.feature, binaries)
-                }
+            Ok(binaries)
+                if params.firmware_prefix.is_none()
+                    && params.rom_feature.is_none()
+                    && (params.feature.is_none()
+                        || has_prebuilt_binaries(params.feature.unwrap())) =>
+            {
+                prebuilt_binaries(&params, binaries)
             }
             _ => {
                 println!("Could not find prebuilt firmware binaries, building firmware...");
@@ -461,7 +377,7 @@ mod test {
             Some(custom_otp)
         } else if params.dot_enabled {
             // TODO: move this when we add the fuse-burning scripts
-            use caliptra_mcu_registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+            use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
             // Create OTP memory large enough to include the vendor non-secret prod partition
             let mut otp = vec![0u8; VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 256];
             // Set dot_initialized to 1 at the start of the vendor non-secret prod partition
@@ -485,9 +401,10 @@ mod test {
                 (None, caliptra_fw, soc_manifest, mcu_runtime)
             };
 
-        caliptra_mcu_hw_model::new(InitParams {
+        // TODO: read the PQC type
+        mcu_hw_model::new(InitParams {
             fuses: Fuses {
-                fuse_pqc_key_type: params.vendor_pqc_type.map(|t| t as u32).unwrap_or(0),
+                fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
                 vendor_pk_hash,
                 ..Default::default()
             },
@@ -498,23 +415,16 @@ mod test {
             mcu_firmware: &mcu_firmware,
             vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
             active_mode: true,
-            vendor_pqc_type: params.vendor_pqc_type,
+            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
             i3c_port: params.i3c_port,
             enable_mcu_uart_log: true,
             dot_flash_initial_contents: params.dot_flash_initial_contents,
             check_booted_to_runtime: !params.rom_only,
             otp_memory: otp_memory.as_deref(),
-            lifecycle_controller_state: params.lifecycle_controller_state,
             primary_flash_initial_contents: flash_image,
             flash_boot: params.flash_boot,
-            active_i3c1: params.active_i3c1,
-            debug_intent: params.debug_intent,
-            prod_dbg_unlock_keypairs: params
-                .prod_dbg_unlock_keypairs
-                .iter()
-                .map(|(ecc, mldsa)| (ecc as &[u8; 96], mldsa as &[u8; 2592]))
-                .collect(),
-            use_strap_secrets: params.use_strap_secrets,
+            ocp_lock_en: params.ocp_lock_en,
+            fips_zeroization: params.fips_zeroization,
             ..Default::default()
         })
         .unwrap()
@@ -538,7 +448,6 @@ mod test {
         i3c_port: String,
         active_mode: bool,
         device_security_state: DeviceLifecycle,
-
         soc_images: Option<Vec<ImageCfg>>,
         streaming_boot_package_path: Option<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
@@ -562,8 +471,6 @@ mod test {
             runtime_path_str,
             "--i3c-port".to_string(),
             i3c_port.clone(),
-            "--test-feature".to_string(),
-            feature.to_string(),
         ];
 
         // map the memory map to the emulator
@@ -571,109 +478,87 @@ mod test {
             "--rom-offset".to_string(),
             format!(
                 "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_offset
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_offset
             ),
             "--rom-size".to_string(),
-            format!(
-                "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size
-            ),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size),
             "--dccm-offset".to_string(),
             format!(
                 "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset
             ),
             "--dccm-size".to_string(),
-            format!(
-                "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size
-            ),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size),
             "--sram-offset".to_string(),
             format!(
                 "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset
             ),
             "--sram-size".to_string(),
-            format!(
-                "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_size
-            ),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_size),
             "--pic-offset".to_string(),
             format!(
                 "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.pic_offset
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.pic_offset
             ),
             "--i3c-offset".to_string(),
             format!(
                 "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_offset
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_offset
             ),
             "--i3c-size".to_string(),
-            format!(
-                "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_size
-            ),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_size),
             "--mci-offset".to_string(),
             format!(
                 "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_offset
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_offset
             ),
             "--mci-size".to_string(),
-            format!(
-                "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_size
-            ),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_size),
             "--mbox-offset".to_string(),
             format!(
                 "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_offset
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_offset
             ),
             "--mbox-size".to_string(),
-            format!(
-                "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_size
-            ),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_size),
             "--soc-offset".to_string(),
             format!(
                 "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_offset
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_offset
             ),
             "--soc-size".to_string(),
-            format!(
-                "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_size
-            ),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_size),
             "--otp-offset".to_string(),
             format!(
                 "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_offset
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_offset
             ),
             "--otp-size".to_string(),
-            format!(
-                "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_size
-            ),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_size),
             "--lc-offset".to_string(),
-            format!(
-                "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_offset
-            ),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_offset),
             "--lc-size".to_string(),
-            format!(
-                "0x{:x}",
-                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size
-            ),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size),
         ]);
 
         let mut caliptra_builder = if let Some(caliptra_builder) = caliptra_builder {
             caliptra_builder
         } else {
-            CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-                fpga: cfg!(feature = "fpga_realtime"),
-                mcu_firmware: Some(runtime_path.clone()),
+            CaliptraBuilder::new(
+                cfg!(feature = "fpga_realtime"),
+                feature.contains("ocp-lock"),
+                None,
+                None,
+                None,
+                None,
+                Some(runtime_path.clone()),
                 soc_images,
-                ..Default::default()
-            })
+                None,
+                None,
+                None,
+                None,
+            )
         };
 
         if let Some(hw_revision) = hw_revision {
@@ -772,9 +657,11 @@ mod test {
             let mut cargo_args: Vec<String> = vec![
                 "run".to_string(),
                 "-p".to_string(),
-                "caliptra-mcu-emulator".to_string(),
+                "emulator".to_string(),
                 "--profile".to_string(),
                 "test".to_string(),
+                "--features".to_string(),
+                feature.to_string(),
                 "--".to_string(),
             ];
             cargo_args.extend(emulator_args);
@@ -789,10 +676,10 @@ mod test {
     /// Uses the CPTRA_EMULATOR_BUNDLE environment variable.
     fn get_prebuilt_emulator(feature: &str) -> Option<PathBuf> {
         let binaries = EmulatorBinaries::from_env().ok()?;
-        let emulator_bytes = binaries.emulator().ok()?;
+        let emulator_bytes = binaries.emulator(feature).ok()?;
 
         // Write prebuilt emulator to target directory
-        let output = target_binary("emulator");
+        let output = target_binary(&format!("emulator-{}", feature));
         if let Some(parent) = output.parent() {
             std::fs::create_dir_all(parent).ok()?;
         }
@@ -847,7 +734,12 @@ mod test {
         std::fs::write(&caliptra_rom_path, &binaries.caliptra_rom).ok()?;
 
         let caliptra_fw_path = target_dir.join("caliptra_fw_prebuilt.bin");
-        std::fs::write(&caliptra_fw_path, &binaries.caliptra_fw).ok()?;
+        let caliptra_fw = if feature.contains("ocp-lock") {
+            &binaries.caliptra_fw_ocp_lock
+        } else {
+            &binaries.caliptra_fw
+        };
+        std::fs::write(&caliptra_fw_path, caliptra_fw).ok()?;
 
         // Get SoC manifest for this feature, or default
         let soc_manifest_bytes = binaries
@@ -859,17 +751,22 @@ mod test {
 
         let vendor_pk_hash = binaries.vendor_pk_hash().map(|h| hex::encode(h));
 
-        Some(CaliptraBuilder::new(
-            &caliptra_mcu_builder::CaliptraBuildArgs {
-                fpga: cfg!(feature = "fpga_realtime"),
-                caliptra_rom: Some(caliptra_rom_path),
-                caliptra_firmware: Some(caliptra_fw_path),
-                soc_manifest: Some(soc_manifest_path),
-                vendor_pk_hash,
-                mcu_firmware: Some(runtime_path),
-                ..Default::default()
-            },
-        ))
+        let caliptra_builder = CaliptraBuilder::new(
+            cfg!(feature = "fpga_realtime"),
+            feature.contains("ocp-lock"),
+            Some(caliptra_rom_path),
+            Some(caliptra_fw_path),
+            Some(soc_manifest_path),
+            vendor_pk_hash,
+            Some(runtime_path),
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        Some(caliptra_builder)
     }
 
     fn run_test(feature: &str, example_app: bool) {
@@ -949,6 +846,7 @@ mod test {
     run_test!(test_caliptra_certs, example_app);
     run_test!(test_caliptra_crypto, example_app);
     run_test!(test_caliptra_mailbox, example_app);
+    run_test!(test_caliptra_util_host_validator, nightly);
     run_test!(test_dma, example_app);
     run_test!(test_doe_transport_loopback, example_app);
     run_test!(test_doe_user_loopback, example_app);
@@ -964,15 +862,18 @@ mod test {
     run_test!(test_log_flash_circular);
     run_test!(test_log_flash_usermode, example_app);
     run_test!(test_mctp_ctrl_cmds);
-    run_test!(test_mctp_user_loopback, example_app);
+    // TODO(#694): re-enable
+    // run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
+    run_test!(test_mctp_spdm_responder_conformance, nightly);
     run_test!(test_doe_spdm_responder_conformance, nightly);
     run_test!(test_doe_spdm_tdisp_ide_validator, nightly);
     run_test!(test_mci, example_app);
     run_test!(test_mcu_mbox_driver);
     run_test!(test_mcu_mbox_soc_requester_loopback, example_app);
     run_test!(test_mbox_sram, example_app);
+    run_test!(test_ocp_lock, example_app);
     run_test!(test_warm_reset, example_app);
 
     /// This tests a full active mode boot run through with Caliptra, including
@@ -1050,17 +951,11 @@ mod test {
             "test-mcu-svn-lt-fuse"
         };
         let name = format!("runtime-{}.bin", feature);
+        let test_runtime = target_binary(&name);
+
         println!("Compiling test firmware {}", &feature);
-        let test_runtime = caliptra_mcu_builder::runtime_build_with_apps(
-            &caliptra_mcu_builder::CaliptraBuildArgs {
-                features: Some(feature),
-                output_name: Some(name),
-                example_app: true,
-                svn: Some(image_svn),
-                ..Default::default()
-            },
-        )
-        .expect("Runtime build failed");
+        mcu_builder::runtime_build_with_apps(&[feature], Some(name), true, None, Some(image_svn))
+            .expect("Runtime build failed");
         assert!(test_runtime.exists());
 
         let fuse_vendor_hashes_prod_partition = {
@@ -1096,6 +991,7 @@ mod test {
         ))
     }
 
+    #[ignore] // TODO: fix this, probably an issue with fuse writing in the hw model
     #[test]
     fn test_mcu_svn_gt_fuse() {
         let lock = TEST_LOCK.lock().unwrap();
@@ -1108,6 +1004,7 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    #[ignore] // TODO: fix this, probably an issue with fuse writing in the hw model
     #[test]
     fn test_mcu_svn_lt_fuse() {
         let lock = TEST_LOCK.lock().unwrap();

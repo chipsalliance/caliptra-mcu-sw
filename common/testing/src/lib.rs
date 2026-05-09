@@ -3,7 +3,6 @@
 //! Common variables and methods to coordinate between tests
 //! and the platform.
 
-pub mod doe_util;
 pub mod i3c;
 pub mod i3c_socket;
 pub mod i3c_socket_server;
@@ -11,7 +10,6 @@ pub mod mctp_transport;
 pub mod mctp_vdm_transport;
 #[macro_use]
 pub mod mctp_util;
-pub mod spdm_responder_validator;
 
 pub use caliptra_api_types::DeviceLifecycle;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

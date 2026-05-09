@@ -1,12 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::Result;
-use caliptra_mcu_builder::{CaliptraBuilder, PROJECT_ROOT};
+use mcu_builder::{CaliptraBuilder, PROJECT_ROOT};
 use std::process::Command;
 
 pub(crate) fn rom_run(trace: bool) -> Result<()> {
-    let rom_binary =
-        caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs::default())?;
+    let platform = None;
+    let rom_binary = mcu_builder::rom_build(platform, None)?;
 
     // Use a minimal infinite-loop binary as the MCU firmware instead of
     // building the full runtime — this command is for testing the ROM only.
@@ -16,10 +16,20 @@ pub(crate) fn rom_run(trace: bool) -> Result<()> {
     // RISC-V JAL x0, 0 — jump-to-self infinite loop
     std::fs::write(&firmware_path, [0x6fu8, 0x00, 0x00, 0x00])?;
 
-    let mut caliptra_builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-        mcu_firmware: Some(firmware_path.clone()),
-        ..Default::default()
-    });
+    let mut caliptra_builder = CaliptraBuilder::new(
+        false,
+        false,
+        None,
+        None,
+        None,
+        None,
+        Some(firmware_path.clone()),
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
 
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_firmware = caliptra_builder.get_caliptra_fw()?;
@@ -29,7 +39,7 @@ pub(crate) fn rom_run(trace: bool) -> Result<()> {
     let mut cargo_run_args = vec![
         "run",
         "-p",
-        "caliptra-mcu-emulator",
+        "emulator",
         "--profile",
         "test",
         "--",
@@ -50,98 +60,68 @@ pub(crate) fn rom_run(trace: bool) -> Result<()> {
     // Map the memory layout to the emulator
     let rom_offset = format!(
         "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_offset
+        mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_offset
     );
     cargo_run_args.extend(["--rom-offset", &rom_offset]);
-    let rom_size = format!(
-        "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size
-    );
+    let rom_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size);
     cargo_run_args.extend(["--rom-size", &rom_size]);
     let dccm_offset = format!(
         "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset
+        mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset
     );
     cargo_run_args.extend(["--dccm-offset", &dccm_offset]);
-    let dccm_size = format!(
-        "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size
-    );
+    let dccm_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size);
     cargo_run_args.extend(["--dccm-size", &dccm_size]);
     let sram_offset = format!(
         "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset
+        mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset
     );
     cargo_run_args.extend(["--sram-offset", &sram_offset]);
-    let sram_size = format!(
-        "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_size
-    );
+    let sram_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_size);
     cargo_run_args.extend(["--sram-size", &sram_size]);
     let pic_offset = format!(
         "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.pic_offset
+        mcu_config_emulator::EMULATOR_MEMORY_MAP.pic_offset
     );
     cargo_run_args.extend(["--pic-offset", &pic_offset]);
     let i3c_offset = format!(
         "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_offset
+        mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_offset
     );
     cargo_run_args.extend(["--i3c-offset", &i3c_offset]);
-    let i3c_size = format!(
-        "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_size
-    );
+    let i3c_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_size);
     cargo_run_args.extend(["--i3c-size", &i3c_size]);
     let mci_offset = format!(
         "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_offset
+        mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_offset
     );
     cargo_run_args.extend(["--mci-offset", &mci_offset]);
-    let mci_size = format!(
-        "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_size
-    );
+    let mci_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_size);
     cargo_run_args.extend(["--mci-size", &mci_size]);
     let mbox_offset = format!(
         "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_offset
+        mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_offset
     );
     cargo_run_args.extend(["--mbox-offset", &mbox_offset]);
-    let mbox_size = format!(
-        "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_size
-    );
+    let mbox_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_size);
     cargo_run_args.extend(["--mbox-size", &mbox_size]);
     let soc_offset = format!(
         "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_offset
+        mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_offset
     );
     cargo_run_args.extend(["--soc-offset", &soc_offset]);
-    let soc_size = format!(
-        "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_size
-    );
+    let soc_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_size);
     cargo_run_args.extend(["--soc-size", &soc_size]);
     let otp_offset = format!(
         "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_offset
+        mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_offset
     );
     cargo_run_args.extend(["--otp-offset", &otp_offset]);
-    let otp_size = format!(
-        "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_size
-    );
+    let otp_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_size);
     cargo_run_args.extend(["--otp-size", &otp_size]);
-    let lc_offset = format!(
-        "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_offset
-    );
+    let lc_offset = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_offset);
     cargo_run_args.extend(["--lc-offset", &lc_offset]);
-    let lc_size = format!(
-        "0x{:x}",
-        caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size
-    );
+    let lc_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size);
     cargo_run_args.extend(["--lc-size", &lc_size]);
 
     if trace {

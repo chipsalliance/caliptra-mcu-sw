@@ -13,19 +13,18 @@ Abstract:
     enforcement matching hardware behavior.
 
 --*/
-use crate::ecc_ram::EccRam;
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvData};
 use caliptra_image_types::FwVerificationPqcKeyType;
-use caliptra_mcu_emulator_registers_generated::otp::OtpGenerated;
-use caliptra_mcu_registers_generated::fuses::{self};
-use caliptra_mcu_registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
+use emulator_registers_generated::otp::OtpGenerated;
+use registers_generated::fuses::{self};
+use registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::{Read, Seek};
-use std::path::{Path, PathBuf};
+use std::io::Seek;
+use std::path::PathBuf;
 use std::rc::Rc;
 #[allow(unused_imports)] // Rust compiler doesn't like these
 use tock_registers::interfaces::{Readable, Writeable};
@@ -43,31 +42,20 @@ struct OtpState {
     partitions: Vec<u8>,
     calculate_digests_on_reset: HashSet<usize>,
     digests: Vec<u32>,
-    /// Per-partition ECC RAM instances (indexed by partition number).
-    #[serde(default)]
-    ecc_rams: Vec<Option<EccRam>>,
 }
 
 #[derive(Default, Clone)]
 pub struct OtpArgs {
+    pub fips_zeroization_cmd: Rc<Cell<bool>>,
     pub file_name: Option<PathBuf>,
     pub raw_memory: Option<Vec<u8>>,
     pub owner_pk_hash: Option<[u8; 48]>,
     pub vendor_pk_hash: Option<[u8; 48]>,
-    pub vendor_pqc_type: Option<FwVerificationPqcKeyType>,
+    pub vendor_pqc_type: FwVerificationPqcKeyType,
     pub soc_manifest_svn: Option<u8>,
     pub soc_manifest_max_svn: Option<u8>,
     pub vendor_hashes_prod_partition: Option<Vec<u8>>,
     pub vendor_test_partition: Option<Vec<u8>>,
-    /// Raw lifecycle partition data (LIFECYCLE_MEM_SIZE bytes) to provision.
-    /// If set, written to the LIFE_CYCLE partition in OTP.
-    pub lifecycle_state: Option<Vec<u8>>,
-    /// Partition indices that should have ECC protection.
-    /// Defaults to `{15}` (the lifecycle partition) when empty.
-    pub ecc_partitions: HashSet<usize>,
-    /// Which `err_code_rf_err_code_N` register index carries the DAI error code.
-    /// Defaults to `OTP_PARTITIONS.len()` (16), matching DaiIdx in the RTL.
-    pub dai_err_code_register: Option<usize>,
 }
 
 //#[derive(Bus)]
@@ -80,19 +68,16 @@ pub struct Otp {
     direct_access_buffer_hi: u32,
     direct_access_cmd: ReadWriteRegister<u32, DirectAccessCmd::Register>,
     status: ReadWriteRegister<u32, OtpStatus::Register>,
-    /// Per-register error codes (indexed 0–17).
-    err_codes: Vec<u32>,
-    /// Which `err_code_rf_err_code_N` register index carries the DAI error.
-    dai_err_code_register: usize,
+    /// DAI error code (3-bit value written to err_code_rf_err_code_0).
+    /// 0 = NoError, 4 = MacroWriteBlankError.
+    dai_err_code: u32,
     timer: Timer,
     partitions: Rc<RefCell<Vec<u8>>>,
     digests: [u32; fuses::OTP_PARTITIONS.len() * 2],
     /// Partitions to calculate digests for on reset.
     calculate_digests_on_reset: HashSet<usize>,
     generated: OtpGenerated,
-    /// Per-partition ECC RAM. `ecc_rams[i]` is `Some(…)` when partition `i`
-    /// has ECC protection enabled.
-    ecc_rams: Vec<Option<EccRam>>,
+    fips_zeroization_cmd: Rc<Cell<bool>>,
 }
 
 // Ensure that we save the state before we drop the OTP instance.
@@ -135,44 +120,20 @@ impl Otp {
 
         let partitions = Rc::new(RefCell::new(partitions));
 
-        let ecc_partitions = if args.ecc_partitions.is_empty() {
-            // Default: lifecycle partition only.
-            let mut s = HashSet::new();
-            s.insert(fuses::OTP_PARTITIONS.len() - 1); // life_cycle is last
-            s
-        } else {
-            args.ecc_partitions
-        };
-
-        let ecc_rams: Vec<Option<EccRam>> = fuses::OTP_PARTITIONS
-            .iter()
-            .enumerate()
-            .map(|(i, p)| {
-                if ecc_partitions.contains(&i) {
-                    Some(EccRam::new(p.byte_size))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
         let mut otp = Self {
             file,
             direct_access_address: 0,
             direct_access_buffer: 0,
             direct_access_buffer_hi: 0,
             direct_access_cmd: 0u32.into(),
-            status: 0b100_0000_0000_0000_0000_0000u32.into(), // DAI idle state
-            err_codes: vec![0u32; NUM_ERR_CODE_REGISTERS],
-            dai_err_code_register: args
-                .dai_err_code_register
-                .unwrap_or(fuses::OTP_PARTITIONS.len()),
+            status: OtpStatus::DaiIdle::SET.value.into(),
+            dai_err_code: 0,
             calculate_digests_on_reset: HashSet::new(),
             timer: Timer::new(clock),
             partitions,
             digests: [0; fuses::OTP_PARTITIONS.len() * 2],
             generated: OtpGenerated::default(),
-            ecc_rams,
+            fips_zeroization_cmd: args.fips_zeroization_cmd.clone(),
         };
         otp.read_from_file()?;
         if let Some(mut vendor_pk_hash) = args.vendor_pk_hash {
@@ -181,20 +142,14 @@ impl Otp {
                 ..fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48]
                 .copy_from_slice(&vendor_pk_hash);
         }
-        // Encode as one-hot + duplication to match the fuse layout
-        // (OneHotLinear{MajorityVote,Or}, bits: 2, duplication: 3):
-        // MLDSA = thermometer value 1 (bit 0 set), duplicated 3x = 0b000111 = 0x07.
-        // LMS   = thermometer value 2 (bits 0-1 set), duplicated 3x = 0b111111 = 0x3F.
-        if let Some(pqc_type) = args.vendor_pqc_type {
-            let val: u8 = match pqc_type {
-                FwVerificationPqcKeyType::MLDSA => 0x07,
-                FwVerificationPqcKeyType::LMS => 0x3F,
-            };
-            otp.partitions.borrow_mut()[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48] =
-                val;
-        }
+        // encode as a single bit, MLDSA as the default
+        let val = match args.vendor_pqc_type {
+            FwVerificationPqcKeyType::MLDSA => 0,
+            FwVerificationPqcKeyType::LMS => 1,
+        };
         {
             let mut partitions = otp.partitions.borrow_mut();
+            partitions[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48] = val;
             partitions[fuses::SVN_PARTITION_BYTE_OFFSET + 36] =
                 args.soc_manifest_max_svn.unwrap_or(0);
             if let Some(soc_manifest_svn) = args.soc_manifest_svn {
@@ -218,22 +173,10 @@ impl Otp {
                 partitions[dst_start..dst_start + copy_len]
                     .copy_from_slice(&vendor_test_partition[..copy_len]);
             }
-
-            // Provision lifecycle fuses if provided and current fuses are blank.
-            if let Some(lc_data) = args.lifecycle_state {
-                let lc_start = fuses::LIFE_CYCLE_BYTE_OFFSET;
-                let lc_end = lc_start + fuses::LIFE_CYCLE_BYTE_SIZE;
-                let current_lc = &partitions[lc_start..lc_end];
-                if current_lc.iter().all(|&b| b == 0) {
-                    let copy_len = lc_data.len().min(fuses::LIFE_CYCLE_BYTE_SIZE);
-                    partitions[lc_start..lc_start + copy_len].copy_from_slice(&lc_data[..copy_len]);
-                }
-            }
         }
 
         // if there were digests that were pending a reset, then calculate them now
         otp.calculate_digests()?;
-        otp.sync_ecc_from_partitions();
         Ok(otp)
     }
 
@@ -246,88 +189,6 @@ impl Otp {
     /// This allows the model to hold a reference to the OTP memory.
     pub fn partitions_ref(&self) -> Rc<RefCell<Vec<u8>>> {
         self.partitions.clone()
-    }
-
-    /// Extract the raw lifecycle partition bytes from OTP partition data.
-    /// Returns None if the lifecycle region is all zeros (unprovisioned).
-    pub fn lifecycle_bytes_from_partitions(partitions: &[u8]) -> Option<Vec<u8>> {
-        let lc_start = fuses::LIFE_CYCLE_BYTE_OFFSET;
-        let lc_end = lc_start + fuses::LIFE_CYCLE_BYTE_SIZE;
-        if partitions.len() < lc_end {
-            return None;
-        }
-        let lc_data = &partitions[lc_start..lc_end];
-        if lc_data.iter().all(|&b| b == 0) {
-            None
-        } else {
-            Some(lc_data.to_vec())
-        }
-    }
-
-    /// Read the lifecycle partition bytes from a saved OTP file.
-    /// Returns None if file doesn't exist, is empty, or lifecycle is unprovisioned.
-    pub fn read_lifecycle_from_file(path: &Path) -> Option<Vec<u8>> {
-        let mut file = File::open(path).ok()?;
-        let len = file.metadata().ok()?.len();
-        if len == 0 {
-            return None;
-        }
-        let mut contents = Vec::new();
-        file.read_to_end(&mut contents).ok()?;
-        let state: OtpState = serde_json::from_slice(&contents).ok()?;
-        Self::lifecycle_bytes_from_partitions(&state.partitions)
-    }
-
-    /// Returns `true` if a correctable ECC error has been detected on any
-    /// ECC-protected partition.
-    pub fn has_correctable_ecc_error(&self) -> bool {
-        self.ecc_rams
-            .iter()
-            .any(|r| r.as_ref().is_some_and(|e| e.has_correctable_error()))
-    }
-
-    /// Returns `true` if an uncorrectable ECC error has been detected on any
-    /// ECC-protected partition.
-    pub fn has_uncorrectable_ecc_error(&self) -> bool {
-        self.ecc_rams
-            .iter()
-            .any(|r| r.as_ref().is_some_and(|e| e.has_uncorrectable_error()))
-    }
-
-    /// Clear ECC error interrupt flags on all protected partitions.
-    pub fn clear_ecc_errors(&mut self) {
-        for ram in self.ecc_rams.iter_mut().flatten() {
-            ram.clear_errors();
-        }
-    }
-
-    /// Returns a mutable reference to the ECC RAM for the given partition
-    /// index, if that partition has ECC protection enabled.
-    pub fn partition_ecc_mut(&mut self, partition_idx: usize) -> Option<&mut EccRam> {
-        self.ecc_rams.get_mut(partition_idx)?.as_mut()
-    }
-
-    /// Read the current DAI error code from the configured register.
-    fn dai_err_code(&self) -> u32 {
-        self.err_codes[self.dai_err_code_register]
-    }
-
-    /// Set the DAI error code in the configured register.
-    fn set_dai_err_code(&mut self, code: u32) {
-        self.err_codes[self.dai_err_code_register] = code;
-    }
-
-    /// Initialize all ECC RAMs from the current partition data.
-    fn sync_ecc_from_partitions(&mut self) {
-        let partitions = self.partitions.borrow();
-        for (i, ram_opt) in self.ecc_rams.iter_mut().enumerate() {
-            if let Some(ram) = ram_opt {
-                let p = &fuses::OTP_PARTITIONS[i];
-                let start = p.byte_offset;
-                let end = start + p.byte_size;
-                ram.init_from_bytes(&partitions[start..end]);
-            }
-        }
     }
 
     fn calculate_digests(&mut self) -> Result<(), std::io::Error> {
@@ -351,11 +212,8 @@ impl Otp {
         let addr = p.byte_offset;
         let size = p.byte_size;
         let partitions = self.partitions.borrow();
-        let digest = caliptra_mcu_otp_digest::caliptra_mcu_otp_digest(
-            &partitions[addr..addr + size],
-            DIGEST_IV,
-            DIGEST_CONST,
-        );
+        let digest =
+            otp_digest::otp_digest(&partitions[addr..addr + size], DIGEST_IV, DIGEST_CONST);
         self.digests[partition * 2] = (digest & 0xffff_ffff) as u32;
         self.digests[partition * 2 + 1] = (digest >> 32) as u32;
     }
@@ -365,7 +223,6 @@ impl Otp {
             partitions: self.partitions.borrow().clone(),
             calculate_digests_on_reset: self.calculate_digests_on_reset.clone(),
             digests: self.digests.to_vec(),
-            ecc_rams: self.ecc_rams.clone(),
         }
     }
 
@@ -373,12 +230,6 @@ impl Otp {
         *self.partitions.borrow_mut() = state.partitions.clone();
         self.calculate_digests_on_reset = state.calculate_digests_on_reset.clone();
         self.digests.copy_from_slice(&state.digests);
-        // Restore ECC RAMs for partitions that are both saved and enabled.
-        for (i, saved) in state.ecc_rams.iter().enumerate() {
-            if let (Some(Some(dst)), Some(src)) = (self.ecc_rams.get_mut(i), saved) {
-                *dst = src.clone();
-            }
-        }
     }
 
     fn read_from_file(&mut self) -> Result<(), std::io::Error> {
@@ -428,9 +279,6 @@ impl Otp {
 /// OTP error codes matching the hardware definition.
 const OTP_ERR_MACRO_WRITE_BLANK: u32 = 4;
 
-/// Number of OTP err_code registers (one per partition + DAI + LCI agents).
-const NUM_ERR_CODE_REGISTERS: usize = 18;
-
 /// Returns true if `byte_addr` falls within a 64-bit access granule region
 /// (digest field or secret partition data). Non-secret partition data uses
 /// 32-bit granularity.
@@ -446,10 +294,7 @@ fn is_64bit_granule(byte_addr: usize) -> bool {
             }
         }
         // Secret (scrambled) partitions use 64-bit granule for all data
-        if p.name.starts_with("secret_")
-            || p.name == "sw_test_unlock_partition"
-            || p.name == "vendor_secret_prod_partition"
-        {
+        if p.name.starts_with("secret_") || p.name == "sw_test_unlock_partition" {
             return true;
         }
         return false;
@@ -457,42 +302,7 @@ fn is_64bit_granule(byte_addr: usize) -> bool {
     false
 }
 
-/// Returns the PRESENT scrambling key for a secret partition, or None if
-/// the address is in a non-secret partition.
-fn scramble_key_for_addr(byte_addr: usize) -> Option<u128> {
-    for (i, p) in fuses::OTP_PARTITIONS.iter().enumerate() {
-        if byte_addr < p.byte_offset || byte_addr >= p.byte_offset + p.byte_size {
-            continue;
-        }
-        return match i {
-            1 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[0]),
-            2 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[1]),
-            3 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[2]),
-            4 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[3]),
-            5 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[4]),
-            7 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[6]),
-            13 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[5]),
-            _ => None,
-        };
-    }
-    None
-}
-
-/// If `byte_addr` falls within a partition that has an ECC RAM, return the
-/// partition index and its byte offset.
-fn ecc_partition_for_addr(byte_addr: usize, ecc_rams: &[Option<EccRam>]) -> Option<(usize, usize)> {
-    for (i, p) in fuses::OTP_PARTITIONS.iter().enumerate() {
-        if byte_addr >= p.byte_offset && byte_addr < p.byte_offset + p.byte_size {
-            if ecc_rams.get(i).is_some_and(|r| r.is_some()) {
-                return Some((i, p.byte_offset));
-            }
-            return None;
-        }
-    }
-    None
-}
-
-impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
+impl emulator_registers_generated::otp::OtpPeripheral for Otp {
     fn generated(&mut self) -> Option<&mut OtpGenerated> {
         Some(&mut self.generated)
     }
@@ -505,7 +315,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
         val: ReadWriteRegister<
             u32,
-            caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
+            registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
         >,
     ) {
         let val = val.reg.get();
@@ -516,19 +326,14 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
 
     fn read_direct_access_address(
         &mut self,
-    ) -> ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
-    > {
+    ) -> ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::DirectAccessAddress::Register>
+    {
         self.direct_access_address.into()
     }
 
     fn write_direct_access_cmd(
         &mut self,
-        val: ReadWriteRegister<
-            u32,
-            caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessCmd::Register,
-        >,
+        val: ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::DirectAccessCmd::Register>,
     ) {
         let val = val.reg.get();
         if val.count_ones() > 1 {
@@ -551,145 +356,9 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[0])
-    }
-    fn read_err_code_rf_err_code_1(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[1])
-    }
-    fn read_err_code_rf_err_code_2(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[2])
-    }
-    fn read_err_code_rf_err_code_3(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[3])
-    }
-    fn read_err_code_rf_err_code_4(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[4])
-    }
-    fn read_err_code_rf_err_code_5(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[5])
-    }
-    fn read_err_code_rf_err_code_6(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[6])
-    }
-    fn read_err_code_rf_err_code_7(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[7])
-    }
-    fn read_err_code_rf_err_code_8(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[8])
-    }
-    fn read_err_code_rf_err_code_9(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[9])
-    }
-    fn read_err_code_rf_err_code_10(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[10])
-    }
-    fn read_err_code_rf_err_code_11(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[11])
-    }
-    fn read_err_code_rf_err_code_12(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[12])
-    }
-    fn read_err_code_rf_err_code_13(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[13])
-    }
-    fn read_err_code_rf_err_code_14(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[14])
-    }
-    fn read_err_code_rf_err_code_15(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[15])
-    }
-    fn read_err_code_rf_err_code_16(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[16])
-    }
-    fn read_err_code_rf_err_code_17(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[17])
+        caliptra_emu_bus::ReadWriteRegister::new(self.dai_err_code)
     }
 
     fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> RvData {
@@ -706,9 +375,47 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
 
     /// Called by Bus::poll() to indicate that time has passed
     fn poll(&mut self) {
+        if self.fips_zeroization_cmd.get() {
+            self.fips_zeroization_cmd.set(false);
+            let mut partitions = self.partitions.borrow_mut();
+            let secret_ranges = [
+                (
+                    fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET,
+                    fuses::SECRET_MANUF_PARTITION_BYTE_SIZE,
+                ),
+                (
+                    fuses::SECRET_PROD_PARTITION_0_BYTE_OFFSET,
+                    fuses::SECRET_PROD_PARTITION_0_BYTE_SIZE,
+                ),
+                (
+                    fuses::SECRET_PROD_PARTITION_1_BYTE_OFFSET,
+                    fuses::SECRET_PROD_PARTITION_1_BYTE_SIZE,
+                ),
+                (
+                    fuses::SECRET_PROD_PARTITION_2_BYTE_OFFSET,
+                    fuses::SECRET_PROD_PARTITION_2_BYTE_SIZE,
+                ),
+                (
+                    fuses::SECRET_PROD_PARTITION_3_BYTE_OFFSET,
+                    fuses::SECRET_PROD_PARTITION_3_BYTE_SIZE,
+                ),
+                (
+                    fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET,
+                    fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE,
+                ),
+            ];
+            for (offset, size) in secret_ranges {
+                let end = (offset + size).min(partitions.len());
+                for byte in &mut partitions[offset..end] {
+                    *byte = 0;
+                }
+            }
+        }
+
+        // Clear any previous DAI error before processing a new command
+        self.dai_err_code = 0;
+
         if self.direct_access_cmd.reg.read(DirectAccessCmd::Wr) == 1 {
-            // Clear any previous DAI error before processing a new command.
-            self.set_dai_err_code(0);
             let use_64 = is_64bit_granule(self.direct_access_address as usize);
             // Align address to the access granule (mask low 2 or 3 bits)
             let addr = if use_64 {
@@ -719,72 +426,45 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
 
             let mut blank_error = false;
             if addr + 4 <= TOTAL_SIZE {
-                let write_len = if use_64 { 8 } else { 4 };
-                if let Some((part_idx, part_off)) = ecc_partition_for_addr(addr, &self.ecc_rams) {
-                    // ECC RAM handles blank-check on all 22 bits (data + parity).
-                    let ecc_off = addr - part_off;
-                    let ram = self.ecc_rams[part_idx].as_mut().unwrap();
-                    let mut buf = [0u8; 8];
-                    buf[..4].copy_from_slice(&self.direct_access_buffer.to_le_bytes());
-                    if use_64 {
-                        buf[4..8].copy_from_slice(&self.direct_access_buffer_hi.to_le_bytes());
-                    }
-                    if ram.otp_write_bytes(ecc_off, &buf[..write_len]) {
-                        // Commit succeeded — sync data back to partitions Vec.
-                        let mut partitions = self.partitions.borrow_mut();
-                        let mut readback = [0u8; 8];
-                        ram.read_bytes(ecc_off, &mut readback[..write_len]);
-                        partitions[addr..addr + write_len].copy_from_slice(&readback[..write_len]);
-                    } else {
-                        blank_error = true;
-                    }
-                } else {
-                    let mut partitions = self.partitions.borrow_mut();
-                    let current_lo = u32::from_le_bytes([
-                        partitions[addr],
-                        partitions[addr + 1],
-                        partitions[addr + 2],
-                        partitions[addr + 3],
+                let mut partitions = self.partitions.borrow_mut();
+                let current_lo = u32::from_le_bytes([
+                    partitions[addr],
+                    partitions[addr + 1],
+                    partitions[addr + 2],
+                    partitions[addr + 3],
+                ]);
+
+                // Blank check: writing must not attempt to clear already-set bits
+                if (current_lo & self.direct_access_buffer) != current_lo {
+                    blank_error = true;
+                }
+
+                if use_64 && addr + 8 <= TOTAL_SIZE {
+                    let current_hi = u32::from_le_bytes([
+                        partitions[addr + 4],
+                        partitions[addr + 5],
+                        partitions[addr + 6],
+                        partitions[addr + 7],
                     ]);
-
-                    // Blank check: writing must not attempt to clear already-set bits
-                    if (current_lo & self.direct_access_buffer) != current_lo {
+                    if (current_hi & self.direct_access_buffer_hi) != current_hi {
                         blank_error = true;
                     }
 
-                    if use_64 && addr + 8 <= TOTAL_SIZE {
-                        let current_hi = u32::from_le_bytes([
-                            partitions[addr + 4],
-                            partitions[addr + 5],
-                            partitions[addr + 6],
-                            partitions[addr + 7],
-                        ]);
-                        if (current_hi & self.direct_access_buffer_hi) != current_hi {
-                            blank_error = true;
-                        }
-
-                        if !blank_error {
-                            let mut new_lo = current_lo | self.direct_access_buffer;
-                            let mut new_hi = current_hi | self.direct_access_buffer_hi;
-                            if let Some(key) = scramble_key_for_addr(addr) {
-                                let plaintext = ((new_hi as u64) << 32) | new_lo as u64;
-                                let scrambled =
-                                    caliptra_mcu_otp_digest::otp_scramble(plaintext, key);
-                                new_lo = scrambled as u32;
-                                new_hi = (scrambled >> 32) as u32;
-                            }
-                            partitions[addr..addr + 4].copy_from_slice(&new_lo.to_le_bytes());
-                            partitions[addr + 4..addr + 8].copy_from_slice(&new_hi.to_le_bytes());
-                        }
-                    } else if !blank_error {
+                    if !blank_error {
+                        // OTP can only burn bits from 0 to 1, never clear bits.
                         let new_lo = current_lo | self.direct_access_buffer;
+                        let new_hi = current_hi | self.direct_access_buffer_hi;
                         partitions[addr..addr + 4].copy_from_slice(&new_lo.to_le_bytes());
+                        partitions[addr + 4..addr + 8].copy_from_slice(&new_hi.to_le_bytes());
                     }
+                } else if !blank_error {
+                    let new_lo = current_lo | self.direct_access_buffer;
+                    partitions[addr..addr + 4].copy_from_slice(&new_lo.to_le_bytes());
                 }
             }
 
             if blank_error {
-                self.set_dai_err_code(OTP_ERR_MACRO_WRITE_BLANK);
+                self.dai_err_code = OTP_ERR_MACRO_WRITE_BLANK;
                 self.status
                     .reg
                     .set(OtpStatus::DaiIdle::SET.value | OtpStatus::DaiError::SET.value);
@@ -796,68 +476,26 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
             self.direct_access_buffer = 0;
             self.direct_access_buffer_hi = 0;
         } else if self.direct_access_cmd.reg.read(DirectAccessCmd::Rd) == 1 {
-            // Clear any previous DAI error before processing a new command.
-            self.set_dai_err_code(0);
             self.direct_access_cmd.reg.set(0);
             // clear bottom two bits
             let addr = (self.direct_access_address & 0xffff_fffc) as usize;
             if addr + 4 <= TOTAL_SIZE {
-                if let Some((part_idx, part_off)) = ecc_partition_for_addr(addr, &self.ecc_rams) {
-                    // Read through ECC RAM.
-                    let ecc_off = addr - part_off;
-                    let ram = self.ecc_rams[part_idx].as_mut().unwrap();
-                    let mut buf = [0u8; 4];
-                    ram.read_bytes(ecc_off, &mut buf);
-                    self.direct_access_buffer = u32::from_le_bytes(buf);
-                    let p = &fuses::OTP_PARTITIONS[part_idx];
-                    if addr + 8 <= p.byte_offset + p.byte_size {
-                        let mut buf_hi = [0u8; 4];
-                        ram.read_bytes(ecc_off + 4, &mut buf_hi);
-                        self.direct_access_buffer_hi = u32::from_le_bytes(buf_hi);
-                    } else {
-                        self.direct_access_buffer_hi = 0;
-                    }
+                let mut buf = [0; 4];
+                let partitions = self.partitions.borrow();
+                buf.copy_from_slice(&partitions[addr..addr + 4]);
+                self.direct_access_buffer = u32::from_le_bytes(buf);
+                // Also read the high word for 64-bit granule reads
+                if addr + 8 <= TOTAL_SIZE {
+                    buf.copy_from_slice(&partitions[addr + 4..addr + 8]);
+                    self.direct_access_buffer_hi = u32::from_le_bytes(buf);
                 } else {
-                    let mut buf = [0; 4];
-                    let partitions = self.partitions.borrow();
-                    if let Some(key) = scramble_key_for_addr(addr) {
-                        // Scrambled partitions use 8-byte granules. Align the
-                        // read to the 8-byte boundary so we unscramble the
-                        // correct block, then return the requested half.
-                        let aligned = addr & !7;
-                        buf.copy_from_slice(&partitions[aligned..aligned + 4]);
-                        let lo = u32::from_le_bytes(buf);
-                        buf.copy_from_slice(&partitions[aligned + 4..aligned + 8]);
-                        let hi = u32::from_le_bytes(buf);
-                        let scrambled = ((hi as u64) << 32) | lo as u64;
-                        let plaintext = caliptra_mcu_otp_digest::otp_unscramble(scrambled, key);
-                        let plaintext_lo = plaintext as u32;
-                        let plaintext_hi = (plaintext >> 32) as u32;
-                        if addr & 4 != 0 {
-                            self.direct_access_buffer = plaintext_hi;
-                            self.direct_access_buffer_hi = plaintext_lo;
-                        } else {
-                            self.direct_access_buffer = plaintext_lo;
-                            self.direct_access_buffer_hi = plaintext_hi;
-                        }
-                    } else {
-                        buf.copy_from_slice(&partitions[addr..addr + 4]);
-                        self.direct_access_buffer = u32::from_le_bytes(buf);
-                        if addr + 8 <= TOTAL_SIZE {
-                            buf.copy_from_slice(&partitions[addr + 4..addr + 8]);
-                            self.direct_access_buffer_hi = u32::from_le_bytes(buf);
-                        } else {
-                            self.direct_access_buffer_hi = 0;
-                        }
-                    }
+                    self.direct_access_buffer_hi = 0;
                 }
             }
             // reset direct access
             self.direct_access_cmd.reg.set(0);
             self.direct_access_address = 0;
         } else if self.direct_access_cmd.reg.read(DirectAccessCmd::Digest) == 1 {
-            // Clear any previous DAI error before processing a new command.
-            self.set_dai_err_code(0);
             // clear bottom two bits
             let addr = (self.direct_access_address & 0xffff_fffc) as usize;
             if let Some(partition) = fuses::OTP_PARTITIONS
@@ -874,7 +512,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
 
         // Set idle status so that users know operations have completed.
         // Only set plain idle if no error was flagged earlier in this poll.
-        if self.dai_err_code() == 0 {
+        if self.dai_err_code == 0 {
             self.status.reg.set(OtpStatus::DaiIdle::SET.value);
         }
     }
@@ -895,7 +533,7 @@ fn swap_endianness(value: &mut [u8]) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral;
+    use emulator_registers_generated::otp::OtpPeripheral;
     #[allow(unused_imports)]
     use tock_registers::interfaces::{Readable, Writeable};
 
@@ -905,7 +543,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
+                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
                 ..Default::default()
             },
         )
@@ -943,7 +581,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
+                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
                 ..Default::default()
             },
         )
@@ -1002,7 +640,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
+                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
                 ..Default::default()
             },
         )
@@ -1059,7 +697,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
+                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
                 ..Default::default()
             },
         )
@@ -1076,7 +714,7 @@ mod test {
             OtpStatus::DaiIdle::SET.value,
             "first write should succeed"
         );
-        assert_eq!(otp.dai_err_code(), 0);
+        assert_eq!(otp.dai_err_code, 0);
 
         // Re-write same value: should succeed (OR produces same result)
         otp.write_dai_wdata_rf_direct_access_wdata_0(0xFF00_FF00);
@@ -1088,7 +726,7 @@ mod test {
             OtpStatus::DaiIdle::SET.value,
             "rewrite of same value should succeed"
         );
-        assert_eq!(otp.dai_err_code(), 0);
+        assert_eq!(otp.dai_err_code, 0);
 
         // Write superset: should succeed (only setting more bits)
         otp.write_dai_wdata_rf_direct_access_wdata_0(0xFFFF_FFFF);
@@ -1100,7 +738,7 @@ mod test {
             OtpStatus::DaiIdle::SET.value,
             "writing superset should succeed"
         );
-        assert_eq!(otp.dai_err_code(), 0);
+        assert_eq!(otp.dai_err_code, 0);
 
         // Write value that would clear bits: should fail
         otp.write_dai_wdata_rf_direct_access_wdata_0(0x0000_0001);
@@ -1112,258 +750,6 @@ mod test {
             0,
             "clearing bits should produce DaiError"
         );
-        assert_eq!(otp.dai_err_code(), OTP_ERR_MACRO_WRITE_BLANK);
-    }
-
-    /// Helper: DAI write a 32-bit value at the given byte address.
-    fn dai_write(otp: &mut Otp, addr: u32, val: u32) {
-        otp.write_dai_wdata_rf_direct_access_wdata_0(val);
-        otp.write_direct_access_address(addr.into());
-        otp.write_direct_access_cmd(2u32.into());
-        for _ in 0..100 {
-            otp.poll();
-            if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
-                break;
-            }
-        }
-    }
-
-    /// Helper: DAI read a 32-bit value from the given byte address.
-    fn dai_read(otp: &mut Otp, addr: u32) -> u32 {
-        otp.write_direct_access_address(addr.into());
-        otp.write_direct_access_cmd(1u32.into());
-        for _ in 0..100 {
-            otp.poll();
-            if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
-                break;
-            }
-        }
-        otp.read_dai_rdata_rf_direct_access_rdata_0()
-    }
-
-    #[test]
-    fn test_lifecycle_ecc_write_read() {
-        let clock = Clock::new();
-        let mut otp = Otp::new(
-            &clock,
-            OtpArgs {
-                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        let addr = fuses::LIFE_CYCLE_BYTE_OFFSET as u32;
-        dai_write(&mut otp, addr, 0xDEAD_BEEF);
-        let readback = dai_read(&mut otp, addr);
-        assert_eq!(readback, 0xDEAD_BEEF);
-        assert!(!otp.has_correctable_ecc_error());
-        assert!(!otp.has_uncorrectable_ecc_error());
-    }
-
-    #[test]
-    fn test_lifecycle_ecc_correctable_error() {
-        let clock = Clock::new();
-        let mut otp = Otp::new(
-            &clock,
-            OtpArgs {
-                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        let addr = fuses::LIFE_CYCLE_BYTE_OFFSET as u32;
-        dai_write(&mut otp, addr, 0xCAFE_BABE);
-
-        // Inject a single-bit error in the ECC RAM.
-        otp.partition_ecc_mut(15).unwrap().flip_bit(0, 7);
-
-        let readback = dai_read(&mut otp, addr);
-        assert_eq!(
-            readback, 0xCAFE_BABE,
-            "single-bit error should be corrected"
-        );
-        assert!(otp.has_correctable_ecc_error());
-        assert!(!otp.has_uncorrectable_ecc_error());
-
-        otp.clear_ecc_errors();
-        assert!(!otp.has_correctable_ecc_error());
-    }
-
-    #[test]
-    fn test_lifecycle_ecc_uncorrectable_error() {
-        let clock = Clock::new();
-        let mut otp = Otp::new(
-            &clock,
-            OtpArgs {
-                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        let addr = fuses::LIFE_CYCLE_BYTE_OFFSET as u32;
-        dai_write(&mut otp, addr, 0x1234_5678);
-
-        // Inject a double-bit error in the ECC RAM.
-        otp.partition_ecc_mut(15).unwrap().flip_bit(0, 0);
-        otp.partition_ecc_mut(15).unwrap().flip_bit(0, 1);
-
-        let _readback = dai_read(&mut otp, addr);
-        assert!(otp.has_uncorrectable_ecc_error());
-    }
-
-    #[test]
-    fn test_lifecycle_ecc_or_only_write() {
-        let clock = Clock::new();
-        let mut otp = Otp::new(
-            &clock,
-            OtpArgs {
-                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        let addr = fuses::LIFE_CYCLE_BYTE_OFFSET as u32;
-
-        // First write to blank OTP should succeed.
-        dai_write(&mut otp, addr, 0xFF00_FF00);
-        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
-        assert_eq!(otp.dai_err_code(), 0);
-
-        // Re-writing the same value should succeed (OR is a no-op).
-        dai_write(&mut otp, addr, 0xFF00_FF00);
-        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
-        assert_eq!(otp.dai_err_code(), 0);
-
-        // Verify the data reads back correctly.
-        assert_eq!(dai_read(&mut otp, addr), 0xFF00_FF00);
-
-        // Writing a value that clears data bits should fail with blank error.
-        dai_write(&mut otp, addr, 0x0000_0001);
-        assert_ne!(
-            otp.status.reg.get() & OtpStatus::DaiError::SET.value,
-            0,
-            "clearing lifecycle bits should produce DaiError"
-        );
-        assert_eq!(otp.dai_err_code(), OTP_ERR_MACRO_WRITE_BLANK);
-    }
-
-    /// Verify that a write which is a data-bit superset but causes an ECC
-    /// parity conflict is rejected with a blank error.
-    #[test]
-    fn test_lifecycle_ecc_parity_blank_check() {
-        use crate::ecc_ram::ecc_encode;
-
-        let clock = Clock::new();
-        let mut otp = Otp::new(
-            &clock,
-            OtpArgs {
-                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        let addr = fuses::LIFE_CYCLE_BYTE_OFFSET as u32;
-
-        // Find a pair (old, new) where new's data bits are a superset of
-        // old's, but the 22-bit ECC word is NOT a superset (parity conflict).
-        let old_val: u16 = 0x0001;
-        let new_val: u16 = 0x0003;
-        let old_ecc = ecc_encode(old_val);
-        let new_ecc = ecc_encode(new_val);
-        // Precondition: data bits are a superset.
-        assert_eq!(old_val & new_val, old_val);
-        // Precondition: parity bits are NOT a superset.
-        assert_ne!(
-            old_ecc & new_ecc,
-            old_ecc,
-            "test pair should have a parity conflict"
-        );
-
-        // Write old value.
-        dai_write(&mut otp, addr, old_val as u32);
-        assert_eq!(otp.dai_err_code(), 0);
-
-        // Attempt to write new value — should fail due to parity conflict.
-        dai_write(&mut otp, addr, new_val as u32);
-        assert_ne!(
-            otp.status.reg.get() & OtpStatus::DaiError::SET.value,
-            0,
-            "parity conflict should produce DaiError"
-        );
-        assert_eq!(otp.dai_err_code(), OTP_ERR_MACRO_WRITE_BLANK);
-
-        // Original value should be preserved.
-        assert_eq!(dai_read(&mut otp, addr), old_val as u32);
-    }
-
-    #[test]
-    fn test_secret_partition_scrambling() {
-        let clock = Clock::new();
-        let mut otp = Otp::new(&clock, OtpArgs::default()).unwrap();
-
-        // Write a known 64-bit value to the secret_manuf_partition via DAI
-        let addr = fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
-        let plaintext_lo: u32 = 0xDEADBEEF;
-        let plaintext_hi: u32 = 0xCAFEBABE;
-
-        // DAI 64-bit write
-        otp.write_dai_wdata_rf_direct_access_wdata_0(plaintext_lo);
-        otp.write_dai_wdata_rf_direct_access_wdata_1(plaintext_hi);
-        otp.write_direct_access_address((addr as u32).into());
-        otp.write_direct_access_cmd(2u32.into()); // write command
-        for _ in 0..1000 {
-            if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
-                break;
-            }
-            otp.poll();
-        }
-        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
-
-        // Read raw memory (bypassing DAI) to verify scrambled storage
-        let (raw_lo, raw_hi) = {
-            let raw = otp.partitions.borrow();
-            let lo = u32::from_le_bytes(raw[addr..addr + 4].try_into().unwrap());
-            let hi = u32::from_le_bytes(raw[addr + 4..addr + 8].try_into().unwrap());
-            (lo, hi)
-        };
-
-        // The raw data should NOT equal the plaintext (it should be scrambled)
-        let plaintext_u64 = ((plaintext_hi as u64) << 32) | plaintext_lo as u64;
-        let raw_u64 = ((raw_hi as u64) << 32) | raw_lo as u64;
-        assert_ne!(
-            raw_u64, plaintext_u64,
-            "Raw OTP data should be scrambled, not plaintext"
-        );
-
-        // Verify that otp_scramble produces the same result
-        let expected_scrambled = caliptra_mcu_otp_digest::otp_scramble(
-            plaintext_u64,
-            caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[0],
-        );
-        assert_eq!(
-            raw_u64, expected_scrambled,
-            "Raw OTP data should match otp_scramble output"
-        );
-
-        // Read back through DAI and verify we get plaintext
-        otp.write_direct_access_address((addr as u32).into());
-        otp.write_direct_access_cmd(1u32.into()); // read command
-        for _ in 0..1000 {
-            if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
-                break;
-            }
-            otp.poll();
-        }
-        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
-
-        let read_lo = otp.read_dai_rdata_rf_direct_access_rdata_0();
-        let read_hi = otp.read_dai_rdata_rf_direct_access_rdata_1();
-        assert_eq!(read_lo, plaintext_lo, "DAI read lo should return plaintext");
-        assert_eq!(read_hi, plaintext_hi, "DAI read hi should return plaintext");
+        assert_eq!(otp.dai_err_code, OTP_ERR_MACRO_WRITE_BLANK);
     }
 }

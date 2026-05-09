@@ -1,141 +1,51 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use caliptra_mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
+use mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
 use crate::emulator_cbinding;
 
-pub(crate) struct TestArgs<'a> {
-    pub archive: Option<&'a str>,
-    pub shard: Option<&'a str>,
-    pub workspace_remap: Option<&'a str>,
-    pub firmware_bundle: Option<&'a str>,
-    pub emulator_bundle: Option<&'a str>,
-    pub test_filter: Option<&'a str>,
+pub(crate) fn test() -> Result<()> {
+    cargo_test()
 }
 
-const EXCLUDED_PACKAGES: &[&str] = &[
-    "bare-metal-runtime",
-    "mcu-rom-emulator",
-    "mcu-rom-fpga",
-    "mcu-runtime-emulator",
-    "mcu-runtime-fpga",
-    "caliptra-mcu-emulator",
-    "test-hello",
-    "user-app",
-    "example-app",
-    "caliptra-mcu-libtock_unittest",
-    "syscalls_tests",
-    // no_std firmware binaries targeting RISC-V; can't be run on the host
-    "caliptra-mcu-test-fw-exception-handler",
-    "caliptra-mcu-test-fw-hitless-update-flow",
-    "caliptra-mcu-test-fw-lc-ctrl",
-    "caliptra-mcu-test-fw-mailbox-responder",
-    "caliptra-mcu-test-fw-otp-blank-check",
-    "caliptra-mcu-test-fw-otp-scramble-check",
-    "caliptra-mcu-test-fw-sw-digest-lock",
-];
-
-pub(crate) fn test(args: TestArgs) -> Result<()> {
-    if let Some(firmware_bundle) = args.firmware_bundle {
-        std::env::set_var("CPTRA_FIRMWARE_BUNDLE", firmware_bundle);
-    }
-    if let Some(emulator_bundle) = args.emulator_bundle {
-        std::env::set_var("CPTRA_EMULATOR_BUNDLE", emulator_bundle);
-    }
-
-    cargo_test(
-        args.shard,
-        args.workspace_remap,
-        args.archive,
-        args.test_filter,
-    )
-}
-
-pub(crate) fn test_archive(archive_file: String) -> Result<()> {
-    cargo_test_archive(&archive_file)
-}
-
-fn cargo_test(
-    shard: Option<&str>,
-    workspace_remap: Option<&str>,
-    archive: Option<&str>,
-    test_filter: Option<&str>,
-) -> Result<()> {
+fn cargo_test() -> Result<()> {
     // Run all tests with nextest for proper sequencing, excluding ROM packages that don't have tests
     println!("Running: cargo nextest run");
-    let mut args = vec![
-        "nextest",
-        "run",
-        "--test-threads=1",
-        "--profile=nightly-emulator",
-    ];
-
-    if let Some(archive_path) = archive {
-        args.push("--archive-file");
-        args.push(archive_path);
-    } else {
-        // These arguments cannot be used with `--archive-file`
-        args.push("--workspace");
-        for exclude in EXCLUDED_PACKAGES {
-            args.push("--exclude");
-            args.push(exclude);
-        }
-    }
-
-    if let Some(shard) = shard {
-        args.push("--partition");
-        args.push(shard);
-    }
-
-    if let Some(remap) = workspace_remap {
-        args.push("--workspace-remap");
-        args.push(remap);
-    }
-
-    if let Some(filter) = test_filter {
-        args.push("-E");
-        args.push(filter);
-    }
-
     let nextest_status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args(&args)
+        .args([
+            "nextest",
+            "run",
+            "--workspace",
+            "--exclude",
+            "mcu-rom-emulator",
+            "--exclude",
+            "mcu-rom-fpga",
+            "--exclude",
+            "mcu-runtime-emulator",
+            "--exclude",
+            "mcu-runtime-fpga",
+            "--exclude",
+            "emulator",
+            "--exclude",
+            "test-hello",
+            "--exclude",
+            "user-app",
+            "--exclude",
+            "example-app",
+            "--exclude",
+            "libtock_unittest",
+            "--exclude",
+            "syscalls_tests",
+            "--test-threads=1",
+            "--profile=nightly-emulator",
+        ])
         .status()?;
 
     if !nextest_status.success() {
         bail!("Tests with nextest failed");
-    }
-
-    Ok(())
-}
-
-fn cargo_test_archive(archive_file: &str) -> Result<()> {
-    println!(
-        "Running: cargo nextest archive --archive-file {}",
-        archive_file
-    );
-    let mut args = vec![
-        "nextest",
-        "archive",
-        "--workspace",
-        "--archive-file",
-        archive_file,
-    ];
-
-    for exclude in EXCLUDED_PACKAGES {
-        args.push("--exclude");
-        args.push(exclude);
-    }
-
-    let status = Command::new("cargo")
-        .current_dir(&*PROJECT_ROOT)
-        .args(&args)
-        .status()?;
-
-    if !status.success() {
-        bail!("cargo nextest archive failed");
     }
 
     Ok(())
@@ -200,7 +110,7 @@ fn test_hello() -> Result<()> {
     let args = get_emulator_args();
     let output = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args(["run", "-p", "caliptra-mcu-emulator", "--"])
+        .args(["run", "-p", "emulator", "--"])
         .args(&args)
         .output()?;
 
@@ -248,14 +158,11 @@ pub(crate) fn test_panic_missing() -> Result<()> {
         .join("mcu-rom-emulator");
 
     // Check default build
-    rom_build(&caliptra_mcu_builder::CaliptraBuildArgs::default())?;
+    rom_build(None, None)?;
     check_no_panic(&rom_elf_path, "default")?;
 
     // Check test-flash-based-boot build
-    rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
-        features: Some("test-flash-based-boot"),
-        ..Default::default()
-    })?;
+    rom_build(None, Some("test-flash-based-boot".to_string()))?;
     check_no_panic(&rom_elf_path, "test-flash-based-boot")?;
 
     Ok(())

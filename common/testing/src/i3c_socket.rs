@@ -148,6 +148,11 @@ pub struct BufferedStream {
 
 impl BufferedStream {
     pub fn new(stream: TcpStream) -> Self {
+        // Pin the socket to nonblocking mode for its lifetime. set_nonblocking()
+        // modifies the open file description, which is shared across every dup'd FD —
+        // toggling it from one clone parks any concurrent read on a sibling clone in the
+        // kernel until both the flag is restored AND data arrives. Keep the flag stable.
+        stream.set_nonblocking(true).unwrap();
         Self {
             stream,
             read_buffer: VecDeque::new(),
@@ -161,20 +166,52 @@ impl BufferedStream {
         })
     }
 
+    fn read_all(stream: &mut TcpStream, buf: &mut [u8]) -> std::io::Result<()> {
+        let mut off = 0;
+        while off < buf.len() {
+            match stream.read(&mut buf[off..]) {
+                Ok(0) => return Err(std::io::Error::new(ErrorKind::UnexpectedEof, "peer closed")),
+                Ok(n) => off += n,
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
+    fn write_all_nb(stream: &mut TcpStream, buf: &[u8]) -> std::io::Result<()> {
+        let mut off = 0;
+        while off < buf.len() {
+            match stream.write(&buf[off..]) {
+                Ok(0) => return Err(std::io::Error::new(ErrorKind::WriteZero, "no progress")),
+                Ok(n) => off += n,
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
     fn read_packet(&mut self) -> Option<Packet> {
         let mut out_header_bytes: [u8; 6] = [0u8; 6];
-        match self.stream.read_exact(&mut out_header_bytes) {
-            Ok(()) => {
+        match self.stream.read(&mut out_header_bytes[..1]) {
+            Ok(0) => panic!("peer closed mid-header"),
+            Ok(n) => {
+                if n < out_header_bytes.len() {
+                    Self::read_all(&mut self.stream, &mut out_header_bytes[n..])
+                        .expect("Failed to read header from socket");
+                }
                 let header: OutgoingHeader = transmute!(out_header_bytes);
                 let desc = header.response_descriptor;
                 let data_len = desc.data_length() as usize;
                 let mut data = vec![0u8; data_len];
                 if data_len > 0 {
-                    self.stream.set_nonblocking(false).unwrap();
-                    self.stream
-                        .read_exact(&mut data)
+                    Self::read_all(&mut self.stream, &mut data)
                         .expect("Failed to read message from socket");
-                    self.stream.set_nonblocking(true).unwrap();
                 }
                 Some(Packet { header, data })
             }
@@ -199,66 +236,9 @@ impl BufferedStream {
         pkt.push(pec);
 
         let pvt_write_cmd = prepare_private_write_cmd(addr, pkt.len() as u16);
-        self.stream.set_nonblocking(false).unwrap();
-        self.stream.write_all(&pvt_write_cmd).unwrap();
-        self.stream.set_nonblocking(true).unwrap();
-        self.stream.write_all(&pkt).unwrap();
+        Self::write_all_nb(&mut self.stream, &pvt_write_cmd).unwrap();
+        Self::write_all_nb(&mut self.stream, &pkt).unwrap();
         true
-    }
-
-    /// Send a command with payload using the packetized protocol.
-    ///
-    /// Each packet has a 4-byte header `[cmd, payload_len, seq_num, total_seqs]`
-    /// followed by up to 252 bytes of payload, fitting within the 256-byte
-    /// I3C TTI FIFO. Large payloads are split across multiple private writes.
-    /// A delay is inserted between packets to allow the target to drain its
-    /// FIFO before the next packet arrives.
-    pub fn send_packetized_write(&mut self, target_addr: u8, cmd: u8, payload: &[u8]) {
-        // Each packet must fit in the 256-byte TTI RX FIFO including the
-        // 4-byte header and 1-byte PEC appended by send_private_write.
-        // The chunk size must also be 4-byte aligned so the ROM's u32-word
-        // reassembly buffer doesn't lose partial-word boundaries between
-        // packets.  256 - 4 - 1 = 251, rounded down to 248.
-        const MAX_CHUNK: usize = 248;
-        let total_seqs = if payload.is_empty() {
-            1u8
-        } else {
-            payload.len().div_ceil(MAX_CHUNK) as u8
-        };
-
-        let mut offset = 0usize;
-        for seq in 0..total_seqs {
-            let end = (offset + MAX_CHUNK).min(payload.len());
-            let chunk = &payload[offset..end];
-            let chunk_len = chunk.len() as u8;
-
-            let mut pkt = Vec::with_capacity(4 + chunk.len());
-            pkt.push(cmd);
-            pkt.push(chunk_len);
-            pkt.push(seq);
-            pkt.push(total_seqs);
-            pkt.extend_from_slice(chunk);
-
-            self.send_private_write(target_addr, pkt);
-
-            offset = end;
-
-            // Give the target time to drain its 256-byte RX data FIFO
-            // before the next packet. The FPGA controller adds ~5ms of its
-            // own delay, so total inter-packet gap is ~30ms.
-            if seq + 1 < total_seqs {
-                std::thread::sleep(std::time::Duration::from_millis(25));
-            }
-        }
-    }
-
-    /// Issue a private read request to the target. The response can then be
-    /// retrieved with [`receive_private_read`].
-    pub fn request_private_read(&mut self, target_addr: u8) {
-        let pvt_read_cmd = prepare_private_read_cmd(target_addr);
-        self.stream.set_nonblocking(false).unwrap();
-        self.stream.write_all(&pvt_read_cmd).unwrap();
-        self.stream.set_nonblocking(true).unwrap();
     }
 
     pub fn receive_ibi(&mut self, target_addr: u8) -> bool {
@@ -270,9 +250,7 @@ impl BufferedStream {
             {
                 self.read_buffer.remove(i);
                 let pvt_read_cmd = prepare_private_read_cmd(target_addr);
-                self.stream.set_nonblocking(false).unwrap();
-                self.stream.write_all(&pvt_read_cmd).unwrap();
-                self.stream.set_nonblocking(true).unwrap();
+                Self::write_all_nb(&mut self.stream, &pvt_read_cmd).unwrap();
                 return true;
             }
             i += 1;

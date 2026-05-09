@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 extern crate alloc;
-pub mod dma_transfer;
 mod flash_client;
 mod pldm_client;
 mod pldm_context;
@@ -13,20 +12,19 @@ use caliptra_api::mailbox::{
     AuthorizeAndStashReq, AuthorizeAndStashResp, CommandId, GetImageInfoReq, GetImageInfoResp,
     ImageHashSource, MailboxReqHeader, MailboxRespHeader, Request,
 };
-use caliptra_mcu_flash_image::{FlashHeader, SOC_MANIFEST_IDENTIFIER};
-use caliptra_mcu_libsyscall_caliptra::dma::DMAMapping;
-use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
-use caliptra_mcu_libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
-use caliptra_mcu_libsyscall_caliptra::{dma::AXIAddr, mailbox::Mailbox};
-use caliptra_mcu_libtock_platform::ErrorCode;
-
-use caliptra_mcu_libtockasync::TockExecutor;
-use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
-use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
-use caliptra_mcu_pldm_lib::daemon::PldmService;
-use dma_transfer::DmaTransfer;
+use caliptra_auth_man_types::ImageMetadataFlags;
 use embassy_executor::Spawner;
+use flash_image::{FlashHeader, SOC_MANIFEST_IDENTIFIER};
+use libsyscall_caliptra::dma::DMAMapping;
+use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
+use libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
+use libsyscall_caliptra::{dma::AXIAddr, mailbox::Mailbox};
+use libtock_platform::ErrorCode;
+use libtockasync::TockExecutor;
+use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use pldm_common::message::firmware_update::verify_complete::VerifyResult;
+use pldm_common::protocol::firmware_update::Descriptor;
+use pldm_lib::daemon::PldmService;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const IMAGE_AUTHORIZED: u32 = 0xDEADC0DE;
@@ -49,10 +47,10 @@ pub trait ImageLoader {
     async fn load_and_authorize(&self, image_id: u32) -> Result<(), ErrorCode>;
 }
 
-pub struct FlashImageLoader<'a, T: DmaTransfer> {
+pub struct FlashImageLoader<D: DMAMapping + 'static> {
     mailbox: Mailbox,
     flash: FlashSyscall,
-    dma_transfer: &'a T,
+    dma_mapping: &'static D,
 }
 
 pub struct PldmImageLoader<'a, D: DMAMapping + 'static> {
@@ -68,22 +66,22 @@ pub struct PldmFirmwareDeviceParams<'a> {
     pub fw_params: &'a FirmwareParameters,
 }
 
-impl<'a, T: DmaTransfer> FlashImageLoader<'a, T> {
-    pub fn new(flash_syscall: FlashSyscall, dma_transfer: &'a T) -> Self {
+impl<D: DMAMapping + 'static> FlashImageLoader<D> {
+    pub fn new(flash_syscall: FlashSyscall, dma_mapping: &'static D) -> Self {
         Self {
             mailbox: Mailbox::new(),
             flash: flash_syscall,
-            dma_transfer,
+            dma_mapping,
         }
     }
 }
 
 #[async_trait(?Send)]
-impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
+impl<D: DMAMapping + 'static> ImageLoader for FlashImageLoader<D> {
     async fn load_and_authorize(&self, image_id: u32) -> Result<(), ErrorCode> {
         let image_info = get_image_info(&self.mailbox, image_id).await?;
         let load_address = convert_dma_cptra_addr_to_mcu_addr(
-            self.dma_transfer,
+            self.dma_mapping,
             ((image_info.image_load_address_high as u64) << 32)
                 | (image_info.image_load_address_low as u64),
         )?;
@@ -93,10 +91,11 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
         let (offset, size) =
             flash_client::flash_read_toc(&self.flash, &header, image_info.component_id).await?;
         flash_client::flash_load_image(
-            self.dma_transfer,
+            &self.flash,
             load_address,
             offset as usize,
             size as usize,
+            self.dma_mapping,
         )
         .await?;
         authorize_image(&self.mailbox, image_id, size).await?;
@@ -104,7 +103,7 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
     }
 }
 
-impl<T: DmaTransfer> FlashImageLoader<'_, T> {
+impl<D: DMAMapping + 'static> FlashImageLoader<D> {
     pub async fn set_auth_manifest(&self) -> Result<(), ErrorCode> {
         let mut header: [u8; core::mem::size_of::<FlashHeader>()] =
             [0; core::mem::size_of::<FlashHeader>()];
@@ -248,10 +247,14 @@ async fn get_image_info(mailbox: &Mailbox, image_id: u32) -> Result<GetImageInfo
 
 /// Authorizes an image based on its ID.
 async fn authorize_image(mailbox: &Mailbox, image_id: u32, size: u32) -> Result<(), ErrorCode> {
+    let mut flags = ImageMetadataFlags(0);
+    flags.set_ignore_auth_check(false);
+    flags.set_image_source(ImageHashSource::LoadAddress as u32);
+
     let mut req = AuthorizeAndStashReq {
         hdr: MailboxReqHeader::default(),
         fw_id: image_id.to_le_bytes(),
-        flags: 1, // Skip Stash
+        flags: flags.0,
         source: ImageHashSource::LoadAddress as u32,
         image_size: size,
         ..Default::default()
