@@ -28,6 +28,7 @@ pub const TEST_UUID: [u8; 16] = [
 ];
 
 /* Override the Update SM, go directly to PassComponents */
+#[derive(Default)]
 struct UpdateSmBypassed {}
 impl update_sm::StateMachineActions for UpdateSmBypassed {
     fn on_start_update(
@@ -142,6 +143,7 @@ fn test_pass_one_component() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     // Receive PassComponent request
@@ -206,6 +208,7 @@ fn test_pass_two_components() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     // Receive PassComponent request
@@ -280,6 +283,7 @@ fn test_pass_three_components() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     // Receive PassComponent request

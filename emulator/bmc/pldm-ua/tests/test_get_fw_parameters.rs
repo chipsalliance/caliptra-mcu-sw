@@ -33,6 +33,7 @@ pub const TEST_UUID: [u8; 16] = [
 ];
 
 /* Override the Update SM, and bypass the QueryDeviceIdentifier exchange and go straight to GetFirmwareParameters */
+#[derive(Default)]
 struct UpdateSmBypassQueryDevId {
     expected_num_components_to_update: usize,
 }
@@ -214,6 +215,7 @@ fn test_caliptra_fw_update() {
             expected_num_components_to_update: 1,
         },
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     // Receive QueryDeviceIdentifiers request
@@ -257,6 +259,7 @@ fn test_caliptra_fw_update_with_timeout() {
             expected_num_components_to_update: 1,
         },
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     // Receive QueryDeviceIdentifiers request
@@ -306,6 +309,7 @@ fn test_caliptra_fw_incorrect_id() {
             expected_num_components_to_update: 0,
         },
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     // Receive QueryDeviceIdentifiers request
@@ -351,6 +355,7 @@ fn test_caliptra_fw_update_same_version() {
             expected_num_components_to_update: 0,
         },
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     // Receive QueryDeviceIdentifiers request
@@ -395,6 +400,7 @@ fn test_caliptra_fw_caliptra_and_manifest() {
             expected_num_components_to_update: 2,
         },
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     // Receive QueryDeviceIdentifiers request
@@ -440,6 +446,7 @@ fn test_caliptra_fw_caliptra_same_version_and_manifest_diff_version() {
             expected_num_components_to_update: 1,
         },
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     // Receive QueryDeviceIdentifiers request

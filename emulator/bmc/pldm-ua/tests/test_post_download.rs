@@ -43,6 +43,7 @@ const SELF_ACTIVATION_FIELD_BIT: u16 = 0x0001;
 const SELF_ACTIVATION_FIELD_MASK: u16 = 0x0001;
 
 /* Override the Update SM, go directly to TransferComplete */
+#[derive(Default)]
 struct UpdateSmBypassed {}
 impl update_sm::StateMachineActions for UpdateSmBypassed {
     fn on_start_update(
@@ -185,6 +186,7 @@ fn test_one_component_activate() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     setup.wait_for_state_transition(update_sm::States::Verify);
@@ -306,6 +308,7 @@ fn test_one_component_verify_failed() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     setup.wait_for_state_transition(update_sm::States::Verify);
@@ -363,6 +366,7 @@ fn test_one_component_apply_failed() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     setup.wait_for_state_transition(update_sm::States::Verify);
@@ -435,6 +439,7 @@ fn test_apply_complete_with_activation_modification() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     setup.wait_for_state_transition(update_sm::States::Verify);
@@ -521,6 +526,7 @@ fn test_two_components_activate() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     setup.wait_for_state_transition(update_sm::States::Verify);
@@ -701,6 +707,7 @@ fn test_two_components_no_self_activation() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     setup.wait_for_state_transition(update_sm::States::Verify);
@@ -822,6 +829,7 @@ fn test_two_components_one_activate() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     setup.wait_for_state_transition(update_sm::States::Verify);

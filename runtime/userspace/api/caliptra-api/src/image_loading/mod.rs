@@ -167,6 +167,11 @@ impl<'a, D: DMAMapping + 'static> PldmImageLoader<'a, D> {
     pub fn finalize(&self) -> Result<(), ErrorCode> {
         pldm_client::finalize(VerifyResult::VerifySuccess)
     }
+
+    /// Wait for the PLDM service to fully stop (protocol complete, tasks exited).
+    pub async fn wait_for_service_stopped(&self) {
+        caliptra_mcu_pldm_lib::daemon::wait_until_stopped().await;
+    }
 }
 
 #[async_trait(?Send)]

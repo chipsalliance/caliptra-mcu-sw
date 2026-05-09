@@ -65,6 +65,7 @@ fn test_valid_device_identifier_one_descriptor() {
         discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,
+        ..Default::default()
     });
 
     // Receive QueryDeviceIdentifiers request
@@ -114,6 +115,7 @@ fn test_valid_device_identifier_not_matched() {
         discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,
+        ..Default::default()
     });
 
     // Receive QueryDeviceIdentifiers request
@@ -177,6 +179,7 @@ fn test_multiple_device_identifiers() {
         discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,
+        ..Default::default()
     });
 
     // Receive QueryDeviceIdentifiers request
@@ -234,6 +237,7 @@ fn test_send_get_fw_parameter_after_response() {
         ..Default::default()
     };
 
+    #[derive(Default)]
     struct UpdateSmIgnoreFirmwareParamsResponse {}
     impl update_sm::StateMachineActions for UpdateSmIgnoreFirmwareParamsResponse {
         fn on_get_firmware_parameters_response(
@@ -250,6 +254,7 @@ fn test_send_get_fw_parameter_after_response() {
         discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: UpdateSmIgnoreFirmwareParamsResponse {},
         fd_tid: 0x02,
+        ..Default::default()
     });
 
     // Receive QueryDeviceIdentifiers request
