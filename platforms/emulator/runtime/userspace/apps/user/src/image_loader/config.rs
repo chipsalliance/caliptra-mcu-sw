@@ -4,6 +4,7 @@
     feature = "test-pldm-streaming-boot",
     feature = "test-flash-based-boot",
     feature = "test-firmware-update-flash",
+    feature = "test-streaming-boot-flash-write-back",
 ))]
 pub mod streaming_boot_consts {
     use caliptra_mcu_pldm_common::{

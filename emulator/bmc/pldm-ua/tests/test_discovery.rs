@@ -29,6 +29,7 @@ const COMPLETION_CODE_SUCCESSFUL: u8 = 0x00;
  * The on_start_update() method will set a flag to true to indicate that the Firmware Update SM has started.
  * When the Daemon is stopped the on_stop_update() method will be called and verify the flag is true.
  */
+#[derive(Default)]
 struct UpdateSmStopAfterRequest {
     is_fw_update_started: bool,
 }
@@ -62,6 +63,7 @@ fn test_discovery() {
             is_fw_update_started: false,
         },
         fd_tid: DEVICE_TID,
+        ..Default::default()
     });
 
     // TID to be assigned to the device
@@ -213,6 +215,7 @@ fn test_discovery_with_retry() {
             is_fw_update_started: false,
         },
         fd_tid: DEVICE_TID,
+        ..Default::default()
     });
 
     // TID to be assigned to the device

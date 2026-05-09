@@ -295,6 +295,7 @@ impl<
 }
 
 /* Override the Discovery SM. Skip the discovery process by starting firmware update immediately when discovery is kicked-off */
+#[derive(Default)]
 pub struct CustomDiscoverySm {}
 impl discovery_sm::StateMachineActions for CustomDiscoverySm {
     fn on_start_discovery(
@@ -323,6 +324,7 @@ fn test_pldm_daemon_setup() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,
+        ..Default::default()
     });
 
     let _: QueryDeviceIdentifiersRequest = setup.receive_request(&setup.fd_sock, 1u8).unwrap();

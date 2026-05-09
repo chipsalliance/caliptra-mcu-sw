@@ -39,6 +39,7 @@ pub const TEST_UUID: [u8; 16] = [
 const BASELINE_TRANSFER_SIZE: u32 = 32;
 
 /* Override the Update SM, go directly to UpdateComponent */
+#[derive(Default)]
 struct UpdateSmBypassed {}
 impl update_sm::StateMachineActions for UpdateSmBypassed {
     fn on_start_update(
@@ -195,6 +196,7 @@ fn test_download_size_divisible_by_transfer_size() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     setup.wait_for_state_transition(update_sm::States::Download);
@@ -313,6 +315,7 @@ fn test_download_size_not_divisible_by_transfer_size() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     setup.wait_for_state_transition(update_sm::States::Download);

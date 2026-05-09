@@ -22,7 +22,7 @@ caliptra-builder.workspace = true
 caliptra-hw-model-types.workspace = true
 caliptra-hw-model.workspace = true
 caliptra-image-gen.workspace = true
-caliptra-image-types.workspace = true
+caliptra-image-types = { workspace = true, features = ["std"] }
 caliptra-image-fake-keys.workspace = true
 chrono.workspace = true
 crc.workspace = true

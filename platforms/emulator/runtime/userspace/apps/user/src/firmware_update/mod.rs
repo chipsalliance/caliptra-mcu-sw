@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 mod config;
+pub mod flash_staging;
 
 extern crate alloc;
 use caliptra_mcu_libsyscall_caliptra::dma::DMAMapping;
@@ -10,13 +11,15 @@ use core::fmt::Write;
 
 #[cfg(any(
     feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash"
+    feature = "test-firmware-update-flash",
+    feature = "test-streaming-boot-flash-write-back",
 ))]
 use crate::EXECUTOR;
 
 #[cfg(any(
     feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash"
+    feature = "test-firmware-update-flash",
+    feature = "test-streaming-boot-flash-write-back",
 ))]
 use caliptra_mcu_libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 
@@ -69,6 +72,29 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
             EXECUTOR.get().spawner(),
         );
         updater.start().await?;
+    }
+
+    #[cfg(feature = "test-streaming-boot-flash-write-back")]
+    {
+        let fw_params = PldmFirmwareDeviceParams {
+            descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
+            fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
+        };
+        let staging_memory = flash_staging::SpiFlashStagingMemory::new();
+        let staging_memory: &'static flash_staging::SpiFlashStagingMemory =
+            unsafe { core::mem::transmute(&staging_memory) };
+        staging_memory.erase().await?;
+        let mut updater = FirmwareUpdater::new(
+            staging_memory,
+            &fw_params,
+            dma_mapping,
+            EXECUTOR.get().spawner(),
+        );
+        updater.set_skip_activation(true);
+        updater.set_verify_same_image(true);
+        updater.start().await?;
+        writeln!(console_writer, "[FW Upd] Flash write-back complete").unwrap();
+        return Ok(());
     }
 
     // Trigger MCU warm reset to boot into new firmware

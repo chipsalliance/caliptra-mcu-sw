@@ -303,7 +303,7 @@ caliptra-hw-model-types = { git = "https://github.com/chipsalliance/caliptra-sw"
 caliptra-image-crypto = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba", default-features = false, features = ["rustcrypto"] }
 caliptra-image-fake-keys = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba" }
 caliptra-image-gen = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba" }
-caliptra-image-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba" }
+caliptra-image-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba", default-features = false }
 caliptra-ocp-eat = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba",  default-features = false  }
 caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba" }
 caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba" }

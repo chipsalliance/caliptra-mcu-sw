@@ -1029,7 +1029,7 @@ impl Emulator {
 
         if cli.streaming_boot.is_some() {
             let _ = simple_logger::SimpleLogger::new()
-                .with_level(log::LevelFilter::Info)
+                .with_level(log::LevelFilter::Debug)
                 .init();
             let pldm_fw_pkg_path = cli.streaming_boot.as_ref().unwrap();
             println!(
@@ -1064,8 +1064,24 @@ impl Emulator {
                         update_sm_actions:
                             caliptra_mcu_pldm_ua::update_sm::DefaultActionsExitOnError {},
                         fd_tid: 0x01,
+                        rerun_count: 0,
                     },
                 );
+            } else if test_feature == "test-streaming-boot-flash-write-back" {
+                // Single daemon with two update cycles:
+                // first for streaming boot, then for firmware update write-back
+                let caliptra_mcu_pldm_fw_pkg = caliptra_mcu_pldm_fw_pkg.unwrap();
+                PldmDaemon::run(
+                    pldm_socket,
+                    caliptra_mcu_pldm_ua::daemon::Options {
+                        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg),
+                        discovery_sm_actions: caliptra_mcu_pldm_ua::discovery_sm::DefaultActions {},
+                        update_sm_actions: caliptra_mcu_pldm_ua::update_sm::DefaultActions {},
+                        fd_tid: 0x01,
+                        rerun_count: 1,
+                    },
+                )
+                .unwrap();
             } else {
                 let _ = PldmDaemon::run(
                     pldm_socket,
@@ -1074,6 +1090,7 @@ impl Emulator {
                         discovery_sm_actions: caliptra_mcu_pldm_ua::discovery_sm::DefaultActions {},
                         update_sm_actions: caliptra_mcu_pldm_ua::update_sm::DefaultActions {},
                         fd_tid: 0x01,
+                        rerun_count: 0,
                     },
                 );
             };

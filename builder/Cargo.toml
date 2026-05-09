@@ -12,7 +12,7 @@ caliptra-builder.workspace = true
 caliptra-image-crypto.workspace = true
 caliptra-image-fake-keys.workspace = true
 caliptra-image-gen.workspace = true
-caliptra-image-types.workspace = true
+caliptra-image-types = { workspace = true, features = ["std"] }
 cargo_metadata.workspace = true
 cfg-if.workspace = true
 chrono.workspace = true

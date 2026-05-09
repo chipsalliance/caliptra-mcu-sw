@@ -1328,6 +1328,7 @@ dependencies = [
  "caliptra-api",
  "caliptra-auth-man-types",
  "caliptra-error",
+ "caliptra-image-types",
  "caliptra-mcu-flash-image",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_console",
