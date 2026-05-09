@@ -173,6 +173,7 @@ pub struct AuthorizationError;
 
 pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 
+#[async_trait(?Send)]
 pub trait CommandAuthorizer {
     /// Validates if a message is authorized.
     ///
@@ -186,8 +187,8 @@ pub trait CommandAuthorizer {
     ///
     /// # Returns
     /// * `Result<&[u8], CommandError>` - Unpacked command or Error
-    fn is_authorized<'a>(
-        &self,
+    async fn is_authorized<'a>(
+        &mut self,
         cmd_id: CommandId,
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError>;

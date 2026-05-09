@@ -701,7 +701,7 @@ impl<'a> CmdInterface<'a> {
     }
 
     async fn handle_authorized_command<'r>(
-        &self,
+        &mut self,
         cmd_id: CommandId,
         req: &[u8],
         resp_buf: &'r mut [u8],
@@ -709,6 +709,7 @@ impl<'a> CmdInterface<'a> {
         let cmd = self
             .cmd_authorizer
             .is_authorized(cmd_id, req)
+            .await
             .map_err(|_| MsgHandlerError::UnauthorizedCommand)?;
         match cmd_id {
             CommandId::MC_ROTATE_VENDOR_PK_HASH => {
