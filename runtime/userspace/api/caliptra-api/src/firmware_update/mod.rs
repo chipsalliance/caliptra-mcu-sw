@@ -275,23 +275,49 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         // Verify Caliptra bundle
         writeln!(
             Console::<DefaultSyscalls>::writer(),
-            "[FW Upd] Verifying Caliptra Bundle"
+            "[FW Upd] Verifying Caliptra Bundle (image_count={} headers_off={})",
+            flash_header.image_count,
+            flash_header.image_headers_offset
         )
         .unwrap();
-        let (cptra_image_offset, cptra_image_len) = self
+        let toc_result = self
             .get_image_toc(
                 flash_header.image_count as usize,
                 flash_header.image_headers_offset as usize,
                 CALIPTRA_FMC_RT_IDENTIFIER,
             )
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        self.process_caliptra_fw(
+            .await;
+        if toc_result.is_err() {
+            writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] ERROR: get_image_toc for Caliptra bundle failed"
+            )
+            .unwrap();
+            return Err(ErrorCode::Fail);
+        }
+        let (cptra_image_offset, cptra_image_len) = toc_result.unwrap();
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Caliptra bundle at offset={} len={}",
             cptra_image_offset,
-            cptra_image_len,
-            CaliptraFwAction::Verify,
+            cptra_image_len
         )
-        .await?;
+        .unwrap();
+        let verify_result = self
+            .process_caliptra_fw(
+                cptra_image_offset,
+                cptra_image_len,
+                CaliptraFwAction::Verify,
+            )
+            .await;
+        if verify_result.is_err() {
+            writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] ERROR: process_caliptra_fw(Verify) failed"
+            )
+            .unwrap();
+            return Err(ErrorCode::Fail);
+        }
 
         // Verify the new Auth Manifest
         writeln!(
@@ -563,13 +589,29 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             match result {
                 Ok(_) => break,
                 Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-                Err(_) => return Err(ErrorCode::Fail),
+                Err(e) => {
+                    writeln!(
+                        Console::<DefaultSyscalls>::writer(),
+                        "[FW Upd] ERROR: mailbox cmd={} failed: {:?}",
+                        cmd,
+                        e
+                    )
+                    .unwrap();
+                    return Err(ErrorCode::Fail);
+                }
             }
         }
         if action == CaliptraFwAction::Verify {
             let resp =
                 FirmwareVerifyResp::ref_from_bytes(response_buffer).map_err(|_| ErrorCode::Fail)?;
             if resp.verify_result != FirmwareVerifyResult::Success as u32 {
+                writeln!(
+                    Console::<DefaultSyscalls>::writer(),
+                    "[FW Upd] ERROR: FIRMWARE_VERIFY result={} (expected {})",
+                    resp.verify_result,
+                    FirmwareVerifyResult::Success as u32
+                )
+                .unwrap();
                 return Err(ErrorCode::Fail);
             }
         }
