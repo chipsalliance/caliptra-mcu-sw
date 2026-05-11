@@ -25,15 +25,6 @@ pub const HEK_ZER_MARKER_OFFSET: usize = 40;
 pub const HEK_ZER_MARKER_SIZE: usize = 8;
 pub const HEK_SEED_SIZE: usize = 32;
 
-// VENDOR_NON_SECRET_PROD_PARTITION offsets
-pub const CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_SIZE: usize = 32;
-pub const CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_COUNT: usize = 16;
-
-pub const fn cptra_ss_vendor_specific_non_secret_fuse_offset(index: usize) -> usize {
-    fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET
-        + index * CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_SIZE
-}
-
 pub const HEK_OFFSETS: [usize; 8] = [
     fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET,
     fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET,
@@ -650,25 +641,6 @@ impl Otp {
             len,
             data,
         )
-    }
-
-    /// Read a CPTRA_SS vendor-specific non-secret production fuse.
-    /// index must be between 0 and 15.
-    pub fn read_cptra_ss_vendor_specific_non_secret_fuse(
-        &self,
-        index: usize,
-    ) -> McuResult<[u8; CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_SIZE]> {
-        if index >= CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_COUNT {
-            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
-        }
-
-        let mut data = [0u8; CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_SIZE];
-        self.read_data(
-            cptra_ss_vendor_specific_non_secret_fuse_offset(index),
-            data.len(),
-            &mut data,
-        )?;
-        Ok(data)
     }
 
     /// Read a specific HEK seed partition from OTP.

@@ -82,8 +82,8 @@ pub enum McuRomBootStatus {
     DeviceOwnershipBurnFuses = CALIPTRA_SETUP_BASE + 15,
     DeviceOwnershipDetermineOwner = CALIPTRA_SETUP_BASE + 16,
     DeviceOwnershipTransferComplete = CALIPTRA_SETUP_BASE + 17,
-    HekOwnerKeyDerivationStarted = CALIPTRA_SETUP_BASE + 18,
-    HekOwnerKeyDerivationComplete = CALIPTRA_SETUP_BASE + 19,
+    StableOwnerKeyDerivationStarted = CALIPTRA_SETUP_BASE + 18,
+    StableOwnerKeyDerivationComplete = CALIPTRA_SETUP_BASE + 19,
 
     // Firmware Loading Statuses
     RiDownloadFirmwareCommandSent = FIRMWARE_LOADING_BASE,

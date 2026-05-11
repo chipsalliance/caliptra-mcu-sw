@@ -17,26 +17,29 @@ use caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmStableKeyType, CommandId,
 };
 use mcu_error::{McuError, McuResult};
-use romtime::otp::CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_SIZE;
+use registers_generated::fuses;
 use romtime::McuRomBootStatus;
 use zerocopy::transmute;
 
-const STABLE_OWNER_KEY_PERSONALIZATION_SEED_FUSE_INDEX: usize = 0;
+const STABLE_OWNER_KEY_PERSONALIZATION_SEED_SIZE: usize = 32;
 
 fn read_personalization_seed(
     env: &RomEnv,
-) -> McuResult<[u8; CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_SIZE]> {
+) -> McuResult<[u8; STABLE_OWNER_KEY_PERSONALIZATION_SEED_SIZE]> {
+    let mut seed = [0u8; STABLE_OWNER_KEY_PERSONALIZATION_SEED_SIZE];
+    if fuses::STABLE_OWNER_KEY_PERSONALIZATION_SEED.byte_size != seed.len() {
+        return Err(McuError::ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR);
+    }
     env.otp
-        .read_cptra_ss_vendor_specific_non_secret_fuse(
-            STABLE_OWNER_KEY_PERSONALIZATION_SEED_FUSE_INDEX,
-        )
-        .map_err(|_| McuError::ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR)
+        .read_entry_raw(fuses::STABLE_OWNER_KEY_PERSONALIZATION_SEED, &mut seed)
+        .map_err(|_| McuError::ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR)?;
+    Ok(seed)
 }
 
 pub(crate) fn derive_stable_owner_key(env: &mut RomEnv) -> McuResult<Cmk> {
     romtime::println!("[mcu-rom] Deriving stable owner key");
     env.mci
-        .set_flow_checkpoint(McuRomBootStatus::HekOwnerKeyDerivationStarted.into());
+        .set_flow_checkpoint(McuRomBootStatus::StableOwnerKeyDerivationStarted.into());
 
     let mut resp = [0u32; core::mem::size_of::<CmDeriveStableKeyResp>() / 4];
     let personalization_seed = read_personalization_seed(env)?;
@@ -61,6 +64,6 @@ pub(crate) fn derive_stable_owner_key(env: &mut RomEnv) -> McuResult<Cmk> {
 
     romtime::println!("[mcu-rom] Stable owner key derived successfully");
     env.mci
-        .set_flow_checkpoint(McuRomBootStatus::HekOwnerKeyDerivationComplete.into());
+        .set_flow_checkpoint(McuRomBootStatus::StableOwnerKeyDerivationComplete.into());
     Ok(cmk)
 }

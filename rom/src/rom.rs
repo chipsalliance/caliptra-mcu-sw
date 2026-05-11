@@ -203,17 +203,6 @@ impl Soc {
     fn set_stable_owner_key_hek_fuses(&self, otp: &Otp) {
         romtime::println!("[mcu-fuse-write] Attempting to write stable owner key HEK fuses");
 
-        if otp
-            .is_hek_perma_set()
-            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
-        {
-            self.fill_hek_seed(0xFFFF_FFFF);
-            romtime::println!(
-                "[mcu-fuse-write] Finished writing permanent stable owner key HEK fuse"
-            );
-            return;
-        }
-
         let mut seed = [0u8; 48];
         for slot in 0..HEK_OFFSETS.len() {
             otp.read_hek_seed(slot, &mut seed)

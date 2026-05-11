@@ -1,40 +1,25 @@
 //! Licensed under the Apache-2.0 license
 
-//! Tests for HEK-based owner stable key derivation via CM_DERIVE_STABLE_KEY(OwnerKey).
+//! Tests for stable owner key derivation via CM_DERIVE_STABLE_KEY(OwnerKey).
 
 #[cfg(test)]
 mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
     use mcu_hw_model::McuHwModel;
-    use romtime::otp::{
-        cptra_ss_vendor_specific_non_secret_fuse_offset,
-        CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_SIZE,
-    };
+    use registers_generated::fuses;
     use romtime::McuRomBootStatus;
 
-    const STABLE_OWNER_KEY_PERSONALIZATION_SEED_FUSE_INDEX: usize = 0;
-    const STABLE_OWNER_KEY_PERSONALIZATION_SEED_OFFSET: usize =
-        cptra_ss_vendor_specific_non_secret_fuse_offset(
-            STABLE_OWNER_KEY_PERSONALIZATION_SEED_FUSE_INDEX,
-        );
-
-    /// Test that the HEK owner key derivation path succeeds during cold boot.
+    /// Test that stable owner key derivation succeeds during cold boot.
     #[test]
-    fn test_hek_owner_key_derivation() {
+    fn test_stable_owner_key_derivation() {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        println!("[TEST] Starting HEK owner key derivation test");
-        let mut otp = vec![
-            0u8;
-            STABLE_OWNER_KEY_PERSONALIZATION_SEED_OFFSET
-                + CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_SIZE
-        ];
-        for (idx, byte) in otp[STABLE_OWNER_KEY_PERSONALIZATION_SEED_OFFSET..]
-            [..CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_SIZE]
-            .iter_mut()
-            .enumerate()
-        {
+        println!("[TEST] Starting stable owner key derivation test");
+        let seed_offset = fuses::STABLE_OWNER_KEY_PERSONALIZATION_SEED.byte_offset;
+        let seed_size = fuses::STABLE_OWNER_KEY_PERSONALIZATION_SEED.byte_size;
+        let mut otp = vec![0u8; seed_offset + seed_size];
+        for (idx, byte) in otp[seed_offset..][..seed_size].iter_mut().enumerate() {
             *byte = (idx as u8) + 1;
         }
 
@@ -45,7 +30,7 @@ mod test {
             ..Default::default()
         });
 
-        // Wait until cold boot moves past the owner key derivation path or hits a fatal error.
+        // Wait until cold boot moves past the stable owner key derivation path or hits a fatal error.
         hw.step_until(|m| {
             let checkpoint = (m.mci_flow_status() & 0xffff) as u16;
             checkpoint >= McuRomBootStatus::RiDownloadFirmwareCommandSent.into()
@@ -56,7 +41,7 @@ mod test {
         let fatal = hw.mci_fw_fatal_error();
         assert!(
             fatal.is_none() || fatal == Some(0),
-            "ROM reported fatal error during HEK owner key derivation: {:?}",
+            "ROM reported fatal error during stable owner key derivation: {:?}",
             fatal
         );
 
@@ -64,11 +49,11 @@ mod test {
         let checkpoint = (hw.mci_flow_status() & 0xffff) as u16;
         assert!(
             checkpoint >= McuRomBootStatus::RiDownloadFirmwareCommandSent.into(),
-            "Expected boot to continue past HEK owner key derivation, got checkpoint: {}",
+            "Expected boot to continue past stable owner key derivation, got checkpoint: {}",
             checkpoint
         );
 
-        println!("[TEST] HEK owner key derivation path succeeded");
+        println!("[TEST] Stable owner key derivation path succeeded");
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
