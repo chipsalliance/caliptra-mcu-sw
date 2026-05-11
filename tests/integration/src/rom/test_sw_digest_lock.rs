@@ -36,25 +36,6 @@ mod test {
     fn test_sw_digest_lock() {
         let (caliptra_rom, mcu_rom) = load_roms();
 
-        // On FPGA, OTP SRAM persists across runs. Clear vendor_test_partition
-        // before the real test. The go-bit prevents the ROM from racing.
-        #[cfg(feature = "fpga_realtime")]
-        {
-            let tmp = mcu_hw_model::new_unbooted(InitParams {
-                caliptra_rom: &caliptra_rom,
-                mcu_rom: &mcu_rom,
-                check_booted_to_runtime: false,
-                lifecycle_controller_state: Some(LifecycleControllerState::Dev),
-                ..Default::default()
-            })
-            .unwrap();
-            let p = fuses::VENDOR_TEST_PARTITION;
-            let mut copy = tmp.base.otp_slice().to_vec();
-            copy[p.byte_offset..p.byte_offset + p.byte_size].fill(0);
-            tmp.base.otp_slice().copy_from_slice(&copy);
-            drop(tmp);
-        }
-
         // Boot 1: write data + digest.
         let otp_after_boot1;
         {

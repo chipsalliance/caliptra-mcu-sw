@@ -2,12 +2,11 @@
 
 //! Test ROM that verifies OTP blank-check enforcement.
 //!
-//! 1. Wait for go-bit (FPGA OTP clearing preamble).
-//! 2. Write 0x0000_000F to the first data word of vendor_test_partition.
-//! 3. Read it back to confirm.
-//! 4. Attempt to write 0x0000_0001 to the same word (clears bits 1-3).
-//! 5. Verify that the write fails (returns Err) due to blank-check.
-//! 6. Read back to confirm the original value is unchanged.
+//! 1. Write 0x0000_000F to the first data word of vendor_test_partition.
+//! 2. Read it back to confirm.
+//! 3. Attempt to write 0x0000_0001 to the same word (clears bits 1-3).
+//! 4. Verify that the write fails (returns Err) due to blank-check.
+//! 5. Read back to confirm the original value is unchanged.
 //!
 //! Prints "PASS" on success, or a diagnostic message before fatal_error.
 
@@ -16,16 +15,10 @@
 
 use mcu_rom_common::{fatal_error, RomEnv};
 use registers_generated::fuses;
-use tock_registers::interfaces::Readable;
-
-const GO_BIT: u32 = 1 << 0;
 
 fn run() -> ! {
     let env = RomEnv::new();
     let otp = &env.otp;
-
-    // Wait for go-bit (FPGA OTP clearing preamble).
-    while env.mci.registers.mci_reg_generic_input_wires[0].get() & GO_BIT == 0 {}
 
     let partition = fuses::VENDOR_TEST_PARTITION;
     let base_word = partition.byte_offset / 4;
