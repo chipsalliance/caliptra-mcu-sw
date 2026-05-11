@@ -318,6 +318,11 @@ pub(crate) async fn handle_chunk_send<'a>(
     spdm_hdr: SpdmMsgHdr,
     req: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
+    // Acquire the shared buffer before processing (needed for request reassembly)
+    ctx.large_msg_ctx
+        .acquire_buf()
+        .map_err(|_| ctx.generate_error_response(req, ErrorCode::Busy, 0, None))?;
+
     let result = process_chunk_send(ctx, spdm_hdr, req)?;
 
     ctx.prepare_response_buffer(req)?;
@@ -340,6 +345,7 @@ mod tests {
     use crate::protocol::algorithms::LocalDeviceAlgorithms;
     use crate::transport::common::{SpdmTransport, TransportError, TransportResult};
     use alloc::boxed::Box;
+    use alloc::vec;
     use async_trait::async_trait;
     use caliptra_mcu_libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
     use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
@@ -488,11 +494,37 @@ mod tests {
         }
     }
 
+    /// Test buffer provider that owns a leaked buffer.
+    /// Acquire always returns the buffer; release is a no-op (test only).
+    struct TestBufProvider {
+        capacity: usize,
+    }
+
+    impl TestBufProvider {
+        fn new(capacity: usize) -> Self {
+            Self { capacity }
+        }
+    }
+
+    impl crate::chunk_ctx::LargeMsgBufProvider for TestBufProvider {
+        fn acquire(&self) -> Option<&'static mut [u8]> {
+            // In tests, just leak a fresh buffer each time
+            let buf = vec![0u8; self.capacity].into_boxed_slice();
+            Some(Box::leak(buf))
+        }
+        fn release(&self, _buf: &'static mut [u8]) {
+            // Leak in tests — no-op
+        }
+        fn capacity(&self) -> usize {
+            self.capacity
+        }
+    }
+
     fn test_context<'a>(
         transport: &'a mut TestTransport,
         cert_store: &'a TestCertStore,
         measurements: &'a mut TestMeasurements,
-        large_msg_buf: &'a mut [u8],
+        buf_provider: &'a TestBufProvider,
     ) -> SpdmContext<'a> {
         let mut flags = CapabilityFlags::default();
         flags.set_chunk_cap(1);
@@ -512,7 +544,7 @@ mod tests {
             cert_store,
             crate::measurements::SpdmMeasurements::new(&[], measurements),
             None,
-            large_msg_buf,
+            buf_provider,
         )
         .expect("test context should be valid");
         ctx.state
@@ -567,13 +599,18 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut large_msg_buf = [0u8; 2048];
+        let buf_provider = TestBufProvider::new(2048);
         let mut ctx = test_context(
             &mut transport,
             &cert_store,
             &mut measurements,
-            &mut large_msg_buf,
+            &buf_provider,
         );
+
+        // Acquire the shared buffer (as handle_chunk_send would do)
+        ctx.large_msg_ctx
+            .acquire_buf()
+            .expect("buffer should be available");
 
         let first_chunk = [0xAA; 30];
         let mut first_storage = [0u8; 96];
@@ -617,13 +654,18 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut large_msg_buf = [0u8; 2048];
+        let buf_provider = TestBufProvider::new(2048);
         let mut ctx = test_context(
             &mut transport,
             &cert_store,
             &mut measurements,
-            &mut large_msg_buf,
+            &buf_provider,
         );
+
+        // Acquire the shared buffer (as handle_chunk_send would do)
+        ctx.large_msg_ctx
+            .acquire_buf()
+            .expect("buffer should be available");
 
         let first_chunk = [0xAA; 30];
         let mut first_storage = [0u8; 96];
@@ -659,12 +701,12 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut large_msg_buf = [0u8; 2048];
+        let buf_provider = TestBufProvider::new(2048);
         let mut ctx = test_context(
             &mut transport,
             &cert_store,
             &mut measurements,
-            &mut large_msg_buf,
+            &buf_provider,
         );
 
         let first_chunk = [0xAA; 30];
@@ -692,12 +734,12 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut large_msg_buf = [0u8; 2048];
+        let buf_provider = TestBufProvider::new(2048);
         let mut ctx = test_context(
             &mut transport,
             &cert_store,
             &mut measurements,
-            &mut large_msg_buf,
+            &buf_provider,
         );
 
         let first_chunk = [0xAA; 30];
@@ -734,12 +776,12 @@ mod tests {
         let mut transport = TestTransport;
         let cert_store = TestCertStore;
         let mut measurements = TestMeasurements;
-        let mut large_msg_buf = [0u8; 2048];
+        let buf_provider = TestBufProvider::new(2048);
         let mut ctx = test_context(
             &mut transport,
             &cert_store,
             &mut measurements,
-            &mut large_msg_buf,
+            &buf_provider,
         );
         let mut storage = [0u8; 64];
         let mut msg = MessageBuf::new(&mut storage);

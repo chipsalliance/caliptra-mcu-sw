@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cert_store::*;
-use crate::chunk_ctx::LargeMessageCtx;
+use crate::chunk_ctx::{LargeMessageCtx, LargeMsgBufProvider};
 use crate::codec::{encode_u8_slice, Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
@@ -54,7 +54,7 @@ impl<'a> SpdmContext<'a> {
         device_certs_store: &'a dyn SpdmCertStore,
         measurements: SpdmMeasurements<'a>,
         vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
-        large_msg_buf: &'a mut [u8],
+        large_msg_buf_provider: &'a dyn LargeMsgBufProvider,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -70,7 +70,7 @@ impl<'a> SpdmContext<'a> {
             local_algorithms,
             device_certs_store,
             measurements,
-            large_msg_ctx: LargeMessageCtx::new(large_msg_buf),
+            large_msg_ctx: LargeMessageCtx::new(large_msg_buf_provider),
             session_mgr: SessionManager::new(),
             vdm_handlers,
         })
@@ -114,9 +114,14 @@ impl<'a> SpdmContext<'a> {
                         .await
                         .inspect_err(|_| {})?;
                 }
+                // Release buffer on error if no chunking is in progress
+                self.large_msg_ctx.release_buf();
                 Err(SpdmError::Command(command_error))?;
             }
         }
+
+        // Release the shared buffer if no multi-message chunking is in progress
+        self.large_msg_ctx.release_buf();
 
         Ok(())
     }
@@ -193,7 +198,7 @@ impl<'a> SpdmContext<'a> {
         &mut self,
         _req_msg_header: SpdmMsgHdr,
         _req_code: ReqRespCode,
-        _req: &mut MessageBuf<'a>,
+        _req: &mut MessageBuf<'_>,
         rsp: &mut MessageBuf<'a>,
     ) -> CommandResult<()> {
         // No commands currently support large-request handling.
@@ -205,7 +210,7 @@ impl<'a> SpdmContext<'a> {
 
     fn decode_and_validate_request(
         &mut self,
-        req: &mut MessageBuf<'a>,
+        req: &mut MessageBuf<'_>,
     ) -> CommandResult<(SpdmMsgHdr, ReqRespCode)> {
         let req_msg_header: SpdmMsgHdr =
             SpdmMsgHdr::decode(req).map_err(|e| (false, CommandError::Codec(e)))?;
@@ -237,6 +242,21 @@ impl<'a> SpdmContext<'a> {
         req_code: ReqRespCode,
         req: &mut MessageBuf<'a>,
     ) -> CommandResult<()> {
+        // Acquire the shared large message buffer for commands that may need it
+        // (large responses or chunk operations). The buffer is released after
+        // the response is fully sent (in process_message) if no chunking is active.
+        match req_code {
+            ReqRespCode::GetCertificate
+            | ReqRespCode::GetMeasurements
+            | ReqRespCode::ChunkGet
+            | ReqRespCode::VendorDefinedRequest => {
+                self.large_msg_ctx
+                    .acquire_buf()
+                    .map_err(|_| self.generate_error_response(req, ErrorCode::Busy, 0, None))?;
+            }
+            _ => {}
+        }
+
         match req_code {
             ReqRespCode::GetVersion => {
                 version_rsp::handle_get_version(self, req_msg_header, req).await?
@@ -554,7 +574,7 @@ impl<'a> SpdmContext<'a> {
     fn validate_request_in_session_context(
         &self,
         req_code: ReqRespCode,
-        req: &mut MessageBuf<'a>,
+        req: &mut MessageBuf<'_>,
     ) -> CommandResult<()> {
         let Some(session_id) = self.session_mgr.active_session_id() else {
             return Ok(());
