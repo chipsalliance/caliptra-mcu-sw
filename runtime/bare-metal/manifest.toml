@@ -1,0 +1,27 @@
+# Licensed under the Apache-2.0 license
+
+[platform]
+name = "bare-metal"
+tuple = "riscv32imc-unknown-none-elf"
+dynamic_sizing = true
+page_size = 256
+
+[platform.rom]
+offset = 0x80000000
+size = 0x20000
+
+[platform.runtime_memory]
+sram = { offset = 0x40000000, size = 0x80000 }
+
+[platform.dccm]
+offset = 0x50000000
+size = 0x4000
+
+[platform.flash]
+offset = 0x3BFE0000
+size = 0x20000
+
+[bare_metal]
+name = "bare-metal-runtime"
+stack = 0x4000
+exception_stack = 0x400

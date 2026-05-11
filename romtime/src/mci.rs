@@ -88,14 +88,14 @@ impl Mci {
         self.registers.mci_reg_mcu_nmi_vector.set(nmi_vector);
     }
 
-    pub fn configure_wdt(&self, wdt1_timeout: u32, wdt2_timeout: u32) {
-        // Set WDT1 period.
-        self.registers.mci_reg_wdt_timer1_timeout_period[0].set(wdt1_timeout);
-        self.registers.mci_reg_wdt_timer1_timeout_period[1].set(0);
+    pub fn configure_wdt(&self, wdt1_timeout: u64, wdt2_timeout: u64) {
+        // Set WDT1 period (64-bit, split across two 32-bit registers).
+        self.registers.mci_reg_wdt_timer1_timeout_period[0].set(wdt1_timeout as u32);
+        self.registers.mci_reg_wdt_timer1_timeout_period[1].set((wdt1_timeout >> 32) as u32);
 
         // Set WDT2 period. Fire immediately after WDT1 expiry
-        self.registers.mci_reg_wdt_timer2_timeout_period[0].set(wdt2_timeout);
-        self.registers.mci_reg_wdt_timer2_timeout_period[1].set(0);
+        self.registers.mci_reg_wdt_timer2_timeout_period[0].set(wdt2_timeout as u32);
+        self.registers.mci_reg_wdt_timer2_timeout_period[1].set((wdt2_timeout >> 32) as u32);
 
         // Enable WDT1 only. WDT2 is automatically scheduled (since it is disabled) on WDT1 expiry.
         self.registers.mci_reg_wdt_timer1_ctrl.set(1); // Timer1Restart

@@ -39,6 +39,7 @@ log.workspace = true
 lazy_static.workspace = true
 mcu-mbox-common.workspace = true
 mcu-testing-common.workspace = true
+mcu-otp-lifecycle.workspace = true
 p384.workspace = true
 pldm-common.workspace = true
 pldm-fw-pkg.workspace = true
@@ -71,6 +72,7 @@ path = "src/lib.rs"
 [features]
 default = ["ocp-lock"]
 ocp-lock = []
+test-bare-metal = []
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []

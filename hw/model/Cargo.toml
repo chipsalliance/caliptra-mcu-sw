@@ -43,6 +43,8 @@ mcu-config.workspace = true
 mcu-mbox-common.workspace = true
 mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
+mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
+ocp.workspace = true
 network-config.workspace = true
 p384.workspace = true
 poll-common.workspace = true

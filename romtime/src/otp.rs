@@ -3,8 +3,7 @@
 use crate::{HexBytes, HexWord, StaticRef};
 use core::fmt::Write;
 use mcu_error::{McuError, McuResult};
-use registers_generated::fuses;
-use registers_generated::fuses::FuseEntryInfo;
+use registers_generated::fuses::{self, FuseEntryInfo, OtpPartitionInfo};
 use registers_generated::otp_ctrl;
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -13,14 +12,12 @@ use crate::{FuseLayout, LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_O
 // TODO: use the Lifecycle controller to read the Lifecycle state
 
 // TODO: this error mask is dependent on the specific fuse map
-const OTP_STATUS_ERROR_MASK: u32 = (1 << 22) - 1;
+// Mask covering bits 0-29 (all error bits, excluding DaiIdle bit 30 and CheckPending bit 31).
+const OTP_STATUS_ERROR_MASK: u32 = (1 << 30) - 1;
 const OTP_CONSISTENCY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_INTEGRITY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_CHECK_TIMEOUT: u32 = 0x10_0000;
 const OTP_PENDING_CHECK_MAX_ITERATIONS: u32 = 1_000_000;
-// These defaults are defined in the caliptra-ss RTL (otp_ctrl_part_pkg.sv).
-const OTP_DIGEST_IV: u64 = 0x90C7F21F6224F027u64;
-const OTP_DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266Fu128;
 pub const HEK_ZEROIZATION_VALID_BOUND: u32 = 64 - 6;
 
 // HEK partition metadata offsets
@@ -69,15 +66,10 @@ pub const PROD_DEBUG_UNLOCK_PK_ENTRIES: [&FuseEntryInfo; 8] = [
 
 const DIGEST_SIZE: usize = 8;
 
-/// Describes an OTP partition for software digest computation.
-/// TODO: generate these automatically in xtask
-pub struct OtpPartition {
-    /// Byte offset of the partition within the OTP address space.
-    pub byte_offset: usize,
-    /// Total byte size of the partition (including the digest field if present).
-    pub byte_size: usize,
-    /// Whether this partition supports a software-computed digest.
-    pub sw_digest: bool,
+#[derive(Clone, Copy)]
+pub enum PqcKeyType {
+    MLDSA = 1,
+    LMS = 2,
 }
 
 pub struct Otp {
@@ -217,6 +209,35 @@ impl Otp {
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
     }
 
+    /// Reads a dword (64-bit) from the OTP controller.
+    /// dword_addr is in dwords (8-byte units).
+    pub fn read_dword(&self, dword_addr: usize) -> McuResult<u64> {
+        while !self
+            .registers
+            .otp_status
+            .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
+        {}
+
+        self.registers
+            .direct_access_address
+            .set((dword_addr * 8) as u32);
+        self.registers.direct_access_cmd.set(1);
+
+        while !self
+            .registers
+            .otp_status
+            .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
+        {}
+
+        if let Some(err) = self.check_error() {
+            crate::println!("Error reading fuses: {}", HexWord(err));
+            return Err(McuError::ROM_OTP_READ_ERROR);
+        }
+        let lo = self.registers.dai_rdata_rf_direct_access_rdata_0.get() as u64;
+        let hi = self.registers.dai_rdata_rf_direct_access_rdata_1.get() as u64;
+        Ok(lo | (hi << 32))
+    }
+
     /// Write a dword to the OTP controller.
     /// word_addr is in words
     pub fn write_dword(&self, dword_addr: usize, data: u64) -> McuResult<u32> {
@@ -228,11 +249,9 @@ impl Otp {
         {}
 
         // load the data
-        crate::println!("Write dword 0: {}", HexWord(data as u32));
         self.registers
             .dai_wdata_rf_direct_access_wdata_0
             .set((data) as u32);
-        crate::println!("Write dword 1: {}", HexWord((data >> 32) as u32));
         self.registers
             .dai_wdata_rf_direct_access_wdata_1
             .set((data >> 32) as u32);
@@ -492,11 +511,14 @@ impl Otp {
     // These avoid allocating full partition arrays on the stack.
     // -------------------------------------------------------------------------
 
-    /// Read cptra_core_pqc_key_type_0 (4 bytes).
-    pub fn read_cptra_core_pqc_key_type_0(&self) -> McuResult<[u8; 4]> {
-        let mut data = [0u8; 4];
-        self.read_entry_raw(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_0, &mut data)?;
-        Ok(data)
+    /// Read PQC key type (4 bytes).
+    pub fn read_pqc_key_type(&self, index: usize) -> McuResult<PqcKeyType> {
+        let entry = pqc_key_type_entry(index)?;
+        if self.read_entry(entry)? == 1 {
+            Ok(PqcKeyType::MLDSA)
+        } else {
+            Ok(PqcKeyType::LMS)
+        }
     }
 
     /// Read cptra_core_fmc_key_manifest_svn (4 bytes).
@@ -506,13 +528,10 @@ impl Otp {
         Ok(data)
     }
 
-    /// Read cptra_core_vendor_pk_hash_0 (48 bytes).
-    pub fn read_cptra_core_vendor_pk_hash_0(
-        &self,
-    ) -> McuResult<[u8; fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size]> {
-        let mut data = [0u8; fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size];
-        self.read_entry_raw(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0, &mut data)?;
-        Ok(data)
+    /// Read vendor public key hash (48 bytes).
+    pub fn read_vendor_pk_hash(&self, index: usize, buf: &mut [u8]) -> McuResult<()> {
+        let entry = vendor_pk_hash_entry(index)?;
+        self.read_entry_raw(entry, buf)
     }
 
     /// Read cptra_core_runtime_svn (16 bytes).
@@ -549,25 +568,22 @@ impl Otp {
         Ok(data)
     }
 
-    /// Read cptra_core_ecc_revocation_0 (4 bytes).
-    pub fn read_cptra_core_ecc_revocation_0(&self) -> McuResult<[u8; 4]> {
-        let mut data = [0u8; 4];
-        self.read_entry_raw(fuses::OTP_CPTRA_CORE_ECC_REVOCATION_0, &mut data)?;
-        Ok(data)
+    /// Read vendor ECC revocation (4 bytes).
+    pub fn read_vendor_ecc_revocation(&self, index: usize) -> McuResult<u32> {
+        let entry = vendor_ecc_revocation_entry(index)?;
+        self.read_entry(entry)
     }
 
-    /// Read cptra_core_lms_revocation_0 (4 bytes).
-    pub fn read_cptra_core_lms_revocation_0(&self) -> McuResult<[u8; 4]> {
-        let mut data = [0u8; 4];
-        self.read_entry_raw(fuses::OTP_CPTRA_CORE_LMS_REVOCATION_0, &mut data)?;
-        Ok(data)
+    /// Read vendor LMS revocation (4 bytes).
+    pub fn read_vendor_lms_revocation(&self, index: usize) -> McuResult<u32> {
+        let entry = vendor_lms_revocation_entry(index)?;
+        self.read_entry(entry)
     }
 
-    /// Read cptra_core_mldsa_revocation_0 (4 bytes).
-    pub fn read_cptra_core_mldsa_revocation_0(&self) -> McuResult<[u8; 4]> {
-        let mut data = [0u8; 4];
-        self.read_entry_raw(fuses::OTP_CPTRA_CORE_MLDSA_REVOCATION_0, &mut data)?;
-        Ok(data)
+    /// Read vendor MLDSA revocation (4 bytes).
+    pub fn read_vendor_mldsa_revocation(&self, index: usize) -> McuResult<u32> {
+        let entry = vendor_mldsa_revocation_entry(index)?;
+        self.read_entry(entry)
     }
 
     /// Read cptra_ss_owner_pk_hash (48 bytes).
@@ -743,24 +759,6 @@ impl Otp {
         Ok(())
     }
 
-    pub fn is_valid_hek_seed(&self, slot: usize, seed: &[u8; 48]) -> McuResult<bool> {
-        let byte_offset = *HEK_OFFSETS
-            .get(slot)
-            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
-        let partition = OtpPartition {
-            byte_offset,
-            byte_size: HEK_ZER_MARKER_OFFSET,
-            sw_digest: true,
-        };
-        let expected_digest = u64::from_le_bytes(
-            seed[HEK_SEED_SIZE..HEK_ZER_MARKER_OFFSET]
-                .try_into()
-                .map_err(|_| McuError::ROM_OTP_INVALID_DATA_ERROR)?,
-        );
-
-        Ok(self.compute_sw_digest(&partition, OTP_DIGEST_IV, OTP_DIGEST_CONST)? == expected_digest)
-    }
-
     /// Compute the software digest of an OTP partition by reading its data
     /// (excluding the trailing 8-byte digest field) and hashing it with the
     /// PRESENT-based OTP digest algorithm.
@@ -772,7 +770,7 @@ impl Otp {
     /// have `sw_digest` set or if its size is too small to contain a digest.
     pub fn compute_sw_digest(
         &self,
-        partition: &OtpPartition,
+        partition: &OtpPartitionInfo,
         iv: u64,
         cnst: u128,
     ) -> McuResult<u64> {
@@ -820,6 +818,57 @@ impl Otp {
 
         let digest = otp_digest::otp_digest_iter(blocks, iv, cnst);
         err?;
+        Ok(digest)
+    }
+
+    /// Compute and write the software digest for an OTP partition, locking it.
+    ///
+    /// Per the OTP spec, writing a non-zero value to the partition's digest
+    /// entry via DAI locks write access to the partition after the next reset.
+    ///
+    /// This method:
+    /// 1. Computes the 64-bit PRESENT-based digest over partition data
+    /// 2. Writes it to the digest offset via DAI (64-bit write)
+    /// 3. Reads it back and verifies
+    ///
+    /// Returns the computed digest on success.
+    pub fn write_sw_digest_and_lock(
+        &self,
+        partition: &OtpPartitionInfo,
+        iv: u64,
+        cnst: u128,
+    ) -> McuResult<u64> {
+        let digest_offset = partition
+            .digest_offset
+            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+
+        let digest = self.compute_sw_digest(partition, iv, cnst)?;
+        crate::println!(
+            "[mcu-rom-otp] Writing SW digest {:#x} for partition '{}' at offset {:#x}",
+            digest,
+            partition.name,
+            digest_offset
+        );
+
+        // The digest field always uses a 64-bit access granule in the DAI,
+        // even for non-secret partitions whose data uses 32-bit granularity.
+        self.write_dword(digest_offset / 8, digest)?;
+
+        // Read back the digest using 64-bit granule (matching the write)
+        let readback = self.read_dword(digest_offset / 8)?;
+        if readback != digest {
+            crate::println!(
+                "[mcu-rom-otp] Digest verify failed: wrote {:#x}, read {:#x}",
+                digest,
+                readback
+            );
+            return Err(McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
+        }
+
+        crate::println!(
+            "[mcu-rom-otp] SW digest written and verified for '{}' - partition will lock on next reset",
+            partition.name
+        );
         Ok(digest)
     }
 
@@ -930,5 +979,120 @@ impl Otp {
             self.write_word(base_word + i, *w)?;
         }
         Ok(())
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor PK hash slot.
+pub fn vendor_pk_hash_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0),
+        1 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_1),
+        2 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_2),
+        3 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_3),
+        4 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_4),
+        5 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_5),
+        6 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_6),
+        7 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_7),
+        8 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_8),
+        9 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_9),
+        10 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_10),
+        11 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_11),
+        12 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_12),
+        13 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_13),
+        14 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_14),
+        15 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given PQC key type slot.
+pub fn pqc_key_type_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_0),
+        1 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_1),
+        2 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_2),
+        3 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_3),
+        4 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_4),
+        5 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_5),
+        6 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_6),
+        7 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_7),
+        8 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_8),
+        9 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_9),
+        10 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_10),
+        11 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_11),
+        12 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_12),
+        13 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_13),
+        14 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_14),
+        15 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor ECC revocation slot.
+pub fn vendor_ecc_revocation_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::VENDOR_ECC_REVOCATION_0),
+        1 => Ok(fuses::VENDOR_ECC_REVOCATION_1),
+        2 => Ok(fuses::VENDOR_ECC_REVOCATION_2),
+        3 => Ok(fuses::VENDOR_ECC_REVOCATION_3),
+        4 => Ok(fuses::VENDOR_ECC_REVOCATION_4),
+        5 => Ok(fuses::VENDOR_ECC_REVOCATION_5),
+        6 => Ok(fuses::VENDOR_ECC_REVOCATION_6),
+        7 => Ok(fuses::VENDOR_ECC_REVOCATION_7),
+        8 => Ok(fuses::VENDOR_ECC_REVOCATION_8),
+        9 => Ok(fuses::VENDOR_ECC_REVOCATION_9),
+        10 => Ok(fuses::VENDOR_ECC_REVOCATION_10),
+        11 => Ok(fuses::VENDOR_ECC_REVOCATION_11),
+        12 => Ok(fuses::VENDOR_ECC_REVOCATION_12),
+        13 => Ok(fuses::VENDOR_ECC_REVOCATION_13),
+        14 => Ok(fuses::VENDOR_ECC_REVOCATION_14),
+        15 => Ok(fuses::VENDOR_ECC_REVOCATION_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor LMS revocation slot.
+pub fn vendor_lms_revocation_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::VENDOR_LMS_REVOCATION_0),
+        1 => Ok(fuses::VENDOR_LMS_REVOCATION_1),
+        2 => Ok(fuses::VENDOR_LMS_REVOCATION_2),
+        3 => Ok(fuses::VENDOR_LMS_REVOCATION_3),
+        4 => Ok(fuses::VENDOR_LMS_REVOCATION_4),
+        5 => Ok(fuses::VENDOR_LMS_REVOCATION_5),
+        6 => Ok(fuses::VENDOR_LMS_REVOCATION_6),
+        7 => Ok(fuses::VENDOR_LMS_REVOCATION_7),
+        8 => Ok(fuses::VENDOR_LMS_REVOCATION_8),
+        9 => Ok(fuses::VENDOR_LMS_REVOCATION_9),
+        10 => Ok(fuses::VENDOR_LMS_REVOCATION_10),
+        11 => Ok(fuses::VENDOR_LMS_REVOCATION_11),
+        12 => Ok(fuses::VENDOR_LMS_REVOCATION_12),
+        13 => Ok(fuses::VENDOR_LMS_REVOCATION_13),
+        14 => Ok(fuses::VENDOR_LMS_REVOCATION_14),
+        15 => Ok(fuses::VENDOR_LMS_REVOCATION_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor MLDSA revocation slot.
+pub fn vendor_mldsa_revocation_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::VENDOR_MLDSA_REVOCATION_0),
+        1 => Ok(fuses::VENDOR_MLDSA_REVOCATION_1),
+        2 => Ok(fuses::VENDOR_MLDSA_REVOCATION_2),
+        3 => Ok(fuses::VENDOR_MLDSA_REVOCATION_3),
+        4 => Ok(fuses::VENDOR_MLDSA_REVOCATION_4),
+        5 => Ok(fuses::VENDOR_MLDSA_REVOCATION_5),
+        6 => Ok(fuses::VENDOR_MLDSA_REVOCATION_6),
+        7 => Ok(fuses::VENDOR_MLDSA_REVOCATION_7),
+        8 => Ok(fuses::VENDOR_MLDSA_REVOCATION_8),
+        9 => Ok(fuses::VENDOR_MLDSA_REVOCATION_9),
+        10 => Ok(fuses::VENDOR_MLDSA_REVOCATION_10),
+        11 => Ok(fuses::VENDOR_MLDSA_REVOCATION_11),
+        12 => Ok(fuses::VENDOR_MLDSA_REVOCATION_12),
+        13 => Ok(fuses::VENDOR_MLDSA_REVOCATION_13),
+        14 => Ok(fuses::VENDOR_MLDSA_REVOCATION_14),
+        15 => Ok(fuses::VENDOR_MLDSA_REVOCATION_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
     }
 }

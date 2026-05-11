@@ -14,10 +14,11 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
-use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
+use crate::fuses::{DefaultVendorKeyPolicy, VendorKeyPolicy};
 use crate::hil::FlashStorage;
 
+use crate::fatal_error;
 use crate::ColdBoot;
 use crate::FwBoot;
 use crate::FwHitlessUpdate;
@@ -34,17 +35,15 @@ use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;
 use romtime::otp::{Otp, PROD_DEBUG_UNLOCK_PK_ENTRIES};
 #[cfg(feature = "stable-owner-key")]
-use romtime::otp::{HEK_OFFSETS, HEK_SEED_SIZE};
+use romtime::otp::{HEK_OFFSETS, HEK_SEED_SIZE, HEK_ZER_MARKER_OFFSET};
 use romtime::LifecycleControllerState;
 use romtime::LifecycleHashedTokens;
 use romtime::LifecycleToken;
+use romtime::PqcKeyType;
 use romtime::{HexWord, McuBootMilestones, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
 
-// values in fuses
-const LMS_FUSE_VALUE: u8 = 1;
-const MLDSA_FUSE_VALUE: u8 = 0;
 // values when setting in Caliptra
 const MLDSA_CALIPTRA_VALUE: u8 = 1;
 const LMS_CALIPTRA_VALUE: u8 = 3;
@@ -54,6 +53,10 @@ const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
 const STABLE_OWNER_KEY_STRAP_INDEX: usize = 3;
 #[cfg(feature = "stable-owner-key")]
 const STABLE_OWNER_KEY_STRAP_MASK: u32 = 1;
+#[cfg(feature = "stable-owner-key")]
+const STABLE_OWNER_KEY_OTP_DIGEST_IV: u64 = 0x90C7F21F6224F027u64;
+#[cfg(feature = "stable-owner-key")]
+const STABLE_OWNER_KEY_OTP_DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266Fu128;
 
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
@@ -74,6 +77,8 @@ pub struct Soc {
 pub struct FuseParams<'a, 'b> {
     #[cfg(feature = "ocp-lock")]
     pub ocp_lock_config: Option<&'b mut romtime::ocp_lock::RomConfig<'a>>,
+    /// Policy for selecting the vendor public key slot.
+    pub vendor_key_policy: Option<&'a dyn VendorKeyPolicy>,
     // Used to prevent compiler warnings for unused lifetime.
     pub _inner: PhantomData<(&'a (), &'b ())>,
 }
@@ -117,6 +122,18 @@ impl Soc {
 
     pub fn cptra_fw_fatal_error(&self) -> bool {
         self.registers.cptra_fw_error_fatal.get() != 0
+    }
+
+    pub fn check_hw_errors(&self) {
+        let hw_error = self.registers.cptra_hw_error_fatal.extract();
+        if hw_error.is_set(soc::bits::CptraHwErrorFatal::IccmEccUnc) {
+            romtime::println!("[mcu-rom] Caliptra reported an ICCM ECC uncorrectable error");
+            fatal_error(McuError::ROM_SOC_ICCM_ECC_UNC);
+        }
+        if hw_error.is_set(soc::bits::CptraHwErrorFatal::DccmEccUnc) {
+            romtime::println!("[mcu-rom] Caliptra reported a DCCM ECC uncorrectable error");
+            fatal_error(McuError::ROM_SOC_DCCM_ECC_UNC);
+        }
     }
 
     pub fn set_cptra_wdt_cfg(&self, index: usize, value: u32) {
@@ -206,11 +223,31 @@ impl Soc {
                 continue;
             }
 
-            let valid_seed = otp
-                .is_valid_hek_seed(slot, &seed)
+            let byte_offset = *HEK_OFFSETS
+                .get(slot)
+                .unwrap_or_else(|| fatal_error(McuError::ROM_OTP_INVALID_DATA_ERROR));
+            let partition = fuses::OtpPartitionInfo {
+                name: "cptra_ss_lock_hek_prod_seed",
+                byte_offset,
+                byte_size: HEK_ZER_MARKER_OFFSET,
+                sw_digest: true,
+                hw_digest: false,
+                digest_offset: Some(byte_offset + HEK_SEED_SIZE),
+            };
+            let expected_digest = u64::from_le_bytes(
+                seed[HEK_SEED_SIZE..HEK_ZER_MARKER_OFFSET]
+                    .try_into()
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_INVALID_DATA_ERROR)),
+            );
+            let computed_digest = otp
+                .compute_sw_digest(
+                    &partition,
+                    STABLE_OWNER_KEY_OTP_DIGEST_IV,
+                    STABLE_OWNER_KEY_OTP_DIGEST_CONST,
+                )
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
 
-            if valid_seed {
+            if computed_digest == expected_digest {
                 self.write_hek_seed(&seed[..HEK_SEED_SIZE]);
                 romtime::println!(
                     "[mcu-fuse-write] Finished writing stable owner key HEK fuse slot {}",
@@ -236,7 +273,6 @@ impl Soc {
         mci: &romtime::Mci,
         params: &mut FuseParams,
     ) -> FuseState {
-        let _ = params;
         // secret fuses are populated by a hardware state machine, so we can skip those
 
         // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
@@ -256,6 +292,17 @@ impl Soc {
         self.registers.ss_strap_generic[0].set(OTP_DAI_IDLE_BIT_OFFSET << 16);
         self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
 
+        // Select the vendor public key slot to use.
+        let default_policy = DefaultVendorKeyPolicy::new();
+        let policy = params.vendor_key_policy.unwrap_or(&default_policy);
+        let selected_index = policy
+            .select_key(otp)
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_PK_HASH_SELECTION_FAILED));
+        romtime::println!(
+            "[mcu-fuse-write] Selected vendor PK slot {}",
+            selected_index
+        );
+
         #[cfg(feature = "stable-owner-key")]
         {
             // Caliptra ROM gates owner stable key availability on SS_STRAP_GENERIC[3] bit 0.
@@ -265,16 +312,20 @@ impl Soc {
         }
 
         // PQC Key Type.
-        let pqc_word = otp
-            .read_u32_at(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_0.byte_offset)
+        let pqc_type = otp
+            .read_pqc_key_type(selected_index)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        let pqc_type = match (pqc_word as u8) & 1 {
-            MLDSA_FUSE_VALUE => MLDSA_CALIPTRA_VALUE,
-            LMS_FUSE_VALUE => LMS_CALIPTRA_VALUE,
-            _ => unreachable!(),
+        let pqc_caliptra_val = match pqc_type {
+            PqcKeyType::MLDSA => MLDSA_CALIPTRA_VALUE,
+            PqcKeyType::LMS => LMS_CALIPTRA_VALUE,
         };
-        self.registers.fuse_pqc_key_type.set(pqc_type as u32);
-        romtime::println!("[mcu-fuse-write] Setting vendor PQC type to {}", pqc_type);
+        self.registers
+            .fuse_pqc_key_type
+            .set(pqc_caliptra_val as u32);
+        romtime::println!(
+            "[mcu-fuse-write] Setting vendor PQC type to {}",
+            pqc_caliptra_val
+        );
 
         // FMC Key Manifest SVN.
         let svn = otp
@@ -284,10 +335,11 @@ impl Soc {
 
         // Vendor PK Hash.
         romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
-        for i in 0..self.registers.fuse_vendor_pk_hash.len() {
-            let word = otp
-                .read_u32_at(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_offset + i * 4)
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        let mut hash_buf = [0u8; 48];
+        otp.read_vendor_pk_hash(selected_index, &mut hash_buf)
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        for (i, word_bytes) in hash_buf.chunks_exact(4).enumerate() {
+            let word = u32::from_le_bytes(word_bytes.try_into().unwrap());
             romtime::print!("{}", HexWord(word));
             self.registers.fuse_vendor_pk_hash[i].set(word);
         }
@@ -327,19 +379,19 @@ impl Soc {
         // Load Owner ECC/LMS/MLDSA revocation CSRs.
         // ECC Revocation.
         let word = otp
-            .read_u32_at(fuses::OTP_CPTRA_CORE_ECC_REVOCATION_0.byte_offset)
+            .read_vendor_ecc_revocation(selected_index)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_ecc_revocation.set(word);
 
         // LMS Revocation.
         let word = otp
-            .read_u32_at(fuses::OTP_CPTRA_CORE_LMS_REVOCATION_0.byte_offset)
+            .read_vendor_lms_revocation(selected_index)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_lms_revocation.set(word);
 
         // MLDSA Revocation.
         let word = otp
-            .read_u32_at(fuses::OTP_CPTRA_CORE_MLDSA_REVOCATION_0.byte_offset)
+            .read_vendor_mldsa_revocation(selected_index)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_mldsa_revocation.set(word);
 
@@ -637,10 +689,35 @@ impl Soc {
                 romtime::println!("[mcu-rom] Caliptra reported a fatal error");
                 fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
             }
+            self.check_hw_errors();
         }
         // Clear the reset request interrupt
         notif0.modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
     }
+
+    /// Configure the Caliptra iTRNG parameters.
+    pub fn configure_itrng(&self, args: CptraItrngArgs) {
+        let bypass_mode = u32::from(args.bypass_mode) << 31;
+        let window_size = u32::from(args.window_size);
+        self.registers.ss_strap_generic[2].set(bypass_mode | window_size);
+        self.registers
+            .cptra_i_trng_entropy_config_0
+            .set(args.config0);
+        self.registers
+            .cptra_i_trng_entropy_config_1
+            .set(args.config1);
+    }
+}
+
+/// Caliptra iTRNG configuration parameters.
+///
+/// See the [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers)
+/// for more details.
+pub struct CptraItrngArgs {
+    pub bypass_mode: bool,
+    pub window_size: u16,
+    pub config0: u32,
+    pub config1: u32,
 }
 
 /// Number of users supported by the MCU MBOX ACL mechanism.
@@ -823,6 +900,27 @@ pub fn verify_mcu_mbox_axi_users(
     Ok(())
 }
 
+/// Policy controlling which DOT recovery mechanisms are attempted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DotRecoveryPolicy {
+    /// Try challenge/response first, then backup blob (default).
+    ChallengeFirst,
+    /// Try backup blob first, then challenge/response.
+    BackupBlobFirst,
+    /// Only attempt challenge/response recovery.
+    ChallengeOnly,
+    /// Only attempt backup blob recovery.
+    BackupBlobOnly,
+    /// Do not attempt any recovery.
+    None,
+}
+
+impl Default for DotRecoveryPolicy {
+    fn default() -> Self {
+        Self::ChallengeFirst
+    }
+}
+
 #[derive(Default)]
 pub struct RomParameters<'a> {
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
@@ -841,7 +939,17 @@ pub struct RomParameters<'a> {
     /// of MCU SRAM during FwBoot and process any DOT commands found.
     /// Default: false (opt-in by platform integrators).
     pub fw_manifest_dot_enabled: bool,
-
+    /// Recovery handler for recovering from corrupted DOT blob in ODD state (backup blob flow).
+    pub dot_recovery_handler: Option<&'a dyn crate::DotRecoveryHandler>,
+    /// Recovery transport for full challenge/response DOT recovery protocol.
+    pub dot_recovery_transport: Option<&'a dyn crate::RecoveryTransport>,
+    /// DOT recovery watchdog timeout in clock cycles. If non-zero, the MCU
+    /// watchdog is configured with this value before waiting for mbox0
+    /// commands during challenge/response recovery. 0 = no watchdog.
+    pub dot_recovery_wdt_timeout: u64,
+    /// Which DOT recovery mechanisms to attempt and in what order.
+    /// Defaults to challenge/response first, then backup blob.
+    pub dot_recovery_policy: DotRecoveryPolicy,
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,
@@ -867,11 +975,15 @@ pub struct RomParameters<'a> {
     pub stash_rom_digest: Option<bool>,
     #[cfg(feature = "ocp-lock")]
     pub ocp_lock_config: romtime::ocp_lock::RomConfig<'a>,
+    /// Policy for selecting the vendor public key slot.
+    pub vendor_key_policy: Option<&'a dyn VendorKeyPolicy>,
     /// OTP digest IV and finalization constant (platform-specific RTL constants).
-    /// Required to use `Otp::compute_sw_digest`.
-    /// TODO: pass them to compute_sw_digest
+    /// Required to use `Otp::compute_sw_digest` and `Otp::write_sw_digest_and_lock`.
     pub otp_digest_iv: Option<u64>,
     pub otp_digest_const: Option<u128>,
+    /// Caliptra entropy bypass mode. See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers)
+    /// for more details.
+    pub itrng_entropy_bypass_mode: bool,
 }
 
 pub fn rom_start(params: RomParameters) {

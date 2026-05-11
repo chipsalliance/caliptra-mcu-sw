@@ -7,6 +7,7 @@ members = [
     "common/flash-image",
     "common/mcu-mbox",
     "common/otp-digest",
+    "common/otp-lifecycle",
     "common/mctp-vdm",
     "common/ocp",
     "common/pldm",
@@ -35,6 +36,7 @@ members = [
     "platforms/emulator/config",
     "platforms/emulator/mcu-image-header",
     "platforms/emulator/rom",
+    "platforms/emulator/rom/usb",
     "platforms/emulator/runtime",
     "platforms/emulator/runtime/kernel/capsules",
     "platforms/emulator/runtime/kernel/drivers/dma",
@@ -57,6 +59,7 @@ members = [
     "registers/systemrdl",
     "rom",
     "romtime",
+    "runtime/bare-metal",
     "runtime/kernel/capsules",
     "runtime/kernel/components",
     "runtime/kernel/drivers/doe",
@@ -101,6 +104,7 @@ aes-gcm = "0.10.3"
 anyhow = "1.0.97"
 arrayvec = { version = "0.7.4", default-features = false }
 async-trait = "0.1.87"
+base64 = "0.22"
 bitfield = "0.14.0"
 bitflags = "2.4.0"
 bindgen = "0.69"
@@ -164,7 +168,7 @@ serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
 serde-hjson = "1.1.0"
 sha2 = { version = "0.10.8", default-features = false }
-sha3 = "0.10.8"
+sha3 = { version = "0.10.8", default-features = false }
 simple_logger = "5.0.0"
 spki = { version = "0.7.3", default-features = false }
 smlang = "0.8.0"
@@ -222,8 +226,10 @@ mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
 mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
 mcu-mbox-common = { path = "common/mcu-mbox" }
 mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
+mcu-otp-lifecycle = { path = "common/otp-lifecycle" }
 mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }
+mcu-usb-emulator = { path = "platforms/emulator/rom/usb" }
 mcu-test-harness = {path = "platforms/test_harness"}
 lwip-rs = { path = "network/net/lwip-rs" }
 ocp = { path = "common/ocp" }
@@ -328,6 +334,7 @@ caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/calipt
 # caliptra-test-harness-types = { path = "../caliptra-sw/test-harness/types" }
 # ureg = { path = "../caliptra-sw/ureg" }
 # dpe = { path = "../caliptra-sw/dpe/dpe", default-features = false, features = ["dpe_profile_p384_sha384"] }
+# ocp-eat = { path = "../caliptra-sw/common/eat",  default-features = false  }
 
 # caliptra-infra deps:
 # caliptra-bitstream-downloader = { path = "../caliptra-infra/ci-tools/bitstream-downloader" }

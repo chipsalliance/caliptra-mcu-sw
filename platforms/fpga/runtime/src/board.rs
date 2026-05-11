@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::interrupts::FpgaPeripherals;
-use crate::MCU_MEMORY_MAP;
+use crate::{MCU_MEMORY_MAP, MCU_STRAPS};
 use arrayvec::ArrayVec;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
@@ -543,7 +543,23 @@ pub unsafe fn main() {
         romtime::println!("[mcu-runtime] ProcessPrinter initialized");
     }
 
-    let mux_mctp = mcu_components::mux_mctp::MCTPMuxComponent::new(&peripherals.i3c, mux_alarm)
+    // Select which I3C core to use for MCTP transport based on platform strap.
+    if MCU_STRAPS.active_i3c > 1 {
+        romtime::println!(
+            "[mcu-runtime] WARNING: invalid active_i3c value {}, falling back to 0",
+            MCU_STRAPS.active_i3c
+        );
+    }
+    let active_i3c_core = if MCU_STRAPS.active_i3c == 1 {
+        &peripherals.i3c1
+    } else {
+        &peripherals.i3c
+    };
+    romtime::println!(
+        "[mcu-runtime] Active I3C core for MCTP: {}",
+        MCU_STRAPS.active_i3c
+    );
+    let mux_mctp = mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
         .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
     romtime::println!("[mcu-runtime] MCTP mux initialized");
 

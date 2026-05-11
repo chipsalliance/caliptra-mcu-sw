@@ -19,6 +19,8 @@ compile_error!("features `ocp-lock` and `stable-owner-key` are mutually exclusiv
 
 mod device_ownership_transfer;
 pub use device_ownership_transfer::*;
+mod dot_recovery;
+pub use dot_recovery::*;
 pub mod flash;
 pub use flash::*;
 mod fuse_layout;

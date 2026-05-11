@@ -1,0 +1,93 @@
+# Licensed under the Apache-2.0 license
+
+name: End-to-End Attestation
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  attestation_e2e:
+    runs-on: ubuntu-24.04
+
+    env:
+      CARGO_INCREMENTAL: 0
+      SCCACHE_VERSION: 0.8.2
+      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
+      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
+
+      # Change this to a new random value if you suspect the cache is corrupted
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b42a6e70ec4
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Restore sccache binary
+        uses: actions/cache/restore@v3
+        id: sccache_bin_restore
+        with:
+          path: ~/.cargo/bin/sccache
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+
+      - name: Install sccache
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        run: |
+          cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
+
+      - name: Save sccache binary
+        uses: actions/cache/save@v3
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cargo/bin/sccache
+          key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
+
+      - name: Configure sccache
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Install cocli
+        run: |
+          go install github.com/veraison/cocli@v1.0.0-alpha0
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      # ── Build firmware with test features ──────────────────────────────
+      - name: Build firmware with test SPDM responder features
+        run: |
+          cargo xtask all-build --runtime-features test-mctp-spdm-responder-conformance
+
+      # ── Generate CoRIM reference values ────────────────────────────────
+      - name: Generate reference-value CoRIM
+        run: |
+          cat > /tmp/corim-config.json << 'EOF'
+          {
+            "output_dir": "attestation-artifacts/corim",
+            "signing": {
+              "test_key": "caliptra-corim-test-signing-key"
+            }
+          }
+          EOF
+          cargo xtask corim gen-refval --bundle target/all-fw.zip --config /tmp/corim-config.json
+
+      # ── Upload CoRIM artifacts ──────────────────────────────────────────
+      - name: Upload CoRIM artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attestation-artifacts
+          path: |
+            attestation-artifacts/

@@ -30,6 +30,31 @@ pub mod hw_model_tests {
         bin_name: "exception_handler",
         ..BASE_FWID
     };
+
+    pub const USB_RESPONDER: FwId = FwId {
+        bin_name: "usb_responder",
+        ..BASE_FWID
+    };
+
+    pub const USB_OCP_RECOVERY: FwId = FwId {
+        bin_name: "usb_ocp_recovery",
+        ..BASE_FWID
+    };
+
+    pub const SW_DIGEST_LOCK: FwId = FwId {
+        bin_name: "sw_digest_lock",
+        ..BASE_FWID
+    };
+
+    pub const OTP_BLANK_CHECK: FwId = FwId {
+        bin_name: "otp_blank_check",
+        ..BASE_FWID
+    };
+
+    pub const LC_CTRL: FwId = FwId {
+        bin_name: "lc_ctrl",
+        ..BASE_FWID
+    };
 }
 
 pub const REGISTERED_FW: &[&FwId] = &[
@@ -37,6 +62,11 @@ pub const REGISTERED_FW: &[&FwId] = &[
     &hw_model_tests::HITLESS_UPDATE_FLOW,
     &hw_model_tests::AXI_BYPASS,
     &hw_model_tests::EXCEPTION_HANDLER,
+    &hw_model_tests::USB_RESPONDER,
+    &hw_model_tests::USB_OCP_RECOVERY,
+    &hw_model_tests::SW_DIGEST_LOCK,
+    &hw_model_tests::OTP_BLANK_CHECK,
+    &hw_model_tests::LC_CTRL,
 ];
 
 pub const CPTRA_REGISTERED_FW: &[&FwId] = &[

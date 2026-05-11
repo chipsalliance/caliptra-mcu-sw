@@ -20,14 +20,12 @@ use crate::state::{ConnectionState, State};
 use crate::transcript::{Transcript, TranscriptContext};
 use crate::transport::common::SpdmTransport;
 use crate::vdm_handler::VdmHandler;
+use core::mem::size_of;
+use libapi_caliptra::crypto::aes_gcm::Aes256GcmTag;
 use libapi_caliptra::crypto::asym::*;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 
 // Maximum SPDM responder buffer size
-#[cfg(feature = "large-buffer")]
-pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 2048;
-
-#[cfg(not(feature = "large-buffer"))]
 pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 1024;
 
 pub struct SpdmContext<'a> {
@@ -234,14 +232,33 @@ impl<'a> SpdmContext<'a> {
         encode_error_response(msg_buf, spdm_version, error_code, error_data, extended_data)
     }
 
-    /// Returns the minimum data transfer size based on local and peer capabilities.
+    /// Returns the effective minimum data transfer size for SPDM payloads.
+    /// Takes the minimum of local and peer capabilities, then subtracts
+    /// session encryption overhead when an active session exists.
     pub(crate) fn min_data_transfer_size(&self) -> usize {
-        self.local_capabilities.data_transfer_size.min(
+        let raw = self.local_capabilities.data_transfer_size.min(
             self.state
                 .connection_info
                 .peer_capabilities()
                 .data_transfer_size,
-        ) as usize
+        ) as usize;
+
+        // When a response is sent within a session, the encrypted message wraps:
+        //   session_id + [sequence_num] + length + encrypted(app_data_length + app_data + [random_data]) + aead_tag
+        // The overhead beyond the SPDM payload (app_data) is:
+        // Fixed overhead: session_id (u32) + length (u16) + app_data_length (u16) + AEAD tag
+        const FIXED_SESSION_OVERHEAD: usize =
+            size_of::<u32>() + size_of::<u16>() + size_of::<u16>() + size_of::<Aes256GcmTag>();
+
+        let session_overhead = if self.session_mgr.active_session_id().is_some() {
+            FIXED_SESSION_OVERHEAD
+            + self.transport.sequence_num_size_bytes()   // sequence number (transport-specific)
+            + self.transport.random_data_size_bytes() // random data (transport-specific)
+        } else {
+            0
+        };
+
+        raw.saturating_sub(session_overhead)
     }
 
     pub(crate) fn support_large_msg_chunking(&self) -> bool {

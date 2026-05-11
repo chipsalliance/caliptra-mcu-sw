@@ -33,6 +33,10 @@ pub struct McuMemoryMap {
     pub i3c_size: u32,
     pub i3c_properties: MemoryRegionType,
 
+    pub i3c1_offset: u32,
+    pub i3c1_size: u32,
+    pub i3c1_properties: MemoryRegionType,
+
     pub mci_offset: u32,
     pub mci_size: u32,
     pub mci_properties: MemoryRegionType,
@@ -84,6 +88,10 @@ impl Default for McuMemoryMap {
             i3c_size: 0x1000,
             i3c_properties: MemoryRegionType::MMIO,
 
+            i3c1_offset: 0x2000_5000,
+            i3c1_size: 0x1000,
+            i3c1_properties: MemoryRegionType::MMIO,
+
             mci_offset: 0x2100_0000,
             mci_size: 0xe0_0000,
             mci_properties: MemoryRegionType::MMIO,
@@ -115,6 +123,10 @@ impl Default for McuMemoryMap {
 #[repr(C)]
 pub struct McuStraps {
     pub i3c_static_addr: u8,
+    pub i3c1_static_addr: u8,
+    /// Selects which I3C core is used for MCTP transport.
+    /// 0 = i3c0 (default), 1 = i3c1.
+    pub active_i3c: u8,
     pub cptra_wdt_cfg0: u32,
     pub cptra_wdt_cfg1: u32,
     pub mcu_wdt_cfg0: u32,
@@ -129,6 +141,8 @@ impl McuStraps {
     pub const fn default() -> Self {
         McuStraps {
             i3c_static_addr: 0x3a,
+            i3c1_static_addr: 0x3c,
+            active_i3c: 0,
             cptra_wdt_cfg0: 100_000_000,
             cptra_wdt_cfg1: 100_000_000,
             mcu_wdt_cfg0: 20_000_000,
@@ -251,6 +265,7 @@ impl McuMemoryMap {
         process_region(self.dccm_offset, self.dccm_size, self.dccm_properties);
         process_region(self.pic_offset, 0x1000, self.pic_properties); // PIC doesn't have explicit size, use 4KB
         process_region(self.i3c_offset, self.i3c_size, self.i3c_properties);
+        process_region(self.i3c1_offset, self.i3c1_size, self.i3c1_properties);
         process_region(self.mci_offset, self.mci_size, self.mci_properties);
         process_region(self.mbox_offset, self.mbox_size, self.mbox_properties);
         process_region(self.soc_offset, self.soc_size, self.soc_properties);

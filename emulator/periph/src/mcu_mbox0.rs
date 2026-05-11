@@ -540,6 +540,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
             Some(Box::new(mci)),
             None,
             None,

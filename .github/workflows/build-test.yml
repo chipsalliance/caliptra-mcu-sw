@@ -270,6 +270,7 @@ jobs:
           cargo --config "$EXTRA_CARGO_CONFIG" nextest archive \
             --workspace \
             --features ocp-lock \
+            --exclude bare-metal-runtime \
             --exclude mcu-rom-emulator \
             --exclude mcu-rom-fpga \
             --exclude mcu-runtime-emulator \
@@ -292,7 +293,7 @@ jobs:
           retention-days: 1
 
   test_emulator:
-    runs-on: e2-standard-2
+    runs-on: e2-standard-4
     needs: [precheckin, build-firmware, build-emulators, build-tests]
     timeout-minutes: 90
     strategy:

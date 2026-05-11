@@ -9,6 +9,8 @@ mod network;
 mod rom;
 #[cfg(test)]
 mod runtime;
+mod test_active_i3c;
+mod test_bare_metal;
 mod test_dot;
 mod test_exception_handler;
 mod test_fips_zeroization;
@@ -192,6 +194,12 @@ mod test {
         output
     }
 
+    pub fn compile_bare_metal_runtime() -> PathBuf {
+        let output = mcu_builder::bare_metal_build().expect("Bare-metal runtime failed to compile");
+        assert!(output.exists());
+        output
+    }
+
     /// Check if prebuilt binaries are available for the given feature.
     pub fn has_prebuilt_binaries(feature: &str) -> bool {
         if let Ok(binaries) = FirmwareBinaries::from_env() {
@@ -357,6 +365,7 @@ mod test {
         } = match FirmwareBinaries::from_env() {
             Ok(binaries)
                 if params.firmware_prefix.is_none()
+                    && params.rom_feature.is_none()
                     && (params.feature.is_none()
                         || has_prebuilt_binaries(params.feature.unwrap())) =>
             {

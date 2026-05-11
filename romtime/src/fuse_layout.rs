@@ -162,7 +162,10 @@ fn inject_bits(output: &mut [u32], offset: usize, bits: usize, value: u32) -> Mc
     }
     // skip to the offset
     if offset >= 32 {
-        return inject_bits(&mut output[offset / 32..], offset % 32, bits, value);
+        let sub_output = output
+            .get_mut(offset / 32..)
+            .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+        return inject_bits(sub_output, offset % 32, bits, value);
     }
     if bits + offset > 64 {
         return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
@@ -170,12 +173,15 @@ fn inject_bits(output: &mut [u32], offset: usize, bits: usize, value: u32) -> Mc
 
     if offset + bits <= 32 {
         // single u32
+        let target = output
+            .get_mut(0)
+            .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
         if bits == 32 {
-            output[0] = value;
+            *target = value;
         } else {
             let mask = (1 << bits) - 1;
-            output[0] &= !(mask << offset);
-            output[0] |= (value & mask) << offset;
+            *target &= !(mask << offset);
+            *target |= (value & mask) << offset;
         }
     } else {
         // split across two adjacent u32s
@@ -183,12 +189,22 @@ fn inject_bits(output: &mut [u32], offset: usize, bits: usize, value: u32) -> Mc
         let bits_from_second = bits - bits_from_first;
 
         let first_value = value & ((1 << bits_from_first) - 1);
-        output[0] &= (1 << offset) - 1;
-        output[0] |= first_value << offset;
+        {
+            let target0 = output
+                .get_mut(0)
+                .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+            *target0 &= (1 << offset) - 1;
+            *target0 |= first_value << offset;
+        }
 
         let second_value = (value >> bits_from_first) & ((1 << bits_from_second) - 1);
-        output[1] &= !((1 << bits_from_second) - 1);
-        output[1] |= second_value;
+        {
+            let target1 = output
+                .get_mut(1)
+                .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+            *target1 &= !((1 << bits_from_second) - 1);
+            *target1 |= second_value;
+        }
     }
     Ok(())
 }
@@ -207,7 +223,10 @@ fn extract_bits(raw_value: &[u32], offset: usize, bits: usize) -> McuResult<u32>
     }
     // skip to the offset
     if offset >= 32 {
-        return extract_bits(&raw_value[offset / 32..], offset % 32, bits);
+        let sub_raw = raw_value
+            .get(offset / 32..)
+            .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+        return extract_bits(sub_raw, offset % 32, bits);
     }
     if bits + offset > 64 {
         return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
@@ -215,18 +234,28 @@ fn extract_bits(raw_value: &[u32], offset: usize, bits: usize) -> McuResult<u32>
 
     if offset + bits <= 32 {
         // single u32
+        let val = raw_value
+            .first()
+            .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
         if bits == 32 {
-            Ok(raw_value[0] >> offset)
+            Ok(*val >> offset)
         } else {
-            Ok((raw_value[0] >> offset) & ((1 << bits) - 1))
+            Ok((*val >> offset) & ((1 << bits) - 1))
         }
     } else {
         // split across two adjacent u32s
         let bits_from_first = 32 - offset;
         let bits_from_second = bits - bits_from_first;
 
-        let lower = (raw_value[0] >> offset) & ((1 << bits_from_first) - 1);
-        let upper = raw_value[1] & ((1 << bits_from_second) - 1);
+        let val0 = raw_value
+            .first()
+            .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+        let val1 = raw_value
+            .get(1)
+            .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+
+        let lower = (*val0 >> offset) & ((1 << bits_from_first) - 1);
+        let upper = *val1 & ((1 << bits_from_second) - 1);
 
         Ok(lower | (upper << bits_from_first))
     }
@@ -251,18 +280,21 @@ pub fn write_fuse_value<const N: usize, const M: usize>(
             if bits.get() > N * 32 {
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
-            result[..N].copy_from_slice(&value[..]);
+            let target = result
+                .get_mut(..N)
+                .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+            target.copy_from_slice(&value[..N]);
         }
         FuseLayout::OneHot(Bits(bits)) => {
             if N != 1 || bits.get() > M * 32 {
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
-            let value = value[0];
-            if value > bits.get() as u32 {
+            let val = *value.first().ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+            if val > bits.get() as u32 {
                 return Err(McuError::ROM_FUSE_VALUE_TOO_LARGE);
             }
-            // Burn exactly 'value' bits, starting from LSB
-            let mut bits_left = value as usize;
+            // Burn exactly 'val' bits, starting from LSB
+            let mut bits_left = val as usize;
             for r in result.iter_mut() {
                 let burn = bits_left.min(32);
                 if burn == 32 {
@@ -280,7 +312,10 @@ pub fn write_fuse_value<const N: usize, const M: usize>(
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
             for i in 0..bits.get() {
-                let bit = (value[i / 32] >> (i % 32)) & 1;
+                let val_word = *value
+                    .get(i / 32)
+                    .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                let bit = (val_word >> (i % 32)) & 1;
                 let raw_bit = (bit << dupe.get()).saturating_sub(1);
                 inject_bits(&mut result, i * dupe.get(), dupe.get(), raw_bit)?;
             }
@@ -290,12 +325,12 @@ pub fn write_fuse_value<const N: usize, const M: usize>(
             if N != 1 || bits.get() * dupe.get() > M * 32 {
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
-            let value = value[0];
-            if value > bits.get() as u32 {
+            let val = *value.first().ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+            if val > bits.get() as u32 {
                 return Err(McuError::ROM_FUSE_VALUE_TOO_LARGE);
             }
-            // Burn exactly 'value' * 'dupe' bits, starting from LSB
-            let mut bits_left = value as usize * dupe.get();
+            // Burn exactly 'val' * 'dupe' bits, starting from LSB
+            let mut bits_left = val as usize * dupe.get();
             for r in result.iter_mut() {
                 let burn = bits_left.min(32);
                 if burn == 32 {
@@ -319,7 +354,11 @@ pub fn write_fuse_value<const N: usize, const M: usize>(
             }
             for (i, &x) in value.iter().enumerate() {
                 for j in 0..dupe.get() {
-                    result[i * dupe.get() + j] = x;
+                    let target_idx = i * dupe.get() + j;
+                    let target = result
+                        .get_mut(target_idx)
+                        .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                    *target = x;
                 }
             }
         }
@@ -340,7 +379,13 @@ pub fn extract_fuse_value<const N: usize>(
                 Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)
             } else {
                 let len = raw_value.len().min(result.len());
-                result[..len].copy_from_slice(&raw_value[..len]);
+                let target = result
+                    .get_mut(..len)
+                    .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                let source = raw_value
+                    .get(..len)
+                    .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                target.copy_from_slice(source);
                 Ok(result)
             }
         }
@@ -348,8 +393,12 @@ pub fn extract_fuse_value<const N: usize>(
             if N != 1 {
                 Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)
             } else {
-                let result = raw_value.iter().map(|&v| v.count_ones()).sum();
-                Ok([result; N])
+                let count: u32 = raw_value.iter().map(|&v| v.count_ones()).sum();
+                let target = result
+                    .get_mut(0)
+                    .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                *target = count;
+                Ok(result)
             }
         }
         FuseLayout::LinearMajorityVote(Bits(bits), Duplication(dupe)) if dupe.get() <= 32 => {
@@ -364,7 +413,10 @@ pub fn extract_fuse_value<const N: usize>(
                 let offset = i * dupe.get();
                 let raw = extract_bits(raw_value, offset, dupe.get())?;
                 let bit = if raw.count_ones() >= half { 1 } else { 0 };
-                result[i / 32] |= bit << (i % 32);
+                let target = result
+                    .get_mut(i / 32)
+                    .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                *target |= bit << (i % 32);
             }
             Ok(result)
         }
@@ -373,16 +425,20 @@ pub fn extract_fuse_value<const N: usize>(
                 Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)
             } else {
                 let half = (dupe.get() as u32).div_ceil(2);
-                let mut result = 0;
+                let mut count = 0;
                 for i in 0..bits.get() {
                     // compute a single bit via majority vote
                     let offset = i * dupe.get();
                     let raw = extract_bits(raw_value, offset, dupe.get())?;
                     if raw.count_ones() >= half {
-                        result += 1;
+                        count += 1;
                     }
                 }
-                Ok([result; N])
+                let target = result
+                    .get_mut(0)
+                    .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                *target = count;
+                Ok(result)
             }
         }
         FuseLayout::WordMajorityVote(Bits(bits), Duplication(dupe)) if dupe.get() <= 32 => {
@@ -400,7 +456,10 @@ pub fn extract_fuse_value<const N: usize>(
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
             for (i, chunk) in raw_value.chunks_exact(dupe.get()).enumerate() {
-                result[i] = extract_majority_vote_words(chunk);
+                let target = result
+                    .get_mut(i)
+                    .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+                *target = extract_majority_vote_words(chunk);
             }
             Ok(result)
         }

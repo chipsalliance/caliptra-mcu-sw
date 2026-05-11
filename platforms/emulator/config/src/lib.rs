@@ -27,6 +27,10 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     i3c_size: 0x1000,
     i3c_properties: MemoryRegionType::MMIO,
 
+    i3c1_offset: 0x2000_5000,
+    i3c1_size: 0x1000,
+    i3c1_properties: MemoryRegionType::MMIO,
+
     mci_offset: 0x2100_0000,
     mci_size: 0xe0_0000,
     mci_properties: MemoryRegionType::MMIO,
@@ -53,4 +57,9 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     staging_sram_size: 1024 * 1024,
 };
 
-pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps::default();
+const ACTIVE_I3C: u8 = if cfg!(feature = "active-i3c1") { 1 } else { 0 };
+
+pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps {
+    active_i3c: ACTIVE_I3C,
+    ..McuStraps::default()
+};

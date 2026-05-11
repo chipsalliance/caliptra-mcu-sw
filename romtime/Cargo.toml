@@ -12,6 +12,7 @@ caliptra-api.workspace = true
 caliptra-registers.workspace = true
 mcu-error.workspace = true
 mcu-mbox-common.workspace = true
+mcu-otp-lifecycle.workspace = true
 otp-digest.workspace = true
 registers-generated.workspace = true
 tock-registers.workspace = true

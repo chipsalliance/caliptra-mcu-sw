@@ -134,6 +134,41 @@ impl McuError {
             "Flash not configured"
         ),
         (
+            ROM_DOT_RECOVERY_BLOB_AUTH_ERROR,
+            0x1_001a,
+            "DOT recovery blob authentication failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_FLASH_WRITE_ERROR,
+            0x1_001b,
+            "DOT recovery flash write failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_PK_HASH_MISMATCH,
+            0x1_001c,
+            "DOT recovery PK hash mismatch"
+        ),
+        (
+            ROM_DOT_RECOVERY_CHALLENGE_FAILED,
+            0x1_001d,
+            "DOT recovery challenge generation failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_SIG_VERIFY_FAILED,
+            0x1_001e,
+            "DOT recovery signature verification failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_NO_RECOVERY_PK_HASH,
+            0x1_001f,
+            "DOT recovery no recovery PK hash in fuses"
+        ),
+        (
+            ROM_DOT_RECOVERY_TRANSPORT_ERROR,
+            0x1_0020,
+            "DOT recovery transport error"
+        ),
+        (
             ROM_COLD_BOOT_HEK_REPORT_ERROR,
             0x1_0016,
             "Failed to report HEK state"
@@ -308,6 +343,26 @@ impl McuError {
             "OTP fuse provisioning: unknown command"
         ),
         (
+            ROM_OTP_DIGEST_VERIFY_ERROR,
+            0x3_001a,
+            "OTP SW digest readback verification failed"
+        ),
+        (
+            ROM_OTP_READ_CPTRA_ITRNG_WINDOW_SIZE_ERROR,
+            0x3_001b,
+            "Failed to read CPTRA_ITRNG_WINDOW_SIZE from OTP"
+        ),
+        (
+            ROM_OTP_READ_CPTRA_ITRNG_CONFIG0_ERROR,
+            0x3_001c,
+            "Failed to read CPTRA_ITRNG_ENTROPY_CONFIG_0 from OTP"
+        ),
+        (
+            ROM_OTP_READ_CPTRA_ITRNG_CONFIG1_ERROR,
+            0x3_001d,
+            "Failed to read CPTRA_ITRNG_ENTROPY_CONFIG_1 from OTP"
+        ),
+        (
             ROM_I3C_CONFIG_RING_HEADER_ERROR,
             0x4_0000,
             "I3C config ring header error"
@@ -453,14 +508,34 @@ impl McuError {
             "Missing OCP LOCK ROM Config"
         ),
         (
+            ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR,
+            0x1_001a,
+            "Stable owner key derivation failed during cold boot"
+        ),
+        (
             ROM_SOC_WDT_CFG_OUT_OF_RANGE,
             0x5_0013,
             "Caliptra WDT config index out of range"
         ),
         (
-            ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR,
-            0x1_001a,
-            "Stable owner key derivation failed during cold boot"
+            ROM_BOOTFSM_TIMEOUT,
+            0x5_0014,
+            "Caliptra Core boot FSM timed out"
+        ),
+        (
+            ROM_PK_HASH_SELECTION_FAILED,
+            0x5_0015,
+            "Failed to select a valid and functional vendor PK slot"
+        ),
+        (
+            ROM_SOC_ICCM_ECC_UNC,
+            0x5_0016,
+            "ICCM uncorrectable ECC error"
+        ),
+        (
+            ROM_SOC_DCCM_ECC_UNC,
+            0x5_0017,
+            "DCCM uncorrectable ECC error"
         ),
         (
             GENERIC_EXCEPTION,
