@@ -334,6 +334,7 @@ impl McuHwModel for ModelFpgaRealtime {
             soc_user: MailboxRequester::SocUser(DEFAULT_AXI_PAUSER),
             test_sram: None,
             ocp_lock_en: params.ocp_lock_en,
+            stable_owner_key_en: false,
             ss_init_params: SubsystemInitParams {
                 mcu_rom: Some(params.mcu_rom),
                 enable_mcu_uart_log: params.enable_mcu_uart_log,
@@ -345,8 +346,18 @@ impl McuHwModel for ModelFpgaRealtime {
             },
         };
         println!("Starting base model");
-        let base = ModelFpgaSubsystem::new_unbooted(cptra_init)
+        let mut base = ModelFpgaSubsystem::new_unbooted(cptra_init)
             .map_err(|e| anyhow::anyhow!("Failed to initialized base model: {e}"))?;
+
+        // If the caller provided initial OTP contents, seed them into the
+        // base model's `otp_init` and trigger a cold reset so OTP is
+        // re-provisioned from those bytes overlaid with the saved init
+        // params (LC partition, tokens, etc.). This is how the FPGA model
+        // emulates persistent OTP state across boots in tests.
+        if let Some(otp_mem) = params.otp_memory {
+            base.set_otp_init(otp_mem.to_vec());
+            base.cold_reset();
+        }
 
         let (i3c_rx, i3c_tx) = if let Some(i3c_port) = params.i3c_port {
             println!(

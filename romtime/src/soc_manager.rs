@@ -7,8 +7,8 @@ use caliptra_api::{
     mailbox::{ExternalMailboxCmdReq, MailboxReqHeader, MailboxRespHeader, Request},
     CaliptraApiError, SocManager,
 };
+use caliptra_ureg::RealMmioMut;
 use registers_generated::{mbox, soc};
-use ureg::RealMmioMut;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
 const MAILBOX_SIZE: usize = 256 * 1024;
@@ -34,7 +34,7 @@ impl SocManager for CaliptraSoC {
 
     /// Returns a mutable reference to the memory-mapped I/O.
     fn mmio_mut(&mut self) -> Self::TMmio<'_> {
-        ureg::RealMmioMut::default()
+        caliptra_ureg::RealMmioMut::default()
     }
 
     /// Provides a delay function to be invoked when polling mailbox status.

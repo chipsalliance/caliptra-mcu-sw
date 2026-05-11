@@ -27,7 +27,7 @@ pldm-lib.workspace = true
 romtime.workspace = true
 spki.workspace = true
 zerocopy.workspace = true
-ocp-eat.workspace = true
+caliptra-ocp-eat.workspace = true
 
 [features]
 ocp-lock = ["romtime/ocp-lock"]

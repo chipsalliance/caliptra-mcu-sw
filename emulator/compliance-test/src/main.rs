@@ -21,7 +21,7 @@ use fs::TempDir;
 use std::error::Error;
 use std::io::ErrorKind;
 use std::path::PathBuf;
-use std::{env::set_var, rc::Rc};
+use std::{cell::Cell, env::set_var, rc::Rc};
 use test_data::{get_binary_data, get_signature_data, run_riscof};
 
 mod exec;
@@ -233,7 +233,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let clock = Rc::new(Clock::new());
         let pic = Rc::new(Pic::new());
         let args = DEFAULT_CPU_ARGS;
-        let mut cpu = Cpu::new(Ram::new(binary), clock, pic, args);
+        let mut cpu = Cpu::new(Ram::new(binary), clock, pic, args, Rc::new(Cell::new(0)));
         cpu.write_pc(0x3000);
         while !is_test_complete(&mut cpu.bus) {
             match cpu.step(None) {
@@ -268,7 +268,7 @@ mod tests {
         let clock = Rc::new(Clock::new());
         let pic = Rc::new(Pic::new());
         let args = DEFAULT_CPU_ARGS;
-        let mut cpu = Cpu::new(Ram::new(ram_bytes), clock, pic, args);
+        let mut cpu = Cpu::new(Ram::new(ram_bytes), clock, pic, args, Rc::new(Cell::new(0)));
 
         check_reference_data("03020100\n07060504\n", &mut cpu.bus).unwrap();
         assert_eq!(

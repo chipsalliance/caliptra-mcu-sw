@@ -19,5 +19,5 @@ kernel.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
 tock-registers.workspace = true
-ureg.workspace = true
+caliptra-ureg.workspace = true
 zerocopy.workspace = true
