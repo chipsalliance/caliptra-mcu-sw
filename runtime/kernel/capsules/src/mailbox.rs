@@ -41,6 +41,17 @@ mod rw_allow {
     pub const COUNT: u8 = 1;
 }
 
+/// State machine for the chunked mailbox command flow (commands 2/3/4).
+#[derive(Clone, Copy, PartialEq)]
+enum MailboxState {
+    /// No mailbox operation in progress.
+    Idle,
+    /// After initiate_request (command 2), waiting for data chunks and execute.
+    Initiated,
+    /// After execute (command 4) or enqueue_command (command 1), polling for response.
+    Executing,
+}
+
 #[derive(Default)]
 pub struct App {}
 
@@ -57,6 +68,11 @@ pub struct Mailbox<'a, A: Alarm<'a>> {
     >,
     // Which app is currently using the storage.
     current_app: OptionalCell<ProcessId>,
+    // Current state of the mailbox state machine.
+    state: Cell<MailboxState>,
+    // Timeout ticks for the initiated state before auto-resetting to idle.
+    // If None, no timeout is enforced.
+    timeout_ticks: Option<u32>,
     resp_min_size: Cell<usize>,
     resp_size: Cell<usize>,
 }
@@ -71,12 +87,15 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
         driver: &'static mut CaliptraSoC,
+        timeout_ticks: Option<u32>,
     ) -> Mailbox<'a, A> {
         Mailbox {
             alarm,
             driver: TakeCell::new(driver),
             apps: grant,
             current_app: OptionalCell::empty(),
+            state: Cell::new(MailboxState::Idle),
+            timeout_ticks,
             resp_min_size: Cell::new(0),
             resp_size: Cell::new(0),
         }
@@ -87,7 +106,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     // command is completed.
     fn enqueue_command(&self, command: u32, processid: ProcessId) -> Result<(), ErrorCode> {
         // Check if we're already executing a mailbox command.
-        if self.current_app.is_some() {
+        if self.state.get() != MailboxState::Idle {
             return Err(ErrorCode::BUSY);
         }
         self.apps.enter(processid, |_app, kernel_data| {
@@ -123,6 +142,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         app_buffer: &ReadableProcessSlice,
     ) -> Result<(), ErrorCode> {
         self.current_app.set(processid);
+        self.state.set(MailboxState::Executing);
 
         // App buffer contains the full payload
         match driver.start_mailbox_req(
@@ -140,6 +160,8 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             }
             Err(err) => {
                 debug!("Error starting mailbox command: {:?}", err);
+                self.state.set(MailboxState::Idle);
+                self.current_app.take();
                 Err(ErrorCode::FAIL)
             }
         }
@@ -152,23 +174,32 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         processid: ProcessId,
     ) -> Result<(), ErrorCode> {
         // Check if we're already executing a mailbox command.
-        if self.current_app.is_some() {
+        if self.state.get() != MailboxState::Idle {
             return Err(ErrorCode::BUSY);
         }
         self.current_app.set(processid);
+        self.state.set(MailboxState::Initiated);
         self.driver
-            .map(|driver| {
-                driver
-                    .initiate_request(command, payload_size)
-                    .map_err(|_| ErrorCode::FAIL)
-            })
+            .map(
+                |driver| match driver.initiate_request(command, payload_size) {
+                    Ok(()) => {
+                        self.schedule_initiate_timeout();
+                        Ok(())
+                    }
+                    Err(_) => {
+                        self.state.set(MailboxState::Idle);
+                        self.current_app.take();
+                        Err(ErrorCode::FAIL)
+                    }
+                },
+            )
             .ok_or(ErrorCode::RESERVE)?
     }
 
     fn send_next_chunk(&self, processid: ProcessId) -> Result<(), ErrorCode> {
-        // Check if we're already executing a mailbox command.
-        if self.current_app.is_none() {
-            return Err(ErrorCode::CANCEL);
+        // Only allowed after initiate_request (command 2).
+        if self.state.get() != MailboxState::Initiated {
+            return Err(ErrorCode::INVAL);
         }
         self.apps.enter(processid, |_app, kernel_data| {
             // copy the request so we can write async
@@ -190,6 +221,8 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                             ErrorCode::FAIL
                         })?
                 })?;
+            // Reset the timeout since the user is actively sending data.
+            self.schedule_initiate_timeout();
             kernel_data
                 .schedule_upcall(upcall::COMMAND_DONE, (0, 0, 0))
                 .map_err(|err| {
@@ -220,17 +253,22 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     }
 
     fn execute(&self) -> Result<(), ErrorCode> {
-        // Check if we're already executing a mailbox command.
-        if self.current_app.is_none() {
-            return Err(ErrorCode::CANCEL);
+        // Only allowed after initiate_request (command 2).
+        if self.state.get() != MailboxState::Initiated {
+            return Err(ErrorCode::INVAL);
         }
+        self.state.set(MailboxState::Executing);
         self.driver
             .map(|driver| match driver.execute_command() {
                 Ok(()) => {
                     self.schedule_alarm();
                     Ok(())
                 }
-                Err(_) => Err(ErrorCode::FAIL),
+                Err(_) => {
+                    self.state.set(MailboxState::Idle);
+                    self.current_app.take();
+                    Err(ErrorCode::FAIL)
+                }
             })
             .unwrap_or(Err(ErrorCode::FAIL))
     }
@@ -310,27 +348,50 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         let dt = A::Ticks::from(10000);
         self.alarm.set_alarm(now, dt);
     }
+
+    fn schedule_initiate_timeout(&self) {
+        if let Some(ticks) = self.timeout_ticks {
+            let now = self.alarm.now();
+            let dt = A::Ticks::from(ticks);
+            self.alarm.set_alarm(now, dt);
+        }
+    }
 }
 
 impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
     fn alarm(&self) {
-        let reschedule = self
-            .driver
-            .map(|driver| {
-                if driver.is_mailbox_busy() {
-                    true
-                } else {
-                    self.try_complete_request(driver);
-                    false
-                }
-            })
-            .unwrap_or_default();
+        match self.state.get() {
+            MailboxState::Initiated => {
+                // Timeout: user didn't complete the chunked send in time.
+                debug!("Mailbox initiate timeout: resetting to idle");
+                let _ = self.alarm.disarm();
+                self.state.set(MailboxState::Idle);
+                self.current_app.take();
+            }
+            MailboxState::Executing => {
+                let reschedule = self
+                    .driver
+                    .map(|driver| {
+                        if driver.is_mailbox_busy() {
+                            true
+                        } else {
+                            self.try_complete_request(driver);
+                            false
+                        }
+                    })
+                    .unwrap_or_default();
 
-        if reschedule {
-            self.schedule_alarm();
-        } else {
-            let _ = self.alarm.disarm();
-            self.current_app.take(); // clear the current app so another app can use the mailbox
+                if reschedule {
+                    self.schedule_alarm();
+                } else {
+                    let _ = self.alarm.disarm();
+                    self.state.set(MailboxState::Idle);
+                    self.current_app.take();
+                }
+            }
+            MailboxState::Idle => {
+                let _ = self.alarm.disarm();
+            }
         }
     }
 }

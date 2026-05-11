@@ -150,6 +150,8 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_mailbox::test_caliptra_mailbox().await;
         test_caliptra_mailbox::test_caliptra_mailbox_bad_command().await;
         test_caliptra_mailbox::test_caliptra_mailbox_fail().await;
+        test_caliptra_mailbox::test_caliptra_mailbox_chunked().await;
+        test_caliptra_mailbox::test_caliptra_mailbox_chunked_timeout().await;
         System::exit(0);
     }
 

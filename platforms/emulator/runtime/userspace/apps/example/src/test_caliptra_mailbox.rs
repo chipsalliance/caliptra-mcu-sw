@@ -2,6 +2,7 @@
 
 use caliptra_api::mailbox::{MailboxReqHeader, QuotePcrsEcc384Req, QuotePcrsEcc384Resp, Request};
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
+use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_romtime::{println, test_exit};
 use core::fmt::Write;
 use zerocopy::{FromBytes, IntoBytes};
@@ -127,4 +128,133 @@ pub(crate) async fn test_caliptra_mailbox_fail() {
             test_exit(1);
         }
     }
+}
+
+#[allow(unused)]
+pub(crate) async fn test_caliptra_mailbox_chunked() {
+    println!("Starting mailbox chunked test");
+
+    let mailbox: Mailbox = Mailbox::new();
+
+    let mut req = QuotePcrsEcc384Req {
+        hdr: MailboxReqHeader::default(),
+        nonce: [0x34; 32],
+    };
+    let req_data = req.as_mut_bytes();
+    mailbox
+        .populate_checksum(QuotePcrsEcc384Req::ID.into(), req_data)
+        .unwrap();
+
+    let response_buffer = &mut [0u8; core::mem::size_of::<QuotePcrsEcc384Resp>()];
+
+    println!("Initiating chunked QUOTE_PCRS command");
+
+    // Step 1: Initiate the request
+    if let Err(err) = mailbox
+        .start_chunked_request(QuotePcrsEcc384Req::ID.0, req_data.len())
+        .await
+    {
+        println!("start_chunked_request failed with err {:?}", err);
+        test_exit(1);
+    }
+
+    // Step 2: Send data in 4-byte chunks
+    for chunk in req_data.chunks(4) {
+        if let Err(err) = mailbox.send_chunk(chunk).await {
+            println!("send_chunk failed with err {:?}", err);
+            test_exit(1);
+        }
+    }
+
+    // Step 3: Execute the command
+    match mailbox
+        .execute_chunked_request(QuotePcrsEcc384Req::ID.0, response_buffer)
+        .await
+    {
+        Ok(_) => {}
+        Err(err) => {
+            println!("execute_chunked_request failed with err {:?}", err);
+            test_exit(1);
+        }
+    }
+
+    println!("Chunked mailbox command success");
+
+    if response_buffer.iter().all(|&x| x == 0) {
+        println!("Mailbox response all 0");
+        test_exit(1);
+    }
+
+    match QuotePcrsEcc384Resp::ref_from_bytes(response_buffer) {
+        Ok(resp) => {
+            if resp.nonce != req.nonce {
+                println!(
+                    "Nonce mismatch: expected {:x?}, got {:x?}",
+                    req.nonce, resp.nonce
+                );
+                test_exit(1);
+            }
+        }
+        Err(err) => {
+            println!("Failed to parse response: {:?}", err);
+            test_exit(1);
+        }
+    }
+    println!("Chunked test passed");
+}
+
+#[allow(unused)]
+pub(crate) async fn test_caliptra_mailbox_chunked_timeout() {
+    println!("Starting mailbox chunked timeout test");
+
+    let mailbox: Mailbox = Mailbox::new();
+
+    let req = QuotePcrsEcc384Req {
+        hdr: MailboxReqHeader::default(),
+        nonce: [0x34; 32],
+    };
+    let req_data = req.as_bytes();
+
+    println!("Initiating chunked request then waiting for timeout");
+
+    // Step 1: Initiate the request
+    if let Err(err) = mailbox
+        .start_chunked_request(QuotePcrsEcc384Req::ID.0, req_data.len())
+        .await
+    {
+        println!("start_chunked_request failed with err {:?}", err);
+        test_exit(1);
+    }
+
+    // Step 2: Delay long enough for the kernel timeout to fire and reset to idle.
+    // Use a busy loop to burn time without yielding to the kernel scheduler,
+    // then yield so the kernel can process the alarm callback.
+    for _ in 0..1_000_000u32 {
+        core::hint::black_box(0u32);
+    }
+    // Yield to let the kernel fire the alarm callback.
+    crate::sleep::<caliptra_mcu_libsyscall_caliptra::DefaultSyscalls>(
+        caliptra_mcu_libtock::alarm::Milliseconds(500),
+    )
+    .await;
+
+    // Step 3: Try to send a chunk — should fail because the timeout reset state to Idle.
+    match mailbox.send_chunk(req_data).await {
+        Err(MailboxError::ErrorCode(ErrorCode::Invalid)) => {
+            println!("send_chunk correctly rejected after timeout");
+        }
+        Ok(_) => {
+            println!("send_chunk should have failed after timeout but succeeded");
+            test_exit(1);
+        }
+        Err(err) => {
+            println!(
+                "send_chunk failed with unexpected error after timeout: {:?}",
+                err
+            );
+            test_exit(1);
+        }
+    }
+
+    println!("Chunked timeout test passed");
 }
