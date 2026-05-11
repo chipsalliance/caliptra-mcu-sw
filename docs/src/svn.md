@@ -139,15 +139,17 @@ SoC manifest's SVN, set by the SoC manifest signing flow.
 
 ## MCU Component SVN Manifest (Optional)
 
-For per-component SoC image anti-rollback, the MCU SDK supports an optional
-**MCU Component SVN Manifest** mapping each SoC `component_id` to a
-`(current_svn, min_svn)` pair. Each `component_id` is then mapped to a specific
-`SOC_IMAGE_MIN_SVN[i]` fuse slot via the platform's SVN Fuse Map (see
+For per-component SoC image anti-rollback, the MCU runtime image may
+include an **MCU Component SVN Manifest** mapping each SoC `component_id`
+to a `(current_svn, min_svn)` pair. The manifest is a header in the MCU
+runtime image — similar in shape to the
+[firmware-manifest DOT section](./firmware_format.md#firmware-manifest-dot-section)
+— identified by its magic. MCU ROM looks for the magic in MCU SRAM after
+Caliptra Core has loaded the runtime; if absent, no per-component
+enforcement is performed and the `SOC_IMAGE_MIN_SVN` fuses are unused.
+Each `component_id` is mapped to a specific `SOC_IMAGE_MIN_SVN[i]` fuse
+slot via the platform's SVN Fuse Map (see
 [Component SVN Fuse Map](#component-svn-fuse-map)).
-
-If this manifest is omitted, only the SoC manifest-level SVN (enforced by
-Caliptra Core) provides rollback protection for SoC images, and the
-`SOC_IMAGE_MIN_SVN` fuses are unused.
 
 ### Format
 
@@ -203,44 +205,47 @@ release; the build system should validate this.
 
 ### Loading and Authentication
 
-The manifest is delivered as a SoC image (with its own `component_id` and
-digest in the SoC manifest), via the recovery interface or a PLDM firmware
-update. After delivery, MCU Runtime issues `AUTHORIZE_AND_STASH` to Caliptra
-to verify the digest against the SoC manifest. On success, MCU Runtime
-performs the manifest-self SVN check before parsing entries:
+The manifest is a header in the MCU runtime image, so it is authenticated
+together with the runtime by Caliptra Core's signature check on the SoC
+manifest.
+
+After Caliptra Core loads MCU Runtime into SRAM, MCU ROM looks for the
+manifest's magic at the manifest's location in SRAM. If the magic is
+absent, no manifest processing is performed and per-component enforcement
+is skipped. If the magic is present, MCU ROM validates the header before
+any per-component enforcement or fuse burning:
 
 1. Verify Magic and Format Version.
 2. Validate the header constraints (see [Format](#format)).
 3. Read `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` and
    `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` from OTP.
 4. If anti-rollback is not disabled and `header.current_svn < fuse_min_svn`:
-   reject the manifest.
+   reject the runtime image.
 5. Parse and cache entries.
 
-If `AUTHORIZE_AND_STASH` or the manifest-self SVN check fails, per-component
-enforcement is skipped and the failure is logged. Burning the requested
-`MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` floor happens later, in ROM, via the
-same triggering mechanism as the other `min_svn` burns (see
-[SVN Fuse Burning](#svn-fuse-burning)).
-
-This roots the manifest's integrity in the same trust chain as every other
-SoC image — the SoC manifest signature verified by Caliptra Core — and adds
-a separate manifest-format-level monotonic SVN to prevent the manifest
-itself from being rolled back.
+Burning the requested `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` floor happens
+later, in ROM, via the same triggering mechanism as the other `min_svn`
+burns (see [SVN Fuse Burning](#svn-fuse-burning)).
 
 ```mermaid
 sequenceDiagram
-    participant Source as Flash / Recovery I/F
-    participant MCU as MCU Runtime
     participant Caliptra
+    participant SRAM
+    participant ROM as MCU ROM
+    participant OTP
 
-    Source->>MCU: Component SVN Manifest data
-    MCU->>Caliptra: AUTHORIZE_AND_STASH
-    Caliptra-->>MCU: Authorization result
-    alt authorized
-        MCU->>MCU: Parse and cache entries
-    else failed
-        MCU->>MCU: Log error, skip enforcement
+    Caliptra->>SRAM: Load MCU runtime image
+    ROM->>SRAM: Look for manifest magic
+    alt magic absent
+        ROM->>ROM: Skip per-component enforcement
+    else magic present
+        ROM->>OTP: Read MCU_COMPONENT_SVN_MANIFEST_MIN_SVN
+        ROM->>ROM: Validate magic / version / header constraints
+        alt valid and current_svn ≥ fuse_min_svn
+            ROM->>ROM: Parse and cache entries
+        else invalid or rolled back
+            ROM->>ROM: Fatal error
+        end
     end
 ```
 
@@ -307,20 +312,15 @@ re-check SVN; SRAM contents are unchanged since the cold-boot check.
 
 ### Cold Boot and Hitless Update — MCU Component SVN Manifest burn
 
-If the MCU Component SVN Manifest is present and previously authenticated,
-MCU ROM also burns `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` from the manifest
-header. If anti-rollback is not disabled and
-`manifest_header.min_svn > fuse_min_svn`: burn the fuse and read back to
-verify. The `current_svn < fuse_min_svn` rejection for the manifest itself
-already happened in [Loading and Authentication](#loading-and-authentication);
-ROM only re-applies the burn here (e.g., on a reboot after the manifest
-was loaded but before the burn completed).
+When the manifest is present and has been validated, MCU ROM burns
+`MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` from the manifest header. If
+anti-rollback is not disabled and `manifest_header.min_svn > fuse_min_svn`:
+burn the fuse and read back to verify.
 
 ### Cold Boot and Hitless Update — SoC Component min_svn Burn
 
-If the MCU Component SVN Manifest is present and previously authenticated, MCU
-ROM also burns `SOC_IMAGE_MIN_SVN[i]` slots from manifest entries. For each
-entry with `min_svn > 0`:
+When the manifest is present, for each entry with `min_svn > 0` MCU ROM
+burns the corresponding `SOC_IMAGE_MIN_SVN[i]` slot:
 
 1. Look up `component_id` in `SVN_FUSE_MAP` to find the fuse slot.
 2. If `entry.min_svn > fuse_min_svn` and anti-rollback is not disabled:
@@ -338,17 +338,18 @@ attempt never makes it to the hitless reset.
 
 For each component in the bundle:
 
-1. **MCU Runtime image** — read `header.min_svn` from the new
-   `McuImageHeader` and obtain the bundle's SoC manifest SVN
-   (`soc_manifest_svn`) from the new SoC manifest. Reject if
-   `soc_manifest_svn < fuse_min_svn (MCU_RT_MIN_SVN)`, if
-   `header.min_svn > soc_manifest_svn`, or if either value exceeds the
-   `MCU_RT_MIN_SVN` one-hot range.
-2. **MCU Component SVN Manifest itself** — verify the header constraints
-   (Magic, version, `min_svn ≤ current_svn`, ranges). Reject if
-   `manifest_header.current_svn < fuse_min_svn
-   (MCU_COMPONENT_SVN_MANIFEST_MIN_SVN)`. Verify the per-entry constraints
-   (see [Format](#format)). Reject the bundle on any violation.
+1. **MCU Runtime image** — read `McuImageHeader.min_svn` from the new
+   image and obtain the bundle's SoC manifest SVN (`soc_manifest_svn`)
+   from the new SoC manifest. Reject if `soc_manifest_svn < fuse_min_svn
+   (MCU_RT_MIN_SVN)`, if `McuImageHeader.min_svn > soc_manifest_svn`, or
+   if `McuImageHeader.min_svn` exceeds the `MCU_RT_MIN_SVN` one-hot range.
+2. **MCU Component SVN Manifest** — if the new MCU runtime image contains
+   the manifest header (identified by magic), validate Magic / Format
+   Version and the header constraints (see [Format](#format)). Reject if
+   `manifest.current_svn < fuse_min_svn
+   (MCU_COMPONENT_SVN_MANIFEST_MIN_SVN)` or if any per-entry constraint
+   is violated. If no manifest header is present, skip per-component SVN
+   verification for this bundle.
 3. **SoC component images** — for each component whose `component_id` is in
    both the MCU Component SVN Manifest and `SVN_FUSE_MAP`:
    - Use the platform's `SocComponentSvn` trait (below) to extract the SVN
