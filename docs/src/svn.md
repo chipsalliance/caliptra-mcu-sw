@@ -4,8 +4,8 @@
 
 Each firmware component tracks two SVN values:
 
-- **`current_svn`** — the security version of the running image, declared by
-  the image. Used for enforcement and attestation.
+- **`current_svn`** — the security version of the running image. Used for
+  enforcement and attestation.
 - **`min_svn`** — the minimum acceptable security version, stored in OTP fuses.
   Any image with `current_svn < min_svn` is rejected.
 
@@ -14,12 +14,37 @@ Each firmware component tracks two SVN values:
 the device runs version 10. The deployer chooses when to permanently commit a
 new minimum.
 
-This document covers three categories of components:
+This document covers four categories of components:
 
 1. **Caliptra Core firmware** — enforced by Caliptra Core ROM.
-2. **MCU Runtime firmware** — enforced by MCU ROM.
-3. **SoC component images** — manifest-level SVN enforced by Caliptra Core;
-   optional per-component enforcement by MCU.
+2. **MCU Runtime firmware** — its `current_svn` is the **SoC manifest SVN**
+   (the same value Caliptra Core authenticates and binds into the MCU
+   Runtime's DPE context). Enforced by both Caliptra Core (against
+   `CPTRA_CORE_SOC_MANIFEST_SVN`) and, with a separate vendor-controlled
+   floor, by MCU ROM (against `MCU_RT_MIN_SVN`).
+3. **MCU Component SVN Manifest** — its own SVN, enforced by MCU ROM against
+   `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`.
+4. **SoC component images** — manifest-level SVN enforced by Caliptra Core;
+   optional per-component enforcement by MCU against `SOC_IMAGE_MIN_SVN[i]`.
+
+### MCU Runtime SVN reuses the SoC manifest SVN
+
+The MCU Runtime image is delivered as part of the SoC manifest and is
+authenticated by Caliptra Core, which then creates the MCU Runtime's DPE
+context using the SoC manifest's SVN. To keep DPE attestation, Caliptra
+Core's anti-rollback, and MCU's anti-rollback consistent, MCU Runtime does
+**not** declare its own `current_svn` independently of the SoC manifest:
+there is exactly one SVN per release for MCU Runtime, and it lives in the
+SoC manifest. MCU ROM obtains the authenticated SoC manifest SVN from
+Caliptra Core (mechanism is platform-defined; see
+[Cold Boot and Hitless Update — MCU Runtime SVN](#cold-boot-and-hitless-update--mcu-runtime-svn)).
+
+`MCU_RT_MIN_SVN` is a separate, MCU-vendor-controlled floor the MCU ROM
+enforces against this same SoC manifest SVN. It is independent of
+`CPTRA_CORE_SOC_MANIFEST_SVN` so that an MCU vendor (or device owner)
+can advance the floor without coordinating a Caliptra Core fuse change,
+and so that ownership-transfer operations that retarget Caliptra fuses do
+not silently disturb the MCU-side floor.
 
 ## Threat Model
 
@@ -63,11 +88,15 @@ Added in a vendor partition (e.g., `VENDOR_NON_SECRET_PROD_PARTITION`):
 
 | Fuse | Size | Recommended Encoding | Purpose |
 |---|---|---|---|
-| `MCU_RT_MIN_SVN` | 16 B | `OneHotLinearOr{bits:N, dupe:3}` | MCU Runtime min SVN |
+| `MCU_RT_MIN_SVN` | 16 B | `OneHotLinearOr{bits:N, dupe:3}` | MCU Runtime min SVN (compared against the SoC manifest SVN) |
+| `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | 4 B | `OneHotLinearOr{bits:N, dupe:3}` | Min SVN for the MCU Component SVN Manifest itself |
 | `SOC_IMAGE_MIN_SVN[0..M]` | 4 B each | `OneHotLinearOr{bits:N, dupe:3}` | Per-slot SoC image min SVN (optional) |
 
 The number of `SOC_IMAGE_MIN_SVN` slots (`M`) and the number of one-hot bits
-per slot are integrator-defined.
+per slot are integrator-defined. `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` exists
+even when the integrator does not provision any `SOC_IMAGE_MIN_SVN` slots,
+because the manifest's own anti-rollback applies regardless of how many
+component slots are mapped.
 
 #### Encoding
 
@@ -87,21 +116,26 @@ See [Fuse Layout Options](fuses.md#fuse-layout-options) for encoding details.
 
 ## MCU Image Header
 
-The MCU Runtime binary starts with an `McuImageHeader`:
+The MCU Runtime binary may be preceded by an `McuImageHeader`. It carries
+only the MCU-side `min_svn` burn request; the runtime's `current_svn` is
+the SoC manifest SVN (see
+[Overview](#mcu-runtime-svn-reuses-the-soc-manifest-svn)).
 
 | Field | Size | Description |
 |---|---|---|
-| `current_svn` | 2 B | Security version of this image |
 | `min_svn` | 2 B | Requested new floor to burn into `MCU_RT_MIN_SVN` (0 = no update) |
-| `reserved` | 4 B | Reserved |
+| `reserved` | 6 B | Reserved (must be zero) |
 
 Constraints (validated by ROM; image is rejected on violation):
 
-- `min_svn ≤ current_svn`
-- Both values must fit within the maximum representable in `MCU_RT_MIN_SVN`'s
-  one-hot encoding.
+- `min_svn ≤ soc_manifest_svn` (the authenticated SoC manifest SVN, obtained
+  from Caliptra Core).
+- `min_svn` must fit within the `MCU_RT_MIN_SVN` one-hot range.
+- All `reserved` bytes must be zero.
 
-The firmware bundler sets these via `--svn <current>` and `--min-svn <min>`.
+The firmware bundler sets the requested floor via `--min-svn <min>`. There
+is no `--svn` flag at MCU Runtime scope; the runtime's `current_svn` is the
+SoC manifest's SVN, set by the SoC manifest signing flow.
 
 ## MCU Component SVN Manifest (Optional)
 
@@ -117,22 +151,28 @@ Caliptra Core) provides rollback protection for SoC images, and the
 
 ### Format
 
-The manifest is fixed-size, sized to match Caliptra's
-`AUTH_MANIFEST_IMAGE_METADATA_MAX_COUNT` (127 entries) — the maximum number of
-components a single SoC manifest can describe.
+The manifest is a fixed-size structure. The per-entry section is sized to
+match Caliptra's `AUTH_MANIFEST_IMAGE_METADATA_MAX_COUNT` (127 entries) —
+the maximum number of components a single SoC manifest can describe.
 
 | Field | Size | Description |
 |---|---|---|
 | Magic | 4 B | `0x4D435356` (`"MCSV"`) |
-| Version | 4 B | Manifest format version |
+| Format Version | 2 B | Manifest format version |
+| `current_svn` | 1 B | SVN of this manifest (rolled forward when manifest entries change) |
+| `min_svn` | 1 B | Requested new floor to burn into `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` (0 = no update) |
 | Entries | 8 B × 127 | `(component_id: u32, current_svn: u16, min_svn: u16)` |
 
-Total: 1024 bytes. SVNs are `u16`; even a single 65535-bit one-hot fuse would
-be impractically large.
+Total: 1024 bytes (8-byte header + 1016 bytes of entries).
 
 An entry where all fields are zero (`component_id == current_svn == min_svn == 0`)
 is treated as an empty slot and ignored, allowing manifests to declare fewer
 than 127 entries by zero-padding.
+
+Header constraints (validated; manifest is rejected on violation):
+
+- `min_svn ≤ current_svn`
+- Both must fit within `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`'s one-hot range.
 
 Per-entry constraints (validated; entry is rejected on violation):
 
@@ -166,12 +206,27 @@ release; the build system should validate this.
 The manifest is delivered as a SoC image (with its own `component_id` and
 digest in the SoC manifest), via the recovery interface or a PLDM firmware
 update. After delivery, MCU Runtime issues `AUTHORIZE_AND_STASH` to Caliptra
-to verify the digest against the SoC manifest. On success, MCU Runtime parses
-and caches the manifest. Authentication failure is logged and per-component
-enforcement is skipped.
+to verify the digest against the SoC manifest. On success, MCU Runtime
+performs the manifest-self SVN check before parsing entries:
+
+1. Verify Magic and Format Version.
+2. Validate the header constraints (see [Format](#format)).
+3. Read `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` and
+   `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` from OTP.
+4. If anti-rollback is not disabled and `header.current_svn < fuse_min_svn`:
+   reject the manifest.
+5. Parse and cache entries.
+
+If `AUTHORIZE_AND_STASH` or the manifest-self SVN check fails, per-component
+enforcement is skipped and the failure is logged. Burning the requested
+`MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` floor happens later, in ROM, via the
+same triggering mechanism as the other `min_svn` burns (see
+[SVN Fuse Burning](#svn-fuse-burning)).
 
 This roots the manifest's integrity in the same trust chain as every other
-SoC image — the SoC manifest signature verified by Caliptra Core.
+SoC image — the SoC manifest signature verified by Caliptra Core — and adds
+a separate manifest-format-level monotonic SVN to prevent the manifest
+itself from being rolled back.
 
 ```mermaid
 sequenceDiagram
@@ -206,25 +261,35 @@ After Caliptra loads MCU Runtime into MCU SRAM, MCU ROM enforces and
 potentially burns the MCU SVN before jumping to firmware. The same logic
 applies on cold boot and hitless update reset:
 
-1. Read `McuImageHeader` from SRAM.
-2. Read `MCU_RT_MIN_SVN` and `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` from OTP.
-3. If anti-rollback is not disabled and `header.current_svn < fuse_min_svn`:
+1. Obtain the authenticated SoC manifest SVN from Caliptra Core. The
+   precise mechanism is platform-defined: a Caliptra mailbox command, a
+   shared MCI/SoC register, or MCU ROM directly parsing the SoC manifest
+   from a known location after Caliptra has authenticated it. Whichever
+   path is used, the value **must** be the one Caliptra Core authenticated
+   (and used for the MCU Runtime DPE context); MCU ROM must not declare
+   an alternate `current_svn` for the runtime.
+2. (Optional) Read `McuImageHeader` from SRAM to obtain `header.min_svn`.
+3. Read `MCU_RT_MIN_SVN` and `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` from OTP.
+4. If anti-rollback is not disabled and `soc_manifest_svn < fuse_min_svn`:
    reject with `ROM_MCU_SVN_CHECK_FAILED`.
-4. If anti-rollback is not disabled and `header.min_svn > fuse_min_svn`:
+5. If anti-rollback is not disabled and `header.min_svn > fuse_min_svn`:
    burn `MCU_RT_MIN_SVN` to `header.min_svn`, then read back and verify.
-5. Continue to firmware.
+6. Continue to firmware.
 
 ```mermaid
 sequenceDiagram
     participant ROM as MCU ROM
+    participant Caliptra
     participant SRAM
     participant OTP
 
-    ROM->>SRAM: Read McuImageHeader
+    ROM->>Caliptra: Get authenticated SoC manifest SVN
+    Caliptra-->>ROM: soc_manifest_svn
+    ROM->>SRAM: Read McuImageHeader.min_svn
     ROM->>OTP: Read MCU_RT_MIN_SVN, CPTRA_CORE_ANTI_ROLLBACK_DISABLE
 
     alt anti-rollback not disabled
-        alt header.current_svn < fuse_min_svn
+        alt soc_manifest_svn < fuse_min_svn
             ROM->>ROM: Fatal error
         else
             opt header.min_svn > fuse_min_svn
@@ -239,6 +304,17 @@ sequenceDiagram
 
 The Firmware Boot flow (entered after cold boot triggers a reset) does not
 re-check SVN; SRAM contents are unchanged since the cold-boot check.
+
+### Cold Boot and Hitless Update — MCU Component SVN Manifest burn
+
+If the MCU Component SVN Manifest is present and previously authenticated,
+MCU ROM also burns `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` from the manifest
+header. If anti-rollback is not disabled and
+`manifest_header.min_svn > fuse_min_svn`: burn the fuse and read back to
+verify. The `current_svn < fuse_min_svn` rejection for the manifest itself
+already happened in [Loading and Authentication](#loading-and-authentication);
+ROM only re-applies the burn here (e.g., on a reboot after the manifest
+was loaded but before the burn completed).
 
 ### Cold Boot and Hitless Update — SoC Component min_svn Burn
 
@@ -262,11 +338,18 @@ attempt never makes it to the hitless reset.
 
 For each component in the bundle:
 
-1. **MCU Runtime image** — read `McuImageHeader.current_svn` and
-   `header.min_svn` from the new image. Reject if `current_svn < fuse_min_svn`,
-   if `min_svn > current_svn`, or if either value exceeds the
+1. **MCU Runtime image** — read `header.min_svn` from the new
+   `McuImageHeader` and obtain the bundle's SoC manifest SVN
+   (`soc_manifest_svn`) from the new SoC manifest. Reject if
+   `soc_manifest_svn < fuse_min_svn (MCU_RT_MIN_SVN)`, if
+   `header.min_svn > soc_manifest_svn`, or if either value exceeds the
    `MCU_RT_MIN_SVN` one-hot range.
-2. **SoC component images** — for each component whose `component_id` is in
+2. **MCU Component SVN Manifest itself** — verify the header constraints
+   (Magic, version, `min_svn ≤ current_svn`, ranges). Reject if
+   `manifest_header.current_svn < fuse_min_svn
+   (MCU_COMPONENT_SVN_MANIFEST_MIN_SVN)`. Verify the per-entry constraints
+   (see [Format](#format)). Reject the bundle on any violation.
+3. **SoC component images** — for each component whose `component_id` is in
    both the MCU Component SVN Manifest and `SVN_FUSE_MAP`:
    - Use the platform's `SocComponentSvn` trait (below) to extract the SVN
      directly from the component bytes.
@@ -275,8 +358,6 @@ For each component in the bundle:
      image disagree — reject the bundle.
    - Reject if `current_svn < fuse_min_svn`, or if either `current_svn` or
      `min_svn` exceeds the slot's one-hot range.
-3. **MCU Component SVN Manifest itself** — verify the per-entry constraints
-   (see [Format](#format)). Reject the bundle on any violation.
 
 Components without a `SocComponentSvn` implementation skip the
 manifest-vs-image cross-check (a logged warning) but still get the
@@ -332,9 +413,10 @@ ensuring fuse programming runs in the most trusted execution context before
 mutable firmware has control.
 
 Burns are triggered exclusively by authenticated firmware images: the
-`McuImageHeader.min_svn` field for MCU Runtime, and MCU Component SVN Manifest
-entries for SoC components. ROM only burns when the requested `min_svn`
-strictly exceeds the current fuse value.
+`McuImageHeader.min_svn` field for MCU Runtime, the MCU Component SVN
+Manifest header's `min_svn` for the manifest itself, and per-entry
+`min_svn` fields for SoC components. ROM only burns when the requested
+`min_svn` strictly exceeds the current fuse value.
 
 The burn is power-fail safe: one-hot encoding plus OR semantics mean a partial
 burn can never decrease the fuse value, and any incomplete burn will be
@@ -344,6 +426,7 @@ re-attempted (and complete) on the next boot.
 |---|---|---|
 | Caliptra Core FMC/RT | Caliptra Core ROM | Caliptra image SVN |
 | MCU Runtime | MCU ROM | `McuImageHeader.min_svn` |
+| MCU Component SVN Manifest | MCU ROM | manifest header's `min_svn` |
 | SoC images (optional) | MCU ROM | MCU Component SVN Manifest entry |
 
 ## Platform Configuration
@@ -356,12 +439,14 @@ In `vendor_fuses.hjson`:
 {
   non_secret_vendor: [
     {"mcu_rt_min_svn": 16},
+    {"mcu_component_svn_manifest_min_svn": 4},
     {"soc_image_min_svn_0": 4},
     {"soc_image_min_svn_1": 4},
     // ... additional slots as needed
   ],
   fields: [
     {name: "mcu_rt_min_svn", bits: 32},
+    {name: "mcu_component_svn_manifest_min_svn", bits: 8},
     {name: "soc_image_min_svn_0", bits: 8},
     {name: "soc_image_min_svn_1", bits: 8},
   ]
@@ -391,24 +476,35 @@ pub static SVN_FUSE_MAP: &[SvnFuseMapEntry] = &[
 
 ### ImageVerifier
 
-ROM uses an `ImageVerifier` implementation to enforce the MCU Runtime SVN:
+ROM uses an `ImageVerifier` implementation to enforce the MCU Runtime SVN
+against the **SoC manifest SVN** (obtained from Caliptra), not against an
+independent value declared by `McuImageHeader`:
 
 ```rust
 impl ImageVerifier for McuImageVerifier {
-    fn verify_header(&self, header: &[u8], otp: &Otp) -> bool {
+    fn verify_header(&self, header: &[u8], otp: &Otp, soc_manifest_svn: u16) -> bool {
         let Ok((header, _)) = McuImageHeader::ref_from_prefix(header) else {
             return false;
         };
         if otp.read_anti_rollback_disable().unwrap_or(0) != 0 {
             return true;
         }
+        if header.min_svn > soc_manifest_svn {
+            return false; // header requested a floor higher than the running version
+        }
         let Ok(fuse_min_svn) = otp.read_mcu_rt_min_svn() else {
             return false;
         };
-        header.current_svn >= fuse_min_svn
+        soc_manifest_svn >= fuse_min_svn
     }
 }
 ```
+
+Obtaining `soc_manifest_svn` is platform-defined (Caliptra mailbox command,
+shared register, or parsing the SoC manifest at a known location after
+Caliptra has authenticated it). The same value is what Caliptra Core uses
+to derive the MCU Runtime's DPE context, which guarantees DPE attestation
+and ROM enforcement agree on a single SVN per release.
 
 ## Security Considerations
 
@@ -416,6 +512,21 @@ impl ImageVerifier for McuImageVerifier {
 gives deployers control over when to permanently commit a new floor and avoids
 leaking the running version through OTP state. A release can carry a high
 `current_svn` while keeping `min_svn` lower for staged rollout.
+
+**Single SVN per release for MCU Runtime.** MCU Runtime's `current_svn` is
+the SoC manifest SVN (never an independent value in `McuImageHeader`). This
+ensures the value Caliptra Core uses for the MCU Runtime DPE context, the
+value Caliptra Core enforces against `CPTRA_CORE_SOC_MANIFEST_SVN`, and the
+value MCU ROM enforces against `MCU_RT_MIN_SVN` are all the same single
+attested SVN — there is no way for the manifest signer to declare a
+different version to MCU than the one bound into DPE.
+
+**Manifest-format SVN is separate from component SVNs.** The MCU Component
+SVN Manifest carries its own `current_svn`/`min_svn` (enforced against
+`MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`) so that the manifest format itself can
+be rollback-protected independently of the SoC components it describes.
+A new manifest that drops or weakens enforcement for a previously fuse-locked
+component cannot be installed without advancing the manifest-self SVN.
 
 **ROM-only fuse burning.** All `min_svn` burns occur in ROM, before mutable
 firmware runs. Runtime cannot be exploited to advance `min_svn` to
