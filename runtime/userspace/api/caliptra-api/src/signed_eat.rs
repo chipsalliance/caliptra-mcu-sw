@@ -5,7 +5,7 @@ use crate::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
 use crate::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::MAX_ECC_CERT_SIZE;
-use ocp_eat::{cbor_tags, header_params, CoseHeaderPair, CoseSign1, ProtectedHeader};
+use caliptra_ocp_eat::{cbor_tags, header_params, CoseHeaderPair, CoseSign1, ProtectedHeader};
 
 const MAX_SIG_CONTEXT_SIZE: usize = 2048;
 

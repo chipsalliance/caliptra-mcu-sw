@@ -20,6 +20,7 @@ use caliptra_emu_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, MailboxRequester,
     Mci, ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
 };
+use std::cell::Cell;
 use std::io::{self, ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::exit;
@@ -226,7 +227,13 @@ pub fn start_caliptra(
         .map(|user| root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(user)));
 
     Ok((
-        Cpu::new(root_bus, clock.clone(), pic.clone(), CpuArgs::default()),
+        Cpu::new(
+            root_bus,
+            clock.clone(),
+            pic.clone(),
+            CpuArgs::default(),
+            Rc::new(Cell::new(0)),
+        ),
         ext_soc_ifc,
         extra_soc_ifc,
         ext_mci,

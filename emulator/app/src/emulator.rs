@@ -48,6 +48,7 @@ use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND}
 use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::daemon::PldmDaemon;
 use pldm_ua::transport::{EndpointId, PldmTransport};
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{self, IsTerminal, Read, Write};
@@ -955,7 +956,13 @@ impl Emulator {
         cpu_args.org.reset_vector = mcu_root_bus_offsets.rom_offset;
         cpu_args.org.rom = mcu_root_bus_offsets.rom_offset;
 
-        let mut cpu = Cpu::new(auto_root_bus, clock.clone(), pic.clone(), cpu_args);
+        let mut cpu = Cpu::new(
+            auto_root_bus,
+            clock.clone(),
+            pic.clone(),
+            cpu_args,
+            Rc::new(Cell::new(0)),
+        );
         cpu.write_pc(mcu_root_bus_offsets.rom_offset);
         cpu.register_events();
 
@@ -999,6 +1006,7 @@ impl Emulator {
                 clock.clone(),
                 network_pic.clone(),
                 network_cpu_args,
+                Rc::new(Cell::new(0)),
             );
             network_cpu.write_pc(emulator_consts::NETWORK_ROM_ORG);
             network_cpu.register_events();
