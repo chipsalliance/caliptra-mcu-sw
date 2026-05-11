@@ -28,6 +28,7 @@ pub struct MailboxComponent<A: Alarm<'static> + 'static> {
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
     mux_alarm: &'static MuxAlarm<'static, A>,
+    timeout_ticks: Option<u32>,
 }
 
 impl<A: Alarm<'static>> MailboxComponent<A> {
@@ -35,11 +36,13 @@ impl<A: Alarm<'static>> MailboxComponent<A> {
         board_kernel: &'static kernel::Kernel,
         driver_num: usize,
         mux_alarm: &'static MuxAlarm<'static, A>,
+        timeout_ticks: Option<u32>,
     ) -> Self {
         Self {
             board_kernel,
             driver_num,
             mux_alarm,
+            timeout_ticks,
         }
     }
 }
@@ -73,6 +76,7 @@ impl<A: Alarm<'static>> Component for MailboxComponent<A> {
                     mux_alarm,
                     self.board_kernel.create_grant(self.driver_num, &grant_cap),
                     caliptra_soc,
+                    self.timeout_ticks,
                 ));
         mailbox
     }
