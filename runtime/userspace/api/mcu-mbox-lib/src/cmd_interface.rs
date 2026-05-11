@@ -153,6 +153,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_FIPS_SELF_TEST_START => {
                 self.handle_crypto_passthrough::<McuFipsSelfTestStartReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::SELF_TEST_START.into(),
                     resp_buf,
                 )
@@ -161,6 +162,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_FIPS_SELF_TEST_GET_RESULTS => {
                 self.handle_crypto_passthrough::<McuFipsSelfTestGetResultsReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::SELF_TEST_GET_RESULTS.into(),
                     resp_buf,
                 )
@@ -177,6 +179,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_SHA_INIT => {
                 self.handle_crypto_passthrough::<McuShaInitReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_SHA_INIT.into(),
                     resp_buf,
                 )
@@ -185,6 +188,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_SHA_UPDATE => {
                 self.handle_crypto_passthrough::<McuShaUpdateReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_SHA_UPDATE.into(),
                     resp_buf,
                 )
@@ -193,6 +197,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_SHA_FINAL => {
                 self.handle_crypto_passthrough::<McuShaFinalReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_SHA_FINAL.into(),
                     resp_buf,
                 )
@@ -202,6 +207,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_HMAC => {
                 self.handle_crypto_passthrough::<McuHmacReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_HMAC.into(),
                     resp_buf,
                 )
@@ -211,6 +217,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_HMAC_KDF_COUNTER => {
                 self.handle_crypto_passthrough::<McuHmacKdfCounterReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_HMAC_KDF_COUNTER.into(),
                     resp_buf,
                 )
@@ -220,6 +227,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_HKDF_EXTRACT => {
                 self.handle_crypto_passthrough::<McuHkdfExtractReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_HKDF_EXTRACT.into(),
                     resp_buf,
                 )
@@ -229,6 +237,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_HKDF_EXPAND => {
                 self.handle_crypto_passthrough::<McuHkdfExpandReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_HKDF_EXPAND.into(),
                     resp_buf,
                 )
@@ -237,6 +246,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_IMPORT => {
                 self.handle_crypto_passthrough::<McuCmImportReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_IMPORT.into(),
                     resp_buf,
                 )
@@ -245,6 +255,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_DELETE => {
                 self.handle_crypto_passthrough::<McuCmDeleteReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_DELETE.into(),
                     resp_buf,
                 )
@@ -253,6 +264,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_CM_STATUS => {
                 self.handle_crypto_passthrough::<McuCmStatusReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_STATUS.into(),
                     resp_buf,
                 )
@@ -261,6 +273,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_RANDOM_GENERATE => {
                 self.handle_crypto_passthrough::<McuRandomGenerateReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_RANDOM_GENERATE.into(),
                     resp_buf,
                 )
@@ -269,6 +282,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_RANDOM_STIR => {
                 self.handle_crypto_passthrough::<McuRandomStirReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_RANDOM_STIR.into(),
                     resp_buf,
                 )
@@ -278,6 +292,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_AES_ENCRYPT_INIT => {
                 self.handle_crypto_passthrough::<McuAesEncryptInitReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_AES_ENCRYPT_INIT.into(),
                     resp_buf,
                 )
@@ -286,6 +301,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_AES_ENCRYPT_UPDATE => {
                 self.handle_crypto_passthrough::<McuAesEncryptUpdateReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_AES_ENCRYPT_UPDATE.into(),
                     resp_buf,
                 )
@@ -295,6 +311,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_AES_DECRYPT_INIT => {
                 self.handle_crypto_passthrough::<McuAesDecryptInitReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_AES_DECRYPT_INIT.into(),
                     resp_buf,
                 )
@@ -303,6 +320,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_AES_DECRYPT_UPDATE => {
                 self.handle_crypto_passthrough::<McuAesDecryptUpdateReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_AES_DECRYPT_UPDATE.into(),
                     resp_buf,
                 )
@@ -312,6 +330,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_AES_GCM_ENCRYPT_INIT => {
                 self.handle_crypto_passthrough::<McuAesGcmEncryptInitReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_AES_GCM_ENCRYPT_INIT.into(),
                     resp_buf,
                 )
@@ -320,6 +339,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_AES_GCM_ENCRYPT_UPDATE => {
                 self.handle_crypto_passthrough::<McuAesGcmEncryptUpdateReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_AES_GCM_ENCRYPT_UPDATE.into(),
                     resp_buf,
                 )
@@ -328,6 +348,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_AES_GCM_ENCRYPT_FINAL => {
                 self.handle_crypto_passthrough::<McuAesGcmEncryptFinalReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_AES_GCM_ENCRYPT_FINAL.into(),
                     resp_buf,
                 )
@@ -337,6 +358,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_AES_GCM_DECRYPT_INIT => {
                 self.handle_crypto_passthrough::<McuAesGcmDecryptInitReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_AES_GCM_DECRYPT_INIT.into(),
                     resp_buf,
                 )
@@ -345,6 +367,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_AES_GCM_DECRYPT_UPDATE => {
                 self.handle_crypto_passthrough::<McuAesGcmDecryptUpdateReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_AES_GCM_DECRYPT_UPDATE.into(),
                     resp_buf,
                 )
@@ -353,6 +376,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_AES_GCM_DECRYPT_FINAL => {
                 self.handle_crypto_passthrough::<McuAesGcmDecryptFinalReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_AES_GCM_DECRYPT_FINAL.into(),
                     resp_buf,
                 )
@@ -362,6 +386,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_ECDH_GENERATE => {
                 self.handle_crypto_passthrough::<McuEcdhGenerateReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_ECDH_GENERATE.into(),
                     resp_buf,
                 )
@@ -370,6 +395,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_ECDH_FINISH => {
                 self.handle_crypto_passthrough::<McuEcdhFinishReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_ECDH_FINISH.into(),
                     resp_buf,
                 )
@@ -379,6 +405,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_ECDSA_CMK_PUBLIC_KEY => {
                 self.handle_crypto_passthrough::<McuEcdsaCmkPublicKeyReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_ECDSA_PUBLIC_KEY.into(),
                     resp_buf,
                 )
@@ -387,6 +414,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_ECDSA_CMK_SIGN => {
                 self.handle_crypto_passthrough::<McuEcdsaCmkSignReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_ECDSA_SIGN.into(),
                     resp_buf,
                 )
@@ -395,6 +423,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_ECDSA_CMK_VERIFY => {
                 self.handle_crypto_passthrough::<McuEcdsaCmkVerifyReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::CM_ECDSA_VERIFY.into(),
                     resp_buf,
                 )
@@ -404,6 +433,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                 self.handle_crypto_passthrough::<McuProdDebugUnlockReqReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ.into(),
                     resp_buf,
                 )
@@ -412,6 +442,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
                 self.handle_crypto_passthrough::<McuProdDebugUnlockTokenReq>(
                     req,
+                    cmd,
                     CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.into(),
                     resp_buf,
                 )
@@ -672,6 +703,7 @@ impl<'a> CmdInterface<'a> {
     pub async fn handle_crypto_passthrough<'r, T: Default + IntoBytes + FromBytes>(
         &self,
         req: &[u8],
+        mcu_cmd_code: u32,
         caliptra_cmd_code: u32,
         resp_buf: &'r mut [u8],
     ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
@@ -695,7 +727,16 @@ impl<'a> CmdInterface<'a> {
         .await;
 
         match status {
-            Ok(resp_len) => Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete)),
+            Ok(resp_len) => {
+                // Recalculate checksum for MCU mailbox protocol.
+                // Caliptra response has checksum for Caliptra command, but we need checksum for MCU command.
+                if resp_len >= core::mem::size_of::<MailboxRespHeader>() {
+                    let payload = &resp_buf[core::mem::size_of::<u32>()..resp_len];
+                    let new_checksum = caliptra_api::calc_checksum(mcu_cmd_code, payload);
+                    resp_buf[0..4].copy_from_slice(&new_checksum.to_le_bytes());
+                }
+                Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
+            }
             Err(_) => Ok((&mut resp_buf[..0], MbxCmdStatus::Failure)),
         }
     }
