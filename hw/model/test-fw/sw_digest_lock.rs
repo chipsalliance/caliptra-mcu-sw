@@ -96,15 +96,8 @@ fn verify_phase(env: &RomEnv) -> ! {
     loop {}
 }
 
-/// Go-bit in generic_input_wires[0] gates execution on FPGA to prevent
-/// racing with the OTP clearing preamble.
-const GO_BIT: u32 = 1 << 0;
-
 fn run() -> ! {
     let env = RomEnv::new();
-
-    // Wait for go-bit (FPGA OTP clearing preamble).
-    while env.mci.registers.mci_reg_generic_input_wires[0].get() & GO_BIT == 0 {}
 
     // Check if the digest is already written to decide which phase.
     let partition = fuses::VENDOR_TEST_PARTITION;
