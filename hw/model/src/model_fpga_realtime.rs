@@ -335,6 +335,7 @@ impl McuHwModel for ModelFpgaRealtime {
             soc_user: MailboxRequester::SocUser(DEFAULT_AXI_PAUSER),
             test_sram: None,
             ocp_lock_en: params.ocp_lock_en,
+            stable_owner_key_en: false,
             ss_init_params: SubsystemInitParams {
                 mcu_rom: Some(params.mcu_rom),
                 enable_mcu_uart_log: params.enable_mcu_uart_log,
