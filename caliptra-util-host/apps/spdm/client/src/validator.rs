@@ -11,7 +11,7 @@
 //! 3. Call it from `run_all()`
 //! 4. Add a config section in `config.rs`
 
-use crate::config::TestConfig;
+use crate::config::{DeviceMode, TestConfig};
 use crate::SpdmVdmClient;
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 
@@ -93,6 +93,10 @@ pub fn all_passed(results: &[ValidationResult]) -> bool {
 }
 
 /// Run all VDM command validations using the typed SpdmVdmClient.
+///
+/// Test suite depends on the configured DeviceMode:
+/// - Production: ExportAttestedCsr + ExportIdevidCsr(expect_fail)
+/// - Manufacturing: ExportIdevidCsr only
 pub fn run_all(
     client: &mut SpdmVdmClient,
     config: &TestConfig,
@@ -100,12 +104,28 @@ pub fn run_all(
 ) -> Vec<ValidationResult> {
     let mut results = Vec::new();
 
-    results.extend(run_export_attested_csr(
-        client,
-        &config.export_attested_csr.key_ids,
-        config.export_attested_csr.algorithm,
-        verbose,
-    ));
+    match config.mode {
+        DeviceMode::Production => {
+            results.extend(run_export_attested_csr(
+                client,
+                &config.export_attested_csr.key_ids,
+                config.export_attested_csr.algorithm,
+                verbose,
+            ));
+            results.extend(run_export_idevid_csr_expect_fail(
+                client,
+                &config.export_idevid_csr.algorithms,
+                verbose,
+            ));
+        }
+        DeviceMode::Manufacturing => {
+            results.extend(run_export_idevid_csr(
+                client,
+                &config.export_idevid_csr.algorithms,
+                verbose,
+            ));
+        }
+    }
 
     results
 }
@@ -146,6 +166,74 @@ pub fn run_export_attested_csr(
                         ValidationResult::fail(test_name, msg_str)
                     }
                 }
+            }
+        })
+        .collect()
+}
+
+/// Validate ExportIdevidCsr for each algorithm (manufacturing mode).
+pub fn run_export_idevid_csr(
+    client: &mut SpdmVdmClient,
+    algorithms: &[u32],
+    verbose: bool,
+) -> Vec<ValidationResult> {
+    algorithms
+        .iter()
+        .map(|&algorithm| {
+            let test_name = format!("ExportIdevidCsr(algorithm={})", algorithm);
+            match client.export_idevid_csr(algorithm) {
+                Ok(response) => match response.validate_csr_payload() {
+                    Ok(len) => {
+                        if verbose {
+                            println!("  csr: {} bytes", len);
+                        }
+                        ValidationResult::pass(test_name, format!("{} bytes", len))
+                    }
+                    Err(AttestedCsrValidationError::Empty) => {
+                        ValidationResult::fail(test_name, "CSR data is empty")
+                    }
+                    Err(AttestedCsrValidationError::TooLarge(len)) => ValidationResult::fail(
+                        test_name,
+                        format!("CSR data_len {} exceeds maximum", len),
+                    ),
+                },
+                Err(msg) => {
+                    let msg_str = format!("{}", msg);
+                    if msg_str.contains("NotSupported") {
+                        ValidationResult::skip(test_name, msg_str)
+                    } else {
+                        ValidationResult::fail(test_name, msg_str)
+                    }
+                }
+            }
+        })
+        .collect()
+}
+
+/// Negative test: ExportIdevidCsr should be rejected in production mode.
+pub fn run_export_idevid_csr_expect_fail(
+    client: &mut SpdmVdmClient,
+    algorithms: &[u32],
+    verbose: bool,
+) -> Vec<ValidationResult> {
+    algorithms
+        .iter()
+        .map(|&algorithm| {
+            let test_name = format!("ExportIdevidCsr(algorithm={},expect_fail)", algorithm);
+            match client.export_idevid_csr(algorithm) {
+                Ok(_response) => {
+                    if verbose {
+                        println!("  Expected rejection but got success");
+                    }
+                    ValidationResult::fail(
+                        test_name,
+                        "Expected device to reject ExportIdevidCsr in production mode",
+                    )
+                }
+                Err(_) => ValidationResult::pass(
+                    test_name,
+                    "Device correctly rejected ExportIdevidCsr in production mode",
+                ),
             }
         })
         .collect()

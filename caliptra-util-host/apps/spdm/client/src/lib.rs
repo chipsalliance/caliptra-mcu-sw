@@ -24,7 +24,9 @@ pub use config::TestConfig;
 pub use validator::{all_passed, print_summary, run_all, ValidationResult, ValidationStatus};
 
 use anyhow::Result;
-use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
+use caliptra_mcu_core_util_host_command_types::certificate::{
+    ExportAttestedCsrResponse, ExportIdevidCsrResponse,
+};
 use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
     GetFirmwareVersionResponse,
@@ -33,7 +35,9 @@ use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmTransport,
 };
 use caliptra_mcu_core_util_host_transport::Transport;
-use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
+use caliptra_util_host_commands::api::certificate::{
+    caliptra_cmd_export_attested_csr, caliptra_cmd_export_idevid_csr,
+};
 use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
     caliptra_cmd_get_firmware_version,
@@ -112,6 +116,16 @@ impl<'a> SpdmVdmClient<'a> {
         let mut session = self.create_session()?;
         caliptra_cmd_export_attested_csr(&mut session, device_key_id, algorithm, nonce)
             .map_err(|e| anyhow::anyhow!("ExportAttestedCsr failed: {:?}", e))
+    }
+
+    /// Execute the ExportIdevidCsr command (manufacturing mode only).
+    ///
+    /// # Parameters
+    /// - `algorithm`: Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
+    pub fn export_idevid_csr(&mut self, algorithm: u32) -> Result<ExportIdevidCsrResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_export_idevid_csr(&mut session, algorithm)
+            .map_err(|e| anyhow::anyhow!("ExportIdevidCsr failed: {:?}", e))
     }
 
     fn create_session(&mut self) -> Result<CaliptraSession> {

@@ -145,3 +145,53 @@ impl ExportAttestedCsrResponse {
         Ok(csr.len())
     }
 }
+
+// ============================================================================
+// ExportIdevidCsr Command
+// ============================================================================
+
+/// Export IDevID CSR request (manufacturing mode only)
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExportIdevidCsrRequest {
+    /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
+    pub algorithm: u32,
+}
+
+/// Export IDevID CSR response
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExportIdevidCsrResponse {
+    pub common: CommonResponse,
+    /// Length of CSR data
+    pub data_len: u32,
+    /// CSR data (variable length, up to MAX_CSR_DATA_SIZE)
+    pub csr_data: [u8; MAX_CSR_DATA_SIZE],
+}
+
+impl CommandRequest for ExportIdevidCsrRequest {
+    type Response = ExportIdevidCsrResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::ExportIdevidCsr;
+}
+
+impl CommandResponse for ExportIdevidCsrResponse {}
+
+impl ExportIdevidCsrResponse {
+    /// Returns the IDevID CSR payload as a byte slice.
+    pub fn csr_bytes(&self) -> &[u8] {
+        let len = (self.data_len as usize).min(MAX_CSR_DATA_SIZE);
+        &self.csr_data[..len]
+    }
+
+    /// Validates the CSR payload, returning Ok with the byte length on success.
+    pub fn validate_csr_payload(&self) -> Result<usize, AttestedCsrValidationError> {
+        let csr = self.csr_bytes();
+        if csr.is_empty() {
+            return Err(AttestedCsrValidationError::Empty);
+        }
+        if csr.len() > MAX_CSR_DATA_SIZE {
+            return Err(AttestedCsrValidationError::TooLarge(csr.len()));
+        }
+        Ok(csr.len())
+    }
+}

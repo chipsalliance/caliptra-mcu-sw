@@ -101,4 +101,14 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
             .export_attested_csr(device_key_id, algorithm, nonce, csr_buf)
             .await
     }
+
+    async fn export_idevid_csr(
+        &self,
+        algorithm: u32,
+        csr_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        // Delegate to real CaliptraCmdBackend for actual Caliptra mailbox interaction
+        let handler = CaliptraCmdBackend;
+        handler.export_idevid_csr(algorithm, csr_buf).await
+    }
 }

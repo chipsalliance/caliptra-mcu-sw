@@ -56,6 +56,7 @@ pub enum CaliptraCommandId {
     GetFmcAliasCert = 0x1003,
     GetRtAliasCert = 0x1004,
     ExportAttestedCsr = 0x1005,
+    ExportIdevidCsr = 0x1006,
     GetCertChain = 0x1010,
     StoreCertificate = 0x1011,
     GetCertificate = 0x1012, // Generic get certificate

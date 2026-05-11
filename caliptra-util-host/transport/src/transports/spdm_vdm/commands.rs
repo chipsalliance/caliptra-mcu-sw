@@ -15,6 +15,7 @@
 //! - DeviceCapabilities (0x02)
 //! - DeviceId (0x03)
 //! - DeviceInfo (0x04)
+//! - ExportIdevidCsr (0x0C)
 //! - ExportAttestedCsr (0x0F)
 
 use super::protocol::{
@@ -334,6 +335,59 @@ pub fn handle_export_attested_csr(
     csr_data[..copy_csr_len].copy_from_slice(&data[csr_start..csr_start + copy_csr_len]);
 
     let internal_resp = certificate::ExportAttestedCsrResponse {
+        common: CommonResponse { fips_status: 0 },
+        data_len: csr_len as u32,
+        csr_data,
+    };
+
+    let resp_bytes = internal_resp.as_bytes();
+    let copy_len = resp_bytes.len().min(response_buffer.len());
+    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
+    Ok(copy_len)
+}
+
+/// Handle ExportIdevidCsr command (manufacturing mode only).
+pub fn handle_export_idevid_csr(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let req = certificate::ExportIdevidCsrRequest::from_bytes(payload)
+        .map_err(|_| TransportError::InvalidMessage)?;
+
+    // VDM payload: [algorithm(4)]
+    let vdm_payload = req.as_bytes();
+
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(
+        CaliptraVdmCommand::ExportIdevidCsr,
+        vdm_payload,
+        driver,
+        &mut resp_buf,
+    )?;
+
+    let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
+
+    // Response data format: [data_len: u32 LE, csr_data...]
+    if data.len() < 4 {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let csr_len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+    let csr_start = 4;
+    let csr_end = csr_start + csr_len;
+
+    if csr_end > data.len() {
+        return Err(TransportError::BufferError(
+            "ExportIdevidCsr data_len exceeds response",
+        ));
+    }
+
+    let mut csr_data = [0u8; certificate::MAX_CSR_DATA_SIZE];
+    let copy_csr_len = csr_len.min(certificate::MAX_CSR_DATA_SIZE);
+    csr_data[..copy_csr_len].copy_from_slice(&data[csr_start..csr_start + copy_csr_len]);
+
+    let internal_resp = certificate::ExportIdevidCsrResponse {
         common: CommonResponse { fips_status: 0 },
         data_len: csr_len as u32,
         csr_data,
