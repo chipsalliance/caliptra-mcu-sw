@@ -2017,6 +2017,8 @@ dependencies = [
  "crc",
  "hex",
  "rand 0.8.5",
+ "strum",
+ "strum_macros",
  "zerocopy",
 ]
 
