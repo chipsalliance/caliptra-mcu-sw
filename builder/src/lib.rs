@@ -18,6 +18,32 @@ pub use network_rom::network_rom_build;
 pub use rom::{rom_build, test_rom_build};
 pub use runtime::{bare_metal_build, runtime_build_with_apps};
 
+#[derive(Default, Clone)]
+pub struct CaliptraBuildArgs<'a> {
+    pub fpga: bool,
+    pub platform: Option<&'a str>,
+    pub features: Option<&'a str>,
+    pub target_dir: Option<PathBuf>,
+    pub fwid: Option<&'a caliptra_builder::FwId<'a>>,
+    pub output_name: Option<String>,
+    pub example_app: bool,
+    pub svn: Option<u16>,
+    pub caliptra_rom: Option<PathBuf>,
+    pub caliptra_firmware: Option<PathBuf>,
+    pub soc_manifest: Option<PathBuf>,
+    pub vendor_pk_hash: Option<String>,
+    pub mcu_firmware: Option<PathBuf>,
+    pub soc_images: Option<Vec<ImageCfg>>,
+    pub mcu_image_cfg: Option<ImageCfg>,
+    pub soc_manifest_svn: Option<u32>,
+    pub vendor: Option<String>,
+    pub model: Option<String>,
+    pub offset: usize,
+    pub output_path: Option<String>,
+    pub soc_image_paths: Option<Vec<String>>,
+    pub use_second_key: bool,
+}
+
 use anyhow::{anyhow, Result};
 use std::{
     path::{Path, PathBuf},
