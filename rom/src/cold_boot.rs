@@ -590,8 +590,8 @@ impl ColdBoot {
         if let Err(err) = lc.transition(LifecycleControllerState::Scrap, &LifecycleToken([0u8; 16]))
         {
             romtime::println!(
-                "[mcu-rom] FIPS zeroization: LC SCRAP transition failed: {:?}",
-                err
+                "[mcu-rom] FIPS zeroization: LC SCRAP transition failed: {}",
+                HexWord(err.into())
             );
             fatal_error(McuError::ROM_FIPS_ZEROIZATION_LC_TRANSITION_ERROR);
         }
@@ -808,7 +808,10 @@ impl BootFlow for ColdBoot {
         if let Some((state, token)) = params.lifecycle_transition {
             mci.set_flow_checkpoint(McuRomBootStatus::LifecycleTransitionStarted.into());
             if let Err(err) = lc.transition(state, &token) {
-                romtime::println!("[mcu-rom] Error transitioning lifecycle: {:?}", err);
+                romtime::println!(
+                    "[mcu-rom] Error transitioning lifecycle: {}",
+                    HexWord(err.into())
+                );
                 fatal_error(err);
             }
             romtime::println!("Lifecycle transition successful; halting");
@@ -840,8 +843,8 @@ impl BootFlow for ColdBoot {
 
             if let Err(err) = otp.burn_lifecycle_tokens(tokens) {
                 romtime::println!(
-                    "[mcu-rom] Error burning lifecycle tokens {:?}; OTP status: {}",
-                    err,
+                    "[mcu-rom] Error burning lifecycle tokens {}; OTP status: {}",
+                    HexWord(err.into()),
                     HexWord(otp.status())
                 );
                 otp.print_errors();
@@ -1165,7 +1168,10 @@ impl BootFlow for ColdBoot {
                     romtime::println!("[mcu-rom] Error sending mailbox command: {}", HexWord(code));
                 }
                 _ => {
-                    romtime::println!("[mcu-rom] Error sending mailbox command: {:?}", err);
+                    romtime::println!(
+                        "[mcu-rom] Error sending mailbox command: {}",
+                        HexWord(Self::err_code(&err))
+                    );
                 }
             }
             fatal_error(McuError::ROM_COLD_BOOT_START_RI_DOWNLOAD_ERROR);
