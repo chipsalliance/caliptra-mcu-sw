@@ -73,8 +73,25 @@ pub extern "C" fn rom_entry() -> ! {
     let axi_user1 = 0xdddd_ddddu32;
     let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
 
+    // OTP digest IV and constant for the emulator.
+    // These defaults are defined in the caliptra-ss RTL (otp_ctrl_part_pkg.sv).
+    #[cfg(feature = "ocp-lock")]
+    const EMULATOR_OTP_DIGEST_IV: u64 = 0x90C7F21F6224F027u64;
+    #[cfg(feature = "ocp-lock")]
+    const EMULATOR_OTP_DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266Fu128;
+
     #[cfg(feature = "ocp-lock")]
     struct EmulatorOcpPlatform;
+
+    #[cfg(feature = "ocp-lock")]
+    fn get_hek_partition(slot: usize) -> romtime::otp::OtpPartition {
+        romtime::otp::OtpPartition {
+            byte_offset: registers_generated::fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET
+                + slot * 48,
+            byte_size: 40,
+            sw_digest: true,
+        }
+    }
 
     #[cfg(feature = "ocp-lock")]
     impl romtime::ocp_lock::Platform for EmulatorOcpPlatform {
@@ -101,12 +118,27 @@ pub extern "C" fn rom_entry() -> ! {
                 return Ok(romtime::ocp_lock::HekSeedState::Unused);
             }
 
-            let valid_seed = otp
-                .is_valid_hek_seed(slot, seed)
-                .map_err(|_| romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
-            if !valid_seed {
-                romtime::println!("[mcu-rom-otp] HEK software digest mismatch! Slot {}", slot);
-                return Ok(romtime::ocp_lock::HekSeedState::ProgrammedCorrupted);
+            let partition = get_hek_partition(slot);
+            let expected_digest: Result<&[u8; 8], _> = seed[32..40].try_into();
+            match (
+                expected_digest,
+                otp.compute_sw_digest(
+                    &partition,
+                    EMULATOR_OTP_DIGEST_IV,
+                    EMULATOR_OTP_DIGEST_CONST,
+                ),
+            ) {
+                (Ok(expected_digest), Ok(computed_digest)) => {
+                    let expected_digest = u64::from_le_bytes(*expected_digest);
+                    if computed_digest != expected_digest {
+                        romtime::println!(
+                            "[mcu-rom-otp] HEK software digest mismatch! Slot {}",
+                            slot
+                        );
+                        return Ok(romtime::ocp_lock::HekSeedState::ProgrammedCorrupted);
+                    }
+                }
+                _ => return Err(romtime::ocp_lock::Error::INVALID_HEK_SLOT),
             }
 
             Ok(romtime::ocp_lock::HekSeedState::Programmed)
