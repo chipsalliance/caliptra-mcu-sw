@@ -88,6 +88,11 @@ mod test {
         pub custom_mcu_rom: Option<Vec<u8>>,
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
         pub firmware_prefix: Option<Vec<u8>>,
+        /// If true (with `firmware_prefix` set), use the DOT hitless-update
+        /// test ROM which forces the cold-boot warm reset to come back as
+        /// `FirmwareHitlessUpdate` so `FwHitlessUpdate::run` processes the
+        /// manifest instead of `FwBoot::run`.
+        pub fw_manifest_dot_hitless: bool,
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -109,15 +114,33 @@ mod test {
 
     // Get ROM from prebuilt or compile
     fn get_or_compile_rom(feature: &str) -> PathBuf {
-        // Try to get prebuilt ROM from the firmware bundle
-        if feature.is_empty() {
-            if let Ok(binaries) = FirmwareBinaries::from_env() {
-                let output = target_binary("mcu_rom_prebuilt.bin");
+        if let Ok(binaries) = FirmwareBinaries::from_env() {
+            // Empty feature → use the generic prebuilt ROM.
+            // Otherwise, only use the prebuilt ROM if it was actually built
+            // for the requested feature (i.e. don't silently fall back to the
+            // generic ROM which lacks the requested feature flags).
+            let rom_data = if feature.is_empty() {
+                Some(binaries.mcu_rom.clone())
+            } else {
+                let expected_name = format!("mcu-test-rom-feature-{}.bin", feature);
+                binaries
+                    .test_roms
+                    .iter()
+                    .find(|(name, _)| name == &expected_name)
+                    .map(|(_, data)| data.clone())
+            };
+            if let Some(rom_data) = rom_data {
+                let safe_name = feature.replace('/', "_");
+                let filename = if safe_name.is_empty() {
+                    "mcu_rom_prebuilt.bin".to_string()
+                } else {
+                    format!("mcu_rom_prebuilt_{}.bin", safe_name)
+                };
+                let output = target_binary(&filename);
                 if let Some(parent) = output.parent() {
                     std::fs::create_dir_all(parent).ok();
                 }
-                std::fs::write(&output, &binaries.mcu_rom)
-                    .expect("Failed to write prebuilt ROM to file");
+                std::fs::write(&output, &rom_data).expect("Failed to write prebuilt ROM to file");
                 return output;
             }
         }
@@ -129,13 +152,16 @@ mod test {
     pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| get_or_compile_rom(""));
     pub static ROM_FW_MANIFEST_DOT: LazyLock<Vec<u8>> =
         LazyLock::new(|| std::fs::read(get_or_compile_rom("test-fw-manifest-dot")).unwrap());
+    pub static ROM_FW_MANIFEST_DOT_HITLESS: LazyLock<Vec<u8>> = LazyLock::new(|| {
+        std::fs::read(get_or_compile_rom("test-fw-manifest-dot-hitless")).unwrap()
+    });
 
     pub static TEST_LOCK: LazyLock<Mutex<AtomicU32>> =
         LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
 
     // Compile the ROM for a given feature flag (empty string for default ROM).
     pub fn get_rom_with_feature(feature: &str) -> PathBuf {
-        compile_rom(feature)
+        get_or_compile_rom(feature)
     }
 
     fn platform() -> &'static str {
@@ -260,7 +286,29 @@ mod test {
     }
 
     fn build_test_binaries(params: &TestParams) -> TestBinaries {
-        let mcu_runtime_path = if params.rom_only {
+        // Get MCU runtime: prefer prebuilt for the requested feature, fall back to compilation
+        let mcu_runtime_path = if let Ok(binaries) = FirmwareBinaries::from_env() {
+            let runtime_bytes = if let Some(feature) = params.feature {
+                match binaries.test_runtime(feature) {
+                    Ok(bytes) => Some(bytes.clone()),
+                    Err(_) => None,
+                }
+            } else {
+                Some(binaries.mcu_runtime.clone())
+            };
+            if let Some(bytes) = runtime_bytes {
+                let path = target_binary("mcu_runtime_prebuilt_for_builder.bin");
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                std::fs::write(&path, &bytes).expect("Failed to write prebuilt runtime to file");
+                path
+            } else if params.rom_only {
+                compile_runtime(None, false)
+            } else {
+                compile_runtime(params.feature, false)
+            }
+        } else if params.rom_only {
             compile_runtime(None, false)
         } else {
             compile_runtime(params.feature, false)
@@ -283,6 +331,28 @@ mod test {
                 (mcu_runtime_path, bytes)
             };
 
+        // When prebuilt binaries are available, pass the Caliptra ROM/FW paths
+        // to the builder so it doesn't try to compile them from scratch.
+        let (prebuilt_caliptra_rom, prebuilt_caliptra_fw, prebuilt_vendor_pk_hash) =
+            if let Ok(binaries) = FirmwareBinaries::from_env() {
+                let rom_path =
+                    std::env::temp_dir().join("build_test_binaries_caliptra_rom_prebuilt.bin");
+                std::fs::write(&rom_path, &binaries.caliptra_rom)
+                    .expect("Failed to write prebuilt Caliptra ROM");
+                let fw_path =
+                    std::env::temp_dir().join("build_test_binaries_caliptra_fw_prebuilt.bin");
+                std::fs::write(&fw_path, &binaries.caliptra_fw)
+                    .expect("Failed to write prebuilt Caliptra FW");
+                let vendor_pk_hash = hex::encode(
+                    binaries
+                        .vendor_pk_hash()
+                        .expect("Failed to get vendor PK hash from prebuilt binaries"),
+                );
+                (Some(rom_path), Some(fw_path), Some(vendor_pk_hash))
+            } else {
+                (None, None, None)
+            };
+
         let mut builder = CaliptraBuilder::new(
             cfg!(feature = "fpga_realtime"),
             params
@@ -290,10 +360,10 @@ mod test {
                 .map(|f| f.contains("ocp-lock"))
                 .unwrap_or(false)
                 || params.ocp_lock_en,
+            prebuilt_caliptra_rom,
+            prebuilt_caliptra_fw,
             None,
-            None,
-            None,
-            None,
+            prebuilt_vendor_pk_hash,
             Some(mcu_runtime_for_builder),
             None,
             None,
@@ -316,7 +386,11 @@ mod test {
         .unwrap();
 
         let mcu_rom = if params.firmware_prefix.is_some() {
-            ROM_FW_MANIFEST_DOT.clone()
+            if params.fw_manifest_dot_hitless {
+                ROM_FW_MANIFEST_DOT_HITLESS.clone()
+            } else {
+                ROM_FW_MANIFEST_DOT.clone()
+            }
         } else if let Some(f) = params.rom_feature {
             std::fs::read(compile_rom(f)).unwrap()
         } else if params.rom_only && params.feature.is_some() {
@@ -909,6 +983,7 @@ mod test {
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
     run_test!(test_mctp_spdm_responder_conformance, nightly);
+    run_test!(test_mctp_spdm_attestation, nightly);
     run_test!(test_doe_spdm_responder_conformance, nightly);
     run_test!(test_doe_spdm_tdisp_ide_validator, nightly);
     run_test!(test_mci, example_app);

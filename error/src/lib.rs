@@ -144,29 +144,34 @@ impl McuError {
             "DOT recovery flash write failed"
         ),
         (
-            ROM_DOT_RECOVERY_PK_HASH_MISMATCH,
+            ROM_DOT_OVERRIDE_CHALLENGE_FAILED,
             0x1_001c,
-            "DOT recovery PK hash mismatch"
+            "DOT override challenge failed"
         ),
         (
-            ROM_DOT_RECOVERY_CHALLENGE_FAILED,
+            ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED,
             0x1_001d,
-            "DOT recovery challenge generation failed"
+            "DOT override signature verification failed"
         ),
         (
-            ROM_DOT_RECOVERY_SIG_VERIFY_FAILED,
+            ROM_DOT_OVERRIDE_NOT_LOCKED,
             0x1_001e,
-            "DOT recovery signature verification failed"
+            "DOT override requested but device not in locked state"
         ),
         (
-            ROM_DOT_RECOVERY_NO_RECOVERY_PK_HASH,
+            ROM_DOT_OVERRIDE_NO_RECOVERY_PK_HASH,
             0x1_001f,
-            "DOT recovery no recovery PK hash in fuses"
+            "DOT override no vendor recovery PK hash in OTP fuses"
         ),
         (
             ROM_DOT_RECOVERY_TRANSPORT_ERROR,
             0x1_0020,
             "DOT recovery transport error"
+        ),
+        (
+            ROM_DOT_OVERRIDE_PK_HASH_MISMATCH,
+            0x1_0021,
+            "DOT override vendor recovery PK hash mismatch"
         ),
         (
             ROM_COLD_BOOT_HEK_REPORT_ERROR,

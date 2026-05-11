@@ -1351,6 +1351,102 @@ Recovery Mode
     ├─→ [Challenge/Response via MCI mbox0] → Locked (ODD, n) [new ownership]
 ```
 
+
+### DOT_OVERRIDE via MCI Mailbox (Reference Implementation)
+
+An example implementation of DOT_OVERRIDE using the MCI mailbox is provided below.
+This is for disaster recovery when no backup blob is available.
+
+**When:** Device is in Locked (ODD) state with a corrupted or missing DOT_BLOB. The BMC
+holds the VendorKey private key corresponding to the vendor recovery PK hash stored
+in OTP fuses.
+
+The reference MCU ROM uses MCI mailbox 0 (`mcu_mbox0`) to perform a
+two-transaction challenge/response protocol with the BMC.
+The BMC provides its VendorKey public keys (ECC P-384 + MLDSA-87) and signs the
+challenge with both VendorKey.priv keys; the ROM verifies the signatures using
+Caliptra's `CM_ECDSA384_VERIFY` and `CM_MLDSA87_VERIFY` commands.
+
+**Protocol:**
+
+#### Transaction 1: DOT_UNLOCK_CHALLENGE
+
+Command Code: `0x444F_5457` ("DOTW")
+
+The `DOT_UNLOCK_CHALLENGE` command is a unified challenge request used for both
+owner unlock and vendor override. The `challenge_type` field indicates
+which operation is requested.
+
+*Table: `DOT_UNLOCK_CHALLENGE` input arguments*
+
+| **Name**        | **Type**     | **Description**                              |
+| --------------- | ------------ | -------------------------------------------- |
+| chksum          | u32          | Checksum (Caliptra standard formula)         |
+| challenge_type  | u32          | `0x01` = UNLOCK (owner), `0x02` = OVERRIDE (vendor) |
+| ecc_pub_key_x   | u8[48]       | Public key ECDSA P-384 X coordinate          |
+| ecc_pub_key_y   | u8[48]       | Public key ECDSA P-384 Y coordinate          |
+| mldsa_pub_key   | u8[2592]     | MLDSA-87 public key                          |
+
+For `challenge_type = OVERRIDE`, the public keys are the VendorKey and are
+verified against the vendor recovery PK hash in OTP fuses.
+For `challenge_type = UNLOCK`, the public keys are the LAK and are
+verified against the LAK hash in the DOT_BLOB.
+
+*Table: `DOT_UNLOCK_CHALLENGE` output arguments*
+
+| **Name**        | **Type**     | **Description**                      |
+| --------------- | ------------ | ------------------------------------ |
+| challenge       | u8[48]       | Random 48-byte challenge for signing |
+
+The ROM computes SHA-384 of the provided public keys (ECC X ‖ ECC Y ‖ MLDSA)
+and verifies the hash against the appropriate PK hash (OTP fuses for OVERRIDE,
+DOT_BLOB for UNLOCK).
+If the hash matches, the ROM generates a random 48-byte challenge and
+returns it via `DataReady` status.
+
+#### Transaction 2: DOT_OVERRIDE
+
+Command Code: `0x444F_5458` ("DOTX")
+
+*Table: `DOT_OVERRIDE` input arguments*
+
+| **Name**        | **Type**     | **Description**                     |
+| --------------- | ------------ | ----------------------------------- |
+| chksum          | u32          | Checksum (Caliptra standard formula)|
+| ecc_pub_key_x   | u8[48]       | ECDSA P-384 public key X coordinate |
+| ecc_pub_key_y   | u8[48]       | ECDSA P-384 public key Y coordinate |
+| ecc_sig_r       | u8[48]       | ECDSA P-384 signature R component   |
+| ecc_sig_s       | u8[48]       | ECDSA P-384 signature S component   |
+| mldsa_pub_key   | u8[2592]     | MLDSA-87 public key                 |
+| mldsa_signature | u8[4627]     | MLDSA-87 signature                  |
+| padding         | u8           | Padding for MLDSA signature         |
+
+The ROM re-verifies the vendor public key hash (ECC + MLDSA) against the
+OTP fuses before verifying signatures. The ECDSA signature is over
+`SHA-384(challenge)`. The MLDSA signature is over the raw challenge bytes.
+
+**Flow:**
+1. ROM boots, detects DOT_BLOB is corrupted/missing in Locked (ODD) state
+2. ROM polls MCI mbox0 for `DOT_UNLOCK_CHALLENGE` command
+3. BMC writes `challenge_type = OVERRIDE` + VendorKey public keys (ECC + MLDSA) → mbox0 SRAM
+4. ROM checks `challenge_type` and verifies VendorKey hash against vendor recovery PK hash in OTP fuses
+5. ROM generates random 48-byte challenge → responds via mbox0 `DataReady`
+6. BMC signs challenge with VendorKey.priv (ECDSA P-384 + MLDSA-87)
+7. BMC writes public keys + signatures → mbox0 as `DOT_OVERRIDE` command
+8. ROM re-verifies VendorKey hash against OTP fuses
+9. ROM verifies ECDSA signature via `CM_ECDSA384_VERIFY`
+10. ROM verifies MLDSA signature via `CM_MLDSA87_VERIFY`
+11. If both pass: ROM burns DOT fuse (n→n+1) and writes a new empty DOT_BLOB (no CAK/LAK) HMAC'd with the EVEN-state key
+12. ROM triggers warm reset
+13. **Result:** Device transitions to EVEN (Uninitialized) state with a valid DOT_BLOB
+
+**Requirements:**
+- Device must be in Locked (ODD) state (blob may be corrupted or missing)
+- BMC must hold the VendorKey private keys (ECC + MLDSA)
+- VendorKey public key hash must match the vendor recovery PK hash in OTP fuses
+- MCI mbox0 must be accessible to the BMC
+- Override failure is non-fatal: boot continues with recovery attempts
+
 ---
 
 ## Security Considerations

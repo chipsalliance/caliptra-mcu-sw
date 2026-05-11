@@ -35,13 +35,14 @@ use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
 use registers_generated::fuses;
+use registers_generated::i3c::bits::RecIntfCfg;
 #[cfg(feature = "ocp-lock")]
 use romtime::ocp_lock::HekState;
 use romtime::{
     CaliptraSoC, HexBytes, HexWord, LifecycleControllerState, LifecycleToken, McuBootMilestones,
     McuRomBootStatus,
 };
-use tock_registers::interfaces::Readable;
+use tock_registers::interfaces::{ReadWriteable, Readable};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
 // TODO: Remove these local CM_AES_GCM_DECRYPT_DMA definitions once caliptra-sw
@@ -672,88 +673,66 @@ fn attempt_dot_recovery(
 ) -> Option<McuError> {
     use crate::DotRecoveryPolicy;
 
-    fn try_challenge(
-        env: &mut RomEnv,
-        dot_fuses: &crate::DotFuses,
-        params: &RomParameters,
-        dot_flash: &dyn crate::hil::FlashStorage,
-        key_type: CmStableKeyType,
-    ) -> Option<McuError> {
-        let transport = params.dot_recovery_transport?;
+    if params.dot_recovery_policy == DotRecoveryPolicy::None {
+        return None;
+    }
+
+    let recovery_handler = params.dot_recovery_handler?;
+    romtime::println!("[mcu-rom] Attempting DOT recovery via backup blob");
+    match device_ownership_transfer::dot_recovery_flow(
+        env,
+        dot_fuses,
+        recovery_handler,
+        dot_flash,
+        key_type,
+    ) {
+        Ok(()) => {
+            romtime::println!("[mcu-rom] DOT backup recovery succeeded, resetting");
+            env.mci.trigger_warm_reset();
+            fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
+        }
+        Err(err) => {
+            romtime::println!(
+                "[mcu-rom] DOT backup recovery failed: {}",
+                HexWord(err.into())
+            );
+            Some(err)
+        }
+    }
+}
+
+/// Attempts DOT override using the recovery transport if available.
+/// DOT_OVERRIDE happens in recovery mode when the blob is corrupted/invalid.
+/// If override succeeds, triggers a warm reset (never returns).
+/// If override fails or no transport is available, returns to caller.
+fn attempt_dot_override(
+    env: &mut RomEnv,
+    dot_fuses: &crate::DotFuses,
+    params: &RomParameters,
+    dot_flash: &dyn crate::hil::FlashStorage,
+    key_type: CmStableKeyType,
+) {
+    if let Some(transport) = params.dot_recovery_transport {
         if params.dot_recovery_wdt_timeout > 0 {
             env.mci.configure_wdt(params.dot_recovery_wdt_timeout, 1);
         }
-        romtime::println!("[mcu-rom] Attempting DOT recovery via challenge/response");
-        match device_ownership_transfer::dot_recovery_challenge_flow(
+        romtime::println!("[mcu-rom] Attempting DOT override via challenge/response");
+        match device_ownership_transfer::dot_override_challenge_flow(
             env, dot_fuses, transport, dot_flash, key_type,
         ) {
             Ok(()) => {
-                romtime::println!("[mcu-rom] DOT challenge recovery succeeded, resetting");
+                romtime::println!("[mcu-rom] DOT override succeeded, resetting");
                 env.mci.trigger_warm_reset();
                 fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
             }
             Err(err) => {
                 romtime::println!(
-                    "[mcu-rom] DOT challenge recovery failed: {}",
+                    "[mcu-rom] DOT override failed: {}, continuing boot",
                     HexWord(err.into())
                 );
-                Some(err)
             }
         }
     }
-
-    fn try_backup_blob(
-        env: &mut RomEnv,
-        dot_fuses: &crate::DotFuses,
-        params: &RomParameters,
-        dot_flash: &dyn crate::hil::FlashStorage,
-        key_type: CmStableKeyType,
-    ) -> Option<McuError> {
-        let recovery_handler = params.dot_recovery_handler?;
-        romtime::println!("[mcu-rom] Attempting DOT recovery via backup blob");
-        match device_ownership_transfer::dot_recovery_flow(
-            env,
-            dot_fuses,
-            recovery_handler,
-            dot_flash,
-            key_type,
-        ) {
-            Ok(()) => {
-                romtime::println!("[mcu-rom] DOT backup recovery succeeded, resetting");
-                env.mci.trigger_warm_reset();
-                fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
-            }
-            Err(err) => {
-                romtime::println!(
-                    "[mcu-rom] DOT backup recovery failed: {}",
-                    HexWord(err.into())
-                );
-                Some(err)
-            }
-        }
-    }
-
-    let mut last_err = None;
-    match params.dot_recovery_policy {
-        DotRecoveryPolicy::ChallengeFirst => {
-            last_err = try_challenge(env, dot_fuses, params, dot_flash, key_type);
-            last_err = try_backup_blob(env, dot_fuses, params, dot_flash, key_type).or(last_err);
-        }
-        DotRecoveryPolicy::BackupBlobFirst => {
-            last_err = try_backup_blob(env, dot_fuses, params, dot_flash, key_type);
-            last_err = try_challenge(env, dot_fuses, params, dot_flash, key_type).or(last_err);
-        }
-        DotRecoveryPolicy::ChallengeOnly => {
-            last_err = try_challenge(env, dot_fuses, params, dot_flash, key_type);
-        }
-        DotRecoveryPolicy::BackupBlobOnly => {
-            last_err = try_backup_blob(env, dot_fuses, params, dot_flash, key_type);
-        }
-        DotRecoveryPolicy::None => {}
-    }
-
-    romtime::println!("[mcu-rom] DOT recovery failed: no recovery mechanism succeeded");
-    last_err
 }
 
 impl BootFlow for ColdBoot {
@@ -1094,13 +1073,16 @@ impl BootFlow for ColdBoot {
 
             if dot_blob.iter().all(|&b| b == 0) || dot_blob.iter().all(|&b| b == 0xFF) {
                 if dot_fuses.enabled && dot_fuses.is_locked() {
-                    // DOT is in ODD state but blob is empty/corrupt - attempt recovery
+                    // DOT is in ODD state but blob is empty/corrupt.
+                    // Try backup-blob recovery first, then override.
                     let key_type = params
                         .dot_stable_key_type
                         .unwrap_or(CmStableKeyType::IDevId);
                     let recovery_err =
                         attempt_dot_recovery(env, &dot_fuses, &params, dot_flash, key_type);
-                    // If recovery didn't reset, it's a fatal error
+                    // Recovery success triggers a warm reset and never returns.
+                    // If recovery failed or was not configured, try override.
+                    attempt_dot_override(env, &dot_fuses, &params, dot_flash, key_type);
                     romtime::println!(
                         "[mcu-rom] DOT fuses are initialized but DOT blob is empty/corrupt"
                     );
@@ -1120,13 +1102,16 @@ impl BootFlow for ColdBoot {
                 ) {
                     Ok(owner) => owner,
                     Err(err) => {
-                        // DOT flow failed (e.g., HMAC verification) - attempt recovery if in ODD state
+                        // DOT flow failed (e.g., HMAC verification) - attempt recovery/override if in ODD state
                         if dot_fuses.is_locked() {
                             let key_type = params
                                 .dot_stable_key_type
                                 .unwrap_or(CmStableKeyType::IDevId);
                             let recovery_err =
                                 attempt_dot_recovery(env, &dot_fuses, &params, dot_flash, key_type);
+                            // Recovery success triggers a warm reset and never returns.
+                            // If recovery failed or was not configured, try override.
+                            attempt_dot_override(env, &dot_fuses, &params, dot_flash, key_type);
                             if let Some(e) = recovery_err {
                                 romtime::println!(
                                     "[mcu-rom] DOT recovery failed: {}",
@@ -1225,6 +1210,11 @@ impl BootFlow for ColdBoot {
             if let Some(flash_driver) = params.flash_partition_driver {
                 romtime::println!("[mcu-rom] Starting Flash recovery flow");
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowStarted.into());
+
+                // Set AXI bypass mode once before the recovery flow
+                i3c_base
+                    .soc_mgmt_if_rec_intf_cfg
+                    .modify(RecIntfCfg::RecIntfBypass::SET);
 
                 crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_COLD_BOOT_LOAD_IMAGE_ERROR));
@@ -1346,6 +1336,21 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Resetting to boot firmware");
         mci.set_flow_checkpoint(McuRomBootStatus::ColdBootFlowComplete.into());
         mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
+
+        #[cfg(feature = "test-force-hitless-update")]
+        {
+            use registers_generated::mci::bits::ResetReason;
+            use tock_registers::interfaces::ReadWriteable;
+            // Replace FwBootUpdReset with FwHitlessUpdReset so the emulator
+            // preserves the hitless bit across this MCU reset and the ROM
+            // re-enters as `FirmwareHitlessUpdate`. Only used by the
+            // fw-manifest-dot hitless integration test.
+            romtime::println!("[mcu-rom] test-force-hitless-update: forcing hitless reset reason");
+            mci.registers
+                .mci_reg_reset_reason
+                .modify(ResetReason::FwBootUpdReset::CLEAR + ResetReason::FwHitlessUpdReset::SET);
+        }
+
         mci.trigger_warm_reset();
         romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
         fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);

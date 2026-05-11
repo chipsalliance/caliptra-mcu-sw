@@ -12,8 +12,6 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::IntoBytes;
 
 const ACTIVATE_RECOVERY_IMAGE_CMD: u32 = 0xF;
-const BYPASS_CFG_USE_I3C: u32 = 0x0;
-const BYPASS_CFG_AXI_DIRECT: u32 = 0x1;
 
 /// A trait defining how an image can be provided to the i3c recovery interface.  This allows
 /// multiple providers (e.g. flash, usb, etc.) to independently provide images while utilizing the
@@ -233,9 +231,6 @@ pub fn load_flash_image_to_recovery<'a>(
 
     let mut image_provider = FlashImageProvider::new(flash_driver);
 
-    i3c_periph
-        .soc_mgmt_if_rec_intf_cfg
-        .modify(RecIntfCfg::RecIntfBypass.val(BYPASS_CFG_AXI_DIRECT));
     while *state_machine.state() != States::Done {
         if prev_state != *state_machine.state() {
             romtime::println!(
@@ -362,9 +357,6 @@ pub fn load_flash_image_to_recovery<'a>(
             _ => {}
         }
     }
-    i3c_periph
-        .soc_mgmt_if_rec_intf_cfg
-        .modify(RecIntfCfg::RecIntfBypass.val(BYPASS_CFG_USE_I3C));
 
     Ok(())
 }
