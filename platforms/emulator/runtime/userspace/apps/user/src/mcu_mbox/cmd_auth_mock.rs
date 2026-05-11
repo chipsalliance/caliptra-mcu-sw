@@ -5,7 +5,7 @@ use caliptra_mcu_libapi_caliptra::crypto::hmac::Hmac;
 use caliptra_mcu_libapi_caliptra::crypto::import::{CmKeyUsage, Import};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, FuseIncreaseCaliptraMinSvnReq, FuseRevokeVendorPubKeyReq, MailboxReqHeader,
-    McuFeProgReq,
+    McuFeProgReq, ProvisionVendorPkHashReq,
 };
 use constant_time_eq::constant_time_eq;
 use core::mem::size_of;
@@ -36,7 +36,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
         req: &'a [u8],
     ) -> AuthorizationResult<&'a [u8]> {
         let cmd_len = match cmd_id {
-            CommandId::MC_ROTATE_VENDOR_PK_HASH => Err(AuthorizationError)?,
+            CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashReq>(),
             CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
                 size_of::<FuseIncreaseCaliptraMinSvnReq>()
             }

@@ -21,6 +21,7 @@ pub use caliptra_api::mailbox::{
     MAX_CMB_DATA_SIZE,
 };
 pub use caliptra_api::{calc_checksum, verify_checksum};
+use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0;
 use core::convert::From;
 use core::num::NonZeroU32;
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout};
@@ -121,7 +122,7 @@ impl CommandId {
 
     // Authorized commands
     pub const MC_GET_AUTH_CMD_CHALLENGE: Self = Self(0x4D414343); // "MACC"
-    pub const MC_ROTATE_VENDOR_PK_HASH: Self = Self(0x4D56_504B); // "MVPK"
+    pub const MC_PROVISION_VENDOR_PK_HASH: Self = Self(0x5056_504b); // "PVPK"
     pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
     pub const MC_FE_PROG: Self = Self(0x4D43_4650); // "MCFP"
     pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY: Self = Self(0x4D52_564B); // "MRVK"
@@ -193,6 +194,7 @@ pub enum McuMailboxReq {
     FeProg(McuFeProgReq),
     GetAuthCmdChallenge(GetAuthCmdChallengeReq),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyReq),
+    ProvisionVendorPkHash(ProvisionVendorPkHashReq),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
 }
@@ -246,6 +248,7 @@ impl McuMailboxReq {
             McuMailboxReq::FeProg(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_bytes()),
+            McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
         }
     }
@@ -298,6 +301,7 @@ impl McuMailboxReq {
             McuMailboxReq::FeProg(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
         }
     }
@@ -352,6 +356,7 @@ impl McuMailboxReq {
             McuMailboxReq::FeProg(_) => CommandId::MC_FE_PROG,
             McuMailboxReq::GetAuthCmdChallenge(_) => CommandId::MC_GET_AUTH_CMD_CHALLENGE,
             McuMailboxReq::FuseRevokeVendorPubKey(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY,
+            McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
         }
     }
@@ -427,6 +432,7 @@ pub enum McuMailboxResp {
     FuseLockPartition(FuseLockPartitionResp),
     GetAuthCmdChallenge(GetAuthCmdChallengeResp),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyResp),
+    ProvisionVendorPkHash(ProvisionVendorPkHashResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
 }
@@ -539,6 +545,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
         }
     }
@@ -590,6 +597,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
         }
     }
@@ -1528,6 +1536,30 @@ impl Default for ExportAttestedCsrResp {
     }
 }
 impl McuResponseVarSize for ExportAttestedCsrResp {}
+
+/// MC_PROVISION_VENDOR_PK_HASH request: Provision a new vendor PK hash
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct ProvisionVendorPkHashReq {
+    pub hdr: MailboxReqHeader,
+    /// The vendor PK hash slot to use
+    pub slot: u32,
+    /// New vendor PK hash
+    pub hash: [u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size],
+}
+impl Request for ProvisionVendorPkHashReq {
+    const ID: CommandId = CommandId::MC_PROVISION_VENDOR_PK_HASH;
+
+    type Resp = ProvisionVendorPkHashResp;
+}
+
+/// MC_PROVISION_VENDOR_PK_HASH response: Response for provisioning a new vendor PK hash
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct ProvisionVendorPkHashResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for ProvisionVendorPkHashResp {}
 
 #[cfg(test)]
 mod tests {

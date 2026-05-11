@@ -5,7 +5,7 @@
 use crate::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
 use caliptra_mcu_mbox_common::messages::RevokeVendorPubKeyType;
-use core::marker::PhantomData;
+use core::{iter::repeat, marker::PhantomData};
 
 pub const VENDOR_PK_HASH_SIZE: usize =
     caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size;
@@ -48,6 +48,10 @@ impl<S: Syscalls> Otp<S> {
     }
 
     /// Check whether a given slot has a valid PK hash
+    ///
+    /// # Returns
+    /// - `true` if the slot is valid
+    /// - `false` if the slot has been marked as revoked
     pub fn valid_vendor_pk_hash_slot(&self, slot: u32) -> bool {
         if slot as usize >= MAX_NUM_VENDOR_PK_HASH {
             return false;
@@ -116,6 +120,48 @@ impl<S: Syscalls> Otp<S> {
         }
 
         self.write(reg_offset, vendor_pk_hash_slot, to_write)
+    }
+
+    /// Provision a new vendor PK hash into the next unused fuse
+    pub fn provision_vendor_pk_hash(
+        &self,
+        slot: u32,
+        new_hash: &[u8; VENDOR_PK_HASH_SIZE],
+    ) -> Result<(), ErrorCode> {
+        if slot > 15 {
+            return Err(ErrorCode::Invalid);
+        }
+
+        let reg = reg::vendor_pk_hash_reg_by_slot(slot).ok_or(ErrorCode::Invalid)?;
+
+        if !self.valid_vendor_pk_hash_slot(slot) {
+            // Error when the slot was already marked as invalid
+            return Err(ErrorCode::Invalid);
+        }
+
+        let fuse_value = self.read_vendor_pk_hash(slot)?;
+        if new_hash == &fuse_value {
+            // Return early when the fuse already contains the hash
+            return Ok(());
+        }
+        if fuse_value.iter().ne(repeat(&0)) {
+            // Error if the fuse is already containing something
+            return Err(ErrorCode::Invalid);
+        }
+
+        // Write fuse
+        for (i, chunk) in new_hash.chunks_exact(4).enumerate() {
+            let word = u32::from_le_bytes(chunk.try_into().map_err(|_| ErrorCode::Fail)?);
+            self.write(reg, i as u32, word)?;
+        }
+
+        // Read back the fuse and compare to validate writing was successfull
+        let fuse_value = self.read_vendor_pk_hash(slot)?;
+        if new_hash != &fuse_value {
+            return Err(ErrorCode::Fail);
+        }
+
+        Ok(())
     }
 }
 

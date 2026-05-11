@@ -73,3 +73,26 @@ Caveats:
 * This command is **idempotent**, so that locking a partition twice has no effect.
 * Locking a partition causes subsequent writes to it to fail.
 * Locking does not fully take effect until the next reset.
+
+### MC_PROVISION_VENDOR_PK_HASH
+
+Provision a new vendor PK hash.
+
+Command Code: `0x5056_504b` ("PVPK")
+
+*Table: `MC_PROVISION_VENDOR_PK_HASH` input arguments*
+| **Name**   | **Type**       | **Description**                |
+| ---------- | -------------- | ------------------------------ |
+| chksum     |  u32           |                                |
+| slot       |  u32           | The vendor PK hash slot to use |
+| hash       |  \[u8; 48\]    | New vendor PK hash             |
+
+
+*Table: `MC_PROVISION_VENDOR_PK_HASH` output arguments*
+| **Name**      | **Type**       | **Description**                         |
+| ------------- | -------------- | --------------------------------------- |
+| chksum        |  u32           |                                         |
+| fips_status   |  u32           | FIPS approved or an error               |
+
+Caveats:
+* Fails if the slot already contains data
