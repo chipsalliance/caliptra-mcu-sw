@@ -27,6 +27,8 @@ mod fuse_layout;
 pub use fuse_layout::*;
 mod fuses;
 pub use fuses::*;
+mod hooks;
+pub use hooks::*;
 pub mod image_verifier;
 pub use image_verifier::ImageVerifier;
 mod rom;
@@ -34,6 +36,8 @@ pub use rom::*;
 mod rom_env;
 pub use rom_env::*;
 mod i3c;
+mod i3c_mailbox;
+pub use i3c_mailbox::I3cMailboxHandler;
 mod mailbox;
 mod recovery;
 #[cfg(feature = "stable-owner-key")]

@@ -613,10 +613,21 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     pldm_manifest_decoded.generate_firmware_package(&pldm_fw_pkg_path)?;
 
     // Build feature-specific MCU ROMs so tests don't need to compile at runtime.
-    // Runtime features are best-effort because most are not ROM features. Explicit test ROM
-    // features are required because tests request them by name from the bundle.
+    // Runtime features and built-in ROM-only test features are best-effort because
+    // not every feature is valid on every platform. Explicit test ROM features are
+    // required because tests request them by name from the bundle.
+    const ROM_ONLY_TEST_FEATURES: &[&str] = &[
+        "test-i3c-services",
+        "test-fw-manifest-dot",
+        "test-fw-manifest-dot-hitless",
+        "test-dot-recovery",
+    ];
+
     let mut feature_roms_to_build = separate_features.clone();
-    for &feature in explicit_test_rom_features.iter() {
+    for &feature in ROM_ONLY_TEST_FEATURES
+        .iter()
+        .chain(explicit_test_rom_features.iter())
+    {
         if !feature_roms_to_build.contains(&feature) {
             feature_roms_to_build.push(feature);
         }

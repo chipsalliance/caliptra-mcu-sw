@@ -27,6 +27,7 @@ pub struct FwBoot {}
 
 impl BootFlow for FwBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
+        crate::call_hook(params.hooks, |h| h.pre_fw_boot());
         romtime::println!("[mcu-rom] Starting fw boot reset flow");
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::FirmwareBootFlowStarted.into());
@@ -90,6 +91,7 @@ impl BootFlow for FwBoot {
         romtime::println!("[mcu-rom] Jumping to firmware");
         env.mci
             .set_flow_milestone(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
+        crate::call_hook(params.hooks, |h| h.post_fw_boot());
 
         #[cfg(target_arch = "riscv32")]
         unsafe {

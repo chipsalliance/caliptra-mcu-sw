@@ -18,7 +18,7 @@ use crate::mailbox;
 use crate::{
     configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
-    FuseParams, RomEnv, RomParameters, MCU_MEMORY_MAP,
+    FuseParams, I3cMailboxHandler, I3cServicesModes, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{
     CmImportReq, CmImportResp, CmKeyUsage, CmStableKeyType, Cmk, CommandId, FeProgReq,
@@ -42,7 +42,7 @@ use romtime::{
     CaliptraSoC, HexBytes, HexWord, LifecycleControllerState, LifecycleToken, McuBootMilestones,
     McuRomBootStatus,
 };
-use tock_registers::interfaces::{ReadWriteable, Readable};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
 // TODO: Remove these local CM_AES_GCM_DECRYPT_DMA definitions once caliptra-sw
@@ -735,11 +735,51 @@ fn attempt_dot_override(
     }
 }
 
+/// Enter I3C services mode if enabled in `RomParameters`.
+///
+/// Runs the I3C mailbox handler loop, processing commands until completion
+/// or timeout. Sets boot status checkpoints on entry and exit.
+fn enter_i3c_services(
+    mci: &romtime::Mci,
+    i3c_base: romtime::StaticRef<registers_generated::i3c::regs::I3c>,
+    services: I3cServicesModes,
+) {
+    // Extend the watchdog timeout for I3C services since the loop may run
+    // for an extended period waiting for commands from the BMC.
+    mci.configure_wdt(u32::MAX as u64, 1);
+
+    // Disable the recovery interface status registers.
+    i3c_base
+        .sec_fw_recovery_if_recovery_status
+        .write(registers_generated::i3c::bits::RecoveryStatus::DevRecStatus.val(3));
+    i3c_base
+        .sec_fw_recovery_if_device_status_0
+        .write(registers_generated::i3c::bits::DeviceStatus0::DevStatus.val(0));
+
+    // Clear the virtual device address to fully deactivate the recovery
+    // device on the I3C bus.
+    i3c_base.stdby_ctrl_mode_stby_cr_virt_device_addr.set(0);
+
+    romtime::println!("[mcu-rom-i3c-svc] Recovery disabled");
+
+    mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesStarted.into());
+    let mut handler = I3cMailboxHandler::new(i3c_base, services);
+    match handler.run() {
+        Ok(()) => {
+            mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesComplete.into());
+        }
+        Err(err) => {
+            romtime::println!("[mcu-rom] I3C services error: {}", HexWord(err.into()));
+        }
+    }
+}
+
 impl BootFlow for ColdBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
         #[cfg(feature = "ocp-lock")]
         let mut params = params;
 
+        crate::call_hook(params.hooks, |h| h.pre_cold_boot());
         romtime::println!(
             "[mcu-rom] Starting cold boot flow at time {}",
             romtime::mcycle()
@@ -775,6 +815,7 @@ impl BootFlow for ColdBoot {
 
         romtime::println!("[mcu-rom] Setting Caliptra boot go");
 
+        crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());
         mci.caliptra_boot_go();
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraBootGoAsserted.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
@@ -955,6 +996,7 @@ impl BootFlow for ColdBoot {
         });
 
         romtime::println!("[mcu-rom] Populating fuses");
+        crate::call_hook(params.hooks, |h| h.pre_populate_fuses_to_caliptra());
         let _fuse_state = soc.populate_fuses(
             otp,
             mci,
@@ -982,6 +1024,13 @@ impl BootFlow for ColdBoot {
             &params.mci_mbox1_axi_users,
         );
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersConfigured.into());
+
+        let size_value = params.mcu_fw_sram_exec_region_size.unwrap_or(
+            unsafe { MCU_MEMORY_MAP.sram_size }
+                - crate::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS * 4096
+                - 1,
+        );
+        mci.set_fw_sram_exec_region_size(size_value);
 
         // Set SS_CONFIG_DONE_STICKY to lock MCI configuration registers
         romtime::println!("[mcu-rom] Setting SS_CONFIG_DONE_STICKY to lock configuration");
@@ -1020,6 +1069,7 @@ impl BootFlow for ColdBoot {
         while soc.ready_for_fuses() {}
         mci.set_flow_checkpoint(McuRomBootStatus::FuseWriteComplete.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
+        crate::call_hook(params.hooks, |h| h.post_populate_fuses_to_caliptra());
 
         // If testing Caliptra Core, hang here until the test signals it to continue.
         if cfg!(feature = "core_test") {
@@ -1035,6 +1085,7 @@ impl BootFlow for ColdBoot {
             soc.check_hw_errors();
         }
 
+        crate::call_hook(params.hooks, |h| h.post_caliptra_boot());
         romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForMailbox.into());
 
@@ -1083,6 +1134,12 @@ impl BootFlow for ColdBoot {
                     // Recovery success triggers a warm reset and never returns.
                     // If recovery failed or was not configured, try override.
                     attempt_dot_override(env, &dot_fuses, &params, dot_flash, key_type);
+                    // Try I3C services if DOT_RECOVERY enabled
+                    if let Some(services) = params.i3c_services {
+                        if services.contains(I3cServicesModes::DOT_RECOVERY) {
+                            enter_i3c_services(&env.mci, i3c_base, services);
+                        }
+                    }
                     romtime::println!(
                         "[mcu-rom] DOT fuses are initialized but DOT blob is empty/corrupt"
                     );
@@ -1118,6 +1175,12 @@ impl BootFlow for ColdBoot {
                                     HexWord(e.into())
                                 );
                             }
+                            // Try I3C services if DOT_RECOVERY enabled
+                            if let Some(services) = params.i3c_services {
+                                if services.contains(I3cServicesModes::DOT_RECOVERY) {
+                                    enter_i3c_services(&env.mci, i3c_base, services);
+                                }
+                            }
                         }
                         romtime::println!(
                             "[mcu-rom] Fatal error performing Device Ownership Transfer: {}",
@@ -1151,6 +1214,13 @@ impl BootFlow for ColdBoot {
             }
         }
 
+        // Enter I3C services unconditionally if force_i3c_services is set
+        if params.force_i3c_services {
+            if let Some(services) = params.i3c_services {
+                enter_i3c_services(&env.mci, i3c_base, services);
+            }
+        }
+
         // Re-borrow after DOT flow (which took &mut env).
         let mci = &env.mci;
         let soc = &env.soc;
@@ -1172,6 +1242,7 @@ impl BootFlow for ColdBoot {
             CommandId::RI_DOWNLOAD_FIRMWARE.into()
         };
 
+        crate::call_hook(params.hooks, |h| h.pre_load_firmware());
         if let Err(err) = env.soc_manager.start_mailbox_req_bytes(ri_cmd, &[]) {
             match err {
                 CaliptraApiError::MailboxCmdFailed(code) => {
@@ -1249,6 +1320,7 @@ impl BootFlow for ColdBoot {
 
             // Decrypt firmware in MCU SRAM via CM_IMPORT + CM_AES_GCM_DECRYPT_DMA
             Self::decrypt_firmware(&mut env.soc_manager, ciphertext_size, &sha384);
+            crate::call_hook(params.hooks, |h| h.post_load_firmware());
         } else {
             // --- Normal (unencrypted) firmware boot flow ---
             romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
@@ -1282,6 +1354,7 @@ impl BootFlow for ColdBoot {
             }
             romtime::println!("[mcu-rom] Firmware load detected");
             mci.set_flow_checkpoint(McuRomBootStatus::FirmwareValidationComplete.into());
+            crate::call_hook(params.hooks, |h| h.post_load_firmware());
 
             // wait for the Caliptra RT to be ready
             romtime::println!(
@@ -1351,6 +1424,7 @@ impl BootFlow for ColdBoot {
                 .modify(ResetReason::FwBootUpdReset::CLEAR + ResetReason::FwHitlessUpdReset::SET);
         }
 
+        crate::call_hook(params.hooks, |h| h.post_cold_boot());
         mci.trigger_warm_reset();
         romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
         fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);

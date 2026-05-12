@@ -144,6 +144,10 @@ fn handle_i3c_socket_connection(
                 println!("handle_i3c_socket_connection: Connection reset by client");
                 break;
             }
+            Err(ref e) if e.kind() == ErrorKind::UnexpectedEof => {
+                println!("handle_i3c_socket_connection: Client disconnected (EOF)");
+                break;
+            }
             Err(e) => panic!("Error reading message from socket: {}", e),
         }
         if let Ok(response) = bus_response_rx.recv_timeout(Duration::from_millis(10)) {

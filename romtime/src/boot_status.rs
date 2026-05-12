@@ -85,6 +85,8 @@ pub enum McuRomBootStatus {
     DeviceOwnershipTransferComplete = CALIPTRA_SETUP_BASE + 17,
     StableOwnerKeyDerivationStarted = CALIPTRA_SETUP_BASE + 18,
     StableOwnerKeyDerivationComplete = CALIPTRA_SETUP_BASE + 19,
+    I3cServicesStarted = CALIPTRA_SETUP_BASE + 20,
+    I3cServicesComplete = CALIPTRA_SETUP_BASE + 21,
 
     // Firmware Loading Statuses
     RiDownloadFirmwareCommandSent = FIRMWARE_LOADING_BASE,
