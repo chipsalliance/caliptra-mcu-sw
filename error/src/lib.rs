@@ -514,7 +514,7 @@ impl McuError {
         ),
         (
             ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR,
-            0x1_001a,
+            0x1_0022,
             "Stable owner key derivation failed during cold boot"
         ),
         (
