@@ -2,6 +2,8 @@
 
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::execute_mailbox_cmd;
+extern crate alloc;
+use alloc::boxed::Box;
 use caliptra_api::mailbox::{
     CmAesGcmDecryptFinalReq, CmAesGcmDecryptFinalResp, CmAesGcmDecryptInitReq,
     CmAesGcmDecryptInitResp, CmAesGcmDecryptUpdateReq, CmAesGcmDecryptUpdateResp,
@@ -60,28 +62,28 @@ impl AesGcm {
         if aad.len() > MAX_CMB_DATA_SIZE {
             Err(CaliptraApiError::AesGcmInvalidAadLength)?;
         }
-        let mut req = CmAesGcmEncryptInitReq {
+        let mut req = Box::new(CmAesGcmEncryptInitReq {
             hdr: MailboxReqHeader::default(),
             cmk,
             ..Default::default()
-        };
+        });
 
         req.aad[..aad.len()].copy_from_slice(aad);
         req.aad_size = aad.len() as u32;
 
-        let req_bytes = req.as_mut_bytes();
+        let req_bytes = req.as_mut().as_mut_bytes();
 
-        let resp_bytes = &mut [0u8; size_of::<CmAesGcmEncryptInitResp>()];
+        let mut resp_bytes = Box::new([0u8; size_of::<CmAesGcmEncryptInitResp>()]);
 
         execute_mailbox_cmd(
             &mailbox,
             CmAesGcmEncryptInitReq::ID.0,
             req_bytes,
-            resp_bytes,
+            &mut resp_bytes[..],
         )
         .await?;
 
-        let init_resp = CmAesGcmEncryptInitResp::ref_from_bytes(resp_bytes)
+        let init_resp = CmAesGcmEncryptInitResp::ref_from_bytes(&resp_bytes[..])
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
         self.context = Some(init_resp.context);
@@ -122,53 +124,53 @@ impl AesGcm {
             spdm_version as u32 | (if seq_number_le { 0x0 } else { 0x1 << 8 }) as u32;
 
         if enc {
-            let mut req = CmAesGcmSpdmEncryptInitReq {
+            let mut req = Box::new(CmAesGcmSpdmEncryptInitReq {
                 hdr: MailboxReqHeader::default(),
                 spdm_flags,
                 spdm_counter: seq_number,
                 cmk,
                 aad_size: aad.len() as u32,
                 ..Default::default()
-            };
+            });
             req.aad[..aad.len()].copy_from_slice(aad);
 
-            let resp_bytes = &mut [0u8; size_of::<CmAesGcmSpdmEncryptInitResp>()];
+            let mut resp_bytes = Box::new([0u8; size_of::<CmAesGcmSpdmEncryptInitResp>()]);
 
             execute_mailbox_cmd(
                 &mailbox,
                 CmAesGcmSpdmEncryptInitReq::ID.0,
-                req.as_mut_bytes(),
-                resp_bytes,
+                req.as_mut().as_mut_bytes(),
+                &mut resp_bytes[..],
             )
             .await?;
 
-            let init_resp = CmAesGcmSpdmEncryptInitResp::ref_from_bytes(resp_bytes)
+            let init_resp = CmAesGcmSpdmEncryptInitResp::ref_from_bytes(&resp_bytes[..])
                 .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
             self.context = Some(init_resp.context);
             self.encrypt = true;
         } else {
-            let mut req = CmAesGcmSpdmDecryptInitReq {
+            let mut req = Box::new(CmAesGcmSpdmDecryptInitReq {
                 hdr: MailboxReqHeader::default(),
                 spdm_flags,
                 spdm_counter: seq_number,
                 cmk,
                 aad_size: aad.len() as u32,
                 ..Default::default()
-            };
+            });
             req.aad[..aad.len()].copy_from_slice(aad);
 
-            let resp_bytes = &mut [0u8; size_of::<CmAesGcmSpdmDecryptInitResp>()];
+            let mut resp_bytes = Box::new([0u8; size_of::<CmAesGcmSpdmDecryptInitResp>()]);
 
             execute_mailbox_cmd(
                 &mailbox,
                 CmAesGcmSpdmDecryptInitReq::ID.0,
-                req.as_mut_bytes(),
-                resp_bytes,
+                req.as_mut().as_mut_bytes(),
+                &mut resp_bytes[..],
             )
             .await?;
 
-            let init_resp = CmAesGcmSpdmDecryptInitResp::ref_from_bytes(resp_bytes)
+            let init_resp = CmAesGcmSpdmDecryptInitResp::ref_from_bytes(&resp_bytes[..])
                 .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
             self.context = Some(init_resp.context);
@@ -207,26 +209,26 @@ impl AesGcm {
 
         let mailbox = Mailbox::new();
 
-        let mut req = CmAesGcmEncryptUpdateReq {
+        let mut req = Box::new(CmAesGcmEncryptUpdateReq {
             hdr: MailboxReqHeader::default(),
             context,
             plaintext: [0; MAX_CMB_DATA_SIZE],
             plaintext_size: plaintext.len() as u32,
-        };
+        });
 
         req.plaintext[..plaintext.len()].copy_from_slice(plaintext);
 
-        let resp_bytes = &mut [0u8; size_of::<CmAesGcmEncryptUpdateResp>()];
+        let mut resp_bytes = Box::new([0u8; size_of::<CmAesGcmEncryptUpdateResp>()]);
 
         execute_mailbox_cmd(
             &mailbox,
             CmAesGcmEncryptUpdateReq::ID.0,
-            req.as_mut_bytes(),
-            resp_bytes,
+            req.as_mut().as_mut_bytes(),
+            &mut resp_bytes[..],
         )
         .await?;
 
-        let update_resp = CmAesGcmEncryptUpdateResp::ref_from_bytes(resp_bytes)
+        let update_resp = CmAesGcmEncryptUpdateResp::ref_from_bytes(&resp_bytes[..])
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
         let update_hdr = &update_resp.hdr;
 
@@ -267,12 +269,12 @@ impl AesGcm {
 
         let context = self.context.ok_or(CaliptraApiError::AesGcmInvalidContext)?;
 
-        let mut req = CmAesGcmEncryptFinalReq {
+        let mut req = Box::new(CmAesGcmEncryptFinalReq {
             hdr: MailboxReqHeader::default(),
             context,
             plaintext_size: 0,
             ..Default::default()
-        };
+        });
 
         if plaintext.len() > MAX_CMB_DATA_SIZE {
             Err(CaliptraApiError::AesGcmInvalidDataLength)?;
@@ -280,17 +282,17 @@ impl AesGcm {
         req.plaintext[..plaintext.len()].copy_from_slice(plaintext);
         req.plaintext_size = plaintext.len() as u32;
 
-        let resp_bytes = &mut [0u8; size_of::<CmAesGcmEncryptFinalResp>()];
+        let mut resp_bytes = Box::new([0u8; size_of::<CmAesGcmEncryptFinalResp>()]);
 
         execute_mailbox_cmd(
             &mailbox,
             CmAesGcmEncryptFinalReq::ID.0,
-            req.as_mut_bytes(),
-            resp_bytes,
+            req.as_mut().as_mut_bytes(),
+            &mut resp_bytes[..],
         )
         .await?;
 
-        let final_resp = CmAesGcmEncryptFinalResp::ref_from_bytes(resp_bytes)
+        let final_resp = CmAesGcmEncryptFinalResp::ref_from_bytes(&resp_bytes[..])
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
         let final_hdr = &final_resp.hdr;
@@ -326,29 +328,29 @@ impl AesGcm {
             Err(CaliptraApiError::AesGcmInvalidAadLength)?;
         }
 
-        let mut req = CmAesGcmDecryptInitReq {
+        let mut req = Box::new(CmAesGcmDecryptInitReq {
             hdr: MailboxReqHeader::default(),
             cmk,
             iv,
             ..Default::default()
-        };
+        });
 
         req.aad[..aad.len()].copy_from_slice(aad);
         req.aad_size = aad.len() as u32;
 
-        let req_bytes = req.as_mut_bytes();
+        let req_bytes = req.as_mut().as_mut_bytes();
 
-        let resp_bytes = &mut [0u8; size_of::<CmAesGcmDecryptInitResp>()];
+        let mut resp_bytes = Box::new([0u8; size_of::<CmAesGcmDecryptInitResp>()]);
 
         execute_mailbox_cmd(
             &mailbox,
             CmAesGcmDecryptInitReq::ID.0,
             req_bytes,
-            resp_bytes,
+            &mut resp_bytes[..],
         )
         .await?;
 
-        let init_resp = CmAesGcmDecryptInitResp::ref_from_bytes(resp_bytes)
+        let init_resp = CmAesGcmDecryptInitResp::ref_from_bytes(&resp_bytes[..])
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
         self.context = Some(init_resp.context);
@@ -383,26 +385,26 @@ impl AesGcm {
 
         let mailbox = Mailbox::new();
 
-        let mut req = CmAesGcmDecryptUpdateReq {
+        let mut req = Box::new(CmAesGcmDecryptUpdateReq {
             hdr: MailboxReqHeader::default(),
             context,
             ciphertext: [0; MAX_CMB_DATA_SIZE],
             ciphertext_size: ciphertext.len() as u32,
-        };
+        });
 
         req.ciphertext[..ciphertext.len()].copy_from_slice(ciphertext);
 
-        let resp_bytes = &mut [0u8; size_of::<CmAesGcmDecryptUpdateResp>()];
+        let mut resp_bytes = Box::new([0u8; size_of::<CmAesGcmDecryptUpdateResp>()]);
 
         execute_mailbox_cmd(
             &mailbox,
             CmAesGcmDecryptUpdateReq::ID.0,
-            req.as_mut_bytes(),
-            resp_bytes,
+            req.as_mut().as_mut_bytes(),
+            &mut resp_bytes[..],
         )
         .await?;
 
-        let update_resp = CmAesGcmDecryptUpdateResp::ref_from_bytes(resp_bytes)
+        let update_resp = CmAesGcmDecryptUpdateResp::ref_from_bytes(&resp_bytes[..])
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
         let update_hdr = &update_resp.hdr;
 
@@ -440,29 +442,29 @@ impl AesGcm {
 
         let context = self.context.ok_or(CaliptraApiError::AesGcmInvalidContext)?;
 
-        let mut req = CmAesGcmDecryptFinalReq {
+        let mut req = Box::new(CmAesGcmDecryptFinalReq {
             hdr: MailboxReqHeader::default(),
             context,
             tag_len: tag.len() as u32,
             tag,
             ciphertext_size: 0,
             ciphertext: [0; MAX_CMB_DATA_SIZE],
-        };
+        });
 
         req.ciphertext[..ciphertext.len()].copy_from_slice(ciphertext);
         req.ciphertext_size = ciphertext.len() as u32;
 
-        let resp_bytes = &mut [0u8; size_of::<CmAesGcmDecryptFinalResp>()];
+        let mut resp_bytes = Box::new([0u8; size_of::<CmAesGcmDecryptFinalResp>()]);
 
         execute_mailbox_cmd(
             &mailbox,
             CmAesGcmDecryptFinalReq::ID.0,
-            req.as_mut_bytes(),
-            resp_bytes,
+            req.as_mut().as_mut_bytes(),
+            &mut resp_bytes[..],
         )
         .await?;
 
-        let final_resp = CmAesGcmDecryptFinalResp::ref_from_bytes(resp_bytes)
+        let final_resp = CmAesGcmDecryptFinalResp::ref_from_bytes(&resp_bytes[..])
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
         let final_hdr = &final_resp.hdr;
