@@ -16,6 +16,25 @@ pub enum ChunkError {
     InvalidMessageOffset,
     /// Response data exceeds the shared buffer capacity
     BufferCapacityExceeded,
+    /// Shared large message buffer is not available (in use by another transport)
+    BufUnavailable,
+}
+
+/// Provider for the shared large message buffer.
+///
+/// Both SPDM transports (MCTP, DOE) share a single buffer for large message
+/// operations. Implementors manage the underlying static buffer and serialize
+/// access across concurrent responder tasks.
+///
+/// Methods are synchronous (non-blocking try-lock) to avoid adding async await
+/// points that inflate the responder task future state machine.
+pub trait LargeMsgBufProvider {
+    /// Acquire the shared buffer. Returns `None` if already in use.
+    fn acquire(&self) -> Option<&'static mut [u8]>;
+    /// Return the buffer to the shared pool.
+    fn release(&self, buf: &'static mut [u8]);
+    /// Maximum buffer capacity (used for capabilities negotiation).
+    fn capacity(&self) -> usize;
 }
 
 /// Stores state and metadata for managing ongoing large message requests and responses.
@@ -74,6 +93,10 @@ enum LargeMessageMode {
 /// Only one direction is active at a time: the SPDM protocol ensures that
 /// CHUNK_SEND rejects if a large response is in progress, and vice versa.
 ///
+/// The buffer is acquired on demand from a `LargeMsgBufProvider` and released
+/// when the chunking operation completes. This allows multiple transports
+/// to share a single static buffer.
+///
 /// TODO: Refactor `buf` to use `MessageBuf` instead of raw `&mut [u8]` to align
 /// with the process_message pattern (reserve/put_data/encode) and simplify
 /// header construction in vendor_defined_rsp.rs.
@@ -84,31 +107,75 @@ pub(crate) struct LargeMessageCtx<'a> {
     global_handle: u8,
     /// Number of valid bytes in `buf` (used by buffered responses)
     pub(crate) data_len: usize,
-    /// App-provided shared buffer for large message data
-    pub(crate) buf: &'a mut [u8],
+    /// Shared buffer for large message data (static lifetime for pool-based sharing)
+    pub(crate) buf: &'static mut [u8],
+    /// Provider for acquiring/releasing the shared buffer
+    buf_provider: &'a dyn LargeMsgBufProvider,
 }
 
 impl<'a> LargeMessageCtx<'a> {
-    /// Create a new context with the given app-provided shared buffer.
-    pub fn new(buf: &'a mut [u8]) -> Self {
+    /// Create a new context with the given buffer provider.
+    /// Starts with no buffer — it will be acquired on demand.
+    pub fn new(buf_provider: &'a dyn LargeMsgBufProvider) -> Self {
         Self {
             chunk_state: ChunkState::default(),
             mode: LargeMessageMode::Idle,
             global_handle: 1,
             data_len: 0,
-            buf,
+            buf: &mut [],
+            buf_provider,
         }
+    }
+
+    /// Acquire the shared buffer from the provider.
+    /// Returns `Ok(())` if acquired (or already held), `Err` if unavailable.
+    pub fn acquire_buf(&mut self) -> ChunkResult<()> {
+        if !self.buf.is_empty() {
+            return Ok(()); // Already have it
+        }
+        match self.buf_provider.acquire() {
+            Some(buf) => {
+                self.buf = buf;
+                Ok(())
+            }
+            None => Err(ChunkError::BufUnavailable),
+        }
+    }
+
+    /// Release the shared buffer back to the provider (if held and idle).
+    pub fn release_buf(&mut self) {
+        if !self.buf.is_empty() && self.is_idle() {
+            let buf = core::mem::take(&mut self.buf);
+            self.buf_provider.release(buf);
+        }
+    }
+
+    /// Returns the maximum buffer capacity from the provider.
+    #[allow(dead_code)]
+    pub fn buf_capacity(&self) -> usize {
+        self.buf_provider.capacity()
     }
 
     /// Take the shared buffer, leaving an empty slice in its place.
     /// The caller MUST call `replace_buf` to restore the buffer.
-    pub fn take_buf(&mut self) -> &'a mut [u8] {
+    pub fn take_buf(&mut self) -> &'static mut [u8] {
         core::mem::take(&mut self.buf)
     }
 
     /// Replace the shared buffer with the given one.
-    pub fn replace_buf(&mut self, buf: &'a mut [u8]) {
+    pub fn replace_buf(&mut self, buf: &'static mut [u8]) {
         self.buf = buf;
+    }
+
+    /// Returns `true` if no chunking operation is in progress.
+    pub fn is_idle(&self) -> bool {
+        matches!(self.mode, LargeMessageMode::Idle)
+    }
+
+    /// Returns `true` if a buffer is currently attached (non-empty).
+    #[allow(dead_code)]
+    pub fn has_buf(&self) -> bool {
+        !self.buf.is_empty()
     }
 
     // ── Request methods (CHUNK_SEND reassembly) ──
@@ -125,7 +192,11 @@ impl<'a> LargeMessageCtx<'a> {
     }
 
     pub fn request_capacity(&self) -> usize {
-        self.buf.len()
+        if self.buf.is_empty() {
+            self.buf_provider.capacity()
+        } else {
+            self.buf.len()
+        }
     }
 
     /// Initialize a large request reassembly with the first chunk.

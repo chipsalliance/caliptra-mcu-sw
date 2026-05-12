@@ -6,6 +6,7 @@ mod device_measurements;
 mod endorsement_certs;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 mod integration_example;
+pub(crate) mod shared_large_msg_buf;
 
 use crate::spdm::device_measurements::ocp_eat::init_target_env_claims;
 use caliptra_mcu_libsyscall_caliptra::doe;
@@ -33,16 +34,13 @@ const SECURE_SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12];
 // Caliptra Crypto timeout exponent (2^20 us)
 const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
 
-/// Shared buffer size for large SPDM messages (request reassembly and response chunking).
-/// Only one direction is active at a time, so a single buffer is shared.
-/// Sized for ECC-P384 certificate chain + signature + overhead.
-/// TODO: Increase for ML-DSA support once memory optimization (static buffers) is implemented.
-const LARGE_MSG_BUF_SIZE: usize = 4096;
-
 #[embassy_executor::task]
 pub(crate) async fn spdm_task(spawner: Spawner) {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "SPDM_TASK: Running SPDM-TASK...").unwrap();
+
+    // Initialize the shared large message buffer (once, before spawning responders)
+    shared_large_msg_buf::init();
 
     // Initialize the shared certificate store
     if let Err(e) = initialize_cert_store().await {
@@ -91,7 +89,7 @@ async fn spdm_mctp_responder() {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
         flags: CapabilityFlags::default(),
         data_transfer_size: max_mctp_spdm_msg_size,
-        max_spdm_msg_size: LARGE_MSG_BUF_SIZE as u32,
+        max_spdm_msg_size: shared_large_msg_buf::LARGE_MSG_BUF_SIZE as u32,
     };
 
     let local_algorithms = LocalDeviceAlgorithms::default();
@@ -115,9 +113,8 @@ async fn spdm_mctp_responder() {
     let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> =
         Some(&mut handlers_array);
 
-    // Shared buffer for large SPDM messages (request reassembly + response chunking).
-    // Only one direction is active at a time, so a single buffer is shared.
-    let mut large_msg_buf = [0u8; LARGE_MSG_BUF_SIZE];
+    // Large message buffer provider — shared across MCTP and DOE transports.
+    let large_msg_buf_provider = shared_large_msg_buf::SharedLargeMsgBuf::new();
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
@@ -128,7 +125,7 @@ async fn spdm_mctp_responder() {
         &shared_cert_store,
         device_measurements,
         vdm_handlers,
-        &mut large_msg_buf,
+        &large_msg_buf_provider,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
@@ -174,7 +171,7 @@ async fn spdm_doe_responder() {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
         flags: doe_capability_flags,
         data_transfer_size: max_doe_spdm_msg_size,
-        max_spdm_msg_size: LARGE_MSG_BUF_SIZE as u32,
+        max_spdm_msg_size: shared_large_msg_buf::LARGE_MSG_BUF_SIZE as u32,
     };
 
     let mut device_doe_algorithms = DeviceAlgorithms::default();
@@ -241,8 +238,8 @@ async fn spdm_doe_responder() {
     #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
     let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> = None;
 
-    // Shared buffer for large SPDM messages (request reassembly + response chunking).
-    let mut large_msg_buf = [0u8; LARGE_MSG_BUF_SIZE];
+    // Large message buffer provider — shared across MCTP and DOE transports.
+    let large_msg_buf_provider = shared_large_msg_buf::SharedLargeMsgBuf::new();
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
@@ -253,7 +250,7 @@ async fn spdm_doe_responder() {
         &shared_cert_store,
         device_measurements,
         vdm_handlers,
-        &mut large_msg_buf,
+        &large_msg_buf_provider,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
