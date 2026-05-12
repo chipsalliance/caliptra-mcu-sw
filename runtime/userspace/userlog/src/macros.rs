@@ -41,6 +41,7 @@ macro_rules! __userlog_log {
 macro_rules! __userlog_log {
     ($level:ident, $writer:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {{
         let _ = &mut $writer;
+        $(let _ = $arg;)*
     }};
 }
 
