@@ -9,18 +9,10 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
 
-#[cfg(any(
-    feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash",
-    feature = "test-streaming-boot-flash-write-back",
-))]
+#[cfg(feature = "firmware-update")]
 use crate::EXECUTOR;
 
-#[cfg(any(
-    feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash",
-    feature = "test-streaming-boot-flash-write-back",
-))]
+#[cfg(feature = "firmware-update")]
 use caliptra_mcu_libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 
 #[cfg(feature = "test-firmware-update-flash")]
@@ -41,7 +33,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         return Ok(());
     }
     crate::console_writeln!(console_writer, "[FW Upd] Start");
-    #[cfg(feature = "test-firmware-update-streaming")]
+    #[cfg(feature = "streaming-boot")]
     {
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
@@ -60,7 +52,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         updater.start().await?;
     }
 
-    #[cfg(feature = "test-firmware-update-flash")]
+    #[cfg(feature = "flash-boot")]
     {
         use alloc::boxed::Box;
         use core::sync::atomic::{AtomicBool, Ordering};
@@ -145,7 +137,7 @@ fn get_reset_reason() -> Result<u32, ErrorCode> {
     Ok(reason)
 }
 
-#[cfg(feature = "test-firmware-update-streaming")]
+#[cfg(feature = "streaming-boot")]
 mod external_memory {
     extern crate alloc;
     use alloc::boxed::Box;
@@ -227,7 +219,7 @@ mod external_memory {
     }
 }
 
-#[cfg(feature = "test-firmware-update-streaming")]
+#[cfg(feature = "streaming-boot")]
 mod dummy_flash {
     extern crate alloc;
     use alloc::boxed::Box;
@@ -279,7 +271,7 @@ mod dummy_flash {
     }
 }
 
-#[cfg(feature = "test-firmware-update-flash")]
+#[cfg(feature = "flash-boot")]
 mod flash_memory {
     extern crate alloc;
     use alloc::boxed::Box;

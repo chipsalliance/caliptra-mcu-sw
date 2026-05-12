@@ -2,5 +2,8 @@
 pub mod flash_boot_cfg;
 pub mod flash_drv;
 
-#[cfg(feature = "test-mcu-rom-flash-access")]
+#[cfg(any(
+    feature = "test-mcu-rom-flash-access",
+    feature = "use-flash-partition-table"
+))]
 pub mod flash_test;
