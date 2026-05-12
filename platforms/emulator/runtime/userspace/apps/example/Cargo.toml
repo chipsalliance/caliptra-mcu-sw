@@ -13,6 +13,7 @@ caliptra-auth-man-types.workspace = true
 critical-section.workspace = true
 embassy-executor.workspace = true
 libapi-caliptra.workspace = true
+libapi-emulated-caliptra.workspace = true
 libsyscall-caliptra.workspace = true
 const-oid.workspace = true
 der.workspace = true
