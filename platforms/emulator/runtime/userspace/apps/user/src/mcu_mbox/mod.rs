@@ -1,18 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-#[cfg(any(
-    feature = "test-mcu-mbox-cmds",
-    feature = "test-mcu-mbox-fips-self-test",
-    feature = "test-mcu-mbox-fips-periodic",
-    feature = "test-caliptra-util-host-validator"
-))]
+#[cfg(feature = "mcu-mbox-service")]
 mod cmd_auth_mock;
-#[cfg(any(
-    feature = "test-mcu-mbox-cmds",
-    feature = "test-mcu-mbox-fips-self-test",
-    feature = "test-mcu-mbox-fips-periodic",
-    feature = "test-caliptra-util-host-validator"
-))]
+#[cfg(feature = "mcu-mbox-service")]
 mod cmd_handler_mock;
 
 use caliptra_mcu_libsyscall_caliptra::system::System;
@@ -39,12 +29,7 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     crate::console_writeln!(console_writer, "Starting MCU_MBOX task...");
 
-    #[cfg(any(
-        feature = "test-mcu-mbox-cmds",
-        feature = "test-mcu-mbox-fips-self-test",
-        feature = "test-mcu-mbox-fips-periodic",
-        feature = "test-caliptra-util-host-validator"
-    ))]
+    #[cfg(feature = "mcu-mbox-service")]
     {
         let handler = cmd_handler_mock::NonCryptoCmdHandlerMock::default();
         let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer::default();

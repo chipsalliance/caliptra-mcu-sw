@@ -174,7 +174,7 @@ pub extern "C" fn rom_entry() -> ! {
     let axi_user1 = 0xdddd_ddddu32;
     let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
 
-    if cfg!(feature = "test-flash-based-boot") {
+    if cfg!(feature = "use-flash-partition-table") {
         // Initialize the flash controller for testing purposes
 
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
@@ -271,8 +271,8 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
-    } else if cfg!(feature = "hw-2-1") {
-        // Simple flash-based boot for hw-2-1 without partition tables.
+    } else if cfg!(feature = "flash-boot") {
+        // Simple flash-based boot without partition tables.
         // Uses flash image starting at offset 0.
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
 

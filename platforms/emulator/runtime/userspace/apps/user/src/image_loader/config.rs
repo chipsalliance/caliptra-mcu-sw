@@ -1,10 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-#![cfg(any(
-    feature = "test-pldm-streaming-boot",
-    feature = "test-flash-based-boot",
-    feature = "test-firmware-update-flash",
-))]
+#![cfg(any(feature = "streaming-boot", feature = "flash-boot",))]
 pub mod streaming_boot_consts {
     use caliptra_mcu_pldm_common::{
         message::firmware_update::get_fw_params::FirmwareParameters,

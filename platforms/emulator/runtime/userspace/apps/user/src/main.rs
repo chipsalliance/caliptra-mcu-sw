@@ -37,15 +37,14 @@ macro_rules! console_writeln {
 }
 
 mod caliptra_cmd_handler;
-#[cfg(any(
-    feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash"
-))]
+#[cfg(feature = "firmware-update")]
 mod firmware_update;
 mod image_loader;
 mod mcu_mbox;
 mod soc_env;
+#[cfg(feature = "spdm")]
 mod spdm;
+#[cfg(feature = "mctp-vdm-service")]
 mod vdm;
 
 #[cfg(target_arch = "riscv32")]
@@ -103,12 +102,7 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
-    // TODO: Debug spawning the SPDM task causes a hardfault in FPGA when firmware update is enabled
-    // for now, disable the SPDM task if either FW update test is enabled
-    #[cfg(not(any(
-        feature = "test-firmware-update-streaming",
-        feature = "test-firmware-update-flash"
-    )))]
+    #[cfg(feature = "spdm")]
     EXECUTOR
         .get()
         .spawner()
@@ -134,10 +128,7 @@ pub(crate) async fn async_main() {
         .spawn(caliptra_mcu_mbox_lib::fips_periodic::fips_periodic_task())
         .unwrap();
 
-    #[cfg(any(
-        feature = "test-mctp-vdm-cmds",
-        feature = "test-caliptra-util-host-mctp-vdm-validator"
-    ))]
+    #[cfg(feature = "mctp-vdm-service")]
     EXECUTOR.get().spawner().spawn(vdm::vdm_task()).unwrap();
 
     loop {

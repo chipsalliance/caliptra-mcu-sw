@@ -28,22 +28,25 @@ riscv-csr.workspace = true
 rv32i.workspace = true
 
 [features]
-default = []
+default = ["flash-boot", "streaming-boot", "use-flash-partition-table"]
+flash-boot = ["caliptra-mcu-rom-common/hw-2-1"]
+streaming-boot = []
+use-flash-partition-table = ["flash-boot"]
 core_test = ["caliptra-mcu-rom-common/core_test"]
-hw-2-1 = ["caliptra-mcu-rom-common/hw-2-1"]
+hw-2-1 = ["flash-boot"]
 test-dot-recovery = []
-test-firmware-update-flash = []
-test-firmware-update-streaming = []
+test-firmware-update-flash = ["flash-boot", "use-flash-partition-table"]
+test-firmware-update-streaming = ["streaming-boot"]
 test-mcu-rom-flash-access = []
 test-mcu-svn-gt-fuse = []
 test-mcu-svn-lt-fuse = []
-test-flash-based-boot = ["hw-2-1"]
+test-flash-based-boot = ["flash-boot", "use-flash-partition-table"]
 test-fw-manifest-dot = ["caliptra-mcu-rom-common/fw-manifest-dot"]
 test-fw-manifest-dot-hitless = [
     "caliptra-mcu-rom-common/fw-manifest-dot",
     "caliptra-mcu-rom-common/test-force-hitless-update",
 ]
-test-pldm-streaming-boot = []
+test-pldm-streaming-boot = ["streaming-boot"]
 active-i3c1 = ["caliptra-mcu-config-emulator/active-i3c1"]
 test-i3c-services = []
 test-rom-hooks = []

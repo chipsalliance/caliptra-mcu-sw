@@ -245,6 +245,10 @@ impl<'a> BuildPass<'a> {
             .arg("--profile")
             .arg(&self.profile);
 
+        if self.build_args.no_default_features {
+            cmd.arg("--no-default-features");
+        }
+
         if let Some(f) = features {
             cmd.arg("--features").arg(f);
         }

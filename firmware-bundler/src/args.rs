@@ -134,6 +134,10 @@ pub struct BuildArgs {
     /// compiled.  Multiple features can be specified as follows: `feature_a,feature_b,etc...`.
     #[arg(long)]
     pub runtime_features: Option<String>,
+
+    /// If set, pass `--no-default-features` to cargo when building runtime binaries.
+    #[arg(long)]
+    pub no_default_features: bool,
 }
 
 /// Arguments required for commands which execute the bundle step of the bundle process.
