@@ -94,17 +94,23 @@ pub(crate) struct MeasurementsResponse {
 }
 
 impl MeasurementsResponse {
+    /// Encode the measurements response into `resp_buf`.
+    ///
+    /// `resp_buf` also serves as the measurement scratch buffer — measurement
+    /// data is fetched into it by `measurement_block_size`/`measurement_block`,
+    /// then the full response (header + record + trailer + signature) is
+    /// assembled in-place.
     pub async fn encode_response(
         &self,
         measurements: &mut SpdmMeasurements<'_>,
         shared_transcript: &mut Transcript,
         cert_store: &dyn SpdmCertStore,
         offset: usize,
-        chunk_buf: &mut [u8],
+        resp_buf: &mut [u8],
         mut session_info: Option<&mut SessionInfo>,
     ) -> CommandResult<usize> {
         // Calculate the size of the response
-        let response_size = self.response_size(measurements).await?;
+        let response_size = self.response_size(measurements, resp_buf).await?;
 
         // Check if the offset is valid
         if offset >= response_size {
@@ -112,12 +118,12 @@ impl MeasurementsResponse {
         }
 
         // Calculate the size of the chunk to return
-        let mut rem_len = (response_size - offset).min(chunk_buf.len());
+        let mut rem_len = (response_size - offset).min(resp_buf.len());
 
         let raw_bitstream_requested = self.req_attr.raw_bitstream_requested() == 1;
 
         let measurement_record_len = measurements
-            .measurement_block_size(self.meas_op, raw_bitstream_requested)
+            .measurement_block_size(self.meas_op, raw_bitstream_requested, resp_buf)
             .await
             .map_err(|e| (false, CommandError::Measurement(e)))?;
 
@@ -147,26 +153,20 @@ impl MeasurementsResponse {
             let start = offset;
             let end = (RESPONSE_FIXED_FIELDS_SIZE).min(start + rem_len);
             let copy_len = end - start;
-            chunk_buf[copied..copied + copy_len].copy_from_slice(&fixed_fields[start..end]);
+            resp_buf[copied..copied + copy_len].copy_from_slice(&fixed_fields[start..end]);
             copied += copy_len;
             rem_len -= copy_len;
         }
 
-        // 2. Copy from the measurement record
+        // 2. Measurement record data is at resp_buf[RESPONSE_FIXED_FIELDS_SIZE..]
+        // (fetched there by response_size/measurement_block_size).
         if rem_len > 0 && offset + copied < record_end {
             let meas_block_offset = (offset + copied).saturating_sub(record_start);
             let bytes_to_copy = (measurement_record_len - meas_block_offset).min(rem_len);
-            let bytes_filled = measurements
-                .measurement_block(
-                    self.meas_op,
-                    raw_bitstream_requested,
-                    meas_block_offset,
-                    &mut chunk_buf[copied..copied + bytes_to_copy],
-                )
-                .await
-                .map_err(|e| (false, CommandError::Measurement(e)))?;
-            copied += bytes_filled;
-            rem_len -= bytes_filled;
+            let src_offset = RESPONSE_FIXED_FIELDS_SIZE + meas_block_offset;
+            resp_buf.copy_within(src_offset..src_offset + bytes_to_copy, copied);
+            copied += bytes_to_copy;
+            rem_len -= bytes_to_copy;
         }
 
         // 3. Copy from the variable/trailer fields
@@ -177,7 +177,7 @@ impl MeasurementsResponse {
             let trailer_offset = (offset + copied) - trailer_start;
             let end = (trailer_len).min(trailer_offset + rem_len);
             let copy_len = end - trailer_offset;
-            chunk_buf[copied..copied + copy_len]
+            resp_buf[copied..copied + copy_len]
                 .copy_from_slice(&variable_fields[trailer_offset..end]);
             copied += copy_len;
             rem_len -= copy_len;
@@ -187,7 +187,7 @@ impl MeasurementsResponse {
             .append(
                 TranscriptContext::L1,
                 session_info.as_deref_mut(),
-                &chunk_buf[..copied],
+                &resp_buf[..copied],
             )
             .await
             .map_err(|e| (false, CommandError::Transcript(e)))?;
@@ -205,7 +205,7 @@ impl MeasurementsResponse {
 
             let sig_offset = (offset + copied) - signature_start;
             let copy_len = (ECC_P384_SIGNATURE_SIZE - sig_offset).min(rem_len);
-            chunk_buf[copied..copied + copy_len]
+            resp_buf[copied..copied + copy_len]
                 .copy_from_slice(&signature[sig_offset..sig_offset + copy_len]);
             copied += copy_len;
         }
@@ -215,7 +215,7 @@ impl MeasurementsResponse {
 
     async fn response_fixed_fields(
         &self,
-        measurements: &mut SpdmMeasurements<'_>,
+        measurements: &SpdmMeasurements<'_>,
     ) -> CommandResult<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
         let mut fixed_rsp_fields = [0u8; RESPONSE_FIXED_FIELDS_SIZE];
         let mut fixed_rsp_buf = MessageBuf::new(&mut fixed_rsp_fields);
@@ -228,12 +228,10 @@ impl MeasurementsResponse {
     async fn encode_response_fixed_fields(
         &self,
         buf: &mut MessageBuf<'_>,
-        measurements: &mut SpdmMeasurements<'_>,
+        measurements: &SpdmMeasurements<'_>,
     ) -> CommandResult<usize> {
-        let measurement_record_size = measurements
-            .measurement_block_size(self.meas_op, self.req_attr.raw_bitstream_requested() == 1)
-            .await
-            .map_err(|e| (false, CommandError::Measurement(e)))?;
+        // Measurement data must already be fetched before calling this.
+        let measurement_record_size = measurements.measurement_record_len();
         let total_measurement_count = measurements.total_measurement_count() as u8;
 
         let (total_meas_indices, num_of_meas_blocks_in_record, meas_record_len) = match self.meas_op
@@ -386,14 +384,18 @@ impl MeasurementsResponse {
         Ok(signature.len())
     }
 
-    async fn response_size(&self, measurements: &mut SpdmMeasurements<'_>) -> CommandResult<usize> {
+    async fn response_size(
+        &self,
+        measurements: &mut SpdmMeasurements<'_>,
+        meas_buf: &mut [u8],
+    ) -> CommandResult<usize> {
         // Calculate the size of the response based on the request attributes
         let mut rsp_size = RESPONSE_FIXED_FIELDS_SIZE;
 
         if self.meas_op > 0 {
             // return the size of a measurement block or all measurement blocks
             rsp_size += measurements
-                .measurement_block_size(self.meas_op, false)
+                .measurement_block_size(self.meas_op, false, meas_buf)
                 .await
                 .map_err(|e| (false, CommandError::Measurement(e)))?;
         };
@@ -491,7 +493,11 @@ pub(crate) async fn generate_measurements_response<'a>(
     rsp_ctx: MeasurementsResponse,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    let rsp_len = match rsp_ctx.response_size(&mut ctx.measurements).await {
+    // Fetch measurement data at RESPONSE_FIXED_FIELDS_SIZE offset so it's
+    // already at its final position in the response layout:
+    //   [header (fixed fields) | measurement record | trailer | signature]
+    let meas_buf = &mut ctx.large_msg_ctx.buf[RESPONSE_FIXED_FIELDS_SIZE..];
+    let rsp_len = match rsp_ctx.response_size(&mut ctx.measurements, meas_buf).await {
         Ok(len) => len,
         Err((_, CommandError::Measurement(MeasurementsError::InvalidIndex))) => {
             Err(ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?
@@ -500,13 +506,46 @@ pub(crate) async fn generate_measurements_response<'a>(
     };
 
     if rsp_len > ctx.min_data_transfer_size() {
-        // Check buffer capacity before acquiring mutable borrows.
+        // Check buffer capacity.
         if rsp_len > ctx.large_msg_ctx.buf.len() {
             Err(ctx.generate_error_response(rsp, ErrorCode::ResponseTooLarge, 0, None))?;
         }
 
-        // Pre-serialize the full response into the shared buffer.
-        // Use borrow splitting to access disjoint fields of ctx simultaneously.
+        let session_info = match ctx.session_mgr.active_session_id() {
+            Some(session_id) => match ctx.session_mgr.session_info_mut(session_id) {
+                Ok(info) => Some(info),
+                Err(e) => Err((false, CommandError::Session(e)))?,
+            },
+            None => None,
+        };
+
+        // For large responses, the measurement data is already in large_msg_ctx.buf
+        // from the response_size call above. encode_response serializes the full
+        // response (header + measurement record + trailer) into the same buffer.
+        let buf = &mut ctx.large_msg_ctx.buf[..rsp_len];
+        let payload_len = rsp_ctx
+            .encode_response(
+                &mut ctx.measurements,
+                &mut ctx.shared_transcript,
+                ctx.device_certs_store,
+                0,
+                buf,
+                session_info,
+            )
+            .await?;
+
+        let handle = ctx
+            .large_msg_ctx
+            .init_buffered_response(payload_len)
+            .map_err(|e| (false, CommandError::Chunk(e)))?;
+        Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, 0, Some(&[handle])))?
+    } else {
+        // For small responses, encode into large_msg_ctx.buf (measurement data is
+        // already there from response_size), then copy the result to rsp.
+        if rsp_len > ctx.large_msg_ctx.buf.len() {
+            Err(ctx.generate_error_response(rsp, ErrorCode::ResponseTooLarge, 0, None))?;
+        }
+
         let session_info = match ctx.session_mgr.active_session_id() {
             Some(session_id) => match ctx.session_mgr.session_info_mut(session_id) {
                 Ok(info) => Some(info),
@@ -526,44 +565,19 @@ pub(crate) async fn generate_measurements_response<'a>(
                 session_info,
             )
             .await?;
-
-        let handle = ctx
-            .large_msg_ctx
-            .init_buffered_response(payload_len)
-            .map_err(|e| (false, CommandError::Chunk(e)))?;
-        Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, 0, Some(&[handle])))?
-    } else {
-        let session_info = match ctx.session_mgr.active_session_id() {
-            Some(session_id) => match ctx.session_mgr.session_info_mut(session_id) {
-                Ok(info) => Some(info),
-                Err(e) => Err((false, CommandError::Session(e)))?,
-            },
-            None => None,
-        };
-
-        // If the response fits in a single message, prepare it directly
-        // Encode the response fixed fields
-        rsp.put_data(rsp_len)
-            .map_err(|e| (false, CommandError::Codec(e)))?;
-        let rsp_buf = rsp
-            .data_mut(rsp_len)
-            .map_err(|e| (false, CommandError::Codec(e)))?;
-        let payload_len = rsp_ctx
-            .encode_response(
-                &mut ctx.measurements,
-                &mut ctx.shared_transcript,
-                ctx.device_certs_store,
-                0,
-                rsp_buf,
-                session_info,
-            )
-            .await?;
         if rsp_len != payload_len {
             Err((
                 false,
                 CommandError::Measurement(MeasurementsError::InvalidBuffer),
             ))?;
         }
+        // Copy the encoded response into the transport buffer
+        rsp.put_data(payload_len)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        let rsp_buf = rsp
+            .data_mut(payload_len)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        rsp_buf.copy_from_slice(&ctx.large_msg_ctx.buf[..payload_len]);
         rsp.pull_data(payload_len)
             .map_err(|e| (false, CommandError::Codec(e)))?;
 
