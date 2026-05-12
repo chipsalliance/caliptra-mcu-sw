@@ -126,6 +126,7 @@ impl CommandId {
     pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
     pub const MC_FE_PROG: Self = Self(0x4D43_4650); // "MCFP"
     pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY: Self = Self(0x4D52_564B); // "MRVK"
+    pub const MC_FUSE_REVOKE_VENDOR_PK_HASH: Self = Self(0x5256_4b48); // "RVKH"
 
     // Certificate commands
     pub const MC_EXPORT_ATTESTED_CSR: Self = Self(0x4D45_4143); // "MEAC"
@@ -195,6 +196,7 @@ pub enum McuMailboxReq {
     GetAuthCmdChallenge(GetAuthCmdChallengeReq),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyReq),
     ProvisionVendorPkHash(ProvisionVendorPkHashReq),
+    FuseRevokeVendorPkHash(FuseRevokeVendorPkHashReq),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
 }
@@ -249,6 +251,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
         }
     }
@@ -302,6 +305,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
         }
     }
@@ -357,6 +361,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetAuthCmdChallenge(_) => CommandId::MC_GET_AUTH_CMD_CHALLENGE,
             McuMailboxReq::FuseRevokeVendorPubKey(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY,
             McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
+            McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
         }
     }
@@ -433,6 +438,7 @@ pub enum McuMailboxResp {
     GetAuthCmdChallenge(GetAuthCmdChallengeResp),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyResp),
     ProvisionVendorPkHash(ProvisionVendorPkHashResp),
+    FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
 }
@@ -546,6 +552,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
         }
     }
@@ -598,6 +605,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
         }
     }
@@ -1500,6 +1508,27 @@ impl From<RevokeVendorPubKeyType> for u32 {
         value as u32
     }
 }
+
+/// MC_FUSE_REVOKE_VENDOR_PK_HASH request: Request revokation of a vendor PK hash.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseRevokeVendorPkHashReq {
+    pub hdr: MailboxReqHeader,
+    pub reserved: u32,
+    pub vendor_pk_hash_slot: u32,
+}
+impl Request for FuseRevokeVendorPkHashReq {
+    const ID: CommandId = CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH;
+    type Resp = FuseRevokeVendorPubKeyResp;
+}
+
+/// MC_FUSE_REVOKE_VENDOR_PK_HASH response: Indicates success or failure.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseRevokeVendorPkHashResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for FuseRevokeVendorPkHashResp {}
 
 // ============================================================================
 // MC_EXPORT_ATTESTED_CSR Command (0x4D45_4143 - "MEAC")

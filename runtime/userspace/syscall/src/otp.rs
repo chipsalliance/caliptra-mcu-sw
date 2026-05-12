@@ -47,11 +47,9 @@ impl<S: Syscalls> Otp<S> {
         S::command(self.driver_num, cmd::OTP_WRITE, value, 0).to_result::<(), ErrorCode>()
     }
 
-    /// Check whether a given slot has a valid PK hash
+    /// Check whether a given vendor pk hash slot is marked valid (has not been marked invalid).
     ///
-    /// # Returns
-    /// - `true` if the slot is valid
-    /// - `false` if the slot has been marked as revoked
+    /// Also returns `false` if the slot ID is invalid or reading of the mask fails.
     pub fn valid_vendor_pk_hash_slot(&self, slot: u32) -> bool {
         if slot as usize >= MAX_NUM_VENDOR_PK_HASH {
             return false;
@@ -162,6 +160,36 @@ impl<S: Syscalls> Otp<S> {
         }
 
         Ok(())
+    }
+
+    /// Revoke a vendor PK hash
+    ///
+    /// Idempotent: revoking a slot twice has no effect and is a no-op.
+    ///
+    /// # Errors
+    /// - Returns `Invalid` when the slot is invalid
+    /// - Returns `Fail` when writing the fuse failed
+    pub fn revoke_vendor_pk_hash(&self, vendor_pk_hash_slot: u32) -> Result<(), ErrorCode> {
+        if vendor_pk_hash_slot as usize >= MAX_NUM_VENDOR_PK_HASH {
+            Err(ErrorCode::Invalid)?
+        }
+
+        if !self.valid_vendor_pk_hash_slot(vendor_pk_hash_slot) {
+            // Return early if the slot is already marked invalid
+            Ok(())?;
+        }
+
+        // Check if the slot is provisioned to not burn an empty slot
+        let pk_hash = self.read_vendor_pk_hash(vendor_pk_hash_slot)?;
+        if pk_hash.iter().eq(repeat(&0)) {
+            Err(ErrorCode::Invalid)?
+        }
+
+        let valid_mask = self.read(reg::VENDOR_PK_HASH_VALID, 0)?;
+
+        let valid_mask = valid_mask | (1 << vendor_pk_hash_slot);
+
+        self.write(reg::VENDOR_PK_HASH_VALID, 0, valid_mask)
     }
 }
 

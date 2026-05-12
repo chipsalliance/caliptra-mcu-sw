@@ -16,9 +16,10 @@ use caliptra_mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
     DeviceInfoResp, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
     FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
-    FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp, FuseWriteResp, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq,
-    McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
+    FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
+    FuseRevokeVendorPubKeyResp, FuseWriteResp, GetAuthCmdChallengeReq, GetAuthCmdChallengeResp,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
+    McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
     McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
     McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
     McuCmStatusReq, McuEcdhFinishReq, McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq,
@@ -425,6 +426,7 @@ impl<'a> CmdInterface<'a> {
             cmd_id @ CommandId::MC_PROVISION_VENDOR_PK_HASH
             | cmd_id @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
             | cmd_id @ CommandId::MC_FE_PROG
+            | cmd_id @ CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH
             | cmd_id @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
                 self.handle_authorized_command(cmd_id, req, resp_buf).await
             }
@@ -724,6 +726,9 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
                 self.handle_revoke_vendor_pub_key(cmd, resp_buf).await
             }
+            CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => {
+                self.handle_revoke_vendor_pk_hash(cmd, resp_buf).await
+            }
             _ => Err(MsgHandlerError::UnsupportedCommand),
         }
     }
@@ -925,6 +930,46 @@ impl<'a> CmdInterface<'a> {
         *resp = FuseRevokeVendorPubKeyResp::default();
         let len = size_of_val(resp);
         Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_revoke_vendor_pk_hash<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+        // Decode the request
+        let req = FuseRevokeVendorPkHashReq::ref_from_bytes(req)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        let (resp, _) = FuseRevokeVendorPkHashResp::mut_from_prefix(resp_buf)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        let otp = otp::Otp::<DefaultSyscalls>::new();
+
+        // Check if the PK hash to be revoked was used to boot. If so, return an error as a form
+        // of proof of possession for other keys.
+        let same_key_used_to_boot = || {
+            let caliptra_soc = caliptra::Caliptra::<DefaultSyscalls>::new();
+            let booted_pk_hash = caliptra_soc
+                .read_vendor_pk_hash()
+                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+            let pk_hash_from_slot = otp
+                .read_vendor_pk_hash(req.vendor_pk_hash_slot)
+                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+            // Check if the requested slot was the one used to boot
+            Ok(booted_pk_hash == pk_hash_from_slot)
+        };
+
+        if same_key_used_to_boot()? {
+            Err(MsgHandlerError::InvalidParams)?;
+        }
+
+        otp.revoke_vendor_pk_hash(req.vendor_pk_hash_slot)
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        *resp = FuseRevokeVendorPkHashResp::default();
+        let resp_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
     }
 
     async fn get_caliptra_fw_info(
