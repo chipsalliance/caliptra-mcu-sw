@@ -219,8 +219,13 @@ pub(crate) async fn encode_measurement_summary_hash<'a>(
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<usize> {
     let mut meas_summary_hash = [0u8; SHA384_HASH_SIZE];
+    // Borrow-split to access measurements and large_msg_ctx.buf simultaneously
     ctx.measurements
-        .measurement_summary_hash(meas_summary_hash_type, &mut meas_summary_hash)
+        .measurement_summary_hash(
+            meas_summary_hash_type,
+            &mut meas_summary_hash,
+            ctx.large_msg_ctx.buf,
+        )
         .await
         .map_err(|e| (false, CommandError::Measurement(e)))?;
 

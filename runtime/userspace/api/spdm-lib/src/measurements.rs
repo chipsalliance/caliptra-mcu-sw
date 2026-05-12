@@ -22,9 +22,6 @@ use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 use caliptra_mcu_libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use zerocopy::IntoBytes;
 
-// Needs to be adjusted based on actual max size of measurement record when PQC is added
-const MAX_MEASUREMENT_RECORD_BUF_SIZE: usize = 4096;
-
 #[derive(Debug, PartialEq)]
 pub enum MeasurementsError {
     InvalidIndex,
@@ -148,22 +145,11 @@ pub struct SpdmMeasurements<'a> {
     measurement_record: MeasurementRecord,
 }
 
+#[derive(Default)]
 struct MeasurementRecord {
-    data: [u8; MAX_MEASUREMENT_RECORD_BUF_SIZE], // Fixed-size array
     length: usize,
     current_index: u8,
     valid: bool,
-}
-
-impl Default for MeasurementRecord {
-    fn default() -> Self {
-        MeasurementRecord {
-            data: [0u8; MAX_MEASUREMENT_RECORD_BUF_SIZE],
-            length: 0,
-            current_index: 0,
-            valid: false,
-        }
-    }
 }
 
 impl MeasurementRecord {
@@ -171,15 +157,22 @@ impl MeasurementRecord {
         self.current_index == index && self.length > 0 && self.valid
     }
 
-    fn reset(&mut self) {
+    fn reset(&mut self, buf: &mut [u8]) {
         self.length = 0;
         self.current_index = 0;
         self.valid = false;
-        self.data.fill(0);
+        buf.fill(0);
+    }
+
+    fn invalidate(&mut self) {
+        self.length = 0;
+        self.current_index = 0;
+        self.valid = false;
     }
 
     fn add_measurement_block(
         &mut self,
+        buf: &mut [u8],
         index: u8,
         is_dgst: bool,
         value_type: MeasurementValueType,
@@ -187,14 +180,14 @@ impl MeasurementRecord {
     ) -> MeasurementsResult<()> {
         let offset = self.length;
         let needed = MEAS_BLOCK_METADATA_SIZE + value_len;
-        if self.data.len().saturating_sub(offset) < needed {
+        if buf.len().saturating_sub(offset) < needed {
             return Err(MeasurementsError::BufferTooSmall);
         }
 
         let metadata =
             DmtfMeasurementBlockMetadata::new(index, value_len as u16, is_dgst, value_type)
                 .ok_or(MeasurementsError::InvalidIndex)?;
-        self.data[offset..offset + MEAS_BLOCK_METADATA_SIZE].copy_from_slice(metadata.as_bytes());
+        buf[offset..offset + MEAS_BLOCK_METADATA_SIZE].copy_from_slice(metadata.as_bytes());
 
         self.length += needed;
 
@@ -233,7 +226,7 @@ impl<'a> SpdmMeasurements<'a> {
     /// Sets the nonce to be included in the measurement value.
     pub(crate) fn set_nonce(&mut self, nonce: [u8; SPDM_NONCE_LEN]) {
         self.nonce = Some(nonce);
-        self.measurement_record.valid = false;
+        self.measurement_record.invalidate();
     }
 
     pub(crate) fn set_spdm_version(&mut self, version: SpdmVersion) {
@@ -266,21 +259,19 @@ impl<'a> SpdmMeasurements<'a> {
         &mut self,
         index: u8,
         _raw_bit_stream: bool,
+        buf: &mut [u8],
     ) -> MeasurementsResult<usize> {
         if index == 0 {
             return Ok(0);
         }
 
         let len = if self.measurement_record.is_valid(index) {
-            // Special case for freeform manifest
             self.measurement_record.length
         } else {
             if index == 0xFF {
-                // Size of all measurement blocks
-                self.fetch_all_measurement_blocks().await?;
+                self.fetch_all_measurement_blocks(buf).await?;
             } else {
-                // Size of specific measurement block
-                self.fetch_measurement_block(index, false).await?;
+                self.fetch_measurement_block(index, false, buf).await?;
             }
             self.measurement_record.length
         };
@@ -288,46 +279,11 @@ impl<'a> SpdmMeasurements<'a> {
         Ok(len)
     }
 
-    /// Returns the measurement block for the given index.
-    ///
-    /// # Arguments
-    /// * `asym_algo` - The asymmetric algorithm negotiated.
-    /// * `index` - The index of the measurement block. Should be between 1 and 0xFE.
-    /// * `raw_bit_stream` - If true, returns the raw bit stream.
-    /// * `offset` - The offset to start reading from.
-    /// * `measurement_chunk` - The buffer to store the measurement block.
-    ///
-    /// # Returns
-    /// A result indicating success or failure.
-    pub(crate) async fn measurement_block(
-        &mut self,
-        index: u8,
-        _raw_bit_stream: bool,
-        offset: usize,
-        measurement_chunk: &mut [u8],
-    ) -> MeasurementsResult<usize> {
-        if !self.measurement_record.is_valid(index) {
-            if index == 0xFF {
-                // Fetch all measurement blocks
-                self.fetch_all_measurement_blocks().await?;
-            } else {
-                // Fetch specific measurement block
-                self.fetch_measurement_block(index, false).await?;
-            }
-        }
-
-        if offset >= self.measurement_record.length {
-            return Err(MeasurementsError::InvalidOffset);
-        }
-
-        let end = self
-            .measurement_record
-            .length
-            .min(offset + measurement_chunk.len());
-
-        let chunk_size = end - offset;
-        measurement_chunk[..chunk_size].copy_from_slice(&self.measurement_record.data[offset..end]);
-        Ok(chunk_size)
+    /// Returns the size of valid measurement data for the given index.
+    /// The data itself is already in the buffer passed to `measurement_block_size`
+    /// or `fetch_measurement_block`. The caller can read it directly from that buffer.
+    pub(crate) fn measurement_record_len(&self) -> usize {
+        self.measurement_record.length
     }
 
     /// Returns the measurement summary hash.
@@ -346,24 +302,25 @@ impl<'a> SpdmMeasurements<'a> {
         &mut self,
         measurement_summary_hash_type: u8,
         hash: &mut [u8; SHA384_HASH_SIZE],
+        buf: &mut [u8],
     ) -> MeasurementsResult<()> {
         if measurement_summary_hash_type != 1 && measurement_summary_hash_type != 0xFF {
             return Err(MeasurementsError::InvalidParam);
         }
 
         // Fetch the required measurement blocks freshly for summary hash
-        self.measurement_record.reset();
+        self.measurement_record.reset(buf);
 
         if measurement_summary_hash_type == 1 {
             // Only TCB measurements
             for measurement_info in self.meas_value_info.iter() {
                 if measurement_info.is_tcb {
-                    self.fetch_measurement_block(measurement_info.meas_index, true)
+                    self.fetch_measurement_block(measurement_info.meas_index, true, buf)
                         .await?;
                 }
             }
         } else {
-            self.fetch_all_measurement_blocks().await?;
+            self.fetch_all_measurement_blocks(buf).await?;
         }
 
         let mut hash_ctx = HashContext::new();
@@ -375,14 +332,11 @@ impl<'a> SpdmMeasurements<'a> {
 
             if offset == 0 {
                 hash_ctx
-                    .init(
-                        HashAlgoType::SHA384,
-                        Some(&self.measurement_record.data[..chunk_size]),
-                    )
+                    .init(HashAlgoType::SHA384, Some(&buf[..chunk_size]))
                     .await
                     .map_err(MeasurementsError::CaliptraApi)?;
             } else {
-                let chunk = &self.measurement_record.data[offset..offset + chunk_size];
+                let chunk = &buf[offset..offset + chunk_size];
                 hash_ctx
                     .update(chunk)
                     .await
@@ -406,7 +360,12 @@ impl<'a> SpdmMeasurements<'a> {
             .ok_or(MeasurementsError::InvalidIndex)
     }
 
-    async fn fetch_measurement_block(&mut self, index: u8, append: bool) -> MeasurementsResult<()> {
+    async fn fetch_measurement_block(
+        &mut self,
+        index: u8,
+        append: bool,
+        buf: &mut [u8],
+    ) -> MeasurementsResult<()> {
         let asym_algo = self
             .asym_algo
             .ok_or(MeasurementsError::MissingParam("AsymAlgo"))?;
@@ -429,21 +388,16 @@ impl<'a> SpdmMeasurements<'a> {
         };
 
         if !append {
-            self.measurement_record.reset();
+            self.measurement_record.reset(buf);
         }
 
         let offset = self.measurement_record.length;
         let meas_value_offset = offset + MEAS_BLOCK_METADATA_SIZE;
-        let remaining = self
-            .measurement_record
-            .data
-            .len()
-            .saturating_sub(meas_value_offset);
+        let remaining = buf.len().saturating_sub(meas_value_offset);
         if remaining == 0 {
             Err(MeasurementsError::BufferTooSmall)?;
         }
-        let meas_value_slice =
-            &mut self.measurement_record.data[meas_value_offset..meas_value_offset + remaining];
+        let meas_value_slice = &mut buf[meas_value_offset..meas_value_offset + remaining];
 
         let meas_value_size = self
             .meas_value
@@ -454,16 +408,14 @@ impl<'a> SpdmMeasurements<'a> {
             Err(MeasurementsError::BufferTooSmall)?;
         }
 
-        // Add spdm measurement block metadata and update length.
         self.measurement_record.add_measurement_block(
+            buf,
             meas_info.meas_index,
             meas_info.is_dgst,
             meas_value_type,
             meas_value_size,
         )?;
 
-        // Set current_index/valid so is_valid() reflects the freshly filled record.
-        // - For single-block fetches (append == false) mark the record valid for that index so future calls can reuse.
         if !append {
             self.measurement_record.set_valid(meas_info.meas_index);
         }
@@ -471,10 +423,11 @@ impl<'a> SpdmMeasurements<'a> {
         Ok(())
     }
 
-    async fn fetch_all_measurement_blocks(&mut self) -> MeasurementsResult<()> {
-        self.measurement_record.reset();
+    async fn fetch_all_measurement_blocks(&mut self, buf: &mut [u8]) -> MeasurementsResult<()> {
+        self.measurement_record.reset(buf);
         for info in self.meas_value_info.iter() {
-            self.fetch_measurement_block(info.meas_index, true).await?;
+            self.fetch_measurement_block(info.meas_index, true, buf)
+                .await?;
         }
         self.measurement_record.set_valid(0xFF);
 

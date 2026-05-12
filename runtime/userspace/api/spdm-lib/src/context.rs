@@ -243,11 +243,14 @@ impl<'a> SpdmContext<'a> {
         req: &mut MessageBuf<'a>,
     ) -> CommandResult<()> {
         // Acquire the shared large message buffer for commands that may need it
-        // (large responses or chunk operations). The buffer is released after
-        // the response is fully sent (in process_message) if no chunking is active.
+        // (large responses, chunk operations, or measurement summary hashes).
+        // The buffer is released after the response is fully sent (in process_message)
+        // if no chunking is active.
         match req_code {
             ReqRespCode::GetCertificate
             | ReqRespCode::GetMeasurements
+            | ReqRespCode::Challenge
+            | ReqRespCode::KeyExchange
             | ReqRespCode::ChunkGet
             | ReqRespCode::VendorDefinedRequest => {
                 self.large_msg_ctx
