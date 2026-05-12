@@ -235,7 +235,6 @@ pub fn dot_flow(
         "[mcu-rom-dot] DOT raw blob: {}",
         romtime::HexBytes(blob.as_bytes())
     );
-    romtime::println!("[mcu-rom-dot] {:x?}", blob);
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferStarted.into());
 
