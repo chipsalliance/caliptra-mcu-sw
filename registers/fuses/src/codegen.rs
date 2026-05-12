@@ -174,14 +174,9 @@ pub fn generate_fuses(
     }
     output.push_str("];");
 
-    // Fuse entry lookup table — entries with partition info
-    output.push_str(
-        "/// Lookup table mapping (partition_num, entry_num) to OTP addresses and layout.\n",
-    );
-    output.push_str(
-        "/// Only populated for fields that have a partition assignment in fuses.hjson.\n",
-    );
-    output.push_str("pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[");
+    // Fuse entries with partition info — emitted as standalone constants so the
+    // compiler can dead-code-eliminate unused entries instead of pulling in one
+    // big array.
     let partitions = spec.partitions.as_ref();
     for field in &spec.fields {
         if let Some(partition_name) = &field.partition {
@@ -219,24 +214,11 @@ pub fn generate_fuses(
             };
 
             let layout_str = layout_to_codegen(&field.layout, field.bits);
-            output.push_str(&format!(
-                "FuseEntryInfo {{ partition_num: {}, entry_num: {}, byte_offset: 0x{:x}, byte_size: {}, name: \"{}\", layout: {} }},",
-                part_idx, entry_num, byte_offset, byte_size, field.name, layout_str
-            ));
-        }
-    }
-    output.push_str("];");
-
-    // Named const references to individual entries
-    let mut entry_idx = 0usize;
-    for field in &spec.fields {
-        if field.partition.is_some() {
             let const_name = field.name.to_uppercase();
             output.push_str(&format!(
-                "/// Fuse entry for `{}`.\npub const {}: &FuseEntryInfo = &FUSE_ENTRY_TABLE[{}];",
-                field.name, const_name, entry_idx
+                "/// Fuse entry for `{}`.\npub const {}: &FuseEntryInfo = &FuseEntryInfo {{ partition_num: {}, entry_num: {}, byte_offset: 0x{:x}, byte_size: {}, name: \"{}\", layout: {} }};",
+                field.name, const_name, part_idx, entry_num, byte_offset, byte_size, field.name, layout_str
             ));
-            entry_idx += 1;
         }
     }
 
@@ -353,7 +335,6 @@ mod tests {
         assert!(generated_code.contains("pub const SECRET_VENDOR_FUSES:"));
         assert!(generated_code.contains("pub const NON_SECRET_VENDOR_FUSES:"));
         assert!(generated_code.contains("pub const FUSE_FIELDS:"));
-        assert!(generated_code.contains("pub const FUSE_ENTRY_TABLE:"));
         assert!(generated_code.contains("\"device_ownership_transfer\""));
         assert!(generated_code.contains("\"secret_vendor\""));
         assert!(generated_code.contains("\"example_key1\""));
@@ -392,7 +373,8 @@ mod tests {
 
         println!("Generated code:\n{}", generated_code);
 
-        assert!(generated_code.contains("FUSE_ENTRY_TABLE"));
+        assert!(generated_code.contains("pub const ECC_REVOCATION: &FuseEntryInfo"));
+        assert!(generated_code.contains("pub const SIMPLE_FIELD: &FuseEntryInfo"));
         assert!(generated_code.contains("partition_num: 5"));
         assert!(generated_code.contains("LinearMajorityVote"));
         assert!(generated_code.contains("duplication: 3"));

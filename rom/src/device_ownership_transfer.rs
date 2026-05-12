@@ -21,6 +21,7 @@ use caliptra_api::mailbox::{
 };
 use mcu_error::{McuError, McuResult};
 use romtime::otp::Otp;
+use romtime::HexWord;
 use romtime::McuRomBootStatus;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -314,14 +315,20 @@ fn cm_derive_stable_key(
     req.hdr.chksum = chksum;
 
     if let Err(err) = env.soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
-        romtime::println!("[mcu-rom] Error deriving DOT stable key: {:?}", err);
+        romtime::println!(
+            "[mcu-rom] Error deriving DOT stable key: {}",
+            HexWord(crate::err_code(&err))
+        );
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
 
     // CmDeriveStableKeyResp = hdr(8) + cmk(128) = 136 bytes
     let mut resp_buf = [0u8; core::mem::size_of::<CmDeriveStableKeyResp>()];
     if let Err(err) = env.soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
-        romtime::println!("[mcu-rom] Error deriving DOT stable key: {:?}", err);
+        romtime::println!(
+            "[mcu-rom] Error deriving DOT stable key: {}",
+            HexWord(crate::err_code(&err))
+        );
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
 
@@ -404,14 +411,20 @@ fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
         None => return Err(McuError::ROM_COLD_BOOT_DOT_ERROR),
     };
     if let Err(err) = env.soc_manager.start_mailbox_req_bytes(cmd, req_bytes) {
-        romtime::println!("[mcu-rom] Error computing HMAC: {:?}", err);
+        romtime::println!(
+            "[mcu-rom] Error computing HMAC: {}",
+            HexWord(crate::err_code(&err))
+        );
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
 
     // Read response – CmHmacResp is MailboxRespHeaderVarSize(12) + mac(64) = 76 bytes.
     let mut resp_buf = [0u8; core::mem::size_of::<CmHmacResp>()];
     if let Err(err) = env.soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
-        romtime::println!("[mcu-rom] Error computing HMAC: {:?}", err);
+        romtime::println!(
+            "[mcu-rom] Error computing HMAC: {}",
+            HexWord(crate::err_code(&err))
+        );
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
 
@@ -996,7 +1009,10 @@ fn cm_sha384(env: &mut RomEnv, data_parts: &[&[u32]]) -> McuResult<[u8; SHA384_D
         data_parts,
         &mut resp32,
     ) {
-        romtime::println!("[mcu-rom-dot] CM_SHA failed: {:?}", err);
+        romtime::println!(
+            "[mcu-rom-dot] CM_SHA failed: {}",
+            HexWord(crate::err_code(&err))
+        );
         return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
     }
 
@@ -1055,7 +1071,10 @@ fn cm_random_generate(env: &mut RomEnv) -> McuResult<[u8; 48]> {
         &mut req32,
         &mut resp32,
     ) {
-        romtime::println!("[mcu-rom-dot] CM_RANDOM_GENERATE failed: {:?}", err);
+        romtime::println!(
+            "[mcu-rom-dot] CM_RANDOM_GENERATE failed: {}",
+            HexWord(crate::err_code(&err))
+        );
         return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
     }
     let resp: CmRandomResp = transmute!(resp32);
@@ -1103,7 +1122,10 @@ fn cm_ecdsa384_verify(
         &mut req32,
         &mut resp32,
     ) {
-        romtime::println!("[mcu-rom-dot] ECDSA384_SIGNATURE_VERIFY failed: {:?}", err);
+        romtime::println!(
+            "[mcu-rom-dot] ECDSA384_SIGNATURE_VERIFY failed: {}",
+            HexWord(crate::err_code(&err))
+        );
         return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
     }
     Ok(())
@@ -1155,7 +1177,10 @@ fn cm_mldsa87_verify(
         data_parts,
         &mut resp32,
     ) {
-        romtime::println!("[mcu-rom-dot] MLDSA87_SIGNATURE_VERIFY failed: {:?}", err);
+        romtime::println!(
+            "[mcu-rom-dot] MLDSA87_SIGNATURE_VERIFY failed: {}",
+            HexWord(crate::err_code(&err))
+        );
         return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
     }
     Ok(())
@@ -1219,8 +1244,8 @@ pub fn dot_recovery_flow(
     // Write authenticated blob to flash
     if let Err(err) = dot_flash.write(&backup_blob_bytes, 0) {
         romtime::println!(
-            "[mcu-rom-dot] Failed to write recovery blob to flash: {:?}",
-            err
+            "[mcu-rom-dot] Failed to write recovery blob to flash: {}",
+            HexWord(usize::from(err) as u32)
         );
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
