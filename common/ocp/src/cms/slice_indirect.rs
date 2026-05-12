@@ -9,6 +9,9 @@ use crate::cms::IndirectCmsRegion;
 use crate::error::{CmsError, OcpError};
 use crate::protocol::indirect_status::{CmsRegionType, IndirectStatus, StatusFlags};
 
+// The mask to ensure a value matches the 4 byte alignment required for indirect CMS regions.
+const ALIGNMENT_MASK: u32 = !0x3;
+
 /// A memory-window CMS region backed by a mutable byte slice.
 #[derive(Debug)]
 pub struct SliceIndirectRegion<'a> {
@@ -62,7 +65,7 @@ impl<'a> SliceIndirectRegion<'a> {
     }
 
     fn advance_imo(&mut self, transfer_len: usize) {
-        let increment = ((transfer_len as u32) + 3) & !0x3;
+        let increment = ((transfer_len as u32) + 3) & ALIGNMENT_MASK;
         let size = self.size_bytes();
         let new_imo = self.imo + increment;
         if new_imo >= size {
@@ -84,7 +87,7 @@ impl IndirectCmsRegion for SliceIndirectRegion<'_> {
     }
 
     fn set_imo(&mut self, offset: u32) {
-        self.imo = offset & !0x3;
+        self.imo = offset & ALIGNMENT_MASK;
     }
 
     fn write(&mut self, data: &[u8]) -> Result<(), CmsError> {
@@ -111,7 +114,7 @@ impl IndirectCmsRegion for SliceIndirectRegion<'_> {
     }
 
     fn device_read(&self, offset: u32, buf: &mut [u8]) -> usize {
-        self.read_at((offset & !0x3) as usize, buf)
+        self.read_at((offset & ALIGNMENT_MASK) as usize, buf)
     }
 
     fn clear_status(&mut self) {

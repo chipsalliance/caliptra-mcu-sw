@@ -21,6 +21,8 @@ core::arch::global_asm!(include_str!("start.s"));
 
 use mcu_config::{McuMemoryMap, McuStraps};
 use mcu_rom_common::flash::flash_partition::FlashPartition;
+use mcu_rom_common::recovery::flash::FlashImageProvider;
+use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
 use mcu_rom_common::{RomHooks, RomParameters};
 use romtime::{LifecycleControllerState, LifecycleHashedToken, LifecycleToken};
 
@@ -209,9 +211,6 @@ pub extern "C" fn rom_entry() -> ! {
     let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
 
     let hooks = LoggingRomHooks;
-
-    use mcu_rom_common::recovery::flash::FlashImageProvider;
-    use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
 
     let mut flash_provider = FlashImageProvider::new(&mut flash_partition);
     let mut entries = [ImageProviderEntry {
