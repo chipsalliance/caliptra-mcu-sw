@@ -10,7 +10,8 @@ use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap, OpenOcdJtagTap};
 use caliptra_hw_model::{
-    DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
+    DeviceLifecycle, HwModel, InitParams as CaliptraInitParams,
+    LifecycleControllerState as CaliptraLifecycleControllerState, ModelFpgaSubsystem, Output,
     SecurityState, SubsystemInitParams, XI3CWrapper,
 };
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
@@ -32,6 +33,35 @@ use std::time::Duration;
 use tock_registers::interfaces::{Readable, Writeable};
 
 const DEFAULT_AXI_PAUSER: u32 = 0x1;
+
+fn to_caliptra_lc_state(
+    state: LifecycleControllerState,
+) -> Option<CaliptraLifecycleControllerState> {
+    Some(match state {
+        LifecycleControllerState::Raw => CaliptraLifecycleControllerState::Raw,
+        LifecycleControllerState::TestUnlocked0 => CaliptraLifecycleControllerState::TestUnlocked0,
+        LifecycleControllerState::TestLocked0 => CaliptraLifecycleControllerState::TestLocked0,
+        LifecycleControllerState::TestUnlocked1 => CaliptraLifecycleControllerState::TestUnlocked1,
+        LifecycleControllerState::TestLocked1 => CaliptraLifecycleControllerState::TestLocked1,
+        LifecycleControllerState::TestUnlocked2 => CaliptraLifecycleControllerState::TestUnlocked2,
+        LifecycleControllerState::TestLocked2 => CaliptraLifecycleControllerState::TestLocked2,
+        LifecycleControllerState::TestUnlocked3 => CaliptraLifecycleControllerState::TestUnlocked3,
+        LifecycleControllerState::TestLocked3 => CaliptraLifecycleControllerState::TestLocked3,
+        LifecycleControllerState::TestUnlocked4 => CaliptraLifecycleControllerState::TestUnlocked4,
+        LifecycleControllerState::TestLocked4 => CaliptraLifecycleControllerState::TestLocked4,
+        LifecycleControllerState::TestUnlocked5 => CaliptraLifecycleControllerState::TestUnlocked5,
+        LifecycleControllerState::TestLocked5 => CaliptraLifecycleControllerState::TestLocked5,
+        LifecycleControllerState::TestUnlocked6 => CaliptraLifecycleControllerState::TestUnlocked6,
+        LifecycleControllerState::TestLocked6 => CaliptraLifecycleControllerState::TestLocked6,
+        LifecycleControllerState::TestUnlocked7 => CaliptraLifecycleControllerState::TestUnlocked7,
+        LifecycleControllerState::Dev => CaliptraLifecycleControllerState::Dev,
+        LifecycleControllerState::Prod => CaliptraLifecycleControllerState::Prod,
+        LifecycleControllerState::ProdEnd => CaliptraLifecycleControllerState::ProdEnd,
+        LifecycleControllerState::Rma => CaliptraLifecycleControllerState::Rma,
+        LifecycleControllerState::Scrap => CaliptraLifecycleControllerState::Scrap,
+        LifecycleControllerState::PostTransition => return None,
+    })
+}
 
 struct CaliptraMmio {
     ptr: *mut u32,
@@ -343,6 +373,9 @@ impl McuHwModel for ModelFpgaRealtime {
                 num_prod_dbg_unlock_pk_hashes: params.num_prod_dbg_unlock_pk_hashes,
                 prod_dbg_unlock_pk_hashes_offset: params.prod_dbg_unlock_pk_hashes_offset,
                 primary_flash_initial_contents: params.primary_flash_initial_contents.as_deref(),
+                lc_state: params
+                    .lifecycle_controller_state
+                    .and_then(to_caliptra_lc_state),
                 ..Default::default()
             },
         };

@@ -10,7 +10,18 @@ mod test {
     use caliptra_hw_model::HwModel;
     use caliptra_hw_model::DEFAULT_LIFECYCLE_RAW_TOKEN;
     use mcu_hw_model::lcc::{lc_token_to_words, lc_transition, read_lc_state};
+    use mcu_hw_model::DefaultHwModel;
     use romtime::LifecycleControllerState;
+
+    fn cold_reset_preserving_lc(model: &mut DefaultHwModel) {
+        model.base.set_subsystem_reset(true);
+        std::thread::sleep(std::time::Duration::from_micros(1));
+        model
+            .base
+            .init_otp(None)
+            .expect("Failed to initialize OTP after cold reset");
+        model.base.set_subsystem_reset(false);
+    }
 
     #[test]
     fn test_raw_unlock() {
@@ -48,7 +59,7 @@ mod test {
         println!("Post transition LC state: {}", lc_state);
 
         // Reset and read the LC state again.
-        model.base.cold_reset();
+        cold_reset_preserving_lc(&mut model);
         lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
         println!("LC state after reset: {}", lc_state);
         assert_eq!(lc_state, LifecycleControllerState::TestUnlocked0);
@@ -119,7 +130,7 @@ mod test {
             println!("Post transition LC state: {}", lc_state);
 
             // Reset and read the LC state again.
-            model.base.cold_reset();
+            cold_reset_preserving_lc(&mut model);
             lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
             println!("LC state after reset: {}", lc_state);
             assert_eq!(lc_state, lc_states[i + 1]);
@@ -161,7 +172,7 @@ mod test {
         println!("Post transition LC state: {}", lc_state);
 
         // Reset and read the LC state again.
-        model.base.cold_reset();
+        cold_reset_preserving_lc(&mut model);
         lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
         println!("LC state after reset: {}", lc_state);
         assert_eq!(lc_state, LifecycleControllerState::Rma);
