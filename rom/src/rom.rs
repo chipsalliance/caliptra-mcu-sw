@@ -34,8 +34,6 @@ use registers_generated::mci;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;
 use romtime::otp::{Otp, PROD_DEBUG_UNLOCK_PK_ENTRIES};
-#[cfg(feature = "stable-owner-key")]
-use romtime::otp::{HEK_OFFSETS, HEK_SEED_SIZE, HEK_ZER_MARKER_OFFSET};
 use romtime::LifecycleControllerState;
 use romtime::LifecycleHashedTokens;
 use romtime::LifecycleToken;
@@ -49,14 +47,6 @@ const MLDSA_CALIPTRA_VALUE: u8 = 1;
 const LMS_CALIPTRA_VALUE: u8 = 3;
 const OTP_DAI_IDLE_BIT_OFFSET: u32 = 30;
 const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
-#[cfg(feature = "stable-owner-key")]
-const STABLE_OWNER_KEY_STRAP_INDEX: usize = 3;
-#[cfg(feature = "stable-owner-key")]
-const STABLE_OWNER_KEY_STRAP_MASK: u32 = 1;
-#[cfg(feature = "stable-owner-key")]
-const STABLE_OWNER_KEY_OTP_DIGEST_IV: u64 = 0x90C7F21F6224F027u64;
-#[cfg(feature = "stable-owner-key")]
-const STABLE_OWNER_KEY_OTP_DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266Fu128;
 
 pub const MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS: u32 = 8; // 32 kB / 4 kB chunks
 
@@ -180,83 +170,6 @@ impl Soc {
         self.registers.ss_caliptra_dma_axi_user.set(value);
     }
 
-    #[cfg(feature = "stable-owner-key")]
-    fn write_hek_seed(&self, seed: &[u8]) {
-        for (reg, word) in self.registers.fuse_hek_seed.iter().zip(
-            seed.chunks_exact(core::mem::size_of::<u32>()).map(|w| {
-                u32::from_le_bytes(
-                    w.try_into()
-                        .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_WRITE_WORD_ERROR)),
-                )
-            }),
-        ) {
-            reg.set(word);
-        }
-    }
-
-    #[cfg(feature = "stable-owner-key")]
-    fn fill_hek_seed(&self, value: u32) {
-        for word in self.registers.fuse_hek_seed.iter() {
-            word.set(value);
-        }
-    }
-
-    #[cfg(feature = "stable-owner-key")]
-    fn set_stable_owner_key_hek_fuses(&self, otp: &Otp) {
-        romtime::println!("[mcu-fuse-write] Attempting to write stable owner key HEK fuses");
-
-        let mut seed = [0u8; 48];
-        for slot in 0..HEK_OFFSETS.len() {
-            otp.read_hek_seed(slot, &mut seed)
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-
-            if seed.iter().all(|&byte| byte == 0) || seed.iter().all(|&byte| byte == 0xFF) {
-                continue;
-            }
-
-            let byte_offset = *HEK_OFFSETS
-                .get(slot)
-                .unwrap_or_else(|| fatal_error(McuError::ROM_OTP_INVALID_DATA_ERROR));
-            let partition = fuses::OtpPartitionInfo {
-                name: "cptra_ss_lock_hek_prod_seed",
-                byte_offset,
-                byte_size: HEK_ZER_MARKER_OFFSET,
-                sw_digest: true,
-                hw_digest: false,
-                digest_offset: Some(byte_offset + HEK_SEED_SIZE),
-            };
-            let expected_digest = u64::from_le_bytes(
-                seed[HEK_SEED_SIZE..HEK_ZER_MARKER_OFFSET]
-                    .try_into()
-                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_INVALID_DATA_ERROR)),
-            );
-            let computed_digest = otp
-                .compute_sw_digest(
-                    &partition,
-                    STABLE_OWNER_KEY_OTP_DIGEST_IV,
-                    STABLE_OWNER_KEY_OTP_DIGEST_CONST,
-                )
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-
-            if computed_digest == expected_digest {
-                self.write_hek_seed(&seed[..HEK_SEED_SIZE]);
-                romtime::println!(
-                    "[mcu-fuse-write] Finished writing stable owner key HEK fuse slot {}",
-                    slot
-                );
-                return;
-            }
-
-            romtime::println!(
-                "[mcu-fuse-write] HEK software digest mismatch! Slot {}",
-                slot
-            );
-        }
-
-        self.fill_hek_seed(0);
-        romtime::println!("[mcu-fuse-write] No valid stable owner key HEK fuse slot found");
-    }
-
     #[inline(never)]
     pub fn populate_fuses(
         &self,
@@ -295,12 +208,7 @@ impl Soc {
         );
 
         #[cfg(feature = "stable-owner-key")]
-        {
-            // Caliptra ROM gates owner stable key availability on SS_STRAP_GENERIC[3] bit 0.
-            let strap = self.registers.ss_strap_generic[STABLE_OWNER_KEY_STRAP_INDEX].get();
-            self.registers.ss_strap_generic[STABLE_OWNER_KEY_STRAP_INDEX]
-                .set(strap | STABLE_OWNER_KEY_STRAP_MASK);
-        }
+        crate::stable_owner_key::enable_owner_key_strap(self.registers);
 
         // PQC Key Type.
         let pqc_type = otp
@@ -392,7 +300,7 @@ impl Soc {
         // Stable owner key builds forward HEK for derivation here.
         // OCP LOCK keeps its HEK selection and handoff metadata in the OCP path below.
         #[cfg(feature = "stable-owner-key")]
-        self.set_stable_owner_key_hek_fuses(otp);
+        crate::stable_owner_key::set_hek_fuses(self.registers, otp);
 
         // SoC Stepping ID (only 16-bits are relevant).
         let word = otp
