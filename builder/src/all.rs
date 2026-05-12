@@ -82,6 +82,7 @@ const FEATURES_REQUIRING_SOC_IMAGES: &[&str] = &[
     "test-firmware-update-flash",
     "test-firmware-update-streaming",
     "test-mctp-spdm-attestation",
+    "test-mctp-spdm-attestation-pcr-quote",
 ];
 
 /// Features that require flash-based boot (partition table at offset 0)
@@ -641,9 +642,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             .iter()
             .any(|f| FEATURES_REQUIRING_SOC_IMAGES.contains(f));
         if needs_soc {
-            let is_attestation = base_runtime_features
-                .iter()
-                .any(|f| *f == "test-mctp-spdm-attestation");
+            let is_attestation = base_runtime_features.iter().any(|f| {
+                *f == "test-mctp-spdm-attestation" || *f == "test-mctp-spdm-attestation-pcr-quote"
+            });
             let (images, _paths) = if is_attestation {
                 create_attestation_soc_images()
             } else {
@@ -837,7 +838,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             // For features that require SoC images, create default ones if not provided
             let (feature_soc_images, feature_soc_images_paths) =
                 if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) && soc_images.is_none() {
-                    let (images, paths) = if *feature == "test-mctp-spdm-attestation" {
+                    let (images, paths) = if *feature == "test-mctp-spdm-attestation"
+                        || *feature == "test-mctp-spdm-attestation-pcr-quote"
+                    {
                         create_attestation_soc_images()
                     } else {
                         create_default_soc_images()

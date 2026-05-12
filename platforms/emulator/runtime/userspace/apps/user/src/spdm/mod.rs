@@ -8,6 +8,7 @@ mod endorsement_certs;
 mod integration_example;
 pub(crate) mod shared_large_msg_buf;
 
+#[cfg(not(feature = "pcr-quote-measurements"))]
 use crate::spdm::device_measurements::ocp_eat::init_target_env_claims;
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
@@ -53,7 +54,8 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
         return;
     }
 
-    // initialize target environment for claims
+    // initialize target environment for claims (OCP EAT only)
+    #[cfg(not(feature = "pcr-quote-measurements"))]
     init_target_env_claims();
 
     if let Err(e) = spawner.spawn(spdm_mctp_responder()) {
@@ -97,10 +99,16 @@ async fn spdm_mctp_responder() {
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
 
-    // Measurements in OCP EAT format
-    let (mut device_ocp_eat, meas_value_info) =
+    // Measurement format: OCP EAT by default, PCR Quote if feature-gated
+    #[cfg(not(feature = "pcr-quote-measurements"))]
+    let (mut device_manifest, meas_value_info) =
         device_measurements::ocp_eat::create_manifest_with_ocp_eat();
-    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_ocp_eat);
+
+    #[cfg(feature = "pcr-quote-measurements")]
+    let (mut device_manifest, meas_value_info) =
+        device_measurements::pcr_quote::create_manifest_with_pcr_quote();
+
+    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_manifest);
 
     // Caliptra VDM handler for SPDM over MCTP transport
     let caliptra_cmd_handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
@@ -185,10 +193,16 @@ async fn spdm_doe_responder() {
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
 
-    // Measurements in PCR Quote format
-    let (mut device_pcr_quote, meas_value_info) =
+    // Measurement format: OCP EAT by default, PCR Quote if feature-gated
+    #[cfg(not(feature = "pcr-quote-measurements"))]
+    let (mut device_manifest, meas_value_info) =
+        device_measurements::ocp_eat::create_manifest_with_ocp_eat();
+
+    #[cfg(feature = "pcr-quote-measurements")]
+    let (mut device_manifest, meas_value_info) =
         device_measurements::pcr_quote::create_manifest_with_pcr_quote();
-    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_pcr_quote);
+
+    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_manifest);
 
     // Create test drivers and VDM handlers locally for integration testing
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]

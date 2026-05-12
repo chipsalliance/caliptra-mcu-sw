@@ -19,6 +19,7 @@ mod test_i3c_constant_writes;
 mod test_i3c_simple;
 mod test_mctp_capsule_loopback;
 mod test_mctp_spdm_attestation;
+mod test_mctp_spdm_attestation_pcr_quote;
 mod test_mctp_spdm_responder_conformance;
 mod test_mctp_vdm_cmds;
 mod test_mctp_vdm_validator;
