@@ -151,3 +151,15 @@ pub fn err_code(err: &CaliptraApiError) -> u32 {
         _ => 0xdead_ffff,
     }
 }
+
+#[allow(unused)]
+#[no_mangle]
+#[used]
+static mut CFI_STATE_ORG: [u32; 6] = [0; 6];
+
+#[cfg(all(not(test), feature = "cfi"))]
+#[no_mangle]
+extern "C" fn cfi_panic_handler(code: u32) -> ! {
+    romtime::println!("[mcu-rom] CFI Panic");
+    fatal_error_raw(code | Into::<u32>::into(mcu_error::McuError::ROM_CFI_PANIC));
+}

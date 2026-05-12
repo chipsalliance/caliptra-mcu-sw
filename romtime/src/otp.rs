@@ -57,6 +57,7 @@ pub const PROD_DEBUG_UNLOCK_PK_ENTRIES: [&FuseEntryInfo; 8] = [
 
 const DIGEST_SIZE: usize = 8;
 
+#[repr(u32)]
 #[derive(Clone, Copy)]
 pub enum PqcKeyType {
     MLDSA = 1,

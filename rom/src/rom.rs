@@ -25,6 +25,9 @@ use crate::ImageVerifier;
 use crate::RomEnv;
 use crate::WarmBoot;
 use caliptra_api::mailbox::CmStableKeyType;
+#[cfg(all(not(test), feature = "cfi"))]
+use caliptra_cfi_derive::{cfi_impl_fn, cfi_mod_fn};
+use caliptra_cfi_lib::{cfi_assert_eq, cfi_launder, CfiCounter};
 use core::fmt::Write;
 use core::marker::PhantomData;
 use mcu_error::McuError;
@@ -38,8 +41,10 @@ use romtime::LifecycleHashedTokens;
 use romtime::LifecycleToken;
 use romtime::PqcKeyType;
 use romtime::{HexWord, McuBootMilestones, StaticRef};
+use sha2::{Digest, Sha256};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
+use zerocopy::transmute;
 
 // values when setting in Caliptra
 const MLDSA_CALIPTRA_VALUE: u8 = 1;
@@ -199,6 +204,7 @@ impl Soc {
     }
 
     #[inline(never)]
+    #[cfg_attr(all(not(test), feature = "cfi"), cfi_impl_fn)]
     pub fn populate_fuses(
         &self,
         otp: &Otp,
@@ -213,16 +219,22 @@ impl Soc {
             "[mcu-fuse-write] Setting UDS/FE base address to {:x}",
             offset
         );
-        self.registers.ss_uds_seed_base_addr_l.set(offset as u32);
-        self.registers.ss_uds_seed_base_addr_h.set(0);
+        romtime::cfi_set_register(&self.registers.ss_uds_seed_base_addr_l, offset as u32);
+        romtime::cfi_set_register(&self.registers.ss_uds_seed_base_addr_h, 0);
 
         romtime::println!(
             "[mcu-fuse-write] Setting UDS/FE DAI idle bit offset to {} and direct access cmd reg offset to {}",
             OTP_DAI_IDLE_BIT_OFFSET,
             OTP_DIRECT_ACCESS_CMD_REG_OFFSET
         );
-        self.registers.ss_strap_generic[0].set(OTP_DAI_IDLE_BIT_OFFSET << 16);
-        self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
+        romtime::cfi_set_register(
+            &self.registers.ss_strap_generic[0],
+            OTP_DAI_IDLE_BIT_OFFSET << 16,
+        );
+        romtime::cfi_set_register(
+            &self.registers.ss_strap_generic[1],
+            OTP_DIRECT_ACCESS_CMD_REG_OFFSET,
+        );
 
         // Select the vendor public key slot to use.
         let default_policy = DefaultVendorKeyPolicy::new(
@@ -232,12 +244,14 @@ impl Soc {
         let pk_hash_idx = policy
             .select_key(otp)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_PK_HASH_SELECTION_FAILED));
+        let pk_hash_idx_expected = cfi_launder(pk_hash_idx);
         romtime::println!("[mcu-fuse-write] Selected vendor PK slot {}", pk_hash_idx);
 
         #[cfg(feature = "stable-owner-key")]
         crate::stable_owner_key::enable_owner_key_strap(self.registers);
 
         // PQC Key Type.
+        cfi_assert_eq(pk_hash_idx, pk_hash_idx_expected);
         let pqc_type = otp
             .read_pqc_key_type(pk_hash_idx)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
@@ -245,9 +259,15 @@ impl Soc {
             PqcKeyType::MLDSA => MLDSA_CALIPTRA_VALUE,
             PqcKeyType::LMS => LMS_CALIPTRA_VALUE,
         };
-        self.registers
-            .fuse_pqc_key_type
-            .set(pqc_caliptra_val as u32);
+
+        let pqc_val_expected = match cfi_launder(pqc_type as u32) {
+            1 => MLDSA_CALIPTRA_VALUE,
+            2 => LMS_CALIPTRA_VALUE,
+            _ => fatal_error(McuError::ROM_OTP_READ_ERROR),
+        };
+        cfi_assert_eq(pqc_caliptra_val as u32, pqc_val_expected as u32);
+
+        romtime::cfi_set_register(&self.registers.fuse_pqc_key_type, pqc_caliptra_val as u32);
         romtime::println!(
             "[mcu-fuse-write] Setting vendor PQC type to {}",
             pqc_caliptra_val
@@ -257,69 +277,85 @@ impl Soc {
         let svn = otp
             .read_u32_at(fuses::OTP_CPTRA_CORE_FMC_KEY_MANIFEST_SVN.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        self.registers.fuse_fmc_key_manifest_svn.set(svn);
+        romtime::cfi_set_register(&self.registers.fuse_fmc_key_manifest_svn, svn);
 
         // Vendor PK Hash.
         romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
         let mut hash_buf = [0u8; 48];
+        cfi_assert_eq(pk_hash_idx, pk_hash_idx_expected);
         otp.read_vendor_pk_hash(pk_hash_idx, &mut hash_buf)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        let mut iterations = 0;
         for (i, word_bytes) in hash_buf.chunks_exact(4).enumerate() {
             let word = u32::from_le_bytes(word_bytes.try_into().unwrap());
             romtime::print!("{}", HexWord(word));
-            self.registers.fuse_vendor_pk_hash[i].set(word);
+            romtime::cfi_set_register(&self.registers.fuse_vendor_pk_hash[i], word);
+            iterations += 1;
         }
+        cfi_assert_eq(iterations, hash_buf.chunks_exact(4).len());
         romtime::println!("");
 
         // Runtime SVN.
+        let mut iterations = 0;
         for i in 0..self.registers.fuse_runtime_svn.len() {
             let word = otp
                 .read_u32_at(fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_offset + i * 4)
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-            self.registers.fuse_runtime_svn[i].set(word);
+            romtime::cfi_set_register(&self.registers.fuse_runtime_svn[i], word);
+            iterations += 1;
         }
+        cfi_assert_eq(iterations, self.registers.fuse_runtime_svn.len());
 
         // SoC Manifest SVN.
+        let mut iterations = 0;
         for i in 0..self.registers.fuse_soc_manifest_svn.len() {
             let word = otp
                 .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_offset + i * 4)
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-            self.registers.fuse_soc_manifest_svn[i].set(word);
+            romtime::cfi_set_register(&self.registers.fuse_soc_manifest_svn[i], word);
+            iterations += 1;
         }
+        cfi_assert_eq(iterations, self.registers.fuse_soc_manifest_svn.len());
 
         // SoC Manifest Max SVN.
         let word = otp
             .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        self.registers.fuse_soc_manifest_max_svn.set(word);
+        romtime::cfi_set_register(&self.registers.fuse_soc_manifest_max_svn, word);
 
         // Manuf Debug Unlock Token.
+        let mut iterations = 0;
         for i in 0..self.registers.fuse_manuf_dbg_unlock_token.len() {
             let word = otp
                 .read_u32_at(fuses::OTP_CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN.byte_offset + i * 4)
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-            self.registers.fuse_manuf_dbg_unlock_token[i].set(word);
+            romtime::cfi_set_register(&self.registers.fuse_manuf_dbg_unlock_token[i], word);
+            iterations += 1;
         }
+        cfi_assert_eq(iterations, self.registers.fuse_manuf_dbg_unlock_token.len());
 
         // TODO: vendor-specific fuses when those are supported
         // Load Owner ECC/LMS/MLDSA revocation CSRs.
         // ECC Revocation.
+        cfi_assert_eq(pk_hash_idx, pk_hash_idx_expected);
         let word = otp
             .read_vendor_ecc_revocation(pk_hash_idx)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        self.registers.fuse_ecc_revocation.set(word);
+        romtime::cfi_set_register(&self.registers.fuse_ecc_revocation, word);
 
         // LMS Revocation.
+        cfi_assert_eq(pk_hash_idx, pk_hash_idx_expected);
         let word = otp
             .read_vendor_lms_revocation(pk_hash_idx)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        self.registers.fuse_lms_revocation.set(word);
+        romtime::cfi_set_register(&self.registers.fuse_lms_revocation, word);
 
         // MLDSA Revocation.
+        cfi_assert_eq(pk_hash_idx, pk_hash_idx_expected);
         let word = otp
             .read_vendor_mldsa_revocation(pk_hash_idx)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        self.registers.fuse_mldsa_revocation.set(word);
+        romtime::cfi_set_register(&self.registers.fuse_mldsa_revocation, word);
 
         // Owner PK Hash is written separately after Device Ownership Transfer flow.
         // See set_owner_pk_hash() method.
@@ -334,36 +370,39 @@ impl Soc {
             .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_STEPPING_ID.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         let soc_stepping_id = word & 0xFFFF;
-        self.registers
-            .fuse_soc_stepping_id
-            .write(soc::bits::FuseSocSteppingId::SocSteppingId.val(soc_stepping_id));
+        romtime::cfi_set_register(&self.registers.fuse_soc_stepping_id, soc_stepping_id);
 
         // Anti Rollback Disable. - read single word
         let word = otp
             .read_u32_at(fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        self.registers
-            .fuse_anti_rollback_disable
-            .write(soc::bits::FuseAntiRollbackDisable::Dis.val(word));
+        romtime::cfi_set_register(&self.registers.fuse_anti_rollback_disable, word);
 
         // IDevID Cert Attr.
+        let mut iterations = 0;
         for i in 0..self.registers.fuse_idevid_cert_attr.len() {
             let word = otp
                 .read_u32_at(fuses::OTP_CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR.byte_offset + i * 4)
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-            self.registers.fuse_idevid_cert_attr[i].set(word);
+            romtime::cfi_set_register(&self.registers.fuse_idevid_cert_attr[i], word);
+            iterations += 1;
         }
+        cfi_assert_eq(iterations, self.registers.fuse_idevid_cert_attr.len());
 
         // IDevID Manuf HSM ID.
+        let mut iterations = 0;
         for i in 0..self.registers.fuse_idevid_manuf_hsm_id.len() {
             let word = otp
                 .read_u32_at(fuses::OTP_CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER.byte_offset + i * 4)
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-            self.registers.fuse_idevid_manuf_hsm_id[i].set(word);
+            romtime::cfi_set_register(&self.registers.fuse_idevid_manuf_hsm_id[i], word);
+            iterations += 1;
         }
+        cfi_assert_eq(iterations, self.registers.fuse_idevid_manuf_hsm_id.len());
 
         // Prod Debug Unlock Public Key Hashes - read 96 words (384 bytes = 8 x 48 bytes) directly into MCI
         // Each of the 8 hashes is 48 bytes (12 words)
+        let mut iterations = 0;
         for hash_idx in 0..8 {
             let entry = PROD_DEBUG_UNLOCK_PK_ENTRIES
                 .get(hash_idx)
@@ -374,11 +413,16 @@ impl Soc {
                     .read_u32_at(hash_base_offset + word_idx * 4)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
                 let reg_idx = hash_idx * 12 + word_idx;
-                if !mci.write_prod_debug_unlock_pk_hash(reg_idx, word) {
+                if !cfi_launder(mci.write_prod_debug_unlock_pk_hash(reg_idx, word)) {
                     fatal_error(McuError::ROM_SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH);
                 }
+                iterations += 1;
             }
         }
+        cfi_assert_eq(
+            iterations,
+            mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg.len(),
+        );
 
         // Set the debug enablement masks for: DFT, HW Debug, Prod Debug.
         //
@@ -386,12 +430,12 @@ impl Soc {
         // unlock public key hash slots in the reference fuse map) to unlock
         // DFT, HW debug, and prod debug access. Integrators should change this
         // based on their integration.
-        mci.registers.mci_reg_soc_dft_en[0].set(0x000000FF);
-        mci.registers.mci_reg_soc_dft_en[1].set(0x00000000);
-        mci.registers.mci_reg_soc_hw_debug_en[0].set(0x000000FF);
-        mci.registers.mci_reg_soc_hw_debug_en[1].set(0x00000000);
-        mci.registers.mci_reg_soc_prod_debug_state[0].set(0x000000FF);
-        mci.registers.mci_reg_soc_prod_debug_state[1].set(0x00000000);
+        romtime::cfi_set_register(&mci.registers.mci_reg_soc_dft_en[0], 0x000000FF);
+        romtime::cfi_set_register(&mci.registers.mci_reg_soc_dft_en[1], 0x00000000);
+        romtime::cfi_set_register(&mci.registers.mci_reg_soc_hw_debug_en[0], 0x000000FF);
+        romtime::cfi_set_register(&mci.registers.mci_reg_soc_hw_debug_en[1], 0x00000000);
+        romtime::cfi_set_register(&mci.registers.mci_reg_soc_prod_debug_state[0], 0x000000FF);
+        romtime::cfi_set_register(&mci.registers.mci_reg_soc_prod_debug_state[1], 0x00000000);
 
         // We use non secret production fuses to have caliptra tests pass some initial fuse values
         if cfg!(feature = "core_test") {
@@ -452,14 +496,16 @@ impl Soc {
     ) -> Result<romtime::ocp_lock::HekState, romtime::ocp_lock::Error> {
         romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
         // Key release is always 64 bytes currently
-        self.registers.ss_key_release_size.set(config.mek_size);
+        romtime::cfi_set_register(&self.registers.ss_key_release_size, config.mek_size);
 
-        self.registers
-            .ss_key_release_base_addr_h
-            .set((config.key_release_addr >> 32) as u32);
-        self.registers
-            .ss_key_release_base_addr_l
-            .set(config.key_release_addr as u32);
+        romtime::cfi_set_register(
+            &self.registers.ss_key_release_base_addr_h,
+            (config.key_release_addr >> 32) as u32,
+        );
+        romtime::cfi_set_register(
+            &self.registers.ss_key_release_base_addr_l,
+            config.key_release_addr as u32,
+        );
 
         let perma_status = if otp
             .is_hek_perma_set()
@@ -504,7 +550,7 @@ impl Soc {
             romtime::ocp_lock::HekSeedState::Permanent
             | romtime::ocp_lock::HekSeedState::Sanitized => {
                 for word in self.registers.fuse_hek_seed.iter() {
-                    word.set(0xFFFF_FFFF);
+                    romtime::cfi_set_register(word, 0xFFFF_FFFF);
                 }
             }
             romtime::ocp_lock::HekSeedState::ProgrammedCorrupted
@@ -513,7 +559,7 @@ impl Soc {
             | romtime::ocp_lock::HekSeedState::SanitizedCorrupted
             | romtime::ocp_lock::HekSeedState::Unused => {
                 for word in self.registers.fuse_hek_seed.iter() {
-                    word.set(0);
+                    romtime::cfi_set_register(word, 0);
                 }
             }
             romtime::ocp_lock::HekSeedState::Programmed => {
@@ -526,7 +572,7 @@ impl Soc {
                         }),
                     )
                 {
-                    reg.set(word);
+                    romtime::cfi_set_register(reg, word);
                 }
             }
         };
@@ -613,12 +659,14 @@ impl Soc {
     /// Locks the owner public key hash register.
     ///
     /// Once locked, the owner PK hash cannot be modified until the next reset.
+    #[cfg_attr(all(not(test), feature = "cfi"), cfi_impl_fn)]
     pub fn lock_owner_pk_hash(&self) {
-        self.registers.cptra_owner_pk_hash_lock.set(1);
+        romtime::cfi_set_register(&self.registers.cptra_owner_pk_hash_lock, 1);
     }
 
+    #[cfg_attr(all(not(test), feature = "cfi"), cfi_impl_fn)]
     pub fn fuse_write_done(&self) {
-        self.registers.cptra_fuse_wr_done.set(1);
+        romtime::cfi_set_register(&self.registers.cptra_fuse_wr_done, 1);
     }
 
     /// Waits for Caliptra to indicate MCU firmware is ready through the `NotifCptraMcuResetReqSts`
@@ -769,6 +817,7 @@ pub fn verify_prod_debug_unlock_pk_hash(mci: &romtime::Mci, otp: &Otp) -> Result
 
 /// Verifies that the MCU mailbox AXI user configuration hasn't been tampered with
 /// after SS_CONFIG_DONE_STICKY is set.
+#[cfg_attr(all(not(test), feature = "cfi"), cfi_mod_fn)]
 pub fn verify_mcu_mbox_axi_users(
     mci: &romtime::Mci,
     expected: &McuMboxAxiUserConfig,
@@ -960,6 +1009,21 @@ pub fn rom_start(params: RomParameters) {
     romtime::println!("[mcu-rom] Hello from ROM");
     #[cfg(feature = "ocp-lock")]
     romtime::println!("[mcu-rom] OCP LOCK feature enabled");
+
+    let mut entropy_gen = || {
+        let cycle1 = romtime::mcycle().to_le_bytes();
+        let cycle2 = romtime::mcycle().to_le_bytes();
+        let mut digest = Sha256::new();
+        digest.update(cycle1);
+        digest.update(cycle2);
+        let digest: [u8; 32] = digest.finalize().into();
+        let words: [u32; 8] = transmute!(digest);
+        Ok((words[0], words[1], words[2], words[3]))
+    };
+
+    CfiCounter::reset(&mut entropy_gen);
+    CfiCounter::reset(&mut entropy_gen);
+    CfiCounter::reset(&mut entropy_gen);
 
     // Create ROM environment with all peripherals
     let mut env = RomEnv::new();

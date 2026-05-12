@@ -11,6 +11,8 @@ bitfield.workspace = true
 bitflags.workspace = true
 caliptra-api.workspace = true
 caliptra-api-types.workspace = true
+caliptra-cfi-lib.workspace = true
+caliptra-cfi-derive.workspace = true
 caliptra-drivers.workspace = true
 constant_time_eq.workspace = true
 flash-image.workspace = true
@@ -21,6 +23,7 @@ otp-digest.workspace = true
 mcu-otp-lifecycle.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
+sha2.workspace = true
 smlang.workspace = true
 tock-registers.workspace = true
 zeroize.workspace = true
@@ -31,7 +34,8 @@ riscv-csr.workspace = true
 rv32i.workspace = true
 
 [features]
-default = ["hw-2-1"]              # default is 2.1
+default = ["hw-2-1", "cfi"]              # default is 2.1
+cfi = []
 hw-2-1 = []
 core_test = ["romtime/core_test"]
 fw-manifest-dot = []

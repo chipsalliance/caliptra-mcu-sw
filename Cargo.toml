@@ -319,6 +319,10 @@ caliptra-test-harness-types = { git = "https://github.com/chipsalliance/caliptra
 caliptra-ocp-eat = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "a6e877530a7f123bd76f44a2c30c01805b62a357", default-features = false }
 caliptra-ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "a6e877530a7f123bd76f44a2c30c01805b62a357" }
 
+# The caliptra-cfi commit rev MUST match the one in caliptra-dpe
+caliptra-cfi-lib = { git = "https://github.com/chipsalliance/caliptra-cfi.git", package = "caliptra-cfi-lib", rev = "767d4ef59a106aea683b883c07bd65456fb3ba6b", default-features = false, features = ["cfi", "cfi-counter" ] }
+caliptra-cfi-derive = { git = "https://github.com/chipsalliance/caliptra-cfi.git", package = "caliptra-cfi-derive", rev = "767d4ef59a106aea683b883c07bd65456fb3ba6b"}
+
 # caliptra-dpe dependencies; keep git revs in sync with version pulled into caliptra-sw
 dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "337f7e4151f60add8e97445f71fc1393afc661a8", default-features = false, features = ["p384"] }
 

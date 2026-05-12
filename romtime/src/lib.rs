@@ -24,6 +24,8 @@ mod otp_provision;
 pub use otp_provision::*;
 mod mci_mbox_cmd;
 pub use mci_mbox_cmd::*;
+mod register;
+pub use register::*;
 
 // Helpers to handle writing to the emulator UART output.
 

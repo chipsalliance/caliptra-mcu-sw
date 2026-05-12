@@ -31,6 +31,7 @@ rv32i.workspace = true
 
 [features]
 default = []
+cfi = ["mcu-rom-common/cfi"]
 core_test = ["mcu-rom-common/core_test"]
 ocp-lock = ["mcu-rom-common/ocp-lock"]
 stable-owner-key = ["mcu-rom-common/stable-owner-key"]
