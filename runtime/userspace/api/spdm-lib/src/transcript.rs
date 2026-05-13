@@ -222,7 +222,7 @@ impl Transcript {
         }
     }
 
-    fn append_vca(&mut self, data: &[u8]) -> TranscriptResult<()> {
+    pub(crate) fn append_vca(&mut self, data: &[u8]) -> TranscriptResult<()> {
         self.vca_buf
             .try_extend_from_slice(data)
             .map_err(|_| TranscriptError::BufferOverflow)

@@ -79,7 +79,7 @@ fn generate_end_session_response(
     Ok(())
 }
 
-pub(crate) async fn handle_end_session<'a>(
+pub(crate) fn handle_end_session<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
