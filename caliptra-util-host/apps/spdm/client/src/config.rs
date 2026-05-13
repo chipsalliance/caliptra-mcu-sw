@@ -33,6 +33,8 @@ pub struct TestConfig {
     pub export_attested_csr: ExportAttestedCsrConfig,
     #[serde(default)]
     pub export_idevid_csr: ExportIdevidCsrConfig,
+    #[serde(default)]
+    pub debug_unlock: DebugUnlockConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -107,6 +109,27 @@ impl Default for ExportIdevidCsrConfig {
     fn default() -> Self {
         Self {
             algorithms: default_idevid_algorithms(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DebugUnlockConfig {
+    #[serde(default = "default_unlock_level")]
+    pub unlock_level: u8,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+fn default_unlock_level() -> u8 {
+    1
+}
+
+impl Default for DebugUnlockConfig {
+    fn default() -> Self {
+        Self {
+            unlock_level: default_unlock_level(),
+            enabled: true,
         }
     }
 }
