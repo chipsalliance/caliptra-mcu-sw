@@ -59,19 +59,18 @@ impl KeySchedule {
         &mut self,
         peer_exch_data: &[u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE],
     ) -> KeyScheduleResult<[u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE]> {
-        let mut self_exch_data = [0u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE];
-
         // Generate an ephemeral key pair
         let generate_resp = Ecdh::ecdh_generate()
             .await
             .map_err(KeyScheduleError::CaliptraApi)?;
 
-        self_exch_data.copy_from_slice(&generate_resp.exchange_data);
-
         // Finish the ECDH key exchange to generate the shared secret
         let shared_secret = Ecdh::ecdh_finish(CmKeyUsage::Hmac, &generate_resp, peer_exch_data)
             .await
             .map_err(KeyScheduleError::CaliptraApi)?;
+
+        let mut self_exch_data = [0u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE];
+        self_exch_data.copy_from_slice(&generate_resp.exchange_data);
 
         // Store the shared secret in the session context
         self.master_secret_ctx.dhe_secret = Some(shared_secret);
@@ -282,100 +281,105 @@ impl KeySchedule {
         &mut self,
         th1_transcript_hash: &[u8],
     ) -> KeyScheduleResult<()> {
-        let bin_str1 = self.bin_concat(
-            SpdmBinStr::BinStr1,
-            SHA384_HASH_SIZE as u16,
-            Some(th1_transcript_hash),
-        )?;
-        let bin_str2 = self.bin_concat(
-            SpdmBinStr::BinStr2,
-            SHA384_HASH_SIZE as u16,
-            Some(th1_transcript_hash),
-        )?;
-
         // Request-Handshake-Secret = HKDF-Expand(Handshake-Secret, bin_str1, Hash.Length)
-        let expand_req = Hmac::hkdf_expand(
-            self.master_secret_ctx
-                .handshake_secret
-                .as_ref()
-                .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
-            CmKeyUsage::Hmac,
-            SHA384_HASH_SIZE as u32,
-            bin_str1.as_slice(),
-        )
-        .await
-        .map_err(KeyScheduleError::CaliptraApi)?;
+        let expand_req = {
+            let bin_str1 = self.bin_concat(
+                SpdmBinStr::BinStr1,
+                SHA384_HASH_SIZE as u16,
+                Some(th1_transcript_hash),
+            )?;
+            Hmac::hkdf_expand(
+                self.master_secret_ctx
+                    .handshake_secret
+                    .as_ref()
+                    .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+                CmKeyUsage::Hmac,
+                SHA384_HASH_SIZE as u32,
+                bin_str1.as_slice(),
+            )
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?
+        };
+        self.handshake_secret_ctx.request_handshake_secret = Some(expand_req.okm);
 
         // Response-Handshake-Secret = HKDF-Expand(Handshake-Secret, bin_str2, Hash.Length)
-        let expand_rsp = Hmac::hkdf_expand(
-            self.master_secret_ctx
-                .handshake_secret
-                .as_ref()
-                .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
-            CmKeyUsage::Hmac,
-            SHA384_HASH_SIZE as u32,
-            bin_str2.as_slice(),
-        )
-        .await
-        .map_err(KeyScheduleError::CaliptraApi)?;
-
-        self.handshake_secret_ctx.request_handshake_secret = Some(expand_req.okm);
+        let expand_rsp = {
+            let bin_str2 = self.bin_concat(
+                SpdmBinStr::BinStr2,
+                SHA384_HASH_SIZE as u16,
+                Some(th1_transcript_hash),
+            )?;
+            Hmac::hkdf_expand(
+                self.master_secret_ctx
+                    .handshake_secret
+                    .as_ref()
+                    .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+                CmKeyUsage::Hmac,
+                SHA384_HASH_SIZE as u32,
+                bin_str2.as_slice(),
+            )
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?
+        };
         self.handshake_secret_ctx.response_handshake_secret = Some(expand_rsp.okm);
 
         Ok(())
     }
 
     async fn generate_req_rsp_finished_key(&mut self) -> KeyScheduleResult<()> {
-        let bin_str7 = self.bin_concat(SpdmBinStr::BinStr7, SHA384_HASH_SIZE as u16, None)?;
-
         // Request-Finished-Key = HKDF-Expand(Request-Handshake-Secret, bin_str7, Hash.Length)
-        let expand_req = Hmac::hkdf_expand(
-            self.handshake_secret_ctx
-                .request_handshake_secret
-                .as_ref()
-                .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
-            CmKeyUsage::Hmac,
-            SHA384_HASH_SIZE as u32,
-            bin_str7.as_slice(),
-        )
-        .await
-        .map_err(KeyScheduleError::CaliptraApi)?;
+        let expand_req = {
+            let bin_str7 = self.bin_concat(SpdmBinStr::BinStr7, SHA384_HASH_SIZE as u16, None)?;
+            Hmac::hkdf_expand(
+                self.handshake_secret_ctx
+                    .request_handshake_secret
+                    .as_ref()
+                    .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+                CmKeyUsage::Hmac,
+                SHA384_HASH_SIZE as u32,
+                bin_str7.as_slice(),
+            )
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?
+        };
+        self.handshake_secret_ctx.request_finished_key = Some(expand_req.okm);
 
         // Response-Finished-Key = HKDF-Expand(Response-Handshake-Secret, bin_str7, Hash.Length)
-        let expand_rsp = Hmac::hkdf_expand(
-            self.handshake_secret_ctx
-                .response_handshake_secret
-                .as_ref()
-                .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
-            CmKeyUsage::Hmac,
-            SHA384_HASH_SIZE as u32,
-            bin_str7.as_slice(),
-        )
-        .await
-        .map_err(KeyScheduleError::CaliptraApi)?;
-
-        self.handshake_secret_ctx.request_finished_key = Some(expand_req.okm);
+        let expand_rsp = {
+            let bin_str7 = self.bin_concat(SpdmBinStr::BinStr7, SHA384_HASH_SIZE as u16, None)?;
+            Hmac::hkdf_expand(
+                self.handshake_secret_ctx
+                    .response_handshake_secret
+                    .as_ref()
+                    .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+                CmKeyUsage::Hmac,
+                SHA384_HASH_SIZE as u32,
+                bin_str7.as_slice(),
+            )
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?
+        };
         self.handshake_secret_ctx.response_finished_key = Some(expand_rsp.okm);
         Ok(())
     }
 
     async fn generate_master_secret(&mut self) -> KeyScheduleResult<()> {
-        let bin_str0 = self.bin_concat(SpdmBinStr::BinStr0, SHA384_HASH_SIZE as u16, None)?;
-
         // Salt_1 = HKDF-Expand(Handshake-Secret, bin_str0, Hash.Length)
-        let expand_rsp = Hmac::hkdf_expand(
-            self.master_secret_ctx
-                .handshake_secret
-                .as_ref()
-                .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
-            CmKeyUsage::Hmac,
-            SHA384_HASH_SIZE as u32,
-            bin_str0.as_slice(),
-        )
-        .await
-        .map_err(KeyScheduleError::CaliptraApi)?;
-
-        let salt_1 = expand_rsp.okm;
+        let salt_1 = {
+            let bin_str0 = self.bin_concat(SpdmBinStr::BinStr0, SHA384_HASH_SIZE as u16, None)?;
+            let expand_rsp = Hmac::hkdf_expand(
+                self.master_secret_ctx
+                    .handshake_secret
+                    .as_ref()
+                    .ok_or(KeyScheduleError::HandshakeSecretNotFound)?,
+                CmKeyUsage::Hmac,
+                SHA384_HASH_SIZE as u32,
+                bin_str0.as_slice(),
+            )
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?;
+            expand_rsp.okm
+        };
 
         // Master-Secret = HKDF-Extract(Salt_1, 0_filled)
         let zero_filled = [0u8; SHA384_HASH_SIZE];
@@ -397,45 +401,46 @@ impl KeySchedule {
         &mut self,
         th2_transcript_hash: &[u8],
     ) -> KeyScheduleResult<()> {
-        let bin_str3 = self.bin_concat(
-            SpdmBinStr::BinStr3,
-            SHA384_HASH_SIZE as u16,
-            Some(th2_transcript_hash),
-        )?;
-
-        let bin_str4 = self.bin_concat(
-            SpdmBinStr::BinStr4,
-            SHA384_HASH_SIZE as u16,
-            Some(th2_transcript_hash),
-        )?;
-
         // Request-Direction-Data-Secret = HKDF-Expand(Master-Secret, bin_str3, Hash.Length)
-        let expand_req = Hmac::hkdf_expand(
-            self.master_secret_ctx
-                .master_secret
-                .as_ref()
-                .ok_or(KeyScheduleError::MasterSecretNotFound)?,
-            CmKeyUsage::Hmac,
-            SHA384_HASH_SIZE as u32,
-            bin_str3.as_slice(),
-        )
-        .await
-        .map_err(KeyScheduleError::CaliptraApi)?;
+        let expand_req = {
+            let bin_str3 = self.bin_concat(
+                SpdmBinStr::BinStr3,
+                SHA384_HASH_SIZE as u16,
+                Some(th2_transcript_hash),
+            )?;
+            Hmac::hkdf_expand(
+                self.master_secret_ctx
+                    .master_secret
+                    .as_ref()
+                    .ok_or(KeyScheduleError::MasterSecretNotFound)?,
+                CmKeyUsage::Hmac,
+                SHA384_HASH_SIZE as u32,
+                bin_str3.as_slice(),
+            )
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?
+        };
+        self.data_secret_ctx.request_data_secret = Some(expand_req.okm);
 
         // Response-Direction-Data-Secret = HKDF-Expand(Master-Secret, bin_str4, Hash.Length)
-        let expand_rsp = Hmac::hkdf_expand(
-            self.master_secret_ctx
-                .master_secret
-                .as_ref()
-                .ok_or(KeyScheduleError::MasterSecretNotFound)?,
-            CmKeyUsage::Hmac,
-            SHA384_HASH_SIZE as u32,
-            bin_str4.as_slice(),
-        )
-        .await
-        .map_err(KeyScheduleError::CaliptraApi)?;
-
-        self.data_secret_ctx.request_data_secret = Some(expand_req.okm);
+        let expand_rsp = {
+            let bin_str4 = self.bin_concat(
+                SpdmBinStr::BinStr4,
+                SHA384_HASH_SIZE as u16,
+                Some(th2_transcript_hash),
+            )?;
+            Hmac::hkdf_expand(
+                self.master_secret_ctx
+                    .master_secret
+                    .as_ref()
+                    .ok_or(KeyScheduleError::MasterSecretNotFound)?,
+                CmKeyUsage::Hmac,
+                SHA384_HASH_SIZE as u32,
+                bin_str4.as_slice(),
+            )
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?
+        };
         self.data_secret_ctx.response_data_secret = Some(expand_rsp.okm);
 
         Ok(())
@@ -445,24 +450,25 @@ impl KeySchedule {
         &mut self,
         th2_transcript_hash: &[u8],
     ) -> KeyScheduleResult<()> {
-        let bin_str8 = self.bin_concat(
-            SpdmBinStr::BinStr8,
-            SHA384_HASH_SIZE as u16,
-            Some(th2_transcript_hash),
-        )?;
-
         // Export-Master-Secret = HKDF-Expand(Master-Secret, bin_str8, Hash.Length)
-        let expand_rsp = Hmac::hkdf_expand(
-            self.master_secret_ctx
-                .master_secret
-                .as_ref()
-                .ok_or(KeyScheduleError::MasterSecretNotFound)?,
-            CmKeyUsage::Hmac,
-            SHA384_HASH_SIZE as u32,
-            bin_str8.as_slice(),
-        )
-        .await
-        .map_err(KeyScheduleError::CaliptraApi)?;
+        let expand_rsp = {
+            let bin_str8 = self.bin_concat(
+                SpdmBinStr::BinStr8,
+                SHA384_HASH_SIZE as u16,
+                Some(th2_transcript_hash),
+            )?;
+            Hmac::hkdf_expand(
+                self.master_secret_ctx
+                    .master_secret
+                    .as_ref()
+                    .ok_or(KeyScheduleError::MasterSecretNotFound)?,
+                CmKeyUsage::Hmac,
+                SHA384_HASH_SIZE as u32,
+                bin_str8.as_slice(),
+            )
+            .await
+            .map_err(KeyScheduleError::CaliptraApi)?
+        };
 
         self.export_master_secret = Some(expand_rsp.okm);
 
