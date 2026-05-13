@@ -36,8 +36,9 @@ pub mod hw_model_tests {
     };
 
     pub const USB_RESPONDER: FwId = FwId {
-        bin_name: "usb_responder",
-        ..BASE_FWID
+        crate_name: "mcu-test-fw-usb-responder",
+        bin_name: "mcu-test-fw-usb-responder",
+        features: &["emu"],
     };
 
     pub const USB_OCP_RECOVERY: FwId = FwId {
