@@ -251,7 +251,7 @@ impl<'a> MCTPDriver<'a> {
                             ) {
                                 Ok(_) => Ok(()),
                                 Err(mut buf) => {
-                                    println!("[MCTP-CAPSULE]: send_msg failed");
+                                    capsule_error!("MCTP", "send_msg failed");
                                     // Reset the kernel buffer to original size and restore it
                                     buf.reset();
                                     self.kernel_msg_buf.replace(buf);
@@ -327,9 +327,11 @@ impl<'a> MCTPDriver<'a> {
     ) -> bool {
         // Check if we already have a buffered message and warn about replacement
         if self.buffered_message.is_some() {
-            println!(
-                "[MCTP-CAPSULE]::buffer_message replacing existing buffered message with new one (msg_tag={}, {} bytes)",
-                msg_tag, msg_len
+            capsule_debug!(
+                "MCTP",
+                "buffer_message replacing existing buffered message with new one (msg_tag={}, {} bytes)",
+                msg_tag,
+                msg_len
             );
         }
 
@@ -338,7 +340,10 @@ impl<'a> MCTPDriver<'a> {
             if msg_len > rx_buf.len() {
                 // Message too large, restore buffer and drop message
                 self.kernel_rx_buf.replace(rx_buf);
-                println!("[MCTP-CAPSULE]::buffer_message message too large for buffer. Dropping message.");
+                capsule_debug!(
+                    "MCTP",
+                    "buffer_message message too large for buffer. Dropping message."
+                );
                 return false;
             }
 
@@ -360,13 +365,15 @@ impl<'a> MCTPDriver<'a> {
             self.buffered_message.set(buffered_msg);
             self.kernel_rx_buf.replace(rx_buf);
 
-            println!(
-                "[MCTP-CAPSULE]::buffer_message buffered {} bytes msg tag {}",
-                msg_len, msg_tag
+            capsule_debug!(
+                "MCTP",
+                "buffer_message buffered {} bytes msg tag {}",
+                msg_len,
+                msg_tag
             );
             true
         } else {
-            println!("[MCTP-CAPSULE]::buffer_message no rx buffer available");
+            capsule_debug!("MCTP", "buffer_message no rx buffer available");
             false
         }
     }
@@ -392,12 +399,14 @@ impl<'a> MCTPDriver<'a> {
                     let rw_buffer: usize;
                     let rx_request: bool;
 
-                    let request_match = app.pending_rx_request.as_ref().is_some_and(|req_ctx| {
-                        buffered_msg.matches_pending_operation(req_ctx)
-                    });
-                    let response_match = app.pending_rx_response.as_ref().is_some_and(|rsp_ctx| {
-                        buffered_msg.matches_pending_operation(rsp_ctx)
-                    });
+                    let request_match = app
+                        .pending_rx_request
+                        .as_ref()
+                        .is_some_and(|req_ctx| buffered_msg.matches_pending_operation(req_ctx));
+                    let response_match = app
+                        .pending_rx_response
+                        .as_ref()
+                        .is_some_and(|rsp_ctx| buffered_msg.matches_pending_operation(rsp_ctx));
 
                     if request_match {
                         rw_buffer = rw_allow::READ_REQUEST;
@@ -417,7 +426,8 @@ impl<'a> MCTPDriver<'a> {
                                 if rmsg_payload.len() < buffered_msg.msg_len {
                                     Err(ErrorCode::SIZE)
                                 } else {
-                                    rmsg_payload[..buffered_msg.msg_len].copy_from_slice(&rx_buf[..buffered_msg.msg_len]);
+                                    rmsg_payload[..buffered_msg.msg_len]
+                                        .copy_from_slice(&rx_buf[..buffered_msg.msg_len]);
                                     Ok(())
                                 }
                             })
@@ -434,14 +444,23 @@ impl<'a> MCTPDriver<'a> {
                             upcall::RECEIVED_RESPONSE
                         };
 
-                        let msg_info =
-                            ((buffered_msg.op_context.peer_eid as usize) << 16) | ((buffered_msg.msg_type as usize) << 8) | (buffered_msg.op_context.msg_tag as usize);
+                        let msg_info = ((buffered_msg.op_context.peer_eid as usize) << 16)
+                            | ((buffered_msg.msg_type as usize) << 8)
+                            | (buffered_msg.op_context.msg_tag as usize);
 
                         if let Err(e) = kernel_data.schedule_upcall(
-                                subscribe_num,
-                            (buffered_msg.msg_len, buffered_msg.recv_time as usize, msg_info),
+                            subscribe_num,
+                            (
+                                buffered_msg.msg_len,
+                                buffered_msg.recv_time as usize,
+                                msg_info,
+                            ),
                         ) {
-                            println!("[MCTP-CAPSULE]::deliver_buffered_message upcall schedule failed: {:?}", e);
+                            capsule_error!(
+                                "MCTP",
+                                "deliver_buffered_message upcall schedule failed: 0x{:08x}",
+                                e as u32
+                            );
                         }
                     }
                 });
@@ -492,7 +511,7 @@ impl SyscallDriver for MCTPDriver<'_> {
                 let (peer_eid, msg_tag) = match self.parse_args(command_num, arg1, arg2) {
                     Ok((peer_eid, msg_tag)) => (peer_eid, msg_tag),
                     Err(e) => {
-                        println!("[MCTP-CAPSULE]: parse_args failed");
+                        capsule_error!("MCTP", "parse_args failed");
                         return CommandReturn::failure(e);
                     }
                 };
@@ -539,7 +558,7 @@ impl SyscallDriver for MCTPDriver<'_> {
                 let (peer_eid, msg_tag) = match self.parse_args(command_num, arg1, arg2) {
                     Ok((peer_eid, msg_tag)) => (peer_eid, msg_tag),
                     Err(e) => {
-                        println!("[MCTP-CAPSULE]: parse_args failed");
+                        capsule_error!("MCTP", "parse_args failed");
                         return CommandReturn::failure(e);
                     }
                 };
@@ -591,7 +610,7 @@ impl MCTPTxClient for MCTPDriver<'_> {
         let process_id = match self.current_app.get() {
             Some(process_id) => process_id,
             None => {
-                println!("[MCTP-CAPSULE]::send_done no app waiting for send_done");
+                capsule_debug!("MCTP", "send_done no app waiting for send_done");
                 return;
             }
         };
@@ -599,7 +618,7 @@ impl MCTPTxClient for MCTPDriver<'_> {
         _ = self.apps.enter(process_id, |app, up_calls| {
             // Check if the send operation matches the pending tx operation
             if !self.tx_pending(app, msg_tag, dest_eid) {
-                println!("[MCTP-CAPSULE]::send_done no pending tx operation");
+                capsule_debug!("MCTP", "send_done no pending tx operation");
                 return;
             }
 
@@ -689,7 +708,7 @@ impl MCTPRxClient for MCTPDriver<'_> {
                 if let Err(e) = kernel_data
                     .schedule_upcall(subscribe_num, (msg_len, recv_time as usize, msg_info))
                 {
-                    println!("[MCTP-CAPSULE]::receive upcall schedule failed: {:?}", e);
+                    capsule_error!("MCTP", "receive upcall schedule failed: 0x{:x}", e as u32);
                 } else {
                     rx_upcall_scheduled = true;
                 }
@@ -700,7 +719,10 @@ impl MCTPRxClient for MCTPDriver<'_> {
         if !rx_upcall_scheduled {
             if self.buffer_message(src_eid, msg_type, msg_tag, msg_payload, msg_len, recv_time) {
             } else {
-                println!("[MCTP-CAPSULE]::receive no pending rx operation and buffering failed - dropping message");
+                capsule_error!(
+                    "MCTP",
+                    "receive no pending rx operation and buffering failed - dropping message"
+                );
             }
         }
     }

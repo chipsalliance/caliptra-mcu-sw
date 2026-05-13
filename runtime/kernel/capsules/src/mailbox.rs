@@ -4,6 +4,7 @@
 //! communicate with Caliptra.
 
 use caliptra_api::CaliptraApiError;
+use caliptra_mcu_romtime::println;
 use caliptra_mcu_romtime::CaliptraSoC;
 use core::cell::Cell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
@@ -13,7 +14,57 @@ use kernel::processbuffer::{
 };
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
-use kernel::{debug, ErrorCode, ProcessId};
+use kernel::{ErrorCode, ProcessId};
+
+fn log_caliptra_error(err: &CaliptraApiError) {
+    match err {
+        CaliptraApiError::MailboxCmdFailed(code) => {
+            capsule_error!("MBOX", "Mailbox cmd failed: 0x{:08x}", code)
+        }
+        CaliptraApiError::UnknownCommandStatus(code) => {
+            capsule_error!("MBOX", "Unknown command status: 0x{:08x}", code)
+        }
+        CaliptraApiError::MailboxRespInvalidChecksum { expected, actual } => capsule_error!(
+            "MBOX",
+            "Invalid checksum: exp=0x{:08x} act=0x{:08x}",
+            expected,
+            actual
+        ),
+        CaliptraApiError::MailboxRespInvalidFipsStatus(status) => {
+            capsule_error!("MBOX", "Invalid FIPS status: 0x{:08x}", status)
+        }
+        CaliptraApiError::MailboxUnexpectedResponseLen {
+            expected_min,
+            expected_max,
+            actual,
+        } => capsule_error!(
+            "MBOX",
+            "Unexpected resp len: min={} max={} actual={}",
+            expected_min,
+            expected_max,
+            actual
+        ),
+        CaliptraApiError::UnexpectedMailboxFsmStatus { expected, actual } => capsule_error!(
+            "MBOX",
+            "Unexpected FSM status: exp=0x{:08x} act=0x{:08x}",
+            expected,
+            actual
+        ),
+        CaliptraApiError::BufferTooLargeForMailbox => {
+            capsule_error!("MBOX", "Buffer too large for mailbox")
+        }
+        CaliptraApiError::UnableToLockMailbox => capsule_error!("MBOX", "Unable to lock mailbox"),
+        CaliptraApiError::MailboxTimeout => capsule_error!("MBOX", "Mailbox timeout"),
+        CaliptraApiError::MailboxRespTypeTooSmall => {
+            capsule_error!("MBOX", "Response type too small")
+        }
+        CaliptraApiError::MailboxReqTypeTooSmall => {
+            capsule_error!("MBOX", "Request type too small")
+        }
+        CaliptraApiError::MailboxNoResponseData => capsule_error!("MBOX", "No response data"),
+        _ => capsule_error!("MBOX", "Mailbox error"),
+    }
+}
 
 /// The driver number for Caliptra mailbox commands.
 pub const DRIVER_NUM: usize = 0x8000_0009;
@@ -95,7 +146,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             kernel_data
                 .get_readonly_processbuffer(ro_allow::REQUEST)
                 .map_err(|err| {
-                    debug!("Error getting process buffer: {:?}", err);
+                    capsule_error!("MBOX", "Error getting process buffer: 0x{:x}", err as u32);
                     ErrorCode::FAIL
                 })
                 .and_then(|ro_buffer| {
@@ -108,7 +159,11 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                                 .ok_or(ErrorCode::RESERVE)?
                         })
                         .map_err(|err| {
-                            debug!("Error getting application buffer: {:?}", err);
+                            capsule_error!(
+                                "MBOX",
+                                "Error getting application buffer: 0x{:08x}",
+                                err as u32
+                            );
                             ErrorCode::FAIL
                         })?
                 })
@@ -139,7 +194,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                 Ok(())
             }
             Err(err) => {
-                debug!("Error starting mailbox command: {:?}", err);
+                log_caliptra_error(&err);
                 Err(ErrorCode::FAIL)
             }
         }
@@ -175,7 +230,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             kernel_data
                 .get_readonly_processbuffer(ro_allow::REQUEST)
                 .map_err(|err| {
-                    debug!("Error getting process buffer: {:?}", err);
+                    capsule_error!("MBOX", "Error getting process buffer: 0x{:x}", err as u32);
                     ErrorCode::FAIL
                 })
                 .and_then(|ro_buffer| {
@@ -186,14 +241,18 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                                 .ok_or(ErrorCode::RESERVE)?
                         })
                         .map_err(|err| {
-                            debug!("Error getting application buffer: {:?}", err);
+                            capsule_error!(
+                                "MBOX",
+                                "Error getting application buffer: 0x{:08x}",
+                                err as u32
+                            );
                             ErrorCode::FAIL
                         })?
                 })?;
             kernel_data
                 .schedule_upcall(upcall::COMMAND_DONE, (0, 0, 0))
                 .map_err(|err| {
-                    debug!("Error scheduling upcall: {:?}", err);
+                    capsule_error!("MBOX", "Error scheduling upcall: 0x{:x}", err as u32);
                     ErrorCode::FAIL
                 })
         })?
@@ -212,7 +271,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                 driver.write_data(data).map_err(|_| ErrorCode::FAIL)?;
             } else {
                 // If the last chunk is not 4 bytes, we can't write it to the mailbox
-                debug!("Error: Incomplete data chunk in mailbox request");
+                capsule_error!("MBOX", "Error: Incomplete data chunk in mailbox request");
                 return Err(ErrorCode::FAIL);
             }
         }
@@ -230,7 +289,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                     self.schedule_alarm();
                     Ok(())
                 }
-                Err(_) => Err(ErrorCode::FAIL),
+                Err(_err) => Err(ErrorCode::FAIL),
             })
             .unwrap_or(Err(ErrorCode::FAIL))
     }
@@ -256,7 +315,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                 }
             }
             Err(err) => {
-                debug!("Error copying from mailbox: {:?}", err);
+                log_caliptra_error(&err);
                 Err(err)
             }
         }
@@ -274,7 +333,11 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                         self.copy_from_mailbox(driver, app_buffer)
                     }) {
                         Err(err) => {
-                            debug!("Error accessing writable buffer {:?}", err);
+                            capsule_error!(
+                                "MBOX",
+                                "Error accessing writable buffer: 0x{:08x}",
+                                err as u32
+                            );
                         }
                         Ok(Err(err)) => {
                             // Error from Caliptra
@@ -286,21 +349,29 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                             if let Err(err) = kernel_data
                                 .schedule_upcall(upcall::COMMAND_DONE, (0, err as usize, 0))
                             {
-                                debug!("Error scheduling upcall: {:?}", err);
+                                capsule_error!(
+                                    "MBOX",
+                                    "Error scheduling upcall: 0x{:08x}",
+                                    err as u32
+                                );
                             }
                         }
                         Ok(Ok(len)) => {
                             if let Err(err) =
                                 kernel_data.schedule_upcall(upcall::COMMAND_DONE, (len, 0, 0))
                             {
-                                debug!("Error scheduling upcall: {:?}", err);
+                                capsule_error!(
+                                    "MBOX",
+                                    "Error scheduling upcall: 0x{:08x}",
+                                    err as u32
+                                );
                             }
                         }
                     }
                 }
             });
             if let Err(err) = enter_result {
-                debug!("Error entering app: {:?}", err);
+                capsule_error!("MBOX", "Error entering app: 0x{:x}", err as u32);
             }
         }
     }

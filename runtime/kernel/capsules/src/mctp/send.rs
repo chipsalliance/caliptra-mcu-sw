@@ -137,7 +137,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MCTPTxState<'a, A, M> {
         src_eid: u8,
     ) -> Result<usize, ErrorCode> {
         if self.is_eom() {
-            println!("MCTPTxState - Error!! fill_next_packet: EOM reached");
+            capsule_error!("MCTP-TX", "fill_next_packet: EOM reached");
             Err(ErrorCode::FAIL)?;
         }
 
@@ -195,7 +195,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MCTPTxState<'a, A, M> {
                     msg_payload,
                 );
             } else {
-                println!("MCTPTxState - Error!! send_done: msg_payload is None");
+                capsule_error!("MCTP-TX", "send_done: msg_payload is None");
             }
         });
     }

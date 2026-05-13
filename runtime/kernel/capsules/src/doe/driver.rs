@@ -105,9 +105,10 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
         let _result = kernel_data
             .get_readonly_processbuffer(ro_allow::MESSAGE_WRITE)
             .map_err(|e| {
-                println!(
-                    "DOE_CAPSULE: Error getting ReadOnlyProcessBuffer buffer: {:?}",
-                    e
+                capsule_error!(
+                    "DOE",
+                    "Error getting ReadOnlyProcessBuffer buffer: 0x{:08x}",
+                    e as u32
                 );
                 ErrorCode::INVAL
             })
@@ -115,7 +116,11 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
                 tx_buf
                     .enter(|app_buf| self.start_transmit(app_buf))
                     .map_err(|e| {
-                        println!("DOE_CAPSULE: Error getting application tx buffer: {:?}", e);
+                        capsule_error!(
+                            "DOE",
+                            "Error getting application tx buffer: 0x{:08x}",
+                            e as u32
+                        );
                         ErrorCode::FAIL
                     })
             })?;
@@ -127,7 +132,7 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
     fn handle_doe_discovery(&self, doe_req: DoeDiscoveryRequest) {
         let data_object_protocol = DataObjectType::from(doe_req.index());
         if data_object_protocol == DataObjectType::Unsupported {
-            println!("DOE_CAPSULE: Unsupported DOE Discovery Request");
+            capsule_debug!("DOE", "Unsupported DOE Discovery Request");
             return;
         }
 
@@ -144,14 +149,14 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
             .encode(&mut doe_resp[..DOE_DATA_OBJECT_HEADER_LEN_DW])
             .is_err()
         {
-            println!("DOE_CAPSULE: Error encoding DOE header");
+            capsule_error!("DOE", "Error encoding DOE header");
             return;
         }
         if discovery_response
             .encode(&mut doe_resp[DOE_DATA_OBJECT_HEADER_LEN_DW..])
             .is_err()
         {
-            println!("DOE_CAPSULE: Error encoding DOE discovery response");
+            capsule_error!("DOE", "Error encoding DOE discovery response");
             return;
         }
 
@@ -160,9 +165,10 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
             .doe_transport
             .transmit(doe_resp.iter().copied(), doe_resp.len())
         {
-            println!(
-                "DOE_CAPSULE: Error transmitting DOE Discovery Response: {:?}",
-                err
+            capsule_error!(
+                "DOE",
+                "Error transmitting DOE Discovery Response: 0x{:08x}",
+                err as u32
             );
         }
     }
@@ -173,7 +179,7 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
             if app.waiting_rx.get() {
                 app.waiting_rx.set(false);
             } else {
-                println!("DOE_CAPSULE: Application not waiting for Data Object");
+                capsule_debug!("DOE", "Application not waiting for Data Object");
                 return;
             }
 
@@ -193,14 +199,15 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
                             Ok(copy_len_dw * 4)
                         })
                         .map_err(|e| {
-                            println!("DOE_CAPSULE: Error entering ReadWriteProcessBuffer buffer");
+                            capsule_error!("DOE", "Error entering ReadWriteProcessBuffer buffer");
                             e.into()
                         })
                 }
                 Err(err) => {
-                    println!(
-                        "DOE_CAPSULE: Error getting ReadWriteProcessBuffer buffer: {:?}",
-                        err
+                    capsule_error!(
+                        "DOE",
+                        "Error getting ReadWriteProcessBuffer buffer: 0x{:08x}",
+                        err as u32
                     );
                     Err(ErrorCode::INVAL)
                 }
@@ -213,10 +220,18 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
                         .ok();
                 }
                 Ok(Err(err)) => {
-                    println!("DOE_CAPSULE: Error copying data to app buffer: {:?}", err);
+                    capsule_error!(
+                        "DOE",
+                        "Error copying data to app buffer: 0x{:08x}",
+                        err as u32
+                    );
                 }
                 Err(err) => {
-                    println!("DOE_CAPSULE: Error while accessing app buffer: {:?}", err);
+                    capsule_error!(
+                        "DOE",
+                        "Error while accessing app buffer: 0x{:08x}",
+                        err as u32
+                    );
                 }
             }
         });
@@ -269,13 +284,21 @@ impl<'a, T: DoeTransport<'a>> SyscallDriver for DoeDriver<'a, T> {
                         self.send_app_data(process_id, app, kernel_data)
                     })
                     .map_err(|err| {
-                        println!("DOE_CAPSULE: Error sending DOE Data object: {:?}", err);
+                        capsule_error!(
+                            "DOE",
+                            "Error sending DOE Data object: 0x{:08x}",
+                            err as u32
+                        );
                         err.into()
                     });
                 match result {
                     Ok(_) => CommandReturn::success(),
                     Err(err) => {
-                        println!("DOE_CAPSULE: Error sending DOE Data object: {:?}", err);
+                        capsule_error!(
+                            "DOE",
+                            "Error sending DOE Data object: 0x{:08x}",
+                            err as u32
+                        );
                         CommandReturn::failure(err)
                     }
                 }
@@ -297,7 +320,7 @@ impl<'a, T: DoeTransport<'a>> SyscallDriver for DoeDriver<'a, T> {
 impl<'a, T: DoeTransport<'a>> DoeTransportRxClient for DoeDriver<'a, T> {
     fn receive(&self, rx_buf: &'static mut [u32], len: usize) {
         if len < 3 || len > rx_buf.len() {
-            println!("DOE_CAPSULE: Invalid length received: {}", len);
+            capsule_debug!("DOE", "Invalid length received: {}", len);
             self.doe_transport.set_rx_buffer(rx_buf);
             return;
         }
@@ -306,20 +329,21 @@ impl<'a, T: DoeTransport<'a>> DoeTransportRxClient for DoeDriver<'a, T> {
         let doe_hdr = match DoeDataObjectHeader::decode(rx_buf) {
             Ok(header) => header,
             Err(_) => {
-                println!("DOE_CAPSULE: Failed to decode DOE header");
+                capsule_error!("DOE", "Failed to decode DOE header");
                 self.doe_transport.set_rx_buffer(rx_buf);
                 return;
             }
         };
 
         if !doe_hdr.validate(len as u32) {
-            println!("DOE_CAPSULE: Invalid DOE Data Object");
+            capsule_debug!("DOE", "Invalid DOE Data Object");
             self.doe_transport.set_rx_buffer(rx_buf);
             return;
         }
 
-        println!(
-            "DOE_CAPSULE: Received DOE Data Object: vendor_id: {}, type: {:?}, length: {}",
+        capsule_debug!(
+            "DOE",
+            "Received DOE Data Object: vendor_id: {}, type: {:?}, length: {}",
             doe_hdr.vendor_id,
             doe_hdr.data_object_type(),
             doe_hdr.length
@@ -337,7 +361,7 @@ impl<'a, T: DoeTransport<'a>> DoeTransportRxClient for DoeDriver<'a, T> {
                 // Note: rx_buf is consumed by handle_spdm_upcall, so we don't call set_rx_buffer here
             }
             DataObjectType::Unsupported => {
-                println!("DOE_CAPSULE: Unsupported DOE Data Object");
+                capsule_debug!("DOE", "Unsupported DOE Data Object");
                 self.doe_transport.set_rx_buffer(rx_buf);
             }
         }

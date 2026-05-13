@@ -2,7 +2,6 @@
 
 use crate::mctp::base_protocol::{MCTP_BASELINE_TRANSMISSION_UNIT, MCTP_HDR_SIZE};
 use caliptra_mcu_i3c_driver::hil::{I3CTarget, RxClient, TxClient};
-use caliptra_mcu_romtime::println;
 use core::cell::Cell;
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::cells::TakeCell;
@@ -131,8 +130,9 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
 
         // Make sure there's enough space for the PEC byte
         if len == 0 || len > self.max_write_len.get() - 1 {
-            println!(
-                "MCTPI3CBinding: Invalid length. Expected: {}",
+            capsule_debug!(
+                "MCTP",
+                "Invalid length. Expected: {}",
                 self.max_write_len.get() - 1
             );
             Err((ErrorCode::SIZE, self.tx_buffer.take().unwrap()))?;
@@ -153,7 +153,7 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
                         }
                     }
                 } else {
-                    println!("MCTPI3CBinding: Invalid length. Expected: {}", len + 1);
+                    capsule_debug!("MCTP-I3C", "Invalid length. Expected: {}", len + 1);
                     Err((ErrorCode::SIZE, tx_buffer))?;
                 }
             }
@@ -207,8 +207,9 @@ impl RxClient for MCTPI3CBinding<'_> {
                 client.receive(rx_buffer, len - 1);
             });
         } else {
-            println!(
-                "MCTPI3CBinding: Invalid PEC {:02x} (expected {:02x}) for address {:02x}. Dropping packet. len={}",
+            capsule_debug!(
+                "MCTP",
+                "Invalid PEC {:02x} (expected {:02x}) for address {:02x}. Dropping packet. len={}",
                 rx_buffer[len - 1],
                 pec,
                 addr >> 1,

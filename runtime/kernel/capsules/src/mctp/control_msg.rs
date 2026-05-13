@@ -148,67 +148,32 @@ impl MCTPCtrlCmd {
 
         match version_type {
             VersionSupportType::BaseSpec | VersionSupportType::ControlProtocolMessage => {
-                // Support MCTP Base and Control specs with 4 versions: 1.0, 1.1, 1.2, 1.3.3
-                let header = GetVersionSupportHeaderResp {
-                    completion_code: 0x00, // Success
-                    entry_counter: 4,      // 4 version entries
-                };
+                // MCTP Base and Control specs: versions 1.0, 1.1, 1.2, 1.3.3
+                const VERSIONS: [[u8; 4]; 4] = [
+                    [0xF1, 0xF0, 0xFF, 0x00], // 1.0
+                    [0xF1, 0xF1, 0xFF, 0x00], // 1.1
+                    [0xF1, 0xF2, 0xFF, 0x00], // 1.2
+                    [0xF1, 0xF3, 0xF3, 0x00], // 1.3.3
+                ];
 
+                let header = GetVersionSupportHeaderResp {
+                    completion_code: 0x00,
+                    entry_counter: VERSIONS.len() as u8,
+                };
                 header
                     .write_to(&mut rsp_buf[..2])
                     .map_err(|_| ErrorCode::FAIL)?;
 
-                // Version 1.0: major=0xF1, minor=0xF0, update=0xFF, alpha=0x00
-                let version_1_0 = GetVersionSupportEntryResp {
-                    major: 0xF1,
-                    minor: 0xF0,
-                    update: 0xFF,
-                    alpha: 0x00,
-                };
-                version_1_0
-                    .write_to(&mut rsp_buf[2..6])
-                    .map_err(|_| ErrorCode::FAIL)?;
-
-                // Version 1.1: major=0xF1, minor=0xF1, update=0xFF, alpha=0x00
-                let version_1_1 = GetVersionSupportEntryResp {
-                    major: 0xF1,
-                    minor: 0xF1,
-                    update: 0xFF,
-                    alpha: 0x00,
-                };
-                version_1_1
-                    .write_to(&mut rsp_buf[6..10])
-                    .map_err(|_| ErrorCode::FAIL)?;
-
-                // Version 1.2: major=0xF1, minor=0xF2, update=0xFF, alpha=0x00
-                let version_1_2 = GetVersionSupportEntryResp {
-                    major: 0xF1,
-                    minor: 0xF2,
-                    update: 0xFF,
-                    alpha: 0x00,
-                };
-                version_1_2
-                    .write_to(&mut rsp_buf[10..14])
-                    .map_err(|_| ErrorCode::FAIL)?;
-
-                // Version 1.3.3: major=0xF1, minor=0xF3, update=0xF3, alpha=0x00
-                let version_1_3_3 = GetVersionSupportEntryResp {
-                    major: 0xF1,
-                    minor: 0xF3,
-                    update: 0xF3,
-                    alpha: 0x00,
-                };
-                version_1_3_3
-                    .write_to(&mut rsp_buf[14..18])
-                    .map_err(|_| ErrorCode::FAIL)?;
+                for (i, ver) in VERSIONS.iter().enumerate() {
+                    let offset = 2 + i * 4;
+                    rsp_buf[offset..offset + 4].copy_from_slice(ver);
+                }
             }
             _ => {
-                // Unsupported version types
                 let header = GetVersionSupportHeaderResp {
                     completion_code: 0x80, // Unsupported
                     entry_counter: 0,
                 };
-
                 header
                     .write_to(&mut rsp_buf[..2])
                     .map_err(|_| ErrorCode::FAIL)?;

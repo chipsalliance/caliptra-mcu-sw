@@ -21,3 +21,7 @@ caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-romtime.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
+
+[features]
+default = []
+debug-capsule-prints = []

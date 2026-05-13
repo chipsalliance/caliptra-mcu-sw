@@ -3,6 +3,23 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![forbid(unsafe_code)]
 
+/// Error log — always compiled in. Use for failures that affect correctness.
+#[macro_export]
+macro_rules! capsule_error {
+    ($prefix:literal, $fmt:literal $(, $arg:expr)* $(,)?) => {{
+        println!(concat!("[", $prefix, "] ERR: ", $fmt) $(, $arg)*)
+    }};
+}
+
+/// Debug log — compiled out unless `debug-capsule-prints` feature is enabled.
+#[macro_export]
+macro_rules! capsule_debug {
+    ($prefix:literal, $fmt:literal $(, $arg:expr)* $(,)?) => {{
+        #[cfg(feature = "debug-capsule-prints")]
+        println!(concat!("[", $prefix, "] DBG: ", $fmt) $(, $arg)*)
+    }};
+}
+
 pub mod test;
 
 pub mod caliptra;
