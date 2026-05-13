@@ -164,7 +164,8 @@ impl<U: UsbDeviceDriver, V: VendorHandler> ImageProvider for OcpImageProvider<'_
                     // perspective) while the device must always be able to
                     // consume the data.
                     let fifo = self.state_machine.fifo_cms_region().ok_or(())?;
-                    match fifo.device_drain(&mut data[filled..]) {
+                    let filled_clamped = filled.min(data.len());
+                    match fifo.device_drain(&mut data[filled_clamped..]) {
                         Ok(n) if n > 0 => {
                             filled += n;
                             self.bytes_read += n;

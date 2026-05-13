@@ -681,6 +681,7 @@ enum EmulatorError {
     InitFlashPartitionA,
     InitFlashPartitionB,
     InvalidPartitionId,
+    InitOcpRecovery,
 }
 
 impl From<EmulatorError> for mcu_error::McuError {
