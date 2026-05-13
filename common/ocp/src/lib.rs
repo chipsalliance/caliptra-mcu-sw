@@ -11,4 +11,5 @@ pub mod error;
 pub mod interface;
 pub mod protocol;
 pub mod usb;
+pub mod utils;
 pub mod vendor;

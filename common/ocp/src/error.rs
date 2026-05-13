@@ -63,6 +63,8 @@ pub enum OcpError {
     IndirectCms0NotCodeSpace = 26,
     /// Two or more CMS regions share the same index.
     DuplicateCmsIndex = 27,
+    /// Source and destination slices have different lengths.
+    SliceLengthMismatch = 28,
 }
 
 impl From<UsbDriverError> for OcpError {
