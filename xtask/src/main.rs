@@ -215,6 +215,8 @@ enum Commands {
     HeaderFix,
     /// Run tests
     Test,
+    /// Check that the ROM builds do not contain any panic symbols
+    RomCheckPanic,
     /// Autogenerate register files and emulator bus from RDL
     RegistersAutogen {
         /// Check output only
@@ -532,6 +534,7 @@ fn main() {
         Commands::HeaderFix => header::fix(),
         Commands::HeaderCheck => header::check(),
         Commands::Test => test::test(),
+        Commands::RomCheckPanic => test::test_panic_missing(),
         Commands::RegistersAutogen {
             check,
             files,
