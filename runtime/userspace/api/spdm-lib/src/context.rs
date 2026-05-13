@@ -261,14 +261,12 @@ impl<'a> SpdmContext<'a> {
         }
 
         match req_code {
-            ReqRespCode::GetVersion => {
-                version_rsp::handle_get_version(self, req_msg_header, req).await?
-            }
+            ReqRespCode::GetVersion => version_rsp::handle_get_version(self, req_msg_header, req)?,
             ReqRespCode::GetCapabilities => {
-                capabilities_rsp::handle_get_capabilities(self, req_msg_header, req).await?
+                capabilities_rsp::handle_get_capabilities(self, req_msg_header, req)?
             }
             ReqRespCode::NegotiateAlgorithms => {
-                algorithms_rsp::handle_negotiate_algorithms(self, req_msg_header, req).await?
+                algorithms_rsp::handle_negotiate_algorithms(self, req_msg_header, req)?
             }
             ReqRespCode::GetDigests => {
                 digests_rsp::handle_get_digests(self, req_msg_header, req).await?
@@ -290,7 +288,7 @@ impl<'a> SpdmContext<'a> {
             }
             ReqRespCode::Finish => finish_rsp::handle_finish(self, req_msg_header, req).await?,
             ReqRespCode::EndSession => {
-                end_session_ack_rsp::handle_end_session(self, req_msg_header, req).await?
+                end_session_ack_rsp::handle_end_session(self, req_msg_header, req)?
             }
             ReqRespCode::VendorDefinedRequest => {
                 vendor_defined_rsp::handle_vendor_defined_request(self, req_msg_header, req).await?
@@ -437,6 +435,20 @@ impl<'a> SpdmContext<'a> {
 
         self.append_slice_to_transcript(msg, transcript_context, session_id)
             .await
+    }
+
+    /// Synchronous VCA transcript append — no mailbox call needed.
+    pub(crate) fn append_message_to_vca_transcript(
+        &mut self,
+        msg_buf: &mut MessageBuf<'_>,
+    ) -> CommandResult<()> {
+        let data_offset = msg_buf.data_offset();
+        let msg = msg_buf
+            .message_slice(data_offset)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        self.shared_transcript
+            .append_vca(msg)
+            .map_err(|e| (false, CommandError::Transcript(e)))
     }
 
     pub(crate) async fn append_slice_to_transcript(

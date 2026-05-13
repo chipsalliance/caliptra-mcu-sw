@@ -15,7 +15,6 @@ use caliptra_ocp_eat::{
     ClassIdTypeChoice, ClassMap, ConciseEvidence, ConciseEvidenceMap, DigestEntry, EnvironmentMap,
     EvTriplesMap, EvidenceTripleRecord, MeasurementMap, MeasurementValue, TaggedBytes, VersionMap,
 };
-use core::fmt::Write;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -257,12 +256,30 @@ pub async fn generate_claims(claims_buf: &mut [u8], nonce: &[u8]) -> Measurement
 }
 
 fn version_to_str(ver: u32) -> ArrayString<MAX_SEMVER_LEN> {
-    let major = (ver >> 16) & 0xFF;
-    let minor = (ver >> 8) & 0xFF;
-    let patch = ver & 0xFF;
+    let major = ((ver >> 16) & 0xFF) as u8;
+    let minor = ((ver >> 8) & 0xFF) as u8;
+    let patch = (ver & 0xFF) as u8;
     let mut s = ArrayString::<MAX_SEMVER_LEN>::new();
-    let _ = write!(&mut s, "{}.{}.{}", major, minor, patch);
+    push_decimal(&mut s, major);
+    let _ = s.try_push('.');
+    push_decimal(&mut s, minor);
+    let _ = s.try_push('.');
+    push_decimal(&mut s, patch);
     s
+}
+
+fn push_decimal(s: &mut ArrayString<MAX_SEMVER_LEN>, value: u8) {
+    if value >= 100 {
+        push_digit(s, value / 100);
+        push_digit(s, (value / 10) % 10);
+    } else if value >= 10 {
+        push_digit(s, value / 10);
+    }
+    push_digit(s, value % 10);
+}
+
+fn push_digit(s: &mut ArrayString<MAX_SEMVER_LEN>, digit: u8) {
+    let _ = s.try_push((b'0' + digit) as char);
 }
 
 fn digest_words_to_bytes(words: &[u32; SHA384_HASH_WORDS]) -> [u8; SHA384_HASH_SIZE] {
@@ -363,4 +380,44 @@ async fn fill_sw_config_info(
         raw_value_masks[i] = None; // or Some(ArrayVec::from_slice(&[...]).unwrap());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_version_to_str_typical() {
+        let ver = (1 << 16) | (2 << 8) | 3;
+        assert_eq!(version_to_str(ver).as_str(), "1.2.3");
+    }
+
+    #[test]
+    fn test_version_to_str_zeros() {
+        assert_eq!(version_to_str(0).as_str(), "0.0.0");
+    }
+
+    #[test]
+    fn test_version_to_str_single_digits() {
+        let ver = (9 << 16) | (8 << 8) | 7;
+        assert_eq!(version_to_str(ver).as_str(), "9.8.7");
+    }
+
+    #[test]
+    fn test_version_to_str_double_digits() {
+        let ver = (10 << 16) | (20 << 8) | 99;
+        assert_eq!(version_to_str(ver).as_str(), "10.20.99");
+    }
+
+    #[test]
+    fn test_version_to_str_triple_digits() {
+        let ver = (255 << 16) | (100 << 8) | 200;
+        assert_eq!(version_to_str(ver).as_str(), "255.100.200");
+    }
+
+    #[test]
+    fn test_version_to_str_max() {
+        let ver = (255 << 16) | (255 << 8) | 255;
+        assert_eq!(version_to_str(ver).as_str(), "255.255.255");
+    }
 }

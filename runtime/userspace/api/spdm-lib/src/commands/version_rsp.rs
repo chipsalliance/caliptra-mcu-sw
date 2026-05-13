@@ -6,7 +6,6 @@ use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
 use crate::protocol::{ReqRespCode, SpdmMsgHdr, SpdmVersion};
 use crate::state::ConnectionState;
-use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -78,7 +77,7 @@ impl VersionNumberEntry<[u8; VERSION_ENTRY_SIZE]> {
 
 impl CommonCodec for VersionNumberEntry<[u8; VERSION_ENTRY_SIZE]> {}
 
-async fn generate_version_response<'a>(
+fn generate_version_response<'a>(
     ctx: &mut SpdmContext<'a>,
     rsp_buf: &mut MessageBuf<'a>,
     supported_versions: &[SpdmVersion],
@@ -103,9 +102,8 @@ async fn generate_version_response<'a>(
             .map_err(|_| (false, CommandError::BufferTooSmall))?;
     }
 
-    // Append response to VCA transcript
-    ctx.append_message_to_transcript(rsp_buf, TranscriptContext::Vca, None)
-        .await?;
+    // Append response to VCA transcript (sync — no hash needed)
+    ctx.append_message_to_vca_transcript(rsp_buf)?;
 
     // Push data offset up by total payload length
     rsp_buf
@@ -114,7 +112,7 @@ async fn generate_version_response<'a>(
     Ok(())
 }
 
-async fn process_get_version<'a>(
+fn process_get_version<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
@@ -131,22 +129,21 @@ async fn process_get_version<'a>(
     // Reset Transcript
     ctx.shared_transcript.reset();
 
-    // Append request to VCA transcript
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::Vca, None)
-        .await
+    // Append request to VCA transcript (sync — no hash needed)
+    ctx.append_message_to_vca_transcript(req_payload)
 }
 
-pub(crate) async fn handle_get_version<'a>(
+pub(crate) fn handle_get_version<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Process GET_VERSION request
-    process_get_version(ctx, spdm_hdr, req_payload).await?;
+    process_get_version(ctx, spdm_hdr, req_payload)?;
 
     // Generate VERSION response
     ctx.prepare_response_buffer(req_payload)?;
-    generate_version_response(ctx, req_payload, ctx.supported_versions).await?;
+    generate_version_response(ctx, req_payload, ctx.supported_versions)?;
 
     // Invalidate state and reset session info
     ctx.reset();
