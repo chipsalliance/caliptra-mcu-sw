@@ -36,8 +36,15 @@ const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
 /// Shared buffer size for large SPDM messages (request reassembly and response chunking).
 /// Only one direction is active at a time, so a single buffer is shared.
 /// Sized for ECC-P384 certificate chain + signature + overhead.
-/// TODO: Increase for ML-DSA support once memory optimization (static buffers) is implemented.
+/// Note: Messages larger than this (e.g., debug unlock tokens ~7.5KB) are handled
+/// via the VDM stream handler, which bypasses this buffer entirely.
 const LARGE_MSG_BUF_SIZE: usize = 4096;
+
+/// Maximum SPDM message size advertised in capabilities.
+/// Must be large enough for the largest supported large message (including
+/// streaming-eligible ones like debug unlock tokens with MLDSA signatures).
+/// Layout: VDM headers (15 bytes) + MailboxReqHeader (4 bytes) + ProductionAuthDebugUnlockToken (~7500 bytes)
+const MAX_SPDM_MSG_SIZE: usize = 8192;
 
 #[embassy_executor::task]
 pub(crate) async fn spdm_task(spawner: Spawner) {
@@ -91,7 +98,7 @@ async fn spdm_mctp_responder() {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
         flags: CapabilityFlags::default(),
         data_transfer_size: max_mctp_spdm_msg_size,
-        max_spdm_msg_size: LARGE_MSG_BUF_SIZE as u32,
+        max_spdm_msg_size: MAX_SPDM_MSG_SIZE as u32,
     };
 
     let local_algorithms = LocalDeviceAlgorithms::default();
@@ -114,6 +121,10 @@ async fn spdm_mctp_responder() {
         [&mut caliptra_vdm_handler as &mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler];
     let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> =
         Some(&mut handlers_array);
+
+    // VDM stream handler for streaming large VDM payloads directly to the
+    // Caliptra mailbox without buffering (e.g., debug unlock tokens ~7.5KB).
+    let vdm_stream_handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
 
     // Shared buffer for large SPDM messages (request reassembly + response chunking).
     // Only one direction is active at a time, so a single buffer is shared.
@@ -141,6 +152,9 @@ async fn spdm_mctp_responder() {
             return;
         }
     };
+
+    // Register the VDM stream handler for large payload streaming
+    ctx.set_vdm_stream_handler(&vdm_stream_handler);
 
     let mut msg_buffer = MessageBuf::new(&mut raw_buffer);
     loop {

@@ -23,8 +23,16 @@ pub mod validator;
 pub use config::TestConfig;
 pub use validator::{all_passed, print_summary, run_all, ValidationResult, ValidationStatus};
 
+// Re-export the debug unlock signer trait and types from the common crate
+pub use caliptra_mcu_debug_unlock_signer::{
+    DebugUnlockKeys, DebugUnlockSigner, LocalDebugUnlockSigner,
+};
+
 use anyhow::Result;
 use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
+use caliptra_mcu_core_util_host_command_types::debug_unlock::{
+    ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
+};
 use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
     GetFirmwareVersionResponse,
@@ -34,6 +42,9 @@ use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
 };
 use caliptra_mcu_core_util_host_transport::Transport;
 use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
+use caliptra_util_host_commands::api::debug_unlock::{
+    caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
+};
 use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
     caliptra_cmd_get_firmware_version,
@@ -112,6 +123,32 @@ impl<'a> SpdmVdmClient<'a> {
         let mut session = self.create_session()?;
         caliptra_cmd_export_attested_csr(&mut session, device_key_id, algorithm, nonce)
             .map_err(|e| anyhow::anyhow!("ExportAttestedCsr failed: {:?}", e))
+    }
+
+    /// Request a production debug unlock challenge.
+    ///
+    /// # Parameters
+    /// - `unlock_level`: The debug unlock level requested (1-8)
+    pub fn prod_debug_unlock_req(
+        &mut self,
+        unlock_level: u8,
+    ) -> Result<ProdDebugUnlockReqResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_prod_debug_unlock_req(&mut session, unlock_level)
+            .map_err(|e| anyhow::anyhow!("ProdDebugUnlockReq failed: {:?}", e))
+    }
+
+    /// Submit a production debug unlock token.
+    ///
+    /// # Parameters
+    /// - `request`: The fully populated debug unlock token request
+    pub fn prod_debug_unlock_token(
+        &mut self,
+        request: &ProdDebugUnlockTokenRequest,
+    ) -> Result<ProdDebugUnlockTokenResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_prod_debug_unlock_token(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("ProdDebugUnlockToken failed: {:?}", e))
     }
 
     fn create_session(&mut self) -> Result<CaliptraSession> {

@@ -10,7 +10,9 @@
 use anyhow::Result;
 use caliptra_spdm_requester::{SpdmConfig, SpdmRequester, SpdmSocketDeviceIo, SpdmVdmDriverImpl};
 use caliptra_spdm_vdm_client::config::{self, TestConfig};
-use caliptra_spdm_vdm_client::{validator, SpdmVdmClient};
+use caliptra_spdm_vdm_client::{
+    validator, DebugUnlockKeys, DebugUnlockSigner, LocalDebugUnlockSigner, SpdmVdmClient,
+};
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -36,6 +38,14 @@ struct Args {
     /// Algorithm ID for ExportAttestedCsr (1=EccP384, 2=MlDsa87)
     #[arg(long)]
     algorithm: Option<u32>,
+
+    /// Path to a binary file containing debug unlock keys (written by DebugUnlockKeys::save_to_file)
+    #[arg(long)]
+    debug_unlock_keys_file: Option<String>,
+
+    /// Debug unlock level (1-8)
+    #[arg(long)]
+    unlock_level: Option<u8>,
 }
 
 impl Args {
@@ -66,6 +76,9 @@ impl Args {
         if let Some(algorithm) = self.algorithm {
             config.export_attested_csr.algorithm = algorithm;
         }
+        if let Some(unlock_level) = self.unlock_level {
+            config.debug_unlock.unlock_level = unlock_level;
+        }
 
         Ok(config)
     }
@@ -78,7 +91,16 @@ fn main() -> Result<()> {
         .init()
         .ok();
 
-    let config = Args::parse().into_config()?;
+    let args = Args::parse();
+    let debug_unlock_signer: Option<Box<dyn DebugUnlockSigner>> =
+        if let Some(keys_path) = &args.debug_unlock_keys_file {
+            let keys = DebugUnlockKeys::load_from_file(std::path::Path::new(keys_path))?;
+            println!("[caliptra-spdm-validator] Loaded debug unlock keys from {}", keys_path);
+            Some(Box::new(LocalDebugUnlockSigner::new(keys)))
+        } else {
+            None
+        };
+    let config = args.into_config()?;
 
     println!(
         "[caliptra-spdm-validator] Connecting to bridge at {}",
@@ -104,7 +126,12 @@ fn main() -> Result<()> {
     let results = {
         let mut vdm = SpdmVdmDriverImpl::new(&mut requester, None);
         let mut client = SpdmVdmClient::new(&mut vdm);
-        validator::run_all(&mut client, &config, true)
+        validator::run_all(
+            &mut client,
+            &config,
+            debug_unlock_signer.as_deref(),
+            true,
+        )
     };
     validator::print_summary(&results);
 

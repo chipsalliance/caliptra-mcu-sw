@@ -15,6 +15,8 @@
 //! - DeviceCapabilities (0x02)
 //! - DeviceId (0x03)
 //! - DeviceInfo (0x04)
+//! - RequestDebugUnlock (0x0A)
+//! - AuthorizeDebugUnlockToken (0x0B)
 //! - ExportAttestedCsr (0x0F)
 
 use super::protocol::{
@@ -24,7 +26,14 @@ use super::protocol::{
 use super::transport::{SpdmVdmDriver, SpdmVdmError};
 use crate::TransportError;
 use caliptra_mcu_core_util_host_command_types::*;
+use caliptra_mcu_core_util_host_command_types::debug_unlock::{
+    ProdDebugUnlockReqRequest, ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest,
+    ProdDebugUnlockTokenResponse, DEBUG_UNLOCK_CHALLENGE_SIZE, UNIQUE_DEVICE_ID_SIZE,
+};
 use zerocopy::IntoBytes;
+
+/// Caliptra RT mailbox command ID for PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.
+const CALIPTRA_RT_CMD_PROD_DEBUG_UNLOCK_TOKEN: u32 = 0x5044_5554; // "PDUT"
 
 // ---------------------------------------------------------------------------
 // Helper: build VDM request, send via driver, validate response header
@@ -337,6 +346,103 @@ pub fn handle_export_attested_csr(
         common: CommonResponse { fips_status: 0 },
         data_len: csr_len as u32,
         csr_data,
+    };
+
+    let resp_bytes = internal_resp.as_bytes();
+    let copy_len = resp_bytes.len().min(response_buffer.len());
+    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
+    Ok(copy_len)
+}
+
+// ---------------------------------------------------------------------------
+// RequestDebugUnlock (CaliptraCommandId::ProdDebugUnlockReq)
+// ---------------------------------------------------------------------------
+
+pub fn handle_prod_debug_unlock_req(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let req = ProdDebugUnlockReqRequest::from_bytes(payload)
+        .map_err(|_| TransportError::InvalidMessage)?;
+
+    // VDM payload: [unlock_level(1)]
+    let vdm_payload = [req.unlock_level];
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(
+        CaliptraVdmCommand::RequestDebugUnlock,
+        &vdm_payload,
+        driver,
+        &mut resp_buf,
+    )?;
+
+    let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
+
+    // Response data: [unique_device_identifier(32), challenge(48)]
+    if data.len() < UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let mut unique_device_identifier = [0u8; UNIQUE_DEVICE_ID_SIZE];
+    unique_device_identifier.copy_from_slice(&data[..UNIQUE_DEVICE_ID_SIZE]);
+
+    let mut challenge = [0u8; DEBUG_UNLOCK_CHALLENGE_SIZE];
+    challenge.copy_from_slice(
+        &data[UNIQUE_DEVICE_ID_SIZE..UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
+    );
+
+    let internal_resp = ProdDebugUnlockReqResponse {
+        common: CommonResponse { fips_status: 0 },
+        length: 0,
+        unique_device_identifier,
+        challenge,
+    };
+
+    let resp_bytes = internal_resp.as_bytes();
+    let copy_len = resp_bytes.len().min(response_buffer.len());
+    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
+    Ok(copy_len)
+}
+
+// ---------------------------------------------------------------------------
+// AuthorizeDebugUnlockToken (CaliptraCommandId::ProdDebugUnlockToken)
+// ---------------------------------------------------------------------------
+
+pub fn handle_prod_debug_unlock_token(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    use alloc::vec;
+    use crate::transports::mailbox::checksum::calc_checksum;
+
+    let req = ProdDebugUnlockTokenRequest::from_bytes(payload)
+        .map_err(|_| TransportError::InvalidMessage)?;
+
+    // Build VDM payload in Caliptra RT mailbox format:
+    // [MailboxReqHeader(chksum: u32) | token_struct_bytes...]
+    // The MCU streams this directly to the Caliptra mailbox FIFO.
+    let token_bytes = req.as_bytes();
+    let hdr_size = core::mem::size_of::<u32>(); // MailboxReqHeader = chksum(u32)
+    let total_len = hdr_size + token_bytes.len();
+
+    // Build the payload with zeroed checksum first, then compute
+    let mut mbox_payload = vec![0u8; total_len];
+    mbox_payload[hdr_size..].copy_from_slice(token_bytes);
+    let chksum = calc_checksum(CALIPTRA_RT_CMD_PROD_DEBUG_UNLOCK_TOKEN, &mbox_payload);
+    mbox_payload[..hdr_size].copy_from_slice(&chksum.to_le_bytes());
+
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let _resp_len = send_vdm_request(
+        CaliptraVdmCommand::AuthorizeDebugUnlockToken,
+        &mbox_payload,
+        driver,
+        &mut resp_buf,
+    )?;
+
+    // Response is just completion code (already validated by send_vdm_request)
+    let internal_resp = ProdDebugUnlockTokenResponse {
+        common: CommonResponse { fips_status: 0 },
     };
 
     let resp_bytes = internal_resp.as_bytes();

@@ -2,10 +2,12 @@
 
 use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
+use crate::commands::vendor_defined_rsp::VendorDefRespHdr;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
 use crate::protocol::*;
 use crate::state::ConnectionState;
+use crate::vdm_handler::iana::ocp::caliptra_vdm::protocol::CALIPTRA_VDM_COMMAND_VERSION;
 use bitfield::bitfield;
 use core::mem::size_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -58,6 +60,17 @@ struct ChunkSendInfo {
     handle: u8,
     chunk_seq_num: u16,
     complete: bool,
+    /// For streaming mode: the byte range within the chunk that contains
+    /// VDM payload (mailbox data) to be streamed. None for buffered mode.
+    streaming_payload: Option<StreamingPayload>,
+}
+
+struct StreamingPayload {
+    /// Offset within the chunk where the VDM payload starts
+    /// (dynamically-parsed payload offset for first chunk, 0 for subsequent chunks)
+    offset: usize,
+    /// Length of the chunk data
+    len: usize,
 }
 
 enum ChunkSendProcessResult {
@@ -149,6 +162,52 @@ fn validate_common(
     Ok(connection_version)
 }
 
+/// Minimum byte offset needed in the first chunk to identify a VDM command code.
+/// SpdmMsgHdr(2) + VendorDefReqHdr(5) + vendor_id(max 4) + vdm_req_len(2) + CaliptraVdmMsgHeader(2)
+/// We need at least up to the cmd_code byte.
+const MIN_VDM_HEADER_BYTES: usize = 16;
+
+/// Parsed VDM header offsets from a reassembled VendorDefinedRequest.
+struct VdmHeaderInfo {
+    /// Byte offset of the CaliptraVdmMsgHeader.command_code field.
+    cmd_code_offset: usize,
+    /// Byte offset where the VDM mailbox payload begins (after CaliptraVdmMsgHeader).
+    payload_offset: usize,
+    /// The VDM request payload size (from the `req_len` field in the VendorDefinedRequest).
+    /// This includes CaliptraVdmMsgHeader(2) + mailbox_payload.
+    vdm_req_len: usize,
+}
+
+/// Parse VDM header fields from the first chunk of a reassembled VendorDefinedRequest.
+/// Returns None if the header can't be parsed.
+fn parse_vdm_header(chunk_data: &[u8]) -> Option<VdmHeaderInfo> {
+    // Layout: SpdmMsgHdr(2) + param1(1) + param2(1) + standard_id(2) + vendor_id_len(1) + vendor_id(N) + req_len(2) + CaliptraVdmMsgHeader(2) + payload...
+    if chunk_data.len() < 7 {
+        return None;
+    }
+    let vendor_id_len = chunk_data[6] as usize;
+    let req_len_offset = 7 + vendor_id_len;
+    if chunk_data.len() < req_len_offset + 2 {
+        return None;
+    }
+    let vdm_req_len = u16::from_le_bytes([
+        chunk_data[req_len_offset],
+        chunk_data[req_len_offset + 1],
+    ]) as usize;
+    let caliptra_hdr_offset = req_len_offset + 2; // After req_len(u16)
+    let cmd_code_offset = caliptra_hdr_offset + 1; // After cmd_version(1)
+    let payload_offset = caliptra_hdr_offset + 2;  // After CaliptraVdmMsgHeader(2)
+    if chunk_data.len() > cmd_code_offset {
+        Some(VdmHeaderInfo {
+            cmd_code_offset,
+            payload_offset,
+            vdm_req_len,
+        })
+    } else {
+        None
+    }
+}
+
 fn process_chunk_send(
     ctx: &mut SpdmContext<'_>,
     spdm_hdr: SpdmMsgHdr,
@@ -171,7 +230,7 @@ fn process_chunk_send(
 
     let invalid = if has_reserved_bits {
         true
-    } else if !ctx.large_msg_ctx.request_in_progress() {
+    } else if !ctx.large_msg_ctx.request_in_progress() && !ctx.large_msg_ctx.streaming_in_progress() {
         if available_chunk_len < size_of::<u32>() {
             true
         } else {
@@ -179,10 +238,40 @@ fn process_chunk_send(
                 .map_err(|_| ctx.generate_error_response(req, ErrorCode::InvalidRequest, 0, None))?
                 as usize;
             let available_chunk_len = req.data_len();
+
+            // Debug: log large_message_size and chunk sizes
+            // Note: CConsole requires a Syscalls type parameter. We use a no-op approach instead.
+            // The stream_init in CaliptraCmdBackend will log the derived values.
+
             let min_first_chunk_size = MIN_DATA_TRANSFER_SIZE_V12 as usize
                 - size_of::<SpdmMsgHdr>()
                 - size_of::<ChunkSendReq>()
                 - size_of::<u32>();
+
+            // Check if this is a streaming-eligible VDM command.
+            // Parse the VDM header dynamically to determine offsets.
+            let (stream_cmd, vdm_payload_offset, mbox_payload_len) = if available_chunk_len >= MIN_VDM_HEADER_BYTES {
+                // Peek at the chunk data without consuming it to check the VDM command code
+                let peek_data = req.data(available_chunk_len)
+                    .map_err(|e| (false, CommandError::Codec(e)))?;
+
+                if let Some(info) = parse_vdm_header(peek_data) {
+                    let vdm_cmd_code = peek_data[info.cmd_code_offset];
+                    let cmd = ctx.vdm_stream_handler
+                        .as_ref()
+                        .and_then(|h| h.stream_supported(vdm_cmd_code));
+                    // vdm_req_len includes CaliptraVdmMsgHeader(2) + mailbox payload.
+                    // Subtract 2 to get the actual mailbox payload size.
+                    let mbox_payload_len = info.vdm_req_len.saturating_sub(2);
+                    (cmd, info.payload_offset, mbox_payload_len)
+                } else {
+                    (None, 0, 0)
+                }
+            } else {
+                (None, 0, 0)
+            };
+
+            let is_streaming = stream_cmd.is_some();
 
             let invalid = chunk_seq_num != 0
                 || last_chunk
@@ -190,7 +279,8 @@ fn process_chunk_send(
                 || chunk_size != available_chunk_len
                 || chunk_send_msg_len > ctx.local_capabilities.data_transfer_size as usize
                 || large_message_size > ctx.local_capabilities.max_spdm_msg_size as usize
-                || large_message_size > ctx.large_msg_ctx.request_capacity()
+                // Skip buffer capacity check for streaming commands
+                || (!is_streaming && large_message_size > ctx.large_msg_ctx.request_capacity())
                 || large_message_size <= MIN_DATA_TRANSFER_SIZE_V12 as usize
                 || chunk_size > large_message_size;
 
@@ -198,14 +288,59 @@ fn process_chunk_send(
                 let chunk = req
                     .data(chunk_size)
                     .map_err(|e| (false, CommandError::Codec(e)))?;
-                ctx.large_msg_ctx
-                    .init_request(handle, large_message_size, chunk)
-                    .is_err()
+
+                if let Some(mailbox_cmd) = stream_cmd {
+                    if ctx.large_msg_ctx
+                        .init_streaming(handle, large_message_size, mailbox_cmd, vdm_payload_offset, mbox_payload_len, chunk)
+                        .is_err()
+                    {
+                        true
+                    } else {
+                        // Mark that we need to call stream_init with the first chunk's
+                        // VDM payload (bytes after the dynamically-parsed payload offset)
+                        false
+                    }
+                } else {
+                    ctx.large_msg_ctx
+                        .init_request(handle, large_message_size, chunk)
+                        .is_err()
+                }
             } else {
                 true
             }
         }
+    } else if ctx.large_msg_ctx.streaming_in_progress() {
+        // Streaming mode: subsequent chunks
+        let min_chunk_size = MIN_DATA_TRANSFER_SIZE_V12 as usize
+            - size_of::<SpdmMsgHdr>()
+            - size_of::<ChunkSendReq>();
+        let transferred = ctx.large_msg_ctx.request_bytes_transferred();
+        let large_message_size = ctx.large_msg_ctx.request_size();
+        let end = transferred.saturating_add(chunk_size);
+
+        let invalid = chunk_seq_num == 0
+            || chunk_size != available_chunk_len
+            || chunk_send_msg_len > ctx.local_capabilities.data_transfer_size as usize
+            || ctx
+                .large_msg_ctx
+                .validate_request_chunk(handle, chunk_seq_num)
+                .is_err()
+            || end > large_message_size
+            || (last_chunk && end != large_message_size)
+            || (!last_chunk && (end >= large_message_size || chunk_size < min_chunk_size));
+
+        if !invalid {
+            let chunk = req
+                .data(chunk_size)
+                .map_err(|e| (false, CommandError::Codec(e)))?;
+            ctx.large_msg_ctx
+                .track_streaming_chunk(handle, chunk_seq_num, chunk.len())
+                .is_err()
+        } else {
+            true
+        }
     } else {
+        // Normal buffered mode: subsequent chunks
         let min_chunk_size = MIN_DATA_TRANSFER_SIZE_V12 as usize
             - size_of::<SpdmMsgHdr>()
             - size_of::<ChunkSendReq>();
@@ -244,10 +379,37 @@ fn process_chunk_send(
         });
     }
 
+    let streaming = ctx.large_msg_ctx.streaming_in_progress();
+    let complete = ctx.large_msg_ctx.request_is_complete()
+        || (streaming
+            && ctx.large_msg_ctx.request_bytes_transferred() == ctx.large_msg_ctx.request_size());
+
+    // For streaming mode, record the payload info so handle_chunk_send can
+    // call the stream handler with the chunk data before it gets overwritten.
+    let streaming_payload = if streaming {
+        if chunk_seq_num == 0 {
+            // First chunk: VDM payload starts at the dynamically-parsed offset
+            let payload_offset = ctx.large_msg_ctx.streaming_payload_offset();
+            Some(StreamingPayload {
+                offset: payload_offset,
+                len: chunk_size,
+            })
+        } else {
+            // Subsequent chunks: entire chunk is VDM payload continuation
+            Some(StreamingPayload {
+                offset: 0,
+                len: chunk_size,
+            })
+        }
+    } else {
+        None
+    };
+
     Ok(ChunkSendProcessResult::Ack(ChunkSendInfo {
         handle,
         chunk_seq_num,
-        complete: ctx.large_msg_ctx.request_is_complete(),
+        complete,
+        streaming_payload,
     }))
 }
 
@@ -259,6 +421,92 @@ async fn generate_chunk_send_ack<'a>(
     let version = ctx.state.connection_info.version_number();
 
     if info.complete {
+        if ctx.large_msg_ctx.streaming_in_progress() {
+            // Streaming mode completion: call stream_finish
+            let mailbox_cmd = ctx.large_msg_ctx.streaming_mailbox_cmd()
+                .ok_or((false, CommandError::BufferTooSmall))?;
+
+            // Extract vendor_id from stored first chunk header before reset
+            let payload_offset = ctx.large_msg_ctx.streaming_payload_offset();
+            let stored_buf = &ctx.large_msg_ctx.buf[..payload_offset.min(ctx.large_msg_ctx.buf.len())];
+            // Parse standard_id and vendor_id from stored header
+            // Layout: SpdmMsgHdr(2) + param1(1) + param2(1) + standard_id(2) + vendor_id_len(1) + vendor_id(N)
+            let standard_id = if stored_buf.len() >= 6 {
+                u16::from_le_bytes([stored_buf[4], stored_buf[5]])
+            } else {
+                0x0004 // IANA default
+            };
+            let vendor_id_len = if stored_buf.len() >= 7 { stored_buf[6] as usize } else { 4 };
+            let mut vendor_id = [0u8; 8];
+            let vid_end = (7 + vendor_id_len).min(stored_buf.len());
+            if stored_buf.len() >= 7 + vendor_id_len {
+                vendor_id[..vendor_id_len].copy_from_slice(&stored_buf[7..vid_end]);
+            }
+            // Get the command code from the CaliptraVdmMsgHeader
+            let cmd_code_offset = 7 + vendor_id_len + 2 + 1; // after req_len(2) + cmd_version(1)
+            let cmd_code = if stored_buf.len() > cmd_code_offset {
+                stored_buf[cmd_code_offset]
+            } else {
+                0
+            };
+
+            ctx.large_msg_ctx.reset_request();
+
+            ctx.prepare_response_buffer(rsp)?;
+            let header_size = size_of::<ChunkSendAckHdr>();
+            rsp.reserve(header_size)
+                .map_err(|e| (false, CommandError::Codec(e)))?;
+
+            if let Some(stream_handler) = ctx.vdm_stream_handler.as_ref() {
+                // Get response from stream_finish into a temp buffer
+                let mut stream_resp = [0u8; 256];
+                match stream_handler.stream_finish(mailbox_cmd, &mut stream_resp).await {
+                    Ok(resp_len) => {
+                        // Build a VendorDefinedResponse with VDM response payload:
+                        // VDM payload = [cmd_version(1), cmd_code(1), completion_code(1), data...]
+                        let completion_code = 0x00u8; // Success
+                        let vdm_payload_len = 3 + resp_len; // cmd_version + cmd_code + completion + data
+
+                        // Reserve space for VendorDefRespHdr
+                        let mut resp_hdr = VendorDefRespHdr::new(
+                            version,
+                            standard_id,
+                            &vendor_id[..vendor_id_len],
+                        );
+                        let resp_hdr_len = resp_hdr.len();
+                        rsp.reserve(resp_hdr_len)
+                            .map_err(|e| (false, CommandError::Codec(e)))?;
+
+                        // Write VDM payload
+                        rsp.put_data(vdm_payload_len)
+                            .map_err(|e| (false, CommandError::Codec(e)))?;
+                        let rsp_data = rsp.data_mut(vdm_payload_len)
+                            .map_err(|e| (false, CommandError::Codec(e)))?;
+                        rsp_data[0] = CALIPTRA_VDM_COMMAND_VERSION;
+                        rsp_data[1] = cmd_code;
+                        rsp_data[2] = completion_code;
+                        if resp_len > 0 {
+                            rsp_data[3..3 + resp_len].copy_from_slice(&stream_resp[..resp_len]);
+                        }
+
+                        // Encode VendorDefRespHdr (sets resp_len field)
+                        resp_hdr.set_resp_len(vdm_payload_len as u16);
+                        resp_hdr.encode(rsp)
+                            .map_err(|e| (false, CommandError::Codec(e)))?;
+                    }
+                    Err(_) => {
+                        append_error_response(version, ErrorCode::Unspecified, rsp)?;
+                    }
+                }
+            } else {
+                append_error_response(version, ErrorCode::Unspecified, rsp)?;
+            }
+
+            encode_chunk_send_ack_hdr(version, false, info.handle, info.chunk_seq_num, rsp)?;
+            return Ok(());
+        }
+
+        // Normal buffered mode completion
         // Validate request code before dispatch
         let request_code = ctx.large_msg_ctx.request_code();
         if matches!(
@@ -320,13 +568,54 @@ pub(crate) async fn handle_chunk_send<'a>(
 ) -> CommandResult<()> {
     let result = process_chunk_send(ctx, spdm_hdr, req)?;
 
-    ctx.prepare_response_buffer(req)?;
     match result {
-        ChunkSendProcessResult::Ack(info) => generate_chunk_send_ack(ctx, info, req).await,
+        ChunkSendProcessResult::Ack(info) => {
+            // For streaming mode: call stream handler with chunk data BEFORE
+            // prepare_response_buffer overwrites `req`.
+            if let Some(ref sp) = info.streaming_payload {
+                if let Some(stream_handler) = ctx.vdm_stream_handler.as_ref() {
+                    // The chunk data is still in `req` since data() doesn't consume.
+                    // After process_chunk_send, the cursor is past the CHUNK_SEND header
+                    // fields but the chunk payload data is still accessible.
+                    let chunk_data = req.data(sp.len)
+                        .map_err(|e| (false, CommandError::Codec(e)))?;
+
+                    if info.chunk_seq_num == 0 {
+                        // First chunk: initialize streaming
+                        let mailbox_cmd = ctx.large_msg_ctx.streaming_mailbox_cmd()
+                            .ok_or((false, CommandError::BufferTooSmall))?;
+                        let total_vdm_payload_len = ctx.large_msg_ctx.streaming_mbox_payload_len();
+                        let payload = &chunk_data[sp.offset..];
+
+                        stream_handler.stream_init(
+                            mailbox_cmd,
+                            total_vdm_payload_len,
+                            payload,
+                        ).await.map_err(|_| {
+                            ctx.large_msg_ctx.reset_request();
+                            (false, CommandError::Vdm(crate::vdm_handler::VdmError::StreamError))
+                        })?;
+                    } else {
+                        // Subsequent chunk: stream the data
+                        stream_handler.stream_chunk(chunk_data)
+                            .await
+                            .map_err(|_| {
+                                ctx.large_msg_ctx.reset_request();
+                                (false, CommandError::Vdm(crate::vdm_handler::VdmError::StreamError))
+                            })?;
+                    }
+                }
+            }
+
+            generate_chunk_send_ack(ctx, info, req).await
+        }
         ChunkSendProcessResult::EarlyError {
             handle,
             chunk_seq_num,
-        } => generate_chunk_send_early_error_ack(ctx, handle, chunk_seq_num, req),
+        } => {
+            ctx.prepare_response_buffer(req)?;
+            generate_chunk_send_early_error_ack(ctx, handle, chunk_seq_num, req)
+        }
     }
 }
 

@@ -19,7 +19,7 @@ use crate::session::{SessionManager, SessionState};
 use crate::state::{ConnectionState, State};
 use crate::transcript::{Transcript, TranscriptContext};
 use crate::transport::common::SpdmTransport;
-use crate::vdm_handler::VdmHandler;
+use crate::vdm_handler::{VdmHandler, VdmStreamHandler};
 use caliptra_mcu_libapi_caliptra::crypto::aes_gcm::Aes256GcmTag;
 use caliptra_mcu_libapi_caliptra::crypto::asym::*;
 use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
@@ -41,6 +41,7 @@ pub struct SpdmContext<'a> {
     pub(crate) large_msg_ctx: LargeMessageCtx<'a>,
     pub(crate) session_mgr: SessionManager,
     pub(crate) vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
+    pub(crate) vdm_stream_handler: Option<&'a dyn VdmStreamHandler>,
 }
 
 impl<'a> SpdmContext<'a> {
@@ -73,7 +74,13 @@ impl<'a> SpdmContext<'a> {
             large_msg_ctx: LargeMessageCtx::new(large_msg_buf),
             session_mgr: SessionManager::new(),
             vdm_handlers,
+            vdm_stream_handler: None,
         })
+    }
+
+    /// Set the VDM stream handler for streaming large VDM requests.
+    pub fn set_vdm_stream_handler(&mut self, handler: &'a dyn VdmStreamHandler) {
+        self.vdm_stream_handler = Some(handler);
     }
 
     pub async fn process_message(&mut self, msg_buf: &mut MessageBuf<'a>) -> SpdmResult<()> {
@@ -192,15 +199,20 @@ impl<'a> SpdmContext<'a> {
     async fn dispatch_large_request(
         &mut self,
         _req_msg_header: SpdmMsgHdr,
-        _req_code: ReqRespCode,
-        _req: &mut MessageBuf<'a>,
+        req_code: ReqRespCode,
+        req: &mut MessageBuf<'a>,
         rsp: &mut MessageBuf<'a>,
     ) -> CommandResult<()> {
-        // No commands currently support large-request handling.
-        // As handlers are implemented, add match arms here.
-        let version = self.state.connection_info.version_number();
-        encode_error_response(rsp, version, ErrorCode::UnsupportedRequest, 0, None);
-        Ok(())
+        match req_code {
+            ReqRespCode::VendorDefinedRequest => {
+                vendor_defined_rsp::handle_large_vendor_defined_request(self, req, rsp).await
+            }
+            _ => {
+                let version = self.state.connection_info.version_number();
+                encode_error_response(rsp, version, ErrorCode::UnsupportedRequest, 0, None);
+                Ok(())
+            }
+        }
     }
 
     fn decode_and_validate_request(

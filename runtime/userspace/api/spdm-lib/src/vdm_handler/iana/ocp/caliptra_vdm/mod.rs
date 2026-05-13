@@ -5,7 +5,8 @@ extern crate alloc;
 use crate::codec::{Codec, MessageBuf};
 use crate::protocol::StandardsBodyId;
 use crate::vdm_handler::iana::ocp::caliptra_vdm::commands::{
-    device_capabilities, device_id, device_info, export_attested_csr, firmware_version,
+    debug_unlock, device_capabilities, device_id, device_info, export_attested_csr,
+    firmware_version,
 };
 use crate::vdm_handler::iana::ocp::caliptra_vdm::protocol::*;
 use crate::vdm_handler::{VdmError, VdmHandler, VdmRegistryMatcher, VdmResponder, VdmResult};
@@ -82,6 +83,13 @@ impl VdmResponder for CaliptraVdmHandler<'_> {
                     large_rsp_buf,
                 )
                 .await?
+            }
+            CaliptraVdmCommand::RequestDebugUnlock => {
+                debug_unlock::handle_request_debug_unlock(self.handler, req_buf, rsp_buf).await?
+            }
+            CaliptraVdmCommand::AuthorizeDebugUnlockToken => {
+                debug_unlock::handle_authorize_debug_unlock_token(self.handler, req_buf, rsp_buf)
+                    .await?
             }
             _ => CaliptraVdmCmdResult::ErrorResponse(CaliptraCompletionCode::UnsupportedOperation),
         };

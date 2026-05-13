@@ -13,6 +13,11 @@ pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_C
 pub const MAX_FW_VERSION_LEN: usize = 32;
 pub const MAX_UID_LEN: usize = 32;
 
+/// Size of the unique device identifier in bytes.
+pub const DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE: usize = 32;
+/// Size of the debug unlock challenge in bytes.
+pub const DEBUG_UNLOCK_CHALLENGE_SIZE: usize = 48;
+
 /// Caliptra command completion codes.
 /// Standard codes (0x00-0x0F) follow the OCP command registry:
 /// https://github.com/opencomputeproject/ocp-registry/blob/main/command-registry.md
@@ -99,6 +104,22 @@ pub struct DeviceCapabilities {
     pub reserved: [u8; 4],     // Bytes [28:31]
 }
 
+/// Debug unlock challenge response returned by `request_debug_unlock`.
+#[derive(Debug, Clone)]
+pub struct DebugUnlockChallenge {
+    pub unique_device_identifier: [u8; DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE],
+    pub challenge: [u8; DEBUG_UNLOCK_CHALLENGE_SIZE],
+}
+
+impl Default for DebugUnlockChallenge {
+    fn default() -> Self {
+        Self {
+            unique_device_identifier: [0u8; DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE],
+            challenge: [0u8; DEBUG_UNLOCK_CHALLENGE_SIZE],
+        }
+    }
+}
+
 /// Asynchronous trait for handling Caliptra common commands across all transport protocols.
 ///
 /// Each function represents a transport-agnostic command handler. Implementors should provide
@@ -167,6 +188,35 @@ pub trait CaliptraCmdHandler: Send + Sync {
         nonce: &[u8; 32],
         csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize>;
+
+    /// Requests a production debug unlock challenge.
+    ///
+    /// # Arguments
+    /// * `unlock_level` - The debug unlock level requested (1-8).
+    /// * `challenge` - Mutable reference to store the challenge response.
+    ///
+    /// # Returns
+    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
+    async fn request_debug_unlock(
+        &self,
+        unlock_level: u8,
+        challenge: &mut DebugUnlockChallenge,
+    ) -> CaliptraCmdResult<()>;
+
+    /// Submits a signed debug unlock token.
+    ///
+    /// The token payload is streamed in chunks via the chunked mailbox API
+    /// because it can be very large (~7.5KB due to MLDSA keys/signatures).
+    ///
+    /// # Arguments
+    /// * `token_data` - The complete token payload bytes (excluding checksum header).
+    ///
+    /// # Returns
+    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
+    async fn authorize_debug_unlock_token(
+        &self,
+        token_data: &[u8],
+    ) -> CaliptraCmdResult<()>;
 }
 
 pub struct AuthorizationError;

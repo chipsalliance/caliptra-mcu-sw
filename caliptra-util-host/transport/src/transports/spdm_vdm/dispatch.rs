@@ -31,6 +31,12 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         x if x == CaliptraCommandId::ExportAttestedCsr as u32 => {
             Some(commands::handle_export_attested_csr)
         }
+        x if x == CaliptraCommandId::ProdDebugUnlockReq as u32 => {
+            Some(commands::handle_prod_debug_unlock_req)
+        }
+        x if x == CaliptraCommandId::ProdDebugUnlockToken as u32 => {
+            Some(commands::handle_prod_debug_unlock_token)
+        }
         _ => None,
     }
 }

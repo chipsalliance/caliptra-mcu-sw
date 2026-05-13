@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+pub(crate) mod debug_unlock;
 pub(crate) mod device_capabilities;
 pub(crate) mod device_id;
 pub(crate) mod device_info;
