@@ -14,7 +14,7 @@ use registers_generated::usbdev::bits::*;
 use romtime::StaticRef;
 use tock_registers::interfaces::{Readable, Writeable};
 use tock_registers::LocalRegisterCopy;
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::IntoBytes;
 
 type RxEntry = LocalRegisterCopy<u32, Rxfifo::Register>;
 
@@ -51,32 +51,41 @@ impl ExamplarUsbDriver {
     fn get_in_buf(&self) -> u32 {
         let buf = BUF_IN;
 
-        // Zeroize the buffer before sending data out on it.
         let base = buf_word_base(buf);
         for i in 0..16 {
-            self.regs.buffer[base + i].set(0);
+            if let Some(reg) = self.regs.buffer.get(base + i) {
+                reg.set(0);
+            }
         }
         buf
     }
 
     fn read_setup_packet(&self, buf_id: u32) -> SetupPacket {
         let base = buf_word_base(buf_id);
-        let w0 = self.regs.buffer[base].get();
-        let w1 = self.regs.buffer[base + 1].get();
-        let mut raw_bytes = [0u8; SETUP_PACKET_LEN];
-        raw_bytes[..4].copy_from_slice(&w0.to_le_bytes());
-        raw_bytes[4..].copy_from_slice(&w1.to_le_bytes());
-        SetupPacket::read_from_bytes(&raw_bytes).unwrap()
+        let w0 = self.regs.buffer.get(base).map_or(0, |r| r.get());
+        let w1 = self.regs.buffer.get(base + 1).map_or(0, |r| r.get());
+        let w0b = w0.to_le_bytes();
+        let w1b = w1.to_le_bytes();
+        let raw_bytes: [u8; SETUP_PACKET_LEN] = [
+            w0b[0], w0b[1], w0b[2], w0b[3], w1b[0], w1b[1], w1b[2], w1b[3],
+        ];
+        zerocopy::transmute!(raw_bytes)
     }
 
     fn write_buffer(&self, buf_id: u32, data: &[u8]) {
         let base = buf_word_base(buf_id);
         let mut i = 0;
         while i < data.len() {
-            let end = core::cmp::min(i + 4, data.len());
             let mut word_bytes = [0u8; 4];
-            word_bytes[..end - i].copy_from_slice(&data[i..end]);
-            self.regs.buffer[base + i / 4].set(u32::from_le_bytes(word_bytes));
+            for (d, s) in word_bytes
+                .iter_mut()
+                .zip(data.get(i..).unwrap_or_default().iter())
+            {
+                *d = *s;
+            }
+            if let Some(reg) = self.regs.buffer.get(base + i / 4) {
+                reg.set(u32::from_le_bytes(word_bytes));
+            }
             i += 4;
         }
     }
@@ -85,10 +94,13 @@ impl ExamplarUsbDriver {
         let base = buf_word_base(buf_id);
         let mut i = 0;
         while i < size {
-            let word = self.regs.buffer[base + i / 4].get();
+            let word = self.regs.buffer.get(base + i / 4).map_or(0, |r| r.get());
             let bytes = word.to_le_bytes();
+            let dst = self.out_buf.get_mut(offset + i..).unwrap_or_default();
             let chunk = core::cmp::min(4, size - i);
-            self.out_buf[offset + i..offset + i + chunk].copy_from_slice(&bytes[..chunk]);
+            for (d, s) in dst.iter_mut().zip(bytes.iter()).take(chunk) {
+                *d = *s;
+            }
             i += 4;
         }
     }
@@ -370,6 +382,7 @@ impl UsbDeviceDriver for ExamplarUsbDriver {
             // IN status ZLP completes the write transfer
             self.send_zlp_in()?;
 
+            let total = total.min(self.out_buf.len());
             Ok((
                 command,
                 RecoveryRequest::Write {
@@ -393,9 +406,7 @@ impl UsbDeviceDriver for ExamplarUsbDriver {
             .ok_or(UsbDriverError::NoPendingRead)?
             .into();
         let len = populate_buffer(&mut self.out_buf).map_err(UsbDriverError::OcpError)?;
-        if len > MAX_WRITE_TRANSFER {
-            return Err(UsbDriverError::TransferTooLarge);
-        }
+        let len = len.min(self.out_buf.len());
         self.send_in(&self.out_buf[..len], expected)?;
         // self.send_out_buf(len, expected)?;
         self.recv_zlp_out()?;
