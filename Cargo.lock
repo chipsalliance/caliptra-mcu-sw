@@ -1337,7 +1337,7 @@ dependencies = [
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
- "caliptra-ocp-eat",
+ "caliptra-ocp-eat 0.1.0",
  "dpe",
  "embassy-executor",
  "embassy-sync",
@@ -1941,6 +1941,13 @@ dependencies = [
 [[package]]
 name = "caliptra-ocp-eat"
 version = "0.1.0"
+dependencies = [
+ "arrayvec",
+]
+
+[[package]]
+name = "caliptra-ocp-eat"
+version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
 dependencies = [
  "arrayvec",
@@ -1988,7 +1995,7 @@ dependencies = [
  "caliptra-image-verify",
  "caliptra-kat",
  "caliptra-lms-types",
- "caliptra-ocp-eat",
+ "caliptra-ocp-eat 0.1.0 (git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba)",
  "caliptra-registers",
  "caliptra-ureg",
  "caliptra-x509",
@@ -5532,7 +5539,7 @@ dependencies = [
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-romtime",
  "caliptra-mcu-spdm-lib",
- "caliptra-ocp-eat",
+ "caliptra-ocp-eat 0.1.0",
  "constant_time_eq 0.4.2",
  "critical-section",
  "embassy-executor",
