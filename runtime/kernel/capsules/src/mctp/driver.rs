@@ -16,7 +16,7 @@ use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::{ErrorCode, ProcessId};
 
-pub const MCTP_MAX_MESSAGE_SIZE: usize = 2048;
+pub const MCTP_MAX_MESSAGE_SIZE: usize = 1024;
 pub const MCTP_SPDM_DRIVER_NUM: usize = 0xA0000;
 pub const MCTP_SECURE_SPDM_DRIVER_NUM: usize = 0xA0001;
 pub const MCTP_PLDM_DRIVER_NUM: usize = 0xA0002;
