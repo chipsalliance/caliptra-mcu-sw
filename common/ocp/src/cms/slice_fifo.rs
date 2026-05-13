@@ -51,7 +51,9 @@ impl<'a> SliceFifoRegion<'a> {
     }
 
     fn capacity_4b(&self) -> u32 {
-        (self.buf.len() as u32) / 4
+        // new() ensures buf.len() >= 4 && buf.len() % 4 == 0, so always >= 1.
+        // .max(1) lets the optimizer prove non-zero for downstream % operations.
+        ((self.buf.len() as u32) / 4).max(1)
     }
 
     fn is_read_only(&self) -> bool {
@@ -97,7 +99,9 @@ impl<'a> SliceFifoRegion<'a> {
         let buf_byte_len = cap as usize * 4;
         for (i, &b) in data.iter().enumerate() {
             let pos = (self.write_idx as usize * 4 + i) % buf_byte_len;
-            self.buf[pos] = b;
+            if let Some(slot) = self.buf.get_mut(pos) {
+                *slot = b;
+            }
         }
         self.write_idx = (self.write_idx + data_4b) % cap;
         Ok(())
@@ -120,7 +124,9 @@ impl<'a> SliceFifoRegion<'a> {
         let buf_byte_len = cap as usize * 4;
         for (i, slot) in buf.iter_mut().enumerate().take(read_len) {
             let pos = (self.read_idx as usize * 4 + i) % buf_byte_len;
-            *slot = self.buf[pos];
+            if let Some(&val) = self.buf.get(pos) {
+                *slot = val;
+            }
         }
         self.read_idx = (self.read_idx + consume_4b) % cap;
         Ok(read_len)

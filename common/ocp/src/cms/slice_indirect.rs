@@ -57,11 +57,16 @@ impl<'a> SliceIndirectRegion<'a> {
     ///
     /// Returns the number of bytes actually copied.
     fn read_at(&self, offset: usize, buf: &mut [u8]) -> usize {
-        let size = self.size_bytes() as usize;
-        let available = size.saturating_sub(offset);
-        let copy_len = buf.len().min(available);
-        buf[..copy_len].copy_from_slice(&self.buf[offset..offset + copy_len]);
-        copy_len
+        let src = match self.buf.get(offset..) {
+            Some(s) => s,
+            None => return 0,
+        };
+        let mut n = 0;
+        for (d, s) in buf.iter_mut().zip(src.iter()) {
+            *d = *s;
+            n += 1;
+        }
+        n
     }
 
     fn advance_imo(&mut self, transfer_len: usize) {
@@ -95,10 +100,12 @@ impl IndirectCmsRegion for SliceIndirectRegion<'_> {
             self.flags.set_read_only_error(true);
             return Err(CmsError::ReadOnly);
         }
-        let size = self.size_bytes() as usize;
         let offset = self.imo as usize;
-        let copy_len = data.len().min(size - offset);
-        self.buf[offset..offset + copy_len].copy_from_slice(&data[..copy_len]);
+        if let Some(dst) = self.buf.get_mut(offset..) {
+            for (d, s) in dst.iter_mut().zip(data.iter()) {
+                *d = *s;
+            }
+        }
         self.advance_imo(data.len());
         Ok(())
     }
