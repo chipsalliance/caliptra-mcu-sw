@@ -87,10 +87,9 @@ pub trait VendorHandler {
 
 /// A no-op `VendorHandler` that advertises no optional capabilities.
 ///
-/// `capabilities()` returns all-zero (nothing supported). Methods that are
-/// only reachable when their corresponding capability bit is set are
-/// `unimplemented!()` — the state machine will never call them because
-/// `capabilities()` reports them as unsupported.
+/// `capabilities()` returns all-zero (nothing supported). Methods guarded
+/// by capability bits are unreachable at runtime; they return default/error
+/// values rather than panicking so the ROM binary stays panic-free.
 pub struct NoopVendorHandler;
 
 impl VendorHandler for NoopVendorHandler {
@@ -98,16 +97,14 @@ impl VendorHandler for NoopVendorHandler {
         VendorCapabilities(0)
     }
 
-    fn execute_reset(&mut self, _reset: &DeviceReset) {
-        unimplemented!("NoopVendorHandler: device_reset capability is not advertised")
-    }
+    fn execute_reset(&mut self, _reset: &DeviceReset) {}
 
     fn handle_vendor_write(&mut self, _data: &[u8]) -> Result<(), OcpError> {
-        unimplemented!("NoopVendorHandler: vendor_command capability is not advertised")
+        Err(OcpError::ProtCapIdentificationRequired)
     }
 
     fn handle_vendor_read(&self, _buf: &mut [u8]) -> Result<usize, OcpError> {
-        unimplemented!("NoopVendorHandler: vendor_command capability is not advertised")
+        Err(OcpError::ProtCapIdentificationRequired)
     }
 
     fn vendor_device_status(&self, _buf: &mut [u8]) -> usize {
@@ -119,7 +116,7 @@ impl VendorHandler for NoopVendorHandler {
     }
 
     fn hw_status(&self) -> Result<HwStatus<'_>, OcpError> {
-        unimplemented!("NoopVendorHandler: hardware_status capability is not advertised")
+        Err(OcpError::ProtCapIdentificationRequired)
     }
 }
 
