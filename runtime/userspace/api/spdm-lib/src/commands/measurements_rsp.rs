@@ -130,7 +130,7 @@ impl MeasurementsResponse {
         let record_start = RESPONSE_FIXED_FIELDS_SIZE;
         let record_end = record_start + measurement_record_len;
         let trailer_start = record_end;
-        let (variable_fields, trailer_len) = self.response_variable_fields().await?;
+        let trailer_len = self.response_variable_fields_len();
         let signature_start = trailer_start + trailer_len;
 
         // If signature is requested, avoid splitting it across chunks.
@@ -174,6 +174,7 @@ impl MeasurementsResponse {
             && offset + copied >= trailer_start
             && offset + copied < trailer_start + trailer_len
         {
+            let (variable_fields, _) = self.response_variable_fields().await?;
             let trailer_offset = (offset + copied) - trailer_start;
             let end = (trailer_len).min(trailer_offset + rem_len);
             let copy_len = end - trailer_offset;
@@ -269,6 +270,15 @@ impl MeasurementsResponse {
             .map_err(|e| (false, CommandError::Codec(e)))?;
 
         Ok(len)
+    }
+
+    fn response_variable_fields_len(&self) -> usize {
+        SPDM_NONCE_LEN
+            + size_of::<u16>()
+            + self
+                .requester_context
+                .as_ref()
+                .map_or(0, |_| size_of::<RequesterContext>())
     }
 
     async fn response_variable_fields(
