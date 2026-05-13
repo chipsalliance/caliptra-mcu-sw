@@ -1,0 +1,21 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-test-fw-usb-ocp-recovery"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+riscv = []
+emu = []
+fpga_realtime = ["mcu-test-harness/fpga_realtime"]
+
+[dependencies]
+mcu-rom-common.workspace = true
+mcu-test-harness.workspace = true
+mcu-usb-emulator.workspace = true
+ocp.workspace = true
+registers-generated.workspace = true
+romtime.workspace = true
+zerocopy.workspace = true

@@ -42,8 +42,9 @@ pub mod hw_model_tests {
     };
 
     pub const USB_OCP_RECOVERY: FwId = FwId {
-        bin_name: "usb_ocp_recovery",
-        ..BASE_FWID
+        crate_name: "mcu-test-fw-usb-ocp-recovery",
+        bin_name: "mcu-test-fw-usb-ocp-recovery",
+        features: &["emu"],
     };
 
     pub const SW_DIGEST_LOCK: FwId = FwId {

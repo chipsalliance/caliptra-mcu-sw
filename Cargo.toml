@@ -30,6 +30,7 @@ members = [
     "hw/model/test-fw/hitless-update-flow",
     "hw/model/test-fw/mailbox-responder",
     "hw/model/test-fw/sw-digest-lock",
+    "hw/model/test-fw/usb-ocp-recovery",
     "hw/model/test-fw/usb-responder",
     "network/app/example",
     "network/config",
@@ -231,6 +232,7 @@ mcu-test-fw-exception-handler = { path = "hw/model/test-fw/exception-handler" }
 mcu-test-fw-hitless-update-flow = { path = "hw/model/test-fw/hitless-update-flow" }
 mcu-test-fw-mailbox-responder = { path = "hw/model/test-fw/mailbox-responder" }
 mcu-test-fw-sw-digest-lock = { path = "hw/model/test-fw/sw-digest-lock" }
+mcu-test-fw-usb-ocp-recovery = { path = "hw/model/test-fw/usb-ocp-recovery" }
 mcu-test-fw-usb-responder = { path = "hw/model/test-fw/usb-responder" }
 mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
 mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }

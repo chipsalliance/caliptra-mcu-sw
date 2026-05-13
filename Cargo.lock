@@ -3653,6 +3653,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-test-fw-usb-ocp-recovery"
+version = "0.1.0"
+dependencies = [
+ "mcu-rom-common",
+ "mcu-test-harness",
+ "mcu-usb-emulator",
+ "ocp",
+ "registers-generated",
+ "romtime",
+ "zerocopy",
+]
+
+[[package]]
 name = "mcu-test-fw-usb-responder"
 version = "0.1.0"
 dependencies = [
