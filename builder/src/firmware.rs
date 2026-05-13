@@ -24,8 +24,9 @@ pub mod hw_model_tests {
     };
 
     pub const AXI_BYPASS: FwId = FwId {
-        bin_name: "axi_bypass",
-        ..BASE_FWID
+        crate_name: "mcu-test-fw-axi-bypass",
+        bin_name: "mcu-test-fw-axi-bypass",
+        features: &["emu"],
     };
 
     pub const EXCEPTION_HANDLER: FwId = FwId {

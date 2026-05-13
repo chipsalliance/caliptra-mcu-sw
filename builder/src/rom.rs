@@ -10,7 +10,6 @@ use crate::PROJECT_ROOT;
 use caliptra_builder::FwId;
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
-use mcu_config::McuMemoryMap;
 use mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
 pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<PathBuf> {

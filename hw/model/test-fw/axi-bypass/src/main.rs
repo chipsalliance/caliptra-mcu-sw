@@ -17,11 +17,6 @@ use registers_generated::i3c::bits::{
 use romtime::McuRomBootStatus;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
-// Needed to bring in startup code
-#[allow(unused)]
-use mcu_test_harness;
-
-// TODO(clundin): These constants should be pushed into library code.
 const BYPASS_CFG_AXI_DIRECT: u32 = 0x1;
 const DEVICE_STATUS_READY_TO_ACCEPT_RECOVERY_IMAGE_VALUE: u32 = 0x3;
 const RECOVERY_STATUS_AWAITING_RECOVERY_IMAGE: u32 = 0x1;
@@ -70,6 +65,7 @@ fn run() -> ! {
         wait_for_recovery_status(&mut env),
         RECOVERY_STATUS_SUCCESSFUL
     );
+    #[allow(clippy::empty_loop)]
     loop {}
 }
 
@@ -80,7 +76,6 @@ fn enable_bypass(env: &mut RomEnv) {
         .modify(RecIntfCfg::RecIntfBypass.val(BYPASS_CFG_AXI_DIRECT));
 }
 
-// TODO(clundin): I imagine this should go in a re-usable place
 fn trigger_test_start(env: &mut RomEnv) {
     let mci = &env.mci;
 

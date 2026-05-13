@@ -3599,6 +3599,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-test-fw-axi-bypass"
+version = "0.1.0"
+dependencies = [
+ "mcu-rom-common",
+ "mcu-test-harness",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
 name = "mcu-test-fw-exception-handler"
 version = "0.1.0"
 dependencies = [
