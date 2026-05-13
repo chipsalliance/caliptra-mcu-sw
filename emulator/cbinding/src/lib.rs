@@ -162,6 +162,8 @@ pub struct CEmulatorConfig {
     pub hw_revision_major: c_uint,
     pub hw_revision_minor: c_uint,
     pub hw_revision_patch: c_uint,
+    pub mcu_lsu_axi_user: c_uint,
+    pub caliptra_dma_axi_user: c_uint,
     pub flash_based_boot: c_uchar,
     pub allow_sideloaded_rom: c_uchar,
     pub active_i3c1: c_uchar,
@@ -336,6 +338,8 @@ pub unsafe extern "C" fn emulator_init(
             config.hw_revision_minor as u64,
             config.hw_revision_patch as u64,
         ),
+        mcu_lsu_axi_user: config.mcu_lsu_axi_user,
+        caliptra_dma_axi_user: config.caliptra_dma_axi_user,
         flash_based_boot: config.flash_based_boot != 0,
         allow_sideloaded_rom: config.allow_sideloaded_rom != 0,
         // Use provided offset and size override parameters (-1 means use default)

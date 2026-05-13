@@ -181,6 +181,14 @@ pub struct EmulatorArgs {
     #[arg(long, value_parser = semver::Version::parse, default_value = "2.0.0")]
     pub hw_revision: semver::Version,
 
+    /// Initial value for MCI_REG_MCU_LSU_AXI_USER (default 0).
+    #[arg(long, value_parser=maybe_hex::<u32>, default_value_t = 0)]
+    pub mcu_lsu_axi_user: u32,
+
+    /// Initial value for SS_CALIPTRA_DMA_AXI_USER (default 0).
+    #[arg(long, value_parser=maybe_hex::<u32>, default_value_t = 0)]
+    pub caliptra_dma_axi_user: u32,
+
     /// Override ROM offset
     #[arg(long, value_parser=maybe_hex::<u32>)]
     pub rom_offset: Option<u32>,
@@ -432,6 +440,7 @@ impl Emulator {
             debug_intent: true, // Emulator app defaults to debug intent enabled
             prod_dbg_unlock_keypairs: vec![],
             cptra_obf_key: DEFAULT_CPTRA_OBF_KEY,
+            ss_caliptra_dma_axi_user: Some(cli.caliptra_dma_axi_user),
         })
         .expect("Failed to start Caliptra CPU");
 
@@ -902,7 +911,7 @@ impl Emulator {
 
         let cptra_boot_go = Rc::new(Cell::new(false));
 
-        let mci = Mci::new(
+        let mut mci = Mci::new(
             &clock.clone(),
             ext_mci,
             mci_irq,
@@ -912,6 +921,7 @@ impl Emulator {
             [0, 0],
             cptra_boot_go.clone(),
         );
+        mci.set_mcu_lsu_axi_user(cli.mcu_lsu_axi_user);
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,

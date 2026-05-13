@@ -13,7 +13,8 @@ Abstract:
 --*/
 
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
-use caliptra_emu_bus::{BusMmio, Clock};
+use caliptra_emu_bus::{Bus, BusMmio, Clock};
+use caliptra_emu_types::RvSize;
 use caliptra_emu_cpu::{Cpu, CpuArgs, Pic};
 use caliptra_emu_periph::soc_reg::DebugManufService;
 use caliptra_emu_periph::{
@@ -70,6 +71,7 @@ pub struct StartCaliptraArgs<'a> {
     pub debug_intent: bool,
     pub prod_dbg_unlock_keypairs: Vec<(&'a [u8; 96], &'a [u8; 2592])>,
     pub cptra_obf_key: [u32; 8],
+    pub ss_caliptra_dma_axi_user: Option<u32>,
 }
 
 register_bitfields! [
@@ -198,6 +200,19 @@ pub fn start_caliptra(
     // Set UDS seed directly — matches the caliptra-sw standalone emulator
     // behavior where fuse_uds_seed = DEFAULT_UDS_SEED (via SocRegistersImpl::UDS default).
     root_bus.soc_reg.set_uds_seed(&DEFAULT_UDS_SEED);
+    
+    if let Some(val) = args.ss_caliptra_dma_axi_user {
+        if val != 0 {
+            let mut soc_reg = root_bus.soc_reg.clone();
+            if let Err(err) = soc_reg.write(RvSize::Word, 0x534, val) {
+                eprintln!(
+                    "[INIT] Failed to seed SS_CALIPTRA_DMA_AXI_USER via internal SOC write: {:?}",
+                    err
+                );
+            }
+        }
+    }
+    
     let soc_ifc = unsafe {
         caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
             0x3003_0000 as *mut u32,

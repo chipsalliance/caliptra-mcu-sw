@@ -46,6 +46,7 @@ pub struct Mci {
     op_mtimecmp_due_action: Option<ActionHandle>,
     mcu_mailbox1: Option<McuMailbox0Internal>,
     soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
+    mcu_lsu_axi_user: u32,
 
     reset_requested: bool,
 
@@ -99,7 +100,12 @@ impl Mci {
             soc_regs,
 
             cptra_boot_go,
+            mcu_lsu_axi_user: 0,
         }
+    }
+
+    pub fn set_mcu_lsu_axi_user(&mut self, value: u32) {
+        self.mcu_lsu_axi_user = value;
     }
 
     #[inline]
@@ -169,6 +175,10 @@ impl Mci {
 impl MciPeripheral for Mci {
     fn generated(&mut self) -> Option<&mut MciGenerated> {
         Some(&mut self.generated)
+    }
+
+    fn read_mci_reg_mcu_lsu_axi_user(&mut self) -> caliptra_emu_types::RvData {
+        self.mcu_lsu_axi_user
     }
 
     fn write_mci_reg_cptra_boot_go(
