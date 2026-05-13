@@ -219,6 +219,114 @@ pub extern "C" fn rom_entry() -> ! {
     }];
     let manager = ImageProviderManager::new(&mut entries);
 
+    #[cfg(feature = "ocp-lock")]
+    const OTP_DIGEST_IV: u64 = 0x90C7F21F6224F027u64;
+    #[cfg(feature = "ocp-lock")]
+    const OTP_DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266Fu128;
+
+    #[cfg(feature = "ocp-lock")]
+    struct FpgaOcpPlatform;
+
+    #[cfg(feature = "ocp-lock")]
+    fn get_hek_partition(slot: usize) -> registers_generated::fuses::OtpPartitionInfo {
+        registers_generated::fuses::OtpPartitionInfo {
+            name: "cptra_ss_lock_hek_prod",
+            byte_offset: registers_generated::fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET
+                + slot * 48,
+            byte_size: 40,
+            sw_digest: true,
+            hw_digest: false,
+            digest_offset: None,
+        }
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    impl romtime::ocp_lock::Platform for FpgaOcpPlatform {
+        fn get_total_slots(&self) -> usize {
+            8
+        }
+
+        fn get_slot_state(
+            &mut self,
+            otp: &romtime::otp::Otp,
+            perma_bit: &romtime::ocp_lock::PermaBitStatus,
+            slot: usize,
+            seed: &[u8; 48],
+        ) -> Result<romtime::ocp_lock::HekSeedState, romtime::ocp_lock::Error> {
+            if *perma_bit == romtime::ocp_lock::PermaBitStatus::Set && !cfg!(feature = "core_test")
+            {
+                return Ok(romtime::ocp_lock::HekSeedState::Permanent);
+            }
+            if seed.iter().all(|&b| b == 0xFF) {
+                return Ok(romtime::ocp_lock::HekSeedState::Sanitized);
+            }
+            if seed.iter().all(|&b| b == 0x0) {
+                return Ok(romtime::ocp_lock::HekSeedState::Unused);
+            }
+
+            if cfg!(feature = "core_test") {
+                if slot == 0 && !seed.iter().all(|&b| b == 0) && !seed.iter().all(|&b| b == 0xFF) {
+                    return Ok(romtime::ocp_lock::HekSeedState::Programmed);
+                }
+            }
+
+            let partition = get_hek_partition(slot);
+            let expected_digest: Result<&[u8; 8], _> = seed[32..40].try_into();
+            match (
+                expected_digest,
+                otp.compute_sw_digest(&partition, OTP_DIGEST_IV, OTP_DIGEST_CONST),
+            ) {
+                (Ok(expected_digest), Ok(computed_digest)) => {
+                    let expected_digest = u64::from_le_bytes(*expected_digest);
+                    if computed_digest != expected_digest {
+                        romtime::println!(
+                            "[mcu-rom-otp] HEK software digest mismatch! Slot {}",
+                            slot
+                        );
+                        return Ok(romtime::ocp_lock::HekSeedState::ProgrammedCorrupted);
+                    }
+                }
+                _ => return Err(romtime::ocp_lock::Error::INVALID_HEK_SLOT),
+            }
+
+            Ok(romtime::ocp_lock::HekSeedState::Programmed)
+        }
+
+        fn get_active_slot(
+            &mut self,
+            otp: &romtime::otp::Otp,
+            perma_bit: &romtime::ocp_lock::PermaBitStatus,
+            seeds: &romtime::ocp_lock::HekSeeds,
+        ) -> Result<usize, romtime::ocp_lock::Error> {
+            if *perma_bit == romtime::ocp_lock::PermaBitStatus::Set && !cfg!(feature = "core_test")
+            {
+                return Ok(self.get_total_slots() - 1);
+            }
+
+            for i in 0..seeds.len() {
+                let buf = seeds
+                    .get(i)
+                    .ok_or(romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
+                let state = self.get_slot_state(otp, perma_bit, i, buf)?;
+
+                if state == romtime::ocp_lock::HekSeedState::Programmed {
+                    return Ok(i);
+                }
+            }
+            Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS)
+        }
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    let mut ocp_platform = FpgaOcpPlatform;
+
+    #[cfg(feature = "ocp-lock")]
+    let ocp_lock_config = romtime::ocp_lock::RomConfig {
+        platform: Some(&mut ocp_platform),
+        key_release_addr: 0xA401_0200,
+        ..Default::default()
+    };
+
     mcu_rom_common::rom_start(RomParameters {
         lifecycle_transition,
         burn_lifecycle_tokens,
@@ -243,6 +351,9 @@ pub extern "C" fn rom_entry() -> ! {
         } else {
             None
         },
+
+        #[cfg(feature = "ocp-lock")]
+        ocp_lock_config,
         ..Default::default()
     });
 

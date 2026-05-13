@@ -926,6 +926,8 @@ pub struct RomParameters<'a> {
 
 pub fn rom_start(params: RomParameters) {
     romtime::println!("[mcu-rom] Hello from ROM");
+    #[cfg(feature = "ocp-lock")]
+    romtime::println!("[mcu-rom] OCP LOCK feature enabled");
 
     // Create ROM environment with all peripherals
     let mut env = RomEnv::new();

@@ -29,6 +29,7 @@ use mcu_components::mcu_mbox_component_static;
 use mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
 use mcu_config_fpga::flash::STAGING_PARTITION;
 use mcu_config_fpga::flash_partition_list_imaginary_flash;
+use mcu_platforms_common::handoff::HandOff;
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
@@ -304,6 +305,19 @@ pub unsafe fn main() {
     }
 
     print_to_console("[mcu-runtime] Hello from MCU runtime\n");
+
+    // Read handoff table BEFORE PMP setup.
+    let handoff = HandOff::new();
+    if let Some(ref ho) = handoff {
+        romtime::println!("[mcu-runtime] HandOff marker: 0x{:08x}", ho.rom.fht_marker);
+        #[cfg(feature = "ocp-lock")]
+        romtime::println!(
+            "[mcu-runtime] HEK state from handoff: {:?}",
+            ho.rom.hek_state.active_state
+        );
+    } else {
+        romtime::println!("[mcu-runtime] Handoff is None");
+    }
     // only machine mode
     rv32i::configure_trap_handler();
 
@@ -752,7 +766,47 @@ pub unsafe fn main() {
     }
 
     // Run any requested test
-    let exit = if cfg!(feature = "test-exit-immediately") {
+    let exit = if cfg!(feature = "test-handoff") {
+        debug!("Executing test-handoff");
+        #[cfg(feature = "test-handoff")]
+        {
+            // Safety: Test code, no other users of Handoff table so it's safe to take a mutable reference.
+            if let Some(ho) = unsafe { HandOff::new_mut() } {
+                use romtime::ocp_lock::HekSeedState;
+
+                let ho_addr = ho.addr() as u32;
+                let expected_addr = 0x5000_3C00;
+                if ho.rom.hek_state.active_slot == 2
+                    && ho.rom.hek_state.active_state == HekSeedState::Programmed
+                    && ho.rom.hek_state.total_slots == 8
+                    && ho_addr == expected_addr
+                    && ho.rom.fht_major_ver == romtime::handoff::FHT_MAJOR_VERSION
+                    && ho.rom.fht_minor_ver == romtime::handoff::FHT_MINOR_VERSION
+                {
+                    romtime::println!(
+                        "[mcu-runtime] HandOff verification successful at 0x{:08x}",
+                        ho_addr
+                    );
+                    Some(0)
+                } else {
+                    romtime::println!(
+                        "[mcu-runtime] HandOff verification FAILED: state={:?}, addr=0x{:08x}, expected=0x{:08x}, ver={}.{}",
+                        ho.rom.hek_state,
+                        ho_addr,
+                        expected_addr,
+                        ho.rom.fht_major_ver,
+                        ho.rom.fht_minor_ver,
+                    );
+                    Some(1)
+                }
+            } else {
+                romtime::println!("[mcu-runtime] HandOff verification FAILED: Handoff is None");
+                Some(1)
+            }
+        }
+        #[cfg(not(feature = "test-handoff"))]
+        None
+    } else if cfg!(feature = "test-exit-immediately") {
         debug!("Executing test-exit-immediately");
         Some(0)
     } else if cfg!(feature = "test-i3c-simple") {

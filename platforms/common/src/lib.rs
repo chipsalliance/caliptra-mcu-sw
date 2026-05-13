@@ -8,6 +8,9 @@ pub mod pmp_config;
 #[cfg(target_arch = "riscv32")]
 pub mod tests;
 
+#[cfg(target_arch = "riscv32")]
+pub mod handoff;
+
 #[macro_export]
 macro_rules! read_volatile_at {
     ($slice:expr, $index:expr) => {{

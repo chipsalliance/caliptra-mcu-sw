@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use crate::components as runtime_components;
-use crate::handoff::HandOff;
 use crate::interrupts::EmulatorPeripherals;
 use crate::{MCU_MEMORY_MAP, MCU_STRAPS};
 use arrayvec::ArrayVec;
@@ -38,6 +37,7 @@ use mcu_config_emulator::flash::{
     IMAGE_A_PARTITION, IMAGE_B_PARTITION, PARTITION_TABLE, STAGING_PARTITION,
 };
 use mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
+use mcu_platforms_common::handoff::HandOff;
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
@@ -822,7 +822,7 @@ pub unsafe fn main() {
         #[cfg(feature = "test-handoff")]
         {
             // Safety: Test code, no other users of Handoff table so it's safe to take a mutable reference.
-            if let Some(ho) = unsafe { crate::handoff::HandOff::new_mut() } {
+            if let Some(ho) = unsafe { HandOff::new_mut() } {
                 use romtime::ocp_lock::HekSeedState;
 
                 let ho_addr = ho.addr() as u32;
