@@ -25,8 +25,9 @@ use caliptra_mcu_mbox_common::messages::{
     McuCmStatusReq, McuEcdhFinishReq, McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq,
     McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsSelfTestGetResultsReq,
     McuFipsSelfTestStartReq, McuHkdfExpandReq, McuHkdfExtractReq, McuHmacKdfCounterReq, McuHmacReq,
-    McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq,
-    McuResponseVarSize, McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, ProvisionVendorPkHashReq,
+    McuMldsaCmkPublicKeyReq, McuMldsaCmkSignReq, McuMldsaCmkVerifyReq, McuProdDebugUnlockReqReq,
+    McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq, McuResponseVarSize,
+    McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, ProvisionVendorPkHashReq,
     ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
     MAX_RESP_DATA_SIZE,
 };
@@ -399,6 +400,31 @@ impl<'a> CmdInterface<'a> {
                 self.handle_crypto_passthrough::<McuEcdsaCmkVerifyReq>(
                     req,
                     CaliptraCommandId::CM_ECDSA_VERIFY.into(),
+                    resp_buf,
+                )
+                .await
+            }
+            // MLDSA CMK commands (passthrough to Caliptra mailbox)
+            CommandId::MC_MLDSA_CMK_PUBLIC_KEY => {
+                self.handle_crypto_passthrough::<McuMldsaCmkPublicKeyReq>(
+                    req,
+                    CaliptraCommandId::CM_MLDSA_PUBLIC_KEY.into(),
+                    resp_buf,
+                )
+                .await
+            }
+            CommandId::MC_MLDSA_CMK_SIGN => {
+                self.handle_crypto_passthrough::<McuMldsaCmkSignReq>(
+                    req,
+                    CaliptraCommandId::CM_MLDSA_SIGN.into(),
+                    resp_buf,
+                )
+                .await
+            }
+            CommandId::MC_MLDSA_CMK_VERIFY => {
+                self.handle_crypto_passthrough::<McuMldsaCmkVerifyReq>(
+                    req,
+                    CaliptraCommandId::CM_MLDSA_VERIFY.into(),
                     resp_buf,
                 )
                 .await

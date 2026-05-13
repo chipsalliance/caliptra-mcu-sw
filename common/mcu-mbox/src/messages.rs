@@ -12,7 +12,8 @@ pub use caliptra_api::mailbox::{
     CmEcdhGenerateReq, CmEcdhGenerateResp, CmEcdsaPublicKeyReq, CmEcdsaPublicKeyResp,
     CmEcdsaSignReq, CmEcdsaSignResp, CmEcdsaVerifyReq, CmHkdfExpandReq, CmHkdfExpandResp,
     CmHkdfExtractReq, CmHkdfExtractResp, CmHmacKdfCounterReq, CmHmacKdfCounterResp, CmHmacReq,
-    CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage, CmRandomGenerateReq, CmRandomGenerateResp,
+    CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaPublicKeyResp,
+    CmMldsaSignReq, CmMldsaSignResp, CmMldsaVerifyReq, CmRandomGenerateReq, CmRandomGenerateResp,
     CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
     CmStatusResp, Cmk, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
     ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
@@ -111,6 +112,11 @@ impl CommandId {
     pub const MC_ECDSA_CMK_SIGN: Self = Self(0x4D43_4553); // "MCES"
     pub const MC_ECDSA_CMK_VERIFY: Self = Self(0x4D43_4556); // "MCEV"
 
+    // MLDSA CMK commands (MML prefix avoids collision with MC_FUSE_INCREASE_CALIPTRA_MIN_SVN "MCMS")
+    pub const MC_MLDSA_CMK_PUBLIC_KEY: Self = Self(0x4D4D_4C50); // "MMLP"
+    pub const MC_MLDSA_CMK_SIGN: Self = Self(0x4D4D_4C53); // "MMLS"
+    pub const MC_MLDSA_CMK_VERIFY: Self = Self(0x4D4D_4C56); // "MMLV"
+
     // Debug Unlock commands
     pub const MC_PROD_DEBUG_UNLOCK_REQ: Self = Self(0x4D50_5552); // "MPUR"
     pub const MC_PROD_DEBUG_UNLOCK_TOKEN: Self = Self(0x4D50_5554); // "MPUT"
@@ -184,6 +190,9 @@ pub enum McuMailboxReq {
     EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq),
     EcdsaCmkSign(McuEcdsaCmkSignReq),
     EcdsaCmkVerify(McuEcdsaCmkVerifyReq),
+    MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq),
+    MldsaCmkSign(McuMldsaCmkSignReq),
+    MldsaCmkVerify(McuMldsaCmkVerifyReq),
     // Debug Unlock
     ProdDebugUnlockReq(McuProdDebugUnlockReqReq),
     ProdDebugUnlockToken(McuProdDebugUnlockTokenReq),
@@ -241,6 +250,9 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial(),
             McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial(),
+            McuMailboxReq::MldsaCmkPublicKey(req) => Ok(req.as_bytes()),
+            McuMailboxReq::MldsaCmkSign(req) => req.as_bytes_partial(),
+            McuMailboxReq::MldsaCmkVerify(req) => req.as_bytes_partial(),
             McuMailboxReq::ProdDebugUnlockReq(req) => Ok(req.as_bytes()),
             McuMailboxReq::ProdDebugUnlockToken(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRead(req) => Ok(req.as_bytes()),
@@ -295,6 +307,9 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::MldsaCmkPublicKey(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::MldsaCmkSign(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::MldsaCmkVerify(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::ProdDebugUnlockReq(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ProdDebugUnlockToken(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRead(req) => Ok(req.as_mut_bytes()),
@@ -349,6 +364,9 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(_) => CommandId::MC_ECDSA_CMK_PUBLIC_KEY,
             McuMailboxReq::EcdsaCmkSign(_) => CommandId::MC_ECDSA_CMK_SIGN,
             McuMailboxReq::EcdsaCmkVerify(_) => CommandId::MC_ECDSA_CMK_VERIFY,
+            McuMailboxReq::MldsaCmkPublicKey(_) => CommandId::MC_MLDSA_CMK_PUBLIC_KEY,
+            McuMailboxReq::MldsaCmkSign(_) => CommandId::MC_MLDSA_CMK_SIGN,
+            McuMailboxReq::MldsaCmkVerify(_) => CommandId::MC_MLDSA_CMK_VERIFY,
             McuMailboxReq::ProdDebugUnlockReq(_) => CommandId::MC_PROD_DEBUG_UNLOCK_REQ,
             McuMailboxReq::ProdDebugUnlockToken(_) => CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN,
             McuMailboxReq::FuseRead(_) => CommandId::MC_FUSE_READ,
@@ -428,6 +446,9 @@ pub enum McuMailboxResp {
     EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyResp),
     EcdsaCmkSign(McuEcdsaCmkSignResp),
     EcdsaCmkVerify(McuEcdsaCmkVerifyResp),
+    MldsaCmkPublicKey(McuMldsaCmkPublicKeyResp),
+    MldsaCmkSign(McuMldsaCmkSignResp),
+    MldsaCmkVerify(McuMldsaCmkVerifyResp),
     // Debug Unlock
     ProdDebugUnlockReq(McuProdDebugUnlockReqResp),
     ProdDebugUnlockToken(McuProdDebugUnlockTokenResp),
@@ -544,6 +565,9 @@ impl McuMailboxResp {
             McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::MldsaCmkPublicKey(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::MldsaCmkSign(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::MldsaCmkVerify(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProdDebugUnlockReq(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProdDebugUnlockToken(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
@@ -597,6 +621,9 @@ impl McuMailboxResp {
             McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::MldsaCmkPublicKey(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::MldsaCmkSign(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::MldsaCmkVerify(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProdDebugUnlockReq(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProdDebugUnlockToken(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
@@ -1237,6 +1264,48 @@ impl_mcu_request_varsize!(McuEcdsaCmkVerifyReq, CmEcdsaVerifyReq);
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuEcdsaCmkVerifyResp(pub MailboxRespHeader);
 impl Response for McuEcdsaCmkVerifyResp {}
+
+// ---- MLDSA CMK wrappers ----
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuMldsaCmkPublicKeyReq(pub CmMldsaPublicKeyReq);
+impl Request for McuMldsaCmkPublicKeyReq {
+    const ID: CommandId = CommandId::MC_MLDSA_CMK_PUBLIC_KEY;
+    type Resp = McuMldsaCmkPublicKeyResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuMldsaCmkPublicKeyResp(pub CmMldsaPublicKeyResp);
+impl Response for McuMldsaCmkPublicKeyResp {}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuMldsaCmkSignReq(pub CmMldsaSignReq);
+impl Request for McuMldsaCmkSignReq {
+    const ID: CommandId = CommandId::MC_MLDSA_CMK_SIGN;
+    type Resp = McuMldsaCmkSignResp;
+}
+impl_mcu_request_varsize!(McuMldsaCmkSignReq, CmMldsaSignReq);
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuMldsaCmkSignResp(pub CmMldsaSignResp);
+impl Response for McuMldsaCmkSignResp {}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuMldsaCmkVerifyReq(pub CmMldsaVerifyReq);
+impl Request for McuMldsaCmkVerifyReq {
+    const ID: CommandId = CommandId::MC_MLDSA_CMK_VERIFY;
+    type Resp = McuMldsaCmkVerifyResp;
+}
+impl_mcu_request_varsize!(McuMldsaCmkVerifyReq, CmMldsaVerifyReq);
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuMldsaCmkVerifyResp(pub MailboxRespHeader);
+impl Response for McuMldsaCmkVerifyResp {}
 
 // ---- Debug Unlock ----
 
