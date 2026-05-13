@@ -2,6 +2,7 @@
 
 //! This provides the OTP capsule that calls the underlying OTP driver
 
+use caliptra_mcu_error::McuError;
 use caliptra_mcu_registers_generated::fuses::{
     OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
     OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID,
@@ -409,6 +410,9 @@ impl Otp {
     fn lock_otp_partition(&self, partition: u32) -> CommandReturn {
         match fuse_lock_partition_dai(self.driver, partition) {
             Ok(_) => CommandReturn::success(),
+            Err(McuError::ROM_OTP_FUSE_INVALID_PARTITION) => {
+                CommandReturn::failure(ErrorCode::INVAL)
+            }
             Err(_) => CommandReturn::failure(ErrorCode::FAIL),
         }
     }

@@ -836,6 +836,7 @@ dependencies = [
  "bitfield",
  "caliptra-api",
  "caliptra-mcu-doe-transport",
+ "caliptra-mcu-error",
  "caliptra-mcu-external-otp-driver",
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
