@@ -14,13 +14,13 @@ Abstract:
 
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use caliptra_emu_bus::{Bus, BusMmio, Clock};
-use caliptra_emu_types::RvSize;
 use caliptra_emu_cpu::{Cpu, CpuArgs, Pic};
 use caliptra_emu_periph::soc_reg::DebugManufService;
 use caliptra_emu_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, MailboxRequester,
     Mci, ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
 };
+use caliptra_emu_types::RvSize;
 use caliptra_hw_model_types::DEFAULT_UDS_SEED;
 use std::io::{self, ErrorKind, Write};
 use std::path::PathBuf;
@@ -200,7 +200,7 @@ pub fn start_caliptra(
     // Set UDS seed directly — matches the caliptra-sw standalone emulator
     // behavior where fuse_uds_seed = DEFAULT_UDS_SEED (via SocRegistersImpl::UDS default).
     root_bus.soc_reg.set_uds_seed(&DEFAULT_UDS_SEED);
-    
+
     if let Some(val) = args.ss_caliptra_dma_axi_user {
         if val != 0 {
             let mut soc_reg = root_bus.soc_reg.clone();
@@ -212,7 +212,7 @@ pub fn start_caliptra(
             }
         }
     }
-    
+
     let soc_ifc = unsafe {
         caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
             0x3003_0000 as *mut u32,
