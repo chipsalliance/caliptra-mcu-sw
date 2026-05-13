@@ -4,58 +4,42 @@
 
 extern crate alloc;
 use crate::codec::MessageBuf;
-use crate::codec::{Codec, CommonCodec, DataKind};
 use crate::transport::common::{SpdmTransport, TransportError, TransportResult};
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use bitfield::bitfield;
 use caliptra_mcu_libsyscall_caliptra::mctp::{Mctp, MessageInfo};
-use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 const MCTP_MSG_HEADER_SIZE: usize = 1;
+const MCTP_SPDM_MSG_TYPE: u8 = 0x5;
 
-enum SupportedMsgType {
-    Spdm = 0x5,
-}
-
-impl TryFrom<u8> for SupportedMsgType {
-    type Error = TransportError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0x5 => Ok(SupportedMsgType::Spdm),
-            _ => Err(TransportError::UnexpectedMessageType),
-        }
+fn validate_mctp_msg_type(msg_type: u8) -> TransportResult<()> {
+    if msg_type == MCTP_SPDM_MSG_TYPE {
+        Ok(())
+    } else {
+        Err(TransportError::UnexpectedMessageType)
     }
 }
 
-bitfield! {
-#[repr(C)]
-#[derive(FromBytes, IntoBytes, Immutable)]
-pub struct MctpMsgHdr(MSB0 [u8]);
-impl Debug;
-u8;
-    pub ic, set_ic: 0,0;
-    pub msg_type, set_msg_type: 7, 0;
+fn encode_mctp_header(buf: &mut MessageBuf<'_>, msg_type: u8) -> TransportResult<()> {
+    buf.push_data(MCTP_MSG_HEADER_SIZE)
+        .map_err(TransportError::Codec)?;
+    buf.data_mut(MCTP_MSG_HEADER_SIZE)
+        .map_err(TransportError::Codec)?[0] = msg_type;
+    buf.push_head(MCTP_MSG_HEADER_SIZE)
+        .map_err(TransportError::Codec)
 }
 
-impl Default for MctpMsgHdr<[u8; MCTP_MSG_HEADER_SIZE]> {
-    fn default() -> Self {
-        MctpMsgHdr([0u8; MCTP_MSG_HEADER_SIZE])
-    }
-}
-impl MctpMsgHdr<[u8; MCTP_MSG_HEADER_SIZE]> {
-    pub fn new(ic: u8, msg_type: u8) -> Self {
-        let mut hdr = MctpMsgHdr([0u8; MCTP_MSG_HEADER_SIZE]);
-        hdr.set_ic(ic);
-        hdr.set_msg_type(msg_type);
-        hdr
-    }
+fn decode_mctp_header(buf: &mut MessageBuf<'_>) -> TransportResult<u8> {
+    let msg_type = buf
+        .data(MCTP_MSG_HEADER_SIZE)
+        .map_err(TransportError::Codec)?[0];
+    buf.pull_data(MCTP_MSG_HEADER_SIZE)
+        .map_err(TransportError::Codec)?;
+    buf.pull_head(MCTP_MSG_HEADER_SIZE)
+        .map_err(TransportError::Codec)?;
+    Ok(msg_type)
 }
 
-impl CommonCodec for MctpMsgHdr<[u8; MCTP_MSG_HEADER_SIZE]> {
-    const DATA_KIND: DataKind = DataKind::Header;
-}
 pub struct MctpTransport {
     mctp: Mctp,
     cur_resp_ctx: Option<MessageInfo>,
@@ -85,9 +69,8 @@ impl SpdmTransport for MctpTransport {
             .msg_type()
             .map_err(|_| TransportError::UnexpectedMessageType)?;
 
-        let header = MctpMsgHdr::new(0, msg_type);
-        let _supported_msg_type: SupportedMsgType = msg_type.try_into()?;
-        header.encode(req).map_err(TransportError::Codec)?;
+        validate_mctp_msg_type(msg_type)?;
+        encode_mctp_header(req, msg_type)?;
         let req_len = req.data_len();
         let req_buf = req.data(req_len).map_err(TransportError::Codec)?;
 
@@ -126,18 +109,15 @@ impl SpdmTransport for MctpTransport {
         rsp.trim(rsp_len as usize).map_err(TransportError::Codec)?;
 
         // Process the transport message header
-        let header = MctpMsgHdr::decode(rsp).map_err(TransportError::Codec)?;
+        let msg_type = decode_mctp_header(rsp)?;
         let expected_msg_type = self
             .mctp
             .msg_type()
             .map_err(|_| TransportError::UnexpectedMessageType)?;
 
-        if header.msg_type() != expected_msg_type {
+        if msg_type != expected_msg_type {
             return Err(TransportError::UnexpectedMessageType);
         }
-
-        // Check if the message type is supported
-        let _supported_msg_type: SupportedMsgType = header.msg_type().try_into()?;
 
         self.cur_req_ctx = None;
         Ok(false)
@@ -165,9 +145,9 @@ impl SpdmTransport for MctpTransport {
         req.trim(req_len as usize).map_err(TransportError::Codec)?;
 
         // Process the transport message header
-        let header = MctpMsgHdr::decode(req).map_err(TransportError::Codec)?;
+        let msg_type = decode_mctp_header(req)?;
 
-        if header.msg_type()
+        if msg_type
             != self
                 .mctp
                 .msg_type()
@@ -190,8 +170,7 @@ impl SpdmTransport for MctpTransport {
             .mctp
             .msg_type()
             .map_err(|_| TransportError::UnexpectedMessageType)?;
-        let header = MctpMsgHdr::new(0, msg_type);
-        header.encode(resp).map_err(TransportError::Codec)?;
+        encode_mctp_header(resp, msg_type)?;
 
         let msg_len = resp.msg_len();
         let rsp_buf = resp.data(msg_len).map_err(TransportError::Codec)?;

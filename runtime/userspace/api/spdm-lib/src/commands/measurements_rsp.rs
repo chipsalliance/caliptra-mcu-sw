@@ -50,40 +50,6 @@ bitfield! {
     reserved, _: 7, 3;
 }
 
-bitfield! {
-    #[derive(FromBytes, IntoBytes, Immutable)]
-    #[repr(C)]
-    struct MeasurementsRspFixed([u8]);
-    impl Debug;
-    u8;
-    pub spdm_version, set_spdm_version: 7, 0;
-    pub req_resp_code, set_req_resp_code: 15, 8;
-    pub total_measurement_indices, set_total_measurement_indices: 23, 16;
-    pub slot_id, set_slot_id: 27, 24;
-    pub content_changed, set_content_changed: 29, 28;
-    reserved, _: 31, 30;
-    pub num_blocks, set_num_blocks: 39, 32;
-    pub measurement_record_len_byte0, set_measurement_record_len_byte0: 47, 40;
-    pub measurement_record_len_byte1, set_measurement_record_len_byte1: 55, 48;
-    pub measurement_record_len_byte2, set_measurement_record_len_byte2: 63, 56;
-}
-
-impl MeasurementsRspFixed<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
-    pub fn set_measurement_record_len(&mut self, len: u32) {
-        self.set_measurement_record_len_byte0((len & 0xFF) as u8);
-        self.set_measurement_record_len_byte1(((len >> 8) & 0xFF) as u8);
-        self.set_measurement_record_len_byte2(((len >> 16) & 0xFF) as u8);
-    }
-}
-
-impl Default for MeasurementsRspFixed<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
-    fn default() -> Self {
-        Self([0; RESPONSE_FIXED_FIELDS_SIZE])
-    }
-}
-
-impl CommonCodec for MeasurementsRspFixed<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {}
-
 pub(crate) struct MeasurementsResponse {
     spdm_version: SpdmVersion,
     req_attr: GetMeasurementsReqAttr,
@@ -105,13 +71,11 @@ impl MeasurementsResponse {
         measurements: &mut SpdmMeasurements<'_>,
         shared_transcript: &mut Transcript,
         cert_store: &dyn SpdmCertStore,
+        response_size: usize,
         offset: usize,
         resp_buf: &mut [u8],
         mut session_info: Option<&mut SessionInfo>,
     ) -> CommandResult<usize> {
-        // Calculate the size of the response
-        let response_size = self.response_size(measurements, resp_buf).await?;
-
         // Check if the offset is valid
         if offset >= response_size {
             return Err((false, CommandError::Chunk(ChunkError::InvalidMessageOffset)));
@@ -120,12 +84,11 @@ impl MeasurementsResponse {
         // Calculate the size of the chunk to return
         let mut rem_len = (response_size - offset).min(resp_buf.len());
 
-        let raw_bitstream_requested = self.req_attr.raw_bitstream_requested() == 1;
-
-        let measurement_record_len = measurements
-            .measurement_block_size(self.meas_op, raw_bitstream_requested, resp_buf)
-            .await
-            .map_err(|e| (false, CommandError::Measurement(e)))?;
+        let measurement_record_len = if self.meas_op == 0 {
+            0
+        } else {
+            measurements.measurement_record_len()
+        };
 
         let record_start = RESPONSE_FIXED_FIELDS_SIZE;
         let record_end = record_start + measurement_record_len;
@@ -149,7 +112,7 @@ impl MeasurementsResponse {
 
         // 1. Copy from the fixed response fields
         if offset < RESPONSE_FIXED_FIELDS_SIZE {
-            let fixed_fields = self.response_fixed_fields(measurements).await?;
+            let fixed_fields = self.response_fixed_fields(measurements)?;
             let start = offset;
             let end = (RESPONSE_FIXED_FIELDS_SIZE).min(start + rem_len);
             let copy_len = end - start;
@@ -213,19 +176,17 @@ impl MeasurementsResponse {
         Ok(copied)
     }
 
-    async fn response_fixed_fields(
+    fn response_fixed_fields(
         &self,
         measurements: &SpdmMeasurements<'_>,
     ) -> CommandResult<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
         let mut fixed_rsp_fields = [0u8; RESPONSE_FIXED_FIELDS_SIZE];
         let mut fixed_rsp_buf = MessageBuf::new(&mut fixed_rsp_fields);
-        _ = self
-            .encode_response_fixed_fields(&mut fixed_rsp_buf, measurements)
-            .await?;
+        _ = self.encode_response_fixed_fields(&mut fixed_rsp_buf, measurements)?;
         Ok(fixed_rsp_fields)
     }
 
-    async fn encode_response_fixed_fields(
+    fn encode_response_fixed_fields(
         &self,
         buf: &mut MessageBuf<'_>,
         measurements: &SpdmMeasurements<'_>,
@@ -254,19 +215,19 @@ impl MeasurementsResponse {
             MeasurementChangeStatus::NoDetection as u8
         };
 
-        // Encode the common response fields
-        let mut rsp_common = MeasurementsRspFixed::default();
-        rsp_common.set_spdm_version(self.spdm_version.into());
-        rsp_common.set_req_resp_code(ReqRespCode::Measurements.into());
-        rsp_common.set_total_measurement_indices(total_meas_indices);
-        rsp_common.set_slot_id(self.slot_id.unwrap_or(0));
-        rsp_common.set_content_changed(change_detected);
-        rsp_common.set_num_blocks(num_of_meas_blocks_in_record);
-        rsp_common.set_measurement_record_len(meas_record_len as u32);
+        let meas_rec_len = meas_record_len as u32;
+        let rsp_common = [
+            self.spdm_version.into(),
+            ReqRespCode::Measurements.into(),
+            total_meas_indices,
+            (self.slot_id.unwrap_or(0) & 0x0f) | ((change_detected & 0x03) << 4),
+            num_of_meas_blocks_in_record,
+            (meas_rec_len & 0xff) as u8,
+            ((meas_rec_len >> 8) & 0xff) as u8,
+            ((meas_rec_len >> 16) & 0xff) as u8,
+        ];
 
-        let len = rsp_common
-            .encode(buf)
-            .map_err(|e| (false, CommandError::Codec(e)))?;
+        let len = encode_u8_slice(&rsp_common, buf).map_err(|e| (false, CommandError::Codec(e)))?;
 
         Ok(len)
     }
@@ -528,6 +489,7 @@ pub(crate) async fn generate_measurements_response<'a>(
                 &mut ctx.measurements,
                 &mut ctx.shared_transcript,
                 ctx.device_certs_store,
+                rsp_len,
                 0,
                 buf,
                 session_info,
@@ -560,6 +522,7 @@ pub(crate) async fn generate_measurements_response<'a>(
                 &mut ctx.measurements,
                 &mut ctx.shared_transcript,
                 ctx.device_certs_store,
+                rsp_len,
                 0,
                 buf,
                 session_info,

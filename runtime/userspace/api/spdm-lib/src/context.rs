@@ -110,9 +110,7 @@ impl<'a> SpdmContext<'a> {
             }
             Err((rsp, command_error)) => {
                 if rsp {
-                    self.send_response(msg_buf, secure)
-                        .await
-                        .inspect_err(|_| {})?;
+                    self.send_response(msg_buf, secure).await?;
                 }
                 // Release buffer on error if no chunking is in progress
                 self.large_msg_ctx.release_buf();

@@ -55,27 +55,33 @@ impl VdmResponder for CaliptraVdmHandler<'_> {
             return Err(VdmError::UnsupportedRequest);
         }
 
-        let command = CaliptraVdmCommand::try_from(hdr.command_code)?;
+        let command_code = hdr.command_code;
+        if !(CaliptraVdmCommand::FirmwareVersion as u8
+            ..=CaliptraVdmCommand::DeviceOwnershipTransfer as u8)
+            .contains(&command_code)
+        {
+            return Err(VdmError::InvalidVdmCommand);
+        }
 
         // Reserve space for response header
         let rsp_hdr_len = size_of::<CaliptraVdmMsgHeader>();
         rsp_buf.reserve(rsp_hdr_len).map_err(VdmError::Codec)?;
 
-        let result = match command {
-            CaliptraVdmCommand::FirmwareVersion => {
+        let result = match command_code {
+            x if x == CaliptraVdmCommand::FirmwareVersion as u8 => {
                 firmware_version::handle_firmware_version(self.handler, req_buf, rsp_buf).await?
             }
-            CaliptraVdmCommand::DeviceCapabilities => {
+            x if x == CaliptraVdmCommand::DeviceCapabilities as u8 => {
                 device_capabilities::handle_device_capabilities(self.handler, req_buf, rsp_buf)
                     .await?
             }
-            CaliptraVdmCommand::DeviceId => {
+            x if x == CaliptraVdmCommand::DeviceId as u8 => {
                 device_id::handle_device_id(self.handler, req_buf, rsp_buf).await?
             }
-            CaliptraVdmCommand::DeviceInfo => {
+            x if x == CaliptraVdmCommand::DeviceInfo as u8 => {
                 device_info::handle_device_info(self.handler, req_buf, rsp_buf).await?
             }
-            CaliptraVdmCommand::ExportAttestedCsr => {
+            x if x == CaliptraVdmCommand::ExportAttestedCsr as u8 => {
                 export_attested_csr::handle_export_attested_csr(
                     self.handler,
                     req_buf,
@@ -84,7 +90,7 @@ impl VdmResponder for CaliptraVdmHandler<'_> {
                 )
                 .await?
             }
-            CaliptraVdmCommand::ExportIdevidCsr => {
+            x if x == CaliptraVdmCommand::ExportIdevidCsr as u8 => {
                 export_idevid_csr::handle_export_idevid_csr(
                     self.handler,
                     req_buf,
@@ -100,14 +106,14 @@ impl VdmResponder for CaliptraVdmHandler<'_> {
             CaliptraVdmCmdResult::Response(payload_len) => {
                 let rsp_hdr = CaliptraVdmMsgHeader {
                     command_version: CALIPTRA_VDM_COMMAND_VERSION,
-                    command_code: command.response_code(),
+                    command_code,
                 };
                 rsp_buf.push_data(payload_len).map_err(VdmError::Codec)?;
                 let hdr_len = rsp_hdr.encode(rsp_buf).map_err(VdmError::Codec)?;
                 payload_len + hdr_len
             }
             CaliptraVdmCmdResult::ErrorResponse(error) => {
-                generate_error_response(command, error, rsp_buf)?
+                generate_error_response(command_code, error, rsp_buf)?
             }
         };
 
@@ -120,7 +126,7 @@ impl VdmHandler for CaliptraVdmHandler<'_> {}
 /// Generate a CaliptraVdm error response, following the TDISP generate_error_response pattern.
 /// Resets the payload region and encodes the error response (header + error code).
 fn generate_error_response(
-    command: CaliptraVdmCommand,
+    command_code: u8,
     error: CaliptraCompletionCode,
     rsp_buf: &mut MessageBuf<'_>,
 ) -> VdmResult<usize> {
@@ -131,7 +137,7 @@ fn generate_error_response(
 
     let rsp_hdr = CaliptraVdmMsgHeader {
         command_version: CALIPTRA_VDM_COMMAND_VERSION,
-        command_code: command.response_code(),
+        command_code,
     };
     len += rsp_hdr.encode(rsp_buf).map_err(VdmError::Codec)?;
 

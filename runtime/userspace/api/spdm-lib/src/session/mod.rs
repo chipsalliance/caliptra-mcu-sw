@@ -40,7 +40,7 @@ pub type SessionResult<T> = Result<T, SessionError>;
 pub(crate) struct SessionManager {
     active_session_id: Option<u32>,
     handshake_phase_session_id: Option<u32>,
-    sessions: [Option<SessionInfo>; MAX_NUM_SESSIONS],
+    session: Option<SessionInfo>,
     cur_responder_session_id: u16,
 }
 
@@ -49,7 +49,7 @@ impl SessionManager {
         Self {
             active_session_id: None,
             handshake_phase_session_id: None,
-            sessions: [None; MAX_NUM_SESSIONS],
+            session: None,
             cur_responder_session_id: 0,
         }
     }
@@ -57,7 +57,7 @@ impl SessionManager {
     pub fn reset(&mut self) {
         self.active_session_id = None;
         self.handshake_phase_session_id = None;
-        self.sessions = [None; MAX_NUM_SESSIONS];
+        self.session = None;
         self.cur_responder_session_id = 0;
     }
 
@@ -93,39 +93,35 @@ impl SessionManager {
     }
 
     pub fn create_session(&mut self, session_id: u32) -> SessionResult<()> {
-        for i in 0..MAX_NUM_SESSIONS {
-            if self.sessions[i].is_none() {
-                let session_info = SessionInfo::new(session_id);
-                self.sessions[i] = Some(session_info);
-                return Ok(());
-            }
+        if self.session.is_none() {
+            self.session = Some(SessionInfo::new(session_id));
+            Ok(())
+        } else {
+            Err(SessionError::SessionsLimitReached)
         }
-        Err(SessionError::SessionsLimitReached)
     }
 
     pub fn set_session_state(&mut self, session_id: u32, state: SessionState) -> SessionResult<()> {
-        let session_info = self
-            .sessions
-            .iter_mut()
-            .find_map(|s| s.as_mut().filter(|info| info.session_id == session_id))
-            .ok_or(SessionError::InvalidSessionId)?;
-
-        session_info.set_session_state(state);
-        Ok(())
+        if let Some(info) = &mut self.session {
+            if info.session_id == session_id {
+                info.set_session_state(state);
+                return Ok(());
+            }
+        }
+        Err(SessionError::InvalidSessionId)
     }
 
     pub fn delete_session(&mut self, session_id: u32) -> SessionResult<()> {
-        let session_index = self
-            .sessions
-            .iter()
-            .position(|s| {
-                s.as_ref()
-                    .map(|info| info.session_id == session_id)
-                    .unwrap_or(false)
-            })
-            .ok_or(SessionError::InvalidSessionId)?;
+        if let Some(info) = &self.session {
+            if info.session_id == session_id {
+                self.session = None;
+            } else {
+                return Err(SessionError::InvalidSessionId);
+            }
+        } else {
+            return Err(SessionError::InvalidSessionId);
+        }
 
-        self.sessions[session_index] = None;
         if self.active_session_id == Some(session_id) {
             self.reset_active_session_id();
         }
@@ -137,17 +133,21 @@ impl SessionManager {
 
     #[allow(dead_code)]
     pub fn session_info(&self, session_id: u32) -> SessionResult<&SessionInfo> {
-        self.sessions
-            .iter()
-            .find_map(|s| s.as_ref().filter(|info| info.session_id == session_id))
-            .ok_or(SessionError::InvalidSessionId)
+        if let Some(info) = &self.session {
+            if info.session_id == session_id {
+                return Ok(info);
+            }
+        }
+        Err(SessionError::InvalidSessionId)
     }
 
     pub fn session_info_mut(&mut self, session_id: u32) -> SessionResult<&mut SessionInfo> {
-        self.sessions
-            .iter_mut()
-            .find_map(|s| s.as_mut().filter(|info| info.session_id == session_id))
-            .ok_or(SessionError::InvalidSessionId)
+        if let Some(info) = &mut self.session {
+            if info.session_id == session_id {
+                return Ok(info);
+            }
+        }
+        Err(SessionError::InvalidSessionId)
     }
 
     pub async fn encode_secure_message(
@@ -162,15 +162,15 @@ impl SessionManager {
 
         let session_info = self.session_info_mut(session_id)?;
 
+        if transport.sequence_num_size_bytes() > 0 || transport.random_data_size_bytes() > 0 {
+            return Err(SessionError::EncodeAeadError);
+        }
+
         let mut aead_data = [0u8; MAX_SPDM_AEAD_ASSOCIATED_DATA_SIZE];
         let mut aead_buf = MessageBuf::new(&mut aead_data);
         let mut aead_len = session_id
             .encode(&mut aead_buf)
             .map_err(SessionError::Codec)?;
-
-        if transport.sequence_num_size_bytes() > 0 {
-            todo!("Handle sequence number if exists and process");
-        }
 
         let mut encrypted_data = [0u8; MAX_SPDM_RESPONDER_BUF_SIZE];
         let mut plaintext_data = [0u8; MAX_SPDM_RESPONDER_BUF_SIZE];
@@ -179,9 +179,6 @@ impl SessionManager {
         plaintext_data[..2].copy_from_slice(&app_data_len.to_le_bytes());
         plaintext_data[2..2 + app_data_buffer.len()].copy_from_slice(app_data_buffer);
         let encrypted_len = 2 + app_data_buffer.len();
-        if transport.random_data_size_bytes() > 0 {
-            todo!("Handle random data bytes");
-        }
 
         let tag_length = size_of::<Aes256GcmTag>();
         let length: u16 = encrypted_len as u16 + tag_length as u16;
@@ -201,10 +198,6 @@ impl SessionManager {
         let mut secure_message_len = session_id
             .encode(secure_message)
             .map_err(SessionError::Codec)?;
-
-        if transport.sequence_num_size_bytes() > 0 {
-            todo!("Handle sequence number if exists and process");
-        }
         secure_message_len += length.encode(secure_message).map_err(SessionError::Codec)?;
 
         secure_message_len += encode_u8_slice(&encrypted_data[..encrypted_size], secure_message)
@@ -249,7 +242,7 @@ impl SessionManager {
 
         if transport.sequence_num_size_bytes() > 0 {
             // Decode sequence number if exists and process
-            todo!("Decode sequence number if exists and process");
+            return Err(SessionError::DecodeAeadError);
         }
 
         let length = u16::decode(secure_message).map_err(SessionError::Codec)?;

@@ -9,20 +9,28 @@ mod integration_example;
 pub(crate) mod shared_large_msg_buf;
 
 use crate::spdm::device_measurements::ocp_eat::init_target_env_claims;
+#[cfg(feature = "doe")]
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
+#[cfg(feature = "doe")]
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+#[cfg(feature = "doe")]
 use caliptra_mcu_libtock_console::Console;
+#[cfg(feature = "doe")]
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_spdm_lib::codec::MessageBuf;
 use caliptra_mcu_spdm_lib::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
+#[cfg(feature = "doe")]
 use caliptra_mcu_spdm_lib::error::SpdmError;
 use caliptra_mcu_spdm_lib::measurements::SpdmMeasurements;
 use caliptra_mcu_spdm_lib::protocol::*;
 use caliptra_mcu_spdm_lib::transport::common::SpdmTransport;
+#[cfg(feature = "doe")]
 use caliptra_mcu_spdm_lib::transport::common::TransportError;
+#[cfg(feature = "doe")]
 use caliptra_mcu_spdm_lib::transport::doe::DoeTransport;
 use caliptra_mcu_spdm_lib::transport::mctp::MctpTransport;
+#[cfg(feature = "doe")]
 use core::fmt::Write;
 use device_cert_store::{initialize_cert_store, SharedCertStore};
 use embassy_executor::Spawner;
@@ -36,50 +44,26 @@ const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
 
 #[embassy_executor::task]
 pub(crate) async fn spdm_task(spawner: Spawner) {
-    let mut console_writer = Console::<DefaultSyscalls>::writer();
-    writeln!(console_writer, "SPDM_TASK: Running SPDM-TASK...").unwrap();
-
     // Initialize the shared large message buffer (once, before spawning responders)
     shared_large_msg_buf::init();
 
     // Initialize the shared certificate store
-    if let Err(e) = initialize_cert_store().await {
-        writeln!(
-            console_writer,
-            "SPDM_TASK: Failed to initialize certificate store: {:?}",
-            e
-        )
-        .unwrap();
+    if initialize_cert_store().await.is_err() {
         return;
     }
 
     // initialize target environment for claims
     init_target_env_claims();
 
-    if let Err(e) = spawner.spawn(spdm_mctp_responder()) {
-        writeln!(
-            console_writer,
-            "SPDM_TASK: Failed to spawn spdm_mctp_responder: {:?}",
-            e
-        )
-        .unwrap();
-    }
+    let _ = spawner.spawn(spdm_mctp_responder());
 
     #[cfg(feature = "doe")]
-    if let Err(e) = spawner.spawn(spdm_doe_responder()) {
-        writeln!(
-            console_writer,
-            "SPDM_TASK: Failed to spawn spdm_doe_responder: {:?}",
-            e
-        )
-        .unwrap();
-    }
+    let _ = spawner.spawn(spdm_doe_responder());
 }
 
 #[embassy_executor::task]
 async fn spdm_mctp_responder() {
     let mut raw_buffer = [0; MAX_SPDM_RESPONDER_BUF_SIZE];
-    let mut cw = Console::<DefaultSyscalls>::writer();
     let mut mctp_spdm_transport: MctpTransport = MctpTransport::new(mctp::driver_num::MCTP_SPDM);
 
     let max_mctp_spdm_msg_size =
@@ -128,31 +112,16 @@ async fn spdm_mctp_responder() {
         &large_msg_buf_provider,
     ) {
         Ok(ctx) => ctx,
-        Err(e) => {
-            writeln!(
-                cw,
-                "SPDM_MCTP_RESPONDER: Failed to create SPDM context: {:?}",
-                e
-            )
-            .unwrap();
-            return;
-        }
+        Err(_) => return,
     };
 
     let mut msg_buffer = MessageBuf::new(&mut raw_buffer);
     loop {
-        let result = ctx.process_message(&mut msg_buffer).await;
-        match result {
-            Ok(_) => {
-                writeln!(cw, "SPDM_MCTP_RESPONDER: Process message successfully").unwrap();
-            }
-            Err(e) => {
-                writeln!(cw, "SPDM_MCTP_RESPONDER: Process message failed: {:?}", e).unwrap();
-            }
-        }
+        let _ = ctx.process_message(&mut msg_buffer).await;
     }
 }
 
+#[cfg(feature = "doe")]
 #[embassy_executor::task]
 async fn spdm_doe_responder() {
     let mut raw_buffer = [0; MAX_SPDM_RESPONDER_BUF_SIZE];
@@ -253,31 +222,20 @@ async fn spdm_doe_responder() {
         &large_msg_buf_provider,
     ) {
         Ok(ctx) => ctx,
-        Err(e) => {
-            writeln!(
-                cw,
-                "SPDM_DOE_RESPONDER: Failed to create SPDM context: {:?}",
-                e
-            )
-            .unwrap();
+        Err(_) => {
+            writeln!(cw, "SPDM_DOE_RESPONDER: Failed to create SPDM context").unwrap();
             return;
         }
     };
 
     let mut msg_buffer = MessageBuf::new(&mut raw_buffer);
     loop {
-        let result = ctx.process_message(&mut msg_buffer).await;
-        match result {
-            Ok(_) => {
-                writeln!(cw, "SPDM_DOE_RESPONDER: Process message successfully").unwrap();
-            }
+        match ctx.process_message(&mut msg_buffer).await {
             Err(SpdmError::Transport(TransportError::DriverError(ErrorCode::NoDevice))) => {
                 writeln!(cw, "SPDM_DOE_RESPONDER: No DOE device, exiting task").unwrap();
                 break;
             }
-            Err(e) => {
-                writeln!(cw, "SPDM_DOE_RESPONDER: Process message failed: {:?}", e).unwrap();
-            }
+            _ => {}
         }
     }
 }

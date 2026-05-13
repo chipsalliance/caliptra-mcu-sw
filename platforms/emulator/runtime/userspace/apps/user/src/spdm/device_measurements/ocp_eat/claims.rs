@@ -2,7 +2,6 @@
 
 use crate::soc_env::*;
 use arrayvec::ArrayString;
-use arrayvec::ArrayVec;
 use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use caliptra_mcu_libapi_caliptra::evidence::device_state::DeviceState;
 use caliptra_mcu_libapi_caliptra::evidence::ocp_eat_claims::generate_eat_claims;
@@ -15,15 +14,12 @@ use caliptra_ocp_eat::{
     ClassIdTypeChoice, ClassMap, ConciseEvidence, ConciseEvidenceMap, DigestEntry, EnvironmentMap,
     EvTriplesMap, EvidenceTripleRecord, MeasurementMap, MeasurementValue, TaggedBytes, VersionMap,
 };
-use core::fmt::Write;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 const NUM_FW_TARGET_ENV: usize = NUM_DEFAULT_FW_COMPONENTS + NUM_SOC_FW_COMPONENTS;
 const NUM_HW_TARGET_ENV: usize = 0; // For now, no HW IDs
 const NUM_SW_TARGET_ENV: usize = 0; // For now, no SW IDs
-const NUM_FW_HW_TARGET_ENV: usize = NUM_FW_TARGET_ENV + NUM_HW_TARGET_ENV;
-const NUM_HW_SW_TARGET_ENV: usize = NUM_HW_TARGET_ENV + NUM_SW_TARGET_ENV;
 const TOTAL_TARGET_ENV: usize = NUM_FW_TARGET_ENV + NUM_HW_TARGET_ENV + NUM_SW_TARGET_ENV;
 const SHA384_HASH_WORDS: usize = SHA384_HASH_SIZE / 4; // Number of u32 words in a SHA384 hash
 
@@ -31,7 +27,6 @@ const FMC_FW_JOURNEY_PCR_INDEX: usize = 1;
 const RT_FW_JOURNEY_PCR_INDEX: usize = 3;
 
 const MAX_SEMVER_LEN: usize = 11;
-const MAX_RAW_VALUE_LEN: usize = 32;
 
 const FMC_MEASUREMENT_INDEX: usize = 0;
 const RT_MEASUREMENT_INDEX: usize = 1;
@@ -122,15 +117,8 @@ pub async fn generate_claims(claims_buf: &mut [u8], nonce: &[u8]) -> Measurement
     // digests, raw values applicable to HW target envs
     let mut versions = [0u32; NUM_FW_TARGET_ENV];
     let mut svns = [0u32; NUM_FW_TARGET_ENV];
-    let mut digests = [[0u8; SHA384_HASH_SIZE]; NUM_FW_HW_TARGET_ENV];
+    let mut digests = [[0u8; SHA384_HASH_SIZE]; NUM_FW_TARGET_ENV];
     let mut journey_digests = [[0u8; SHA384_HASH_SIZE]; NUM_FW_TARGET_ENV];
-
-    // Raw values only for HW and SW target envs
-    let mut raw_values: [Option<ArrayVec<u8, MAX_RAW_VALUE_LEN>>; NUM_HW_SW_TARGET_ENV] =
-        [None; NUM_HW_SW_TARGET_ENV];
-    // raw value masks only for SW target envs
-    let mut raw_value_masks: [Option<ArrayVec<u8, MAX_RAW_VALUE_LEN>>; NUM_SW_TARGET_ENV] =
-        [None; NUM_SW_TARGET_ENV];
 
     let mut digest_entries_arr: [[DigestEntry; 1]; NUM_FW_TARGET_ENV] = [[DigestEntry {
         alg_id: 7,
@@ -156,19 +144,7 @@ pub async fn generate_claims(claims_buf: &mut [u8], nonce: &[u8]) -> Measurement
         });
 
     // 1) Fill all the necessary leaf level measurement value info
-    fill_fw_config_info(
-        &mut versions,
-        &mut svns,
-        &mut digests[..NUM_FW_TARGET_ENV],
-        &mut journey_digests,
-    )
-    .await?;
-    fill_hw_config_info(
-        &mut digests[NUM_FW_TARGET_ENV..],
-        &mut raw_values[..NUM_HW_TARGET_ENV],
-    )
-    .await?;
-    fill_sw_config_info(&mut raw_values[NUM_HW_TARGET_ENV..], &mut raw_value_masks).await?;
+    fill_fw_config_info(&mut versions, &mut svns, &mut digests, &mut journey_digests).await?;
 
     // Convert u32 versions to ArrayStrings
     for i in 0..NUM_FW_TARGET_ENV {
@@ -257,18 +233,41 @@ pub async fn generate_claims(claims_buf: &mut [u8], nonce: &[u8]) -> Measurement
 }
 
 fn version_to_str(ver: u32) -> ArrayString<MAX_SEMVER_LEN> {
-    let major = (ver >> 16) & 0xFF;
-    let minor = (ver >> 8) & 0xFF;
-    let patch = ver & 0xFF;
+    let major = ((ver >> 16) & 0xFF) as u8;
+    let minor = ((ver >> 8) & 0xFF) as u8;
+    let patch = (ver & 0xFF) as u8;
     let mut s = ArrayString::<MAX_SEMVER_LEN>::new();
-    let _ = write!(&mut s, "{}.{}.{}", major, minor, patch);
+    push_decimal(&mut s, major);
+    let _ = s.try_push('.');
+    push_decimal(&mut s, minor);
+    let _ = s.try_push('.');
+    push_decimal(&mut s, patch);
     s
+}
+
+fn push_decimal(s: &mut ArrayString<MAX_SEMVER_LEN>, value: u8) {
+    if value >= 100 {
+        push_digit(s, value / 100);
+        push_digit(s, (value / 10) % 10);
+    } else if value >= 10 {
+        push_digit(s, value / 10);
+    }
+    push_digit(s, value % 10);
+}
+
+fn push_digit(s: &mut ArrayString<MAX_SEMVER_LEN>, digit: u8) {
+    let _ = s.try_push((b'0' + digit) as char);
 }
 
 fn digest_words_to_bytes(words: &[u32; SHA384_HASH_WORDS]) -> [u8; SHA384_HASH_SIZE] {
     let mut digest = [0u8; SHA384_HASH_SIZE];
-    for (i, word) in words.iter().enumerate() {
-        digest[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
+    for i in 0..SHA384_HASH_WORDS {
+        let bytes = words[i].to_be_bytes();
+        let offset = i * 4;
+        digest[offset] = bytes[0];
+        digest[offset + 1] = bytes[1];
+        digest[offset + 2] = bytes[2];
+        digest[offset + 3] = bytes[3];
     }
     digest
 }
@@ -276,12 +275,9 @@ fn digest_words_to_bytes(words: &[u32; SHA384_HASH_WORDS]) -> [u8; SHA384_HASH_S
 async fn fill_fw_config_info(
     versions: &mut [u32; NUM_FW_TARGET_ENV],
     svns: &mut [u32; NUM_FW_TARGET_ENV],
-    digests: &mut [[u8; SHA384_HASH_SIZE]],
+    digests: &mut [[u8; SHA384_HASH_SIZE]; NUM_FW_TARGET_ENV],
     journey_digests: &mut [[u8; SHA384_HASH_SIZE]; NUM_FW_TARGET_ENV],
 ) -> MeasurementsResult<()> {
-    if digests.len() != NUM_FW_TARGET_ENV {
-        return Err(MeasurementsError::InvalidInput);
-    }
     // Populate versions, svns, digests, journey_digests from device state or other sources
     // for default FW components first
     let fw_info = DeviceState::fw_info()
@@ -327,40 +323,6 @@ async fn fill_fw_config_info(
             }
         }
         journey_digests[NUM_DEFAULT_FW_COMPONENTS + i] = [0u8; SHA384_HASH_SIZE];
-    }
-    Ok(())
-}
-
-async fn fill_hw_config_info(
-    digests: &mut [[u8; SHA384_HASH_SIZE]],
-    raw_values: &mut [Option<ArrayVec<u8, MAX_RAW_VALUE_LEN>>],
-) -> MeasurementsResult<()> {
-    if digests.len() != NUM_HW_TARGET_ENV || raw_values.len() != NUM_HW_TARGET_ENV {
-        return Err(MeasurementsError::InvalidInput);
-    }
-    // TODO: Populate digests and raw_values from HW fuses or other sources
-    // For now, set dummy values
-    #[allow(clippy::reversed_empty_ranges)]
-    for i in 0..NUM_HW_TARGET_ENV {
-        digests[i] = [0u8; SHA384_HASH_SIZE];
-        raw_values[i] = None; // or Some(ArrayVec::from_slice(&[...]).unwrap());
-    }
-    Ok(())
-}
-
-async fn fill_sw_config_info(
-    raw_values: &mut [Option<ArrayVec<u8, MAX_RAW_VALUE_LEN>>],
-    raw_value_masks: &mut [Option<ArrayVec<u8, MAX_RAW_VALUE_LEN>>; NUM_SW_TARGET_ENV],
-) -> MeasurementsResult<()> {
-    if raw_values.len() != NUM_SW_TARGET_ENV {
-        return Err(MeasurementsError::InvalidInput);
-    }
-    // TODO: Populate raw_values and raw_value_masks from SW config or other sources
-    // For now, set dummy values
-    #[allow(clippy::reversed_empty_ranges)]
-    for i in 0..NUM_SW_TARGET_ENV {
-        raw_values[i] = None; // or Some(ArrayVec::from_slice(&[...]).unwrap());
-        raw_value_masks[i] = None; // or Some(ArrayVec::from_slice(&[...]).unwrap());
     }
     Ok(())
 }
