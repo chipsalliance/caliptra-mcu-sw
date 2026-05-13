@@ -35,6 +35,22 @@ impl<'a> SignedEat<'a> {
         // Prepare protected header
         let protected_header = ProtectedHeader::new_es384();
 
+        // Get signature context for signing. The COSE_Sign1 signature structure
+        // only covers protected headers and payload; build it before fetching the
+        // certificate so the certificate buffer is not live across the signing
+        // mailbox calls below.
+        let mut sig_context_buffer = [0u8; MAX_SIG_CONTEXT_SIZE];
+        let sig_context_len = CoseSign1::new(eat_buffer)
+            .protected_header(&protected_header)
+            .payload(payload)
+            .get_signature_context(&mut sig_context_buffer)
+            .map_err(CaliptraApiError::Eat)?;
+
+        // Generate signature from context
+        let signature = self
+            .sign_context(&sig_context_buffer[..sig_context_len])
+            .await?;
+
         // Prepare unprotected header with certificate chain
         let mut ecc_cert: [u8; MAX_ECC_CERT_SIZE] = [0; MAX_ECC_CERT_SIZE];
         let cert_size = self.get_leaf_cert(&mut ecc_cert).await?;
@@ -44,25 +60,11 @@ impl<'a> SignedEat<'a> {
         };
         let unprotected_headers = [x5chain_header];
 
-        // Initialize COSE_Sign1 encoder with protected header, unprotected headers, and payload
-        let cose_sign1 = CoseSign1::new(eat_buffer)
+        // Complete encoding with signature, unprotected headers, and EAT tags
+        CoseSign1::new(eat_buffer)
             .protected_header(&protected_header)
             .unprotected_headers(&unprotected_headers)
-            .payload(payload);
-
-        // Get signature context for signing
-        let mut sig_context_buffer = [0u8; MAX_SIG_CONTEXT_SIZE];
-        let sig_context_len = cose_sign1
-            .get_signature_context(&mut sig_context_buffer)
-            .map_err(CaliptraApiError::Eat)?;
-
-        // Generate signature from context
-        let signature = self
-            .sign_context(&sig_context_buffer[..sig_context_len])
-            .await?;
-
-        // Complete encoding with signature and EAT tags
-        cose_sign1
+            .payload(payload)
             .signature(&signature[..])
             .encode(Some(&[cbor_tags::SELF_DESCRIBED_CBOR, cbor_tags::CWT]))
             .map_err(CaliptraApiError::Eat)
