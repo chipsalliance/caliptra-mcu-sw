@@ -147,6 +147,13 @@ jobs:
           ./target/release/ocptoken verify \
           -e $SPDM_VALIDATOR_DIR/measurement_block_fd.bin
 
+      - name: Run SPDM attestation test on MCTP transport (PCR Quote measurements)
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        run: |
+          cargo xtask all-build
+          cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_attestation_pcr_quote --nocapture --include-ignored
+
       - name: Run SPDM validator tests on DOE transport
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
