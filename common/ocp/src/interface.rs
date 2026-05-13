@@ -176,7 +176,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
         // Verify no CMS index appears more than once across both slices.
         // Note: CMS regions are likely to be few, so this operation is not prohibetively expensive.
         for (i, (idx_a, _)) in indirect_regions.iter().enumerate() {
-            for (idx_b, _) in indirect_regions[i + 1..].iter() {
+            for (idx_b, _) in indirect_regions.get(i + 1..).unwrap_or_default().iter() {
                 if idx_a == idx_b {
                     return Err(OcpError::DuplicateCmsIndex);
                 }
@@ -188,7 +188,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
             }
         }
         for (i, (idx_a, _)) in fifo_regions.iter().enumerate() {
-            for (idx_b, _) in fifo_regions[i + 1..].iter() {
+            for (idx_b, _) in fifo_regions.get(i + 1..).unwrap_or_default().iter() {
                 if idx_a == idx_b {
                     return Err(OcpError::DuplicateCmsIndex);
                 }
@@ -517,7 +517,10 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
     fn handle_device_status_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
         let heartbeat = self.vendor.heartbeat();
         let mut vendor_buf = [0u8; device_status::MAX_VENDOR_STATUS_LEN];
-        let vendor_len = self.vendor.vendor_device_status(&mut vendor_buf);
+        let vendor_len = self
+            .vendor
+            .vendor_device_status(&mut vendor_buf)
+            .min(vendor_buf.len());
 
         let status = DeviceStatus::new(
             self.device_status_value,

@@ -339,7 +339,11 @@ impl<'a> DeviceId<'a> {
         self.inner
             .write_to_prefix(buf)
             .map_err(|_| OcpError::BufferTooSmall)?;
-        buf[MIN_MESSAGE_LEN..len].copy_from_slice(self.vendor_string);
+        crate::utils::try_copy_from_slice(
+            buf.get_mut(MIN_MESSAGE_LEN..len)
+                .ok_or(OcpError::BufferTooSmall)?,
+            self.vendor_string,
+        )?;
 
         Ok(len)
     }
