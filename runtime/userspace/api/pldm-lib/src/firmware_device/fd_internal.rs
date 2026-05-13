@@ -6,8 +6,7 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::{
     FirmwareDeviceState, PldmFdTime, UpdateOptionFlags, PLDM_FWUP_MAX_PADDING_SIZE,
 };
 use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::mutex::Mutex;
+use core::cell::RefCell;
 
 /// Result of prepare_download_request batch operation
 pub struct DownloadRequestInfo {
@@ -19,7 +18,7 @@ pub struct DownloadRequestInfo {
 }
 
 pub struct FdInternal {
-    inner: Mutex<NoopRawMutex, FdInternalInner>,
+    inner: RefCell<FdInternalInner>,
 }
 
 pub struct FdInternalInner {
@@ -76,7 +75,7 @@ impl FdInternal {
         fd_t2_retry_time: PldmFdTime,
     ) -> Self {
         Self {
-            inner: Mutex::new(FdInternalInner::new(
+            inner: RefCell::new(FdInternalInner::new(
                 max_xfer_size,
                 fd_t1_timeout,
                 fd_t2_retry_time,
@@ -84,21 +83,21 @@ impl FdInternal {
         }
     }
 
-    pub async fn is_update_mode(&self) -> bool {
-        let inner = self.inner.lock().await;
+    pub fn is_update_mode(&self) -> bool {
+        let inner = self.inner.borrow();
         inner.state != FirmwareDeviceState::Idle
     }
 
-    pub async fn set_fd_state(&self, state: FirmwareDeviceState) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_fd_state(&self, state: FirmwareDeviceState) {
+        let mut inner = self.inner.borrow_mut();
         if inner.state != state {
             inner.prev_state = inner.state.clone();
             inner.state = state;
         }
     }
 
-    pub async fn set_fd_idle(&self, reason_code: GetStatusReasonCode) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_fd_idle(&self, reason_code: GetStatusReasonCode) {
+        let mut inner = self.inner.borrow_mut();
         if inner.state != FirmwareDeviceState::Idle {
             inner.prev_state = inner.state.clone();
             inner.state = FirmwareDeviceState::Idle;
@@ -106,8 +105,8 @@ impl FdInternal {
         }
     }
 
-    pub async fn fd_idle_timeout(&self) {
-        let state = self.get_fd_state().await;
+    pub fn fd_idle_timeout(&self) {
+        let state = self.get_fd_state();
         let reason = match state {
             FirmwareDeviceState::Idle => return,
             FirmwareDeviceState::LearnComponents => GetStatusReasonCode::LearnComponentTimeout,
@@ -118,55 +117,55 @@ impl FdInternal {
             FirmwareDeviceState::Activate => GetStatusReasonCode::ActivateFw,
         };
 
-        self.set_fd_idle(reason).await;
+        self.set_fd_idle(reason);
     }
 
-    pub async fn get_fd_reason(&self) -> Option<GetStatusReasonCode> {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_reason(&self) -> Option<GetStatusReasonCode> {
+        let inner = self.inner.borrow();
         inner.reason
     }
 
-    pub async fn get_fd_state(&self) -> FirmwareDeviceState {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_state(&self) -> FirmwareDeviceState {
+        let inner = self.inner.borrow();
         inner.state.clone()
     }
 
-    pub async fn get_fd_prev_state(&self) -> FirmwareDeviceState {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_prev_state(&self) -> FirmwareDeviceState {
+        let inner = self.inner.borrow();
         inner.prev_state.clone()
     }
 
-    pub async fn set_xfer_size(&self, transfer_size: usize) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_xfer_size(&self, transfer_size: usize) {
+        let mut inner = self.inner.borrow_mut();
         inner.max_xfer_size = transfer_size as u32;
     }
 
-    pub async fn get_xfer_size(&self) -> usize {
-        let inner = self.inner.lock().await;
+    pub fn get_xfer_size(&self) -> usize {
+        let inner = self.inner.borrow();
         inner.max_xfer_size as usize
     }
 
-    pub async fn set_component(&self, comp: &FirmwareComponent) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_component(&self, comp: &FirmwareComponent) {
+        let mut inner = self.inner.borrow_mut();
         inner.update_comp = comp.clone();
     }
 
-    pub async fn get_component(&self) -> FirmwareComponent {
-        let inner = self.inner.lock().await;
+    pub fn get_component(&self) -> FirmwareComponent {
+        let inner = self.inner.borrow();
         inner.update_comp.clone()
     }
 
-    pub async fn set_update_flags(&self, flags: UpdateOptionFlags) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_update_flags(&self, flags: UpdateOptionFlags) {
+        let mut inner = self.inner.borrow_mut();
         inner.update_flags = flags;
     }
 
-    pub async fn get_update_flags(&self) -> UpdateOptionFlags {
-        let inner = self.inner.lock().await;
+    pub fn get_update_flags(&self) -> UpdateOptionFlags {
+        let inner = self.inner.borrow();
         inner.update_flags
     }
 
-    pub async fn set_fd_req(
+    pub fn set_fd_req(
         &self,
         req_state: FdReqState,
         complete: bool,
@@ -175,7 +174,7 @@ impl FdInternal {
         command: Option<u8>,
         sent_time: Option<PldmFdTime>,
     ) {
-        let mut inner = self.inner.lock().await;
+        let mut inner = self.inner.borrow_mut();
         inner.req = FdReq {
             state: req_state,
             complete,
@@ -186,8 +185,8 @@ impl FdInternal {
         };
     }
 
-    pub async fn alloc_next_instance_id(&self) -> Option<u8> {
-        let mut inner = self.inner.lock().await;
+    pub fn alloc_next_instance_id(&self) -> Option<u8> {
+        let mut inner = self.inner.borrow_mut();
         inner.req.instance_id = Some(
             inner
                 .req
@@ -197,42 +196,42 @@ impl FdInternal {
         inner.req.instance_id
     }
 
-    pub async fn get_fd_req(&self) -> FdReq {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_req(&self) -> FdReq {
+        let inner = self.inner.borrow();
         inner.req.clone()
     }
 
-    pub async fn get_fd_req_state(&self) -> FdReqState {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_req_state(&self) -> FdReqState {
+        let inner = self.inner.borrow();
         inner.req.state.clone()
     }
 
-    pub async fn set_fd_req_state(&self, state: FdReqState) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_fd_req_state(&self, state: FdReqState) {
+        let mut inner = self.inner.borrow_mut();
         inner.req.state = state;
     }
 
-    pub async fn get_fd_sent_time(&self) -> Option<PldmFdTime> {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_sent_time(&self) -> Option<PldmFdTime> {
+        let inner = self.inner.borrow();
         inner.req.sent_time
     }
 
-    pub async fn is_fd_req_complete(&self) -> bool {
-        let inner = self.inner.lock().await;
+    pub fn is_fd_req_complete(&self) -> bool {
+        let inner = self.inner.borrow();
         inner.req.complete
     }
 
-    pub async fn get_fd_req_result(&self) -> Option<u8> {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_req_result(&self) -> Option<u8> {
+        let inner = self.inner.borrow();
         inner.req.result
     }
 
-    pub async fn get_fd_download_chunk(
+    pub fn get_fd_download_chunk(
         &self,
         requested_offset: u32,
         requested_length: u32,
     ) -> Option<(u32, u32)> {
-        let inner = self.inner.lock().await;
+        let inner = self.inner.borrow();
         if inner.state != FirmwareDeviceState::Download {
             return None;
         }
@@ -253,8 +252,8 @@ impl FdInternal {
         Some((requested_offset, chunk_size))
     }
 
-    pub async fn get_fd_download_state(&self) -> Option<(u32, u32)> {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_download_state(&self) -> Option<(u32, u32)> {
+        let inner = self.inner.borrow();
         if let InitiatorModeState::Download(download) = &inner.initiator_mode_state {
             Some((download.offset, download.length))
         } else {
@@ -262,35 +261,35 @@ impl FdInternal {
         }
     }
 
-    pub async fn set_fd_download_state(&self, offset: u32, length: u32) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_fd_download_state(&self, offset: u32, length: u32) {
+        let mut inner = self.inner.borrow_mut();
         if let InitiatorModeState::Download(download) = &mut inner.initiator_mode_state {
             download.offset = offset;
             download.length = length;
         }
     }
 
-    pub async fn set_initiator_mode(&self, mode: InitiatorModeState) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_initiator_mode(&self, mode: InitiatorModeState) {
+        let mut inner = self.inner.borrow_mut();
         inner.initiator_mode_state = mode;
     }
 
-    pub async fn set_fd_verify_progress(&self, progress: u8) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_fd_verify_progress(&self, progress: u8) {
+        let mut inner = self.inner.borrow_mut();
         if let InitiatorModeState::Verify(verify) = &mut inner.initiator_mode_state {
             verify.progress_percent = progress;
         }
     }
 
-    pub async fn set_fd_apply_progress(&self, progress: u8) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_fd_apply_progress(&self, progress: u8) {
+        let mut inner = self.inner.borrow_mut();
         if let InitiatorModeState::Apply(apply) = &mut inner.initiator_mode_state {
             apply.progress_percent = progress;
         }
     }
 
-    pub async fn get_fd_verify_progress(&self) -> Option<u8> {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_verify_progress(&self) -> Option<u8> {
+        let inner = self.inner.borrow();
         if let InitiatorModeState::Verify(verify) = &inner.initiator_mode_state {
             Some(verify.progress_percent)
         } else {
@@ -298,8 +297,8 @@ impl FdInternal {
         }
     }
 
-    pub async fn get_fd_apply_progress(&self) -> Option<u8> {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_apply_progress(&self) -> Option<u8> {
+        let inner = self.inner.borrow();
         if let InitiatorModeState::Apply(apply) = &inner.initiator_mode_state {
             Some(apply.progress_percent)
         } else {
@@ -307,23 +306,23 @@ impl FdInternal {
         }
     }
 
-    pub async fn set_fd_t1_update_ts(&self, timestamp: PldmFdTime) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_fd_t1_update_ts(&self, timestamp: PldmFdTime) {
+        let mut inner = self.inner.borrow_mut();
         inner.fd_t1_update_ts = timestamp;
     }
 
-    pub async fn get_fd_t1_update_ts(&self) -> PldmFdTime {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_t1_update_ts(&self) -> PldmFdTime {
+        let inner = self.inner.borrow();
         inner.fd_t1_update_ts
     }
 
-    pub async fn set_fd_t1_timeout(&self, timeout: PldmFdTime) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_fd_t1_timeout(&self, timeout: PldmFdTime) {
+        let mut inner = self.inner.borrow_mut();
         inner.fd_t1_timeout = timeout;
     }
 
-    pub async fn get_fd_t1_timeout(&self) -> PldmFdTime {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_t1_timeout(&self) -> PldmFdTime {
+        let inner = self.inner.borrow();
         inner.fd_t1_timeout
     }
 
@@ -331,12 +330,12 @@ impl FdInternal {
     /// Combines multiple mutex acquisitions into one for better performance.
     /// Returns: (instance_id, is_complete, result, component, chunk_info)
     /// where chunk_info is Some((offset, length)) if in download state
-    pub async fn prepare_download_request(
+    pub fn prepare_download_request(
         &self,
         requested_offset: u32,
         requested_length: u32,
     ) -> Option<DownloadRequestInfo> {
-        let mut inner = self.inner.lock().await;
+        let mut inner = self.inner.borrow_mut();
 
         // Check if we should send (equivalent to should_send_fd_request check for req state)
         if inner.req.state != FdReqState::Ready {
@@ -384,7 +383,7 @@ impl FdInternal {
     /// Batch operation to finalize a download request after encoding.
     /// Sets the download state and request state in a single lock.
     #[allow(clippy::too_many_arguments)]
-    pub async fn finalize_download_request(
+    pub fn finalize_download_request(
         &self,
         chunk_offset: u32,
         chunk_length: u32,
@@ -394,7 +393,7 @@ impl FdInternal {
         is_complete: bool,
         result: Option<u8>,
     ) {
-        let mut inner = self.inner.lock().await;
+        let mut inner = self.inner.borrow_mut();
 
         // Set download state
         if let InitiatorModeState::Download(download) = &mut inner.initiator_mode_state {
@@ -413,23 +412,23 @@ impl FdInternal {
         };
     }
 
-    pub async fn set_fd_t2_retry_time(&self, retry_time: PldmFdTime) {
-        let mut inner = self.inner.lock().await;
+    pub fn set_fd_t2_retry_time(&self, retry_time: PldmFdTime) {
+        let mut inner = self.inner.borrow_mut();
         inner.fd_t2_retry_time = retry_time;
     }
 
-    pub async fn get_fd_t2_retry_time(&self) -> PldmFdTime {
-        let inner = self.inner.lock().await;
+    pub fn get_fd_t2_retry_time(&self) -> PldmFdTime {
+        let inner = self.inner.borrow();
         inner.fd_t2_retry_time
     }
 
     /// Create a transfer session by capturing current state.
     /// This is used to avoid mutex acquisitions during the hot download path.
-    pub async fn create_transfer_session(
+    pub fn create_transfer_session(
         &self,
         now: PldmFdTime,
     ) -> super::transfer_session::TransferSession {
-        let inner = self.inner.lock().await;
+        let inner = self.inner.borrow();
         super::transfer_session::TransferSession::new(
             inner.max_xfer_size,
             inner.update_comp.clone(),
@@ -442,11 +441,8 @@ impl FdInternal {
 
     /// Sync state from a transfer session back to internal state.
     /// Called at the end of a download or periodically for progress updates.
-    pub async fn sync_from_transfer_session(
-        &self,
-        session: &super::transfer_session::TransferSession,
-    ) {
-        let mut inner = self.inner.lock().await;
+    pub fn sync_from_transfer_session(&self, session: &super::transfer_session::TransferSession) {
+        let mut inner = self.inner.borrow_mut();
         inner.req.instance_id = Some(session.instance_id);
         inner.req.state = session.req_state.clone();
         inner.req.complete = session.complete;
