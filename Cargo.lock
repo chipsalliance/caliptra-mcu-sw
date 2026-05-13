@@ -3630,6 +3630,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-test-fw-lc-ctrl"
+version = "0.1.0"
+dependencies = [
+ "mcu-rom-common",
+ "mcu-test-harness",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
 name = "mcu-test-fw-mailbox-responder"
 version = "0.1.0"
 dependencies = [

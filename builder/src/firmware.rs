@@ -5,12 +5,6 @@ use caliptra_builder::FwId;
 pub mod hw_model_tests {
     use super::*;
 
-    const BASE_FWID: FwId = FwId {
-        crate_name: "mcu-hw-model-test-fw",
-        bin_name: "",
-        features: &["emu"],
-    };
-
     pub const MAILBOX_RESPONDER: FwId = FwId {
         crate_name: "mcu-test-fw-mailbox-responder",
         bin_name: "mcu-test-fw-mailbox-responder",
@@ -60,8 +54,9 @@ pub mod hw_model_tests {
     };
 
     pub const LC_CTRL: FwId = FwId {
-        bin_name: "lc_ctrl",
-        ..BASE_FWID
+        crate_name: "mcu-test-fw-lc-ctrl",
+        bin_name: "mcu-test-fw-lc-ctrl",
+        features: &["emu"],
     };
 }
 

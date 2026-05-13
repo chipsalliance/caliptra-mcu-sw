@@ -56,7 +56,3 @@ name = "sw_digest_lock"
 path = "sw_digest_lock.rs"
 required-features = ["riscv"]
 
-[[bin]]
-name = "lc_ctrl"
-path = "lc_ctrl.rs"
-required-features = ["riscv"]
