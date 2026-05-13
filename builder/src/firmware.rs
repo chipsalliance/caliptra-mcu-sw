@@ -54,8 +54,9 @@ pub mod hw_model_tests {
     };
 
     pub const OTP_BLANK_CHECK: FwId = FwId {
-        bin_name: "otp_blank_check",
-        ..BASE_FWID
+        crate_name: "mcu-test-fw-otp-blank-check",
+        bin_name: "mcu-test-fw-otp-blank-check",
+        features: &["emu"],
     };
 
     pub const LC_CTRL: FwId = FwId {

@@ -57,11 +57,6 @@ path = "sw_digest_lock.rs"
 required-features = ["riscv"]
 
 [[bin]]
-name = "otp_blank_check"
-path = "otp_blank_check.rs"
-required-features = ["riscv"]
-
-[[bin]]
 name = "lc_ctrl"
 path = "lc_ctrl.rs"
 required-features = ["riscv"]
