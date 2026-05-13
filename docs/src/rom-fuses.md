@@ -1,5 +1,99 @@
 # ROM Fuses
 
+## Fuse Categories
+
+This section is the authoritative summary of every OTP fuse the reference MCU
+ROM consumes today or is specified to consume shortly. Scope is limited to
+**Caliptra core and Caliptra MCU fuses**; broader SoC-level provisioning
+(PLL/clock trim, analog/AST configuration, entropy-source conditioning
+beyond the iTRNG thresholds, pinmux defaults, watchdog defaults, SKU
+metadata, etc.) is integrator-defined and is not covered here. OpenTitan's
+[`CREATOR_SW_CFG`](https://github.com/lowRISC/opentitan/blob/master/hw/top_earlgrey/data/otp/otp_ctrl_mmap.hjson)
+partition is a useful prior-art reference for that broader set.
+
+Fuses are grouped by how essential they are to a working production part:
+
+- **Mandatory** — required for a production MCU/Caliptra subsystem to boot
+  and run securely. These must be provisioned and routed through OTP (or, for
+  fields where Caliptra Core requires real entropy on every cold boot, through
+  OTP-backed straps).
+- **Optional** — fuses MCU ROM will consume if present, but which an
+  integrator may legitimately replace with constants, RTL straps, or
+  feature-gate out entirely (e.g., debug-only flows, owner-set policies that
+  default to zero).
+- **Recommended but not required** — fuses that back specific MCU features
+  (Device Ownership Transfer, MCU-side SVN anti-rollback, OCP LOCK). MCU only
+  reads them when the corresponding feature is enabled by the integrator.
+
+Sizes given are the logical (decoded) bit width. Physical OTP cost is larger
+when the field uses a redundancy layout (e.g., `LinearOr{bits:N, dupe:3}` takes
+`N×3` physical bits). See [OTP Encoding Recommendations](#otp-encoding-recommendations)
+for the recommended layout and physical footprint of each fuse.
+
+### Mandatory fuses
+
+Caliptra Core fuse registers and iTRNG straps that MCU ROM must populate on
+every cold boot. These are read by MCU ROM from OTP, transformed if needed,
+and written to Caliptra's `FUSE_*` registers or `SS_STRAP_GENERIC[*]` /
+`CPTRA_I_TRNG_*` registers.
+
+| Fuse | Logical size | Notes |
+|---|---|---|
+| `CPTRA_CORE_VENDOR_PK_HASH_{0..N}` | 384 bits each | One slot active per boot; reference map has 16 slots |
+| `CPTRA_CORE_VENDOR_PK_HASH_VALID` | 16 bits | Slot validity bitmask used to pick the active slot |
+| `CPTRA_CORE_PQC_KEY_TYPE_{0..N}` | 2 bits each | Per-slot; selects MLDSA vs LMS for that vendor PK |
+| `CPTRA_CORE_RUNTIME_SVN` | 128 bits | Caliptra Runtime SVN |
+| `CPTRA_CORE_SOC_MANIFEST_SVN` | 128 bits | SoC manifest SVN (also drives MCU Runtime SVN) |
+| `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` | 32 bits | Max allowed SoC manifest SVN |
+| `CPTRA_CORE_ECC_REVOCATION_{0..N}` | 4 bits each | Per-slot ECC key revocation bitmask |
+| `CPTRA_CORE_LMS_REVOCATION_{0..N}` | 16 bits each | Per-slot LMS key revocation bitmask |
+| `CPTRA_CORE_MLDSA_REVOCATION_{0..N}` | 4 bits each | Per-slot MLDSA key revocation bitmask |
+| `CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN` | 512 bits | Manufacturing debug unlock token (provision to all-zeros if unused) |
+| `CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR` | 512 bits used (768 bits allocated) | IDevID certificate attributes. The Caliptra register array is 24×u32 (96 B), but Caliptra ROM only consumes the first 16 entries (64 B): `Flags` (1), ECC `SubjectKeyId` (5), MLDSA `SubjectKeyId` (5), `UeidType` (1), `ManufacturerSerialNumber` (4). The remaining 8 u32 are reserved |
+| `cptra_itrng_health_test_window_size` | 16 bits | Written to `SS_STRAP_GENERIC[2]` bits\[15:0\] |
+| `cptra_itrng_entropy_config_0` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_0` |
+| `cptra_itrng_entropy_config_1` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_1` |
+
+### Optional fuses
+
+Fuses MCU ROM will read if provisioned, but which an integrator may replace
+with hardcoded constants, RTL straps, or omit when the corresponding policy
+is unused. The reference MCU ROM still reads every entry below; "optional"
+here means an integrator-built MCU ROM may legitimately skip provisioning
+or remove the read path.
+
+| Fuse | Logical size | Notes |
+|---|---|---|
+| `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` | 32 bits | Reserved; neither MCU nor Caliptra Core currently checks the value |
+| `CPTRA_CORE_SOC_STEPPING_ID` | 16 bits | Lives in a 32-bit field; could be RTL-tied or strapped |
+| `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` | 1 bit | Lives in a 32-bit field; defaults to 0 (enforcement on). Should only be set on dev/manuf parts |
+| `CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER` | 128 bits (16 B) | Manufacturing HSM identifier |
+| `CPTRA_SS_OWNER_PK_HASH` | 384 bits | Only needed when owner PK comes from OTP; DOT can provide it instead |
+| `CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_{0..7}` | 384 bits each | Only required if prod debug unlock is enabled |
+| `fw_encryption_key` | 256 bits (recommended; 128/192/256 supported) | Only required if firmware images are encrypted at rest. Global AES key; lives in a secret partition (e.g., `VENDOR_SECRET_PROD_PARTITION`) |
+| `ss_key_release_base_addr_l` / `ss_key_release_base_addr_h` / `ss_key_release_size` | 64+16 bits | Usually sourced from `RomConfig` but may be from OTP; OCP LOCK key release (2.1+) |
+
+### Recommended but not required fuses
+
+Feature-specific fuses. MCU ROM reads them only when the corresponding
+feature is enabled by the integrator; with the feature off, the OTP space
+can be reclaimed.
+
+| Fuse | Logical size | Feature | Notes |
+|---|---|---|---|
+| `dot_initialized` | 1 bit | DOT | Gate flag indicating DOT flow is active for this part |
+| `dot_fuse_array` | 256 bits | DOT | One-hot DOT state counter; supports 128 lock/unlock cycles; more or less can be allocated depending on use cases |
+| `vendor_recovery_pk_hash` | 384 bits | DOT | Vendor master key for `DOT_OVERRIDE` catastrophic recovery (lives in `VENDOR_SECRET_PROD_PARTITION`). One slot today; integrators that need rotation should add `vendor_recovery_pk_hash_{0..N}` + a `vendor_recovery_pk_hash_valid` bitmask and/or revocation bits |
+| `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | 32 bits (recommended) | MCU SVN anti-rollback | Min SVN for the MCU Component SVN Manifest itself |
+| `SOC_IMAGE_MIN_SVN[0..M]` | 32 bits each (recommended) | MCU SVN anti-rollback | Per-slot SoC image min SVN; `M` is integrator-defined |
+| `perma_hek_en` | 1 bit | OCP LOCK (2.1+) | Permanent HEK enable flag |
+| `CPTRA_SS_LOCK_HEK_PROD_{0..7}` | 256 bits each | OCP LOCK (2.1+) | 8 HEK seed slots (`CPTRA_SS_LOCK_HEK_PROD_N_RATCHET_SEED`, 32 B each); one active at a time |
+
+The MCU SVN fuse sizes above are the recommended logical widths from
+[`docs/src/svn.md`](svn.md); integrators choose the actual one-hot width and
+number of `SOC_IMAGE_MIN_SVN` slots based on their release cadence and
+component count.
+
 ## Fuse Field Reference
 
 Every OTP field read or written by the reference MCU ROM, with the target register and the net
@@ -36,7 +130,17 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 
 - **`CPTRA_CORE_ANTI_ROLLBACK_DISABLE`** ✓ → `FUSE_ANTI_ROLLBACK_DISABLE`: raw u32
 
-- **`CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR`** ✓ → `FUSE_IDEVID_CERT_ATTR[0..23]`: raw u32 × 24
+- **`CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR`** ✓ → `FUSE_IDEVID_CERT_ATTR[0..23]`: raw u32 × 24.
+  The Caliptra register array is 24 u32 wide (96 bytes), but Caliptra ROM
+  only reads the first **16 entries (64 bytes)**, defined by the
+  [`IdevidCertAttr`](https://github.com/chipsalliance/caliptra-sw/blob/main/drivers/src/fuse_bank.rs)
+  enum: index 0 = `Flags` (ECC and MLDSA X.509 key-id algorithm selection,
+  bits \[2:0\] = ECC, bits \[5:3\] = MLDSA); indexes 1..5 = ECC `SubjectKeyId`
+  (20 bytes); indexes 6..10 = MLDSA `SubjectKeyId` (20 bytes); index 11 =
+  `UeidType` (low byte only); indexes 12..15 = `ManufacturerSerialNumber`
+  (16 bytes, little-endian, forming the 17-byte UEID together with
+  `UeidType`). Indexes 16..23 are reserved — integrators only need to
+  provision the first 64 bytes in OTP.
 
 - **`CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER`** ✓ → `FUSE_IDEVID_MANUF_HSM_ID[0..3]`: raw u32 × 4
 
@@ -84,6 +188,37 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   `RomConfig` parameters (not from OTP). `ss_key_release_size` is the MEK size;
   `ss_key_release_base_addr_l/h` is the 64-bit key release base address.
 
+- **`fw_encryption_key`** — MCU internal use only, not written to any Caliptra
+  register. `Single{bits:K}` raw key bytes, where `K ∈ {128, 192, 256}`
+  (256 recommended). Global AES key used to decrypt firmware images at rest;
+  only required when the integrator deploys encrypted firmware. Should live
+  in a secret partition (e.g., `VENDOR_SECRET_PROD_PARTITION`) so the key is
+  not accessible to non-MCU bus masters.
+
+- **`vendor_recovery_pk_hash`** — MCU internal use only, not written to any
+  Caliptra register. `Single{bits:384}` raw 48 bytes. Vendor master key used by
+  the `DOT_OVERRIDE` catastrophic recovery flow; lives in
+  `VENDOR_SECRET_PROD_PARTITION` (`CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0`).
+  The stored value is `SHA-384(ECC P-384 pubkey X ‖ Y ‖ MLDSA-87 pubkey)`
+  — see [Vendor Recovery PK Hash Format](dot.md#vendor-recovery-pk-hash-format)
+  in the DOT spec for the exact byte layout. The current reference design
+  provisions exactly one recovery PK hash and has no revocation mechanism;
+  integrators that need to rotate the vendor recovery key in the field should
+  allocate additional slots (`vendor_recovery_pk_hash_{0..N}`, 48 B each) plus
+  a `vendor_recovery_pk_hash_valid` bitmask (`LinearOr{bits:N, dupe:3}`)
+  analogous to `CPTRA_CORE_VENDOR_PK_HASH_VALID`.
+
+- **`MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`** — MCU internal use only, not written
+  to any Caliptra register. Recommended `OneHotLinearOr{bits:N, dupe:3}`
+  (logical width up to 32 bits). MCU ROM compares this against the MCU
+  Component SVN Manifest header to enforce its own anti-rollback floor.
+
+- **`SOC_IMAGE_MIN_SVN[0..M]`** — MCU internal use only, not written to any
+  Caliptra register. Recommended `OneHotLinearOr{bits:N, dupe:3}` per slot
+  (logical width up to 32 bits). Optional per-SoC-component min SVN floor;
+  the number of slots `M` and the `component_id → slot` mapping are
+  integrator-defined.
+
 ### OTP Encoding Recommendations
 
 OTP ECC protects against read and write errors, but **must not** be used on
@@ -106,7 +241,7 @@ fault tolerance without causing ECC integrity issues.
 | `CPTRA_CORE_VENDOR_PK_HASH_VALID` | ❌ | `LinearOr{bits:16, dupe:3}` |
 | `CPTRA_CORE_SOC_STEPPING_ID` | ✅ | `Single{bits:16}` |
 | `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` | ✅ | `Single{bits:1}` |
-| `CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR` | ✅ | `Single{bits:768}` |
+| `CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR` | ✅ | `Single{bits:512}` for the 16 used entries (or `Single{bits:768}` to match the full Caliptra register array) |
 | `CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER` | ✅ | `Single{bits:128}` |
 | `CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN` | ✅ | `Single{bits:512}` |
 | `CPTRA_SS_OWNER_PK_HASH` | ✅ | `Single{bits:384}` |
@@ -117,7 +252,12 @@ fault tolerance without causing ECC integrity issues.
 | `cptra_itrng_entropy_config_0` | ✅ | `Single{bits:32}` |
 | `cptra_itrng_entropy_config_1` | ✅ | `Single{bits:32}` |
 | `perma_hek_en` (2.1 only) | ✅ | `Single{bits:1}` or if no ECC, `LinearOr{bits:1, dupe:3}` |
-| `CPTRA_SS_LOCK_HEK_PROD_{0..7}` (2.1 only) | ✅ | `Single{bits:384}` each |
+| `CPTRA_SS_LOCK_HEK_PROD_{0..7}` (2.1 only) | ✅ | `Single{bits:256}` each (per-slot `CPTRA_SS_LOCK_HEK_PROD_N_RATCHET_SEED`) |
+| `vendor_recovery_pk_hash` | ✅ | `Single{bits:384}` |
+| `vendor_recovery_pk_hash_valid` (optional, if multiple slots) | ❌ | `LinearOr{bits:N, dupe:3}` |
+| `fw_encryption_key` | ✅ | `Single{bits:256}` (or 128/192 to match the chosen AES key length) |
+| `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) |
+| `SOC_IMAGE_MIN_SVN_{0..M}` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) each |
 
 TODO: there are only 32 LMS revocation bits specificed in the reference fuse map, but with redundant encoding, we would get 16 or fewer bits, unless  they are backed with HW redundancy.
 
