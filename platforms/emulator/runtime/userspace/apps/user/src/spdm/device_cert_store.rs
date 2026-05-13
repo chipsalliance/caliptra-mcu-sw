@@ -86,6 +86,7 @@ pub async fn initialize_cert_store() -> CertStoreResult<()> {
     // Store everything in DeviceCertStore
     let mut cert_store = DeviceCertStore::new();
     cert_store.set_cert_chain(0, slot0_cert_chain)?;
+    cert_store.load_cert_chains_from_flash().await?;
 
     initialize_shared_cert_store(cert_store).await?;
     Ok(())
@@ -180,30 +181,59 @@ impl SpdmCertStore for SharedCertStore {
         }
     }
 
-    async fn key_pair_id(&self, _slot_id: u8) -> Option<u8> {
-        None
+    async fn key_pair_id(&self, slot_id: u8) -> Option<u8> {
+        let cert_store = SHARED_CERT_STORE.lock().await;
+        cert_store
+            .as_ref()
+            .and_then(|store| store.key_pair_id(slot_id))
     }
 
-    async fn cert_info(&self, _slot_id: u8) -> Option<CertificateInfo> {
-        None
+    async fn cert_info(&self, slot_id: u8) -> Option<CertificateInfo> {
+        let cert_store = SHARED_CERT_STORE.lock().await;
+        cert_store
+            .as_ref()
+            .and_then(|store| store.cert_info(slot_id))
     }
 
-    async fn key_usage_mask(&self, _slot_id: u8) -> Option<KeyUsageMask> {
-        None
+    async fn key_usage_mask(&self, slot_id: u8) -> Option<KeyUsageMask> {
+        let cert_store = SHARED_CERT_STORE.lock().await;
+        cert_store
+            .as_ref()
+            .and_then(|store| store.key_usage_mask(slot_id))
     }
 
     async fn write_cert_chain(
         &self,
-        _asym_algo: AsymAlgo,
-        _slot_id: u8,
-        _key_pair_id: u8,
-        _cert_model: CertificateInfo,
-        _cert_chain: &[u8],
+        asym_algo: AsymAlgo,
+        slot_id: u8,
+        key_pair_id: u8,
+        cert_model: CertificateInfo,
+        root_cert_hash: &[u8; SHA384_HASH_SIZE],
+        cert_chain: &[u8],
     ) -> CertStoreResult<()> {
-        Err(CertStoreError::OperationFailed)
+        let mut cert_store = SHARED_CERT_STORE.lock().await;
+        if let Some(cert_store) = cert_store.as_mut() {
+            cert_store
+                .write_cert_chain(
+                    asym_algo,
+                    slot_id,
+                    key_pair_id,
+                    cert_model,
+                    root_cert_hash,
+                    cert_chain,
+                )
+                .await
+        } else {
+            Err(CertStoreError::NotInitialized)
+        }
     }
 
-    async fn erase_cert_chain(&self, _asym_algo: AsymAlgo, _slot_id: u8) -> CertStoreResult<()> {
-        Err(CertStoreError::OperationFailed)
+    async fn erase_cert_chain(&self, asym_algo: AsymAlgo, slot_id: u8) -> CertStoreResult<()> {
+        let mut cert_store = SHARED_CERT_STORE.lock().await;
+        if let Some(cert_store) = cert_store.as_mut() {
+            cert_store.erase_cert_chain(asym_algo, slot_id).await
+        } else {
+            Err(CertStoreError::NotInitialized)
+        }
     }
 }

@@ -20,4 +20,5 @@ caliptra-mcu-libtock_console.workspace = true
 zerocopy.workspace = true
 
 [dev-dependencies]
+futures.workspace = true
 rand.workspace = true
