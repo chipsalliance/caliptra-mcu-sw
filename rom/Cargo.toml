@@ -16,6 +16,7 @@ constant_time_eq.workspace = true
 flash-image.workspace = true
 mcu-config.workspace = true
 mcu-error.workspace = true
+ocp.workspace = true
 otp-digest.workspace = true
 mcu-otp-lifecycle.workspace = true
 registers-generated.workspace = true

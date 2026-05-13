@@ -331,10 +331,20 @@ pub extern "C" fn rom_entry() -> ! {
             _ => fatal_error(EmulatorError::InvalidPartitionId.into()),
         };
 
+        use mcu_rom_common::recovery::flash::FlashImageProvider;
+        use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
+
+        let mut flash_provider = FlashImageProvider::new(&mut flash_image_partition_driver);
+        let mut entries = [ImageProviderEntry {
+            provider: &mut flash_provider,
+            policy: ErrorPolicy::Continue,
+        }];
+        let manager = ImageProviderManager::new(&mut entries);
+
         mcu_rom_common::rom_start(RomParameters {
-            flash_partition_driver: Some(&mut flash_image_partition_driver),
+            image_provider_manager: Some(manager),
             dot_flash: Some(dot_flash),
-            request_flash_boot: true,
+            request_recovery_boot: true,
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
@@ -381,6 +391,94 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
+    } else if cfg!(feature = "test-usb-ocp-recovery") {
+        use mcu_usb_emulator::ExamplarUsbDriver;
+        use ocp::cms::slice_fifo::SliceFifoRegion;
+        use ocp::cms::slice_indirect::SliceIndirectRegion;
+        use ocp::cms::{FifoCmsRegion, IndirectCmsRegion};
+        use ocp::interface::{RecoveryDeviceConfig, RecoveryStateMachine};
+        use ocp::protocol::device_id::{DeviceDescriptor, DeviceId, PciVendorDescriptor};
+        use ocp::protocol::indirect_fifo_status::FifoCmsRegionType;
+        use ocp::protocol::indirect_status::CmsRegionType;
+        use ocp::vendor::NoopVendorHandler;
+        use registers_generated::usbdev;
+
+        romtime::println!("[mcu-rom] USB OCP Recovery boot path");
+
+        let usb_regs =
+            unsafe { romtime::StaticRef::new(usbdev::USBDEV_ADDR as *const usbdev::regs::Usbdev) };
+        let mut usb_driver = ExamplarUsbDriver::new(usb_regs);
+
+        // CMS 0: Indirect CodeSpace backed by MCI staging SRAM (required by spec).
+        // Safety: This boot path is mutually exclusive with other features via
+        // cfg, so no other component uses the staging SRAM concurrently.
+        let indirect_buf = unsafe {
+            core::slice::from_raw_parts_mut(
+                MCU_MEMORY_MAP.staging_sram_offset as *mut u8,
+                MCU_MEMORY_MAP.staging_sram_size as usize,
+            )
+        };
+
+        fn ocp_setup_failed() -> ! {
+            fatal_error(mcu_error::McuError::ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR);
+        }
+        let mut indirect = SliceIndirectRegion::new(indirect_buf, CmsRegionType::CodeSpace)
+            .ok()
+            .unwrap_or_else(|| ocp_setup_failed());
+        let mut indirect_regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut indirect)];
+
+        // CMS 1: FIFO CodeSpace for streaming recovery data.
+        let mut fifo_buf = [0u8; 4096];
+        let mut fifo = SliceFifoRegion::new(&mut fifo_buf, FifoCmsRegionType::CodeSpace, 256)
+            .ok()
+            .unwrap_or_else(|| ocp_setup_failed());
+        let mut fifo_regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(1, &mut fifo)];
+
+        let desc = DeviceDescriptor::PciVendor(PciVendorDescriptor::new(0x1209, 0x0001, 0, 0, 0));
+        let config = RecoveryDeviceConfig {
+            device_id: DeviceId::new(desc, &[])
+                .ok()
+                .unwrap_or_else(|| ocp_setup_failed()),
+            major_version: 1,
+            minor_version: 1,
+            max_response_time: 17,
+            heartbeat_period: 0,
+            local_c_image_support: false,
+        };
+
+        let sm = RecoveryStateMachine::new(
+            config,
+            &mut usb_driver,
+            &mut indirect_regions,
+            &mut fifo_regions,
+            NoopVendorHandler,
+        )
+        .ok()
+        .unwrap_or_else(|| ocp_setup_failed());
+
+        use mcu_rom_common::recovery::ocp::OcpImageProvider;
+        use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
+
+        let mut ocp_provider = OcpImageProvider::new(sm);
+        let mut entries = [ImageProviderEntry {
+            provider: &mut ocp_provider,
+            policy: ErrorPolicy::RetryForever,
+        }];
+        let manager = ImageProviderManager::new(&mut entries);
+
+        mcu_rom_common::rom_start(RomParameters {
+            image_provider_manager: Some(manager),
+            dot_flash: Some(dot_flash),
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
+            #[cfg(feature = "ocp-lock")]
+            ocp_lock_config,
+            ..Default::default()
+        });
     } else if cfg!(feature = "hw-2-1") {
         // Simple flash-based boot for hw-2-1 without partition tables.
         // Uses flash image starting at offset 0.
@@ -422,11 +520,21 @@ pub extern "C" fn rom_entry() -> ! {
             mcu_rom_common::Mbox0RecoveryTransport::new(mci_base)
         };
 
+        use mcu_rom_common::recovery::flash::FlashImageProvider;
+        use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
+
+        let mut flash_provider = FlashImageProvider::new(&mut flash_partition);
+        let mut entries = [ImageProviderEntry {
+            provider: &mut flash_provider,
+            policy: ErrorPolicy::Continue,
+        }];
+        let manager = ImageProviderManager::new(&mut entries);
+
         mcu_rom_common::rom_start(RomParameters {
-            flash_partition_driver: Some(&mut flash_partition),
+            image_provider_manager: Some(manager),
             dot_flash: Some(dot_flash),
             // Let the generic wire (bit 29 of mci_reg_generic_input_wires[1]) control flash boot
-            // request_flash_boot defaults to false - emulator sets the wire when flash boot is requested
+            // request_recovery_boot defaults to false - emulator sets the wire when flash boot is requested
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,

@@ -9,6 +9,9 @@ use crate::cms::IndirectCmsRegion;
 use crate::error::{CmsError, OcpError};
 use crate::protocol::indirect_status::{CmsRegionType, IndirectStatus, StatusFlags};
 
+// The mask to ensure a value matches the 4 byte alignment required for indirect CMS regions.
+const ALIGNMENT_MASK: u32 = !0x3;
+
 /// A memory-window CMS region backed by a mutable byte slice.
 #[derive(Debug)]
 pub struct SliceIndirectRegion<'a> {
@@ -50,8 +53,19 @@ impl<'a> SliceIndirectRegion<'a> {
         matches!(self.region_type, CmsRegionType::VendorWo)
     }
 
+    /// Copy up to `buf.len()` bytes from the backing store starting at `offset`.
+    ///
+    /// Returns the number of bytes actually copied.
+    fn read_at(&self, offset: usize, buf: &mut [u8]) -> usize {
+        let size = self.size_bytes() as usize;
+        let available = size.saturating_sub(offset);
+        let copy_len = buf.len().min(available);
+        buf[..copy_len].copy_from_slice(&self.buf[offset..offset + copy_len]);
+        copy_len
+    }
+
     fn advance_imo(&mut self, transfer_len: usize) {
-        let increment = ((transfer_len as u32) + 3) & !0x3;
+        let increment = ((transfer_len as u32) + 3) & ALIGNMENT_MASK;
         let size = self.size_bytes();
         let new_imo = self.imo + increment;
         if new_imo >= size {
@@ -73,7 +87,7 @@ impl IndirectCmsRegion for SliceIndirectRegion<'_> {
     }
 
     fn set_imo(&mut self, offset: u32) {
-        self.imo = offset & !0x3;
+        self.imo = offset & ALIGNMENT_MASK;
     }
 
     fn write(&mut self, data: &[u8]) -> Result<(), CmsError> {
@@ -94,13 +108,13 @@ impl IndirectCmsRegion for SliceIndirectRegion<'_> {
             self.flags.set_write_only_error(true);
             return Err(CmsError::WriteOnly);
         }
-        let size = self.size_bytes() as usize;
-        let offset = self.imo as usize;
-        let available = size - offset;
-        let copy_len = buf.len().min(available);
-        buf[..copy_len].copy_from_slice(&self.buf[offset..offset + copy_len]);
+        let copy_len = self.read_at(self.imo as usize, buf);
         self.advance_imo(copy_len);
         Ok(copy_len)
+    }
+
+    fn device_read(&self, offset: u32, buf: &mut [u8]) -> usize {
+        self.read_at((offset & ALIGNMENT_MASK) as usize, buf)
     }
 
     fn clear_status(&mut self) {

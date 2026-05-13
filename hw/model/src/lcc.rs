@@ -17,6 +17,19 @@ use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagTap, OpenOcdJtagTap};
 use poll_common::poll_until;
 use romtime::{Lifecycle, LifecycleControllerState};
 
+/// Convert our local (romtime) `LifecycleControllerState` to the
+/// `caliptra_hw_model::LifecycleControllerState` used by hw-model APIs
+/// such as `ModelFpgaSubsystem::set_saved_lc_state`. Both enums share the
+/// same `repr(u8)` mapping for values 0..=20; the romtime side adds a
+/// `PostTransition = 21` sentinel that has no hw-model counterpart and
+/// will be folded to `Scrap` (the highest valid OTP-encoded state).
+pub fn to_cptra_lc_state(
+    state: LifecycleControllerState,
+) -> caliptra_hw_model::LifecycleControllerState {
+    let raw: u8 = state.into();
+    caliptra_hw_model::LifecycleControllerState::from(raw.min(20))
+}
+
 /// Errors related to the LCC operations below.
 #[derive(Error, Debug)]
 pub enum LccUtilError {

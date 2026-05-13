@@ -1,8 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 pub mod flash;
+pub mod ocp;
 
-use crate::{flash::flash_partition::FlashPartition, recovery::flash::FlashImageProvider};
+use core::num::NonZeroU8;
+
 use bitfield::bitfield;
 use registers_generated::i3c;
 use registers_generated::i3c::bits::{IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess};
@@ -23,6 +25,7 @@ pub trait ImageProvider {
     ///
     /// This could return an error if the underlying provider encounters an error waiting for the
     /// image or processing any header related data.
+    #[allow(clippy::result_unit_err)]
     fn image_ready(&mut self, image_index: u32) -> Result<usize, ()>;
 
     /// Retrieve up to the next len(data) number of bytes in the image.  The slice will be updated
@@ -34,10 +37,88 @@ pub trait ImageProvider {
     ///
     /// This could return an error if the underlying provider encounters an error reading the
     /// image.
+    #[allow(clippy::result_unit_err)]
     fn next_bytes(&mut self, data: &mut [u8]) -> Result<(), ()>;
 
     /// Return the number of image bytes which have been loaded by the given provider.
     fn bytes_loaded(&self) -> usize;
+}
+
+/// Policy for handling errors from an [`ImageProvider`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorPolicy {
+    /// On error, skip this provider and try the next one.
+    Continue,
+    /// Retry up to N times, then fall through to the next provider.
+    Retry(NonZeroU8),
+    /// Retry indefinitely.
+    RetryForever,
+}
+
+/// An [`ImageProvider`] paired with its error-handling policy.
+pub struct ImageProviderEntry<'a> {
+    pub provider: &'a mut dyn ImageProvider,
+    pub policy: ErrorPolicy,
+}
+
+/// Manages a sequence of [`ImageProviderEntry`]s, tracking the active provider
+/// and retry count.
+pub struct ImageProviderManager<'a> {
+    entries: &'a mut [ImageProviderEntry<'a>],
+    current: usize,
+    retries: u8,
+}
+
+impl<'a> ImageProviderManager<'a> {
+    pub fn new(entries: &'a mut [ImageProviderEntry<'a>]) -> Self {
+        Self {
+            entries,
+            current: 0,
+            retries: 0,
+        }
+    }
+
+    /// Returns the current provider, incrementing the retry counter.
+    /// Uses the retry policy to determine whether to stay on the current
+    /// provider or advance.
+    ///
+    /// - First call for a provider: returns it (retries = 0).
+    /// - `Continue`: immediately advances to the next provider on next call.
+    /// - `Retry(n)`: stays on current while retries < n, then advances.
+    /// - `RetryForever`: stays on current indefinitely.
+    ///
+    /// Returns `None` if all providers are exhausted.
+    fn provider(&mut self) -> Option<&mut (dyn ImageProvider + 'a)> {
+        if self.retries == 0 {
+            self.retries += 1;
+        } else if let Some(policy) = self.entries.get(self.current).map(|c| c.policy) {
+            match policy {
+                ErrorPolicy::Continue => {
+                    self.current += 1;
+                    self.retries = 0;
+                }
+                ErrorPolicy::Retry(n) => {
+                    if self.retries < n.get() {
+                        self.retries += 1;
+                    } else {
+                        self.current += 1;
+                        self.retries = 0;
+                    }
+                }
+                ErrorPolicy::RetryForever => {
+                    self.retries = self.retries.saturating_add(1);
+                }
+            }
+        }
+
+        // Explicit reborrow (`&mut *`) is required because the closure
+        // boundary prevents the implicit reborrow the compiler would
+        // insert at a normal coercion site (e.g. `return Some(c.provider)`).
+        // The `+ 'a` on the return type is also necessary: without it the
+        // default trait-object bound ties to the `&mut self` borrow, which
+        // is shorter than `'a` and causes a lifetime mismatch.
+        self.entries.get_mut(self.current).map(|c| &mut *c.provider)
+    }
 }
 
 statemachine! {
@@ -218,9 +299,31 @@ impl StateMachineContext for Context {
     }
 }
 
-pub fn load_flash_image_to_recovery<'a>(
+/// Attempt to load an image using the [`ImageProviderManager`], retrying with
+/// subsequent providers according to each entry's [`ErrorPolicy`].
+///
+/// Returns `Ok(())` once a provider succeeds, or `Err(())` if all providers
+/// are exhausted.
+pub(crate) fn load_image_with_retry(
     i3c_periph: StaticRef<i3c::regs::I3c>,
-    flash_driver: &'a mut FlashPartition<'a>,
+    manager: &mut ImageProviderManager<'_>,
+) -> Result<(), ()> {
+    while let Some(provider) = manager.provider() {
+        match load_image_to_recovery(i3c_periph, provider) {
+            Ok(()) => return Ok(()),
+            Err(()) => {
+                romtime::println!("[mcu-rom] Image provider failed, trying next");
+                continue;
+            }
+        }
+    }
+    romtime::println!("[mcu-rom] All image providers exhausted");
+    Err(())
+}
+
+fn load_image_to_recovery(
+    i3c_periph: StaticRef<i3c::regs::I3c>,
+    image_provider: &mut dyn ImageProvider,
 ) -> Result<(), ()> {
     let context = Context::new();
     let mut state_machine = StateMachine::new(context);
@@ -228,8 +331,6 @@ pub fn load_flash_image_to_recovery<'a>(
     let mut prev_state = States::ReadProtCap;
     let mut next_print_checkpoint = 0;
     let mut start_cycle = None;
-
-    let mut image_provider = FlashImageProvider::new(flash_driver);
 
     while *state_machine.state() != States::Done {
         if prev_state != *state_machine.state() {

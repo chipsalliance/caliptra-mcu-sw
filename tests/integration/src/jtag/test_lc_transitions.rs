@@ -9,19 +9,8 @@ mod test {
     use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
     use caliptra_hw_model::HwModel;
     use caliptra_hw_model::DEFAULT_LIFECYCLE_RAW_TOKEN;
-    use mcu_hw_model::lcc::{lc_token_to_words, lc_transition, read_lc_state};
-    use mcu_hw_model::DefaultHwModel;
+    use mcu_hw_model::lcc::{lc_token_to_words, lc_transition, read_lc_state, to_cptra_lc_state};
     use romtime::LifecycleControllerState;
-
-    fn cold_reset_preserving_lc(model: &mut DefaultHwModel) {
-        model.base.set_subsystem_reset(true);
-        std::thread::sleep(std::time::Duration::from_micros(1));
-        model
-            .base
-            .init_otp(None)
-            .expect("Failed to initialize OTP after cold reset");
-        model.base.set_subsystem_reset(false);
-    }
 
     #[test]
     fn test_raw_unlock() {
@@ -58,8 +47,14 @@ mod test {
         .expect("Unable to transition to TestUnlocked0.");
         println!("Post transition LC state: {}", lc_state);
 
-        // Reset and read the LC state again.
-        cold_reset_preserving_lc(&mut model);
+        // Reset and read the LC state again. The new LC state is now in
+        // OTP on the FPGA, but `cold_reset()` re-provisions OTP from
+        // `saved_lc_state`, so update that first to preserve the JTAG-
+        // induced transition across the reset.
+        model.base.set_saved_lc_state(Some(to_cptra_lc_state(
+            LifecycleControllerState::TestUnlocked0,
+        )));
+        model.base.cold_reset();
         lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
         println!("LC state after reset: {}", lc_state);
         assert_eq!(lc_state, LifecycleControllerState::TestUnlocked0);
@@ -129,8 +124,13 @@ mod test {
                 .expect("Unable to transition to TestUnlocked0.");
             println!("Post transition LC state: {}", lc_state);
 
-            // Reset and read the LC state again.
-            cold_reset_preserving_lc(&mut model);
+            // Reset and read the LC state again. `cold_reset()` re-
+            // provisions OTP from `saved_lc_state`, so update it to the
+            // new state to preserve the JTAG transition across the reset.
+            model
+                .base
+                .set_saved_lc_state(Some(to_cptra_lc_state(lc_states[i + 1])));
+            model.base.cold_reset();
             lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
             println!("LC state after reset: {}", lc_state);
             assert_eq!(lc_state, lc_states[i + 1]);
@@ -171,8 +171,13 @@ mod test {
         .expect("Unable to transition to RMA.");
         println!("Post transition LC state: {}", lc_state);
 
-        // Reset and read the LC state again.
-        cold_reset_preserving_lc(&mut model);
+        // Reset and read the LC state again. `cold_reset()` re-provisions
+        // OTP from `saved_lc_state`, so update it to RMA to preserve the
+        // JTAG-induced transition across the reset.
+        model
+            .base
+            .set_saved_lc_state(Some(to_cptra_lc_state(LifecycleControllerState::Rma)));
+        model.base.cold_reset();
         lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
         println!("LC state after reset: {}", lc_state);
         assert_eq!(lc_state, LifecycleControllerState::Rma);

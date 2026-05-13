@@ -367,7 +367,13 @@ impl McuHwModel for ModelEmulated {
                 ..Default::default()
             },
         };
-        let mut cpu = Cpu::new(BusLogger::new(auto_root_bus), clock, pic, args);
+        let mut cpu = Cpu::new(
+            BusLogger::new(auto_root_bus),
+            clock,
+            pic,
+            args,
+            Rc::new(Cell::new(0)),
+        );
 
         if let Some(stack_info) = params.stack_info {
             cpu.with_stack_info(stack_info);
@@ -440,6 +446,7 @@ impl McuHwModel for ModelEmulated {
                 network_clock,
                 network_pic,
                 emulator_consts::NETWORK_CPU_ARGS,
+                Rc::new(Cell::new(0)),
             );
             network_cpu.write_pc(emulator_consts::NETWORK_ROM_ORG);
 

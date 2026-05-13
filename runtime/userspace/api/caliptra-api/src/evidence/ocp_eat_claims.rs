@@ -2,8 +2,10 @@
 
 use crate::crypto::rng::Rng;
 use crate::error::{CaliptraApiError, CaliptraApiResult};
-use ocp_eat::ocp_profile::{ConciseEvidence, DebugStatus, MeasurementFormat, OcpEatClaims};
-use ocp_eat::CborEncoder;
+use caliptra_ocp_eat::ocp_profile::{
+    ConciseEvidence, DebugStatus, MeasurementFormat, OcpEatClaims,
+};
+use caliptra_ocp_eat::CborEncoder;
 
 /// Scratch buffer size for encoding Concise Evidence.
 /// This should be sized based on the expected number of target environments added to the evidence.

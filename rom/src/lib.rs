@@ -39,7 +39,7 @@ mod i3c;
 mod i3c_mailbox;
 pub use i3c_mailbox::I3cMailboxHandler;
 mod mailbox;
-mod recovery;
+pub mod recovery;
 #[cfg(feature = "stable-owner-key")]
 mod stable_owner_key;
 

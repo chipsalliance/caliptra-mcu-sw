@@ -14,7 +14,6 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
-use crate::flash::flash_partition::FlashPartition;
 use crate::fuses::{DefaultVendorKeyPolicy, VendorKeyPolicy};
 use crate::hil::FlashStorage;
 
@@ -82,6 +81,8 @@ pub struct FuseState {
 }
 
 impl Soc {
+    pub const BOOT_FSM_DONE: u32 = 4;
+
     pub const fn new(registers: StaticRef<soc::regs::Soc>) -> Self {
         Soc { registers }
     }
@@ -98,6 +99,30 @@ impl Soc {
 
     pub fn flow_status(&self) -> u32 {
         self.registers.cptra_flow_status.get()
+    }
+
+    pub fn boot_fsm_ps(&self) -> u32 {
+        self.registers
+            .cptra_flow_status
+            .read(soc::bits::CptraFlowStatus::BootFsmPs)
+    }
+
+    pub fn wait_for_bootfsm_done(&self, timeout_cycles: u64) {
+        let start = romtime::mcycle();
+        while self.boot_fsm_ps() != Self::BOOT_FSM_DONE {
+            if self.cptra_fw_fatal_error() {
+                romtime::println!(
+                    "[mcu-rom] Caliptra reported a fatal error during boot FSM transition"
+                );
+                fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
+            }
+            if romtime::mcycle() - start > timeout_cycles {
+                romtime::println!(
+                    "[mcu-rom] Caliptra Core boot FSM timed out waiting for BOOT_DONE"
+                );
+                fatal_error(McuError::ROM_BOOTFSM_TIMEOUT);
+            }
+        }
     }
 
     pub fn ready_for_mbox(&self) -> bool {
@@ -832,7 +857,7 @@ impl Default for DotRecoveryPolicy {
 pub struct RomParameters<'a> {
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
     pub burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
-    pub flash_partition_driver: Option<&'a mut FlashPartition<'a>>,
+    pub image_provider_manager: Option<crate::recovery::ImageProviderManager<'a>>,
     /// Whether or not to program field entropy after booting Caliptra runtime firmware
     pub program_field_entropy: [bool; 4],
     pub mcu_image_header_size: usize,
@@ -859,8 +884,8 @@ pub struct RomParameters<'a> {
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,
-    /// Request flash boot (AXI recovery bypass).
-    pub request_flash_boot: bool,
+    /// Request recovery boot (AXI recovery bypass).
+    pub request_recovery_boot: bool,
     /// By default, we will set recovery status as successful after loading MCU firmware.
     /// Set this to true if you want to leave recovery status as open for further firmware image loading.
     /// Note that in 2.0, Caliptra already sets recovery status as successful so there may be a race

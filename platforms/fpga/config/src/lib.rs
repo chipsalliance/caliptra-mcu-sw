@@ -70,3 +70,8 @@ pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {
     mcu_wdt_cfg0_debug: 800_000_000,
     mcu_wdt_cfg1_debug: 1,
 };
+
+/// The MRAC value which should be populated for this memory map.  This corresponds to a value
+/// utilized within the global start assembly and thus must be unmangled.
+#[no_mangle]
+pub static FPGA_MRAC_VALUE: u32 = FPGA_MEMORY_MAP.compute_mrac();

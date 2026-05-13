@@ -26,6 +26,7 @@ mod test_mcu_mbox;
 mod test_owner_stable_key;
 mod test_pldm_fw_update;
 mod test_soc_boot;
+mod test_usb_ocp_recovery;
 
 pub fn platform() -> &'static str {
     if cfg!(feature = "fpga_realtime") {

@@ -95,8 +95,8 @@ impl BootFlow for WarmBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersConfigured.into());
 
         let size_value = params.mcu_fw_sram_exec_region_size.unwrap_or(
-            unsafe { MCU_MEMORY_MAP.sram_size }
-                - crate::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS * 4096
+            (unsafe { MCU_MEMORY_MAP.sram_size } / 4096)
+                - crate::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS
                 - 1,
         );
         mci.set_fw_sram_exec_region_size(size_value);
@@ -137,7 +137,10 @@ impl BootFlow for WarmBoot {
         mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
         crate::call_hook(params.hooks, |h| h.post_populate_fuses_to_caliptra());
 
+        romtime::println!("[mcu-rom] Waiting for Caliptra Core boot FSM to be DONE");
+        soc.wait_for_bootfsm_done(10_000_000);
         crate::call_hook(params.hooks, |h| h.post_caliptra_boot());
+
         romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
         soc.wait_for_firmware_ready(mci);
         romtime::println!("[mcu-rom] Firmware is ready");

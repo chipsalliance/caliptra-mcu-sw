@@ -88,6 +88,25 @@ pub enum RecoveryAction {
     /// After performing activation, the integrator calls
     /// `complete_activation()` to report the result.
     ActivateRecoveryImage,
+
+    /// RECOVERY_CTRL was written with no activation request.
+    /// The CMS selection or image selection may have changed.
+    RecoveryCtrlChanged,
+
+    /// INDIRECT_CTRL was written. The CMS selection or IMO may have changed.
+    IndirectCtrlChanged,
+
+    /// INDIRECT_FIFO_CTRL was written. The CMS or image size may have changed.
+    IndirectFifoCtrlChanged,
+}
+
+/// The CMS region type selected for recovery data, returned by
+/// [`RecoveryStateMachine::recovery_cms_region`].
+pub enum RecoveryCmsRegion<'r> {
+    /// An indirect (memory-window) CMS region.
+    Indirect(&'r mut dyn IndirectCmsRegion),
+    /// A FIFO CMS region.
+    Fifo(&'r mut dyn FifoCmsRegion),
 }
 
 /// Protocol state and configuration, separated from the transport to allow
@@ -218,6 +237,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
     /// errors are recorded in DEVICE_STATUS and do not cause this method
     /// to return Err.
     pub fn process_command(&mut self) -> Result<RecoveryAction, OcpError> {
+        let mut action = RecoveryAction::None;
         let (cmd, req) = self.transport.recv()?;
         match req {
             RecoveryRequest::Read { .. } => {
@@ -243,25 +263,34 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
             }
             RecoveryRequest::Write { data } => match cmd {
                 RecoveryCommand::RecoveryCtrl => {
-                    return Ok(self.state.handle_recovery_ctrl_write(data));
+                    action = self.state.handle_recovery_ctrl_write(data);
                 }
-                RecoveryCommand::DeviceReset => self.state.handle_device_reset_write(data),
-                RecoveryCommand::IndirectCtrl => self.state.handle_indirect_ctrl_write(data),
+                RecoveryCommand::IndirectCtrl => {
+                    action = self.state.handle_indirect_ctrl_write(data);
+                }
                 RecoveryCommand::IndirectFifoCtrl => {
-                    self.state.handle_indirect_fifo_ctrl_write(data)
+                    action = self.state.handle_indirect_fifo_ctrl_write(data);
                 }
-                RecoveryCommand::IndirectData => self.state.handle_indirect_data_write(data),
-                RecoveryCommand::Vendor => self.state.handle_vendor_write(data),
+                RecoveryCommand::DeviceReset => {
+                    self.state.handle_device_reset_write(data);
+                }
+                RecoveryCommand::IndirectData => {
+                    self.state.handle_indirect_data_write(data);
+                }
+                RecoveryCommand::Vendor => {
+                    self.state.handle_vendor_write(data);
+                }
                 RecoveryCommand::IndirectFifoData => {
                     self.state.handle_indirect_fifo_data_write(data);
                 }
-                _ => self
-                    .state
-                    .set_protocol_error(ProtocolError::UnsupportedCommand),
+                _ => {
+                    self.state
+                        .set_protocol_error(ProtocolError::UnsupportedCommand);
+                }
             },
         }
 
-        Ok(RecoveryAction::None)
+        Ok(action)
     }
 
     /// Called by the integrator after activation completes.
@@ -339,10 +368,70 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
         self.state.device_status_value = DeviceStatusValue::BootFailure;
         self.state.recovery_reason = reason;
     }
+
+    /// Returns a mutable reference to the CMS region selected by RECOVERY_CTRL byte 0.
+    ///
+    /// Looks up the CMS index from the current `recovery_ctrl.cms` field. Tries
+    /// indirect regions first, then FIFO regions. Returns `None` if the CMS
+    /// index doesn't match any configured region.
+    pub fn recovery_cms_region(&mut self) -> Option<RecoveryCmsRegion<'_>> {
+        self.state.recovery_cms_region()
+    }
+
+    /// Initialize the underlying transport.
+    ///
+    /// Delegates to [`UsbDeviceDriver::init`]. This must be called before
+    /// `process_command()` can communicate with the host.
+    pub fn init_transport(&mut self) -> Result<(), OcpError> {
+        self.transport.init().map_err(|e| e.into())
+    }
+
+    /// Returns the CMS index from the current RECOVERY_CTRL register.
+    pub fn recovery_ctrl_cms(&self) -> u8 {
+        self.state.recovery_ctrl.cms
+    }
+
+    /// Returns the image size from in bytes from the current INDIRECT_FIFO_CTRL register.
+    pub fn fifo_image_size(&self) -> u32 {
+        // Translate from 4 byte words to bytes.
+        const BYTES_PER_ENTRY: u32 = 4;
+        self.state.indirect_fifo_ctrl_image_size * BYTES_PER_ENTRY
+    }
+
+    /// Returns the CMS index from the current INDIRECT_FIFO_CTRL register.
+    pub fn fifo_ctrl_cms(&self) -> u8 {
+        self.state.indirect_fifo_ctrl_cms
+    }
+
+    /// Returns the FIFO CMS region selected by INDIRECT_FIFO_CTRL.
+    pub fn fifo_cms_region(&mut self) -> Option<&mut dyn FifoCmsRegion> {
+        let cms = self.state.indirect_fifo_ctrl_cms;
+        self.state.lookup_fifo_region(cms)
+    }
 }
 
 impl<V: VendorHandler> RecoveryState<'_, V> {
-    /// Look up a memory-window CMS region by index.
+    /// Returns the CMS region selected by RECOVERY_CTRL byte 0.
+    ///
+    /// Tries indirect regions first, then FIFO. Returns `None` if no match.
+    fn recovery_cms_region(&mut self) -> Option<RecoveryCmsRegion<'_>> {
+        let cms = self.recovery_ctrl.cms;
+
+        // Note: We can't use lookup methods here as they mutably borrow self,
+        // preventing the subsequent invocation from passing the borrow checker.
+        for (idx, region) in self.indirect_regions.iter_mut() {
+            if *idx == cms {
+                return Some(RecoveryCmsRegion::Indirect(*region));
+            }
+        }
+        for (idx, region) in self.fifo_regions.iter_mut() {
+            if *idx == cms {
+                return Some(RecoveryCmsRegion::Fifo(*region));
+            }
+        }
+        None
+    }
+
     fn lookup_indirect_region(&mut self, cms: u8) -> Option<&mut dyn IndirectCmsRegion> {
         for (idx, region) in self.indirect_regions.iter_mut() {
             if *idx == cms {
@@ -591,7 +680,7 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
                 .set_status(DeviceRecoveryStatus::BootingImage);
             RecoveryAction::ActivateRecoveryImage
         } else {
-            RecoveryAction::None
+            RecoveryAction::RecoveryCtrlChanged
         }
     }
     fn handle_indirect_ctrl_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
@@ -603,16 +692,16 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
         IndirectCtrl::new(cms, imo)?.to_message(buf)
     }
 
-    fn handle_indirect_ctrl_write(&mut self, data: &[u8]) {
+    fn handle_indirect_ctrl_write(&mut self, data: &[u8]) -> RecoveryAction {
         let parsed = match IndirectCtrl::from_message(data) {
             Ok(p) => p,
             Err(OcpError::MessageTooShort | OcpError::MessageTooLong) => {
                 self.set_protocol_error(ProtocolError::LengthWriteError);
-                return;
+                return RecoveryAction::None;
             }
             Err(_) => {
                 self.set_protocol_error(ProtocolError::UnsupportedParameter);
-                return;
+                return RecoveryAction::None;
             }
         };
 
@@ -628,6 +717,8 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
                 region.set_imo(parsed.imo());
             }
         }
+
+        RecoveryAction::IndirectCtrlChanged
     }
 
     /// Handle an INDIRECT_FIFO_CTRL (cmd=0x2D) read: serialize stored state
@@ -647,16 +738,16 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
 
     /// Handle an INDIRECT_FIFO_CTRL (cmd=0x2D) write: parse, optionally
     /// reset FIFO, and store.
-    fn handle_indirect_fifo_ctrl_write(&mut self, data: &[u8]) {
+    fn handle_indirect_fifo_ctrl_write(&mut self, data: &[u8]) -> RecoveryAction {
         let parsed = match IndirectFifoCtrl::from_message(data) {
             Ok(p) => p,
             Err(OcpError::MessageTooShort | OcpError::MessageTooLong) => {
                 self.set_protocol_error(ProtocolError::LengthWriteError);
-                return;
+                return RecoveryAction::None;
             }
             Err(_) => {
                 self.set_protocol_error(ProtocolError::UnsupportedParameter);
-                return;
+                return RecoveryAction::None;
             }
         };
 
@@ -668,6 +759,8 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
 
         self.indirect_fifo_ctrl_cms = parsed.cms;
         self.indirect_fifo_ctrl_image_size = parsed.image_size;
+
+        RecoveryAction::IndirectFifoCtrlChanged
     }
 
     /// Handle an INDIRECT_DATA (cmd=0x2B) read: read from the currently
@@ -2298,7 +2391,7 @@ mod tests {
         .unwrap();
 
         let action = sm.process_command().unwrap();
-        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(action, RecoveryAction::RecoveryCtrlChanged);
         assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
         assert_eq!(sm.state.recovery_ctrl.cms, 0);
     }
@@ -2871,7 +2964,8 @@ mod tests {
         )
         .unwrap();
 
-        sm.process_command().unwrap();
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::IndirectCtrlChanged);
         assert_eq!(sm.state.indirect_ctrl.cms, 0);
         assert_eq!(sm.state.indirect_ctrl.imo(), 0x10);
 
@@ -2980,7 +3074,8 @@ mod tests {
         )
         .unwrap();
 
-        sm.process_command().unwrap();
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
         assert_eq!(sm.state.protocol_error, ProtocolError::LengthWriteError);
     }
 
@@ -3000,7 +3095,8 @@ mod tests {
         )
         .unwrap();
 
-        sm.process_command().unwrap();
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
         assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
     }
 
@@ -3026,7 +3122,8 @@ mod tests {
         )
         .unwrap();
 
-        sm.process_command().unwrap();
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::IndirectFifoCtrlChanged);
         assert_eq!(sm.state.indirect_fifo_ctrl_cms, 2);
         assert_eq!(sm.state.indirect_fifo_ctrl_image_size, 0x100);
         assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
@@ -3064,7 +3161,8 @@ mod tests {
         )
         .unwrap();
 
-        sm.process_command().unwrap();
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::IndirectFifoCtrlChanged);
 
         sm.process_command().unwrap();
         let status_msg = &sm.transport.sent[0];
@@ -3124,7 +3222,8 @@ mod tests {
         )
         .unwrap();
 
-        sm.process_command().unwrap();
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
         assert_eq!(sm.state.protocol_error, ProtocolError::LengthWriteError);
     }
 
@@ -3144,7 +3243,8 @@ mod tests {
         )
         .unwrap();
 
-        sm.process_command().unwrap();
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
         assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
     }
 
@@ -3603,5 +3703,76 @@ mod tests {
         sm.process_command().unwrap();
         assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
         assert!(sm.transport.sent[0].iter().all(|&b| b == 0));
+    }
+
+    // -----------------------------------------------------------------------
+    // recovery_cms_region() tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn recovery_cms_region_returns_indirect_region() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        // Set recovery_ctrl.cms = 0 via a RECOVERY_CTRL write
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x00]);
+
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        let cms = sm.recovery_cms_region();
+        assert!(matches!(cms, Some(RecoveryCmsRegion::Indirect(_))));
+    }
+
+    #[test]
+    fn recovery_cms_region_returns_fifo_region() {
+        let mut fbuf = [0u8; 64];
+        let mut fifo = SliceFifoRegion::new(&mut fbuf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut fifo_regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(2, &mut fifo)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        // Set recovery_ctrl.cms = 2 via a RECOVERY_CTRL write
+        // CMS=2, ImageSelection=MemoryWindow doesn't validate against fifo for non-CodeSpace check
+        // Use NoOperation to avoid CMS validation
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x02, 0x00, 0x00]);
+
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut fifo_regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        let cms = sm.recovery_cms_region();
+        assert!(matches!(cms, Some(RecoveryCmsRegion::Fifo(_))));
+    }
+
+    #[test]
+    fn recovery_cms_region_returns_none_for_unknown_cms() {
+        let mut transport = MockUsbDeviceDriver::new();
+
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        // Default recovery_ctrl.cms is 0, but no regions configured
+        assert!(sm.recovery_cms_region().is_none());
     }
 }
