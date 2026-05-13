@@ -151,31 +151,27 @@ pub(crate) fn test_hello_c_emulator() -> Result<()> {
 }
 
 pub(crate) fn test_panic_missing() -> Result<()> {
-    let rom_elf_path = PROJECT_ROOT
-        .join("target")
-        .join(TARGET)
-        .join("release")
-        .join("mcu-rom-emulator");
+    let test_features = [
+        None,
+        Some("test-usb-ocp-recovery".to_string()),
+        Some("test-flash-based-boot".to_string()),
+    ];
 
-    // Check default build
-    rom_build(None, None)?;
-    check_no_panic(&rom_elf_path, "default")?;
-
-    // Check test-flash-based-boot build
-    rom_build(None, Some("test-flash-based-boot".to_string()))?;
-    check_no_panic(&rom_elf_path, "test-flash-based-boot")?;
-
-    Ok(())
-}
-
-fn check_no_panic(rom_elf_path: &std::path::Path, label: &str) -> Result<()> {
-    let rom_elf = std::fs::read(rom_elf_path)?;
-    let symbols = elf_symbols(&rom_elf)?;
-    if symbols.iter().any(|s| s.contains("panic_is_possible")) {
-        bail!(
-            "The MCU ROM ({label}) contains the panic_is_possible symbol, which is not allowed. \
+    for test_feature in test_features.into_iter() {
+        rom_build(None, test_feature)?;
+        let rom_elf = PROJECT_ROOT
+            .join("target")
+            .join(TARGET)
+            .join("release")
+            .join("mcu-rom-emulator");
+        let rom_elf = std::fs::read(rom_elf)?;
+        let symbols = elf_symbols(&rom_elf)?;
+        if symbols.iter().any(|s| s.contains("panic_is_possible")) {
+            bail!(
+                "The MCU ROM contains the panic_is_possible symbol, which is not allowed. \
                 Please remove any code that might panic."
-        );
+            );
+        }
     }
     Ok(())
 }
