@@ -306,6 +306,15 @@ async fn generate_key_exchange_response<'a>(
     key_exch_rsp_ctx: KeyExchRspContext,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
+    let KeyExchRspContext {
+        meas_summary_hash_type,
+        slot_id,
+        resp_exch_data,
+        selected_sm_version,
+        resp_session_id,
+        session_id,
+    } = key_exch_rsp_ctx;
+
     // Prepare the response buffer
     // Spdm Header first
     let connection_version = ctx.state.connection_info.version_number();
@@ -315,21 +324,14 @@ async fn generate_key_exchange_response<'a>(
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
     // Encode the KEY_EXCHANGE response fixed fields
-    payload_len += encode_key_exchange_rsp_base(
-        key_exch_rsp_ctx.resp_session_id,
-        key_exch_rsp_ctx.resp_exch_data,
-        rsp,
-    )
-    .await?;
+    payload_len += encode_key_exchange_rsp_base(resp_session_id, resp_exch_data, rsp).await?;
 
     // Get the measurement summary hash
-    if key_exch_rsp_ctx.meas_summary_hash_type != 0 {
-        payload_len +=
-            encode_measurement_summary_hash(ctx, key_exch_rsp_ctx.meas_summary_hash_type, rsp)
-                .await?;
+    if meas_summary_hash_type != 0 {
+        payload_len += encode_measurement_summary_hash(ctx, meas_summary_hash_type, rsp).await?;
     }
 
-    let opaque_data = sm_selected_version_opaque_data(key_exch_rsp_ctx.selected_sm_version)
+    let opaque_data = sm_selected_version_opaque_data(selected_sm_version)
         .map_err(|e| (false, CommandError::OpaqueData(e)))?;
 
     // Encode the Opaque with version selection data
@@ -338,45 +340,27 @@ async fn generate_key_exchange_response<'a>(
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
     // Append the response to Th transcript
-    ctx.append_message_to_transcript(
-        rsp,
-        TranscriptContext::Th,
-        Some(key_exch_rsp_ctx.session_id),
-    )
-    .await?;
+    ctx.append_message_to_transcript(rsp, TranscriptContext::Th, Some(session_id))
+        .await?;
 
     // Encode TH1 signature.
-    let th1_sig = th1_signature(
-        ctx,
-        key_exch_rsp_ctx.session_id,
-        key_exch_rsp_ctx.slot_id,
-        asym_algo,
-    )
-    .await?;
+    let th1_sig = th1_signature(ctx, session_id, slot_id, asym_algo).await?;
 
     payload_len += encode_u8_slice(&th1_sig, rsp).map_err(|e| (false, CommandError::Codec(e)))?;
 
     // Update the session transcript with the KEY_EXCHANGE_RSP signature
-    ctx.append_slice_to_transcript(
-        &th1_sig,
-        TranscriptContext::Th,
-        Some(key_exch_rsp_ctx.session_id),
-    )
-    .await?;
+    ctx.append_slice_to_transcript(&th1_sig, TranscriptContext::Th, Some(session_id))
+        .await?;
 
     // Compute TH1 transcript hash for generating the session handshake key
     let th1_transcript_hash = ctx
-        .transcript_hash(
-            TranscriptContext::Th,
-            Some(key_exch_rsp_ctx.session_id),
-            false,
-        )
+        .transcript_hash(TranscriptContext::Th, Some(session_id), false)
         .await?;
 
     // generate session handshake key
     let session_info = ctx
         .session_mgr
-        .session_info_mut(key_exch_rsp_ctx.session_id)
+        .session_info_mut(session_id)
         .map_err(|e| (false, CommandError::Session(e)))?;
 
     session_info
