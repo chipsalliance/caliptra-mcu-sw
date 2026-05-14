@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::error::SpdmError;
+use crate::error::{ProtocolError, SpdmError};
 use bitfield::bitfield;
 use caliptra_mcu_libapi_caliptra::crypto::hash::HashAlgoType;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -301,7 +301,7 @@ impl TryFrom<u8> for BaseHashAlgoType {
             4 => Ok(BaseHashAlgoType::TpmAlgSha3_384),
             5 => Ok(BaseHashAlgoType::TpmAlgSha3_512),
             6 => Ok(BaseHashAlgoType::TpmAlgSm3_256),
-            _ => Err(SpdmError::InvalidParam),
+            _ => Err(SpdmError::Protocol(ProtocolError::InvalidParam)),
         }
     }
 }
@@ -312,7 +312,7 @@ impl TryFrom<BaseHashAlgoType> for HashAlgoType {
         match value {
             BaseHashAlgoType::TpmAlgSha384 => Ok(HashAlgoType::SHA384),
             BaseHashAlgoType::TpmAlgSha512 => Ok(HashAlgoType::SHA512),
-            _ => Err(SpdmError::InvalidParam),
+            _ => Err(SpdmError::Protocol(ProtocolError::InvalidParam)),
         }
     }
 }

@@ -19,6 +19,20 @@ pub enum OpaqueDataError {
     Codec(CodecError),
 }
 
+impl OpaqueDataError {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            OpaqueDataError::InvalidStandardsBodyId => 0x01_00,
+            OpaqueDataError::InvalidVendorIdLength => 0x02_00,
+            OpaqueDataError::UnalignedOpaqueData => 0x03_00,
+            OpaqueDataError::InvalidFormat => 0x04_00,
+            OpaqueDataError::Codec(e) => {
+                ((crate::error::error_type_id::CODEC as u32) << 8) | ((*e as u8) as u32)
+            }
+        }
+    }
+}
+
 pub type OpaqueDataResult<T> = Result<T, OpaqueDataError>;
 
 pub(crate) struct OpaqueData {

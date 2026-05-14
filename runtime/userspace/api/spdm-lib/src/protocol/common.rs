@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::codec::CommonCodec;
-use crate::error::{SpdmError, SpdmResult};
+use crate::error::{ProtocolError, SpdmError, SpdmResult};
 use crate::protocol::{version::SpdmVersion, REQUESTER_CONTEXT_LEN, SPDM_CONTEXT_LEN};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -68,7 +68,7 @@ impl TryFrom<u8> for ReqRespCode {
             0x6C => Ok(ReqRespCode::EndSessionAck),
             0xFE => Ok(ReqRespCode::VendorDefinedRequest),
             0x7E => Ok(ReqRespCode::VendorDefinedResponse),
-            _ => Err(SpdmError::UnsupportedRequest),
+            _ => Err(SpdmError::Protocol(ProtocolError::UnsupportedRequest)),
         }
     }
 }
@@ -80,22 +80,19 @@ impl From<ReqRespCode> for u8 {
 }
 
 impl ReqRespCode {
-    pub(crate) fn spdm_context_string(&self) -> SpdmResult<[u8; SPDM_CONTEXT_LEN]> {
-        let mut context = [0u8; SPDM_CONTEXT_LEN];
-        let ctx_str = match self {
+    pub(crate) fn spdm_context_string(&self) -> Option<[u8; SPDM_CONTEXT_LEN]> {
+        let ctx_str: &str = match self {
             ReqRespCode::ChallengeAuth => "responder-challenge_auth signing",
             ReqRespCode::Measurements => "responder-measurements signing",
             ReqRespCode::KeyExchangeRsp => "responder-key_exchange_rsp signing",
-            _ => return Err(SpdmError::UnsupportedRequest),
+            _ => return None,
         };
 
-        if ctx_str.len() > SPDM_CONTEXT_LEN {
-            return Err(SpdmError::InvalidParam);
-        }
+        let mut context = [0u8; SPDM_CONTEXT_LEN];
         let zero_pad_size = SPDM_CONTEXT_LEN - ctx_str.len();
         context[zero_pad_size..].copy_from_slice(ctx_str.as_bytes());
 
-        Ok(context)
+        Some(context)
     }
 }
 

@@ -20,6 +20,24 @@ pub enum SignCtxError {
     CaliptraApi(CaliptraApiError),
 }
 
+impl SignCtxError {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            SignCtxError::UnsupportedVersion => 0x01_00,
+            SignCtxError::BufferTooSmall => 0x02_00,
+            SignCtxError::InvalidSignCtxString => 0x03_00,
+            SignCtxError::CaliptraApi(_) => (crate::error::error_type_id::CALIPTRA_API as u32) << 8,
+        }
+    }
+
+    pub fn caliptra_api(&self) -> Option<&CaliptraApiError> {
+        match self {
+            SignCtxError::CaliptraApi(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
 pub type SignatureCtxResult<T> = Result<T, SignCtxError>;
 
 pub(crate) fn create_responder_signing_context(
@@ -49,7 +67,7 @@ pub(crate) fn create_responder_signing_context(
 
     let spdm_context = opcode
         .spdm_context_string()
-        .map_err(|_| SignCtxError::InvalidSignCtxString)?;
+        .ok_or(SignCtxError::InvalidSignCtxString)?;
     combined_spdm_prefix[..SPDM_PREFIX_LEN].copy_from_slice(&spdm_prefix);
     combined_spdm_prefix[SPDM_PREFIX_LEN..].copy_from_slice(&spdm_context);
 

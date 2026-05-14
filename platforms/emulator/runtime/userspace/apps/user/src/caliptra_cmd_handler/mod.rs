@@ -66,11 +66,13 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             .await
             .map_err(|e| match e {
                 CaliptraApiError::MailboxBusy => CaliptraCompletionCode::CaliptraMailboxBusy,
-                CaliptraApiError::InvalidArgument(_) => CaliptraCompletionCode::InvalidParameter,
-                CaliptraApiError::AsymAlgoUnsupported => {
-                    CaliptraCompletionCode::UnsupportedOperation
-                }
                 CaliptraApiError::BufferTooSmall => CaliptraCompletionCode::CaliptraBufferTooSmall,
+                CaliptraApiError::InvalidResponse
+                | CaliptraApiError::Mailbox(_)
+                | CaliptraApiError::Syscall(_) => CaliptraCompletionCode::OperationFailed,
+                // Any other variant is not produced by get_attested_csr's call
+                // chain today. Reaching here means a deeper call started
+                // returning an unanticipated variant — surface it loudly.
                 _ => CaliptraCompletionCode::GeneralError,
             })?;
 
@@ -98,9 +100,11 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
                             CaliptraCompletionCode::CaliptraMailboxBusy
                         }
                         CaliptraApiError::UnprovisionedCsr => CaliptraCompletionCode::InvalidState,
-                        CaliptraApiError::BufferTooSmall => {
-                            CaliptraCompletionCode::CaliptraBufferTooSmall
-                        }
+                        CaliptraApiError::InvalidResponse
+                        | CaliptraApiError::Mailbox(_)
+                        | CaliptraApiError::Syscall(_) => CaliptraCompletionCode::OperationFailed,
+                        // Any other variant is not produced by get_idev_csr's
+                        // call chain today; surface it as GeneralError.
                         _ => CaliptraCompletionCode::GeneralError,
                     })?;
                 if len > csr_buf.len() {

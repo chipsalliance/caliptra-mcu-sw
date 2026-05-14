@@ -36,6 +36,36 @@ pub enum SessionError {
     Codec(CodecError),
 }
 
+impl SessionError {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            SessionError::SessionsLimitReached => 0x01_00,
+            SessionError::InvalidSessionId => 0x02_00,
+            SessionError::InvalidState => 0x03_00,
+            SessionError::DheSecretNotFound => 0x04_00,
+            SessionError::HandshakeSecretNotFound => 0x05_00,
+            SessionError::BufferTooSmall => 0x06_00,
+            SessionError::EncodeAeadError => 0x07_00,
+            SessionError::DecodeAeadError => 0x08_00,
+            SessionError::KeySchedule(e) => {
+                ((crate::error::error_type_id::KEY_SCHEDULE as u32) << 8) | e.error_code()
+            }
+            SessionError::CaliptraApi(_) => (crate::error::error_type_id::CALIPTRA_API as u32) << 8,
+            SessionError::Codec(e) => {
+                ((crate::error::error_type_id::CODEC as u32) << 8) | ((*e as u8) as u32)
+            }
+        }
+    }
+
+    pub fn caliptra_api(&self) -> Option<&CaliptraApiError> {
+        match self {
+            SessionError::CaliptraApi(e) => Some(e),
+            SessionError::KeySchedule(e) => e.caliptra_api(),
+            _ => None,
+        }
+    }
+}
+
 pub type SessionResult<T> = Result<T, SessionError>;
 
 #[derive(Default)]

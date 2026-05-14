@@ -7,16 +7,17 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum IdeDriverError {
-    InvalidPortIndex,
-    UnsupportedPortIndex,
-    InvalidStreamId,
-    InvalidArgument,
-    GetPortConfigFail,
-    KeyProgFail,
-    KeySetGoFail,
-    KeySetStopFail,
-    NoMemory,
+    InvalidPortIndex = 0x01,
+    UnsupportedPortIndex = 0x02,
+    InvalidStreamId = 0x03,
+    InvalidArgument = 0x04,
+    GetPortConfigFail = 0x05,
+    KeyProgFail = 0x06,
+    KeySetGoFail = 0x07,
+    KeySetStopFail = 0x08,
+    NoMemory = 0x09,
 }
 
 pub type IdeDriverResult<T> = Result<T, IdeDriverError>;

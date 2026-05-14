@@ -7,28 +7,29 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 
 /// Error codes returned by TDISP driver
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum TdispDriverError {
     /// Input parameter is null or invalid.
-    InvalidArgument,
+    InvalidArgument = 0x01,
     /// Memory allocation failed.
-    NoMemory,
+    NoMemory = 0x02,
     /// The driver failed to get TDISP capabilities.
-    GetTdispCapabilitiesFail,
+    GetTdispCapabilitiesFail = 0x03,
     /// The driver failed to get the device interface state.
-    GetDeviceInterfaceStateFail,
+    GetDeviceInterfaceStateFail = 0x04,
     /// The driver failed to lock the device interface.
-    LockInterfaceReqFail,
+    LockInterfaceReqFail = 0x05,
     /// The driver failed to start the device interface.
-    StartInterfaceReqFail,
+    StartInterfaceReqFail = 0x06,
     /// The driver failed to stop the device interface.
-    StopInterfaceReqFail,
+    StopInterfaceReqFail = 0x07,
     /// The driver failed to get the device interface report.
-    GetInterfaceReportFail,
+    GetInterfaceReportFail = 0x08,
     /// The driver failed to get the mmio ranges.
-    GetMmioRangesFail,
+    GetMmioRangesFail = 0x09,
     /// The driver function is not implemented.
-    FunctionNotImplemented,
+    FunctionNotImplemented = 0x0A,
 }
 
 pub type TdispDriverResult<T> = Result<T, TdispDriverError>;

@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use crate::error::{SpdmError, SpdmResult};
+use crate::error::{ProtocolError, SpdmError, SpdmResult};
 use crate::protocol::*;
 use alloc::boxed::Box;
 use async_trait::async_trait;
@@ -29,6 +29,36 @@ pub enum CertStoreError {
     OperationFailed,
     ResetRequired,
     CaliptraApi(CaliptraApiError),
+}
+
+impl CertStoreError {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            CertStoreError::InitFailed => 0x01_00,
+            CertStoreError::NotInitialized => 0x02_00,
+            CertStoreError::InvalidSlotId => 0x03_00,
+            CertStoreError::UnprovisionedSlot => 0x04_00,
+            CertStoreError::UnsupportedAsymAlgo => 0x05_00,
+            CertStoreError::UnsupportedHashAlgo => 0x06_00,
+            CertStoreError::BufferTooSmall => 0x07_00,
+            CertStoreError::InvalidOffset => 0x08_00,
+            CertStoreError::CertReadError => 0x09_00,
+            CertStoreError::CertWriteError => 0x0A_00,
+            CertStoreError::SlotBusy => 0x0B_00,
+            CertStoreError::OperationFailed => 0x0C_00,
+            CertStoreError::ResetRequired => 0x0D_00,
+            CertStoreError::CaliptraApi(_) => {
+                (crate::error::error_type_id::CALIPTRA_API as u32) << 8
+            }
+        }
+    }
+
+    pub fn caliptra_api(&self) -> Option<&CaliptraApiError> {
+        match self {
+            CertStoreError::CaliptraApi(e) => Some(e),
+            _ => None,
+        }
+    }
 }
 pub type CertStoreResult<T> = Result<T, CertStoreError>;
 
@@ -189,7 +219,7 @@ pub trait SpdmCertStore {
 pub(crate) fn validate_cert_store(cert_store: &dyn SpdmCertStore) -> SpdmResult<()> {
     let slot_count = cert_store.slot_count();
     if slot_count > MAX_CERT_SLOTS_SUPPORTED {
-        Err(SpdmError::InvalidParam)?;
+        Err(SpdmError::Protocol(ProtocolError::InvalidParam))?;
     }
     Ok(())
 }
