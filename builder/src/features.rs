@@ -38,6 +38,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-mbox-soc-requester-loopback",
     "test-mcu-mbox-cmds",
     "test-mbox-sram",
+    "test-external-otp",
     "test-warm-reset",
     "test-ocp-lock",
     "test-exit-immediately",

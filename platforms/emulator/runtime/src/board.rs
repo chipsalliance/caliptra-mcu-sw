@@ -10,9 +10,9 @@ use caliptra_mcu_capsules_runtime::mctp::base_protocol::MessageType;
 use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
 use caliptra_mcu_components::mctp_mux_component_static;
 use caliptra_mcu_components::{
-    doe_component_static, flash_partition_component_static, instantiate_flash_partitions,
-    mailbox_component_static, mbox_sram_component_static, mctp_driver_component_static,
-    mcu_mbox_component_static,
+    doe_component_static, external_otp_component_static, flash_partition_component_static,
+    instantiate_flash_partitions, mailbox_component_static, mbox_sram_component_static,
+    mctp_driver_component_static, mcu_mbox_component_static,
 };
 use caliptra_mcu_config_emulator::flash::{
     IMAGE_A_PARTITION, IMAGE_B_PARTITION, PARTITION_TABLE, STAGING_PARTITION,
@@ -161,6 +161,7 @@ struct VeeR {
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
     otp: &'static caliptra_mcu_capsules_runtime::otp::Otp,
+    external_otp: &'static caliptra_mcu_capsules_runtime::external_otp::ExternalOtpCapsule<'static>,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>,
 }
 
@@ -214,6 +215,9 @@ impl SyscallDriverLookup for VeeR {
                 f(Some(self.mcu_mbox1_staging_sram))
             }
             caliptra_mcu_capsules_runtime::otp::DRIVER_NUM => f(Some(self.otp)),
+            caliptra_mcu_capsules_runtime::external_otp::EXTERNAL_OTP_DRIVER_NUM => {
+                f(Some(self.external_otp))
+            }
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
 
             _ => f(None),
@@ -763,6 +767,37 @@ pub unsafe fn main() {
         caliptra_mcu_capsules_emulator::dma::Dma<'static>
     ));
 
+    // ExternalOTP: DMA-backed implementation using External SRAM storage.
+    // Integrators replace ExtSramBackedExternalOtp with their platform's actual
+    // fuse/EPROM controller driver.
+    use caliptra_mcu_external_otp_driver::hil::ExternalOtpPartitionInfo;
+    use caliptra_mcu_external_otp_emulator::ext_sram_otp::ExtSramBackedExternalOtp;
+
+    const EXTERNAL_OTP_PARTITIONS: &[ExternalOtpPartitionInfo] = &[
+        ExternalOtpPartitionInfo { id: 0x01, size: 96 }, // IDevID ECC signature (R || S)
+        ExternalOtpPartitionInfo {
+            id: 0x02,
+            size: 4627,
+        }, // IDevID MLDSA signature
+    ];
+    const EXTERNAL_OTP_SRAM_BASE: u64 = 0xB00C_0000; // External SRAM base (AXI address)
+
+    let external_otp_driver = static_init!(
+        ExtSramBackedExternalOtp<'static>,
+        ExtSramBackedExternalOtp::new(
+            EXTERNAL_OTP_PARTITIONS,
+            &emulator_peripherals.dma,
+            EXTERNAL_OTP_SRAM_BASE,
+        )
+    );
+
+    let external_otp = caliptra_mcu_components::external_otp::ExternalOtpComponent::new(
+        external_otp_driver,
+        board_kernel,
+        caliptra_mcu_capsules_runtime::external_otp::EXTERNAL_OTP_DRIVER_NUM,
+    )
+    .finalize(external_otp_component_static!());
+
     // MCU mailbox0 capsule
     let mcu_mbox0 = caliptra_mcu_components::mcu_mbox::McuMboxComponent::new(
         board_kernel,
@@ -826,6 +861,7 @@ pub unsafe fn main() {
             mcu_mbox0,
             mcu_mbox1_staging_sram,
             otp,
+            external_otp,
             system,
         }
     );

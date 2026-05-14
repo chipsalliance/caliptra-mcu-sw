@@ -1,0 +1,11 @@
+# Licensed under the Apache-2.0 license.
+
+[package]
+name = "caliptra-mcu-external-otp-emulator"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+caliptra-mcu-dma-driver.workspace = true
+caliptra-mcu-external-otp-driver.workspace = true
