@@ -11,6 +11,10 @@ riscv = []
 emu = []
 fpga_realtime = ["mcu-test-harness/fpga_realtime"]
 
+[[bin]]
+name = "mcu-test-fw-otp-blank-check"
+test = false
+
 [dependencies]
 mcu-error.workspace = true
 mcu-rom-common.workspace = true

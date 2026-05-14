@@ -11,6 +11,10 @@ riscv = []
 emu = []
 fpga_realtime = ["mcu-test-harness/fpga_realtime"]
 
+[[bin]]
+name = "mcu-test-fw-lc-ctrl"
+test = false
+
 [dependencies]
 mcu-rom-common.workspace = true
 mcu-test-harness.workspace = true
