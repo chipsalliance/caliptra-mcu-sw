@@ -95,7 +95,12 @@ available slots):
 ### Key Rotation via Strapping
 Integrators can force the ROM to rotate to the next available key by using a
 hardware strapping pin:
--   **Strap Register**: `SS_STRAP_GENERIC[3]`
+-   **Strap Register**: `SS_STRAP_GENERIC[3]` (today). **Upcoming:** the PK-hash
+    skip-lock and rotation straps are moving from `SS_STRAP_GENERIC[3]` to MCI
+    generic input wires (`mci_reg_generic_input_wires[*]`) so the low byte of
+    `SS_STRAP_GENERIC[3]` can be repurposed for the new
+    `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` fuse value (see
+    [ROM Fuses](rom-fuses.md)).
 -   **Bit 1 (Rotation)**: If this bit is set to `1`, the ROM will **skip the
     first functional slot** it finds and select the **second functional slot**.
 This allows a platform to switch to a new key without burning fuses, simply

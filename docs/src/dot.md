@@ -1341,6 +1341,186 @@ MLDSA pub key and signature are read directly from SRAM in zero-copy mode).
 10. **Result:** Device unlocked, but ownership lost (factory reset equivalent)
 
 
+### Vendor Recovery PK Hash Format
+
+The vendor recovery PK hash is the value stored in the
+`vendor_recovery_pk_hash` OTP fuse and matched by MCU ROM before any
+`DOT_OVERRIDE` flow proceeds. **The format is identical to Caliptra's
+[Owner PK hash](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#owner-pk-hash)
+(`CPTRA_OWNER_PK_HASH`) and the
+[Production debug unlock PK hashes](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#production-debug-unlock-public-key-hashes-byte-ordering)
+(`MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG_*`).** All three are computed the same
+way and stored in the same byte order, so an integrator can — if they
+choose — provision the same `(ECC P-384, MLDSA-87)` key pair as owner key,
+debug unlock key, and vendor recovery key and reuse one hashing pipeline
+to compute all three fuse values.
+
+> **Implementation status:** the reference MCU ROM currently hashes ECC
+> coordinates in standard SEC1 big-endian byte order and stores the
+> SHA-384 output byte-for-byte in OTP, which differs from the Caliptra
+> convention described below. The format documented here is the
+> **target/aligned** format; aligning the DOT code and integration test
+> with this format is tracked in a separate PR.
+
+#### Hash construction
+
+```text
+vendor_recovery_pk_hash = SHA-384(
+    ecc_pub_key.x  ||  // 48 bytes, dword-reversed from SEC1 big-endian
+    ecc_pub_key.y  ||  // 48 bytes, dword-reversed from SEC1 big-endian
+    pqc_pub_key        // 2592 bytes, raw FIPS 204 MLDSA-87 bytes (no transform)
+)
+```
+
+Total input: **2688 bytes** (96 B ECC + 2592 B MLDSA). Output: **48 bytes**
+(384 bits).
+
+#### Byte-order conventions
+
+Byte order matches Caliptra's [Public key hash byte ordering](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#public-key-hash-byte-ordering-dword-reversal)
+exactly:
+
+- **ECC P-384 X/Y coordinates** are in **dword-reversed format**. Take the
+  48-byte standard SEC1 (big-endian) coordinate, group it into 12 four-byte
+  dwords, and reverse the bytes within each dword. Equivalently, this is
+  the in-memory layout of `[u32; 12]` where each `u32` is the standard
+  big-endian dword interpreted as a native (little-endian) `u32` word.
+  These dword-reversed bytes are what travels on the Caliptra mailbox wire
+  (and what `CM_SHA` / `CM_ECDSA384_VERIFY` consume).
+- **MLDSA-87 public key** bytes are passed through as raw FIPS 204 bytes,
+  with no dword reversal.
+- **SHA-384 output** in OTP is also **dword-reversed**: the 48-byte
+  standard SHA-384 digest is grouped into 12 dwords and each dword's bytes
+  are reversed before being written to OTP. The result is a `[u32; 12]`
+  whose big-endian interpretation equals the standard digest. (Same OTP
+  layout as `CPTRA_OWNER_PK_HASH` and `MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG`.)
+
+#### Reusing the same key across owner / debug unlock / DOT recovery
+
+Because all three hashes use the same construction and the same OTP layout,
+the bytes burned into `CPTRA_SS_OWNER_PK_HASH`, into any
+`MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG[i]` slot, and into
+`vendor_recovery_pk_hash` for a given `(ECC, MLDSA)` key pair are
+**bit-identical**. An integrator who wants the same key to serve multiple
+roles can compute the hash once and burn the same 48 bytes into each slot.
+
+This is not a security recommendation — in most threat models the vendor
+recovery key, owner key, and debug unlock key are held by different
+parties — but the format is intentionally aligned so the option exists and
+the tooling is uniform.
+
+### Worked Example
+
+This example follows the same step-by-step style as
+[Caliptra-sw's computing-public-key-hashes example](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#computing-public-key-hashes-step-by-step-example).
+The keys here are contrived (simple patterns chosen so an integrator can
+reproduce the hash with `python3` and `hashlib`).
+
+#### Step 1: ECC P-384 public key (standard SEC1 byte order)
+
+The integrator typically starts with standard SEC1 / FIPS 186 big-endian
+coordinates, as produced by `openssl ec -pubin -in key.pem -outform DER`
+followed by extracting the trailing 96 bytes:
+
+```text
+X (SEC1 / openssl output, 48 bytes):
+  c69fe67f 97ea3e42 21a7a603 6c2e070d 1657327b c3f1e7c1
+  8dccb9e4 ffda5c3f 4db0a1c0 567e0973 17bf4484 39696a07
+Y (SEC1 / openssl output, 48 bytes):
+  c126b913 5fc82572 8f1cd403 19109430 994fe3e8 74a8b026
+  be14794d 27789964 7735fde8 328afd84 cd4d4aa8 72d40b42
+```
+
+#### Step 2: Dword-reverse the ECC coordinates
+
+Group each 48-byte coordinate into 12 four-byte dwords and reverse the
+bytes within each dword. These are the bytes that get hashed (and the
+bytes the BMC sends on the mailbox wire for `DOT_OVERRIDE`):
+
+```text
+X (dword-reversed, hashed bytes), first 16 bytes:
+  7f e6 9f c6  42 3e ea 97  03 a6 a7 21  0d 07 2e 6c
+  ...
+Y (dword-reversed, hashed bytes), first 16 bytes:
+  13 b9 26 c1  72 25 c8 5f  03 d4 1c 8f  30 94 10 19
+  ...
+```
+
+#### Step 3: MLDSA-87 public key
+
+For this example, byte `i = ((i * 17 + 3) & 0xff)`. MLDSA keys are
+**not** transformed:
+
+```text
+Size: 2592 bytes (raw FIPS 204 bytes / `[u32; 648]` as_bytes()).
+First 16 bytes: 03 14 25 36 47 58 69 7a 8b 9c ad be cf e0 f1 02
+```
+
+#### Step 4: Compute SHA-384
+
+```text
+Input = X_dword_reversed || Y_dword_reversed || MLDSA_raw  (2688 bytes)
+
+SHA-384 (standard, 48 bytes):
+  2da3927b 2515cd22 cc823fdf e4e6b5e0 3fab1f81 68141140
+  163eddea cbc0ba4e bcba2bd2 ec93da05 3e8b8d08 0c01adbf
+```
+
+#### Step 5: Bytes burned into `vendor_recovery_pk_hash` OTP
+
+The 48-byte SHA-384 output is stored in **dword-reversed format**,
+identical to how `CPTRA_OWNER_PK_HASH` and
+`MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG[i]` are stored:
+
+```text
+OTP bytes at vendor_recovery_pk_hash offset:
+  7b 92 a3 2d  22 cd 15 25  df 3f 82 cc  e0 b5 e6 e4
+  81 1f ab 3f  40 11 14 68  ea dd 3e 16  4e ba c0 cb
+  d2 2b ba bc  05 da 93 ec  08 8d 8b 3e  bf ad 01 0c
+```
+
+As a `[u32; 12]` (big-endian interpretation of each dword in the standard
+SHA-384 output — same convention as Caliptra's owner PK hash register):
+
+```text
+[0x2da3927b, 0x2515cd22, 0xcc823fdf, 0xe4e6b5e0,
+ 0x3fab1f81, 0x68141140, 0x163eddea, 0xcbc0ba4e,
+ 0xbcba2bd2, 0xec93da05, 0x3e8b8d08, 0x0c01adbf]
+```
+
+#### Verifying offline with `openssl` / Python
+
+```python
+import hashlib
+
+ecc_x_sec1 = bytes.fromhex("c69fe67f...39696a07")  # 48 bytes, openssl output
+ecc_y_sec1 = bytes.fromhex("c126b913...72d40b42")  # 48 bytes, openssl output
+mldsa = open("mldsa_pubkey.bin", "rb").read()      # 2592 bytes, FIPS 204 raw
+
+def dword_reverse(b):
+    return b"".join(b[i:i+4][::-1] for i in range(0, len(b), 4))
+
+hash_input = dword_reverse(ecc_x_sec1) + dword_reverse(ecc_y_sec1) + mldsa
+digest = hashlib.sha384(hash_input).digest()      # 48-byte standard digest
+otp_bytes = dword_reverse(digest)                  # 48 bytes to write to OTP
+```
+
+**Notes for integrators:**
+
+- The same `(ECC P-384, MLDSA-87)` pubkey pair must be used to generate the
+  hash that is burned at manufacture and to sign the `DOT_OVERRIDE`
+  challenge response at recovery time. There is no separate "key index"
+  field — the hash binds both keys together.
+- The reference fuse map allocates exactly one recovery PK hash. If
+  rotation of the vendor recovery key is required in the field, integrators
+  should add multiple `vendor_recovery_pk_hash_{0..N}` slots in a vendor
+  secret partition, plus a `vendor_recovery_pk_hash_valid` revocation
+  bitmask analogous to `CPTRA_CORE_VENDOR_PK_HASH_VALID`. ROM would then
+  pick the first valid slot using the same selection policy as the regular
+  vendor PK hash.
+- A fuse value of all-zero bytes is treated as "not provisioned" by MCU ROM;
+  in that case `DOT_OVERRIDE` is permanently disabled for the part.
+
 ### Recovery State Machine
 
 ```

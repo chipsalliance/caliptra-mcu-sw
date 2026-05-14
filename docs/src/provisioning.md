@@ -389,14 +389,14 @@ The fuse partition below corresponds to the Caliptra Subsystem 2.1.1 [reference 
 |                                   | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_13 |      32      | PROD                |
 |                                   | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_14 |      32      | PROD                |
 |                                   | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_15 |      32      | PROD                |
-|     CPTRA_SS_LOCK_HEK_PROD_0      |    CPTRA_SS_LOCK_HEK_PROD_0_RATCHET_SEED    |      48      | PROD                |
-|     CPTRA_SS_LOCK_HEK_PROD_1      |    CPTRA_SS_LOCK_HEK_PROD_1_RATCHET_SEED    |      48      | PROD                |
-|     CPTRA_SS_LOCK_HEK_PROD_2      |    CPTRA_SS_LOCK_HEK_PROD_2_RATCHET_SEED    |      48      | PROD                |
-|     CPTRA_SS_LOCK_HEK_PROD_3      |    CPTRA_SS_LOCK_HEK_PROD_3_RATCHET_SEED    |      48      | PROD                |
-|     CPTRA_SS_LOCK_HEK_PROD_4      |    CPTRA_SS_LOCK_HEK_PROD_4_RATCHET_SEED    |      48      | PROD                |
-|     CPTRA_SS_LOCK_HEK_PROD_5      |    CPTRA_SS_LOCK_HEK_PROD_5_RATCHET_SEED    |      48      | PROD                |
-|     CPTRA_SS_LOCK_HEK_PROD_6      |    CPTRA_SS_LOCK_HEK_PROD_6_RATCHET_SEED    |      48      | PROD                |
-|     CPTRA_SS_LOCK_HEK_PROD_7      |    CPTRA_SS_LOCK_HEK_PROD_7_RATCHET_SEED    |      48      | PROD                |
+|     CPTRA_SS_LOCK_HEK_PROD_0      |    CPTRA_SS_LOCK_HEK_PROD_0_RATCHET_SEED    |      32      | PROD                |
+|     CPTRA_SS_LOCK_HEK_PROD_1      |    CPTRA_SS_LOCK_HEK_PROD_1_RATCHET_SEED    |      32      | PROD                |
+|     CPTRA_SS_LOCK_HEK_PROD_2      |    CPTRA_SS_LOCK_HEK_PROD_2_RATCHET_SEED    |      32      | PROD                |
+|     CPTRA_SS_LOCK_HEK_PROD_3      |    CPTRA_SS_LOCK_HEK_PROD_3_RATCHET_SEED    |      32      | PROD                |
+|     CPTRA_SS_LOCK_HEK_PROD_4      |    CPTRA_SS_LOCK_HEK_PROD_4_RATCHET_SEED    |      32      | PROD                |
+|     CPTRA_SS_LOCK_HEK_PROD_5      |    CPTRA_SS_LOCK_HEK_PROD_5_RATCHET_SEED    |      32      | PROD                |
+|     CPTRA_SS_LOCK_HEK_PROD_6      |    CPTRA_SS_LOCK_HEK_PROD_6_RATCHET_SEED    |      32      | PROD                |
+|     CPTRA_SS_LOCK_HEK_PROD_7      |    CPTRA_SS_LOCK_HEK_PROD_7_RATCHET_SEED    |      32      | PROD                |
 
 ### Glossary
 
