@@ -2,22 +2,23 @@
 
 use crate::commands::certificate_rsp::CertificateResponse;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum ChunkError {
     /// Error initializing a large message context
-    LargeMessageInitError,
+    LargeMessageInitError = 0x01,
     /// No large response is currently in progress
-    NoLargeResponseInProgress,
+    NoLargeResponseInProgress = 0x02,
     /// Invalid chunk handle provided
-    InvalidChunkHandle,
+    InvalidChunkHandle = 0x03,
     /// Invalid chunk sequence number provided
-    InvalidChunkSeqNum,
+    InvalidChunkSeqNum = 0x04,
     /// Invalid message offset provided
-    InvalidMessageOffset,
+    InvalidMessageOffset = 0x05,
     /// Response data exceeds the shared buffer capacity
-    BufferCapacityExceeded,
+    BufferCapacityExceeded = 0x06,
     /// Shared large message buffer is not available (in use by another transport)
-    BufUnavailable,
+    BufUnavailable = 0x07,
 }
 
 /// Provider for the shared large message buffer.

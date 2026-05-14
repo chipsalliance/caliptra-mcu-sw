@@ -33,9 +33,39 @@ pub enum MeasurementsError {
     InvalidSlotId,
     InvalidParam,
     InvalidInput,
-    MissingParam(&'static str),
+    MissingParamAsymAlgo,
+    MissingParamSpdmVersion,
     MeasurementSizeMismatch,
     CaliptraApi(CaliptraApiError),
+}
+
+impl MeasurementsError {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            MeasurementsError::InvalidIndex => 0x01_00,
+            MeasurementsError::InvalidOffset => 0x02_00,
+            MeasurementsError::InvalidSize => 0x03_00,
+            MeasurementsError::InvalidBuffer => 0x04_00,
+            MeasurementsError::BufferTooSmall => 0x05_00,
+            MeasurementsError::InvalidOperation => 0x06_00,
+            MeasurementsError::InvalidSlotId => 0x07_00,
+            MeasurementsError::InvalidParam => 0x08_00,
+            MeasurementsError::InvalidInput => 0x09_00,
+            MeasurementsError::MissingParamAsymAlgo => 0x0A_00,
+            MeasurementsError::MissingParamSpdmVersion => 0x0B_00,
+            MeasurementsError::MeasurementSizeMismatch => 0x0C_00,
+            MeasurementsError::CaliptraApi(_) => {
+                (crate::error::error_type_id::CALIPTRA_API as u32) << 8
+            }
+        }
+    }
+
+    pub fn caliptra_api(&self) -> Option<&CaliptraApiError> {
+        match self {
+            MeasurementsError::CaliptraApi(e) => Some(e),
+            _ => None,
+        }
+    }
 }
 pub type MeasurementsResult<T> = Result<T, MeasurementsError>;
 
@@ -368,7 +398,7 @@ impl<'a> SpdmMeasurements<'a> {
     ) -> MeasurementsResult<()> {
         let asym_algo = self
             .asym_algo
-            .ok_or(MeasurementsError::MissingParam("AsymAlgo"))?;
+            .ok_or(MeasurementsError::MissingParamAsymAlgo)?;
 
         let nonce = self.nonce.unwrap_or_default();
 
@@ -377,7 +407,7 @@ impl<'a> SpdmMeasurements<'a> {
         let meas_value_type = if meas_info.value_type == MeasurementValueType::StructuredManifest {
             let spdm_version = self
                 .spdm_version
-                .ok_or(MeasurementsError::MissingParam("SpdmVersion"))?;
+                .ok_or(MeasurementsError::MissingParamSpdmVersion)?;
             if spdm_version < SpdmVersion::V13 {
                 MeasurementValueType::FreeformManifest
             } else {

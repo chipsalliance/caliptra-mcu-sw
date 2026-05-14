@@ -76,7 +76,7 @@ impl HashContext {
     ) -> CaliptraApiResult<()> {
         let mut ctx = HashContext::new();
         if hash.len() < hash_algo.hash_size() {
-            Err(CaliptraApiError::InvalidArgument("Hash buffer too small"))?;
+            Err(CaliptraApiError::InvalidArgHashBufferTooSmall)?;
         }
         ctx.init(hash_algo, Some(data)).await?;
         ctx.finalize(hash).await
@@ -102,9 +102,7 @@ impl HashContext {
 
         if let Some(data) = data {
             if data.len() > MAX_CRYPTO_MBOX_DATA_SIZE {
-                return Err(CaliptraApiError::InvalidArgument(
-                    "Data size exceeds maximum limit",
-                ));
+                return Err(CaliptraApiError::InvalidArgDataSizeExceedsLimit);
             }
             let data_size = data.len();
             init_req.input_size = data_size as u32;
@@ -128,9 +126,9 @@ impl HashContext {
         let mut data_offset = 0;
 
         while data_offset < data.len() {
-            let ctx = self.ctx.ok_or(CaliptraApiError::InvalidOperation(
-                "Context not initialized",
-            ))?;
+            let ctx = self
+                .ctx
+                .ok_or(CaliptraApiError::InvalidOpContextNotInitialized)?;
 
             let mut update_req = ShaUpdateReq {
                 hdr: MailboxReqHeader::default(),
@@ -166,20 +164,18 @@ impl HashContext {
     }
 
     pub async fn finalize(&mut self, hash: &mut [u8]) -> CaliptraApiResult<()> {
-        let ctx = self.ctx.ok_or(CaliptraApiError::InvalidOperation(
-            "Context not initialized",
-        ))?;
+        let ctx = self
+            .ctx
+            .ok_or(CaliptraApiError::InvalidOpContextNotInitialized)?;
 
         let hash_size = self
             .algo
             .as_ref()
-            .ok_or(CaliptraApiError::InvalidOperation(
-                "Hash algorithm not initialized",
-            ))?
+            .ok_or(CaliptraApiError::InvalidOpHashAlgoNotInitialized)?
             .hash_size();
 
         if hash.len() < hash_size {
-            return Err(CaliptraApiError::InvalidArgument("Hash buffer too small"));
+            return Err(CaliptraApiError::InvalidArgHashBufferTooSmall);
         }
 
         let mut final_req = ShaFinalReq {

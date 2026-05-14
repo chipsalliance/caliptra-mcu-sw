@@ -45,3 +45,20 @@ pub enum TransportError {
     InvalidMessage,
     OperationNotSupported,
 }
+
+impl TransportError {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            TransportError::DriverError(e) => 0x01_00 | ((*e as u32) & 0xFF),
+            TransportError::UnexpectedMessageType => 0x02_00,
+            TransportError::UnsupportedMessageType => 0x03_00,
+            TransportError::ResponseNotExpected => 0x04_00,
+            TransportError::NoRequestInFlight => 0x05_00,
+            TransportError::InvalidMessage => 0x06_00,
+            TransportError::OperationNotSupported => 0x07_00,
+            TransportError::Codec(e) => {
+                ((crate::error::error_type_id::CODEC as u32) << 8) | ((*e as u8) as u32)
+            }
+        }
+    }
+}

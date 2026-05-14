@@ -15,6 +15,26 @@ pub enum TranscriptError {
     CaliptraApi(CaliptraApiError),
 }
 
+impl TranscriptError {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            TranscriptError::BufferOverflow => 0x01_00,
+            TranscriptError::InvalidState => 0x02_00,
+            TranscriptError::MissingSessionInfo => 0x03_00,
+            TranscriptError::CaliptraApi(_) => {
+                (crate::error::error_type_id::CALIPTRA_API as u32) << 8
+            }
+        }
+    }
+
+    pub fn caliptra_api(&self) -> Option<&CaliptraApiError> {
+        match self {
+            TranscriptError::CaliptraApi(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
 pub type TranscriptResult<T> = Result<T, TranscriptError>;
 
 // Buffer size constants

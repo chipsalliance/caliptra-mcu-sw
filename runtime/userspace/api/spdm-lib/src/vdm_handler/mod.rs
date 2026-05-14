@@ -30,6 +30,30 @@ pub enum VdmError {
     Tdisp(TdispDriverError),
 }
 
+impl VdmError {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            VdmError::InvalidVendorId => 0x01_00,
+            VdmError::InvalidRequestPayload => 0x02_00,
+            VdmError::UnsupportedProtocol => 0x03_00,
+            VdmError::InvalidVdmCommand => 0x04_00,
+            VdmError::SessionRequired => 0x05_00,
+            VdmError::UnsupportedRequest => 0x06_00,
+            VdmError::UnsupportedTdispVersion => 0x07_00,
+            VdmError::LargeResp(_) => 0x08_00,
+            VdmError::Codec(e) => {
+                ((crate::error::error_type_id::CODEC as u32) << 8) | ((*e as u8) as u32)
+            }
+            VdmError::Ide(e) => {
+                ((crate::error::error_type_id::IDE_DRIVER as u32) << 8) | ((*e as u8) as u32)
+            }
+            VdmError::Tdisp(e) => {
+                ((crate::error::error_type_id::TDISP_DRIVER as u32) << 8) | ((*e as u8) as u32)
+            }
+        }
+    }
+}
+
 pub type VdmResult<T> = Result<T, VdmError>;
 
 #[async_trait]

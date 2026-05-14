@@ -3,7 +3,7 @@
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
-use crate::error::{CommandResult, SpdmError};
+use crate::error::{CommandResult, ProtocolError, SpdmError};
 use crate::protocol::*;
 use crate::state::ConnectionState;
 use bitfield::bitfield;
@@ -59,7 +59,7 @@ impl NegotiateAlgorithmsReq {
         };
 
         if total_ext_alg_count > max_count {
-            Err(SpdmError::InvalidParam)
+            Err(SpdmError::Protocol(ProtocolError::InvalidParam))
         } else {
             Ok(())
         }
@@ -115,7 +115,7 @@ impl TryFrom<u8> for AlgType {
             3 => Ok(AlgType::AeadCipherSuite),
             4 => Ok(AlgType::ReqBaseAsymAlg),
             5 => Ok(AlgType::KeySchedule),
-            _ => Err(SpdmError::InvalidParam),
+            _ => Err(SpdmError::Protocol(ProtocolError::InvalidParam)),
         }
     }
 }

@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::error::{SpdmError, SpdmResult};
+use crate::error::{ProtocolError, SpdmError, SpdmResult};
 
 const MAX_NUM_SUPPORTED_SPDM_VERSIONS: usize = 4;
 const MAX_SUPPORTED_VERSION: SpdmVersion = SpdmVersion::V13;
@@ -33,7 +33,7 @@ impl TryFrom<u8> for SpdmVersion {
             0x11 => Ok(SpdmVersion::V11),
             0x12 => Ok(SpdmVersion::V12),
             0x13 => Ok(SpdmVersion::V13),
-            _ => Err(SpdmError::UnsupportedVersion),
+            _ => Err(SpdmError::Protocol(ProtocolError::UnsupportedVersion)),
         }
     }
 }
@@ -75,7 +75,7 @@ pub(crate) fn validate_supported_versions(supported_versions: &[SpdmVersion]) ->
             .iter()
             .any(|v| *v > MAX_SUPPORTED_VERSION)
     {
-        Err(SpdmError::InvalidParam)?;
+        Err(SpdmError::Protocol(ProtocolError::InvalidParam))?;
     }
     Ok(())
 }

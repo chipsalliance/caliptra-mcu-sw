@@ -21,9 +21,7 @@ impl Import {
             ..Default::default()
         };
         if data.len() > req.input.len() {
-            return Err(CaliptraApiError::InvalidArgument(
-                "Info size exceeds maximum allowed",
-            ));
+            return Err(CaliptraApiError::InvalidArgInfoSizeExceedsMax);
         }
         req.input[..data.len()].copy_from_slice(data);
 

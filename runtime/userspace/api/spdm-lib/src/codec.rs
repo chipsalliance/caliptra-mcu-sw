@@ -4,13 +4,14 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub type CodecResult<T> = Result<T, CodecError>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum CodecError {
-    BufferTooSmall,
-    ReadError,
-    WriteError,
-    BufferOverflow,
-    BufferUnderflow,
+    BufferTooSmall = 0x01,
+    ReadError = 0x02,
+    WriteError = 0x03,
+    BufferOverflow = 0x04,
+    BufferUnderflow = 0x05,
 }
 
 pub trait Codec {

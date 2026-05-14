@@ -27,6 +27,27 @@ pub enum KeyScheduleError {
     CaliptraApi(CaliptraApiError),
 }
 
+impl KeyScheduleError {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            KeyScheduleError::BufferTooSmall => 0x01,
+            KeyScheduleError::InvalidSessionKeyType => 0x02,
+            KeyScheduleError::DheSecretNotFound => 0x03,
+            KeyScheduleError::HandshakeSecretNotFound => 0x04,
+            KeyScheduleError::MasterSecretNotFound => 0x05,
+            KeyScheduleError::DataSecretNotFound => 0x06,
+            KeyScheduleError::CaliptraApi(_) => crate::error::error_type_id::CALIPTRA_API as u32,
+        }
+    }
+
+    pub fn caliptra_api(&self) -> Option<&CaliptraApiError> {
+        match self {
+            KeyScheduleError::CaliptraApi(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
 pub type KeyScheduleResult<T> = Result<T, KeyScheduleError>;
 
 #[derive(Debug, PartialEq, Clone, Copy)]

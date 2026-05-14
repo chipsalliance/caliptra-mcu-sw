@@ -36,7 +36,7 @@ impl PcrQuote {
         let mailbox = Mailbox::new();
 
         if buffer.len() < MLDSA87_QUOTE_RSP_LEN {
-            return Err(CaliptraApiError::InvalidArgument("Buffer too small"));
+            return Err(CaliptraApiError::InvalidArgBufferTooSmall);
         }
 
         let mut req = QuotePcrsMldsa87Req {
@@ -78,7 +78,7 @@ impl PcrQuote {
 
     async fn pcr_quote_ecc384(nonce: Option<&[u8]>, buffer: &mut [u8]) -> CaliptraApiResult<usize> {
         if buffer.len() < ECC384_QUOTE_RSP_LEN {
-            return Err(CaliptraApiError::InvalidArgument("Buffer too small"));
+            return Err(CaliptraApiError::InvalidArgBufferTooSmall);
         }
 
         let resp = Self::get_quote_ecc384_resp(nonce).await?;

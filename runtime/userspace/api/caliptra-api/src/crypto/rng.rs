@@ -18,7 +18,7 @@ pub struct Rng;
 impl Rng {
     pub async fn generate_random_number(random_number: &mut [u8]) -> CaliptraApiResult<()> {
         if random_number.len() > MAX_RANDOM_NUM_SIZE {
-            return Err(CaliptraApiError::InvalidArgument("Invalid size"));
+            return Err(CaliptraApiError::InvalidArgSize);
         }
 
         let mailbox = Mailbox::new();
@@ -51,7 +51,7 @@ impl Rng {
 
     pub async fn add_random_stir(random_stir: &[u8]) -> CaliptraApiResult<()> {
         if random_stir.len() > MAX_RANDOM_STIR_SIZE {
-            return Err(CaliptraApiError::InvalidArgument("Invalid size"));
+            return Err(CaliptraApiError::InvalidArgSize);
         }
         let mailbox = Mailbox::new();
 

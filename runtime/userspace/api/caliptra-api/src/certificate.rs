@@ -80,7 +80,7 @@ impl CertContext {
 
     pub async fn populate_idev_ecc384_cert(&mut self, cert: &[u8]) -> CaliptraApiResult<()> {
         if cert.len() > PopulateIdevEcc384CertReq::MAX_CERT_SIZE {
-            return Err(CaliptraApiError::InvalidArgument("Invalid cert size"));
+            return Err(CaliptraApiError::InvalidArgCertSize);
         }
         let cmd = CommandId::POPULATE_IDEV_ECC384_CERT.into();
         let mut req = PopulateIdevEcc384CertReq {
@@ -154,12 +154,12 @@ impl CertContext {
     ) -> CaliptraApiResult<usize> {
         if let Some(ref x) = derived_pubkey_x {
             if x.len() != DPE_PROFILE.tci_size() {
-                Err(CaliptraApiError::InvalidArgument("Invalid pubkey size"))?;
+                Err(CaliptraApiError::InvalidArgPubkeySize)?;
             }
         }
         if let Some(ref y) = derived_pubkey_y {
             if y.len() != DPE_PROFILE.tci_size() {
-                Err(CaliptraApiError::InvalidArgument("Invalid pubkey size"))?;
+                Err(CaliptraApiError::InvalidArgPubkeySize)?;
             }
         }
 
@@ -220,11 +220,11 @@ impl CertContext {
         signature: &mut [u8],
     ) -> CaliptraApiResult<usize> {
         if digest.len() != DPE_PROFILE.hash_size() {
-            return Err(CaliptraApiError::InvalidArgument("Invalid digest size"));
+            return Err(CaliptraApiError::InvalidArgDigestSize);
         }
 
         if signature.len() < DPE_PROFILE.tci_size() {
-            return Err(CaliptraApiError::InvalidArgument("Invalid signature size"));
+            return Err(CaliptraApiError::InvalidArgSignatureSize);
         }
 
         let mut dpe_cmd = SignP384Cmd {
@@ -272,7 +272,7 @@ impl CertContext {
     ) -> CaliptraApiResult<usize> {
         let size = cert_chunk.len();
         if size > MAX_CERT_CHUNK_SIZE {
-            Err(CaliptraApiError::InvalidArgument("Chunk size is too large"))?;
+            Err(CaliptraApiError::InvalidArgChunkSizeTooLarge)?;
         }
 
         let dpe_cmd = GetCertificateChainCmd {

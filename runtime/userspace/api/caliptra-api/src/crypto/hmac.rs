@@ -28,9 +28,7 @@ impl Hmac {
         };
         req.cmk.0.copy_from_slice(&cmk.0);
         if data.len() > req.data.len() {
-            return Err(CaliptraApiError::InvalidArgument(
-                "Data size exceeds maximum allowed",
-            ));
+            return Err(CaliptraApiError::InvalidArgDataSizeExceedsMax);
         }
         req.data[..data.len()].copy_from_slice(data);
 
@@ -57,9 +55,7 @@ impl Hmac {
             }
             HkdfSalt::Data(data) => {
                 if data.len() > MAX_CMB_DATA_SIZE {
-                    return Err(CaliptraApiError::InvalidArgument(
-                        "Salt size exceeds maximum allowed",
-                    ));
+                    return Err(CaliptraApiError::InvalidArgSaltSizeExceedsMax);
                 }
                 let salt_cmk = Import::import(CmKeyUsage::Hmac, data).await?;
                 req.salt.0.copy_from_slice(&salt_cmk.cmk.0);
@@ -93,9 +89,7 @@ impl Hmac {
             ..Default::default()
         };
         if info.len() > req.info.len() {
-            return Err(CaliptraApiError::InvalidArgument(
-                "Info size exceeds maximum allowed",
-            ));
+            return Err(CaliptraApiError::InvalidArgInfoSizeExceedsMax);
         }
         req.prk.0.copy_from_slice(&prk.0);
         req.info[..info.len()].copy_from_slice(info);

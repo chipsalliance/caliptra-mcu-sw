@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::error::{SpdmError, SpdmResult};
+use crate::error::{ProtocolError, SpdmError, SpdmResult};
 
 // Maximum length can be up to 255. Update MAX_SPDM_VENDOR_ID_LEN as needed.
 pub const MAX_SPDM_VENDOR_ID_LEN: u8 = 4;
@@ -33,7 +33,9 @@ impl StandardsBodyId {
             | StandardsBodyId::Jedec
             | StandardsBodyId::DmtfDsp => Ok(2),
             StandardsBodyId::Iana | StandardsBodyId::HdBaseT => Ok(4),
-            StandardsBodyId::IanaCbor => Err(SpdmError::UnsupportedRequest), // This is a variable field
+            StandardsBodyId::IanaCbor => {
+                Err(SpdmError::Protocol(ProtocolError::UnsupportedRequest))
+            } // This is a variable field
         }
     }
 }
@@ -54,7 +56,7 @@ impl TryFrom<u16> for StandardsBodyId {
             0x9 => Ok(StandardsBodyId::Vesa),
             0xA => Ok(StandardsBodyId::IanaCbor),
             0xB => Ok(StandardsBodyId::DmtfDsp),
-            _ => Err(SpdmError::InvalidStandardsBodyId),
+            _ => Err(SpdmError::Protocol(ProtocolError::InvalidStandardsBodyId)),
         }
     }
 }

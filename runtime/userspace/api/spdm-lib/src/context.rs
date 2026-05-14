@@ -306,7 +306,7 @@ impl<'a> SpdmContext<'a> {
             let app_data = resp.data(app_data_len).map_err(SpdmError::Codec)?;
 
             self.prepare_response_buffer(&mut secure_message_buf)
-                .map_err(|_| SpdmError::BufferTooSmall)?;
+                .map_err(|e| SpdmError::Command(e.1))?;
             self.session_mgr
                 .encode_secure_message(self.transport, app_data, &mut secure_message_buf)
                 .await

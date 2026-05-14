@@ -35,6 +35,29 @@ const SECURE_SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12];
 // Caliptra Crypto timeout exponent (2^20 us)
 const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
 
+/// Logs an SPDM error in compact, `Debug`-free form. Always prints
+/// `<prefix>: <msg>: <category> 0x<error_code>`; appends ` ext=0x<ext>` only
+/// when the chain transitively wraps an external error (CaliptraApiError /
+/// EatError).
+fn log_spdm_err<W: Write>(w: &mut W, prefix: &str, msg: &str, e: &SpdmError) {
+    let path = e.error_code();
+    let ext = e.ext_code();
+    if ext != 0 {
+        writeln!(
+            w,
+            "{}: {}: {} 0x{:08x} ext=0x{:08x}",
+            prefix,
+            msg,
+            e.category(),
+            path,
+            ext
+        )
+        .unwrap();
+    } else {
+        writeln!(w, "{}: {}: {} 0x{:08x}", prefix, msg, e.category(), path).unwrap();
+    }
+}
+
 #[embassy_executor::task]
 pub(crate) async fn spdm_task(spawner: Spawner) {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
@@ -47,8 +70,8 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
     if let Err(e) = initialize_cert_store().await {
         writeln!(
             console_writer,
-            "SPDM_TASK: Failed to initialize certificate store: {:?}",
-            e
+            "SPDM_TASK: Failed to initialize certificate store: 0x{:08x}",
+            e.error_code()
         )
         .unwrap();
         return;
@@ -58,21 +81,19 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
     #[cfg(not(feature = "pcr-quote-measurements"))]
     init_target_env_claims();
 
-    if let Err(e) = spawner.spawn(spdm_mctp_responder()) {
+    if spawner.spawn(spdm_mctp_responder()).is_err() {
         writeln!(
             console_writer,
-            "SPDM_TASK: Failed to spawn spdm_mctp_responder: {:?}",
-            e
+            "SPDM_TASK: Failed to spawn spdm_mctp_responder"
         )
         .unwrap();
     }
 
     #[cfg(feature = "doe")]
-    if let Err(e) = spawner.spawn(spdm_doe_responder()) {
+    if spawner.spawn(spdm_doe_responder()).is_err() {
         writeln!(
             console_writer,
-            "SPDM_TASK: Failed to spawn spdm_doe_responder: {:?}",
-            e
+            "SPDM_TASK: Failed to spawn spdm_doe_responder"
         )
         .unwrap();
     }
@@ -137,12 +158,12 @@ async fn spdm_mctp_responder() {
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
-            writeln!(
-                cw,
-                "SPDM_MCTP_RESPONDER: Failed to create SPDM context: {:?}",
-                e
-            )
-            .unwrap();
+            log_spdm_err(
+                &mut cw,
+                "SPDM_MCTP_RESPONDER",
+                "Failed to create SPDM context",
+                &e,
+            );
             return;
         }
     };
@@ -150,13 +171,8 @@ async fn spdm_mctp_responder() {
     let mut msg_buffer = MessageBuf::new(&mut raw_buffer);
     loop {
         let result = ctx.process_message(&mut msg_buffer).await;
-        match result {
-            Ok(_) => {
-                writeln!(cw, "SPDM_MCTP_RESPONDER: Process message successfully").unwrap();
-            }
-            Err(e) => {
-                writeln!(cw, "SPDM_MCTP_RESPONDER: Process message failed: {:?}", e).unwrap();
-            }
+        if let Err(e) = result {
+            log_spdm_err(&mut cw, "SPDM_MCTP_RESPONDER", "Process message failed", &e);
         }
     }
 }
@@ -268,12 +284,12 @@ async fn spdm_doe_responder() {
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
-            writeln!(
-                cw,
-                "SPDM_DOE_RESPONDER: Failed to create SPDM context: {:?}",
-                e
-            )
-            .unwrap();
+            log_spdm_err(
+                &mut cw,
+                "SPDM_DOE_RESPONDER",
+                "Failed to create SPDM context",
+                &e,
+            );
             return;
         }
     };
@@ -282,15 +298,13 @@ async fn spdm_doe_responder() {
     loop {
         let result = ctx.process_message(&mut msg_buffer).await;
         match result {
-            Ok(_) => {
-                writeln!(cw, "SPDM_DOE_RESPONDER: Process message successfully").unwrap();
-            }
+            Ok(_) => {}
             Err(SpdmError::Transport(TransportError::DriverError(ErrorCode::NoDevice))) => {
                 writeln!(cw, "SPDM_DOE_RESPONDER: No DOE device, exiting task").unwrap();
                 break;
             }
             Err(e) => {
-                writeln!(cw, "SPDM_DOE_RESPONDER: Process message failed: {:?}", e).unwrap();
+                log_spdm_err(&mut cw, "SPDM_DOE_RESPONDER", "Process message failed", &e);
             }
         }
     }
