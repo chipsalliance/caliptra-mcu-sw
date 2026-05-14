@@ -401,7 +401,9 @@ impl Otp {
         let state = self.get_state();
         if let Some(file) = &mut self.file {
             file.rewind()?;
-            serde_json::to_writer(file, &state)?;
+            serde_json::to_writer(&mut *file, &state)?;
+            let pos = file.stream_position()?;  // Get current position
+            file.set_len(pos)?;                  // Truncate to actual content size
         }
         Ok(())
     }
