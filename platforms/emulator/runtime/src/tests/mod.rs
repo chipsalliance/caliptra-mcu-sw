@@ -23,5 +23,8 @@ pub(crate) mod linear_log_test;
 pub(crate) mod mctp_test;
 #[cfg(feature = "test-mcu-mbox-soc-requester-loopback")]
 pub(crate) mod mcu_mbox_driver_loopback_test;
-#[cfg(feature = "test-mcu-mbox-driver")]
+#[cfg(any(
+    feature = "test-mcu-mbox-driver",
+    feature = "test-mcu-mbox-soc-requester-loopback",
+))]
 pub(crate) mod mcu_mbox_test;
