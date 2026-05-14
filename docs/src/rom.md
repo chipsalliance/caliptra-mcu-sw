@@ -48,6 +48,7 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
     * [`FUSE_IDEVID_MANUF_HSM_ID`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_idevid_manuf_hsm_id): IDevID manufacturing HSM identifier (128 bits)
     * [`SS_UDS_SEED_BASE_ADDR_L/H`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_UDS_SEED_BASE_ADDR_L): UDS/FE partition base address in OTP
     * [`SS_STRAP_GENERIC`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): OTP DAI idle bit offset and direct access command register offset
+    * [2.1] [`SS_STRAP_GENERIC[3]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): when the `stable-owner-key` feature is enabled, bit 0 is set by MCU ROM to enable Caliptra owner stable key derivation
     * [MCI] [`PROD_DEBUG_UNLOCK_PK_HASH_REG`](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.PROD_DEBUG_UNLOCK_PK_HASH_REG%5B0%5D%5B0%5D) Production debug unlock public key hashes (384 bytes total for 8 key hashes)
 1. Configure MCU mailbox AXI users (see [Security Configuration](#security-configuration) below).
 1. Set mailbox AXI user lock registers.
@@ -57,6 +58,7 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
 1. Verify PK hashes and MCU mailbox AXI users after locking (see [Security Configuration](#security-configuration) below).
 1. Poll on Caliptra `FLOW_STATUS` registers for Caliptra to deassert the Ready for Fuses state.
 1. Handle [device ownership transfer](./dot.md), if applicable.
+1. [2.1] If built with the `stable-owner-key` feature, derive the owner stable key. MCU ROM reads the `stable_owner_key_personalization_seed` OTP field, sends it as the `info` input to `CM_DERIVE_STABLE_KEY` with `OwnerKey`, and treats derivation failure as a fatal cold boot error. The `stable-owner-key` and `ocp-lock` ROM features are mutually exclusive because both consume the HEK seed path.
 1. Send the `RI_DOWNLOAD_FIRMWARE` command to Caliptra to start the firmware loading process. Caliptra will:
    1. Follow all of the [steps](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#firmware-processor-stage) in the Caliptra ROM documentation for firmware loading in the ROM cold reset.
    1. Transition to Caliptra runtime firmware.

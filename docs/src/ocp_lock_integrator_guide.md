@@ -6,6 +6,12 @@ OCP LOCK (Layered Open-source Cryptographic Key management) is a specification f
 
 OCP LOCK acts as a Key Management Block (KMB), serving as the only entity capable of reading Media Encryption Keys (MEKs) and programming them into a vendor-implemented encryption engine. 
 
+> **Note:** The `ocp-lock` and `stable-owner-key` ROM features are mutually
+> exclusive. Both consume the HEK seed path: OCP LOCK uses HEK slots for KMB
+> state, metadata reporting, and MEK release, while stable owner key forwards a
+> valid HEK seed to Caliptra and derives `CmStableKeyType::OwnerKey` during cold
+> boot. Do not enable both features in the same ROM image.
+
 ### Core Components
 
 - **`romtime::ocp_lock`**: Contains platform-agnostic logic and types (defined in `romtime/src/ocp_lock.rs`).
