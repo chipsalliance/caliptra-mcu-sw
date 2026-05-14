@@ -138,7 +138,7 @@ impl<'a> FirmwareDeviceContext<'a> {
 
     pub async fn request_update_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
         // Check if FD is in idle state. Otherwise returns 'ALREADY_IN_UPDATE_MODE' completion code
-        if self.internal.is_update_mode().await {
+        if self.internal.is_update_mode() {
             return generate_failure_response(
                 payload,
                 FwUpdateCompletionCode::AlreadyInUpdateMode as u8,
@@ -166,7 +166,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             .map_err(MsgHandlerError::FdOps)?;
 
         // Set transfer size to the internal state
-        self.internal.set_xfer_size(fd_transfer_size).await;
+        self.internal.set_xfer_size(fd_transfer_size);
 
         // Construct response, no metadata or package data.
         let resp = RequestUpdateResponse::new(
@@ -181,8 +181,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             Ok(bytes) => {
                 // Move FD state to 'LearnComponents'
                 self.internal
-                    .set_fd_state(FirmwareDeviceState::LearnComponents)
-                    .await;
+                    .set_fd_state(FirmwareDeviceState::LearnComponents);
                 Ok(bytes)
             }
             Err(_) => {
@@ -193,7 +192,7 @@ impl<'a> FirmwareDeviceContext<'a> {
 
     pub async fn pass_component_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
         // Check if FD is in 'LearnComponents' state. Otherwise returns 'INVALID_STATE' completion code
-        if self.internal.get_fd_state().await != FirmwareDeviceState::LearnComponents {
+        if self.internal.get_fd_state() != FirmwareDeviceState::LearnComponents {
             return generate_failure_response(
                 payload,
                 FwUpdateCompletionCode::InvalidStateForCommand as u8,
@@ -262,9 +261,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                 if transfer_flag == TransferRespFlag::End
                     || transfer_flag == TransferRespFlag::StartAndEnd
                 {
-                    self.internal
-                        .set_fd_state(FirmwareDeviceState::ReadyXfer)
-                        .await;
+                    self.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
                 }
                 Ok(bytes)
             }
@@ -276,7 +273,7 @@ impl<'a> FirmwareDeviceContext<'a> {
 
     pub async fn update_component_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
         // Check if FD is in 'ReadyTransfer' state. Otherwise returns 'INVALID_STATE' completion code
-        if self.internal.get_fd_state().await != FirmwareDeviceState::ReadyXfer {
+        if self.internal.get_fd_state() != FirmwareDeviceState::ReadyXfer {
             return generate_failure_response(
                 payload,
                 FwUpdateCompletionCode::InvalidStateForCommand as u8,
@@ -305,12 +302,11 @@ impl<'a> FirmwareDeviceContext<'a> {
         );
 
         // Store the component info into the internal state.
-        self.internal.set_component(&update_comp).await;
+        self.internal.set_component(&update_comp);
 
         // Adjust the update flags based on the device's capabilities if needed. Currently, the flags are set as received from the UA.
         self.internal
-            .set_update_flags(UpdateOptionFlags(req.fixed.update_option_flags))
-            .await;
+            .set_update_flags(UpdateOptionFlags(req.fixed.update_option_flags));
 
         let mut firmware_params = FirmwareParameters::default();
         self.ops
@@ -345,17 +341,13 @@ impl<'a> FirmwareDeviceContext<'a> {
             Ok(bytes) => {
                 if comp_resp_code == ComponentResponseCode::CompCanBeUpdated {
                     self.internal
-                        .set_initiator_mode(InitiatorModeState::Download(DownloadState::default()))
-                        .await;
+                        .set_initiator_mode(InitiatorModeState::Download(DownloadState::default()));
                     // Set up the req for download.
                     self.internal
-                        .set_fd_req(FdReqState::Ready, false, None, None, None, None)
-                        .await;
+                        .set_fd_req(FdReqState::Ready, false, None, None, None, None);
 
                     // Move FD state machine to download state.
-                    self.internal
-                        .set_fd_state(FirmwareDeviceState::Download)
-                        .await;
+                    self.internal.set_fd_state(FirmwareDeviceState::Download);
                 }
                 Ok(bytes)
             }
@@ -370,7 +362,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         payload: &mut [u8],
     ) -> Result<usize, MsgHandlerError> {
         // Check if FD is in 'ReadyTransfer' state. Otherwise returns 'INVALID_STATE' completion code
-        if self.internal.get_fd_state().await != FirmwareDeviceState::ReadyXfer {
+        if self.internal.get_fd_state() != FirmwareDeviceState::ReadyXfer {
             return generate_failure_response(
                 payload,
                 FwUpdateCompletionCode::InvalidStateForCommand as u8,
@@ -407,14 +399,10 @@ impl<'a> FirmwareDeviceContext<'a> {
                 if completion_code == PldmBaseCompletionCode::Success as u8
                     || completion_code == FwUpdateCompletionCode::ActivationNotRequired as u8
                 {
-                    self.internal
-                        .set_fd_state(FirmwareDeviceState::Activate)
-                        .await;
+                    self.internal.set_fd_state(FirmwareDeviceState::Activate);
                     if self_contained == 0 {
                         // If activation is not self-contained, then consider the FW already activated
-                        self.internal
-                            .set_fd_idle(GetStatusReasonCode::ActivateFw)
-                            .await;
+                        self.internal.set_fd_idle(GetStatusReasonCode::ActivateFw);
                     }
                 }
                 Ok(bytes)
@@ -430,21 +418,20 @@ impl<'a> FirmwareDeviceContext<'a> {
         payload: &mut [u8],
     ) -> Result<usize, MsgHandlerError> {
         // If FD is not in update mode, return 'NOT_IN_UPDATE_MODE' completion code
-        if !self.internal.is_update_mode().await {
+        if !self.internal.is_update_mode() {
             return generate_failure_response(
                 payload,
                 FwUpdateCompletionCode::NotInUpdateMode as u8,
             );
         }
 
-        let fd_state = self.internal.get_fd_state().await;
+        let fd_state = self.internal.get_fd_state();
         let should_cancel = match fd_state {
             FirmwareDeviceState::Download | FirmwareDeviceState::Verify => true,
             FirmwareDeviceState::Apply => {
                 // In apply state, only cancel if not completed successfully
-                !(self.internal.get_fd_req().await.complete
-                    && self.internal.get_fd_req().await.result
-                        == Some(ApplyResult::ApplySuccess as u8))
+                !(self.internal.get_fd_req().complete
+                    && self.internal.get_fd_req().result == Some(ApplyResult::ApplySuccess as u8))
             }
             _ => {
                 return generate_failure_response(
@@ -458,7 +445,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             // Signal cancellation to the download loop
             self.cancellation_flag.cancel();
             self.ops
-                .cancel_update_component(&self.internal.get_component().await)
+                .cancel_update_component(&self.internal.get_component())
                 .map_err(MsgHandlerError::FdOps)?;
         }
 
@@ -475,9 +462,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             Ok(bytes) => {
                 if should_cancel {
                     // Set FD state to 'ReadyTransfer'
-                    self.internal
-                        .set_fd_state(FirmwareDeviceState::ReadyXfer)
-                        .await;
+                    self.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
                 }
                 Ok(bytes)
             }
@@ -489,7 +474,7 @@ impl<'a> FirmwareDeviceContext<'a> {
 
     pub async fn cancel_update_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
         // If FD is not in update mode, return 'NOT_IN_UPDATE_MODE' completion code
-        if !self.internal.is_update_mode().await {
+        if !self.internal.is_update_mode() {
             return generate_failure_response(
                 payload,
                 FwUpdateCompletionCode::NotInUpdateMode as u8,
@@ -499,14 +484,13 @@ impl<'a> FirmwareDeviceContext<'a> {
         // Set timestamp for FD T1 timeout
         self.set_fd_t1_ts().await;
 
-        let fd_state = self.internal.get_fd_state().await;
+        let fd_state = self.internal.get_fd_state();
         let should_cancel = match fd_state {
             FirmwareDeviceState::Download | FirmwareDeviceState::Verify => true,
             FirmwareDeviceState::Apply => {
                 // In apply state, only cancel if not completed successfully
-                !(self.internal.get_fd_req().await.complete
-                    && self.internal.get_fd_req().await.result
-                        == Some(ApplyResult::ApplySuccess as u8))
+                !(self.internal.get_fd_req().complete
+                    && self.internal.get_fd_req().result == Some(ApplyResult::ApplySuccess as u8))
             }
             _ => false,
         };
@@ -515,7 +499,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             // Signal cancellation to the download loop
             self.cancellation_flag.cancel();
             self.ops
-                .cancel_update_component(&self.internal.get_component().await)
+                .cancel_update_component(&self.internal.get_component())
                 .map_err(MsgHandlerError::FdOps)?;
         }
 
@@ -544,9 +528,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             Ok(bytes) => {
                 if should_cancel {
                     // Set FD state to 'Idle'
-                    self.internal
-                        .set_fd_idle(GetStatusReasonCode::CancelUpdate)
-                        .await;
+                    self.internal.set_fd_idle(GetStatusReasonCode::CancelUpdate);
                 }
                 Ok(bytes)
             }
@@ -559,42 +541,39 @@ impl<'a> FirmwareDeviceContext<'a> {
     pub async fn get_status_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
         let req = GetStatusRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
 
-        let cur_state = self.internal.get_fd_state().await;
-        let prev_state = self.internal.get_fd_prev_state().await;
+        let cur_state = self.internal.get_fd_state();
+        let prev_state = self.internal.get_fd_prev_state();
         let (progress_percent, update_flags) = match cur_state {
             FirmwareDeviceState::Download => {
                 let mut progress = ProgressPercent::default();
                 let _ = self
                     .ops
-                    .query_download_progress(&self.internal.get_component().await, &mut progress);
-                let update_flags = self.internal.get_update_flags().await;
+                    .query_download_progress(&self.internal.get_component(), &mut progress);
+                let update_flags = self.internal.get_update_flags();
                 (progress, update_flags)
             }
             FirmwareDeviceState::Verify => {
-                let progress = if let Some(percent) = self.internal.get_fd_verify_progress().await {
+                let progress = if let Some(percent) = self.internal.get_fd_verify_progress() {
                     ProgressPercent::new(percent).unwrap()
                 } else {
                     ProgressPercent::default()
                 };
-                let update_flags = self.internal.get_update_flags().await;
+                let update_flags = self.internal.get_update_flags();
                 (progress, update_flags)
             }
             FirmwareDeviceState::Apply => {
-                let progress = if let Some(percent) = self.internal.get_fd_apply_progress().await {
+                let progress = if let Some(percent) = self.internal.get_fd_apply_progress() {
                     ProgressPercent::new(percent).unwrap()
                 } else {
                     ProgressPercent::default()
                 };
-                let update_flags = self.internal.get_update_flags().await;
+                let update_flags = self.internal.get_update_flags();
                 (progress, update_flags)
             }
-            _ => (
-                ProgressPercent::default(),
-                self.internal.get_update_flags().await,
-            ),
+            _ => (ProgressPercent::default(), self.internal.get_update_flags()),
         };
 
-        let (aux_state, aux_state_status) = match self.internal.get_fd_req_state().await {
+        let (aux_state, aux_state_status) = match self.internal.get_fd_req_state() {
             FdReqState::Unused => (
                 AuxState::IdleLearnComponentsReadXfer,
                 AuxStateStatus::AuxStateInProgressOrSuccess as u8,
@@ -604,7 +583,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                 AuxStateStatus::AuxStateInProgressOrSuccess as u8,
             ),
             FdReqState::Ready => {
-                if self.internal.is_fd_req_complete().await {
+                if self.internal.is_fd_req_complete() {
                     (
                         AuxState::OperationSuccessful,
                         AuxStateStatus::AuxStateInProgressOrSuccess as u8,
@@ -620,7 +599,6 @@ impl<'a> FirmwareDeviceContext<'a> {
                 let status = self
                     .internal
                     .get_fd_req_result()
-                    .await
                     .unwrap_or(AuxStateStatus::GenericError as u8);
                 (AuxState::OperationFailed, status)
             }
@@ -636,7 +614,6 @@ impl<'a> FirmwareDeviceContext<'a> {
             progress_percent,
             self.internal
                 .get_fd_reason()
-                .await
                 .unwrap_or(GetStatusReasonCode::Initialization),
             if update_flags.request_force_update() {
                 UpdateOptionResp::ForceUpdate
@@ -654,16 +631,16 @@ impl<'a> FirmwareDeviceContext<'a> {
     }
 
     pub async fn set_fd_t1_ts(&self) {
-        self.internal.set_fd_t1_update_ts(self.ops.now()).await;
+        self.internal.set_fd_t1_update_ts(self.ops.now());
     }
 
     pub async fn should_start_initiator_mode(&self) -> bool {
-        self.internal.get_fd_state().await == FirmwareDeviceState::Download
+        self.internal.get_fd_state() == FirmwareDeviceState::Download
     }
 
     pub async fn should_stop_initiator_mode(&self) -> bool {
         !matches!(
-            self.internal.get_fd_state().await,
+            self.internal.get_fd_state(),
             FirmwareDeviceState::Download
                 | FirmwareDeviceState::Verify
                 | FirmwareDeviceState::Apply
@@ -671,7 +648,7 @@ impl<'a> FirmwareDeviceContext<'a> {
     }
 
     pub async fn fd_progress(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
-        let fd_state = self.internal.get_fd_state().await;
+        let fd_state = self.internal.get_fd_state();
 
         let result = match fd_state {
             FirmwareDeviceState::Download => self.fd_progress_download(payload).await,
@@ -681,19 +658,19 @@ impl<'a> FirmwareDeviceContext<'a> {
         }?;
 
         let now = self.ops.now();
-        let ts = self.internal.get_fd_t1_update_ts().await;
+        let ts = self.internal.get_fd_t1_update_ts();
         let elapsed = now.saturating_sub(ts);
         // If a response is not received within T1 in FD-driven states, cancel the update and transition to idle state.
         if (fd_state == FirmwareDeviceState::Download
             || fd_state == FirmwareDeviceState::Verify
             || fd_state == FirmwareDeviceState::Apply)
-            && self.internal.get_fd_req_state().await == FdReqState::Sent
-            && elapsed > self.internal.get_fd_t1_timeout().await
+            && self.internal.get_fd_req_state() == FdReqState::Sent
+            && elapsed > self.internal.get_fd_t1_timeout()
         {
             self.ops
-                .cancel_update_component(&self.internal.get_component().await)
+                .cancel_update_component(&self.internal.get_component())
                 .map_err(MsgHandlerError::FdOps)?;
-            self.internal.fd_idle_timeout().await;
+            self.internal.fd_idle_timeout();
             return Ok(0);
         }
 
@@ -705,7 +682,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             PldmMsgHeader::<[u8; 3]>::decode(payload).map_err(MsgHandlerError::Codec)?;
         let (cmd_code, instance_id) = (rsp_header.cmd_code(), rsp_header.instance_id());
 
-        let fd_req = self.internal.get_fd_req().await;
+        let fd_req = self.internal.get_fd_req();
         if fd_req.state != FdReqState::Sent
             || fd_req.instance_id != Some(instance_id)
             || fd_req.command != Some(cmd_code)
@@ -726,12 +703,12 @@ impl<'a> FirmwareDeviceContext<'a> {
     }
 
     async fn process_request_fw_data_rsp(&self, payload: &mut [u8]) -> Result<(), MsgHandlerError> {
-        let fd_state = self.internal.get_fd_state().await;
+        let fd_state = self.internal.get_fd_state();
         if fd_state != FirmwareDeviceState::Download {
             return Err(MsgHandlerError::FdInitiatorModeError);
         }
 
-        let fd_req = self.internal.get_fd_req().await;
+        let fd_req = self.internal.get_fd_req();
         if fd_req.complete {
             // Received data after completion
             return Err(MsgHandlerError::FdInitiatorModeError);
@@ -745,27 +722,25 @@ impl<'a> FirmwareDeviceContext<'a> {
             code if code == PldmBaseCompletionCode::Success as u8 => {}
             code if code == FwUpdateCompletionCode::RetryRequestFwData as u8 => return Ok(()),
             _ => {
-                self.internal
-                    .set_fd_req(
-                        FdReqState::Ready,
-                        true,
-                        Some(TransferResult::FdAbortedTransfer as u8),
-                        None,
-                        None,
-                        None,
-                    )
-                    .await;
+                self.internal.set_fd_req(
+                    FdReqState::Ready,
+                    true,
+                    Some(TransferResult::FdAbortedTransfer as u8),
+                    None,
+                    None,
+                    None,
+                );
                 return Ok(());
             }
         }
 
-        let (offset, length) = self.internal.get_fd_download_state().await.unwrap();
+        let (offset, length) = self.internal.get_fd_download_state().unwrap();
 
         let fw_data = payload[core::mem::size_of::<RequestFirmwareDataResponseFixed>()..]
             .get(..length as usize)
             .ok_or(MsgHandlerError::Codec(PldmCodecError::BufferTooShort))?;
 
-        let fw_component = &self.internal.get_component().await;
+        let fw_component = &self.internal.get_component();
         let res = self
             .ops
             .download_fw_data(offset as usize, fw_data, fw_component)
@@ -775,27 +750,23 @@ impl<'a> FirmwareDeviceContext<'a> {
         if res == TransferResult::TransferSuccess {
             if self.ops.is_download_complete(fw_component) {
                 // Mark as complete, next progress() call will send the TransferComplete request
-                self.internal
-                    .set_fd_req(
-                        FdReqState::Ready,
-                        true,
-                        Some(TransferResult::TransferSuccess as u8),
-                        None,
-                        None,
-                        None,
-                    )
-                    .await;
+                self.internal.set_fd_req(
+                    FdReqState::Ready,
+                    true,
+                    Some(TransferResult::TransferSuccess as u8),
+                    None,
+                    None,
+                    None,
+                );
             } else {
                 // Invoke another request if there is more data to download
                 self.internal
-                    .set_fd_req(FdReqState::Ready, false, None, None, None, None)
-                    .await;
+                    .set_fd_req(FdReqState::Ready, false, None, None, None, None);
             }
         } else {
             // Pass the callback error as the TransferResult
             self.internal
-                .set_fd_req(FdReqState::Ready, true, Some(res as u8), None, None, None)
-                .await;
+                .set_fd_req(FdReqState::Ready, true, Some(res as u8), None, None, None);
         }
         Ok(())
     }
@@ -804,12 +775,12 @@ impl<'a> FirmwareDeviceContext<'a> {
         &self,
         _payload: &mut [u8],
     ) -> Result<(), MsgHandlerError> {
-        let fd_state = self.internal.get_fd_state().await;
+        let fd_state = self.internal.get_fd_state();
         if fd_state != FirmwareDeviceState::Download {
             return Err(MsgHandlerError::FdInitiatorModeError);
         }
 
-        let fd_req = self.internal.get_fd_req().await;
+        let fd_req = self.internal.get_fd_req();
         if fd_req.state != FdReqState::Sent || !fd_req.complete {
             return Err(MsgHandlerError::FdInitiatorModeError);
         }
@@ -818,19 +789,14 @@ impl<'a> FirmwareDeviceContext<'a> {
         if fd_req.result == Some(TransferResult::TransferSuccess as u8) {
             // Switch to Verify
             self.internal
-                .set_initiator_mode(InitiatorModeState::Verify(VerifyState::default()))
-                .await;
+                .set_initiator_mode(InitiatorModeState::Verify(VerifyState::default()));
             self.internal
-                .set_fd_req(FdReqState::Ready, false, None, None, None, None)
-                .await;
-            self.internal
-                .set_fd_state(FirmwareDeviceState::Verify)
-                .await;
+                .set_fd_req(FdReqState::Ready, false, None, None, None, None);
+            self.internal.set_fd_state(FirmwareDeviceState::Verify);
         } else {
             // Wait for UA to cancel
             self.internal
-                .set_fd_req(FdReqState::Failed, true, fd_req.result, None, None, None)
-                .await;
+                .set_fd_req(FdReqState::Failed, true, fd_req.result, None, None, None);
         }
 
         Ok(())
@@ -840,12 +806,12 @@ impl<'a> FirmwareDeviceContext<'a> {
         &self,
         _payload: &mut [u8],
     ) -> Result<(), MsgHandlerError> {
-        let fd_state = self.internal.get_fd_state().await;
+        let fd_state = self.internal.get_fd_state();
         if fd_state != FirmwareDeviceState::Verify {
             return Err(MsgHandlerError::FdInitiatorModeError);
         }
 
-        let fd_req = self.internal.get_fd_req().await;
+        let fd_req = self.internal.get_fd_req();
         if fd_req.state != FdReqState::Sent || !fd_req.complete {
             return Err(MsgHandlerError::FdInitiatorModeError);
         }
@@ -854,29 +820,26 @@ impl<'a> FirmwareDeviceContext<'a> {
         if fd_req.result == Some(VerifyResult::VerifySuccess as u8) {
             // Switch to Apply
             self.internal
-                .set_initiator_mode(InitiatorModeState::Apply(ApplyState::default()))
-                .await;
+                .set_initiator_mode(InitiatorModeState::Apply(ApplyState::default()));
             self.internal
-                .set_fd_req(FdReqState::Ready, false, None, None, None, None)
-                .await;
-            self.internal.set_fd_state(FirmwareDeviceState::Apply).await;
+                .set_fd_req(FdReqState::Ready, false, None, None, None, None);
+            self.internal.set_fd_state(FirmwareDeviceState::Apply);
         } else {
             // Wait for UA to cancel
             self.internal
-                .set_fd_req(FdReqState::Failed, true, fd_req.result, None, None, None)
-                .await;
+                .set_fd_req(FdReqState::Failed, true, fd_req.result, None, None, None);
         }
 
         Ok(())
     }
 
     async fn process_apply_complete_rsp(&self, _payload: &mut [u8]) -> Result<(), MsgHandlerError> {
-        let fd_state = self.internal.get_fd_state().await;
+        let fd_state = self.internal.get_fd_state();
         if fd_state != FirmwareDeviceState::Apply {
             return Err(MsgHandlerError::FdInitiatorModeError);
         }
 
-        let fd_req = self.internal.get_fd_req().await;
+        let fd_req = self.internal.get_fd_req();
         if fd_req.state != FdReqState::Sent || !fd_req.complete {
             return Err(MsgHandlerError::FdInitiatorModeError);
         }
@@ -884,16 +847,12 @@ impl<'a> FirmwareDeviceContext<'a> {
         if fd_req.result == Some(ApplyResult::ApplySuccess as u8) {
             // Switch to Xfer
             self.internal
-                .set_fd_req(FdReqState::Unused, false, None, None, None, None)
-                .await;
-            self.internal
-                .set_fd_state(FirmwareDeviceState::ReadyXfer)
-                .await;
+                .set_fd_req(FdReqState::Unused, false, None, None, None, None);
+            self.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
         } else {
             // Wait for UA to cancel
             self.internal
-                .set_fd_req(FdReqState::Failed, true, fd_req.result, None, None, None)
-                .await;
+                .set_fd_req(FdReqState::Failed, true, fd_req.result, None, None, None);
         }
 
         Ok(())
@@ -904,7 +863,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         // We need to do this before the batch because query_download_offset_and_length
         // needs the component, and getting it requires a lock.
         // For now, we'll get component separately to call query_download_offset_and_length.
-        let component = self.internal.get_component().await;
+        let component = self.internal.get_component();
         let (requested_offset, requested_length) = self
             .ops
             .query_download_offset_and_length(&component)
@@ -915,7 +874,6 @@ impl<'a> FirmwareDeviceContext<'a> {
         let info = self
             .internal
             .prepare_download_request(requested_offset as u32, requested_length as u32)
-            .await
             .ok_or(MsgHandlerError::FdInitiatorModeError)?;
 
         // If the request is complete, send TransferComplete
@@ -932,17 +890,15 @@ impl<'a> FirmwareDeviceContext<'a> {
 
             // Finalize request state in a single batch operation
             let req_sent_timestamp = self.ops.now();
-            self.internal
-                .finalize_download_request(
-                    0,
-                    0,
-                    info.instance_id,
-                    FwUpdateCmd::TransferComplete as u8,
-                    req_sent_timestamp,
-                    true,
-                    Some(result),
-                )
-                .await;
+            self.internal.finalize_download_request(
+                0,
+                0,
+                info.instance_id,
+                FwUpdateCmd::TransferComplete as u8,
+                req_sent_timestamp,
+                true,
+                Some(result),
+            );
 
             Ok(msg_len)
         } else {
@@ -961,17 +917,15 @@ impl<'a> FirmwareDeviceContext<'a> {
 
             // Finalize download state and request state in a single batch operation
             let req_sent_timestamp = self.ops.now();
-            self.internal
-                .finalize_download_request(
-                    chunk_offset,
-                    chunk_length,
-                    info.instance_id,
-                    FwUpdateCmd::RequestFirmwareData as u8,
-                    req_sent_timestamp,
-                    false,
-                    None,
-                )
-                .await;
+            self.internal.finalize_download_request(
+                chunk_offset,
+                chunk_length,
+                info.instance_id,
+                FwUpdateCmd::RequestFirmwareData as u8,
+                req_sent_timestamp,
+                false,
+                None,
+            );
 
             Ok(msg_len)
         }
@@ -983,18 +937,17 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
 
         let mut res = VerifyResult::default();
-        if !self.internal.is_fd_req_complete().await {
+        if !self.internal.is_fd_req_complete() {
             let mut progress_percent = ProgressPercent::default();
             res = self
                 .ops
-                .verify(&self.internal.get_component().await, &mut progress_percent)
+                .verify(&self.internal.get_component(), &mut progress_percent)
                 .await
                 .map_err(MsgHandlerError::FdOps)?;
 
             // Set the progress percent to VerifyState
             self.internal
-                .set_fd_verify_progress(progress_percent.value())
-                .await;
+                .set_fd_verify_progress(progress_percent.value());
 
             if res == VerifyResult::VerifySuccess && progress_percent.value() < 100 {
                 // doing nothing and wait for the next call
@@ -1002,7 +955,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             }
         }
 
-        let instance_id = self.internal.alloc_next_instance_id().await.unwrap();
+        let instance_id = self.internal.alloc_next_instance_id().unwrap();
         let verify_complete_req =
             VerifyCompleteRequest::new(instance_id, PldmMsgType::Request, res);
 
@@ -1011,16 +964,14 @@ impl<'a> FirmwareDeviceContext<'a> {
             .encode(_payload)
             .map_err(MsgHandlerError::Codec)?;
 
-        self.internal
-            .set_fd_req(
-                FdReqState::Sent,
-                true,
-                Some(res as u8),
-                Some(instance_id),
-                Some(FwUpdateCmd::VerifyComplete as u8),
-                Some(self.ops.now()),
-            )
-            .await;
+        self.internal.set_fd_req(
+            FdReqState::Sent,
+            true,
+            Some(res as u8),
+            Some(instance_id),
+            Some(FwUpdateCmd::VerifyComplete as u8),
+            Some(self.ops.now()),
+        );
 
         Ok(msg_len)
     }
@@ -1031,18 +982,17 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
 
         let mut res = ApplyResult::default();
-        if !self.internal.is_fd_req_complete().await {
+        if !self.internal.is_fd_req_complete() {
             let mut progress_percent = ProgressPercent::default();
             res = self
                 .ops
-                .apply(&self.internal.get_component().await, &mut progress_percent)
+                .apply(&self.internal.get_component(), &mut progress_percent)
                 .await
                 .map_err(MsgHandlerError::FdOps)?;
 
             // Set the progress percent to ApplyState
             self.internal
-                .set_fd_apply_progress(progress_percent.value())
-                .await;
+                .set_fd_apply_progress(progress_percent.value());
 
             if res == ApplyResult::ApplySuccess && progress_percent.value() < 100 {
                 // doing nothing and wait for the next call
@@ -1051,7 +1001,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
 
         // Allocate the next instance ID
-        let instance_id = self.internal.alloc_next_instance_id().await.unwrap();
+        let instance_id = self.internal.alloc_next_instance_id().unwrap();
         let apply_complete_req = ApplyCompleteRequest::new(
             instance_id,
             PldmMsgType::Request,
@@ -1063,16 +1013,14 @@ impl<'a> FirmwareDeviceContext<'a> {
             .encode(_payload)
             .map_err(MsgHandlerError::Codec)?;
 
-        self.internal
-            .set_fd_req(
-                FdReqState::Sent,
-                true,
-                Some(res as u8),
-                Some(instance_id),
-                Some(FwUpdateCmd::ApplyComplete as u8),
-                Some(self.ops.now()),
-            )
-            .await;
+        self.internal.set_fd_req(
+            FdReqState::Sent,
+            true,
+            Some(res as u8),
+            Some(instance_id),
+            Some(FwUpdateCmd::ApplyComplete as u8),
+            Some(self.ops.now()),
+        );
 
         Ok(msg_len)
     }
@@ -1080,20 +1028,20 @@ impl<'a> FirmwareDeviceContext<'a> {
     async fn should_send_fd_request(&self) -> bool {
         let now = self.ops.now();
 
-        let fd_req_state = self.internal.get_fd_req_state().await;
+        let fd_req_state = self.internal.get_fd_req_state();
         match fd_req_state {
             FdReqState::Unused => false,
             FdReqState::Ready => true,
             FdReqState::Failed => false,
             FdReqState::Sent => {
-                let fd_req_sent_time = self.internal.get_fd_sent_time().await.unwrap();
+                let fd_req_sent_time = self.internal.get_fd_sent_time().unwrap();
                 if now < fd_req_sent_time {
                     // Time went backwards
                     return false;
                 }
 
                 // Send if retry time has elapsed
-                return (now - fd_req_sent_time) >= self.internal.get_fd_t2_retry_time().await;
+                (now - fd_req_sent_time) >= self.internal.get_fd_t2_retry_time()
             }
         }
     }
@@ -1112,12 +1060,12 @@ impl<'a> FirmwareDeviceContext<'a> {
     /// This captures the current state to avoid mutex acquisitions in the hot path.
     pub async fn create_transfer_session(&self) -> super::transfer_session::TransferSession {
         self.reset_cancellation();
-        self.internal.create_transfer_session(self.ops.now()).await
+        self.internal.create_transfer_session(self.ops.now())
     }
 
     /// Sync state from a transfer session back to internal state.
     pub async fn sync_transfer_session(&self, session: &super::transfer_session::TransferSession) {
-        self.internal.sync_from_transfer_session(session).await;
+        self.internal.sync_from_transfer_session(session);
     }
 
     /// Get current timestamp from ops.
