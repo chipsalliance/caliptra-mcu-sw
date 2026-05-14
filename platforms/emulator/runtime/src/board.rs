@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-use crate::handoff::HandOff;
 use crate::interrupts::EmulatorPeripherals;
 use crate::MCU_MEMORY_MAP;
 #[cfg(any(
@@ -74,6 +73,7 @@ use caliptra_mcu_config_emulator::logging_flash_list;
 use caliptra_mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 #[cfg(feature = "doe")]
 use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
+use caliptra_mcu_platforms_common::handoff::HandOff;
 use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_romtime::CaliptraSoC;
