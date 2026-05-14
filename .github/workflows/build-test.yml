@@ -328,20 +328,20 @@ jobs:
         run: |
           sudo mv /tmp/junit.xml /tmp/junit-${{ matrix.shard }}.xml
 
-      - name: Run release tests (shard ${{ matrix.shard }}/4)
+      - name: Run release tests
+        if: matrix.shard == 1
         run: |
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
             --archive /tmp/nextest-archive.tar.zst \
-            --shard hash:${{ matrix.shard }}/4 \
             --firmware-bundle "${PWD}/target/all-fw-release.zip" \
             --emulator-bundle "${PWD}/target/emulators.zip" \
             --workspace-remap . \
             --nextest-profile nightly-release
 
       - name: Move release junit xml
-        if: success() || failure()
+        if: (success() || failure()) && matrix.shard == 1
         run: |
-          sudo mv /tmp/junit.xml /tmp/junit-release-${{ matrix.shard }}.xml
+          sudo mv /tmp/junit.xml /tmp/junit-release.xml
 
       - name: 'Upload test results'
         uses: actions/upload-artifact@v4
@@ -350,7 +350,7 @@ jobs:
           name: caliptra-test-results-${{ matrix.shard }}
           path: |
             /tmp/junit-${{ matrix.shard }}.xml
-            /tmp/junit-release-${{ matrix.shard }}.xml
+            /tmp/junit-release.xml
           retention-days: 1
 
   print_test_results:
