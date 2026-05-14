@@ -23,6 +23,7 @@ mod test_i3c_simple;
 mod test_mctp_capsule_loopback;
 mod test_mctp_vdm_cmds;
 mod test_mcu_mbox;
+mod test_owner_stable_key;
 mod test_pldm_fw_update;
 mod test_soc_boot;
 mod test_usb_ocp_recovery;
@@ -64,7 +65,6 @@ mod test {
         pub soc_manifest: Vec<u8>,
     }
 
-    #[derive(Default)]
     pub struct TestParams<'a> {
         pub feature: Option<&'a str>,
         pub rom_feature: Option<&'a str>,
@@ -88,11 +88,37 @@ mod test {
         pub custom_mcu_rom: Option<Vec<u8>>,
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
         pub firmware_prefix: Option<Vec<u8>>,
-        /// If true (with `firmware_prefix` set), use the DOT hitless-update
-        /// test ROM which forces the cold-boot warm reset to come back as
-        /// `FirmwareHitlessUpdate` so `FwHitlessUpdate::run` processes the
-        /// manifest instead of `FwBoot::run`.
         pub fw_manifest_dot_hitless: bool,
+        pub active_i3c1: bool,
+        pub lifecycle_controller_state: Option<romtime::LifecycleControllerState>,
+        pub vendor_pqc_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
+    }
+
+    impl Default for TestParams<'_> {
+        fn default() -> Self {
+            Self {
+                feature: None,
+                rom_feature: None,
+                network_rom_feature: None,
+                i3c_port: None,
+                dot_flash_initial_contents: None,
+                rom_only: false,
+                include_network_rom: false,
+                flash_boot: false,
+                network_tap_device: None,
+                dot_enabled: false,
+                custom_caliptra_fw: None,
+                otp_memory: None,
+                fips_zeroization: false,
+                ocp_lock_en: false,
+                custom_mcu_rom: None,
+                firmware_prefix: None,
+                fw_manifest_dot_hitless: false,
+                active_i3c1: false,
+                lifecycle_controller_state: None,
+                vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
+            }
+        }
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -235,14 +261,14 @@ mod test {
         }
     }
 
-    struct TestBinaries {
-        vendor_pk_hash_u8: Vec<u8>,
-        caliptra_rom: Vec<u8>,
-        caliptra_fw: Vec<u8>,
-        mcu_rom: Vec<u8>,
-        soc_manifest: Vec<u8>,
-        mcu_runtime: Vec<u8>,
-        network_rom: Vec<u8>,
+    pub struct TestBinaries {
+        pub vendor_pk_hash_u8: Vec<u8>,
+        pub caliptra_rom: Vec<u8>,
+        pub caliptra_fw: Vec<u8>,
+        pub mcu_rom: Vec<u8>,
+        pub soc_manifest: Vec<u8>,
+        pub mcu_runtime: Vec<u8>,
+        pub network_rom: Vec<u8>,
     }
 
     fn prebuilt_binaries(params: &TestParams, binaries: &'static FirmwareBinaries) -> TestBinaries {
@@ -270,7 +296,11 @@ mod test {
         }
 
         if let Some(rom_feature) = params.rom_feature {
-            test_binaries.mcu_rom = binaries.test_feature_rom(rom_feature);
+            test_binaries.mcu_rom = binaries
+                .test_feature_rom(rom_feature)
+                .unwrap_or_else(|err| {
+                    panic!("Failed to get MCU ROM for feature {rom_feature}: {err}")
+                });
         }
 
         // check for prebuilt network ROM with feature
@@ -281,7 +311,7 @@ mod test {
         test_binaries
     }
 
-    fn build_test_binaries(params: &TestParams) -> TestBinaries {
+    pub fn build_test_binaries(params: &TestParams) -> TestBinaries {
         // Get MCU runtime: prefer prebuilt for the requested feature, fall back to compilation
         let mcu_runtime_path = if let Ok(binaries) = FirmwareBinaries::from_env() {
             let runtime_bytes = if let Some(feature) = params.feature {
@@ -511,10 +541,9 @@ mod test {
                 (None, caliptra_fw, soc_manifest, mcu_runtime)
             };
 
-        // TODO: read the PQC type
         mcu_hw_model::new(InitParams {
             fuses: Fuses {
-                fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
+                fuse_pqc_key_type: params.vendor_pqc_type.map(|t| t as u32).unwrap_or(0),
                 vendor_pk_hash,
                 ..Default::default()
             },
@@ -527,7 +556,7 @@ mod test {
             network_tap_device: params.network_tap_device,
             vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
             active_mode: true,
-            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
+            vendor_pqc_type: params.vendor_pqc_type,
             i3c_port: params.i3c_port,
             enable_mcu_uart_log: true,
             dot_flash_initial_contents: params.dot_flash_initial_contents,

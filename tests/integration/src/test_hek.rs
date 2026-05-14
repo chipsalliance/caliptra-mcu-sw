@@ -131,6 +131,48 @@ pub mod test {
     }
 
     #[test]
+    fn test_hek_slot_selection_for_stable_owner_key() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        let mut otp = vec![0u8; 4096];
+
+        let sanitized_slots = [0, 1];
+        for slot in sanitized_slots {
+            setup_otp_hek(&mut otp, slot, true, false);
+        }
+
+        let active_slot = sanitized_slots.len();
+        setup_otp_hek(&mut otp, active_slot, false, false);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            otp_memory: Some(otp),
+            rom_only: true,
+            rom_feature: Some("stable-owner-key"),
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.caliptra_soc_manager()
+                .soc_ifc()
+                .cptra_fuse_wr_done()
+                .read()
+                .done()
+        });
+
+        let hek_seed = hw.caliptra_soc_manager().soc_ifc().fuse_hek_seed().read();
+        for (idx, &byte) in hek_seed.as_bytes().iter().enumerate() {
+            assert_eq!(byte, ((active_slot + 1) ^ idx) as u8);
+        }
+
+        let stable_owner_key_strap = hw
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .ss_strap_generic()
+            .at(3)
+            .read();
+        assert_eq!(stable_owner_key_strap & 1, 1);
+    }
+
+    #[test]
     fn test_hek_available_from_report() {
         let _lock = TEST_LOCK.lock().unwrap();
         let mut otp = vec![0u8; 4096];

@@ -484,6 +484,10 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
         name: "cptra_itrng_entropy_config_1",
         size: Bytes(4),
     },
+    Fuse {
+        name: "stable_owner_key_personalization_seed",
+        size: Bytes(32),
+    },
 ];
 pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
@@ -509,6 +513,10 @@ pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
         name: "cptra_itrng_entropy_config_1",
         bits: Bits(32),
+    },
+    FuseField {
+        name: "stable_owner_key_personalization_seed",
+        bits: Bits(256),
     },
     FuseField {
         name: "vendor_recovery_pk_hash",
@@ -834,6 +842,15 @@ pub const CPTRA_ITRNG_ENTROPY_CONFIG_1: &FuseEntryInfo = &FuseEntryInfo {
     byte_size: 32,
     name: "cptra_itrng_entropy_config_1",
     layout: FuseLayoutType::Single { bits: 32 },
+};
+/// Fuse entry for `stable_owner_key_personalization_seed`.
+pub const STABLE_OWNER_KEY_PERSONALIZATION_SEED: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 6,
+    byte_offset: 0xb68,
+    byte_size: 32,
+    name: "stable_owner_key_personalization_seed",
+    layout: FuseLayoutType::Single { bits: 256 },
 };
 /// Fuse entry for `vendor_recovery_pk_hash`.
 pub const VENDOR_RECOVERY_PK_HASH: &FuseEntryInfo = &FuseEntryInfo {
@@ -3076,13 +3093,13 @@ pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5: &FuseEntryInfo = &Fuse
     name: "cptra_itrng_entropy_config_1",
     layout: FuseLayoutType::Single { bits: 32 },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6`.
+/// OTP item entry for `stable_owner_key_personalization_seed`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 6,
     byte_offset: 0xb68,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6",
+    name: "stable_owner_key_personalization_seed",
     layout: FuseLayoutType::Single { bits: 256 },
 };
 /// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7`.

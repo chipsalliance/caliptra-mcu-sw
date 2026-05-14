@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use caliptra_builder::FwId;
 use caliptra_image_types::ImageManifest;
 use chrono::{TimeZone, Utc};
@@ -363,16 +363,17 @@ impl FirmwareBinaries {
         ))
     }
 
-    /// Get a feature-specific MCU ROM. Falls back to the generic MCU ROM
-    /// if no feature-specific ROM was built.
-    pub fn test_feature_rom(&self, feature: &str) -> Vec<u8> {
+    /// Get a feature-specific MCU ROM.
+    pub fn test_feature_rom(&self, feature: &str) -> Result<Vec<u8>> {
         let expected_name = format!("mcu-test-rom-feature-{}.bin", feature);
         for (name, data) in self.test_roms.iter() {
             if &expected_name == name {
-                return data.clone();
+                return Ok(data.clone());
             }
         }
-        self.mcu_rom.clone()
+        Err(anyhow::anyhow!(
+            "Feature-specific MCU ROM not found. File name: {expected_name}, feature: {feature}"
+        ))
     }
 
     /// Get a feature-specific Network ROM. Falls back to the generic Network ROM
@@ -454,6 +455,7 @@ pub struct AllBuildArgs<'a> {
     pub output: Option<&'a str>,
     pub platform: Option<&'a str>,
     pub rom_features: Option<&'a str>,
+    pub test_rom_features: Option<&'a str>,
     pub network_rom_features: Option<&'a str>,
     pub runtime_features: Option<&'a str>,
     pub separate_runtimes: bool,
@@ -469,6 +471,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         output,
         platform,
         rom_features,
+        test_rom_features,
         network_rom_features,
         runtime_features,
         separate_runtimes,
@@ -524,6 +527,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     }
 
     let runtime_features = match runtime_features {
+        Some(r) if !r.is_empty() => r.split(",").collect::<Vec<&str>>(),
+        _ => vec![],
+    };
+
+    let explicit_test_rom_features = match test_rom_features {
         Some(r) if !r.is_empty() => r.split(",").collect::<Vec<&str>>(),
         _ => vec![],
     };
@@ -607,34 +615,37 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     pldm_manifest_decoded.generate_firmware_package(&pldm_fw_pkg_path)?;
 
     // Build feature-specific MCU ROMs so tests don't need to compile at runtime.
-    // Only builds for features that the ROM crate supports; tests using other features
-    // will fall back to the generic MCU ROM.
-    //
-    // ROM-only test features that don't have a corresponding runtime feature
-    // must still be built so tests using `rom_feature: Some(...)` can find them.
+    // Runtime features and built-in ROM-only test features are best-effort because
+    // not every feature is valid on every platform. Explicit test ROM features are
+    // required because tests request them by name from the bundle.
     const ROM_ONLY_TEST_FEATURES: &[&str] = &[
         "test-i3c-services",
         "test-fw-manifest-dot",
         "test-fw-manifest-dot-hitless",
         "test-dot-recovery",
     ];
-    let rom_features_to_build: Vec<String> = separate_features
+
+    let mut feature_roms_to_build = separate_features.clone();
+    for &feature in ROM_ONLY_TEST_FEATURES
         .iter()
-        .map(|f| f.to_string())
-        .chain(ROM_ONLY_TEST_FEATURES.iter().map(|s| s.to_string()))
-        .collect();
-    for feature in rom_features_to_build.iter() {
+        .chain(explicit_test_rom_features.iter())
+    {
+        if !feature_roms_to_build.contains(&feature) {
+            feature_roms_to_build.push(feature);
+        }
+    }
+    for &feature in feature_roms_to_build.iter() {
         match crate::rom_build(Some(platform.to_string()), Some(feature.to_string())) {
             Ok(rom_path) => {
                 let rom_name = format!("mcu-test-rom-feature-{}.bin", feature);
                 println!("Built feature ROM: {rom_path:?} -> {}", rom_name);
                 test_roms.push((rom_path, rom_name));
             }
+            Err(e) if explicit_test_rom_features.contains(&feature) => {
+                return Err(e).with_context(|| format!("Failed to build test ROM for {feature}"));
+            }
             Err(e) => {
-                println!(
-                    "Skipping feature ROM for {}: {} (will use generic ROM)",
-                    feature, e
-                );
+                println!("Skipping feature ROM for {}: {}", feature, e);
             }
         }
     }

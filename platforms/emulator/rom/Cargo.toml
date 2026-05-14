@@ -33,6 +33,7 @@ rv32i.workspace = true
 default = []
 core_test = ["mcu-rom-common/core_test"]
 ocp-lock = ["mcu-rom-common/ocp-lock"]
+stable-owner-key = ["mcu-rom-common/stable-owner-key"]
 hw-2-1 = ["mcu-rom-common/hw-2-1"]
 test-dot-recovery = []
 test-firmware-update-flash = ["test-flash-based-boot"]

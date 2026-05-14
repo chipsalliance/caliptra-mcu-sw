@@ -513,6 +513,11 @@ impl McuError {
             "Missing OCP LOCK ROM Config"
         ),
         (
+            ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR,
+            0x1_0022,
+            "Stable owner key derivation failed during cold boot"
+        ),
+        (
             ROM_SOC_WDT_CFG_OUT_OF_RANGE,
             0x5_0013,
             "Caliptra WDT config index out of range"

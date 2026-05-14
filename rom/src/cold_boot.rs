@@ -1207,6 +1207,19 @@ impl BootFlow for ColdBoot {
             env.soc.lock_owner_pk_hash();
         }
 
+        // OCP LOCK and stable owner key are mutually exclusive HEK consumers.
+        #[cfg(feature = "stable-owner-key")]
+        {
+            // Derive stable owner key using the OTP personalization seed.
+            if let Err(err) = crate::stable_owner_key::derive_stable_owner_key(env) {
+                romtime::println!(
+                    "[mcu-rom] Stable owner key derivation failed: {}",
+                    HexWord(err.into())
+                );
+                fatal_error(err);
+            }
+        }
+
         // Enter I3C services unconditionally if force_i3c_services is set
         if params.force_i3c_services {
             if let Some(services) = params.i3c_services {
@@ -1360,6 +1373,12 @@ impl BootFlow for ColdBoot {
                 soc.check_hw_errors();
             }
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
+        }
+
+        soc.pk_hash_volatile_lock(&env.otp, _fuse_state.pk_hash_idx);
+        if env.otp.check_error().is_some() {
+            romtime::println!("[mcu-rom] OTP error: {}", HexWord(env.otp.status()));
+            env.otp.print_errors();
         }
 
         let stash_rom_digest = params.stash_rom_digest.unwrap_or(false);

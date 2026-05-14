@@ -362,6 +362,7 @@ fn load_image_to_recovery(
                     RecoveryStatus(i3c_periph.sec_fw_recovery_if_recovery_status.get());
                 let res = state_machine.process_event(Events::RecoveryStatus(recovery_status));
                 if res.is_ok() {
+                    next_print_checkpoint = 0;
                     let recovery_image_index = recovery_status.rec_img_index();
                     romtime::println!(
                         "[mcu-rom] Starting recovery with image index {}",

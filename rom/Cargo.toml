@@ -41,3 +41,4 @@ ocp-lock = ["romtime/ocp-lock"]
 # `FirmwareBootReset`. Used by the DOT manifest hitless-update integration
 # test to exercise `FwHitlessUpdate::run` without a real PLDM update flow.
 test-force-hitless-update = []
+stable-owner-key = []

@@ -14,6 +14,9 @@ Abstract:
 
 #![no_std]
 
+#[cfg(all(feature = "ocp-lock", feature = "stable-owner-key"))]
+compile_error!("features `ocp-lock` and `stable-owner-key` are mutually exclusive");
+
 mod device_ownership_transfer;
 pub use device_ownership_transfer::*;
 mod dot_override;
@@ -37,6 +40,8 @@ mod i3c_mailbox;
 pub use i3c_mailbox::I3cMailboxHandler;
 mod mailbox;
 pub mod recovery;
+#[cfg(feature = "stable-owner-key")]
+mod stable_owner_key;
 
 // Boot flow modules
 mod cold_boot;

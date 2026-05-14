@@ -25,8 +25,6 @@ pub const HEK_ZER_MARKER_OFFSET: usize = 40;
 pub const HEK_ZER_MARKER_SIZE: usize = 8;
 pub const HEK_SEED_SIZE: usize = 32;
 
-// VENDOR_NON_SECRET_PROD_PARTITION offsets
-
 pub const HEK_OFFSETS: [usize; 8] = [
     fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET,
     fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET,
@@ -74,8 +72,9 @@ impl Otp {
         Otp { registers }
     }
 
-    pub fn volatile_lock(&self) {
-        self.registers.vendor_pk_hash_volatile_lock.set(1);
+    pub fn volatile_lock(&self, index: u32) {
+        // the register is 1-indexed in hardware
+        self.registers.vendor_pk_hash_volatile_lock.set(index + 1);
     }
 
     pub fn wait_for_not_pending(&self) -> McuResult<()> {
