@@ -4,4 +4,3 @@
 #![forbid(unsafe_code)]
 
 pub mod dma;
-pub mod logging;

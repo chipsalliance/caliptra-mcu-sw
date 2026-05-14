@@ -263,6 +263,7 @@ impl McuHwModel for ModelEmulated {
             Some(direct_read_flash.clone()),
         );
         primary_flash_controller.set_dma_rom_sram(rom_sram.clone());
+        primary_flash_controller.set_dma_ram(dma_ram.clone());
 
         let mut secondary_flash_controller = create_flash_controller(
             "secondary_flash",
@@ -272,6 +273,7 @@ impl McuHwModel for ModelEmulated {
             None,
         );
         secondary_flash_controller.set_dma_rom_sram(rom_sram.clone());
+        secondary_flash_controller.set_dma_ram(dma_ram.clone());
 
         let mut dma_ctrl = caliptra_mcu_emulator_periph::AxiCDMA::new(
             &clock.clone(),

@@ -26,6 +26,7 @@ pub mod caliptra;
 pub mod doe;
 pub mod external_otp;
 pub mod flash_partition;
+pub mod logging;
 pub mod mailbox;
 pub mod mbox_sram;
 pub mod mci;

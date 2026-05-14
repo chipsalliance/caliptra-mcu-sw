@@ -12,3 +12,13 @@ pub struct FlashPartition {
     pub size: usize,        // size in bytes
     pub driver_num: u32,    // driver number for the partition
 }
+
+impl FlashPartition {
+    pub const fn base_page(&self, page_size: usize) -> usize {
+        self.offset / page_size
+    }
+
+    pub const fn num_pages(&self, page_size: usize) -> usize {
+        self.size / page_size
+    }
+}
