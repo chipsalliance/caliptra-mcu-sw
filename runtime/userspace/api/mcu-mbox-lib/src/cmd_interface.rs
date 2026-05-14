@@ -18,18 +18,9 @@ use caliptra_mcu_mbox_common::messages::{
     FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteResp, GetAuthCmdChallengeReq, GetAuthCmdChallengeResp,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
-    McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
-    McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
-    McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
-    McuCmStatusReq, McuEcdhFinishReq, McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq,
-    McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsSelfTestGetResultsReq,
-    McuFipsSelfTestStartReq, McuHkdfExpandReq, McuHkdfExtractReq, McuHmacKdfCounterReq, McuHmacReq,
-    McuMldsaCmkPublicKeyReq, McuMldsaCmkSignReq, McuMldsaCmkVerifyReq, McuProdDebugUnlockReqReq,
-    McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq, McuResponseVarSize,
-    McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, ProvisionVendorPkHashReq,
-    ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuResponseVarSize,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE,
+    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -93,40 +84,37 @@ impl<'a> CmdInterface<'a> {
         }
 
         // Receive a request from the transport.
-        let receive_result = self.transport.receive_request(req_buf).await;
-
-        let status = match receive_result {
-            Ok((cmd_id, req)) => {
-                // Process the request and prepare the response.
-                match self.process_request(req, cmd_id, resp_buf).await {
-                    Ok((resp, status)) => {
-                        if status == MbxCmdStatus::Complete {
-                            // guarantee it is big enough to hold the header
-                            if resp.len() < size_of::<MailboxRespHeader>() {
-                                let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
-                                return Err(MsgHandlerError::McuMboxCommon);
-                            }
-
-                            // Generate response checksum
-                            populate_checksum(resp);
-
-                            self.transport.send_response(resp).await.map_err(|_| {
-                                let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
-                                MsgHandlerError::Transport
-                            })?;
-                        }
-                        status
-                    }
-                    Err(_) => MbxCmdStatus::Failure,
-                }
-            }
+        let (cmd_id, req_len) = match self.transport.receive_request(req_buf).await {
+            Ok((c, slice)) => (c, slice.len()),
             Err(_) => {
-                // If the driver accepted the request but transport-level
-                // validation failed, we still need to finalize. If no request
-                // was received the finalize is harmlessly rejected.
                 let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
                 return Err(MsgHandlerError::Transport);
             }
+        };
+
+        let status = match self
+            .process_request(req_buf, req_len, cmd_id, resp_buf)
+            .await
+        {
+            Ok((resp, status)) => {
+                if status == MbxCmdStatus::Complete {
+                    // guarantee it is big enough to hold the header
+                    if resp.len() < size_of::<MailboxRespHeader>() {
+                        let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                        return Err(MsgHandlerError::McuMboxCommon);
+                    }
+
+                    // Generate response checksum
+                    populate_checksum(resp);
+
+                    self.transport.send_response(resp).await.map_err(|_| {
+                        let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                        MsgHandlerError::Transport
+                    })?;
+                }
+                status
+            }
+            Err(_) => MbxCmdStatus::Failure,
         };
 
         // Finalize the response as the last step of handling the message.
@@ -139,7 +127,8 @@ impl<'a> CmdInterface<'a> {
 
     async fn process_request<'r>(
         &mut self,
-        req: &[u8],
+        req_buf: &mut [u8],
+        req_len: usize,
         cmd: u32,
         resp_buf: &'r mut [u8],
     ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
@@ -149,322 +138,42 @@ impl<'a> CmdInterface<'a> {
 
         self.busy.store(true, Ordering::SeqCst);
 
-        let result = match CommandId::from(cmd) {
-            CommandId::MC_FIRMWARE_VERSION => self.handle_fw_version(req, resp_buf).await,
-            CommandId::MC_DEVICE_CAPABILITIES => self.handle_device_caps(req, resp_buf).await,
-            CommandId::MC_DEVICE_ID => self.handle_device_id(req, resp_buf).await,
-            CommandId::MC_DEVICE_INFO => self.handle_device_info(req, resp_buf).await,
-            CommandId::MC_FIPS_SELF_TEST_START => {
-                self.handle_crypto_passthrough::<McuFipsSelfTestStartReq>(
-                    req,
-                    CaliptraCommandId::SELF_TEST_START.into(),
-                    resp_buf,
-                )
+        let cmd_id = CommandId::from(cmd);
+        let result = if let Some(caliptra_cmd) = caliptra_passthrough_cmd(cmd_id) {
+            self.handle_crypto_passthrough(req_buf, req_len, caliptra_cmd, resp_buf)
                 .await
+        } else {
+            let req = req_buf
+                .get(..req_len)
+                .ok_or(MsgHandlerError::InvalidParams)?;
+            match cmd_id {
+                CommandId::MC_FIRMWARE_VERSION => self.handle_fw_version(req, resp_buf).await,
+                CommandId::MC_DEVICE_CAPABILITIES => self.handle_device_caps(req, resp_buf).await,
+                CommandId::MC_DEVICE_ID => self.handle_device_id(req, resp_buf).await,
+                CommandId::MC_DEVICE_INFO => self.handle_device_info(req, resp_buf).await,
+                #[cfg(feature = "periodic-fips-self-test")]
+                CommandId::MC_FIPS_PERIODIC_ENABLE => {
+                    self.handle_fips_periodic_enable(req, resp_buf).await
+                }
+                #[cfg(feature = "periodic-fips-self-test")]
+                CommandId::MC_FIPS_PERIODIC_STATUS => {
+                    self.handle_fips_periodic_status(req, resp_buf).await
+                }
+                CommandId::MC_GET_AUTH_CMD_CHALLENGE => {
+                    self.handle_get_auth_cmd_challenge(req, resp_buf).await
+                }
+                inner @ CommandId::MC_PROVISION_VENDOR_PK_HASH
+                | inner @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
+                | inner @ CommandId::MC_FE_PROG
+                | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH
+                | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
+                    self.handle_authorized_command(inner, req, resp_buf).await
+                }
+                CommandId::MC_EXPORT_ATTESTED_CSR => {
+                    self.handle_export_attested_csr(req, resp_buf).await
+                }
+                _ => Err(MsgHandlerError::UnsupportedCommand),
             }
-            CommandId::MC_FIPS_SELF_TEST_GET_RESULTS => {
-                self.handle_crypto_passthrough::<McuFipsSelfTestGetResultsReq>(
-                    req,
-                    CaliptraCommandId::SELF_TEST_GET_RESULTS.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            #[cfg(feature = "periodic-fips-self-test")]
-            CommandId::MC_FIPS_PERIODIC_ENABLE => {
-                self.handle_fips_periodic_enable(req, resp_buf).await
-            }
-            #[cfg(feature = "periodic-fips-self-test")]
-            CommandId::MC_FIPS_PERIODIC_STATUS => {
-                self.handle_fips_periodic_status(req, resp_buf).await
-            }
-            CommandId::MC_SHA_INIT => {
-                self.handle_crypto_passthrough::<McuShaInitReq>(
-                    req,
-                    CaliptraCommandId::CM_SHA_INIT.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_SHA_UPDATE => {
-                self.handle_crypto_passthrough::<McuShaUpdateReq>(
-                    req,
-                    CaliptraCommandId::CM_SHA_UPDATE.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_SHA_FINAL => {
-                self.handle_crypto_passthrough::<McuShaFinalReq>(
-                    req,
-                    CaliptraCommandId::CM_SHA_FINAL.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // Add HMAC command
-            CommandId::MC_HMAC => {
-                self.handle_crypto_passthrough::<McuHmacReq>(
-                    req,
-                    CaliptraCommandId::CM_HMAC.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // Add HMAC KDF Counter command
-            CommandId::MC_HMAC_KDF_COUNTER => {
-                self.handle_crypto_passthrough::<McuHmacKdfCounterReq>(
-                    req,
-                    CaliptraCommandId::CM_HMAC_KDF_COUNTER.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // Add HKDF Extract command
-            CommandId::MC_HKDF_EXTRACT => {
-                self.handle_crypto_passthrough::<McuHkdfExtractReq>(
-                    req,
-                    CaliptraCommandId::CM_HKDF_EXTRACT.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // Add HKDF Expand command
-            CommandId::MC_HKDF_EXPAND => {
-                self.handle_crypto_passthrough::<McuHkdfExpandReq>(
-                    req,
-                    CaliptraCommandId::CM_HKDF_EXPAND.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_IMPORT => {
-                self.handle_crypto_passthrough::<McuCmImportReq>(
-                    req,
-                    CaliptraCommandId::CM_IMPORT.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_DELETE => {
-                self.handle_crypto_passthrough::<McuCmDeleteReq>(
-                    req,
-                    CaliptraCommandId::CM_DELETE.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_CM_STATUS => {
-                self.handle_crypto_passthrough::<McuCmStatusReq>(
-                    req,
-                    CaliptraCommandId::CM_STATUS.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_RANDOM_GENERATE => {
-                self.handle_crypto_passthrough::<McuRandomGenerateReq>(
-                    req,
-                    CaliptraCommandId::CM_RANDOM_GENERATE.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_RANDOM_STIR => {
-                self.handle_crypto_passthrough::<McuRandomStirReq>(
-                    req,
-                    CaliptraCommandId::CM_RANDOM_STIR.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // Add AES Encrypt commands
-            CommandId::MC_AES_ENCRYPT_INIT => {
-                self.handle_crypto_passthrough::<McuAesEncryptInitReq>(
-                    req,
-                    CaliptraCommandId::CM_AES_ENCRYPT_INIT.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_AES_ENCRYPT_UPDATE => {
-                self.handle_crypto_passthrough::<McuAesEncryptUpdateReq>(
-                    req,
-                    CaliptraCommandId::CM_AES_ENCRYPT_UPDATE.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // Add AES Decrypt commands
-            CommandId::MC_AES_DECRYPT_INIT => {
-                self.handle_crypto_passthrough::<McuAesDecryptInitReq>(
-                    req,
-                    CaliptraCommandId::CM_AES_DECRYPT_INIT.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_AES_DECRYPT_UPDATE => {
-                self.handle_crypto_passthrough::<McuAesDecryptUpdateReq>(
-                    req,
-                    CaliptraCommandId::CM_AES_DECRYPT_UPDATE.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // Add AES GCM encrypt commands here.
-            CommandId::MC_AES_GCM_ENCRYPT_INIT => {
-                self.handle_crypto_passthrough::<McuAesGcmEncryptInitReq>(
-                    req,
-                    CaliptraCommandId::CM_AES_GCM_ENCRYPT_INIT.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_AES_GCM_ENCRYPT_UPDATE => {
-                self.handle_crypto_passthrough::<McuAesGcmEncryptUpdateReq>(
-                    req,
-                    CaliptraCommandId::CM_AES_GCM_ENCRYPT_UPDATE.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_AES_GCM_ENCRYPT_FINAL => {
-                self.handle_crypto_passthrough::<McuAesGcmEncryptFinalReq>(
-                    req,
-                    CaliptraCommandId::CM_AES_GCM_ENCRYPT_FINAL.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // Add AES GCM decrypt commands here.
-            CommandId::MC_AES_GCM_DECRYPT_INIT => {
-                self.handle_crypto_passthrough::<McuAesGcmDecryptInitReq>(
-                    req,
-                    CaliptraCommandId::CM_AES_GCM_DECRYPT_INIT.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_AES_GCM_DECRYPT_UPDATE => {
-                self.handle_crypto_passthrough::<McuAesGcmDecryptUpdateReq>(
-                    req,
-                    CaliptraCommandId::CM_AES_GCM_DECRYPT_UPDATE.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_AES_GCM_DECRYPT_FINAL => {
-                self.handle_crypto_passthrough::<McuAesGcmDecryptFinalReq>(
-                    req,
-                    CaliptraCommandId::CM_AES_GCM_DECRYPT_FINAL.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // Add ECDH commands
-            CommandId::MC_ECDH_GENERATE => {
-                self.handle_crypto_passthrough::<McuEcdhGenerateReq>(
-                    req,
-                    CaliptraCommandId::CM_ECDH_GENERATE.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_ECDH_FINISH => {
-                self.handle_crypto_passthrough::<McuEcdhFinishReq>(
-                    req,
-                    CaliptraCommandId::CM_ECDH_FINISH.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // Add ECDSA CMK commands
-            CommandId::MC_ECDSA_CMK_PUBLIC_KEY => {
-                self.handle_crypto_passthrough::<McuEcdsaCmkPublicKeyReq>(
-                    req,
-                    CaliptraCommandId::CM_ECDSA_PUBLIC_KEY.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_ECDSA_CMK_SIGN => {
-                self.handle_crypto_passthrough::<McuEcdsaCmkSignReq>(
-                    req,
-                    CaliptraCommandId::CM_ECDSA_SIGN.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_ECDSA_CMK_VERIFY => {
-                self.handle_crypto_passthrough::<McuEcdsaCmkVerifyReq>(
-                    req,
-                    CaliptraCommandId::CM_ECDSA_VERIFY.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // MLDSA CMK commands (passthrough to Caliptra mailbox)
-            CommandId::MC_MLDSA_CMK_PUBLIC_KEY => {
-                self.handle_crypto_passthrough::<McuMldsaCmkPublicKeyReq>(
-                    req,
-                    CaliptraCommandId::CM_MLDSA_PUBLIC_KEY.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_MLDSA_CMK_SIGN => {
-                self.handle_crypto_passthrough::<McuMldsaCmkSignReq>(
-                    req,
-                    CaliptraCommandId::CM_MLDSA_SIGN.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_MLDSA_CMK_VERIFY => {
-                self.handle_crypto_passthrough::<McuMldsaCmkVerifyReq>(
-                    req,
-                    CaliptraCommandId::CM_MLDSA_VERIFY.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            // Debug Unlock commands
-            CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
-                self.handle_crypto_passthrough::<McuProdDebugUnlockReqReq>(
-                    req,
-                    CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
-                self.handle_crypto_passthrough::<McuProdDebugUnlockTokenReq>(
-                    req,
-                    CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.into(),
-                    resp_buf,
-                )
-                .await
-            }
-            CommandId::MC_GET_AUTH_CMD_CHALLENGE => {
-                self.handle_get_auth_cmd_challenge(req, resp_buf).await
-            }
-            cmd_id @ CommandId::MC_PROVISION_VENDOR_PK_HASH
-            | cmd_id @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
-            | cmd_id @ CommandId::MC_FE_PROG
-            | cmd_id @ CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH
-            | cmd_id @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
-                self.handle_authorized_command(cmd_id, req, resp_buf).await
-            }
-            // Certificate commands
-            CommandId::MC_EXPORT_ATTESTED_CSR => {
-                self.handle_export_attested_csr(req, resp_buf).await
-            }
-            // TODO: add more command handlers.
-            // TODO: DOT runtime commands (DOT_CAK_INSTALL, DOT_LOCK, DOT_DISABLE,
-            // DOT_UNLOCK_CHALLENGE, DOT_UNLOCK) are not yet handled here. These require
-            // Ownership_Storage support and CommandId definitions to be added first.
-            _ => Err(MsgHandlerError::UnsupportedCommand),
         };
 
         self.busy.store(false, Ordering::SeqCst);
@@ -699,30 +408,22 @@ impl<'a> CmdInterface<'a> {
         Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
     }
 
-    pub async fn handle_crypto_passthrough<'r, T: Default + IntoBytes + FromBytes>(
-        &self,
-        req: &[u8],
+    pub async fn handle_crypto_passthrough<'r>(
+        &mut self,
+        req_buf: &mut [u8],
+        req_len: usize,
         caliptra_cmd_code: u32,
         resp_buf: &'r mut [u8],
     ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        let mut caliptra_req = T::default();
-        caliptra_req
-            .as_mut_bytes()
-            .get_mut(..req.len())
-            .ok_or(MsgHandlerError::InvalidParams)?
-            .copy_from_slice(req);
+        let req = req_buf
+            .get_mut(..req_len)
+            .ok_or(MsgHandlerError::InvalidParams)?;
 
         // Clear the header checksum field because it was computed for the MCU mailbox CmdID and payload.
-        caliptra_req.as_mut_bytes()[..core::mem::size_of::<MailboxReqHeader>()].fill(0);
+        req[..core::mem::size_of::<MailboxReqHeader>()].fill(0);
 
-        // Invoke Caliptra mailbox API
-        let status = execute_mailbox_cmd(
-            &self.caliptra_mbox,
-            caliptra_cmd_code,
-            caliptra_req.as_mut_bytes(),
-            resp_buf,
-        )
-        .await;
+        let status =
+            execute_mailbox_cmd(&self.caliptra_mbox, caliptra_cmd_code, req, resp_buf).await;
 
         match status {
             Ok(resp_len) => Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete)),
@@ -1095,4 +796,49 @@ impl<'a> CmdInterface<'a> {
 
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
     }
+}
+
+/// Map an MCU mailbox `CommandId` to the Caliptra mailbox command code for
+/// pure passthrough commands. Returns `None` for commands handled locally.
+fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
+    let code = match cmd {
+        CommandId::MC_FIPS_SELF_TEST_START => CaliptraCommandId::SELF_TEST_START,
+        CommandId::MC_FIPS_SELF_TEST_GET_RESULTS => CaliptraCommandId::SELF_TEST_GET_RESULTS,
+        CommandId::MC_SHA_INIT => CaliptraCommandId::CM_SHA_INIT,
+        CommandId::MC_SHA_UPDATE => CaliptraCommandId::CM_SHA_UPDATE,
+        CommandId::MC_SHA_FINAL => CaliptraCommandId::CM_SHA_FINAL,
+        CommandId::MC_HMAC => CaliptraCommandId::CM_HMAC,
+        CommandId::MC_HMAC_KDF_COUNTER => CaliptraCommandId::CM_HMAC_KDF_COUNTER,
+        CommandId::MC_HKDF_EXTRACT => CaliptraCommandId::CM_HKDF_EXTRACT,
+        CommandId::MC_HKDF_EXPAND => CaliptraCommandId::CM_HKDF_EXPAND,
+        CommandId::MC_IMPORT => CaliptraCommandId::CM_IMPORT,
+        CommandId::MC_DELETE => CaliptraCommandId::CM_DELETE,
+        CommandId::MC_CM_STATUS => CaliptraCommandId::CM_STATUS,
+        CommandId::MC_RANDOM_GENERATE => CaliptraCommandId::CM_RANDOM_GENERATE,
+        CommandId::MC_RANDOM_STIR => CaliptraCommandId::CM_RANDOM_STIR,
+        CommandId::MC_AES_ENCRYPT_INIT => CaliptraCommandId::CM_AES_ENCRYPT_INIT,
+        CommandId::MC_AES_ENCRYPT_UPDATE => CaliptraCommandId::CM_AES_ENCRYPT_UPDATE,
+        CommandId::MC_AES_DECRYPT_INIT => CaliptraCommandId::CM_AES_DECRYPT_INIT,
+        CommandId::MC_AES_DECRYPT_UPDATE => CaliptraCommandId::CM_AES_DECRYPT_UPDATE,
+        CommandId::MC_AES_GCM_ENCRYPT_INIT => CaliptraCommandId::CM_AES_GCM_ENCRYPT_INIT,
+        CommandId::MC_AES_GCM_ENCRYPT_UPDATE => CaliptraCommandId::CM_AES_GCM_ENCRYPT_UPDATE,
+        CommandId::MC_AES_GCM_ENCRYPT_FINAL => CaliptraCommandId::CM_AES_GCM_ENCRYPT_FINAL,
+        CommandId::MC_AES_GCM_DECRYPT_INIT => CaliptraCommandId::CM_AES_GCM_DECRYPT_INIT,
+        CommandId::MC_AES_GCM_DECRYPT_UPDATE => CaliptraCommandId::CM_AES_GCM_DECRYPT_UPDATE,
+        CommandId::MC_AES_GCM_DECRYPT_FINAL => CaliptraCommandId::CM_AES_GCM_DECRYPT_FINAL,
+        CommandId::MC_ECDH_GENERATE => CaliptraCommandId::CM_ECDH_GENERATE,
+        CommandId::MC_ECDH_FINISH => CaliptraCommandId::CM_ECDH_FINISH,
+        CommandId::MC_ECDSA_CMK_PUBLIC_KEY => CaliptraCommandId::CM_ECDSA_PUBLIC_KEY,
+        CommandId::MC_ECDSA_CMK_SIGN => CaliptraCommandId::CM_ECDSA_SIGN,
+        CommandId::MC_ECDSA_CMK_VERIFY => CaliptraCommandId::CM_ECDSA_VERIFY,
+        CommandId::MC_MLDSA_CMK_PUBLIC_KEY => CaliptraCommandId::CM_MLDSA_PUBLIC_KEY,
+        CommandId::MC_MLDSA_CMK_SIGN => CaliptraCommandId::CM_MLDSA_SIGN,
+        CommandId::MC_MLDSA_CMK_VERIFY => CaliptraCommandId::CM_MLDSA_VERIFY,
+        CommandId::MC_PROD_DEBUG_UNLOCK_REQ => CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ,
+        CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
+            CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN
+        }
+        _ => return None,
+    };
+    Some(code.into())
 }
