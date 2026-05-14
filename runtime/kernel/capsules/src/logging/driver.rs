@@ -10,7 +10,13 @@ use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::{ErrorCode, ProcessId};
 
 pub const LOGGING_FLASH_DRIVER_NUM: usize = 0x9001_0000;
-pub const BUF_LEN: usize = 256;
+/// Maximum entry size accepted by the syscall driver, in bytes.
+///
+/// This is the in-kernel staging buffer used to copy a userspace appslice
+/// before handing it to the log capsule. Sized to the largest entry the
+/// userspace currently produces; appends larger than this are rejected
+/// with `ErrorCode::SIZE` rather than silently truncated.
+pub const BUF_LEN: usize = 128;
 
 /// IDs for subscribed upcalls.
 mod upcall {
@@ -135,6 +141,14 @@ impl<'a> LoggingFlashDriver<'a> {
                     if needs_buffer && (allow_buf_len == 0 || self.buffer.is_none()) {
                         return Err(ErrorCode::RESERVE);
                     }
+                    // Reject oversized appends so user data is never silently
+                    // truncated. Reads are fine to clamp: the upcall returns
+                    // the actual number of bytes copied, and any entry that
+                    // overflows the staging buffer is rejected downstream by
+                    // the log capsule with `ErrorCode::SIZE`.
+                    if command == LoggingOps::Append && arg1 > BUF_LEN {
+                        return Err(ErrorCode::SIZE);
+                    }
 
                     if self.current_app.is_none() {
                         self.current_app.set(processid);
@@ -232,48 +246,61 @@ impl<'a> LoggingFlashDriver<'a> {
     }
 }
 
-impl LogReadClient for LoggingFlashDriver<'_> {
-    fn read_done(&self, buffer: &'static mut [u8], length: usize, error: Result<(), ErrorCode>) {
+impl LoggingFlashDriver<'_> {
+    /// Common upcall path shared by all five completion handlers.
+    ///
+    /// Optionally copies `buffer[..length]` into the userspace `READ` allow
+    /// buffer (only used by the read-done path), parks the kernel staging
+    /// buffer back in `self.buffer` if one was supplied, then schedules the
+    /// requested upcall slot with `args`. Finally drains the queue so the
+    /// next pending app can run.
+    fn fire_upcall(
+        &self,
+        slot: usize,
+        args: (usize, usize, usize),
+        buffer: Option<&'static mut [u8]>,
+        copy_to_read_allow: Option<usize>,
+    ) {
         if let Some(pid) = self.current_app.take() {
             let _ = self.apps.enter(pid, move |_, kernel_data| {
-                let _ = kernel_data
-                    .get_readwrite_processbuffer(rw_allow::READ)
-                    .and_then(|app_buf| {
-                        app_buf.mut_enter(|app_data| {
-                            let read_len = length.min(app_data.len());
-                            if error.is_ok() {
-                                app_data[..read_len].copy_from_slice(&buffer[..read_len]);
-                            }
-                        })
-                    });
-
-                // Replace the buffer that is used to do this read.
-                self.buffer.replace(buffer);
-
-                kernel_data
-                    .schedule_upcall(
-                        upcall::READ_DONE,
-                        (length, error.err().map(|e| e as usize).unwrap_or(0), 0),
-                    )
-                    .ok();
+                if let Some(buf) = buffer {
+                    if let Some(copy_len) = copy_to_read_allow {
+                        let _ = kernel_data
+                            .get_readwrite_processbuffer(rw_allow::READ)
+                            .and_then(|app_buf| {
+                                app_buf.mut_enter(|app_data| {
+                                    let n = copy_len.min(app_data.len());
+                                    app_data[..n].copy_from_slice(&buf[..n]);
+                                })
+                            });
+                    }
+                    self.buffer.replace(buf);
+                }
+                kernel_data.schedule_upcall(slot, args).ok();
             });
         }
-
         self.check_queue();
+    }
+}
+
+#[inline]
+fn err_code(error: Result<(), ErrorCode>) -> usize {
+    error.err().map(|e| e as usize).unwrap_or(0)
+}
+
+impl LogReadClient for LoggingFlashDriver<'_> {
+    fn read_done(&self, buffer: &'static mut [u8], length: usize, error: Result<(), ErrorCode>) {
+        let copy_len = if error.is_ok() { Some(length) } else { None };
+        self.fire_upcall(
+            upcall::READ_DONE,
+            (length, err_code(error), 0),
+            Some(buffer),
+            copy_len,
+        );
     }
 
     fn seek_done(&self, error: Result<(), ErrorCode>) {
-        if let Some(pid) = self.current_app.take() {
-            let _ = self.apps.enter(pid, move |_, kernel_data| {
-                kernel_data
-                    .schedule_upcall(
-                        upcall::SEEK_DONE,
-                        (error.err().map(|e| e as usize).unwrap_or(0), 0, 0),
-                    )
-                    .ok();
-            });
-        }
-        self.check_queue();
+        self.fire_upcall(upcall::SEEK_DONE, (err_code(error), 0, 0), None, None);
     }
 }
 
@@ -285,51 +312,20 @@ impl LogWriteClient for LoggingFlashDriver<'_> {
         records_lost: bool,
         error: Result<(), ErrorCode>,
     ) {
-        if let Some(pid) = self.current_app.take() {
-            let _ = self.apps.enter(pid, move |_, kernel_data| {
-                self.buffer.replace(buffer);
-                kernel_data
-                    .schedule_upcall(
-                        upcall::APPEND_DONE,
-                        (
-                            length,
-                            records_lost as usize,
-                            error.err().map(|e| e as usize).unwrap_or(0),
-                        ),
-                    )
-                    .ok();
-            });
-        }
-
-        self.check_queue();
+        self.fire_upcall(
+            upcall::APPEND_DONE,
+            (length, records_lost as usize, err_code(error)),
+            Some(buffer),
+            None,
+        );
     }
 
     fn sync_done(&self, error: Result<(), ErrorCode>) {
-        if let Some(pid) = self.current_app.take() {
-            let _ = self.apps.enter(pid, move |_, kernel_data| {
-                kernel_data
-                    .schedule_upcall(
-                        upcall::SYNC_DONE,
-                        (error.err().map(|e| e as usize).unwrap_or(0), 0, 0),
-                    )
-                    .ok();
-            });
-        }
-        self.check_queue();
+        self.fire_upcall(upcall::SYNC_DONE, (err_code(error), 0, 0), None, None);
     }
 
     fn erase_done(&self, error: Result<(), ErrorCode>) {
-        if let Some(pid) = self.current_app.take() {
-            let _ = self.apps.enter(pid, move |_, kernel_data| {
-                kernel_data
-                    .schedule_upcall(
-                        upcall::ERASE_DONE,
-                        (error.err().map(|e| e as usize).unwrap_or(0), 0, 0),
-                    )
-                    .ok();
-            });
-        }
-        self.check_queue();
+        self.fire_upcall(upcall::ERASE_DONE, (err_code(error), 0, 0), None, None);
     }
 }
 
