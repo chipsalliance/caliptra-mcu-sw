@@ -52,6 +52,7 @@ use caliptra_mcu_config_fpga::flash::EMULATED_EXT_OTP_PARTITION;
 use caliptra_mcu_config_fpga::flash::STAGING_PARTITION;
 #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
 use caliptra_mcu_config_fpga::flash_partition_list_imaginary_flash;
+use caliptra_mcu_platforms_common::handoff::HandOff;
 use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_romtime::CaliptraSoC;
@@ -409,6 +410,17 @@ pub unsafe fn main() {
     caliptra_mcu_romtime::set_printer(&mut FPGA_WRITER);
     #[allow(static_mut_refs)]
     caliptra_mcu_romtime::set_exiter(&mut FPGA_EXITER);
+
+    // Read handoff data before PMP setup.
+    let handoff = HandOff::new();
+    if let Some(ref handoff) = handoff {
+        caliptra_mcu_romtime::println!(
+            "[mcu-runtime] HandOff marker: 0x{:08x}",
+            handoff.rom.fht_marker
+        );
+    } else {
+        caliptra_mcu_romtime::println!("[mcu-runtime] Handoff is None");
+    }
 
     // Set up memory protection immediately after setting the trap handler, to
     // ensure that much of the board initialization routine runs with ePMP
