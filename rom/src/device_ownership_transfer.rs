@@ -35,6 +35,29 @@ pub trait OwnerPolicy {}
 #[derive(Clone, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct RecoveryPkHash(pub [u32; 12]);
 
+/// Convert a 48-byte recovery PK hash payload read from OTP into a
+/// [`RecoveryPkHash`] by reversing the bytes within each 4-byte word.
+///
+/// The vendor recovery PK hash fuse uses the same on-OTP layout as
+/// caliptra-sw's `cptra_ss_owner_pk_hash` and debug-unlock vendor PK hash
+/// fuses: each 4-byte word is stored byte-reversed relative to the natural
+/// (FIPS-standard) SHA-384 byte order. After reversing within each word,
+/// `transmute!(recovery_pk_hash.0)` yields the SHA-384 digest bytes in
+/// natural order, so it can be compared directly against the output of
+/// Caliptra's CM_SHA / SHA-384 mailbox command.
+///
+/// Aligning these three fuses on a single layout means an integrator can
+/// burn the same 48-byte value into any of them (e.g., for testing or for
+/// a shared trust anchor) without having to track per-fuse byte-order
+/// quirks.
+fn recovery_pk_hash_from_otp_bytes(mut bytes: [u8; 48]) -> RecoveryPkHash {
+    for chunk in bytes.chunks_exact_mut(4) {
+        chunk.reverse();
+    }
+    let hash: [u32; 12] = zerocopy::transmute!(bytes);
+    RecoveryPkHash(hash)
+}
+
 #[derive(Clone, Default)]
 pub struct DotFuses {
     pub enabled: bool,
@@ -76,8 +99,7 @@ impl DotFuses {
         let recovery_pk_hash = if pk_buf.iter().all(|&b| b == 0) {
             None
         } else {
-            let hash: [u32; 12] = zerocopy::transmute!(pk_buf);
-            Some(RecoveryPkHash(hash))
+            Some(recovery_pk_hash_from_otp_bytes(pk_buf))
         };
 
         Ok(DotFuses {
@@ -603,11 +625,42 @@ pub trait RecoveryTransport {
 // Shared DOT override helpers (used by both MCI and I3C flows)
 // ---------------------------------------------------------------------------
 
-/// Interpret an `EccP384PublicKey` as a `&[u32]` slice for hashing.
-pub(crate) fn ecc_key_as_u32_slice(key: &EccP384PublicKey) -> &[u32] {
-    let bytes = zerocopy::IntoBytes::as_bytes(key);
-    // EccP384PublicKey is #[repr(C)] with [u32;12]+[u32;12], always aligned.
-    unsafe { core::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) }
+/// Compute the SHA-384 of a vendor public key pair using the caliptra-sw
+/// owner-PK-hash convention (the same convention used by
+/// `cptra_ss_owner_pk_hash` and the debug-unlock vendor PK hash).
+///
+/// Inputs are the public keys in **natural FIPS byte order**, as the host
+/// sends them over the mailbox / I3C wire — `ecc_pub_key.x[i]` /
+/// `.y[i]` is `u32::from_le_bytes` of the four natural ECC bytes at offset
+/// `i*4`, and `mldsa_pub_key[i]` is `u32::from_le_bytes` of the four
+/// natural MLDSA bytes at offset `i*4`.
+///
+/// The bytes that go through SHA-384 must match caliptra-sw's image
+/// generator. From `image/gen/src/lib.rs::to_hw_format` and
+/// `image/crypto/src/rustcrypto.rs`, caliptra-sw stores the ECC public key
+/// as `[u32::from_be_bytes(natural_chunk), ...]` but the MLDSA public key
+/// as `[u32::from_le_bytes(natural_chunk), ...]`. On a little-endian
+/// target, this means the SHA input bytes are:
+///
+///   per_dword_reversed(natural ECC bytes) || natural MLDSA bytes
+///
+/// This helper reproduces that exactly by `u32::swap_bytes`-ing each ECC
+/// word before feeding it to `cm_sha384` (which hashes the raw memory
+/// bytes of the u32 words on the caliptra side). The MLDSA words are
+/// passed through unchanged.
+pub(crate) fn cm_owner_pk_hash_sha384(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    ecc_pub_key: &EccP384PublicKey,
+    mldsa_pub_key: &[u32],
+) -> McuResult<[u8; SHA384_DIGEST_SIZE]> {
+    let mut ecc_swapped = [0u32; 24];
+    let mut i = 0;
+    while i < 12 {
+        ecc_swapped[i] = ecc_pub_key.x[i].swap_bytes();
+        ecc_swapped[12 + i] = ecc_pub_key.y[i].swap_bytes();
+        i += 1;
+    }
+    cm_sha384(soc_manager, &[&ecc_swapped, mldsa_pub_key])
 }
 
 /// Verify that the vendor public keys match `recovery_pk_hash` and that
@@ -620,9 +673,9 @@ pub(crate) fn verify_override_response(
     recovery_pk_hash: &RecoveryPkHash,
     auth: &OverrideAuth<'_>,
 ) -> McuResult<()> {
-    // Verify PK hash matches OTP fuses
-    let ecc_key_u32 = ecc_key_as_u32_slice(auth.ecc_key);
-    let computed_hash = cm_sha384(soc_manager, &[ecc_key_u32, auth.mldsa_pub_key])?;
+    // Verify PK hash matches OTP fuses, using the caliptra-sw owner-PK-hash
+    // convention (per-dword-reversed ECC || natural MLDSA).
+    let computed_hash = cm_owner_pk_hash_sha384(soc_manager, auth.ecc_key, auth.mldsa_pub_key)?;
 
     let fuse_hash_bytes: [u8; 48] = transmute!(recovery_pk_hash.0);
     if !constant_time_eq::constant_time_eq(&computed_hash, &fuse_hash_bytes) {
@@ -1033,13 +1086,18 @@ pub fn dot_override_challenge_flow(
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
     })?;
 
-    // Verify vendor public key hash matches recovery PK hash in OTP fuses (ECC + MLDSA)
-    let ecc_key_u32 = ecc_key_as_u32_slice(&request.ecc_pub_key);
-    let computed_hash = cm_sha384(&mut env.soc_manager, &[ecc_key_u32, request.mldsa_pub_key])
-        .inspect_err(|_e| {
-            env.mci
-                .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
-        })?;
+    // Verify vendor public key hash matches recovery PK hash in OTP fuses
+    // using the caliptra-sw owner-PK-hash convention (per-dword-reversed
+    // ECC || natural MLDSA).
+    let computed_hash = cm_owner_pk_hash_sha384(
+        &mut env.soc_manager,
+        &request.ecc_pub_key,
+        request.mldsa_pub_key,
+    )
+    .inspect_err(|_e| {
+        env.mci
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+    })?;
 
     let fuse_hash_bytes: [u8; 48] = transmute!(recovery_pk_hash.0);
     if !constant_time_eq::constant_time_eq(&computed_hash, &fuse_hash_bytes) {
@@ -1555,5 +1613,175 @@ impl DotLockedRecoveryHandler for OverrideChallengeRecoveryHandler<'_> {
             ctx.dot_flash,
             ctx.key_type,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// All-zero OTP bytes must yield an all-zero `RecoveryPkHash`. (The
+    /// `load_from_otp` caller uses this to distinguish "fuse not burned"
+    /// from "fuse burned with some hash value", so the byte-reversal must
+    /// not change the zero detection contract.)
+    #[test]
+    fn recovery_pk_hash_zero_input_round_trips() {
+        let hash = recovery_pk_hash_from_otp_bytes([0u8; 48]);
+        assert_eq!(hash.0, [0u32; 12]);
+    }
+
+    /// A known pattern in OTP must come back as the same logical hash bytes
+    /// in natural (FIPS) SHA-384 order when viewed through
+    /// `transmute!(recovery_pk_hash.0)`.
+    ///
+    /// The OTP bytes are stored byte-reversed within each 4-byte word
+    /// (caliptra-sw fuse layout), so reading bytes `[0x03, 0x02, 0x01, 0x00, ...]`
+    /// from OTP must yield natural bytes `[0x00, 0x01, 0x02, 0x03, ...]`.
+    #[test]
+    fn recovery_pk_hash_reverses_each_word() {
+        let mut otp_bytes = [0u8; 48];
+        for (i, b) in otp_bytes.iter_mut().enumerate() {
+            // In each 4-byte word, the OTP bytes are reversed: word i contains
+            // bytes [i*4+3, i*4+2, i*4+1, i*4+0] of the natural-order hash.
+            let word = i / 4;
+            let pos_in_word = i % 4;
+            *b = (word * 4 + (3 - pos_in_word)) as u8;
+        }
+
+        let hash = recovery_pk_hash_from_otp_bytes(otp_bytes);
+        let natural_bytes: [u8; 48] = zerocopy::transmute!(hash.0);
+
+        let mut expected = [0u8; 48];
+        for (i, b) in expected.iter_mut().enumerate() {
+            *b = i as u8;
+        }
+        assert_eq!(natural_bytes, expected);
+    }
+
+    /// Applying the byte-reversal twice must reproduce the original input.
+    /// This guards against accidentally introducing an asymmetric transform.
+    #[test]
+    fn recovery_pk_hash_reverses_are_involutive() {
+        let mut input = [0u8; 48];
+        for (i, b) in input.iter_mut().enumerate() {
+            *b = (i.wrapping_mul(37) ^ 0xa5) as u8;
+        }
+
+        let first = recovery_pk_hash_from_otp_bytes(input);
+        let first_bytes: [u8; 48] = zerocopy::transmute!(first.0);
+        let second = recovery_pk_hash_from_otp_bytes(first_bytes);
+        let second_bytes: [u8; 48] = zerocopy::transmute!(second.0);
+
+        assert_eq!(second_bytes, input);
+    }
+
+    /// Verify that the recovery PK hash uses the same fuse layout as the
+    /// caliptra-sw `cptra_ss_owner_pk_hash` convention: storing the hash
+    /// as `[u32; 12]` of big-endian-decoded 4-byte chunks.
+    ///
+    /// This is the property that lets an integrator burn the same 48-byte
+    /// value into `cptra_ss_owner_pk_hash`, the debug-unlock vendor PK hash,
+    /// or `vendor_recovery_pk_hash` and have them all be interpreted as the
+    /// same logical hash.
+    #[test]
+    fn recovery_pk_hash_matches_owner_pk_hash_fuse_layout() {
+        // Take an arbitrary 48-byte hash in natural SHA-384 byte order.
+        let mut natural = [0u8; 48];
+        for (i, b) in natural.iter_mut().enumerate() {
+            *b = ((i * 7) ^ 0x5c) as u8;
+        }
+
+        // Compute the [u32; 12] representation using the caliptra-sw fuse
+        // convention (big-endian decode of each 4-byte chunk).
+        let mut caliptra_sw_words = [0u32; 12];
+        for (i, chunk) in natural.chunks_exact(4).enumerate() {
+            caliptra_sw_words[i] = u32::from_be_bytes(chunk.try_into().unwrap());
+        }
+
+        // The OTP byte layout for both fuses: take the [u32; 12] words and
+        // store them little-endian (the natural byte storage on RV32 LE).
+        let mut otp_bytes = [0u8; 48];
+        for (i, word) in caliptra_sw_words.iter().enumerate() {
+            otp_bytes[i * 4..(i + 1) * 4].copy_from_slice(&word.to_le_bytes());
+        }
+
+        // Loading via `recovery_pk_hash_from_otp_bytes` must round-trip to
+        // the FIPS-natural bytes so it can be compared against the SHA-384
+        // digest produced by Caliptra.
+        let hash = recovery_pk_hash_from_otp_bytes(otp_bytes);
+        let recovered_natural: [u8; 48] = zerocopy::transmute!(hash.0);
+        assert_eq!(recovered_natural, natural);
+    }
+
+    /// Documented example: the natural FIPS-order owner PK hash value
+    /// `48afdb073c5e0d4ee46490468ef81f2cf57249b6e76a28f5fca4de696a7d3e2ed3efc4e6774318543e95307a54988bd7`
+    /// must be burned into the fuse as the per-dword-reversed bytes
+    /// `07dbaf484e0d5e3c469064e42c1ff88eb64972f5f5286ae769dea4fc2e3e7d6ae6c4efd35418437777a30953ed78b9854`.
+    ///
+    /// When the MCU reads those fuse bytes from OTP and converts them
+    /// through `recovery_pk_hash_from_otp_bytes`, the resulting
+    /// `transmute!(recovery_pk_hash.0)` must equal the documented natural
+    /// hash. This is the value that `cm_owner_pk_hash_sha384` produces and
+    /// that the comparison in `verify_override_response` checks against.
+    #[test]
+    fn recovery_pk_hash_documented_example() {
+        const NATURAL_HASH: [u8; 48] = [
+            0x48, 0xaf, 0xdb, 0x07, 0x3c, 0x5e, 0x0d, 0x4e, 0xe4, 0x64, 0x90, 0x46, 0x8e, 0xf8,
+            0x1f, 0x2c, 0xf5, 0x72, 0x49, 0xb6, 0xe7, 0x6a, 0x28, 0xf5, 0xfc, 0xa4, 0xde, 0x69,
+            0x6a, 0x7d, 0x3e, 0x2e, 0xd3, 0xef, 0xc4, 0xe6, 0x77, 0x43, 0x18, 0x54, 0x3e, 0x95,
+            0x30, 0x7a, 0x54, 0x98, 0x8b, 0xd7,
+        ];
+        const FUSE_BYTES: [u8; 48] = [
+            0x07, 0xdb, 0xaf, 0x48, 0x4e, 0x0d, 0x5e, 0x3c, 0x46, 0x90, 0x64, 0xe4, 0x2c, 0x1f,
+            0xf8, 0x8e, 0xb6, 0x49, 0x72, 0xf5, 0xf5, 0x28, 0x6a, 0xe7, 0x69, 0xde, 0xa4, 0xfc,
+            0x2e, 0x3e, 0x7d, 0x6a, 0xe6, 0xc4, 0xef, 0xd3, 0x54, 0x18, 0x43, 0x77, 0x7a, 0x30,
+            0x95, 0x3e, 0xd7, 0x8b, 0x98, 0x54,
+        ];
+
+        // Sanity check the constants: FUSE_BYTES is per-dword reverse of NATURAL_HASH.
+        for i in 0..12 {
+            for j in 0..4 {
+                assert_eq!(FUSE_BYTES[i * 4 + j], NATURAL_HASH[i * 4 + (3 - j)]);
+            }
+        }
+
+        let hash = recovery_pk_hash_from_otp_bytes(FUSE_BYTES);
+        let recovered: [u8; 48] = zerocopy::transmute!(hash.0);
+        assert_eq!(recovered, NATURAL_HASH);
+    }
+
+    /// `cm_owner_pk_hash_sha384` operates on a stack-resident `[u32; 24]`
+    /// built by `swap_bytes`-ing each ECC u32 word. This unit test pins
+    /// down that swap_bytes is what's needed.
+    ///
+    /// On a little-endian target, the host-supplied ECC pubkey x-coordinate
+    /// bytes `[X0, X1, X2, X3, ...]` are read into `EccP384PublicKey.x[i]`
+    /// as `u32::from_le_bytes([X0, X1, X2, X3])`. After `swap_bytes()` we
+    /// get `u32::from_be_bytes([X0, X1, X2, X3])`. When that u32 is sent
+    /// over the mailbox and stored in caliptra's memory on a LE target,
+    /// the bytes that go through SHA are `[X3, X2, X1, X0]` — i.e., the
+    /// per-dword-reversed natural ECC bytes that caliptra-sw's
+    /// `to_hw_format` (using `u32::from_be_bytes`) produces in the image
+    /// generator.
+    #[test]
+    fn owner_pk_hash_ecc_swap_bytes_matches_to_hw_format() {
+        let natural_bytes: [u8; 8] = [0xA0, 0xA1, 0xA2, 0xA3, 0xB0, 0xB1, 0xB2, 0xB3];
+
+        // The way the host packs ECC bytes into u32 over the mailbox.
+        let host_word_0 = u32::from_le_bytes([0xA0, 0xA1, 0xA2, 0xA3]);
+
+        // After swap_bytes (what cm_owner_pk_hash_sha384 does to ECC u32s).
+        let swapped = host_word_0.swap_bytes();
+        assert_eq!(swapped, u32::from_be_bytes([0xA0, 0xA1, 0xA2, 0xA3]));
+
+        // The bytes that end up flowing through SHA on caliptra's LE side.
+        let bytes_through_sha = swapped.to_le_bytes();
+        assert_eq!(bytes_through_sha, [0xA3, 0xA2, 0xA1, 0xA0]);
+
+        // This is exactly the per-dword reversal of the natural bytes.
+        let mut expected = [0u8; 4];
+        expected.copy_from_slice(&natural_bytes[..4]);
+        expected.reverse();
+        assert_eq!(bytes_through_sha, expected);
     }
 }
