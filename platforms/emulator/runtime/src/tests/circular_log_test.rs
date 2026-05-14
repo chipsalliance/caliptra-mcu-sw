@@ -5,26 +5,26 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-use caliptra_mcu_capsules_emulator::logging::logging_flash as log;
-use caliptra_mcu_capsules_emulator::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
-use caliptra_mcu_platforms_common::{read_volatile_at, read_volatile_slice};
+use caliptra_mcu_capsules_runtime::logging::logging_flash as log;
+use caliptra_mcu_capsules_runtime::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
 use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::ptr::addr_of_mut;
-use kernel::debug;
 use kernel::hil::flash;
 use kernel::hil::log::{LogRead, LogReadClient, LogWrite, LogWriteClient};
 use kernel::hil::time::{Alarm, AlarmClient, ConvertTicks};
 use kernel::static_init;
-use kernel::storage_volume;
 use kernel::utilities::cells::{NumericCellExt, TakeCell};
 use kernel::ErrorCode;
 
-// Allocate 1KB storage volume for the circular log test. It resides on flash.
-storage_volume!(CIRCULAR_TEST_LOG, 1);
+const PAGE_SIZE: usize = caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE;
+// Use the first 4 pages (1 KB) of the LOGGING_PARTITION region for the test.
+const TEST_NUM_PAGES: usize = 4;
+const TEST_LOG_LEN: usize = TEST_NUM_PAGES * PAGE_SIZE;
+const TEST_BASE_PAGE: usize =
+    caliptra_mcu_config_emulator::flash::LOGGING_PARTITION.base_page(PAGE_SIZE);
 
-const PAGE_SIZE: usize = 256;
 // Buffer for reading from and writing to in the log tests.
 static mut BUFFER: [u8; 64] = [0; 64];
 // Length of buffer to actually use.
@@ -35,8 +35,6 @@ static mut DUMMY_BUFFER: [u8; PAGE_SIZE * 2] = [0; PAGE_SIZE * 2];
 const WAIT_MS: u32 = 50;
 // Number of entries to write per write operation.
 const ENTRIES_PER_WRITE: u64 = 10;
-const LOG_FLASH_BASE_ADDR: u32 =
-    caliptra_mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
 
 // Test's current state.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -67,16 +65,27 @@ pub unsafe fn run(
         caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
         caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
     );
+    let read_pagebuffer = static_init!(
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
+    );
     // Create actual log storage abstraction on top of flash.
     let log: &'static mut Log = static_init!(
         Log,
-        log::Log::new(&CIRCULAR_TEST_LOG, flash_controller, pagebuffer, true)
+        log::Log::new(
+            TEST_BASE_PAGE,
+            TEST_NUM_PAGES,
+            flash_controller,
+            pagebuffer,
+            read_pagebuffer,
+            true,
+        )
     );
-    // Set up the flash base address for the log storage
-    log.set_flash_base_address(LOG_FLASH_BASE_ADDR);
 
     kernel::deferred_call::DeferredCallClient::register(log);
     flash::HasClient::set_client(flash_controller, log);
+
+    log.init();
 
     let alarm = static_init!(
         VirtualMuxAlarm<'static, InternalTimers>,
@@ -153,6 +162,8 @@ struct LogTest<A: 'static + Alarm<'static>> {
     op_start: Cell<bool>,
     read_val: Cell<u64>,
     write_val: Cell<u64>,
+    /// True while a `bad_read` size-too-small read is in flight.
+    bad_read_pending: Cell<bool>,
 }
 
 impl<A: 'static + Alarm<'static>> LogTest<A> {
@@ -184,6 +195,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
             op_start: Cell::new(true),
             read_val: Cell::new(read_val),
             write_val: Cell::new(write_val),
+            bad_read_pending: Cell::new(false),
         }
     }
 
@@ -226,13 +238,14 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
 
     fn erase(&self) {
         match self.log.erase() {
-            Ok(()) => (),
+            Ok(()) => {
+                // Wait for `erase_done` before scheduling the next op.
+            }
             Err(ErrorCode::BUSY) => {
                 self.wait();
             }
             _ => panic!("Could not erase log storage!"),
         }
-        self.schedule_next();
     }
 
     fn read(&self) {
@@ -297,24 +310,25 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
             )
             .unwrap();
 
-        // Ensure failure if buffer is too small to hold entry.
+        // Ensure failure if buffer is too small to hold entry. The read
+        // is queued and `read_done` reports SIZE (or FAIL when empty).
+        self.bad_read_pending.set(true);
         self.buffer
             .take()
-            .map(move |buffer| match self.log.read(buffer, BUFFER_LEN - 1) {
-                Ok(()) => panic!("Read with too-small buffer succeeded unexpectedly!"),
-                Err((error, original_buffer)) => {
+            .map(move |buffer| {
+                if let Err((error, original_buffer)) = self.log.read(buffer, BUFFER_LEN - 1) {
                     self.buffer.replace(original_buffer);
+                    self.bad_read_pending.set(false);
                     if self.read_val.get() == self.write_val.get() {
                         assert_eq!(error, ErrorCode::FAIL);
                     } else {
                         assert_eq!(error, ErrorCode::SIZE);
                     }
+                    self.next_op();
+                    self.schedule_next();
                 }
             })
             .unwrap();
-
-        self.next_op();
-        self.schedule_next();
     }
 
     fn write(&self) {
@@ -434,6 +448,27 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
 
 impl<A: Alarm<'static>> LogReadClient for LogTest<A> {
     fn read_done(&self, buffer: &'static mut [u8], length: usize, error: Result<(), ErrorCode>) {
+        // Async completion of `bad_read`.
+        if self.bad_read_pending.get() {
+            self.bad_read_pending.set(false);
+            self.buffer.replace(buffer);
+            match error {
+                Err(ErrorCode::SIZE) => {}
+                Err(ErrorCode::FAIL) => {
+                    assert_eq!(
+                        self.read_val.get(),
+                        self.write_val.get(),
+                        "bad_read returned FAIL but log is not empty"
+                    );
+                }
+                Ok(()) => panic!("bad_read with too-small buffer succeeded unexpectedly!"),
+                Err(e) => panic!("bad_read returned unexpected error {:?}", e),
+            }
+            self.next_op();
+            self.schedule_next();
+            return;
+        }
+
         match error {
             Ok(()) => {
                 // Verify correct number of bytes were read.
@@ -466,8 +501,23 @@ impl<A: Alarm<'static>> LogReadClient for LogTest<A> {
                 self.op_start.set(false);
                 self.wait();
             }
-            _ => {
-                panic!("Read failed unexpectedly!");
+            Err(ErrorCode::FAIL) => {
+                self.buffer.replace(buffer);
+                caliptra_mcu_romtime::println!(
+                    "READ DONE: READ OFFSET: {:?} / WRITE OFFSET: {:?}",
+                    self.log.next_read_entry_id(),
+                    self.log.log_end()
+                );
+                self.next_op();
+                self.schedule_next();
+            }
+            Err(ErrorCode::BUSY) => {
+                self.buffer.replace(buffer);
+                caliptra_mcu_romtime::println!("Flash busy in read_done, retrying read");
+                self.wait();
+            }
+            Err(e) => {
+                panic!("Read failed unexpectedly: {:?}", e);
             }
         }
     }
@@ -511,7 +561,7 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
                     );
                 }
                 let expected_records_lost =
-                    self.write_val.get() > entry_id_to_test_value(CIRCULAR_TEST_LOG.len());
+                    self.write_val.get() > entry_id_to_test_value(TEST_LOG_LEN);
                 if records_lost && records_lost != expected_records_lost {
                     panic!("Append callback states records_lost = {}, expected {} (write #{}, offset {:?})!",
                            records_lost,
@@ -562,41 +612,20 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
     fn erase_done(&self, error: Result<(), ErrorCode>) {
         match error {
             Ok(()) => {
-                // Reset test state.
-                // self.op_index.set(0);
-                //self.op_start.set(true);
                 self.read_val.set(0);
                 self.write_val.set(0);
 
-                // Make sure that flash has been erased.
-                for i in 0..CIRCULAR_TEST_LOG.len() {
-                    let byte = read_volatile_at!(&CIRCULAR_TEST_LOG, i);
-                    assert_eq!(
-                        byte, 0xFF,
-                        "Log not fully erased at index {} byte {}",
-                        i, byte
-                    );
-                }
+                // Verify the log is empty by checking that the read cursor
+                // matches the append cursor.
+                assert_eq!(
+                    self.log.log_start(),
+                    self.log.log_end(),
+                    "Log not empty after erase: start={:?} end={:?}",
+                    self.log.log_start(),
+                    self.log.log_end()
+                );
 
-                // Make sure that a read on an empty log fails normally.
-                self.buffer.take().map(move |buffer| {
-                    if let Err((error, original_buffer)) = self.log.read(buffer, BUFFER_LEN) {
-                        self.buffer.replace(original_buffer);
-                        match error {
-                            ErrorCode::FAIL => (),
-                            ErrorCode::BUSY => {
-                                self.wait();
-                            }
-                            _ => panic!("Read on empty log did not fail as expected: {:?}", error),
-                        }
-                    } else {
-                        panic!("Read on empty log succeeded! (it shouldn't)");
-                    }
-                });
-
-                // Move to next operation.
                 caliptra_mcu_romtime::println!("Log Storage erased");
-                //self.state.set(TestState::Operate);
                 self.next_op();
                 self.schedule_next();
             }

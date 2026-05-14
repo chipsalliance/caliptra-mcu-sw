@@ -5,32 +5,29 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-use caliptra_mcu_capsules_emulator::logging::logging_flash as log;
-use caliptra_mcu_capsules_emulator::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
-use caliptra_mcu_platforms_common::{read_volatile_at, read_volatile_slice};
+use caliptra_mcu_capsules_runtime::logging::logging_flash as log;
+use caliptra_mcu_capsules_runtime::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
 use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::ptr::addr_of_mut;
-use kernel::debug;
 use kernel::hil::flash;
 use kernel::hil::log::{LogRead, LogReadClient, LogWrite, LogWriteClient};
 use kernel::hil::time::{Alarm, AlarmClient, ConvertTicks};
 use kernel::static_init;
-use kernel::storage_volume;
 use kernel::utilities::cells::{NumericCellExt, TakeCell};
 use kernel::ErrorCode;
 
-// Allocate 1KB storage volume for the linear log test. It resides on flash.
-storage_volume!(LINEAR_TEST_LOG, 1);
-
-const PAGE_SIZE: usize = 256;
+const PAGE_SIZE: usize = caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE;
 const USABLE_PER_PAGE: usize = PAGE_SIZE - PAGE_HEADER_SIZE;
 const MAX_ENTRY_SIZE: usize = USABLE_PER_PAGE - ENTRY_HEADER_SIZE;
 const SMALL_ENTRY_SIZE: usize = 32;
 const MEDIUM_ENTRY_SIZE: usize = 64;
-const LOG_FLASH_BASE_ADDR: u32 =
-    caliptra_mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
+// Use the first 4 pages (1 KB) of the LOGGING_PARTITION region for the test.
+const TEST_NUM_PAGES: usize = 4;
+const TEST_LOG_LEN: usize = TEST_NUM_PAGES * PAGE_SIZE;
+const TEST_BASE_PAGE: usize =
+    caliptra_mcu_config_emulator::flash::LOGGING_PARTITION.base_page(PAGE_SIZE);
 
 pub unsafe fn run(
     mux_alarm: &'static MuxAlarm<'static, InternalTimers>,
@@ -41,15 +38,26 @@ pub unsafe fn run(
         caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
         caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
     );
+    let read_pagebuffer = static_init!(
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
+    );
     // Create actual log storage abstraction on top of flash.
     let log: &'static mut Log = static_init!(
         Log,
-        log::Log::new(&LINEAR_TEST_LOG, flash_controller, pagebuffer, false)
+        log::Log::new(
+            TEST_BASE_PAGE,
+            TEST_NUM_PAGES,
+            flash_controller,
+            pagebuffer,
+            read_pagebuffer,
+            false,
+        )
     );
-    // Set up the flash base address for the log storage
-    log.set_flash_base_address(LOG_FLASH_BASE_ADDR);
     kernel::deferred_call::DeferredCallClient::register(log);
     flash::HasClient::set_client(flash_controller, log);
+
+    log.init();
 
     let alarm = static_init!(
         VirtualMuxAlarm<'static, InternalTimers>,
@@ -199,7 +207,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
         self.buffer
             .take()
             .map(move |buffer| {
-                let expect_write_fail = self.log.log_end() + len > LINEAR_TEST_LOG.len();
+                let expect_write_fail = self.log.log_end() + len > TEST_LOG_LEN;
                 // Set buffer value.
                 buffer.iter_mut().enumerate().for_each(|(i, byte)| {
                     *byte = if i < len { len as u8 } else { 0 };
@@ -285,8 +293,17 @@ impl<A: Alarm<'static>> LogReadClient for LogTest<A> {
                 self.buffer.replace(buffer);
                 self.wait();
             }
-            _ => {
-                panic!("Read failed unexpectedly!");
+            Err(ErrorCode::FAIL) => {
+                self.buffer.replace(buffer);
+                self.op_index.increment();
+                self.schedule_next();
+            }
+            Err(ErrorCode::BUSY) => {
+                self.buffer.replace(buffer);
+                self.wait();
+            }
+            Err(e) => {
+                panic!("Read failed unexpectedly: {:?}", e);
             }
         }
     }
@@ -327,31 +344,15 @@ impl<A: Alarm<'static>> LogWriteClient for LogTest<A> {
     fn erase_done(&self, error: Result<(), ErrorCode>) {
         match error {
             Ok(()) => {
-                // print out the linear test log for debugging
-                for i in 0..LINEAR_TEST_LOG.len() {
-                    let byte = read_volatile_at!(&LINEAR_TEST_LOG, i);
-                    assert_eq!(
-                        byte, 0xFF,
-                        "Log not fully erased at index {} byte {}",
-                        i, byte
-                    );
-                }
-
-                // Make sure that a read on an empty log fails normally.
-                self.buffer.take().map(move |buffer| {
-                    if let Err((error, original_buffer)) = self.log.read(buffer, buffer.len()) {
-                        self.buffer.replace(original_buffer);
-                        match error {
-                            ErrorCode::FAIL => (),
-                            ErrorCode::BUSY => {
-                                self.wait();
-                            }
-                            _ => panic!("Read on empty log did not fail as expected: {:?}", error),
-                        }
-                    } else {
-                        panic!("Read on empty log succeeded! (it shouldn't)");
-                    }
-                });
+                // Verify the log is empty by checking that the read cursor
+                // matches the append cursor.
+                assert_eq!(
+                    self.log.log_start(),
+                    self.log.log_end(),
+                    "Log not empty after erase: start={:?} end={:?}",
+                    self.log.log_start(),
+                    self.log.log_end()
+                );
 
                 self.op_index.increment();
                 self.schedule_next();

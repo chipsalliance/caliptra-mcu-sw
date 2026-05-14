@@ -8,6 +8,7 @@ pub mod test;
 pub mod caliptra;
 pub mod doe;
 pub mod flash_partition;
+pub mod logging;
 pub mod mailbox;
 pub mod mbox_sram;
 pub mod mci;

@@ -75,7 +75,7 @@ impl<S: Syscalls> LoggingSyscall<S> {
         })?
         .await;
         S::unallow_ro(self.driver_num, ro_allow::APPEND);
-        result.map(|_| ())
+        result.and_then(|(_len, _lost, err)| upcall_err_to_result(err).map(|_| ()))
     }
     /// Reads an entry from the log asynchronously into the provided buffer.
     ///
@@ -104,7 +104,7 @@ impl<S: Syscalls> LoggingSyscall<S> {
         })?
         .await;
         S::unallow_rw(self.driver_num, rw_allow::READ);
-        result.map(|(len, _, _)| len as usize)
+        result.and_then(|(len, err, _)| upcall_err_to_result(err).map(|_| len as usize))
     }
 
     /// Synchronizes the log to ensure all data is written to persistent storage.
@@ -115,7 +115,8 @@ impl<S: Syscalls> LoggingSyscall<S> {
     pub async fn sync(&self) -> Result<(), ErrorCode> {
         let sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::SYNC_DONE);
         S::command(self.driver_num, logging_cmd::SYNC, 0, 0).to_result::<(), ErrorCode>()?;
-        sub.await.map(|_| Ok(()))?
+        let (err, _, _) = sub.await?;
+        upcall_err_to_result(err)
     }
 
     /// Clears (erases) the log asynchronously.
@@ -126,7 +127,8 @@ impl<S: Syscalls> LoggingSyscall<S> {
     pub async fn clear(&self) -> Result<(), ErrorCode> {
         let sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::ERASE_DONE);
         S::command(self.driver_num, logging_cmd::ERASE, 0, 0).to_result::<(), ErrorCode>()?;
-        sub.await.map(|_| Ok(()))?
+        let (err, _, _) = sub.await?;
+        upcall_err_to_result(err)
     }
 
     /// Seeks to the beginning of the log asynchronously. Used by the logging system to reset the read position.
@@ -137,7 +139,16 @@ impl<S: Syscalls> LoggingSyscall<S> {
     pub async fn seek_beginning(&self) -> Result<(), ErrorCode> {
         let sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::SEEK_DONE);
         S::command(self.driver_num, logging_cmd::SEEK, 0, 0).to_result::<(), ErrorCode>()?;
-        sub.await.map(|_| Ok(()))?
+        let (err, _, _) = sub.await?;
+        upcall_err_to_result(err)
+    }
+}
+
+fn upcall_err_to_result(err: u32) -> Result<(), ErrorCode> {
+    if err == 0 {
+        Ok(())
+    } else {
+        Err(ErrorCode::try_from(err).unwrap_or(ErrorCode::Fail))
     }
 }
 

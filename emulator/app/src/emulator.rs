@@ -750,8 +750,6 @@ impl Emulator {
                     || test_feature == "test-flash-storage-erase"
                     || test_feature == "test-flash-usermode"
                     || test_feature == "test-mcu-rom-flash-access"
-                    || test_feature == "test-log-flash-linear"
-                    || test_feature == "test-log-flash-circular"
                     || test_feature == "test-log-flash-usermode";
 
                 let flash_file = if is_test {
