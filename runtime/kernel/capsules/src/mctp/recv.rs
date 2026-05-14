@@ -1,8 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use crate::mctp::base_protocol::{MCTPHeader, MessageType, MCTP_TAG_MASK, MCTP_TAG_OWNER};
-use caliptra_mcu_romtime::println;
-use core::fmt::Write;
 use kernel::collections::list::{ListLink, ListNode};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 
@@ -40,7 +38,6 @@ impl<'a> ListNode<'a, MCTPRxState<'a>> for MCTPRxState<'a> {
     }
 }
 
-#[derive(Debug)]
 struct MsgTerminus {
     msg_type: u8,
     msg_tag: u8,
@@ -117,7 +114,10 @@ impl<'a> MCTPRxState<'a> {
             let offset = msg_terminus.msg_size;
             let end_offset = offset + pkt_payload.len();
             if end_offset > self.msg_payload.map_or(0, |msg_payload| msg_payload.len()) {
-                println!("MuxMCTPDriver - Received packet with payload length greater than buffer size. Reset assembly.");
+                capsule_debug!(
+                    "MCTP",
+                    "Received packet with payload length greater than buffer size. Reset assembly."
+                );
                 return;
             }
 
@@ -189,7 +189,10 @@ impl<'a> MCTPRxState<'a> {
         recv_time: u32,
     ) {
         if mctp_hdr.som() != 1 {
-            println!("MuxMCTPDriver - Received first packet without SOM. Dropping packet.");
+            capsule_debug!(
+                "MCTP",
+                "Received first packet without SOM. Dropping packet."
+            );
             return;
         }
 
@@ -198,7 +201,7 @@ impl<'a> MCTPRxState<'a> {
         if pkt_payload_len == 0
             || pkt_payload_len > self.msg_payload.map_or(0, |msg_payload| msg_payload.len())
         {
-            println!("MuxMCTPDriver - Received bad packet length. Dropping packet.");
+            capsule_debug!("MCTP-RX", "Received bad packet length. Dropping packet.");
             return;
         }
 

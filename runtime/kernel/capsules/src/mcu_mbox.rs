@@ -112,20 +112,22 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
 
         let _result = kernel_data
             .get_readonly_processbuffer(ro_allow::RESPONSE)
-            .map_err(|e| {
-                println!(
-                    "MCU_MBOX_CAPSULE: Error getting ReadOnlyProcessBuffer buffer: {:?}",
-                    e
+            .map_err(|_e| {
+                capsule_debug!(
+                    "MCU_MBOX",
+                    "Error getting ReadOnlyProcessBuffer buffer: {}",
+                    _e as u32
                 );
                 ErrorCode::INVAL
             })
             .and_then(|tx_buf| {
                 tx_buf
                     .enter(|app_buf| self.start_transmit(app_buf))
-                    .map_err(|e| {
-                        println!(
-                            "MCU_MBOX_CAPSULE: Error getting application tx buffer: {:?}",
-                            e
+                    .map_err(|_e| {
+                        capsule_debug!(
+                            "MCU_MBOX",
+                            "Error getting application tx buffer: {}",
+                            _e as u32
                         );
                         ErrorCode::FAIL
                     })
@@ -139,8 +141,9 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
         let dw_len = dlen.div_ceil(4);
         if dw_len > app.buffered_msg.data.len() {
             // Message too large to buffer
-            println!(
-                "MCU_MBOX_CAPSULE: Cannot buffer message, size {} exceeds buffer capacity {}",
+            capsule_debug!(
+                "MCU_MBOX",
+                "Cannot buffer message, size {} exceeds buffer capacity {}",
                 dw_len,
                 app.buffered_msg.data.len()
             );
@@ -148,7 +151,10 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
         }
         // Print warning if replacing an old message
         if app.buffered_msg.valid {
-            println!("MCU_MBOX_CAPSULE: Warning - replacing old buffered message with new one");
+            capsule_debug!(
+                "MCU_MBOX",
+                "Warning - replacing old buffered message with new one"
+            );
         }
         // Always replace the old message with the new one
         app.buffered_msg.command = command;
@@ -199,27 +205,30 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
 
         match result {
             Ok(Ok(len)) => {
-                if let Err(e) = kernel_data
+                if let Err(_e) = kernel_data
                     .schedule_upcall(upcall::REQUEST_RECEIVED, (command as usize, len, 0))
                 {
-                    println!(
-                        "MCU_MBOX_CAPSULE: deliver_message error scheduling upcall: {:?}",
-                        e
+                    capsule_debug!(
+                        "MCU_MBOX",
+                        "deliver_message error scheduling upcall: {}",
+                        _e as u32
                     );
                     return Err(ErrorCode::FAIL);
                 }
             }
             Ok(Err(err)) => {
-                println!(
-                    "MCU_MBOX_CAPSULE: deliver_message error copying data to app buffer: {:?}",
-                    err
+                capsule_debug!(
+                    "MCU_MBOX",
+                    "deliver_message error copying data to app buffer: {}",
+                    err as u32
                 );
                 return Err(err);
             }
             Err(err) => {
-                println!(
-                    "MCU_MBOX_CAPSULE: deliver_message error while accessing app buffer: {:?}",
-                    err
+                capsule_debug!(
+                    "MCU_MBOX",
+                    "deliver_message error while accessing app buffer: {}",
+                    err as u32
                 );
                 return Err(err);
             }
@@ -236,8 +245,9 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
     fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dlen: usize) {
         let dw_len = dlen.div_ceil(4);
         if dw_len > rx_buf.len() {
-            println!(
-                "MCU_MBOX_CAPSULE: Received request with invalid length {}",
+            capsule_debug!(
+                "MCU_MBOX",
+                "Received request with invalid length {}",
                 dw_len
             );
             self.driver.restore_rx_buffer(rx_buf);
@@ -252,7 +262,7 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
                 return;
             }
 
-            let process_result : Result<Result<usize, ErrorCode>, ErrorCode> =
+            let process_result: Result<Result<usize, ErrorCode>, ErrorCode> =
                 match kernel_data.get_readwrite_processbuffer(rw_allow::REQUEST) {
                     Ok(rw_buf) => {
                         let copy_len_dw = core::cmp::min(rw_buf.len() / 4, dw_len);
@@ -267,30 +277,43 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
                                 Ok(core::cmp::min(copy_len_dw * 4, dlen))
                             })
                             .map_err(|e| {
-                                println!("MCU_MBOX_CAPSULE: Error entering WriteableProcessBuffer buffer: {:?}", e);
+                                capsule_error!(
+                                    "MCU_MBOX",
+                                    "Error entering WriteableProcessBuffer buffer: 0x{:08x}",
+                                    e as u32
+                                );
                                 e.into()
                             })
                     }
-                    Err(err) => {
-                        println!(
-                            "MCU_MBOX_CAPSULE: Error getting WriteableProcessBuffer buffer: {:?}",
-                            err
+                    Err(_err) => {
+                        capsule_debug!(
+                            "MCU_MBOX",
+                            "Error getting WriteableProcessBuffer buffer: {}",
+                            _err as u32
                         );
                         Err(ErrorCode::INVAL)
                     }
                 };
 
-            match process_result  {
+            match process_result {
                 Ok(Ok(len)) => {
                     kernel_data
                         .schedule_upcall(upcall::REQUEST_RECEIVED, (command as usize, len, 0))
                         .ok();
                 }
                 Ok(Err(err)) => {
-                    println!("MCU_MBOX_CAPSULE: Error copying data to app buffer: {:?}", err);
+                    capsule_error!(
+                        "MCU_MBOX",
+                        "Error copying data to app buffer: 0x{:08x}",
+                        err as u32
+                    );
                 }
                 Err(err) => {
-                    println!("MCU_MBOX_CAPSULE: Error while accessing app buffer: {:?}", err);
+                    capsule_error!(
+                        "MCU_MBOX",
+                        "Error while accessing app buffer: 0x{:08x}",
+                        err as u32
+                    );
                 }
             }
         });

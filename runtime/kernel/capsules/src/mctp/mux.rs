@@ -202,8 +202,9 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         let resp_len = MCTP_CTRL_MSG_HEADER_LEN + MCTP_HDR_SIZE + mctp_ctrl_cmd.resp_data_len();
 
         if req_buf.len() < mctp_ctrl_cmd.req_data_len() {
-            println!(
-                "MuxMCTPDriver: Invalid buffer len Dropping packet. {:?} ctrl_cmd_len {:?}",
+            capsule_debug!(
+                "MCTP",
+                "Invalid buffer len Dropping packet. {} ctrl_cmd_len {}",
                 req_buf.len(),
                 mctp_ctrl_cmd.req_data_len()
             );
@@ -289,13 +290,13 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
                 {
                     Ok(_) => (),
                     Err((err, buf)) => {
-                        println!("MuxMCTPDriver: Failed to transmit {:?}", err);
+                        capsule_error!("MCTP-MUX", "Failed to transmit: 0x{:x}", err as u32);
                         self.tx_pkt_buffer.replace(buf);
                     }
                 }
             }
             Err(err) => {
-                println!("MuxMCTPDriver: Failed to start transmit {:?}", err);
+                capsule_error!("MCTP-MUX", "Failed to start transmit: 0x{:x}", err as u32);
                 self.tx_pkt_buffer.replace(tx_pkt.take());
             }
         }
@@ -310,8 +311,9 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         // Check if the first packet of a multi-packet message has at least length of
         // MCTP_BASELINE_TRANSMISSION_UNIT bytes.
         if mctp_hdr.eom() == 0 && pkt_payload.len() < MCTP_BASELINE_TRANSMISSION_UNIT {
-            println!(
-                "MuxMCTPDriver: Received first packet with less than 64 bytes. Dropping packet."
+            capsule_debug!(
+                "MCTP",
+                "Received first packet with less than 64 bytes. Dropping packet."
             );
             return;
         }
@@ -325,19 +327,25 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
             let recv_time = self.clock.now().into_u32();
             rx_state.start_receive(mctp_hdr, msg_type, pkt_payload, recv_time);
         } else {
-            println!("MuxMCTPDriver: No matching receive request found. Dropping packet.");
+            capsule_debug!(
+                "MCTP",
+                "No matching receive request found. Dropping packet."
+            );
         }
     }
 
     #[inline(never)]
     fn process_packet(&self, mctp_hdr: MCTPHeader, pkt_payload: &[u8]) {
         if self.local_eid != mctp_hdr.dest_eid().into() {
-            println!("MuxMCTPDriver: Packet not for this Endpoint. Dropping packet.");
+            capsule_debug!("MCTP-MUX", "Packet not for this Endpoint. Dropping packet.");
             return;
         }
 
         if mctp_hdr.eom() != 1 && pkt_payload.len() < MCTP_BASELINE_TRANSMISSION_UNIT {
-            println!("MuxMCTPDriver: Received first or middle packet with less than 64 bytes. Dropping packet.");
+            capsule_debug!(
+                "MCTP",
+                "Received first or middle packet with less than 64 bytes. Dropping packet."
+            );
             return;
         }
 
@@ -346,14 +354,14 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
             .iter()
             .find(|rx_state| rx_state.is_next_packet(mctp_hdr, pkt_payload.len()));
 
-        match rx_state {
-            Some(rx_state) => {
-                let recv_time = self.clock.now().into_u32();
-                rx_state.receive_next(mctp_hdr, pkt_payload, recv_time);
-            }
-            None => {
-                println!("MuxMCTPDriver: No matching receive request found. Dropping packet.");
-            }
+        if let Some(rx_state) = rx_state {
+            let recv_time = self.clock.now().into_u32();
+            rx_state.receive_next(mctp_hdr, pkt_payload, recv_time);
+        } else {
+            capsule_debug!(
+                "MCTP",
+                "No matching receive request found. Dropping packet."
+            );
         }
     }
 
@@ -384,7 +392,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportTxClient for MuxMCT
 impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, A, M> {
     fn receive(&self, rx_buffer: &'static mut [u8], len: usize) {
         if len == 0 || len > rx_buffer.len() {
-            println!("MuxMCTPDriver: Invalid packet length. Dropping packet.");
+            capsule_debug!("MCTP-MUX", "Invalid packet length. Dropping packet.");
             self.rx_pkt_buffer.replace(rx_buffer);
             return;
         }
@@ -400,7 +408,10 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCT
                         let _ = self
                             .process_mctp_control_msg(mctp_header, &rx_buffer[payload_offset..len]);
                     } else {
-                        println!("MuxMCTPDriver: Invalid MCTP Control message. Dropping packet.");
+                        capsule_debug!(
+                            "MCTP-MUX",
+                            "Invalid MCTP Control message. Dropping packet."
+                        );
                     }
                 }
                 MessageType::Pldm
@@ -415,7 +426,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCT
                     );
                 }
                 _ => {
-                    println!("MuxMCTPDriver: Unsupported message type. Dropping packet.");
+                    capsule_debug!("MCTP-MUX", "Unsupported message type. Dropping packet.");
                 }
             }
         } else {
