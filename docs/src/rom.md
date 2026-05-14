@@ -67,7 +67,7 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
       1. Caliptra runtime returns to mailbox processing mode.
       1. MCU derives or imports the decryption key to the Caliptra cryptographic mailbox.
       1. MCU issues a CM_AES_GCM_DECRYPT_DMA command to decrypt the firmware in MCU SRAM.
-      1. MCU issues the ACTIVATE_FIRMWARE command to Caliptra to activate the MCU firmware.
+      1. MCU issues the `ACTIVATE_FIRMWARE` command to Caliptra (with the `INITIAL_ACTIVATE` flag) to publish `FW_EXEC_CTRL[2]` without triggering the hitless update reset sequence.
    1. Caliptra sets the MCI [`FW_EXEC_CTRL[2]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_GENERIC_FW_EXEC_CTRL%5B0%5D) bit to indicate that MCU firmware is ready
 1. Wait for Caliptra to indicate MCU firmware is ready by polling the firmware ready status.
 1. Stash the MCU ROM and other security-sensitive measurements to Caliptra. (In 2.1 subsystem mode, this should happen after Caliptra runtime is available using CM_SHA_{INIT,UPDATE,FINAL}. In 2.0 or 2.1 core mode, this could potentially happen earlier using the CM_SHA ROM command.)
@@ -139,7 +139,7 @@ sequenceDiagram
 
 ### Hitless Firmware Update Flow
 
-Hitless Update Flow is triggered when MCU runtime FW requests an update of the MCU FW by sending the `ACTIVATE_FIRMWARE` mailbox command to Caliptra. Upon receiving the mailbox command, Caliptra will initialize the MCU reset sequence causing the MCU to boot to ROM and run the Hitless Firmware Update Flow.
+Hitless Update Flow is triggered when MCU runtime FW requests an update of the MCU FW by sending the `ACTIVATE_FIRMWARE` mailbox command to Caliptra (without the `INITIAL_ACTIVATE` flag). Upon receiving the mailbox command, Caliptra will initialize the MCU reset sequence causing the MCU to boot to ROM and run the Hitless Firmware Update Flow.
 
 1. Check the MCI `RESET_REASON` register for reset status (it should be in hitless firmware update mode `FirmwareHitlessUpdate`).
 1. Enable the `notif_cptra_mcu_reset_req_sts` interrupt.
