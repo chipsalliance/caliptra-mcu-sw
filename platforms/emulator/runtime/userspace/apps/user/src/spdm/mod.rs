@@ -61,14 +61,14 @@ fn log_spdm_err<W: Write>(w: &mut W, prefix: &str, msg: &str, e: &SpdmError) {
 #[embassy_executor::task]
 pub(crate) async fn spdm_task(spawner: Spawner) {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
-    writeln!(console_writer, "SPDM_TASK: Running SPDM-TASK...").unwrap();
+    crate::console_writeln!(console_writer, "SPDM_TASK: Running SPDM-TASK...");
 
     // Initialize the shared large message buffer (once, before spawning responders)
     shared_large_msg_buf::init();
 
     // Initialize the shared certificate store
     if let Err(e) = initialize_cert_store().await {
-        writeln!(
+        crate::console_writeln!(
             console_writer,
             "SPDM_TASK: Failed to initialize certificate store: 0x{:08x}",
             e.error_code()
@@ -300,7 +300,7 @@ async fn spdm_doe_responder() {
         match result {
             Ok(_) => {}
             Err(SpdmError::Transport(TransportError::DriverError(ErrorCode::NoDevice))) => {
-                writeln!(cw, "SPDM_DOE_RESPONDER: No DOE device, exiting task").unwrap();
+                crate::console_writeln!(cw, "SPDM_DOE_RESPONDER: No DOE device, exiting task");
                 break;
             }
             Err(e) => {

@@ -31,6 +31,11 @@ pub struct Common {
     /// the target directory based on the workspace directory.
     #[arg(long)]
     pub target_dir: Option<PathBuf>,
+
+    /// The cargo profile to build with (passed to `cargo rustc --profile <name>`).  Defaults to
+    /// `release`; built artifacts land in `target/<tuple>/<profile>/`.
+    #[arg(long, default_value = "release")]
+    pub profile: String,
 }
 
 impl Common {
@@ -56,12 +61,23 @@ impl Common {
         }
     }
 
-    /// Retrieve the release directory, using the target tuple for the manifest and an invocation
-    /// of `target_dir`.
+    /// Retrieve the cargo profile name (defaults to `"release"` if unset / empty).
+    pub fn profile(&self) -> &str {
+        if self.profile.is_empty() {
+            "release"
+        } else {
+            &self.profile
+        }
+    }
+
+    /// Retrieve the build-output directory: `<target>/<tuple>/<profile>/`.
+    /// Named `release_dir` for backwards compatibility — historically the bundler always built
+    /// with `--release` and emitted into `target/<tuple>/release/`.
     pub fn release_dir(&self) -> Result<PathBuf> {
         let manifest = self.manifest()?;
+        let profile = self.profile().to_string();
         self.target_dir()
-            .map(|t| t.join(manifest.platform.tuple).join("release"))
+            .map(|t| t.join(manifest.platform.tuple).join(profile))
     }
 
     /// Create a new Common struct for testing purposes.
@@ -72,6 +88,7 @@ impl Common {
             workspace_dir: Some(workspace_dir),
             svn: None,
             target_dir: None,
+            profile: "release".to_string(),
         }
     }
 }

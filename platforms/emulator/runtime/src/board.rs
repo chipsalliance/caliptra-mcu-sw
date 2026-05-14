@@ -124,10 +124,12 @@ struct VeeR {
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
-    console: &'static capsules_core::console::Console<'static>,
-    lldb: &'static capsules_core::low_level_debug::LowLevelDebug<
-        'static,
-        capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
+    console: Option<&'static capsules_core::console::Console<'static>>,
+    lldb: Option<
+        &'static capsules_core::low_level_debug::LowLevelDebug<
+            'static,
+            capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
+        >,
     >,
     scheduler: &'static CooperativeSched<'static>,
     scheduler_timer:
@@ -172,8 +174,12 @@ impl SyscallDriverLookup for VeeR {
     {
         match driver_num {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
-            capsules_core::console::DRIVER_NUM => f(Some(self.console)),
-            capsules_core::low_level_debug::DRIVER_NUM => f(Some(self.lldb)),
+            capsules_core::console::DRIVER_NUM => f(self
+                .console
+                .map(|c| c as &dyn kernel::syscall::SyscallDriver)),
+            capsules_core::low_level_debug::DRIVER_NUM => {
+                f(self.lldb.map(|l| l as &dyn kernel::syscall::SyscallDriver))
+            }
             caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM => {
                 f(Some(self.mctp_spdm))
             }
@@ -566,32 +572,53 @@ pub unsafe fn main() {
     CHIP = Some(chip);
 
     // Create a shared UART channel for the console and for kernel debug.
+    // The DebugWriter must always be initialized because the kernel's `debug!()`
+    // macro and panic/fault handlers unconditionally call `get_debug_writer()`.
     let uart_mux = components::console::UartMuxComponent::new(&emulator_peripherals.uart, 115200)
         .finalize(components::uart_mux_component_static!());
 
     // Create the debugger object that handles calls to `debug!()`.
+    // Must always be present — the kernel's panic handler and fault diagnostics
+    // require it.  The `no_debug_panics` feature only gates process-info
+    // printing, not the writer itself.
     components::debug_writer::DebugWriterComponent::new(uart_mux)
         .finalize(components::debug_writer_component_static!());
 
-    let lldb = components::lldb::LowLevelDebugComponent::new(
-        board_kernel,
-        capsules_core::low_level_debug::DRIVER_NUM,
-        uart_mux,
-    )
-    .finalize(components::low_level_debug_component_static!());
+    // LowLevelDebug capsule (alert-code printer used by user-app panic
+    // handlers).  Stripped in `release` builds.
+    #[cfg(not(feature = "release"))]
+    let lldb = Some(
+        components::lldb::LowLevelDebugComponent::new(
+            board_kernel,
+            capsules_core::low_level_debug::DRIVER_NUM,
+            uart_mux,
+        )
+        .finalize(components::low_level_debug_component_static!()),
+    );
+    #[cfg(feature = "release")]
+    let lldb = None;
 
-    // Setup the console.
-    let console = components::console::ConsoleComponent::new(
-        board_kernel,
-        capsules_core::console::DRIVER_NUM,
-        uart_mux,
-    )
-    .finalize(components::console_component_static!());
+    // Setup the console.  Userspace `Console::<>::writer()` writes to this
+    // syscall driver.  Stripped in `release` builds; user-app `writeln!()` calls use `let _ = ...`
+    // so the syscall returning `NoDevice` does not panic.
+    #[cfg(not(feature = "release"))]
+    let console = Some(
+        components::console::ConsoleComponent::new(
+            board_kernel,
+            capsules_core::console::DRIVER_NUM,
+            uart_mux,
+        )
+        .finalize(components::console_component_static!()),
+    );
+    #[cfg(feature = "release")]
+    let console = None;
 
     // Create a process printer for panic.
-
-    // disabled by default as this takes almost 20 KB of code space
-    if cfg!(feature = "debug") {
+    // Disabled by default as this takes almost 20 KB of code space.  Use the
+    // attribute form (not `if cfg!(...)`) so the body — which references
+    // `uart_mux` — is excluded from compilation when the feature is off.
+    #[cfg(not(feature = "release"))]
+    {
         let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
             .finalize(components::process_printer_text_component_static!());
         PROCESS_PRINTER = Some(process_printer);
@@ -914,7 +941,13 @@ pub fn run_kernel_op(loops: usize) {
 /// - The watchdog timer should be disabled so tests are not killed by it.
 ///
 /// Exits the emulator if a test returns an exit code.
-#[allow(unused_variables)]
+///
+/// Each test arm is gated with `#[cfg(feature = "...")]` (attribute form, not
+/// `if cfg!(...)`) so test bodies — including their `crate::tests::*` module
+/// references and `storage_volume!()` allocations — are excluded from
+/// compilation entirely when their feature is off.  This keeps the test code
+/// out of production builds.
+#[allow(unused_variables, unused_mut, unused_assignments)]
 fn run_kernel_tests(
     mux_alarm: &'static MuxAlarm<'static, InternalTimers<'static>>,
     emulator_peripherals: &'static EmulatorPeripherals<'static>,
@@ -924,59 +957,88 @@ fn run_kernel_tests(
         caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding<'static>,
     >,
 ) {
-    let exit = if cfg!(feature = "test-exit-immediately") {
+    let mut exit: Option<u32> = None;
+
+    #[cfg(feature = "test-exit-immediately")]
+    {
         debug!("Executing test-exit-immediately");
-        Some(0)
-    } else if cfg!(feature = "test-i3c-simple") {
+        exit = Some(0);
+    }
+    #[cfg(feature = "test-i3c-simple")]
+    {
         debug!("Executing test-i3c-simple");
-        crate::tests::i3c_target_test::run_test_i3c_simple()
-    } else if cfg!(feature = "test-i3c-constant-writes") {
+        exit = crate::tests::i3c_target_test::run_test_i3c_simple();
+    }
+    #[cfg(feature = "test-i3c-constant-writes")]
+    {
         debug!("Executing test-i3c-constant-writes");
-        crate::tests::i3c_target_test::run_test_i3c_constant_writes()
-    } else if cfg!(feature = "test-flash-ctrl-init") {
+        exit = crate::tests::i3c_target_test::run_test_i3c_constant_writes();
+    }
+    #[cfg(feature = "test-flash-ctrl-init")]
+    {
         debug!("Executing test-flash-ctrl-init");
-        crate::tests::flash_ctrl_test::test_flash_ctrl_init()
-    } else if cfg!(feature = "test-flash-ctrl-read-write-page") {
+        exit = crate::tests::flash_ctrl_test::test_flash_ctrl_init();
+    }
+    #[cfg(feature = "test-flash-ctrl-read-write-page")]
+    {
         debug!("Executing test-flash-ctrl-read-write-page");
-        crate::tests::flash_ctrl_test::test_flash_ctrl_read_write_page()
-    } else if cfg!(feature = "test-flash-ctrl-erase-page") {
+        exit = crate::tests::flash_ctrl_test::test_flash_ctrl_read_write_page();
+    }
+    #[cfg(feature = "test-flash-ctrl-erase-page")]
+    {
         debug!("Executing test-flash-ctrl-erase-page");
-        crate::tests::flash_ctrl_test::test_flash_ctrl_erase_page()
-    } else if cfg!(feature = "test-flash-storage-read-write") {
+        exit = crate::tests::flash_ctrl_test::test_flash_ctrl_erase_page();
+    }
+    #[cfg(feature = "test-flash-storage-read-write")]
+    {
         debug!("Executing test-flash-storage-read-write");
-        crate::tests::flash_storage_test::test_flash_storage_read_write()
-    } else if cfg!(feature = "test-flash-storage-erase") {
+        exit = crate::tests::flash_storage_test::test_flash_storage_read_write();
+    }
+    #[cfg(feature = "test-flash-storage-erase")]
+    {
         debug!("Executing test-flash-storage-erase");
-        crate::tests::flash_storage_test::test_flash_storage_erase()
-    } else if cfg!(feature = "test-mcu-rom-flash-access") {
+        exit = crate::tests::flash_storage_test::test_flash_storage_erase();
+    }
+    #[cfg(feature = "test-mcu-rom-flash-access")]
+    {
         debug!("Executing test-mcu-rom-flash-access");
-        Some(0)
-    } else if cfg!(feature = "test-doe-transport-loopback") {
+        exit = Some(0);
+    }
+    #[cfg(feature = "test-doe-transport-loopback")]
+    {
         debug!("Executing test-doe-transport-loopback");
-        crate::tests::doe_transport_test::test_doe_transport_loopback()
-    } else if cfg!(feature = "test-log-flash-circular") {
+        exit = crate::tests::doe_transport_test::test_doe_transport_loopback();
+    }
+    #[cfg(feature = "test-log-flash-circular")]
+    {
         debug!("Executing test-log-flash-circular");
         unsafe {
-            crate::tests::circular_log_test::run(
+            exit = crate::tests::circular_log_test::run(
                 mux_alarm,
                 &emulator_peripherals.primary_flash_ctrl,
-            )
+            );
         }
-    } else if cfg!(feature = "test-log-flash-linear") {
+    }
+    #[cfg(feature = "test-log-flash-linear")]
+    {
         debug!("Executing test-log-flash-linear");
         unsafe {
-            crate::tests::linear_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
+            exit = crate::tests::linear_log_test::run(
+                mux_alarm,
+                &emulator_peripherals.primary_flash_ctrl,
+            );
         }
-    } else if cfg!(feature = "test-mcu-mbox-driver") {
+    }
+    #[cfg(feature = "test-mcu-mbox-driver")]
+    {
         debug!("Executing test-mcu-mbox-driver");
-        crate::tests::mcu_mbox_test::test_mcu_mbox()
-    } else if cfg!(feature = "test-mcu-mbox-soc-requester-loopback") {
+        exit = crate::tests::mcu_mbox_test::test_mcu_mbox();
+    }
+    #[cfg(feature = "test-mcu-mbox-soc-requester-loopback")]
+    {
         debug!("Executing test-mcu-mbox-soc-requester-loopback");
         crate::tests::mcu_mbox_driver_loopback_test::test_mcu_mbox_soc_requester_loopback();
-        None
-    } else {
-        None
-    };
+    }
 
     #[cfg(feature = "test-mctp-capsule-loopback")]
     {

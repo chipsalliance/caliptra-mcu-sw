@@ -17,7 +17,12 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     dccm_properties: MemoryRegionType::MEMORY,
 
     sram_offset: 0x4000_0000,
-    sram_size: 512 * 1024, // TEMPORARY: Increased SRAM size to accommodate integration testing
+    // 1 MB SRAM declared.  Default `devel` builds use the full region; `release`
+    // builds (selected by `xtask runtime-build --profile release`) use a linker
+    // layout that fits in the lower 512 KB to mirror the real device.  Setting
+    // the const to the larger value covers both cases at runtime — the release
+    // image just doesn't reference the upper half.
+    sram_size: 1024 * 1024,
     sram_properties: MemoryRegionType::MEMORY,
 
     pic_offset: 0x6000_0000,

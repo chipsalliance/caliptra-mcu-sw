@@ -112,6 +112,16 @@ enum Commands {
         /// Platform to build for. Default: emulator
         #[arg(long)]
         platform: Option<String>,
+
+        /// Cargo profile to build with.  Default: `devel` (1 MB SRAM, all
+        /// debug components present, `release` cargo feature OFF — suitable for
+        /// live debugging and dev-time iteration).  Use `--profile release`
+        /// for the constrained 512 KB SRAM layout that mirrors the real
+        /// device, with the `release` cargo feature auto-enabled (strips kernel
+        /// `debug!()`, romtime `println!()`, DebugWriter, Console,
+        /// LowLevelDebug, ProcessConsole).
+        #[arg(long, default_value = "devel")]
+        profile: String,
     },
     /// Build ROM
     RomBuild {
@@ -179,6 +189,10 @@ enum Commands {
         /// Device model string for firmware components (e.g. "DeviceX")
         #[arg(long, value_name = "MODEL")]
         model: Option<String>,
+
+        /// Cargo profile to build with.  Default: `devel`.
+        #[arg(long, default_value = "devel")]
+        profile: String,
     },
     /// Generate CoRIM (Concise Reference Integrity Manifest) from build artifacts
     Corim {
@@ -235,6 +249,10 @@ enum Commands {
         /// A specific test filter to apply (e.g., "test(my_test)")
         #[arg(long)]
         test_filter: Option<String>,
+
+        /// Nextest profile to use (default: nightly-emulator)
+        #[arg(long)]
+        nextest_profile: Option<String>,
     },
     /// Archive tests to a file
     TestArchive {
@@ -494,6 +512,7 @@ fn main() {
             pldm_manifest,
             vendor,
             model,
+            profile,
         } => caliptra_mcu_builder::all_build(caliptra_mcu_builder::AllBuildArgs {
             output: output.as_deref(),
             platform: platform.as_deref(),
@@ -505,6 +524,7 @@ fn main() {
             pldm_manifest: pldm_manifest.as_deref(),
             vendor: vendor.as_deref(),
             model: model.as_deref(),
+            profile: Some(profile.as_str()),
         }),
         Commands::EmulatorBuild { output } => {
             caliptra_mcu_builder::emulator_build(caliptra_mcu_builder::EmulatorBuildArgs {
@@ -516,13 +536,26 @@ fn main() {
             features,
             output,
             platform,
+            profile,
         } => {
+            // The opt-in `release` cargo profile auto-enables the `release` cargo
+            // feature, which strips the kernel `debug!()` macro, romtime
+            // `println!`, DebugWriter, Console, LowLevelDebug, and
+            // ProcessConsole.  The bundler also uses the default 512 KB SRAM
+            // platform manifest.  The default `devel` profile keeps all of
+            // those for live-debugging-friendly builds with the 1 MB SRAM
+            // layout.
+            let mut features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
+            if profile == "release" && !features.contains(&"release") {
+                features.push("release");
+            }
             let features_str = features.join(",");
             caliptra_mcu_builder::runtime_build_with_apps(
                 &caliptra_mcu_builder::CaliptraBuildArgs {
                     features: Some(&features_str),
                     output_name: output.clone(),
                     platform: platform.as_deref(),
+                    profile: Some(profile.as_str()),
                     ..Default::default()
                 },
             )
@@ -574,6 +607,7 @@ fn main() {
             firmware_bundle,
             emulator_bundle,
             test_filter,
+            nextest_profile,
         } => test::test(test::TestArgs {
             archive: archive.as_deref().and_then(|p| p.to_str()),
             shard: shard.as_deref(),
@@ -581,6 +615,7 @@ fn main() {
             firmware_bundle: firmware_bundle.as_deref().and_then(|p| p.to_str()),
             emulator_bundle: emulator_bundle.as_deref().and_then(|p| p.to_str()),
             test_filter: test_filter.as_deref(),
+            nextest_profile: nextest_profile.as_deref(),
         }),
         Commands::TestArchive { archive } => test::test_archive(archive.clone()),
         Commands::RegistersAutogen {

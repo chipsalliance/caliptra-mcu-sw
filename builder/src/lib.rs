@@ -26,6 +26,13 @@ pub struct CaliptraBuildArgs<'a> {
     pub output_name: Option<String>,
     pub example_app: bool,
     pub svn: Option<u16>,
+    /// Cargo profile name to build with (e.g. `"release"` or `"devel"`).
+    /// When `None`, builds use `release`.  Drives both the `cargo --profile
+    /// <name>` invocation and the bundler manifest selection (`devel` swaps to
+    /// the `*-devel.toml` platform manifest with the larger 1 MB SRAM
+    /// dev-time layout; everything else falls through to the default 512 KB
+    /// shipping layout).
+    pub profile: Option<&'a str>,
     pub caliptra_rom: Option<PathBuf>,
     pub caliptra_firmware: Option<PathBuf>,
     pub soc_manifest: Option<PathBuf>,

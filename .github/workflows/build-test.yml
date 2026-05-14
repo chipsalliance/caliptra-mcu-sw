@@ -97,11 +97,25 @@ jobs:
           cargo run -p xtask --features parallel-build -- all-build --platform emulator --separate-runtimes
           sccache --show-stats
 
+      - name: Build release ROM and runtime binaries
+        run: |
+          cargo run -p xtask --features parallel-build -- all-build \
+            --platform emulator --separate-runtimes \
+            --profile release
+          sccache --show-stats
+
       - name: Upload firmware bundle
         uses: actions/upload-artifact@v4
         with:
           name: firmware-bundle
           path: target/all-fw.zip
+          retention-days: 1
+
+      - name: Upload release firmware bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-firmware-bundle
+          path: target/all-fw-release.zip
           retention-days: 1
 
   build-emulator:
@@ -277,6 +291,12 @@ jobs:
           name: firmware-bundle
           path: target/
 
+      - name: Download release firmware bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: release-firmware-bundle
+          path: target/
+
       - name: Download emulator bundle
         uses: actions/download-artifact@v4
         with:
@@ -303,17 +323,34 @@ jobs:
             --emulator-bundle "${PWD}/target/emulators.zip" \
             --workspace-remap .
 
-      - name: Move junit xml
+      - name: Move devel junit xml
         if: success() || failure()
         run: |
           sudo mv /tmp/junit.xml /tmp/junit-${{ matrix.shard }}.xml
+
+      - name: Run release tests (shard ${{ matrix.shard }}/4)
+        run: |
+          cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
+            --archive /tmp/nextest-archive.tar.zst \
+            --shard hash:${{ matrix.shard }}/4 \
+            --firmware-bundle "${PWD}/target/all-fw-release.zip" \
+            --emulator-bundle "${PWD}/target/emulators.zip" \
+            --workspace-remap . \
+            --nextest-profile nightly-release
+
+      - name: Move release junit xml
+        if: success() || failure()
+        run: |
+          sudo mv /tmp/junit.xml /tmp/junit-release-${{ matrix.shard }}.xml
 
       - name: 'Upload test results'
         uses: actions/upload-artifact@v4
         if: success() || failure()
         with:
           name: caliptra-test-results-${{ matrix.shard }}
-          path: /tmp/junit-${{ matrix.shard }}.xml
+          path: |
+            /tmp/junit-${{ matrix.shard }}.xml
+            /tmp/junit-release-${{ matrix.shard }}.xml
           retention-days: 1
 
   print_test_results:

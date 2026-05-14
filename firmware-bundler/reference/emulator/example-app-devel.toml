@@ -1,10 +1,10 @@
 # Licensed under the Apache-2.0 license
 #
-# Default (`release` profile) bundler manifest for the emulator example-app
-# build.  Uses the constrained 512 KB SRAM layout that mirrors the real device,
-# paired with the `release` cargo feature (auto-enabled by `xtask runtime-build
-# --profile release`).  See `example-app-devel.toml` for the larger 1 MB
-# devel-time layout.
+# Devel-time (`devel` profile) bundler manifest for the emulator example-app
+# build.  Uses a larger 1 MB SRAM layout (vs the 512 KB shipping layout in
+# `example-app.toml`) so debug-only Tock components fit alongside the kernel +
+# app, and is paired with the default cargo features (without the `release` cargo feature).  Selected by
+# `xtask runtime-build --profile devel` and `xtask runtime`.
 
 [platform]
 name = "emulator-example-app"
@@ -17,7 +17,7 @@ offset = 0x8000_0000
 size = 0x1_0000
 
 [platform.runtime_memory]
-sram = { offset = 0x4000_0000, size = 0x8_0000 }
+sram = { offset = 0x4000_0000, size = 0x10_0000 }
 
 [platform.dccm]
 offset = 0x5000_0000
@@ -41,3 +41,4 @@ stack = 0x0_7000
 name = "example-app"
 stack = 0x7600
 grant_space = 0x4000
+

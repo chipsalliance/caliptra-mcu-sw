@@ -120,7 +120,7 @@ pub async fn image_loading_task() {
 #[allow(unused_variables)]
 async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
-    writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!").unwrap();
+    crate::console_writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
     #[cfg(feature = "test-pldm-streaming-boot")]
     {
         let fw_params = PldmFirmwareDeviceParams {
@@ -220,18 +220,16 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
     {
         let fdops = pldm_fdops_mock::FdOpsObject::new();
         let mut pldm_service = PldmService::init(&fdops, EXECUTOR.get().spawner());
-        writeln!(
+        crate::console_writeln!(
             console_writer,
             "PLDM_APP: Starting PLDM service for testing..."
-        )
-        .unwrap();
+        );
         if let Err(e) = pldm_service.start().await {
-            writeln!(
+            crate::console_writeln!(
                 console_writer,
                 "PLDM_APP: Error starting PLDM service: {:?}",
                 e
-            )
-            .unwrap();
+            );
         }
         pldm_fdops_mock::FdOpsObject::wait_for_pldm_done().await;
     }

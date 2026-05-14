@@ -125,6 +125,7 @@ struct BuildPass<'a> {
     build_args: &'a BuildArgs,
     binary_dir: PathBuf,
     target_dir: PathBuf,
+    profile: String,
     objcopy: PathBuf,
 }
 
@@ -140,6 +141,7 @@ impl<'a> BuildPass<'a> {
         // wish to place binaries.
         let binary_dir = common.release_dir()?;
         let target_dir = common.target_dir()?;
+        let profile = common.profile().to_string();
 
         let objcopy = match &build_args.objcopy {
             Some(o) => o.clone(),
@@ -152,6 +154,7 @@ impl<'a> BuildPass<'a> {
             build_args,
             binary_dir,
             target_dir,
+            profile,
             objcopy,
         })
     }
@@ -239,7 +242,8 @@ impl<'a> BuildPass<'a> {
             .arg(&self.manifest.platform.tuple)
             .arg("--target-dir")
             .arg(&self.target_dir)
-            .arg("--release");
+            .arg("--profile")
+            .arg(&self.profile);
 
         if let Some(f) = features {
             cmd.arg("--features").arg(f);

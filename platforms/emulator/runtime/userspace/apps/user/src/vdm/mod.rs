@@ -33,7 +33,7 @@ pub async fn vdm_task() {
 #[allow(unused_variables)]
 async fn start_vdm_service() -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
-    writeln!(console_writer, "Starting MCTP VDM task...").unwrap();
+    crate::console_writeln!(console_writer, "Starting MCTP VDM task...");
 
     #[cfg(any(
         feature = "test-mctp-vdm-cmds",
@@ -55,11 +55,10 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
 
         // Check if the transport driver exists
         if !transport.exists() {
-            writeln!(
+            crate::console_writeln!(
                 console_writer,
                 "USER_APP: MCTP VDM driver not found, skipping VDM service"
-            )
-            .unwrap();
+            );
             return Ok(());
         }
 
@@ -70,22 +69,20 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
             transport, handler,
         ));
 
-        writeln!(
+        crate::console_writeln!(
             console_writer,
             "Starting MCTP VDM service for integration tests..."
-        )
-        .unwrap();
+        );
 
         if let Err(e) = caliptra_mcu_mctp_vdm_lib::daemon::spawn_vdm_responder(
             crate::EXECUTOR.get().spawner(),
             cmd_interface,
         ) {
-            writeln!(
+            crate::console_writeln!(
                 console_writer,
                 "USER_APP: Error starting MCTP VDM service: {:?}",
                 e
-            )
-            .unwrap();
+            );
         }
         let suspend_signal: Signal<CriticalSectionRawMutex, ()> = Signal::new();
         suspend_signal.wait().await;

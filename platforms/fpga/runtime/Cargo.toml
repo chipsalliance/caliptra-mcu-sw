@@ -37,7 +37,8 @@ rv32i.workspace = true
 
 [features]
 default = []
-debug = []
+# See `mcu-runtime-emulator`'s `release` feature for rationale.
+release = ["kernel/no_debug_panics", "caliptra-mcu-romtime/no-print"]
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []

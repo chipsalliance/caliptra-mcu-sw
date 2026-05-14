@@ -1,4 +1,9 @@
 # Licensed under the Apache-2.0 license
+#
+# Default (`release` profile) bundler manifest for the emulator user-app build.
+# Uses the constrained 512 KB SRAM layout that mirrors the real device, paired
+# with the `release` cargo feature (auto-enabled by `xtask runtime-build --profile
+# release`).  See `user-app-devel.toml` for the larger 1 MB devel-time layout.
 
 [platform]
 name = "emulator-user-app"
@@ -35,4 +40,3 @@ stack = 0x0_7000
 name = "user-app"
 stack = 0xae00
 grant_space = 0x4000
-

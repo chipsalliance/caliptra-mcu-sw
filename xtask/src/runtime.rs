@@ -33,8 +33,9 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     if hw_revision >= semver::Version::new(2, 1, 0) && !features.contains(&"hw-2-1") {
         features.push("hw-2-1");
     }
-    // include debug features since this is interactive
-    features.push("debug");
+    // NOTE: interactive `xtask runtime` runs default-feature builds (without the `release` cargo feature),
+    // so DebugWriter / Console / LowLevelDebug / ProcessConsole / kernel
+    // `debug!()` / romtime `println!` are all available for live debugging.
     let features_str = features.join(",");
     let rom_binary =
         caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs::default())?;

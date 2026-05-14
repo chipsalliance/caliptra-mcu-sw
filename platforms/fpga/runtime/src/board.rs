@@ -129,10 +129,12 @@ struct VeeR {
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
-    console: &'static capsules_core::console::Console<'static>,
-    lldb: &'static capsules_core::low_level_debug::LowLevelDebug<
-        'static,
-        capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
+    console: Option<&'static capsules_core::console::Console<'static>>,
+    lldb: Option<
+        &'static capsules_core::low_level_debug::LowLevelDebug<
+            'static,
+            capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
+        >,
     >,
     scheduler: &'static CooperativeSched<'static>,
     scheduler_timer:
@@ -170,8 +172,12 @@ impl SyscallDriverLookup for VeeR {
     {
         match driver_num {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
-            capsules_core::console::DRIVER_NUM => f(Some(self.console)),
-            capsules_core::low_level_debug::DRIVER_NUM => f(Some(self.lldb)),
+            capsules_core::console::DRIVER_NUM => f(self
+                .console
+                .map(|c| c as &dyn kernel::syscall::SyscallDriver)),
+            capsules_core::low_level_debug::DRIVER_NUM => {
+                f(self.lldb.map(|l| l as &dyn kernel::syscall::SyscallDriver))
+            }
             caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM => {
                 f(Some(self.mctp_spdm))
             }
@@ -507,35 +513,59 @@ pub unsafe fn main() {
     caliptra_mcu_romtime::println!("[mcu-runtime] Chip initialized");
 
     // Create a shared UART channel for the console and for kernel debug.
+    // The DebugWriter must always be initialized because the kernel's `debug!()`
+    // macro and panic/fault handlers unconditionally call `get_debug_writer()`.
     // TODO: add a new UART for the FPGA
     let uart_mux = components::console::UartMuxComponent::new(&fpga_peripherals.uart, 115200)
         .finalize(components::uart_mux_component_static!());
     caliptra_mcu_romtime::println!("[mcu-runtime] UART initialized");
 
     // Create the debugger object that handles calls to `debug!()`.
+    // Must always be present — the kernel's panic handler and fault diagnostics
+    // require it.
     components::debug_writer::DebugWriterComponent::new(uart_mux)
         .finalize(components::debug_writer_component_static!());
     caliptra_mcu_romtime::println!("[mcu-runtime] DebugWriter initialized");
 
-    let lldb = components::lldb::LowLevelDebugComponent::new(
-        board_kernel,
-        capsules_core::low_level_debug::DRIVER_NUM,
-        uart_mux,
-    )
-    .finalize(components::low_level_debug_component_static!());
-    caliptra_mcu_romtime::println!("[mcu-runtime] LowLevelDebugComponent initialized");
+    // LowLevelDebug capsule (alert-code printer used by user-app panic
+    // handlers).  Stripped in `release` builds.
+    #[cfg(not(feature = "release"))]
+    let lldb = Some({
+        let lldb = components::lldb::LowLevelDebugComponent::new(
+            board_kernel,
+            capsules_core::low_level_debug::DRIVER_NUM,
+            uart_mux,
+        )
+        .finalize(components::low_level_debug_component_static!());
+        caliptra_mcu_romtime::println!("[mcu-runtime] LowLevelDebugComponent initialized");
+        lldb
+    });
+    #[cfg(feature = "release")]
+    let lldb = None;
 
-    // Setup the console.
-    let console = components::console::ConsoleComponent::new(
-        board_kernel,
-        capsules_core::console::DRIVER_NUM,
-        uart_mux,
-    )
-    .finalize(components::console_component_static!());
-    caliptra_mcu_romtime::println!("[mcu-runtime] Console initialized");
+    // Setup the console.  Userspace `Console::<>::writer()` writes to this
+    // syscall driver.  Stripped in `release` builds; user-app `writeln!()` calls use `let _ = ...`
+    // so the syscall returning `NoDevice` does not panic.
+    #[cfg(not(feature = "release"))]
+    let console = Some({
+        let console = components::console::ConsoleComponent::new(
+            board_kernel,
+            capsules_core::console::DRIVER_NUM,
+            uart_mux,
+        )
+        .finalize(components::console_component_static!());
+        caliptra_mcu_romtime::println!("[mcu-runtime] Console initialized");
+        console
+    });
+    #[cfg(feature = "release")]
+    let console = None;
 
     // Create a process printer for panic.
-    if cfg!(feature = "debug") {
+    // Use the attribute form (not `if cfg!(...)`) so the body is excluded from
+    // compilation when the feature is off (it references items that may also
+    // be cfg'd out, e.g. `uart_mux`).
+    #[cfg(not(feature = "release"))]
+    {
         let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
             .finalize(components::process_printer_text_component_static!());
         PROCESS_PRINTER = Some(process_printer);
@@ -756,19 +786,26 @@ pub unsafe fn main() {
         BOARD = Some(board_kernel);
     }
 
-    // Run any requested test
-    let exit = if cfg!(feature = "test-exit-immediately") {
+    // Run any requested test.  Each arm is gated with `#[cfg(feature = ...)]`
+    // (attribute form, not `if cfg!(...)`) so test bodies are excluded from
+    // compilation entirely when their feature is off.
+    #[allow(unused_mut, unused_assignments)]
+    let mut exit: Option<u32> = None;
+    #[cfg(feature = "test-exit-immediately")]
+    {
         debug!("Executing test-exit-immediately");
-        Some(0)
-    } else if cfg!(feature = "test-i3c-simple") {
+        exit = Some(0);
+    }
+    #[cfg(feature = "test-i3c-simple")]
+    {
         debug!("Executing test-i3c-simple");
-        crate::tests::i3c_target_test::run_test_i3c_simple()
-    } else if cfg!(feature = "test-i3c-constant-writes") {
+        exit = crate::tests::i3c_target_test::run_test_i3c_simple();
+    }
+    #[cfg(feature = "test-i3c-constant-writes")]
+    {
         debug!("Executing test-i3c-constant-writes");
-        crate::tests::i3c_target_test::run_test_i3c_constant_writes()
-    } else {
-        None
-    };
+        exit = crate::tests::i3c_target_test::run_test_i3c_constant_writes();
+    }
 
     #[cfg(feature = "test-mctp-capsule-loopback")]
     {

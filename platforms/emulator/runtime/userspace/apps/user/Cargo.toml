@@ -50,10 +50,17 @@ portable-atomic = { workspace = true, features = ["critical-section"] }
 
 [features]
 default = []
-debug = []
 hw-2-1 = []
 doe = []
 pcr-quote-measurements = []
+# Production / minimal-size build for user-app.  Activated automatically by
+# `xtask runtime-build --profile release` (via `--features release` forwarded
+# through the bundler).  Gates `console_writeln!` to a no-op so all of
+# user-app's informational and diagnostic output (including the `{:?}` Debug
+# format paths) is stripped, and forwards to `caliptra-mcu-romtime/no-print`
+# so the romtime `print!`/`println!` macros become no-ops inside user-app's
+# private dependency build of `caliptra-mcu-romtime`.
+release = ["caliptra-mcu-romtime/no-print"]
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []

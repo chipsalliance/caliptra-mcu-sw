@@ -64,6 +64,11 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mctp-spdm-responder-conformance",
 ];
 
+/// Release-profile runtime test features (emulator).
+/// These are the subset of tests we run against the release (512 KB SRAM,
+/// no debug logs) firmware to verify it boots and works correctly.
+pub const RELEASE_RUNTIME_TEST_FEATURES: &[&str] = &["test-flash-based-boot"];
+
 /// ROM-only test features that need a prebuilt ROM but no custom runtime.
 /// These features exist in both the emulator and FPGA ROM crates; the
 /// standard runtime is used unmodified.

@@ -40,6 +40,9 @@ default = []
 debug = []
 doe = []
 hw-2-1 = []
+# No-op stub forwarded through `runtime_build_with_apps`; size optimization
+# lives in `mcu-runtime-emulator`/`mcu-runtime-fpga`.
+release = []
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []

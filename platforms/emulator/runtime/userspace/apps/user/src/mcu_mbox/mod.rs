@@ -37,7 +37,7 @@ pub async fn mcu_mbox_task() {
 #[allow(unused_variables)]
 async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
-    writeln!(console_writer, "Starting MCU_MBOX task...").unwrap();
+    crate::console_writeln!(console_writer, "Starting MCU_MBOX task...");
 
     #[cfg(any(
         feature = "test-mcu-mbox-cmds",
@@ -57,19 +57,17 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
             &mut transport,
             crate::EXECUTOR.get().spawner(),
         );
-        writeln!(
+        crate::console_writeln!(
             console_writer,
             "Starting MCU_MBOX service for integration tests..."
-        )
-        .unwrap();
+        );
 
         if let Err(e) = mcu_mbox_service.start().await {
-            writeln!(
+            crate::console_writeln!(
                 console_writer,
                 "USER_APP: Error starting MCU_MBOX service: {:?}",
                 e
-            )
-            .unwrap();
+            );
         }
         let suspend_signal: Signal<CriticalSectionRawMutex, ()> = Signal::new();
         suspend_signal.wait().await;

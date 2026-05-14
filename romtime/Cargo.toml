@@ -26,3 +26,9 @@ rv32i.workspace = true
 [features]
 default = []
 core_test = []
+# Strip the `print!` / `println!` macros to no-ops that still type-check
+# `format_args!` so all call sites compile cleanly.  Used to drop a few KB of
+# `.rodata` (format strings) and `.text` (`core::fmt` machinery) in production
+# builds.  Disabled by default; enabled by `mcu-runtime-emulator`/
+# `mcu-runtime-fpga` via their `no-debug-print` feature.
+no-print = []

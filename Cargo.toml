@@ -376,10 +376,28 @@ opt-level = 3
 lto = "thin"
 
 [profile.release]
+# Shipping / minimal-size build profile.  `xtask runtime-build --profile
+# release` (or `xtask precheckin`'s release pass) auto-enables the `release`
+# cargo feature, which strips the kernel `debug!()` macro, romtime
+# `println!()`, DebugWriter, Console, LowLevelDebug, and ProcessConsole.  The
+# bundler also uses the constrained 512 KB SRAM platform manifest that
+# mirrors the real device.  Artifacts land in `target/<tuple>/release/`.
 debug = true      # Keep debug symbols in the release ELF so that we can debug more easily.
 lto = true
 opt-level = "z"
 codegen-units = 1
+
+# Default development-time runtime profile.  Same size-optimization settings
+# as `release` (lto, opt-level=z, codegen-units=1) so the binary still
+# actually runs, but builds with the `*-devel.toml` bundler manifest (1 MB
+# SRAM layout vs `release`'s 512 KB) and does NOT enable the `release` cargo
+# feature.  The kernel keeps DebugWriter / Console / LowLevelDebug /
+# ProcessConsole / `debug!()` / romtime `println!()` for live debugging.
+# Default for `xtask runtime-build` and `xtask runtime`.  Artifacts land in
+# `target/<tuple>/devel/` so they don't clobber the shipping
+# `target/<tuple>/release/` build.
+[profile.devel]
+inherits = "release"
 
 [patch.crates-io]
 openssl = { git = "https://github.com/clundin25/rust-openssl.git", rev = "4ada1c1d7c264e052e7bb71ecddbd196a5c2a0c7" } # MLDSA

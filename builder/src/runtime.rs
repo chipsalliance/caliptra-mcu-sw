@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-use crate::utils::manifest_file;
+use crate::utils::manifest_file_for_profile;
 use crate::{CaliptraBuildArgs, PROJECT_ROOT};
 use anyhow::Result;
 use caliptra_mcu_firmware_bundler::args::{
@@ -21,8 +21,9 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let platform = args.platform;
     let svn = args.svn;
     let target_dir = args.target_dir.clone();
+    let profile = args.profile.unwrap_or("devel").to_string();
 
-    let manifest = manifest_file(platform, example_app)?;
+    let manifest = manifest_file_for_profile(platform, example_app, args.profile)?;
     let platform_str = platform.unwrap_or("emulator");
     let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform_str));
 
@@ -30,6 +31,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
         manifest,
         svn,
         target_dir,
+        profile,
         ..Default::default()
     };
     let release_dir = common.release_dir()?;

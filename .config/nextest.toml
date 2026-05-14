@@ -61,6 +61,12 @@ default-filter = """
 # disabled for now due to flakiness of firmware update
 # (package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
 
+[profile.nightly-release]
+inherits = "nightly-emulator"
+default-filter = """
+(package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful))
+"""
+
 [profile.nightly-ci-spdm]
 inherits = "nightly"
 default-filter = """
