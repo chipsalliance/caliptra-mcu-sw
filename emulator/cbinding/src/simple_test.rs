@@ -58,6 +58,8 @@ fn test_emulator_args_creation() {
         primary_flash_image: None,
         secondary_flash_image: None,
         hw_revision: semver::Version::new(2, 0, 0),
+        mcu_lsu_axi_user: 0,
+        caliptra_dma_axi_user: 0,
         rom_offset: None,
         rom_size: None,
         uart_offset: None,
