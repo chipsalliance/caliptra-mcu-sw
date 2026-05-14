@@ -245,6 +245,7 @@ async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {
         fw_id_count: fw_id_list.len() as u32,
         fw_ids,
         mcu_fw_image_size: 0, // MCU image is not activated here
+        flags: 0,
     };
 
     let req = req.as_mut_bytes();

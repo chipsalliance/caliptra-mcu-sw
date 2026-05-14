@@ -21,9 +21,9 @@ use crate::{
     FuseParams, I3cMailboxHandler, I3cServicesModes, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{
-    CmImportReq, CmImportResp, CmKeyUsage, CmStableKeyType, Cmk, CommandId, FeProgReq,
-    MailboxReqHeader, MailboxRespHeader, StashMeasurementReq, StashMeasurementResp, CMK_SIZE_BYTES,
-    MAX_CMB_DATA_SIZE,
+    ActivateFirmwareFlags, ActivateFirmwareReq, ActivateFirmwareResp, CmImportReq, CmImportResp,
+    CmKeyUsage, CmStableKeyType, Cmk, CommandId, FeProgReq, MailboxReqHeader, MailboxRespHeader,
+    StashMeasurementReq, StashMeasurementResp, CMK_SIZE_BYTES, MAX_CMB_DATA_SIZE,
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::{
@@ -457,6 +457,48 @@ impl ColdBoot {
                 tag_verified
             );
             fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_TAG_MISMATCH);
+        }
+    }
+
+    /// Send `ACTIVATE_FIRMWARE` with the `INITIAL_ACTIVATE` flag so Caliptra
+    /// runtime publishes `FW_EXEC_CTRL[MCU]` without performing the
+    /// hitless-update reset/reload/verify dance. Must be called only after a
+    /// successful `decrypt_firmware()` on the encrypted-boot path — the MCU
+    /// firmware that Caliptra will now mark ready is the plaintext that we
+    /// just wrote into MCU SRAM via `CM_AES_GCM_DECRYPT_DMA`.
+    ///
+    /// Without this step MCI's `BOOT_RST_MCU` state holds MCU in reset
+    /// forever after the upcoming `trigger_warm_reset()`, because
+    /// `mcu_sram_fw_exec_region_lock` (= Caliptra's `FW_EXEC_CTRL[MCU]`)
+    /// is what gates reset release.
+    fn activate_firmware_initial(soc_manager: &mut CaliptraSoC, ciphertext_size: u32) {
+        let mut req = ActivateFirmwareReq {
+            fw_id_count: 1,
+            mcu_fw_image_size: ciphertext_size,
+            flags: ActivateFirmwareFlags::INITIAL_ACTIVATE.bits(),
+            ..Default::default()
+        };
+        req.fw_ids[0] = ActivateFirmwareReq::MCU_IMAGE_ID;
+
+        let cmd: u32 = CommandId::ACTIVATE_FIRMWARE.into();
+        let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
+        req.hdr.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] ACTIVATE_FIRMWARE start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_START_ERROR);
+        }
+
+        let mut resp_buf = [0u8; core::mem::size_of::<ActivateFirmwareResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] ACTIVATE_FIRMWARE finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR);
         }
     }
 
@@ -1329,6 +1371,15 @@ impl BootFlow for ColdBoot {
 
             // Decrypt firmware in MCU SRAM via CM_IMPORT + CM_AES_GCM_DECRYPT_DMA
             Self::decrypt_firmware(&mut env.soc_manager, ciphertext_size, &sha384);
+
+            // Ask Caliptra RT to publish FW_EXEC_CTRL[MCU] so MCI will
+            // release MCU from BOOT_RST_MCU after the upcoming warm reset.
+            // Uses the INITIAL_ACTIVATE flag to skip the hitless-update
+            // dance — the firmware in SRAM was already integrity-checked
+            // end-to-end (ciphertext digest by recovery, GCM tag by
+            // CM_AES_GCM_DECRYPT_DMA).
+            romtime::println!("[mcu-rom] Encrypted boot: activating firmware");
+            Self::activate_firmware_initial(&mut env.soc_manager, ciphertext_size);
             crate::call_hook(params.hooks, |h| h.post_load_firmware());
         } else {
             // --- Normal (unencrypted) firmware boot flow ---

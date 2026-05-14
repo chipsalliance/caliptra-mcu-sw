@@ -600,6 +600,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
                 fw_ids
             },
             mcu_fw_image_size: mcu_image_len as u32,
+            flags: 0,
         };
 
         let req = req.as_mut_bytes();
