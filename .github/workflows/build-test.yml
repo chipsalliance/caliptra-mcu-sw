@@ -113,7 +113,7 @@ jobs:
           # Build all test runtime features used by integration tests
           # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
           cargo xtask all-build --platform emulator \
-            --rom-features "hw-2-1,ocp-lock" \
+            --rom-features "hw-2-1" \
             --test-rom-features "ocp-lock,stable-owner-key" \
             --runtime-features "${RUNTIME_FEATURES// /}" \
             --separate-runtimes
