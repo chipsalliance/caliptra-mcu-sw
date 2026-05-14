@@ -178,6 +178,11 @@ impl CaliptraSoC {
         Ok(())
     }
 
+    /// Aborts a mailbox request by clearing the execute bit, releasing the HW lock.
+    pub fn abort_request(&mut self) {
+        self.soc_mbox().execute().write(|w| w.execute(false));
+    }
+
     /// Finished a mailbox request, validating the checksum of the response.
     pub fn finish_mailbox_resp(
         &mut self,

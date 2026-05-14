@@ -256,6 +256,10 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         if self.state.get() != MailboxState::Initiated {
             return Err(ErrorCode::INVAL);
         }
+        // Verify that the caller is the app that initiated the request.
+        if self.current_app.get() != Some(processid) {
+            return Err(ErrorCode::INVAL);
+        }
         self.apps.enter(processid, |_app, kernel_data| {
             // copy the request so we can write async
             kernel_data
@@ -311,9 +315,13 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         Ok(())
     }
 
-    fn execute(&self) -> Result<(), ErrorCode> {
+    fn execute(&self, processid: ProcessId) -> Result<(), ErrorCode> {
         // Only allowed after initiate_request (command 2).
         if self.state.get() != MailboxState::Initiated {
+            return Err(ErrorCode::INVAL);
+        }
+        // Verify that the caller is the app that initiated the request.
+        if self.current_app.get() != Some(processid) {
             return Err(ErrorCode::INVAL);
         }
         self.state.set(MailboxState::Executing);
@@ -434,8 +442,12 @@ impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
         match self.state.get() {
             MailboxState::Initiated => {
                 // Timeout: user didn't complete the chunked send in time.
-                debug!("Mailbox initiate timeout: resetting to idle");
+                capsule_debug!("MBOX", "Mailbox initiate timeout: resetting to idle");
                 let _ = self.alarm.disarm();
+                // Release the HW mailbox lock by clearing the execute bit.
+                self.driver.map(|driver| {
+                    driver.abort_request();
+                });
                 self.state.set(MailboxState::Idle);
                 self.current_app.take();
             }
@@ -517,7 +529,7 @@ impl<'a, A: Alarm<'a>> SyscallDriver for Mailbox<'a, A> {
 
             4 => {
                 // Execute the command
-                let res = self.execute();
+                let res = self.execute(processid);
                 match res {
                     Ok(()) => CommandReturn::success(),
                     Err(e) => CommandReturn::failure(e),

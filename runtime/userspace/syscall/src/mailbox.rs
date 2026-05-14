@@ -127,6 +127,13 @@ impl<S: Syscalls> Mailbox<S> {
     ///
     /// Call this first, then send data with [`send_chunk`](Self::send_chunk),
     /// and finally call [`execute_chunked_request`](Self::execute_chunked_request).
+    ///
+    /// **Concurrency:** The kernel enforces ordering via a state machine and
+    /// verifies the calling process ID, so different processes cannot
+    /// interleave chunked flows. Within a single process with multiple async
+    /// tasks, callers should either use [`execute_with_payload_stream`](Self::execute_with_payload_stream)
+    /// (which holds the global mailbox mutex) or acquire `MAILBOX_MUTEX`
+    /// externally before calling this method.
     pub async fn start_chunked_request(
         &self,
         command: u32,
