@@ -189,6 +189,8 @@ async fn spdm_doe_responder() {
     doe_capability_flags.set_key_ex_cap(1);
     doe_capability_flags.set_mac_cap(1);
     doe_capability_flags.set_encrypt_cap(1);
+    // Keep SET_CERT_CAP disabled until certificate-chain validation and signing by
+    // SPDM KeyPairID are wired into the platform certificate store.
 
     let local_capabilities = DeviceCapabilities {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,

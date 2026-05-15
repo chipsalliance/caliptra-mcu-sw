@@ -7,7 +7,7 @@ use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
     algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, chunk_get_rsp,
     chunk_send_ack_rsp, digests_rsp, end_session_ack_rsp, finish_rsp, key_exchange_rsp,
-    measurements_rsp, vendor_defined_rsp, version_rsp,
+    measurements_rsp, set_certificate_rsp, vendor_defined_rsp, version_rsp,
 };
 use crate::error::*;
 use crate::measurements::SpdmMeasurements;
@@ -273,6 +273,9 @@ impl<'a> SpdmContext<'a> {
             }
             ReqRespCode::GetCertificate => {
                 certificate_rsp::handle_get_certificate(self, req_msg_header, req).await?
+            }
+            ReqRespCode::SetCertificate => {
+                set_certificate_rsp::handle_set_certificate(self, req_msg_header, req).await?
             }
             ReqRespCode::Challenge => {
                 challenge_auth_rsp::handle_challenge(self, req_msg_header, req).await?
@@ -613,6 +616,7 @@ impl<'a> SpdmContext<'a> {
             // These requests require established session state (Application phase)
             ReqRespCode::GetDigests
             | ReqRespCode::GetCertificate
+            | ReqRespCode::SetCertificate
             | ReqRespCode::GetMeasurements
             | ReqRespCode::EndSession => {
                 if session_info.session_state == SessionState::Established {

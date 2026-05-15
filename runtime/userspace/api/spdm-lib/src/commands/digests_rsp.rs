@@ -89,12 +89,14 @@ async fn generate_digests_response<'a>(
         .encode(rsp)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
-    // Encode the certificate chain digests for each provisioned slot
-    for slot_id in 0..slot_cnt {
-        payload_len +=
-            encode_cert_chain_digest(slot_id as u8, ctx.device_certs_store, asym_algo, rsp)
-                .await
-                .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
+    // Encode the certificate chain digests for each provisioned slot.
+    for slot_id in 0..8 {
+        if provisioned_slot_mask & (1 << slot_id) == 0 {
+            continue;
+        }
+        payload_len += encode_cert_chain_digest(slot_id, ctx.device_certs_store, asym_algo, rsp)
+            .await
+            .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
     }
 
     // Fill the multi-key connection response data if applicable
@@ -141,20 +143,24 @@ async fn encode_multi_key_conn_rsp_data(
     let mut key_usage_offset = 0;
     let mut cert_info_offset = 0;
 
-    for slot_id in 0..slot_cnt {
+    for slot_id in 0..8 {
+        if provisioned_slot_mask & (1 << slot_id) == 0 {
+            continue;
+        }
+
         let key_pair_id = ctx
             .device_certs_store
-            .key_pair_id(slot_id as u8)
+            .key_pair_id(slot_id)
             .await
             .unwrap_or_default();
         let cert_info = ctx
             .device_certs_store
-            .cert_info(slot_id as u8)
+            .cert_info(slot_id)
             .await
             .unwrap_or_default();
         let key_usage_mask = ctx
             .device_certs_store
-            .key_usage_mask(slot_id as u8)
+            .key_usage_mask(slot_id)
             .await
             .unwrap_or_default();
 

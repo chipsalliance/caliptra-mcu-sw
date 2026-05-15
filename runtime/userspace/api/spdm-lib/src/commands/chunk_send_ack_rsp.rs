@@ -449,25 +449,6 @@ mod tests {
             Err(CertStoreError::UnprovisionedSlot)
         }
 
-        async fn write_cert_chain(
-            &self,
-            _asym_algo: AsymAlgo,
-            _slot_id: u8,
-            _key_pair_id: u8,
-            _cert_model: CertificateInfo,
-            _cert_chain: &[u8],
-        ) -> CertStoreResult<()> {
-            Err(CertStoreError::UnprovisionedSlot)
-        }
-
-        async fn erase_cert_chain(
-            &self,
-            _asym_algo: AsymAlgo,
-            _slot_id: u8,
-        ) -> CertStoreResult<()> {
-            Err(CertStoreError::UnprovisionedSlot)
-        }
-
         async fn key_pair_id(&self, _slot_id: u8) -> Option<u8> {
             None
         }
@@ -478,6 +459,26 @@ mod tests {
 
         async fn key_usage_mask(&self, _slot_id: u8) -> Option<KeyUsageMask> {
             None
+        }
+
+        async fn write_cert_chain(
+            &self,
+            _asym_algo: AsymAlgo,
+            _slot_id: u8,
+            _key_pair_id: u8,
+            _cert_model: CertificateInfo,
+            _root_cert_hash: &[u8; SHA384_HASH_SIZE],
+            _cert_chain: &[u8],
+        ) -> CertStoreResult<()> {
+            Err(CertStoreError::OperationFailed)
+        }
+
+        async fn erase_cert_chain(
+            &self,
+            _asym_algo: AsymAlgo,
+            _slot_id: u8,
+        ) -> CertStoreResult<()> {
+            Err(CertStoreError::OperationFailed)
         }
     }
 

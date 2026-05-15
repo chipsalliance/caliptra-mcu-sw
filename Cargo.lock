@@ -2063,6 +2063,7 @@ dependencies = [
  "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtock_platform",
  "constant_time_eq 0.4.2",
+ "futures",
  "rand 0.8.5",
  "zerocopy",
 ]
