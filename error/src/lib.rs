@@ -542,6 +542,7 @@ impl McuError {
             0x5_0017,
             "DCCM uncorrectable ECC error"
         ),
+        (ROM_CFI_PANIC, 0x6_0000, "ROM CFI panic"),
         (
             GENERIC_EXCEPTION,
             0xF_0000,

@@ -205,9 +205,10 @@ impl Mci {
     /// Once set, certain registers (like PROD_DEBUG_UNLOCK_PK_HASH) become read-only
     /// until the next cold reset.
     pub fn set_ss_config_done_sticky(&self) {
-        self.registers
-            .mci_reg_ss_config_done_sticky
-            .write(mci::bits::SsConfigDone::Done::SET);
+        crate::cfi_write_register(
+            &self.registers.mci_reg_ss_config_done_sticky,
+            mci::bits::SsConfigDone::Done::SET,
+        );
     }
 
     /// Checks if SS_CONFIG_DONE_STICKY is set
@@ -220,9 +221,10 @@ impl Mci {
     /// Sets the SS_CONFIG_DONE register to lock configuration registers.
     /// Once set, certain registers become read-only until the next warm reset.
     pub fn set_ss_config_done(&self) {
-        self.registers
-            .mci_reg_ss_config_done
-            .write(mci::bits::SsConfigDone::Done::SET);
+        crate::cfi_write_register(
+            &self.registers.mci_reg_ss_config_done,
+            mci::bits::SsConfigDone::Done::SET,
+        );
     }
 
     /// Checks if SS_CONFIG_DONE is set
@@ -351,7 +353,7 @@ impl Mci {
             .mci_reg_prod_debug_unlock_pk_hash_reg
             .get(index)
         {
-            reg.set(value);
+            crate::cfi_set_register(reg, value);
             true
         } else {
             false
