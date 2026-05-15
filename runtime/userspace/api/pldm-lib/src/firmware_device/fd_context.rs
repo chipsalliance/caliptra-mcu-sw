@@ -657,6 +657,12 @@ impl<'a> FirmwareDeviceContext<'a> {
             _ => Err(MsgHandlerError::FdInitiatorModeError),
         }?;
 
+        // Refresh T1 timestamp after verify/apply operations which may block
+        // for extended periods while the firmware update task processes.
+        if fd_state == FirmwareDeviceState::Verify || fd_state == FirmwareDeviceState::Apply {
+            self.set_fd_t1_ts().await;
+        }
+
         let now = self.ops.now();
         let ts = self.internal.get_fd_t1_update_ts();
         let elapsed = now.saturating_sub(ts);
