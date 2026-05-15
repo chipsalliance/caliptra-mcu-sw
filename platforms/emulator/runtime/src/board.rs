@@ -774,7 +774,7 @@ pub unsafe fn main() {
     const EXTERNAL_OTP_PARTITIONS: &[ExternalOtpPartitionInfo] = &[
         ExternalOtpPartitionInfo {
             id: 0x01,
-            size: 548,
+            size: 547,
         }, // IDevID ECC Cert
         ExternalOtpPartitionInfo {
             id: 0x02,

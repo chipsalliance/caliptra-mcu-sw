@@ -20,11 +20,11 @@ pub(crate) fn test_external_otp() {
     assert!(count >= 2, "expected at least 2 partitions, got {}", count);
     println!("  partition_count: {}", count);
 
-    // Partition 0x01: ECC Cert (548 bytes).
+    // Partition 0x01: ECC Cert (547 bytes).
     let ecc_size = otp.partition_size(0x01).unwrap();
     assert_eq!(
-        ecc_size, 548,
-        "expected ECC partition size 548, got {}",
+        ecc_size, 547,
+        "expected ECC partition size 547, got {}",
         ecc_size
     );
     println!("  partition 0x01 size: {}", ecc_size);
