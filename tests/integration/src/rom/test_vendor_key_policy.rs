@@ -246,13 +246,8 @@ mod test {
     fn test_vendor_pk_lock_not_applied() -> Result<()> {
         let mut hw = setup_hw_model(0x0000, &[(0, SlotConfig::default())]);
 
-        // Set strapping bit to not lock the pk hashes
-        hw.caliptra_soc_manager()
-            .soc_ifc()
-            .ss_strap_generic()
-            .get(3)
-            .expect("failed to get strapping register")
-            .write(|_| 0x1);
+        // Set input wire bit to not lock the pk hashes
+        hw.set_mcu_generic_input_wires(&[0, 0x1]);
 
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
 
@@ -274,13 +269,8 @@ mod test {
             0x0002,
             &[(0, SlotConfig::default()), (2, SlotConfig::default())],
         );
-        // Set strapping bit to jump 1 PK hash slot
-        hw.caliptra_soc_manager()
-            .soc_ifc()
-            .ss_strap_generic()
-            .get(3)
-            .expect("failed to get strapping register")
-            .write(|_| 0x2);
+        // Set input wire bit to jump 1 PK hash slot
+        hw.set_mcu_generic_input_wires(&[0, 0x2]);
 
         // Slot 0 is the first functional slot which we skip
         // Slot 1 is marked invalid

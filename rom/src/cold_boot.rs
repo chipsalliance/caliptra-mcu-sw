@@ -805,7 +805,7 @@ impl BootFlow for ColdBoot {
         caliptra_mcu_romtime::println!("[mcu-rom] Firmware is ready");
         mci.set_flow_checkpoint(McuRomBootStatus::FirmwareReadyDetected.into());
 
-        soc.pk_hash_volatile_lock(&env.otp, pk_hash_idx);
+        soc.pk_hash_volatile_lock(&env.otp, &env.mci, pk_hash_idx);
         if env.otp.check_error().is_some() {
             caliptra_mcu_romtime::println!("[mcu-rom] OTP error: {}", HexWord(env.otp.status()));
             env.otp.print_errors();
