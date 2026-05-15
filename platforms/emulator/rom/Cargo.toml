@@ -44,6 +44,7 @@ test-fw-manifest-dot-hitless = [
     "caliptra-mcu-rom-common/test-force-hitless-update",
 ]
 test-pldm-streaming-boot = []
+test-streaming-boot-flash-write-back = []
 active-i3c1 = ["caliptra-mcu-config-emulator/active-i3c1"]
 test-i3c-services = []
 test-rom-hooks = []

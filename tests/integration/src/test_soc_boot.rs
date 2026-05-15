@@ -985,8 +985,8 @@ mod test {
             .1
             .map_or(0, |p| p.offset);
         let (soc_images_paths, flash_image_path) = create_flash_image(
-            Some(caliptra_fw),
-            Some(soc_manifest),
+            Some(caliptra_fw.clone()),
+            Some(soc_manifest.clone()),
             Some(test_runtime.clone()),
             Some(partition_table.clone()),
             flash_offset,
@@ -998,8 +998,14 @@ mod test {
             None
         } else {
             let device_uuid = get_device_uuid();
-            let (_, flash_image_path) =
-                create_flash_image(None, None, None, None, 0, soc_images_paths.clone());
+            let (_, flash_image_path) = create_flash_image(
+                Some(caliptra_fw.clone()),
+                Some(soc_manifest.clone()),
+                Some(test_runtime.clone()),
+                None,
+                0,
+                soc_images_paths.clone(),
+            );
             let flash_image =
                 std::fs::read(flash_image_path.clone()).expect("Failed to read flash image");
             let pldm_manifest = get_streaming_boot_pldm_fw_manifest(&device_uuid, &flash_image);
@@ -1199,6 +1205,60 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_soc_boot_options(false);
         test_one_component_id_for_all(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn create_streaming_boot_flash_write_back_options() -> TestOptions {
+        let feature = "test-streaming-boot-flash-write-back";
+        env::set_var(
+            "CPTRA_EMULATOR_SS_MCI_OFFSET",
+            format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
+        );
+
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().into();
+
+        // Build the base options as streaming boot (provides PLDM package, no flash)
+        let mut opts = if has_prebuilt_binaries(feature) {
+            println!("Using prebuilt binaries for feature: {}", feature);
+            create_soc_boot_test_options_prebuilt(feature, false, i3c_port)
+        } else {
+            println!("Building binaries for feature: {}", feature);
+            create_soc_boot_test_options_build(feature, false, i3c_port, false)
+        };
+
+        // The firmware update writes to the staging partition on secondary flash,
+        // so both flash devices must exist in the emulator.
+        // Create empty flash images for primary and secondary flash.
+        let primary_flash = tempfile::NamedTempFile::new()
+            .expect("Failed to create primary flash temp file")
+            .into_temp_path()
+            .to_path_buf();
+        std::fs::write(
+            &primary_flash,
+            vec![0xFFu8; IMAGE_A_PARTITION.offset + IMAGE_A_PARTITION.size],
+        )
+        .expect("Failed to write primary flash");
+
+        let secondary_flash = tempfile::NamedTempFile::new()
+            .expect("Failed to create secondary flash temp file")
+            .into_temp_path()
+            .to_path_buf();
+        std::fs::write(
+            &secondary_flash,
+            vec![0xFFu8; IMAGE_B_PARTITION.size + IMAGE_A_PARTITION.size],
+        )
+        .expect("Failed to write secondary flash");
+
+        opts.primary_flash_image_path = Some(primary_flash);
+        opts.secondary_flash_image_path = Some(secondary_flash);
+        opts
+    }
+
+    #[test]
+    fn test_streaming_boot_flash_write_back() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_streaming_boot_flash_write_back_options();
+        test_successful_boot(&opts);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }

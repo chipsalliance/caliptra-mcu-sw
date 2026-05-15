@@ -6,6 +6,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-i3c-constant-writes",
     "test-mctp-capsule-loopback",
     "test-firmware-update-streaming",
+    "test-streaming-boot-flash-write-back",
     "test-firmware-update-flash",
     "test-flash-based-boot",
     "test-pldm-streaming-boot",

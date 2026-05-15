@@ -82,6 +82,7 @@ const FEATURES_REQUIRING_SOC_IMAGES: &[&str] = &[
     "test-pldm-streaming-boot",
     "test-firmware-update-flash",
     "test-firmware-update-streaming",
+    "test-streaming-boot-flash-write-back",
     "test-mctp-spdm-attestation",
     "test-mctp-spdm-attestation-pcr-quote",
 ];
@@ -911,7 +912,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             // For firmware update tests, create a separate "update" flash image WITHOUT partition table
             // This is used for the PLDM update package (the downloaded firmware)
             let is_firmware_update_feature = *feature == "test-firmware-update-flash"
-                || *feature == "test-firmware-update-streaming";
+                || *feature == "test-firmware-update-streaming"
+                || *feature == "test-streaming-boot-flash-write-back";
             let feature_update_flash_image = if is_firmware_update_feature {
                 Some(create_flash_image(
                     Some(caliptra_fw.clone()),
