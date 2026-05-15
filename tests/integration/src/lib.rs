@@ -252,6 +252,15 @@ mod test {
         output
     }
 
+    /// Check if a prebuilt feature-specific MCU ROM is available.
+    pub fn has_prebuilt_rom(feature: &str) -> bool {
+        if let Ok(binaries) = FirmwareBinaries::from_env() {
+            binaries.test_feature_rom(feature).is_ok()
+        } else {
+            false
+        }
+    }
+
     /// Check if prebuilt binaries are available for the given feature.
     pub fn has_prebuilt_binaries(feature: &str) -> bool {
         if let Ok(binaries) = FirmwareBinaries::from_env() {
@@ -465,7 +474,8 @@ mod test {
         } = match FirmwareBinaries::from_env() {
             Ok(binaries)
                 if params.firmware_prefix.is_none()
-                    && params.rom_feature.is_none()
+                    && (params.rom_feature.is_none()
+                        || has_prebuilt_rom(params.rom_feature.unwrap()))
                     && (params.feature.is_none()
                         || has_prebuilt_binaries(params.feature.unwrap())) =>
             {
