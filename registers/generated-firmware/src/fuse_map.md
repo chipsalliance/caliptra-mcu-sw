@@ -271,7 +271,7 @@
 | cptra_itrng_entropy_config_0 | 32 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3 | Single | Entropy config 0: Low threshold (bits 15:0), High threshold (bits 31:16) |
 | cptra_itrng_entropy_config_1 | 32 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4 | Single | Entropy config 1: Repetition count (bits 15:0), Alert threshold (bits 31:16). See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers) for details. |
 | vendor_recovery_pk_hash | 384 | VENDOR_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0 | Single | Vendor recovery key for DOT_OVERRIDE catastrophic recovery operations |
-| vendor_pk_hash_valid | 16 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_VENDOR_PK_HASH_VALID | LinearOr(3x) | Bitmask of valid vendor PK hash slots. |
+| vendor_pk_hash_valid | 16 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_VENDOR_PK_HASH_VALID | LinearOr(3x) | Bitmask indicating vendor PK hash validity. Unburnt bits (0) are valid; burnt bits (1) are revoked/invalid. |
 | vendor_ecc_revocation_0 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_0 | LinearOr(3x) | Revocation bits for ECC keys in slot 0. |
 | vendor_mldsa_revocation_0 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_0 | LinearOr(3x) | Revocation bits for MLDSA keys in slot 0. |
 | vendor_lms_revocation_0 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_0 | LinearOr(2x) | Revocation bits for LMS keys in slot 0. |

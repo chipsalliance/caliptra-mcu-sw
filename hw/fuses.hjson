@@ -77,7 +77,7 @@
     {
         name: "vendor_pk_hash_valid",
         bits: 16,
-        description: "Bitmask of valid vendor PK hash slots.",
+        description: "Bitmask indicating vendor PK hash validity. Unburnt bits (0) are valid; burnt bits (1) are revoked/invalid.",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_VENDOR_PK_HASH_VALID",
         layout: {type: "LinearOr", duplication: 3},
