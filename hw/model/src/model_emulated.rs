@@ -235,6 +235,13 @@ impl McuHwModel for ModelEmulated {
         let mut lc = lc;
         lc.set_otp_partitions(otp_partitions.clone());
 
+        if let Some(external_otp) = params.external_otp_memory {
+            let mut sram = mcu_root_bus.external_test_sram.borrow_mut();
+            let sram_data = sram.data_mut();
+            let len = external_otp.len().min(sram_data.len());
+            sram_data[..len].copy_from_slice(&external_otp[..len]);
+        }
+
         let create_flash_controller =
             |default_path: &str,
              error_irq: u8,

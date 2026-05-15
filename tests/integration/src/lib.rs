@@ -13,6 +13,7 @@ mod test_caliptra_util_host_mcu_mailbox_validator;
 mod test_caliptra_util_host_spdm_vdm_validator;
 mod test_dot;
 mod test_exception_handler;
+mod test_external_otp;
 mod test_firmware_update;
 mod test_fpga_flash_ctrl;
 mod test_i3c_constant_writes;
@@ -97,6 +98,9 @@ mod test {
         /// Production debug unlock keypairs (ECC384 pub key bytes, MLDSA87 pub key bytes).
         pub prod_dbg_unlock_keypairs: Vec<([u8; 96], [u8; 2592])>,
         pub use_strap_secrets: bool,
+        pub external_otp_memory: Option<Vec<u8>>,
+        /// If true, include the example app in the runtime build instead of the user app.
+        pub example_app: bool,
     }
 
     impl Default for TestParams<'_> {
@@ -120,6 +124,8 @@ mod test {
                 debug_intent: false,
                 prod_dbg_unlock_keypairs: Vec::new(),
                 use_strap_secrets: false,
+                external_otp_memory: None,
+                example_app: false,
             }
         }
     }
@@ -305,7 +311,7 @@ mod test {
                 .expect("Failed to write prebuilt runtime to file");
             path
         } else {
-            compile_runtime(params.feature, false)
+            compile_runtime(params.feature, params.example_app)
         };
 
         // When a firmware prefix is provided, create a modified binary that
@@ -505,6 +511,7 @@ mod test {
             dot_flash_initial_contents: params.dot_flash_initial_contents,
             check_booted_to_runtime: !params.rom_only,
             otp_memory: otp_memory.as_deref(),
+            external_otp_memory: params.external_otp_memory.as_deref(),
             lifecycle_controller_state: params.lifecycle_controller_state,
             primary_flash_initial_contents: flash_image,
             flash_boot: params.flash_boot,
@@ -974,7 +981,6 @@ mod test {
     run_test!(test_mcu_mbox_driver);
     run_test!(test_mcu_mbox_soc_requester_loopback, example_app);
     run_test!(test_mbox_sram, example_app);
-    run_test!(test_external_otp, example_app);
     run_test!(test_warm_reset, example_app);
 
     /// This tests a full active mode boot run through with Caliptra, including
