@@ -80,9 +80,8 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
             fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
         };
-        let staging_memory = flash_staging::SpiFlashStagingMemory::new();
         let staging_memory: &'static flash_staging::SpiFlashStagingMemory =
-            unsafe { core::mem::transmute(&staging_memory) };
+            flash_staging::STAGING_MEMORY.get();
         staging_memory.erase().await?;
         let mut updater = FirmwareUpdater::new(
             staging_memory,

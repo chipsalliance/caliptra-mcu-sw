@@ -12,6 +12,9 @@ use core::fmt::Write;
 
 use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
 
+pub static STAGING_MEMORY: embassy_sync::lazy_lock::LazyLock<SpiFlashStagingMemory> =
+    embassy_sync::lazy_lock::LazyLock::new(SpiFlashStagingMemory::new);
+
 /// A `StagingMemory` implementation backed by SPI flash.
 ///
 /// PLDM firmware data is written directly to flash. This allows the
