@@ -32,42 +32,37 @@ The following sequence diagram illustrates the workflow for provisioning Owner c
 sequenceDiagram
     participant SPDMRequester as SPDM Requester/PKI Owner
     participant MCU as Caliptra MCU/SPDM Responder
-    participant CaliptraRT
-    Note over SPDMRequester,MCU: ...<br/> 1. Perform initial Device Attestation using Vendor Slot. <br/>The requester has the device identity certificates.<br/> ...
-    opt 
-        Note over SPDMRequester,MCU: 2. Retrieve Device Identity Key Pair Info
-        SPDMRequester->>+MCU: GET_KEY_PAIR_INFO (KeyPairID:1 (LDevID))
-        MCU->>-SPDMRequester: KEY_PAIR_INFO (TotalKeyPairs: 3, KeyPairID: 1, AssocCertSlotMask: 0x00)
+    participant CaliptraRT as Caliptra RT
+    Note over SPDMRequester,CaliptraRT: 1. Perform initial Device Attestation using Vendor Slot
+    opt 2. Retrieve Device Identity Key Pair Info
+        SPDMRequester->>MCU: GET_KEY_PAIR_INFO (KeyPairID: 1)
+        MCU->>SPDMRequester: KEY_PAIR_INFO (AssocCertSlotMask: 0x00)
     end
-    opt 
-        Note over SPDMRequester,MCU: 3. Discover SPDM Slot ID mapping for different OCP PKI entities
-        SPDMRequester->>+MCU: OCP_GET_SLOT_ID_MAPPING
-        MCU->>-SPDMRequester: OCP_SLOT_ID_MAPPING (Vendor:0, Owner: 2, Tenant:3)
+    opt 3. Discover SPDM Slot ID mapping
+        SPDMRequester->>MCU: OCP_GET_SLOT_ID_MAPPING
+        MCU->>SPDMRequester: OCP_SLOT_ID_MAPPING (Vendor:0, Owner:2, Tenant:3)
     end
-    Note over SPDMRequester,MCU: 4. Generate Envelope Signed CSR <br/> for key pair ID 1
-    SPDMRequester->>+MCU: GET_ENVELOPE_SIGNED_CSR (KeyPairID: 1, Nonce: nonce)
-    MCU->>+CaliptraRT: Request envelope signed LDevID CSR (nonce)
-    CaliptraRT->>-MCU: Envelope signed LDevID CSR signed by RT alias key
-    MCU->>-SPDMRequester: ENVELOPE_SIGNED_CSR (Envelope signed CSR data)
-    SPDMRequester-->>SPDMRequester: Validate the CSR and <br/>Issue endorsement certificate for LDevID
-    critical Within secure session and/or with requester authorization
-        Note over SPDMRequester,MCU: 5. Complete Owner Slot Provisioning
-        SPDMRequester->>+MCU: SET_CERTIFICATE (SlotID: 2, KeyPairID: 1, CertChain)
-        MCU->>-SPDMRequester:SET_CERTIFICATE_RSP (SlotID: 2)
+    Note over SPDMRequester,MCU: 4. Request Attested CSR for KeyPairID 1
+    SPDMRequester->>MCU: EXPORT_ATTESTED_CSR (KeyPairID, asym_algo, Nonce)
+    MCU->>CaliptraRT: GET_ATTESTED_ECC384/MLDSA87_CSR (key_id, Nonce)
+    CaliptraRT->>MCU: Attested CSR (EAT signed by RT Alias key)
+    MCU->>SPDMRequester: EXPORT_ATTESTED_CSR_RSP (Attested CSR)
+    SPDMRequester-->>SPDMRequester: Validate CSR & issue endorsement cert
+    critical 5. Provision Owner Slot (authorized session)
+        SPDMRequester->>MCU: SET_CERTIFICATE (SlotID: 2, KeyPairID: 1, CertChain)
+        MCU->>SPDMRequester: SET_CERTIFICATE_RSP (SlotID: 2)
     end
-    Note over SPDMRequester,MCU: 6. Verify Owner Slot Certificate Installation
-    SPDMRequester->>+MCU: GET_KEY_PAIR_INFO (KeyPairID: 1)
-    MCU->>-SPDMRequester: KEY_PAIR_INFO (TotalKeyPairs: 3, KeyPairID: 1, AssocCertSlotMask: 0x04)
-    opt Get installed certificate chain and validate
-        SPDMRequester->>+MCU: GET_CERTIFICATE (SlotID: 2)
-        MCU->>-SPDMRequester: CERTIFICATE (SlotID: 2, CertChain)
-        SPDMRequester-->>SPDMRequester: Validate the installed certificate chain
+    opt 6. Verify Owner Slot Provisioning
+        SPDMRequester->>MCU: GET_KEY_PAIR_INFO (KeyPairID: 1)
+        MCU->>SPDMRequester: KEY_PAIR_INFO (AssocCertSlotMask: 0x04)
+        SPDMRequester->>MCU: GET_CERTIFICATE (SlotID: 2)
+        MCU->>SPDMRequester: CERTIFICATE (SlotID: 2, CertChain)
     end
-    Note over SPDMRequester,MCU: ...<br/> 7. Perform attestation using the newly installed Owner slot
+    Note over SPDMRequester,MCU: 7. Perform attestation using newly installed Owner slot
 ```
     
-## Envelope-signed CSR generation
-The MCU's SPDM responder supports retrieval of an envelope‑signed Certificate Signing Request (CSR) for a specified Device Identity Key-pair ID via the OCP vendor‑defined `GET_ENVELOPE_SIGNED_CSR` command. Upon receiving this request, the MCU forwards it to the Caliptra RT firmware, which generates the CSR and returns it encapsulated in an `EAT` (Entity Attestation Token). The `EAT` is signed using the `RT Alias` key pair. The `nonce` provided in the request is forwarded to the RT firmware and included in the EAT to ensure freshness.
+## Attested CSR generation
+The MCU's SPDM responder supports retrieval of an attested Certificate Signing Request (CSR) for a specified Device Identity Key-pair ID via the OCP vendor-defined `EXPORT_ATTESTED_CSR` command (command code `0x0F`). Upon receiving this request, the MCU forwards it to the Caliptra RT firmware (via `GET_ATTESTED_ECC384_CSR` or `GET_ATTESTED_MLDSA87_CSR` mailbox commands depending on the requested asymmetric algorithm), which generates the CSR and returns it encapsulated in an `EAT` (Entity Attestation Token). The `EAT` is signed using the `RT Alias` key pair. The `nonce` provided in the request is forwarded to the RT firmware and included in the EAT to ensure freshness.
 
 ## Authorization and Security Considerations
 The `SET_CERTIFICATE` command requires proper authorization to prevent security threats. Without authorization controls, attackers could exploit this interface through several attack vectors: flash wear-out attacks by repeatedly writing certificates to exhaust device lifetime; installation of malicious or unauthorized certificates enabling spoofing and elevation of privilege; and certificate slot poisoning to deny service to legitimate PKI owners. Authorization is enforced through the SPDM Authorization specification to validate that certificate installation requests originate from the legitimate PKI owner for the target slot.
