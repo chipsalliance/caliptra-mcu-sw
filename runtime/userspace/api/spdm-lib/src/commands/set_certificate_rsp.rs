@@ -81,10 +81,6 @@ fn validate_request_attributes(
         Err(ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?;
     }
 
-    if ctx.session_mgr.active_session_id().is_none() {
-        Err(ctx.generate_error_response(rsp, ErrorCode::SessionRequired, 0, None))?;
-    }
-
     if connection_version < SpdmVersion::V13 {
         if req.key_pair_id != 0 || req.attributes.cert_model() != 0 || req.attributes.erase() != 0 {
             Err(ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?;
