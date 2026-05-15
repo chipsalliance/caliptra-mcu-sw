@@ -15,30 +15,29 @@ static HEAP: Heap = Heap::empty();
 
 set_main! {main}
 
-// TODO: remove this dependence on the emulator when the emulator-specific
-// pieces are moved to platform/emulator/runtime
 pub(crate) struct EmulatorWriter {}
 pub(crate) static mut EMULATOR_WRITER: EmulatorWriter = EmulatorWriter {};
 
 impl core::fmt::Write for EmulatorWriter {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        print_to_console(s);
+        for b in s.bytes() {
+            print_to_console(b);
+        }
         Ok(())
     }
 }
 
-pub(crate) fn print_to_console(buf: &str) {
-    for b in buf.bytes() {
-        // Print to this address for emulator output
-        unsafe {
-            core::ptr::write_volatile(0x1000_1041 as *mut u8, b);
-        }
+pub fn print_to_console(byte: u8) {
+    // Print to this address for emulator output. Note: this MMIO address is
+    // emulator-only; FPGA-bound builds of `example-app` must not invoke
+    // `caliptra_mcu_romtime::println!`, since the address is unmapped there
+    // and forbidden by user-mode PMP.
+    unsafe {
+        core::ptr::write_volatile(0x1000_1041 as *mut u8, byte);
     }
 }
 
 fn main() {
-    // TODO: remove this when the emulator-specific pieces are moved to
-    // platform/emulator/runtime
     unsafe {
         #[allow(static_mut_refs)]
         caliptra_mcu_romtime::set_printer(&mut EMULATOR_WRITER);

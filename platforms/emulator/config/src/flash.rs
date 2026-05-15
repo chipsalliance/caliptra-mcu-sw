@@ -185,7 +185,7 @@ impl ChecksumCalculator for StandAloneChecksumCalculator {}
 
 pub const LOGGING_PARTITION: FlashPartition = FlashPartition {
     name: "logging",
-    offset: 0x03FE_0000,
-    size: 128 * 1024,
+    offset: 0x03FF_8000,
+    size: 32 * 1024,
     driver_num: 0x9001_0000,
 };

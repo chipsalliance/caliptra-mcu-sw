@@ -169,9 +169,20 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         }
     }
 
-    /// Begin asynchronous reconstruct. Must be called by the board after the
-    /// flash driver client has been wired up.
+    /// Wire up the capsule. Reconstruct is deferred until the first
+    /// client request (read / append / seek / sync / erase).
     pub fn init(&self) {
+        if self.state.get() != State::NotReady {
+            return;
+        }
+        if self.num_pages == 0 {
+            self.reset_state_empty();
+            self.state.set(State::Idle);
+        }
+    }
+
+    /// Lazily kick off reconstruct on the first client request.
+    fn ensure_reconstruct_started(&self) {
         if self.state.get() != State::NotReady {
             return;
         }
@@ -908,14 +919,13 @@ impl<'a, F: Flash + 'static> LogRead<'a> for Log<'a, F> {
         buffer: &'static mut [u8],
         length: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
+        if buffer.len() < length {
+            return Err((ErrorCode::INVAL, buffer));
+        }
+        self.ensure_reconstruct_started();
         match self.state.get() {
-            State::NotReady => Err((ErrorCode::OFF, buffer)),
             State::Idle => self.start_read(buffer, length),
             _ => {
-                // Queue.
-                if buffer.len() < length {
-                    return Err((ErrorCode::INVAL, buffer));
-                }
                 self.buffer.replace(buffer);
                 if let Err(e) = self.enqueue_pending(PendingOp::Read { length }) {
                     let buf = self.buffer.take().expect("buffer just stored");
@@ -939,8 +949,8 @@ impl<'a, F: Flash + 'static> LogRead<'a> for Log<'a, F> {
     }
 
     fn seek(&self, entry_id: Self::EntryID) -> Result<(), ErrorCode> {
+        self.ensure_reconstruct_started();
         match self.state.get() {
-            State::NotReady => Err(ErrorCode::OFF),
             State::Idle => self.start_seek(entry_id),
             _ => self.enqueue_pending(PendingOp::Seek { entry_id }),
         }
@@ -961,13 +971,13 @@ impl<'a, F: Flash + 'static> LogWrite<'a> for Log<'a, F> {
         buffer: &'static mut [u8],
         length: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
+        if length == 0 || buffer.len() < length {
+            return Err((ErrorCode::INVAL, buffer));
+        }
+        self.ensure_reconstruct_started();
         match self.state.get() {
-            State::NotReady => Err((ErrorCode::OFF, buffer)),
             State::Idle => self.start_append(buffer, length),
             _ => {
-                if length == 0 || buffer.len() < length {
-                    return Err((ErrorCode::INVAL, buffer));
-                }
                 self.buffer.replace(buffer);
                 if let Err(e) = self.enqueue_pending(PendingOp::Append { length }) {
                     let buf = self.buffer.take().expect("buffer just stored");
@@ -979,16 +989,16 @@ impl<'a, F: Flash + 'static> LogWrite<'a> for Log<'a, F> {
     }
 
     fn sync(&self) -> Result<(), ErrorCode> {
+        self.ensure_reconstruct_started();
         match self.state.get() {
-            State::NotReady => Err(ErrorCode::OFF),
             State::Idle => self.start_sync(),
             _ => self.enqueue_pending(PendingOp::Sync),
         }
     }
 
     fn erase(&self) -> Result<(), ErrorCode> {
+        self.ensure_reconstruct_started();
         match self.state.get() {
-            State::NotReady => Err(ErrorCode::OFF),
             State::Idle => self.start_erase(),
             _ => self.enqueue_pending(PendingOp::Erase),
         }

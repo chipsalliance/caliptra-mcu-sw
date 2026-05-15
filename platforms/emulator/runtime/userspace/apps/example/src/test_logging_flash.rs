@@ -1,11 +1,13 @@
 // Licensed under the Apache-2.0 license
 
+// NOTE: Do not call `caliptra_mcu_romtime::println!` from this test. On the
+// emulator the printer is wired to a UART MMIO register at 0x1000_1041; on
+// the FPGA that address is unmapped and forbidden by user-mode PMP, so any
+// `println!` here would fault the test process on real hardware. Test
+// success is reported via the process exit code from `main`, not via stdout.
 use caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall;
-use caliptra_mcu_romtime::println;
-use core::fmt::Write;
 
 pub async fn test_logging_flash_simple() {
-    println!("test_logging_flash_simple started");
     let log: LoggingSyscall = LoggingSyscall::new();
 
     assert!(log.exists().is_ok(), "Logging driver doesn't exist");
@@ -29,12 +31,9 @@ pub async fn test_logging_flash_simple() {
     assert!(read_result.is_ok(), "Failed to read back the entry");
     let len = read_result.unwrap();
     assert!(buffer[..len] == entry[..len], "Entry mismatch");
-    println!("test_logging_flash_simple succeeded");
 }
 
 pub async fn test_logging_flash_various_entries() {
-    println!("test_logging_flash_various_entries started");
-
     let log: LoggingSyscall = LoggingSyscall::new();
     assert!(log.exists().is_ok(), "Logging driver doesn't exist");
     assert!(log.get_capacity().is_ok(), "Failed to get logging capacity");
@@ -97,13 +96,9 @@ pub async fn test_logging_flash_various_entries() {
     buffer.fill(0);
     let read_after_clear = log.read_entry(&mut buffer).await;
     assert!(read_after_clear.is_err(), "Log should be empty after clear");
-
-    println!("test_logging_flash_various_entries succeeded");
 }
 
 pub async fn test_logging_flash_invalid_inputs() {
-    println!("test_logging_flash_invalid_inputs started");
-
     let log: LoggingSyscall = LoggingSyscall::new();
     assert!(log.exists().is_ok(), "Logging driver doesn't exist");
     assert!(log.get_capacity().is_ok(), "Failed to get logging capacity");
@@ -127,5 +122,4 @@ pub async fn test_logging_flash_invalid_inputs() {
         log.read_entry(&mut zero_buf).await.is_err(),
         "Should not read with zero-sized buffer"
     );
-    println!("test_logging_flash_invalid_inputs succeeded");
 }
