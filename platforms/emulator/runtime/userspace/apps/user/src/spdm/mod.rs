@@ -72,8 +72,7 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
             console_writer,
             "SPDM_TASK: Failed to initialize certificate store: 0x{:08x}",
             e.error_code()
-        )
-        .unwrap();
+        );
         return;
     }
 
