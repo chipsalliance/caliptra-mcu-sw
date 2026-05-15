@@ -167,13 +167,16 @@ impl Default for DefaultVendorKeyPolicy {
 
 impl VendorKeyPolicy for DefaultVendorKeyPolicy {
     fn select_key(&self, otp: &Otp) -> McuResult<usize> {
-        let valid_mask = otp.read_entry_multi::<1>(generated_fuses::VENDOR_PK_HASH_VALID)?[0];
+        // Note: In VENDOR_PK_HASH_VALID, unburnt bits (0) indicate valid slots,
+        // and burnt bits (1) indicate revoked/invalidated slots.
+        let pk_hash_revocation_mask =
+            otp.read_entry_multi::<1>(generated_fuses::VENDOR_PK_HASH_VALID)?[0];
         let target_slot_count = if self.rotate_pk_hash { 2 } else { 1 };
         let mut slots_found = 0;
         let mut first_functional: Option<usize> = None;
 
         for i in 0..16 {
-            if (valid_mask >> i) & 1 == 1 {
+            if (pk_hash_revocation_mask >> i) & 1 == 1 {
                 continue;
             }
 
