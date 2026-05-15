@@ -90,6 +90,9 @@ impl<'a> PldmService<'a> {
             return Err(PldmServiceError::StartError);
         }
 
+        // Reset the stopped signal to prevent stale Signaled state from a
+        // previous cycle causing wait_until_stopped() to return immediately.
+        self.stopped_signal.reset();
         self.running.store(true, Ordering::SeqCst);
 
         let cmd_interface: &'static CmdInterface<'static> =
