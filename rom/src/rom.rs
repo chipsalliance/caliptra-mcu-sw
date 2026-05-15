@@ -37,7 +37,7 @@ use romtime::LifecycleControllerState;
 use romtime::LifecycleHashedTokens;
 use romtime::LifecycleToken;
 use romtime::PqcKeyType;
-use romtime::{HexWord, McuBootMilestones, StaticRef};
+use romtime::{HexWord, Mci, McuBootMilestones, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -226,7 +226,9 @@ impl Soc {
 
         // Select the vendor public key slot to use.
         let default_policy = DefaultVendorKeyPolicy::new(
-            self.registers.ss_strap_generic[3].get() & Self::PK_HASH_ROTATION_STRAPPING_MASK != 0,
+            mci.registers.mci_reg_generic_input_wires[1].get()
+                & Self::PK_HASH_ROTATION_STRAPPING_MASK
+                != 0,
         );
         let policy = params.vendor_key_policy.unwrap_or(&default_policy);
         let pk_hash_idx = policy
@@ -540,10 +542,10 @@ impl Soc {
         })
     }
 
-    pub fn pk_hash_volatile_lock(&self, otp: &Otp, selected_index: usize) {
-        // Read strap register to check for provisioning mode.
-        let strap_reg = self.registers.ss_strap_generic[3].get();
-        if (strap_reg & Self::PK_HASH_SKIP_LOCK_STRAPPING_MASK) != 0 {
+    pub fn pk_hash_volatile_lock(&self, otp: &Otp, mci: &Mci, selected_index: usize) {
+        // Read generic input wires to check for provisioning mode.
+        let input_wires = mci.registers.mci_reg_generic_input_wires[1].get();
+        if (input_wires & Self::PK_HASH_SKIP_LOCK_STRAPPING_MASK) != 0 {
             romtime::println!(
               "[mcu-fuse-write] PK Hash provisioning mode detected, skipping vendor PK hash lock."
           );

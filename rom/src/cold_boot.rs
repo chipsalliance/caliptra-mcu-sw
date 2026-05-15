@@ -1467,7 +1467,7 @@ impl BootFlow for ColdBoot {
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
         }
 
-        soc.pk_hash_volatile_lock(&env.otp, _fuse_state.pk_hash_idx);
+        soc.pk_hash_volatile_lock(&env.otp, &env.mci, _fuse_state.pk_hash_idx);
         if env.otp.check_error().is_some() {
             romtime::println!("[mcu-rom] OTP error: {}", HexWord(env.otp.status()));
             env.otp.print_errors();
