@@ -34,7 +34,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         // Device rebooted due to firmware update, skip firmware update
         return Ok(());
     }
-    writeln!(console_writer, "[FW Upd] Start").unwrap();
+    crate::console_writeln!(console_writer, "[FW Upd] Start");
     #[cfg(feature = "test-firmware-update-streaming")]
     {
         let fw_params = PldmFirmwareDeviceParams {
@@ -72,7 +72,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
     }
 
     // Trigger MCU warm reset to boot into new firmware
-    writeln!(console_writer, "[FW Upd] Triggering MCU reset").unwrap();
+    crate::console_writeln!(console_writer, "[FW Upd] Triggering MCU reset");
     let mci = MciSyscall::<DefaultSyscalls>::new();
     mci.trigger_warm_reset()?;
 
@@ -271,13 +271,12 @@ mod flash_memory {
                 .get_partition_from_id(inactive_partition_id)
                 .map_err(|_| ErrorCode::Fail)?;
 
-            writeln!(
+            crate::console_writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] Copying image from staging to inactive partition {:?} length {}",
                 inactive_partition_id,
                 img_sz
-            )
-            .unwrap();
+            );
             // Mark inactive partittion as invalid
             boot_config
                 .set_partition_status(inactive_partition_id, PartitionStatus::Invalid)

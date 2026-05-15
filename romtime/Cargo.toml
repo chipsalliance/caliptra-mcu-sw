@@ -23,6 +23,12 @@ zerocopy.workspace = true
 default = []
 core_test = []
 ocp-lock = []
+# Strip the `print!` / `println!` macros to no-ops that still type-check
+# `format_args!` so all call sites compile cleanly.  Used to drop a few KB of
+# `.rodata` (format strings) and `.text` (`core::fmt` machinery) in production
+# builds.  Disabled by default; enabled by `mcu-runtime-emulator`/
+# `mcu-runtime-fpga` via their `no-debug-print` feature.
+no-print = []
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 riscv-csr.workspace = true

@@ -39,6 +39,7 @@ pub fn set_printer(writer: &'static mut dyn Write) {
     }
 }
 
+#[cfg(not(feature = "no-print"))]
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => {
@@ -50,6 +51,19 @@ macro_rules! print {
     };
 }
 
+#[cfg(feature = "no-print")]
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => {{
+        // Type-check `format_args!` (so all call sites stay valid) but discard
+        // the resulting `Arguments` so LTO/lld can drop it along with any
+        // `Display`/`Debug` impls reached through it.  Same pattern as Tock's
+        // `no_debug_panics` feature on the `debug!` macro.
+        let _ = ::core::format_args!($($arg)*);
+    }};
+}
+
+#[cfg(not(feature = "no-print"))]
 #[macro_export]
 macro_rules! println {
     ($($arg:tt)*) => {
@@ -57,6 +71,14 @@ macro_rules! println {
             let _ = writeln!(writer, $($arg)*);
         }
     };
+}
+
+#[cfg(feature = "no-print")]
+#[macro_export]
+macro_rules! println {
+    ($($arg:tt)*) => {{
+        let _ = ::core::format_args!($($arg)*);
+    }};
 }
 
 pub struct HexBytes<'a>(pub &'a [u8]);

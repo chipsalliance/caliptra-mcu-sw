@@ -38,4 +38,11 @@ rustflags = [
     # the same address in the binary. However, it can save a fair bit of code  size.
     "-C",
     "link-arg=-icf=all",
+    # Strip absolute build paths from panic / debug strings to shrink .rodata.
+    # Repository sources become relative to repo root; cargo registry sources
+    # become "registry/...".  Both reduce the size of file-path strings baked
+    # into `core::panicking::panic_fmt` call sites (unwrap/expect/assert/etc.).
+    "--remap-path-prefix=/root/caliptra-mcu-sw=.",
+    "--remap-path-prefix=/root/.cargo/registry=registry",
+    "--remap-path-prefix=/root/.cargo/git=git",
 ]

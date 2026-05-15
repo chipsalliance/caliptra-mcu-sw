@@ -1,0 +1,44 @@
+# Licensed under the Apache-2.0 license
+#
+# Devel-time (`devel` profile) bundler manifest for the emulator example-app
+# build.  Uses a larger 1 MB SRAM layout (vs the 512 KB shipping layout in
+# `example-app.toml`) so debug-only Tock components fit alongside the kernel +
+# app, and is paired with the default cargo features (without the `release` cargo feature).  Selected by
+# `xtask runtime-build --profile devel` and `xtask runtime`.
+
+[platform]
+name = "emulator-example-app"
+tuple = "riscv32imc-unknown-none-elf"
+dynamic_sizing = true
+page_size = 256
+
+[platform.rom]
+offset = 0x8000_0000
+size = 0x1_0000
+
+[platform.runtime_memory]
+sram = { offset = 0x4000_0000, size = 0x10_0000 }
+
+[platform.dccm]
+offset = 0x5000_0000
+size = 0x4000
+
+[platform.flash]
+offset = 0x3BFE_0000
+size = 0x2_0000
+
+# This section is optional.
+[rom]
+name = "mcu-rom-emulator"
+stack = 0x2d00
+exception_stack = 0x200
+
+[kernel]
+name = "mcu-runtime-emulator"
+stack = 0x0_7000
+
+[[app]]
+name = "example-app"
+stack = 0x7600
+grant_space = 0x4000
+

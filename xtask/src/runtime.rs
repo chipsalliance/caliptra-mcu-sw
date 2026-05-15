@@ -37,6 +37,9 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     }
     // include debug features since this is interactive
     features.push("debug");
+    // NOTE: interactive `xtask runtime` runs default-feature builds (without the `release` cargo feature),
+    // so DebugWriter / Console / LowLevelDebug / ProcessConsole / kernel
+    // `debug!()` / romtime `println!` are all available for live debugging.
     let rom_binary = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs::default())?;
     let features_str = features.join(",");
     let tock_binary = runtime_build_with_apps(&CaliptraBuildArgs {

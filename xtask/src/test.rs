@@ -13,6 +13,7 @@ pub(crate) struct TestArgs<'a> {
     pub firmware_bundle: Option<&'a str>,
     pub emulator_bundle: Option<&'a str>,
     pub test_filter: Option<&'a str>,
+    pub nextest_profile: Option<&'a str>,
 }
 
 const EXCLUDED_PACKAGES: &[&str] = &[
@@ -43,6 +44,7 @@ pub(crate) fn test(args: TestArgs) -> Result<()> {
         args.workspace_remap,
         args.archive,
         args.test_filter,
+        args.nextest_profile,
     )
 }
 
@@ -55,15 +57,13 @@ fn cargo_test(
     workspace_remap: Option<&str>,
     archive: Option<&str>,
     test_filter: Option<&str>,
+    nextest_profile: Option<&str>,
 ) -> Result<()> {
     // Run all tests with nextest for proper sequencing, excluding ROM packages that don't have tests
-    println!("Running: cargo nextest run");
-    let mut args = vec![
-        "nextest",
-        "run",
-        "--test-threads=1",
-        "--profile=nightly-emulator",
-    ];
+    let profile = nextest_profile.unwrap_or("nightly-emulator");
+    let profile_arg = format!("--profile={}", profile);
+    println!("Running: cargo nextest run (profile={})", profile);
+    let mut args = vec!["nextest", "run", "--test-threads=1", &profile_arg];
 
     if let Some(archive_path) = archive {
         args.push("--archive-file");

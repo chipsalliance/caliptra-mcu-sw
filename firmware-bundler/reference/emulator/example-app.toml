@@ -1,4 +1,10 @@
 # Licensed under the Apache-2.0 license
+#
+# Default (`release` profile) bundler manifest for the emulator example-app
+# build.  Uses the constrained 512 KB SRAM layout that mirrors the real device,
+# paired with the `release` cargo feature (auto-enabled by `xtask runtime-build
+# --profile release`).  See `example-app-devel.toml` for the larger 1 MB
+# devel-time layout.
 
 [platform]
 name = "emulator-example-app"
@@ -39,4 +45,3 @@ stack = 0x0_7000
 name = "caliptra-mcu-example-app"
 stack = 0x10000
 grant_space = 0x4000
-

@@ -87,6 +87,12 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful))
 """
 
+[profile.nightly-release]
+inherits = "nightly-emulator"
+default-filter = """
+(package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful))
+"""
+
 [profile.nightly-ci-spdm]
 inherits = "nightly"
 default-filter = """

@@ -6,62 +6,38 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-#![allow(unused_variables)]
-#![allow(unused_imports)]
-#![allow(dead_code)]
-
-use crate::utils::{bare_metal_manifest_file, manifest_file};
-use crate::PROJECT_ROOT;
+use crate::utils::manifest_file_for_profile;
+use crate::{CaliptraBuildArgs, PROJECT_ROOT};
 use anyhow::Result;
 use caliptra_mcu_firmware_bundler::args::{
     BuildArgs, BundleArgs, Commands as BundleCommands, Common, LdArgs,
 };
 use std::path::PathBuf;
 
-pub fn runtime_build_with_apps(args: &crate::CaliptraBuildArgs) -> Result<PathBuf> {
-    let features_str = args.features.unwrap_or("");
-    let features: Vec<&str> = if features_str.is_empty() {
-        vec![]
-    } else {
-        features_str.split(',').collect()
-    };
-    runtime_build_with_apps_inner(
-        &features,
-        args.output_name.clone(),
-        args.example_app,
-        args.platform,
-        args.svn,
-        args.target_dir.clone(),
-    )
-}
+pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
+    let features = args.features;
+    let output_name = args.output_name.clone();
+    let example_app = args.example_app;
+    let platform = args.platform;
+    let svn = args.svn;
+    let target_dir = args.target_dir.clone();
+    let profile = args.profile.unwrap_or("devel").to_string();
 
-fn runtime_build_with_apps_inner(
-    features: &[&str],
-    output_name: Option<String>,
-    example_app: bool,
-    platform: Option<&str>,
-    svn: Option<u16>,
-    target_dir: Option<PathBuf>,
-) -> Result<PathBuf> {
-    let manifest = manifest_file(platform, example_app)?;
+    let manifest = manifest_file_for_profile(platform, example_app, args.profile)?;
     let platform_str = platform.unwrap_or("emulator");
-    let platform = platform.unwrap_or("emulator");
-    let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform));
+    let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform_str));
 
     let common = Common {
         manifest,
         svn,
         target_dir,
+        profile,
         ..Default::default()
     };
     let release_dir = common.release_dir()?;
     let runtime_bin = release_dir.join(&output_name);
 
-    let runtime_features = if features.is_empty() {
-        None
-    } else {
-        Some(features.join(","))
-    };
+    let runtime_features = features.filter(|s| !s.is_empty()).map(|f| f.to_string());
     let bundle_cmd = BundleCommands::Bundle {
         common,
         ld: LdArgs::default(),
@@ -79,7 +55,7 @@ fn runtime_build_with_apps_inner(
     // The bundle step rebuilds the ROM via objcopy, which strips the SHA-384
     // digest appended by rom_build(). Re-apply the digest so the ROM binary
     // stays valid regardless of build order.
-    let rom_binary = release_dir.join(format!("caliptra-mcu-rom-{platform_str}.bin"));
+    let rom_binary = release_dir.join(format!("mcu-rom-{platform_str}.bin"));
     if rom_binary.exists() {
         let rom_size = crate::rom::rom_size_for_platform(platform_str);
         crate::rom::append_rom_digest(&rom_binary, rom_size)?;
@@ -88,10 +64,9 @@ fn runtime_build_with_apps_inner(
     Ok(runtime_bin)
 }
 
-pub fn bare_metal_build(platform: Option<&str>) -> Result<PathBuf> {
-    let manifest = bare_metal_manifest_file(platform)?;
-    let platform_str = platform.unwrap_or("emulator");
-    let output_name = format!("mcu-bare-metal-{}.bin", platform_str);
+pub fn bare_metal_build() -> Result<PathBuf> {
+    let manifest = PROJECT_ROOT.join("runtime/bare-metal/manifest.toml");
+    let output_name = "runtime-bare-metal.bin".to_string();
 
     let common = Common {
         manifest,
@@ -99,19 +74,10 @@ pub fn bare_metal_build(platform: Option<&str>) -> Result<PathBuf> {
     };
     let runtime_bin = common.release_dir()?.join(&output_name);
 
-    let runtime_features = if platform_str == "fpga" {
-        Some("fpga".to_string())
-    } else {
-        None
-    };
-
     let bundle_cmd = BundleCommands::Bundle {
         common,
         ld: LdArgs::default(),
-        build: BuildArgs {
-            runtime_features,
-            ..Default::default()
-        },
+        build: BuildArgs::default(),
         bundle: BundleArgs {
             bundle_name: Some(output_name),
         },
