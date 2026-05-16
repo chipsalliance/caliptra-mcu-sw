@@ -43,6 +43,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
         ld: LdArgs::default(),
         build: BuildArgs {
             runtime_features,
+            no_default_features: args.no_default_features,
             ..Default::default()
         },
         bundle: BundleArgs {

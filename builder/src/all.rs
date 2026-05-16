@@ -850,6 +850,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 platform: Some(platform),
                 profile,
                 target_dir,
+                no_default_features: true,
                 ..Default::default()
             })?;
 

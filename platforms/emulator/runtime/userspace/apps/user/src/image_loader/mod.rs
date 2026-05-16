@@ -37,12 +37,37 @@ use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
 #[allow(unused)]
+#[cfg(any(
+    feature = "streaming-boot",
+    feature = "test-pldm-discovery",
+    feature = "test-pldm-fw-update",
+    feature = "test-pldm-fw-update-e2e",
+    feature = "test-pldm-streaming-boot"
+))]
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 use core::fmt::Write;
 
 #[allow(unused)]
 use crate::EXECUTOR;
 #[allow(unused)]
+#[cfg(not(any(
+    feature = "streaming-boot",
+    feature = "test-pldm-discovery",
+    feature = "test-pldm-fw-update",
+    feature = "test-pldm-fw-update-e2e",
+    feature = "test-pldm-streaming-boot"
+)))]
+use caliptra_mcu_libapi_caliptra::image_loading::{
+    dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader,
+};
+#[allow(unused)]
+#[cfg(any(
+    feature = "streaming-boot",
+    feature = "test-pldm-discovery",
+    feature = "test-pldm-fw-update",
+    feature = "test-pldm-fw-update-e2e",
+    feature = "test-pldm-streaming-boot"
+))]
 use caliptra_mcu_libapi_caliptra::image_loading::{
     dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams,
     PldmImageLoader,
@@ -74,8 +99,8 @@ pub async fn image_loading_task() {
         mbox_sram.release_lock().unwrap();
     }
     #[cfg(any(
-        feature = "test-pldm-streaming-boot",
-        feature = "test-flash-based-boot",
+        feature = "streaming-boot",
+        feature = "flash-boot",
         feature = "test-pldm-discovery",
         feature = "test-pldm-fw-update",
         feature = "test-pldm-fw-update-e2e",
@@ -92,17 +117,11 @@ pub async fn image_loading_task() {
             Err(_) => System::exit(1),
         }
         mbox_sram.release_lock().unwrap();
-        #[cfg(not(any(
-            feature = "test-firmware-update-streaming",
-            feature = "test-firmware-update-flash"
-        )))]
+        #[cfg(not(feature = "firmware-update"))]
         System::exit(0);
     }
     // After image loading, proceed to firmware update if enabled
-    #[cfg(any(
-        feature = "test-firmware-update-streaming",
-        feature = "test-firmware-update-flash"
-    ))]
+    #[cfg(feature = "firmware-update")]
     {
         if mbox_sram.acquire_lock().is_err() {
             mbox_sram.release_lock().unwrap();
@@ -121,7 +140,7 @@ pub async fn image_loading_task() {
 async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     crate::console_writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
-    #[cfg(feature = "test-pldm-streaming-boot")]
+    #[cfg(feature = "streaming-boot")]
     {
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
@@ -144,10 +163,7 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
         ])
         .await?;
     }
-    #[cfg(any(
-        feature = "test-flash-based-boot",
-        feature = "test-firmware-update-flash",
-    ))]
+    #[cfg(feature = "flash-boot")]
     {
         let mut boot_config = FlashBootConfig::new();
         let active_partition_id = boot_config
