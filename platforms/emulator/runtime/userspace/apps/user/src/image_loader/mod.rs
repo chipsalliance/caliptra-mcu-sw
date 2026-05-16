@@ -136,10 +136,10 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
         let pldm_image_loader =
             PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
         pldm_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
+            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1, true)
             .await?;
         pldm_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2)
+            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2, false)
             .await?;
         // Close the PLDM session
         pldm_image_loader.finalize()?;
@@ -200,10 +200,10 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
         }
 
         flash_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
+            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1, true)
             .await?;
         flash_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2)
+            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2, false)
             .await?;
         boot_config
             .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
