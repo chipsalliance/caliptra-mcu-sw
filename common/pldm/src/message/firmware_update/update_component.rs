@@ -2,7 +2,8 @@
 
 use crate::codec::{PldmCodec, PldmCodecError};
 use crate::protocol::base::{
-    InstanceId, PldmMsgHeader, PldmMsgType, PldmSupportedType, PLDM_MSG_HEADER_LEN,
+    InstanceId, PldmBaseCompletionCode, PldmMsgHeader, PldmMsgType, PldmSupportedType,
+    PLDM_MSG_HEADER_LEN,
 };
 use crate::protocol::firmware_update::{
     ComponentClassification, ComponentCompatibilityResponse, ComponentCompatibilityResponseCode,
@@ -233,6 +234,19 @@ impl PldmCodec for UpdateComponentResponse {
         )
         .unwrap();
         offset += core::mem::size_of::<u8>();
+
+        // Per PLDM FW Update spec, failure responses only contain header + completion_code.
+        if completion_code != PldmBaseCompletionCode::Success as u8 {
+            return Ok(UpdateComponentResponse {
+                hdr,
+                completion_code,
+                comp_compatibility_resp: 0,
+                comp_compatibility_resp_code: 0,
+                update_option_flags_enabled: 0,
+                time_before_req_fw_data: 0,
+                get_comp_opaque_data_max_transfer_size: None,
+            });
+        }
 
         let comp_compatibility_resp = u8::read_from_bytes(
             buffer
