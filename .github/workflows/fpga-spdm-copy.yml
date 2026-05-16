@@ -70,7 +70,7 @@ jobs:
 
   test_spdm:
     runs-on: vck190-subsystem
-    needs: build_test_binaries
+    needs: download_and_upload
     timeout-minutes: 120
 
     steps:
