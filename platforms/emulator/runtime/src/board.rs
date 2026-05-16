@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-use crate::components as runtime_components;
 use crate::interrupts::EmulatorPeripherals;
 use crate::{MCU_MEMORY_MAP, MCU_STRAPS};
 use arrayvec::ArrayVec;
@@ -42,7 +41,6 @@ use kernel::platform::SyscallFilter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::process;
 use kernel::scheduler::cooperative::CooperativeSched;
-use kernel::storage_volume;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
@@ -115,9 +113,6 @@ pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 #[no_mangle]
 pub static mut PIC: Pic = Pic::new(MCU_MEMORY_MAP.pic_offset);
 
-// Storage volume for logging flash. Use 64KB as placeholder.
-storage_volume!(LOG, 64);
-
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
 struct VeeR {
@@ -152,7 +147,7 @@ struct VeeR {
     caliptra: &'static caliptra_mcu_capsules_runtime::caliptra::Caliptra,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
     logging_flash:
-        &'static caliptra_mcu_capsules_emulator::logging::driver::LoggingFlashDriver<'static>,
+        &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
     mci: &'static caliptra_mcu_capsules_runtime::mci::Mci,
     mcu_mbox0: &'static caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver<
         'static,
@@ -211,7 +206,7 @@ impl SyscallDriverLookup for VeeR {
                 }
                 return f(None);
             }
-            caliptra_mcu_capsules_emulator::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
+            caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
                 f(Some(self.logging_flash))
             }
             caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => {
@@ -773,16 +768,19 @@ pub unsafe fn main() {
     );
 
     // Logging capsule
-    let logging_flash = runtime_components::logging::LoggingFlashComponent::new(
+    let logging_flash = caliptra_mcu_components::logging::LoggingFlashComponent::new(
         board_kernel,
-        caliptra_mcu_capsules_emulator::logging::driver::LOGGING_FLASH_DRIVER_NUM,
+        caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM,
         logging_fl_user,
-        &LOG,
+        caliptra_mcu_config_emulator::flash::LOGGING_PARTITION
+            .base_page(caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE),
+        caliptra_mcu_config_emulator::flash::LOGGING_PARTITION
+            .num_pages(caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE),
         true,
     )
-    .finalize(crate::logging_flash_component_static!(
+    .finalize(caliptra_mcu_components::logging_flash_component_static!(
         virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl>,
-        caliptra_mcu_capsules_emulator::logging::driver::BUF_LEN
+        caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
     ));
 
     let dma = caliptra_mcu_components::dma::DmaComponent::new(

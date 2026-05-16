@@ -18,3 +18,10 @@ macro_rules! flash_partition_list_imaginary_flash {
         $macro!(0, staging_par, STAGING_PARTITION);
     }};
 }
+
+pub const LOGGING_PARTITION: FlashPartition = FlashPartition {
+    name: "logging",
+    offset: 0x03FF_8000,
+    size: 32 * 1024,
+    driver_num: 0x9001_0000,
+};

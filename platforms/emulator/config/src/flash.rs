@@ -191,27 +191,9 @@ impl StandAloneChecksumCalculator {
 }
 impl ChecksumCalculator for StandAloneChecksumCalculator {}
 
-// Logging flash configuration for emulator platform
-#[derive(Debug, Clone, Copy)]
-pub struct LoggingFlashConfig {
-    pub logging_flash_size: u32,
-    pub logging_flash_offset: u32,
-    pub base_addr: u32, // Base address of the logging flash.
-    pub page_size: u32, // Flash page size in bytes.
-}
-
-impl LoggingFlashConfig {
-    // 128KB at the end of the 64MB primary flash is reserved for logging.
-    // Offset is calculated as: caliptra_mcu_emulator_consts::DIRECT_READ_FLASH_ORG + caliptra_mcu_emulator_consts::DIRECT_READ_FLASH_SIZE - 128 * 1024.
-    // This region must not overlap with any other flash partitions.
-    pub const fn default() -> Self {
-        Self {
-            logging_flash_offset: 0x3BFE_0000,
-            logging_flash_size: 128 * 1024,
-            base_addr: 0x3800_0000,
-            page_size: 256,
-        }
-    }
-}
-
-pub const LOGGING_FLASH_CONFIG: LoggingFlashConfig = LoggingFlashConfig::default();
+pub const LOGGING_PARTITION: FlashPartition = FlashPartition {
+    name: "logging",
+    offset: 0x03FF_8000,
+    size: 32 * 1024,
+    driver_num: 0x9001_0000,
+};

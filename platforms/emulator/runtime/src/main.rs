@@ -15,8 +15,6 @@
 #[cfg(target_arch = "riscv32")]
 mod board;
 #[cfg(target_arch = "riscv32")]
-mod components;
-#[cfg(target_arch = "riscv32")]
 mod interrupts;
 #[cfg(target_arch = "riscv32")]
 pub mod io;
