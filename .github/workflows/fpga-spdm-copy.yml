@@ -8,7 +8,8 @@ on:
     inputs:
       release-tag:
         description: 'Release tag (e.g. v1.0.0). Sub-tags are derived: v1.0.0b=bitstream, v1.0.0x=xtask, v1.0.0s=spdm-emu'
-        required: true
+        required: false
+        default: 'v1.0.0'
         type: string
 
 concurrency:
@@ -21,9 +22,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Download release artifacts
-        if: inputs.release-tag != ''
         run: |
-          BASE="https://github.com/mlvisaya/caliptra-mcu-sw/releases/download/${{ inputs.release-tag }}"
+          BASE="https://github.com/mlvisaya/caliptra-mcu-sw/releases/download/${{ inputs.release-tag || 'v1.0.0' }}"
 
           mkdir -p /tmp/caliptra-binaries /tmp/spdm-emu-binaries
 
@@ -44,7 +44,6 @@ jobs:
           curl -fL "${BASE}s/spdm-emu-binaries.tar.gz" | tar -xz -C /tmp
 
       - name: "Upload bitstream"
-        if: inputs.release-tag != ''
         uses: actions/upload-artifact@v4
         with:
           name: caliptra-bitstream${{ inputs.artifact-suffix }}
@@ -52,7 +51,6 @@ jobs:
           retention-days: 1
 
       - name: "Upload test binaries artifact"
-        if: inputs.release-tag != ''
         uses: actions/upload-artifact@v4
         with:
           name: caliptra-test-binaries${{ inputs.artifact-suffix }}
@@ -60,7 +58,6 @@ jobs:
           retention-days: 1
 
       - name: "Upload test firmware artifact"
-        if: inputs.release-tag != ''
         uses: actions/upload-artifact@v4
         with:
           name: caliptra-test-firmware${{ inputs.artifact-suffix }}
@@ -68,7 +65,6 @@ jobs:
           retention-days: 1
 
       - name: "Upload spdm-emu binaries artifact"
-        if: inputs.release-tag != ''
         uses: actions/upload-artifact@v4
         with:
           name: spdm-emu-binaries${{ inputs.artifact-suffix }}
