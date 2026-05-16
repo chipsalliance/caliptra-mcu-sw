@@ -509,6 +509,7 @@ pub unsafe fn main() {
         caliptra_mcu_capsules_runtime::mailbox::DRIVER_NUM,
         mux_alarm,
         mbox_dma_driver,
+        Some(100_000),
     )
     .finalize(caliptra_mcu_components::mailbox_component_static!(
         InternalTimers<'static>,

@@ -123,18 +123,22 @@ impl<S: Syscalls> Mailbox<S> {
         }
     }
 
-    pub async fn execute_with_payload_stream(
+    /// Initiates a chunked mailbox request.
+    ///
+    /// Call this first, then send data with [`send_chunk`](Self::send_chunk),
+    /// and finally call [`execute_chunked_request`](Self::execute_chunked_request).
+    ///
+    /// **Concurrency:** The kernel enforces ordering via a state machine and
+    /// verifies the calling process ID, so different processes cannot
+    /// interleave chunked flows. Within a single process with multiple async
+    /// tasks, callers should either use [`execute_with_payload_stream`](Self::execute_with_payload_stream)
+    /// (which holds the global mailbox mutex) or acquire `MAILBOX_MUTEX`
+    /// externally before calling this method.
+    pub async fn start_chunked_request(
         &self,
         command: u32,
-        header: Option<&[u8]>,
-        payload: &mut dyn PayloadStream,
-        response_buffer: &mut [u8],
-    ) -> Result<usize, MailboxError> {
-        let mutex = MAILBOX_MUTEX.lock().await;
-
-        let request_len = payload.size() + header.map_or(0, |h| h.len());
-
-        // Send the command to initiate mailbox request
+        request_len: usize,
+    ) -> Result<(), MailboxError> {
         S::command(
             self.driver_num,
             mailbox_cmd::START_CHUNKED_REQUEST,
@@ -142,70 +146,11 @@ impl<S: Syscalls> Mailbox<S> {
             request_len as u32,
         )
         .to_result::<(), ErrorCode>()
-        .map_err(MailboxError::ErrorCode)?;
-
-        // Send the header if provided
-        let mut buffer = [0u8; PAYLOAD_CHUNK_SIZE];
-        if let Some(header) = header {
-            // If a header is provided, write it to the buffer first
-            buffer[..header.len()].copy_from_slice(header);
-            self.send_chunk(buffer[..header.len()].as_ref()).await?;
-        }
-
-        // Send the payload in chunks
-        loop {
-            // Read a chunk of data from the payload stream
-            let sz = payload
-                .read(&mut buffer)
-                .await
-                .map_err(MailboxError::ErrorCode)?;
-            if sz == 0 {
-                break; // No more data to read
-            }
-            self.send_chunk(buffer[..sz].as_ref()).await?;
-        }
-
-        // Execute the command
-        let result = share::scope::<(), _, _>(|_handle| {
-            let mut sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
-                self.driver_num,
-                mailbox_subscribe::COMMAND_DONE,
-                mailbox_rw_buffer::RESPONSE,
-                response_buffer,
-            );
-
-            // Issue the command to the kernel
-            match S::command(
-                self.driver_num,
-                mailbox_cmd::EXECUTE_CHUNKED_REQUEST,
-                command,
-                0,
-            )
-            .to_result::<(), ErrorCode>()
-            {
-                Ok(()) => Ok(TockSubscribe::subscribe_finish(sub)),
-                Err(err) => {
-                    S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
-                    sub.cancel();
-                    Err(MailboxError::ErrorCode(err))
-                }
-            }
-        })?
-        .await;
-        black_box(*mutex); // Ensure the mutex is not optimized away
-        match result {
-            Ok((bytes, error_code, _)) => {
-                if error_code != 0 {
-                    Err(MailboxError::MailboxError(error_code))
-                } else {
-                    Ok(bytes as usize)
-                }
-            }
-            Err(err) => Err(MailboxError::ErrorCode(err)),
-        }
+        .map_err(MailboxError::ErrorCode)
     }
 
-    async fn send_chunk(&self, buffer: &[u8]) -> Result<(u32, u32, u32), MailboxError> {
+    /// Sends a chunk of data for a previously started chunked mailbox request.
+    pub async fn send_chunk(&self, buffer: &[u8]) -> Result<(u32, u32, u32), MailboxError> {
         share::scope::<(), _, _>(|_handle| {
             let mut sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
@@ -228,6 +173,88 @@ impl<S: Syscalls> Mailbox<S> {
         })?
         .await
         .map_err(MailboxError::ErrorCode)
+    }
+
+    /// Executes a previously started chunked mailbox request and returns the response.
+    pub async fn execute_chunked_request(
+        &self,
+        command: u32,
+        response_buffer: &mut [u8],
+    ) -> Result<usize, MailboxError> {
+        let result = share::scope::<(), _, _>(|_handle| {
+            let mut sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
+                self.driver_num,
+                mailbox_subscribe::COMMAND_DONE,
+                mailbox_rw_buffer::RESPONSE,
+                response_buffer,
+            );
+
+            match S::command(
+                self.driver_num,
+                mailbox_cmd::EXECUTE_CHUNKED_REQUEST,
+                command,
+                0,
+            )
+            .to_result::<(), ErrorCode>()
+            {
+                Ok(()) => Ok(TockSubscribe::subscribe_finish(sub)),
+                Err(err) => {
+                    S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
+                    sub.cancel();
+                    Err(MailboxError::ErrorCode(err))
+                }
+            }
+        })?
+        .await;
+        match result {
+            Ok((bytes, error_code, _)) => {
+                if error_code != 0 {
+                    Err(MailboxError::MailboxError(error_code))
+                } else {
+                    Ok(bytes as usize)
+                }
+            }
+            Err(err) => Err(MailboxError::ErrorCode(err)),
+        }
+    }
+
+    pub async fn execute_with_payload_stream(
+        &self,
+        command: u32,
+        header: Option<&[u8]>,
+        payload: &mut dyn PayloadStream,
+        response_buffer: &mut [u8],
+    ) -> Result<usize, MailboxError> {
+        let mutex = MAILBOX_MUTEX.lock().await;
+
+        let request_len = payload.size() + header.map_or(0, |h| h.len());
+
+        self.start_chunked_request(command, request_len).await?;
+
+        // Send the header if provided
+        let mut buffer = [0u8; PAYLOAD_CHUNK_SIZE];
+        if let Some(header) = header {
+            // If a header is provided, write it to the buffer first
+            buffer[..header.len()].copy_from_slice(header);
+            self.send_chunk(buffer[..header.len()].as_ref()).await?;
+        }
+
+        // Send the payload in chunks
+        loop {
+            // Read a chunk of data from the payload stream
+            let sz = payload
+                .read(&mut buffer)
+                .await
+                .map_err(MailboxError::ErrorCode)?;
+            if sz == 0 {
+                break; // No more data to read
+            }
+            self.send_chunk(buffer[..sz].as_ref()).await?;
+        }
+
+        let result = self.execute_chunked_request(command, response_buffer).await;
+        black_box(*mutex); // Ensure the mutex is not optimized away
+        result
     }
 }
 #[async_trait(?Send)]

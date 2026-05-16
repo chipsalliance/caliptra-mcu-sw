@@ -241,6 +241,11 @@ impl CaliptraSoC {
         Ok(())
     }
 
+    /// Aborts a mailbox request by clearing the execute bit, releasing the HW lock.
+    pub fn abort_request(&mut self) {
+        self.soc_mbox().execute().write(|w| w.execute(false));
+    }
+
     /// Wait for the mailbox response status. Returns `Ok(Some(dlen))` if
     /// data is ready, `Ok(None)` if the command completed with no data,
     /// or an error on failure/timeout.
