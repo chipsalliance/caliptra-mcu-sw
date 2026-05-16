@@ -140,8 +140,7 @@ jobs:
               --workspace-remap=. \
               --profile=nightly-ci-spdm \
               --run-ignored all \
-              --test-threads=1 \
-              --no-fail-fast
+              --test-threads=1
 
       - name: Display and check SPDM Validator test results
         if: success() || failure()
