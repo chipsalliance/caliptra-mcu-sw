@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       release-tag:
-        description: 'GitHub release tag to download artifacts from (e.g. v1.0.0)'
+        description: 'Release tag (e.g. v1.0.0). Sub-tags are derived: v1.0.0b=bitstream, v1.0.0x=xtask, v1.0.0s=spdm-emu'
         required: true
         type: string
 
@@ -25,19 +25,21 @@ jobs:
 
           mkdir -p /tmp/caliptra-binaries /tmp/spdm-emu-binaries
 
-          # Bitstream
-          curl -fL "${BASE}/caliptra-bitstream.pdi" -o /tmp/caliptra-bitstream.pdi
+          # Bitstream (tag: <release-tag>b)
+          curl -fL "${BASE}b/caliptra-bitstream.pdi" -o /tmp/caliptra-bitstream.pdi
 
-          # Firmware bundle + xtask
-          curl -fL "${BASE}/caliptra-binaries.tar.gz" -o /tmp/caliptra-binaries/caliptra-binaries.tar.gz
-          curl -fL "${BASE}/xtask" -o /tmp/caliptra-binaries/xtask
+          # xtask (tag: <release-tag>x)
+          curl -fL "${BASE}x/xtask" -o /tmp/caliptra-binaries/xtask
           chmod +x /tmp/caliptra-binaries/xtask
 
-          # Test binaries squashfs
+          # Firmware bundle (tag: <release-tag>)
+          curl -fL "${BASE}/caliptra-binaries.tar.gz" -o /tmp/caliptra-binaries/caliptra-binaries.tar.gz
+
+          # Test binaries squashfs (tag: <release-tag>)
           curl -fL "${BASE}/caliptra-test-binaries.sqsh" -o /tmp/caliptra-test-binaries.sqsh
 
-          # spdm-emu binaries
-          curl -fL "${BASE}/spdm-emu-binaries.tar.gz" | tar -xz -C /tmp
+          # spdm-emu binaries (tag: <release-tag>s)
+          curl -fL "${BASE}s/spdm-emu-binaries.tar.gz" | tar -xz -C /tmp
 
       - name: "Upload bitstream"
         uses: actions/upload-artifact@v4

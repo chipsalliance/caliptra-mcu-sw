@@ -62,8 +62,4 @@ pub const RELEASE_RUNTIME_TEST_FEATURES: &[&str] = &["test-flash-based-boot"];
 /// standard runtime is used unmodified.
 pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-i3c-services",
-    "test-fw-manifest-dot",
-    "test-fw-manifest-dot-hitless",
-    "test-dot-recovery",
-    "test-rom-hooks",
 ];
