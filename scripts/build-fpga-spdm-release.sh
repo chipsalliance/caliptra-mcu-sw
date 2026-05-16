@@ -225,9 +225,10 @@ if release_exists "${XTASK_TAG}"; then
     log "xtask release '${XTASK_TAG}' already exists, skipping."
 else
     log "Creating xtask release '${XTASK_TAG}'..."
-    log "Cross-compiling xtask for FPGA (aarch64)..."
+    log "Cross-compiling xtask for FPGA (aarch64, static glibc)..."
+    RUSTFLAGS="-C target-feature=+crt-static" \
     cargo build --package xtask --features=fpga_realtime --target aarch64-unknown-linux-gnu
-    cp target/aarch64-unknown-linux-gnu/debug/xtask "${STAGING_DIR}/xtask"    
+    cp target/aarch64-unknown-linux-gnu/debug/xtask "${STAGING_DIR}/xtask"
     gh release create "${XTASK_TAG}" \
         $(gh_release_flags) \
         --title "${XTASK_TAG}" \
