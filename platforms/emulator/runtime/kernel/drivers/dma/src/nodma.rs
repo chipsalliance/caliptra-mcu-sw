@@ -102,8 +102,21 @@ impl<'a, A: Alarm<'a>> crate::hil::DMA for NoDMA<'a, A> {
     }
 
     fn poll_status(&self) -> Result<crate::hil::DMAStatus, DMAError> {
-        // Not supported
-        Err(DMAError::CommandError)
+        if !*self.busy.borrow() {
+            return Ok(crate::hil::DMAStatus::TxnDone);
+        }
+        // Perform the transfer synchronously (direct memory access).
+        // The alarm will fire later but is a no-op once busy is cleared.
+        for offset in 0..(*self.btt.borrow()) {
+            let src_ptr = self.src_addr.borrow().wrapping_add(offset) as *const u8;
+            let dst_ptr = self.dest_addr.borrow().wrapping_add(offset) as *mut u8;
+            unsafe {
+                let value = core::ptr::read_volatile(src_ptr);
+                core::ptr::write_volatile(dst_ptr, value);
+            }
+        }
+        *self.busy.borrow_mut() = false;
+        Ok(crate::hil::DMAStatus::TxnDone)
     }
 
     fn write_fifo(&self, _data: &[u8]) -> Result<(), DMAError> {
