@@ -16,6 +16,15 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 pub type PldmCompletionErrorCode = u8;
 
+/// Action the responder loop should take after handling a message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponderAction {
+    /// Continue processing messages.
+    Continue,
+    /// The PLDM session is complete (e.g. activation received); exit the loop.
+    Complete,
+}
+
 // Helper function to write a failure response message into payload
 pub(crate) fn generate_failure_response(
     payload: &mut [u8],
@@ -52,7 +61,7 @@ impl<'a> CmdInterface<'a> {
         &self,
         transport: &mut MctpTransport,
         msg_buf: &mut [u8],
-    ) -> Result<(), MsgHandlerError> {
+    ) -> Result<ResponderAction, MsgHandlerError> {
         // Receive msg from mctp transport
         transport
             .receive_request(msg_buf)
@@ -60,13 +69,15 @@ impl<'a> CmdInterface<'a> {
             .map_err(MsgHandlerError::Transport)?;
 
         // Process the request
-        let resp_len = self.process_request(msg_buf).await?;
+        let (resp_len, action) = self.process_request(msg_buf).await?;
 
         // Send the response
         transport
             .send_response(&msg_buf[..resp_len])
             .await
-            .map_err(MsgHandlerError::Transport)
+            .map_err(MsgHandlerError::Transport)?;
+
+        Ok(action)
     }
 
     pub async fn handle_initiator_msg(
@@ -145,7 +156,10 @@ impl<'a> CmdInterface<'a> {
         self.fd_ctx.ops()
     }
 
-    async fn process_request(&self, msg_buf: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    async fn process_request(
+        &self,
+        msg_buf: &mut [u8],
+    ) -> Result<(usize, ResponderAction), MsgHandlerError> {
         // Check if the handler is busy processing a request
         if self.busy.load(Ordering::SeqCst) {
             return Err(MsgHandlerError::NotReady);
@@ -161,12 +175,15 @@ impl<'a> CmdInterface<'a> {
             Ok(result) => result,
             Err(e) => {
                 self.busy.store(false, Ordering::SeqCst);
-                return Ok(reserved_len + generate_failure_response(payload, e)?);
+                let len = reserved_len + generate_failure_response(payload, e)?;
+                return Ok((len, ResponderAction::Continue));
             }
         };
 
-        let resp_len = match pldm_type {
-            PldmSupportedType::Base => self.process_control_cmd(cmd_opcode, payload),
+        let result = match pldm_type {
+            PldmSupportedType::Base => self
+                .process_control_cmd(cmd_opcode, payload)
+                .map(|len| (len, ResponderAction::Continue)),
             PldmSupportedType::FwUpdate => self.process_fw_update_cmd(cmd_opcode, payload).await,
             _ => {
                 unreachable!()
@@ -175,10 +192,8 @@ impl<'a> CmdInterface<'a> {
 
         self.busy.store(false, Ordering::SeqCst);
 
-        match resp_len {
-            Ok(bytes) => Ok(reserved_len + bytes),
-            Err(e) => Err(e),
-        }
+        let (resp_len, action) = result?;
+        Ok((reserved_len + resp_len, action))
     }
 
     fn process_control_cmd(
@@ -204,30 +219,64 @@ impl<'a> CmdInterface<'a> {
         &self,
         cmd_opcode: u8,
         payload: &mut [u8],
-    ) -> Result<usize, MsgHandlerError> {
+    ) -> Result<(usize, ResponderAction), MsgHandlerError> {
         match FwUpdateCmd::try_from(cmd_opcode) {
             Ok(cmd) => match cmd {
-                FwUpdateCmd::QueryDeviceIdentifiers => self.fd_ctx.query_devid_rsp(payload).await,
-                FwUpdateCmd::GetFirmwareParameters => {
-                    self.fd_ctx.get_firmware_parameters_rsp(payload).await
-                }
-                FwUpdateCmd::RequestUpdate => self.fd_ctx.request_update_rsp(payload).await,
-                FwUpdateCmd::PassComponentTable => self.fd_ctx.pass_component_rsp(payload).await,
-                FwUpdateCmd::UpdateComponent => self.fd_ctx.update_component_rsp(payload).await,
+                FwUpdateCmd::QueryDeviceIdentifiers => self
+                    .fd_ctx
+                    .query_devid_rsp(payload)
+                    .await
+                    .map(|len| (len, ResponderAction::Continue)),
+                FwUpdateCmd::GetFirmwareParameters => self
+                    .fd_ctx
+                    .get_firmware_parameters_rsp(payload)
+                    .await
+                    .map(|len| (len, ResponderAction::Continue)),
+                FwUpdateCmd::RequestUpdate => self
+                    .fd_ctx
+                    .request_update_rsp(payload)
+                    .await
+                    .map(|len| (len, ResponderAction::Continue)),
+                FwUpdateCmd::PassComponentTable => self
+                    .fd_ctx
+                    .pass_component_rsp(payload)
+                    .await
+                    .map(|len| (len, ResponderAction::Continue)),
+                FwUpdateCmd::UpdateComponent => self
+                    .fd_ctx
+                    .update_component_rsp(payload)
+                    .await
+                    .map(|len| (len, ResponderAction::Continue)),
 
-                FwUpdateCmd::ActivateFirmware => self.fd_ctx.activate_firmware_rsp(payload).await,
-                FwUpdateCmd::CancelUpdateComponent => {
-                    self.fd_ctx.cancel_update_component_rsp(payload).await
-                }
-                FwUpdateCmd::CancelUpdate => self.fd_ctx.cancel_update_rsp(payload).await,
-                FwUpdateCmd::GetStatus => self.fd_ctx.get_status_rsp(payload).await,
+                FwUpdateCmd::ActivateFirmware => self
+                    .fd_ctx
+                    .activate_firmware_rsp(payload)
+                    .await
+                    .map(|len| (len, ResponderAction::Complete)),
+                FwUpdateCmd::CancelUpdateComponent => self
+                    .fd_ctx
+                    .cancel_update_component_rsp(payload)
+                    .await
+                    .map(|len| (len, ResponderAction::Continue)),
+                FwUpdateCmd::CancelUpdate => self
+                    .fd_ctx
+                    .cancel_update_rsp(payload)
+                    .await
+                    .map(|len| (len, ResponderAction::Complete)),
+                FwUpdateCmd::GetStatus => self
+                    .fd_ctx
+                    .get_status_rsp(payload)
+                    .await
+                    .map(|len| (len, ResponderAction::Continue)),
                 _ => generate_failure_response(
                     payload,
                     PldmBaseCompletionCode::UnsupportedPldmCmd as u8,
-                ),
+                )
+                .map(|len| (len, ResponderAction::Continue)),
             },
             Err(_) => {
                 generate_failure_response(payload, PldmBaseCompletionCode::UnsupportedPldmCmd as u8)
+                    .map(|len| (len, ResponderAction::Continue))
             }
         }
     }

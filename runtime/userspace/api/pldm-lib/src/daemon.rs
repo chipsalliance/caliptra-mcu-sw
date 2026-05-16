@@ -52,6 +52,20 @@ pub struct PldmService<'a> {
     cmd_interface: CmdInterface<'a>,
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
+    stopped_signal: &'static Signal<CriticalSectionRawMutex, ()>,
+}
+
+static RUNNING: AtomicBool = AtomicBool::new(false);
+static INITIATOR_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+static STOPPED_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+
+/// Wait until the PLDM service has fully stopped (responder task exited).
+/// Can be called without a PldmService instance.
+pub async fn wait_until_stopped() {
+    if !RUNNING.load(Ordering::SeqCst) {
+        return;
+    }
+    STOPPED_SIGNAL.wait().await;
 }
 
 // Note: This implementation is a starting point for integration testing.
@@ -65,14 +79,9 @@ impl<'a> PldmService<'a> {
         Self {
             spawner,
             cmd_interface,
-            running: {
-                static RUNNING: AtomicBool = AtomicBool::new(false);
-                &RUNNING
-            },
-            initiator_signal: {
-                static INITIATOR_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
-                &INITIATOR_SIGNAL
-            },
+            running: &RUNNING,
+            initiator_signal: &INITIATOR_SIGNAL,
+            stopped_signal: &STOPPED_SIGNAL,
         }
     }
 
@@ -81,6 +90,9 @@ impl<'a> PldmService<'a> {
             return Err(PldmServiceError::StartError);
         }
 
+        // Reset the stopped signal to prevent stale Signaled state from a
+        // previous cycle causing wait_until_stopped() to return immediately.
+        self.stopped_signal.reset();
         self.running.store(true, Ordering::SeqCst);
 
         let cmd_interface: &'static CmdInterface<'static> =
@@ -91,6 +103,7 @@ impl<'a> PldmService<'a> {
                 cmd_interface,
                 self.running,
                 self.initiator_signal,
+                self.stopped_signal,
             ))
             .unwrap();
 
@@ -123,8 +136,10 @@ pub async fn pldm_responder_task(
     cmd_interface: &'static CmdInterface<'static>,
     running: &'static AtomicBool,
     initiator_signal: &'static Signal<CriticalSectionRawMutex, ()>,
+    stopped_signal: &'static Signal<CriticalSectionRawMutex, ()>,
 ) {
     pldm_responder(cmd_interface, running, initiator_signal).await;
+    stopped_signal.signal(());
 }
 
 pub async fn pldm_initiator(
@@ -233,7 +248,8 @@ pub async fn pldm_responder(
             .handle_responder_msg(&mut transport, &mut msg_buffer)
             .await
         {
-            Ok(_) => {}
+            Ok(crate::cmd_interface::ResponderAction::Complete) => break,
+            Ok(crate::cmd_interface::ResponderAction::Continue) => {}
             Err(e) => {
                 writeln!(
                     console_writer,
@@ -249,6 +265,10 @@ pub async fn pldm_responder(
             initiator_signal.signal(());
         }
     }
+
+    // Clear running flag and signal initiator so it can also exit
+    running.store(false, Ordering::SeqCst);
+    initiator_signal.signal(());
 }
 
 /// Optimized download loop that uses a local TransferSession to minimize mutex acquisitions.

@@ -203,6 +203,7 @@ pub mod test {
                         discovery_sm_actions: discovery_sm::DefaultActions {},
                         update_sm_actions: update_sm::DefaultActions {},
                         fd_tid: 0x01,
+                        rerun_count: 0,
                     },
                 )
                 .map_err(|_| ())?,

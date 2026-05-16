@@ -77,6 +77,7 @@ impl<
                 socket_clone1.clone(),
                 opts.caliptra_mcu_pldm_fw_pkg.unwrap(),
                 event_queue_tx_clone4,
+                opts.rerun_count,
             ),
         )));
 
@@ -111,6 +112,21 @@ impl<
         if let Some(handle) = self.event_loop_handle.take() {
             handle.join().unwrap();
         }
+    }
+
+    /// Wait for the firmware update session to reach a terminal state (Done),
+    /// then stop the daemon. Use this when running sequential PLDM sessions.
+    pub fn wait_for_update_complete_and_stop(&mut self) {
+        loop {
+            {
+                let sm = self.update_sm.lock().unwrap();
+                if matches!(sm.state(), &update_sm::States::Done) {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_secs(5));
+        }
+        self.stop();
     }
 
     pub fn cancel_update(&mut self) {
@@ -238,15 +254,22 @@ pub struct Options<D: discovery_sm::StateMachineActions, U: update_sm::StateMach
     // Actions for the update state machine that can be customized as needed
     pub update_sm_actions: U,
     pub caliptra_mcu_pldm_fw_pkg: Option<FirmwareManifest>,
+    // The number of times to re-run the update cycle after the first one completes
+    pub rerun_count: u32,
 }
 
-impl Default for Options<discovery_sm::DefaultActions, update_sm::DefaultActions> {
+impl<D, U> Default for Options<D, U>
+where
+    D: discovery_sm::StateMachineActions + Default,
+    U: update_sm::StateMachineActions + Default,
+{
     fn default() -> Self {
         Self {
-            discovery_sm_actions: discovery_sm::DefaultActions {},
-            update_sm_actions: update_sm::DefaultActions {},
+            discovery_sm_actions: D::default(),
+            update_sm_actions: U::default(),
             caliptra_mcu_pldm_fw_pkg: None,
             fd_tid: 0,
+            rerun_count: 0,
         }
     }
 }

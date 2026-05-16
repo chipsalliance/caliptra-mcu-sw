@@ -27,6 +27,7 @@ pub const TEST_UUID: [u8; 16] = [
 ];
 
 /* Override the Update SM, bypass QueryDeviceIdentifiers and GetFirmwareParameters */
+#[derive(Default)]
 struct UpdateSmBypassed {}
 impl update_sm::StateMachineActions for UpdateSmBypassed {
     fn on_start_update(
@@ -136,6 +137,7 @@ fn test_request_update_receive_ok() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     // Receive RequestUpdate request
@@ -173,6 +175,7 @@ fn test_request_update_receive_fail() {
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
+        ..Default::default()
     });
 
     // Receive RequestUpdate request

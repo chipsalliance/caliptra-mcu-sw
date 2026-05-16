@@ -46,7 +46,8 @@ statemachine! {
 
         GetPLDMCommandsType5Sent + GetPLDMCommandsResponse(pldm_packet::GetPldmCommandsResponse) [is_pldm_commands_response_type5_valid] / on_pldm_commands_response_type5 = Done,
 
-        _ + CancelDiscovery / on_cancel_discovery = Done
+        _ + CancelDiscovery / on_cancel_discovery = Done,
+        Done + StartDiscovery / on_start_discovery = SetTidSent
     }
 }
 
@@ -357,6 +358,7 @@ pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
     }
 }
 // Implement the context struct
+#[derive(Default)]
 pub struct DefaultActions;
 impl StateMachineActions for DefaultActions {}
 

@@ -1156,6 +1156,7 @@ impl Emulator {
                         update_sm_actions:
                             caliptra_mcu_pldm_ua::update_sm::DefaultActionsExitOnError {},
                         fd_tid: 0x01,
+                        rerun_count: 0,
                     },
                 );
             } else {
@@ -1166,6 +1167,7 @@ impl Emulator {
                         discovery_sm_actions: caliptra_mcu_pldm_ua::discovery_sm::DefaultActions {},
                         update_sm_actions: caliptra_mcu_pldm_ua::update_sm::DefaultActions {},
                         fd_tid: 0x01,
+                        rerun_count: 0,
                     },
                 );
             };

@@ -85,7 +85,9 @@ statemachine! {
 
         _ + CancelUpdateComponentResponse(pldm_packet::request_cancel::CancelUpdateComponentResponse) / on_cancel_update_component_response = Idle,
         _ + StopUpdateOnError / on_stop_update_error = Done,
-        _ + StopUpdate / on_stop_update = Done
+        _ + StopUpdate / on_stop_update = Done,
+        Done + StartUpdate / on_start_update = QueryDeviceIdentifiersSent,
+        Activate + StartUpdate / on_start_update = QueryDeviceIdentifiersSent
     }
 }
 
@@ -208,6 +210,14 @@ pub trait StateMachineActions {
         &mut self,
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
+        // Reset context for a fresh update cycle (important when restarting from Done state)
+        ctx.device_id = None;
+        ctx.components.clear();
+        ctx.component_response_codes.clear();
+        ctx.current_component_index = None;
+        ctx.transferred_bytes = 0;
+        ctx.transfer_start_time = None;
+
         send_message_helper(
             ctx,
             &pldm_packet::query_devid::QueryDeviceIdentifiersRequest::new(
@@ -623,6 +633,9 @@ pub trait StateMachineActions {
         &mut self,
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
+        // Cancel the response timer from UpdateComponent — the FD will now
+        // initiate RequestFirmwareData at its own pace.
+        ctx.response_timer.cancel();
         // Reset transfer tracking for new download
         ctx.transferred_bytes = 0;
         ctx.transfer_start_time = None;
@@ -1043,10 +1056,16 @@ pub trait StateMachineActions {
                     ctx.event_queue.clone(),
                     |event_queue| Self::poll_activation_status(event_queue),
                 );
-            } else {
+            } else if ctx.rerun_count == 0 {
                 info!("ActivateFirmware response success, no activation needed");
                 ctx.event_queue
                     .send(PldmEvents::Update(Events::StopUpdate))
+                    .map_err(|_| ())?;
+            } else {
+                info!("Restarting update");
+                ctx.rerun_count -= 1;
+                ctx.event_queue
+                    .send(PldmEvents::Update(Events::StartUpdate))
                     .map_err(|_| ())?;
             }
 
@@ -1174,6 +1193,7 @@ pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
 }
 
 // Implement the context struct
+#[derive(Default)]
 pub struct DefaultActions;
 impl StateMachineActions for DefaultActions {}
 
@@ -1211,6 +1231,7 @@ pub struct InnerContext<S: PldmSocket> {
     response_timer: Timer,
     retry_count: Arc<Mutex<u8>>,
     is_initiator: bool,
+    rerun_count: u32,
 }
 
 pub struct Context<T: StateMachineActions, S: PldmSocket> {
@@ -1224,6 +1245,7 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
         socket: S,
         caliptra_mcu_pldm_fw_pkg: FirmwareManifest,
         event_queue: Sender<PldmEvents>,
+        rerun_count: u32,
     ) -> Self {
         Self {
             inner: context,
@@ -1243,6 +1265,7 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
                 response_timer: Timer::new(),
                 retry_count: Arc::new(Mutex::new(0)),
                 is_initiator: true,
+                rerun_count,
             },
         }
     }
