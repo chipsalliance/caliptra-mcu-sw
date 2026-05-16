@@ -3,21 +3,24 @@
 #
 # Build and publish FPGA SPDM release artifacts to GitHub.
 #
+# Artifacts are split across four release tags derived from <release-tag>:
+#
+#   <release-tag>b   caliptra-bitstream.pdi
+#   <release-tag>s   spdm-emu-binaries.tar.gz
+#   <release-tag>x   xtask
+#   <release-tag>    caliptra-binaries.tar.gz
+#                    caliptra-test-binaries.sqsh
+#
+# Each tag is skipped (build + upload) if its GitHub release already exists.
+#
 # Usage:
 #   ./scripts/build-fpga-spdm-release.sh <release-tag> [--draft] [--prerelease]
 #
 # Prerequisites:
 #   - gh (GitHub CLI) installed and authenticated
 #   - Rust toolchain with riscv32imc and aarch64 targets
-#   - gcc-aarch64-linux-gnu, squashfs-tools, cmake installed
+#   - gcc-aarch64-linux-gnu, squashfs-tools, cmake, zstd installed
 #     (script will attempt to install them via apt if missing)
-#
-# The script produces and uploads the following release assets:
-#   caliptra-bitstream.pdi            - FPGA bitstream
-#   caliptra-binaries.tar.gz          - ROM + runtime firmware (contains all-fw.zip)
-#   xtask                             - aarch64 xtask binary for FPGA bootstrap
-#   caliptra-test-binaries.sqsh       - squashfs image of test binaries
-#   spdm-emu-binaries.tar.gz          - aarch64 spdm-emu binaries + certs
 
 set -euo pipefail
 
@@ -41,21 +44,35 @@ STAGING_DIR="/tmp/caliptra-release-staging"
 # Argument parsing
 # ---------------------------------------------------------------------------
 if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 <release-tag> [--draft] [--prerelease]" >&2
+    echo "Usage: $0 <release-tag> [--bitstream-tag <tag>] [--spdm-emu-tag <tag>] [--draft] [--prerelease]" >&2
     exit 1
 fi
 
 RELEASE_TAG="$1"
 shift
 
-GH_FLAGS=("--repo" "${REPO}" "--title" "${RELEASE_TAG}" "--notes" "Automated FPGA SPDM release ${RELEASE_TAG}")
-for arg in "$@"; do
-    case "$arg" in
-        --draft)      GH_FLAGS+=("--draft") ;;
-        --prerelease) GH_FLAGS+=("--prerelease") ;;
-        *) echo "Unknown flag: $arg" >&2; exit 1 ;;
+BITSTREAM_TAG="${RELEASE_TAG}b"
+SPDM_EMU_TAG="${RELEASE_TAG}s"
+XTASK_TAG="${RELEASE_TAG}x"
+GH_EXTRA_FLAGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --draft)      GH_EXTRA_FLAGS+=("--draft");      shift ;;
+        --prerelease) GH_EXTRA_FLAGS+=("--prerelease"); shift ;;
+        *) echo "Unknown flag: $1" >&2; exit 1 ;;
     esac
 done
+
+# Common flags for every gh release create call
+gh_release_flags() {
+    echo --repo "${REPO}" "${GH_EXTRA_FLAGS[@]}"
+}
+
+# Returns 0 if a release tag already exists on GitHub, 1 otherwise.
+release_exists() {
+    gh release view "$1" --repo "${REPO}" &>/dev/null
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -82,12 +99,22 @@ require_cmd mksquashfs
 if ! command -v aarch64-linux-gnu-gcc &>/dev/null; then
     log "aarch64-linux-gnu-gcc not found; attempting install via apt..."
     sudo apt-get update -qy
-    sudo apt-get install -y gcc-aarch64-linux-gnu squashfs-tools cmake
+    sudo apt-get install -y gcc-aarch64-linux-gnu squashfs-tools cmake zstd
+fi
+
+if ! command -v zstd &>/dev/null; then
+    log "zstd not found; installing..."
+    sudo apt-get install -y zstd
 fi
 
 log "Installing Rust targets..."
 rustup target add riscv32imc-unknown-none-elf
 rustup target add aarch64-unknown-linux-gnu
+
+if ! command -v cargo-nextest &>/dev/null; then
+    log "cargo-nextest not found; installing compatible version for rustc 1.85..."
+    cargo install cargo-nextest --version 0.9.100 --locked
+fi
 
 # ---------------------------------------------------------------------------
 # Working directories
@@ -95,7 +122,7 @@ rustup target add aarch64-unknown-linux-gnu
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
-rm -rf "${STAGING_DIR}"
+#rm -rf "${STAGING_DIR}"
 mkdir -p "${STAGING_DIR}"
 
 # ---------------------------------------------------------------------------
@@ -151,11 +178,22 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Download FPGA bitstream
+# Download FPGA bitstream  (skipped if release already exists)
 # ---------------------------------------------------------------------------
-log "Downloading FPGA bitstream..."
-cargo xtask-fpga fpga download-bitstream
-mv caliptra-bitstream.pdi "${STAGING_DIR}/caliptra-bitstream.pdi"
+if release_exists "${BITSTREAM_TAG}"; then
+    log "Bitstream release '${BITSTREAM_TAG}' already exists, skipping."
+else
+    log "Downloading FPGA bitstream (tag: ${BITSTREAM_TAG})..."
+    cargo xtask-fpga fpga download-bitstream
+    mv caliptra-bitstream.pdi "${STAGING_DIR}/caliptra-bitstream.pdi"
+
+    log "Creating bitstream release '${BITSTREAM_TAG}'..."
+    gh release create "${BITSTREAM_TAG}" \
+        $(gh_release_flags) \
+        --title "${BITSTREAM_TAG}" \
+        --notes "FPGA bitstream" \
+        "${STAGING_DIR}/caliptra-bitstream.pdi"
+fi
 
 # ---------------------------------------------------------------------------
 # Build firmware + test binaries
@@ -180,44 +218,66 @@ tar -czf "${STAGING_DIR}/caliptra-binaries.tar.gz" all-fw.zip
 log "Cross-compiling test binaries..."
 cargo xtask-fpga fpga build-test --configuration subsystem
 
-log "Cross-compiling xtask for FPGA (aarch64)..."
-cargo build --package xtask --features=fpga_realtime --target aarch64-unknown-linux-gnu
-cp target/aarch64-unknown-linux-gnu/debug/xtask "${STAGING_DIR}/xtask"
+# ---------------------------------------------------------------------------
+# xtask release  (skipped if release already exists)
+# ---------------------------------------------------------------------------
+if release_exists "${XTASK_TAG}"; then
+    log "xtask release '${XTASK_TAG}' already exists, skipping."
+else
+    log "Creating xtask release '${XTASK_TAG}'..."
+    log "Cross-compiling xtask for FPGA (aarch64)..."
+    cargo build --package xtask --features=fpga_realtime --target aarch64-unknown-linux-gnu
+    cp target/aarch64-unknown-linux-gnu/debug/xtask "${STAGING_DIR}/xtask"    
+    gh release create "${XTASK_TAG}" \
+        $(gh_release_flags) \
+        --title "${XTASK_TAG}" \
+        --notes "aarch64 xtask binary for FPGA bootstrap" \
+        "${STAGING_DIR}/xtask"
+fi
 
-log "Packaging test binaries squashfs..."
 local_test_bin_dir="$(mktemp -d)"
 tar xf caliptra-test-binaries.tar.zst -C "${local_test_bin_dir}"
 mksquashfs "${local_test_bin_dir}" "${STAGING_DIR}/caliptra-test-binaries.sqsh" -comp zstd -noappend
 rm -rf "${local_test_bin_dir}"
 
 # ---------------------------------------------------------------------------
-# Build spdm-emu for aarch64
+# Build spdm-emu for aarch64  (skipped if release already exists)
 # ---------------------------------------------------------------------------
-log "Building spdm-emu for aarch64..."
+if release_exists "${SPDM_EMU_TAG}"; then
+    log "spdm-emu release '${SPDM_EMU_TAG}' already exists, skipping."
+else
+    log "Building spdm-emu for aarch64 (tag: ${SPDM_EMU_TAG})..."
 
-SPDM_EMU_DIR="/tmp/spdm-emu"
-rm -rf "${SPDM_EMU_DIR}"
-git clone --recursive --branch "${SPDM_EMU_BRANCH}" "${SPDM_EMU_REPO}" "${SPDM_EMU_DIR}"
+    SPDM_EMU_DIR="/tmp/spdm-emu"
+    git clone --recursive --branch "${SPDM_EMU_BRANCH}" "${SPDM_EMU_REPO}" "${SPDM_EMU_DIR}"
 
-pushd "${SPDM_EMU_DIR}"
-mkdir build
-pushd build
-cmake -DARCH=aarch64 -DTOOLCHAIN=AARCH64_GCC -DTARGET=Debug -DCRYPTO=openssl ..
-make copy_sample_key
-make -j"$(nproc)"
-popd
-popd
+    pushd "${SPDM_EMU_DIR}"
+    mkdir build
+    pushd build
+    cmake -DARCH=aarch64 -DTOOLCHAIN=AARCH64_GCC -DTARGET=Debug -DCRYPTO=openssl ..
+    make copy_sample_key
+    make -j"$(nproc)"
+    popd
+    popd
 
-SPDM_EMU_STAGING="${STAGING_DIR}/spdm-emu-binaries"
-mkdir -p "${SPDM_EMU_STAGING}"
-cp -r "${SPDM_EMU_DIR}/build/bin/." "${SPDM_EMU_STAGING}/"
+    SPDM_EMU_STAGING="${STAGING_DIR}/spdm-emu-binaries"
+    mkdir -p "${SPDM_EMU_STAGING}"
+    cp -r "${SPDM_EMU_DIR}/build/bin/." "${SPDM_EMU_STAGING}/"
 
-# Replace default CA cert with the one that signed the IDevID CSR
-cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der \
-    "${SPDM_EMU_STAGING}/ecp384/ca.cert.der"
+    # Replace default CA cert with the one that signed the IDevID CSR
+    cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der \
+        "${SPDM_EMU_STAGING}/ecp384/ca.cert.der"
 
-tar -czf "${STAGING_DIR}/spdm-emu-binaries.tar.gz" -C "${STAGING_DIR}" spdm-emu-binaries
-rm -rf "${SPDM_EMU_STAGING}"
+    tar -czf "${STAGING_DIR}/spdm-emu-binaries.tar.gz" -C "${STAGING_DIR}" spdm-emu-binaries
+    rm -rf "${SPDM_EMU_STAGING}"
+
+    log "Creating spdm-emu release '${SPDM_EMU_TAG}'..."
+    gh release create "${SPDM_EMU_TAG}" \
+        $(gh_release_flags) \
+        --title "${SPDM_EMU_TAG}" \
+        --notes "spdm-emu aarch64 binaries" \
+        "${STAGING_DIR}/spdm-emu-binaries.tar.gz"
+fi
 
 # ---------------------------------------------------------------------------
 # List staged artifacts
@@ -226,17 +286,24 @@ log "Staged artifacts:"
 ls -lh "${STAGING_DIR}"
 
 # ---------------------------------------------------------------------------
-# Create GitHub release and upload assets
+# Create firmware release and upload assets
 # ---------------------------------------------------------------------------
-log "Creating GitHub release '${RELEASE_TAG}' at ${REPO}..."
+if release_exists "${RELEASE_TAG}"; then
+    log "Firmware release '${RELEASE_TAG}' already exists — delete it first to re-upload."
+else
+    log "Creating firmware release '${RELEASE_TAG}' at ${REPO}..."
+    gh release create "${RELEASE_TAG}" \
+        $(gh_release_flags) \
+        --title "${RELEASE_TAG}" \
+        --notes "Firmware artifacts. Bitstream: ${BITSTREAM_TAG}  xtask: ${XTASK_TAG}  spdm-emu: ${SPDM_EMU_TAG}" \
+        "${STAGING_DIR}/caliptra-binaries.tar.gz" \
+        "${STAGING_DIR}/caliptra-test-binaries.sqsh"
 
-gh release create "${RELEASE_TAG}" \
-    "${GH_FLAGS[@]}" \
-    "${STAGING_DIR}/caliptra-bitstream.pdi" \
-    "${STAGING_DIR}/caliptra-binaries.tar.gz" \
-    "${STAGING_DIR}/xtask" \
-    "${STAGING_DIR}/caliptra-test-binaries.sqsh" \
-    "${STAGING_DIR}/spdm-emu-binaries.tar.gz"
+    log "Firmware release '${RELEASE_TAG}' published."
+fi
 
-log "Release '${RELEASE_TAG}' published successfully."
-log "View at: https://github.com/${REPO}/releases/tag/${RELEASE_TAG}"
+log "Done."
+log "  Bitstream : https://github.com/${REPO}/releases/tag/${BITSTREAM_TAG}"
+log "  xtask     : https://github.com/${REPO}/releases/tag/${XTASK_TAG}"
+log "  spdm-emu  : https://github.com/${REPO}/releases/tag/${SPDM_EMU_TAG}"
+log "  Firmware  : https://github.com/${REPO}/releases/tag/${RELEASE_TAG}"
