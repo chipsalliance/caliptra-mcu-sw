@@ -3736,6 +3736,8 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-dma-driver",
+ "caliptra-mcu-external-otp-driver",
+ "caliptra-mcu-external-otp-emulator",
  "caliptra-mcu-flash-ctrl-fpga",
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
