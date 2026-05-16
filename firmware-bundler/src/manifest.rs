@@ -192,10 +192,6 @@ pub struct Platform {
     /// Data memory, outside of the RAM used by the application.  This is used for the
     /// _pic_vector_table on VeeR chips.  Defaults to a size and offset of 0 if not defined.
     pub dccm: Option<Memory>,
-
-    /// Location of flash memory.  This can be used for persistent storage, e.g. logs.  Defaults to
-    /// a size and offset of 0 if not defined.
-    pub flash: Option<Memory>,
 }
 
 impl Platform {
@@ -213,11 +209,6 @@ impl Platform {
     /// Retrieve the dccm memory layout.  If not specified it is empty.
     pub fn dccm(&self) -> Memory {
         self.dccm.clone().unwrap_or(Memory { offset: 0, size: 0 })
-    }
-
-    /// Retrieve the dccm memory layout.  If not specified it is empty.
-    pub fn flash(&self) -> Memory {
-        self.flash.clone().unwrap_or(Memory { offset: 0, size: 0 })
     }
 }
 
@@ -656,7 +647,6 @@ mod tests {
                 offset: 0x30000,
                 size: dccm_size,
             }),
-            flash: None,
         }
     }
 

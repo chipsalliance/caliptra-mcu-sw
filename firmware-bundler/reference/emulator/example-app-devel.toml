@@ -23,10 +23,6 @@ sram = { offset = 0x4000_0000, size = 0x10_0000 }
 offset = 0x5000_0000
 size = 0x4000
 
-[platform.flash]
-offset = 0x3BFE_0000
-size = 0x2_0000
-
 # This section is optional.
 [rom]
 name = "mcu-rom-emulator"

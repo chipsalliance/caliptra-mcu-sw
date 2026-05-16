@@ -67,10 +67,6 @@ extern "C" {
     static _ssram: u8;
     /// The end of the kernel / app RAM (Included only for kernel PMP)
     static _esram: u8;
-    /// The start of the flash region for logging
-    static _sstorage: u8;
-    /// The end of the flash region for logging
-    static _estorage: u8;
 
     pub(crate) static _pic_vector_table: u8;
 }
@@ -416,17 +412,6 @@ pub unsafe fn main() {
         user_accessible: false,
         read: true,
         write: true,
-        execute: false,
-    });
-
-    // Logging flash region
-    platform_regions.push(PlatformRegion {
-        start_addr: addr_of!(_sstorage) as *const u8,
-        size: (addr_of!(_estorage) as usize - addr_of!(_sstorage) as usize),
-        is_mmio: true,
-        user_accessible: false,
-        read: true,
-        write: false,
         execute: false,
     });
 
