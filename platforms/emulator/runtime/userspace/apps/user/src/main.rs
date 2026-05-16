@@ -39,7 +39,8 @@ macro_rules! console_writeln {
 mod caliptra_cmd_handler;
 #[cfg(any(
     feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash"
+    feature = "test-firmware-update-flash",
+    feature = "test-streaming-boot-flash-write-back",
 ))]
 mod firmware_update;
 mod image_loader;
@@ -107,7 +108,8 @@ pub(crate) async fn async_main() {
     // for now, disable the SPDM task if either FW update test is enabled
     #[cfg(not(any(
         feature = "test-firmware-update-streaming",
-        feature = "test-firmware-update-flash"
+        feature = "test-firmware-update-flash",
+        feature = "test-streaming-boot-flash-write-back",
     )))]
     EXECUTOR
         .get()

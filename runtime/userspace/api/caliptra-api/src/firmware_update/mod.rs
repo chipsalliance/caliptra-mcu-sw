@@ -17,6 +17,7 @@ use caliptra_api::mailbox::{
 use caliptra_auth_man_types::{
     AuthManifestImageMetadata, AuthManifestImageMetadataCollection, AuthorizationManifest,
 };
+use caliptra_image_types::ImageManifest;
 use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
@@ -52,6 +53,8 @@ pub struct FirmwareUpdater<'a, D: DMAMapping> {
     params: &'a PldmFirmwareDeviceParams,
     dma_mapping: &'a D,
     spawner: Spawner,
+    skip_activation: bool,
+    verify_same_image: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -79,7 +82,17 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             params,
             dma_mapping,
             spawner,
+            skip_activation: false,
+            verify_same_image: false,
         }
+    }
+
+    pub fn set_skip_activation(&mut self, skip: bool) {
+        self.skip_activation = skip;
+    }
+
+    pub fn set_verify_same_image(&mut self, verify: bool) {
+        self.verify_same_image = verify;
     }
 
     pub async fn start(&mut self) -> Result<(), ErrorCode> {
@@ -102,6 +115,18 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             return Err(ErrorCode::Fail);
         }
         let flash_header = flash_header.unwrap();
+
+        // If verify_same_image is set, confirm the downloaded image matches running firmware
+        if self.verify_same_image
+            && self
+                .verify_running_image_match(&flash_header)
+                .await
+                .is_err()
+        {
+            pldm_client::pldm_set_verification_result(VerifyResult::VerifyErrorVerificationFailure);
+            return Err(ErrorCode::Fail);
+        }
+
         pldm_client::pldm_set_verification_result(VerifyResult::VerifySuccess);
         pldm_client::pldm_wait(State::Apply).await?;
 
@@ -111,6 +136,11 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
 
         pldm_client::pldm_set_apply_result(ApplyResult::ApplySuccess);
         pldm_client::pldm_wait(State::Activate).await?;
+
+        if self.skip_activation {
+            // Skip activation — image is persisted to flash but no reboot
+            return Ok(());
+        }
 
         // Update Caliptra
         let result = self.update_caliptra(&flash_header).await;
@@ -245,23 +275,49 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         // Verify Caliptra bundle
         writeln!(
             Console::<DefaultSyscalls>::writer(),
-            "[FW Upd] Verifying Caliptra Bundle"
+            "[FW Upd] Verifying Caliptra Bundle (image_count={} headers_off={})",
+            flash_header.image_count,
+            flash_header.image_headers_offset
         )
         .unwrap();
-        let (cptra_image_offset, cptra_image_len) = self
+        let toc_result = self
             .get_image_toc(
                 flash_header.image_count as usize,
                 flash_header.image_headers_offset as usize,
                 CALIPTRA_FMC_RT_IDENTIFIER,
             )
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        self.process_caliptra_fw(
+            .await;
+        if toc_result.is_err() {
+            writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] ERROR: get_image_toc for Caliptra bundle failed"
+            )
+            .unwrap();
+            return Err(ErrorCode::Fail);
+        }
+        let (cptra_image_offset, cptra_image_len) = toc_result.unwrap();
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Caliptra bundle at offset={} len={}",
             cptra_image_offset,
-            cptra_image_len,
-            CaliptraFwAction::Verify,
+            cptra_image_len
         )
-        .await?;
+        .unwrap();
+        let verify_result = self
+            .process_caliptra_fw(
+                cptra_image_offset,
+                cptra_image_len,
+                CaliptraFwAction::Verify,
+            )
+            .await;
+        if verify_result.is_err() {
+            writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] ERROR: process_caliptra_fw(Verify) failed"
+            )
+            .unwrap();
+            return Err(ErrorCode::Fail);
+        }
 
         // Verify the new Auth Manifest
         writeln!(
@@ -314,6 +370,152 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             .await?;
         }
         Ok(flash_header)
+    }
+
+    /// Verify that the downloaded image matches the currently running firmware.
+    ///
+    /// Compares Caliptra FMC+RT digests from the downloaded ImageManifest against
+    /// the running firmware's digests obtained via the FW_INFO mailbox command.
+    /// Also compares MCU RT and SoC image digests against the active auth manifest.
+    async fn verify_running_image_match(
+        &mut self,
+        flash_header: &FlashHeader,
+    ) -> Result<(), ErrorCode> {
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Verifying image matches running firmware"
+        )
+        .unwrap();
+
+        // 1. Verify Caliptra FMC+RT digests
+        let (cptra_image_offset, _cptra_image_len) = self
+            .get_image_toc(
+                flash_header.image_count as usize,
+                flash_header.image_headers_offset as usize,
+                CALIPTRA_FMC_RT_IDENTIFIER,
+            )
+            .await?;
+
+        // Read the ImageManifest from the downloaded Caliptra bundle
+        let mut manifest_bytes = [0u8; core::mem::size_of::<ImageManifest>()];
+        self.staging_memory
+            .read(cptra_image_offset, &mut manifest_bytes)
+            .await?;
+        let (manifest, _) =
+            ImageManifest::read_from_prefix(&manifest_bytes).map_err(|_| ErrorCode::Fail)?;
+
+        // Get the running firmware digests via FW_INFO
+        let mut req = MailboxReqHeader::default();
+        let req_data = req.as_mut_bytes();
+        self.mailbox
+            .populate_checksum(CommandId::FW_INFO.into(), req_data)
+            .unwrap();
+        let response_buffer = &mut [0u8; core::mem::size_of::<FwInfoResp>()];
+        loop {
+            let result = self
+                .mailbox
+                .execute(CommandId::FW_INFO.into(), req_data, response_buffer)
+                .await;
+            match result {
+                Ok(_) => break,
+                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+                Err(_) => return Err(ErrorCode::Fail),
+            }
+        }
+        let fw_info = FwInfoResp::read_from_bytes(response_buffer).map_err(|_| ErrorCode::Fail)?;
+
+        // Compare FMC digests
+        if manifest.fmc.digest != fw_info.fmc_sha384_digest {
+            writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] FMC digest mismatch"
+            )
+            .unwrap();
+            return Err(ErrorCode::Fail);
+        }
+
+        // Compare RT digests
+        if manifest.runtime.digest != fw_info.runtime_sha384_digest {
+            writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] RT digest mismatch"
+            )
+            .unwrap();
+            return Err(ErrorCode::Fail);
+        }
+
+        // 2. Verify MCU RT and SoC image digests against active auth manifest
+        let (manifest_offset, manifest_len) = self
+            .get_image_toc(
+                flash_header.image_count as usize,
+                flash_header.image_headers_offset as usize,
+                SOC_MANIFEST_IDENTIFIER,
+            )
+            .await?;
+
+        for i in 0..flash_header.image_count as usize {
+            let image_header = self
+                .get_image_toc_by_index(
+                    flash_header.image_count as usize,
+                    flash_header.image_headers_offset as usize,
+                    i,
+                )
+                .await?;
+
+            match image_header.identifier {
+                CALIPTRA_FMC_RT_IDENTIFIER | SOC_MANIFEST_IDENTIFIER => continue,
+                _ => {}
+            }
+
+            // Compute SHA-384 of the downloaded image
+            let mut hasher = HashContext::new();
+            hasher
+                .init(HashAlgoType::SHA384, None)
+                .await
+                .map_err(|_| ErrorCode::Fail)?;
+            let mut buffer = [0u8; MAX_CRYPTO_MBOX_DATA_SIZE / 2];
+            let mut total_bytes_read = 0;
+            let img_offset = image_header.offset as usize;
+            let img_size = image_header.size as usize;
+            while total_bytes_read < img_size {
+                let bytes_to_read =
+                    (img_size - total_bytes_read).min(MAX_CRYPTO_MBOX_DATA_SIZE / 2);
+                self.staging_memory
+                    .read(img_offset + total_bytes_read, &mut buffer[..bytes_to_read])
+                    .await?;
+                hasher
+                    .update(&buffer[..bytes_to_read])
+                    .await
+                    .map_err(|_| ErrorCode::Fail)?;
+                total_bytes_read += bytes_to_read;
+            }
+            let mut hash = [0u8; 48];
+            hasher
+                .finalize(&mut hash)
+                .await
+                .map_err(|_| ErrorCode::Fail)?;
+
+            // Compare against the digest in the active auth manifest
+            let metadata = self
+                .get_image_metadata(manifest_offset, manifest_len, image_header.identifier)
+                .await?;
+            if hash != metadata.digest {
+                writeln!(
+                    Console::<DefaultSyscalls>::writer(),
+                    "[FW Upd] Image 0x{:x} digest mismatch with running firmware",
+                    image_header.identifier
+                )
+                .unwrap();
+                return Err(ErrorCode::Fail);
+            }
+        }
+
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Running image verification passed"
+        )
+        .unwrap();
+        Ok(())
     }
 
     pub async fn get_image_metadata(
@@ -387,13 +589,28 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             match result {
                 Ok(_) => break,
                 Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-                Err(_) => return Err(ErrorCode::Fail),
+                Err(_) => {
+                    writeln!(
+                        Console::<DefaultSyscalls>::writer(),
+                        "[FW Upd] ERROR: mailbox cmd={} failed",
+                        cmd
+                    )
+                    .unwrap();
+                    return Err(ErrorCode::Fail);
+                }
             }
         }
         if action == CaliptraFwAction::Verify {
             let resp =
                 FirmwareVerifyResp::ref_from_bytes(response_buffer).map_err(|_| ErrorCode::Fail)?;
             if resp.verify_result != FirmwareVerifyResult::Success as u32 {
+                writeln!(
+                    Console::<DefaultSyscalls>::writer(),
+                    "[FW Upd] ERROR: FIRMWARE_VERIFY result={} (expected {})",
+                    resp.verify_result,
+                    FirmwareVerifyResult::Success as u32
+                )
+                .unwrap();
                 return Err(ErrorCode::Fail);
             }
         }

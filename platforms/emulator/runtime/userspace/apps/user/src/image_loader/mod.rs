@@ -79,6 +79,7 @@ pub async fn image_loading_task() {
         feature = "test-pldm-discovery",
         feature = "test-pldm-fw-update",
         feature = "test-pldm-fw-update-e2e",
+        feature = "test-streaming-boot-flash-write-back",
     ))]
     {
         // Release SRAM lock, in case previous session hasn't released it
@@ -94,14 +95,16 @@ pub async fn image_loading_task() {
         mbox_sram.release_lock().unwrap();
         #[cfg(not(any(
             feature = "test-firmware-update-streaming",
-            feature = "test-firmware-update-flash"
+            feature = "test-firmware-update-flash",
+            feature = "test-streaming-boot-flash-write-back",
         )))]
         System::exit(0);
     }
     // After image loading, proceed to firmware update if enabled
     #[cfg(any(
         feature = "test-firmware-update-streaming",
-        feature = "test-firmware-update-flash"
+        feature = "test-firmware-update-flash",
+        feature = "test-streaming-boot-flash-write-back",
     ))]
     {
         if mbox_sram.acquire_lock().is_err() {
@@ -121,7 +124,10 @@ pub async fn image_loading_task() {
 async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     crate::console_writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
-    #[cfg(feature = "test-pldm-streaming-boot")]
+    #[cfg(any(
+        feature = "test-pldm-streaming-boot",
+        feature = "test-streaming-boot-flash-write-back",
+    ))]
     {
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
@@ -137,6 +143,8 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             .await?;
         // Close the PLDM session
         pldm_image_loader.finalize()?;
+        // Wait for the PLDM service to fully complete the protocol before proceeding
+        pldm_image_loader.wait_for_service_stopped().await;
         // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
         activate_soc_images(&[
             config::streaming_boot_consts::IMAGE_ID1,
