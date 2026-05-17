@@ -574,7 +574,7 @@ pub unsafe extern "C" fn emulator_send_uart_char(
         match stdin_uart_arc.lock() {
             Ok(mut uart_rx) => {
                 if uart_rx.is_none() {
-                    *uart_rx = Some(character as u8);
+                    *uart_rx = Some(character);
                     1
                 } else {
                     0 // Buffer full

@@ -1,0 +1,12 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-caliptra-api-lite"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+mcu-error = { workspace = true }
+caliptra-mcu-libsyscall-caliptra = { workspace = true }
+zerocopy = { workspace = true }

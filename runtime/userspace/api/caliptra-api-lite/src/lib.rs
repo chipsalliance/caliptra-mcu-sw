@@ -1,0 +1,37 @@
+// Licensed under the Apache-2.0 license
+
+//! `mcu-caliptra-api-lite` — minimal Caliptra mailbox API surface.
+//!
+//! Self-contained crate exposing the Caliptra-mailbox primitives
+//! consumers (today: SPDM-Lite, tomorrow: DPE clients, custom
+//! attestation flows) actually need, without dragging in the heavy
+//! `caliptra-api` crate.
+//!
+//! Two abstractions:
+//!
+//! * [`ApiAlloc`] — per-call scratch-allocator the caller
+//!   implements. All mailbox request / response buffers come from
+//!   here so no large `[u8; N]` array ever sits on the stack across
+//!   an `.await`.
+//! * Free functions [`sha_init`] / [`sha_update`] / [`sha_finish`]
+//!   driving Caliptra's `CM_SHA_*` mailbox commands.
+//!
+//! Future modules (`cert`, `dpe`, `ecdsa`) will follow the same
+//! pattern: free `async` functions taking `&impl ApiAlloc`.
+
+#![no_std]
+#![allow(async_fn_in_trait)]
+
+mod alloc;
+mod dpe;
+mod sha;
+mod wire;
+
+pub use alloc::ApiAlloc;
+pub use dpe::{
+    dpe_certify_key, dpe_get_cert_chain_chunk, walk_dpe_chain, DpeChainSink, DPE_LABEL_LEN,
+    DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE,
+};
+pub use sha::{sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE};
+
+pub use mcu_error::{McuErrorCode, McuResult};

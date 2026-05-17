@@ -36,7 +36,10 @@ portable-atomic.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-lib.workspace = true
 caliptra-mcu-romtime.workspace = true
-caliptra-mcu-spdm-lib.workspace = true
+mcu-spdm-lite-pal.workspace = true
+mcu-spdm-lite-stack = { workspace = true }
+mcu-spdm-lite-transports.workspace = true
+mcu-spdm-lite-traits.workspace = true
 static_cell.workspace = true
 zerocopy.workspace = true
 
@@ -51,8 +54,6 @@ portable-atomic = { workspace = true, features = ["critical-section"] }
 [features]
 default = []
 hw-2-1 = []
-doe = []
-pcr-quote-measurements = []
 # Production / minimal-size build for user-app.  Activated automatically by
 # `xtask runtime-build --profile release` (via `--features release` forwarded
 # through the bundler).  Gates `console_writeln!` to a no-op so all of
@@ -109,9 +110,6 @@ test-pldm-fw-update-e2e = []
 test-pldm-streaming-boot = []
 test-streaming-boot-flash-write-back = []
 test-mctp-spdm-attestation = []
-test-mctp-spdm-attestation-pcr-quote = ["pcr-quote-measurements"]
 test-mctp-spdm-responder-conformance = []
-test-doe-spdm-responder-conformance = ["doe"]
-test-doe-spdm-tdisp-ide-validator = ["doe"]
 test-mcu-mbox-fips-periodic = ["caliptra-mcu-mbox-lib/periodic-fips-self-test"]
 active-i3c1 = []
