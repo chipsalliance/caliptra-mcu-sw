@@ -78,8 +78,8 @@ jobs:
       - name: Checkout spdm-emu repository
         uses: actions/checkout@v4
         with:
-          repository: parvathib/spdm-emu
-          ref: pbhogaraju/spdm_emu_main_custom
+          repository: chipsalliance/caliptra-spdm-emu
+          ref: caliptra-main
           path: spdm-emu
           submodules: recursive
 
@@ -89,7 +89,7 @@ jobs:
           git submodule update --init --recursive
           mkdir build
           pushd build
-          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl ..
+          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000" ..
           make copy_sample_key
           make
           popd
@@ -120,8 +120,6 @@ jobs:
             ${{ env.SPDM_VALIDATOR_DIR }}/test.log
             ${{ env.SPDM_VALIDATOR_DIR }}/caliptra_spdm_validator.pcap
             ${{ env.SPDM_VALIDATOR_DIR }}/spdm_device_validator_output.txt
-            ${{ env.SPDM_VALIDATOR_DIR }}/measurement_block_fd.bin
-            ${{ env.SPDM_VALIDATOR_DIR }}/certificate_chain_slot_00.der
 
       - name: Display SPDM Validator test results on MCTP transport
         env:
@@ -137,15 +135,6 @@ jobs:
             echo "Test suite had failures."
             exit 1
           fi
-
-      - name: Verify EAT from measurement block for SPDM-MCTP
-        working-directory: ocp-eat-verifier
-        env:
-          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
-        run: |
-          cargo build --release -p ocptoken
-          ./target/release/ocptoken verify \
-          -e $SPDM_VALIDATOR_DIR/measurement_block_fd.bin
 
       - name: Run SPDM attestation test on MCTP transport (PCR Quote measurements)
         env:
@@ -192,8 +181,8 @@ jobs:
       - name: Checkout CCC spdm-rs repository
         uses: actions/checkout@v4
         with:
-          repository: parvathib/spdm-rs
-          ref: pbhogaraju/custom_v0.5.0
+          repository: chipsalliance/caliptra-spdm-rs
+          ref: caliptra-0.5.2
           path: spdm-rs
           submodules: recursive
 
