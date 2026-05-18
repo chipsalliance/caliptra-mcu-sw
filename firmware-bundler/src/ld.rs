@@ -567,10 +567,6 @@ SECTIONS
         sub_map.insert("HANDOFF_ADDR", format!("{:#x}", handoff.offset));
         sub_map.insert("HANDOFF_SIZE", format!("{:#x}", handoff.size));
 
-        let flash = self.manifest.platform.flash();
-        sub_map.insert("FLASH_OFFSET", format!("{:#x}", flash.offset));
-        sub_map.insert("FLASH_LENGTH", format!("{:#x}", flash.size));
-
         sub_map.insert(
             "BASE_LD_CONTENTS",
             base_ld_file.to_string_lossy().to_string(),

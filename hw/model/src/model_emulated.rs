@@ -168,7 +168,6 @@ impl McuHwModel for ModelEmulated {
 
         let dma_ram = mcu_root_bus.ram.clone();
         let rom_sram = mcu_root_bus.rom_sram.clone();
-        let direct_read_flash = mcu_root_bus.direct_read_flash.clone();
         let dot_flash = mcu_root_bus.dot_flash.clone();
 
         // Use HW 2.1.0 for flash-based boot, otherwise 2.0.0
@@ -254,17 +253,12 @@ impl McuHwModel for ModelEmulated {
         lc.set_otp_partitions(otp_partitions.clone());
 
         let create_flash_controller =
-            |default_path: &str,
-             error_irq: u8,
-             event_irq: u8,
-             initial_content: Option<&[u8]>,
-             direct_read_region: Option<Rc<RefCell<caliptra_emu_bus::Ram>>>| {
+            |default_path: &str, error_irq: u8, event_irq: u8, initial_content: Option<&[u8]>| {
                 // Use a temporary file for flash storage if we're running a test
                 let flash_file = Some(PathBuf::from(default_path));
 
                 DummyFlashCtrl::new(
                     &clock.clone(),
-                    direct_read_region,
                     flash_file,
                     pic.register_irq(error_irq),
                     pic.register_irq(event_irq),
@@ -278,7 +272,6 @@ impl McuHwModel for ModelEmulated {
             McuRootBus::PRIMARY_FLASH_CTRL_ERROR_IRQ,
             McuRootBus::PRIMARY_FLASH_CTRL_EVENT_IRQ,
             params.primary_flash_initial_contents.as_deref(),
-            Some(direct_read_flash.clone()),
         );
         primary_flash_controller.set_dma_ram(dma_ram.clone());
         primary_flash_controller.set_dma_rom_sram(rom_sram.clone());
@@ -288,7 +281,6 @@ impl McuHwModel for ModelEmulated {
             "secondary_flash",
             McuRootBus::SECONDARY_FLASH_CTRL_ERROR_IRQ,
             McuRootBus::SECONDARY_FLASH_CTRL_EVENT_IRQ,
-            None,
             None,
         );
         secondary_flash_controller.set_dma_ram(dma_ram.clone());

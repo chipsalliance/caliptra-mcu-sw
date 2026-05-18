@@ -21,10 +21,6 @@ size = 0x3C00
 offset = 0x50003C00
 size = 1024
 
-[platform.flash]
-offset = 0x3BFE_0000
-size = 0x2_0000
-
 [rom]
 name = "{{ROM_NAME}}"
 stack = 0x2d00

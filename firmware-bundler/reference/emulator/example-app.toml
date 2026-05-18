@@ -27,10 +27,6 @@ size = 0x3C00
 offset = 0x50003C00
 size = 1024
 
-[platform.flash]
-offset = 0x3BFE_0000
-size = 0x2_0000
-
 # This section is optional.
 [rom]
 name = "caliptra-mcu-rom-emulator"
