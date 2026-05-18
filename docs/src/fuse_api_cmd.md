@@ -23,11 +23,10 @@ Command Code: `0x4946_5052` ("IFPR")
 
 Write fuse values.
 
-Start bit is counting from the least significant bit.
-
 Command Code: `0x4946_5057` ("IFPW")
 
 *Table: `MC_FUSE_WRITE` input arguments*
+<<<<<<< HEAD
 | **Name**   | **Type**       | **Description**               |
 | ---------- | -------------- | ----------------------------- |
 | chksum     |  u32           |                               |
@@ -36,6 +35,15 @@ Command Code: `0x4946_5057` ("IFPW")
 | start bit  |  u32           | Starting bit to write to (least significant bit in entry is 0). |
 | length     | u32            | in bits                       |
 | data       | u8[...]        | length/8
+=======
+| **Name**   | **Type**       | **Description**                       |
+| ---------- | -------------- | ------------------------------------- |
+| chksum     |  u32           |                                       |
+| word_addr  |  u32           | Entry to write (word offset)          |
+| data       |  u32           | Word to write                         |
+| mask       |  u32           | Bit-Mask to only write specified bits |
+
+>>>>>>> 56fcd2fa ([mcu-mbox] fuse read write lock commands (#1380))
 
 
 *Table: `MC_FUSE_WRITE` output arguments*
@@ -47,7 +55,8 @@ Command Code: `0x4946_5057` ("IFPW")
 
 Caveats:
 * This command is **idempotent**, so that identical writes will have no effect.
-* Will fail if any of the existing data is 1 but is set to 0 in the input data. Existing data that is 0 but set to 1 will be burned to a 1.
+* Will fail if any of the existing data is 1 but is set to 0 in the input data.
+* Bits masked with `mask` will be ignored
 * Writes to buffered partitions will not take effect until the next reset.
 
 ### MC_FUSE_LOCK_PARTITION

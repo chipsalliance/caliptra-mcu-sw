@@ -2,6 +2,7 @@
 
 //! This provides the OTP capsule that calls the underlying OTP driver
 
+use caliptra_mcu_error::McuError;
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::fuses::{
     OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
@@ -11,6 +12,8 @@ use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
 
+use caliptra_mcu_romtime::{fuse_lock_partition_dai, fuse_write_dai};
+
 /// The driver number for Caliptra OTP commands.
 pub const DRIVER_NUM: usize = 0xD000_0000;
 
@@ -18,6 +21,9 @@ pub mod cmd {
     pub const OTP_READ: u32 = 1;
     pub const OTP_WRITE: u32 = 2;
     pub const OTP_SET_REGISTER: u32 = 3;
+    pub const OTP_READ_RAW: u32 = 4;
+    pub const OTP_WRITE_RAW: u32 = 5;
+    pub const OTP_LOCK_PARTITION: u32 = 6;
 }
 
 pub mod reg {
@@ -403,6 +409,51 @@ impl Otp {
             _ => Err(ErrorCode::INVAL),
         }
     }
+    fn read_otp_raw(&self, base_word_addr: usize, offset: usize) -> CommandReturn {
+        match self.driver.read_word(base_word_addr + offset) {
+            Ok(value) => CommandReturn::success_u32(value),
+            Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+        }
+    }
+
+    /// Writes a word to an OTP word address.
+    ///
+    /// Only bits specified with `mask` are written.
+    /// Bits outside of `mask` are ignored.
+    ///
+    /// The word offset is stored in `app.reg_offset`.
+    ///
+    ///
+    /// # Errors
+    /// - When `word_addr` is not a valid address
+    /// - When any of the existing data is `1` but is set to `0` in the input data
+    fn write_otp_raw(&self, data: u32, mask: u32, processid: ProcessId) -> CommandReturn {
+        match self.apps.enter(processid, |app, _| {
+            let word_addr = app.reg_offset;
+
+            // TODO check that word_addr is valid to return `ErrorCode::INVAL` in that case
+
+            match fuse_write_dai(self.driver, word_addr, data, mask) {
+                Ok(_) => CommandReturn::success(),
+                Err(McuError::ROM_OTP_FUSE_DAI_WRITE_ERROR) => {
+                    CommandReturn::failure(ErrorCode::INVAL)
+                }
+                Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+            }
+        }) {
+            Ok(c) => c,
+            Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+        }
+    }
+    fn lock_otp_partition(&self, partition: u32) -> CommandReturn {
+        match fuse_lock_partition_dai(self.driver, partition) {
+            Ok(_) => CommandReturn::success(),
+            Err(McuError::ROM_OTP_FUSE_INVALID_PARTITION) => {
+                CommandReturn::failure(ErrorCode::INVAL)
+            }
+            Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+        }
+    }
 }
 
 /// Provide an interface for userland.
@@ -412,6 +463,9 @@ impl SyscallDriver for Otp {
             cmd::OTP_READ => self.read_reg(processid),
             cmd::OTP_WRITE => self.write_reg(arg1 as u32, processid),
             cmd::OTP_SET_REGISTER => self.set_reg(arg1 as u32, arg2 as u32, processid),
+            cmd::OTP_READ_RAW => self.read_otp_raw(arg1, arg2),
+            cmd::OTP_WRITE_RAW => self.write_otp_raw(arg1 as u32, arg2 as u32, processid),
+            cmd::OTP_LOCK_PARTITION => self.lock_otp_partition(arg1 as u32),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }

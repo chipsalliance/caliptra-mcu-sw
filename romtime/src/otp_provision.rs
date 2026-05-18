@@ -23,7 +23,7 @@ use caliptra_mcu_registers_generated::fuses;
 // cherry-picked to the 2.1 branch.
 #[repr(u32)]
 #[derive(Clone, Copy)]
-enum PartitionId {
+pub enum PartitionId {
     SwTestUnlock = 0x00,
     SecretManuf = 0x01,
     SecretProd0 = 0x02,
@@ -86,14 +86,14 @@ impl TryFrom<u32> for PartitionId {
 // Partition metadata
 // ---------------------------------------------------------------------------
 
-struct PartitionInfo {
-    byte_offset: usize,
-    byte_size: usize,
-    is_secret: bool,
+pub struct PartitionInfo {
+    pub byte_offset: usize,
+    pub byte_size: usize,
+    pub is_secret: bool,
 }
 
 impl PartitionId {
-    fn info(self) -> PartitionInfo {
+    pub fn info(self) -> PartitionInfo {
         use PartitionId::*;
         match self {
             SwTestUnlock => PartitionInfo {
@@ -294,135 +294,44 @@ pub fn fuse_read_dai(
 // ===========================================================================
 // MC_FUSE_WRITE  (0x4946_5057 / "IFPW")
 // ===========================================================================
-//
-/// Writes fuse bits via DAI.
+/// Writes a word to an OTP word address.
 ///
-/// `entry`     -- byte offset within the partition (must be word-aligned).
-/// `start_bit` -- first bit to write (0 = LSB of the word at `entry`).
-/// `length`    -- number of bits to write.
-/// `data`      -- packed input words holding `length` bits, LSB-first.
+/// Only bits specified with `mask` are written.
+/// Bits outside of `mask` are ignored.
 ///
-/// Idempotent: writing identical data is a no-op.
-/// Fails if any existing 1-bit would be cleared to 0.
-/// Writes to buffered partitions do not take effect until the next reset.
-pub fn fuse_write_dai(
-    otp: &Otp,
-    partition: u32,
-    entry: u32,
-    start_bit: u32,
-    length: u32,
-    data_len: usize,
-    data_word: impl Fn(usize) -> u32,
-) -> Result<(), McuError> {
-    let info = PartitionId::try_from(partition)?.info();
+/// # Errors
+/// - When `word_addr` is not a valid address
+/// - When any of the existing data is `1` but is set to `0` in the input data
+pub fn fuse_write_dai(otp: &Otp, word_addr: u32, data: u32, mask: u32) -> Result<(), McuError> {
+    // Mask the input value with the provided mask (in case the user didn't do so).
+    let masked_value = data & mask;
 
-    if length == 0 {
-        return Err(McuError::ROM_OTP_FUSE_WRITE_LEN_ZERO);
+    let current_word = otp.read_word(word_addr as usize)?;
+
+    // Mask the current word to our interest range.
+    let masked_current_word = current_word & mask;
+
+    // No-op if the fuse already holds identical data.
+    if masked_current_word == masked_value {
+        crate::println!("[otp-provision] Superflous fuse write, input matches existing data");
+        return Ok(());
+    }
+    // Check if the user wants to set a bit from `1` to `0`.
+    if !fuse_write_possible(masked_current_word, masked_value) {
+        crate::println!("[otp-provision] Write error, attempted to set bit(s) from 1 to 0");
+        return Err(McuError::ROM_OTP_FUSE_DAI_WRITE_ERROR);
     }
 
-    let entry_offset = entry as usize;
-    if entry_offset >= info.byte_size || entry_offset % 4 != 0 {
-        return Err(McuError::ROM_OTP_FUSE_WRITE_ENTRY_OUT_OF_BOUNDS);
-    }
-
-    let data_area_bits = ((info.byte_size - entry_offset) * 8) as u32;
-    let end_bit_excl = match start_bit.checked_add(length) {
-        Some(v) => v,
-        None => {
-            return Err(McuError::ROM_OTP_FUSE_WRITE_OVERFLOW);
-        }
-    };
-    if end_bit_excl > data_area_bits {
-        return Err(McuError::ROM_OTP_FUSE_WRITE_OUT_OF_BOUNDS);
-    }
-
-    let required_data_words = ((length + 31) / 32) as usize;
-    if data_len < required_data_words {
-        return Err(McuError::ROM_OTP_FUSE_WRITE_DATA_LEN_TOO_SHORT);
-    }
-
-    let base_word_addr = (info.byte_offset + entry_offset) / 4;
-    let first_word_idx = (start_bit / 32) as usize;
-    let end_bit = end_bit_excl - 1; // safe: length > 0 validated above
-    let last_word_idx = (end_bit / 32) as usize;
-
-    crate::println!(
-        "[otp-provision] DAI write: partition={}, entry={}, start_bit={}, length={}, words {}..{}",
-        HexWord(partition),
-        entry,
-        start_bit,
-        length,
-        first_word_idx,
-        last_word_idx
-    );
-
-    let mut data_bit_consumed: u32 = 0;
-
-    for word_idx in first_word_idx..=last_word_idx {
-        let word_addr = base_word_addr + word_idx;
-
-        let word_bit_start = if word_idx == first_word_idx {
-            start_bit % 32
-        } else {
-            0
-        };
-        let word_bit_end = if word_idx == last_word_idx {
-            end_bit % 32
-        } else {
-            31
-        };
-        let bits_in_word = word_bit_end - word_bit_start + 1;
-
-        let mask = if bits_in_word >= 32 {
-            0xFFFF_FFFFu32
-        } else {
-            ((1u32 << bits_in_word) - 1) << word_bit_start
-        };
-
-        let src_word_idx = (data_bit_consumed / 32) as usize;
-        let src_bit_off = data_bit_consumed % 32;
-
-        let mut new_bits: u32 = if src_word_idx < data_len {
-            data_word(src_word_idx) >> src_bit_off
-        } else {
-            0
-        };
-        if src_bit_off > 0 && (src_word_idx + 1) < data_len {
-            new_bits |= data_word(src_word_idx + 1) << (32 - src_bit_off);
-        }
-
-        let bits_mask = if bits_in_word >= 32 {
-            0xFFFF_FFFFu32
-        } else {
-            (1u32 << bits_in_word) - 1
-        };
-        new_bits = (new_bits & bits_mask) << word_bit_start;
-
-        let current = match otp.read_word(word_addr) {
-            Ok(v) => v,
-            Err(_) => {
-                return Err(McuError::ROM_OTP_FUSE_DAI_READ_ERROR);
-            }
-        };
-
-        if (current & mask) & !new_bits != 0 {
-            return Err(McuError::ROM_OTP_FUSE_BIT_CLEAR_NOT_ALLOWED);
-        }
-
-        let write_value = current | new_bits;
-        if write_value != current {
-            match otp.write_word(word_addr, write_value) {
-                Ok(_) => {}
-                Err(_) => {
-                    return Err(McuError::ROM_OTP_FUSE_DAI_WRITE_ERROR);
-                }
-            }
-        }
-
-        data_bit_consumed += bits_in_word;
-    }
-
+    // Finally calculate the new fuse value and write it.
+    let new_otp_value = current_word | masked_value;
+    otp.write_word(word_addr as usize, new_otp_value)?;
     Ok(())
+}
+
+/// Return `false` if the new word would set a bit from `1` to `0`.
+fn fuse_write_possible(current_word: u32, new_word: u32) -> bool {
+    // We can do this by inverting `value` to compare every `0` bit in value to the stored one.
+    (current_word & !new_word) == 0
 }
 
 // ===========================================================================
@@ -450,5 +359,22 @@ pub fn fuse_lock_partition_dai(otp: &Otp, partition: u32) -> Result<(), McuError
             Ok(())
         }
         Err(_) => Err(McuError::ROM_OTP_FUSE_LOCK_ERROR),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_fuse_write_possible() {
+        use crate::otp_provision::fuse_write_possible;
+
+        let current = 0b0011_1100;
+
+        assert!(fuse_write_possible(current, 0b0111_1100));
+        assert!(fuse_write_possible(current, 0b1111_1111));
+
+        assert!(!fuse_write_possible(current, 0b010_1100));
+        assert!(!fuse_write_possible(current, 0b010_1101));
+        assert!(!fuse_write_possible(current, 0b000_0000));
     }
 }
