@@ -3,9 +3,8 @@
 #[cfg(test)]
 mod test {
     use anyhow::Result;
-    use caliptra_api::SocManager;
     use caliptra_mcu_error::McuError;
-    use caliptra_mcu_hw_model::{new, DefaultHwModel, InitParams, McuHwModel, McuManager};
+    use caliptra_mcu_hw_model::{DefaultHwModel, McuHwModel, McuManager};
     use caliptra_mcu_registers_generated::fuses;
     use caliptra_mcu_romtime::{
         pqc_key_type_entry, vendor_ecc_revocation_entry, vendor_lms_revocation_entry,

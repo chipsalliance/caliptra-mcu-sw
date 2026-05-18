@@ -15,7 +15,7 @@ pub(crate) struct TestArgs<'a> {
 }
 
 const EXCLUDED_PACKAGES: &[&str] = &[
-    "caliptra-mcu-bare-metal-runtime",
+    "caliptra-mcu-bare-metal",
     "caliptra-mcu-rom-emulator",
     "caliptra-mcu-rom-fpga",
     "caliptra-mcu-runtime-emulator",

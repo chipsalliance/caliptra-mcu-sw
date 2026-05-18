@@ -12,6 +12,8 @@ const EMU_USER_APP_MANIFEST: &str = "firmware-bundler/reference/emulator/user-ap
 const EMU_EXAMPLE_APP_MANIFEST: &str = "firmware-bundler/reference/emulator/example-app.toml";
 const FPGA_USER_APP_MANIFEST: &str = "firmware-bundler/reference/fpga/user-app.toml";
 const FPGA_EXAMPLE_APP_MANIFEST: &str = "firmware-bundler/reference/fpga/example-app.toml";
+const EMU_BARE_METAL_MANIFEST: &str = "firmware-bundler/reference/emulator/bare-metal.toml";
+const FPGA_BARE_METAL_MANIFEST: &str = "firmware-bundler/reference/fpga/bare-metal.toml";
 
 pub fn manifest_file(platform: Option<&str>, example_app: bool) -> Result<PathBuf> {
     let manifest = match platform {
@@ -29,6 +31,16 @@ pub fn manifest_file(platform: Option<&str>, example_app: bool) -> Result<PathBu
                 FPGA_USER_APP_MANIFEST
             }
         }
+        _ => bail!("Invalid platform {platform:?}, supported options are 'emulator' or 'fpga'"),
+    };
+
+    find_workspace_directory().map(|w| w.join(manifest))
+}
+
+pub fn bare_metal_manifest_file(platform: Option<&str>) -> Result<PathBuf> {
+    let manifest = match platform {
+        Some("emulator") | None => EMU_BARE_METAL_MANIFEST,
+        Some("fpga") => FPGA_BARE_METAL_MANIFEST,
         _ => bail!("Invalid platform {platform:?}, supported options are 'emulator' or 'fpga'"),
     };
 

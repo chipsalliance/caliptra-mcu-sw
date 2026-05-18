@@ -24,7 +24,7 @@ copy_bss:
     j copy_bss
 end_copy_bss:
 
-    # In caliptra-mcu-bare-metal-runtime, we are running entirely from RAM (LMA=VMA).
+    # In caliptra-mcu-bare-metal, we are running entirely from RAM (LMA=VMA).
     # Data is already where it needs to be, so no need to copy from ROM to RAM.
 
     # call main entry point

@@ -336,6 +336,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         FirmwareBinaries {
             mcu_rom,
             mcu_runtime: blank.to_vec(),
+            mcu_bare_metal: blank.to_vec(),
             caliptra_rom,
             caliptra_fw: blank.to_vec(),
             caliptra_fw_ocp_lock: blank.to_vec(),

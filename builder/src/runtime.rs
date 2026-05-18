@@ -10,7 +10,7 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 
-use crate::utils::manifest_file;
+use crate::utils::{bare_metal_manifest_file, manifest_file};
 use crate::PROJECT_ROOT;
 use anyhow::Result;
 use caliptra_mcu_firmware_bundler::args::{
@@ -69,9 +69,10 @@ pub fn runtime_build_with_apps(
     Ok(runtime_bin)
 }
 
-pub fn bare_metal_build() -> Result<PathBuf> {
-    let manifest = PROJECT_ROOT.join("runtime/bare-metal/manifest.toml");
-    let output_name = "runtime-bare-metal.bin".to_string();
+pub fn bare_metal_build(platform: Option<&str>) -> Result<PathBuf> {
+    let manifest = bare_metal_manifest_file(platform)?;
+    let platform_str = platform.unwrap_or("emulator");
+    let output_name = format!("mcu-bare-metal-{}.bin", platform_str);
 
     let common = Common {
         manifest,
@@ -79,10 +80,19 @@ pub fn bare_metal_build() -> Result<PathBuf> {
     };
     let runtime_bin = common.release_dir()?.join(&output_name);
 
+    let runtime_features = if platform_str == "fpga" {
+        Some("fpga".to_string())
+    } else {
+        None
+    };
+
     let bundle_cmd = BundleCommands::Bundle {
         common,
         ld: LdArgs::default(),
-        build: BuildArgs::default(),
+        build: BuildArgs {
+            runtime_features,
+            ..Default::default()
+        },
         bundle: BundleArgs {
             bundle_name: Some(output_name),
         },

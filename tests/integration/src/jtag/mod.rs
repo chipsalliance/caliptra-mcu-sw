@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+mod test_bare_metal_jtag;
 mod test_jtag_taps;
 mod test_lc_transitions;
 mod test_manuf_debug_unlock;

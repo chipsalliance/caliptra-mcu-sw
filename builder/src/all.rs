@@ -166,6 +166,7 @@ pub struct FirmwareBinaries {
     pub caliptra_fw_ocp_lock: Vec<u8>,
     pub mcu_rom: Vec<u8>,
     pub mcu_runtime: Vec<u8>,
+    pub mcu_bare_metal: Vec<u8>,
     pub network_rom: Vec<u8>,
     pub soc_manifest: Vec<u8>,
     pub test_roms: Vec<(String, Vec<u8>)>,
@@ -185,6 +186,7 @@ impl FirmwareBinaries {
     const CALIPTRA_FW_OCP_LOCK_NAME: &'static str = "caliptra_fw_ocp_lock.bin";
     const MCU_ROM_NAME: &'static str = "mcu_rom.bin";
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
+    const MCU_BARE_METAL_NAME: &'static str = "mcu_bare_metal.bin";
     const NETWORK_ROM_NAME: &'static str = "network_rom.bin";
     const SOC_MANIFEST_NAME: &'static str = "soc_manifest.bin";
     const FLASH_IMAGE_NAME: &'static str = "flash_image.bin";
@@ -226,6 +228,7 @@ impl FirmwareBinaries {
                 Self::CALIPTRA_FW_OCP_LOCK_NAME => binaries.caliptra_fw_ocp_lock = data,
                 Self::MCU_ROM_NAME => binaries.mcu_rom = data,
                 Self::MCU_RUNTIME_NAME => binaries.mcu_runtime = data,
+                Self::MCU_BARE_METAL_NAME => binaries.mcu_bare_metal = data,
                 Self::NETWORK_ROM_NAME => binaries.network_rom = data,
                 Self::SOC_MANIFEST_NAME => binaries.soc_manifest = data,
                 name if name.contains("mcu-test-soc-manifest") => {
@@ -562,6 +565,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         None,
     )?;
 
+    let mcu_bare_metal = crate::bare_metal_build(Some(platform))?;
+
     let fpga = platform == "fpga";
     let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
     let mut caliptra_builder = CaliptraBuilder::new(
@@ -830,6 +835,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     add_to_zip(
         &PathBuf::from(mcu_runtime),
         FirmwareBinaries::MCU_RUNTIME_NAME,
+        &mut zip,
+        options,
+    )?;
+    add_to_zip(
+        &mcu_bare_metal,
+        FirmwareBinaries::MCU_BARE_METAL_NAME,
         &mut zip,
         options,
     )?;

@@ -112,6 +112,10 @@ enum Commands {
         /// Platform to build for. Default: emulator
         #[arg(long)]
         platform: Option<String>,
+
+        /// Build bare metal runtime instead of TockOS runtime
+        #[arg(long, default_value_t = false)]
+        bare_metal: bool,
     },
     /// Build ROM
     RomBuild {
@@ -511,16 +515,21 @@ fn main() {
             features,
             output,
             platform,
+            bare_metal,
         } => {
-            let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            caliptra_mcu_builder::runtime_build_with_apps(
-                &features,
-                output.clone(),
-                false,
-                platform.as_deref(),
-                None,
-            )
-            .map(|_| ())
+            if *bare_metal {
+                caliptra_mcu_builder::bare_metal_build(platform.as_deref()).map(|_| ())
+            } else {
+                let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
+                caliptra_mcu_builder::runtime_build_with_apps(
+                    &features,
+                    output.clone(),
+                    false,
+                    platform.as_deref(),
+                    None,
+                )
+                .map(|_| ())
+            }
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {

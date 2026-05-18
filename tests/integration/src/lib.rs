@@ -10,7 +10,6 @@ mod rom;
 #[cfg(test)]
 mod runtime;
 mod test_active_i3c;
-mod test_bare_metal;
 mod test_caliptra_util_host_mcu_mailbox_validator;
 mod test_dot;
 mod test_exception_handler;
@@ -253,13 +252,6 @@ mod test {
             None,
         )
         .expect("Runtime failed to compile");
-        assert!(output.exists());
-        output
-    }
-
-    pub fn compile_bare_metal_runtime() -> PathBuf {
-        let output =
-            caliptra_mcu_builder::bare_metal_build().expect("Bare-metal runtime failed to compile");
         assert!(output.exists());
         output
     }
