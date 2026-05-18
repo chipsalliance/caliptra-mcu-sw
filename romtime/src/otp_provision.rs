@@ -274,8 +274,7 @@ pub fn fuse_write_dai(otp: &Otp, word_addr: u32, data: u32, mask: u32) -> Result
         return Ok(());
     }
     // Check if the user wants to set a bit from `1` to `0`.
-    // We can do so by inverting `value` to compare every `0` bit in value to the stored one.
-    if (masked_current_word & !masked_value) != 0 {
+    if !fuse_write_possible(masked_current_word, masked_value) {
         crate::println!("[otp-provision] Write error, attempted to set bit(s) from 1 to 0");
         return Err(McuError::ROM_OTP_FUSE_DAI_WRITE_ERROR);
     }
@@ -284,6 +283,12 @@ pub fn fuse_write_dai(otp: &Otp, word_addr: u32, data: u32, mask: u32) -> Result
     let new_otp_value = current_word | masked_value;
     otp.write_word(word_addr as usize, new_otp_value)?;
     Ok(())
+}
+
+/// Return `false` if the new word would set a bit from `1` to `0`.
+fn fuse_write_possible(current_word: u32, new_word: u32) -> bool {
+    // We can do this by inverting `value` to compare every `0` bit in value to the stored one.
+    (current_word & !new_word) == 0
 }
 
 // ===========================================================================
@@ -314,5 +319,22 @@ pub fn fuse_lock_partition_dai(otp: &Otp, partition: u32) -> Result<(), McuError
             crate::println!("[otp-provision] Failed to lock partition {}", partition);
             Err(McuError::ROM_OTP_FUSE_LOCK_ERROR)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_fuse_write_possible() {
+        use crate::otp_provision::fuse_write_possible;
+
+        let current = 0b0011_1100;
+
+        assert!(fuse_write_possible(current, 0b0111_1100));
+        assert!(fuse_write_possible(current, 0b1111_1111));
+
+        assert!(!fuse_write_possible(current, 0b010_1100));
+        assert!(!fuse_write_possible(current, 0b010_1101));
+        assert!(!fuse_write_possible(current, 0b000_0000));
     }
 }
