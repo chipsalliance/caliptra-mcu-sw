@@ -108,6 +108,30 @@ impl RomHooks for LoggingRomHooks {
         caliptra_mcu_romtime::println!("[mcu-rom-hook] post_load_firmware");
         record_hook_bit(13);
     }
+    fn pre_set_ocp_lock_fuses(&self) {
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_set_ocp_lock_fuses");
+        record_hook_bit(14);
+    }
+    fn post_set_ocp_lock_fuses(&self) {
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_set_ocp_lock_fuses");
+        record_hook_bit(15);
+    }
+    fn pre_stable_owner_key_derivation(&self) {
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_stable_owner_key_derivation");
+        record_hook_bit(16);
+    }
+    fn post_stable_owner_key_derivation(&self) {
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_stable_owner_key_derivation");
+        record_hook_bit(17);
+    }
+    fn pre_encrypted_firmware_decrypt(&self) {
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_encrypted_firmware_decrypt");
+        record_hook_bit(18);
+    }
+    fn post_encrypted_firmware_decrypt(&self) {
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_encrypted_firmware_decrypt");
+        record_hook_bit(19);
+    }
 }
 
 // re-export these so the common ROM and runtime can use them

@@ -49,6 +49,29 @@ pub trait RomHooks {
     /// Immediately after MCU firmware has been detected as loaded into
     /// SRAM (before any header verification).
     fn post_load_firmware(&self) {}
+
+    /// Immediately before programming OCP LOCK HEK fuses into Caliptra
+    /// (`Soc::set_ocp_lock_fuses`). Only fires when the `ocp-lock`
+    /// feature is enabled.
+    fn pre_set_ocp_lock_fuses(&self) {}
+    /// Immediately after the OCP LOCK HEK fuses have been programmed.
+    fn post_set_ocp_lock_fuses(&self) {}
+
+    /// Immediately before deriving the stable owner key from the OTP
+    /// personalization seed. Only fires when the `stable-owner-key`
+    /// feature is enabled. Mutually exclusive with the OCP LOCK hooks.
+    fn pre_stable_owner_key_derivation(&self) {}
+    /// Immediately after stable-owner-key derivation completes
+    /// successfully.
+    fn post_stable_owner_key_derivation(&self) {}
+
+    /// Immediately before decrypting MCU firmware with the
+    /// `CM_AES_GCM_DECRYPT_DMA` Caliptra mailbox command. Only fires on
+    /// the encrypted-firmware boot path (cfg `core_test` + recovery
+    /// wire asserted).
+    fn pre_encrypted_firmware_decrypt(&self) {}
+    /// Immediately after a successful firmware decryption.
+    fn post_encrypted_firmware_decrypt(&self) {}
 }
 
 /// Convenience helper that invokes `f` on the hooks attached to `params`,

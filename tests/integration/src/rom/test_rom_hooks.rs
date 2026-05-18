@@ -23,11 +23,14 @@ mod test {
     /// the `record_hook_bit(N)` calls in the platform ROMs'
     /// `LoggingRomHooks` implementations.
     ///
-    /// The `warm_boot` and `fw_hitless_update` hooks are intentionally
-    /// excluded: the WarmBoot flow requires an external warm reset (not
-    /// the internal FirmwareBootReset at the end of cold boot), and
-    /// FwHitlessUpdate requires a runtime update — neither is exercised
-    /// on the default boot-to-runtime path.
+    /// The 2.1-specific hooks (`dot_flow`, `dot_locked_recovery`,
+    /// `set_ocp_lock_fuses`, `stable_owner_key_derivation`,
+    /// `fips_zeroization`, `encrypted_firmware_decrypt`,
+    /// `i3c_services`) and the `warm_boot` / `fw_hitless_update` hooks
+    /// are intentionally excluded: their flows are not exercised on the
+    /// default boot-to-runtime path with an empty DOT blob (they require
+    /// specific feature flags, populated DOT state, external signals,
+    /// or failure paths).
     const EXPECTED_HOOK_BITS: u32 = (1 << 0)  // pre_cold_boot
         | (1 << 1)  // post_cold_boot
         | (1 << 4)  // pre_fw_boot

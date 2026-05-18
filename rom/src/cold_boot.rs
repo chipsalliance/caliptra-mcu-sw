@@ -1110,6 +1110,8 @@ impl BootFlow for ColdBoot {
 
         caliptra_mcu_romtime::println!("[mcu-rom] Populating fuses");
         crate::call_hook(params.hooks, |h| h.pre_populate_fuses_to_caliptra());
+        #[cfg(feature = "ocp-lock")]
+        crate::call_hook(params.hooks, |h| h.pre_set_ocp_lock_fuses());
         let _fuse_state = soc.populate_fuses(
             otp,
             mci,
@@ -1121,6 +1123,8 @@ impl BootFlow for ColdBoot {
                 ..Default::default()
             },
         );
+        #[cfg(feature = "ocp-lock")]
+        crate::call_hook(params.hooks, |h| h.post_set_ocp_lock_fuses());
 
         // Create handoff data
         caliptra_mcu_romtime::handoff::HandoffData::write(
@@ -1302,6 +1306,7 @@ impl BootFlow for ColdBoot {
         #[cfg(feature = "stable-owner-key")]
         {
             // Derive stable owner key using the OTP personalization seed.
+            crate::call_hook(params.hooks, |h| h.pre_stable_owner_key_derivation());
             if let Err(err) = crate::stable_owner_key::derive_stable_owner_key(env) {
                 caliptra_mcu_romtime::println!(
                     "[mcu-rom] Stable owner key derivation failed: {}",
@@ -1309,6 +1314,7 @@ impl BootFlow for ColdBoot {
                 );
                 fatal_error(err);
             }
+            crate::call_hook(params.hooks, |h| h.post_stable_owner_key_derivation());
         }
 
         // Enter I3C services unconditionally if force_i3c_services is set
@@ -1437,7 +1443,9 @@ impl BootFlow for ColdBoot {
             );
 
             // Decrypt firmware in MCU SRAM via CM_IMPORT + CM_AES_GCM_DECRYPT_DMA
+            crate::call_hook(params.hooks, |h| h.pre_encrypted_firmware_decrypt());
             Self::decrypt_firmware(&mut env.soc_manager, ciphertext_size, &sha384);
+            crate::call_hook(params.hooks, |h| h.post_encrypted_firmware_decrypt());
 
             // Ask Caliptra RT to publish FW_EXEC_CTRL[MCU] so MCI will
             // release MCU from BOOT_RST_MCU after the upcoming warm reset.
