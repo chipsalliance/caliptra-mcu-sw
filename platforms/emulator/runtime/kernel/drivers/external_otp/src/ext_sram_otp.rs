@@ -117,16 +117,17 @@ impl ExternalOtp for ExtSramBackedExternalOtp<'_> {
             .partition_storage_offset(partition)
             .ok_or(ExternalOtpError::InvalidPartition)?;
 
-        if offset + 4 > size {
+        if offset >= size {
             return Err(ExternalOtpError::OutOfBounds);
         }
 
+        let readable = (size - offset).min(4) as usize;
         let mut buf = [0u8; 4];
         let sram_offset = base + offset;
         let ext_addr = self.external_sram_base + sram_offset as u64;
         let buf_addr = buf.as_mut_ptr() as u64;
 
-        self.dma_transfer(ext_addr, buf_addr, 4)?;
+        self.dma_transfer(ext_addr, buf_addr, readable)?;
 
         Ok(u32::from_le_bytes(buf))
     }
@@ -141,16 +142,17 @@ impl ExternalOtp for ExtSramBackedExternalOtp<'_> {
             .partition_storage_offset(partition)
             .ok_or(ExternalOtpError::InvalidPartition)?;
 
-        if offset + 4 > size {
+        if offset >= size {
             return Err(ExternalOtpError::OutOfBounds);
         }
 
+        let writable = (size - offset).min(4) as usize;
         let buf = value.to_le_bytes();
         let sram_offset = base + offset;
         let ext_addr = self.external_sram_base + sram_offset as u64;
         let buf_addr = buf.as_ptr() as u64;
 
-        self.dma_transfer(buf_addr, ext_addr, 4)
+        self.dma_transfer(buf_addr, ext_addr, writable)
     }
 
     fn lock_partition(&self, partition: u32) -> Result<(), ExternalOtpError> {

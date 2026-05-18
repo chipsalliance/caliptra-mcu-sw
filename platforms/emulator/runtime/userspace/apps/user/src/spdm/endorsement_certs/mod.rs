@@ -11,6 +11,8 @@ use caliptra_mcu_libapi_caliptra::certificate::CertContext;
 use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
 use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
+use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_spdm_lib::cert_store::{CertStoreError, CertStoreResult};
 
 // Example implementation of Endorsement cert chain
@@ -28,12 +30,34 @@ fn init_endorsement_cert_chain(slot_id: u8) -> CertStoreResult<&'static [&'stati
 }
 
 async fn populate_idev_cert() -> CertStoreResult<()> {
+    // Read ECC DevID certificate from external OTP partition 1.
+    const ECC_DEVID_CERT_SIZE: usize = 547;
+    let mut cert_buf = [0u8; ECC_DEVID_CERT_SIZE];
+    let otp = ExternalOtp::<DefaultSyscalls>::new();
+    let mut offset = 0u32;
+    while offset + 4 <= ECC_DEVID_CERT_SIZE as u32 {
+        let word = otp
+            .read(0x01, offset)
+            .map_err(|_| CertStoreError::CertReadError)?;
+        cert_buf[offset as usize..offset as usize + 4].copy_from_slice(&word.to_le_bytes());
+        offset += 4;
+    }
+    // Handle remaining 3 bytes (547 % 4 == 3).
+    if (offset as usize) < ECC_DEVID_CERT_SIZE {
+        let tail_offset = ECC_DEVID_CERT_SIZE as u32 - 4;
+        let word = otp
+            .read(0x01, tail_offset)
+            .map_err(|_| CertStoreError::CertReadError)?;
+        let word_bytes = word.to_le_bytes();
+        let skip = (offset - tail_offset) as usize;
+        for i in skip..4 {
+            cert_buf[tail_offset as usize + i] = word_bytes[i];
+        }
+    }
+
     let mut cert_ctx = CertContext::new();
 
-    while let Err(e) = cert_ctx
-        .populate_idev_ecc384_cert(&slot0::SLOT0_ECC_DEVID_CERT_DER)
-        .await
-    {
+    while let Err(e) = cert_ctx.populate_idev_ecc384_cert(&cert_buf).await {
         match e {
             CaliptraApiError::MailboxBusy => continue, // Retry if the mailbox is busy
             _ => Err(CertStoreError::CaliptraApi(e))?,

@@ -56,7 +56,12 @@ impl DoeTransportTest for Test {
             match self.test_state {
                 DoeTestState::Start => {
                     if wait_for_responder {
-                        sleep_emulator_ticks(1_000_000);
+                        // Wait long enough for the firmware to initialize and register the
+                        // DOE loopback handler. If the message is sent before the firmware
+                        // registers (waiting_rx = true), the DOE driver will drop it and no
+                        // echo will ever arrive. Empirically, firmware is ready within ~13M
+                        // MCU ticks; 20M provides a comfortable margin.
+                        sleep_emulator_ticks(20_000_000);
                     } else {
                         sleep_emulator_ticks(100_000);
                     }

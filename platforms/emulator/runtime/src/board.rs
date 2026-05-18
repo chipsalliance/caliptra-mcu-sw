@@ -800,7 +800,10 @@ pub unsafe fn main() {
     use caliptra_mcu_external_otp_emulator::ext_sram_otp::ExtSramBackedExternalOtp;
 
     const EXTERNAL_OTP_PARTITIONS: &[ExternalOtpPartitionInfo] = &[
-        ExternalOtpPartitionInfo { id: 0x01, size: 96 }, // IDevID ECC signature (R || S)
+        ExternalOtpPartitionInfo {
+            id: 0x01,
+            size: 547,
+        }, // IDevID ECC Cert
         ExternalOtpPartitionInfo {
             id: 0x02,
             size: 4627,
