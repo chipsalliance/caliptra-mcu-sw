@@ -411,14 +411,14 @@ impl Soc {
         let num_pk_hashes = params
             .prod_debug_unlock_auth_pk_hash_count
             .unwrap_or(PROD_DEBUG_UNLOCK_PK_ENTRIES.len() as u32);
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-fuse-write] Setting prod debug unlock PK hash bank offset to {:x}, count {}",
-            romtime::MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG_BANK_OFFSET,
+            caliptra_mcu_romtime::MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG_BANK_OFFSET,
             num_pk_hashes
         );
         self.registers
             .ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset
-            .set(romtime::MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG_BANK_OFFSET);
+            .set(caliptra_mcu_romtime::MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG_BANK_OFFSET);
         self.registers
             .ss_num_of_prod_debug_unlock_auth_pk_hashes
             .set(num_pk_hashes);
