@@ -241,6 +241,11 @@ pub(crate) fn test_hello_c_emulator() -> Result<()> {
 }
 
 pub(crate) fn test_panic_missing() -> Result<()> {
+    // TODO: switch to iterating `caliptra_mcu_builder::features::ROM_VARIANTS`
+    // once every variant in that list is panic-free. The FPGA ROM and a
+    // few other variants currently pull in slice-index / copy_from_slice
+    // panic paths from their flash drivers, so extending coverage here
+    // would require fixing those panics first.
     let rom_elf_path = PROJECT_ROOT
         .join("target")
         .join(TARGET)
