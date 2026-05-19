@@ -4,7 +4,7 @@ use crate::transport::McuMboxTransport;
 use caliptra_api::mailbox::{populate_checksum, CommandId as CaliptraCommandId, MailboxReqHeader};
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo,
-    FirmwareVersion, MAX_UID_LEN,
+    FirmwareVersion, GetLogResult, MAX_UID_LEN,
 };
 use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
@@ -13,14 +13,14 @@ use caliptra_mcu_libsyscall_caliptra::otp::Otp;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_libsyscall_caliptra::{mailbox::Mailbox, DefaultSyscalls};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
-    DeviceInfoResp, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
+    ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp,
+    DeviceInfoReq, DeviceInfoResp, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
     FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
     FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq,
-    McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
+    GetAuthCmdChallengeResp, GetLogReq, GetLogResp, MailboxRespHeader, MailboxRespHeaderVarSize,
+    McuFeProgReq, McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
     RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
     MAX_RESP_DATA_SIZE,
 };
@@ -154,6 +154,8 @@ impl<'a> CmdInterface<'a> {
                 CommandId::MC_DEVICE_CAPABILITIES => self.handle_device_caps(req, resp_buf).await,
                 CommandId::MC_DEVICE_ID => self.handle_device_id(req, resp_buf).await,
                 CommandId::MC_DEVICE_INFO => self.handle_device_info(req, resp_buf).await,
+                CommandId::MC_GET_LOG => self.handle_get_log(req, resp_buf).await,
+                CommandId::MC_CLEAR_LOG => self.handle_clear_log(req, resp_buf).await,
                 #[cfg(feature = "periodic-fips-self-test")]
                 CommandId::MC_FIPS_PERIODIC_ENABLE => {
                     self.handle_fips_periodic_enable(req, resp_buf).await
@@ -350,6 +352,76 @@ impl<'a> CmdInterface<'a> {
 
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
+        Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+    }
+
+    /// Handle `MC_GET_LOG` (0x4D47_4C47).
+    ///
+    /// Wire format of the response payload (after `MailboxRespHeaderVarSize`):
+    ///   `[u32 more_data][u8; n log entries]`
+    ///
+    /// `more_data` is `1` if at least one further log entry remains that did
+    /// not fit in the response buffer, `0` otherwise. `data_len` in the header
+    /// covers both the `more_data` field and the log bytes (i.e.
+    /// `4 + n` bytes).
+    async fn handle_get_log<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+        let req = GetLogReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        // Reserve the first 4 bytes of the variable-length payload for the
+        // `more_data` flag; the rest is filled by the handler.
+        const MORE_DATA_FIELD_LEN: usize = core::mem::size_of::<u32>();
+        let mut resp = GetLogResp::default();
+        let result = self
+            .non_crypto_cmds_handler
+            .get_log(req.log_type, &mut resp.data[MORE_DATA_FIELD_LEN..])
+            .await;
+
+        let mbox_cmd_status = match result {
+            Ok(GetLogResult {
+                bytes_written,
+                more_data,
+            }) => {
+                let more_data_bytes: u32 = if more_data { 1 } else { 0 };
+                resp.data[..MORE_DATA_FIELD_LEN].copy_from_slice(&more_data_bytes.to_le_bytes());
+                resp.hdr = MailboxRespHeaderVarSize {
+                    data_len: (MORE_DATA_FIELD_LEN + bytes_written) as u32,
+                    ..Default::default()
+                };
+                MbxCmdStatus::Complete
+            }
+            Err(_) => {
+                resp = GetLogResp::default();
+                MbxCmdStatus::Failure
+            }
+        };
+
+        let resp_bytes = resp
+            .as_bytes_partial()
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+        Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+    }
+
+    /// Handle `MC_CLEAR_LOG` (0x4D43_4C47).
+    async fn handle_clear_log<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+        let req = ClearLogReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        let mbox_cmd_status = match self.non_crypto_cmds_handler.clear_log(req.log_type).await {
+            Ok(()) => MbxCmdStatus::Complete,
+            Err(_) => MbxCmdStatus::Failure,
+        };
+
+        let resp = ClearLogResp::default();
+        let resp_bytes = resp.as_bytes();
+        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
     }
 

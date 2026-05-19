@@ -88,6 +88,43 @@ pub enum DeviceInfo {
     Uid(Uid),
 }
 
+/// Log type identifiers used by `get_log` / `clear_log`.
+///
+/// These values are wire-stable (carried in the MCU mailbox `log_type` field
+/// and implied by Caliptra/MCTP VDM command codes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum LogType {
+    /// MCU debug log (Tock logging-flash capsule).
+    Debug = 0,
+    /// Caliptra attestation log (sourced from Caliptra core).
+    Attestation = 1,
+}
+
+impl TryFrom<u32> for LogType {
+    type Error = CaliptraCompletionCode;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(LogType::Debug),
+            1 => Ok(LogType::Attestation),
+            _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
+/// Result of a single `get_log` invocation.
+///
+/// Read-side cursor is owned by the implementor. Callers drain the log by
+/// repeating `get_log` until `more_data == false`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct GetLogResult {
+    /// Number of valid bytes written into the caller-supplied buffer.
+    pub bytes_written: usize,
+    /// `true` if at least one further entry remains that did not fit in the
+    /// caller's buffer; `false` if the log was fully drained by this call.
+    pub more_data: bool,
+}
+
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, Immutable, PartialEq, Eq)]
 pub struct DeviceCapabilities {
@@ -181,6 +218,44 @@ pub trait CaliptraCmdHandler: Send + Sync {
         algorithm: u32,
         csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize>;
+
+    /// Drain log entries of `log_type` into `data`.
+    ///
+    /// Reads as many complete log entries as fit into `data`. Entries are not
+    /// split: if the next entry does not fit in the remaining buffer, it is
+    /// left in place for the caller's next invocation and the returned
+    /// `more_data` flag is set to `true`.
+    ///
+    /// Implementors own the read-side cursor; `clear_log` resets it.
+    ///
+    /// # Arguments
+    /// * `log_type` - Log identifier; see [`LogType`].
+    /// * `data` - Destination buffer for serialized log entries.
+    ///
+    /// # Returns
+    /// * `Ok(GetLogResult)` on success.
+    /// * `Err(CaliptraCompletionCode::InvalidParameter)` for unknown `log_type`.
+    /// * `Err(CaliptraCompletionCode::UnsupportedOperation)` if the implementor
+    ///   does not provide this log on the current platform.
+    async fn get_log(&self, log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
+        let _ = (log_type, data);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Clear (erase) the log of `log_type` and reset the read cursor.
+    ///
+    /// # Arguments
+    /// * `log_type` - Log identifier; see [`LogType`].
+    ///
+    /// # Returns
+    /// * `Ok(())` on success.
+    /// * `Err(CaliptraCompletionCode::InvalidParameter)` for unknown `log_type`.
+    /// * `Err(CaliptraCompletionCode::UnsupportedOperation)` if the implementor
+    ///   does not provide this log on the current platform.
+    async fn clear_log(&self, log_type: u32) -> CaliptraCmdResult<()> {
+        let _ = log_type;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 }
 
 pub struct AuthorizationError;

@@ -186,6 +186,7 @@ impl MctpUtil {
                         // issues across `wait_for_responder` calls.
                         retry -= 1;
                         if retry == 0 {
+                            println!("MCTP_UTIL: timed out waiting for IBI");
                             return None;
                         }
                         sleep_emulator_ticks(100_000);
@@ -198,7 +199,13 @@ impl MctpUtil {
                     if let Some(data) = stream.receive_private_read(target_addr) {
                         // Inspect the MCTP transport header to filter out
                         // stale packets that do not belong to this exchange.
+                        // Stale packets can occur when the request was
+                        // retransmitted (`MCTP_UTIL: IBI not received`)
+                        // and the responder produced more than one response
+                        // for the same logical request.
                         if data.len() < MCTP_HDR_SIZE {
+                            // Too short to be a valid MCTP packet — drop and
+                            // keep polling.
                             i3c_state = I3cControllerState::WaitForIbi;
                             continue;
                         }
@@ -213,6 +220,8 @@ impl MctpUtil {
                             //   * carry our msg_tag,
                             //   * have its MCTP-common-header byte (the
                             //     responder's `msg_type`) match our request.
+                            // Anything else is stale traffic from a prior
+                            // exchange or a control packet for someone else.
                             if mctp_hdr.som() != 1
                                 || mctp_hdr.msg_tag() != msg_tag
                                 || data.len() <= MCTP_HDR_SIZE
