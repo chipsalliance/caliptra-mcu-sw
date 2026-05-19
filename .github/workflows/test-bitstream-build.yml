@@ -1,8 +1,12 @@
 # Licensed under the Apache-2.0 license
 
-name: FPGA Bitstream build
+name: TEST FPGA Bitstream build
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/test-bitstream-build.yml"
+
   workflow_dispatch:
 
 concurrency:
@@ -11,11 +15,11 @@ concurrency:
 
 jobs:
   build-bitstream:
-    runs-on: [bitstream-builder]
+    runs-on: [staging-bitstream-builder]
     timeout-minutes: 1440
     strategy:
       matrix:
-        segmented: [true, false]
+        segmented: [true]
     steps:
       - name: Checkout repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
@@ -24,19 +28,19 @@ jobs:
 
       - name: Create Subsystem bitstream
         run: |
-          source /vck190-tools/Vivado/2024.2/settings64.sh
+          source /vck190-tools/Xilinx/Vivado/2024.2/settings64.sh
           cd hw/fpga/
-          /vck190-tools/Vivado/2024.2/bin/vivado -mode batch -source fpga_configuration.tcl -tclargs BUILD=TRUE SEGMENTED=${{ matrix.segmented }}
-          cp caliptra_build/*.xsa /tmp/ || true
-          cp caliptra_build/*.pdi /tmp/ || true
+          echo "THIS IS THE ACTION OF BUILDING"
+          cp /caliptra-mcu-sw/hw/fpga/caliptra_build/*.xsa /workspace/ || true
+          cp /caliptra-mcu-sw/hw/fpga/caliptra_build/*.pdi /workspace/ || true
 
       - name: 'Upload bitstream'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: caliptra-bitstream-${{ matrix.segmented }}
           path: |
-            /tmp/*.xsa
-            /tmp/*.pdi
+            /workspace/*.xsa
+            /workspace/*.pdi
           retention-days: 7
 
       - name: Bundle bitstream
@@ -47,9 +51,9 @@ jobs:
             SEGMENTED_ARG="--segmented"
           fi
 
-          # Find the xsa and pdi files in /tmp
-          XSA_FILE=$(ls /tmp/*.xsa 2>/dev/null | head -n 1)
-          PDI_FILE=$(ls /tmp/*.pdi 2>/dev/null | head -n 1)
+          # Find the xsa and pdi files in /workspace
+          XSA_FILE=$(ls /workspace/*.xsa 2>/dev/null | head -n 1)
+          PDI_FILE=$(ls /workspace/*.pdi 2>/dev/null | head -n 1)
 
           PDI_ARG=""
           if [ -n "$PDI_FILE" ]; then
@@ -73,11 +77,11 @@ jobs:
             $PDI_ARG \
             --output-dir manifest-bundle
 
-          cp manifest-bundle/caliptra-bitstream.tar.gz /tmp
+          cp manifest-bundle/caliptra-bitstream.tar.gz /workspace
 
       - name: 'Upload bitstream bundle'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
         with:
           name: caliptra-bitstream-bundle-${{ matrix.segmented && 'segmented' || 'standard' }}
-          path: /tmp/caliptra-bitstream.tar.gz
+          path: /workspace/caliptra-bitstream.tar.gz
           retention-days: 7
