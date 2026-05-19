@@ -358,7 +358,9 @@ impl MciMailboxImpl {
         >,
     ) {
         if !self.is_locked() {
-            eprintln!("WARNING: Ignoring write to mcu_mbox0 target user valid when mailbox is unlocked");
+            eprintln!(
+                "WARNING: Ignoring write to mcu_mbox0 target user valid when mailbox is unlocked"
+            );
             return;
         }
         self.target_user_valid.reg.set(val.reg.get());
