@@ -320,21 +320,7 @@ pub fn run_prod_debug_unlock(
                     }
                 }
             } else {
-                // No signer — send zeroed token (expected to be rejected)
-                let token_req = ProdDebugUnlockTokenRequest::default();
-                match client.prod_debug_unlock_token(&token_req) {
-                    Ok(_) => {
-                        if verbose {
-                            println!("  Token accepted (unexpected in test mode)");
-                        }
-                    }
-                    Err(_) => {
-                        if verbose {
-                            println!("  Token correctly rejected (no valid signature) ✓");
-                        }
-                    }
-                }
-                ValidationResult::pass(test_name, "challenge received, command dispatch works")
+                ValidationResult::fail(test_name, "no signer provided")
             }
         }
         Err(e) => {
@@ -345,12 +331,7 @@ pub fn run_prod_debug_unlock(
                     msg
                 );
             }
-            // The command was dispatched — the device rejected it, which is OK
-            // (e.g., wrong lifecycle state).
-            ValidationResult::pass(
-                test_name,
-                format!("command dispatched, rejected by device: {}", msg),
-            )
+            ValidationResult::fail(test_name, format!("debug unlock request failed: {}", msg))
         }
     }
 }

@@ -105,7 +105,10 @@ fn main() -> Result<()> {
     let debug_unlock_signer: Option<Box<dyn DebugUnlockSigner>> =
         if let Some(keys_path) = &args.debug_unlock_keys_file {
             let keys = DebugUnlockKeys::load_from_file(std::path::Path::new(keys_path))?;
-            println!("[caliptra-spdm-validator] Loaded debug unlock keys from {}", keys_path);
+            println!(
+                "[caliptra-spdm-validator] Loaded debug unlock keys from {}",
+                keys_path
+            );
             Some(Box::new(LocalDebugUnlockSigner::new(keys)))
         } else {
             None
@@ -136,12 +139,7 @@ fn main() -> Result<()> {
     let results = {
         let mut vdm = SpdmVdmDriverImpl::new(&mut requester, None);
         let mut client = SpdmVdmClient::new(&mut vdm);
-        validator::run_all(
-            &mut client,
-            &config,
-            debug_unlock_signer.as_deref(),
-            true,
-        )
+        validator::run_all(&mut client, &config, debug_unlock_signer.as_deref(), true)
     };
     validator::print_summary(&results);
 

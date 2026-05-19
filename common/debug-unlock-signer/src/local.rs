@@ -59,6 +59,15 @@ impl DebugUnlockKeys {
         let mut len_buf = [0u8; 4];
         file.read_exact(&mut len_buf)?;
         let mldsa_priv_len = u32::from_le_bytes(len_buf) as usize;
+        // ML-DSA-87 private keys are always exactly 4896 bytes.
+        const MLDSA_PRIVATE_KEY_SIZE: usize = 4896;
+        if mldsa_priv_len != MLDSA_PRIVATE_KEY_SIZE {
+            return Err(anyhow::anyhow!(
+                "Invalid MLDSA private key size: expected {}, got {}",
+                MLDSA_PRIVATE_KEY_SIZE,
+                mldsa_priv_len
+            ));
+        }
         let mut mldsa_private_key_bytes = vec![0u8; mldsa_priv_len];
         file.read_exact(&mut mldsa_private_key_bytes)?;
 
