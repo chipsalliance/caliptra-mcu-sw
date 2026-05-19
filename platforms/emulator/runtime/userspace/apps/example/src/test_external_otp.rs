@@ -53,6 +53,43 @@ pub(crate) fn test_external_otp() {
     otp.exists().unwrap();
     println!("  exists: ok");
 
+    // Read and print initial contents at offset 0 of each partition.
+    if let Ok(val) = otp.read(0x01, 0) {
+        println!("  initial partition 0x01 offset 0: 0x{:08X}", val);
+    } else {
+        println!("  initial partition 0x01 offset 0: read failed");
+    }
+    if let Ok(val) = otp.read(0x02, 0) {
+        println!("  initial partition 0x02 offset 0: 0x{:08X}", val);
+    } else {
+        println!("  initial partition 0x02 offset 0: read failed");
+    }
+
+    // Verify the initial OTP contents match the expected values.
+    let val0 = otp.read(0x01, 0).unwrap();
+    assert_eq!(
+        val0, 0xCAFEBEEF,
+        "expected 0xCAFEBEEF at partition 0x01 offset 0, got 0x{:08X}",
+        val0
+    );
+    println!("  partition 0x01 offset 0 == 0xCAFEBEEF: ok");
+
+    let val1 = otp.read(0x01, 4).unwrap();
+    assert_eq!(
+        val1, 0xFEEDB0B0,
+        "expected 0xFEEDB0B0 at partition 0x01 offset 4, got 0x{:08X}",
+        val1
+    );
+    println!("  partition 0x01 offset 4 == 0xFEEDB0B0: ok");
+
+    let val2 = otp.read(0x01, 8).unwrap();
+    assert_eq!(
+        val2, 0x00000000,
+        "expected 0x00000000 at partition 0x01 offset 8, got 0x{:08X}",
+        val2
+    );
+    println!("  partition 0x01 offset 8 == 0x00000000: ok");
+
     // Check partition count.
     let count = otp.partition_count().unwrap();
     assert!(count >= 2, "expected at least 2 partitions, got {}", count);

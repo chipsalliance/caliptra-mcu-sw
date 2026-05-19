@@ -135,6 +135,9 @@ pub struct InitParams<'a> {
     /// The initial contents of the OTP memory
     pub otp_memory: Option<&'a [u8]>,
 
+    /// The initial contents of the external OTP memory
+    pub external_otp_memory: Option<&'a [u8]>,
+
     /// The initial lifecycle controller state of the device.
     /// This will override any otp_memory contents.
     pub lifecycle_controller_state: Option<LifecycleControllerState>,
@@ -270,6 +273,7 @@ impl Default for InitParams<'_> {
             caliptra_dccm: Default::default(),
             caliptra_iccm: Default::default(),
             otp_memory: None,
+            external_otp_memory: None,
             lifecycle_controller_state: None,
             lifecycle_tokens: None,
             log_writer: Box::new(stdout()),
