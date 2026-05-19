@@ -1,0 +1,179 @@
+# Licensed under the Apache-2.0 license
+
+name: FPGA SPDM Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: 'Release tag (e.g. v1.0.0). Sub-tags are derived: v1.0.0b=bitstream, v1.0.0x=xtask, v1.0.0s=spdm-emu'
+        required: false
+        default: 'v1.0.0'
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  download_and_upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download release artifacts
+        run: |
+          BASE="https://github.com/mlvisaya/caliptra-mcu-sw/releases/download/${{ inputs.release-tag || 'v1.0.0' }}"
+
+          mkdir -p /tmp/caliptra-binaries /tmp/spdm-emu-binaries
+
+          # Bitstream (tag: <release-tag>b)
+          curl -fL "${BASE}b/caliptra-bitstream.pdi" -o /tmp/caliptra-bitstream.pdi
+
+          # xtask (tag: <release-tag>x)
+          curl -fL "${BASE}x/xtask" -o /tmp/caliptra-binaries/xtask
+          chmod +x /tmp/caliptra-binaries/xtask
+
+          # Firmware bundle (tag: <release-tag>)
+          curl -fL "${BASE}/caliptra-binaries.tar.gz" -o /tmp/caliptra-binaries/caliptra-binaries.tar.gz
+
+          # Test binaries squashfs (tag: <release-tag>)
+          curl -fL "${BASE}/caliptra-test-binaries.sqsh" -o /tmp/caliptra-test-binaries.sqsh
+
+          # spdm-emu binaries (tag: <release-tag>s)
+          curl -fL "${BASE}s/spdm-emu-binaries.tar.gz" | tar -xz -C /tmp
+
+      - name: "Upload bitstream"
+        uses: actions/upload-artifact@v4
+        with:
+          name: caliptra-bitstream${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-bitstream.pdi
+          retention-days: 1
+
+      - name: "Upload test binaries artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: caliptra-test-binaries${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-test-binaries.sqsh
+          retention-days: 1
+
+      - name: "Upload test firmware artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: caliptra-test-firmware${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-binaries
+          retention-days: 1
+
+      - name: "Upload spdm-emu binaries artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: spdm-emu-binaries${{ inputs.artifact-suffix }}
+          path: /tmp/spdm-emu-binaries
+          retention-days: 1
+
+  test_spdm:
+    runs-on: vck190-subsystem
+    needs: download_and_upload
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+
+      - name: "Download Test Binaries Artifact"
+        uses: actions/download-artifact@v4
+        with:
+          name: caliptra-test-binaries${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-test-binaries.sqsh
+
+      - name: "Download Test Firmware Artifact"
+        uses: actions/download-artifact@v4
+        with:
+          name: caliptra-test-firmware${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-binaries
+
+      - name: "Download Bitstream"
+        uses: actions/download-artifact@v4
+        with:
+          name: caliptra-bitstream${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-bitstream
+
+      - name: "Download spdm-emu binaries"
+        uses: actions/download-artifact@v4
+        with:
+          name: spdm-emu-binaries${{ inputs.artifact-suffix }}
+          path: /tmp/spdm-emu-binaries
+
+      - name: Make spdm-emu binaries executable
+        run: |
+          chmod +x /tmp/spdm-emu-binaries/spdm_device_validator_sample
+          chmod +x /tmp/spdm-emu-binaries/spdm_requester_emu
+          chmod +x /tmp/spdm-emu-binaries/spdm_device_attester_sample
+          chmod +x /tmp/spdm-emu-binaries/spdm_responder_emu
+
+      - name: Load bitstream
+        run: |
+          chmod +x /tmp/caliptra-binaries/xtask
+          /tmp/caliptra-binaries/xtask fpga bootstrap --bitstream /tmp/caliptra-bitstream/caliptra-bitstream.pdi
+
+      - name: Mount binaries
+        run: |
+          tar -xvf /tmp/caliptra-binaries/caliptra-binaries.tar.gz
+
+          sudo mkdir /tmp/caliptra-test-binaries
+          echo mount squashfs
+          sudo mount /tmp/caliptra-test-binaries.sqsh/caliptra-test-binaries.sqsh /tmp/caliptra-test-binaries -t squashfs -o loop
+
+      - name: Execute SPDM responder tests on MCTP transport
+        run: |
+          export RUST_BACKTRACE=1
+          TEST_BIN=/tmp/caliptra-test-binaries
+
+          sudo CPTRA_FIRMWARE_BUNDLE="${PWD}/all-fw.zip" \
+              SPDM_VALIDATOR_DIR=/tmp/spdm-emu-binaries \
+              cargo-nextest nextest run \
+              --cargo-metadata="${TEST_BIN}/target/nextest/cargo-metadata.json" \
+              --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json" \
+              --target-dir-remap="${TEST_BIN}/target" \
+              --workspace-remap=. \
+              --profile=nightly-ci-spdm \
+              --run-ignored all \
+              --test-threads=1
+
+      - name: Display and check SPDM Validator test results
+        if: success() || failure()
+        run: |
+          if [ -f /tmp/spdm-emu-binaries/test.log ]; then
+            echo "=== SPDM Validator test.log ==="
+            cat /tmp/spdm-emu-binaries/test.log
+            if grep -E 'test suite \(.*\) - pass: [0-9]+, fail: [1-9][0-9]*' /tmp/spdm-emu-binaries/test.log; then
+              echo "SPDM Validator test suite had failures."
+              exit 1
+            fi
+          else
+            echo "test.log not found"
+          fi
+
+      - name: Display SPDM attestation test results
+        if: success() || failure()
+        run: |
+          if [ -f /tmp/spdm-emu-binaries/spdm_requester_emu_output.txt ]; then
+            echo "=== SPDM Requester Emu Output ==="
+            cat /tmp/spdm-emu-binaries/spdm_requester_emu_output.txt
+          else
+            echo "spdm_requester_emu_output.txt not found"
+          fi
+
+      - name: "Upload SPDM test results"
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: caliptra-spdm-test-results${{ inputs.artifact-suffix }}
+          path: |
+            /tmp/spdm-emu-binaries/test.log
+            /tmp/spdm-emu-binaries/spdm_requester_emu_output.txt
+            /tmp/spdm-emu-binaries/caliptra-evidence.pcap
+            /tmp/spdm-emu-binaries/measurement_block_fd.bin
+            /tmp/spdm-emu-binaries/certificate_chain_slot_00.der
