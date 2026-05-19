@@ -358,13 +358,16 @@ pub fn run_test_suite(
         test_command += format!("--profile={default_test_profile} ").as_str();
     }
     test_command += ")";
-    // Run test suite.
-    // Ignore error so we still copy the logs.
-    let _ = run_command(target_host, test_command.as_str());
+    // Run test suite, but capture the result so we can still copy logs even
+    // when the test command fails (failed download, nextest non-zero exit,
+    // etc.). The original code silently discarded this, which let
+    // download / extract failures sneak past the step-level success check.
+    let test_result = run_command(target_host, test_command.as_str());
     if let Some(target_host) = target_host {
         println!("Copying test log from FPGA to junit.xml");
         rsync_file(target_host, "/tmp/junit.xml", ".", true)?;
     }
+    test_result?;
     Ok(())
 }
 
