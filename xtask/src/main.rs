@@ -26,6 +26,7 @@ mod precheckin;
 mod registers;
 mod rom;
 mod runtime;
+mod sizes;
 mod test;
 
 #[cfg(feature = "fpga_realtime")]
@@ -144,6 +145,18 @@ enum Commands {
         #[arg(short, long, default_value_t = false)]
         trace: bool,
     },
+    /// Report binary `.text` sizes vs. ROM size budgets across all
+    /// ROM variants (per platform / feature combo). Future expansion:
+    /// runtime kernel and userspace apps.
+    Sizes {
+        /// Output CSV instead of a Unicode table.
+        #[arg(long, default_value_t = false)]
+        csv: bool,
+        /// Override the default ROM variant list. See `precheckin
+        /// --variants` for the syntax.
+        #[arg(long)]
+        variants: Option<String>,
+    },
     /// Build emulator binary and package it in emulators.zip
     EmulatorBuild {
         #[arg(long)]
@@ -218,13 +231,38 @@ enum Commands {
         subcommand: FlashImageCommands,
     },
     /// Run clippy on all targets
-    Clippy,
+    Clippy {
+        /// Override the default ROM variant list. See `precheckin
+        /// --variants` for the syntax.
+        #[arg(long)]
+        variants: Option<String>,
+    },
+    /// On-demand per-variant clippy pass against
+    /// `mcu-rom-{emulator,fpga}`. Catches lints that the workspace
+    /// clippy pass misses because it only exercises default features.
+    /// Not wired into `precheckin` today — see the TODO in
+    /// `xtask/src/clippy.rs`.
+    ClippyRomVariants {
+        /// Override the default ROM variant list. See `precheckin
+        /// --variants` for the syntax.
+        #[arg(long)]
+        variants: Option<String>,
+    },
     /// Build docs
     Docs,
     /// Check that all files are formatted
     Format,
     /// Run pre-check-in checks
-    Precheckin,
+    Precheckin {
+        /// Override the default ROM variant list used by clippy,
+        /// build-all, etc. Format: comma-separated
+        /// `platform:features` items, where features uses `+` as the
+        /// inner separator (e.g.,
+        /// `emulator:hw-2-1+test-rom-hooks,fpga:hw-2-1`). Pass
+        /// `emulator:` for the default emulator build.
+        #[arg(long)]
+        variants: Option<String>,
+    },
     /// Check cargo lock
     CargoLock,
     /// Run code coverage analysis
@@ -518,6 +556,19 @@ EXAMPLES:
     SampleConfig,
 }
 
+/// Resolve a `--variants` CLI value to a `Vec<RomVariant>`. `None`
+/// returns the project-wide default list
+/// (`caliptra_mcu_builder::features::ROM_VARIANTS`).
+fn resolve_variants(
+    raw: Option<&str>,
+) -> Result<Vec<caliptra_mcu_builder::features::RomVariant>, anyhow::Error> {
+    use caliptra_mcu_builder::features::{parse_variants, ROM_VARIANTS};
+    match raw {
+        Some(s) => parse_variants(s).map_err(|e| anyhow::anyhow!("invalid --variants: {e}")),
+        None => Ok(ROM_VARIANTS.to_vec()),
+    }
+}
+
 fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
@@ -597,6 +648,18 @@ fn main() {
             })
             .map(|_| ())
         }
+        Commands::Sizes { csv, variants } => {
+            resolve_variants(variants.as_deref()).and_then(|resolved| {
+                sizes::run(
+                    if *csv {
+                        sizes::Format::Csv
+                    } else {
+                        sizes::Format::Table
+                    },
+                    &resolved,
+                )
+            })
+        }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
                 caliptra_fw,
@@ -616,9 +679,16 @@ fn main() {
                 caliptra_mcu_builder::flash_image::flash_image_verify(file, *offset)
             }
         },
-        Commands::Clippy => clippy::clippy(),
+        Commands::Clippy { variants } => {
+            resolve_variants(variants.as_deref()).and_then(|v| clippy::clippy(&v))
+        }
+        Commands::ClippyRomVariants { variants } => {
+            resolve_variants(variants.as_deref()).and_then(|v| clippy::rom_variants(&v))
+        }
         Commands::Docs => docs::docs(),
-        Commands::Precheckin => precheckin::precheckin(),
+        Commands::Precheckin { variants } => {
+            resolve_variants(variants.as_deref()).and_then(|v| precheckin::precheckin(&v))
+        }
         Commands::Format => format::format(),
         Commands::CargoLock => cargo_lock::cargo_lock(),
         Commands::Coverage { analyze_only } => coverage::coverage(*analyze_only),

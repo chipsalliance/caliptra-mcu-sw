@@ -1,11 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::Result;
+use caliptra_mcu_builder::features::RomVariant;
 
-pub(crate) fn precheckin() -> Result<()> {
+pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
     crate::cargo_lock::cargo_lock()?;
     crate::format::format()?;
-    crate::clippy::clippy()?;
+    crate::clippy::clippy(rom_variants)?;
     crate::header::check()?;
     crate::deps::check()?;
     crate::docs::check_docs()?;
@@ -46,5 +47,6 @@ pub(crate) fn precheckin() -> Result<()> {
     crate::test::test_panic_missing()?;
     crate::test::e2e_tests()?;
     crate::test::test_hello_c_emulator()?;
+    crate::rom::build_all_variants(rom_variants)?;
     Ok(())
 }
