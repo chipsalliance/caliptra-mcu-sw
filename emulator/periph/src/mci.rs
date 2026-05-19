@@ -50,11 +50,17 @@ pub struct Mci {
     op_mtimecmp_due_action: Option<ActionHandle>,
     mcu_mailbox1: Option<McuMailbox0Internal>,
     soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
+    mcu_lsu_axi_user: u32,
 
     reset_requested: bool,
 
     /// Shared flag: Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
     cptra_boot_go: Rc<Cell<bool>>,
+
+    /// Shared flag to signal LcCtrl to reload from OTP on next register access.
+    lc_reload_flag: Option<Rc<Cell<bool>>>,
+    /// Shared flag to signal LcCtrl that PPD (Physical Presence Detection) pin is asserted.
+    lc_ppd_flag: Option<Rc<Cell<bool>>>,
 }
 
 impl Mci {
@@ -96,6 +102,8 @@ impl Mci {
             irq,
             mcu_mailbox0,
             reset_requested: false,
+            lc_reload_flag: None,
+            lc_ppd_flag: None,
 
             // --- init mtimecmp ---
             mtimecmp: default_mtimecmp,
@@ -104,7 +112,12 @@ impl Mci {
             soc_regs,
 
             cptra_boot_go,
+            mcu_lsu_axi_user: 0,
         }
+    }
+
+    pub fn set_mcu_lsu_axi_user(&mut self, value: u32) {
+        self.mcu_lsu_axi_user = value;
     }
 
     #[inline]
@@ -120,6 +133,16 @@ impl Mci {
         if let Some(old) = slot.take() {
             timer.cancel(old);
         }
+    }
+
+    /// Set the shared flag used to signal LcCtrl to reload from OTP.
+    pub fn set_lc_reload_flag(&mut self, flag: Rc<Cell<bool>>) {
+        self.lc_reload_flag = Some(flag);
+    }
+
+    /// Set the shared PPD flag used to signal LcCtrl that PPD pin is asserted.
+    pub fn set_lc_ppd_flag(&mut self, flag: Rc<Cell<bool>>) {
+        self.lc_ppd_flag = Some(flag);
     }
 
     fn arm_mtime_interrupt(&mut self) {
@@ -176,6 +199,10 @@ impl MciPeripheral for Mci {
         Some(&mut self.generated)
     }
 
+    fn read_mci_reg_mcu_lsu_axi_user(&mut self) -> caliptra_emu_types::RvData {
+        self.mcu_lsu_axi_user
+    }
+
     fn write_mci_reg_cptra_boot_go(
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
@@ -199,6 +226,116 @@ impl MciPeripheral for Mci {
 
     fn write_mci_reg_fw_flow_status(&mut self, val: caliptra_emu_types::RvData) {
         self.ext_mci_regs.regs.borrow_mut().flow_status = val;
+    }
+
+    fn write_mci_reg_debug_out(&mut self, val: caliptra_emu_types::RvData) {
+        // FC/LCC commands sent by test firmware via the MCI debug_out register.
+        // The command encoding is defined in lc_command_types.h.
+        const FC_LCC_CMD_OFFSET: u32 = 0x90;
+        const CMD_FORCE_FC_LCC_RESET: u32 = FC_LCC_CMD_OFFSET + 0x01; // 0x91
+        const CMD_RELEASE_FC_LCC_RESET: u32 = FC_LCC_CMD_OFFSET + 0x02; // 0x92
+        const CMD_FORCE_FC_AWUSER_CPTR_CORE: u32 = FC_LCC_CMD_OFFSET + 0x03; // 0x93
+        const CMD_FORCE_FC_AWUSER_MCU: u32 = FC_LCC_CMD_OFFSET + 0x04; // 0x94
+        const CMD_RELEASE_AWUSER: u32 = FC_LCC_CMD_OFFSET + 0x05; // 0x95
+        const CMD_FC_FORCE_ZEROIZATION: u32 = FC_LCC_CMD_OFFSET + 0x06; // 0x96
+        const CMD_RELEASE_ZEROIZATION: u32 = FC_LCC_CMD_OFFSET + 0x08; // 0x98
+        const CMD_FORCE_LC_TOKENS: u32 = FC_LCC_CMD_OFFSET + 0x09; // 0x99
+        const CMD_LC_FORCE_RMA_SCRAP_PPD: u32 = FC_LCC_CMD_OFFSET + 0x0a; // 0x9A
+        const CMD_LC_RELEASE_RMA_SCRAP_PPD: u32 = FC_LCC_CMD_OFFSET + 0x0b; // 0x9B
+        const CMD_TOGGLE_WARM_RESET: u32 = FC_LCC_CMD_OFFSET + 0x100; // 0x190
+        const CMD_TOGGLE_COLD_RESET: u32 = FC_LCC_CMD_OFFSET + 0x101; // 0x191
+
+        match val {
+            CMD_RELEASE_FC_LCC_RESET => {
+                println!(
+                    "MCI: debug_out CMD_RELEASE_FC_LCC_RESET (0x{:02x}) - signaling LC reload",
+                    val
+                );
+                if let Some(flag) = &self.lc_reload_flag {
+                    flag.set(true);
+                }
+            }
+            CMD_FORCE_FC_LCC_RESET => {
+                println!(
+                    "MCI: debug_out CMD_FORCE_FC_LCC_RESET (0x{:02x}) - no-op in emulator",
+                    val
+                );
+            }
+            CMD_FC_FORCE_ZEROIZATION => {
+                println!("MCI: debug_out CMD_FC_FORCE_ZEROIZATION (0x{:02x}) - asserting zeroization pin", val);
+                self.ext_mci_regs.regs.borrow_mut().generic_input_wires[0] |= 0x1;
+            }
+            CMD_RELEASE_ZEROIZATION => {
+                println!(
+                    "MCI: debug_out CMD_RELEASE_ZEROIZATION (0x{:02x}) - clearing zeroization pin",
+                    val
+                );
+                self.ext_mci_regs.regs.borrow_mut().generic_input_wires[0] &= !0x1;
+            }
+            CMD_LC_FORCE_RMA_SCRAP_PPD => {
+                println!(
+                    "MCI: debug_out CMD_LC_FORCE_RMA_SCRAP_PPD (0x{:02x}) - asserting PPD pin",
+                    val
+                );
+                self.ext_mci_regs.regs.borrow_mut().generic_input_wires[0] |= 0x2;
+                if let Some(flag) = &self.lc_ppd_flag {
+                    flag.set(true);
+                }
+            }
+            CMD_LC_RELEASE_RMA_SCRAP_PPD => {
+                println!(
+                    "MCI: debug_out CMD_LC_RELEASE_RMA_SCRAP_PPD (0x{:02x}) - releasing PPD pin",
+                    val
+                );
+                self.ext_mci_regs.regs.borrow_mut().generic_input_wires[0] &= !0x2;
+                if let Some(flag) = &self.lc_ppd_flag {
+                    flag.set(false);
+                }
+            }
+            CMD_FORCE_FC_AWUSER_CPTR_CORE => {
+                println!(
+                    "MCI: debug_out CMD_FORCE_FC_AWUSER_CPTR_CORE (0x{:02x}) - no-op in emulator",
+                    val
+                );
+            }
+            CMD_FORCE_FC_AWUSER_MCU => {
+                println!(
+                    "MCI: debug_out CMD_FORCE_FC_AWUSER_MCU (0x{:02x}) - no-op in emulator",
+                    val
+                );
+            }
+            CMD_RELEASE_AWUSER => {
+                println!(
+                    "MCI: debug_out CMD_RELEASE_AWUSER (0x{:02x}) - no-op in emulator",
+                    val
+                );
+            }
+            CMD_FORCE_LC_TOKENS => {
+                println!(
+                    "MCI: debug_out CMD_FORCE_LC_TOKENS (0x{:02x}) - no-op in emulator",
+                    val
+                );
+            }
+            CMD_TOGGLE_WARM_RESET => {
+                println!(
+                    "MCI: debug_out CMD_TOGGLE_WARM_RESET (0x{:03x}) - requesting warm reset",
+                    val
+                );
+                self.reset_reason.handle_warm_reset();
+                self.reset_requested = true;
+            }
+            CMD_TOGGLE_COLD_RESET => {
+                println!(
+                    "MCI: debug_out CMD_TOGGLE_COLD_RESET (0x{:03x}) - requesting cold reset",
+                    val
+                );
+                self.reset_reason.handle_warm_reset();
+                self.reset_requested = true;
+            }
+            _ => {
+                println!("MCI: debug_out unhandled command 0x{:x}", val);
+            }
+        }
     }
 
     fn read_mci_reg_wdt_timer1_en(&mut self) -> ReadWriteRegister<u32, WdtTimer1En::Register> {
