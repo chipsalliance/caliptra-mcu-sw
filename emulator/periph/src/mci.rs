@@ -267,6 +267,10 @@ impl MciPeripheral for Mci {
     }
 
     fn write_mci_reg_debug_out(&mut self, val: caliptra_emu_types::RvData) {
+        // Store the value so it can be read back
+        if let Some(generated) = self.generated() {
+            generated.write_mci_reg_debug_out(val);
+        }
         // FC/LCC commands sent by test firmware via the MCI debug_out register.
         // The command encoding is defined in lc_command_types.h.
         const FC_LCC_CMD_OFFSET: u32 = 0x90;
