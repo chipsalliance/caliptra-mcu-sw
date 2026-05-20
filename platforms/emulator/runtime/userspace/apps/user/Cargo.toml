@@ -48,6 +48,9 @@ embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
 embedded-alloc.workspace = true
 portable-atomic = { workspace = true, features = ["critical-section"] }
 
+[dev-dependencies]
+futures.workspace = true
+
 [features]
 default = []
 hw-2-1 = []

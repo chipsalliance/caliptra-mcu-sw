@@ -37,6 +37,7 @@ pub struct SpdmContext<'a> {
     pub(crate) local_capabilities: DeviceCapabilities,
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
     pub(crate) device_certs_store: &'a dyn SpdmCertStore,
+    pub(crate) device_certs_writer: Option<&'a dyn SpdmCertStoreWriter>,
     pub(crate) measurements: SpdmMeasurements<'a>,
     pub(crate) large_msg_ctx: LargeMessageCtx<'a>,
     pub(crate) session_mgr: SessionManager,
@@ -56,10 +57,16 @@ impl<'a> SpdmContext<'a> {
         measurements: SpdmMeasurements<'a>,
         vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
         large_msg_buf_provider: &'a dyn LargeMsgBufProvider,
+        device_certs_writer: Option<&'a dyn SpdmCertStoreWriter>,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
         validate_cert_store(device_certs_store)?;
+
+        // SET_CERTIFICATE capability requires a writer
+        if local_capabilities.flags.set_certificate_cap() != 0 && device_certs_writer.is_none() {
+            return Err(SpdmError::Protocol(ProtocolError::InvalidParam));
+        }
 
         Ok(Self {
             supported_versions,
@@ -70,6 +77,7 @@ impl<'a> SpdmContext<'a> {
             local_capabilities,
             local_algorithms,
             device_certs_store,
+            device_certs_writer,
             measurements,
             large_msg_ctx: LargeMessageCtx::new(large_msg_buf_provider),
             session_mgr: SessionManager::new(),

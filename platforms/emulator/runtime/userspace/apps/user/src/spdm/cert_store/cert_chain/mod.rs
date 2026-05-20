@@ -9,37 +9,64 @@
 
 // Endorsement certchain portion
 pub mod endorsement;
+pub mod mutable_endorsement;
+pub mod readonly_endorsement;
+mod slot0;
 // Device certchain portion
 pub(crate) mod device;
 // Leaf certchain portion
 pub(crate) mod leaf;
 
-// Re-export all the public types from submodules
-use crate::spdm::cert_store::cert_chain::device::{DeviceCertIndex, DpeCertChain};
-pub use crate::spdm::cert_store::cert_chain::endorsement::EndorsementCertChainTrait;
-use crate::spdm::cert_store::cert_chain::leaf::DpeLeafCert;
+pub use self::device::DeviceCertIndex;
+use self::device::DpeCertChain;
+pub use self::endorsement::EndorsementCertChainTrait;
+use self::leaf::DpeLeafCert;
+pub use self::mutable_endorsement::MutableEndorsement;
+pub use self::readonly_endorsement::ReadOnlyEndorsement;
 use caliptra_mcu_libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
 use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use caliptra_mcu_spdm_lib::cert_store::CertStoreError;
 use caliptra_mcu_spdm_lib::cert_store::CertStoreResult;
+use caliptra_mcu_spdm_lib::protocol::CertificateInfo;
+
+pub struct InstalledMetadata {
+    pub key_pair_id: u8,
+    pub cert_info: CertificateInfo,
+}
 
 /// Generic certificate chain that combines all certificate components
 pub struct CertChain {
     endorsement_cert_chain: &'static mut dyn EndorsementCertChainTrait,
     dpe_cert_chain: DpeCertChain,
     leaf_cert: DpeLeafCert,
+    installed: Option<InstalledMetadata>,
 }
 
 impl CertChain {
     pub fn new(
         endorsement_cert_chain: &'static mut dyn EndorsementCertChainTrait,
-        device_cert_id: DeviceCertIndex,
+        device_cert_index: DeviceCertIndex,
+        installed: Option<InstalledMetadata>,
     ) -> Self {
         Self {
             endorsement_cert_chain,
-            dpe_cert_chain: DpeCertChain::new(device_cert_id),
+            dpe_cert_chain: DpeCertChain::new(device_cert_index),
             leaf_cert: DpeLeafCert::new(),
+            installed,
         }
+    }
+
+    pub fn installed(&self) -> Option<&InstalledMetadata> {
+        self.installed.as_ref()
+    }
+
+    pub fn update_installed(
+        &mut self,
+        installed: InstalledMetadata,
+        device_cert_index: DeviceCertIndex,
+    ) {
+        self.installed = Some(installed);
+        self.dpe_cert_chain = DpeCertChain::new(device_cert_index);
     }
 
     #[allow(dead_code)]

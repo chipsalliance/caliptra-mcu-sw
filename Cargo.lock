@@ -5563,6 +5563,7 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
+ "futures",
  "portable-atomic",
  "static_cell",
  "zerocopy",

@@ -44,7 +44,8 @@ pub const STAGING_PARTITION: FlashPartition = FlashPartition {
 pub const CERT_STORE_PARTITION: FlashPartition = FlashPartition {
     name: "cert_store",
     offset: STAGING_PARTITION.offset + STAGING_PARTITION.size,
-    size: (BLOCK_SIZE * 0x8),
+    // 3 slots × 128 KB; sized for ML-DSA-87 worst case
+    size: (BLOCK_SIZE * 6),
     driver_num: 0x7000_000A,
 };
 

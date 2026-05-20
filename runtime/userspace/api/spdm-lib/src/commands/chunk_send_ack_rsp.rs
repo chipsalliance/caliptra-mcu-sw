@@ -652,7 +652,9 @@ mod tests {
     extern crate alloc;
 
     use super::*;
-    use crate::cert_store::{CertStoreError, CertStoreResult, SpdmCertStore};
+    use crate::cert_store::{
+        CertStoreError, CertStoreResult, SpdmCertStoreReader, SpdmCertStoreSigner,
+    };
     use crate::measurements::{MeasurementsResult, SpdmMeasurementValue};
     use crate::protocol::algorithms::LocalDeviceAlgorithms;
     use crate::transport::common::{SpdmTransport, TransportError, TransportResult};
@@ -715,7 +717,7 @@ mod tests {
     static SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12];
 
     #[async_trait]
-    impl SpdmCertStore for TestCertStore {
+    impl SpdmCertStoreReader for TestCertStore {
         fn slot_count(&self) -> u8 {
             0
         }
@@ -751,16 +753,6 @@ mod tests {
             Err(CertStoreError::UnprovisionedSlot)
         }
 
-        async fn sign_hash<'a>(
-            &self,
-            _asym_algo: AsymAlgo,
-            _slot_id: u8,
-            _hash: &'a [u8; SHA384_HASH_SIZE],
-            _signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
-        ) -> CertStoreResult<()> {
-            Err(CertStoreError::UnprovisionedSlot)
-        }
-
         async fn key_pair_id(&self, _slot_id: u8) -> Option<u8> {
             None
         }
@@ -772,25 +764,18 @@ mod tests {
         async fn key_usage_mask(&self, _slot_id: u8) -> Option<KeyUsageMask> {
             None
         }
+    }
 
-        async fn write_cert_chain(
+    #[async_trait]
+    impl SpdmCertStoreSigner for TestCertStore {
+        async fn sign_hash<'a>(
             &self,
             _asym_algo: AsymAlgo,
             _slot_id: u8,
-            _key_pair_id: u8,
-            _cert_model: CertificateInfo,
-            _root_cert_hash: &[u8; SHA384_HASH_SIZE],
-            _cert_chain: &[u8],
+            _hash: &'a [u8; SHA384_HASH_SIZE],
+            _signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
         ) -> CertStoreResult<()> {
-            Err(CertStoreError::OperationFailed)
-        }
-
-        async fn erase_cert_chain(
-            &self,
-            _asym_algo: AsymAlgo,
-            _slot_id: u8,
-        ) -> CertStoreResult<()> {
-            Err(CertStoreError::OperationFailed)
+            Err(CertStoreError::UnprovisionedSlot)
         }
     }
 
@@ -858,6 +843,7 @@ mod tests {
             crate::measurements::SpdmMeasurements::new(&[], measurements),
             None,
             buf_provider,
+            None,
         )
         .expect("test context should be valid");
         ctx.state

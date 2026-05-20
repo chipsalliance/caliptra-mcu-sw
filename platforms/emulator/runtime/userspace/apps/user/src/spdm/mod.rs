@@ -3,7 +3,6 @@
 mod cert_store;
 mod device_cert_store;
 mod device_measurements;
-mod endorsement_certs;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 mod integration_example;
 pub(crate) mod shared_large_msg_buf;
@@ -164,6 +163,7 @@ async fn spdm_mctp_responder() {
         device_measurements,
         vdm_handlers,
         &large_msg_buf_provider,
+        Some(&shared_cert_store),
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
@@ -295,6 +295,7 @@ async fn spdm_doe_responder() {
         device_measurements,
         vdm_handlers,
         &large_msg_buf_provider,
+        None,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {

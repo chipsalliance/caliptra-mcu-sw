@@ -11,7 +11,7 @@ use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA3
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 use zerocopy::IntoBytes;
 
-pub const MAX_CERT_SLOTS_SUPPORTED: u8 = 4;
+pub const MAX_CERT_SLOTS_SUPPORTED: u8 = 3;
 
 #[derive(Debug, PartialEq)]
 pub enum CertStoreError {
@@ -63,46 +63,19 @@ impl CertStoreError {
 pub type CertStoreResult<T> = Result<T, CertStoreError>;
 
 #[async_trait]
-pub trait SpdmCertStore {
+pub trait SpdmCertStoreReader {
     /// Get supported certificate slot count
     /// The supported slots are consecutive from 0 to slot_count - 1.
-    ///
-    /// # Returns
-    /// * `u8` - The number of supported certificate slots.
     fn slot_count(&self) -> u8;
 
     /// Check if the slot is provisioned.
-    ///
-    /// # Arguments
-    /// * `slot_id` - The slot ID of the certificate chain.
-    ///
-    /// # Returns
-    /// * `bool` - True if the slot is provisioned, false otherwise.
     async fn is_provisioned(&self, slot_id: u8) -> bool;
 
     /// Get the length of the certificate chain in bytes.
     /// The certificate chain is in ASN.1 DER-encoded X.509 v3 format.
-    /// The type of the certificate chain is indicated by the asym_algo parameter.
-    ///
-    /// # Arguments
-    /// * `slot_id` - The slot ID of the certificate chain.
-    /// * `asym_algo` - The asymmetric algorithm to indicate the type of certificate chain.
-    ///
-    /// # Returns
-    /// * `usize` - The length of the certificate chain in bytes or error.
     async fn cert_chain_len(&self, asym_algo: AsymAlgo, slot_id: u8) -> CertStoreResult<usize>;
 
     /// Get the certificate chain in portion. The certificate chain is in ASN.1 DER-encoded X.509 v3 format.
-    /// The type of the certificate chain is indicated by the asym_algo parameter.
-    ///
-    /// # Arguments
-    /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
-    /// * `slot_id` - The slot ID of the certificate chain.
-    /// * `offset` - The offset in bytes to start reading from.
-    /// * `cert_portion` - The buffer to read the certificate chain into.
-    ///
-    /// # Returns
-    /// * `usize` - The number of bytes read or error.
     /// If the cert portion size is smaller than the buffer size, the remaining bytes in the buffer will be filled with 0,
     /// indicating the end of the cert chain.
     async fn get_cert_chain<'a>(
@@ -114,15 +87,7 @@ pub trait SpdmCertStore {
     ) -> CertStoreResult<usize>;
 
     /// Get the hash of the root certificate in the certificate chain.
-    /// The hash algorithm is always SHA-384. The type of the certificate chain is indicated by the asym_algo parameter.
-    ///
-    /// # Arguments
-    /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
-    /// * `slot_id` - The slot ID of the certificate chain.
-    /// * `cert_hash` - The buffer to store the hash of the root certificate.
-    ///
-    /// # Returns
-    /// * `()` - Ok if successful, error otherwise.
+    /// The hash algorithm is always SHA-384.
     async fn root_cert_hash<'a>(
         &self,
         asym_algo: AsymAlgo,
@@ -130,16 +95,19 @@ pub trait SpdmCertStore {
         cert_hash: &'a mut [u8; SHA384_HASH_SIZE],
     ) -> CertStoreResult<()>;
 
+    /// Get the KeyPairID associated with the certificate chain.
+    async fn key_pair_id(&self, slot_id: u8) -> Option<u8>;
+
+    /// Retrieve the `CertificateInfo` associated with the certificate chain for the given slot.
+    async fn cert_info(&self, slot_id: u8) -> Option<CertificateInfo>;
+
+    /// Get the KeyUsageMask associated with the certificate chain.
+    async fn key_usage_mask(&self, slot_id: u8) -> Option<KeyUsageMask>;
+}
+
+#[async_trait]
+pub trait SpdmCertStoreSigner {
     /// Sign hash with leaf certificate key
-    ///
-    /// # Arguments
-    /// * `asym_algo` - Asymmetric algorithm to sign with.
-    /// * `slot_id` - The slot ID of the certificate chain.
-    /// * `hash` - The hash to sign.
-    /// * `signature` - The output buffer to store the ECC384 signature.
-    ///
-    /// # Returns
-    /// * `()` - Ok if successful, error otherwise.
     async fn sign_hash<'a>(
         &self,
         asym_algo: AsymAlgo,
@@ -147,55 +115,12 @@ pub trait SpdmCertStore {
         hash: &'a [u8; SHA384_HASH_SIZE],
         signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
     ) -> CertStoreResult<()>;
+}
 
-    /// Get the KeyPairID associated with the certificate chain if SPDM responder supports
-    /// multiple asymmetric keys in connection.
-    ///
-    /// # Arguments
-    /// * `slot_id` - The slot ID of the certificate chain.
-    ///
-    /// # Returns
-    /// * `u8` - The KeyPairID associated with the certificate chain or None if not supported or not found.
-    async fn key_pair_id(&self, slot_id: u8) -> Option<u8>;
-
-    /// Retrieve the `CertificateInfo` associated with the certificate chain for the given slot.
-    /// The `CertificateInfo` structure specifies the certificate model (such as DeviceID, Alias, or General),
-    /// and includes reserved bits for future extensions.
-    ///
-    /// # Arguments
-    /// * `slot_id` - The slot ID of the certificate chain.
-    ///
-    /// # Returns
-    /// * `CertificateInfo` - The CertificateInfo associated with the certificate chain or None if not supported or not found.
-    async fn cert_info(&self, slot_id: u8) -> Option<CertificateInfo>;
-
-    /// Get the KeyUsageMask associated with the certificate chain if SPDM responder supports
-    /// multiple asymmetric keys in connection.
-    ///
-    /// # Arguments
-    /// * `slot_id` - The slot ID of the certificate chain.
-    ///
-    /// # Returns
-    /// * `KeyUsageMask` - The KeyUsageMask associated with the certificate chain or None if not supported or not found.
-    async fn key_usage_mask(&self, slot_id: u8) -> Option<KeyUsageMask>;
-
+#[async_trait]
+pub trait SpdmCertStoreWriter {
     /// Write a certificate chain to a slot. The certificate chain is in ASN.1 DER-encoded
     /// X.509 v3 format and includes the root certificate as required by SPDM SET_CERTIFICATE.
-    ///
-    /// The implementation should validate that the leaf certificate's public key matches
-    /// the key pair identified by `key_pair_id` before committing. On success, the slot
-    /// is marked as provisioned with the given metadata.
-    ///
-    /// # Arguments
-    /// * `asym_algo` - The asymmetric algorithm indicating the type of certificate chain.
-    /// * `slot_id` - The slot ID where the certificate chain will be written.
-    /// * `key_pair_id` - The key pair ID to associate with this slot.
-    /// * `cert_model` - The certificate model (DeviceCert, AliasCert, GenericCert).
-    /// * `root_cert_hash` - The RootHash field from the SPDM certificate chain.
-    /// * `cert_chain` - The complete ASN.1 DER-encoded certificate chain data.
-    ///
-    /// # Returns
-    /// * `()` - Ok if successful, error otherwise.
     async fn write_cert_chain(
         &self,
         asym_algo: AsymAlgo,
@@ -208,15 +133,13 @@ pub trait SpdmCertStore {
 
     /// Erase the certificate chain from a slot. The slot is marked as unpopulated
     /// until it is re-provisioned. The key pair associated with the slot is not erased.
-    ///
-    /// # Arguments
-    /// * `asym_algo` - The asymmetric algorithm indicating the type of certificate chain.
-    /// * `slot_id` - The slot ID of the certificate chain to erase.
-    ///
-    /// # Returns
-    /// * `()` - Ok if successful, error otherwise.
     async fn erase_cert_chain(&self, asym_algo: AsymAlgo, slot_id: u8) -> CertStoreResult<()>;
 }
+
+/// Composite trait for cert stores that support both reading and signing.
+/// This is the required capability for SPDM responders.
+pub trait SpdmCertStore: SpdmCertStoreReader + SpdmCertStoreSigner {}
+impl<T: SpdmCertStoreReader + SpdmCertStoreSigner> SpdmCertStore for T {}
 
 pub(crate) fn validate_cert_store(cert_store: &dyn SpdmCertStore) -> SpdmResult<()> {
     let slot_count = cert_store.slot_count();

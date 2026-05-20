@@ -2,9 +2,8 @@
 
 extern crate alloc;
 
-mod slot0;
-
-use crate::spdm::cert_store::cert_chain::EndorsementCertChainTrait;
+use super::slot0;
+use super::EndorsementCertChainTrait;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_libapi_caliptra::certificate::CertContext;
@@ -15,10 +14,9 @@ use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_spdm_lib::cert_store::{CertStoreError, CertStoreResult};
 
-// Example implementation of Endorsement cert chain
-pub struct EndorsementCertChain<'b> {
+pub struct ReadOnlyEndorsement {
     root_cert_hash: [u8; SHA384_HASH_SIZE],
-    root_cert_chain: &'b [&'b [u8]],
+    root_cert_chain: &'static [&'static [u8]],
     root_cert_chain_len: usize,
 }
 
@@ -59,7 +57,7 @@ async fn populate_idev_cert() -> CertStoreResult<()> {
 
     while let Err(e) = cert_ctx.populate_idev_ecc384_cert(&cert_buf).await {
         match e {
-            CaliptraApiError::MailboxBusy => continue, // Retry if the mailbox is busy
+            CaliptraApiError::MailboxBusy => continue,
             _ => Err(CertStoreError::CaliptraApi(e))?,
         }
     }
@@ -67,10 +65,9 @@ async fn populate_idev_cert() -> CertStoreResult<()> {
     Ok(())
 }
 
-impl EndorsementCertChain<'_> {
+impl ReadOnlyEndorsement {
     pub async fn new(slot_id: u8) -> CertStoreResult<Self> {
         if slot_id == 0 {
-            // populate signed idev cert into the device.
             populate_idev_cert().await?;
         }
 
@@ -89,7 +86,7 @@ impl EndorsementCertChain<'_> {
             HashContext::hash_all(HashAlgoType::SHA384, root_cert_chain[0], &mut root_hash).await
         {
             match e {
-                CaliptraApiError::MailboxBusy => continue, // Retry if the mailbox is busy
+                CaliptraApiError::MailboxBusy => continue,
                 _ => Err(CertStoreError::CaliptraApi(e))?,
             }
         }
@@ -102,7 +99,7 @@ impl EndorsementCertChain<'_> {
 }
 
 #[async_trait]
-impl EndorsementCertChainTrait for EndorsementCertChain<'_> {
+impl EndorsementCertChainTrait for ReadOnlyEndorsement {
     async fn root_cert_hash(
         &self,
         asym_algo: AsymAlgo,
@@ -116,7 +113,7 @@ impl EndorsementCertChainTrait for EndorsementCertChain<'_> {
     }
 
     async fn refresh(&mut self) {
-        // No-op for endorsement certs, as they are static
+        // No-op for endorsement certs, as they are static.
     }
 
     async fn size(&mut self, asym_algo: AsymAlgo) -> CertStoreResult<usize> {
@@ -144,7 +141,7 @@ impl EndorsementCertChainTrait for EndorsementCertChain<'_> {
                 let len = (cert.len() - cert_offset).min(buf.len() - pos);
                 buf[pos..pos + len].copy_from_slice(&cert[cert_offset..cert_offset + len]);
                 pos += len;
-                cert_offset = 0; // Reset offset for subsequent certs
+                cert_offset = 0;
                 if pos == buf.len() {
                     break;
                 }

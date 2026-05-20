@@ -6,9 +6,12 @@ use caliptra_mcu_spdm_lib::cert_store::{CertStoreError, CertStoreResult};
 
 const MAX_CERT_PORTION_SIZE: usize = 1024;
 
+#[derive(Clone, Copy)]
 pub enum DeviceCertIndex {
-    IdevId, // Device Identity Certificate
-            // Other device certificate indices can be added here in the future
+    IdevId,   // Vendor slot (KeyPairID N/A)
+    LDevId,   // KeyPairID = 1
+    FmcAlias, // KeyPairID = 2
+    RtAlias,  // KeyPairID = 3
 }
 
 pub(crate) struct DpeCertChain {
@@ -38,6 +41,10 @@ impl DpeCertChain {
     async fn cert_chain_offset(&self) -> usize {
         match self.cert_id {
             DeviceCertIndex::IdevId => 0,
+            // TODO: fill in Caliptra device cert chain offsets for each variant
+            DeviceCertIndex::LDevId => 0,
+            DeviceCertIndex::FmcAlias => 0,
+            DeviceCertIndex::RtAlias => 0,
         }
     }
 

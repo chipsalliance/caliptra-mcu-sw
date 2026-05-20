@@ -2,98 +2,54 @@
 
 extern crate alloc;
 
-use crate::spdm::cert_store::cert_chain::device::DeviceCertIndex;
-use crate::spdm::cert_store::cert_chain::CertChain;
-use crate::spdm::cert_store::DeviceCertStore;
-use crate::spdm::endorsement_certs::EndorsementCertChain;
+pub mod endorsements;
+pub mod flash_layout;
+pub mod storage;
+
+use crate::spdm::cert_store::cert_chain::{CertChain, DeviceCertIndex};
+use crate::spdm::cert_store::{DeviceCertStore, VENDOR_SLOT_ID};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
 use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
-use caliptra_mcu_spdm_lib::cert_store::{CertStoreError, CertStoreResult, SpdmCertStore};
+use caliptra_mcu_spdm_lib::cert_store::{
+    CertStoreError, CertStoreResult, SpdmCertStoreReader, SpdmCertStoreSigner,
+    SpdmCertStoreWriter,
+};
 use caliptra_mcu_spdm_lib::protocol::{CertificateInfo, KeyUsageMask};
-use core::mem::MaybeUninit;
-use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use storage::EmulatedCertSlotStorage;
 
-/// Static storage just for the endorsement chain (since it needs static lifetime)
-static mut SLOT0_ENDORSEMENT: MaybeUninit<EndorsementCertChain> = MaybeUninit::uninit();
+pub type PlatformCertStore = DeviceCertStore<EmulatedCertSlotStorage>;
 
-/// Atomic flag to track initialization state (thread-safe)
-static SLOT0_INITIALIZED: AtomicBool = AtomicBool::new(false);
-
-/// Static storage for the shared certificate store
-static SHARED_CERT_STORE: Mutex<CriticalSectionRawMutex, Option<DeviceCertStore>> =
+pub static SHARED_CERT_STORE: Mutex<CriticalSectionRawMutex, Option<PlatformCertStore>> =
     Mutex::new(None);
 
-/// Initialize the endorsement chain for a specific slot
-async fn init_endorsement_cert_chain(
-    slot_id: u8,
-) -> CertStoreResult<&'static mut EndorsementCertChain<'static>> {
-    match slot_id {
-        0 => {
-            // Check if already initialized (fast path)
-            if SLOT0_INITIALIZED.load(Ordering::Acquire) {
-                // SAFETY: We've confirmed initialization via atomic flag
-                unsafe {
-                    return Ok(SLOT0_ENDORSEMENT.assume_init_mut());
-                }
-            }
-
-            // Create the endorsement chain
-            let endorsement_chain = EndorsementCertChain::new(0).await?;
-
-            // SAFETY: This unsafe block is safe because:
-            // 1. We use atomic operations to ensure single initialization
-            // 2. The memory lives for the entire program duration (static)
-            // 3. We use proper memory ordering to prevent races
-            unsafe {
-                // Double-check pattern to handle race conditions
-                if SLOT0_INITIALIZED.load(Ordering::Acquire) {
-                    // Another thread initialized it, return the existing one
-                    return Ok(SLOT0_ENDORSEMENT.assume_init_mut());
-                }
-
-                // Write the endorsement chain to static storage
-                SLOT0_ENDORSEMENT.write(endorsement_chain);
-
-                // Mark as initialized with release ordering
-                // This ensures the write above is visible before the flag is set
-                SLOT0_INITIALIZED.store(true, Ordering::Release);
-
-                // Return the mutable reference with static lifetime
-                Ok(SLOT0_ENDORSEMENT.assume_init_mut())
-            }
-        }
-        _ => Err(CertStoreError::InvalidSlotId),
-    }
-}
-
-pub async fn initialize_shared_cert_store(cert_store: DeviceCertStore) -> CertStoreResult<()> {
+pub async fn initialize_shared_cert_store(cert_store: PlatformCertStore) -> CertStoreResult<()> {
     let mut shared_store = SHARED_CERT_STORE.lock().await;
     *shared_store = Some(cert_store);
     Ok(())
 }
 
 pub async fn initialize_cert_store() -> CertStoreResult<()> {
-    // Initialize the endorsement chain for slot 0 and get a static mutable reference
-    let slot0_endorsement_ref = init_endorsement_cert_chain(0).await?;
+    let mut cert_store = DeviceCertStore::new(EmulatedCertSlotStorage);
+    let mut endorsement_readers = endorsements::collect_endorsement_readers().await?;
+    let vendor_endorsement = endorsement_readers[VENDOR_SLOT_ID as usize]
+        .take()
+        .ok_or(CertStoreError::InitFailed)?;
 
-    // Create cert chain with the static reference
-    let slot0_cert_chain = CertChain::new(slot0_endorsement_ref, DeviceCertIndex::IdevId);
+    cert_store.set_cert_chain(
+        VENDOR_SLOT_ID,
+        CertChain::new(vendor_endorsement, DeviceCertIndex::IdevId, None),
+    )?;
+    cert_store
+        .load_cert_chains(&mut endorsement_readers)
+        .await?;
 
-    // Store everything in DeviceCertStore
-    let mut cert_store = DeviceCertStore::new();
-    cert_store.set_cert_chain(0, slot0_cert_chain)?;
-    cert_store.load_cert_chains_from_flash().await?;
-
-    initialize_shared_cert_store(cert_store).await?;
-    Ok(())
+    initialize_shared_cert_store(cert_store).await
 }
 
-/// Wrapper that provides access to the global certificate store
-/// This implements SpdmCertStore by forwarding calls to the global mutex-protected store
 pub struct SharedCertStore;
 
 impl SharedCertStore {
@@ -103,10 +59,8 @@ impl SharedCertStore {
 }
 
 #[async_trait]
-impl SpdmCertStore for SharedCertStore {
+impl SpdmCertStoreReader for SharedCertStore {
     fn slot_count(&self) -> u8 {
-        // Try to lock the shared certificate store and get the slot count.
-        // If the store is not initialized or the lock cannot be acquired, return 0.
         match SHARED_CERT_STORE.try_lock() {
             Ok(store) => store.as_ref().map_or(0, |s| s.slot_count()),
             Err(_) => 0,
@@ -164,23 +118,6 @@ impl SpdmCertStore for SharedCertStore {
         }
     }
 
-    async fn sign_hash<'a>(
-        &self,
-        asym_algo: AsymAlgo,
-        slot_id: u8,
-        hash: &'a [u8; SHA384_HASH_SIZE],
-        signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
-    ) -> CertStoreResult<()> {
-        let cert_store = SHARED_CERT_STORE.lock().await;
-        if let Some(cert_store) = cert_store.as_ref() {
-            cert_store
-                .sign_hash(asym_algo, slot_id, hash, signature)
-                .await
-        } else {
-            Err(CertStoreError::NotInitialized)
-        }
-    }
-
     async fn key_pair_id(&self, slot_id: u8) -> Option<u8> {
         let cert_store = SHARED_CERT_STORE.lock().await;
         cert_store
@@ -201,7 +138,30 @@ impl SpdmCertStore for SharedCertStore {
             .as_ref()
             .and_then(|store| store.key_usage_mask(slot_id))
     }
+}
 
+#[async_trait]
+impl SpdmCertStoreSigner for SharedCertStore {
+    async fn sign_hash<'a>(
+        &self,
+        asym_algo: AsymAlgo,
+        slot_id: u8,
+        hash: &'a [u8; SHA384_HASH_SIZE],
+        signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
+    ) -> CertStoreResult<()> {
+        let cert_store = SHARED_CERT_STORE.lock().await;
+        if let Some(cert_store) = cert_store.as_ref() {
+            cert_store
+                .sign_hash(asym_algo, slot_id, hash, signature)
+                .await
+        } else {
+            Err(CertStoreError::NotInitialized)
+        }
+    }
+}
+
+#[async_trait]
+impl SpdmCertStoreWriter for SharedCertStore {
     async fn write_cert_chain(
         &self,
         asym_algo: AsymAlgo,
@@ -213,6 +173,11 @@ impl SpdmCertStore for SharedCertStore {
     ) -> CertStoreResult<()> {
         let mut cert_store = SHARED_CERT_STORE.lock().await;
         if let Some(cert_store) = cert_store.as_mut() {
+            let mut endorsement_reader = if !cert_store.is_provisioned(slot_id) {
+                Some(endorsements::init_mutable_slot(slot_id)?)
+            } else {
+                None
+            };
             cert_store
                 .write_cert_chain(
                     asym_algo,
@@ -221,6 +186,7 @@ impl SpdmCertStore for SharedCertStore {
                     cert_model,
                     root_cert_hash,
                     cert_chain,
+                    &mut endorsement_reader,
                 )
                 .await
         } else {

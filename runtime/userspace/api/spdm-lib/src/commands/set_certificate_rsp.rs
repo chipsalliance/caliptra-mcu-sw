@@ -7,6 +7,7 @@ use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
+use crate::protocol::common::ReqRespCode;
 use crate::protocol::*;
 use crate::state::ConnectionState;
 use bitfield::bitfield;
@@ -162,13 +163,20 @@ async fn process_set_certificate<'a>(
     ctx.validate_negotiated_hash_algo(req_payload)?;
     let asym_algo = ctx.validate_negotiated_base_asym_algo(req_payload)?;
 
+    let writer = ctx.device_certs_writer.ok_or_else(|| {
+        ctx.generate_error_response(
+            req_payload,
+            ErrorCode::UnsupportedRequest,
+            ReqRespCode::SetCertificate.into(),
+            None,
+        )
+    })?;
+
     let store_result = if erase {
         if req_payload.data_len() != 0 || req.attributes.cert_model() != 0 {
             Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
         }
-        ctx.device_certs_store
-            .erase_cert_chain(asym_algo, slot_id)
-            .await
+        writer.erase_cert_chain(asym_algo, slot_id).await
     } else {
         let (root_cert_hash, cert_chain_offset, cert_chain_len) =
             validate_spdm_cert_chain(req_payload).map_err(|_| {
@@ -179,7 +187,7 @@ async fn process_set_certificate<'a>(
             .map_err(|e| (false, CommandError::Codec(e)))?[cert_chain_offset..];
         let mut cert_info = CertificateInfo::default();
         cert_info.set_cert_model(cert_model);
-        ctx.device_certs_store
+        writer
             .write_cert_chain(
                 asym_algo,
                 slot_id,
@@ -244,7 +252,10 @@ pub(crate) async fn handle_set_certificate<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cert_store::{CertStoreResult, SpdmCertStore};
+    use crate::cert_store::{
+        CertStoreResult, SpdmCertStore, SpdmCertStoreReader, SpdmCertStoreSigner,
+        SpdmCertStoreWriter,
+    };
     use crate::chunk_ctx::LargeMsgBufProvider;
     use crate::measurements::{MeasurementsResult, SpdmMeasurementValue, SpdmMeasurements};
     use crate::protocol::DeviceAlgorithms;
@@ -307,7 +318,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl SpdmCertStore for TestCertStore {
+    impl SpdmCertStoreReader for TestCertStore {
         fn slot_count(&self) -> u8 {
             self.slot_count
         }
@@ -343,16 +354,6 @@ mod tests {
             Err(CertStoreError::UnprovisionedSlot)
         }
 
-        async fn sign_hash<'a>(
-            &self,
-            _asym_algo: AsymAlgo,
-            _slot_id: u8,
-            _hash: &'a [u8; SHA384_HASH_SIZE],
-            _signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
-        ) -> CertStoreResult<()> {
-            Err(CertStoreError::UnprovisionedSlot)
-        }
-
         async fn key_pair_id(&self, _slot_id: u8) -> Option<u8> {
             None
         }
@@ -364,7 +365,23 @@ mod tests {
         async fn key_usage_mask(&self, _slot_id: u8) -> Option<KeyUsageMask> {
             None
         }
+    }
 
+    #[async_trait]
+    impl SpdmCertStoreSigner for TestCertStore {
+        async fn sign_hash<'a>(
+            &self,
+            _asym_algo: AsymAlgo,
+            _slot_id: u8,
+            _hash: &'a [u8; SHA384_HASH_SIZE],
+            _signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
+        ) -> CertStoreResult<()> {
+            Err(CertStoreError::UnprovisionedSlot)
+        }
+    }
+
+    #[async_trait]
+    impl SpdmCertStoreWriter for TestCertStore {
         async fn write_cert_chain(
             &self,
             _asym_algo: AsymAlgo,
@@ -477,7 +494,7 @@ mod tests {
 
     fn test_context<'a>(
         transport: &'a mut TestTransport,
-        cert_store: &'a dyn SpdmCertStore,
+        cert_store: &'a TestCertStore,
         measurements: &'a mut TestMeasurements,
         provider: &'a TestBufProvider,
         version: SpdmVersion,
@@ -497,6 +514,7 @@ mod tests {
             SpdmMeasurements::new(&[], measurements),
             None,
             provider,
+            Some(cert_store),
         )
         .unwrap();
         ctx.state.connection_info.set_version_number(version);
@@ -612,7 +630,7 @@ mod tests {
             SpdmVersion::V13,
             false,
         );
-        let payload = request_payload(3 | (1 << 7), 0, None);
+        let payload = request_payload(2 | (1 << 7), 0, None);
         let mut raw = [0u8; 128];
         let mut buf = message_buf_with_payload(&mut raw, &payload);
 
@@ -623,8 +641,8 @@ mod tests {
         ))
         .unwrap();
 
-        assert_eq!(slot_id, 3);
-        assert_eq!(store.op.take(), Some(StoreOp::Erase { slot_id: 3 }));
+        assert_eq!(slot_id, 2);
+        assert_eq!(store.op.take(), Some(StoreOp::Erase { slot_id: 2 }));
     }
 
     #[test]
