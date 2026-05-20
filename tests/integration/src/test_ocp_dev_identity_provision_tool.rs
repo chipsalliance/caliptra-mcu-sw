@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-//! Integration test for OCP device identity provisioning over SPDM SET_CERTIFICATE.
+//! Firmware integration test for SPDM SET_CERTIFICATE.
 //!
-//! The requester side is implemented by the `ocp_dev_identity_provision_tool` binary. The test
-//! bridges that requester to the MCU HW model's SPDM responder over MCTP, sends
+//! The test boots MCU runtime firmware with the SPDM responder enabled, bridges
+//! `ocp_dev_identity_provision_tool` to the firmware over MCTP, sends
 //! SET_CERTIFICATE, and verifies the installed chain through GET_CERTIFICATE.
 
 #[cfg(test)]
@@ -25,11 +25,12 @@ mod test {
     use std::thread;
     use std::time::Duration;
 
-    const TEST_NAME: &str = "OCP-DEV-IDENTITY-PROVISION";
+    const TEST_NAME: &str = "MCTP-SPDM-SET-CERTIFICATE";
+    const FIRMWARE_FEATURE: &str = "test-mctp-spdm-set-certificate";
 
     #[ignore]
     #[test]
-    fn test_ocp_dev_identity_provision_tool_set_certificate_end_to_end() {
+    fn test_mctp_spdm_set_certificate_with_ocp_provision_tool() {
         let tool_bin = find_ocp_provisioning_tool();
         let cert_chain = test_owner_certchain_path();
         assert!(
@@ -42,6 +43,7 @@ mod test {
         lock.fetch_add(1, Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some(FIRMWARE_FEATURE),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             use_strap_secrets: true,
             ..Default::default()
