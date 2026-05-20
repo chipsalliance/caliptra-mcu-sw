@@ -18,6 +18,7 @@ path = "src/main.rs"
 caliptra-spdm-requester.workspace = true
 caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-mcu-core-util-host-command-types.workspace = true
+caliptra-mcu-debug-unlock-signer.workspace = true
 caliptra-util-host-commands.workspace = true
 caliptra-util-host-session.workspace = true
 anyhow.workspace = true

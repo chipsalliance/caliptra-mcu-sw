@@ -5,6 +5,8 @@ use crate::{
     MLDSA_PUBLIC_KEY_WORD_SIZE, MLDSA_SIGNATURE_WORD_SIZE,
 };
 use anyhow::Result;
+use std::io::{Read, Write};
+use std::path::Path;
 
 use crate::DebugUnlockSigner;
 
@@ -19,6 +21,70 @@ pub struct DebugUnlockKeys {
     pub mldsa_private_key_bytes: Vec<u8>,
     /// ML-DSA-87 public key as little-endian u32 words.
     pub mldsa_public_key: [u32; MLDSA_PUBLIC_KEY_WORD_SIZE],
+}
+
+impl DebugUnlockKeys {
+    /// Serialize keys to a binary file.
+    ///
+    /// Format: `[ecc_priv: 48][ecc_pub: 96][mldsa_priv_len: 4][mldsa_priv: N][mldsa_pub: 2592]`
+    pub fn save_to_file(&self, path: &Path) -> Result<()> {
+        let mut file = std::fs::File::create(path)?;
+        file.write_all(&self.ecc_private_key_bytes)?;
+        for word in &self.ecc_public_key {
+            file.write_all(&word.to_le_bytes())?;
+        }
+        let mldsa_priv_len = self.mldsa_private_key_bytes.len() as u32;
+        file.write_all(&mldsa_priv_len.to_le_bytes())?;
+        file.write_all(&self.mldsa_private_key_bytes)?;
+        for word in &self.mldsa_public_key {
+            file.write_all(&word.to_le_bytes())?;
+        }
+        Ok(())
+    }
+
+    /// Deserialize keys from a binary file written by [`save_to_file`].
+    pub fn load_from_file(path: &Path) -> Result<Self> {
+        let mut file = std::fs::File::open(path)?;
+
+        let mut ecc_private_key_bytes = [0u8; 48];
+        file.read_exact(&mut ecc_private_key_bytes)?;
+
+        let mut ecc_public_key = [0u32; ECC_PUBLIC_KEY_WORD_SIZE];
+        for word in &mut ecc_public_key {
+            let mut buf = [0u8; 4];
+            file.read_exact(&mut buf)?;
+            *word = u32::from_le_bytes(buf);
+        }
+
+        let mut len_buf = [0u8; 4];
+        file.read_exact(&mut len_buf)?;
+        let mldsa_priv_len = u32::from_le_bytes(len_buf) as usize;
+        // ML-DSA-87 private keys are always exactly 4896 bytes.
+        const MLDSA_PRIVATE_KEY_SIZE: usize = 4896;
+        if mldsa_priv_len != MLDSA_PRIVATE_KEY_SIZE {
+            return Err(anyhow::anyhow!(
+                "Invalid MLDSA private key size: expected {}, got {}",
+                MLDSA_PRIVATE_KEY_SIZE,
+                mldsa_priv_len
+            ));
+        }
+        let mut mldsa_private_key_bytes = vec![0u8; mldsa_priv_len];
+        file.read_exact(&mut mldsa_private_key_bytes)?;
+
+        let mut mldsa_public_key = [0u32; MLDSA_PUBLIC_KEY_WORD_SIZE];
+        for word in &mut mldsa_public_key {
+            let mut buf = [0u8; 4];
+            file.read_exact(&mut buf)?;
+            *word = u32::from_le_bytes(buf);
+        }
+
+        Ok(Self {
+            ecc_private_key_bytes,
+            ecc_public_key,
+            mldsa_private_key_bytes,
+            mldsa_public_key,
+        })
+    }
 }
 
 /// A [`DebugUnlockSigner`] that signs tokens locally using in-memory keys.

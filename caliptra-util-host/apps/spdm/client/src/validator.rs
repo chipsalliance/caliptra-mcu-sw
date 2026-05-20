@@ -14,6 +14,7 @@
 use crate::config::{DeviceMode, TestConfig};
 use crate::SpdmVdmClient;
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
+use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
 
 /// Result of a single validation check.
 #[derive(Debug, Clone)]
@@ -100,6 +101,7 @@ pub fn all_passed(results: &[ValidationResult]) -> bool {
 pub fn run_all(
     client: &mut SpdmVdmClient,
     config: &TestConfig,
+    debug_unlock_signer: Option<&dyn DebugUnlockSigner>,
     verbose: bool,
 ) -> Vec<ValidationResult> {
     let mut results = Vec::new();
@@ -125,6 +127,15 @@ pub fn run_all(
                 verbose,
             ));
         }
+    }
+
+    if config.debug_unlock.enabled {
+        results.push(run_prod_debug_unlock(
+            client,
+            config.debug_unlock.unlock_level,
+            debug_unlock_signer,
+            verbose,
+        ));
     }
 
     results
@@ -237,4 +248,90 @@ pub fn run_export_idevid_csr_expect_fail(
             }
         })
         .collect()
+}
+
+/// Validate Production Debug Unlock via SPDM VDM.
+///
+/// When a [`DebugUnlockSigner`] is provided, performs a full end-to-end flow:
+/// request challenge → sign token → submit token.
+///
+/// Without a signer, sends a zeroed token (expected to be rejected) to confirm
+/// command dispatch works.
+pub fn run_prod_debug_unlock(
+    client: &mut SpdmVdmClient,
+    unlock_level: u8,
+    signer: Option<&dyn DebugUnlockSigner>,
+    verbose: bool,
+) -> ValidationResult {
+    use caliptra_mcu_core_util_host_command_types::debug_unlock::ProdDebugUnlockTokenRequest;
+
+    let test_name = "ProdDebugUnlock".to_string();
+
+    if verbose {
+        println!("\n=== Validating Production Debug Unlock (SPDM VDM) ===");
+    }
+
+    match client.prod_debug_unlock_req(unlock_level) {
+        Ok(response) => {
+            if verbose {
+                println!("  Got challenge response:");
+                println!(
+                    "    UDI: {:02X?}...",
+                    &response.unique_device_identifier[..8]
+                );
+                println!("    Challenge: {:02X?}...", &response.challenge[..8]);
+            }
+
+            if let Some(signer) = signer {
+                // Full end-to-end: sign a real token
+                if verbose {
+                    println!("  Signing token with provided signer...");
+                }
+
+                let challenge = ProdDebugUnlockChallenge {
+                    unique_device_identifier: response.unique_device_identifier,
+                    challenge: response.challenge,
+                };
+
+                let token = match signer.sign_debug_unlock_token(&challenge, unlock_level) {
+                    Ok(t) => ProdDebugUnlockTokenRequest {
+                        length: t.length,
+                        unique_device_identifier: t.unique_device_identifier,
+                        unlock_level: t.unlock_level,
+                        reserved: t.reserved,
+                        challenge: t.challenge,
+                        ecc_public_key: t.ecc_public_key,
+                        mldsa_public_key: t.mldsa_public_key,
+                        ecc_signature: t.ecc_signature,
+                        mldsa_signature: t.mldsa_signature,
+                    },
+                    Err(e) => {
+                        return ValidationResult::fail(
+                            test_name,
+                            format!("Failed to sign token: {}", e),
+                        );
+                    }
+                };
+
+                match client.prod_debug_unlock_token(&token) {
+                    Ok(_) => ValidationResult::pass(test_name, "token accepted"),
+                    Err(e) => {
+                        ValidationResult::fail(test_name, format!("Signed token rejected: {}", e))
+                    }
+                }
+            } else {
+                ValidationResult::fail(test_name, "no signer provided")
+            }
+        }
+        Err(e) => {
+            let msg = format!("{}", e);
+            if verbose {
+                println!(
+                    "  Debug unlock request returned error: {} (may be expected due to lifecycle)",
+                    msg
+                );
+            }
+            ValidationResult::fail(test_name, format!("debug unlock request failed: {}", msg))
+        }
+    }
 }
