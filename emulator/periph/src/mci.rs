@@ -207,6 +207,29 @@ impl MciPeripheral for Mci {
         self.ext_mci_regs.regs.borrow().generic_input_wires[index]
     }
 
+    // Bridge prod_debug_unlock_pk_hash_reg reads/writes to the Caliptra-side MCI
+    // so that ROM writes are visible to Caliptra RT's DMA reads.
+    fn read_mci_reg_prod_debug_unlock_pk_hash_reg(
+        &mut self,
+        index: usize,
+    ) -> caliptra_emu_types::RvData {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .prod_debug_unlock_pk_hash_reg[index]
+    }
+
+    fn write_mci_reg_prod_debug_unlock_pk_hash_reg(
+        &mut self,
+        val: caliptra_emu_types::RvData,
+        index: usize,
+    ) {
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .prod_debug_unlock_pk_hash_reg[index] = val;
+    }
+
     fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_emu_types::RvData {
         self.ext_mci_regs.regs.borrow().flow_status
     }

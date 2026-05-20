@@ -28,6 +28,8 @@ pub enum VdmError {
     LargeResp(usize),
     Ide(IdeDriverError),
     Tdisp(TdispDriverError),
+    /// Streaming error (e.g., mailbox failure during chunk streaming).
+    StreamError,
 }
 
 impl VdmError {
@@ -50,6 +52,7 @@ impl VdmError {
             VdmError::Tdisp(e) => {
                 ((crate::error::error_type_id::TDISP_DRIVER as u32) << 8) | ((*e as u8) as u32)
             }
+            VdmError::StreamError => 0x09_00,
         }
     }
 }
@@ -93,3 +96,44 @@ pub trait VdmProtocolMatcher {
 pub trait VdmProtocolHandler: VdmResponder + VdmProtocolMatcher + Send + Sync {}
 
 pub trait VdmHandler: VdmResponder + VdmRegistryMatcher + Send + Sync {}
+
+/// Trait for streaming large VDM request payloads directly to a backend
+/// (e.g., Caliptra mailbox) without buffering the entire message.
+///
+/// When the SPDM CHUNK_SEND handler detects a streaming-eligible VDM command
+/// in the first chunk, it calls these methods per-chunk instead of buffering
+/// in `LargeMessageCtx`.
+///
+/// The VDM payload is expected to be in Caliptra RT mailbox format
+/// (MailboxReqHeader + command-specific data), pre-built by the host with
+/// checksum already computed.
+#[async_trait]
+pub trait VdmStreamHandler: Send + Sync {
+    /// Check if a VDM command code supports streaming.
+    /// Returns the mailbox command ID if streaming is supported, None otherwise.
+    fn stream_supported(&self, vdm_command_code: u8) -> Option<u32>;
+
+    /// Initialize a streaming session.
+    /// Called with the first chunk's VDM payload data (mailbox command bytes).
+    ///
+    /// # Arguments
+    /// * `mailbox_cmd` - The Caliptra RT mailbox command ID
+    /// * `total_payload_len` - Total VDM payload length (excluding VDM headers)
+    /// * `first_chunk_payload` - The VDM payload bytes from the first chunk
+    async fn stream_init(
+        &self,
+        mailbox_cmd: u32,
+        total_payload_len: usize,
+        first_chunk_payload: &[u8],
+    ) -> VdmResult<()>;
+
+    /// Stream a subsequent chunk of VDM payload data.
+    async fn stream_chunk(&self, chunk_data: &[u8]) -> VdmResult<()>;
+
+    /// Finalize the streaming session and execute the mailbox command.
+    /// Returns the response data length written to `rsp_buf`.
+    async fn stream_finish(&self, mailbox_cmd: u32, rsp_buf: &mut [u8]) -> VdmResult<usize>;
+
+    /// Abort a streaming session (called on error).
+    async fn stream_abort(&self);
+}

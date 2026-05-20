@@ -2,6 +2,7 @@
 
 pub(crate) mod clear_attestation_log;
 pub(crate) mod clear_debug_log;
+pub(crate) mod debug_unlock;
 pub(crate) mod device_capabilities;
 pub(crate) mod device_id;
 pub(crate) mod device_info;
