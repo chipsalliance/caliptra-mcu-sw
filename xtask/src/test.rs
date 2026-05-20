@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use caliptra_mcu_builder::{rom_build, CaliptraBuildArgs, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
@@ -233,31 +233,37 @@ pub(crate) fn test_hello_c_emulator() -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn test_panic_missing() -> Result<()> {
-    let test_features = [
-        None,
-        Some("test-usb-ocp-recovery".to_string()),
-        Some("test-flash-based-boot".to_string()),
-    ];
-
-    for test_feature in test_features.into_iter() {
-        rom_build(&CaliptraBuildArgs {
-            features: test_feature.as_deref(),
+pub(crate) fn test_panic_missing(
+    variants: &[caliptra_mcu_builder::features::RomVariant],
+) -> Result<()> {
+    for variant in variants {
+        let display = variant.display();
+        println!("Checking ROM panic-freeness for {display}...");
+        let rom_binary = rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
+            platform: variant.platform,
+            features: variant.features,
             ..Default::default()
-        })?;
-        let rom_elf = PROJECT_ROOT
-            .join("target")
-            .join(TARGET)
-            .join("release")
-            .join("caliptra-mcu-rom-emulator");
-        let rom_elf = std::fs::read(rom_elf)?;
-        let symbols = elf_symbols(&rom_elf)?;
-        if symbols.iter().any(|s| s.contains("panic_is_possible")) {
-            bail!(
-                "The MCU ROM contains the panic_is_possible symbol, which is not allowed. \
+        })
+        .with_context(|| format!("building ROM variant {display}"))?;
+        // rom_build returns the `.bin`; the bare ELF lives alongside it
+        // under `caliptra-mcu-rom-<platform>` with no extension.
+        let platform = variant.platform.unwrap_or("emulator");
+        let rom_elf_path = rom_binary
+            .with_file_name(format!("caliptra-mcu-rom-{platform}"))
+            .with_extension("");
+        check_no_panic(&rom_elf_path, &display)?;
+    }
+    Ok(())
+}
+
+fn check_no_panic(rom_elf_path: &std::path::Path, label: &str) -> Result<()> {
+    let rom_elf = std::fs::read(rom_elf_path)?;
+    let symbols = elf_symbols(&rom_elf)?;
+    if symbols.iter().any(|s| s.contains("panic_is_possible")) {
+        bail!(
+            "The MCU ROM ({label}) contains the panic_is_possible symbol, which is not allowed. \
                 Please remove any code that might panic."
             );
-        }
     }
     Ok(())
 }

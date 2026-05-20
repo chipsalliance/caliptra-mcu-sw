@@ -49,7 +49,6 @@ use caliptra_mcu_romtime::HexWord;
 unsafe fn init_static<T>(s: *mut core::mem::MaybeUninit<T>, value: T) -> &'static mut T {
     (*s).write(value)
 }
-
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
 /// DOT recovery handler using MCI mbox0.
@@ -768,7 +767,7 @@ pub extern "C" fn rom_entry() -> ! {
 
     caliptra_mcu_romtime::println!(
         "[mcu-rom] Jumping to firmware at {}",
-        HexWord(MCU_MEMORY_MAP.sram_offset as u32)
+        HexWord(MCU_MEMORY_MAP.sram_offset)
     );
     exit_rom();
 }

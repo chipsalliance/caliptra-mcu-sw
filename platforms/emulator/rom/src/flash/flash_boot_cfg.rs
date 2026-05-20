@@ -34,7 +34,7 @@ impl<'a> FlashBootCfg<'a> {
     }
 }
 
-impl<'a> BootConfig for FlashBootCfg<'a> {
+impl BootConfig for FlashBootCfg<'_> {
     fn get_active_partition(&self) -> Result<PartitionId, BootConfigError> {
         let partition_table = self
             .read_partition_table()
