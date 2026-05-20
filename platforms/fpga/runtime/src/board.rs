@@ -739,8 +739,8 @@ pub unsafe fn main() {
         }, // IDevID ECC Cert
         ExternalOtpPartitionInfo {
             id: 0x02,
-            size: 4627,
-        }, // IDevID MLDSA signature
+            size: 7741,
+        }, // IDevID MLDSA certificate
     ];
 
     // Create a dedicated FlashUser from the MCU mailbox flash mux for OTP access.

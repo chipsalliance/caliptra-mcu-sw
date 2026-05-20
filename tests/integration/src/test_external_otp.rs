@@ -22,9 +22,15 @@ mod test {
 
         #[cfg(feature = "fpga_realtime")]
         {
-            use crate::test::{build_primary_flash_initial_contents, ECC_DEVID_CERT_DER};
-            let primary_flash_initial_contents =
-                build_primary_flash_initial_contents(None, Some(&ECC_DEVID_CERT_DER), None);
+            use crate::test::{
+                build_primary_flash_initial_contents, ECC_DEVID_CERT_DER, MLDSA_IDEVID_CERT,
+            };
+            let primary_flash_initial_contents = build_primary_flash_initial_contents(
+                None,
+                Some(&ECC_DEVID_CERT_DER),
+                Some(&MLDSA_IDEVID_CERT),
+                None,
+            );
             let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
             crate::test_fpga_flash_ctrl::test::run_imaginary_flash_controller_service_with_init(
                 mci_ptr,
