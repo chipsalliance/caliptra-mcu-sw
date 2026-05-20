@@ -4,6 +4,8 @@
 mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mcu_hw_model::{McuHwModel, McuManager};
+    use caliptra_mcu_registers_generated::fuses::FIELD_ENTROPY_STATE;
+    use caliptra_mcu_romtime::otp::FieldEntropySlot;
     use std::sync::atomic::Ordering;
 
     const MAX_ZEROIZATION_CYCLES: u64 = 500_000_000;
@@ -33,10 +35,9 @@ mod test {
         // 385) are numerically larger than the zeroization checkpoints and
         // would satisfy the condition before the mask is actually written.
         hw.step_until(|hw| {
-            let mask = hw
-                .mcu_manager()
-                .with_mci(|mci| mci.fc_fips_zerozation().read());
-            mask == 0xFFFF_FFFF || hw.cycle_count() >= MAX_ZEROIZATION_CYCLES
+            hw.mci_boot_checkpoint()
+                == u16::from(caliptra_mcu_romtime::McuRomBootStatus::FipsZeroizationComplete)
+                || hw.cycle_count() >= MAX_ZEROIZATION_CYCLES
         });
 
         let mask = hw
@@ -103,6 +104,23 @@ mod test {
                      all 0xFF after zeroization, but found non-0xFF bytes",
                 );
             }
+        }
+
+        // Check that FIELD_ENTROPY_STATE has all slots marked as ZEROIZED.
+        let otp_mem = hw.read_otp_memory();
+        let field_entropy_offset = FIELD_ENTROPY_STATE.byte_offset;
+        for slot in 0..4 {
+            let zeroized_word_offset = field_entropy_offset + (slot * 3 + 2) * 4;
+            let zeroized_word = u32::from_le_bytes(
+                otp_mem[zeroized_word_offset..zeroized_word_offset + 4]
+                    .try_into()
+                    .unwrap(),
+            );
+            assert_eq!(
+                zeroized_word,
+                FieldEntropySlot::ZEROIZED_MAGIC,
+                "FIELD_ENTROPY_STATE for slot {slot} should be marked as ZEROIZED"
+            );
         }
 
         lock.fetch_add(1, Ordering::Relaxed);

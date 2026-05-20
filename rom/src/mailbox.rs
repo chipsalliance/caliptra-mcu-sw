@@ -58,22 +58,17 @@ fn ctx_as_u32(ctx: &[u8; CMB_SHA_CONTEXT_SIZE]) -> &[u32; CTX_DWORDS] {
 /// the ~4 KiB stack allocations that the request structs would otherwise
 /// require.
 pub fn cm_sha384(soc_manager: &mut CaliptraSoC, data: &[u32]) -> [u8; 48] {
-    let mut offset = 0;
     let first_chunk = data.len().min(CHUNK_DWORDS);
 
-    let mut sha_context = cm_sha_init(soc_manager, &data[..first_chunk]);
-    offset += first_chunk;
+    let (first_chunk, rest) = data.split_at(first_chunk);
 
-    while data.len() - offset > CHUNK_DWORDS {
-        cm_sha_update(
-            soc_manager,
-            &data[offset..offset + CHUNK_DWORDS],
-            &mut sha_context,
-        );
-        offset += CHUNK_DWORDS;
+    let mut sha_context = cm_sha_init(soc_manager, first_chunk);
+
+    for chunk in rest.chunks(CHUNK_DWORDS) {
+        cm_sha_update(soc_manager, chunk, &mut sha_context);
     }
 
-    cm_sha_final(soc_manager, &data[offset..], sha_context)
+    cm_sha_final(soc_manager, &[], sha_context)
 }
 
 /// Send CM_SHA_INIT with the first data chunk and return the SHA context.

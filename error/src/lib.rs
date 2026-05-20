@@ -222,6 +222,16 @@ impl McuError {
             "FIPS zeroization failed to finish ZEROIZE_UDS_FE command"
         ),
         (
+            ROM_FIPS_ZEROIZATION_WRITE_FIELD_ENTROPY_STATE_ZEROIZED_ERROR,
+            0x2_000b,
+            "FIPS zeroization failed to write FIELD_ENTROPY_STATE (zeroized) to OTP"
+        ),
+        (
+            ROM_FIPS_ZEROIZATION_READ_FIELD_ENTROPY_STATE_ERROR,
+            0x2_000c,
+            "FIPS zeroization failed to read FIELD_ENTROPY_STATE from OTP"
+        ),
+        (
             ROM_OTP_INIT_STATUS_ERROR,
             0x3_0000,
             "OTP controller status error during initialization"
@@ -788,6 +798,36 @@ impl McuError {
             ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH_FAILED,
             0x1_003C,
             "Cold boot failed to finish field entropy program (other error)"
+        ),
+        (
+            ROM_COLD_BOOT_FIELD_ENTROPY_ZEROIZED,
+            0x1_003D,
+            "Field entropy slot is zeroized"
+        ),
+        (
+            ROM_COLD_BOOT_FIELD_ENTROPY_PARTIAL,
+            0x1_003E,
+            "Field entropy slot is partially programmed"
+        ),
+        (
+            ROM_COLD_BOOT_FIELD_ENTROPY_INVALID_PARTITION,
+            0x1_003F,
+            "Field entropy partition is invalid"
+        ),
+        (
+            ROM_COLD_BOOT_READ_FIELD_ENTROPY_STATE_ERROR,
+            0x1_0040,
+            "Failed to read FIELD_ENTROPY_STATE from OTP"
+        ),
+        (
+            ROM_COLD_BOOT_WRITE_FIELD_ENTROPY_STATE_STARTED_ERROR,
+            0x1_0041,
+            "Failed to write FIELD_ENTROPY_STATE (started) to OTP"
+        ),
+        (
+            ROM_COLD_BOOT_WRITE_FIELD_ENTROPY_STATE_FINISHED_ERROR,
+            0x1_0042,
+            "Failed to write FIELD_ENTROPY_STATE (finished) to OTP"
         ),
         (
             ROM_SOC_PK_HASH_VERIFY_INTERNAL_ERROR,

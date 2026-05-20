@@ -946,6 +946,54 @@ impl Otp {
         }
         Ok(())
     }
+
+    /// Check if a field entropy slot is started in OTP memory.
+    pub fn is_field_entropy_started(&self, slot: FieldEntropySlot) -> McuResult<bool> {
+        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
+        let word_index = (slot as usize) * 3;
+        let val = self.read_word(base_word + word_index)?;
+        Ok(val == FieldEntropySlot::STARTED_MAGIC)
+    }
+
+    /// Check if a field entropy slot is finished in OTP memory.
+    pub fn is_field_entropy_finished(&self, slot: FieldEntropySlot) -> McuResult<bool> {
+        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
+        let word_index = (slot as usize) * 3 + 1;
+        let val = self.read_word(base_word + word_index)?;
+        Ok(val == FieldEntropySlot::FINISHED_MAGIC)
+    }
+
+    /// Check if a field entropy slot is zeroized in OTP memory.
+    pub fn is_field_entropy_zeroized(&self, slot: FieldEntropySlot) -> McuResult<bool> {
+        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
+        let word_index = (slot as usize) * 3 + 2;
+        let val = self.read_word(base_word + word_index)?;
+        Ok(val == FieldEntropySlot::ZEROIZED_MAGIC)
+    }
+
+    /// Mark a field entropy slot as started in OTP memory.
+    pub fn mark_field_entropy_started(&self, slot: FieldEntropySlot) -> McuResult<()> {
+        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
+        let word_index = (slot as usize) * 3;
+        self.write_word(base_word + word_index, FieldEntropySlot::STARTED_MAGIC)?;
+        Ok(())
+    }
+
+    /// Mark a field entropy slot as finished in OTP memory.
+    pub fn mark_field_entropy_finished(&self, slot: FieldEntropySlot) -> McuResult<()> {
+        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
+        let word_index = (slot as usize) * 3 + 1;
+        self.write_word(base_word + word_index, FieldEntropySlot::FINISHED_MAGIC)?;
+        Ok(())
+    }
+
+    /// Mark a field entropy slot as zeroized in OTP memory.
+    pub fn mark_field_entropy_zeroized(&self, slot: FieldEntropySlot) -> McuResult<()> {
+        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
+        let word_index = (slot as usize) * 3 + 2;
+        self.write_word(base_word + word_index, FieldEntropySlot::ZEROIZED_MAGIC)?;
+        Ok(())
+    }
 }
 
 /// Returns the FuseEntryInfo for the given vendor PK hash slot.
@@ -1060,5 +1108,56 @@ pub fn vendor_mldsa_revocation_entry(index: usize) -> McuResult<&'static FuseEnt
         14 => Ok(fuses::VENDOR_MLDSA_REVOCATION_14),
         15 => Ok(fuses::VENDOR_MLDSA_REVOCATION_15),
         _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldEntropySlot {
+    Slot0 = 0,
+    Slot1 = 1,
+    Slot2 = 2,
+    Slot3 = 3,
+}
+
+impl TryFrom<usize> for FieldEntropySlot {
+    type Error = ();
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Slot0),
+            1 => Ok(Self::Slot1),
+            2 => Ok(Self::Slot2),
+            3 => Ok(Self::Slot3),
+            _ => Err(()),
+        }
+    }
+}
+
+impl FieldEntropySlot {
+    pub const STARTED_MAGIC: u32 = 0x5354_5254; // "STRT"
+    pub const FINISHED_MAGIC: u32 = 0x4649_4E53; // "FINS"
+    pub const ZEROIZED_MAGIC: u32 = 0x5A45_524F; // "ZERO"
+}
+
+pub enum FieldEntropyState {
+    Empty,
+    Started,
+    Finished,
+    Zeroized,
+}
+
+impl FieldEntropyState {
+    pub fn read(otp: &Otp, slot: FieldEntropySlot) -> McuResult<FieldEntropyState> {
+        let started = otp.is_field_entropy_started(slot)?;
+        let finished = otp.is_field_entropy_finished(slot)?;
+        let zeroized = otp.is_field_entropy_zeroized(slot)?;
+        if zeroized {
+            Ok(FieldEntropyState::Zeroized)
+        } else if started && !finished {
+            Ok(FieldEntropyState::Started)
+        } else if started && finished {
+            Ok(FieldEntropyState::Finished)
+        } else {
+            Ok(FieldEntropyState::Empty)
+        }
     }
 }

@@ -28,6 +28,7 @@ use caliptra_api::mailbox::CmStableKeyType;
 #[cfg(all(not(test), feature = "cfi"))]
 use caliptra_cfi_derive::{cfi_impl_fn, cfi_mod_fn};
 use caliptra_cfi_lib::{cfi_assert_eq, cfi_launder, CfiCounter, CfiError};
+use caliptra_drivers::AxiAddr;
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::mci;
@@ -226,13 +227,20 @@ impl Soc {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
         // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
-        let offset = fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
-        caliptra_mcu_romtime::println!(
-            "[mcu-fuse-write] Setting UDS/FE base address to {:x}",
-            offset
-        );
-        self.registers.ss_uds_seed_base_addr_l.set(offset as u32);
-        self.registers.ss_uds_seed_base_addr_h.set(0);
+        // Only set it if it's not already configured.
+        let current_uds_addr = AxiAddr {
+            lo: self.registers.ss_uds_seed_base_addr_l.get(),
+            hi: self.registers.ss_uds_seed_base_addr_h.get(),
+        };
+        if current_uds_addr == 0u64.into() {
+            let offset = fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
+            caliptra_mcu_romtime::println!(
+                "[mcu-fuse-write] Setting UDS/FE base address to {:x}",
+                offset
+            );
+            self.registers.ss_uds_seed_base_addr_l.set(offset as u32);
+            self.registers.ss_uds_seed_base_addr_h.set(0);
+        }
 
         caliptra_mcu_romtime::println!(
             "[mcu-fuse-write] Setting UDS/FE DAI idle bit offset to {} and direct access cmd reg offset to {}",

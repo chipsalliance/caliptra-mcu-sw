@@ -31,6 +31,7 @@
     {"mcu_component_svn_manifest_min_svn": 4},
     {"soc_image_min_svn_0": 4},
     {"soc_image_min_svn_1": 4},
+    {"field_entropy_state": 48},
     {"fpga_test_uds_seed_lo": 32},
     {"fpga_test_uds_seed_hi": 32},
     {"fpga_test_field_entropy": 32},
@@ -652,6 +653,14 @@
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_15",
         layout: {type: "OneHotLinearOr", duplication: 3},
+    },
+    {
+        name: "field_entropy_state",
+        bits: 384,
+        description: "Status of field entropy slots. 32 bits per flag (word 3N: started, word 3N+1: finished, word 3N+2: zeroized for slot N).",
+        partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+        otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7",
+        layout: {type: "Single"},
     },
     {
         name: "fpga_test_uds_seed_lo",
