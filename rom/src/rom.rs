@@ -301,7 +301,9 @@ impl Soc {
         let word = otp
             .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        self.registers.fuse_soc_manifest_max_svn.set(word);
+        self.registers
+            .fuse_soc_manifest_max_svn
+            .set(if word == 0 { 128 } else { word });
 
         // Manuf Debug Unlock Token.
         for i in 0..self.registers.fuse_manuf_dbg_unlock_token.len() {
