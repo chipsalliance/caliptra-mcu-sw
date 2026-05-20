@@ -473,7 +473,10 @@ pub unsafe fn main() {
         board_kernel,
         caliptra_mcu_capsules_runtime::mailbox::DRIVER_NUM,
         mux_alarm,
+        #[cfg(feature = "test-caliptra-mailbox")]
         Some(100_000),
+        #[cfg(not(feature = "test-caliptra-mailbox"))]
+        Some(5_000_000),
     )
     .finalize(mailbox_component_static!(
         InternalTimers<'static>,

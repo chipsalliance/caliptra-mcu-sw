@@ -35,6 +35,12 @@ const SECURE_SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12];
 // Caliptra Crypto timeout exponent (2^20 us)
 const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
 
+/// Maximum SPDM message size advertised in capabilities.
+/// Must be large enough for the largest supported large message (including
+/// streaming-eligible ones like debug unlock tokens with MLDSA signatures).
+/// Layout: VDM headers (15 bytes) + MailboxReqHeader (4 bytes) + ProductionAuthDebugUnlockToken (~7500 bytes)
+const ADVERTISED_MAX_SPDM_MSG_SIZE: usize = 8192;
+
 /// Logs an SPDM error in compact, `Debug`-free form. Always prints
 /// `<prefix>: <msg>: <category> 0x<error_code>`; appends ` ext=0x<ext>` only
 /// when the chain transitively wraps an external error (CaliptraApiError /
@@ -111,7 +117,7 @@ async fn spdm_mctp_responder() {
         ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
         flags: CapabilityFlags::default(),
         data_transfer_size: max_mctp_spdm_msg_size,
-        max_spdm_msg_size: shared_large_msg_buf::LARGE_MSG_BUF_SIZE as u32,
+        max_spdm_msg_size: ADVERTISED_MAX_SPDM_MSG_SIZE as u32,
     };
 
     let local_algorithms = LocalDeviceAlgorithms::default();
@@ -141,6 +147,10 @@ async fn spdm_mctp_responder() {
     let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> =
         Some(&mut handlers_array);
 
+    // VDM stream handler for streaming large VDM payloads directly to the
+    // Caliptra mailbox without buffering (e.g., debug unlock tokens ~7.5KB).
+    let vdm_stream_handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
+
     // Large message buffer provider — shared across MCTP and DOE transports.
     let large_msg_buf_provider = shared_large_msg_buf::SharedLargeMsgBuf::new();
 
@@ -166,6 +176,9 @@ async fn spdm_mctp_responder() {
             return;
         }
     };
+
+    // Register the VDM stream handler for large payload streaming
+    ctx.set_vdm_stream_handler(&vdm_stream_handler);
 
     let mut msg_buffer = MessageBuf::new(&mut raw_buffer);
     loop {

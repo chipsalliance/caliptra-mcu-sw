@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::codec::*;
-use crate::commands::error_rsp::ErrorCode;
+use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
 use crate::protocol::*;
@@ -26,7 +26,7 @@ impl CommonCodec for VendorDefReqHdr {}
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C, packed)]
-struct VendorDefRespHdr {
+pub(crate) struct VendorDefRespHdr {
     spdm_version: u8,
     resp_code: u8,
     param1: u8,
@@ -53,7 +53,7 @@ impl Default for VendorDefRespHdr {
 }
 
 impl VendorDefRespHdr {
-    fn new(spdm_version: SpdmVersion, standard_id: u16, vendor_id: &[u8]) -> Self {
+    pub(crate) fn new(spdm_version: SpdmVersion, standard_id: u16, vendor_id: &[u8]) -> Self {
         let mut vid = [0u8; MAX_SPDM_VENDOR_ID_LEN as usize];
         assert!(vendor_id.len() <= MAX_SPDM_VENDOR_ID_LEN as usize);
         vid[..vendor_id.len()].copy_from_slice(vendor_id);
@@ -69,11 +69,11 @@ impl VendorDefRespHdr {
         }
     }
 
-    fn set_resp_len(&mut self, resp_len: u16) {
+    pub(crate) fn set_resp_len(&mut self, resp_len: u16) {
         self.resp_len = resp_len;
     }
 
-    fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         size_of::<VendorDefRespHdr>() - MAX_SPDM_VENDOR_ID_LEN as usize
             + self.vendor_id_len as usize
     }
@@ -336,4 +336,125 @@ pub(crate) async fn handle_vendor_defined_request<'a>(
     // Generate VENDOR_DEFINED_RESPONSE
     generate_vendor_defined_response(ctx, standard_id, vendor_id, &mut vdm_req_buf, req_payload)
         .await
+}
+
+/// Handle a VendorDefined request that was reassembled from CHUNK_SEND.
+///
+/// Unlike `handle_vendor_defined_request`, this reads the VDM payload directly from the
+/// large-message buffer (`req`) without copying to a stack buffer, so there is no 256-byte
+/// payload limit.
+///
+/// Because the shared large-message buffer is in use for the request, large VDM
+/// responses (LargeResp) are not supported and will be rejected.
+pub(crate) async fn handle_large_vendor_defined_request<'a>(
+    ctx: &mut SpdmContext<'a>,
+    req: &mut MessageBuf<'_>,
+    rsp: &mut MessageBuf<'a>,
+) -> CommandResult<()> {
+    let version = ctx.state.connection_info.version_number();
+
+    // Parse VendorDefined request header
+    let req_hdr = match VendorDefReqHdr::decode(req) {
+        Ok(hdr) => hdr,
+        Err(_) => {
+            encode_error_response(rsp, version, ErrorCode::InvalidRequest, 0, None);
+            return Ok(());
+        }
+    };
+
+    let standard_id: StandardsBodyId = match req_hdr.standard_id.try_into() {
+        Ok(id) => id,
+        Err(_) => {
+            encode_error_response(rsp, version, ErrorCode::InvalidRequest, 0, None);
+            return Ok(());
+        }
+    };
+
+    let vendor_id_len = match standard_id.vendor_id_len() {
+        Ok(len) => {
+            if len != req_hdr.vendor_id_len {
+                encode_error_response(rsp, version, ErrorCode::InvalidRequest, 0, None);
+                return Ok(());
+            }
+            len as usize
+        }
+        Err(_) => {
+            encode_error_response(rsp, version, ErrorCode::UnsupportedRequest, 0, None);
+            return Ok(());
+        }
+    };
+
+    let mut vendor_id = [0u8; MAX_SPDM_VENDOR_ID_LEN as usize];
+    if decode_u8_slice(req, &mut vendor_id[..vendor_id_len]).is_err() {
+        encode_error_response(rsp, version, ErrorCode::InvalidRequest, 0, None);
+        return Ok(());
+    }
+
+    // Decode VDM request payload length
+    let vdm_req_len = match u16::decode(req) {
+        Ok(len) => len as usize,
+        Err(_) => {
+            encode_error_response(rsp, version, ErrorCode::InvalidRequest, 0, None);
+            return Ok(());
+        }
+    };
+
+    if req.data_len() < vdm_req_len {
+        encode_error_response(rsp, version, ErrorCode::InvalidRequest, 0, None);
+        return Ok(());
+    }
+
+    let in_secure_session = ctx.session_mgr.active_session_id().is_some();
+
+    // Prepare response header
+    let mut resp_hdr =
+        VendorDefRespHdr::new(version, standard_id as u16, &vendor_id[..vendor_id_len]);
+    let resp_hdr_len = resp_hdr.len();
+
+    rsp.reserve(resp_hdr_len)
+        .map_err(|e| (false, CommandError::Codec(e)))?;
+
+    // Find matching VDM handler
+    let vdm_handler = ctx.vdm_handlers.as_mut().and_then(|handlers| {
+        handlers.iter_mut().find(|handler| {
+            handler.match_id(standard_id, &vendor_id[..vendor_id_len], in_secure_session)
+        })
+    });
+    let vdm_handler = match vdm_handler {
+        Some(handler) => handler,
+        None => {
+            encode_error_response(
+                rsp,
+                version,
+                ErrorCode::UnsupportedRequest,
+                ReqRespCode::VendorDefinedRequest as u8,
+                None,
+            );
+            return Ok(());
+        }
+    };
+
+    // Pass req directly — remaining data is the VDM payload.
+    // No large_rsp_buf available since the shared buffer holds the request data.
+    let mut empty_large_rsp = [];
+    match vdm_handler
+        .handle_request(req, rsp, &mut empty_large_rsp)
+        .await
+    {
+        Ok(len) => {
+            resp_hdr.set_resp_len(len as u16);
+            resp_hdr
+                .encode(rsp)
+                .map_err(|e| (false, CommandError::Codec(e)))?;
+            Ok(())
+        }
+        Err(VdmError::LargeResp(_)) => {
+            // Large responses cannot be produced when processing a large request
+            // because the shared buffer is occupied by the request data.
+            rsp.reset_payload();
+            encode_error_response(rsp, version, ErrorCode::ResponseTooLarge, 0, None);
+            Ok(())
+        }
+        Err(e) => Err((false, CommandError::Vdm(e))),
+    }
 }
