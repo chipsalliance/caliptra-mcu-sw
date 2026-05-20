@@ -49,5 +49,7 @@ pub fn exit_emulator(exit_code: u32) -> ! {
         // By writing to this address we can exit the emulator.
         core::ptr::write_volatile(0x1000_2000 as *mut u32, exit_code);
     }
-    loop {}
+    loop {
+        core::hint::spin_loop();
+    }
 }

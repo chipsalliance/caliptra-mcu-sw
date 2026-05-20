@@ -5,11 +5,9 @@ use caliptra_mcu_builder::features::RomVariant;
 use caliptra_mcu_builder::PROJECT_ROOT;
 use std::process::Command;
 
-pub(crate) fn clippy(_rom_variants: &[RomVariant]) -> Result<()> {
+pub(crate) fn clippy(rom_variants: &[RomVariant]) -> Result<()> {
     clippy_all()?;
-    // TODO: extend coverage with `clippy_rom_variants(_rom_variants)`
-    // once each ROM variant is clippy-clean.
-    // Tracked in https://github.com/chipsalliance/caliptra-mcu-sw/issues/1478
+    clippy_rom_variants(rom_variants)?;
     Ok(())
 }
 

@@ -44,7 +44,9 @@ pub fn exit_fpga(exit_code: u32) -> ! {
         let b = if exit_code == 0 { 0xff } else { 0x01 };
         core::ptr::write_volatile(FPGA_UART_OUTPUT, b as u32 | 0x100);
     }
-    loop {}
+    loop {
+        core::hint::spin_loop();
+    }
 }
 
 pub struct Exiter {}

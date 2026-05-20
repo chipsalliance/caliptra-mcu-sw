@@ -38,6 +38,17 @@ use caliptra_mcu_rom_common::memory::SimpleFlash;
 use caliptra_mcu_rom_common::{fatal_error, RomHooks, RomParameters};
 use caliptra_mcu_rom_common::{DotRecoveryHandler, DOT_BLOB_SIZE};
 use caliptra_mcu_romtime::HexWord;
+
+/// Initialize a `MaybeUninit<T>` static via a raw pointer and return a
+/// `&'static mut T` to its contents.
+///
+/// # Safety
+///
+/// `s` must point to a not-yet-initialized `MaybeUninit<T>`, and the
+/// caller must hold exclusive access for the duration of this call.
+unsafe fn init_static<T>(s: *mut core::mem::MaybeUninit<T>, value: T) -> &'static mut T {
+    (*s).write(value)
+}
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
 /// DOT recovery handler using MCI mbox0.
@@ -319,9 +330,12 @@ pub extern "C" fn rom_entry() -> ! {
         static mut RECOVERY_HANDLER: core::mem::MaybeUninit<TestDotRecoveryHandler> =
             core::mem::MaybeUninit::uninit();
         let recovery_handler = unsafe {
-            RECOVERY_HANDLER.write(TestDotRecoveryHandler {
-                blob: recovery_backup_blob,
-            })
+            init_static(
+                &raw mut RECOVERY_HANDLER,
+                TestDotRecoveryHandler {
+                    blob: recovery_backup_blob,
+                },
+            )
         };
 
         let mci_base: caliptra_mcu_romtime::StaticRef<
@@ -336,9 +350,10 @@ pub extern "C" fn rom_entry() -> ! {
             caliptra_mcu_rom_common::Mbox0RecoveryTransport,
         > = core::mem::MaybeUninit::uninit();
         let recovery_transport = unsafe {
-            RECOVERY_TRANSPORT.write(caliptra_mcu_rom_common::Mbox0RecoveryTransport::new(
-                mci_base,
-            ))
+            init_static(
+                &raw mut RECOVERY_TRANSPORT,
+                caliptra_mcu_rom_common::Mbox0RecoveryTransport::new(mci_base),
+            )
         };
 
         let hooks = LoggingRomHooks;
@@ -377,15 +392,19 @@ pub extern "C" fn rom_entry() -> ! {
                     caliptra_mcu_rom_common::BackupBlobRecoveryHandler<'static>,
                 > = core::mem::MaybeUninit::uninit();
                 let blob_h = unsafe {
-                    BLOB_HANDLER.write(caliptra_mcu_rom_common::BackupBlobRecoveryHandler {
-                        recovery_handler: &*recovery_handler,
-                    })
+                    init_static(
+                        &raw mut BLOB_HANDLER,
+                        caliptra_mcu_rom_common::BackupBlobRecoveryHandler {
+                            recovery_handler: &*recovery_handler,
+                        },
+                    )
                 };
                 static mut OVERRIDE_HANDLER: core::mem::MaybeUninit<
                     caliptra_mcu_rom_common::OverrideChallengeRecoveryHandler<'static>,
                 > = core::mem::MaybeUninit::uninit();
                 let override_h = unsafe {
-                    OVERRIDE_HANDLER.write(
+                    init_static(
+                        &raw mut OVERRIDE_HANDLER,
                         caliptra_mcu_rom_common::OverrideChallengeRecoveryHandler {
                             transport: &*recovery_transport,
                             wdt_timeout: 0,
@@ -396,8 +415,9 @@ pub extern "C" fn rom_entry() -> ! {
                     [caliptra_mcu_rom_common::DotLockedRecoveryEntry<'static>; 2],
                 > = core::mem::MaybeUninit::uninit();
                 unsafe {
-                    HANDLER_ENTRIES
-                        .write([
+                    init_static(
+                        &raw mut HANDLER_ENTRIES,
+                        [
                             caliptra_mcu_rom_common::DotLockedRecoveryEntry {
                                 handler: blob_h,
                                 policy:
@@ -408,8 +428,9 @@ pub extern "C" fn rom_entry() -> ! {
                                 policy:
                                     caliptra_mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
                             },
-                        ])
-                        .as_slice()
+                        ],
+                    )
+                    .as_slice()
                 }
             } else if cfg!(feature = "test-i3c-services") {
                 let i3c_base = unsafe {
@@ -422,22 +443,27 @@ pub extern "C" fn rom_entry() -> ! {
                     caliptra_mcu_rom_common::I3cDotLockedRecoveryHandler,
                 > = core::mem::MaybeUninit::uninit();
                 let handler = unsafe {
-                    I3C_HANDLER.write(caliptra_mcu_rom_common::I3cDotLockedRecoveryHandler {
-                        i3c_base,
-                        services: caliptra_mcu_rom_common::I3cServicesModes::DOT_RECOVERY,
-                        i3c_target_addr: 0x5a,
-                    })
+                    init_static(
+                        &raw mut I3C_HANDLER,
+                        caliptra_mcu_rom_common::I3cDotLockedRecoveryHandler {
+                            i3c_base,
+                            services: caliptra_mcu_rom_common::I3cServicesModes::DOT_RECOVERY,
+                            i3c_target_addr: 0x5a,
+                        },
+                    )
                 };
                 static mut HANDLER_ENTRIES: core::mem::MaybeUninit<
                     [caliptra_mcu_rom_common::DotLockedRecoveryEntry<'static>; 1],
                 > = core::mem::MaybeUninit::uninit();
                 unsafe {
-                    HANDLER_ENTRIES
-                        .write([caliptra_mcu_rom_common::DotLockedRecoveryEntry {
+                    init_static(
+                        &raw mut HANDLER_ENTRIES,
+                        [caliptra_mcu_rom_common::DotLockedRecoveryEntry {
                             handler,
                             policy: caliptra_mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
-                        }])
-                        .as_slice()
+                        }],
+                    )
+                    .as_slice()
                 }
             } else {
                 &[]
@@ -457,7 +483,7 @@ pub extern "C" fn rom_entry() -> ! {
 
     caliptra_mcu_romtime::println!(
         "[mcu-rom] Jumping to firmware at {}",
-        HexWord(MCU_MEMORY_MAP.sram_offset as u32)
+        HexWord(MCU_MEMORY_MAP.sram_offset)
     );
     exit_rom();
 }

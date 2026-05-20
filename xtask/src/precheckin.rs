@@ -44,7 +44,7 @@ pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
         ..Default::default()
     })?;
 
-    crate::test::test_panic_missing()?;
+    crate::test::test_panic_missing(rom_variants)?;
     crate::test::e2e_tests()?;
     crate::test::test_hello_c_emulator()?;
     crate::rom::build_all_variants(rom_variants)?;

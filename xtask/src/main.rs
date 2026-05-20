@@ -141,8 +141,7 @@ enum Commands {
         trace: bool,
     },
     /// Report binary `.text` sizes vs. ROM size budgets across all
-    /// ROM variants (per platform / feature combo). Future expansion:
-    /// runtime kernel and userspace apps.
+    /// ROM variants (per platform / feature combo).
     Sizes {
         /// Output CSV instead of a Unicode table.
         #[arg(long, default_value_t = false)]
@@ -225,10 +224,7 @@ enum Commands {
         variants: Option<String>,
     },
     /// On-demand per-variant clippy pass against
-    /// `mcu-rom-{emulator,fpga}`. Catches lints that the workspace
-    /// clippy pass misses because it only exercises default features.
-    /// Not wired into `precheckin` today — see the TODO in
-    /// `xtask/src/clippy.rs`.
+    /// `mcu-rom-{emulator,fpga}`.
     ClippyRomVariants {
         /// Override the default ROM variant list. See `precheckin
         /// --variants` for the syntax.
@@ -262,6 +258,13 @@ enum Commands {
     HeaderCheck,
     /// Add Apache license header to files where it is missing
     HeaderFix,
+    /// Build each ROM variant and verify it doesn't panic.
+    PanicCheck {
+        /// Override the default ROM variant list. See `precheckin
+        /// --variants` for the syntax.
+        #[arg(long)]
+        variants: Option<String>,
+    },
     /// Run tests (or from an archive)
     Test {
         /// File path to a pre-built test archive
@@ -670,6 +673,9 @@ fn main() {
         Commands::Coverage { analyze_only } => coverage::coverage(*analyze_only),
         Commands::HeaderFix => header::fix(),
         Commands::HeaderCheck => header::check(),
+        Commands::PanicCheck { variants } => {
+            resolve_variants(variants.as_deref()).and_then(|v| test::test_panic_missing(&v))
+        }
         Commands::Test {
             archive,
             shard,
