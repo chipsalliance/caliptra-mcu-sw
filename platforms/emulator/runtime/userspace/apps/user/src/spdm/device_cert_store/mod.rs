@@ -13,8 +13,7 @@ use async_trait::async_trait;
 use caliptra_mcu_libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
 use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use caliptra_mcu_spdm_lib::cert_store::{
-    CertStoreError, CertStoreResult, SpdmCertStoreReader, SpdmCertStoreSigner,
-    SpdmCertStoreWriter,
+    CertStoreError, CertStoreResult, SpdmCertStoreReader, SpdmCertStoreSigner, SpdmCertStoreWriter,
 };
 use caliptra_mcu_spdm_lib::protocol::{CertificateInfo, KeyUsageMask};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;

@@ -41,7 +41,7 @@ Each SPDM slot presents a complete certificate chain to the requester. The chain
 
 - Only the **endorsement chain** (portion 1) differs between slots.
 - The **device certificate chain** (portion 2) comes from Caliptra Core at runtime, read in chunks on demand.
-- The **DPE leaf certificate** (portion 3) is fetched once from Caliptra Core and cached in memory for subsequent reads.
+- The **DPE leaf certificate** (portion 3) is fetched from Caliptra Core on each read (not cached).
 
 ### Vendor Slot (SPDM slot_id: 0) — Pre-provisioned and Read only
 
@@ -91,8 +91,8 @@ The device certificate portion and DPE leaf are common across all slots. For man
   Owner  (Slot 2):   SPI flash                 Caliptra Core          Caliptra Core
   Tenant (Slot 3):   SPI flash                 Caliptra Core          Caliptra Core
                           │                         │                       │
-                          │                         │ (1 KB chunks          │ (cached in
-                          │                         │  on demand)           │  memory)
+                          │                         │ (1 KB chunks          │ (fetched on
+                          │                         │  on demand)           │  each read)
                           │                         │                       │
                           └─────────┬───────────────┘                       │
                                     ▼                                       │
@@ -147,7 +147,7 @@ This section proposes changes to the `CertifyKey` and `GetCertificateChain` DPE 
 `CertifyKey` is extended in two ways:
 
 1. The leaf certificate is provided in **chunks** rather than as a single large response, the same way the device cert chain is read today. This eliminates the need to buffer the entire leaf cert on the MCU.
-2. The response is extended to also return the DPE leaf cert **size**, **thumbprint** (digest), and **derived public key** (needed for EAT).
+2. The response is extended to also return the DPE leaf cert/csr **thumbprint** (digest).
 
 ### GetCertificateChain — Key-Index Parameter
 
@@ -174,4 +174,53 @@ This removes the need for the MCU to calculate offsets into the device chain.
 - The full DPE leaf cert no longer needs to be cached in memory — only lightweight metadata (size + thumbprint) is retained.
 - Signing is unaffected. The DPE `Sign` command does not depend on the cert buffer.
 - Estimated memory savings: **~8 KB** (6.5 KB from the CertifyKey response buffer + 2 KB from the leaf cert cache).
+
+## Concurrency
+
+Two SPDM responder tasks (MCTP and DOE) share the cert store. The design uses an `RwLock` to minimize contention:
+
+```
+  SharedCertStore
+  ┌────────────────────────────────────────────────────┐
+  │  RwLock<DeviceCertStore>                           │
+  │                                                    │
+  │  .read()   ── concurrent readers allowed ────────  │
+  │    slot_count, is_provisioned, key_pair_id,        │
+  │    cert_info, key_usage_mask, root_cert_hash,      │
+  │    sign_hash, cert_chain_len, get_cert_chain       │
+  │                                                    │
+  │  .write()  ── exclusive access ──────────────────  │
+  │    write_cert_chain, erase_cert_chain              │
+  └────────────────────────────────────────────────────┘
+```
+
+**All read operations are `&self` (no mutable state):**
+- Endorsement reads: `ReadOnlyEndorsement` serves from `.rodata`; `MutableEndorsement` reads flash on demand — both stateless.
+- Device cert chain length: eagerly cached at boot, not lazily. `DpeCertChain::size()` takes `&self` and returns the cached value. The cache is valid for the lifetime of the boot session (Caliptra regenerates the DPE chain deterministically per boot; a firmware update requires a reboot).
+- DPE leaf, signing, metadata lookups: all stateless or read from immutable fields.
+
+**Only write/erase need exclusive access:**
+- `write_cert_chain`: modifies `slots[]` array + writes to flash.
+- `erase_cert_chain`: clears `slots[]` entry + erases flash.
+- DOE is restricted to read-only access (`SET_CERT_CAP` disabled on DOE transport).
+
+This means:
+- Concurrent `GET_CERTIFICATE` / `GET_DIGESTS` / `CHALLENGE` from both MCTP and DOE proceed without blocking each other.
+- A `SET_CERTIFICATE` on MCTP blocks reads from both tasks only for the duration of the in-RAM slot update (microseconds); the flash I/O itself does not hold the lock (it operates on the stateless `MutableEndorsement`).
+
+### Memory Model
+
+All cert-store memory is statically allocated — no heap in the cert-store path:
+
+```
+  Static Memory (.bss)                    SPI Flash (cert-store partition)
+  ────────────────────                    ─────────────────────────────────
+  SLOT0_ENDORSEMENT  (~80 B)              Slot 0 region: 128 KB (unused)
+  SLOT1_ENDORSEMENT  (~8 B)    ·····►    Slot 1 region: 128 KB
+  SLOT2_ENDORSEMENT  (~8 B)    ·····►    Slot 2 region: 128 KB
+  SHARED_CERT_STORE  (~500 B)             ─────────────────────────────────
+                                          Total: 384 KB
+```
+
+Endorsement bytes for managed cert slots are **never held in MCU RAM**. `MutableEndorsement::read` streams from flash into the caller's buffer on each `GET_CERTIFICATE`.
 
