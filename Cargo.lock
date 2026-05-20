@@ -1186,8 +1186,9 @@ dependencies = [
 name = "caliptra-mcu-external-otp-emulator"
 version = "0.1.0"
 dependencies = [
- "caliptra-mcu-dma-driver",
  "caliptra-mcu-external-otp-driver",
+ "caliptra-mcu-flash-driver",
+ "kernel",
 ]
 
 [[package]]

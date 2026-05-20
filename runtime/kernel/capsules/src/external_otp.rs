@@ -1,13 +1,22 @@
 // Licensed under the Apache-2.0 license
 
-//! ExternalOTP capsule: exposes the ExternalOtp HIL trait to userspace via syscalls.
+//! ExternalOTP capsule: exposes the async ExternalOtp HIL to userspace via syscalls.
 //!
-//! This capsule provides partition-based OTP read/write access to userspace
-//! applications. Each read or write operates on a single u32 (4 bytes).
+//! Flash-accessing operations (read, write, lock, is_partition_locked) are
+//! asynchronous: the command starts the operation and a completion upcall
+//! delivers the result. Metadata queries (partition_count, partition_size)
+//! remain synchronous.
+//!
+//! ## Upcall format
+//!
+//! Upcall 0 (`OPERATION_DONE`): `(status, value, 0)`
+//! - `status`: 0 on success, non-zero `ExternalOtpError` discriminant on failure.
+//! - `value`: the u32 result for READ / IS_PARTITION_LOCKED; 0 for WRITE / LOCK.
 
-use caliptra_mcu_external_otp_driver::hil::ExternalOtp;
+use caliptra_mcu_external_otp_driver::hil::{ExternalOtp, ExternalOtpClient, ExternalOtpError};
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
+use kernel::utilities::cells::OptionalCell;
 use kernel::{ErrorCode, ProcessId};
 
 /// Driver number for the ExternalOTP capsule.
@@ -24,24 +33,86 @@ mod cmd {
     pub const IS_PARTITION_LOCKED: u32 = 7;
 }
 
+mod upcall {
+    /// Operation-complete callback.
+    pub const OPERATION_DONE: usize = 0;
+    pub const COUNT: u8 = 1;
+}
+
+/// Map ExternalOtpError to a non-zero status code for the upcall.
+fn error_to_status(e: ExternalOtpError) -> u32 {
+    match e {
+        ExternalOtpError::WriteProtected => 1,
+        ExternalOtpError::OutOfBounds => 2,
+        ExternalOtpError::InvalidPartition => 3,
+        ExternalOtpError::PartitionLocked => 4,
+        ExternalOtpError::HardwareError => 5,
+        ExternalOtpError::Busy => 6,
+    }
+}
+
 #[derive(Default)]
 pub struct App {
     active_partition: u32,
 }
 
 pub struct ExternalOtpCapsule<'a> {
-    driver: &'a dyn ExternalOtp,
-    apps: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
+    driver: &'a dyn ExternalOtp<'a>,
+    apps: Grant<App, UpcallCount<{ upcall::COUNT }>, AllowRoCount<0>, AllowRwCount<0>>,
+    /// The process that currently has an in-flight async operation.
+    current_app: OptionalCell<ProcessId>,
 }
 
 impl<'a> ExternalOtpCapsule<'a> {
     pub fn new(
-        driver: &'a dyn ExternalOtp,
-        grant: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
+        driver: &'a dyn ExternalOtp<'a>,
+        grant: Grant<App, UpcallCount<{ upcall::COUNT }>, AllowRoCount<0>, AllowRwCount<0>>,
     ) -> Self {
         Self {
             driver,
             apps: grant,
+            current_app: OptionalCell::empty(),
+        }
+    }
+
+    /// Schedule the completion upcall and clear `current_app`.
+    fn complete_upcall(&self, status: u32, value: u32) {
+        if let Some(processid) = self.current_app.take() {
+            let _ = self.apps.enter(processid, |_app, kernel_data| {
+                kernel_data
+                    .schedule_upcall(upcall::OPERATION_DONE, (status as usize, value as usize, 0))
+                    .ok();
+            });
+        }
+    }
+}
+
+impl ExternalOtpClient for ExternalOtpCapsule<'_> {
+    fn read_done(&self, result: Result<u32, ExternalOtpError>) {
+        match result {
+            Ok(value) => self.complete_upcall(0, value),
+            Err(e) => self.complete_upcall(error_to_status(e), 0),
+        }
+    }
+
+    fn write_done(&self, result: Result<(), ExternalOtpError>) {
+        match result {
+            Ok(()) => self.complete_upcall(0, 0),
+            Err(e) => self.complete_upcall(error_to_status(e), 0),
+        }
+    }
+
+    fn lock_done(&self, result: Result<(), ExternalOtpError>) {
+        match result {
+            Ok(()) => self.complete_upcall(0, 0),
+            Err(e) => self.complete_upcall(error_to_status(e), 0),
+        }
+    }
+
+    fn lock_check_done(&self, result: Result<bool, ExternalOtpError>) {
+        match result {
+            Ok(locked) => self.complete_upcall(0, locked as u32),
+            Err(e) => self.complete_upcall(error_to_status(e), 0),
         }
     }
 }
@@ -71,25 +142,37 @@ impl SyscallDriver for ExternalOtpCapsule<'_> {
             }
 
             cmd::READ => {
+                if self.current_app.is_some() {
+                    return CommandReturn::failure(ErrorCode::BUSY);
+                }
                 let offset = r2 as u32;
                 let result = self.apps.enter(processid, |app, _| {
                     self.driver.read(app.active_partition, offset)
                 });
                 match result {
-                    Ok(Ok(value)) => CommandReturn::success_u32(value),
+                    Ok(Ok(())) => {
+                        self.current_app.set(processid);
+                        CommandReturn::success()
+                    }
                     Ok(Err(e)) => CommandReturn::failure(ErrorCode::from(e)),
                     Err(_) => CommandReturn::failure(ErrorCode::FAIL),
                 }
             }
 
             cmd::WRITE => {
+                if self.current_app.is_some() {
+                    return CommandReturn::failure(ErrorCode::BUSY);
+                }
                 let offset = r2 as u32;
                 let value = r3 as u32;
                 let result = self.apps.enter(processid, |app, _| {
                     self.driver.write(app.active_partition, offset, value)
                 });
                 match result {
-                    Ok(Ok(())) => CommandReturn::success(),
+                    Ok(Ok(())) => {
+                        self.current_app.set(processid);
+                        CommandReturn::success()
+                    }
                     Ok(Err(e)) => CommandReturn::failure(ErrorCode::from(e)),
                     Err(_) => CommandReturn::failure(ErrorCode::FAIL),
                 }
@@ -108,17 +191,29 @@ impl SyscallDriver for ExternalOtpCapsule<'_> {
             }
 
             cmd::LOCK_PARTITION => {
+                if self.current_app.is_some() {
+                    return CommandReturn::failure(ErrorCode::BUSY);
+                }
                 let partition_id = r2 as u32;
                 match self.driver.lock_partition(partition_id) {
-                    Ok(()) => CommandReturn::success(),
+                    Ok(()) => {
+                        self.current_app.set(processid);
+                        CommandReturn::success()
+                    }
                     Err(e) => CommandReturn::failure(ErrorCode::from(e)),
                 }
             }
 
             cmd::IS_PARTITION_LOCKED => {
+                if self.current_app.is_some() {
+                    return CommandReturn::failure(ErrorCode::BUSY);
+                }
                 let partition_id = r2 as u32;
                 match self.driver.is_partition_locked(partition_id) {
-                    Ok(locked) => CommandReturn::success_u32(locked as u32),
+                    Ok(()) => {
+                        self.current_app.set(processid);
+                        CommandReturn::success()
+                    }
                     Err(e) => CommandReturn::failure(ErrorCode::from(e)),
                 }
             }

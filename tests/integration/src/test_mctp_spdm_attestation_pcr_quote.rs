@@ -4,7 +4,10 @@
 
 #[cfg(test)]
 mod test {
-    use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
+    use crate::test::{
+        finish_runtime_hw_model, run_imaginary_flash_controller_service, start_runtime_hw_model,
+        TestParams, TEST_LOCK,
+    };
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
     use caliptra_mcu_testing_common::spdm_responder_validator::mctp::MctpTransport;
@@ -39,13 +42,15 @@ mod test {
             ..Default::default()
         });
 
+        run_imaginary_flash_controller_service(&mut hw);
+
         hw.start_i3c_controller();
 
         let port = hw.i3c_port().unwrap();
         let target_addr = hw.i3c_address().unwrap();
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
         let stream = TcpStream::connect(addr).unwrap();
-        let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
+        let transport = MctpTransport::new(BufferedStream::new(stream), target_addr, 1);
 
         thread::spawn(move || {
             thread::sleep(Duration::from_secs(9000));

@@ -4,7 +4,10 @@
 
 #[cfg(test)]
 mod test {
-    use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
+    use crate::test::{
+        finish_runtime_hw_model, run_imaginary_flash_controller_service, start_runtime_hw_model,
+        TestParams, TEST_LOCK,
+    };
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
     use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
@@ -39,6 +42,8 @@ mod test {
         });
 
         hw.start_i3c_controller();
+
+        run_imaginary_flash_controller_service(&mut hw);
 
         run_mctp_spdm_conformance_test(
             hw.i3c_port().unwrap(),

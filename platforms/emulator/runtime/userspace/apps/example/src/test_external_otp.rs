@@ -1,9 +1,12 @@
 // Licensed under the Apache-2.0 license
 
+// NOTE: Do not call `caliptra_mcu_romtime::println!` from this test. On the
+// emulator the printer is wired to a UART MMIO register at 0x1000_1041; on
+// the FPGA that address is unmapped and forbidden by user-mode PMP, so any
+// `println!` here would fault the test process on real hardware.
+
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
-use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_romtime::println;
 
 pub static ECC_DEVID_CERT_DER: [u8; 547] = [
     0x30, 0x82, 0x02, 0x1f, 0x30, 0x82, 0x01, 0xa6, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x01, 0x00,
@@ -44,19 +47,15 @@ pub static ECC_DEVID_CERT_DER: [u8; 547] = [
 ];
 
 #[allow(unused)]
-pub(crate) fn test_external_otp() {
-    println!("Starting test_external_otp");
-
+pub(crate) async fn test_external_otp() {
     let otp = ExternalOtp::<DefaultSyscalls>::new();
 
     // Verify the driver exists.
     otp.exists().unwrap();
-    println!("  exists: ok");
 
     // Check partition count.
     let count = otp.partition_count().unwrap();
     assert!(count >= 2, "expected at least 2 partitions, got {}", count);
-    println!("  partition_count: {}", count);
 
     // Partition 0x01: ECC Cert (547 bytes).
     let ecc_size = otp.partition_size(0x01).unwrap();
@@ -65,7 +64,6 @@ pub(crate) fn test_external_otp() {
         "expected ECC partition size 547, got {}",
         ecc_size
     );
-    println!("  partition 0x01 size: {}", ecc_size);
 
     // Verify partition 0x01 contains ECC_DEVID_CERT_DER.
     {
@@ -74,7 +72,7 @@ pub(crate) fn test_external_otp() {
             let mut word_bytes = [0u8; 4];
             word_bytes.copy_from_slice(&ECC_DEVID_CERT_DER[offset as usize..offset as usize + 4]);
             let expected = u32::from_le_bytes(word_bytes);
-            let actual = otp.read(0x01, offset).unwrap();
+            let actual = otp.read(0x01, offset).await.unwrap();
             assert_eq!(
                 actual, expected,
                 "ECC_DEVID_CERT_DER mismatch at offset {}",
@@ -85,7 +83,7 @@ pub(crate) fn test_external_otp() {
         // Handle remaining bytes (547 % 4 == 3).
         if offset < ecc_size {
             let tail_offset = ecc_size - 4;
-            let actual = otp.read(0x01, tail_offset).unwrap();
+            let actual = otp.read(0x01, tail_offset).await.unwrap();
             let actual_bytes = actual.to_le_bytes();
             let skip = (offset - tail_offset) as usize;
             for i in skip..4 {
@@ -97,7 +95,6 @@ pub(crate) fn test_external_otp() {
                 );
             }
         }
-        println!("  partition 0x01 matches ECC_DEVID_CERT_DER: ok");
     }
 
     // Partition 0x02: MLDSA signature (4627 bytes).
@@ -107,113 +104,96 @@ pub(crate) fn test_external_otp() {
         "expected MLDSA partition size 4627, got {}",
         mldsa_size
     );
-    println!("  partition 0x02 size: {}", mldsa_size);
 
     // Write a u32 to partition 0x01 at offset 0.
     let test_val: u32 = 0xDEAD_BEEF;
-    otp.write(0x01, 0, test_val).unwrap();
-    println!("  write 0x{:08X} to partition 0x01 offset 0: ok", test_val);
+    otp.write(0x01, 0, test_val).await.unwrap();
 
     // Read it back.
-    let read_val = otp.read(0x01, 0).unwrap();
+    let read_val = otp.read(0x01, 0).await.unwrap();
     assert_eq!(
         read_val, test_val,
         "read mismatch: expected 0x{:08X}, got 0x{:08X}",
         test_val, read_val
     );
-    println!("  read back 0x{:08X}: ok", read_val);
 
     // Write and read at a different offset within the same partition.
     let test_val2: u32 = 0xCAFE_BABE;
-    otp.write(0x01, 4, test_val2).unwrap();
-    let read_val2 = otp.read(0x01, 4).unwrap();
+    otp.write(0x01, 4, test_val2).await.unwrap();
+    let read_val2 = otp.read(0x01, 4).await.unwrap();
     assert_eq!(read_val2, test_val2, "read mismatch at offset 4");
-    println!("  write/read at offset 4: ok");
 
     // Verify the first write was not corrupted.
-    let read_val_again = otp.read(0x01, 0).unwrap();
+    let read_val_again = otp.read(0x01, 0).await.unwrap();
     assert_eq!(
         read_val_again, test_val,
         "first write corrupted after second write"
     );
-    println!("  re-read offset 0 still correct: ok");
 
     // Write to partition 0x02 (MLDSA).
     let test_val3: u32 = 0x1234_5678;
-    otp.write(0x02, 0, test_val3).unwrap();
-    let read_val3 = otp.read(0x02, 0).unwrap();
+    otp.write(0x02, 0, test_val3).await.unwrap();
+    let read_val3 = otp.read(0x02, 0).await.unwrap();
     assert_eq!(read_val3, test_val3, "partition 0x02 read mismatch");
-    println!("  partition 0x02 write/read: ok");
 
     // Out-of-bounds read should fail.
-    let oob_result = otp.read(0x01, ecc_size);
+    let oob_result = otp.read(0x01, ecc_size).await;
     assert!(
         oob_result.is_err(),
         "expected out-of-bounds error for read at offset {}",
         ecc_size
     );
-    println!("  out-of-bounds read rejected: ok");
 
     // Out-of-bounds write should fail.
-    let oob_write = otp.write(0x01, ecc_size, 0);
+    let oob_write = otp.write(0x01, ecc_size, 0).await;
     assert!(
         oob_write.is_err(),
         "expected out-of-bounds error for write at offset {}",
         ecc_size
     );
-    println!("  out-of-bounds write rejected: ok");
 
     // Invalid partition should fail.
-    let bad_part = otp.read(0xFF, 0);
+    let bad_part = otp.read(0xFF, 0).await;
     assert!(bad_part.is_err(), "expected error for invalid partition");
-    println!("  invalid partition rejected: ok");
 
     // --- Lock partition tests ---
 
     // Partition 0x01 should not be locked yet.
     assert!(
-        !otp.is_partition_locked(0x01).unwrap(),
+        !otp.is_partition_locked(0x01).await.unwrap(),
         "partition 0x01 should not be locked before lock_partition"
     );
-    println!("  partition 0x01 not locked initially: ok");
 
     // Lock partition 0x01.
-    otp.lock_partition(0x01).unwrap();
-    println!("  lock_partition(0x01): ok");
+    otp.lock_partition(0x01).await.unwrap();
 
     // Partition 0x01 should now be locked.
     assert!(
-        otp.is_partition_locked(0x01).unwrap(),
+        otp.is_partition_locked(0x01).await.unwrap(),
         "partition 0x01 should be locked after lock_partition"
     );
-    println!("  partition 0x01 is locked: ok");
 
     // Reads should still work on a locked partition.
-    let read_after_lock = otp.read(0x01, 0).unwrap();
+    let read_after_lock = otp.read(0x01, 0).await.unwrap();
     assert_eq!(
         read_after_lock, test_val,
         "read after lock should still work"
     );
-    println!("  read after lock: ok");
 
     // Writes to a locked partition should fail.
-    let write_after_lock = otp.write(0x01, 8, 0xAAAA_BBBB);
+    let write_after_lock = otp.write(0x01, 8, 0xAAAA_BBBB).await;
     assert!(
         write_after_lock.is_err(),
         "write to locked partition should fail"
     );
-    println!("  write to locked partition rejected: ok");
 
     // Partition 0x02 should still be writable (not locked).
     assert!(
-        !otp.is_partition_locked(0x02).unwrap(),
+        !otp.is_partition_locked(0x02).await.unwrap(),
         "partition 0x02 should not be locked"
     );
     let test_val4: u32 = 0xBBBB_CCCC;
-    otp.write(0x02, 4, test_val4).unwrap();
-    let read_val4 = otp.read(0x02, 4).unwrap();
+    otp.write(0x02, 4, test_val4).await.unwrap();
+    let read_val4 = otp.read(0x02, 4).await.unwrap();
     assert_eq!(read_val4, test_val4, "partition 0x02 write after 0x01 lock");
-    println!("  partition 0x02 still writable after 0x01 lock: ok");
-
-    println!("test_external_otp passed");
 }

@@ -231,7 +231,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(feature = "test-external-otp")]
     {
         writeln!(console_writer, "Running ExternalOTP read/write test").unwrap();
-        test_external_otp::test_external_otp();
+        test_external_otp::test_external_otp().await;
         System::exit(0);
     }
     #[cfg(feature = "test-warm-reset")]
