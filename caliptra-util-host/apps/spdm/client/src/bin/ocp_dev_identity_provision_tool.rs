@@ -7,16 +7,14 @@
 //! the Owner slot. Optional discovery/verification steps from the sequence
 //! diagram are intentionally skipped by default.
 
-use std::fs;
 use std::path::PathBuf;
 
-use anyhow::{anyhow, Context, Result};
-use caliptra_spdm_requester::{SpdmConfig, SpdmRequester, SpdmSocketDeviceIo};
+use anyhow::Result;
+use caliptra_spdm_vdm_client::ocp_dev_identity_provision::{
+    default_cert_chain_path, provision_device_identity, ProvisionOptions,
+    DEFAULT_LDEVID_KEY_PAIR_ID, DEFAULT_OWNER_SLOT_ID,
+};
 use clap::Parser;
-
-const DEFAULT_OWNER_SLOT_ID: u8 = 2;
-const DEFAULT_LDEVID_KEY_PAIR_ID: u8 = 1;
-const CERT_MODEL_DEVICE_CERT: u8 = 1;
 
 #[derive(Parser, Debug)]
 #[command(name = "ocp_dev_identity_provision_tool")]
@@ -36,7 +34,7 @@ struct Args {
 
     /// DER X.509 certificate chain to install. The tool wraps this in the SPDM
     /// certificate-chain header before sending SET_CERTIFICATE.
-    #[arg(long, default_value = default_cert_chain_path())]
+    #[arg(long, default_value_os_t = default_cert_chain_path())]
     cert_chain: PathBuf,
 
     /// Verify the installed certificate with GET_CERTIFICATE after provisioning.
@@ -52,88 +50,11 @@ fn main() -> Result<()> {
         .ok();
 
     let args = Args::parse();
-    run(args)
-}
-
-fn run(args: Args) -> Result<()> {
-    println!(
-        "[ocp_dev_identity_provision_tool] Connecting to bridge at {}",
-        args.server
-    );
-    let mut device_io = SpdmSocketDeviceIo::connect_mctp(&args.server)?;
-    device_io.handshake()?;
-    let mut stop_io = device_io.try_clone()?;
-
-    let spdm_config = SpdmConfig {
+    provision_device_identity(&ProvisionOptions {
+        server: args.server,
         slot_id: args.slot_id,
-        ..SpdmConfig::default()
-    };
-    let mut requester = SpdmRequester::new(spdm_config, Box::new(device_io))?;
-
-    println!("[ocp_dev_identity_provision_tool] Establishing SPDM connection");
-    requester.connect()?;
-
-    let cert_chain = fs::read(&args.cert_chain).with_context(|| {
-        format!(
-            "failed to read certificate chain {}",
-            args.cert_chain.display()
-        )
-    })?;
-    if cert_chain.is_empty() {
-        return Err(anyhow!(
-            "certificate chain {} is empty",
-            args.cert_chain.display()
-        ));
-    }
-
-    println!(
-        "[ocp_dev_identity_provision_tool] SET_CERTIFICATE slot_id={} key_pair_id={} cert_chain={} ({} bytes)",
-        args.slot_id,
-        args.key_pair_id,
-        args.cert_chain.display(),
-        cert_chain.len()
-    );
-    requester.set_certificate(
-        None,
-        args.slot_id,
-        args.key_pair_id,
-        CERT_MODEL_DEVICE_CERT,
-        &cert_chain,
-    )?;
-
-    if args.verify_get_certificate {
-        let provisioned = requester.get_certificate(None, args.slot_id)?;
-        if provisioned.len() <= cert_chain.len() {
-            return Err(anyhow!(
-                "GET_CERTIFICATE returned {} bytes, expected SPDM certificate-chain wrapper plus {} DER bytes",
-                provisioned.len(),
-                cert_chain.len()
-            ));
-        }
-        if !provisioned.ends_with(&cert_chain) {
-            return Err(anyhow!(
-                "GET_CERTIFICATE slot {} did not return the provisioned certificate chain",
-                args.slot_id
-            ));
-        }
-
-        println!(
-            "[ocp_dev_identity_provision_tool] Provisioning verified (GET_CERTIFICATE returned {} bytes)",
-            provisioned.len()
-        );
-    }
-    println!("[ocp_dev_identity_provision_tool] Sending STOP to bridge");
-    stop_io.send_stop()?;
-    Ok(())
-}
-
-fn default_cert_chain_path() -> String {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest_dir)
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|spdm_dir| spdm_dir.join("certs/test_owner_certchain.der"))
-        .unwrap_or_else(|| PathBuf::from("certs/test_owner_certchain.der"))
-        .to_string_lossy()
-        .into_owned()
+        key_pair_id: args.key_pair_id,
+        cert_chain: args.cert_chain,
+        verify_get_certificate: args.verify_get_certificate,
+    })
 }
