@@ -518,6 +518,16 @@ impl McuError {
             "Stable owner key derivation failed during cold boot"
         ),
         (
+            ROM_COLD_BOOT_FIELD_ENTROPY_ZEROIZED,
+            0x1_0023,
+            "Field entropy slot is zeroized"
+        ),
+        (
+            ROM_COLD_BOOT_FIELD_ENTROPY_PARTIAL,
+            0x1_0024,
+            "Field entropy slot is partially programmed"
+        ),
+        (
             ROM_SOC_WDT_CFG_OUT_OF_RANGE,
             0x5_0013,
             "Caliptra WDT config index out of range"
