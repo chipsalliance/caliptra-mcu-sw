@@ -13,9 +13,26 @@
 //! reserve the transport-framing header.
 
 use mcu_spdm_lite_codec::{ResponseBody, SpdmVersion, WireWriter};
-use mcu_spdm_lite_traits::{PalBytes, SpdmPal};
+use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport};
 
 use crate::error::SpdmResult;
+
+/// Allocate a buffer of `raw_len` bytes, rounded up to the transport's
+/// [`send_alignment`](SpdmPalIoTransport::send_alignment). Padding
+/// bytes are zeroed.
+fn alloc_aligned<'a, Pal: SpdmPal>(
+    pal: &'a Pal,
+    io: &Pal::Io<'_>,
+    raw_len: usize,
+) -> SpdmResult<PalBytes<'a, Pal>> {
+    let align = pal.send_alignment();
+    let alloc_len = (raw_len + align - 1) & !(align - 1);
+    let mut buf = pal.alloc_bytes(io, alloc_len)?;
+    for b in &mut buf[raw_len..alloc_len] {
+        *b = 0;
+    }
+    Ok(buf)
+}
 
 /// Allocates and encodes an SPDM response.
 ///
@@ -70,7 +87,8 @@ where
     B: ResponseBody,
 {
     let head = pal.header_size();
-    let mut buf = pal.alloc_bytes(io, head + body.encoded_size())?;
+    let raw_len = head + body.encoded_size();
+    let mut buf = alloc_aligned(pal, io, raw_len)?;
     body.encode_with_header(version, &mut WireWriter::new(&mut buf[head..]))?;
     Ok(buf)
 }
@@ -89,7 +107,8 @@ pub(crate) fn build_error_response<'a, Pal: SpdmPal>(
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     use mcu_spdm_lite_codec::{ReqRespCode, SpdmMsgHdrPdu};
     let head = pal.header_size();
-    let mut buf = pal.alloc_bytes(io, head + SpdmMsgHdrPdu::SIZE + 2)?;
+    let raw_len = head + SpdmMsgHdrPdu::SIZE + 2;
+    let mut buf = alloc_aligned(pal, io, raw_len)?;
     let mut w = WireWriter::new(&mut buf[head..]);
     w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::ERROR))?;
     w.write(&[error_code, error_data])?;

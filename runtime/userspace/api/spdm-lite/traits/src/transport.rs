@@ -52,6 +52,15 @@ pub trait SpdmPalTransport {
     /// Typical values: MCTP = 1 byte, PCIe DOE = 8 bytes.
     fn header_size(&self) -> usize;
 
+    /// Required byte-alignment for outbound messages.
+    ///
+    /// The response builder pads allocations to this alignment so the
+    /// transport receives a correctly-sized buffer. Defaults to 1
+    /// (no padding). DOE overrides to 4 (DWORD).
+    fn send_alignment(&self) -> usize {
+        1
+    }
+
     /// Receives the next SPDM message into `buf`.
     ///
     /// On success, `buf[0..len]` contains the raw transport frame:

@@ -160,6 +160,11 @@ impl McuSpdmPal {
         // SAFETY: shared-read only.
         unsafe { (*self.transport.get()).header_size() }
     }
+
+    pub(crate) fn transport_send_alignment(&self) -> usize {
+        // SAFETY: shared-read only.
+        unsafe { (*self.transport.get()).send_alignment() }
+    }
 }
 
 impl SpdmPal for McuSpdmPal {}

@@ -11,5 +11,7 @@
 
 pub mod errors;
 pub mod mctp;
+pub mod doe;
 
 pub use mctp::McuSpdmMctpTransport;
+pub use doe::McuSpdmDoeTransport;
