@@ -104,13 +104,6 @@ impl Mci {
 
         let generated = MciGenerated::default();
 
-        // Tag mailbox1 so that its IRQ events map to the Mbox1 notification
-        // bits (rather than Mbox0). McuMailbox0Internal is a generic
-        // implementation; the index disambiguates the two instances.
-        if let Some(mb1) = mcu_mailbox1.as_ref() {
-            mb1.regs.lock().unwrap().set_mbox_index(1);
-        }
-
         Self {
             ext_mci_regs,
             generated,
@@ -1701,14 +1694,14 @@ mod tests {
             &clock,
             ext_mci_regs.clone(),
             Rc::new(RefCell::new(irq)),
-            Some(McuMailbox0Internal::new(&clock)),
-            Some(McuMailbox0Internal::new(&clock)),
+            Some(McuMailbox0Internal::new_with_mbox_index(&clock, 0)),
+            Some(McuMailbox0Internal::new_with_mbox_index(&clock, 1)),
             None,
             [0, 0],
             Rc::new(Cell::new(true)),
         );
-        // Sanity: Mci::new should have tagged mailbox1 with index 1 so its IRQ
-        // events get routed to the Mbox1 notification bits.
+        // Sanity: mailbox1 is constructed with index 1 so its IRQ events get
+        // routed to the Mbox1 notification bits.
         assert_eq!(
             mci_reg
                 .mcu_mailbox1

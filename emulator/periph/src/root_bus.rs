@@ -129,8 +129,8 @@ impl McuRootBus {
         let external_test_sram = Ram::new(vec![0; EXTERNAL_TEST_SRAM_SIZE as usize]);
         let dot_flash = Ram::new(vec![0; DOT_FLASH_SIZE as usize]);
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
-        let mcu_mailbox0 = McuMailbox0Internal::new(&clock.clone());
-        let mcu_mailbox1 = McuMailbox0Internal::new(&clock.clone());
+        let mcu_mailbox0 = McuMailbox0Internal::new_with_mbox_index(&clock.clone(), 0);
+        let mcu_mailbox1 = McuMailbox0Internal::new_with_mbox_index(&clock.clone(), 1);
 
         Ok(Self {
             rom,

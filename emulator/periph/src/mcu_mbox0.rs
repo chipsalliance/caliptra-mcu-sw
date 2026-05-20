@@ -38,8 +38,12 @@ pub struct McuMailbox0Internal {
 
 impl McuMailbox0Internal {
     pub fn new(clock: &Clock) -> Self {
+        Self::new_with_mbox_index(clock, 0)
+    }
+
+    pub fn new_with_mbox_index(clock: &Clock, mbox_index: u8) -> Self {
         Self {
-            regs: Arc::new(Mutex::new(MciMailboxImpl::new(clock))),
+            regs: Arc::new(Mutex::new(MciMailboxImpl::new(clock, mbox_index))),
         }
     }
 
@@ -179,7 +183,7 @@ impl MciMailboxImpl {
     const CMD_STATUS_VAL: u32 = 0x0;
     const HW_STATUS_VAL: u32 = 0x0;
 
-    pub fn new(clock: &Clock) -> Self {
+    pub fn new(clock: &Clock, mbox_index: u8) -> Self {
         Self {
             sram: MciMailboxRam::new(),
             lock: ReadOnlyRegister::new(Self::LOCK_VAL),
@@ -198,15 +202,8 @@ impl MciMailboxImpl {
             timer: Timer::new(clock),
             max_dlen_in_lock_session: 0,
             test_mcu_mbox_driver: false,
-            mbox_index: 0,
+            mbox_index,
         }
-    }
-
-    /// Set which physical mailbox (0 or 1) this instance represents. The MCI
-    /// uses this to select the correct IRQ event variant when forwarding
-    /// CMD_AVAILABLE / TARGET_DONE notifications to the MCU.
-    pub fn set_mbox_index(&mut self, idx: u8) {
-        self.mbox_index = idx;
     }
 
     // The mailbox starts locked by the MCU to prevent data leaks across warm resets.
