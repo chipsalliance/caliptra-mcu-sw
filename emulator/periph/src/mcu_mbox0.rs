@@ -38,8 +38,12 @@ pub struct McuMailbox0Internal {
 
 impl McuMailbox0Internal {
     pub fn new(clock: &Clock) -> Self {
+        Self::new_with_mbox_index(clock, 0)
+    }
+
+    pub fn new_with_mbox_index(clock: &Clock, mbox_index: u8) -> Self {
         Self {
-            regs: Arc::new(Mutex::new(MciMailboxImpl::new(clock))),
+            regs: Arc::new(Mutex::new(MciMailboxImpl::new(clock, mbox_index))),
         }
     }
 
@@ -128,12 +132,18 @@ pub struct MciMailboxImpl {
 
     /// Workaround: temporarily lift the check for mailbox requester to support integration tests
     pub test_mcu_mbox_driver: bool,
+
+    /// Which physical mailbox this instance represents (0 or 1).
+    /// Used to select the correct IRQ event variant when notifying the MCI.
+    pub mbox_index: u8,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IrqEventToMcu {
     Mbox0CmdAvailable,
     Mbox0TargetDone,
+    Mbox1CmdAvailable,
+    Mbox1TargetDone,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -173,7 +183,7 @@ impl MciMailboxImpl {
     const CMD_STATUS_VAL: u32 = 0x0;
     const HW_STATUS_VAL: u32 = 0x0;
 
-    pub fn new(clock: &Clock) -> Self {
+    pub fn new(clock: &Clock, mbox_index: u8) -> Self {
         Self {
             sram: MciMailboxRam::new(),
             lock: ReadOnlyRegister::new(Self::LOCK_VAL),
@@ -192,6 +202,7 @@ impl MciMailboxImpl {
             timer: Timer::new(clock),
             max_dlen_in_lock_session: 0,
             test_mcu_mbox_driver: false,
+            mbox_index,
         }
     }
 
@@ -277,7 +288,8 @@ impl MciMailboxImpl {
 
     pub fn write_mcu_mbox0_csr_mbox_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
         if !self.is_locked() {
-            panic!("Cannot write to mcu_mbox0 SRAM when mailbox is unlocked");
+            eprintln!("WARNING: Ignoring write to mcu_mbox0 SRAM when mailbox is unlocked");
+            return;
         }
 
         if index >= (MCU_MAILBOX0_SRAM_SIZE as usize / 4) {
@@ -349,7 +361,8 @@ impl MciMailboxImpl {
 
     pub fn write_mcu_mbox0_csr_mbox_target_user(&mut self, val: caliptra_emu_types::RvData) {
         if !self.is_locked() {
-            panic!("Cannot write mcu_mbox0 target user when mailbox is unlocked");
+            eprintln!("WARNING: Ignoring write to mcu_mbox0 target user when mailbox is unlocked");
+            return;
         }
         self.target_user.reg.set(val);
     }
@@ -371,7 +384,10 @@ impl MciMailboxImpl {
         >,
     ) {
         if !self.is_locked() {
-            panic!("Cannot write mcu_mbox0 target user valid when mailbox is unlocked");
+            eprintln!(
+                "WARNING: Ignoring write to mcu_mbox0 target user valid when mailbox is unlocked"
+            );
+            return;
         }
         self.target_user_valid.reg.set(val.reg.get());
     }
@@ -416,7 +432,8 @@ impl MciMailboxImpl {
         >,
     ) {
         if !self.is_locked() {
-            panic!("Cannot write mcu_mbox0 execute when mailbox is unlocked");
+            eprintln!("WARNING: Ignoring write to mcu_mbox0 execute when mailbox is unlocked");
+            return;
         }
 
         let new_val = val.reg.get();
@@ -426,7 +443,11 @@ impl MciMailboxImpl {
                 || matches!(self.user.reg.get().into(), MciMailboxRequester::SocAgent(_))
             {
                 self.irq = true;
-                self.last_irq_event = Some(IrqEventToMcu::Mbox0CmdAvailable);
+                self.last_irq_event = Some(if self.mbox_index == 1 {
+                    IrqEventToMcu::Mbox1CmdAvailable
+                } else {
+                    IrqEventToMcu::Mbox0CmdAvailable
+                });
                 self.timer.schedule_poll_in(1);
             }
         } else if new_val == MboxExecute::Execute::CLEAR.value {
@@ -460,7 +481,11 @@ impl MciMailboxImpl {
             & caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Done::SET.value;
         if prev_done == 0 && new_done != 0 {
             self.irq = true;
-            self.last_irq_event = Some(IrqEventToMcu::Mbox0TargetDone);
+            self.last_irq_event = Some(if self.mbox_index == 1 {
+                IrqEventToMcu::Mbox1TargetDone
+            } else {
+                IrqEventToMcu::Mbox0TargetDone
+            });
             self.timer.schedule_poll_in(1);
         }
     }

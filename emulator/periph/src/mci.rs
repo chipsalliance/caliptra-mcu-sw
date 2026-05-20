@@ -20,6 +20,27 @@ use tock_registers::interfaces::{ReadWriteable, Readable};
 
 const RESET_STATUS_MCU_RESET_MASK: u32 = 0x2;
 
+/// Pure helper computing whether the MCI IRQ line should be asserted.
+///
+/// `GlobalIntrEnT` bit 0 (`ErrorEn`) gates error0 events, bit 1 (`NotifEn`)
+/// gates notif0 events. A category is only "pending" if its global enable bit
+/// is set AND it has at least one enabled status bit set.
+fn compute_mci_irq_level(
+    global_intr_en: u32,
+    error0_intr: u32,
+    error0_en: u32,
+    notif0_intr: u32,
+    notif0_en: u32,
+) -> bool {
+    let error_global_en = (global_intr_en & 0x1) != 0;
+    let notif_global_en = (global_intr_en & 0x2) != 0;
+
+    let error0_pending = error_global_en && (error0_intr & error0_en) != 0;
+    let notif0_pending = notif_global_en && (notif0_intr & notif0_en) != 0;
+
+    error0_pending || notif0_pending
+}
+
 /// Clamp a timer period to below i64::MAX to avoid overflow in the timer scheduler.
 /// This can happen when software writes timer registers in two halves,
 /// creating a temporary very large value.
@@ -167,21 +188,15 @@ impl Mci {
     fn update_mci_irq(&mut self) {
         let regs = self.ext_mci_regs.regs.borrow();
 
-        let global_en = (regs.intr_block_rf_global_intr_en_r & 0x1) != 0;
-        if !global_en {
-            self.irq.borrow_mut().set_level(false);
-            return;
-        }
+        let level = compute_mci_irq_level(
+            regs.intr_block_rf_global_intr_en_r,
+            regs.intr_block_rf_error0_internal_intr_r,
+            regs.intr_block_rf_error0_intr_en_r,
+            regs.intr_block_rf_notif0_internal_intr_r,
+            regs.intr_block_rf_notif0_intr_en_r,
+        );
 
-        let error0_pending =
-            (regs.intr_block_rf_error0_internal_intr_r & regs.intr_block_rf_error0_intr_en_r) != 0;
-
-        let notif0_pending =
-            (regs.intr_block_rf_notif0_internal_intr_r & regs.intr_block_rf_notif0_intr_en_r) != 0;
-
-        self.irq
-            .borrow_mut()
-            .set_level(error0_pending || notif0_pending);
+        self.irq.borrow_mut().set_level(level);
     }
 }
 
@@ -1450,6 +1465,8 @@ impl MciPeripheral for Mci {
                         notif_reg |= Notif0IntrT::NotifMbox0TargetDoneSts::SET.value;
                     }
                 }
+                // mbox1 events should never originate from mailbox0
+                _ => {}
             }
             self.ext_mci_regs
                 .regs
@@ -1458,6 +1475,41 @@ impl MciPeripheral for Mci {
             // Raise IRQ level directly (do not use update_mci_irq which gates on
             // global_intr_en – the mailbox test runs before global interrupts are enabled).
             self.irq.borrow_mut().set_level(true);
+        }
+
+        // Check if there are any mcu_mbox1 IRQ events to process.
+        if let Some(event) = self.mcu_mailbox1.as_mut().and_then(|mb| mb.get_notif_irq()) {
+            let mut notif_reg = self
+                .ext_mci_regs
+                .regs
+                .borrow()
+                .intr_block_rf_notif0_internal_intr_r;
+
+            let notif_en = self
+                .ext_mci_regs
+                .regs
+                .borrow()
+                .intr_block_rf_notif0_intr_en_r;
+
+            match event {
+                crate::mcu_mbox0::IrqEventToMcu::Mbox1CmdAvailable => {
+                    if notif_en & Notif0IntrEnT::NotifMbox1CmdAvailEn::SET.value != 0 {
+                        notif_reg |= Notif0IntrT::NotifMbox1CmdAvailSts::SET.value;
+                    }
+                }
+                crate::mcu_mbox0::IrqEventToMcu::Mbox1TargetDone => {
+                    if notif_en & Notif0IntrEnT::NotifMbox1TargetDoneEn::SET.value != 0 {
+                        notif_reg |= Notif0IntrT::NotifMbox1TargetDoneSts::SET.value;
+                    }
+                }
+                // mbox0 events should never originate from mailbox1
+                _ => {}
+            }
+            self.ext_mci_regs
+                .regs
+                .borrow_mut()
+                .intr_block_rf_notif0_internal_intr_r = notif_reg;
+            self.update_mci_irq();
         }
     }
 }
@@ -1623,6 +1675,157 @@ mod tests {
             Notif0IntrEnT::NotifMbox0TargetDoneEn::SET.value,
             Notif0IntrT::NotifMbox0TargetDoneSts::SET.value,
         );
+    }
+
+    /// Helper mirroring `check_mcu_mailbox0_interrupt` but for mailbox1.
+    /// Also asserts that the corresponding mailbox0 status bit is NOT set
+    /// so we catch regressions where mbox1 events get routed to mbox0.
+    fn check_mcu_mailbox1_interrupt(
+        clock: &Clock,
+        mci_bus: &mut MciBus,
+        mcu_mailbox1: &mut McuMailbox0Internal,
+        irq_event: IrqEventToMcu,
+        en_bit: u32,
+        sts_bit: u32,
+        mbox0_sts_bit_should_stay_clear: u32,
+    ) {
+        // Enable the global notif gate plus the mbox1-specific enable
+        let global_en =
+            caliptra_mcu_registers_generated::mci::bits::GlobalIntrEnT::NotifEn::SET.value;
+        const GLOBAL_INTR_EN_R_OFFSET: u32 = 0x1000;
+        mci_bus
+            .write(RvSize::Word, GLOBAL_INTR_EN_R_OFFSET, global_en)
+            .unwrap();
+        mci_bus
+            .write(RvSize::Word, NOTIF0_INTR_EN_OFFSET, en_bit)
+            .unwrap();
+        let notif_en = mci_bus.read(RvSize::Word, NOTIF0_INTR_EN_OFFSET).unwrap();
+        assert_eq!(notif_en & en_bit, en_bit);
+
+        // Simulate mailbox event on mbox1
+        mcu_mailbox1.set_notif_irq(irq_event);
+        for _ in 0..1000 {
+            clock.increment_and_process_timer_actions(1, mci_bus);
+        }
+        mci_bus.periph.poll();
+
+        // Check the mbox1 status bit is set
+        let notif_status = mci_bus
+            .read(RvSize::Word, NOTIF0_INTERNAL_INTR_R_OFFSET)
+            .unwrap();
+        assert_eq!(
+            notif_status & sts_bit,
+            sts_bit,
+            "expected mbox1 status bit 0x{sts_bit:x} to be set, got 0x{notif_status:x}"
+        );
+
+        // Regression: the matching mbox0 status bit must NOT be set
+        assert_eq!(
+            notif_status & mbox0_sts_bit_should_stay_clear,
+            0,
+            "mbox1 event leaked into mbox0 status bit 0x{mbox0_sts_bit_should_stay_clear:x}",
+        );
+
+        // Clear and verify
+        mci_bus
+            .write(RvSize::Word, NOTIF0_INTERNAL_INTR_R_OFFSET, sts_bit)
+            .unwrap();
+        let notif_status = mci_bus
+            .read(RvSize::Word, NOTIF0_INTERNAL_INTR_R_OFFSET)
+            .unwrap();
+        assert_eq!(notif_status & sts_bit, 0);
+    }
+
+    #[test]
+    fn test_mailbox1_interrupt_handling() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mci_reg = Mci::new(
+            &clock,
+            ext_mci_regs.clone(),
+            Rc::new(RefCell::new(irq)),
+            Some(McuMailbox0Internal::new_with_mbox_index(&clock, 0)),
+            Some(McuMailbox0Internal::new_with_mbox_index(&clock, 1)),
+            None,
+            [0, 0],
+            Rc::new(Cell::new(true)),
+        );
+        // Sanity: mailbox1 is constructed with index 1 so its IRQ events get
+        // routed to the Mbox1 notification bits.
+        assert_eq!(
+            mci_reg
+                .mcu_mailbox1
+                .as_ref()
+                .unwrap()
+                .regs
+                .lock()
+                .unwrap()
+                .mbox_index,
+            1,
+        );
+
+        let mut mcu_mailbox1 = mci_reg.mcu_mailbox1.clone().unwrap();
+        let mut mci_bus = MciBus {
+            periph: Box::new(mci_reg),
+        };
+
+        check_mcu_mailbox1_interrupt(
+            &clock,
+            &mut mci_bus,
+            &mut mcu_mailbox1,
+            IrqEventToMcu::Mbox1CmdAvailable,
+            Notif0IntrEnT::NotifMbox1CmdAvailEn::SET.value,
+            Notif0IntrT::NotifMbox1CmdAvailSts::SET.value,
+            Notif0IntrT::NotifMbox0CmdAvailSts::SET.value,
+        );
+        check_mcu_mailbox1_interrupt(
+            &clock,
+            &mut mci_bus,
+            &mut mcu_mailbox1,
+            IrqEventToMcu::Mbox1TargetDone,
+            Notif0IntrEnT::NotifMbox1TargetDoneEn::SET.value,
+            Notif0IntrT::NotifMbox1TargetDoneSts::SET.value,
+            Notif0IntrT::NotifMbox0TargetDoneSts::SET.value,
+        );
+    }
+
+    #[test]
+    fn test_compute_mci_irq_level_gating() {
+        // GlobalIntrEnT: bit 0 = ErrorEn, bit 1 = NotifEn.
+        const ERR_EN: u32 = 0x1;
+        const NOTIF_EN: u32 = 0x2;
+
+        // Nothing enabled, nothing pending: line low.
+        assert!(!compute_mci_irq_level(0, 0, 0, 0, 0));
+
+        // Notif pending+enabled but NotifEn (bit 1) NOT in global → line low.
+        // This is the specific regression: a previous implementation gated
+        // notifications on bit 0 (ErrorEn), so enabling only ErrorEn would
+        // incorrectly let notifications fire.
+        assert!(
+            !compute_mci_irq_level(ERR_EN, 0, 0, 0x4, 0x4),
+            "notif must require NotifEn (bit 1), not ErrorEn (bit 0)",
+        );
+
+        // Notif pending+enabled with NotifEn → line high.
+        assert!(compute_mci_irq_level(NOTIF_EN, 0, 0, 0x4, 0x4));
+
+        // Error pending+enabled with ErrorEn → line high.
+        assert!(compute_mci_irq_level(ERR_EN, 0x1, 0x1, 0, 0));
+
+        // Error pending+enabled but only NotifEn → line low (symmetric check).
+        assert!(!compute_mci_irq_level(NOTIF_EN, 0x1, 0x1, 0, 0));
+
+        // Both categories pending+enabled, both globals on → line high.
+        assert!(compute_mci_irq_level(ERR_EN | NOTIF_EN, 0x1, 0x1, 0x4, 0x4));
+
+        // Both pending but neither global enable bit set → line low.
+        assert!(!compute_mci_irq_level(0, 0x1, 0x1, 0x4, 0x4));
+
+        // Status set but enable mask zero → line low (per-bit enable still required).
+        assert!(!compute_mci_irq_level(NOTIF_EN, 0, 0, 0x4, 0x0));
     }
 
     #[test]
