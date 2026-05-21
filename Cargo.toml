@@ -70,6 +70,7 @@ members = [
     "rom",
     "romtime",
     "runtime/bare-metal",
+    "runtime/bare-metal/io",
     "runtime/kernel/capsules",
     "runtime/kernel/components",
     "runtime/kernel/drivers/doe",
@@ -281,6 +282,7 @@ caliptra-mcu-registers-generator = { path = "registers/generator" }
 caliptra-mcu-registers-systemrdl = { path = "registers/systemrdl" }
 caliptra-mcu-registers-systemrdl-new = { path = "registers/systemrdl-new" }
 caliptra-mcu-romtime = { path = "romtime" }
+caliptra-mcu-bare-metal-io = { path = "runtime/bare-metal/io" }
 caliptra-mcu-xtask = { path = "xtask" }
 
 # App related dependencies

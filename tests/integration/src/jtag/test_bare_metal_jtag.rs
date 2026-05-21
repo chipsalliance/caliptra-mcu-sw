@@ -36,9 +36,6 @@ mod test {
         // Set PC (Dpc CSR) to start of SRAM (sram_base)
         tap.write_csr_reg(CsrReg::Dpc, sram_base)?;
 
-        // Write DCSR to enable ebreakm
-        tap.write_csr_reg(CsrReg::Dcsr, DCSR_SET_EBREAKM)?;
-
         Ok(())
     }
 
@@ -51,9 +48,8 @@ mod test {
             /*bootfsm_break=*/ true,
             /*enable_mcu_uart_log=*/ true,
         );
-        model.set_axi_user(2);
 
-        // Connect to Caliptra Core and MCU JTAG TAPs via OpenOCD.
+        // Connect to Caliptra MCU JTAG TAP via OpenOCD.
         let jtag_params = JtagParams {
             openocd: PathBuf::from("openocd"),
             adapter_speed_khz: 1000,
