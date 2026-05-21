@@ -7,13 +7,13 @@ use crate::protocol::StandardsBodyId;
 use crate::vdm_handler::iana::ocp::caliptra_vdm::commands::{
     clear_attestation_log, clear_debug_log, debug_unlock, device_capabilities, device_id,
     device_info, export_attested_csr, export_idevid_csr, firmware_version, get_attestation_log,
-    get_debug_log,
+    get_auth_challenge, get_debug_log, program_field_entropy,
 };
 use crate::vdm_handler::iana::ocp::caliptra_vdm::protocol::*;
 use crate::vdm_handler::{VdmError, VdmHandler, VdmRegistryMatcher, VdmResponder, VdmResult};
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_mcu_common_commands::CaliptraCmdHandler;
+use caliptra_mcu_common_commands::{CaliptraCmdHandler, CommandAuthorizer};
 use core::mem::size_of;
 
 pub(crate) mod commands;
@@ -21,12 +21,19 @@ pub mod protocol;
 
 pub struct CaliptraVdmHandler<'a> {
     pub(crate) handler: &'a dyn CaliptraCmdHandler,
+    pub(crate) cmd_authorizer: &'a mut (dyn CommandAuthorizer + Send + Sync),
 }
 
 impl<'a> CaliptraVdmHandler<'a> {
     #[allow(dead_code)]
-    pub fn new(handler: &'a dyn CaliptraCmdHandler) -> Self {
-        Self { handler }
+    pub fn new(
+        handler: &'a dyn CaliptraCmdHandler,
+        cmd_authorizer: &'a mut (dyn CommandAuthorizer + Send + Sync),
+    ) -> Self {
+        Self {
+            handler,
+            cmd_authorizer,
+        }
     }
 }
 
@@ -114,6 +121,23 @@ impl VdmResponder for CaliptraVdmHandler<'_> {
             CaliptraVdmCommand::AuthorizeDebugUnlockToken => {
                 debug_unlock::handle_authorize_debug_unlock_token(self.handler, req_buf, rsp_buf)
                     .await?
+            }
+            CaliptraVdmCommand::ProgramFieldEntropy => {
+                program_field_entropy::handle_program_field_entropy(
+                    self.handler,
+                    req_buf,
+                    rsp_buf,
+                    &mut self.cmd_authorizer,
+                )
+                .await?
+            }
+            CaliptraVdmCommand::GetAuthCmdChallenge => {
+                get_auth_challenge::handle_get_auth_challenge(
+                    req_buf,
+                    rsp_buf,
+                    &mut self.cmd_authorizer,
+                )
+                .await?
             }
             _ => CaliptraVdmCmdResult::ErrorResponse(CaliptraCompletionCode::UnsupportedOperation),
         };

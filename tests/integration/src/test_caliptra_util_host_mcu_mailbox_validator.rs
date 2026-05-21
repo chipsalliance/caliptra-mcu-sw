@@ -17,7 +17,9 @@
 pub mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_api::SocManager;
-    use caliptra_mailbox_client::{DebugUnlockKeys, LocalDebugUnlockSigner, Validator};
+    use caliptra_mailbox_client::{
+        DebugUnlockKeys, HmacCommandAuthorizer, LocalDebugUnlockSigner, Validator,
+    };
     use caliptra_mcu_hw_model::{McuHwModel, McuManager};
     use caliptra_mcu_romtime::McuBootMilestones;
 
@@ -199,7 +201,10 @@ pub mod test {
             )
             .set_recv_timeout(Duration::from_secs(120))
             .set_verbose(true)
-            .set_debug_unlock_signer(Box::new(debug_unlock_signer));
+            .set_debug_unlock_signer(Box::new(debug_unlock_signer))
+            .set_command_authorizer(Box::new(HmacCommandAuthorizer::new(
+                crate::runtime::TEST_AUTH_CMD_HMAC_KEY.to_vec(),
+            )));
 
             println!("Running Mailbox validator in-process (port={})", udp_port);
 
