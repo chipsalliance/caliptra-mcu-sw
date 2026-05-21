@@ -98,6 +98,10 @@ mod test {
         /// Production debug unlock keypairs (ECC384 pub key bytes, MLDSA87 pub key bytes).
         pub prod_dbg_unlock_keypairs: Vec<([u8; 96], [u8; 2592])>,
         pub use_strap_secrets: bool,
+        /// If set, the kernel logging-flash partition is host-side seeded
+        /// with these entries before the firmware boots. Honored on both
+        /// emulator and FPGA via `BootParams::primary_flash_initial_contents`.
+        pub seeded_log_entries: Option<&'static [&'static [u8]]>,
     }
 
     impl Default for TestParams<'_> {
@@ -121,6 +125,7 @@ mod test {
                 debug_intent: false,
                 prod_dbg_unlock_keypairs: Vec::new(),
                 use_strap_secrets: false,
+                seeded_log_entries: None,
             }
         }
     }
@@ -485,15 +490,60 @@ mod test {
         let vendor_pk_hash: [u32; 12] = vendor_pk_hash.as_slice().try_into().unwrap();
 
         // Set up OTP memory: use custom otp_memory if provided, otherwise auto-generate from dot_enabled
+        // and prod_dbg_unlock_keypairs
         let otp_memory = if let Some(custom_otp) = params.otp_memory {
             Some(custom_otp)
-        } else if params.dot_enabled {
-            // TODO: move this when we add the fuse-burning scripts
+        } else if params.dot_enabled || !params.prod_dbg_unlock_keypairs.is_empty() {
             use caliptra_mcu_registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
             // Create OTP memory large enough to include the vendor non-secret prod partition
             let mut otp = vec![0u8; VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 256];
-            // Set dot_initialized to 1 at the start of the vendor non-secret prod partition
-            otp[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET] = 0x7; // backed by 3 bits
+
+            if params.dot_enabled {
+                // Set dot_initialized to 1 at the start of the vendor non-secret prod partition
+                otp[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET] = 0x7; // backed by 3 bits
+            }
+
+            // Program PK hashes into OTP for prod debug unlock
+            if !params.prod_dbg_unlock_keypairs.is_empty() {
+                use caliptra_mcu_registers_generated::fuses::{
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_0, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_1,
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_2, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_3,
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_4, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_5,
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_6, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_7,
+                };
+                use sha2::{Digest, Sha384};
+
+                let pk_entries = [
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_0,
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_1,
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_2,
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_3,
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_4,
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_5,
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_6,
+                    OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_7,
+                ];
+
+                for (i, (ecc, mldsa)) in params.prod_dbg_unlock_keypairs.iter().enumerate() {
+                    if i >= pk_entries.len() {
+                        break;
+                    }
+                    let mut hasher = Sha384::new();
+                    hasher.update(ecc);
+                    hasher.update(mldsa);
+                    let hash = hasher.finalize();
+
+                    let offset = pk_entries[i].byte_offset;
+                    // Write hash to OTP: convert each 4-byte chunk from big-endian (SHA output)
+                    // to little-endian (OTP storage format, matching emulator's from_le_bytes read)
+                    for (j, chunk) in hash.chunks(4).enumerate() {
+                        let word = u32::from_be_bytes(chunk.try_into().unwrap());
+                        let byte_pos = offset + j * 4;
+                        otp[byte_pos..byte_pos + 4].copy_from_slice(&word.to_le_bytes());
+                    }
+                }
+            }
+
             Some(otp)
         } else {
             None
@@ -512,6 +562,25 @@ mod test {
                 // For streaming boot, pass individual images to BMC
                 (None, caliptra_fw, soc_manifest, mcu_runtime)
             };
+
+        // Optionally splice a host-seeded LOGGING_PARTITION into the flash
+        // image. Same encoded bytes work for emulator (`DummyFlashCtrl`) and
+        // FPGA (`ImaginaryFlashController`) — both consume `initial_content`
+        // and use a 256-byte page size.
+        let flash_image = if let Some(entries) = params.seeded_log_entries {
+            use caliptra_mcu_config_emulator::flash::LOGGING_PARTITION;
+            Some(
+                caliptra_mcu_testing_common::logging_seed::splice_logging_partition_into_flash_image(
+                    flash_image,
+                    entries,
+                    LOGGING_PARTITION.offset,
+                    LOGGING_PARTITION.size,
+                    256,
+                ),
+            )
+        } else {
+            flash_image
+        };
 
         caliptra_mcu_hw_model::new(InitParams {
             fuses: Fuses {

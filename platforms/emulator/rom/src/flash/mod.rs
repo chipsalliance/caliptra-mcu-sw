@@ -2,8 +2,5 @@
 pub mod flash_boot_cfg;
 pub mod flash_drv;
 
-#[cfg(any(
-    feature = "test-mcu-rom-flash-access",
-    feature = "test-flash-based-boot"
-))]
+#[cfg(feature = "test-mcu-rom-flash-access")]
 pub mod flash_test;

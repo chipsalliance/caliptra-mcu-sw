@@ -194,5 +194,5 @@ pub fn mcycle() -> u64 {
         value::Register,
         { riscv_csr::csr::MCYCLEH },
     > = riscv_csr::csr::ReadWriteRiscvCsr::new();
-    (mcycleh.get() as u64) << 32 | (mcycle.get() as u64)
+    ((mcycleh.get() as u64) << 32) | (mcycle.get() as u64)
 }

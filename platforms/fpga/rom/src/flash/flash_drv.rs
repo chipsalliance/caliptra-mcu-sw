@@ -105,8 +105,16 @@ impl FlashStorage for FpgaFlashCtrl {
             // Read the page into page_buf
             self.read_page(page_number, &mut page_buf)?;
 
-            buf[buf_offset..buf_offset + to_read]
-                .copy_from_slice(&page_buf.0[page_offset..page_offset + to_read]);
+            let dest = buf
+                .get_mut(buf_offset..buf_offset + to_read)
+                .ok_or(FlashDrvError::INVAL)?;
+            let src = page_buf
+                .0
+                .get(page_offset..page_offset + to_read)
+                .ok_or(FlashDrvError::INVAL)?;
+            for (d, s) in dest.iter_mut().zip(src.iter()) {
+                *d = *s;
+            }
 
             remaining -= to_read;
             buf_offset += to_read;
@@ -137,8 +145,16 @@ impl FlashStorage for FpgaFlashCtrl {
                 FpgaFlashPage::default()
             };
 
-            page_buf.0[page_offset..page_offset + to_write]
-                .copy_from_slice(&buf[buf_offset..buf_offset + to_write]);
+            let dest = page_buf
+                .0
+                .get_mut(page_offset..page_offset + to_write)
+                .ok_or(FlashDrvError::INVAL)?;
+            let src = buf
+                .get(buf_offset..buf_offset + to_write)
+                .ok_or(FlashDrvError::INVAL)?;
+            for (d, s) in dest.iter_mut().zip(src.iter()) {
+                *d = *s;
+            }
 
             self.write_page(page_number, &mut page_buf)?;
 

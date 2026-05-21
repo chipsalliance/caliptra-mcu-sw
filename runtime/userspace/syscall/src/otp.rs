@@ -40,11 +40,37 @@ impl<S: Syscalls> Otp<S> {
         S::command(self.driver_num, cmd::OTP_READ, reg_offset, index).to_result::<u32, ErrorCode>()
     }
 
+    /// Read a word form the otp controller at a specific word address.
+    pub fn read_raw(&self, base_word_addr: u32, offset: u32) -> Result<u32, ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_READ_RAW, base_word_addr, offset)
+            .to_result::<u32, ErrorCode>()
+    }
+
     pub fn write(&self, reg_offset: u32, index: u32, value: u32) -> Result<(), ErrorCode> {
         S::command(self.driver_num, cmd::OTP_SET_REGISTER, reg_offset, index)
             .to_result::<(), ErrorCode>()?;
 
         S::command(self.driver_num, cmd::OTP_WRITE, value, 0).to_result::<(), ErrorCode>()
+    }
+
+    /// Writes a word to an OTP word address.
+    ///
+    /// Only bits specified with `mask` are written.
+    /// Bits outside of `mask` are ignored.
+    ///
+    /// # Arguments
+    /// - `word_addr`: word address to write to
+    /// - `data`: the data to write
+    /// - `mask`: the bitmask to apply to the data
+    ///
+    /// # Errors
+    /// - When `word_addr` is not a valid address
+    /// - When any of the existing data is `1` but is set to `0` in the input data
+    pub fn write_raw(&self, word_addr: u32, data: u32, mask: u32) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_SET_REGISTER, word_addr, 0)
+            .to_result::<(), ErrorCode>()?;
+
+        S::command(self.driver_num, cmd::OTP_WRITE_RAW, data, mask).to_result::<(), ErrorCode>()
     }
 
     /// Check whether a given vendor pk hash slot is marked valid (has not been marked invalid).
@@ -191,6 +217,16 @@ impl<S: Syscalls> Otp<S> {
 
         self.write(reg::VENDOR_PK_HASH_VALID, 0, valid_mask)
     }
+
+    /// Lock a partition
+    ///
+    /// Idempotent: locking a locked partition has no effect.
+    ///
+    /// Locking does not fully take effect until the next reset.
+    pub fn lock_partition(&self, partition: u32) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_LOCK_PARTITION, partition, 0)
+            .to_result::<(), ErrorCode>()
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -204,6 +240,9 @@ pub mod cmd {
     pub const OTP_READ: u32 = 1;
     pub const OTP_WRITE: u32 = 2;
     pub const OTP_SET_REGISTER: u32 = 3;
+    pub const OTP_READ_RAW: u32 = 4;
+    pub const OTP_WRITE_RAW: u32 = 5;
+    pub const OTP_LOCK_PARTITION: u32 = 6;
 }
 
 pub mod reg {
@@ -283,4 +322,8 @@ pub mod reg {
             RevokeVendorPubKeyType::Mldsa87 => VENDOR_MLDSA_REVOCATION,
         }
     }
+
+    pub const FUSE_READ: u32 = 30;
+    pub const FUSE_WRITE: u32 = 31;
+    pub const FUSE_LOCK_PARTITION: u32 = 32;
 }

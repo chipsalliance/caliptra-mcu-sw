@@ -227,12 +227,8 @@ pub(crate) async fn test_caliptra_mailbox_chunked_timeout() {
     }
 
     // Step 2: Delay long enough for the kernel timeout to fire and reset to idle.
-    // Use a busy loop to burn time without yielding to the kernel scheduler,
-    // then yield so the kernel can process the alarm callback.
-    for _ in 0..1_000_000u32 {
-        core::hint::black_box(0u32);
-    }
-    // Yield to let the kernel fire the alarm callback.
+    // The mailbox chunked-request timeout is 100_000 ticks (100 ms at 1 MHz).
+    // Sleep for 500 ms to ensure the timeout fires.
     crate::sleep::<caliptra_mcu_libsyscall_caliptra::DefaultSyscalls>(
         caliptra_mcu_libtock::alarm::Milliseconds(500),
     )
