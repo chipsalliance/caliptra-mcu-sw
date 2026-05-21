@@ -8,7 +8,7 @@
 use caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall;
 
 pub async fn test_logging_flash_simple() {
-    let log: LoggingSyscall = LoggingSyscall::new();
+    let log: LoggingSyscall = LoggingSyscall::default();
 
     assert!(log.exists().is_ok(), "Logging driver doesn't exist");
     assert!(log.get_capacity().is_ok(), "Failed to get logging capacity");
@@ -34,7 +34,7 @@ pub async fn test_logging_flash_simple() {
 }
 
 pub async fn test_logging_flash_various_entries() {
-    let log: LoggingSyscall = LoggingSyscall::new();
+    let log: LoggingSyscall = LoggingSyscall::default();
     assert!(log.exists().is_ok(), "Logging driver doesn't exist");
     assert!(log.get_capacity().is_ok(), "Failed to get logging capacity");
     assert!(log.seek_beginning().await.is_ok(), "Seek beginning failed");
@@ -99,7 +99,7 @@ pub async fn test_logging_flash_various_entries() {
 }
 
 pub async fn test_logging_flash_invalid_inputs() {
-    let log: LoggingSyscall = LoggingSyscall::new();
+    let log: LoggingSyscall = LoggingSyscall::default();
     assert!(log.exists().is_ok(), "Logging driver doesn't exist");
     assert!(log.get_capacity().is_ok(), "Failed to get logging capacity");
     assert!(log.seek_beginning().await.is_ok(), "Seek beginning failed");

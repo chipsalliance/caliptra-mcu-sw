@@ -33,7 +33,7 @@ fn probe(log: &LoggingSyscall) -> Result<(), CaliptraCompletionCode> {
 
 /// Drain debug-log entries into `dst`, honoring entry-boundary truncation.
 pub async fn drain(dst: &mut [u8]) -> Result<GetLogResult, CaliptraCompletionCode> {
-    let log: LoggingSyscall = LoggingSyscall::new();
+    let log: LoggingSyscall = LoggingSyscall::default();
     probe(&log)?;
 
     let mut state = STATE.lock().await;
@@ -98,7 +98,7 @@ pub async fn drain(dst: &mut [u8]) -> Result<GetLogResult, CaliptraCompletionCod
 
 /// Erase the debug log and reset the read cursor.
 pub async fn clear() -> Result<(), CaliptraCompletionCode> {
-    let log: LoggingSyscall = LoggingSyscall::new();
+    let log: LoggingSyscall = LoggingSyscall::default();
     probe(&log)?;
 
     let mut state = STATE.lock().await;

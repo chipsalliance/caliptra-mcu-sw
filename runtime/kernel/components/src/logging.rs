@@ -27,6 +27,42 @@ macro_rules! logging_flash_component_static {
     }};
 }
 
+#[macro_export]
+macro_rules! instantiate_logging_flash {
+    (
+        $list_macro:tt,
+        $instances:ident,
+        $kernel:expr,
+        $mux:expr,
+        $flash_ctrl_ty:ty,
+        $page_size:expr,
+        $circular:expr
+    ) => {{
+        macro_rules! assign_logging_flash {
+            ($idx:expr, $_var:ident, $partition:ident) => {
+                let log_fl_user = components::flash::FlashUserComponent::new($mux)
+                    .finalize(components::flash_user_component_static!($flash_ctrl_ty));
+                $instances[$idx] = Some(
+                    caliptra_mcu_components::logging::LoggingFlashComponent::new(
+                        $kernel,
+                        $partition.driver_num as usize,
+                        log_fl_user,
+                        $partition.base_page($page_size),
+                        $partition.num_pages($page_size),
+                        $circular,
+                    )
+                    .finalize(caliptra_mcu_components::logging_flash_component_static!(
+                        virtual_flash::FlashUser<'static, $flash_ctrl_ty>,
+                        caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
+                    )),
+                );
+            };
+        }
+
+        $list_macro!(assign_logging_flash);
+    }};
+}
+
 pub struct LoggingFlashComponent<
     F: 'static
         + hil::flash::Flash
