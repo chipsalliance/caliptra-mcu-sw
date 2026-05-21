@@ -44,11 +44,17 @@ pub struct McuSpdmPal {
 
     /// Shared cert store — same instance for all transports.
     pub(crate) cert_store: &'static SharedCertStore,
+
+    /// Optional persistent byte buffer used to reassemble one SPDM
+    /// `CHUNK_SEND` large request across multiple I/O exchanges.
+    pub(crate) large_msg_ptr: Option<NonNull<u8>>,
+    pub(crate) large_msg_capacity: usize,
 }
 
 impl McuSpdmPal {
     /// Creates a new `McuSpdmPal` wrapping the given PAL transport and
-    /// per-IO scratch buffer.
+    /// per-IO scratch buffer plus an optional persistent large-message
+    /// buffer used by SPDM chunk reassembly.
     ///
     /// # Parameters
     ///
@@ -59,6 +65,14 @@ impl McuSpdmPal {
     ///   used to back the per-IO [`BitmapAllocator`].
     /// * `io_buf_capacity` — Total length, in bytes, of the region
     ///   at `io_buf_ptr`.
+    /// * `cert_store` — Shared certificate store used by all SPDM
+    ///   transports.
+    /// * `large_msg_ptr` — Base of the caller-supplied persistent
+    ///   buffer used to reassemble one `CHUNK_SEND` large request, or
+    ///   `None` when large-message chunking is not supported by this
+    ///   integration.
+    /// * `large_msg_capacity` — Total length, in bytes, of the region
+    ///   at `large_msg_ptr`. Ignored when `large_msg_ptr` is `None`.
     ///
     /// # Returns
     ///
@@ -72,6 +86,9 @@ impl McuSpdmPal {
     ///   [`BITMAP_SLOT_SIZE`](super::alloc::BITMAP_SLOT_SIZE) and point
     ///   to `io_buf_capacity` bytes of writable memory exclusively
     ///   owned by this `McuSpdmPal` for its entire lifetime.
+    /// * When present, `large_msg_ptr` must point to
+    ///   `large_msg_capacity` bytes of writable memory exclusively
+    ///   owned by this `McuSpdmPal` for its entire lifetime.
     /// * The constructed `McuSpdmPal` must only be driven from a single
     ///   task; calling `recv_request` / `send_response` concurrently is
     ///   undefined behavior (interior mutability is not synchronized).
@@ -80,11 +97,20 @@ impl McuSpdmPal {
         io_buf_ptr: NonNull<u8>,
         io_buf_capacity: usize,
         cert_store: &'static SharedCertStore,
+        large_msg_ptr: Option<NonNull<u8>>,
+        large_msg_capacity: usize,
     ) -> Self {
+        let large_msg_capacity = if large_msg_ptr.is_some() {
+            large_msg_capacity
+        } else {
+            0
+        };
         Self {
             transport: UnsafeCell::new(transport),
             allocator: BitmapAllocator::new(io_buf_ptr, io_buf_capacity),
             cert_store,
+            large_msg_ptr,
+            large_msg_capacity,
         }
     }
 
