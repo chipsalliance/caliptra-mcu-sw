@@ -51,13 +51,13 @@ macro_rules! print {
 #[cfg(feature = "no-print")]
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => {{
-        // Type-check `format_args!` (so all call sites stay valid) but discard
-        // the resulting `Arguments` so LTO/lld can drop it along with any
-        // `Display`/`Debug` impls reached through it.  Same pattern as Tock's
-        // `no_debug_panics` feature on the `debug!` macro.
-        let _ = ::core::format_args!($($arg)*);
-    }};
+    // Full no-op stub: discard the format string and all arguments without
+    // calling `format_args!`.  This drops the format-string literals
+    // (e.g. "[mcu-runtime] ...") and any `Display`/`Debug` impls reached
+    // through the arguments from the final binary.  Type-checking of args
+    // still happens at non-release builds where the non-`no-print` branch
+    // uses `write!` / `writeln!`.
+    ($($arg:tt)*) => {{}};
 }
 
 #[cfg(not(feature = "no-print"))]
@@ -73,9 +73,7 @@ macro_rules! println {
 #[cfg(feature = "no-print")]
 #[macro_export]
 macro_rules! println {
-    ($($arg:tt)*) => {{
-        let _ = ::core::format_args!($($arg)*);
-    }};
+    ($($arg:tt)*) => {{}};
 }
 
 pub struct HexBytes<'a>(pub &'a [u8]);

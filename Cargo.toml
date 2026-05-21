@@ -349,7 +349,13 @@ capsules-core = { git = "https://github.com/tock/tock.git", rev = "release-2.2" 
 capsules-extra = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 capsules-system = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 components = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
-kernel = { git = "https://github.com/tock/tock.git", rev = "release-2.2" , features = ["debug_load_processes"] }
+# `debug_load_processes` was previously enabled here.  It adds ~20+ `debug!()`
+# call sites in `process_loading.rs` / `process_standard.rs` /
+# `process_binary.rs` (each of which drags ~100B of format strings into the
+# binary) for purely diagnostic output during process startup.  Disabled to
+# shrink the release image; re-enable behind a per-crate dep override if
+# needed for development.
+kernel = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 riscv = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 riscv-csr = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 rv32i = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
