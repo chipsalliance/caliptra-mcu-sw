@@ -203,6 +203,8 @@ pub(crate) async fn async_main<S: Syscalls>() {
     {
         test_logging_flash::test_logging_flash_simple().await;
         test_logging_flash::test_logging_flash_various_entries().await;
+        #[cfg(feature = "crash-log")]
+        test_logging_flash::test_logging_flash_multiple_instances().await;
         test_logging_flash::test_logging_flash_invalid_inputs().await;
         System::exit(0);
     }
