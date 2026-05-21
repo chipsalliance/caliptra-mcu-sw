@@ -44,6 +44,14 @@ pub mod test {
     }
 
     pub fn run_imaginary_flash_controller_service(mci_base: u64) {
+        run_imaginary_flash_controller_service_with_init(mci_base, None)
+    }
+
+    /// Variant that accepts initial flash content.
+    pub fn run_imaginary_flash_controller_service_with_init(
+        mci_base: u64,
+        initial_content: Option<Vec<u8>>,
+    ) {
         caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
             if !caliptra_mcu_testing_common::is_emulator_running() {
@@ -54,7 +62,7 @@ pub mod test {
             let flash_controller = ImaginaryFlashController::new(
                 mci_base,
                 Some(std::path::PathBuf::from("imaginary_flash_test.bin")),
-                None,
+                initial_content.as_deref(),
             );
             println!("Imaginary flash IO processor thread starting");
             loop {

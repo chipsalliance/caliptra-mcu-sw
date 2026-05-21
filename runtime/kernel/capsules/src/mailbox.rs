@@ -293,13 +293,17 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                 }
             }
         } else {
-            // Copy payload to mailbox directly
+            // App buffer contains the full payload. The mailbox is 32-bit wide and
+            // payload length is delimited by `dlen` (= `app_buffer.len()`), so the
+            // final partial word (if any) must be zero-padded into a u32 rather
+            // than rejected or truncated.
             match driver.start_mailbox_req(
                 command,
                 app_buffer.len(),
                 app_buffer.chunks(4).map(|chunk| {
                     let mut dest = [0u8; 4];
-                    chunk.copy_to_slice(&mut dest);
+                    let n = chunk.len();
+                    chunk.copy_to_slice(&mut dest[..n]);
                     u32::from_le_bytes(dest)
                 }),
             ) {
@@ -392,20 +396,18 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     fn write_chunk(&self, app_buffer: &ReadableProcessSlice) -> Result<(), ErrorCode> {
         if self.staging_sram_axi_addr.is_none() {
             // Copy payload directly to mailbox
+            // The mailbox FIFO is 32-bit wide and the payload length is delimited
+            // by `dlen`, so a trailing partial word is zero-padded into a u32
+            // (matching the policy in `start_request`).
             let _ = self
                 .driver
                 .map(|driver| {
                     for chunk in app_buffer.chunks(4) {
-                        if chunk.len() == 4 {
-                            let mut buf = [0u8; 4];
-                            chunk.copy_to_slice(&mut buf);
-                            let data = u32::from_le_bytes(buf);
-                            driver.write_data(data).map_err(|_| ErrorCode::FAIL)?;
-                        } else {
-                            // If the last chunk is not 4 bytes, we can't write it to the mailbox
-                            debug!("Error: Incomplete data chunk in mailbox request");
-                            return Err(ErrorCode::FAIL);
-                        }
+                        let mut buf = [0u8; 4];
+                        let n = chunk.len();
+                        chunk.copy_to_slice(&mut buf[..n]);
+                        let data = u32::from_le_bytes(buf);
+                        driver.write_data(data).map_err(|_| ErrorCode::FAIL)?;
                     }
                     Ok(())
                 })
