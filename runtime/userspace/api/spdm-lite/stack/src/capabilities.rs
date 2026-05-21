@@ -77,8 +77,8 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
     state.peer_max_spdm_msg_size = peer_max;
     state.peer_cap_flags = body.flags;
 
-    // DataTransferSize == MaxSPDMmsgSize since we don't yet advertise CHUNK.
     let mtu = pal.mtu() as u32;
+    let max_spdm_msg_size = (pal.large_message_capacity().max(pal.mtu())) as u32;
     let resp = build_response(
         pal,
         io,
@@ -87,7 +87,7 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
             ct_exponent: state.ct_exponent,
             flags: state.cap_flags,
             data_transfer_size: mtu,
-            max_spdm_msg_size: mtu,
+            max_spdm_msg_size,
         },
     )?;
 

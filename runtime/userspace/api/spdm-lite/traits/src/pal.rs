@@ -13,13 +13,9 @@ use super::*;
 /// Top-level Platform Abstraction Layer trait for SPDM-Lite.
 ///
 /// Implementors of this trait provide a complete platform binding for the
-/// SPDM-Lite stack. The trait currently requires [`SpdmIoTransport`],
-/// ensuring that the platform can send and receive SPDM messages.
-///
-/// As the stack evolves, additional super-traits (e.g., for cryptographic
-/// operations or certificate provisioning) may be added here, keeping
-/// downstream consumers bound to a single `SpdmPal` constraint.
+/// SPDM-Lite stack: per-I/O allocation, transport I/O, hashing, certificate
+/// access, and persistent large-message storage for chunking.
 pub trait SpdmPal:
-    SpdmPalAlloc + SpdmPalIoTransport + SpdmPalHash + SpdmPalCertStore
+    SpdmPalAlloc + SpdmPalIoTransport + SpdmPalHash + SpdmPalCertStore + SpdmPalLargeMessage
 {
 }

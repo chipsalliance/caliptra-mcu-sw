@@ -3,8 +3,8 @@
 //! User-app SPDM MCTP responder.
 //!
 //! Drives the spdm-lite responder over MCTP. spdm-lite currently
-//! implements GET_VERSION, GET_CAPABILITIES, and NEGOTIATE_ALGORITHMS
-//! (DSP0274 §10.2–§10.4); additional commands will be added there.
+//! implements version/capability/algorithm negotiation, digests,
+//! certificate retrieval, and SPDM large-message chunking.
 
 extern crate alloc;
 
@@ -21,6 +21,10 @@ use mcu_spdm_lite_transports::McuSpdmMctpTransport;
 /// multiple of [`BITMAP_SLOT_SIZE`] (= 64 B) and large enough to hold
 /// one MTU-sized response under construction.
 const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
+/// Persistent CHUNK_SEND reassembly buffer. This is kept outside the
+/// async task frame and outside the per-I/O scratch allocator because
+/// it must live across multiple received chunk messages.
+const SPDM_LITE_LARGE_MSG_SIZE: usize = 8 * 1024;
 
 #[embassy_executor::task]
 pub(crate) async fn spdm_task() {
@@ -30,8 +34,12 @@ pub(crate) async fn spdm_task() {
     #[repr(C, align(64))]
     struct ScratchBuf([u8; SPDM_LITE_SCRATCH_SIZE]);
     static mut SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_LITE_SCRATCH_SIZE]);
+    struct LargeMsgBuf([u8; SPDM_LITE_LARGE_MSG_SIZE]);
+    static mut LARGE_MSG: LargeMsgBuf = LargeMsgBuf([0u8; SPDM_LITE_LARGE_MSG_SIZE]);
     // SAFETY: this task is the sole owner of `SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(SCRATCH.0.as_mut_ptr()) };
+    // SAFETY: this task is the sole owner of `LARGE_MSG`.
+    let large_msg_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(LARGE_MSG.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
     let transport = alloc::boxed::Box::new(
@@ -42,9 +50,18 @@ pub(crate) async fn spdm_task() {
         .expect("MCTP_SPDM driver with MCTP_MSG_TYPE_SPDM is a valid pairing"),
     );
 
-    // SAFETY: `SCRATCH` is statically allocated, exclusively owned by
-    // this task, and properly aligned (see `#[repr(align(64))]`).
-    let pal = unsafe { McuSpdmPal::new(transport, scratch_ptr, SPDM_LITE_SCRATCH_SIZE) };
+    // SAFETY: `SCRATCH` and `LARGE_MSG` are statically allocated and
+    // exclusively owned by this task; `SCRATCH` is aligned for the
+    // bitmap allocator by `#[repr(align(64))]`.
+    let pal = unsafe {
+        McuSpdmPal::new(
+            transport,
+            scratch_ptr,
+            SPDM_LITE_SCRATCH_SIZE,
+            Some(large_msg_ptr),
+            SPDM_LITE_LARGE_MSG_SIZE,
+        )
+    };
 
     let mut stack = SpdmStack::new(pal);
 
