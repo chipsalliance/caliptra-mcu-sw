@@ -29,7 +29,7 @@ const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;
 ///
 /// # Safety
 /// Accesses memory-mapped registers.
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "release")))]
 #[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
@@ -42,6 +42,24 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         &*addr_of!(CHIP),
         &*addr_of!(PROCESS_PRINTER),
     );
+    exit_fpga(1);
+}
+
+/// Minimal panic handler for `release` builds.
+///
+/// `kernel::debug::panic_print` is ~2.6 KB on its own and drags in the full
+/// `DebugWriter` / `UartMux` / `ProcessPrinterText` / `Display`-impl chain
+/// (an additional ~3-5 KB).  In production we do not have a way to relay
+/// detailed panic info anyway, so we emit a short marker string and exit
+/// the platform to force a watchdog reset.
+///
+/// # Safety
+/// Accesses memory-mapped registers.
+#[cfg(all(not(test), feature = "release"))]
+#[no_mangle]
+#[panic_handler]
+pub unsafe fn panic_fmt(_pi: &PanicInfo) -> ! {
+    Writer {}.write(b"PANIC\n");
     exit_fpga(1);
 }
 

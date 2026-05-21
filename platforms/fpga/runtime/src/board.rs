@@ -164,8 +164,14 @@ struct VeeR {
     external_otp: &'static caliptra_mcu_capsules_runtime::external_otp::ExternalOtpCapsule<'static>,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, FpgaExiter>,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
-    logging_flash:
+    // The flash-based logging capsule is stripped from the `release` build:
+    // no kernel-side producer writes to the LOGGING_PARTITION (there is no
+    // `debug!() -> flash` wiring), so the syscall would only ever read an
+    // empty log.  The user-space `caliptra_cmd_handler::debug_log::drain`
+    // path tolerates `NoDevice` via its `probe()` step.
+    logging_flash: Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
+    >,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -225,7 +231,9 @@ impl SyscallDriverLookup for VeeR {
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
             caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
-                f(Some(self.logging_flash))
+                f(self
+                    .logging_flash
+                    .map(|l| l as &dyn kernel::syscall::SyscallDriver))
             }
             _ => f(None),
         }
@@ -679,26 +687,36 @@ pub unsafe fn main() {
     caliptra_mcu_romtime::println!("[mcu-runtime] Flash partition component initialized");
 
     // Flash user for the logging capsule, sharing the primary flash mux.
-    let logging_fl_user = components::flash::FlashUserComponent::new(mux_mcu_mbox_flash).finalize(
-        components::flash_user_component_static!(caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl),
-    );
+    // Stripped in `release` builds: no kernel-side producer writes the
+    // logging partition, so the entire LoggingFlashDriver + Log +
+    // FlashStorageToPages + FlashUser chain (~6.7 KB of `.text`) is dead
+    // weight in production.
+    #[cfg(not(feature = "release"))]
+    let logging_flash = Some({
+        let logging_fl_user = components::flash::FlashUserComponent::new(mux_mcu_mbox_flash)
+            .finalize(components::flash_user_component_static!(
+                caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl
+            ));
 
-    // Logging flash capsule
-    let logging_flash = caliptra_mcu_components::logging::LoggingFlashComponent::new(
-        board_kernel,
-        caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM,
-        logging_fl_user,
-        caliptra_mcu_config_fpga::flash::LOGGING_PARTITION
-            .base_page(caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE),
-        caliptra_mcu_config_fpga::flash::LOGGING_PARTITION
-            .num_pages(caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE),
-        true,
-    )
-    .finalize(caliptra_mcu_components::logging_flash_component_static!(
-        virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl>,
-        caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
-    ));
-    caliptra_mcu_romtime::println!("[mcu-runtime] Logging flash component initialized");
+        let logging_flash = caliptra_mcu_components::logging::LoggingFlashComponent::new(
+            board_kernel,
+            caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM,
+            logging_fl_user,
+            caliptra_mcu_config_fpga::flash::LOGGING_PARTITION
+                .base_page(caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE),
+            caliptra_mcu_config_fpga::flash::LOGGING_PARTITION
+                .num_pages(caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE),
+            true,
+        )
+        .finalize(caliptra_mcu_components::logging_flash_component_static!(
+            virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl>,
+            caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
+        ));
+        caliptra_mcu_romtime::println!("[mcu-runtime] Logging flash component initialized");
+        logging_flash
+    });
+    #[cfg(feature = "release")]
+    let logging_flash = None;
 
     let total_heks = 0;
     let otp = caliptra_mcu_components::otp::OtpComponent::new(
@@ -782,11 +800,16 @@ pub unsafe fn main() {
         .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
-    debug!("MUX MCTP enable");
+    // Replaced `debug!(...)` with `caliptra_mcu_romtime::println!(...)`: the
+    // kernel `debug!` macro pulls in the full `DebugWriter`/`UartMux`/fmt
+    // chain (~4.7 KB).  `romtime::println!` is a no-op in `release` builds
+    // (`no-print` feature) and otherwise goes through the existing
+    // platform UART writer.
+    caliptra_mcu_romtime::println!("MUX MCTP enable");
     mux_mctp.enable();
 
-    debug!("MCU initialization complete.");
-    debug!("Entering main loop.");
+    caliptra_mcu_romtime::println!("MCU initialization complete.");
+    caliptra_mcu_romtime::println!("Entering main loop.");
 
     let scheduler =
         components::sched::cooperative::CooperativeComponent::new(&*addr_of!(PROCESSES))
@@ -840,8 +863,13 @@ pub unsafe fn main() {
         &process_mgmt_cap,
     )
     .unwrap_or_else(|err| {
-        debug!("Error loading processes!");
-        debug!("{:?}", err);
+        // See note above re: `debug!` -> `romtime::println!` replacement.
+        // `err` is a `ProcessLoadError` whose `Debug` impl is ~336 B of code
+        // plus rodata strings; we still want to log it in dev builds, so
+        // route through the runtime printer which strips the call entirely
+        // when `release` is active.
+        caliptra_mcu_romtime::println!("Error loading processes!");
+        caliptra_mcu_romtime::println!("{:?}", err);
     });
 
     #[cfg(any(
@@ -863,23 +891,23 @@ pub unsafe fn main() {
     let mut exit: Option<u32> = None;
     #[cfg(feature = "test-exit-immediately")]
     {
-        debug!("Executing test-exit-immediately");
+        caliptra_mcu_romtime::println!("Executing test-exit-immediately");
         exit = Some(0);
     }
     #[cfg(feature = "test-i3c-simple")]
     {
-        debug!("Executing test-i3c-simple");
+        caliptra_mcu_romtime::println!("Executing test-i3c-simple");
         exit = crate::tests::i3c_target_test::run_test_i3c_simple();
     }
     #[cfg(feature = "test-i3c-constant-writes")]
     {
-        debug!("Executing test-i3c-constant-writes");
+        caliptra_mcu_romtime::println!("Executing test-i3c-constant-writes");
         exit = crate::tests::i3c_target_test::run_test_i3c_constant_writes();
     }
 
     #[cfg(feature = "test-mctp-capsule-loopback")]
     {
-        debug!("Executing test-mctp-capsule-loopback");
+        caliptra_mcu_romtime::println!("Executing test-mctp-capsule-loopback");
         crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp);
     }
 
