@@ -182,9 +182,11 @@ impl SyscallDriverLookup for VeeR {
     {
         match driver_num {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
+            #[cfg(not(feature = "release"))]
             capsules_core::console::DRIVER_NUM => f(self
                 .console
                 .map(|c| c as &dyn kernel::syscall::SyscallDriver)),
+            #[cfg(not(feature = "release"))]
             capsules_core::low_level_debug::DRIVER_NUM => {
                 f(self.lldb.map(|l| l as &dyn kernel::syscall::SyscallDriver))
             }
@@ -230,6 +232,7 @@ impl SyscallDriverLookup for VeeR {
             }
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
             caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
+            #[cfg(not(feature = "release"))]
             caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
                 f(self
                     .logging_flash
