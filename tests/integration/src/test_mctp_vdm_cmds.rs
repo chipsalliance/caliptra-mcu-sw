@@ -418,6 +418,34 @@ pub mod test {
 
         hw.start_i3c_controller();
 
+        // FPGA-only setup:
+        //   1. MCU flash I/O goes via mcu_mbox0 to ImaginaryFlashController,
+        //      independent of emulator's primary_flash. Seed the file directly.
+        //   2. Sync with the user-space VDM responder before sending the first
+        //      Private Write, otherwise the request races the responder's
+        //      subscribe and is dropped (MctpUtil sends each request only once).
+        #[cfg(feature = "fpga_realtime")]
+        {
+            use caliptra_mcu_config_emulator::flash::LOGGING_PARTITION;
+            let seeded = caliptra_mcu_testing_common::logging_seed::splice_logging_partition_into_flash_image(
+                None,
+                config::TEST_DEBUG_LOG_ENTRIES,
+                LOGGING_PARTITION.offset,
+                LOGGING_PARTITION.size,
+                256,
+            );
+            let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
+            crate::test_fpga_flash_ctrl::test::run_imaginary_flash_controller_service_with_init(
+                mci_ptr,
+                Some(seeded),
+            );
+
+            hw.step_until_output_contains("Starting MCTP VDM service for integration tests")
+                .expect("MCU did not enter MCTP VDM service");
+            // Let the executor schedule the responder and subscribe.
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+
         let vdm_transport =
             MctpVdmTransport::new(hw.i3c_port().unwrap(), hw.i3c_address().unwrap().into());
         let vdm_socket = vdm_transport.create_socket().unwrap();
