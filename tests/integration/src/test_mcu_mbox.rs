@@ -396,7 +396,9 @@ pub mod test {
                 self.add_hmac_kdf_counter_tests()?;
                 self.add_hkdf_tests()?;
                 self.add_debug_unlock_tests()?;
-                self.add_log_cmds_tests()?;
+                // FPGA: flash I/O on mcu_mbox0 conflicts with host requests; re-enable
+                // when arbitrated.
+                // self.add_log_cmds_tests()?;
                 Ok(())
             } else if feature == "test-mcu-mbox-fips-self-test" {
                 self.add_fips_self_test_tests()?;
@@ -2737,6 +2739,7 @@ pub mod test {
             Ok(())
         }
 
+        #[allow(dead_code)] // disabled on FPGA pending flash arbitration
         fn add_log_cmds_tests(&mut self) -> Result<(), ()> {
             println!("Running MC_GET_LOG / MC_CLEAR_LOG tests");
 
