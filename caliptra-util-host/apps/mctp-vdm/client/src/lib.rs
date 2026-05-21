@@ -17,10 +17,10 @@ pub use validator::{ValidationResult, Validator};
 pub use caliptra_util_host_mctp_vdm_test_config::*;
 
 // Re-export the I3C address type so callers don't need a direct dep.
-pub use mcu_testing_common::i3c::DynamicI3cAddress;
+pub use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
 
 use anyhow::Result;
-use caliptra_util_host_command_types::*;
+use caliptra_mcu_core_util_host_command_types::*;
 use caliptra_util_host_transport::{MctpVdmTransport, Transport};
 
 /// High-level MCTP VDM client.

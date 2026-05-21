@@ -14,14 +14,14 @@
 
 use super::transport::MctpVdmError;
 use crate::TransportError;
-use caliptra_util_host_command_types::*;
-use mctp_vdm_common::codec::VdmCodec;
-use mctp_vdm_common::message::{
+use caliptra_mcu_core_util_host_command_types::*;
+use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
+use caliptra_mcu_mctp_vdm_common::message::{
     DeviceCapabilitiesRequest, DeviceCapabilitiesResponse, DeviceIdRequest, DeviceIdResponse,
     DeviceInfoRequest, DeviceInfoResponse, FirmwareVersionRequest, FirmwareVersionResponse,
     MAX_FW_VERSION_LEN,
 };
-use mctp_vdm_common::protocol::{VdmCompletionCode, VdmMsgHeader, VDM_MSG_HEADER_LEN};
+use caliptra_mcu_mctp_vdm_common::protocol::{VdmCompletionCode, VdmMsgHeader, VDM_MSG_HEADER_LEN};
 
 /// Maximum buffer for encoding a VDM request.
 const MAX_VDM_REQ_BUF: usize = 128;
@@ -267,7 +267,7 @@ pub fn handle_device_info(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mctp_vdm_common::codec::VdmCodec;
+    use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 
     // Verify that request encoding produces valid VDM wire bytes
     #[test]
