@@ -17,6 +17,9 @@ pub use caliptra_mcu_debug_unlock_signer::{
     DebugUnlockKeys, DebugUnlockSigner, LocalDebugUnlockSigner,
 };
 
+// Re-export the command authorizer trait and types from the common crate
+pub use caliptra_mcu_command_authorizer::{CommandAuthorizer, HmacCommandAuthorizer};
+
 // Re-export config from the shared library
 pub use caliptra_mcu_core_util_host_mailbox_test_config::*;
 
@@ -39,6 +42,9 @@ use caliptra_mcu_core_util_host_command_types::crypto_hmac::{
 use caliptra_mcu_core_util_host_command_types::crypto_import::ImportResponse;
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
+};
+use caliptra_mcu_core_util_host_command_types::fuse::{
+    FeProgRequest, FeProgResponse, GetAuthCmdChallengeResponse,
 };
 use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
@@ -68,6 +74,9 @@ use caliptra_util_host_commands::api::debug_unlock::{
 use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
     caliptra_cmd_get_firmware_version,
+};
+use caliptra_util_host_commands::api::fuse::{
+    caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
 };
 use caliptra_util_host_session::CaliptraSession;
 
@@ -953,6 +962,71 @@ impl<'a> MailboxClient<'a> {
             Err(e) => {
                 eprintln!("✗ ExportAttestedCsr failed: {:?}", e);
                 Err(anyhow::anyhow!("ExportAttestedCsr command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Request an authorization command challenge nonce
+    ///
+    /// Returns a 32-byte random challenge that must be included in the
+    /// HMAC computation for the next authorized command.
+    pub fn get_auth_challenge(&mut self) -> Result<GetAuthCmdChallengeResponse> {
+        println!("Executing GetAuthCmdChallenge command...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_get_auth_challenge(&mut session) {
+            Ok(response) => {
+                println!("✓ GetAuthCmdChallenge succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ GetAuthCmdChallenge failed: {:?}", e);
+                Err(anyhow::anyhow!(
+                    "GetAuthCmdChallenge command failed: {:?}",
+                    e
+                ))
+            }
+        }
+    }
+
+    /// Program field entropy for an OTP partition (authorized command)
+    ///
+    /// The `request` must contain a valid HMAC-SHA384 MAC in its `mac` field,
+    /// computed over `cmd_id(BE) || partition(LE) || challenge` using the
+    /// shared authorization key.
+    pub fn fe_prog(&mut self, request: &FeProgRequest) -> Result<FeProgResponse> {
+        println!(
+            "Executing FE_PROG command (partition={})...",
+            request.partition
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_fe_prog(&mut session, request) {
+            Ok(response) => {
+                println!("✓ FE_PROG succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ FE_PROG failed: {:?}", e);
+                Err(anyhow::anyhow!("FE_PROG command failed: {:?}", e))
             }
         }
     }

@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use crate::test::{start_runtime_hw_model, TestParams};
+use crate::test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams};
 use anyhow::Result;
-use caliptra_mcu_hw_model::McuHwModel;
-use caliptra_mcu_mbox_common::messages::{FirmwareVersionReq, GetAuthCmdChallengeReq};
+use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
+use caliptra_mcu_mbox_common::messages::{FirmwareVersionReq, FuseIncreaseCaliptraMinSvnReq, GetAuthCmdChallengeReq, McuFeProgReq};
 use caliptra_mcu_romtime::McuBootMilestones;
 
 #[test]
@@ -81,5 +81,79 @@ fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
             != 0,
         "Challenge should not be all-zeros"
     );
+    Ok(())
+}
+
+#[test]
+fn test_fe_prog_debug_bytes() -> Result<()> {
+    use crate::runtime::execute_authorized_req;
+    use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
+
+    let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
+    let (caliptra_fw, vendor_pk_hash_arr, soc_manifest) =
+        if let Ok(binaries) = FirmwareBinaries::from_env() {
+            let fw = binaries.caliptra_fw.clone();
+            let pk_hash = binaries.vendor_pk_hash().unwrap();
+            let manifest = binaries.test_soc_manifest("test-mcu-mbox-cmds").unwrap();
+            (fw, pk_hash, manifest)
+        } else {
+            let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+                svn: Some(0),
+                mcu_firmware: Some(mcu_runtime_path.clone()),
+                ..Default::default()
+            });
+            let fw = std::fs::read(builder.get_caliptra_fw()?).unwrap();
+            let pk_hash_str = builder.get_vendor_pk_hash()?.to_string();
+            let pk_hash = hex::decode(&pk_hash_str).unwrap();
+            let mut pk_hash_arr = [0u8; 48];
+            pk_hash_arr.copy_from_slice(&pk_hash);
+            let manifest = std::fs::read(builder.get_soc_manifest(None)?).unwrap();
+            (fw, pk_hash_arr, manifest)
+        };
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        custom_caliptra_fw: Some(CustomCaliptraFw {
+            fw_bytes: caliptra_fw,
+            vendor_pk_hash: vendor_pk_hash_arr,
+            soc_manifest: soc_manifest,
+        }),
+        lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // First try SVN increase (known to work) on the SAME hw model
+    println!("\n========== SVN INCREASE (should work) ==========");
+    let svn_cmd = FuseIncreaseCaliptraMinSvnReq {
+        svn: 0,
+        ..Default::default()
+    };
+    let svn_result = execute_authorized_req(&mut hw, svn_cmd);
+    println!("SVN Result: {:?}", svn_result.is_ok());
+    if let Err(ref e) = svn_result {
+        println!("SVN Error: {:?}", e);
+    }
+    println!("========== END SVN ==========\n");
+
+    // Now try FE_PROG on the same hw model
+    let cmd = McuFeProgReq {
+        partition: 0,
+        ..Default::default()
+    };
+
+    println!("\n========== FE_PROG INTEGRATION TEST DEBUG ==========");
+    let result = execute_authorized_req(&mut hw, cmd);
+    println!("Result: {:?}", result.is_ok());
+    if let Err(ref e) = result {
+        println!("FE_PROG Error: {:?}", e);
+    }
+    println!("========== END FE_PROG DEBUG ==========\n");
+
+    // We don't assert success - just want to see the bytes
     Ok(())
 }

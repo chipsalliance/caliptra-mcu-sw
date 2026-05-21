@@ -23,6 +23,9 @@ pub mod validator;
 pub use config::TestConfig;
 pub use validator::{all_passed, print_summary, run_all, ValidationResult, ValidationStatus};
 
+// Re-export the command authorizer trait and types from the common crate
+pub use caliptra_mcu_command_authorizer::{CommandAuthorizer, HmacCommandAuthorizer};
+
 // Re-export the debug unlock signer trait and types from the common crate
 pub use caliptra_mcu_debug_unlock_signer::{
     DebugUnlockKeys, DebugUnlockSigner, LocalDebugUnlockSigner,
@@ -34,6 +37,9 @@ use caliptra_mcu_core_util_host_command_types::certificate::{
 };
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
+};
+use caliptra_mcu_core_util_host_command_types::fuse::{
+    FeProgResponse, GetAuthCmdChallengeResponse,
 };
 use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
@@ -52,6 +58,9 @@ use caliptra_util_host_commands::api::debug_unlock::{
 use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
     caliptra_cmd_get_firmware_version,
+};
+use caliptra_util_host_commands::api::fuse::{
+    caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
 };
 use caliptra_util_host_session::CaliptraSession;
 
@@ -163,6 +172,29 @@ impl<'a> SpdmVdmClient<'a> {
         let mut session = self.create_session()?;
         caliptra_cmd_prod_debug_unlock_token(&mut session, request)
             .map_err(|e| anyhow::anyhow!("ProdDebugUnlockToken failed: {:?}", e))
+    }
+
+    /// Request an authorization challenge for authorized commands (e.g., FE_PROG).
+    pub fn get_auth_challenge(&mut self) -> Result<GetAuthCmdChallengeResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_get_auth_challenge(&mut session)
+            .map_err(|e| anyhow::anyhow!("GetAuthChallenge failed: {:?}", e))
+    }
+
+    /// Program field entropy for an OTP partition (authorized command).
+    ///
+    /// # Parameters
+    /// - `partition`: OTP partition to program (0-3)
+    /// - `mac`: 48-byte HMAC-SHA384 authorization token
+    pub fn fe_prog(&mut self, partition: u32, mac: &[u8; 48]) -> Result<FeProgResponse> {
+        use caliptra_mcu_core_util_host_command_types::fuse::FeProgRequest;
+        let request = FeProgRequest {
+            partition,
+            mac: *mac,
+        };
+        let mut session = self.create_session()?;
+        caliptra_cmd_fe_prog(&mut session, &request)
+            .map_err(|e| anyhow::anyhow!("FeProg failed: {:?}", e))
     }
 
     fn create_session(&mut self) -> Result<CaliptraSession> {

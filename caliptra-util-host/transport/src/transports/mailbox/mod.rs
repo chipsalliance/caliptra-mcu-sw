@@ -13,6 +13,7 @@ pub mod debug_unlock;
 pub mod delete;
 pub mod device_info;
 pub mod dispatch;
+pub mod fuse;
 pub mod hmac;
 pub mod import;
 pub mod sha;

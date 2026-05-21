@@ -7,7 +7,7 @@ use crate::protocol::StandardsBodyId;
 use crate::vdm_handler::iana::ocp::caliptra_vdm::commands::{
     clear_attestation_log, clear_debug_log, debug_unlock, device_capabilities, device_id,
     device_info, export_attested_csr, export_idevid_csr, firmware_version, get_attestation_log,
-    get_debug_log,
+    get_debug_log, get_auth_challenge, program_field_entropy,
 };
 use crate::vdm_handler::iana::ocp::caliptra_vdm::protocol::*;
 use crate::vdm_handler::{VdmError, VdmHandler, VdmRegistryMatcher, VdmResponder, VdmResult};
@@ -21,12 +21,18 @@ pub mod protocol;
 
 pub struct CaliptraVdmHandler<'a> {
     pub(crate) handler: &'a dyn CaliptraCmdHandler,
+    /// Stored challenge nonce for authorized command HMAC verification.
+    /// Set by GetAuthCmdChallenge, consumed by ProgramFieldEntropy.
+    pub(crate) challenge: Option<[u8; 32]>,
 }
 
 impl<'a> CaliptraVdmHandler<'a> {
     #[allow(dead_code)]
     pub fn new(handler: &'a dyn CaliptraCmdHandler) -> Self {
-        Self { handler }
+        Self {
+            handler,
+            challenge: None,
+        }
     }
 }
 
@@ -114,6 +120,24 @@ impl VdmResponder for CaliptraVdmHandler<'_> {
             CaliptraVdmCommand::AuthorizeDebugUnlockToken => {
                 debug_unlock::handle_authorize_debug_unlock_token(self.handler, req_buf, rsp_buf)
                     .await?
+            }
+            CaliptraVdmCommand::ProgramFieldEntropy => {
+                let challenge = self.challenge.take();
+                program_field_entropy::handle_program_field_entropy(
+                    self.handler,
+                    req_buf,
+                    rsp_buf,
+                    challenge,
+                )
+                .await?
+            }
+            CaliptraVdmCommand::GetAuthCmdChallenge => {
+                get_auth_challenge::handle_get_auth_challenge(
+                    req_buf,
+                    rsp_buf,
+                    &mut self.challenge,
+                )
+                .await?
             }
             _ => CaliptraVdmCmdResult::ErrorResponse(CaliptraCompletionCode::UnsupportedOperation),
         };

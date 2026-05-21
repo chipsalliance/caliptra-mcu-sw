@@ -41,6 +41,7 @@ caliptra-mcu-core-mctp-vdm-client = { path = "apps/mctp-vdm/client" }
 caliptra-spdm-requester = { path = "apps/spdm/requester" }
 caliptra-spdm-vdm-client = { path = "apps/spdm/client" }
 caliptra-mcu-debug-unlock-signer = { path = "../common/debug-unlock-signer" }
+caliptra-mcu-command-authorizer = { path = "../common/command-authorizer" }
 
 # External dependencies
 SPDM-Utils = { git = "https://github.com/westerndigitalcorporation/spdm-utils.git", tag = "v0.7.1" }
@@ -58,6 +59,7 @@ clap = { version = "4.5.23", features = [
 ] }
 ecdsa = { version = "0.16.9", features = ["pem"] }
 fips204 = "0.4.6"
+hex = "0.4.3"
 hmac = "0.12"
 caliptra-mcu-mctp-vdm-common = { path = "../common/mctp-vdm" }
 caliptra-mcu-testing-common = { path = "../common/testing" }

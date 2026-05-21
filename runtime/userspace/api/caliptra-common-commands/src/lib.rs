@@ -303,6 +303,21 @@ pub trait CaliptraCmdHandler: Send + Sync {
         let _ = log_type;
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
+
+    /// Program field entropy for a given partition.
+    ///
+    /// Over the VDM path, SPDM session authentication is considered sufficient
+    /// so no MCU-level HMAC authorization is required.
+    ///
+    /// # Arguments
+    /// * `partition` - The partition index to program.
+    ///
+    /// # Returns
+    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
+    async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
+        let _ = partition;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 }
 
 pub struct AuthorizationError;

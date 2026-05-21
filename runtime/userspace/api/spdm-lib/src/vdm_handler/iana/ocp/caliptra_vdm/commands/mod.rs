@@ -10,4 +10,6 @@ pub(crate) mod export_attested_csr;
 pub(crate) mod export_idevid_csr;
 pub(crate) mod firmware_version;
 pub(crate) mod get_attestation_log;
+pub(crate) mod get_auth_challenge;
 pub(crate) mod get_debug_log;
+pub(crate) mod program_field_entropy;

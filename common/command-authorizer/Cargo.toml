@@ -1,0 +1,12 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-command-authorizer"
+version.workspace = true
+edition.workspace = true
+description = "Command authorization trait and HMAC implementation for Caliptra MCU"
+
+[dependencies]
+anyhow = "1"
+hmac = "0.12"
+sha2 = "0.10"

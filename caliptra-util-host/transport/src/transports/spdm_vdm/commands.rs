@@ -409,6 +409,89 @@ pub fn handle_export_idevid_csr(
 }
 
 // ---------------------------------------------------------------------------
+// GetAuthCmdChallenge (CaliptraCommandId::GetAuthCmdChallenge)
+// ---------------------------------------------------------------------------
+
+/// Handle GetAuthCmdChallenge — request a challenge nonce for HMAC authorization.
+///
+/// VDM wire format request:  [version, 0x12]
+/// VDM wire format response: [version, 0x12, completion_code, challenge(32)]
+pub fn handle_get_auth_challenge(
+    _payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    use caliptra_mcu_core_util_host_command_types::fuse::{
+        GetAuthCmdChallengeResponse, AUTH_CMD_CHALLENGE_SIZE,
+    };
+
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(
+        CaliptraVdmCommand::GetAuthCmdChallenge,
+        &[],
+        driver,
+        &mut resp_buf,
+    )?;
+
+    // Response data: [challenge(32)]
+    let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
+    if data.len() < AUTH_CMD_CHALLENGE_SIZE {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let mut internal_resp = GetAuthCmdChallengeResponse::default();
+    internal_resp
+        .challenge
+        .copy_from_slice(&data[..AUTH_CMD_CHALLENGE_SIZE]);
+
+    let resp_bytes = internal_resp.as_bytes();
+    let copy_len = resp_bytes.len().min(response_buffer.len());
+    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
+    Ok(copy_len)
+}
+
+// ---------------------------------------------------------------------------
+// ProgramFieldEntropy (CaliptraCommandId::FeProg)
+// ---------------------------------------------------------------------------
+
+/// Handle ProgramFieldEntropy (FE_PROG) command.
+///
+/// VDM wire format request:  [version, 0x10, partition(4 LE), mac(48)]
+/// VDM wire format response: [version, 0x10, completion_code]
+pub fn handle_fe_prog(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    use caliptra_mcu_core_util_host_command_types::fuse::{FeProgRequest, FeProgResponse};
+
+    let req = FeProgRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+
+    // VDM payload: [partition(4 LE), mac(48)]
+    let mut vdm_payload = [0u8; 4 + 48];
+    vdm_payload[..4].copy_from_slice(&req.partition.to_le_bytes());
+    vdm_payload[4..].copy_from_slice(&req.mac);
+
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let _resp_len = send_vdm_request(
+        CaliptraVdmCommand::ProgramFieldEntropy,
+        &vdm_payload,
+        driver,
+        &mut resp_buf,
+    )?;
+
+    // Response is header-only (completion code checked by send_vdm_request)
+    let internal_resp = FeProgResponse {
+        common: CommonResponse { fips_status: 0 },
+    };
+
+    let resp_bytes = internal_resp.as_bytes();
+    let copy_len = resp_bytes.len().min(response_buffer.len());
+    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
+    Ok(copy_len)
+}
+
+// ---------------------------------------------------------------------------
 // RequestDebugUnlock (CaliptraCommandId::ProdDebugUnlockReq)
 // ---------------------------------------------------------------------------
 

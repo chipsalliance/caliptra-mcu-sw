@@ -32,6 +32,7 @@ pub enum CaliptraVdmCommand {
     ExportAttestedCsr = 0x0F,
     ProgramFieldEntropy = 0x10,
     DeviceOwnershipTransfer = 0x11,
+    GetAuthCmdChallenge = 0x12,
 }
 
 impl TryFrom<u8> for CaliptraVdmCommand {
@@ -56,6 +57,7 @@ impl TryFrom<u8> for CaliptraVdmCommand {
             0x0F => Ok(Self::ExportAttestedCsr),
             0x10 => Ok(Self::ProgramFieldEntropy),
             0x11 => Ok(Self::DeviceOwnershipTransfer),
+            0x12 => Ok(Self::GetAuthCmdChallenge),
             _ => Err(VdmError::InvalidVdmCommand),
         }
     }
@@ -110,12 +112,12 @@ mod tests {
 
     #[test]
     fn test_command_roundtrip() {
-        for code in 0x01u8..=0x11 {
+        for code in 0x01u8..=0x12 {
             let cmd = CaliptraVdmCommand::try_from(code).unwrap();
             assert_eq!(cmd as u8, code);
         }
         assert!(CaliptraVdmCommand::try_from(0x00).is_err());
-        assert!(CaliptraVdmCommand::try_from(0x12).is_err());
+        assert!(CaliptraVdmCommand::try_from(0x13).is_err());
         assert!(CaliptraVdmCommand::try_from(0xFF).is_err());
     }
 }
