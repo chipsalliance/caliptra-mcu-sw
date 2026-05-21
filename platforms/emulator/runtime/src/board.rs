@@ -141,8 +141,11 @@ struct VeeR {
     >,
     caliptra: &'static caliptra_mcu_capsules_runtime::caliptra::Caliptra,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
-    logging_flash:
+    // Stripped from `release` builds — no kernel-side producer writes the logging
+    // partition on the emulator, so the capsule is dead weight in production.
+    logging_flash: Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
+    >,
     mci: &'static caliptra_mcu_capsules_runtime::mci::Mci,
     mcu_mbox0: &'static caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver<
         'static,
@@ -201,8 +204,11 @@ impl SyscallDriverLookup for VeeR {
                 }
                 return f(None);
             }
+            #[cfg(not(feature = "release"))]
             caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
-                f(Some(self.logging_flash))
+                f(self
+                    .logging_flash
+                    .map(|l| l as &dyn kernel::syscall::SyscallDriver))
             }
             caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => {
                 f(Some(self.mcu_mbox0))
@@ -720,28 +726,39 @@ pub unsafe fn main() {
         caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
     );
 
-    // Create flash user for logging capsule that is connected to the primary flash
-    let logging_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash).finalize(
-        components::flash_user_component_static!(
-            caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
-        ),
-    );
-
-    // Logging capsule
-    let logging_flash = caliptra_mcu_components::logging::LoggingFlashComponent::new(
-        board_kernel,
-        caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM,
-        logging_fl_user,
-        caliptra_mcu_config_emulator::flash::LOGGING_PARTITION
-            .base_page(caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE),
-        caliptra_mcu_config_emulator::flash::LOGGING_PARTITION
-            .num_pages(caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE),
-        true,
-    )
-    .finalize(caliptra_mcu_components::logging_flash_component_static!(
-        virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl>,
-        caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
-    ));
+    // Flash user + logging capsule.  Stripped in `release` builds — no kernel-side
+    // producer writes the logging partition, so the entire
+    // LoggingFlashDriver + Log + FlashStorageToPages + FlashUser chain is dead
+    // weight in production.  User-space `caliptra_cmd_handler::debug_log::drain`
+    // tolerates `NoDevice` via its `probe()` step.
+    #[cfg(not(feature = "release"))]
+    let logging_flash = Some({
+        let logging_fl_user =
+            components::flash::FlashUserComponent::new(mux_primary_flash).finalize(
+                components::flash_user_component_static!(
+                    caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
+                ),
+            );
+        caliptra_mcu_components::logging::LoggingFlashComponent::new(
+            board_kernel,
+            caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM,
+            logging_fl_user,
+            caliptra_mcu_config_emulator::flash::LOGGING_PARTITION
+                .base_page(caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE),
+            caliptra_mcu_config_emulator::flash::LOGGING_PARTITION
+                .num_pages(caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE),
+            true,
+        )
+        .finalize(caliptra_mcu_components::logging_flash_component_static!(
+            virtual_flash::FlashUser<
+                'static,
+                caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl,
+            >,
+            caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
+        ))
+    });
+    #[cfg(feature = "release")]
+    let logging_flash = None;
 
     let dma = caliptra_mcu_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,
@@ -812,11 +829,11 @@ pub unsafe fn main() {
         .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
-    debug!("MUX MCTP enable");
+    caliptra_mcu_romtime::println!("[mcu-runtime] MUX MCTP enable");
     mux_mctp.enable();
 
-    debug!("MCU initialization complete.");
-    debug!("Entering main loop.");
+    caliptra_mcu_romtime::println!("[mcu-runtime] MCU initialization complete.");
+    caliptra_mcu_romtime::println!("[mcu-runtime] Entering main loop.");
 
     let scheduler =
         components::sched::cooperative::CooperativeComponent::new(&*addr_of!(PROCESSES))
@@ -870,8 +887,8 @@ pub unsafe fn main() {
         &process_mgmt_cap,
     )
     .unwrap_or_else(|err| {
-        debug!("Error loading processes!");
-        debug!("{:?}", err);
+        caliptra_mcu_romtime::println!("[mcu-runtime] Error loading processes!");
+        caliptra_mcu_romtime::println!("{:?}", err);
     });
 
     // Used by flash driver integration tests.
@@ -1037,7 +1054,7 @@ fn run_kernel_tests(
     }
 
     if let Some(exit) = exit {
-        debug!("Exiting with code {}", exit);
+        caliptra_mcu_romtime::println!("[mcu-runtime] Exiting with code {}", exit);
         crate::io::exit_emulator(exit);
     }
 }

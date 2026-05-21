@@ -22,11 +22,11 @@ use kernel::ErrorCode;
 
 pub(crate) static mut WRITER: Writer = Writer {};
 
-/// Panic handler.
+/// Panic handler — full (debug builds): prints process state via kernel debugger.
 ///
 /// # Safety
 /// Accesses memory-mapped registers.
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "release")))]
 #[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
@@ -39,6 +39,24 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         &*addr_of!(CHIP),
         &*addr_of!(PROCESS_PRINTER),
     );
+    exit_emulator(1);
+}
+
+/// Panic handler — release build: lightweight output of location + message only.
+///
+/// # Safety
+/// Accesses the UART writer.
+#[cfg(all(not(test), feature = "release"))]
+#[no_mangle]
+#[panic_handler]
+pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
+    use core::fmt::Write as _;
+    let writer = &mut *addr_of_mut!(WRITER);
+    let _ = writer.write_str("PANIC");
+    if let Some(loc) = pi.location() {
+        let _ = write!(writer, " at {}:{}", loc.file(), loc.line());
+    }
+    let _ = write!(writer, ": {}\n", pi.message());
     exit_emulator(1);
 }
 
