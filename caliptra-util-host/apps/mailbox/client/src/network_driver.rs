@@ -36,6 +36,10 @@ impl MailboxDriver for UdpTransportDriver {
         message.extend_from_slice(&external_cmd.to_le_bytes());
         message.extend_from_slice(payload);
 
+        println!("[DEBUG UdpTransportDriver::send_command]");
+        println!("  external_cmd: 0x{:08x}", external_cmd);
+        println!("  payload ({} bytes): {:02X?}", payload.len(), payload);
+
         socket
             .send_to(&message, self.server_addr)
             .map_err(|_| MailboxError::CommunicationError)?;
@@ -57,6 +61,12 @@ impl MailboxDriver for UdpTransportDriver {
             }
             MailboxError::CommunicationError
         })?;
+
+        println!(
+            "  response ({} bytes): {:02X?}",
+            bytes_received,
+            &self.buffer[..bytes_received]
+        );
 
         Ok(&self.buffer[..bytes_received])
     }

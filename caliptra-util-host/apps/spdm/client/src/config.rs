@@ -35,6 +35,8 @@ pub struct TestConfig {
     pub export_idevid_csr: ExportIdevidCsrConfig,
     #[serde(default)]
     pub debug_unlock: DebugUnlockConfig,
+    #[serde(default)]
+    pub fe_prog: FeProgConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -132,4 +134,14 @@ impl Default for DebugUnlockConfig {
             enabled: true,
         }
     }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct FeProgConfig {
+    #[serde(default)]
+    pub partition: u32,
+    /// Hex-encoded HMAC key for FE_PROG authorization.
+    /// Must match the AUTH_CMD_HMAC_KEY used by the MCU firmware.
+    #[serde(default)]
+    pub auth_key: Option<String>,
 }

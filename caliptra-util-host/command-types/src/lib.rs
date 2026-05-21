@@ -118,6 +118,10 @@ pub enum CaliptraCommandId {
     FuseGetInfo = 0x8004,
     FuseProvision = 0x8005,
     FuseGetManifest = 0x8006,
+
+    // Authorized Commands (0x8010-0x801F)
+    GetAuthCmdChallenge = 0x8010,
+    FeProg = 0x8011,
 }
 
 /// Common response header for all commands
