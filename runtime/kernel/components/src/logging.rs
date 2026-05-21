@@ -142,6 +142,7 @@ where
             .3
             .write(logging::driver::LoggingFlashDriver::new(
                 log,
+                self.driver_num,
                 self.board_kernel.create_grant(self.driver_num, &grant_cap),
                 buffer,
             ));
