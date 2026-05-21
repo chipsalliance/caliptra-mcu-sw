@@ -473,6 +473,26 @@ impl McuError {
             "Firmware manifest DOT command processing error"
         ),
         (
+            ROM_PATCH_SOURCE_READ_ERROR,
+            0x6_0000,
+            "Reading the patch payload from the patch source (OTP/eFuse) failed"
+        ),
+        (
+            ROM_PATCH_AUTH_ERROR,
+            0x6_0001,
+            "Patch payload failed authentication"
+        ),
+        (
+            ROM_PATCH_MALFORMED,
+            0x6_0002,
+            "Patch structural validation failed (header, opcode, terminator)"
+        ),
+        (
+            ROM_PATCH_ADDRESS_OUT_OF_RANGE,
+            0x6_0003,
+            "Patch operation targets an address outside the legal range"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"
