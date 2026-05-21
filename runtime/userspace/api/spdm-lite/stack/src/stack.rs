@@ -24,7 +24,7 @@ use crate::build::build_error_response;
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
-use crate::{algorithms, capabilities, certificate, challenge, digests, version};
+use crate::{algorithms, capabilities, certificate, challenge, chunk, digests, version};
 
 /// Connection phase tracked on the responder so the dispatcher can
 /// enforce the DSP0274 §10 ordering
@@ -105,6 +105,10 @@ pub struct ConnectionState<S: Clone> {
     pub peer_cap_flags: CapFlags,
     /// Transcript state (running VCA/M1/L1 hashes per DSP0274 §8.10).
     pub transcript: crate::transcript::Transcript<S>,
+    /// In-progress CHUNK_SEND large-request reassembly state.
+    pub(crate) chunk: chunk::ChunkState,
+    /// Pending large response served by CHUNK_GET.
+    pub(crate) large_response: chunk::LargeResponseState,
 }
 
 impl<S: Clone> ConnectionState<S> {
@@ -115,9 +119,7 @@ impl<S: Clone> ConnectionState<S> {
     /// A new `ConnectionState` with:
     ///
     /// * `ct_exponent = 20` (≈ 1 s — `2^20` µs).
-    /// * `cap_flags = CERT | CHAL | MEAS_SIG | ALIAS_CERT`. `CHUNK` is
-    ///   intentionally omitted until large-message assembly is
-    ///   implemented (DSP0274 §10.26).
+    /// * `cap_flags = CERT | CHAL | MEAS_SIG | ALIAS_CERT | CHUNK`.
     /// * `measurement_spec = DMTF`, `meas_hash_algo = SHA_384`,
     ///   `base_asym_sel = ECDSA_ECC_NIST_P384`,
     ///   `base_hash_sel = SHA_384`.
@@ -127,7 +129,11 @@ impl<S: Clone> ConnectionState<S> {
     pub fn caliptra() -> Self {
         Self {
             ct_exponent: 20, // 2^20 µs
-            cap_flags: CapFlags::CERT | CapFlags::CHAL | CapFlags::MEAS_SIG | CapFlags::ALIAS_CERT,
+            cap_flags: CapFlags::CERT
+                | CapFlags::CHAL
+                | CapFlags::MEAS_SIG
+                | CapFlags::ALIAS_CERT
+                | CapFlags::CHUNK,
 
             measurement_spec: MeasSpec::DMTF,
             other_param_support: OtherParamSupport::OPAQUE_DATA_FMT1,
@@ -144,6 +150,8 @@ impl<S: Clone> ConnectionState<S> {
             peer_max_spdm_msg_size: 0,
             peer_cap_flags: CapFlags::EMPTY,
             transcript: crate::transcript::Transcript::new(),
+            chunk: chunk::ChunkState::default(),
+            large_response: chunk::LargeResponseState::default(),
         }
     }
 
@@ -158,6 +166,8 @@ impl<S: Clone> ConnectionState<S> {
         self.peer_max_spdm_msg_size = 0;
         self.peer_cap_flags = CapFlags::EMPTY;
         self.transcript.reset();
+        self.chunk.reset();
+        self.large_response.reset();
     }
 
     /// Convert the negotiated `base_asym_sel` bitfield to
@@ -186,7 +196,9 @@ pub struct SpdmStack<Pal: SpdmPal> {
 
 impl<Pal: SpdmPal> SpdmStack<Pal> {
     /// Constructs a new responder over `pal` with the default
-    /// (Caliptra) local-policy advertisement.
+    /// (Caliptra) local-policy advertisement. If the PAL does not
+    /// provide persistent large-message storage, `CHUNK` is removed
+    /// from the advertised capabilities.
     ///
     /// # Parameters
     ///
@@ -197,10 +209,12 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
     ///
     /// A new `SpdmStack` in [`Phase::Start`].
     pub fn new(pal: Pal) -> Self {
-        Self {
-            pal,
-            state: ConnectionState::<Pal::State>::default(),
+        let mut state = ConnectionState::<Pal::State>::default();
+        if pal.large_message_capacity() == 0 {
+            state.cap_flags =
+                CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
         }
+        Self { pal, state }
     }
 
     /// Main responder run loop.
@@ -315,7 +329,8 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
             req_version
         };
 
-        let Ok(mut err_rsp) = build_error_response(&self.pal, io, rsp_version, err.spec_byte(), 0)
+        let Ok(mut err_rsp) =
+            build_error_response(&self.pal, io, rsp_version, err.spec_byte(), 0, &[])
         else {
             // Allocator exhausted or codec failure — nothing more we
             // can do for this exchange.
@@ -358,6 +373,15 @@ async fn dispatch<'a, Pal: SpdmPal>(
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     code: ReqRespCode,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
+    if code != ReqRespCode::CHUNK_SEND && state.chunk.in_progress() {
+        state.chunk.reset();
+    }
+    if code != ReqRespCode::CHUNK_GET
+        && code != ReqRespCode::CHUNK_SEND
+        && state.large_response.in_progress()
+    {
+        state.large_response.reset();
+    }
     match code {
         ReqRespCode::GET_VERSION => {
             state.reset_negotiation();
@@ -372,6 +396,8 @@ async fn dispatch<'a, Pal: SpdmPal>(
         ReqRespCode::GET_DIGESTS => digests::handle_get_digests(state, pal, io).await,
         ReqRespCode::GET_CERTIFICATE => certificate::handle_get_certificate(state, pal, io).await,
         ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
+        ReqRespCode::CHUNK_SEND => chunk::handle_chunk_send(state, pal, io).await,
+        ReqRespCode::CHUNK_GET => chunk::handle_chunk_get(state, pal, io).await,
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST),
     }

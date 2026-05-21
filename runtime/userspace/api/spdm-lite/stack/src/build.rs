@@ -105,13 +105,15 @@ pub(crate) fn build_error_response<'a, Pal: SpdmPal>(
     version: SpdmVersion,
     error_code: u8,
     error_data: u8,
+    extended_data: &[u8],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     use mcu_spdm_lite_codec::{ReqRespCode, SpdmMsgHdrPdu};
     let head = pal.header_size();
-    let raw_len = head + SpdmMsgHdrPdu::SIZE + 2;
+    let raw_len = head + SpdmMsgHdrPdu::SIZE + 2 + extended_data.len();
     let mut buf = alloc_padded(pal, io, raw_len)?;
     let mut w = WireWriter::new(&mut buf[head..]);
     w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::ERROR))?;
     w.write(&[error_code, error_data])?;
+    w.write(extended_data)?;
     Ok(buf)
 }

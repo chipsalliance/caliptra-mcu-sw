@@ -34,6 +34,7 @@ mod build;
 mod capabilities;
 mod certificate;
 mod challenge;
+mod chunk;
 mod digests;
 mod error;
 mod stack;
