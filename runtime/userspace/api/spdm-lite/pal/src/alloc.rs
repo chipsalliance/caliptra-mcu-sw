@@ -76,6 +76,10 @@ impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
     fn alloc_bytes(&self, _io: &impl SpdmPalIo, len: usize) -> McuResult<Self::Bytes<'_>> {
         self.allocator.alloc_bytes(len)
     }
+
+    fn shrink_bytes(bytes: &mut Self::Bytes<'_>, new_len: usize) -> McuResult<()> {
+        bytes.shrink(new_len)
+    }
 }
 
 // ---------------------------------------------------------------------------
