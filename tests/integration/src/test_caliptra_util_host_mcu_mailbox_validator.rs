@@ -161,7 +161,7 @@ pub mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some(feature),
             debug_intent: true,
-            lifecycle_controller_state: Some(caliptra_mcu_hw_model::LifecycleControllerState::Prod),
+            lifecycle_controller_state: Some(caliptra_mcu_romtime::LifecycleControllerState::Prod),
             prod_dbg_unlock_keypairs: prod_dbg_keypairs,
             ..Default::default()
         });
