@@ -25,6 +25,7 @@
 mod alloc;
 mod cert;
 mod dpe;
+mod rng;
 mod sha;
 mod wire;
 
@@ -34,6 +35,7 @@ pub use dpe::{
     dpe_certify_key, dpe_get_cert_chain_chunk, dpe_sign_ecc_p384, walk_dpe_chain, DpeChainSink,
     DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE, DPE_P384_SIGNATURE_SIZE,
 };
+pub use rng::rng_generate;
 pub use sha::{sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE};
 
 pub use mcu_error::{McuErrorCode, McuResult};

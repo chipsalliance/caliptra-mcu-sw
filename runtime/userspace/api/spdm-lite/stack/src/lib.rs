@@ -33,6 +33,7 @@ mod algorithms;
 mod build;
 mod capabilities;
 mod certificate;
+mod challenge;
 mod digests;
 mod error;
 mod stack;

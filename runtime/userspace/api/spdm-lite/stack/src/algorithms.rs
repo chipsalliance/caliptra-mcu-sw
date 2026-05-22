@@ -24,7 +24,7 @@
 
 use mcu_spdm_lite_codec::{
     alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, DheAlgos, KeyScheduleAlgos,
-    NegotiateAlgorithmsReqBodyFixed, SpdmMsgHdrPdu,
+    NegotiateAlgorithmsReqBodyFixed, ResponseBody, SpdmMsgHdrPdu,
 };
 use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::FromBytes;
@@ -87,13 +87,16 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     let alg_structs = locate_alg_structs(fixed, body)?;
     let peer = parse_peer_algs(alg_structs)?;
     let rsp_body = build_response_body(state, fixed, &peer);
-
+    let spdm_len = rsp_body.encoded_size();
     let resp = build_response(pal, io, state.version, &rsp_body)?;
 
     // DSP0274 §10.4.1: NEGOTIATE_ALGORITHMS + ALGORITHMS contribute to VCA.
     let head = pal.header_size();
     state.transcript.append_vca(pal, io, io.request()).await?;
-    state.transcript.append_vca(pal, io, &resp[head..]).await?;
+    state
+        .transcript
+        .append_vca(pal, io, &resp[head..head + spdm_len])
+        .await?;
 
     state.phase = Phase::AfterAlgorithms;
     Ok(resp)

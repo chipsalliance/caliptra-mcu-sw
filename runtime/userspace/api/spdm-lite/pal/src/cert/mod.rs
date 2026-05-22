@@ -260,6 +260,10 @@ impl SpdmPalCertStore for McuSpdmPal {
     fn cache_chain_digest(&self, slot: u8, _algo: SpdmPalHashAlgo, digest: &[u8]) {
         self.cert_store.cache_chain_digest(slot, digest);
     }
+
+    async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
+        mcu_caliptra_api_lite::rng_generate(self, out).await
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@
 //!    local policy, then transitions to [`Phase::AfterCapabilities`].
 
 use mcu_spdm_lite_codec::{
-    CapFlags, CapabilitiesBody, CapabilitiesRsp, SpdmMsgHdrPdu, SpdmVersion,
+    CapFlags, CapabilitiesBody, CapabilitiesRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
 };
 use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::FromBytes;
@@ -79,22 +79,22 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
 
     // DataTransferSize == MaxSPDMmsgSize since we don't yet advertise CHUNK.
     let mtu = pal.mtu() as u32;
-    let resp = build_response(
-        pal,
-        io,
-        version,
-        &CapabilitiesRsp {
-            ct_exponent: state.ct_exponent,
-            flags: state.cap_flags,
-            data_transfer_size: mtu,
-            max_spdm_msg_size: mtu,
-        },
-    )?;
+    let body = CapabilitiesRsp {
+        ct_exponent: state.ct_exponent,
+        flags: state.cap_flags,
+        data_transfer_size: mtu,
+        max_spdm_msg_size: mtu,
+    };
+    let spdm_len = body.encoded_size();
+    let resp = build_response(pal, io, version, &body)?;
 
     // DSP0274 §10.4.1: GET_CAPABILITIES + CAPABILITIES contribute to VCA.
     let head = pal.header_size();
     state.transcript.append_vca(pal, io, io.request()).await?;
-    state.transcript.append_vca(pal, io, &resp[head..]).await?;
+    state
+        .transcript
+        .append_vca(pal, io, &resp[head..head + spdm_len])
+        .await?;
 
     state.phase = Phase::AfterCapabilities;
     Ok(resp)

@@ -157,4 +157,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// Default impl is a no-op.
     #[inline]
     fn cache_chain_digest(&self, _slot: u8, _algo: SpdmPalHashAlgo, _digest: &[u8]) {}
+
+    /// Fill `out` with random bytes from the platform RNG.
+    async fn generate_nonce(&self, io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()>;
 }

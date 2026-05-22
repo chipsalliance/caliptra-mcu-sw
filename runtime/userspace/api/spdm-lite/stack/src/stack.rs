@@ -24,7 +24,7 @@ use crate::build::build_error_response;
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
-use crate::{algorithms, capabilities, certificate, digests, version};
+use crate::{algorithms, capabilities, certificate, challenge, digests, version};
 
 /// Connection phase tracked on the responder so the dispatcher can
 /// enforce the DSP0274 §10 ordering
@@ -371,6 +371,7 @@ async fn dispatch<'a, Pal: SpdmPal>(
         }
         ReqRespCode::GET_DIGESTS => digests::handle_get_digests(state, pal, io).await,
         ReqRespCode::GET_CERTIFICATE => certificate::handle_get_certificate(state, pal, io).await,
+        ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST),
     }

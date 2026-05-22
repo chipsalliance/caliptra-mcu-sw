@@ -98,3 +98,26 @@ impl SpdmMsgHdrPdu {
 
 const _: () = assert!(core::mem::size_of::<SpdmMsgHdrPdu>() == SpdmMsgHdrPdu::SIZE);
 const _: () = assert!(core::mem::align_of::<SpdmMsgHdrPdu>() == 1);
+
+// ---- Protocol-wide constants ------------------------------------------------
+
+/// SPDM nonce length (32 bytes).
+pub const SPDM_NONCE_LEN: usize = 32;
+
+/// SHA-384 digest size (48 bytes).
+pub const SHA384_HASH_SIZE: usize = 48;
+
+/// RequesterContext length (SPDM V1.3+, 8 bytes).
+pub const REQUESTER_CONTEXT_LEN: usize = 8;
+
+/// ECC P-384 signature size (r || s, 96 bytes).
+pub const ECC_P384_SIGNATURE_SIZE: usize = 96;
+
+/// SPDM signing context prefix length (4 × 16 bytes).
+pub const SPDM_PREFIX_LEN: usize = 64;
+
+/// SPDM signing context operation string length.
+pub const SPDM_CONTEXT_LEN: usize = 36;
+
+/// Total signing context length.
+pub const SPDM_SIGNING_CONTEXT_LEN: usize = SPDM_PREFIX_LEN + SPDM_CONTEXT_LEN;

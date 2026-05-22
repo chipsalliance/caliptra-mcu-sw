@@ -7,7 +7,7 @@
 //! array. Chunk buffers come from the per-IO bitmap pool — no
 //! stack-allocated `[u8; N]` arrays for cert content.
 
-use mcu_spdm_lite_codec::{DigestsRsp, SpdmMsgHdrPdu};
+use mcu_spdm_lite_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu};
 use mcu_spdm_lite_traits::{
     PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
 };
@@ -19,7 +19,7 @@ use crate::stack::{ConnectionState, Phase};
 
 /// Streaming chunk size when hashing a cert chain — comes from the
 /// per-IO bitmap pool, not the stack.
-const CERT_CHUNK_SIZE: usize = 256;
+const CERT_CHUNK_SIZE: usize = 1024;
 
 pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State>,
@@ -71,23 +71,21 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
         cursor += digest_size;
     }
 
-    let resp = build_response(
-        pal,
-        io,
-        state.version,
-        &DigestsRsp {
-            supported_slots: supported,
-            provisioned_slots: provisioned,
-            digests: &digests,
-        },
-    )?;
+    let digests_body = DigestsRsp {
+        supported_slots: supported,
+        provisioned_slots: provisioned,
+        digests: &digests,
+    };
+    let spdm_len = digests_body.encoded_size();
 
-    // DSP0274 Table 47: GET_DIGESTS + DIGESTS contribute to M1 (the
-    // `B` portion of `M1 = A ∥ B ∥ C`). The first append forks M1
-    // from VCA via `Transcript::append_m1`.
+    let resp = build_response(pal, io, state.version, &digests_body)?;
+
     let head = pal.header_size();
     state.transcript.append_m1(pal, io, io.request()).await?;
-    state.transcript.append_m1(pal, io, &resp[head..]).await?;
+    state
+        .transcript
+        .append_m1(pal, io, &resp[head..head + spdm_len])
+        .await?;
 
     state.phase = Phase::AfterDigests;
     Ok(resp)
@@ -102,7 +100,7 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
 /// allowed this small allocation) and stream the variable-length
 /// DER bytes from a pool-allocated chunk buffer.
 #[inline(never)]
-async fn cert_chain_hash<Pal: SpdmPal>(
+pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     slot: u8,
