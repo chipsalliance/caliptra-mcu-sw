@@ -355,7 +355,7 @@ pub unsafe fn main() {
     let mut platform_regions = ArrayVec::<PlatformRegion, 12>::new();
 
     // Kernel text region (read + execute)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: addr_of!(_srom),
         size: addr_of!(_erom) as usize - addr_of!(_srom) as usize,
         is_mmio: false,
@@ -366,7 +366,7 @@ pub unsafe fn main() {
     });
 
     // Read-only region (ROM)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: addr_of!(_sprog),
         size: addr_of!(_eprog) as usize - addr_of!(_sprog) as usize,
         is_mmio: false,
@@ -377,7 +377,7 @@ pub unsafe fn main() {
     });
 
     // Data region (SRAM)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: addr_of!(_ssram),
         size: addr_of!(_esram) as usize - addr_of!(_ssram) as usize,
         is_mmio: false,
@@ -387,7 +387,7 @@ pub unsafe fn main() {
         execute: false,
     });
 
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: MCU_MEMORY_MAP.dccm_offset as *const u8,
         size: MCU_MEMORY_MAP.dccm_size as usize,
         is_mmio: false, // DCCM is memory, not MMIO
@@ -398,7 +398,7 @@ pub unsafe fn main() {
     });
 
     // User-accessible MMIO (FPGA peripherals and UART)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: 0xa401_0000 as *const u8,
         size: 0x2000,
         is_mmio: true,
@@ -409,7 +409,7 @@ pub unsafe fn main() {
     });
 
     // AXICDMA
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: caliptra_mcu_registers_generated::axicdma::AXICDMA_ADDR as *const u8,
         size: 0x1000,
         is_mmio: true,
@@ -420,7 +420,7 @@ pub unsafe fn main() {
     });
 
     // Staging SRAM
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: 0xB00C0000 as *const u8,
         size: 0x40000,
         is_mmio: true,
@@ -437,14 +437,23 @@ pub unsafe fn main() {
     };
 
     caliptra_mcu_romtime::println!("[mcu-runtime] Set PMP");
-    // Generate PMP region list using the shared infrastructure
-    let pmp_regions = caliptra_mcu_platforms_common::pmp_config::create_pmp_regions(config)
-        .expect("Failed to create PMP regions");
+    // Generate PMP region list using the shared infrastructure.
+    // Avoid `.expect(...)`/`.unwrap()`: those pull the error type's `Debug`
+    // impl (`CapacityError<PlatformRegion>` and the PMP-region error which
+    // includes `&u32`), which then drags in `core::fmt::Formatter::pad` and
+    // friends (~2 KB).  In `release` we accept a generic panic message.
+    let pmp_regions = match caliptra_mcu_platforms_common::pmp_config::create_pmp_regions(config) {
+        Ok(r) => r,
+        Err(_) => panic!("PMP region setup failed"),
+    };
 
     caliptra_mcu_romtime::println!("[mcu-runtime] Enabling PMP");
     caliptra_mcu_romtime::println!("PMP Regions:");
     caliptra_mcu_romtime::println!("{}", pmp_regions);
-    let epmp = VeeRProtectionMMLEPMP::new(pmp_regions).unwrap();
+    let epmp = match VeeRProtectionMMLEPMP::new(pmp_regions) {
+        Ok(e) => e,
+        Err(_) => panic!("ePMP setup failed"),
+    };
     caliptra_mcu_romtime::println!("[mcu-runtime] Set PMP done");
 
     // initialize capabilities

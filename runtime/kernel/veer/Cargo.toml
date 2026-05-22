@@ -23,3 +23,9 @@ riscv.workspace = true
 caliptra-mcu-romtime.workspace = true
 rv32i.workspace = true
 tock-registers.workspace = true
+
+[features]
+# Drop formatted operands from the fatal-exception panic so the binary doesn't
+# link Exception's Debug impl, LowerHex<u32>, and the rest of the core::fmt
+# machinery.
+minimal-panic = []

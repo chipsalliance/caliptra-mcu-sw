@@ -240,7 +240,13 @@ fn handle_exception(exception: mcause::Exception) {
         | mcause::Exception::LoadPageFault
         | mcause::Exception::StorePageFault
         | mcause::Exception::Unknown => {
+            #[cfg(not(feature = "minimal-panic"))]
             panic!("fatal exception: {:?}: {:#x}", exception, CSR.mtval.get());
+            #[cfg(feature = "minimal-panic")]
+            {
+                let _ = exception;
+                panic!("fatal exception");
+            }
         }
     }
 }
