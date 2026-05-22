@@ -24,7 +24,7 @@ use crate::build::build_error_response;
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
-use crate::{algorithms, capabilities, certificate, challenge, chunk, digests, version};
+use crate::{algorithms, capabilities, certificate, challenge, chunk, digests, vendor_defined, version};
 
 /// Connection phase tracked on the responder so the dispatcher can
 /// enforce the DSP0274 §10 ordering
@@ -192,7 +192,10 @@ impl<S: Clone> Default for ConnectionState<S> {
 pub struct SpdmStack<Pal: SpdmPal> {
     pub(crate) pal: Pal,
     pub(crate) state: ConnectionState<Pal::State>,
+    vdm_handlers: &'static [&'static dyn vendor_defined::VdmHandler],
 }
+
+const EMPTY_VDM_HANDLERS: &'static [&'static dyn vendor_defined::VdmHandler] = &[];
 
 impl<Pal: SpdmPal> SpdmStack<Pal> {
     /// Constructs a new responder over `pal` with the default
@@ -209,12 +212,24 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
     ///
     /// A new `SpdmStack` in [`Phase::Start`].
     pub fn new(pal: Pal) -> Self {
+        Self::with_vdm_handlers(pal, EMPTY_VDM_HANDLERS)
+    }
+
+    /// Constructs a responder with application-provided VDM handlers.
+    pub fn with_vdm_handlers(
+        pal: Pal,
+        vdm_handlers: &'static [&'static dyn vendor_defined::VdmHandler],
+    ) -> Self {
         let mut state = ConnectionState::<Pal::State>::default();
         if pal.large_message_capacity() == 0 {
             state.cap_flags =
                 CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
         }
-        Self { pal, state }
+        Self {
+            pal,
+            state,
+            vdm_handlers,
+        }
     }
 
     /// Main responder run loop.
@@ -248,7 +263,7 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
                 }
                 let _ = writeln!(&mut console);
             }
-            match dispatch(&mut self.state, &self.pal, &io, code).await {
+            match dispatch(&mut self.state, &self.pal, &io, code, self.vdm_handlers).await {
                 Ok(mut rsp) => {
                     #[cfg(feature = "debug-trace")]
                     {
@@ -372,6 +387,7 @@ async fn dispatch<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     code: ReqRespCode,
+    vdm_handlers: &[&dyn vendor_defined::VdmHandler],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     if code != ReqRespCode::CHUNK_SEND && state.chunk.in_progress() {
         state.chunk.reset();
@@ -398,6 +414,9 @@ async fn dispatch<'a, Pal: SpdmPal>(
         ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
         ReqRespCode::CHUNK_SEND => chunk::handle_chunk_send(state, pal, io).await,
         ReqRespCode::CHUNK_GET => chunk::handle_chunk_get(state, pal, io).await,
+        ReqRespCode::VENDOR_DEFINED_REQUEST => {
+            vendor_defined::handle_vendor_defined_request(state, pal, io, vdm_handlers)
+        }
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST),
     }
