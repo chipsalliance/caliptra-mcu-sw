@@ -205,11 +205,9 @@ impl SyscallDriverLookup for VeeR {
                 return f(None);
             }
             #[cfg(not(feature = "release"))]
-            caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
-                f(self
-                    .logging_flash
-                    .map(|l| l as &dyn kernel::syscall::SyscallDriver))
-            }
+            caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM => f(self
+                .logging_flash
+                .map(|l| l as &dyn kernel::syscall::SyscallDriver)),
             caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => {
                 f(Some(self.mcu_mbox0))
             }
@@ -733,12 +731,10 @@ pub unsafe fn main() {
     // tolerates `NoDevice` via its `probe()` step.
     #[cfg(not(feature = "release"))]
     let logging_flash = Some({
-        let logging_fl_user =
-            components::flash::FlashUserComponent::new(mux_primary_flash).finalize(
-                components::flash_user_component_static!(
-                    caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
-                ),
-            );
+        let logging_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash)
+            .finalize(components::flash_user_component_static!(
+                caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
+            ));
         caliptra_mcu_components::logging::LoggingFlashComponent::new(
             board_kernel,
             caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM,
@@ -750,10 +746,7 @@ pub unsafe fn main() {
             true,
         )
         .finalize(caliptra_mcu_components::logging_flash_component_static!(
-            virtual_flash::FlashUser<
-                'static,
-                caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl,
-            >,
+            virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl>,
             caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
         ))
     });

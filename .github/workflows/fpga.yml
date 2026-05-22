@@ -150,21 +150,17 @@ jobs:
             --separate-runtimes
           sccache --show-stats
 
-          # Build release-profile ROM and runtime binaries to exercise the
-          # production/min-size path in CI as well.
-          echo "Cross compiling FPGA release binaries"
-          cargo xtask-fpga fpga build \
-            --configuration subsystem \
-            --rom-features "core_test" \
-            --mcu_cfg mcu,0x0,0xB00C0000,2,2,2,test-fpga-flash-ctrl \
-            --separate-runtimes \
-            --profile release
+          # TODO: build release-profile FPGA firmware bundle in CI once
+          # `xtask fpga build` supports a `--profile` flag.  For now we
+          # only build the FPGA runtime binary so we still exercise the
+          # release-feature gates on the FPGA platform in CI.
+          echo "Cross compiling FPGA release-profile runtime"
+          cargo xtask runtime-build --platform fpga --profile release
           sccache --show-stats
 
           mkdir -p /tmp/caliptra-binaries
           tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz \
-            all-fw.zip \
-            all-fw-release.zip
+            all-fw.zip
 
           echo "Cross compiling test binaries"
           cargo xtask-fpga fpga build-test --configuration subsystem
