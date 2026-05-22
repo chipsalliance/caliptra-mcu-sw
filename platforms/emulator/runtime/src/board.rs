@@ -141,11 +141,11 @@ struct VeeR {
     >,
     caliptra: &'static caliptra_mcu_capsules_runtime::caliptra::Caliptra,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
-    // Stripped from `release` builds — no kernel-side producer writes the logging
-    // partition on the emulator, so the capsule is dead weight in production.
-    logging_flash: Option<
+    // Flash-backed logging capsule — always present.  This is a production
+    // feature: the syscall driver is exposed to user-space agents that drain
+    // the on-flash log via `caliptra_cmd_handler::debug_log::drain`.
+    logging_flash:
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
-    >,
     mci: &'static caliptra_mcu_capsules_runtime::mci::Mci,
     mcu_mbox0: &'static caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver<
         'static,
@@ -204,10 +204,9 @@ impl SyscallDriverLookup for VeeR {
                 }
                 return f(None);
             }
-            #[cfg(not(feature = "release"))]
-            caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM => f(self
-                .logging_flash
-                .map(|l| l as &dyn kernel::syscall::SyscallDriver)),
+            caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
+                f(Some(self.logging_flash))
+            }
             caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => {
                 f(Some(self.mcu_mbox0))
             }
@@ -736,13 +735,10 @@ pub unsafe fn main() {
         caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
     );
 
-    // Flash user + logging capsule.  Stripped in `release` builds — no kernel-side
-    // producer writes the logging partition, so the entire
-    // LoggingFlashDriver + Log + FlashStorageToPages + FlashUser chain is dead
-    // weight in production.  User-space `caliptra_cmd_handler::debug_log::drain`
-    // tolerates `NoDevice` via its `probe()` step.
-    #[cfg(not(feature = "release"))]
-    let logging_flash = Some({
+    // Flash user + logging capsule.  Production feature: the user-space
+    // agent (`caliptra_cmd_handler::debug_log::drain`) reads the persisted
+    // log via the syscall driver.
+    let logging_flash = {
         let logging_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash)
             .finalize(components::flash_user_component_static!(
                 caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
@@ -761,9 +757,7 @@ pub unsafe fn main() {
             virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl>,
             caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
         ))
-    });
-    #[cfg(feature = "release")]
-    let logging_flash = None;
+    };
 
     let dma = caliptra_mcu_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,

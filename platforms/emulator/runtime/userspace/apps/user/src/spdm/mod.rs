@@ -49,7 +49,7 @@ fn log_spdm_err<W: Write>(w: &mut W, prefix: &str, msg: &str, e: &SpdmError) {
     let path = e.error_code();
     let ext = e.ext_code();
     if ext != 0 {
-        writeln!(
+        let _ = writeln!(
             w,
             "{}: {}: {} 0x{:08x} ext=0x{:08x}",
             prefix,
@@ -57,10 +57,9 @@ fn log_spdm_err<W: Write>(w: &mut W, prefix: &str, msg: &str, e: &SpdmError) {
             e.category(),
             path,
             ext
-        )
-        .unwrap();
+        );
     } else {
-        writeln!(w, "{}: {}: {} 0x{:08x}", prefix, msg, e.category(), path).unwrap();
+        let _ = writeln!(w, "{}: {}: {} 0x{:08x}", prefix, msg, e.category(), path);
     }
 }
 
@@ -87,20 +86,18 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
     init_target_env_claims();
 
     if spawner.spawn(spdm_mctp_responder()).is_err() {
-        writeln!(
+        let _ = writeln!(
             console_writer,
             "SPDM_TASK: Failed to spawn spdm_mctp_responder"
-        )
-        .unwrap();
+        );
     }
 
     #[cfg(feature = "doe")]
     if spawner.spawn(spdm_doe_responder()).is_err() {
-        writeln!(
+        let _ = writeln!(
             console_writer,
             "SPDM_TASK: Failed to spawn spdm_doe_responder"
-        )
-        .unwrap();
+        );
     }
 }
 

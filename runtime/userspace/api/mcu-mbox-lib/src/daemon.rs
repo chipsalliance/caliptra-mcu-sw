@@ -90,12 +90,11 @@ pub async fn mcu_mbox_responder(
             .await
         {
             // Debug print on error
-            writeln!(
+            let _ = writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "mcu_mbox_responder error: {:?}",
                 e
-            )
-            .unwrap();
+            );
         }
     }
 }
