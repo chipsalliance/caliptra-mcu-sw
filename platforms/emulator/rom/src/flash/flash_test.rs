@@ -13,8 +13,8 @@ pub fn test_rom_flash_access(partition: &FlashPartition) {
 
     for iter in 0..NUM_ITER {
         let mut test_data = [0u8; TEST_DATA_SIZE];
-        for i in 0..test_data.len() {
-            test_data[i] = (i & 0xFF) as u8;
+        for (i, byte) in test_data.iter_mut().enumerate() {
+            *byte = (i & 0xFF) as u8;
         }
         let start_addr = 0x50 + iter * ADDR_STEP;
         let mut read_buf = [0u8; TEST_DATA_SIZE];
@@ -40,12 +40,11 @@ pub fn test_rom_flash_access(partition: &FlashPartition) {
             test_exit(1);
         }
 
-        // Verify the data
-        for i in 0..test_data.len() {
-            if read_buf[i] != test_data[i] {
+        for (i, (got, want)) in read_buf.iter().zip(test_data.iter()).enumerate() {
+            if got != want {
                 println!(
                     "Flash data mismatch at iter {}, index {}: expected {:02x}, got {:02x}",
-                    iter, i, test_data[i], read_buf[i]
+                    iter, i, want, got
                 );
                 test_exit(1);
             }

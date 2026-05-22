@@ -256,7 +256,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProdDebugUnlockReq(req) => Ok(req.as_bytes()),
             McuMailboxReq::ProdDebugUnlockToken(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRead(req) => Ok(req.as_bytes()),
-            McuMailboxReq::FuseWrite(req) => req.as_bytes_partial(),
+            McuMailboxReq::FuseWrite(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_bytes()),
@@ -313,7 +313,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProdDebugUnlockReq(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ProdDebugUnlockToken(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRead(req) => Ok(req.as_mut_bytes()),
-            McuMailboxReq::FuseWrite(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::FuseWrite(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_mut_bytes()),
@@ -1386,57 +1386,15 @@ impl Default for FuseReadResp {
 
 /// MC_FUSE_WRITE request: Write fuse values to a partition entry.
 #[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq, Default)]
 pub struct FuseWriteReq {
     pub hdr: MailboxReqHeader,
-    /// Partition number to write to
-    pub partition: u32,
-    /// Entry index within the partition
-    pub entry: u32,
-    /// Starting bit position (LSB in entry is 0)
-    pub start_bit: u32,
-    /// Number of bits to write
-    pub length_bits: u32,
-    /// Fuse data to write (variable length, up to MAX_FUSE_DATA_SIZE bytes)
-    pub data: [u8; MAX_FUSE_DATA_SIZE],
-}
-
-impl Default for FuseWriteReq {
-    fn default() -> Self {
-        Self {
-            hdr: MailboxReqHeader::default(),
-            partition: 0,
-            entry: 0,
-            start_bit: 0,
-            length_bits: 0,
-            data: [0u8; MAX_FUSE_DATA_SIZE],
-        }
-    }
-}
-
-impl FuseWriteReq {
-    /// Returns the actual size of the request based on the data length.
-    fn partial_len(&self) -> usize {
-        let data_bytes = (self.length_bits as usize).div_ceil(8);
-        core::mem::size_of::<MailboxReqHeader>()
-            + core::mem::size_of::<u32>() * 4  // partition, entry, start_bit, length_bits
-            + data_bytes
-    }
-}
-
-impl McuRequestVarSize for FuseWriteReq {
-    fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
-        self.as_bytes()
-            .get(..self.partial_len())
-            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
-    }
-
-    fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
-        let len = self.partial_len();
-        self.as_mut_bytes()
-            .get_mut(..len)
-            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
-    }
+    /// Word address
+    pub word_addr: u32,
+    /// Data to write
+    pub data: u32,
+    /// Bit-Mask to only write specified bits
+    pub mask: u32,
 }
 
 impl Request for FuseWriteReq {
@@ -1705,40 +1663,6 @@ mod tests {
             &parsed.data[0..8],
             &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
         );
-    }
-
-    #[test]
-    fn test_fuse_write_req_serialization() {
-        let mut req = FuseWriteReq::default();
-        req.partition = 3;
-        req.entry = 1;
-        req.start_bit = 0;
-        req.length_bits = 32;
-        req.data[0..4].copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
-
-        let bytes = req.as_bytes();
-        let parsed = FuseWriteReq::read_from_bytes(bytes).unwrap();
-        assert_eq!(parsed.partition, 3);
-        assert_eq!(parsed.entry, 1);
-        assert_eq!(parsed.start_bit, 0);
-        assert_eq!(parsed.length_bits, 32);
-        assert_eq!(&parsed.data[0..4], &[0xAA, 0xBB, 0xCC, 0xDD]);
-    }
-
-    #[test]
-    fn test_fuse_write_req_partial_len() {
-        let mut req = FuseWriteReq::default();
-        req.length_bits = 32; // 4 bytes
-        let expected_len = core::mem::size_of::<MailboxReqHeader>() + 4 * 4 + 4;
-        assert_eq!(req.partial_len(), expected_len);
-
-        req.length_bits = 1; // 1 bit = 1 byte
-        let expected_len = core::mem::size_of::<MailboxReqHeader>() + 4 * 4 + 1;
-        assert_eq!(req.partial_len(), expected_len);
-
-        req.length_bits = 0;
-        let expected_len = core::mem::size_of::<MailboxReqHeader>() + 4 * 4;
-        assert_eq!(req.partial_len(), expected_len);
     }
 
     #[test]

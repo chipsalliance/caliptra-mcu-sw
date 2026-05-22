@@ -28,6 +28,11 @@ enum I3cControllerState {
     SendPrivateWrite,
     WaitForIbi,
     ReceivePrivateRead,
+    /// Reserved for paths that explicitly terminate the receive loop.
+    /// Currently unused by `wait_for_responder` (which returns directly
+    /// from the `EOM` branch); kept for future use without forcing a
+    /// public-API change.
+    #[allow(dead_code)]
     Finish,
 }
 
@@ -136,6 +141,16 @@ impl MctpUtil {
         let msg_type = msg[0];
 
         let mut retry = 100;
+        // Buffer for accumulating multi-packet responses. The first packet
+        // matching `msg_type` (post-MCTP-header byte) starts the message;
+        // subsequent packets without SOM are appended until EOM is seen.
+        let mut resp_pkts: VecDeque<Vec<u8>> = VecDeque::new();
+        let mut response_started = false;
+        // Track whether the request has been sent at least once so we do
+        // not re-send while waiting for the responder. Re-sending the same
+        // request causes duplicate responses on slow I/O paths and
+        // confuses subsequent `wait_for_responder` calls.
+        let mut request_sent = false;
 
         while MCU_RUNNING.load(Ordering::Relaxed) && retry > 0 {
             match i3c_state {
@@ -149,6 +164,7 @@ impl MctpUtil {
                 I3cControllerState::SendPrivateWrite => {
                     let write_pkt = pkts.front().unwrap().clone();
                     if stream.send_private_write(target_addr, write_pkt) {
+                        request_sent = true;
                         i3c_state = I3cControllerState::WaitForIbi;
                         sleep_emulator_ticks(100_000);
                     }
@@ -156,6 +172,23 @@ impl MctpUtil {
                 I3cControllerState::WaitForIbi => {
                     if stream.receive_ibi(target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
+                    } else if response_started {
+                        // We are mid-response; just wait for the next IBI
+                        // without rewinding to SendPrivateWrite.
+                        retry -= 1;
+                        sleep_emulator_ticks(100_000);
+                    } else if request_sent {
+                        // Request already on the wire — keep waiting for
+                        // the IBI without re-sending. Re-sending generates
+                        // duplicate responses that the responder must
+                        // process, which on slow I/O paths causes ordering
+                        // issues across `wait_for_responder` calls.
+                        retry -= 1;
+                        if retry == 0 {
+                            println!("MCTP_UTIL: timed out waiting for IBI");
+                            return None;
+                        }
+                        sleep_emulator_ticks(100_000);
                     } else {
                         retry -= 1;
                         // Wait longer for the responder to wake up and post
@@ -174,21 +207,62 @@ impl MctpUtil {
                 }
                 I3cControllerState::ReceivePrivateRead => {
                     if let Some(data) = stream.receive_private_read(target_addr) {
-                        if data[4] == msg_type {
-                            let mut resp_pkts = VecDeque::new();
+                        // Inspect the MCTP transport header to filter out
+                        // stale packets that do not belong to this exchange.
+                        // Stale packets can occur when the request was
+                        // retransmitted (`MCTP_UTIL: IBI not received`)
+                        // and the responder produced more than one response
+                        // for the same logical request.
+                        if data.len() < MCTP_HDR_SIZE {
+                            // Too short to be a valid MCTP packet — drop and
+                            // keep polling.
+                            i3c_state = I3cControllerState::WaitForIbi;
+                            continue;
+                        }
+                        let mctp_hdr = MCTPHdr::<[u8; MCTP_HDR_SIZE]>::read_from_bytes(
+                            &data[0..MCTP_HDR_SIZE],
+                        )
+                        .unwrap();
+
+                        if !response_started {
+                            // First packet of our response must:
+                            //   * be a SOM packet (start of a new message),
+                            //   * carry our msg_tag,
+                            //   * have its MCTP-common-header byte (the
+                            //     responder's `msg_type`) match our request.
+                            // Anything else is stale traffic from a prior
+                            // exchange or a control packet for someone else.
+                            if mctp_hdr.som() != 1
+                                || mctp_hdr.msg_tag() != msg_tag
+                                || data.len() <= MCTP_HDR_SIZE
+                                || data[MCTP_HDR_SIZE] != msg_type
+                            {
+                                i3c_state = I3cControllerState::WaitForIbi;
+                                continue;
+                            }
+                            response_started = true;
+                        } else if mctp_hdr.msg_tag() != msg_tag {
+                            // Mid-message: discard packets from other tags.
+                            i3c_state = I3cControllerState::WaitForIbi;
+                            continue;
+                        }
+
+                        let is_last = mctp_hdr.eom() == 1;
+                        resp_pkts.push_back(data);
+
+                        if is_last {
                             let message_identifier = MessageIdentifier {
                                 dest_eid: self.src_eid, // Destination is the requester
                                 src_eid: self.dest_eid, // Source is the responder
                                 msg_tag,                // The message tag sent in the request
                                 tag_owner: 0,           // Not tag owner for response
                             };
-                            resp_pkts.push_back(data);
                             self.new_resp();
                             let resp = self.assemble(resp_pkts, &message_identifier);
                             return Some(resp);
                         }
-
-                        i3c_state = I3cControllerState::Finish;
+                        // More packets to come — wait for the next IBI.
+                        i3c_state = I3cControllerState::WaitForIbi;
                     }
                 }
                 I3cControllerState::Finish => {

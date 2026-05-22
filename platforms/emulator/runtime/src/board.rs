@@ -67,10 +67,6 @@ extern "C" {
     static _ssram: u8;
     /// The end of the kernel / app RAM (Included only for kernel PMP)
     static _esram: u8;
-    /// The start of the flash region for logging
-    static _sstorage: u8;
-    /// The end of the flash region for logging
-    static _estorage: u8;
 
     pub(crate) static _pic_vector_table: u8;
 }
@@ -419,17 +415,6 @@ pub unsafe fn main() {
         execute: false,
     });
 
-    // Logging flash region
-    platform_regions.push(PlatformRegion {
-        start_addr: addr_of!(_sstorage) as *const u8,
-        size: (addr_of!(_estorage) as usize - addr_of!(_sstorage) as usize),
-        is_mmio: true,
-        user_accessible: false,
-        read: true,
-        write: false,
-        execute: false,
-    });
-
     // Create PMP configuration
     let config = PlatformPMPConfig {
         regions: &platform_regions,
@@ -488,7 +473,10 @@ pub unsafe fn main() {
         board_kernel,
         caliptra_mcu_capsules_runtime::mailbox::DRIVER_NUM,
         mux_alarm,
+        #[cfg(feature = "test-caliptra-mailbox")]
         Some(100_000),
+        #[cfg(not(feature = "test-caliptra-mailbox"))]
+        Some(5_000_000),
     )
     .finalize(mailbox_component_static!(
         InternalTimers<'static>,
@@ -771,7 +759,10 @@ pub unsafe fn main() {
     use caliptra_mcu_external_otp_emulator::ext_sram_otp::ExtSramBackedExternalOtp;
 
     const EXTERNAL_OTP_PARTITIONS: &[ExternalOtpPartitionInfo] = &[
-        ExternalOtpPartitionInfo { id: 0x01, size: 96 }, // IDevID ECC signature (R || S)
+        ExternalOtpPartitionInfo {
+            id: 0x01,
+            size: 547,
+        }, // IDevID ECC Cert
         ExternalOtpPartitionInfo {
             id: 0x02,
             size: 4627,

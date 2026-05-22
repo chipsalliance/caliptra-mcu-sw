@@ -11,7 +11,7 @@ pub mod test {
     };
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_mbox_common::messages::{
-        CmAesDecryptInitReq, CmAesDecryptUpdateReq, CmAesEncryptInitReq,
+        ClearLogReq, CmAesDecryptInitReq, CmAesDecryptUpdateReq, CmAesEncryptInitReq,
         CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq, CmAesGcmDecryptFinalReq,
         CmAesGcmDecryptFinalRespHeader, CmAesGcmDecryptInitReq, CmAesGcmDecryptUpdateReq,
         CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq, CmAesGcmEncryptFinalRespHeader,
@@ -22,7 +22,7 @@ pub mod test {
         CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, CmRandomGenerateReq,
         CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk,
         DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp,
-        FirmwareVersionReq, FirmwareVersionResp, MailboxReqHeader, MailboxRespHeader,
+        FirmwareVersionReq, FirmwareVersionResp, GetLogReq, MailboxReqHeader, MailboxRespHeader,
         MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
         McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
         McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
@@ -209,6 +209,7 @@ pub mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some(&feature),
             i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
+            seeded_log_entries: Some(caliptra_mcu_mbox_common::config::TEST_DEBUG_LOG_ENTRIES),
             ..Default::default()
         });
 
@@ -395,6 +396,7 @@ pub mod test {
                 self.add_hmac_kdf_counter_tests()?;
                 self.add_hkdf_tests()?;
                 self.add_debug_unlock_tests()?;
+                self.add_log_cmds_tests()?;
                 Ok(())
             } else if feature == "test-mcu-mbox-fips-self-test" {
                 self.add_fips_self_test_tests()?;
@@ -2732,6 +2734,191 @@ pub mod test {
             println!("  Prod debug unlock token passthrough test passed");
 
             println!("Debug unlock passthrough tests passed");
+            Ok(())
+        }
+
+        fn add_log_cmds_tests(&mut self) -> Result<(), ()> {
+            println!("Running MC_GET_LOG / MC_CLEAR_LOG tests");
+
+            const MORE_DATA_FIELD_LEN: usize = core::mem::size_of::<u32>();
+            let hdr_len = core::mem::size_of::<MailboxRespHeaderVarSize>();
+
+            // ---------- 1) Drain debug log (one round-trip suffices) ----------
+            let mut req = McuMailboxReq::GetLog(GetLogReq {
+                hdr: MailboxReqHeader::default(),
+                log_type: 0, // Debug
+            });
+            let cmd = req.cmd_code();
+            req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(cmd.0, req.as_bytes().unwrap())
+                .map_err(|e| {
+                    println!("    GetLog(Debug) initial drain failed: {:?}", e);
+                })?;
+            assert_eq!(
+                resp.status_code,
+                MbxCmdStatus::Complete as u32,
+                "GetLog(Debug) should succeed"
+            );
+
+            let var_hdr = MailboxRespHeaderVarSize::ref_from_bytes(&resp.data[..hdr_len]).unwrap();
+            let payload = &resp.data[hdr_len..hdr_len + var_hdr.data_len as usize];
+            let more_data = u32::from_le_bytes(payload[..MORE_DATA_FIELD_LEN].try_into().unwrap());
+            let log_bytes = &payload[MORE_DATA_FIELD_LEN..];
+
+            let expected: Vec<u8> = caliptra_mcu_mbox_common::config::TEST_DEBUG_LOG_ENTRIES
+                .iter()
+                .flat_map(|e| e.iter().copied())
+                .collect();
+            assert_eq!(
+                more_data, 0,
+                "MCU mailbox 4 KiB budget should fit the full seeded fixture"
+            );
+            assert_eq!(
+                log_bytes,
+                expected.as_slice(),
+                "Drained log bytes mismatch seeded fixture"
+            );
+            println!(
+                "  GetLog(Debug) initial drain: {} bytes, more_data=0 (matches fixture)",
+                log_bytes.len()
+            );
+
+            // ---------- 2) Second drain returns 0 bytes (cursor at end) ----------
+            let mut req = McuMailboxReq::GetLog(GetLogReq {
+                hdr: MailboxReqHeader::default(),
+                log_type: 0,
+            });
+            req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(cmd.0, req.as_bytes().unwrap())
+                .map_err(|e| {
+                    println!("    GetLog(Debug) second drain failed: {:?}", e);
+                })?;
+            assert_eq!(resp.status_code, MbxCmdStatus::Complete as u32);
+            let var_hdr = MailboxRespHeaderVarSize::ref_from_bytes(&resp.data[..hdr_len]).unwrap();
+            assert_eq!(
+                var_hdr.data_len as usize, MORE_DATA_FIELD_LEN,
+                "Second drain should carry only the more_data field (no log bytes)"
+            );
+            println!("  GetLog(Debug) second drain: 0 bytes, cursor at end");
+
+            // ---------- 3) ClearLog(Debug) succeeds ----------
+            let mut req = McuMailboxReq::ClearLog(ClearLogReq {
+                hdr: MailboxReqHeader::default(),
+                log_type: 0,
+            });
+            let clear_cmd = req.cmd_code();
+            req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(clear_cmd.0, req.as_bytes().unwrap())
+                .map_err(|e| {
+                    println!("    ClearLog(Debug) failed: {:?}", e);
+                })?;
+            assert_eq!(
+                resp.status_code,
+                MbxCmdStatus::Complete as u32,
+                "ClearLog(Debug) should succeed"
+            );
+            println!("  ClearLog(Debug): success");
+
+            // ---------- 4) Post-clear GetLog(Debug) is empty ----------
+            let mut req = McuMailboxReq::GetLog(GetLogReq {
+                hdr: MailboxReqHeader::default(),
+                log_type: 0,
+            });
+            req.populate_chksum().unwrap();
+            let resp = self
+                .process_message(cmd.0, req.as_bytes().unwrap())
+                .map_err(|e| {
+                    println!("    Post-clear GetLog(Debug) failed: {:?}", e);
+                })?;
+            assert_eq!(resp.status_code, MbxCmdStatus::Complete as u32);
+            let var_hdr = MailboxRespHeaderVarSize::ref_from_bytes(&resp.data[..hdr_len]).unwrap();
+            assert_eq!(
+                var_hdr.data_len as usize, MORE_DATA_FIELD_LEN,
+                "Post-clear GetLog should be empty"
+            );
+            println!("  Post-clear GetLog(Debug): 0 bytes (expected)");
+
+            // ---------- 5) Attestation log still unsupported on both platforms ----------
+            // Attestation log: not yet wired anywhere → Failure on both platforms.
+            let mut req = McuMailboxReq::GetLog(GetLogReq {
+                hdr: MailboxReqHeader::default(),
+                log_type: 1, // Attestation
+            });
+            req.populate_chksum().unwrap();
+            let resp = self
+                .process_message(cmd.0, req.as_bytes().unwrap())
+                .map_err(|e| {
+                    println!("    GetLog(Attestation) transport error: {:?}", e);
+                })?;
+            assert_eq!(
+                resp.status_code,
+                MbxCmdStatus::Failure as u32,
+                "GetLog(Attestation) should report Failure until the production \
+                 attestation-log backend lands"
+            );
+            println!("  GetLog(Attestation): Failure (expected — unsupported)");
+
+            // ClearLog(Attestation) — also unsupported on both platforms.
+            // (Reuse `cmd` as the GetLog cmd code; we need ClearLog cmd code now.)
+            let mut req = McuMailboxReq::ClearLog(ClearLogReq {
+                hdr: MailboxReqHeader::default(),
+                log_type: 1,
+            });
+            let clear_cmd = req.cmd_code();
+            req.populate_chksum().unwrap();
+            let resp = self
+                .process_message(clear_cmd.0, req.as_bytes().unwrap())
+                .map_err(|e| {
+                    println!("    ClearLog(Attestation) transport error: {:?}", e);
+                })?;
+            assert_eq!(
+                resp.status_code,
+                MbxCmdStatus::Failure as u32,
+                "ClearLog(Attestation) should report Failure until production backend lands"
+            );
+            println!("  ClearLog(Attestation): Failure (expected — unsupported)");
+
+            // ---------- 6) Invalid log_type rejected ----------
+            let mut req = McuMailboxReq::GetLog(GetLogReq {
+                hdr: MailboxReqHeader::default(),
+                log_type: 0xFF,
+            });
+            req.populate_chksum().unwrap();
+            let resp = self
+                .process_message(cmd.0, req.as_bytes().unwrap())
+                .map_err(|e| {
+                    println!("    GetLog(invalid) transport error: {:?}", e);
+                })?;
+            assert_eq!(
+                resp.status_code,
+                MbxCmdStatus::Failure as u32,
+                "GetLog with unknown log_type should report Failure"
+            );
+
+            let mut req = McuMailboxReq::ClearLog(ClearLogReq {
+                hdr: MailboxReqHeader::default(),
+                log_type: 0xFF,
+            });
+            req.populate_chksum().unwrap();
+            let resp = self
+                .process_message(clear_cmd.0, req.as_bytes().unwrap())
+                .map_err(|e| {
+                    println!("    ClearLog(invalid) transport error: {:?}", e);
+                })?;
+            assert_eq!(
+                resp.status_code,
+                MbxCmdStatus::Failure as u32,
+                "ClearLog with unknown log_type should report Failure"
+            );
+            println!("  Invalid log_type rejected for both GetLog and ClearLog");
+
+            println!("MC_GET_LOG / MC_CLEAR_LOG tests passed");
             Ok(())
         }
 

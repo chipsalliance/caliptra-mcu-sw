@@ -14,25 +14,13 @@ use crate::{HexWord, Mci, Otp};
 use caliptra_api::mailbox::populate_checksum;
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_mbox_common::messages::{
-    verify_checksum, CommandId, FuseLockPartitionReq, FuseReadReq, MailboxReqHeader,
-    MailboxRespHeader, MAX_FUSE_DATA_WORDS,
+    verify_checksum, CommandId, FuseLockPartitionReq, FuseReadReq, FuseWriteReq, MailboxRespHeader,
+    MAX_FUSE_DATA_WORDS,
 };
 use caliptra_mcu_registers_generated::mci;
-use core::cmp::Ordering;
 use core::mem::size_of;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
-
-/// Wire-format header for MC_FUSE_WRITE requests (without the variable-length data).
-#[repr(C)]
-#[derive(FromBytes, KnownLayout, Immutable)]
-struct FuseWriteReqHdr {
-    pub hdr: MailboxReqHeader,
-    pub partition: u32,
-    pub entry: u32,
-    pub start_bit: u32,
-    pub length: u32,
-}
 
 /// Wire-format response for MC_FUSE_READ.
 #[repr(C)]
@@ -43,7 +31,20 @@ struct FuseReadResp {
     pub data: [u32; MAX_FUSE_DATA_WORDS],
 }
 
-const MAX_FUSE_REQ_BYTES: usize = size_of::<FuseWriteReqHdr>() + MAX_FUSE_DATA_WORDS * 4;
+/// Workaround to find the max of two usizes in a const context.
+///
+/// (`core::cmp::max()` and other variants that rely on `Ord` or `PartialOrd`
+///  don't work in const context. This also makes it impossible to implement
+///  this function generic for all types that implement `PartialOrd`.)
+const fn const_max_usize(a: usize, b: usize) -> usize {
+    if a >= b {
+        a
+    } else {
+        b
+    }
+}
+const MAX_FUSE_REQ_BYTES: usize =
+    const_max_usize(size_of::<FuseWriteReq>(), size_of::<FuseReadReq>());
 const RESP_HDR_BYTES: usize = size_of::<MailboxRespHeader>();
 
 /// 4-byte–aligned buffer so zerocopy `ref_from_bytes` can produce references
@@ -217,75 +218,26 @@ fn handle_fuse_read(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mcu
 fn handle_fuse_write(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, McuError> {
     crate::println!("[mci-mbox] Processing MC_FUSE_WRITE (IFPW)");
 
-    let hdr_size = size_of::<FuseWriteReqHdr>();
-    if dlen < hdr_size {
+    let req_buf = buf
+        .get(..dlen)
+        .ok_or(McuError::ROM_OTP_FUSE_INPUT_TOO_SHORT)?;
+
+    let req = FuseWriteReq::ref_from_bytes(req_buf).map_err(|_| {
         crate::println!(
-            "[mci-mbox] IFPW: dlen too short {} (minimum {})",
+            "[mci-mbox] IFPW: failed to parse request (dlen: {}, expected {})",
             dlen,
-            hdr_size
+            size_of::<FuseWriteReq>()
         );
-        return Err(McuError::ROM_OTP_FUSE_INPUT_TOO_SHORT);
-    }
-
-    let req = FuseWriteReqHdr::ref_from_bytes(&buf[..hdr_size])
-        .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
-    let partition = req.partition;
-    let entry = req.entry;
-    let start_bit = req.start_bit;
-    let length = req.length;
-
-    crate::println!(
-        "[mci-mbox] IFPW: partition={}, entry={}, start_bit={}, length={}",
-        HexWord(partition),
-        entry,
-        start_bit,
-        length
-    );
-
-    let data_bytes = length.div_ceil(8) as usize;
-    let data_words = (data_bytes + 3) / 4;
-
-    if data_words > MAX_FUSE_DATA_WORDS {
-        crate::println!(
-            "[mci-mbox] IFPW: data too large ({} words > max {})",
-            data_words,
-            MAX_FUSE_DATA_WORDS
-        );
-        return Err(McuError::ROM_OTP_FUSE_DATA_TOO_LARGE);
-    }
-
-    let expected_dlen = hdr_size.checked_add(data_bytes).ok_or_else(|| {
-        crate::println!("[mci-mbox] IFPW: expected dlen overflow");
         McuError::ROM_OTP_FUSE_INVALID_LENGTH
     })?;
 
-    match dlen.cmp(&expected_dlen) {
-        Ordering::Less => {
-            crate::println!(
-                "[mci-mbox] IFPW: input too short for data ({} < {})",
-                dlen,
-                expected_dlen
-            );
-            return Err(McuError::ROM_OTP_FUSE_INPUT_TOO_SHORT);
-        }
-        Ordering::Greater => {
-            crate::println!(
-                "[mci-mbox] IFPW: input too long for data ({} > {})",
-                dlen,
-                expected_dlen
-            );
-            return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
-        }
-        Ordering::Equal => {}
-    }
+    crate::println!(
+        "[mci-mbox] IFPW: word_addr={:08X}, mask={:032b}",
+        req.word_addr,
+        req.mask,
+    );
 
-    fuse_write_dai(otp, partition, entry, start_bit, length, data_words, |i| {
-        u32::from_le_bytes(
-            buf[hdr_size + i * 4..hdr_size + i * 4 + 4]
-                .try_into()
-                .unwrap(),
-        )
-    })?;
+    fuse_write_dai(otp, req.word_addr, req.data, req.mask)?;
 
     crate::println!("[mci-mbox] IFPW: success");
     Ok(RESP_HDR_BYTES)
