@@ -57,4 +57,9 @@ pub trait SpdmPalAlloc {
     /// reading. Useful for response-building paths that need a
     /// variable-size buffer without using stack arrays.
     fn alloc_bytes(&self, io: &impl SpdmPalIo, len: usize) -> McuResult<Self::Bytes<'_>>;
+
+    /// Shrinks a byte buffer returned by [`Self::alloc_bytes`] to
+    /// `new_len` bytes, releasing any trailing capacity when the PAL
+    /// supports it.
+    fn shrink_bytes(bytes: &mut Self::Bytes<'_>, new_len: usize) -> McuResult<()>;
 }
