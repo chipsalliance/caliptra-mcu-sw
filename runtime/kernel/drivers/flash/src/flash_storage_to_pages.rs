@@ -84,31 +84,35 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
         buffer: &'static mut [u8],
         address: usize,
         length: usize,
-    ) -> Result<(), ErrorCode> {
+    ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         if self.state.get() != State::Idle {
-            return Err(ErrorCode::BUSY);
+            return Err((ErrorCode::BUSY, buffer));
         }
 
-        self.page_buffer
-            .take()
-            .map_or(Err(ErrorCode::RESERVE), move |page_buffer| {
-                let page_size = page_buffer.as_mut().len();
+        let page_buffer = match self.page_buffer.take() {
+            Some(pb) => pb,
+            None => return Err((ErrorCode::RESERVE, buffer)),
+        };
 
-                self.state.set(State::Read);
-                self.buffer.replace(buffer);
-                self.address.set(address);
-                self.length.set(length);
-                self.remaining_length.set(length);
-                self.buffer_index.set(0);
+        let page_size = page_buffer.as_mut().len();
 
-                match self.driver.read_page(address / page_size, page_buffer) {
-                    Ok(()) => Ok(()),
-                    Err((error_code, page_buffer)) => {
-                        self.page_buffer.replace(page_buffer);
-                        Err(error_code)
-                    }
-                }
-            })
+        self.state.set(State::Read);
+        self.buffer.replace(buffer);
+        self.address.set(address);
+        self.length.set(length);
+        self.remaining_length.set(length);
+        self.buffer_index.set(0);
+
+        match self.driver.read_page(address / page_size, page_buffer) {
+            Ok(()) => Ok(()),
+            Err((error_code, page_buffer)) => {
+                self.page_buffer.replace(page_buffer);
+                self.state.set(State::Idle);
+                // SAFETY: we just stored the buffer above via self.buffer.replace().
+                let buffer = self.buffer.take().unwrap();
+                Err((error_code, buffer))
+            }
+        }
     }
 
     fn write(
@@ -116,52 +120,57 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
         buffer: &'static mut [u8],
         address: usize,
         length: usize,
-    ) -> Result<(), ErrorCode> {
+    ) -> Result<(), (ErrorCode, &'static mut [u8])> {
         if self.state.get() != State::Idle {
-            return Err(ErrorCode::BUSY);
+            return Err((ErrorCode::BUSY, buffer));
         }
 
-        self.page_buffer
-            .take()
-            .map_or(Err(ErrorCode::RESERVE), move |page_buffer| {
-                let page_size = page_buffer.as_mut().len();
+        let page_buffer = match self.page_buffer.take() {
+            Some(pb) => pb,
+            None => return Err((ErrorCode::RESERVE, buffer)),
+        };
 
-                self.state.set(State::Write);
-                self.length.set(length);
+        let page_size = page_buffer.as_mut().len();
 
-                if address % page_size == 0 && length >= page_size {
-                    // This write is aligned to a page and we are writing an entire page.
-                    // Copy data into page buffer.
-                    page_buffer.as_mut()[..page_size].copy_from_slice(&buffer[..page_size]);
+        self.state.set(State::Write);
+        self.length.set(length);
 
-                    self.buffer.replace(buffer);
-                    self.address.set(address + page_size);
-                    self.remaining_length.set(length - page_size);
-                    self.buffer_index.set(page_size);
+        if address % page_size == 0 && length >= page_size {
+            // This write is aligned to a page and we are writing an entire page.
+            // Copy data into page buffer.
+            page_buffer.as_mut()[..page_size].copy_from_slice(&buffer[..page_size]);
 
-                    match self.driver.write_page(address / page_size, page_buffer) {
-                        Ok(()) => Ok(()),
-                        Err((error_code, page_buffer)) => {
-                            self.page_buffer.replace(page_buffer);
-                            Err(error_code)
-                        }
-                    }
-                } else {
-                    // This write is non-page-aligned, so we need to do a read first.
-                    self.buffer.replace(buffer);
-                    self.address.set(address);
-                    self.remaining_length.set(length);
-                    self.buffer_index.set(0);
+            self.buffer.replace(buffer);
+            self.address.set(address + page_size);
+            self.remaining_length.set(length - page_size);
+            self.buffer_index.set(page_size);
 
-                    match self.driver.read_page(address / page_size, page_buffer) {
-                        Ok(()) => Ok(()),
-                        Err((error_code, page_buffer)) => {
-                            self.page_buffer.replace(page_buffer);
-                            Err(error_code)
-                        }
-                    }
+            match self.driver.write_page(address / page_size, page_buffer) {
+                Ok(()) => Ok(()),
+                Err((error_code, page_buffer)) => {
+                    self.page_buffer.replace(page_buffer);
+                    self.state.set(State::Idle);
+                    let buffer = self.buffer.take().unwrap();
+                    Err((error_code, buffer))
                 }
-            })
+            }
+        } else {
+            // This write is non-page-aligned, so we need to do a read first.
+            self.buffer.replace(buffer);
+            self.address.set(address);
+            self.remaining_length.set(length);
+            self.buffer_index.set(0);
+
+            match self.driver.read_page(address / page_size, page_buffer) {
+                Ok(()) => Ok(()),
+                Err((error_code, page_buffer)) => {
+                    self.page_buffer.replace(page_buffer);
+                    self.state.set(State::Idle);
+                    let buffer = self.buffer.take().unwrap();
+                    Err((error_code, buffer))
+                }
+            }
+        }
     }
 
     fn erase(&self, address: usize, length: usize) -> Result<(), ErrorCode> {

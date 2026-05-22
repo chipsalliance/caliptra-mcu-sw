@@ -152,7 +152,8 @@ impl<'a> ExternalOtp<'a> for ExtFlashBackedExternalOtp<'a> {
         self.state.set(State::Reading);
         match self.flash.read(buffer, flash_addr, readable) {
             Ok(()) => Ok(()),
-            Err(_) => {
+            Err((_, buffer)) => {
+                self.buffer.replace(buffer);
                 self.state.set(State::Idle);
                 Err(ExternalOtpError::HardwareError)
             }
@@ -191,7 +192,8 @@ impl<'a> ExternalOtp<'a> for ExtFlashBackedExternalOtp<'a> {
         });
         match self.flash.read(buffer, lock_addr, 4) {
             Ok(()) => Ok(()),
-            Err(_) => {
+            Err((_, buffer)) => {
+                self.buffer.replace(buffer);
                 self.state.set(State::Idle);
                 Err(ExternalOtpError::HardwareError)
             }
@@ -214,7 +216,8 @@ impl<'a> ExternalOtp<'a> for ExtFlashBackedExternalOtp<'a> {
         self.state.set(State::Locking);
         match self.flash.write(buffer, lock_addr, 4) {
             Ok(()) => Ok(()),
-            Err(_) => {
+            Err((_, buffer)) => {
+                self.buffer.replace(buffer);
                 self.state.set(State::Idle);
                 Err(ExternalOtpError::HardwareError)
             }
@@ -237,7 +240,8 @@ impl<'a> ExternalOtp<'a> for ExtFlashBackedExternalOtp<'a> {
         self.state.set(State::LockChecking);
         match self.flash.read(buffer, lock_addr, 4) {
             Ok(()) => Ok(()),
-            Err(_) => {
+            Err((_, buffer)) => {
+                self.buffer.replace(buffer);
                 self.state.set(State::Idle);
                 Err(ExternalOtpError::HardwareError)
             }
@@ -292,7 +296,8 @@ impl FlashStorageClient for ExtFlashBackedExternalOtp<'_> {
                 self.state.set(State::Writing);
                 match self.flash.write(buffer, flash_offset, writable) {
                     Ok(()) => {}
-                    Err(_) => {
+                    Err((_, buffer)) => {
+                        self.buffer.replace(buffer);
                         self.state.set(State::Idle);
                         self.client
                             .map(|c| c.write_done(Err(ExternalOtpError::HardwareError)));
