@@ -191,9 +191,55 @@ impl StandAloneChecksumCalculator {
 }
 impl ChecksumCalculator for StandAloneChecksumCalculator {}
 
-pub const LOGGING_PARTITION: FlashPartition = FlashPartition {
-    name: "logging",
+pub const LOGGING_PARTITION_0: FlashPartition = FlashPartition {
+    name: "logging0",
     offset: 0x03FF_8000,
     size: 32 * 1024,
     driver_num: 0x9001_0000,
 };
+
+pub const LOGGING_PARTITION_1: FlashPartition = FlashPartition {
+    name: "logging1",
+    offset: 0x03FF_0000,
+    size: 32 * 1024,
+    driver_num: 0x9001_0001,
+};
+
+#[macro_export]
+macro_rules! logging_flash_list {
+    ($macro:ident) => {{
+        $macro!(0, logging0, LOGGING_PARTITION_0);
+        $macro!(1, logging1, LOGGING_PARTITION_1);
+    }};
+}
+
+// Number of logging-flash instances exposed from logging_flash_list!
+pub const LOGGING_FLASH_INSTANCE_COUNT: usize = {
+    let mut count: usize = 0;
+    macro_rules! __count_logging_flash_entry {
+        ($idx:expr, $_var:ident, $name:ident) => {
+            count += 1;
+        };
+    }
+    crate::logging_flash_list!(__count_logging_flash_entry);
+    count
+};
+
+pub const LOGGING_FLASH_DRIVER_NUM_START: usize = LOGGING_PARTITION_0.driver_num as usize;
+pub const LOGGING_FLASH_DRIVER_NUM_END: usize =
+    LOGGING_FLASH_DRIVER_NUM_START + LOGGING_FLASH_INSTANCE_COUNT - 1;
+
+// Driver number for each logging-flash instance, sourced from each partition's driver_num field.
+pub const LOGGING_FLASH_DRIVER_NUMS: [u32; LOGGING_FLASH_INSTANCE_COUNT] = {
+    let mut nums = [0u32; LOGGING_FLASH_INSTANCE_COUNT];
+    macro_rules! __collect_logging_flash_driver_num {
+        ($idx:expr, $_var:ident, $partition:ident) => {
+            nums[$idx] = $partition.driver_num;
+        };
+    }
+    crate::logging_flash_list!(__collect_logging_flash_driver_num);
+    nums
+};
+
+// Back-compat alias so existing LOGGING_PARTITION callers see instance 0.
+pub const LOGGING_PARTITION: FlashPartition = LOGGING_PARTITION_0;

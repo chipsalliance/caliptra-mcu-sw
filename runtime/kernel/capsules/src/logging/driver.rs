@@ -76,6 +76,7 @@ impl<'a, T: LogRead<'a, EntryID = usize> + LogWrite<'a>> LogReadWrite<'a> for T 
 
 pub struct LoggingFlashDriver<'a> {
     driver: &'a dyn LogReadWrite<'a>,
+    driver_num: usize,
     // Per-app state.
     apps: Grant<
         App,
@@ -91,6 +92,7 @@ pub struct LoggingFlashDriver<'a> {
 impl<'a> LoggingFlashDriver<'a> {
     pub fn new(
         driver: &'a dyn LogReadWrite<'a>,
+        driver_num: usize,
         grant: Grant<
             App,
             UpcallCount<{ upcall::COUNT }>,
@@ -101,10 +103,15 @@ impl<'a> LoggingFlashDriver<'a> {
     ) -> LoggingFlashDriver<'a> {
         LoggingFlashDriver {
             driver,
+            driver_num,
             apps: grant,
             buffer: TakeCell::new(buffer),
             current_app: OptionalCell::empty(),
         }
+    }
+
+    pub fn get_driver_num(&self) -> usize {
+        self.driver_num
     }
 
     fn enqueue_command(
