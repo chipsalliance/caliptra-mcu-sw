@@ -2872,6 +2872,7 @@ dependencies = [
 name = "example-app"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "caliptra-api",
  "caliptra-auth-man-types",
  "caliptra-error",
