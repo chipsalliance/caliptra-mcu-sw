@@ -542,19 +542,26 @@ pub unsafe fn main() {
     caliptra_mcu_romtime::println!("[mcu-runtime] Chip initialized");
 
     // Create a shared UART channel for the console and for kernel debug.
-    // The DebugWriter must always be initialized because the kernel's `debug!()`
-    // macro and panic/fault handlers unconditionally call `get_debug_writer()`.
+    // Stripped in `release` builds — nothing references `uart_mux` once
+    // DebugWriter / LLDB / Console / ProcessConsole are all gated off, so
+    // `MuxUart` + `UartDevice` virtualizer code (~630 B) DCE's entirely.
     // TODO: add a new UART for the FPGA
+    #[cfg(not(feature = "release"))]
     let uart_mux = components::console::UartMuxComponent::new(&fpga_peripherals.uart, 115200)
         .finalize(components::uart_mux_component_static!());
+    #[cfg(not(feature = "release"))]
     caliptra_mcu_romtime::println!("[mcu-runtime] UART initialized");
 
     // Create the debugger object that handles calls to `debug!()`.
-    // Must always be present — the kernel's panic handler and fault diagnostics
-    // require it.
-    components::debug_writer::DebugWriterComponent::new(uart_mux)
-        .finalize(components::debug_writer_component_static!());
-    caliptra_mcu_romtime::println!("[mcu-runtime] DebugWriter initialized");
+    // Stripped in `release` builds (kernel `debug!`, `debug_println`, and the
+    // panic-print path are all no-ops under `kernel/no_debug_subsystem`), so
+    // the DebugWriter + MuxUart receive/transmit chain can be DCE'd entirely.
+    #[cfg(not(feature = "release"))]
+    {
+        components::debug_writer::DebugWriterComponent::new(uart_mux)
+            .finalize(components::debug_writer_component_static!());
+        caliptra_mcu_romtime::println!("[mcu-runtime] DebugWriter initialized");
+    }
 
     // LowLevelDebug capsule (alert-code printer used by user-app panic
     // handlers).  Stripped in `release` builds.

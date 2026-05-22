@@ -567,17 +567,22 @@ pub unsafe fn main() {
     CHIP = Some(chip);
 
     // Create a shared UART channel for the console and for kernel debug.
-    // The DebugWriter must always be initialized because the kernel's `debug!()`
-    // macro and panic/fault handlers unconditionally call `get_debug_writer()`.
+    // Stripped in `release` builds — nothing references `uart_mux` once
+    // DebugWriter / LLDB / Console / ProcessConsole are all gated off, so
+    // `MuxUart` + `UartDevice` virtualizer code DCE's entirely.
+    #[cfg(not(feature = "release"))]
     let uart_mux = components::console::UartMuxComponent::new(&emulator_peripherals.uart, 115200)
         .finalize(components::uart_mux_component_static!());
 
     // Create the debugger object that handles calls to `debug!()`.
-    // Must always be present — the kernel's panic handler and fault diagnostics
-    // require it.  The `no_debug_panics` feature only gates process-info
-    // printing, not the writer itself.
-    components::debug_writer::DebugWriterComponent::new(uart_mux)
-        .finalize(components::debug_writer_component_static!());
+    // Stripped in `release` builds (kernel `debug!`, `debug_println`, and the
+    // panic-print path are all no-ops under `kernel/no_debug_subsystem`), so
+    // the DebugWriter + MuxUart receive/transmit chain can be DCE'd entirely.
+    #[cfg(not(feature = "release"))]
+    {
+        components::debug_writer::DebugWriterComponent::new(uart_mux)
+            .finalize(components::debug_writer_component_static!());
+    }
 
     // LowLevelDebug capsule (alert-code printer used by user-app panic
     // handlers).  Stripped in `release` builds.
