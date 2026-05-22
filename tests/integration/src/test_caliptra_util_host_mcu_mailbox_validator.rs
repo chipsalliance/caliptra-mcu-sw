@@ -268,7 +268,7 @@ pub mod test {
             if cmd == MC_PROD_DEBUG_UNLOCK_REQ || cmd == MC_PROD_DEBUG_UNLOCK_TOKEN {
                 hw.caliptra_soc_manager()
                     .soc_ifc()
-                    .ss_dbg_manuf_service_reg_req()
+                    .ss_dbg_service_reg_req()
                     .write(|w| w.prod_dbg_unlock_req(true));
             }
 
