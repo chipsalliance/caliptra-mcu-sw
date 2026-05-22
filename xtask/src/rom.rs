@@ -1,8 +1,31 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use caliptra_mcu_builder::{CaliptraBuilder, PROJECT_ROOT};
 use std::process::Command;
+
+/// Build every ROM variant in the supplied list.
+///
+/// Used by precheckin to exercise the full ROM matrix. The linker
+/// (`section '.text' will not fit in region 'ROM'`) and
+/// `append_rom_digest` together fail any variant that has overflowed
+/// its size budget, so a clean run of this function is sufficient
+/// to confirm every variant fits.
+pub(crate) fn build_all_variants(
+    variants: &[caliptra_mcu_builder::features::RomVariant],
+) -> Result<()> {
+    for variant in variants {
+        let display = variant.display();
+        println!("Building ROM {display}...");
+        caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
+            platform: variant.platform,
+            features: variant.features,
+            ..Default::default()
+        })
+        .with_context(|| format!("building ROM variant {display}"))?;
+    }
+    Ok(())
+}
 
 pub(crate) fn rom_run(trace: bool) -> Result<()> {
     let rom_binary =

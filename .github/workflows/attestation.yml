@@ -81,8 +81,8 @@ jobs:
       - name: Checkout spdm-emu repository
         uses: actions/checkout@v4
         with:
-          repository: parvathib/spdm-emu
-          ref: pbhogaraju/spdm_emu_main_custom
+          repository: chipsalliance/caliptra-spdm-emu
+          ref: caliptra-main
           path: spdm-emu
           submodules: recursive
 
@@ -92,7 +92,7 @@ jobs:
           git submodule update --init --recursive
           mkdir build
           pushd build
-          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl ..
+          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000" ..
           make copy_sample_key
           make
           popd

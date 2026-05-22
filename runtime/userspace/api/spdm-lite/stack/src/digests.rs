@@ -50,7 +50,9 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
     // Compute digests directly into a pool-allocated buffer; the
     // codec then copies these bytes into the response body via
     // `DigestsRsp::digests` slice.
-    let mut digests = pal.alloc_bytes(io, digests_len).map_err(|_| SPDM_UNSPECIFIED)?;
+    let mut digests = pal
+        .alloc_bytes(io, digests_len)
+        .map_err(|_| SPDM_UNSPECIFIED)?;
     let mut cursor = 0;
     for slot in 0..MAX_SLOTS {
         if provisioned & (1 << slot) == 0 {

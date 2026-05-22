@@ -501,7 +501,6 @@ MEMORY
     ram (rwx) : ORIGIN = $DATA_RAM_START, LENGTH = $DATA_RAM_LENGTH
     app_ram(rwx) : ORIGIN = $APP_RAM_START, LENGTH = $APP_RAM_LENGTH
     dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_LENGTH
-    flash (r) : ORIGIN = $FLASH_OFFSET, LENGTH = $FLASH_LENGTH
 }
 
 $PAGE_SIZE
@@ -537,10 +536,6 @@ INCLUDE $BASE_LD_CONTENTS
         let dccm = self.manifest.platform.dccm();
         sub_map.insert("DCCM_OFFSET", format!("{:#x}", dccm.offset));
         sub_map.insert("DCCM_LENGTH", format!("{:#x}", dccm.size));
-
-        let flash = self.manifest.platform.flash();
-        sub_map.insert("FLASH_OFFSET", format!("{:#x}", flash.offset));
-        sub_map.insert("FLASH_LENGTH", format!("{:#x}", flash.size));
 
         sub_map.insert(
             "BASE_LD_CONTENTS",
@@ -682,7 +677,6 @@ mod tests {
                 offset: 0x30000,
                 size: dccm_size,
             }),
-            flash: None,
         }
     }
 

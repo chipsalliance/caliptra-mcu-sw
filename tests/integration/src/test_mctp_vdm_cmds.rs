@@ -11,6 +11,10 @@ pub mod test {
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_mbox_common::config;
     use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
+    use caliptra_mcu_mctp_vdm_common::message::clear_attestation_log::ClearAttestationLogRequest;
+    use caliptra_mcu_mctp_vdm_common::message::clear_debug_log::{
+        ClearDebugLogRequest, ClearDebugLogResponse,
+    };
     use caliptra_mcu_mctp_vdm_common::message::device_capabilities::{
         DeviceCapabilitiesRequest, DeviceCapabilitiesResponse,
     };
@@ -20,6 +24,10 @@ pub mod test {
     };
     use caliptra_mcu_mctp_vdm_common::message::firmware_version::{
         FirmwareVersionRequest, FirmwareVersionResponse,
+    };
+    use caliptra_mcu_mctp_vdm_common::message::get_attestation_log::GetAttestationLogRequest;
+    use caliptra_mcu_mctp_vdm_common::message::get_debug_log::{
+        GetDebugLogRequest, GetDebugLogResponse,
     };
     use caliptra_mcu_mctp_vdm_common::protocol::header::VdmCompletionCode;
     use caliptra_mcu_testing_common::mctp_vdm_transport::{
@@ -250,12 +258,121 @@ pub mod test {
             Ok(())
         }
 
+        fn test_get_debug_log_drain(&mut self) -> Result<(), VdmTransportError> {
+            info!("Testing GetDebugLog drain (multi-call)...");
+
+            let expected: Vec<u8> = config::TEST_DEBUG_LOG_ENTRIES
+                .iter()
+                .flat_map(|e| e.iter().copied())
+                .collect();
+
+            let mut accumulated: Vec<u8> = Vec::with_capacity(expected.len());
+            let mut iterations = 0;
+            let mut saw_more_data = false;
+            loop {
+                iterations += 1;
+                if iterations > 10 {
+                    info!("GetDebugLog did not converge within 10 iterations");
+                    return Err(VdmTransportError::InvalidResponse);
+                }
+
+                let request = GetDebugLogRequest::new();
+                let response: GetDebugLogResponse = self.send_request_expect_success(&request)?;
+                let chunk = response.data();
+                accumulated.extend_from_slice(chunk);
+                info!(
+                    "  iter {}: bytes={} more_data={}",
+                    iterations,
+                    chunk.len(),
+                    response.more_data()
+                );
+
+                if response.more_data() {
+                    saw_more_data = true;
+                } else {
+                    break;
+                }
+            }
+
+            // Ensure at least one chunked iteration was seen — otherwise the
+            // fixture is too small to exercise `more_data`.
+            if !saw_more_data {
+                info!(
+                    "Expected at least one GetDebugLog with more_data=1 \
+                     (fixture size {} ≥ MCTP VDM cap)",
+                    expected.len()
+                );
+                return Err(VdmTransportError::InvalidResponse);
+            }
+
+            Self::assert_eq(&accumulated.len(), &expected.len(), "drained log size")?;
+            if accumulated != expected {
+                info!(
+                    "  drained log content mismatch: first diff at byte {}",
+                    accumulated
+                        .iter()
+                        .zip(expected.iter())
+                        .position(|(a, b)| a != b)
+                        .unwrap_or(0),
+                );
+                return Err(VdmTransportError::InvalidResponse);
+            }
+            info!(
+                "  drained {} bytes matching seeded fixture (took {} iterations)",
+                accumulated.len(),
+                iterations
+            );
+            Ok(())
+        }
+
+        fn test_clear_debug_log(&mut self) -> Result<(), VdmTransportError> {
+            info!("Testing ClearDebugLog...");
+
+            let clear_req = ClearDebugLogRequest::new();
+            let clear_resp: ClearDebugLogResponse = self.send_request_expect_success(&clear_req)?;
+            let cc = clear_resp.completion_code;
+            Self::assert_eq(
+                &cc,
+                &(VdmCompletionCode::Success as u32),
+                "ClearDebugLog completion code",
+            )?;
+            info!("  ClearDebugLog: success");
+
+            // Verify log is empty after clear.
+            let get_req = GetDebugLogRequest::new();
+            let get_resp: GetDebugLogResponse = self.send_request_expect_success(&get_req)?;
+            Self::assert_eq(&get_resp.data_size(), &0usize, "post-clear data size")?;
+            Self::assert_eq(&get_resp.more_data(), &false, "post-clear more_data")?;
+            info!("  GetDebugLog after ClearDebugLog: empty (expected)");
+            Ok(())
+        }
+
+        fn test_attestation_log_unsupported(&mut self) -> Result<(), VdmTransportError> {
+            info!("Testing GetAttestationLog/ClearAttestationLog (unsupported)...");
+
+            let get_req = GetAttestationLogRequest::new();
+            self.send_request_expect_error(&get_req, VdmCompletionCode::UnsupportedCommand)?;
+            info!("  GetAttestationLog → UnsupportedCommand (expected)");
+
+            let clear_req = ClearAttestationLogRequest::new();
+            self.send_request_expect_error(&clear_req, VdmCompletionCode::UnsupportedCommand)?;
+            info!("  ClearAttestationLog → UnsupportedCommand (expected)");
+
+            Ok(())
+        }
+
         /// Run all VDM command tests.
         pub fn run_all_tests(&mut self) -> Result<(), VdmTransportError> {
             self.test_get_firmware_version()?;
             self.test_get_device_id()?;
             self.test_get_device_info()?;
             self.test_get_device_capabilities()?;
+            // Log tests must run before any other test that might mutate the
+            // mock's debug-log cursor (none today, but order matters once
+            // production logging lands).
+            self.test_get_debug_log_drain()?;
+            self.test_clear_debug_log()?;
+            self.test_attestation_log_unsupported()?;
             self.test_unsupported_command()?;
             Ok(())
         }
@@ -295,6 +412,7 @@ pub mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some(&feature),
             i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
+            seeded_log_entries: Some(config::TEST_DEBUG_LOG_ENTRIES),
             ..Default::default()
         });
 

@@ -64,12 +64,14 @@ pub trait SpdmPalIoTransport {
     /// `buf[0..header_size()]` in place.
     fn header_size(&self) -> usize;
 
-    /// Required byte-alignment for outbound message buffers.
+    /// Required length-alignment for outbound message buffers.
     ///
-    /// The response builder rounds up allocations to this alignment
+    /// The response builder rounds up allocations to this multiple
     /// so the transport receives a correctly-sized buffer.
-    /// Defaults to 1 (no alignment). DOE returns 4 (DWORD).
-    fn send_alignment(&self) -> usize;
+    /// DOE returns 4 (DWORD). Defaults to 1 (no padding).
+    fn send_len_alignment(&self) -> usize {
+        1
+    }
 
     /// Maximum SPDM payload the underlying transport will carry in a
     /// single message, excluding [`Self::header_size`] framing.

@@ -97,12 +97,8 @@ impl McuSpdmPal {
         Self {
             transport: UnsafeCell::new(transport),
             allocator: BitmapAllocator::new(io_buf_ptr, io_buf_capacity),
-            cached_chain_digest: UnsafeCell::new(
-                [None; mcu_spdm_lite_traits::MAX_SLOTS as usize],
-            ),
-            cached_chain_len: UnsafeCell::new(
-                [None; mcu_spdm_lite_traits::MAX_SLOTS as usize],
-            ),
+            cached_chain_digest: UnsafeCell::new([None; mcu_spdm_lite_traits::MAX_SLOTS as usize]),
+            cached_chain_len: UnsafeCell::new([None; mcu_spdm_lite_traits::MAX_SLOTS as usize]),
         }
     }
 
@@ -161,9 +157,9 @@ impl McuSpdmPal {
         unsafe { (*self.transport.get()).header_size() }
     }
 
-    pub(crate) fn transport_send_alignment(&self) -> usize {
+    pub(crate) fn transport_send_len_alignment(&self) -> usize {
         // SAFETY: shared-read only.
-        unsafe { (*self.transport.get()).send_alignment() }
+        unsafe { (*self.transport.get()).send_len_alignment() }
     }
 }
 

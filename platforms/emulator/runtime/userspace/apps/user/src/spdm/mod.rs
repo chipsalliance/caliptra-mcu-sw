@@ -13,8 +13,8 @@ use core::ptr::NonNull;
 use embassy_executor::Spawner;
 use mcu_spdm_lite_pal::{McuSpdmPal, BITMAP_SLOT_SIZE};
 use mcu_spdm_lite_stack::SpdmStack;
-use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 use mcu_spdm_lite_traits::SpdmPalTransport;
+use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 
 /// Bitmap allocator pool size per responder task.
 const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;

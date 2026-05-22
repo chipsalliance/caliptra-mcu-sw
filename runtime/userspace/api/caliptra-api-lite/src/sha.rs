@@ -161,16 +161,20 @@ const FINAL_RSP_MAX_LEN: usize = size_of::<ShaFinalRespPrefix>() + 64;
 
 /// Begin a new running hash and return the resulting state.
 #[inline(never)]
-pub async fn sha_init<A: ApiAlloc>(
-    alloc: &A,
-    algo: HashAlgo,
-    seed: &[u8],
-) -> McuResult<HashState> {
+pub async fn sha_init<A: ApiAlloc>(alloc: &A, algo: HashAlgo, seed: &[u8]) -> McuResult<HashState> {
     let mut state = HashState::new();
     if seed.len() > SHA_CHUNK_SIZE {
         return Err(INVARIANT);
     }
-    sha_call(alloc, CMD_CM_SHA_INIT, Some(algo_code(algo)), seed, &mut state, None).await?;
+    sha_call(
+        alloc,
+        CMD_CM_SHA_INIT,
+        Some(algo_code(algo)),
+        seed,
+        &mut state,
+        None,
+    )
+    .await?;
     Ok(state)
 }
 
@@ -255,8 +259,8 @@ async fn sha_call<A: ApiAlloc>(
         if rsp_len < prefix_len {
             return Err(INTERNAL_BUG);
         }
-        let prefix = ShaFinalRespPrefix::ref_from_bytes(&rsp[..prefix_len])
-            .map_err(|_| INTERNAL_BUG)?;
+        let prefix =
+            ShaFinalRespPrefix::ref_from_bytes(&rsp[..prefix_len]).map_err(|_| INTERNAL_BUG)?;
         let data_len = prefix.data_len.get() as usize;
         let hash_end = prefix_len + data_len;
         if hash_end > rsp_len || data_len > out.len() {

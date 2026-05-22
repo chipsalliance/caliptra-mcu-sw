@@ -95,7 +95,7 @@ impl SpdmPalTransport for McuSpdmDoeTransport {
         DOE_HEADER_SIZE
     }
 
-    fn send_alignment(&self) -> usize {
+    fn send_len_alignment(&self) -> usize {
         4 // DOE data objects must be DWORD-aligned
     }
 

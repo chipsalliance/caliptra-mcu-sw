@@ -52,12 +52,12 @@ pub trait SpdmPalTransport {
     /// Typical values: MCTP = 1 byte, PCIe DOE = 8 bytes.
     fn header_size(&self) -> usize;
 
-    /// Required byte-alignment for outbound messages.
+    /// Required length-alignment for outbound messages.
     ///
-    /// The response builder pads allocations to this alignment so the
+    /// The response builder pads allocations to this multiple so the
     /// transport receives a correctly-sized buffer. Defaults to 1
     /// (no padding). DOE overrides to 4 (DWORD).
-    fn send_alignment(&self) -> usize {
+    fn send_len_alignment(&self) -> usize {
         1
     }
 

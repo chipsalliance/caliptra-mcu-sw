@@ -5,8 +5,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_common_commands::{
-    CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DeviceCapabilities, DeviceId,
-    DeviceInfo, FirmwareVersion, Uid, MAX_FW_VERSION_LEN, MAX_UID_LEN,
+    CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
+    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, Uid,
+    MAX_FW_VERSION_LEN, MAX_UID_LEN,
 };
 use caliptra_mcu_mbox_common::config;
 
@@ -110,5 +111,29 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         // Delegate to real CaliptraCmdBackend for actual Caliptra mailbox interaction
         let handler = CaliptraCmdBackend;
         handler.export_idevid_csr(algorithm, csr_buf).await
+    }
+
+    async fn request_debug_unlock(
+        &self,
+        unlock_level: u8,
+        challenge: &mut DebugUnlockChallenge,
+    ) -> CaliptraCmdResult<()> {
+        let handler = CaliptraCmdBackend;
+        handler.request_debug_unlock(unlock_level, challenge).await
+    }
+
+    async fn authorize_debug_unlock_token(&self, token_data: &[u8]) -> CaliptraCmdResult<()> {
+        let handler = CaliptraCmdBackend;
+        handler.authorize_debug_unlock_token(token_data).await
+    }
+
+    async fn get_log(&self, log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
+        // Delegate to the production backend so the real Tock logging-flash
+        // path is exercised end-to-end by mailbox command tests.
+        CaliptraCmdBackend.get_log(log_type, data).await
+    }
+
+    async fn clear_log(&self, log_type: u32) -> CaliptraCmdResult<()> {
+        CaliptraCmdBackend.clear_log(log_type).await
     }
 }

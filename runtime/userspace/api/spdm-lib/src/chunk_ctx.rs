@@ -86,6 +86,9 @@ enum LargeMessageMode {
     Request,
     /// Buffer is being used to send a large response (CHUNK_GET).
     Response(LargeResponse),
+    /// Request is being streamed directly to a backend (e.g., mailbox FIFO)
+    /// without buffering in `buf`. The u32 is the mailbox command ID.
+    Streaming(u32),
 }
 
 /// Manages the shared buffer for both large SPDM request reassembly (CHUNK_SEND)
@@ -112,6 +115,13 @@ pub(crate) struct LargeMessageCtx<'a> {
     pub(crate) buf: &'static mut [u8],
     /// Provider for acquiring/releasing the shared buffer
     buf_provider: &'a dyn LargeMsgBufProvider,
+    /// For streaming mode: byte offset within the reassembled message where the
+    /// VDM mailbox payload starts (dynamically parsed from the first chunk header).
+    streaming_payload_offset: usize,
+    /// For streaming mode: total mailbox payload size derived from the VDM req_len field.
+    /// This is more accurate than `large_msg_size - payload_offset` because
+    /// `large_msg_size` may not account for all framing overhead.
+    streaming_mbox_payload_len: usize,
 }
 
 impl<'a> LargeMessageCtx<'a> {
@@ -125,6 +135,8 @@ impl<'a> LargeMessageCtx<'a> {
             data_len: 0,
             buf: &mut [],
             buf_provider,
+            streaming_payload_offset: 0,
+            streaming_mbox_payload_len: 0,
         }
     }
 
@@ -273,6 +285,79 @@ impl<'a> LargeMessageCtx<'a> {
             return None;
         }
         Some(self.buf[1])
+    }
+
+    // ── Streaming methods ──
+
+    /// Initialize a streaming request. The first chunk data is stored in `buf`
+    /// (only enough to parse the VDM command code), but subsequent chunks will
+    /// be forwarded directly to the backend without buffering.
+    pub fn init_streaming(
+        &mut self,
+        handle: u8,
+        large_msg_size: usize,
+        mailbox_cmd: u32,
+        payload_offset: usize,
+        mbox_payload_len: usize,
+        first_chunk: &[u8],
+    ) -> ChunkResult<()> {
+        // Store first chunk in buf (truncated to buf capacity) for header parsing
+        let store_len = first_chunk.len().min(self.buf.len());
+        self.buf[..store_len].copy_from_slice(&first_chunk[..store_len]);
+
+        self.mode = LargeMessageMode::Streaming(mailbox_cmd);
+        self.streaming_payload_offset = payload_offset;
+        self.streaming_mbox_payload_len = mbox_payload_len;
+        self.chunk_state.init(large_msg_size, handle);
+        self.chunk_state.bytes_transferred = first_chunk.len();
+        Ok(())
+    }
+
+    /// Returns `true` if a streaming request is in progress.
+    pub fn streaming_in_progress(&self) -> bool {
+        matches!(self.mode, LargeMessageMode::Streaming(_)) && self.chunk_state.in_use
+    }
+
+    /// Returns the mailbox command ID if streaming is in progress.
+    pub fn streaming_mailbox_cmd(&self) -> Option<u32> {
+        match self.mode {
+            LargeMessageMode::Streaming(cmd) => Some(cmd),
+            _ => None,
+        }
+    }
+
+    /// Returns the VDM payload offset for the streaming request.
+    pub fn streaming_payload_offset(&self) -> usize {
+        self.streaming_payload_offset
+    }
+
+    /// Returns the total mailbox payload size for the streaming request.
+    pub fn streaming_mbox_payload_len(&self) -> usize {
+        self.streaming_mbox_payload_len
+    }
+
+    /// Track a streaming chunk (update bytes_transferred and seq_num)
+    /// without copying data into the buffer.
+    pub fn track_streaming_chunk(
+        &mut self,
+        handle: u8,
+        chunk_seq_num: u16,
+        chunk_len: usize,
+    ) -> ChunkResult<()> {
+        self.validate_request_chunk(handle, chunk_seq_num)?;
+
+        let end = self
+            .chunk_state
+            .bytes_transferred
+            .checked_add(chunk_len)
+            .ok_or(ChunkError::InvalidMessageOffset)?;
+        if end > self.chunk_state.large_msg_size {
+            return Err(ChunkError::InvalidMessageOffset);
+        }
+
+        self.chunk_state.bytes_transferred = end;
+        self.chunk_state.seq_num = self.chunk_state.seq_num.wrapping_add(1);
+        Ok(())
     }
 
     // ── Response methods (CHUNK_GET chunking) ──

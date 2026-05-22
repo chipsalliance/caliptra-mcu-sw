@@ -169,11 +169,11 @@ jobs:
 
       - name: Build spdm-emu for aarch64
         run: |
-          git clone --recursive --branch pbhogaraju/spdm_emu_main_custom https://github.com/parvathib/spdm-emu.git /tmp/spdm-emu
+          git clone --recursive --branch caliptra-main https://github.com/chipsalliance/caliptra-spdm-emu.git /tmp/spdm-emu
           pushd /tmp/spdm-emu
           mkdir build
           pushd build
-          cmake -DARCH=aarch64 -DTOOLCHAIN=AARCH64_GCC -DTARGET=Debug -DCRYPTO=openssl ..
+          cmake -DARCH=aarch64 -DTOOLCHAIN=AARCH64_GCC -DTARGET=Debug -DCRYPTO=openssl -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000" ..
           make copy_sample_key
           make -j$(nproc)
           popd

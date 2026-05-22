@@ -65,6 +65,10 @@ pub const SUPPORTED_COMMANDS: &[VdmCommand] = &[
     VdmCommand::DeviceCapabilities,
     VdmCommand::DeviceId,
     VdmCommand::DeviceInfo,
+    VdmCommand::GetDebugLog,
+    VdmCommand::ClearDebugLog,
+    VdmCommand::GetAttestationLog,
+    VdmCommand::ClearAttestationLog,
 ];
 
 /// Check if a command is supported in the current implementation.
@@ -152,8 +156,10 @@ mod tests {
         assert!(is_command_supported(VdmCommand::DeviceCapabilities));
         assert!(is_command_supported(VdmCommand::DeviceId));
         assert!(is_command_supported(VdmCommand::DeviceInfo));
+        assert!(is_command_supported(VdmCommand::GetDebugLog));
+        assert!(is_command_supported(VdmCommand::ClearDebugLog));
+        assert!(is_command_supported(VdmCommand::GetAttestationLog));
+        assert!(is_command_supported(VdmCommand::ClearAttestationLog));
         assert!(!is_command_supported(VdmCommand::ExportAttestedCsr));
-        assert!(!is_command_supported(VdmCommand::GetDebugLog));
-        assert!(!is_command_supported(VdmCommand::ClearDebugLog));
     }
 }

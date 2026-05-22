@@ -111,8 +111,8 @@ impl SpdmPalIoTransport for McuSpdmPal {
         self.transport_header_size()
     }
 
-    fn send_alignment(&self) -> usize {
-        self.transport_send_alignment()
+    fn send_len_alignment(&self) -> usize {
+        self.transport_send_len_alignment()
     }
 
     /// Maximum SPDM payload the transport will carry in a single

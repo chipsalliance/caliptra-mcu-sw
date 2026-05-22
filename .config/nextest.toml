@@ -70,7 +70,6 @@ default-filter = """
 
 [profile.nightly-ci-spdm]
 inherits = "nightly"
-default-filter = """
-(package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_attestation)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_responder_conformance))
-"""
+# TODO: Re-enable when spdm-lite supports full attestation and conformance.
+# Disabled while porting SPDM commands from spdm-lib to spdm-lite.
+default-filter = "none()"

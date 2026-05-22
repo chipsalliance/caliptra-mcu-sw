@@ -158,6 +158,12 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         x if x == CaliptraCommandId::ExportIdevidCsr as u32 => {
             Some(CaliptraVdmCommand::ExportIdevidCsr)
         }
+        x if x == CaliptraCommandId::ProdDebugUnlockReq as u32 => {
+            Some(CaliptraVdmCommand::RequestDebugUnlock)
+        }
+        x if x == CaliptraCommandId::ProdDebugUnlockToken as u32 => {
+            Some(CaliptraVdmCommand::AuthorizeDebugUnlockToken)
+        }
         _ => None,
     }
 }

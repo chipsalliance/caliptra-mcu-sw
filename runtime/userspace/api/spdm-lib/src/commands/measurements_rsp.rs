@@ -500,9 +500,15 @@ pub(crate) async fn generate_measurements_response<'a>(
     let rsp_len = match rsp_ctx.response_size(&mut ctx.measurements, meas_buf).await {
         Ok(len) => len,
         Err((_, CommandError::Measurement(MeasurementsError::InvalidIndex))) => {
+            // Reset L1 transcript on error to stay in sync with the requester,
+            // which also resets its transcript (message_m) on error responses.
+            ctx.shared_transcript.reset_context(TranscriptContext::L1);
             Err(ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?
         }
-        Err(e) => Err(e)?,
+        Err(e) => {
+            ctx.shared_transcript.reset_context(TranscriptContext::L1);
+            Err(e)?
+        }
     };
 
     if rsp_len > ctx.min_data_transfer_size() {

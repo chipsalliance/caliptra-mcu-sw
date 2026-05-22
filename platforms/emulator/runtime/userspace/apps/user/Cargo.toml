@@ -36,6 +36,7 @@ portable-atomic.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-lib.workspace = true
 caliptra-mcu-romtime.workspace = true
+caliptra-mcu-spdm-lib.workspace = true
 mcu-spdm-lite-pal.workspace = true
 mcu-spdm-lite-stack = { workspace = true }
 mcu-spdm-lite-transports.workspace = true

@@ -115,15 +115,13 @@ struct DpeResponseHdr {
     profile: U32,
 }
 
-const GET_CERT_CHAIN_REQ_LEN: usize = size_of::<InvokeDpeReqPrefix>()
-    + size_of::<DpeCommandHdr>()
-    + size_of::<GetCertChainCmd>();
+const GET_CERT_CHAIN_REQ_LEN: usize =
+    size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<GetCertChainCmd>();
 const GET_CERT_CHAIN_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<GetCertChainCmd>()) as u32;
 
-const CERTIFY_KEY_REQ_LEN: usize = size_of::<InvokeDpeReqPrefix>()
-    + size_of::<DpeCommandHdr>()
-    + size_of::<CertifyKeyP384Cmd>();
+const CERTIFY_KEY_REQ_LEN: usize =
+    size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<CertifyKeyP384Cmd>();
 const CERTIFY_KEY_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<CertifyKeyP384Cmd>()) as u32;
 
@@ -162,10 +160,9 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     let mut req = alloc.alloc(GET_CERT_CHAIN_REQ_LEN)?;
     req.fill(0);
     {
-        let prefix = InvokeDpeReqPrefix::mut_from_bytes(
-            &mut req[..size_of::<InvokeDpeReqPrefix>()],
-        )
-        .map_err(|_| INVARIANT)?;
+        let prefix =
+            InvokeDpeReqPrefix::mut_from_bytes(&mut req[..size_of::<InvokeDpeReqPrefix>()])
+                .map_err(|_| INVARIANT)?;
         prefix.data_size = U32::new(GET_CERT_CHAIN_DPE_PAYLOAD_LEN);
     }
     let mut cur = size_of::<InvokeDpeReqPrefix>();
@@ -178,10 +175,9 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     }
     cur += size_of::<DpeCommandHdr>();
     {
-        let cmd = GetCertChainCmd::mut_from_bytes(
-            &mut req[cur..cur + size_of::<GetCertChainCmd>()],
-        )
-        .map_err(|_| INVARIANT)?;
+        let cmd =
+            GetCertChainCmd::mut_from_bytes(&mut req[cur..cur + size_of::<GetCertChainCmd>()])
+                .map_err(|_| INVARIANT)?;
         cmd.offset = U32::new(offset);
         cmd.size = U32::new(size);
     }
@@ -190,10 +186,8 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
 
     // Allocate response: outer prefix + DPE response hdr + cert_size
     // + chain bytes (up to DPE_MAX_CHUNK_SIZE).
-    let rsp_max = size_of::<InvokeDpeRespPrefix>()
-        + size_of::<DpeResponseHdr>()
-        + 4
-        + DPE_MAX_CHUNK_SIZE;
+    let rsp_max =
+        size_of::<InvokeDpeRespPrefix>() + size_of::<DpeResponseHdr>() + 4 + DPE_MAX_CHUNK_SIZE;
     let mut rsp = alloc.alloc(rsp_max)?;
     let mbox: Mailbox = Mailbox::new();
     let rsp_len = mbox
@@ -247,10 +241,9 @@ pub async fn dpe_certify_key<A: ApiAlloc>(
     let mut req = alloc.alloc(CERTIFY_KEY_REQ_LEN)?;
     req.fill(0);
     {
-        let prefix = InvokeDpeReqPrefix::mut_from_bytes(
-            &mut req[..size_of::<InvokeDpeReqPrefix>()],
-        )
-        .map_err(|_| INVARIANT)?;
+        let prefix =
+            InvokeDpeReqPrefix::mut_from_bytes(&mut req[..size_of::<InvokeDpeReqPrefix>()])
+                .map_err(|_| INVARIANT)?;
         prefix.data_size = U32::new(CERTIFY_KEY_DPE_PAYLOAD_LEN);
     }
     let mut cur = size_of::<InvokeDpeReqPrefix>();
@@ -263,10 +256,9 @@ pub async fn dpe_certify_key<A: ApiAlloc>(
     }
     cur += size_of::<DpeCommandHdr>();
     {
-        let cmd = CertifyKeyP384Cmd::mut_from_bytes(
-            &mut req[cur..cur + size_of::<CertifyKeyP384Cmd>()],
-        )
-        .map_err(|_| INVARIANT)?;
+        let cmd =
+            CertifyKeyP384Cmd::mut_from_bytes(&mut req[cur..cur + size_of::<CertifyKeyP384Cmd>()])
+                .map_err(|_| INVARIANT)?;
         // handle: default context handle = all zeros, already filled by fill(0)
         cmd.flags = U32::new(0);
         cmd.format = U32::new(DPE_CERTIFY_KEY_FORMAT_X509);
