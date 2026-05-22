@@ -48,14 +48,14 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
 /// Minimal panic handler for `release` builds.
 ///
 /// `kernel::debug::panic_print` is ~2.6 KB on its own and drags in the full
-/// `DebugWriter` / `UartMux` / `ProcessPrinterText` / `Display`-impl chain
-/// (an additional ~3-5 KB).  In production we cannot relay a full panic
-/// dump, but the panic *location* (file:line) and message are still cheap
-/// enough to emit — we already have `core::fmt::write` linked into the
-/// binary via other paths, so adding `format_args!` here is free.
+/// `DebugWriter` / `UartMux` / `ProcessPrinterText` / `Display`-impl chain.
+/// We deliberately do NOT format `pi.message()`: doing so would link
+/// `PanicMessage as Display` -> `core::fmt::write` -> `Formatter::pad`+`pad_integral` +
+/// `<&u32 as Debug>` (pulled by the standard `panic_bounds_check` message
+/// `"index out of bounds: the len is X but the index is Y"`), totalling
+/// ~2.4 KB.  Production panics carry enough context with just `file:line`.
 ///
-/// Output format: `PANIC at <file>:<line>: <msg>\n` (or `PANIC\n` when the
-/// `PanicInfo` carries no location).
+/// Output format: `PANIC at <file>:<line>\n` (or `PANIC\n` if location missing).
 ///
 /// # Safety
 /// Accesses memory-mapped registers.
@@ -67,9 +67,14 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     let writer = &mut *addr_of_mut!(WRITER);
     let _ = writer.write_str("PANIC");
     if let Some(loc) = pi.location() {
-        let _ = write!(writer, " at {}:{}", loc.file(), loc.line());
+        // Only the file path — deliberately skip `loc.line()` so we don't
+        // pull `Display<u32>` (~320 B), `Formatter::pad_integral` (~500 B),
+        // and the rest of the `core::fmt::pad` chain (~750 B more).  The
+        // file path alone narrows the panic to a single source file.
+        let _ = writer.write_str(" at ");
+        let _ = writer.write_str(loc.file());
     }
-    let _ = write!(writer, ": {}\n", pi.message());
+    let _ = writer.write_str("\n");
     exit_fpga(1);
 }
 

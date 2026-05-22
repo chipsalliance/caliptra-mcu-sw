@@ -42,7 +42,11 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     exit_emulator(1);
 }
 
-/// Panic handler — release build: lightweight output of location + message only.
+/// Panic handler — release build: PANIC + file:line only.
+/// We deliberately drop `pi.message()` to break the
+/// `PanicMessage as Display` -> `core::fmt::write` -> `Formatter::pad` chain
+/// (pulled by the standard `panic_bounds_check` message that formats `&usize`
+/// values via `Debug`), saving ~2 KB.
 ///
 /// # Safety
 /// Accesses the UART writer.
@@ -54,9 +58,11 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     let writer = &mut *addr_of_mut!(WRITER);
     let _ = writer.write_str("PANIC");
     if let Some(loc) = pi.location() {
-        let _ = write!(writer, " at {}:{}", loc.file(), loc.line());
+        // Skip `loc.line()` to avoid pulling `Display<u32>` + the fmt::pad chain.
+        let _ = writer.write_str(" at ");
+        let _ = writer.write_str(loc.file());
     }
-    let _ = write!(writer, ": {}\n", pi.message());
+    let _ = writer.write_str("\n");
     exit_emulator(1);
 }
 
