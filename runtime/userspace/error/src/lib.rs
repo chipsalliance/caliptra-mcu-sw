@@ -167,6 +167,9 @@ pub mod codes {
 
     /// A non-local invariant (e.g. unexpected state) was hit.
     pub const INVARIANT: McuErrorCode = McuErrorCode::new(domain::INTERNAL, 0, 0x0003);
+
+    /// Caliptra mailbox was busy (transient — caller should retry).
+    pub const MAILBOX_BUSY: McuErrorCode = McuErrorCode::new(domain::MAILBOX, 0, 0x0001);
 }
 
 // ----- Boundary translations -------------------------------------------------

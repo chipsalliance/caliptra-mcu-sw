@@ -25,6 +25,18 @@ impl ApiAlloc for McuSpdmPal {
     }
 }
 
+impl ApiAlloc for BitmapAllocator {
+    type Buf<'a>
+        = BitmapBytes<'a>
+    where
+        Self: 'a;
+
+    #[inline]
+    fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
+        self.alloc_bytes(len)
+    }
+}
+
 impl SpdmPalHash for McuSpdmPal {
     type State = HashState;
 

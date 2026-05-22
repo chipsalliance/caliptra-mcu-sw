@@ -3673,6 +3673,7 @@ name = "mcu-caliptra-api-lite"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
  "mcu-error",
  "zerocopy",
 ]
@@ -5652,6 +5653,8 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
+ "mcu-caliptra-api-lite",
+ "mcu-error",
  "mcu-spdm-lite-pal",
  "mcu-spdm-lite-stack",
  "mcu-spdm-lite-traits",

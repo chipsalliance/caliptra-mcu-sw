@@ -9,7 +9,6 @@
 //! allocated from the caller's [`ApiAlloc`] — never the stack —
 //! keeping async futures small.
 
-use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use core::mem::size_of;
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
@@ -17,7 +16,7 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 
 use crate::wire::{
     calc_checksum, CMD_INVOKE_DPE, DPE_CMD_CERTIFY_KEY, DPE_CMD_GET_CERTIFICATE_CHAIN,
-    DPE_COMMAND_MAGIC, DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC,
+    DPE_CMD_SIGN, DPE_COMMAND_MAGIC, DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC,
 };
 use crate::ApiAlloc;
 
@@ -95,6 +94,29 @@ struct CertifyKeyP384RespPrefix {
     cert_size: U32,
 }
 
+/// `dpe::commands::SignP384Cmd`.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct SignP384Cmd {
+    handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    label: [u8; DPE_LABEL_LEN],
+    flags: U32,
+    digest: [u8; DPE_LABEL_LEN], // same size as hash (48)
+}
+
+/// `dpe::response::SignP384Resp`.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct SignP384RespBody {
+    _resp_hdr: [u8; 12],
+    _new_context_handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    sig_r: [u8; 48],
+    sig_s: [u8; 48],
+}
+
+/// ECC P-384 signature size (r + s, 48 bytes each).
+pub const DPE_P384_SIGNATURE_SIZE: usize = 96;
+
 /// Caliptra `InvokeDpeResp` prefix: `MailboxRespHeader { chksum,
 /// fips_status }` + `data_size`. The DPE-level response payload
 /// follows.
@@ -125,14 +147,21 @@ const CERTIFY_KEY_REQ_LEN: usize =
 const CERTIFY_KEY_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<CertifyKeyP384Cmd>()) as u32;
 
+const SIGN_REQ_LEN: usize =
+    size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<SignP384Cmd>();
+const SIGN_DPE_PAYLOAD_LEN: u32 = (size_of::<DpeCommandHdr>() + size_of::<SignP384Cmd>()) as u32;
+
 const _: () = assert!(size_of::<InvokeDpeReqPrefix>() == 8);
 const _: () = assert!(size_of::<DpeCommandHdr>() == 12);
 const _: () = assert!(size_of::<GetCertChainCmd>() == 8);
 const _: () = assert!(size_of::<CertifyKeyP384Cmd>() == DPE_CONTEXT_HANDLE_SIZE + 4 + 4 + 48);
+const _: () = assert!(size_of::<SignP384Cmd>() == DPE_CONTEXT_HANDLE_SIZE + 48 + 4 + 48);
+const _: () = assert!(size_of::<SignP384RespBody>() == 12 + DPE_CONTEXT_HANDLE_SIZE + 48 + 48);
 const _: () = assert!(size_of::<InvokeDpeRespPrefix>() == 12);
 const _: () = assert!(size_of::<DpeResponseHdr>() == 12);
 const _: () = assert!(GET_CERT_CHAIN_REQ_LEN == 28);
 const _: () = assert!(CERTIFY_KEY_REQ_LEN == 8 + 12 + 72);
+const _: () = assert!(SIGN_REQ_LEN == 8 + 12 + 116);
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -189,11 +218,7 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     let rsp_max =
         size_of::<InvokeDpeRespPrefix>() + size_of::<DpeResponseHdr>() + 4 + DPE_MAX_CHUNK_SIZE;
     let mut rsp = alloc.alloc(rsp_max)?;
-    let mbox: Mailbox = Mailbox::new();
-    let rsp_len = mbox
-        .execute(CMD_INVOKE_DPE, &req, &mut rsp)
-        .await
-        .map_err(|_| INTERNAL_BUG)?;
+    let rsp_len = crate::wire::mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
 
     let outer_prefix_len = size_of::<InvokeDpeRespPrefix>();
     let dpe_hdr_off = outer_prefix_len;
@@ -272,11 +297,7 @@ pub async fn dpe_certify_key<A: ApiAlloc>(
         + size_of::<CertifyKeyP384RespPrefix>()
         + DPE_MAX_LEAF_CERT_SIZE;
     let mut rsp = alloc.alloc(rsp_max)?;
-    let mbox: Mailbox = Mailbox::new();
-    let rsp_len = mbox
-        .execute(CMD_INVOKE_DPE, &req, &mut rsp)
-        .await
-        .map_err(|_| INTERNAL_BUG)?;
+    let rsp_len = crate::wire::mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
 
     let outer_prefix_len = size_of::<InvokeDpeRespPrefix>();
     let dpe_hdr_off = outer_prefix_len;
@@ -340,4 +361,74 @@ pub async fn walk_dpe_chain<A: ApiAlloc, S: DpeChainSink>(
         }
     }
     Ok(total)
+}
+
+/// Invoke DPE `Sign` (P-384 / SHA-384) for the default context handle
+/// and the given 48-byte `label`. Signs `digest` and writes the
+/// concatenated (r || s) signature into `signature`.
+///
+/// `signature` must be at least [`DPE_P384_SIGNATURE_SIZE`] (96) bytes.
+#[inline(never)]
+pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
+    alloc: &A,
+    label: &[u8; DPE_LABEL_LEN],
+    digest: &[u8],
+    signature: &mut [u8],
+) -> McuResult<usize> {
+    if signature.len() < DPE_P384_SIGNATURE_SIZE || digest.len() < DPE_LABEL_LEN {
+        return Err(INVARIANT);
+    }
+
+    let mut req = alloc.alloc(SIGN_REQ_LEN)?;
+    req.fill(0);
+    {
+        let prefix =
+            InvokeDpeReqPrefix::mut_from_bytes(&mut req[..size_of::<InvokeDpeReqPrefix>()])
+                .map_err(|_| INVARIANT)?;
+        prefix.data_size = U32::new(SIGN_DPE_PAYLOAD_LEN);
+    }
+    let mut cur = size_of::<InvokeDpeReqPrefix>();
+    {
+        let hdr = DpeCommandHdr::mut_from_bytes(&mut req[cur..cur + size_of::<DpeCommandHdr>()])
+            .map_err(|_| INVARIANT)?;
+        hdr.magic = U32::new(DPE_COMMAND_MAGIC);
+        hdr.cmd_id = U32::new(DPE_CMD_SIGN);
+        hdr.profile = U32::new(DPE_PROFILE_P384_SHA384);
+    }
+    cur += size_of::<DpeCommandHdr>();
+    {
+        let cmd = SignP384Cmd::mut_from_bytes(&mut req[cur..cur + size_of::<SignP384Cmd>()])
+            .map_err(|_| INVARIANT)?;
+        cmd.label.copy_from_slice(label);
+        cmd.flags = U32::new(0);
+        cmd.digest.copy_from_slice(&digest[..DPE_LABEL_LEN]);
+    }
+    let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
+    req[..4].copy_from_slice(&checksum.to_le_bytes());
+
+    let rsp_max = size_of::<InvokeDpeRespPrefix>() + size_of::<SignP384RespBody>();
+    let mut rsp = alloc.alloc(rsp_max)?;
+    let rsp_len = crate::wire::mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
+
+    let outer_prefix_len = size_of::<InvokeDpeRespPrefix>();
+    let resp_body_off = outer_prefix_len;
+    if rsp_len < resp_body_off + size_of::<SignP384RespBody>() {
+        return Err(INTERNAL_BUG);
+    }
+
+    let dpe_hdr = DpeResponseHdr::ref_from_bytes(
+        &rsp[resp_body_off..resp_body_off + size_of::<DpeResponseHdr>()],
+    )
+    .map_err(|_| INTERNAL_BUG)?;
+    if dpe_hdr.magic.get() != DPE_RESPONSE_MAGIC || dpe_hdr.status.get() != 0 {
+        return Err(INTERNAL_BUG);
+    }
+
+    let sign_resp = SignP384RespBody::ref_from_bytes(
+        &rsp[resp_body_off..resp_body_off + size_of::<SignP384RespBody>()],
+    )
+    .map_err(|_| INTERNAL_BUG)?;
+    signature[..48].copy_from_slice(&sign_resp.sig_r);
+    signature[48..96].copy_from_slice(&sign_resp.sig_s);
+    Ok(DPE_P384_SIGNATURE_SIZE)
 }

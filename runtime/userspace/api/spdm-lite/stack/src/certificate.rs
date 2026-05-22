@@ -13,7 +13,9 @@
 use mcu_spdm_lite_codec::{
     CertificateRsp, GetCertificateReqBody, SpdmMsgHdrPdu, SpdmVersion, ATTR_SLOT_SIZE_REQUESTED,
 };
-use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS};
+use mcu_spdm_lite_traits::{
+    PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
+};
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
@@ -62,8 +64,9 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
         state.version >= SpdmVersion::V13 && (req_body.attributes & ATTR_SLOT_SIZE_REQUESTED) != 0;
 
     // Total SPDM cert chain length = 52-byte header + raw DER chain.
+    let asym_algo = state.asym_algo();
     let der_len = pal
-        .cert_chain_len(io, slot_id)
+        .cert_chain_len(io, slot_id, asym_algo)
         .await
         .map_err(|_| SPDM_INVALID_REQUEST)?;
     let total_len = SPDM_CERT_CHAIN_HDR_LEN
@@ -91,7 +94,7 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
     // are spliced in below: [0, 52) from the SPDM cert-chain
     // header, [52, total_len) from the raw DER chain.
     let mut portion = pal.alloc_bytes(io, portion_len as usize)?;
-    fill_cert_chain_portion(pal, io, slot_id, offset as usize, &mut portion).await?;
+    fill_cert_chain_portion(pal, io, slot_id, asym_algo, offset as usize, &mut portion).await?;
 
     let resp = build_response(
         pal,
@@ -127,10 +130,11 @@ async fn fill_cert_chain_portion<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     slot: u8,
+    asym_algo: SpdmPalAsymAlgo,
     offset: usize,
     dst: &mut [u8],
 ) -> mcu_error::McuResult<()> {
-    let der_len = pal.cert_chain_len(io, slot).await?;
+    let der_len = pal.cert_chain_len(io, slot, asym_algo).await?;
     let total_len = SPDM_CERT_CHAIN_HDR_LEN + der_len;
     let end = offset
         .checked_add(dst.len())
@@ -148,6 +152,7 @@ async fn fill_cert_chain_portion<Pal: SpdmPal>(
         pal.root_cert_hash(
             io,
             slot,
+            asym_algo,
             mcu_spdm_lite_traits::SpdmPalHashAlgo::Sha384,
             &mut hdr[4..4 + SHA384_DIGEST_SIZE],
         )
@@ -162,7 +167,7 @@ async fn fill_cert_chain_portion<Pal: SpdmPal>(
     if written < dst.len() {
         let der_offset = (offset + written) - SPDM_CERT_CHAIN_HDR_LEN;
         let n = pal
-            .read_cert_chain(io, slot, der_offset, &mut dst[written..])
+            .read_cert_chain(io, slot, asym_algo, der_offset, &mut dst[written..])
             .await?;
         if n != dst.len() - written {
             return Err(mcu_error::codes::INVARIANT);

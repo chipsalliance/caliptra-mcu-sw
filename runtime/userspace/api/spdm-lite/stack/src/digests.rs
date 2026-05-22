@@ -9,7 +9,7 @@
 
 use mcu_spdm_lite_codec::{DigestsRsp, SpdmMsgHdrPdu};
 use mcu_spdm_lite_traits::{
-    PalBytes, SpdmPal, SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
+    PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
 };
 use zerocopy::FromBytes;
 
@@ -41,11 +41,12 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
+    let supported = pal.supported_slots();
     let provisioned = pal.provisioned_slots();
-    let supported = provisioned; // we don't advertise unprovisioned slots
     let digest_size = SpdmPalHashAlgo::Sha384.hash_size();
     let num_slots = provisioned.count_ones() as usize;
     let digests_len = num_slots * digest_size;
+    let asym_algo = state.asym_algo();
 
     // Compute digests directly into a pool-allocated buffer; the
     // codec then copies these bytes into the response body via
@@ -62,7 +63,7 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
         if let Some(cached) = pal.cached_chain_digest(slot, SpdmPalHashAlgo::Sha384) {
             dst.copy_from_slice(&cached[..digest_size]);
         } else {
-            cert_chain_hash(pal, io, slot, SpdmPalHashAlgo::Sha384, dst)
+            cert_chain_hash(pal, io, slot, asym_algo, SpdmPalHashAlgo::Sha384, dst)
                 .await
                 .map_err(|_| SPDM_UNSPECIFIED)?;
             pal.cache_chain_digest(slot, SpdmPalHashAlgo::Sha384, dst);
@@ -105,10 +106,11 @@ async fn cert_chain_hash<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     slot: u8,
+    asym_algo: SpdmPalAsymAlgo,
     algo: SpdmPalHashAlgo,
     out: &mut [u8],
 ) -> mcu_error::McuResult<()> {
-    let der_len = pal.cert_chain_len(io, slot).await?;
+    let der_len = pal.cert_chain_len(io, slot, asym_algo).await?;
     let digest_size = algo.hash_size();
 
     // 52-byte SPDM cert-chain header on the stack. Per the user:
@@ -117,7 +119,7 @@ async fn cert_chain_hash<Pal: SpdmPal>(
     let total = (hdr.len() + der_len) as u16;
     hdr[0..2].copy_from_slice(&total.to_le_bytes());
     // bytes 2..4 (Reserved) already zero
-    pal.root_cert_hash(io, slot, algo, &mut hdr[4..4 + digest_size])
+    pal.root_cert_hash(io, slot, asym_algo, algo, &mut hdr[4..4 + digest_size])
         .await?;
 
     let mut state = pal.hash_init(io, algo, &hdr).await?;
@@ -125,7 +127,9 @@ async fn cert_chain_hash<Pal: SpdmPal>(
     let mut offset = 0;
     loop {
         let mut buf = pal.alloc_bytes(io, CERT_CHUNK_SIZE)?;
-        let n = pal.read_cert_chain(io, slot, offset, &mut buf).await?;
+        let n = pal
+            .read_cert_chain(io, slot, asym_algo, offset, &mut buf)
+            .await?;
         if n == 0 {
             break;
         }

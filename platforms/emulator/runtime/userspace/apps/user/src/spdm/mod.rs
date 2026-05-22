@@ -4,20 +4,68 @@
 
 extern crate alloc;
 
+mod cert_store;
+
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write as _;
 use core::ptr::NonNull;
+use core::sync::atomic::{AtomicU8, Ordering};
 use embassy_executor::Spawner;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
+use mcu_spdm_lite_pal::cert::store::SharedCertStore;
 use mcu_spdm_lite_pal::{McuSpdmPal, BITMAP_SLOT_SIZE};
 use mcu_spdm_lite_stack::SpdmStack;
-use mcu_spdm_lite_traits::SpdmPalTransport;
 use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 
 /// Bitmap allocator pool size per responder task.
 const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
+
+/// Single cert store shared by all SPDM responder tasks.
+static CERT_STORE: SharedCertStore = SharedCertStore::new();
+
+/// Signal fired when cert store init completes.
+static CERT_STORE_DONE: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+
+/// Cert store init state: 0 = uninit, 1 = in progress, 2 = done.
+static CERT_STORE_STATE: AtomicU8 = AtomicU8::new(0);
+
+/// Initialize the shared cert store. First caller does the work;
+/// concurrent callers wait on a Signal (no busy-loop).
+async fn ensure_cert_store_init<A: mcu_caliptra_api_lite::ApiAlloc>(
+    alloc: &A,
+) -> mcu_error::McuResult<()> {
+    // Single-core cooperative executor: no preemption between load and
+    // store, so load+store is equivalent to compare_exchange here.
+    // (riscv32imc lacks hardware CAS.)
+    let state = CERT_STORE_STATE.load(Ordering::Acquire);
+    match state {
+        0 => {
+            CERT_STORE_STATE.store(1, Ordering::Release);
+            if let Err(e) = cert_store::populate_idev(alloc).await {
+                CERT_STORE_STATE.store(0, Ordering::Release);
+                CERT_STORE_DONE.signal(false);
+                return Err(e);
+            }
+            let r = cert_store::setup_endorsements(&CERT_STORE, alloc).await;
+            CERT_STORE_STATE.store(if r.is_ok() { 2 } else { 0 }, Ordering::Release);
+            CERT_STORE_DONE.signal(r.is_ok());
+            r
+        }
+        1 => {
+            let ok = CERT_STORE_DONE.wait().await;
+            if ok {
+                Ok(())
+            } else {
+                Err(mcu_error::codes::INTERNAL_BUG)
+            }
+        }
+        _ => Ok(()),
+    }
+}
 
 /// Spawn SPDM responder tasks (MCTP + DOE) on the given executor.
 pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
@@ -41,6 +89,15 @@ async fn spdm_mctp_responder() {
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(MCTP_SCRATCH.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
+    {
+        let init_alloc =
+            unsafe { mcu_spdm_lite_pal::BitmapAllocator::new(scratch_ptr, SPDM_LITE_SCRATCH_SIZE) };
+        if let Err(e) = ensure_cert_store_init(&init_alloc).await {
+            crate::console_writeln!(cw, "SPDM_MCTP: cert store init failed: 0x{:08x}", e);
+            return;
+        }
+    }
+
     let transport = alloc::boxed::Box::new(
         McuSpdmMctpTransport::new(
             mctp::driver_num::MCTP_SPDM,
@@ -49,7 +106,8 @@ async fn spdm_mctp_responder() {
         .expect("MCTP_SPDM driver with MCTP_MSG_TYPE_SPDM is a valid pairing"),
     );
 
-    let pal = unsafe { McuSpdmPal::new(transport, scratch_ptr, SPDM_LITE_SCRATCH_SIZE) };
+    let pal =
+        unsafe { McuSpdmPal::new(transport, scratch_ptr, SPDM_LITE_SCRATCH_SIZE, &CERT_STORE) };
     let mut stack = SpdmStack::new(pal);
 
     crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lite MCTP run loop");
@@ -68,18 +126,24 @@ async fn spdm_doe_responder() {
         return;
     }
 
-    let mtu = doe_transport.mtu();
-    let hdr = doe_transport.header_size();
-    crate::console_writeln!(cw, "SPDM_DOE: DOE mtu={} header={}", mtu, hdr);
-
     #[repr(C, align(64))]
     struct ScratchBuf([u8; SPDM_LITE_SCRATCH_SIZE]);
     static mut DOE_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_LITE_SCRATCH_SIZE]);
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(DOE_SCRATCH.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
+    {
+        let init_alloc =
+            unsafe { mcu_spdm_lite_pal::BitmapAllocator::new(scratch_ptr, SPDM_LITE_SCRATCH_SIZE) };
+        if let Err(e) = ensure_cert_store_init(&init_alloc).await {
+            crate::console_writeln!(cw, "SPDM_DOE: cert store init failed: 0x{:08x}", e);
+            return;
+        }
+    }
+
     let transport = alloc::boxed::Box::new(doe_transport);
-    let pal = unsafe { McuSpdmPal::new(transport, scratch_ptr, SPDM_LITE_SCRATCH_SIZE) };
+    let pal =
+        unsafe { McuSpdmPal::new(transport, scratch_ptr, SPDM_LITE_SCRATCH_SIZE, &CERT_STORE) };
     let mut stack = SpdmStack::new(pal);
 
     crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lite DOE run loop");

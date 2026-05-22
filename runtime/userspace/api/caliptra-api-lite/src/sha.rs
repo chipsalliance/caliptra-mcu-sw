@@ -16,7 +16,6 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use core::mem::size_of;
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
@@ -277,8 +276,7 @@ async fn sha_call<A: ApiAlloc>(
 
 #[inline(never)]
 async fn execute(cmd: u32, req: &[u8], rsp: &mut [u8]) -> McuResult<usize> {
-    let mbox: Mailbox = Mailbox::new();
-    mbox.execute(cmd, req, rsp).await.map_err(|_| INTERNAL_BUG)
+    crate::wire::mbox_execute(cmd, req, rsp).await
 }
 
 #[inline]

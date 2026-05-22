@@ -159,6 +159,13 @@ impl<S: Clone> ConnectionState<S> {
         self.peer_cap_flags = CapFlags::EMPTY;
         self.transcript.reset();
     }
+
+    /// Convert the negotiated `base_asym_sel` bitfield to
+    /// [`SpdmPalAsymAlgo`] for cert-store calls.
+    pub(crate) fn asym_algo(&self) -> SpdmPalAsymAlgo {
+        // TODO: add MLDSA-87 mapping once codec and DPE support it.
+        SpdmPalAsymAlgo::EccP384
+    }
 }
 
 impl<S: Clone> Default for ConnectionState<S> {
