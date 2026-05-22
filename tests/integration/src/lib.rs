@@ -588,7 +588,6 @@ mod test {
             flash_boot: params.flash_boot,
             ocp_lock_en: params.ocp_lock_en,
             fips_zeroization: params.fips_zeroization,
-            active_i3c1: params.active_i3c1,
             debug_intent: params.debug_intent,
             prod_dbg_unlock_keypairs: params
                 .prod_dbg_unlock_keypairs
