@@ -35,6 +35,8 @@ pub(crate) enum MCTPCtrlCmdTests {
     GetMctpVersionSupportUnspecified,
     GetMctpVersionSupportUnsupported,
     GetMsgTypeSupport,
+    UnsupportedCmd,
+    GetEIDAfterUnsupported,
 }
 
 impl MCTPCtrlCmdTests {
@@ -83,6 +85,12 @@ impl MCTPCtrlCmdTests {
                 vec![0x01]
             }
             MCTPCtrlCmdTests::GetMsgTypeSupport => {
+                vec![]
+            }
+            MCTPCtrlCmdTests::UnsupportedCmd => {
+                vec![]
+            }
+            MCTPCtrlCmdTests::GetEIDAfterUnsupported => {
                 vec![]
             }
         };
@@ -159,6 +167,15 @@ impl MCTPCtrlCmdTests {
                 ];
                 generate_msg_type_support_resp_bytes(CmdCompletionCode::Success as u8, &msg_types)
             }
+            // Issue #1138: Unsupported command should return completion code 0x05
+            // and not leak the TX buffer
+            MCTPCtrlCmdTests::UnsupportedCmd => {
+                vec![CmdCompletionCode::ErrorNotSupportedCmd as u8]
+            }
+            // Issue #1138: Verify MCU still responds after receiving an unsupported command
+            MCTPCtrlCmdTests::GetEIDAfterUnsupported => {
+                get_eid_resp_bytes(CmdCompletionCode::Success, TEST_TARGET_EID + 1)
+            }
         };
 
         MCTPCtrlCmdTests::generate_msg((mctp_common_msg_hdr, mctp_ctrl_msg_hdr, resp_data))
@@ -201,6 +218,9 @@ impl MCTPCtrlCmdTests {
                 MCTPCtrlCmd::GetMctpVersionSupport as u8
             }
             MCTPCtrlCmdTests::GetMsgTypeSupport => MCTPCtrlCmd::GetMsgTypeSupport as u8,
+            // Command code 0x06 (GetVendorDefinedMessageSupport) is not implemented
+            MCTPCtrlCmdTests::UnsupportedCmd => 0x06,
+            MCTPCtrlCmdTests::GetEIDAfterUnsupported => MCTPCtrlCmd::GetEID as u8,
         }
     }
 }
