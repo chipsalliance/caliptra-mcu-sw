@@ -38,6 +38,7 @@ async fn populate_idev_cert() -> CertStoreResult<()> {
     while offset + 4 <= ECC_DEVID_CERT_SIZE as u32 {
         let word = otp
             .read(0x01, offset)
+            .await
             .map_err(|_| CertStoreError::CertReadError)?;
         cert_buf[offset as usize..offset as usize + 4].copy_from_slice(&word.to_le_bytes());
         offset += 4;
@@ -47,6 +48,7 @@ async fn populate_idev_cert() -> CertStoreResult<()> {
         let tail_offset = ECC_DEVID_CERT_SIZE as u32 - 4;
         let word = otp
             .read(0x01, tail_offset)
+            .await
             .map_err(|_| CertStoreError::CertReadError)?;
         let word_bytes = word.to_le_bytes();
         let skip = (offset - tail_offset) as usize;

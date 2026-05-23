@@ -61,31 +61,9 @@ default-filter = """
     - test(test_lc_dev_to_scrap)
     - test(test_lc_invalid_transition_error)) |
 (package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot)) |
+(package(caliptra-mcu-tests-integration) and test(test_rom_hooks_fire_in_order)) |
+(package(caliptra-mcu-tests-integration) and test(test_fw_manifest_dot_hitless_lock)) |
 (package(caliptra-mcu-tests-integration) and test(test_external_otp))
-"""
-# Disabled because they hang the FPGA at boot (LifecycleControllerState::Dev):
-#   test_manuf_debug_unlock, test_uds, test_sw_digest_lock,
-#   test_otp_blank_check, test_otp_scramble_check, test_bootfsm_timeout,
-#   and the Dev-starting subtests of test_lc_ctrl listed above.
-# Disabled because they fail on FPGA:
-#   test_fw_manifest_dot_hitless_lock, test_log_flash_usermode,
-#   test_mctp_capsule_loopback, test_mcu_mbox_cmds,
-#   test_mcu_mbox_fips_periodic, test_mcu_mbox_fips_self_test.
-# Disabled because it requires test-rom-hooks ROM feature not built for FPGA:
-#   test_rom_hooks_fire_in_order
-# Disabled pre-existing for flakiness:
-#   test_firmware_update_streaming_fpga
-
-# test_mctp_vdm_cmds needs a longer timeout on FPGA because each MCTP VDM
-# command round-trip takes ~4 minutes over I3C, and the test runs ~9 commands.
-[[profile.nightly-ci.overrides]]
-filter = "test(test_mctp_vdm_cmds)"
-slow-timeout = { period = "10m", terminate-after = 6 }
-
-[profile.nightly-release]
-inherits = "nightly-emulator"
-default-filter = """
-(package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful))
 """
 
 [profile.nightly-release]

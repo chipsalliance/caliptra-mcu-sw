@@ -1,14 +1,20 @@
 // Licensed under the Apache-2.0 license
 
-//! # ExternalOTP: An interface for accessing external OTP (One-Time Programmable) storage.
+//! # ExternalOTP: An async interface for accessing external OTP storage.
 //!
 //! This module provides userspace access to the ExternalOTP peripheral, which
 //! models SoC-specific immutable storage external to Caliptra's built-in OTP
 //! controller. Storage is organized into partitions, each with a defined size.
-//! Each read or write operates on a single u32 (4 bytes).
+//!
+//! Flash-accessing operations (`read`, `write`, `lock_partition`,
+//! `is_partition_locked`) are asynchronous: the command starts the operation
+//! and the result is delivered via an upcall/future.
+//!
+//! Metadata queries (`partition_count`, `partition_size`) are synchronous.
 
 use crate::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
+use caliptra_mcu_libtockasync::TockSubscribe;
 use core::marker::PhantomData;
 
 /// Driver number for the ExternalOTP capsule.
@@ -23,6 +29,11 @@ mod cmd {
     pub const GET_PARTITION_COUNT: u32 = 5;
     pub const LOCK_PARTITION: u32 = 6;
     pub const IS_PARTITION_LOCKED: u32 = 7;
+}
+
+mod subscribe {
+    /// Operation-complete upcall.
+    pub const OPERATION_DONE: u32 = 0;
 }
 
 /// Userspace interface to the ExternalOTP peripheral.
@@ -62,35 +73,95 @@ impl<S: Syscalls> ExternalOtp<S> {
     }
 
     /// Read a u32 from a partition at the given byte offset.
-    pub fn read(&self, partition_id: u32, offset: u32) -> Result<u32, ErrorCode> {
+    ///
+    /// This is asynchronous: the command starts a flash read and the result
+    /// is delivered via upcall.
+    pub async fn read(&self, partition_id: u32, offset: u32) -> Result<u32, ErrorCode> {
         S::command(self.driver_num, cmd::SET_PARTITION, partition_id, 0)
             .to_result::<(), ErrorCode>()?;
 
-        S::command(self.driver_num, cmd::READ, offset, 0).to_result::<u32, ErrorCode>()
+        let mut sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::OPERATION_DONE);
+
+        match S::command(self.driver_num, cmd::READ, offset, 0).to_result::<(), ErrorCode>() {
+            Ok(()) => {}
+            Err(e) => {
+                sub.cancel();
+                return Err(e);
+            }
+        }
+
+        let (status, value, _) = TockSubscribe::subscribe_finish(sub).await?;
+        if status == 0 {
+            Ok(value)
+        } else {
+            Err(ErrorCode::Fail)
+        }
     }
 
     /// Write a u32 to a partition at the given byte offset.
-    pub fn write(&self, partition_id: u32, offset: u32, value: u32) -> Result<(), ErrorCode> {
+    pub async fn write(&self, partition_id: u32, offset: u32, value: u32) -> Result<(), ErrorCode> {
         S::command(self.driver_num, cmd::SET_PARTITION, partition_id, 0)
             .to_result::<(), ErrorCode>()?;
 
-        S::command(self.driver_num, cmd::WRITE, offset, value).to_result::<(), ErrorCode>()
+        let mut sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::OPERATION_DONE);
+
+        match S::command(self.driver_num, cmd::WRITE, offset, value).to_result::<(), ErrorCode>() {
+            Ok(()) => {}
+            Err(e) => {
+                sub.cancel();
+                return Err(e);
+            }
+        }
+
+        let (status, _, _) = TockSubscribe::subscribe_finish(sub).await?;
+        if status == 0 {
+            Ok(())
+        } else {
+            Err(ErrorCode::Fail)
+        }
     }
 
     /// Lock a partition, preventing further writes.
-    ///
-    /// Once locked, subsequent `write()` calls to this partition will fail.
-    pub fn lock_partition(&self, partition_id: u32) -> Result<(), ErrorCode> {
-        S::command(self.driver_num, cmd::LOCK_PARTITION, partition_id, 0)
+    pub async fn lock_partition(&self, partition_id: u32) -> Result<(), ErrorCode> {
+        let mut sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::OPERATION_DONE);
+
+        match S::command(self.driver_num, cmd::LOCK_PARTITION, partition_id, 0)
             .to_result::<(), ErrorCode>()
+        {
+            Ok(()) => {}
+            Err(e) => {
+                sub.cancel();
+                return Err(e);
+            }
+        }
+
+        let (status, _, _) = TockSubscribe::subscribe_finish(sub).await?;
+        if status == 0 {
+            Ok(())
+        } else {
+            Err(ErrorCode::Fail)
+        }
     }
 
     /// Check whether a partition is locked.
-    ///
-    /// Returns `true` if the partition is locked, `false` otherwise.
-    pub fn is_partition_locked(&self, partition_id: u32) -> Result<bool, ErrorCode> {
-        let val = S::command(self.driver_num, cmd::IS_PARTITION_LOCKED, partition_id, 0)
-            .to_result::<u32, ErrorCode>()?;
-        Ok(val != 0)
+    pub async fn is_partition_locked(&self, partition_id: u32) -> Result<bool, ErrorCode> {
+        let mut sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::OPERATION_DONE);
+
+        match S::command(self.driver_num, cmd::IS_PARTITION_LOCKED, partition_id, 0)
+            .to_result::<(), ErrorCode>()
+        {
+            Ok(()) => {}
+            Err(e) => {
+                sub.cancel();
+                return Err(e);
+            }
+        }
+
+        let (status, value, _) = TockSubscribe::subscribe_finish(sub).await?;
+        if status == 0 {
+            Ok(value != 0)
+        } else {
+            Err(ErrorCode::Fail)
+        }
     }
 }

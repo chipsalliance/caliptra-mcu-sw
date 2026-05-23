@@ -13,22 +13,30 @@ pub trait FlashStorage<'a> {
     /// Read `length` bytes starting at address `address` in to the provided
     /// buffer. The buffer must be at least `length` bytes long. The address
     /// must be in the address space of the physical storage.
+    ///
+    /// On success the buffer is consumed and will be returned via the
+    /// [`FlashStorageClient::read_done`] callback.  On failure the buffer
+    /// is returned inside the error tuple so the caller can reclaim it.
     fn read(
         &self,
         buffer: &'static mut [u8],
         address: usize,
         length: usize,
-    ) -> Result<(), ErrorCode>;
+    ) -> Result<(), (ErrorCode, &'static mut [u8])>;
 
     /// Write `length` bytes starting at address `address` from the provided
     /// buffer. The buffer must be at least `length` bytes long. This address
     /// must be in the address space of the physical storage.
+    ///
+    /// On success the buffer is consumed and will be returned via the
+    /// [`FlashStorageClient::write_done`] callback.  On failure the buffer
+    /// is returned inside the error tuple so the caller can reclaim it.
     fn write(
         &self,
         buffer: &'static mut [u8],
         address: usize,
         length: usize,
-    ) -> Result<(), ErrorCode>;
+    ) -> Result<(), (ErrorCode, &'static mut [u8])>;
 
     /// Erase `length` bytes starting at address `address`. The address must be
     /// in the address space of the physical storage.
