@@ -46,6 +46,22 @@ pub static ECC_DEVID_CERT_DER: [u8; 547] = [
     0x8e, 0x03, 0xb0,
 ];
 
+/// First 64 bytes of the ML-DSA-87 IDevID certificate (partition 0x02).
+pub static MLDSA_CERT_HEAD: [u8; 64] = [
+    0x30, 0x82, 0x1e, 0x39, 0x30, 0x82, 0x0c, 0x10, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x14, 0x01,
+    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+    0x01, 0x01, 0x01, 0x30, 0x0b, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x13,
+    0x30, 0x71, 0x31, 0x24, 0x30, 0x22, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x1b, 0x43, 0x61, 0x6c,
+];
+
+/// Last 64 bytes of the ML-DSA-87 IDevID certificate (partition 0x02).
+pub static MLDSA_CERT_TAIL: [u8; 64] = [
+    0x96, 0xc1, 0xc6, 0xda, 0xed, 0xfd, 0x03, 0x66, 0xb0, 0xbe, 0x31, 0x66, 0xbb, 0xfa, 0x0e, 0x29,
+    0x9b, 0xb1, 0xb8, 0xf6, 0x1b, 0x22, 0x3e, 0x47, 0x4e, 0x7c, 0x84, 0xab, 0xe5, 0x06, 0x16, 0x30,
+    0x3c, 0x6b, 0xc7, 0xd4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x0c, 0x19, 0x1d, 0x21, 0x27, 0x30, 0x37,
+];
+
 #[allow(unused)]
 pub(crate) async fn test_external_otp() {
     let otp = ExternalOtp::<DefaultSyscalls>::new();
@@ -97,13 +113,49 @@ pub(crate) async fn test_external_otp() {
         }
     }
 
-    // Partition 0x02: MLDSA signature (4627 bytes).
+    // Partition 0x02: MLDSA certificate (7741 bytes).
     let mldsa_size = otp.partition_size(0x02).unwrap();
     assert_eq!(
-        mldsa_size, 4627,
-        "expected MLDSA partition size 4627, got {}",
+        mldsa_size, 7741,
+        "expected MLDSA partition size 7741, got {}",
         mldsa_size
     );
+
+    // Spot-check partition 0x02: verify first 64 bytes of MLDSA certificate.
+    {
+        let mut offset = 0u32;
+        while offset + 4 <= 64 {
+            let mut word_bytes = [0u8; 4];
+            word_bytes.copy_from_slice(&MLDSA_CERT_HEAD[offset as usize..offset as usize + 4]);
+            let expected = u32::from_le_bytes(word_bytes);
+            let actual = otp.read(0x02, offset).await.unwrap();
+            assert_eq!(
+                actual, expected,
+                "MLDSA_CERT_HEAD mismatch at offset {}",
+                offset
+            );
+            offset += 4;
+        }
+    }
+
+    // Spot-check partition 0x02: verify last 64 bytes of MLDSA certificate.
+    {
+        let tail_start = mldsa_size - 64;
+        let mut offset = 0u32;
+        while offset + 4 <= 64 {
+            let mut word_bytes = [0u8; 4];
+            word_bytes.copy_from_slice(&MLDSA_CERT_TAIL[offset as usize..offset as usize + 4]);
+            let expected = u32::from_le_bytes(word_bytes);
+            let actual = otp.read(0x02, tail_start + offset).await.unwrap();
+            assert_eq!(
+                actual,
+                expected,
+                "MLDSA_CERT_TAIL mismatch at offset {}",
+                tail_start + offset
+            );
+            offset += 4;
+        }
+    }
 
     // Write a u32 to partition 0x01 at offset 0.
     let test_val: u32 = 0xDEAD_BEEF;
