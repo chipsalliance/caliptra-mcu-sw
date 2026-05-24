@@ -45,9 +45,9 @@ mod test {
         target_dir, CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET,
     };
     use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
-    use caliptra_mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
+    use caliptra_mcu_testing_common::DeviceLifecycle;
     use random_port::PortPicker;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::AtomicU32;
     use std::sync::Mutex;
     use std::{
         path::{Path, PathBuf},
@@ -1014,8 +1014,12 @@ mod test {
     }
 
     pub fn start_runtime_hw_model(params: TestParams) -> DefaultHwModel {
-        // reset to known good state for beginning of test so that I3C socket will start correctly
-        MCU_RUNNING.store(true, Ordering::Relaxed);
+        // Each hw-model constructor now creates a fresh per-instance
+        // `EmulatorState` (with `running = true`) and installs it on the
+        // current thread via `init_emulator_state`, so no caller-side reset
+        // is required. Touching `set_emulator_running(true)` here would
+        // panic, since the test thread has no per-instance state until the
+        // model is built below.
 
         let TestBinaries {
             vendor_pk_hash_u8,

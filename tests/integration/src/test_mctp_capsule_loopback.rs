@@ -10,9 +10,7 @@ mod test {
         self, BufferedStream, MctpTestState, MctpTransportTest,
     };
     use caliptra_mcu_testing_common::mctp_util::common::MctpUtil;
-    use caliptra_mcu_testing_common::MCU_RUNNING;
     use random_port::PortPicker;
-    use std::sync::atomic::Ordering;
 
     #[test]
     fn test_mctp_capsule_loopback() {
@@ -77,7 +75,7 @@ mod test {
         fn run_test(&mut self, stream: &mut BufferedStream, target_addr: u8) {
             stream.set_nonblocking(true).unwrap();
 
-            while MCU_RUNNING.load(Ordering::Relaxed) {
+            while caliptra_mcu_testing_common::is_emulator_running() {
                 match self.test_state {
                     MctpTestState::Start => {
                         println!("Starting test: {}", self.test_name);

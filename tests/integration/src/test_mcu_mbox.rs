@@ -45,7 +45,6 @@ pub mod test {
     use caliptra_mcu_registers_generated::mci;
     use caliptra_mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
-        MCU_RUNNING,
     };
     use fips204::ml_dsa_87;
     use fips204::traits::Signer;
@@ -162,9 +161,9 @@ pub mod test {
         let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
         let caliptra_mmio_ptr = hw.base.mmio.caliptra_mmio().unwrap() as u64;
 
-        std::thread::spawn(move || {
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
             sleep_emulator_ticks(5_000_000);
@@ -192,7 +191,7 @@ pub mod test {
                 exit(-1);
             }
             println!("Passed");
-            MCU_RUNNING.store(false, Ordering::Relaxed);
+            caliptra_mcu_testing_common::stop_emulator();
         });
 
         let test = finish_runtime_hw_model(&mut hw);
@@ -216,9 +215,9 @@ pub mod test {
         hw.start_i3c_controller();
         let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
 
-        std::thread::spawn(move || {
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
             // Wait for firmware to initialize
@@ -241,7 +240,7 @@ pub mod test {
                 println!("Sent {} test messages", test.test_messages.len());
                 println!("Passed");
             }
-            MCU_RUNNING.store(false, Ordering::Relaxed);
+            caliptra_mcu_testing_common::stop_emulator();
         });
 
         let test = finish_runtime_hw_model(&mut hw);

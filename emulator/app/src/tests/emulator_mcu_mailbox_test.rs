@@ -6,9 +6,8 @@
 use caliptra_mcu_emulator_mcu_mbox::mcu_mailbox_transport::{
     McuMailboxError, McuMailboxResponse, McuMailboxTransport,
 };
-use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+use caliptra_mcu_testing_common::wait_for_runtime_start;
 use std::process::exit;
-use std::sync::atomic::Ordering;
 use std::thread::sleep;
 
 #[derive(Clone)]
@@ -118,9 +117,9 @@ impl RequestResponseTest {
 
     pub fn run(&self, test_feature: String) {
         let transport_clone = self.mbox.clone();
-        std::thread::spawn(move || {
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
             sleep(std::time::Duration::from_secs(5));
@@ -134,7 +133,7 @@ impl RequestResponseTest {
                 println!("Sent {} test messages", test.test_messages.len());
                 println!("Passed");
             }
-            MCU_RUNNING.store(false, Ordering::Relaxed);
+            caliptra_mcu_testing_common::stop_emulator();
         });
     }
 }

@@ -4,9 +4,8 @@
 mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams};
     use caliptra_mcu_hw_model::McuHwModel;
-    use caliptra_mcu_testing_common::MCU_RUNNING;
+    use caliptra_mcu_testing_common::stop_emulator;
     use random_port::PortPicker;
-    use std::sync::atomic::Ordering;
 
     #[test]
     fn test_external_otp() {
@@ -42,6 +41,6 @@ mod test {
         let status = finish_runtime_hw_model(&mut hw);
         assert_eq!(status, 0);
 
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        stop_emulator();
     }
 }

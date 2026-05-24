@@ -14,9 +14,8 @@ use caliptra_mcu_pldm_common::protocol::base::*;
 use caliptra_mcu_pldm_common::protocol::firmware_update::*;
 use caliptra_mcu_pldm_ua::transport::PldmSocket;
 use caliptra_mcu_testing_common::mctp_transport::MctpPldmSocket;
-use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+use caliptra_mcu_testing_common::wait_for_runtime_start;
 use std::process::exit;
-use std::sync::atomic::Ordering;
 
 pub struct PldmRequestResponseTest {
     test_messages: Vec<PldmExpectedMessagePair>,
@@ -90,9 +89,9 @@ impl PldmRequestResponseTest {
     }
 
     pub fn run(socket: MctpPldmSocket, test_feature: String) {
-        std::thread::spawn(move || {
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
             print!("Emulator: Running PLDM Loopback Test: ",);
@@ -103,7 +102,7 @@ impl PldmRequestResponseTest {
             } else {
                 println!("Passed");
             }
-            MCU_RUNNING.store(false, Ordering::Relaxed);
+            caliptra_mcu_testing_common::stop_emulator();
         });
     }
 
