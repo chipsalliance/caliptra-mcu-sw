@@ -453,7 +453,16 @@ impl Emulator {
             None
         };
 
-        let use_mcu_recovery_interface = is_flash_based_boot;
+        // Route Caliptra firmware's recovery-interface accesses out to the
+        // i3c_periph's recovery_if_* register block (via MemoryRead/MemoryWrite
+        // events to Device::RecoveryIntf) for BOTH:
+        //   - flash-based-boot (MCU hosts the interface), and
+        //   - external-bmc recovery (i3c_periph store is what the wire
+        //     dispatch in periph/src/i3c.rs reads/writes; without this flag,
+        //     Caliptra-side accesses would land in caliptra-sw's internal
+        //     dma/recovery.rs store and the wire dispatch would see a dead
+        //     shadow).
+        let use_mcu_recovery_interface = is_flash_based_boot || is_external_bmc_recovery;
 
         let (mut caliptra_cpu, soc_to_caliptra, _, ext_mci) = start_caliptra(&StartCaliptraArgs {
             rom: BytesOrPath::Path(cli.caliptra_rom),

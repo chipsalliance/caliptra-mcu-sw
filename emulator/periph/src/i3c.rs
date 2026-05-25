@@ -384,22 +384,35 @@ impl I3c {
                 );
             }
             0x2B => {
-                // INDIRECT_FIFO_DATA: variable-length push. Route through the
-                // existing write_recovery_interface so the periph's bypass-cfg
-                // and FIFO write-index bookkeeping are kept in sync. The data
-                // bus is 32-bit; pad the trailing partial word with zero.
-                let mut cursor = 0usize;
+                // INDIRECT_FIFO_DATA: variable-length push. There is no
+                // write_recovery_interface entry for offset 0x068 (the FIFO
+                // data port is written by firmware via the dedicated TTI
+                // tx_data_port handler which routes by bypass_cfg). Mirror
+                // the AXI_DIRECT path here directly so the external BMC's
+                // push works regardless of whether Caliptra firmware has
+                // pre-programmed RecIntfBypass.
                 let before = self.indirect_fifo_data.len();
+                let mut cursor = 0usize;
                 while cursor < payload.len() {
                     let mut word = [0u8; 4];
                     let end = (cursor + 4).min(payload.len());
                     word[..end - cursor].copy_from_slice(&payload[cursor..end]);
                     let val = u32::from_le_bytes(word);
-                    let _ = self.write_recovery_interface(
-                        caliptra_emu_types::RvSize::Word,
-                        0x068,
-                        val,
-                    );
+                    let write_index = self
+                        .i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
+                        .reg
+                        .get();
+                    let address = (write_index * 4) as usize;
+                    self.indirect_fifo_data
+                        .resize(address + std::mem::size_of::<u32>(), 0);
+                    self.indirect_fifo_data
+                        [address..address + std::mem::size_of::<u32>()]
+                        .copy_from_slice(&val.to_le_bytes());
+                    self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
+                        .reg
+                        .set(((address + std::mem::size_of::<u32>())
+                            .next_multiple_of(std::mem::size_of::<u32>())
+                            / std::mem::size_of::<u32>()) as u32);
                     cursor += 4;
                 }
                 println!(
