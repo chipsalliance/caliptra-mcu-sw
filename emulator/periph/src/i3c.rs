@@ -101,6 +101,17 @@ pub struct I3c {
     events_from_caliptra: Option<mpsc::Receiver<Event>>,
     events_to_mcu: Option<mpsc::Sender<Event>>,
     events_from_mcu: Option<mpsc::Receiver<Event>>,
+
+    /// When set, inbound I3C priv-xfers on this target with payload starting
+    /// with an OCP Recovery command code (0x22..=0x2B) are dispatched to the
+    /// recovery_if_* register block instead of the TTI MCU queues. Enabled by
+    /// the emulator app for --active-mode-external-bmc so an external BMC can
+    /// drive Phase 1 OCP Recovery directly via I3C (no MCTP).
+    recovery_dispatch_enabled: bool,
+    /// SMBus-style block-read state: last cmd_code written by the BMC. The
+    /// next priv-read returns the data for this cmd_code, prefixed with a
+    /// u16 LE byte_count per OCP Recovery wire format.
+    recovery_last_cmd_code: Option<u8>,
 }
 
 impl I3c {
@@ -158,11 +169,23 @@ impl I3c {
             events_from_caliptra: None,
             events_to_mcu: None,
             events_from_mcu: None,
+            recovery_dispatch_enabled: false,
+            recovery_last_cmd_code: None,
         }
     }
 
     pub fn get_dynamic_address(&self) -> Option<DynamicI3cAddress> {
         self.i3c_target.get_address()
+    }
+
+    /// Enable OCP Recovery direct-I3C dispatch on this target. When enabled,
+    /// inbound I3C priv-xfers whose payload begins with an OCP Recovery
+    /// command code (0x22..=0x2B) are dispatched to the recovery interface
+    /// register block; the rest of the protocol is handled internally with
+    /// SMBus-style block-read framing (write [cmd], read [byte_count, data]).
+    /// All other traffic falls through to the regular TTI MCU queues.
+    pub fn enable_recovery_dispatch(&mut self) {
+        self.recovery_dispatch_enabled = true;
     }
 
     fn write_tx_data_into_target(&mut self) {
@@ -189,18 +212,210 @@ impl I3c {
         if let Some(xfer) = self.i3c_target.read_command() {
             // TODO: we don't request data using rnw
             let rnw = (u64::from(xfer.cmd.clone()) & (1 << 29)) as u32;
-            self.tti_rx_desc_queue_raw
-                .push_back(xfer.cmd.raw_data_len() as u32 | rnw);
-            let data = match xfer.cmd.clone() {
+            let data: Vec<u8> = match xfer.cmd.clone() {
                 I3cTcriCommand::Immediate(imm) => vec![
                     imm.data_byte_1(),
                     imm.data_byte_2(),
                     imm.data_byte_3(),
                     imm.data_byte_4(),
                 ],
-                _ => xfer.data,
+                _ => xfer.data.clone(),
             };
+
+            // OCP Recovery direct-I3C dispatch. Returns true iff the xfer was
+            // consumed by the recovery handler; otherwise fall through to TTI.
+            if self.recovery_dispatch_enabled && self.try_dispatch_recovery(rnw != 0, &data) {
+                return;
+            }
+
+            self.tti_rx_desc_queue_raw
+                .push_back(xfer.cmd.raw_data_len() as u32 | rnw);
             self.tti_rx_data_raw.push_back(data);
+        }
+    }
+
+    /// Try to handle an inbound priv-xfer as an OCP Recovery transaction.
+    /// Returns true iff the xfer matched and a response was queued.
+    fn try_dispatch_recovery(&mut self, rnw: bool, data: &[u8]) -> bool {
+        if rnw {
+            // Read transaction. Only meaningful if a cmd_code was previously
+            // selected via a 1-byte write (SMBus block-read pattern).
+            let cmd = match self.recovery_last_cmd_code.take() {
+                Some(c) => c,
+                None => return false,
+            };
+            let resp = self.build_recovery_read_response(cmd);
+            let len = resp.len();
+            let mut resp_desc = ResponseDescriptor::default();
+            resp_desc.set_data_length(len as u16);
+            self.i3c_target.set_response(I3cTcriResponseXfer {
+                resp: resp_desc,
+                data: resp,
+            });
+            println!(
+                "[i3c-recovery] read  cmd=0x{:02x} returning {} bytes",
+                cmd, len
+            );
+            return true;
+        }
+        // Write transaction.
+        if data.is_empty() {
+            return false;
+        }
+        let cmd_code = data[0];
+        if !(0x22..=0x2B).contains(&cmd_code) {
+            return false;
+        }
+        if data.len() == 1 {
+            // Select cmd_code for the upcoming read.
+            self.recovery_last_cmd_code = Some(cmd_code);
+        } else if data.len() >= 3 {
+            // OCP Recovery write: [cmd_code, byte_count_lo, byte_count_hi, data...].
+            let byte_count = u16::from_le_bytes([data[1], data[2]]) as usize;
+            let end = (3 + byte_count).min(data.len());
+            let payload = &data[3..end];
+            self.dispatch_recovery_write(cmd_code, payload);
+        } else {
+            println!(
+                "[i3c-recovery] short write cmd=0x{:02x} len={}; ignoring",
+                cmd_code,
+                data.len()
+            );
+        }
+        // Every write transaction needs a response packet so the I3C TCP client
+        // can drain its socket.
+        let mut resp_desc = ResponseDescriptor::default();
+        resp_desc.set_data_length(0);
+        self.i3c_target.set_response(I3cTcriResponseXfer {
+            resp: resp_desc,
+            data: vec![],
+        });
+        true
+    }
+
+    /// Build the OCP Recovery read-response payload for a given cmd_code:
+    /// `[byte_count_lo, byte_count_hi, data_bytes...]`. Data is sourced from
+    /// the existing recovery_if_* register block via `read_recovery_interface`.
+    fn build_recovery_read_response(&mut self, cmd_code: u8) -> Vec<u8> {
+        // (register offsets, effective byte_count) per OCP Recovery spec.
+        // Matches `to_payload(...)` sizes used by caliptra-sw dma/recovery.rs.
+        let (offsets, byte_count): (&[u32], usize) = match cmd_code {
+            0x22 => (&[0x004, 0x008, 0x00c, 0x010][..], 15), // PROT_CAP
+            0x23 => (
+                &[0x014, 0x018, 0x01c, 0x020, 0x024, 0x028, 0x02c][..],
+                24,
+            ), // DEVICE_ID
+            0x24 => (&[0x030, 0x034][..], 7),  // DEVICE_STATUS
+            0x26 => (&[0x03c][..], 3),         // RECOVERY_CTRL
+            0x27 => (&[0x040][..], 2),         // RECOVERY_STATUS
+            0x28 => (&[0x044][..], 4),         // HW_STATUS
+            0x29 => (&[0x048, 0x04c][..], 6),  // INDIRECT_FIFO_CTRL
+            0x2A => (
+                &[0x050, 0x054, 0x058, 0x05c, 0x060][..],
+                20,
+            ), // INDIRECT_FIFO_STATUS
+            _ => {
+                println!("[i3c-recovery] unsupported read cmd=0x{:02x}", cmd_code);
+                return vec![0, 0];
+            }
+        };
+        let mut bytes: Vec<u8> = Vec::with_capacity(offsets.len() * 4);
+        for off in offsets {
+            match self.read_recovery_interface(caliptra_emu_types::RvSize::Word, *off) {
+                Ok(v) => bytes.extend_from_slice(&v.to_le_bytes()),
+                Err(_) => bytes.extend_from_slice(&[0, 0, 0, 0]),
+            }
+        }
+        bytes.truncate(byte_count);
+        let mut out = Vec::with_capacity(2 + bytes.len());
+        out.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+        out.extend_from_slice(&bytes);
+        out
+    }
+
+    /// Dispatch an OCP Recovery write payload (already stripped of cmd_code
+    /// and byte_count prefix) to the recovery_if_* register block.
+    fn dispatch_recovery_write(&mut self, cmd_code: u8, payload: &[u8]) {
+        match cmd_code {
+            0x25 if payload.len() >= 3 => {
+                // DEVICE_RESET
+                let val = u32::from_le_bytes([payload[0], payload[1], payload[2], 0]);
+                let _ = self.write_recovery_interface(
+                    caliptra_emu_types::RvSize::Word,
+                    0x038,
+                    val,
+                );
+                println!(
+                    "[i3c-recovery] write DEVICE_RESET = 0x{:06x}",
+                    val & 0x00ff_ffff
+                );
+            }
+            0x26 if payload.len() >= 3 => {
+                // RECOVERY_CTRL
+                let val = u32::from_le_bytes([payload[0], payload[1], payload[2], 0]);
+                let _ = self.write_recovery_interface(
+                    caliptra_emu_types::RvSize::Word,
+                    0x03c,
+                    val,
+                );
+                println!(
+                    "[i3c-recovery] write RECOVERY_CTRL = 0x{:06x}",
+                    val & 0x00ff_ffff
+                );
+            }
+            0x29 if payload.len() >= 6 => {
+                // INDIRECT_FIFO_CTRL: 2-byte ctrl_0 + 4-byte image_size (u32 LE)
+                let ctrl0 = u32::from_le_bytes([payload[0], payload[1], 0, 0]);
+                let _ = self.write_recovery_interface(
+                    caliptra_emu_types::RvSize::Word,
+                    0x048,
+                    ctrl0,
+                );
+                let size = u32::from_le_bytes([payload[2], payload[3], payload[4], payload[5]]);
+                let _ = self.write_recovery_interface(
+                    caliptra_emu_types::RvSize::Word,
+                    0x04c,
+                    size,
+                );
+                println!(
+                    "[i3c-recovery] write INDIRECT_FIFO_CTRL ctrl0=0x{:04x} image_size={}",
+                    ctrl0 & 0xffff,
+                    size
+                );
+            }
+            0x2B => {
+                // INDIRECT_FIFO_DATA: variable-length push. Route through the
+                // existing write_recovery_interface so the periph's bypass-cfg
+                // and FIFO write-index bookkeeping are kept in sync. The data
+                // bus is 32-bit; pad the trailing partial word with zero.
+                let mut cursor = 0usize;
+                let before = self.indirect_fifo_data.len();
+                while cursor < payload.len() {
+                    let mut word = [0u8; 4];
+                    let end = (cursor + 4).min(payload.len());
+                    word[..end - cursor].copy_from_slice(&payload[cursor..end]);
+                    let val = u32::from_le_bytes(word);
+                    let _ = self.write_recovery_interface(
+                        caliptra_emu_types::RvSize::Word,
+                        0x068,
+                        val,
+                    );
+                    cursor += 4;
+                }
+                println!(
+                    "[i3c-recovery] write INDIRECT_FIFO_DATA len={} (fifo {} -> {} bytes)",
+                    payload.len(),
+                    before,
+                    self.indirect_fifo_data.len()
+                );
+            }
+            _ => {
+                println!(
+                    "[i3c-recovery] unsupported write cmd=0x{:02x} len={}; ignoring",
+                    cmd_code,
+                    payload.len()
+                );
+            }
         }
     }
 

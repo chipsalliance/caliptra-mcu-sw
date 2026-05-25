@@ -666,13 +666,20 @@ impl Emulator {
 
         let step_lock = Arc::new(Mutex::new(()));
 
-        let i3c = I3c::new(
+        let mut i3c = I3c::new(
             &clock.clone(),
             &mut i3c_controller,
             i3c_irq,
             cli.hw_revision.clone(),
             step_lock.clone(),
         );
+
+        if is_external_bmc_recovery {
+            // Route inbound OCP Recovery direct-I3C transactions on the I3C
+            // TCP socket to the recovery_if_* register block instead of the
+            // TTI MCU queues. See `enable_recovery_dispatch` in periph/i3c.rs.
+            i3c.enable_recovery_dispatch();
+        }
 
         let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
 
