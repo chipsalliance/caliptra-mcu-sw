@@ -14,6 +14,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         i3c_port,
         features,
         no_stdin,
+        active_mode_external_bmc,
         caliptra_rom,
         caliptra_firmware,
         soc_manifest,
@@ -180,6 +181,9 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
 
     if no_stdin {
         cargo_run_args.push("--no-stdin-uart");
+    }
+    if active_mode_external_bmc {
+        cargo_run_args.push("--active-mode-external-bmc");
     }
     let port = format!("{}", i3c_port.unwrap_or(0));
     if i3c_port.is_some() {

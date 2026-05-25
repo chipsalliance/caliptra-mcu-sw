@@ -63,6 +63,12 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         no_stdin: bool,
 
+        /// Run active-mode boot with an EXTERNAL BMC over the I3C TCP socket.
+        /// See emulator app docs for full semantics. Mutually exclusive with
+        /// flash-based-boot.
+        #[arg(long, default_value_t = false)]
+        active_mode_external_bmc: bool,
+
         #[arg(long)]
         caliptra_rom: Option<PathBuf>,
 

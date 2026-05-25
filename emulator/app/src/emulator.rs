@@ -139,6 +139,17 @@ pub struct EmulatorArgs {
     #[arg(long, default_value_t = false)]
     pub flash_based_boot: bool,
 
+    /// Active-mode boot driven by an EXTERNAL BMC over the I3C TCP socket
+    /// instead of the in-process emulator BMC. Skips the internal Bmc
+    /// state machine; the i3c_periph event channels are wired straight
+    /// to Caliptra and MCU CPUs (same as flash_based_boot wiring) but
+    /// the Caliptra-core hosts the recovery interface (not the MCU).
+    /// An external BMC must drive Phase 1 OCP Recovery via I3C/MCTP
+    /// transactions on --i3c-port. Mutually exclusive with
+    /// --flash-based-boot.
+    #[arg(long, default_value_t = false)]
+    pub active_mode_external_bmc: bool,
+
     /// The ROM path for the Caliptra CPU.
     #[arg(long)]
     pub caliptra_rom: PathBuf,
@@ -339,6 +350,16 @@ impl Emulator {
     ) -> std::io::Result<Self> {
         let test_feature = cli.test_feature.as_deref().unwrap_or("");
         let is_flash_based_boot = cli.flash_based_boot || test_feature == "test-flash-based-boot";
+        // External-BMC active-mode recovery: no internal Bmc, but Caliptra-core
+        // still hosts the recovery interface (unlike flash-based-boot). An
+        // external BMC drives Phase 1 OCP Recovery over the I3C TCP socket.
+        if cli.active_mode_external_bmc && is_flash_based_boot {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--active-mode-external-bmc and --flash-based-boot are mutually exclusive",
+            ));
+        }
+        let is_external_bmc_recovery = cli.active_mode_external_bmc;
 
         // Configure stub warnings based on CLI flag
         caliptra_mcu_emulator_registers_generated::stub_warnings::set_stub_warnings(
@@ -963,8 +984,16 @@ impl Emulator {
         cpu.register_events();
 
         let mut bmc;
-        if is_flash_based_boot {
-            println!("Emulator is using MCU recovery interface");
+        if is_flash_based_boot || is_external_bmc_recovery {
+            if is_flash_based_boot {
+                println!("Emulator is using MCU recovery interface");
+            } else {
+                println!(
+                    "Active mode with EXTERNAL BMC: skipping in-process Bmc; \
+                     i3c_periph events wired straight to Caliptra/MCU. \
+                     External BMC must drive Phase 1 OCP Recovery via --i3c-port."
+                );
+            }
             bmc = None;
             let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
             let (mcu_event_sender, mcu_event_receiver) = cpu.register_events();
@@ -979,6 +1008,18 @@ impl Emulator {
                     mcu_event_sender,
                     mcu_event_receiver,
                 );
+            // Start the I3C controller so I3C-over-TCP transactions arriving
+            // from the external BMC actually reach the i3c_target on the bus.
+            // Flash-based-boot already gets along without this because nothing
+            // drives Phase 1 in that mode; external-recovery REQUIRES it.
+            if is_external_bmc_recovery {
+                i3c_controller_join_handle = Some(i3c_controller.start());
+                println!(
+                    "I3C controller started; target dynamic address = {}; \
+                     external BMC may now connect on the I3C TCP socket.",
+                    u8::from(i3c_dynamic_address)
+                );
+            }
         } else {
             let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
             let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
