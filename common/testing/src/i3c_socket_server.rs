@@ -41,6 +41,7 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
+use std::sync::Arc;
 use std::vec;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
@@ -50,16 +51,40 @@ pub fn start_i3c_socket(
     running: &'static AtomicBool,
     port: u16,
 ) -> (Receiver<I3cBusCommand>, Sender<I3cBusResponse>) {
+    let (rx, tx, _) = start_i3c_socket_with_connect_signal(running, port);
+    (rx, tx)
+}
+
+/// Like `start_i3c_socket` but additionally returns an `Arc<AtomicBool>` that
+/// the server thread flips to `true` the first time a client connects to the
+/// TCP socket. Callers that want to gate emulator CPU startup on "BMC is
+/// attached" (e.g. `--wait-for-bmc`) can poll this flag.
+pub fn start_i3c_socket_with_connect_signal(
+    running: &'static AtomicBool,
+    port: u16,
+) -> (
+    Receiver<I3cBusCommand>,
+    Sender<I3cBusResponse>,
+    Arc<AtomicBool>,
+) {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
         .expect("Failed to bind TCP socket for port");
 
     let (bus_command_tx, bus_command_rx) = mpsc::channel::<I3cBusCommand>();
     let (bus_response_tx, bus_response_rx) = mpsc::channel::<I3cBusResponse>();
+    let first_connect = Arc::new(AtomicBool::new(false));
+    let first_connect_thread = first_connect.clone();
     std::thread::spawn(move || {
-        handle_i3c_socket_loop(running, listener, bus_response_rx, bus_command_tx)
+        handle_i3c_socket_loop(
+            running,
+            listener,
+            bus_response_rx,
+            bus_command_tx,
+            first_connect_thread,
+        )
     });
 
-    (bus_command_rx, bus_response_tx)
+    (bus_command_rx, bus_response_tx, first_connect)
 }
 
 pub fn handle_i3c_socket_loop(
@@ -67,6 +92,7 @@ pub fn handle_i3c_socket_loop(
     listener: TcpListener,
     mut bus_response_rx: Receiver<I3cBusResponse>,
     mut bus_command_tx: Sender<I3cBusCommand>,
+    first_connect: Arc<AtomicBool>,
 ) {
     listener
         .set_nonblocking(true)
@@ -75,6 +101,7 @@ pub fn handle_i3c_socket_loop(
         match listener.accept() {
             Ok((stream, addr)) => {
                 println!("Accepting I3C socket connection from {:?}", addr);
+                first_connect.store(true, Ordering::Release);
                 handle_i3c_socket_connection(
                     running,
                     stream,

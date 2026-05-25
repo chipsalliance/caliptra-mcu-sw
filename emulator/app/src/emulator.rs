@@ -40,7 +40,9 @@ use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 use caliptra_mcu_pldm_ua::daemon::PldmDaemon;
 use caliptra_mcu_pldm_ua::transport::{EndpointId, PldmTransport};
 use caliptra_mcu_testing_common::i3c_socket;
-use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
+use caliptra_mcu_testing_common::i3c_socket_server::{
+    start_i3c_socket, start_i3c_socket_with_connect_signal,
+};
 use caliptra_mcu_testing_common::mctp_transport::MctpTransport;
 use caliptra_mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
 use caliptra_mcu_testing_common::spdm_responder_validator::SpdmTestType;
@@ -56,7 +58,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
@@ -149,6 +151,15 @@ pub struct EmulatorArgs {
     /// --flash-based-boot.
     #[arg(long, default_value_t = false)]
     pub active_mode_external_bmc: bool,
+
+    /// Block emulator CPU startup until the first client connects to the
+    /// I3C TCP socket (--i3c-port). Without this flag Caliptra ROM may
+    /// poll the OCP Recovery indirect-FIFO before the external BMC has
+    /// time to attach and fatal-error out. Ctrl-C remains responsive
+    /// while blocked. Only meaningful with --i3c-port and typically
+    /// only useful alongside --active-mode-external-bmc.
+    #[arg(long, default_value_t = false)]
+    pub wait_for_bmc: bool,
 
     /// The ROM path for the Caliptra CPU.
     #[arg(long)]
@@ -629,10 +640,27 @@ impl Emulator {
 
         println!("Starting I3C Socket, port {}", cli.i3c_port.unwrap_or(0));
 
+        // When --wait-for-bmc is set together with --i3c-port, we want a
+        // flag we can poll for "first TCP client attached". Wire the new
+        // sibling fn that returns the signal; otherwise the regular path.
+        let mut bmc_attached_signal: Option<Arc<AtomicBool>> = None;
         let mut i3c_controller = if let Some(i3c_port) = cli.i3c_port {
-            let (rx, tx) = start_i3c_socket(&MCU_RUNNING, i3c_port);
-            I3cController::new(rx, tx)
+            if cli.wait_for_bmc {
+                let (rx, tx, signal) =
+                    start_i3c_socket_with_connect_signal(&MCU_RUNNING, i3c_port);
+                bmc_attached_signal = Some(signal);
+                I3cController::new(rx, tx)
+            } else {
+                let (rx, tx) = start_i3c_socket(&MCU_RUNNING, i3c_port);
+                I3cController::new(rx, tx)
+            }
         } else {
+            if cli.wait_for_bmc {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "--wait-for-bmc requires --i3c-port",
+                ));
+            }
             I3cController::default()
         };
 
@@ -1135,6 +1163,29 @@ impl Emulator {
 
         let sram_range = mcu_root_bus_offsets.ram_offset
             ..mcu_root_bus_offsets.ram_offset + mcu_root_bus_offsets.ram_size;
+
+        // If --wait-for-bmc was requested, hold here until either a BMC
+        // connects to the I3C TCP socket or Ctrl-C / MCU_RUNNING flips
+        // false. Polling sleep keeps the implementation simple and lets
+        // the existing ctrlc handler (set up in main before from_args)
+        // unblock us cleanly.
+        if let Some(signal) = bmc_attached_signal.as_ref() {
+            println!(
+                "--wait-for-bmc: blocking emulator startup until a client \
+                 connects to --i3c-port {} (Ctrl-C to abort)...",
+                cli.i3c_port.unwrap()
+            );
+            while !signal.load(Ordering::Acquire) {
+                if !MCU_RUNNING.load(Ordering::Relaxed) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Interrupted,
+                        "emulator aborted while waiting for BMC",
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            println!("--wait-for-bmc: BMC attached, proceeding with boot");
+        }
 
         // Create the emulator instance
         Ok(Self::new(

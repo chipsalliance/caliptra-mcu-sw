@@ -69,6 +69,12 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         active_mode_external_bmc: bool,
 
+        /// Block emulator CPU startup until the first client connects to the
+        /// I3C TCP socket. Useful with --active-mode-external-bmc to avoid
+        /// losing the race against Caliptra's recovery-image poll timeout.
+        #[arg(long, default_value_t = false)]
+        wait_for_bmc: bool,
+
         #[arg(long)]
         caliptra_rom: Option<PathBuf>,
 
