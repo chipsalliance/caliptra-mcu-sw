@@ -32,6 +32,7 @@ mod hooks;
 pub use hooks::*;
 pub mod image_verifier;
 pub use image_verifier::ImageVerifier;
+pub mod patch;
 mod rom;
 pub use rom::*;
 mod rom_env;
