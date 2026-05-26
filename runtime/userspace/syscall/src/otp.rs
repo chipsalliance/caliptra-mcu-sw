@@ -3,8 +3,10 @@
 //! # OTP: An Interface for accessing the OTP fuses
 
 use crate::DefaultSyscalls;
-use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
+use caliptra_mcu_libtock_console::{Console, ConsoleWriter};
+use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use caliptra_mcu_mbox_common::messages::RevokeVendorPubKeyType;
+use core::fmt::Write;
 use core::{iter::repeat, marker::PhantomData};
 
 pub const VENDOR_PK_HASH_SIZE: usize =
@@ -152,7 +154,13 @@ impl<S: Syscalls> Otp<S> {
         slot: u32,
         new_hash: &[u8; VENDOR_PK_HASH_SIZE],
     ) -> Result<(), ErrorCode> {
+        let mut wr: ConsoleWriter<DefaultSyscalls> = Console::<_, DefaultConfig>::writer();
         if slot > 15 {
+            let _ = writeln!(
+                wr,
+                "[otp-syscall] Error provisioning vendor PK hash: invalid slot number ({})",
+                slot
+            );
             return Err(ErrorCode::Invalid);
         }
 
@@ -160,6 +168,10 @@ impl<S: Syscalls> Otp<S> {
 
         if !self.valid_vendor_pk_hash_slot(slot) {
             // Error when the slot was already marked as invalid
+            let _ = writeln!(
+                wr,
+                "[otp-syscall] Error provisioning vendor PK hash: slot alreay marked invalid"
+            );
             return Err(ErrorCode::Invalid);
         }
 
@@ -168,20 +180,35 @@ impl<S: Syscalls> Otp<S> {
             // Return early when the fuse already contains the hash
             return Ok(());
         }
-        if fuse_value.iter().ne(repeat(&0)) {
+        if fuse_value.iter().ne(repeat(&0).take(fuse_value.len())) {
             // Error if the fuse is already containing something
+            let _ = writeln!(
+                wr,
+                "[otp-syscall] Error provisioning vendor PK hash: slot {} not empty",
+                slot
+            );
             return Err(ErrorCode::Invalid);
         }
 
         // Write fuse
         for (i, chunk) in new_hash.chunks_exact(4).enumerate() {
             let word = u32::from_le_bytes(chunk.try_into().map_err(|_| ErrorCode::Fail)?);
-            self.write(reg, i as u32, word)?;
+            self.write(reg, i as u32, word).inspect_err(|e| {
+                let _ = writeln!(
+                    wr,
+                    "[otp-syscall] Error provisioning vendor PK hash: write failed {:?}",
+                    e
+                );
+            })?;
         }
 
         // Read back the fuse and compare to validate writing was successfull
         let fuse_value = self.read_vendor_pk_hash(slot)?;
         if new_hash != &fuse_value {
+            let _ = writeln!(
+                wr,
+                "[otp-syscall] Error provisioning vendor PK hash: fuse does not match new pk hash after write",
+            );
             return Err(ErrorCode::Fail);
         }
 
@@ -196,7 +223,13 @@ impl<S: Syscalls> Otp<S> {
     /// - Returns `Invalid` when the slot is invalid
     /// - Returns `Fail` when writing the fuse failed
     pub fn revoke_vendor_pk_hash(&self, vendor_pk_hash_slot: u32) -> Result<(), ErrorCode> {
+        let mut wr: ConsoleWriter<DefaultSyscalls> = Console::<_, DefaultConfig>::writer();
         if vendor_pk_hash_slot as usize >= MAX_NUM_VENDOR_PK_HASH {
+            let _ = writeln!(
+                wr,
+                "[otp-syscall] Error revoking vendor PK hash: invalid slot number ({})",
+                vendor_pk_hash_slot
+            );
             Err(ErrorCode::Invalid)?
         }
 
@@ -208,14 +241,31 @@ impl<S: Syscalls> Otp<S> {
         // Check if the slot is provisioned to not burn an empty slot
         let pk_hash = self.read_vendor_pk_hash(vendor_pk_hash_slot)?;
         if pk_hash.iter().eq(repeat(&0)) {
+            let _ = writeln!(
+                wr,
+                "[otp-syscall] Error revoking vendor PK hash: slot {} is not provisioned",
+                vendor_pk_hash_slot
+            );
             Err(ErrorCode::Invalid)?
         }
 
-        let valid_mask = self.read(reg::VENDOR_PK_HASH_VALID, 0)?;
+        let valid_mask = self.read(reg::VENDOR_PK_HASH_VALID, 0).inspect_err(|e| {
+            let _ = writeln!(
+                wr,
+                "[otp-syscall] Error revoking vendor PK hash: failed to read mask {e:?}"
+            );
+        })?;
 
         let valid_mask = valid_mask | (1 << vendor_pk_hash_slot);
+        let _ = writeln!(wr, "[otp-syscall] Writing new mask: {valid_mask:032b}");
 
         self.write(reg::VENDOR_PK_HASH_VALID, 0, valid_mask)
+            .inspect_err(|e| {
+                let _ = writeln!(
+                    wr,
+                    "[otp-syscall] Error revoking vendor PK hash: failed to write mask {e:?}"
+                );
+            })
     }
 
     /// Lock a partition
