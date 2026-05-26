@@ -272,36 +272,38 @@ pub unsafe extern "C" fn emulator_init(
     config: *const CEmulatorConfig,
 ) -> EmulatorError {
     if emulator_memory.is_null() || config.is_null() {
+        eprintln!(
+            "[emulator_init] NullPointer: emulator_memory={:p} config={:p}",
+            emulator_memory, config
+        );
         return EmulatorError::NullPointer;
     }
 
     let config = &*config;
 
-    // Convert C strings to Rust strings
-    let rom_path = match convert_c_string(config.rom_path) {
-        Ok(path) => path,
-        Err(_) => return EmulatorError::InvalidArgs,
-    };
+    // Helper to convert a required C string field and log which one failed.
+    macro_rules! convert_required {
+        ($field:ident) => {
+            match convert_c_string(config.$field) {
+                Ok(path) => path,
+                Err(e) => {
+                    eprintln!(
+                        "[emulator_init] InvalidArgs: failed to convert required field `{}` (ptr={:p}): {:?}",
+                        stringify!($field),
+                        config.$field,
+                        e
+                    );
+                    return EmulatorError::InvalidArgs;
+                }
+            }
+        };
+    }
 
-    let firmware_path = match convert_c_string(config.firmware_path) {
-        Ok(path) => path,
-        Err(_) => return EmulatorError::InvalidArgs,
-    };
-
-    let caliptra_rom_path = match convert_c_string(config.caliptra_rom_path) {
-        Ok(path) => path,
-        Err(_) => return EmulatorError::InvalidArgs,
-    };
-
-    let caliptra_firmware_path = match convert_c_string(config.caliptra_firmware_path) {
-        Ok(path) => path,
-        Err(_) => return EmulatorError::InvalidArgs,
-    };
-
-    let soc_manifest_path = match convert_c_string(config.soc_manifest_path) {
-        Ok(path) => path,
-        Err(_) => return EmulatorError::InvalidArgs,
-    };
+    let rom_path = convert_required!(rom_path);
+    let firmware_path = convert_required!(firmware_path);
+    let caliptra_rom_path = convert_required!(caliptra_rom_path);
+    let caliptra_firmware_path = convert_required!(caliptra_firmware_path);
+    let soc_manifest_path = convert_required!(soc_manifest_path);
 
     // Build EmulatorArgs
     let args = EmulatorArgs {
@@ -414,6 +416,27 @@ pub unsafe extern "C" fn emulator_init(
         ))
     };
 
+    // Snapshot key args for error logging before `args` is moved.
+    let args_summary = format!(
+        "rom={:?}\n\tfirmware={:?}\n\tcaliptra_rom={:?}\n\tcaliptra_firmware={:?}\n\
+         \tsoc_manifest={:?}\n\totp={:?}\n\tlog_dir={:?}\n\
+         \tdevice_security_state={} vendor_pqc_type={} gdb_port={:?} i3c_port={:?}\n\
+         \tmcu_lsu_axi_user=0x{:x} caliptra_dma_axi_user=0x{:x}",
+        args.rom,
+        args.firmware,
+        args.caliptra_rom,
+        args.caliptra_firmware,
+        args.soc_manifest,
+        args.otp,
+        args.log_dir,
+        args.device_security_state,
+        config.vendor_pqc_type,
+        args.gdb_port,
+        args.i3c_port,
+        args.mcu_lsu_axi_user,
+        args.caliptra_dma_axi_user,
+    );
+
     // Create the emulator with callbacks
     let emulator = match Emulator::from_args_with_callbacks(
         args,
@@ -422,7 +445,13 @@ pub unsafe extern "C" fn emulator_init(
         write_callback,
     ) {
         Ok(emu) => emu,
-        Err(_) => return EmulatorError::InitializationFailed,
+        Err(e) => {
+            eprintln!(
+                "[emulator_init] InitializationFailed: Emulator::from_args_with_callbacks returned error: {:?}\n\t{}",
+                e, args_summary
+            );
+            return EmulatorError::InitializationFailed;
+        }
     };
 
     // Determine if we should be in GDB mode based on config

@@ -402,8 +402,8 @@ impl Otp {
         if let Some(file) = &mut self.file {
             file.rewind()?;
             serde_json::to_writer(&mut *file, &state)?;
-            let pos = file.stream_position()?;  // Get current position
-            file.set_len(pos)?;                  // Truncate to actual content size
+            let pos = file.stream_position()?; // Get current position
+            file.set_len(pos)?; // Truncate to actual content size
         }
         Ok(())
     }
@@ -1026,7 +1026,9 @@ mod test {
         }
 
         // trigger a digest
-        otp.write_direct_access_address((fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET as u32).into());
+        otp.write_direct_access_address(
+            (fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET as u32).into(),
+        );
         otp.write_direct_access_cmd(4u32.into());
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::CLEAR.value);
         for _ in 0..1000 {

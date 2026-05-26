@@ -248,12 +248,7 @@ fn translate_field(iref: systemrdl::InstanceRef) -> Result<RegisterField, Error>
         .ok()
         .flatten()
         .map(|b| b.val())
-        .or_else(|| {
-            inst.scope
-                .property_val_opt::<u64>("reset")
-                .ok()
-                .flatten()
-        })
+        .or_else(|| inst.scope.property_val_opt::<u64>("reset").ok().flatten())
         .or_else(|| inst.reset.map(|b| b.val()))
         .unwrap_or_default();
 

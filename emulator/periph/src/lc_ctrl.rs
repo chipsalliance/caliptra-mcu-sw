@@ -122,9 +122,7 @@ fn validate_transition(from: u32, to: u32) -> Option<TokenRequirement> {
             Some(TokenRequirement::OtpToken(token_idx as usize))
         }
         // Any TestUnlocked/TestLocked -> Dev: test_exit_to_manuf token (index 7)
-        (f, DEV) if is_test_unlocked(f) || is_test_locked(f) => {
-            Some(TokenRequirement::OtpToken(7))
-        }
+        (f, DEV) if is_test_unlocked(f) || is_test_locked(f) => Some(TokenRequirement::OtpToken(7)),
         // Any TestUnlocked/TestLocked -> Prod: manuf_to_prod token (index 8)
         (f, PROD) if is_test_unlocked(f) || is_test_locked(f) => {
             Some(TokenRequirement::OtpToken(8))
