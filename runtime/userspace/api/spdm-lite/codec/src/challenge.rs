@@ -5,8 +5,8 @@
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::{
-    ReqRespCode, ResponseBody, WireError, WireWriter, REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE,
-    SPDM_NONCE_LEN,
+    REQUESTER_CONTEXT_LEN, ReqRespCode, ResponseBody, SHA384_HASH_SIZE,
+    SPDM_NONCE_LEN, WireError, WireWriter,
 };
 
 // ---- Request ---------------------------------------------------------------

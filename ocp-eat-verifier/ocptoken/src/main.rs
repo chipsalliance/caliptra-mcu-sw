@@ -27,7 +27,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Cryptographically verify the COSE_Sign1 signature using the
-    /// x5chain leaf certificate from the evidence
+    /// x5chain leaf certificate or an external cert chain (for kid-based tokens)
     Verify(verify::VerifyArgs),
 
     /// Authenticate the evidence with the Trust Anchor Store and verify the COSE_Sign1 signature
@@ -39,15 +39,19 @@ enum Commands {
 
 fn main() {
     let cli = Cli::parse();
-    let verifier = CoseSign1Verifier::new(OpenSslBackend);
 
     match cli.command {
-        Commands::Verify(args) => verify::run(&args, &verifier),
+        Commands::Verify(args) => {
+            let verifier = CoseSign1Verifier::new(OpenSslBackend);
+            verify::run(&args, &verifier);
+        }
         Commands::Authenticate(args) => {
+            let verifier = CoseSign1Verifier::new(OpenSslBackend);
             let ta_store = load_fs_ta_store();
             authenticate::run(&args, ta_store.as_ref(), &verifier);
         }
         Commands::Appraise(args) => {
+            let verifier = CoseSign1Verifier::new(OpenSslBackend);
             let ta_store = load_fs_ta_store();
             appraise::run(&args, ta_store.as_ref(), &verifier);
         }

@@ -89,8 +89,8 @@ struct CertifyKeyP384Cmd {
 struct CertifyKeyP384RespPrefix {
     _resp_hdr: [u8; 12],
     _new_context_handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
-    _derived_pubkey_x: [u8; 48],
-    _derived_pubkey_y: [u8; 48],
+    derived_pubkey_x: [u8; 48],
+    derived_pubkey_y: [u8; 48],
     cert_size: U32,
 }
 
@@ -325,6 +325,73 @@ pub async fn dpe_certify_key<A: ApiAlloc>(
     }
     dst[..cert_size].copy_from_slice(&rsp[cert_off..cert_off + cert_size]);
     Ok(cert_size)
+}
+
+/// Like [`dpe_certify_key`] but also returns the derived public key
+/// coordinates `(pubkey_x, pubkey_y)`, each 48 bytes for P-384.
+///
+/// This avoids parsing the X.509 cert when only the raw public key
+/// is needed (e.g. to compute an attestation kid).
+#[inline(never)]
+pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
+    alloc: &A,
+    label: &[u8; DPE_LABEL_LEN],
+    pubkey_x: &mut [u8; 48],
+    pubkey_y: &mut [u8; 48],
+) -> McuResult<()> {
+    let mut req = alloc.alloc(CERTIFY_KEY_REQ_LEN)?;
+    req.fill(0);
+    {
+        let prefix =
+            InvokeDpeReqPrefix::mut_from_bytes(&mut req[..size_of::<InvokeDpeReqPrefix>()])
+                .map_err(|_| INVARIANT)?;
+        prefix.data_size = U32::new(CERTIFY_KEY_DPE_PAYLOAD_LEN);
+    }
+    let mut cur = size_of::<InvokeDpeReqPrefix>();
+    {
+        let hdr = DpeCommandHdr::mut_from_bytes(&mut req[cur..cur + size_of::<DpeCommandHdr>()])
+            .map_err(|_| INVARIANT)?;
+        hdr.magic = U32::new(DPE_COMMAND_MAGIC);
+        hdr.cmd_id = U32::new(DPE_CMD_CERTIFY_KEY);
+        hdr.profile = U32::new(DPE_PROFILE_P384_SHA384);
+    }
+    cur += size_of::<DpeCommandHdr>();
+    {
+        let cmd =
+            CertifyKeyP384Cmd::mut_from_bytes(&mut req[cur..cur + size_of::<CertifyKeyP384Cmd>()])
+                .map_err(|_| INVARIANT)?;
+        cmd.flags = U32::new(0);
+        cmd.format = U32::new(DPE_CERTIFY_KEY_FORMAT_X509);
+        cmd.label.copy_from_slice(label);
+    }
+    let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
+    req[..4].copy_from_slice(&checksum.to_le_bytes());
+
+    let rsp_max = size_of::<InvokeDpeRespPrefix>()
+        + size_of::<CertifyKeyP384RespPrefix>()
+        + DPE_MAX_LEAF_CERT_SIZE;
+    let mut rsp = alloc.alloc(rsp_max)?;
+    let rsp_len = crate::wire::mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
+
+    let resp_body_off = size_of::<InvokeDpeRespPrefix>();
+    if rsp_len < resp_body_off + size_of::<CertifyKeyP384RespPrefix>() {
+        return Err(INTERNAL_BUG);
+    }
+
+    let dpe_hdr =
+        DpeResponseHdr::ref_from_bytes(&rsp[resp_body_off..resp_body_off + size_of::<DpeResponseHdr>()])
+            .map_err(|_| INTERNAL_BUG)?;
+    if dpe_hdr.magic.get() != DPE_RESPONSE_MAGIC || dpe_hdr.status.get() != 0 {
+        return Err(INTERNAL_BUG);
+    }
+
+    let resp_prefix = CertifyKeyP384RespPrefix::ref_from_bytes(
+        &rsp[resp_body_off..resp_body_off + size_of::<CertifyKeyP384RespPrefix>()],
+    )
+    .map_err(|_| INTERNAL_BUG)?;
+    pubkey_x.copy_from_slice(&resp_prefix.derived_pubkey_x);
+    pubkey_y.copy_from_slice(&resp_prefix.derived_pubkey_y);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

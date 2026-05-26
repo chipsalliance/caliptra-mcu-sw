@@ -35,6 +35,7 @@
 //! concurrently. See [`McuSpdmPal::transport_mut`] for the contract.
 
 use super::*;
+use super::measurements::MeasurementProvider;
 
 /// Per-IO handle returned by [`McuSpdmPal::recv_request`].
 ///
@@ -82,7 +83,7 @@ impl SpdmPalIo for McuSpdmIo<'_> {
     }
 }
 
-impl SpdmPalIoTransport for McuSpdmPal {
+impl<M: MeasurementProvider> SpdmPalIoTransport for McuSpdmPal<M> {
     type Io<'a>
         = McuSpdmIo<'a>
     where

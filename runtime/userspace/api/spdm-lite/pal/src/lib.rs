@@ -35,9 +35,11 @@ mod alloc;
 pub mod cert;
 mod hash;
 mod io;
+pub mod measurements;
 mod pal;
 
 pub use self::alloc::*;
+pub use measurements::MeasurementProvider;
 pub use pal::*;
 
 pub use mcu_spdm_lite_codec as codec;
