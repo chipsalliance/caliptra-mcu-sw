@@ -39,6 +39,7 @@ pub struct SpdmContext<'a> {
     pub(crate) device_certs_store: &'a dyn SpdmCertStore,
     pub(crate) measurements: SpdmMeasurements<'a>,
     pub(crate) large_resp_context: LargeResponseCtx<'a>,
+    #[allow(dead_code)] // Scaffolding for future CHUNK_SEND support
     pub(crate) large_req_context: LargeRequestCtx<'a>,
     pub(crate) session_mgr: SessionManager,
     pub(crate) vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,

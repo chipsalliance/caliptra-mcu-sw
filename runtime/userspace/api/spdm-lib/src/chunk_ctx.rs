@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use crate::commands::certificate_rsp::CertificateResponse;
 use crate::codec::{CodecResult, MessageBuf};
+use crate::commands::certificate_rsp::CertificateResponse;
 
 #[derive(Debug, PartialEq)]
 pub enum ChunkError {
@@ -51,11 +51,13 @@ impl ChunkState {
 pub type ChunkResult<T> = Result<T, ChunkError>;
 
 /// Manages the context for an incoming large SPDM request sent with CHUNK_SEND.
+#[allow(dead_code)] // Scaffolding for future CHUNK_SEND support
 pub(crate) struct LargeRequestCtx<'a> {
     chunk_state: ChunkState,
     buffer: &'a mut [u8],
 }
 
+#[allow(dead_code)] // Scaffolding for future CHUNK_SEND support
 impl<'a> LargeRequestCtx<'a> {
     /// Create a new context with the given app-provided buffer.
     pub fn new(buf: &'a mut [u8]) -> Self {
