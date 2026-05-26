@@ -240,7 +240,7 @@ impl<S: Syscalls> Otp<S> {
 
         // Check if the slot is provisioned to not burn an empty slot
         let pk_hash = self.read_vendor_pk_hash(vendor_pk_hash_slot)?;
-        if pk_hash.iter().eq(repeat(&0)) {
+        if pk_hash.iter().eq(repeat(&0).take(pk_hash.len())) {
             let _ = writeln!(
                 wr,
                 "[otp-syscall] Error revoking vendor PK hash: slot {} is not provisioned",
