@@ -8,16 +8,16 @@ use caliptra_mcu_libapi_caliptra::evidence::device_state::DeviceState;
 use caliptra_mcu_libapi_caliptra::evidence::ocp_eat_claims::generate_eat_claims;
 use caliptra_mcu_libapi_caliptra::evidence::pcr_quote::PcrQuote;
 use caliptra_mcu_spdm_lib::measurements::{MeasurementsError, MeasurementsResult};
+use caliptra_ocp_eat::ocp_profile::{
+    IntegrityRegisterEntry, IntegrityRegisterIdChoice, TaggedConciseEvidence,
+};
+use caliptra_ocp_eat::{
+    ClassIdTypeChoice, ClassMap, ConciseEvidence, ConciseEvidenceMap, DigestEntry, EnvironmentMap,
+    EvTriplesMap, EvidenceTripleRecord, MeasurementMap, MeasurementValue, TaggedBytes, VersionMap,
+};
 use core::fmt::Write;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
-use ocp_eat::ocp_profile::{
-    IntegrityRegisterEntry, IntegrityRegisterIdChoice, TaggedConciseEvidence,
-};
-use ocp_eat::{
-    ClassIdTypeChoice, ClassMap, ConciseEvidence, ConciseEvidenceMap, DigestEntry, EnvironmentMap,
-    EvTriplesMap, EvidenceTripleRecord, MeasurementMap, MeasurementValue, TaggedBytes,
-};
 use zerocopy::IntoBytes;
 
 const NUM_FW_TARGET_ENV: usize = NUM_DEFAULT_FW_COMPONENTS + NUM_SOC_FW_COMPONENTS;
