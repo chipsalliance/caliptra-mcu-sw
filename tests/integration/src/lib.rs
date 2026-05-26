@@ -29,6 +29,7 @@ mod test_mcu_mbox;
 mod test_pldm_fw_update;
 mod test_raw_lifecycle_boot;
 mod test_soc_boot;
+mod test_svn_manifest;
 
 pub fn platform() -> &'static str {
     if cfg!(feature = "fpga_realtime") {
@@ -982,7 +983,7 @@ mod test {
         )
         .unwrap();
 
-        let mcu_rom = if params.firmware_prefix.is_some() {
+        let mcu_rom = if params.firmware_prefix.is_some() && params.rom_feature.is_none() {
             if params.fw_manifest_dot_hitless {
                 ROM_FW_MANIFEST_DOT_HITLESS.clone()
             } else {

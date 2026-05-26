@@ -14,23 +14,23 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
-#[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
-use crate::device_ownership_transfer;
+#[cfg(not(feature = "test-force-hitless-update"))]
+use crate::fatal_error;
+#[cfg(target_arch = "riscv32")]
+use crate::firmware_headers::process_firmware_headers;
 #[cfg(target_arch = "riscv32")]
 use crate::MCU_MEMORY_MAP;
-use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
+use crate::{BootFlow, RomEnv, RomParameters};
 #[cfg(not(feature = "test-force-hitless-update"))]
 use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
 #[cfg(not(feature = "test-force-hitless-update"))]
 use caliptra_mcu_error::McuError;
+#[cfg(not(feature = "test-force-hitless-update"))]
 use caliptra_mcu_romtime::HexWord;
 #[cfg(target_arch = "riscv32")]
 use caliptra_mcu_romtime::McuBootMilestones;
-#[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
-use caliptra_mcu_romtime::McuRomBootStatus;
+#[cfg(not(feature = "test-force-hitless-update"))]
 use core::fmt::Write;
-#[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
-use zerocopy::FromBytes;
 
 pub struct FwHitlessUpdate {}
 
@@ -80,49 +80,12 @@ impl BootFlow for FwHitlessUpdate {
 
         #[cfg(target_arch = "riscv32")]
         unsafe {
-            #[cfg_attr(not(feature = "fw-manifest-dot"), allow(unused_mut))]
-            let mut firmware_offset = _params.mcu_image_header_size as u32;
-
-            // Process optional firmware manifest DOT section, mirroring the
-            // cold-boot FwBoot path so that a hitless update carrying a new
-            // DOT header applies its commands on this boot rather than
-            // deferring them to the next cold reset.
-            #[cfg(feature = "fw-manifest-dot")]
-            if _params.fw_manifest_dot_enabled {
-                let manifest_size =
-                    core::mem::size_of::<device_ownership_transfer::FwManifestDotSection>();
-                let sram = core::slice::from_raw_parts(
-                    MCU_MEMORY_MAP.sram_offset as *const u8,
-                    manifest_size,
-                );
-                if let Ok((section, _)) =
-                    device_ownership_transfer::FwManifestDotSection::ref_from_prefix(sram)
-                {
-                    if section.magic == device_ownership_transfer::FW_MANIFEST_DOT_MAGIC {
-                        firmware_offset += manifest_size as u32;
-
-                        env.mci.set_flow_checkpoint(
-                            McuRomBootStatus::FwManifestDotProcessingStarted.into(),
-                        );
-                        if let Err(err) =
-                            device_ownership_transfer::process_fw_manifest_dot_commands(
-                                env,
-                                section,
-                                _params.dot_flash,
-                            )
-                        {
-                            caliptra_mcu_romtime::println!(
-                                "[mcu-rom] Error in firmware manifest DOT: {}",
-                                HexWord(err.into())
-                            );
-                            fatal_error(err);
-                        }
-                        env.mci.set_flow_checkpoint(
-                            McuRomBootStatus::FwManifestDotProcessingComplete.into(),
-                        );
-                    }
-                }
-            }
+            // Walk past any optional headers (DOT section, MCU
+            // Component SVN Manifest, ...) — same as the cold-boot
+            // path — so a hitless update applies any new header on
+            // this boot rather than deferring it to the next reset.
+            let firmware_offset =
+                process_firmware_headers(env, &_params, _params.mcu_image_header_size as u32);
 
             env.mci
                 .set_flow_milestone(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
