@@ -9,6 +9,7 @@
 extern crate alloc;
 
 mod cert_store;
+mod device_measurements;
 
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
@@ -21,11 +22,16 @@ use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use mcu_spdm_lite_pal::cert::store::SharedCertStore;
+use mcu_spdm_lite_pal::cert::SLOT0_LEAF_LABEL;
 use mcu_spdm_lite_pal::{McuSpdmPal, BITMAP_SLOT_SIZE};
 use mcu_spdm_lite_stack::SpdmStack;
 use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 
 /// Bitmap allocator pool size per responder task.
+///
+/// Must hold `MEAS_RECORD_BUF_SIZE + MeasurementProvider::SCRATCH_SIZE`
+/// (1,024 + 3,072 = 4,096) plus transient DPE/SHA mailbox buffers
+/// (peak ~2.4 KB during certify_key for kid computation).
 const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
 /// Persistent CHUNK_SEND reassembly buffer. This is kept outside the
 /// async task frame and outside the per-I/O scratch allocator because
@@ -129,6 +135,7 @@ async fn spdm_mctp_responder() {
             SPDM_LITE_SCRATCH_SIZE,
             &CERT_STORE,
             Some(large_msg),
+            device_measurements::ocp_eat::OcpEatMeasurementProvider::new(SLOT0_LEAF_LABEL),
         )
     };
     let mut stack = SpdmStack::new(pal);
@@ -180,6 +187,7 @@ async fn spdm_doe_responder() {
             SPDM_LITE_SCRATCH_SIZE,
             &CERT_STORE,
             Some(large_msg),
+            device_measurements::ocp_eat::OcpEatMeasurementProvider::new(SLOT0_LEAF_LABEL),
         )
     };
     let mut stack = SpdmStack::new(pal);

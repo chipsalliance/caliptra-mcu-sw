@@ -101,8 +101,7 @@ const _: () = assert!(core::mem::align_of::<SpdmMsgHdrPdu>() == 1);
 
 // ---- Protocol-wide constants ------------------------------------------------
 
-/// SPDM nonce length (32 bytes).
-pub const SPDM_NONCE_LEN: usize = 32;
+pub use mcu_spdm_lite_traits::SPDM_NONCE_LEN;
 
 /// SHA-384 digest size (48 bytes).
 pub const SHA384_HASH_SIZE: usize = 48;

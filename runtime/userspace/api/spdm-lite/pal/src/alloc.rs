@@ -23,9 +23,10 @@
 //! [`UnsafeCell`] and assumes a single-threaded SPDM responder. Calling its
 //! methods concurrently is undefined behavior.
 
+use super::measurements::MeasurementProvider;
 use super::*;
 
-impl SpdmPalAlloc for McuSpdmPal {
+impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
     type Box<'a, T>
         = McuSpdmBox<'a, T>
     where

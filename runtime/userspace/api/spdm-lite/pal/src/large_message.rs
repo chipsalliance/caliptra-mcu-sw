@@ -3,9 +3,10 @@
 //! MCU-side persistent large-message storage for SPDM chunking.
 
 use super::*;
+use crate::measurements::MeasurementProvider;
 use mcu_error::codes::INVARIANT;
 
-impl SpdmPalLargeMessage for McuSpdmPal {
+impl<M: MeasurementProvider> SpdmPalLargeMessage for McuSpdmPal<M> {
     #[inline]
     fn capacity(&self) -> usize {
         let large_msg = self.large_msg.take();
