@@ -294,8 +294,11 @@ mod tests {
     #[test]
     fn der_long_form_two_byte_len() {
         // SEQUENCE, length-of-length = 2, content_len = 0x0102 = 258
-        let mut buf = vec![0x30, 0x82, 0x01, 0x02];
-        buf.resize(2 + 2 + 258, 0);
+        let mut buf = [0u8; 2 + 2 + 258];
+        buf[0] = 0x30;
+        buf[1] = 0x82;
+        buf[2] = 0x01;
+        buf[3] = 0x02;
         assert_eq!(der_first_seq_len(&buf), Some(2 + 2 + 258));
     }
 
