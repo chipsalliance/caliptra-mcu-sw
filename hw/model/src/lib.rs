@@ -174,6 +174,12 @@ pub struct InitParams<'a> {
 
     pub debug_intent: bool,
 
+    /// Models the SoC strap `SS_SOC_DBG_UNLOCK_LEVEL[0]` at reset deassertion.
+    /// Combined with `debug_intent` to decide whether the Caliptra security
+    /// state is latched as Production or honors the requested device lifecycle.
+    /// Default false → Production at reset.
+    pub ss_soc_dbg_unlock_level0: bool,
+
     pub uds_program_req: bool,
 
     // The silicon obfuscation key passed to caliptra_top.
@@ -289,6 +295,7 @@ impl Default for InitParams<'_> {
             prod_dbg_unlock_pk_hashes_offset: 0,
             rma_or_scrap_ppd: false,
             debug_intent: false,
+            ss_soc_dbg_unlock_level0: false,
             cptra_obf_key: DEFAULT_CPTRA_OBF_KEY,
             itrng_nibbles,
             etrng_responses,

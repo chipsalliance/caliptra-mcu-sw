@@ -192,6 +192,13 @@ pub struct EmulatorArgs {
     #[arg(long, value_parser=maybe_hex::<u32>, default_value_t = 0)]
     pub caliptra_dma_axi_user: u32,
 
+    /// Models the SoC strap `SS_SOC_DBG_UNLOCK_LEVEL[0]` at reset deassertion.
+    /// Combined with `--debug-intent` (always true in this app) to decide whether
+    /// the Caliptra security state is latched as Production or honors the
+    /// requested device lifecycle. Default false → latched Production.
+    #[arg(long, action = ArgAction::SetTrue, default_value_t = false)]
+    pub ss_soc_dbg_unlock_level0: bool,
+
     /// Override ROM offset
     #[arg(long, value_parser=maybe_hex::<u32>)]
     pub rom_offset: Option<u32>,
@@ -441,6 +448,7 @@ impl Emulator {
             use_mcu_recovery_interface,
             extra_soc_bus: None,
             debug_intent: true, // Emulator app defaults to debug intent enabled
+            ss_soc_dbg_unlock_level0: cli.ss_soc_dbg_unlock_level0,
             prod_dbg_unlock_keypairs: vec![],
             cptra_obf_key: DEFAULT_CPTRA_OBF_KEY,
             ss_caliptra_dma_axi_user: Some(cli.caliptra_dma_axi_user),

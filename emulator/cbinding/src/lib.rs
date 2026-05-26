@@ -165,6 +165,11 @@ pub struct CEmulatorConfig {
     pub hw_revision_patch: c_uint,
     pub mcu_lsu_axi_user: c_uint,
     pub caliptra_dma_axi_user: c_uint,
+    /// Models the SoC strap `SS_SOC_DBG_UNLOCK_LEVEL[0]` at reset deassertion.
+    /// 0 = level not asserted (security state latched as Production),
+    /// non-zero = level asserted (honors requested device_security_state when
+    /// debug intent is also set internally by the emulator app).
+    pub ss_soc_dbg_unlock_level0: c_uchar,
     pub flash_based_boot: c_uchar,
     pub allow_sideloaded_rom: c_uchar,
     pub active_i3c1: c_uchar,
@@ -342,6 +347,7 @@ pub unsafe extern "C" fn emulator_init(
         ),
         mcu_lsu_axi_user: config.mcu_lsu_axi_user,
         caliptra_dma_axi_user: config.caliptra_dma_axi_user,
+        ss_soc_dbg_unlock_level0: config.ss_soc_dbg_unlock_level0 != 0,
         flash_based_boot: config.flash_based_boot != 0,
         allow_sideloaded_rom: config.allow_sideloaded_rom != 0,
         // Use provided offset and size override parameters (-1 means use default)

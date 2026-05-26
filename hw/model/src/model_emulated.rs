@@ -316,6 +316,7 @@ impl McuHwModel for ModelEmulated {
                 use_mcu_recovery_interface,
                 extra_soc_bus: Some(params.caliptra_soc_axi_user.unwrap_or(0xdddd_dddd)),
                 debug_intent: params.debug_intent,
+                ss_soc_dbg_unlock_level0: params.ss_soc_dbg_unlock_level0,
                 prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs.clone(),
                 cptra_obf_key: params.cptra_obf_key,
                 ss_caliptra_dma_axi_user: params.caliptra_soc_axi_user,

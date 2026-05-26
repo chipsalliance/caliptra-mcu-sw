@@ -69,6 +69,10 @@ pub struct StartCaliptraArgs<'a> {
     pub use_mcu_recovery_interface: bool,
     pub extra_soc_bus: Option<u32>,
     pub debug_intent: bool,
+    /// Models `SS_SOC_DBG_UNLOCK_LEVEL[0]` at reset deassertion.
+    /// At reset, the security state is latched as Production unless
+    /// `(debug_intent && ss_soc_dbg_unlock_level0)` is true.
+    pub ss_soc_dbg_unlock_level0: bool,
     pub prod_dbg_unlock_keypairs: Vec<(&'a [u8; 96], &'a [u8; 2592])>,
     pub cptra_obf_key: [u32; 8],
     pub ss_caliptra_dma_axi_user: Option<u32>,
@@ -139,22 +143,13 @@ pub fn start_caliptra(
         ))?,
     };
 
-    // If debug intent is not set or unlock level 0 is not set, then the security state
-    // should be latched as production.
-    // In the emulator, we don't easily have access to the register state before Caliptra starts.
-    // However, we can simulate the latching logic by defaulting to Production unless
-    // specifically overridden by a mechanism that represents "unlocked".
-
-    // For now, we follow the RTL logic: it is unlocked if (debug_intent AND SS_SOC_DBG_UNLOCK_LEVEL[0])
-    // OR ss_dbg_manuf_enable.
-    // Since we don't have registers yet, we'll assume it's locked unless debug_intent is set
-    // AND some other condition we can pass in.
-    // But the user said "if the debug_intent and SS_SOC_DBG_UNLOCK_LEVEL are not set ... report the correct security state"
-    // This implies that if they ARE set, it should NOT be Production.
-
-    // Since we are at reset deassertion, SS_SOC_DBG_UNLOCK_LEVEL is 0.
-    // So it should ALWAYS be locked at reset deassertion.
-    let is_unlocked = false;
+    // RTL latches the security state at reset deassertion:
+    //   unlocked = (debug_intent AND SS_SOC_DBG_UNLOCK_LEVEL[0]) OR ss_dbg_manuf_enable
+    // If not unlocked, the lifecycle is forced to Production regardless of the
+    // requested value. The emulator has no real strap/register state at this
+    // point, so both terms are supplied as args. `ss_dbg_manuf_enable` is not
+    // modeled here yet — callers that need it should add a separate strap.
+    let is_unlocked = args.debug_intent && args.ss_soc_dbg_unlock_level0;
 
     if !is_unlocked {
         security_state.set_device_lifecycle(DeviceLifecycle::Production);
