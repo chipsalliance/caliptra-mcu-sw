@@ -15,6 +15,7 @@ mod digests;
 pub mod errors;
 mod flag_macros;
 mod header;
+mod measurements;
 mod set_certificate;
 mod version;
 mod wire;
@@ -38,6 +39,10 @@ pub use digests::{DigestsRsp, DigestsRspBody};
 pub use header::{
     ReqRespCode, SpdmMsgHdrPdu, ECC_P384_SIGNATURE_SIZE, REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE,
     SPDM_CONTEXT_LEN, SPDM_MSG_HDR_SIZE, SPDM_NONCE_LEN, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
+};
+pub use measurements::{
+    DmtfMeasurementBlockHeader, GetMeasurementsReqBody, MeasurementsRsp, MEAS_BLOCK_METADATA_SIZE,
+    SPDM_MAX_MEASUREMENT_RECORD_SIZE,
 };
 pub use set_certificate::{SetCertificateReqBody, SetCertificateRsp, SetCertificateRspBody};
 pub use version::{SpdmVersion, VersionNumberEntry, VersionRsp, VersionRspBody};

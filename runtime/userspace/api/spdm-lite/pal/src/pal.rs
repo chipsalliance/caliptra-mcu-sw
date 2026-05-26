@@ -24,8 +24,12 @@ use core::cell::{Cell, UnsafeCell};
 use core::ptr::NonNull;
 
 use super::cert::store::SharedCertStore;
+use super::measurements::MeasurementProvider;
 
 /// MCU implementation of the SPDM-Lite Platform Abstraction Layer.
+///
+/// Generic over `M: MeasurementProvider` so all measurement dispatch
+/// is monomorphized (no dyn).
 ///
 /// Owns the underlying byte-oriented PAL transport (held behind an
 /// [`UnsafeCell`] for interior mutability — the SPDM responder is
@@ -35,7 +39,7 @@ use super::cert::store::SharedCertStore;
 /// start of every `recv_request`, so allocations are scoped to a
 /// single SPDM exchange even though the allocator object itself lives
 /// on the PAL.
-pub struct McuSpdmPal {
+pub struct McuSpdmPal<M: MeasurementProvider> {
     /// The wrapped byte-oriented PAL transport.
     pub(crate) transport: UnsafeCell<Box<dyn SpdmPalTransport>>,
 
@@ -48,33 +52,14 @@ pub struct McuSpdmPal {
     /// Optional persistent byte buffer used to reassemble one SPDM
     /// `CHUNK_SEND` large request across multiple I/O exchanges.
     pub(crate) large_msg: Cell<Option<&'static mut [u8]>>,
+
+    /// Measurement data provider (monomorphized).
+    pub(crate) meas_provider: M,
 }
 
-impl McuSpdmPal {
-    /// Creates a new `McuSpdmPal` wrapping the given PAL transport and
-    /// per-IO scratch buffer plus an optional persistent large-message
-    /// buffer used by SPDM chunk reassembly.
-    ///
-    /// # Parameters
-    ///
-    /// * `transport` — Boxed byte-oriented transport implementation
-    ///   (e.g. `McuMctpTransport`). Owned for the lifetime of the
-    ///   returned `McuSpdmPal`.
-    /// * `io_buf_ptr` — Base of the caller-supplied scratch region
-    ///   used to back the per-IO [`BitmapAllocator`].
-    /// * `io_buf_capacity` — Total length, in bytes, of the region
-    ///   at `io_buf_ptr`.
-    /// * `cert_store` — Shared certificate store used by all SPDM
-    ///   transports.
-    /// * `large_msg` — Caller-supplied persistent buffer used to
-    ///   reassemble one `CHUNK_SEND` large request, or `None` when
-    ///   large-message chunking is not supported by this integration.
-    ///
-    /// # Returns
-    ///
-    /// A `McuSpdmPal` that satisfies the
-    /// [`SpdmPal`](mcu_spdm_lite_traits::SpdmPal) super-trait,
-    /// suitable for handing to [`SpdmStack`](crate::SpdmStack).
+impl<M: MeasurementProvider> McuSpdmPal<M> {
+    /// Creates a new `McuSpdmPal` with persistent chunk storage and a
+    /// measurement provider.
     ///
     /// # Safety
     ///
@@ -93,29 +78,23 @@ impl McuSpdmPal {
         io_buf_capacity: usize,
         cert_store: &'static SharedCertStore,
         large_msg: Option<&'static mut [u8]>,
+        meas_provider: M,
     ) -> Self {
         Self {
             transport: UnsafeCell::new(transport),
             allocator: BitmapAllocator::new(io_buf_ptr, io_buf_capacity),
             cert_store,
             large_msg: Cell::new(large_msg),
+            meas_provider,
         }
     }
 
     /// Returns an exclusive reference to the wrapped transport.
     ///
-    /// # Returns
-    ///
-    /// `&mut Box<dyn SpdmPalTransport>` aliased through the
-    /// [`UnsafeCell`]; valid for the lifetime of the borrow on
-    /// `self`.
-    ///
     /// # Safety
     ///
     /// Caller asserts no other reference to the transport is live.
-    /// Upheld by the single-task responder invariant: this is only
-    /// called from `recv_request` / `send_response` on the responder
-    /// task, which never re-enters itself.
+    /// Upheld by the single-task responder invariant.
     #[inline]
     #[allow(clippy::mut_from_ref)]
     pub(crate) unsafe fn transport_mut(&self) -> &mut Box<dyn SpdmPalTransport> {
@@ -123,44 +102,23 @@ impl McuSpdmPal {
     }
 
     /// Reports the transport MTU without taking a mutable borrow.
-    ///
-    /// # Returns
-    ///
-    /// The byte count returned by
-    /// [`SpdmPalTransport::mtu`] — the maximum SPDM payload the
-    /// transport carries per message, excluding framing.
     pub(crate) fn transport_mtu(&self) -> usize {
-        // SAFETY: `mtu` only reads transport fields and never mutates.
         unsafe { (*self.transport.get()).mtu() }
     }
 
     /// Reports whether the transport supports Secured Messages.
-    ///
-    /// # Returns
-    ///
-    /// `true` if the transport advertises SPDM Secured Message
-    /// framing support, `false` otherwise.
     pub(crate) fn transport_secure_supported(&self) -> bool {
-        // SAFETY: shared-read only.
         unsafe { (*self.transport.get()).secure_message_supported() }
     }
 
     /// Number of transport-framing header bytes.
-    ///
-    /// # Returns
-    ///
-    /// Byte count returned by [`SpdmPalTransport::header_size`] —
-    /// the offset at which the SPDM payload starts inside the
-    /// transport's send/receive buffers.
     pub(crate) fn transport_header_size(&self) -> usize {
-        // SAFETY: shared-read only.
         unsafe { (*self.transport.get()).header_size() }
     }
 
     pub(crate) fn transport_send_len_alignment(&self) -> usize {
-        // SAFETY: shared-read only.
         unsafe { (*self.transport.get()).send_len_alignment() }
     }
 }
 
-impl SpdmPal for McuSpdmPal {}
+impl<M: MeasurementProvider> SpdmPal for McuSpdmPal<M> {}

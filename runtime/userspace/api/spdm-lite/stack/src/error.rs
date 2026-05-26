@@ -8,7 +8,7 @@
 //! dispatcher catches `Err(SpdmError)` and emits the wire-format
 //! response.
 //!
-//! Below the handler/dispatcher boundary the spdm-lite stack uses
+//! Below the handler/dispatcher boundary this stack uses
 //! the workspace-wide [`McuErrorCode`] / [`McuResult`] type for I/O,
 //! allocation, codec, and transport errors. Conversion is implicit
 //! via [`From<McuErrorCode> for SpdmError`] — `?` does the lifting at

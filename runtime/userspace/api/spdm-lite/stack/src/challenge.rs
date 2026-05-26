@@ -5,7 +5,7 @@
 use mcu_spdm_lite_codec::{
     ChallengeAuthRsp, ChallengeReqBody, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
     ECC_P384_SIGNATURE_SIZE, REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE, SPDM_CONTEXT_LEN,
-    SPDM_NONCE_LEN, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
+    SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
@@ -89,9 +89,16 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
 
-    // Measurement summary hash: zero-filled placeholder until
-    // GET_MEASUREMENTS is implemented. Omitted when type=0.
-    let meas_summary_hash = [0u8; SHA384_HASH_SIZE];
+    let mut meas_summary_hash = [0u8; SHA384_HASH_SIZE];
+    if meas_hash_type != 0 {
+        crate::measurements::measurement_summary_hash(
+            pal,
+            io,
+            meas_hash_type,
+            &mut meas_summary_hash,
+        )
+        .await?;
+    }
     let meas_hash_ref = if meas_hash_type != 0 {
         Some(&meas_summary_hash)
     } else {

@@ -61,6 +61,9 @@ pub(crate) const DPE_CMD_CERTIFY_KEY: u32 = 0x09;
 /// DPE `Sign` command ID (`dpe::commands::Command::SIGN`).
 pub(crate) const DPE_CMD_SIGN: u32 = 0x0A;
 
+/// `QUOTE_PCRS_ECC384` command ID.
+pub(crate) const CMD_QUOTE_PCRS_ECC384: u32 = 0x5043_5251; // "PCRQ"
+
 /// Mailbox response header size: `chksum(4) + fips_status(4)`.
 pub(crate) const MBOX_RESP_HEADER_SIZE: usize = 8;
 

@@ -103,7 +103,16 @@ pub fn authenticate_signer(
     if matches!(options.method, SignerIdMethod::Kid | SignerIdMethod::Both) {
         for header in &headers {
             if !header.key_id.is_empty() {
-                return Ok(ta_store.authenticate_by_kid(&header.key_id)?);
+                if !external_chain.is_empty() {
+                    // Kid with external cert chain (e.g. SPDM GET_CERTIFICATE):
+                    // authenticate the full chain and return the leaf cert.
+                    let mut chain_certs =
+                        split_der_certs(external_chain).map_err(CoseSign1Error::CertificateError)?;
+                    chain_certs.reverse(); // root-first → leaf-first
+                    return Ok(ta_store.authenticate_chain(&chain_certs)?);
+                } else {
+                    return Ok(ta_store.authenticate_by_kid(&header.key_id)?);
+                }
             }
         }
     }

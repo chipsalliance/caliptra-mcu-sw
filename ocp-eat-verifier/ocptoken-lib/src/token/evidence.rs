@@ -65,7 +65,7 @@ impl<'a> Evidence<'a> {
     pub fn authenticate(&self, cert_chain_blob: &[u8]) -> OcpEatResult<Vec<u8>> {
         let options = AuthenticateOptions {
             header: HeaderSelection::Unprotected,
-            method: SignerIdMethod::X5chain,
+            method: SignerIdMethod::Both,
         };
         Ok(authenticate_signer(
             &self.decoded,
@@ -108,15 +108,17 @@ impl<'a> Evidence<'a> {
 /// COSE header label for x5chain (RFC 9360).
 const COSE_HDR_PARAM_X5CHAIN: i64 = 33;
 
-/// Verify that the unprotected header contains an x5chain (label 33).
+/// Verify that the unprotected header contains a signer identification
+/// method: either x5chain (label 33) or kid (label 4).
 fn verify_eat_unprotected_header(unprotected: &coset::Header) -> OcpEatResult<()> {
     let has_x5chain = unprotected
         .rest
         .iter()
         .any(|(label, _)| *label == coset::Label::Int(COSE_HDR_PARAM_X5CHAIN));
-    if !has_x5chain {
+    let has_kid = !unprotected.key_id.is_empty();
+    if !has_x5chain && !has_kid {
         return Err(OcpEatError::InvalidToken(
-            "x5chain not found in unprotected header",
+            "Neither x5chain nor kid found in unprotected header",
         ));
     }
     Ok(())
