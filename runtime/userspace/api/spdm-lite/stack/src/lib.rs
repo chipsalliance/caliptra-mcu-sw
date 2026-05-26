@@ -35,6 +35,7 @@ mod capabilities;
 mod certificate;
 mod digests;
 mod error;
+mod set_certificate;
 mod stack;
 mod transcript;
 mod version;

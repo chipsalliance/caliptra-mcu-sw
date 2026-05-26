@@ -13,6 +13,7 @@ mod digests;
 pub mod errors;
 mod flag_macros;
 mod header;
+mod set_certificate;
 mod version;
 mod wire;
 
@@ -28,5 +29,6 @@ pub use certificate::{
 };
 pub use digests::{DigestsRsp, DigestsRspBody};
 pub use header::{ReqRespCode, SpdmMsgHdrPdu, SPDM_MSG_HDR_SIZE};
+pub use set_certificate::{SetCertificateReqBody, SetCertificateRsp, SetCertificateRspBody};
 pub use version::{SpdmVersion, VersionNumberEntry, VersionRsp, VersionRspBody};
 pub use wire::{WireError, WireReader, WireWriter};

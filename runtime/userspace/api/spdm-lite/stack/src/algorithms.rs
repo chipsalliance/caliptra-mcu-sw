@@ -23,8 +23,8 @@
 //! accepted but ignored.
 
 use mcu_spdm_lite_codec::{
-    alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, DheAlgos, KeyScheduleAlgos,
-    NegotiateAlgorithmsReqBodyFixed, SpdmMsgHdrPdu,
+    alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, CapFlags, DheAlgos, KeyScheduleAlgos,
+    NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, SpdmMsgHdrPdu, SpdmVersion,
 };
 use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::FromBytes;
@@ -87,6 +87,7 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     let alg_structs = locate_alg_structs(fixed, body)?;
     let peer = parse_peer_algs(alg_structs)?;
     let rsp_body = build_response_body(state, fixed, &peer);
+    state.other_param_sel = rsp_body.other_param_support;
 
     let resp = build_response(pal, io, state.version, &rsp_body)?;
 
@@ -239,10 +240,18 @@ fn build_response_body<S: Clone>(
     let dhe = state.dhe & peer.dhe;
     let aead = state.aead & peer.aead;
     let key_schedule = state.key_schedule & peer.key_schedule;
+    let mut other_param_support = state.other_param_support & fixed.other_param_support;
+    if state.version < SpdmVersion::V13
+        || !multi_key_conn_cap_negotiated(state.cap_flags, state.peer_cap_flags)
+    {
+        other_param_support = OtherParamSupport::from_bits(
+            other_param_support.into_bits() & !OtherParamSupport::MULTI_KEY_CONN.into_bits(),
+        );
+    }
 
     AlgorithmsRsp {
         measurement_spec_sel: state.measurement_spec & fixed.measurement_spec,
-        other_param_support: state.other_param_support & fixed.other_param_support,
+        other_param_support,
         // MeasurementHashAlgo has no peer bitmap to intersect — the
         // requester relies on the responder's choice.
         meas_hash_algo: state.meas_hash_algo,
@@ -255,4 +264,8 @@ fn build_response_body<S: Clone>(
             None,
         ],
     }
+}
+
+fn multi_key_conn_cap_negotiated(local: CapFlags, peer: CapFlags) -> bool {
+    local.multi_key_conn_rsp() && peer.multi_key_conn_rsp()
 }

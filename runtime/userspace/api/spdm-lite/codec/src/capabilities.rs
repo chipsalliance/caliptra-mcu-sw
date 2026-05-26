@@ -45,6 +45,9 @@ def_flag_set_le! {
         PUB_KEY_ID = 1 << 16,
         CHUNK = 1 << 17,
         ALIAS_CERT = 1 << 18,
+        SET_CERT = 1 << 19,
+        /// `MULTI_KEY_CAP` field bits 27:26 set to `10b` (`MultiKeyConnRsp`).
+        MULTI_KEY_CONN_RSP = 2 << 26,
     }
 }
 
@@ -58,6 +61,18 @@ impl CapFlags {
     #[inline]
     pub fn psk_field(self) -> u8 {
         ((self.into_bits() >> 10) & 0b11) as u8
+    }
+
+    /// 2-bit `MULTI_KEY_CAP` field value (bits 26..=27).
+    #[inline]
+    pub fn multi_key_field(self) -> u8 {
+        ((self.into_bits() >> 26) & 0b11) as u8
+    }
+
+    /// True only for the exact `MULTI_KEY_CAP = 10b` MultiKeyConnRsp value.
+    #[inline]
+    pub fn multi_key_conn_rsp(self) -> bool {
+        self.multi_key_field() == 0b10
     }
 }
 

@@ -11,4 +11,5 @@ mcu-spdm-lite-traits = { workspace = true }
 mcu-spdm-lite-codec = { workspace = true }
 mcu-caliptra-api-lite = { workspace = true }
 mcu-error = { workspace = true }
+caliptra-mcu-libsyscall-caliptra = { workspace = true }
 zerocopy = { workspace = true }
