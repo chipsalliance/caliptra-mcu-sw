@@ -122,8 +122,9 @@ jobs:
 
       - name: Download bitstream
         run: |
-          cargo xtask-fpga fpga download-bitstream
-          mv caliptra-bitstream.pdi /tmp/caliptra-bitstream.pdi
+          cargo install --git https://github.com/chipsalliance/caliptra-infra caliptra-bitstream-downloader --root /tmp/bitstream-downloader --rev 3db904cf9cd704fcf890da32fd61dd30bfce8d11
+          /tmp/bitstream-downloader/bin/caliptra-bitstream-downloader --bitstream-manifest hw/fpga/bitstream_manifests/subsystem.toml
+          mv subsystem.pdi /tmp/caliptra-bitstream.pdi
 
       - name: Build test firmware
         run: |
@@ -140,8 +141,7 @@ jobs:
 
           # Build ROM and runtime binaries
           echo "Cross compiling FPGA binaries"
-          cargo xtask-fpga fpga build \
-            --configuration subsystem \
+          cargo xtask-fpga all-build --platform fpga \
             --rom-features "core_test" \
             --mcu_cfg mcu,0x0,0xB00C0000,2,2,2,test-fpga-flash-ctrl \
             --separate-runtimes
@@ -149,10 +149,10 @@ jobs:
 
           mkdir -p /tmp/caliptra-binaries
           tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz \
-            all-fw.zip
+            target/all-fw.zip
 
           echo "Cross compiling test binaries"
-          cargo xtask-fpga fpga build-test --configuration subsystem
+          cargo xtask-fpga fpga build-test
           sccache --show-stats
 
           echo "Cross compiling xtask for FPGA"
@@ -269,7 +269,7 @@ jobs:
           export RUST_BACKTRACE=1
           TEST_BIN=/tmp/caliptra-test-binaries
 
-          sudo CPTRA_FIRMWARE_BUNDLE="${PWD}/all-fw.zip" \
+          sudo CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip" \
               SPDM_VALIDATOR_DIR=/tmp/spdm-emu-binaries \
               cargo-nextest nextest run \
               --cargo-metadata="${TEST_BIN}/target/nextest/cargo-metadata.json" \
