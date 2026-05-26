@@ -17,6 +17,12 @@ Abstract:
 #[cfg(all(feature = "ocp-lock", feature = "stable-owner-key"))]
 compile_error!("features `ocp-lock` and `stable-owner-key` are mutually exclusive");
 
+mod component_svn_manifest;
+pub use component_svn_manifest::{
+    McuComponentSvnEntry, McuComponentSvnManifest, SvnLimits, SvnManifestError,
+    MCU_COMPONENT_SVN_MANIFEST_ENTRY_COUNT, MCU_COMPONENT_SVN_MANIFEST_MAGIC,
+    MCU_COMPONENT_SVN_MANIFEST_SIZE, MCU_COMPONENT_SVN_MANIFEST_VERSION,
+};
 mod device_ownership_transfer;
 pub use device_ownership_transfer::*;
 mod dot_override;
