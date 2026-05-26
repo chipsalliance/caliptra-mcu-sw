@@ -24,7 +24,7 @@ use crate::build::build_error_response;
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
-use crate::{algorithms, capabilities, certificate, challenge, digests, version};
+use crate::{algorithms, capabilities, certificate, challenge, digests, set_certificate, version};
 
 /// Connection phase tracked on the responder so the dispatcher can
 /// enforce the DSP0274 §10 ordering
@@ -103,6 +103,8 @@ pub struct ConnectionState<S: Clone> {
     pub peer_max_spdm_msg_size: u32,
     /// Peer-advertised capability flags.
     pub peer_cap_flags: CapFlags,
+    /// Negotiated OtherParamsSel from NEGOTIATE_ALGORITHMS.
+    pub other_param_sel: OtherParamSupport,
     /// Transcript state (running VCA/M1/L1 hashes per DSP0274 §8.10).
     pub transcript: crate::transcript::Transcript<S>,
 }
@@ -127,10 +129,16 @@ impl<S: Clone> ConnectionState<S> {
     pub fn caliptra() -> Self {
         Self {
             ct_exponent: 20, // 2^20 µs
-            cap_flags: CapFlags::CERT | CapFlags::CHAL | CapFlags::MEAS_SIG | CapFlags::ALIAS_CERT,
+            cap_flags: CapFlags::CERT
+                | CapFlags::CHAL
+                | CapFlags::MEAS_SIG
+                | CapFlags::ALIAS_CERT
+                | CapFlags::SET_CERT
+                | CapFlags::MULTI_KEY_CONN_RSP,
 
             measurement_spec: MeasSpec::DMTF,
-            other_param_support: OtherParamSupport::OPAQUE_DATA_FMT1,
+            other_param_support: OtherParamSupport::OPAQUE_DATA_FMT1
+                | OtherParamSupport::MULTI_KEY_CONN,
             meas_hash_algo: MeasHashAlgos::SHA_384,
             base_asym_sel: AsymAlgos::ECDSA_ECC_NIST_P384,
             base_hash_sel: HashAlgos::SHA_384,
@@ -143,6 +151,7 @@ impl<S: Clone> ConnectionState<S> {
             peer_data_transfer_size: 0,
             peer_max_spdm_msg_size: 0,
             peer_cap_flags: CapFlags::EMPTY,
+            other_param_sel: OtherParamSupport::EMPTY,
             transcript: crate::transcript::Transcript::new(),
         }
     }
@@ -157,6 +166,7 @@ impl<S: Clone> ConnectionState<S> {
         self.peer_data_transfer_size = 0;
         self.peer_max_spdm_msg_size = 0;
         self.peer_cap_flags = CapFlags::EMPTY;
+        self.other_param_sel = OtherParamSupport::EMPTY;
         self.transcript.reset();
     }
 
@@ -372,6 +382,9 @@ async fn dispatch<'a, Pal: SpdmPal>(
         ReqRespCode::GET_DIGESTS => digests::handle_get_digests(state, pal, io).await,
         ReqRespCode::GET_CERTIFICATE => certificate::handle_get_certificate(state, pal, io).await,
         ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
+        ReqRespCode::SET_CERTIFICATE => {
+            set_certificate::handle_set_certificate(state, pal, io).await
+        }
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST),
     }

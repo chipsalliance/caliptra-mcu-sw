@@ -36,6 +36,7 @@ mod certificate;
 mod challenge;
 mod digests;
 mod error;
+mod set_certificate;
 mod stack;
 mod transcript;
 mod version;

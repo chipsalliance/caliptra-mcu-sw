@@ -73,6 +73,53 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// Table 25).
     fn provisioned_slots(&self) -> u8;
 
+    /// Raw DER capacity/size for a slot-size query. Defaults to the current
+    /// chain length so existing read-only stores preserve behavior.
+    async fn cert_chain_slot_size(
+        &self,
+        io: &Self::Io<'_>,
+        slot: u8,
+        algo: SpdmPalAsymAlgo,
+    ) -> McuResult<usize> {
+        self.cert_chain_len(io, slot, algo).await
+    }
+
+    /// Whether this backend accepts SPDM SET_CERTIFICATE writes.
+    #[inline]
+    fn set_certificate_supported(&self) -> bool {
+        self.supported_slots() & !self.provisioned_slots() != 0
+    }
+
+    /// Check whether a specific SET_CERTIFICATE request is authorized.
+    #[inline]
+    fn set_certificate_authorized(
+        &self,
+        _io: &Self::Io<'_>,
+        _slot: u8,
+        _key_pair_id: u8,
+        _cert_model: u8,
+        _erase: bool,
+    ) -> bool {
+        self.set_certificate_supported()
+    }
+
+    /// Validate an incoming SET_CERTIFICATE chain before it is committed.
+    async fn validate_set_certificate_chain(
+        &self,
+        _io: &Self::Io<'_>,
+        _slot: u8,
+        _key_pair_id: u8,
+        _cert_model: u8,
+        _root_hash: &[u8; 48],
+        _cert_chain: &[u8],
+    ) -> McuResult<()> {
+        if self.set_certificate_supported() {
+            Ok(())
+        } else {
+            Err(mcu_error::codes::NOT_IMPLEMENTED)
+        }
+    }
+
     /// Length in bytes of slot's raw DER cert chain for the given
     /// algorithm (excludes the 52-byte SPDM cert-chain header).
     async fn cert_chain_len(
