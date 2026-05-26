@@ -48,6 +48,7 @@ pub struct OtpPartition {
     pub desc: String,
     pub sw_digest: bool,
     pub hw_digest: bool,
+    #[serde(default)]
     pub zeroizable: bool,
 }
 
