@@ -262,10 +262,11 @@ impl Otp {
                 }
             }
             reg::VENDOR_PK_HASH_VALID => {
-                match self
-                    .driver
-                    .write_entry(OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID, value)
-                {
+                const RAW_FUSE_BYTE_SIZE: usize = OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID.byte_size;
+                match self.driver.write_entry_multi::<1, RAW_FUSE_BYTE_SIZE>(
+                    OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID,
+                    &[value],
+                ) {
                     Ok(_) => CommandReturn::success(),
                     Err(e) => {
                         capsule_error!("OTP", "Error Writing vendor PK hash valid mask: {:?}", e);
