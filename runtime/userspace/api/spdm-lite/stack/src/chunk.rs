@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! SPDM large-message chunking.
+//! SPDM large-message chunking (DSP0274 §10.26).
 
 use mcu_spdm_lite_codec::{
     CapabilitiesBody, CertificateRspBody, ChunkGetReqBody, ChunkSendReqBody, ReqRespCode,
@@ -10,20 +10,20 @@ use mcu_spdm_lite_codec::{
 use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::{little_endian::U16, little_endian::U32, FromBytes};
 
-use crate::build::alloc_padded;
 use crate::certificate;
 use crate::error::{
-    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSUPPORTED_REQUEST,
-    SPDM_VERSION_MISMATCH,
+    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
+    SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
 use crate::stack::{ConnectionState, Phase};
+use crate::vendor_defined::{self, SpdmVdmBackend};
 
 const CERTIFICATE_RESPONSE_HEADER_SIZE: usize = SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE;
 
 #[derive(Copy, Clone)]
 pub(crate) struct LargeResponseState {
     next_handle: u8,
-    active: Option<LargeResponse>,
+    active: Option<LargeResponseKind>,
 }
 
 impl Default for LargeResponseState {
@@ -47,25 +47,59 @@ impl LargeResponseState {
     }
 
     #[inline]
-    pub(crate) fn start(&mut self, mut rsp: LargeResponse) -> u8 {
+    pub(crate) fn start_certificate(
+        &mut self,
+        slot_id: u8,
+        param2: u8,
+        asym_algo: SpdmPalAsymAlgo,
+        cert_offset: u16,
+        portion_len: u16,
+        remainder_len: u16,
+    ) -> u8 {
         let handle = self.next_handle;
-        rsp.assign_handle(handle);
-        self.active = Some(rsp);
+        self.active = Some(LargeResponseKind::Certificate(CertificateLargeResponse {
+            handle,
+            next_seq_num: 0,
+            bytes_sent: 0,
+            slot_id,
+            param2,
+            asym_algo,
+            cert_offset,
+            portion_len,
+            remainder_len,
+        }));
         handle
     }
 
     #[inline]
-    fn response(&self) -> Option<&LargeResponse> {
-        self.active.as_ref()
+    #[allow(dead_code)]
+    pub(crate) fn start_buffered(&mut self, response_size: usize) -> u8 {
+        let handle = self.next_handle;
+        self.active = Some(LargeResponseKind::Buffered(BufferedLargeResponse {
+            handle,
+            next_seq_num: 0,
+            bytes_sent: 0,
+            response_size: response_size as u32,
+        }));
+        handle
     }
 
-    fn chunk_sent(&mut self, n: usize) {
-        let complete = match self.active.as_mut() {
-            Some(rsp) => rsp.chunk_sent(n),
-            None => return,
+    #[inline]
+    fn response(self) -> Option<LargeResponseKind> {
+        self.active
+    }
+
+    fn sent(&mut self, n: usize) {
+        let Some(mut rsp) = self.active else {
+            return;
         };
-        if complete {
+        let bytes_sent = rsp.bytes_sent() + n;
+        rsp.set_bytes_sent(bytes_sent as u32);
+        rsp.set_next_seq_num(rsp.next_seq_num().wrapping_add(1));
+        if bytes_sent == rsp.response_size() {
             self.complete();
+        } else {
+            self.active = Some(rsp);
         }
     }
 
@@ -84,23 +118,59 @@ impl LargeResponseState {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone)]
-pub(crate) enum LargeResponse {
+enum LargeResponseKind {
     Certificate(CertificateLargeResponse),
+    Buffered(BufferedLargeResponse),
 }
 
-impl LargeResponse {
+impl LargeResponseKind {
     #[inline]
-    fn assign_handle(&mut self, handle: u8) {
+    fn handle(self) -> u8 {
         match self {
-            Self::Certificate(rsp) => rsp.assign_handle(handle),
+            Self::Certificate(rsp) => rsp.handle,
+            Self::Buffered(rsp) => rsp.handle,
         }
     }
 
     #[inline]
-    fn chunk_sent(&mut self, n: usize) -> bool {
+    fn next_seq_num(self) -> u16 {
         match self {
-            Self::Certificate(rsp) => rsp.chunk_sent(n),
+            Self::Certificate(rsp) => rsp.next_seq_num,
+            Self::Buffered(rsp) => rsp.next_seq_num,
+        }
+    }
+
+    #[inline]
+    fn bytes_sent(self) -> usize {
+        match self {
+            Self::Certificate(rsp) => rsp.bytes_sent as usize,
+            Self::Buffered(rsp) => rsp.bytes_sent as usize,
+        }
+    }
+
+    #[inline]
+    fn set_bytes_sent(&mut self, bytes_sent: u32) {
+        match self {
+            Self::Certificate(rsp) => rsp.bytes_sent = bytes_sent,
+            Self::Buffered(rsp) => rsp.bytes_sent = bytes_sent,
+        }
+    }
+
+    #[inline]
+    fn set_next_seq_num(&mut self, next_seq_num: u16) {
+        match self {
+            Self::Certificate(rsp) => rsp.next_seq_num = next_seq_num,
+            Self::Buffered(rsp) => rsp.next_seq_num = next_seq_num,
+        }
+    }
+
+    #[inline]
+    fn response_size(self) -> usize {
+        match self {
+            Self::Certificate(rsp) => rsp.response_size(),
+            Self::Buffered(rsp) => rsp.response_size as usize,
         }
     }
 }
@@ -120,44 +190,17 @@ pub(crate) struct CertificateLargeResponse {
 
 impl CertificateLargeResponse {
     #[inline]
-    pub(crate) fn new(
-        slot_id: u8,
-        param2: u8,
-        asym_algo: SpdmPalAsymAlgo,
-        cert_offset: u16,
-        portion_len: u16,
-        remainder_len: u16,
-    ) -> Self {
-        Self {
-            handle: 0,
-            next_seq_num: 0,
-            bytes_sent: 0,
-            slot_id,
-            param2,
-            asym_algo,
-            cert_offset,
-            portion_len,
-            remainder_len,
-        }
-    }
-
-    #[inline]
-    fn assign_handle(&mut self, handle: u8) {
-        self.handle = handle;
-    }
-
-    #[inline]
-    fn chunk_sent(&mut self, n: usize) -> bool {
-        let bytes_sent = self.bytes_sent as usize + n;
-        self.bytes_sent = bytes_sent as u32;
-        self.next_seq_num = self.next_seq_num.wrapping_add(1);
-        bytes_sent == self.response_size()
-    }
-
-    #[inline]
-    fn response_size(&self) -> usize {
+    fn response_size(self) -> usize {
         CERTIFICATE_RESPONSE_HEADER_SIZE + self.portion_len as usize
     }
+}
+
+#[derive(Copy, Clone)]
+struct BufferedLargeResponse {
+    handle: u8,
+    next_seq_num: u16,
+    bytes_sent: u32,
+    response_size: u32,
 }
 
 #[derive(Copy, Clone, Default)]
@@ -187,33 +230,30 @@ struct ChunkInfo {
     complete: bool,
 }
 
-pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal>(
+pub(crate) async fn handle_chunk_send<'a, Pal, Vdm>(
     state: &mut ConnectionState<Pal::State>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-) -> SpdmResult<PalBytes<'a, Pal>> {
+    vdm_backend: &Vdm,
+) -> SpdmResult<PalBytes<'a, Pal>>
+where
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+{
     let result = process_chunk_send(state, pal, io);
     match result {
-        Ok(info) => {
-            let mut response_to_large_request = [0u8; 4];
-            let response = if info.complete {
-                let err = build_response_to_large_request(state, pal);
-                encode_error_pdu(state.version, err, &mut response_to_large_request);
-                state.chunk.reset();
-                &response_to_large_request[..]
-            } else {
-                &[]
-            };
-            build_chunk_send_ack(
-                pal,
-                io,
-                state.version,
-                false,
-                info.handle,
-                info.chunk_seq_num,
-                response,
-            )
+        Ok(info) if info.complete => {
+            build_completed_chunk_send_ack(state, pal, io, info, vdm_backend).await
         }
+        Ok(info) => build_chunk_send_ack(
+            pal,
+            io,
+            state.version,
+            false,
+            info.handle,
+            info.chunk_seq_num,
+            &[],
+        ),
         Err(ChunkProcessError::Spdm(e)) => Err(e),
         Err(ChunkProcessError::Early {
             handle,
@@ -237,11 +277,73 @@ fn build_chunk_send_ack<'a, Pal: SpdmPal>(
     response_to_large_request: &[u8],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let head = pal.header_size();
-    let mut rsp = pal.alloc_bytes(
+    let mut rsp = alloc_padded(
+        pal,
         io,
         head + SpdmMsgHdrPdu::SIZE + 4 + response_to_large_request.len(),
     )?;
-    let mut w = WireWriter::new(&mut rsp[head..]);
+    write_chunk_send_ack_prefix(
+        &mut rsp[head..],
+        version,
+        early_error,
+        handle,
+        chunk_seq_num,
+    )?;
+    let response_offset = head + SpdmMsgHdrPdu::SIZE + 4;
+    rsp[response_offset..response_offset + response_to_large_request.len()]
+        .copy_from_slice(response_to_large_request);
+    Ok(rsp)
+}
+
+async fn build_completed_chunk_send_ack<'a, Pal, Vdm>(
+    state: &mut ConnectionState<Pal::State>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    info: ChunkInfo,
+    vdm_backend: &Vdm,
+) -> SpdmResult<PalBytes<'a, Pal>>
+where
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+{
+    let head = pal.header_size();
+    let ack_body_len = SpdmMsgHdrPdu::SIZE + 4;
+    let max_response_len = effective_data_transfer_size(state, pal).saturating_sub(ack_body_len);
+    let mut rsp = alloc_padded(pal, io, head + ack_body_len + max_response_len)?;
+
+    let response_offset = head + ack_body_len;
+    let response = &mut rsp[response_offset..response_offset + max_response_len];
+    let response_len =
+        match build_response_to_large_request(state, pal, io, vdm_backend, response).await {
+            Ok(len) => len,
+            Err(err) => {
+                let mut error = [0u8; 4];
+                encode_error_pdu(state.version, err, &mut error);
+                response[..error.len()].copy_from_slice(&error);
+                error.len()
+            }
+        };
+    state.chunk.reset();
+
+    write_chunk_send_ack_prefix(
+        &mut rsp[head..],
+        state.version,
+        false,
+        info.handle,
+        info.chunk_seq_num,
+    )?;
+    shrink_padded(pal, &mut rsp, response_offset + response_len)?;
+    Ok(rsp)
+}
+
+fn write_chunk_send_ack_prefix(
+    out: &mut [u8],
+    version: SpdmVersion,
+    early_error: bool,
+    handle: u8,
+    chunk_seq_num: u16,
+) -> SpdmResult<()> {
+    let mut w = WireWriter::new(out);
     w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::CHUNK_SEND_ACK))?;
     let attr = if early_error {
         CHUNK_ACK_ATTR_EARLY_ERROR
@@ -250,8 +352,50 @@ fn build_chunk_send_ack<'a, Pal: SpdmPal>(
     };
     w.write(&[attr, handle])?;
     w.write(&U16::new(chunk_seq_num))?;
-    w.write_bytes(response_to_large_request)?;
-    Ok(rsp)
+    Ok(())
+}
+
+async fn build_response_to_large_request<Pal, Vdm>(
+    state: &ConnectionState<Pal::State>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    vdm_backend: &Vdm,
+    out: &mut [u8],
+) -> SpdmResult<usize>
+where
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+{
+    let large_req_len = state.chunk.large_msg_size as usize;
+    if large_req_len < SpdmMsgHdrPdu::SIZE {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    // SAFETY: CHUNK_SEND reassembly owns the PAL large-message buffer until
+    // `state.chunk` is reset after this response is built. The returned borrow
+    // is used read-only to decode and dispatch the completed large request, and
+    // no other PAL large-message operation is performed while it is live.
+    let large_req = unsafe { pal.large_message_mut(large_req_len) }
+        .map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (hdr, _) = SpdmMsgHdrPdu::ref_from_prefix(&*large_req).map_err(|_| SPDM_INVALID_REQUEST)?;
+    if hdr.version != state.version.to_u8()
+        || hdr.code == ReqRespCode::CHUNK_SEND
+        || hdr.code == ReqRespCode::CHUNK_GET
+    {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    match hdr.code {
+        ReqRespCode::VENDOR_DEFINED_REQUEST => {
+            vendor_defined::handle_large_vendor_defined_request::<Pal, Vdm>(
+                state,
+                io,
+                large_req,
+                vdm_backend,
+                out,
+            )
+            .await
+        }
+        _ => Err(SPDM_UNSUPPORTED_REQUEST),
+    }
 }
 
 pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
@@ -259,7 +403,14 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    if (state.phase as u8) < (Phase::AfterCapabilities as u8) || !state.chunking_enabled() {
+    if (state.phase as u8) < (Phase::AfterCapabilities as u8)
+        || !state
+            .cap_flags
+            .contains(mcu_spdm_lite_codec::CapFlags::CHUNK)
+        || !state
+            .peer_cap_flags
+            .contains(mcu_spdm_lite_codec::CapFlags::CHUNK)
+    {
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
 
@@ -281,17 +432,17 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    let Some(LargeResponse::Certificate(cert_rsp)) = state.large_response.response() else {
+    let Some(large_rsp) = state.large_response.response() else {
         return Err(SPDM_UNEXPECTED_REQUEST);
     };
 
     let handle = chunk_req.handle;
     let seq_num = chunk_req.chunk_seq_num.get();
-    if handle != cert_rsp.handle || seq_num != cert_rsp.next_seq_num {
+    if handle != large_rsp.handle() || seq_num != large_rsp.next_seq_num() {
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    let large_response_size = cert_rsp.response_size();
+    let large_response_size = large_rsp.response_size();
     let extra = if seq_num == 0 {
         LARGE_RESPONSE_SIZE_FIELD_SIZE
     } else {
@@ -299,7 +450,7 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     };
     let max_chunk_size = effective_data_transfer_size(state, pal)
         .saturating_sub(SpdmMsgHdrPdu::SIZE + CHUNK_RESPONSE_FIXED_BODY_SIZE + extra);
-    let bytes_sent = cert_rsp.bytes_sent as usize;
+    let bytes_sent = large_rsp.bytes_sent();
     if max_chunk_size == 0 || bytes_sent >= large_response_size {
         return Err(SPDM_INVALID_REQUEST);
     }
@@ -308,8 +459,11 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     let chunk_size = remaining.min(max_chunk_size);
     let last_chunk = chunk_size == remaining;
     let head = pal.header_size();
-    let raw_len = head + SpdmMsgHdrPdu::SIZE + CHUNK_RESPONSE_FIXED_BODY_SIZE + extra + chunk_size;
-    let mut rsp = alloc_padded(pal, io, raw_len)?;
+    let mut rsp = alloc_padded(
+        pal,
+        io,
+        head + SpdmMsgHdrPdu::SIZE + CHUNK_RESPONSE_FIXED_BODY_SIZE + extra + chunk_size,
+    )?;
 
     {
         let mut w = WireWriter::new(&mut rsp[head..]);
@@ -326,12 +480,13 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
             w.write(&U32::new(large_response_size as u32))?;
         }
         let chunk = w.reserve(chunk_size)?;
-        fill_certificate_response_chunk(pal, io, state.version, cert_rsp, bytes_sent, chunk)
-            .await?;
-        state.transcript.append_m1(pal, io, chunk).await?;
+        fill_large_response_chunk(pal, io, state.version, large_rsp, bytes_sent, chunk).await?;
+        if matches!(large_rsp, LargeResponseKind::Certificate(_)) {
+            state.transcript.append_m1(pal, io, chunk).await?;
+        }
     }
 
-    state.large_response.chunk_sent(chunk_size);
+    state.large_response.sent(chunk_size);
     Ok(rsp)
 }
 
@@ -362,7 +517,12 @@ fn process_chunk_send<Pal: SpdmPal>(
 ) -> Result<ChunkInfo, ChunkProcessError> {
     if state.large_response.in_progress()
         || (state.phase as u8) < (Phase::AfterCapabilities as u8)
-        || !state.chunking_enabled()
+        || !state
+            .cap_flags
+            .contains(mcu_spdm_lite_codec::CapFlags::CHUNK)
+        || !state
+            .peer_cap_flags
+            .contains(mcu_spdm_lite_codec::CapFlags::CHUNK)
     {
         return Err(ChunkProcessError::Spdm(SPDM_UNEXPECTED_REQUEST));
     }
@@ -446,11 +606,35 @@ pub(crate) fn effective_max_spdm_msg_size<Pal: SpdmPal>(
     local.min(peer)
 }
 
+async fn fill_large_response_chunk<Pal: SpdmPal>(
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    version: SpdmVersion,
+    rsp: LargeResponseKind,
+    offset: usize,
+    dst: &mut [u8],
+) -> mcu_error::McuResult<()> {
+    match rsp {
+        LargeResponseKind::Certificate(cert_rsp) => {
+            fill_certificate_response_chunk(pal, io, version, cert_rsp, offset, dst).await
+        }
+        LargeResponseKind::Buffered(buffered_rsp) => {
+            let end = offset
+                .checked_add(dst.len())
+                .ok_or(mcu_error::codes::INVARIANT)?;
+            if end > buffered_rsp.response_size as usize {
+                return Err(mcu_error::codes::INVARIANT);
+            }
+            pal.read(offset, dst)
+        }
+    }
+}
+
 async fn fill_certificate_response_chunk<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     version: SpdmVersion,
-    cert_rsp: &CertificateLargeResponse,
+    cert_rsp: CertificateLargeResponse,
     offset: usize,
     dst: &mut [u8],
 ) -> mcu_error::McuResult<()> {
@@ -574,34 +758,44 @@ fn process_next_chunk<Pal: SpdmPal>(
     Ok(())
 }
 
-fn build_response_to_large_request<Pal: SpdmPal>(
-    state: &ConnectionState<Pal::State>,
-    pal: &Pal,
-) -> SpdmError {
-    if (state.chunk.large_msg_size as usize) < SpdmMsgHdrPdu::SIZE {
-        return SPDM_INVALID_REQUEST;
-    }
-    let mut hdr_buf = [0u8; SpdmMsgHdrPdu::SIZE];
-    if pal.read(0, &mut hdr_buf).is_err() {
-        return SPDM_INVALID_REQUEST;
-    };
-    let Ok((hdr, _)) = SpdmMsgHdrPdu::ref_from_prefix(&hdr_buf) else {
-        return SPDM_INVALID_REQUEST;
-    };
-    if hdr.version != state.version.to_u8()
-        || hdr.code == ReqRespCode::CHUNK_SEND
-        || hdr.code == ReqRespCode::CHUNK_GET
-    {
-        return SPDM_INVALID_REQUEST;
-    }
-    // TODO: Dispatch supported chunked large requests from `large_req` here.
-    // SPDM-lite currently only uses chunking for large responses.
-    SPDM_UNSUPPORTED_REQUEST
-}
-
 fn encode_error_pdu(version: SpdmVersion, err: SpdmError, out: &mut [u8; 4]) {
     out[0] = version.to_u8();
     out[1] = ReqRespCode::ERROR.0;
     out[2] = err.spec_byte();
     out[3] = 0;
+}
+
+fn padded_len<Pal: SpdmPal>(pal: &Pal, raw_len: usize) -> SpdmResult<usize> {
+    let align = pal.send_len_alignment();
+    debug_assert!(align > 0 && align.is_power_of_two());
+    raw_len
+        .checked_add(align - 1)
+        .map(|len| len & !(align - 1))
+        .ok_or(SPDM_UNSPECIFIED)
+}
+
+fn alloc_padded<'a, Pal: SpdmPal>(
+    pal: &'a Pal,
+    io: &Pal::Io<'_>,
+    raw_len: usize,
+) -> SpdmResult<PalBytes<'a, Pal>> {
+    let alloc_len = padded_len(pal, raw_len)?;
+    let mut buf = pal.alloc_bytes(io, alloc_len)?;
+    for b in &mut buf[raw_len..alloc_len] {
+        *b = 0;
+    }
+    Ok(buf)
+}
+
+fn shrink_padded<Pal: SpdmPal>(
+    pal: &Pal,
+    rsp: &mut PalBytes<'_, Pal>,
+    raw_len: usize,
+) -> SpdmResult<()> {
+    let shrink_len = padded_len(pal, raw_len)?;
+    for b in &mut rsp[raw_len..shrink_len] {
+        *b = 0;
+    }
+    Pal::shrink_bytes(rsp, shrink_len)?;
+    Ok(())
 }

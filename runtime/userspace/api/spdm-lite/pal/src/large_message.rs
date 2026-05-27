@@ -3,6 +3,7 @@
 //! MCU-side persistent large-message storage for SPDM chunking.
 
 use super::*;
+use core::slice;
 use mcu_error::codes::INVARIANT;
 
 impl SpdmPalLargeMessage for McuSpdmPal {
@@ -38,5 +39,20 @@ impl SpdmPalLargeMessage for McuSpdmPal {
         })();
         self.large_msg.set(large_msg);
         result
+    }
+
+    unsafe fn large_message_mut(&self, len: usize) -> McuResult<&mut [u8]> {
+        let mut large_msg = self.large_msg.take();
+        let result = (|| {
+            let buf = large_msg.as_deref_mut().ok_or(INVARIANT)?;
+            if len > buf.len() {
+                return Err(INVARIANT);
+            }
+            Ok(buf.as_mut_ptr())
+        })();
+        self.large_msg.set(large_msg);
+        let ptr = result?;
+        // SAFETY: upheld by the caller per `SpdmPalLargeMessage::large_message_mut`.
+        Ok(unsafe { slice::from_raw_parts_mut(ptr, len) })
     }
 }
