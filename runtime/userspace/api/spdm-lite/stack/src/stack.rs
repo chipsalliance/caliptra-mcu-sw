@@ -264,15 +264,18 @@ fn set_certificate_other_params() -> OtherParamSupport {
 /// Owns a `Pal` (transport + allocator) and the [`ConnectionState`].
 /// Drive it with [`Self::run`], which loops forever until the
 /// transport returns a fatal error.
-pub struct SpdmStack<Pal: SpdmPal> {
+pub struct SpdmStack<
+    Pal: SpdmPal,
+    Vdm: vendor_defined::SpdmVdmBackend = vendor_defined::SyncVdmHandlers,
+> {
     pub(crate) pal: Pal,
     pub(crate) state: ConnectionState<Pal::State>,
-    vdm_handlers: &'static [&'static dyn vendor_defined::VdmHandler],
+    vdm_backend: Vdm,
 }
 
 const EMPTY_VDM_HANDLERS: &[&'static dyn vendor_defined::VdmHandler] = &[];
 
-impl<Pal: SpdmPal> SpdmStack<Pal> {
+impl<Pal: SpdmPal> SpdmStack<Pal, vendor_defined::SyncVdmHandlers> {
     /// Constructs a new responder over `pal` with the default
     /// (Caliptra) local-policy advertisement. If the PAL cannot hold
     /// at least one transport-sized large message, `CHUNK` is removed
@@ -295,6 +298,17 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
         pal: Pal,
         vdm_handlers: &'static [&'static dyn vendor_defined::VdmHandler],
     ) -> Self {
+        Self::with_vdm_backend(pal, vendor_defined::SyncVdmHandlers::new(vdm_handlers))
+    }
+}
+
+impl<Pal, Vdm> SpdmStack<Pal, Vdm>
+where
+    Pal: SpdmPal,
+    Vdm: vendor_defined::SpdmVdmBackend,
+{
+    /// Constructs a responder with a static-dispatch VDM backend.
+    pub fn with_vdm_backend(pal: Pal, vdm_backend: Vdm) -> Self {
         let mut state = ConnectionState::<Pal::State>::default();
         if pal.capacity() < pal.mtu() {
             state.cap_flags =
@@ -303,7 +317,7 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
         Self {
             pal,
             state,
-            vdm_handlers,
+            vdm_backend,
         }
     }
 
@@ -338,7 +352,7 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
                 }
                 let _ = writeln!(&mut console);
             }
-            match dispatch(&mut self.state, &self.pal, &io, code, self.vdm_handlers).await {
+            match dispatch(&mut self.state, &self.pal, &io, code, &self.vdm_backend).await {
                 Ok(mut rsp) => {
                     #[cfg(feature = "debug-trace")]
                     {
@@ -462,13 +476,17 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
 /// * [`SPDM_UNSUPPORTED_REQUEST`] — code is recognised by SPDM but
 ///   not handled by this responder.
 /// * Whatever the specific handler returns.
-async fn dispatch<'a, Pal: SpdmPal>(
+async fn dispatch<'a, Pal, Vdm>(
     state: &mut ConnectionState<Pal::State>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     code: ReqRespCode,
-    vdm_handlers: &[&dyn vendor_defined::VdmHandler],
-) -> SpdmResult<PalBytes<'a, Pal>> {
+    vdm_backend: &Vdm,
+) -> SpdmResult<PalBytes<'a, Pal>>
+where
+    Pal: SpdmPal,
+    Vdm: vendor_defined::SpdmVdmBackend,
+{
     if code != ReqRespCode::CHUNK_SEND && state.chunk.in_progress() {
         state.chunk.reset();
     }
@@ -502,7 +520,7 @@ async fn dispatch<'a, Pal: SpdmPal>(
         ReqRespCode::SET_CERTIFICATE => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
         ReqRespCode::GET_MEASUREMENTS => measurements::handle_get_measurements(state, pal, io).await,
         ReqRespCode::VENDOR_DEFINED_REQUEST => {
-            vendor_defined::handle_vendor_defined_request(state, pal, io, vdm_handlers)
+            vendor_defined::handle_vendor_defined_request(state, pal, io, vdm_backend).await
         }
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
