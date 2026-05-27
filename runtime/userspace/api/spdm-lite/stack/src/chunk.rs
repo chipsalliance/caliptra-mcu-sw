@@ -12,8 +12,8 @@ use zerocopy::{little_endian::U16, little_endian::U32, FromBytes};
 
 use crate::certificate;
 use crate::error::{
-    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSUPPORTED_REQUEST,
-    SPDM_VERSION_MISMATCH,
+    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
+    SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
 use crate::stack::{ConnectionState, Phase};
 
@@ -276,7 +276,8 @@ fn build_chunk_send_ack<'a, Pal: SpdmPal>(
     response_to_large_request: &[u8],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let head = pal.header_size();
-    let mut rsp = pal.alloc_bytes(
+    let mut rsp = alloc_padded(
+        pal,
         io,
         head + SpdmMsgHdrPdu::SIZE + 4 + response_to_large_request.len(),
     )?;
@@ -352,7 +353,8 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     let chunk_size = remaining.min(max_chunk_size);
     let last_chunk = chunk_size == remaining;
     let head = pal.header_size();
-    let mut rsp = pal.alloc_bytes(
+    let mut rsp = alloc_padded(
+        pal,
         io,
         head + SpdmMsgHdrPdu::SIZE + CHUNK_RESPONSE_FIXED_BODY_SIZE + extra + chunk_size,
     )?;
@@ -373,7 +375,9 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
         }
         let chunk = w.reserve(chunk_size)?;
         fill_large_response_chunk(pal, io, state.version, large_rsp, bytes_sent, chunk).await?;
-        state.transcript.append_m1(pal, io, chunk).await?;
+        if matches!(large_rsp, LargeResponseKind::Certificate(_)) {
+            state.transcript.append_m1(pal, io, chunk).await?;
+        }
     }
 
     state.large_response.sent(chunk_size);
@@ -660,4 +664,26 @@ fn encode_error_pdu(version: SpdmVersion, err: SpdmError, out: &mut [u8; 4]) {
     out[1] = ReqRespCode::ERROR.0;
     out[2] = err.spec_byte();
     out[3] = 0;
+}
+
+fn padded_len<Pal: SpdmPal>(pal: &Pal, raw_len: usize) -> SpdmResult<usize> {
+    let align = pal.send_len_alignment();
+    debug_assert!(align > 0 && align.is_power_of_two());
+    raw_len
+        .checked_add(align - 1)
+        .map(|len| len & !(align - 1))
+        .ok_or(SPDM_UNSPECIFIED)
+}
+
+fn alloc_padded<'a, Pal: SpdmPal>(
+    pal: &'a Pal,
+    io: &Pal::Io<'_>,
+    raw_len: usize,
+) -> SpdmResult<PalBytes<'a, Pal>> {
+    let alloc_len = padded_len(pal, raw_len)?;
+    let mut buf = pal.alloc_bytes(io, alloc_len)?;
+    for b in &mut buf[raw_len..alloc_len] {
+        *b = 0;
+    }
+    Ok(buf)
 }

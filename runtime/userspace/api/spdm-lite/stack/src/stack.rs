@@ -217,11 +217,6 @@ impl<Pal: SpdmPal> SpdmStack<Pal, vendor_defined::SyncVdmHandlers> {
         pal: Pal,
         vdm_handlers: &'static [&'static dyn vendor_defined::VdmHandler],
     ) -> Self {
-        let mut state = ConnectionState::<Pal::State>::default();
-        if pal.large_message_capacity() == 0 {
-            state.cap_flags =
-                CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
-        }
         Self::with_vdm_backend(pal, vendor_defined::SyncVdmHandlers::new(vdm_handlers))
     }
 }
