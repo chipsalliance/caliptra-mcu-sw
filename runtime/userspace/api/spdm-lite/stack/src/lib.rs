@@ -46,4 +46,6 @@ pub use error::*;
 pub use mcu_spdm_lite_codec::StandardsBodyId;
 pub use stack::*;
 pub use transcript::*;
-pub use vendor_defined::{SpdmVdmBackend, SyncVdmHandlers, VdmHandler, VdmRequest};
+pub use vendor_defined::{
+    SpdmVdmBackend, SyncVdmHandlers, VdmHandler, VdmRequest, VdmResponseBuffers, VdmResponseKind,
+};
