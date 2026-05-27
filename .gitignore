@@ -59,4 +59,4 @@ subsystem.pdi
 
 # CoRIM test signing keys (generated on-the-fly, never commit)
 fake_keys/
-attestation-artifacts/*
+attestation-artifacts/*caliptra-sw

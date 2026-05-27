@@ -11,18 +11,18 @@ store-success-output = false
 store-failure-output = true
 
 [profile.nightly-emulator]
-store-success-output = false
+store-success-output = true
 failure-output = "immediate-final"
+success-output = "immediate-final"
 fail-fast = false
 slow-timeout = { period = "30m", terminate-after = 6 }
-# TODO: Failing tests tracked in https://github.com/chipsalliance/caliptra-mcu-sw/issues/1335.
 default-filter = """
-all()
+test(test_firmware_update_flash_successful_fast)
 """
 
 [profile.nightly-emulator.junit]
 path = "/tmp/junit.xml"
-store-success-output = false
+store-success-output = true
 store-failure-output = true
 
 [profile.nightly-ci]

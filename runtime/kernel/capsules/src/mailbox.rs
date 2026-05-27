@@ -204,8 +204,11 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         app_buffer: &ReadableProcessSlice,
     ) -> Result<(), ErrorCode> {
         self.current_app.set(processid);
+        debug!("[DBG-MBOX] start_request: cmd=0x{:x}, payload_len={}, staging_sram={:?}",
+            command, app_buffer.len(), self.staging_sram_axi_addr);
 
         if let Some(staging_axi_addr) = self.staging_sram_axi_addr {
+            debug!("[DBG-MBOX] Using staging SRAM path, axi_addr=0x{:x}", staging_axi_addr);
             // Copy payload to staging SRAM
             self.copy_app_buffer_to_staging_sram(app_buffer, 0)?;
 
@@ -220,6 +223,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                 }
             }
         } else {
+            debug!("[DBG-MBOX] Using direct mailbox path (no staging SRAM)");
             // Copy payload to mailbox directly
             match driver.start_mailbox_req(
                 command,
@@ -300,6 +304,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
 
     fn write_chunk(&self, app_buffer: &ReadableProcessSlice) -> Result<(), ErrorCode> {
         if self.staging_sram_axi_addr.is_none() {
+            debug!("[DBG-MBOX] write_chunk: direct mailbox, chunk_len={}", app_buffer.len());
             // Copy payload directly to mailbox
             let _ = self
                 .driver
@@ -336,6 +341,8 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             return Err(ErrorCode::CANCEL);
         }
         if let Some(staging_axi_addr) = self.staging_sram_axi_addr {
+            debug!("[DBG-MBOX] execute: staging SRAM path, cmd=0x{:x}, offset={}, axi_addr=0x{:x}",
+                self.current_cmd.get(), self.current_request_offset.get(), staging_axi_addr);
             // If using staging SRAM, execute the command with staging address
             self.driver
                 .map(|driver| {
@@ -353,6 +360,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                 })
                 .unwrap_or(Err(ErrorCode::FAIL))?;
         } else {
+            debug!("[DBG-MBOX] execute: direct mailbox path, cmd=0x{:x}", self.current_cmd.get());
             self.driver
                 .map(|driver| match driver.execute_command() {
                     Ok(()) => {
@@ -387,7 +395,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                 }
             }
             Err(err) => {
-                debug!("Error copying from mailbox: {:?}", err);
+                debug!("[DBG-MBOX] Error copying from mailbox: {:?}, cmd was 0x{:x}", err, self.current_cmd.get());
                 Err(err)
             }
         }

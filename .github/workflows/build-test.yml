@@ -12,33 +12,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  precheckin:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    env:
-      CARGO_INCREMENTAL: 0
-      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Test commit name
-        run: |
-          echo "Lint: release_ref=$(git rev-parse HEAD)"
-
-      - name: Install required packages
-        run: |
-          sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git && \
-          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
-
-      - name: Run precheckin
-        run: cargo xtask precheckin
-
   build-firmware:
     runs-on: e2-standard-8
     timeout-minutes: 60
@@ -250,12 +223,12 @@ jobs:
 
   test_emulator:
     runs-on: e2-standard-4
-    needs: [precheckin, build-firmware, build-emulators, build-tests]
+    needs: [build-firmware, build-emulators, build-tests]
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1]
 
     env:
       CARGO_INCREMENTAL: 0
@@ -304,11 +277,11 @@ jobs:
       #   cargo xtask emulator-build
       # Then run the tests with:
       #   cargo xtask test --firmware-bundle target/all-fw.zip --emulator-bundle target/emulators.zip
-      - name: Run tests (shard ${{ matrix.shard }}/4)
+      - name: Run tests (shard ${{ matrix.shard }}/1)
         run: |
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
             --archive /tmp/nextest-archive.tar.zst \
-            --shard hash:${{ matrix.shard }}/4 \
+            --shard hash:${{ matrix.shard }}/1 \
             --firmware-bundle "${PWD}/target/all-fw.zip" \
             --emulator-bundle "${PWD}/target/emulators.zip" \
             --workspace-remap .

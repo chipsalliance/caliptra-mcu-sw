@@ -256,6 +256,10 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             )
             .await
             .map_err(|_| ErrorCode::Fail)?;
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[DBG-FW-UPD] verify: cptra_image_offset={}, cptra_image_len={}", cptra_image_offset, cptra_image_len
+        ).unwrap();
         self.process_caliptra_fw(
             cptra_image_offset,
             cptra_image_len,
@@ -374,6 +378,12 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             CaliptraFwAction::Load => CommandId::FIRMWARE_LOAD.into(),
         };
 
+        writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[DBG-FW-UPD] process_caliptra_fw: cmd=0x{:x}, image_offset={}, image_len={}, action={:?}",
+            cmd, image_offset, image_len, action
+        ).unwrap();
+
         let response_buffer = &mut [0u8; core::mem::size_of::<FirmwareVerifyResp>()];
 
         let mut payload_stream =
@@ -385,9 +395,21 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
                 .execute_with_payload_stream(cmd, None, &mut payload_stream, response_buffer)
                 .await;
             match result {
-                Ok(_) => break,
+                Ok(_) => {
+                    writeln!(
+                        Console::<DefaultSyscalls>::writer(),
+                        "[DBG-FW-UPD] process_caliptra_fw: cmd=0x{:x} succeeded", cmd
+                    ).unwrap();
+                    break;
+                }
                 Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-                Err(_) => return Err(ErrorCode::Fail),
+                Err(e) => {
+                    writeln!(
+                        Console::<DefaultSyscalls>::writer(),
+                        "[DBG-FW-UPD] process_caliptra_fw: cmd=0x{:x} failed with {:?}", cmd, e
+                    ).unwrap();
+                    return Err(ErrorCode::Fail);
+                }
             }
         }
         if action == CaliptraFwAction::Verify {
