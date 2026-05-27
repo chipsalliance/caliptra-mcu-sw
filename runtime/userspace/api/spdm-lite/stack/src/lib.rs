@@ -33,12 +33,15 @@ mod algorithms;
 mod build;
 mod capabilities;
 mod certificate;
+mod chunk;
 mod digests;
 mod error;
 mod stack;
 mod transcript;
+mod vendor_defined;
 mod version;
 
 pub use error::*;
 pub use stack::*;
 pub use transcript::*;
+pub use vendor_defined::VdmHandler;

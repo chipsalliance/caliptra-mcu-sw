@@ -11,13 +11,18 @@
 //! stack-allocated `[u8; N]` array for cert payload.
 
 use mcu_spdm_lite_codec::{
-    CertificateRsp, GetCertificateReqBody, SpdmMsgHdrPdu, SpdmVersion, ATTR_SLOT_SIZE_REQUESTED,
+    CapFlags, CertificateRsp, CertificateRspBody, GetCertificateReqBody, SpdmMsgHdrPdu,
+    SpdmVersion, ATTR_SLOT_SIZE_REQUESTED,
 };
 use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS};
 use zerocopy::FromBytes;
 
-use crate::build::build_response;
-use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
+use crate::build::{build_error_response, build_response};
+use crate::chunk;
+use crate::error::{
+    SpdmResult, SPDM_INVALID_REQUEST, SPDM_LARGE_RESPONSE, SPDM_UNEXPECTED_REQUEST,
+    SPDM_UNSPECIFIED,
+};
 use crate::stack::{ConnectionState, Phase};
 
 /// Size of the SPDM cert-chain wire header that prepends every cert
@@ -66,26 +71,82 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
         .cert_chain_len(io, slot_id)
         .await
         .map_err(|_| SPDM_INVALID_REQUEST)?;
-    let total_len = SPDM_CERT_CHAIN_HDR_LEN
+    let total_len_usize = SPDM_CERT_CHAIN_HDR_LEN
         .checked_add(der_len)
-        .and_then(|n| u16::try_from(n).ok())
         .ok_or(SPDM_UNSPECIFIED)?;
+    let total_len = u16::try_from(total_len_usize).map_err(|_| SPDM_UNSPECIFIED)?;
+
+    let single_frame_portion = chunk::effective_data_transfer_size(state, pal)
+        .saturating_sub(SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE);
 
     let (offset, portion_len, remainder_len) = if slot_size_only {
         // V1.3 SlotSizeRequested: report total in RemainderLength.
         (0u16, 0u16, total_len)
     } else {
-        let off = req_body.offset.get();
-        if off > total_len {
+        let off = req_body.offset.get() as usize;
+        if off > total_len_usize {
             return Err(SPDM_INVALID_REQUEST);
         }
-        let remaining = total_len - off;
-        // Cap to fit in the negotiated MTU (response header is the
-        // 2-byte SPDM common header + 6-byte CERTIFICATE body header).
-        let max_per_resp = pal.mtu().saturating_sub(SpdmMsgHdrPdu::SIZE + 6) as u16;
-        let portion = req_body.length.get().min(remaining).min(max_per_resp);
-        (off, portion, remaining - portion)
+        let remaining = total_len_usize - off;
+        let chunking = state.cap_flags.contains(CapFlags::CHUNK)
+            && state.peer_cap_flags.contains(CapFlags::CHUNK);
+        let max_portion = if chunking {
+            chunk::effective_max_spdm_msg_size(state, pal)
+                .saturating_sub(SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE)
+        } else {
+            single_frame_portion
+        };
+        let portion = (req_body.length.get() as usize)
+            .min(remaining)
+            .min(max_portion)
+            .min(u16::MAX as usize);
+        let remainder = remaining - portion;
+        (off as u16, portion as u16, remainder as u16)
     };
+
+    if !slot_size_only && (portion_len as usize) > single_frame_portion {
+        let handle = state.large_response.start_certificate(
+            slot_id,
+            0,
+            offset,
+            portion_len,
+            remainder_len,
+        );
+        let resp = build_error_response(
+            pal,
+            io,
+            state.version,
+            SPDM_LARGE_RESPONSE.spec_byte(),
+            0,
+            &[handle],
+        )?;
+
+        state.transcript.append_m1(pal, io, io.request()).await?;
+        state.phase = Phase::AfterCertificate;
+        return Ok(resp);
+    }
+
+    if portion_len == 0 {
+        let resp = build_response(
+            pal,
+            io,
+            state.version,
+            &CertificateRsp {
+                slot_id,
+                param2: 0,
+                portion_length: 0,
+                remainder_length: remainder_len,
+                chain_portion: &[],
+            },
+        )?;
+
+        let head = pal.header_size();
+        state.transcript.append_m1(pal, io, io.request()).await?;
+        state.transcript.append_m1(pal, io, &resp[head..]).await?;
+
+        state.phase = Phase::AfterCertificate;
+        return Ok(resp);
+    }
 
     // Allocate the portion buffer from the per-IO pool. Bytes
     // are spliced in below: [0, 52) from the SPDM cert-chain
@@ -123,7 +184,7 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
 ///
 /// The destination covers `[offset, offset + dst.len())` in the
 /// full SPDM cert-chain wire layout (header + DER).
-async fn fill_cert_chain_portion<Pal: SpdmPal>(
+pub(crate) async fn fill_cert_chain_portion<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     slot: u8,
