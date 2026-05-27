@@ -12,4 +12,5 @@ mcu-spdm-lite-codec = { workspace = true }
 mcu-caliptra-api-lite = { workspace = true }
 mcu-error = { workspace = true }
 caliptra-mcu-libsyscall-caliptra = { workspace = true }
+caliptra-mcu-libtock_platform = { workspace = true }
 zerocopy = { workspace = true }

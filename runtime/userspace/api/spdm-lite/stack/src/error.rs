@@ -115,6 +115,8 @@ pub const SPDM_UNSUPPORTED_REQUEST: SpdmError = SpdmError::new(0x07);
 pub const SPDM_SESSION_REQUIRED: SpdmError = SpdmError::new(0x09);
 /// `InvalidSession` — session ID does not refer to a valid session.
 pub const SPDM_INVALID_SESSION: SpdmError = SpdmError::new(0x0A);
+/// `ResetRequired` — responder requires a reset before the request can complete.
+pub const SPDM_RESET_REQUIRED: SpdmError = SpdmError::new(0x0C);
 /// `DecryptError` — secured-message decryption / MAC verification
 /// failed.
 pub const SPDM_DECRYPT_ERROR: SpdmError = SpdmError::new(0x0F);
@@ -126,6 +128,8 @@ pub const SPDM_RESPONSE_NOT_READY: SpdmError = SpdmError::new(0x42);
 /// `RequestResynch` — responder needs the requester to restart the
 /// connection from `GET_VERSION`.
 pub const SPDM_REQUEST_RESYNCH: SpdmError = SpdmError::new(0x43);
+/// `OperationFailed` — requested operation failed in the responder.
+pub const SPDM_OPERATION_FAILED: SpdmError = SpdmError::new(0x44);
 /// `LargeResponse` — response exceeds the single-frame size; requester
 /// must use chunked reads.
 pub const SPDM_LARGE_RESPONSE: SpdmError = SpdmError::new(0x45);

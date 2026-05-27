@@ -3811,6 +3811,7 @@ name = "mcu-spdm-lite-pal"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
  "mcu-caliptra-api-lite",
  "mcu-error",
  "mcu-spdm-lite-codec",
@@ -3825,6 +3826,7 @@ dependencies = [
  "bitfield-struct",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_console",
+ "futures",
  "mcu-caliptra-api-lite",
  "mcu-error",
  "mcu-spdm-lite-codec",
