@@ -24,7 +24,7 @@ const CERTIFICATE_RESPONSE_HEADER_SIZE: usize = SpdmMsgHdrPdu::SIZE + Certificat
 #[derive(Copy, Clone)]
 pub(crate) struct LargeResponseState {
     next_handle: u8,
-    active: Option<CertificateLargeResponse>,
+    active: Option<LargeResponseKind>,
 }
 
 impl Default for LargeResponseState {
@@ -58,7 +58,7 @@ impl LargeResponseState {
         remainder_len: u16,
     ) -> u8 {
         let handle = self.next_handle;
-        self.active = Some(CertificateLargeResponse {
+        self.active = Some(LargeResponseKind::Certificate(CertificateLargeResponse {
             handle,
             next_seq_num: 0,
             bytes_sent: 0,
@@ -68,12 +68,25 @@ impl LargeResponseState {
             cert_offset,
             portion_len,
             remainder_len,
-        });
+        }));
         handle
     }
 
     #[inline]
-    fn certificate(self) -> Option<CertificateLargeResponse> {
+    #[allow(dead_code)]
+    pub(crate) fn start_buffered(&mut self, response_size: usize) -> u8 {
+        let handle = self.next_handle;
+        self.active = Some(LargeResponseKind::Buffered(BufferedLargeResponse {
+            handle,
+            next_seq_num: 0,
+            bytes_sent: 0,
+            response_size: response_size as u32,
+        }));
+        handle
+    }
+
+    #[inline]
+    fn response(self) -> Option<LargeResponseKind> {
         self.active
     }
 
@@ -81,9 +94,9 @@ impl LargeResponseState {
         let Some(mut rsp) = self.active else {
             return;
         };
-        let bytes_sent = rsp.bytes_sent as usize + n;
-        rsp.bytes_sent = bytes_sent as u32;
-        rsp.next_seq_num = rsp.next_seq_num.wrapping_add(1);
+        let bytes_sent = rsp.bytes_sent() + n;
+        rsp.set_bytes_sent(bytes_sent as u32);
+        rsp.set_next_seq_num(rsp.next_seq_num().wrapping_add(1));
         if bytes_sent == rsp.response_size() {
             self.complete();
         } else {
@@ -106,6 +119,63 @@ impl LargeResponseState {
     }
 }
 
+#[allow(dead_code)]
+#[derive(Copy, Clone)]
+enum LargeResponseKind {
+    Certificate(CertificateLargeResponse),
+    Buffered(BufferedLargeResponse),
+}
+
+impl LargeResponseKind {
+    #[inline]
+    fn handle(self) -> u8 {
+        match self {
+            Self::Certificate(rsp) => rsp.handle,
+            Self::Buffered(rsp) => rsp.handle,
+        }
+    }
+
+    #[inline]
+    fn next_seq_num(self) -> u16 {
+        match self {
+            Self::Certificate(rsp) => rsp.next_seq_num,
+            Self::Buffered(rsp) => rsp.next_seq_num,
+        }
+    }
+
+    #[inline]
+    fn bytes_sent(self) -> usize {
+        match self {
+            Self::Certificate(rsp) => rsp.bytes_sent as usize,
+            Self::Buffered(rsp) => rsp.bytes_sent as usize,
+        }
+    }
+
+    #[inline]
+    fn set_bytes_sent(&mut self, bytes_sent: u32) {
+        match self {
+            Self::Certificate(rsp) => rsp.bytes_sent = bytes_sent,
+            Self::Buffered(rsp) => rsp.bytes_sent = bytes_sent,
+        }
+    }
+
+    #[inline]
+    fn set_next_seq_num(&mut self, next_seq_num: u16) {
+        match self {
+            Self::Certificate(rsp) => rsp.next_seq_num = next_seq_num,
+            Self::Buffered(rsp) => rsp.next_seq_num = next_seq_num,
+        }
+    }
+
+    #[inline]
+    fn response_size(self) -> usize {
+        match self {
+            Self::Certificate(rsp) => rsp.response_size(),
+            Self::Buffered(rsp) => rsp.response_size as usize,
+        }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub(crate) struct CertificateLargeResponse {
     handle: u8,
@@ -124,6 +194,14 @@ impl CertificateLargeResponse {
     fn response_size(self) -> usize {
         CERTIFICATE_RESPONSE_HEADER_SIZE + self.portion_len as usize
     }
+}
+
+#[derive(Copy, Clone)]
+struct BufferedLargeResponse {
+    handle: u8,
+    next_seq_num: u16,
+    bytes_sent: u32,
+    response_size: u32,
 }
 
 #[derive(Copy, Clone, Default)]
@@ -252,17 +330,17 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    let Some(cert_rsp) = state.large_response.certificate() else {
+    let Some(large_rsp) = state.large_response.response() else {
         return Err(SPDM_UNEXPECTED_REQUEST);
     };
 
     let handle = chunk_req.handle;
     let seq_num = chunk_req.chunk_seq_num.get();
-    if handle != cert_rsp.handle || seq_num != cert_rsp.next_seq_num {
+    if handle != large_rsp.handle() || seq_num != large_rsp.next_seq_num() {
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    let large_response_size = cert_rsp.response_size();
+    let large_response_size = large_rsp.response_size();
     let extra = if seq_num == 0 {
         LARGE_RESPONSE_SIZE_FIELD_SIZE
     } else {
@@ -270,7 +348,7 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     };
     let max_chunk_size = effective_data_transfer_size(state, pal)
         .saturating_sub(SpdmMsgHdrPdu::SIZE + CHUNK_RESPONSE_FIXED_BODY_SIZE + extra);
-    let bytes_sent = cert_rsp.bytes_sent as usize;
+    let bytes_sent = large_rsp.bytes_sent();
     if max_chunk_size == 0 || bytes_sent >= large_response_size {
         return Err(SPDM_INVALID_REQUEST);
     }
@@ -299,15 +377,7 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
             w.write(&U32::new(large_response_size as u32))?;
         }
         let chunk = w.reserve(chunk_size)?;
-        fill_certificate_response_chunk(
-            pal,
-            io,
-            state.version,
-            cert_rsp,
-            bytes_sent,
-            chunk,
-        )
-        .await?;
+        fill_large_response_chunk(pal, io, state.version, large_rsp, bytes_sent, chunk).await?;
         state.transcript.append_m1(pal, io, chunk).await?;
     }
 
@@ -414,6 +484,32 @@ pub(crate) fn effective_max_spdm_msg_size<Pal: SpdmPal>(
         state.peer_max_spdm_msg_size as usize
     };
     local.min(peer)
+}
+
+async fn fill_large_response_chunk<Pal: SpdmPal>(
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    version: SpdmVersion,
+    rsp: LargeResponseKind,
+    offset: usize,
+    dst: &mut [u8],
+) -> mcu_error::McuResult<()> {
+    match rsp {
+        LargeResponseKind::Certificate(cert_rsp) => {
+            fill_certificate_response_chunk(pal, io, version, cert_rsp, offset, dst).await
+        }
+        LargeResponseKind::Buffered(buffered_rsp) => {
+            let end = offset
+                .checked_add(dst.len())
+                .ok_or(mcu_error::codes::INVARIANT)?;
+            if end > buffered_rsp.response_size as usize {
+                return Err(mcu_error::codes::INVARIANT);
+            }
+            let buf = pal.large_message(buffered_rsp.response_size as usize)?;
+            dst.copy_from_slice(&buf[offset..end]);
+            Ok(())
+        }
+    }
 }
 
 async fn fill_certificate_response_chunk<Pal: SpdmPal>(
