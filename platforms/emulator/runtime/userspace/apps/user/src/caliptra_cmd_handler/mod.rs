@@ -143,7 +143,11 @@ impl CaliptraOcpVdm {
             .ok_or(CaliptraCompletionCode::CaliptraBufferTooSmall)?;
         let mut size = [0u8; 4];
         size.copy_from_slice(size_bytes);
-        let size = u32::from_le_bytes(size) as usize;
+        let size = u32::from_le_bytes(size);
+        if size == u32::MAX {
+            return Err(CaliptraCompletionCode::InvalidState);
+        }
+        let size = size as usize;
         if size == 0 || size > max_data_size {
             return Err(CaliptraCompletionCode::OperationFailed);
         }
