@@ -150,6 +150,10 @@ jobs:
             --separate-runtimes
           sccache --show-stats
 
+          echo "Cross compiling FPGA release-profile runtime"
+          cargo xtask runtime-build --platform fpga --profile release
+          sccache --show-stats
+
           mkdir -p /tmp/caliptra-binaries
           tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz \
             all-fw.zip

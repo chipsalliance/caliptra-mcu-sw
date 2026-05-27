@@ -92,7 +92,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         updater.set_skip_activation(true);
         updater.set_verify_same_image(true);
         updater.start().await?;
-        writeln!(console_writer, "[FW Upd] Flash write-back complete").unwrap();
+        crate::console_writeln!(console_writer, "[FW Upd] Flash write-back complete");
         return Ok(());
     }
 
