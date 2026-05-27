@@ -105,13 +105,10 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
     };
 
     if !slot_size_only && (portion_len as usize) > single_frame_portion {
-        let handle = state.large_response.start_certificate(
-            slot_id,
-            0,
-            offset,
-            portion_len,
-            remainder_len,
-        );
+        let handle =
+            state
+                .large_response
+                .start_certificate(slot_id, 0, offset, portion_len, remainder_len);
         let resp = build_error_response(
             pal,
             io,

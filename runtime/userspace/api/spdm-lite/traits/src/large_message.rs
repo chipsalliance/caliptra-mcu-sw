@@ -17,4 +17,11 @@ pub trait SpdmPalLargeMessage {
 
     /// Borrow the leading `len` bytes of the persistent large-message buffer.
     fn large_message(&self, len: usize) -> McuResult<&[u8]>;
+
+    /// Mutably borrow the leading `len` bytes of the persistent large-message buffer.
+    ///
+    /// Implementations may rely on the spdm-lite single-responder-task invariant;
+    /// callers must not hold this borrow across another PAL operation that could
+    /// access the same persistent buffer.
+    fn large_message_mut(&self, len: usize) -> McuResult<&mut [u8]>;
 }

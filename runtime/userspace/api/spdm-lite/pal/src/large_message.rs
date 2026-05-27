@@ -36,4 +36,15 @@ impl SpdmPalLargeMessage for McuSpdmPal {
         // borrow of the currently reassembled prefix only.
         Ok(unsafe { slice::from_raw_parts(ptr.as_ptr(), len) })
     }
+
+    fn large_message_mut(&self, len: usize) -> McuResult<&mut [u8]> {
+        let ptr = self.large_msg_ptr.ok_or(INVARIANT)?;
+        if len > self.large_msg_capacity {
+            return Err(INVARIANT);
+        }
+        // SAFETY: the responder is single-tasked and this mutable borrow is
+        // used only within one stack operation; callers must not retain it
+        // across another PAL access to the persistent buffer.
+        Ok(unsafe { slice::from_raw_parts_mut(ptr.as_ptr(), len) })
+    }
 }

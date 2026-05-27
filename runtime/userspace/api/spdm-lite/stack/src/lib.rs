@@ -42,6 +42,7 @@ mod vendor_defined;
 mod version;
 
 pub use error::*;
+pub use mcu_spdm_lite_codec::StandardsBodyId;
 pub use stack::*;
 pub use transcript::*;
-pub use vendor_defined::VdmHandler;
+pub use vendor_defined::{SpdmVdmBackend, SyncVdmHandlers, VdmHandler, VdmRequest};

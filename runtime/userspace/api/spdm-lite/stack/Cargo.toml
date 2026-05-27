@@ -20,4 +20,7 @@ caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
 
 [features]
 default = []
-debug-trace = ["caliptra-mcu-libtock_console", "caliptra-mcu-libsyscall-caliptra"]
+debug-trace = [
+  "caliptra-mcu-libtock_console",
+  "caliptra-mcu-libsyscall-caliptra",
+]
