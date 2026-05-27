@@ -27,7 +27,7 @@ const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
 /// Persistent CHUNK_SEND reassembly buffer. This is kept outside the
 /// async task frame and outside the per-I/O scratch allocator because
 /// it must live across multiple received chunk messages.
-const SPDM_LITE_LARGE_MSG_SIZE: usize = 8 * 1024;
+const SPDM_LITE_LARGE_MSG_SIZE: usize = 16 * 1024;
 
 /// Spawn SPDM responder tasks (MCTP + DOE) on the given executor.
 pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {

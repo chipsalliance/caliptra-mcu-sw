@@ -6,6 +6,10 @@ mod debug_log;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use caliptra_api::mailbox::{
+    AttestedCsrResp, GetAttestedEccCsrReq, GetAttestedMldsaCsrReq, GetIdevCsrReq, GetIdevCsrResp,
+    MailboxRespHeader, Request,
+};
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
     DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, LogType, Uid,
@@ -14,8 +18,12 @@ use caliptra_mcu_common_commands::{
 use caliptra_mcu_libapi_caliptra::certificate::{CertContext, IDEV_ECC_CSR_MAX_SIZE};
 use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
+use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_mbox_common::config;
-use mcu_spdm_lite_stack::{SpdmVdmBackend, StandardsBodyId, VdmRequest};
+use mcu_spdm_lite_stack::{
+    SpdmVdmBackend, StandardsBodyId, VdmRequest, VdmResponseBuffers, VdmResponseKind,
+};
 use zerocopy::IntoBytes;
 
 pub struct CaliptraCmdBackend;
@@ -66,6 +74,14 @@ impl CaliptraOcpVdm {
         Self::write_bytes(rsp, offset, &value.to_le_bytes())
     }
 
+    fn write_u32(
+        rsp: &mut [u8],
+        offset: usize,
+        value: u32,
+    ) -> Result<usize, mcu_spdm_lite_stack::SpdmError> {
+        Self::write_bytes(rsp, offset, &value.to_le_bytes())
+    }
+
     fn write_success(rsp: &mut [u8], command: u8) -> Result<usize, mcu_spdm_lite_stack::SpdmError> {
         Self::write_completion(rsp, command, CaliptraCompletionCode::Success)
     }
@@ -78,6 +94,148 @@ impl CaliptraOcpVdm {
         bytes.copy_from_slice(payload);
         Ok(u32::from_le_bytes(bytes))
     }
+
+    fn read_attested_csr_req(
+        payload: &[u8],
+    ) -> Result<(u32, u32, [u8; 32]), mcu_spdm_lite_stack::SpdmError> {
+        if payload.len() != 40 {
+            return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
+        }
+        let mut device_key_id = [0u8; 4];
+        let mut algorithm = [0u8; 4];
+        let mut nonce = [0u8; 32];
+        device_key_id.copy_from_slice(&payload[..4]);
+        algorithm.copy_from_slice(&payload[4..8]);
+        nonce.copy_from_slice(&payload[8..40]);
+        Ok((
+            u32::from_le_bytes(device_key_id),
+            u32::from_le_bytes(algorithm),
+            nonce,
+        ))
+    }
+
+    fn map_csr_error(error: CaliptraApiError) -> CaliptraCompletionCode {
+        match error {
+            CaliptraApiError::MailboxBusy => CaliptraCompletionCode::CaliptraMailboxBusy,
+            CaliptraApiError::BufferTooSmall => CaliptraCompletionCode::CaliptraBufferTooSmall,
+            CaliptraApiError::UnprovisionedCsr => CaliptraCompletionCode::InvalidState,
+            CaliptraApiError::InvalidResponse
+            | CaliptraApiError::Mailbox(_)
+            | CaliptraApiError::Syscall(_) => CaliptraCompletionCode::OperationFailed,
+            _ => CaliptraCompletionCode::GeneralError,
+        }
+    }
+
+    fn finish_csr_response(
+        out: &mut [u8],
+        command: u8,
+        max_data_size: usize,
+    ) -> CaliptraCmdResult<usize> {
+        const COMPLETION_OFFSET: usize = 2;
+        const CSR_LEN_OFFSET: usize = 3;
+        const CSR_DATA_OFFSET: usize = 7;
+
+        let hdr_size = core::mem::size_of::<MailboxRespHeader>();
+        let data_size_offset = CSR_LEN_OFFSET + hdr_size;
+        let data_offset = data_size_offset + core::mem::size_of::<u32>();
+        let size_bytes = out
+            .get(data_size_offset..data_size_offset + core::mem::size_of::<u32>())
+            .ok_or(CaliptraCompletionCode::CaliptraBufferTooSmall)?;
+        let mut size = [0u8; 4];
+        size.copy_from_slice(size_bytes);
+        let size = u32::from_le_bytes(size) as usize;
+        if size == 0 || size > max_data_size {
+            return Err(CaliptraCompletionCode::OperationFailed);
+        }
+        let end = data_offset
+            .checked_add(size)
+            .ok_or(CaliptraCompletionCode::CaliptraBufferTooSmall)?;
+        let final_end = CSR_DATA_OFFSET
+            .checked_add(size)
+            .ok_or(CaliptraCompletionCode::CaliptraBufferTooSmall)?;
+        if end > out.len() || final_end > out.len() {
+            return Err(CaliptraCompletionCode::CaliptraBufferTooSmall);
+        }
+        out[0] = CALIPTRA_VDM_COMMAND_VERSION;
+        out[1] = command;
+        out[COMPLETION_OFFSET] = CaliptraCompletionCode::Success as u8;
+        out[CSR_LEN_OFFSET..CSR_LEN_OFFSET + core::mem::size_of::<u32>()]
+            .copy_from_slice(&(size as u32).to_le_bytes());
+        out.copy_within(data_offset..end, CSR_DATA_OFFSET);
+        Ok(final_end)
+    }
+
+    async fn execute_csr_mailbox(
+        command: u8,
+        cmd_id: u32,
+        req_bytes: &mut [u8],
+        out: &mut [u8],
+        max_data_size: usize,
+    ) -> CaliptraCmdResult<usize> {
+        let resp = out
+            .get_mut(3..)
+            .ok_or(CaliptraCompletionCode::CaliptraBufferTooSmall)?;
+        execute_mailbox_cmd(&Mailbox::new(), cmd_id, req_bytes, resp)
+            .await
+            .map_err(Self::map_csr_error)?;
+        Self::finish_csr_response(out, command, max_data_size)
+    }
+
+    async fn export_attested_csr(payload: &[u8], out: &mut [u8]) -> CaliptraCmdResult<usize> {
+        let (device_key_id, algorithm, nonce) = Self::read_attested_csr_req(payload)
+            .map_err(|_| CaliptraCompletionCode::InvalidLength)?;
+        match AsymAlgo::try_from_u32(algorithm).ok_or(CaliptraCompletionCode::InvalidParameter)? {
+            AsymAlgo::EccP384 => {
+                let mut req = GetAttestedEccCsrReq {
+                    key_id: device_key_id,
+                    nonce,
+                    ..Default::default()
+                };
+                Self::execute_csr_mailbox(
+                    0x0F,
+                    GetAttestedEccCsrReq::ID.0,
+                    req.as_mut_bytes(),
+                    out,
+                    AttestedCsrResp::DATA_MAX_SIZE,
+                )
+                .await
+            }
+            AsymAlgo::MlDsa87 => {
+                let mut req = GetAttestedMldsaCsrReq {
+                    key_id: device_key_id,
+                    nonce,
+                    ..Default::default()
+                };
+                Self::execute_csr_mailbox(
+                    0x0F,
+                    GetAttestedMldsaCsrReq::ID.0,
+                    req.as_mut_bytes(),
+                    out,
+                    AttestedCsrResp::DATA_MAX_SIZE,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn export_idevid_csr(payload: &[u8], out: &mut [u8]) -> CaliptraCmdResult<usize> {
+        let algorithm =
+            Self::read_u32(payload).map_err(|_| CaliptraCompletionCode::InvalidLength)?;
+        match AsymAlgo::try_from_u32(algorithm).ok_or(CaliptraCompletionCode::InvalidParameter)? {
+            AsymAlgo::EccP384 => {
+                let mut req = GetIdevCsrReq::default();
+                Self::execute_csr_mailbox(
+                    0x0C,
+                    GetIdevCsrReq::ID.0,
+                    req.as_mut_bytes(),
+                    out,
+                    GetIdevCsrResp::DATA_MAX_SIZE,
+                )
+                .await
+            }
+            AsymAlgo::MlDsa87 => Err(CaliptraCompletionCode::UnsupportedOperation),
+        }
+    }
 }
 
 impl SpdmVdmBackend for CaliptraOcpVdm {
@@ -88,8 +246,9 @@ impl SpdmVdmBackend for CaliptraOcpVdm {
     async fn handle_request(
         &self,
         req: VdmRequest<'_>,
-        rsp: &mut [u8],
-    ) -> mcu_spdm_lite_stack::SpdmResult<usize> {
+        rsp: VdmResponseBuffers<'_>,
+    ) -> mcu_spdm_lite_stack::SpdmResult<VdmResponseKind> {
+        let VdmResponseBuffers { inline, large } = rsp;
         let Some((&command_version, rest)) = req.payload.split_first() else {
             return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
         };
@@ -98,10 +257,11 @@ impl SpdmVdmBackend for CaliptraOcpVdm {
         };
         if command_version != CALIPTRA_VDM_COMMAND_VERSION {
             return Self::write_completion(
-                rsp,
+                inline,
                 command,
                 CaliptraCompletionCode::InvalidCommandVersion,
-            );
+            )
+            .map(VdmResponseKind::Inline);
         }
 
         match command {
@@ -112,15 +272,19 @@ impl SpdmVdmBackend for CaliptraOcpVdm {
                     .ok_or(CaliptraCompletionCode::InvalidParameter);
                 match version_str {
                     Ok(version_str) if version_str.len() <= MAX_FW_VERSION_LEN => {
-                        let offset = Self::write_success(rsp, command)?;
-                        Self::write_bytes(rsp, offset, version_str.as_bytes())
+                        let offset = Self::write_success(inline, command)?;
+                        Self::write_bytes(inline, offset, version_str.as_bytes())
+                            .map(VdmResponseKind::Inline)
                     }
                     Ok(_) => Self::write_completion(
-                        rsp,
+                        inline,
                         command,
                         CaliptraCompletionCode::InvalidPayloadSize,
-                    ),
-                    Err(e) => Self::write_completion(rsp, command, e),
+                    )
+                    .map(VdmResponseKind::Inline),
+                    Err(e) => {
+                        Self::write_completion(inline, command, e).map(VdmResponseKind::Inline)
+                    }
                 }
             }
             0x02 => {
@@ -135,44 +299,126 @@ impl SpdmVdmBackend for CaliptraOcpVdm {
                 out_caps.mcu_rt = caps.mcu_rt;
                 out_caps.mcu_rom = caps.mcu_rom;
                 out_caps.reserved = caps.reserved;
-                let offset = Self::write_success(rsp, command)?;
-                Self::write_bytes(rsp, offset, out_caps.as_bytes())
+                let offset = Self::write_success(inline, command)?;
+                Self::write_bytes(inline, offset, out_caps.as_bytes()).map(VdmResponseKind::Inline)
             }
             0x03 => {
                 if !payload.is_empty() {
                     return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
                 }
                 let device_id = &config::TEST_DEVICE_ID;
-                let mut offset = Self::write_success(rsp, command)?;
-                offset = Self::write_u16(rsp, offset, device_id.vendor_id)?;
-                offset = Self::write_u16(rsp, offset, device_id.device_id)?;
-                offset = Self::write_u16(rsp, offset, device_id.subsystem_vendor_id)?;
-                Self::write_u16(rsp, offset, device_id.subsystem_id)
+                let mut offset = Self::write_success(inline, command)?;
+                offset = Self::write_u16(inline, offset, device_id.vendor_id)?;
+                offset = Self::write_u16(inline, offset, device_id.device_id)?;
+                offset = Self::write_u16(inline, offset, device_id.subsystem_vendor_id)?;
+                Self::write_u16(inline, offset, device_id.subsystem_id).map(VdmResponseKind::Inline)
             }
             0x04 => {
                 let index = Self::read_u32(payload)?;
                 if index != 0 {
                     return Self::write_completion(
-                        rsp,
+                        inline,
                         command,
                         CaliptraCompletionCode::InvalidParameter,
-                    );
+                    )
+                    .map(VdmResponseKind::Inline);
                 }
                 let uid = &config::TEST_UID;
                 if uid.len() > MAX_UID_LEN {
                     return Self::write_completion(
-                        rsp,
+                        inline,
                         command,
                         CaliptraCompletionCode::InvalidPayloadSize,
-                    );
+                    )
+                    .map(VdmResponseKind::Inline);
                 }
-                let offset = Self::write_success(rsp, command)?;
-                Self::write_bytes(rsp, offset, uid)
+                let offset = Self::write_success(inline, command)?;
+                Self::write_bytes(inline, offset, uid).map(VdmResponseKind::Inline)
             }
-            0x05 | 0x06 | 0x07 | 0x08 | 0x0C | 0x0F => {
-                Self::write_completion(rsp, command, CaliptraCompletionCode::UnsupportedOperation)
+            0x05 => {
+                if !payload.is_empty() {
+                    return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
+                }
+                const MORE_DATA_LEN: usize = 1;
+                const BYTES_WRITTEN_LEN: usize = core::mem::size_of::<u32>();
+                let offset = Self::write_success(inline, command)?;
+                let data_offset = offset + MORE_DATA_LEN + BYTES_WRITTEN_LEN;
+                if data_offset > inline.len() {
+                    return Err(mcu_spdm_lite_stack::SPDM_UNSPECIFIED);
+                }
+                match debug_log::drain(&mut inline[data_offset..]).await {
+                    Ok(log) => {
+                        inline[offset] = u8::from(log.more_data);
+                        Self::write_u32(inline, offset + MORE_DATA_LEN, log.bytes_written as u32)?;
+                        Ok(VdmResponseKind::Inline(data_offset + log.bytes_written))
+                    }
+                    Err(e) => {
+                        Self::write_completion(inline, command, e).map(VdmResponseKind::Inline)
+                    }
+                }
             }
-            _ => Self::write_completion(rsp, command, CaliptraCompletionCode::UnsupportedOperation),
+            0x06 => {
+                if !payload.is_empty() {
+                    return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
+                }
+                match debug_log::clear().await {
+                    Ok(()) => Self::write_success(inline, command).map(VdmResponseKind::Inline),
+                    Err(e) => {
+                        Self::write_completion(inline, command, e).map(VdmResponseKind::Inline)
+                    }
+                }
+            }
+            0x07 | 0x08 => {
+                if !payload.is_empty() {
+                    return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
+                }
+                Self::write_completion(
+                    inline,
+                    command,
+                    CaliptraCompletionCode::UnsupportedOperation,
+                )
+                .map(VdmResponseKind::Inline)
+            }
+            0x0C => {
+                if let Some(large) = large {
+                    match Self::export_idevid_csr(payload, large).await {
+                        Ok(len) => Ok(VdmResponseKind::Large(len)),
+                        Err(e) => {
+                            Self::write_completion(inline, command, e).map(VdmResponseKind::Inline)
+                        }
+                    }
+                } else {
+                    match Self::export_idevid_csr(payload, inline).await {
+                        Ok(len) => Ok(VdmResponseKind::Inline(len)),
+                        Err(e) => {
+                            Self::write_completion(inline, command, e).map(VdmResponseKind::Inline)
+                        }
+                    }
+                }
+            }
+            0x0F => {
+                if let Some(large) = large {
+                    match Self::export_attested_csr(payload, large).await {
+                        Ok(len) => Ok(VdmResponseKind::Large(len)),
+                        Err(e) => {
+                            Self::write_completion(inline, command, e).map(VdmResponseKind::Inline)
+                        }
+                    }
+                } else {
+                    match Self::export_attested_csr(payload, inline).await {
+                        Ok(len) => Ok(VdmResponseKind::Inline(len)),
+                        Err(e) => {
+                            Self::write_completion(inline, command, e).map(VdmResponseKind::Inline)
+                        }
+                    }
+                }
+            }
+            _ => Self::write_completion(
+                inline,
+                command,
+                CaliptraCompletionCode::UnsupportedOperation,
+            )
+            .map(VdmResponseKind::Inline),
         }
     }
 }
