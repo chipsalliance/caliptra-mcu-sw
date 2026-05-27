@@ -1,9 +1,17 @@
 // Licensed under the Apache-2.0 license
 
+extern crate alloc;
+
+use alloc::boxed::Box;
+use async_trait::async_trait;
 use caliptra_mcu_libapi_caliptra::certificate::{
     AsymAlgo, CertContext, IDEV_ECC_CSR_MAX_SIZE, KEY_LABEL_SIZE, MAX_ATTESTED_CSR_SIZE,
     MAX_CERT_CHUNK_SIZE, MAX_ECC_CERT_SIZE,
 };
+use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
+use caliptra_mcu_libsyscall_caliptra::mailbox::PayloadStream;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_romtime::println;
 use caliptra_mcu_romtime::test_exit;
 
@@ -103,6 +111,128 @@ pub async fn test_populate_idev_ecc384_cert() {
         }
     }
     println!("Populate idev cert test completed successfully");
+}
+
+struct OtpPayloadStream {
+    otp: ExternalOtp<DefaultSyscalls>,
+    partition_id: u32,
+    total_size: usize,
+    cursor: usize,
+}
+
+impl OtpPayloadStream {
+    fn new(partition_id: u32, total_size: usize) -> Self {
+        Self {
+            otp: ExternalOtp::new(),
+            partition_id,
+            total_size,
+            cursor: 0,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.cursor = 0;
+    }
+
+    async fn get_bytesum(&mut self) -> Result<u32, ErrorCode> {
+        self.reset();
+        let mut sum = 0u32;
+        let mut buf = [0u8; 256];
+        loop {
+            let n = self.read(&mut buf).await?;
+            if n == 0 {
+                break;
+            }
+            for b in &buf[..n] {
+                sum = sum.wrapping_add(u32::from(*b));
+            }
+        }
+        self.reset();
+        Ok(sum)
+    }
+}
+
+#[async_trait(?Send)]
+impl PayloadStream for OtpPayloadStream {
+    fn size(&self) -> usize {
+        self.total_size
+    }
+
+    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
+        if self.cursor >= self.total_size || buffer.is_empty() {
+            return Ok(0);
+        }
+
+        let mut written = 0;
+
+        // Read full words while there's room in the buffer and data in the partition
+        while self.cursor + 4 <= self.total_size && written + 4 <= buffer.len() {
+            let word = self
+                .otp
+                .read(self.partition_id, self.cursor as u32)
+                .await
+                .map_err(|_| ErrorCode::Fail)?;
+            buffer[written..written + 4].copy_from_slice(&word.to_le_bytes());
+            written += 4;
+            self.cursor += 4;
+        }
+
+        // Handle tail bytes (remaining bytes < 4)
+        if self.cursor < self.total_size && written < buffer.len() {
+            let tail_len = self.total_size - self.cursor;
+            let word = self
+                .otp
+                .read(self.partition_id, self.cursor as u32)
+                .await
+                .map_err(|_| ErrorCode::Fail)?;
+            let word_bytes = word.to_le_bytes();
+            let n = tail_len.min(buffer.len() - written);
+            buffer[written..written + n].copy_from_slice(&word_bytes[..n]);
+            written += n;
+            self.cursor += n;
+        }
+
+        Ok(written)
+    }
+}
+
+pub async fn test_populate_idev_mldsa87_cert() {
+    println!("Starting Caliptra mailbox populate idev MLDSA cert test");
+
+    const MLDSA_CERT_SIZE: usize = 4627;
+    let mut stream = OtpPayloadStream::new(0x02, MLDSA_CERT_SIZE);
+
+    let bytesum = match stream.get_bytesum().await {
+        Ok(sum) => sum,
+        Err(e) => {
+            println!("Failed to compute MLDSA cert bytesum: {:?}", e);
+            test_exit(1);
+            return;
+        }
+    };
+
+    println!(
+        "Populating idev MLDSA certificate with size: {}, bytesum: 0x{:08x}",
+        MLDSA_CERT_SIZE, bytesum
+    );
+
+    let mut cert_mgr = CertContext::new();
+    let result = cert_mgr
+        .populate_idev_mldsa87_cert(MLDSA_CERT_SIZE, bytesum, &mut stream)
+        .await;
+    match result {
+        Ok(_) => {
+            println!("Successfully populated idev MLDSA certificate");
+        }
+        Err(e) => {
+            println!(
+                "Failed to populate idev MLDSA certificate with error: {:?}",
+                e
+            );
+            test_exit(1);
+        }
+    }
+    println!("Populate idev MLDSA cert test completed successfully");
 }
 
 #[inline(never)]
