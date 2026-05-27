@@ -89,6 +89,8 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     let rsp_body = build_response_body(state, fixed, &peer);
     let spdm_len = rsp_body.encoded_size();
     state.other_param_sel = rsp_body.other_param_support;
+    state.negotiated_base_asym_sel = rsp_body.base_asym_sel;
+    state.negotiated_base_hash_sel = rsp_body.base_hash_sel;
 
     let resp = build_response(pal, io, state.version, &rsp_body)?;
 

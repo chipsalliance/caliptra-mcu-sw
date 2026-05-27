@@ -105,6 +105,10 @@ pub struct ConnectionState<S: Clone> {
     pub peer_cap_flags: CapFlags,
     /// Negotiated OtherParamsSel from NEGOTIATE_ALGORITHMS.
     pub other_param_sel: OtherParamSupport,
+    /// Negotiated BaseAsymSel from NEGOTIATE_ALGORITHMS.
+    pub negotiated_base_asym_sel: AsymAlgos,
+    /// Negotiated BaseHashSel from NEGOTIATE_ALGORITHMS.
+    pub negotiated_base_hash_sel: HashAlgos,
     /// Transcript state (running VCA/M1/L1 hashes per DSP0274 §8.10).
     pub transcript: crate::transcript::Transcript<S>,
 }
@@ -152,6 +156,8 @@ impl<S: Clone> ConnectionState<S> {
             peer_max_spdm_msg_size: 0,
             peer_cap_flags: CapFlags::EMPTY,
             other_param_sel: OtherParamSupport::EMPTY,
+            negotiated_base_asym_sel: AsymAlgos::EMPTY,
+            negotiated_base_hash_sel: HashAlgos::EMPTY,
             transcript: crate::transcript::Transcript::new(),
         }
     }
@@ -167,6 +173,8 @@ impl<S: Clone> ConnectionState<S> {
         self.peer_max_spdm_msg_size = 0;
         self.peer_cap_flags = CapFlags::EMPTY;
         self.other_param_sel = OtherParamSupport::EMPTY;
+        self.negotiated_base_asym_sel = AsymAlgos::EMPTY;
+        self.negotiated_base_hash_sel = HashAlgos::EMPTY;
         self.transcript.reset();
     }
 
@@ -325,8 +333,13 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
             req_version
         };
 
-        let Ok(mut err_rsp) = build_error_response(&self.pal, io, rsp_version, err.spec_byte(), 0)
-        else {
+        let Ok(mut err_rsp) = build_error_response(
+            &self.pal,
+            io,
+            rsp_version,
+            err.spec_byte(),
+            err.error_data(),
+        ) else {
             // Allocator exhausted or codec failure — nothing more we
             // can do for this exchange.
             return Ok(());
@@ -386,7 +399,7 @@ async fn dispatch<'a, Pal: SpdmPal>(
             set_certificate::handle_set_certificate(state, pal, io).await
         }
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
-        _ => Err(SPDM_UNSUPPORTED_REQUEST),
+        _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
     }
 }
 

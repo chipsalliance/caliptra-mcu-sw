@@ -9,8 +9,8 @@
 
 use mcu_error::McuErrorCode;
 use mcu_spdm_lite_codec::{
-    CapFlags, OtherParamSupport, SetCertificateReqBody, SetCertificateRsp, SpdmMsgHdrPdu,
-    SpdmVersion,
+    AsymAlgos, CapFlags, HashAlgos, OtherParamSupport, ReqRespCode, SetCertificateReqBody,
+    SetCertificateRsp, SpdmMsgHdrPdu, SpdmVersion,
 };
 use mcu_spdm_lite_errors::as_spdm_wire;
 use mcu_spdm_lite_traits::{
@@ -21,13 +21,14 @@ use zerocopy::FromBytes;
 use crate::build::build_response;
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST,
-    SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
+    SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
 use crate::stack::{ConnectionState, Phase};
 
 const SPDM_CERT_CHAIN_HDR_LEN: usize = 4 + SHA384_DIGEST_SIZE;
 const SHA384_DIGEST_SIZE: usize = 48;
 const CERT_MODEL_DEVICE_CERT: u8 = 1;
+const CERT_MODEL_ALIAS_CERT: u8 = 2;
 const CERT_MODEL_GENERIC_CERT: u8 = 3;
 
 pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
@@ -39,7 +40,7 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
     if !pal.set_certificate_supported() || !state.cap_flags.contains(CapFlags::SET_CERT) {
-        return Err(SPDM_UNSUPPORTED_REQUEST);
+        return Err(unsupported_set_certificate());
     }
 
     let req = io.request();
@@ -51,7 +52,7 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
         return Err(SPDM_VERSION_MISMATCH);
     }
     if state.version < SpdmVersion::V12 {
-        return Err(SPDM_UNSUPPORTED_REQUEST);
+        return Err(unsupported_set_certificate());
     }
 
     let req_body = SetCertificateReqBody::ref_from_bytes(
@@ -64,7 +65,8 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
         .ok_or(SPDM_INVALID_REQUEST)?;
 
     let slot_id = req_body.slot_id();
-    validate_request_attributes(state, req_body, slot_id)?;
+    validate_request_attributes(state, req_body, slot_id, pal.supported_slots())?;
+    validate_negotiated_set_certificate_algorithms(state)?;
 
     let erase = req_body.erase();
     let cert_model = if erase {
@@ -100,12 +102,20 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
     build_response(pal, io, state.version, &SetCertificateRsp { slot_id })
 }
 
+fn unsupported_set_certificate() -> SpdmError {
+    SPDM_UNSUPPORTED_REQUEST.with_data(ReqRespCode::SET_CERTIFICATE.0)
+}
+
 fn validate_request_attributes<S: Clone>(
     state: &ConnectionState<S>,
     req: &SetCertificateReqBody,
     slot_id: u8,
+    supported_slots: u8,
 ) -> SpdmResult<()> {
     if slot_id == 0 || slot_id >= MAX_SLOTS {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    if supported_slots & (1u8 << slot_id) == 0 {
         return Err(SPDM_INVALID_REQUEST);
     }
 
@@ -136,8 +146,27 @@ fn effective_cert_model<S: Clone>(state: &ConnectionState<S>, req: &SetCertifica
     if multi_key_conn_rsp(state) && req.cert_model() != 0 {
         req.cert_model()
     } else {
+        cert_model_from_capabilities(state.cap_flags)
+    }
+}
+
+fn cert_model_from_capabilities(cap_flags: CapFlags) -> u8 {
+    if cap_flags.contains(CapFlags::ALIAS_CERT) {
+        CERT_MODEL_ALIAS_CERT
+    } else {
         CERT_MODEL_DEVICE_CERT
     }
+}
+
+fn validate_negotiated_set_certificate_algorithms<S: Clone>(
+    state: &ConnectionState<S>,
+) -> SpdmResult<()> {
+    if state.negotiated_base_hash_sel != HashAlgos::SHA_384
+        || state.negotiated_base_asym_sel != AsymAlgos::ECDSA_ECC_NIST_P384
+    {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    Ok(())
 }
 
 fn multi_key_conn_rsp<S: Clone>(state: &ConnectionState<S>) -> bool {
@@ -253,7 +282,7 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use crate::error::{SPDM_BUSY, SPDM_OPERATION_FAILED, SPDM_RESET_REQUIRED};
+    use crate::error::{SPDM_BUSY, SPDM_OPERATION_FAILED, SPDM_RESET_REQUIRED, SPDM_UNSPECIFIED};
     use core::marker::PhantomData;
     use core::ops::{Deref, DerefMut};
     use futures::executor::block_on;
@@ -321,6 +350,7 @@ mod tests {
 
     struct TestPal {
         mtu: usize,
+        supported_slots: u8,
         supported: bool,
         authorized: bool,
         validate_error: Option<McuErrorCode>,
@@ -333,6 +363,7 @@ mod tests {
         fn default() -> Self {
             Self {
                 mtu: 1024,
+                supported_slots: u8::MAX,
                 supported: true,
                 authorized: true,
                 validate_error: None,
@@ -438,6 +469,10 @@ mod tests {
             0
         }
 
+        fn supported_slots(&self) -> u8 {
+            self.supported_slots
+        }
+
         fn set_certificate_supported(&self) -> bool {
             self.supported
         }
@@ -538,6 +573,8 @@ mod tests {
         let mut state = ConnectionState::default();
         state.phase = Phase::AfterAlgorithms;
         state.version = version;
+        state.negotiated_base_hash_sel = HashAlgos::SHA_384;
+        state.negotiated_base_asym_sel = AsymAlgos::ECDSA_ECC_NIST_P384;
         state
     }
 
@@ -598,7 +635,58 @@ mod tests {
             Some(StoreOp::Write {
                 slot: 1,
                 key_pair_id: 0,
+                cert_model: CERT_MODEL_ALIAS_CERT,
+                root_hash,
+                cert_chain: der,
+            })
+        );
+    }
+
+    #[test]
+    fn test_handle_set_certificate_v12_uses_device_cert_without_alias_cap() {
+        let pal = TestPal::default();
+        let mut state = state(SpdmVersion::V12);
+        state.cap_flags = CapFlags::CERT
+            | CapFlags::CHAL
+            | CapFlags::MEAS_SIG
+            | CapFlags::SET_CERT
+            | CapFlags::MULTI_KEY_CONN_RSP;
+        let der = der_chain();
+        let root_hash = test_digest(&der[..5]);
+        let payload = cert_payload(&der, root_hash);
+        let io = request(SpdmVersion::V12, 1, 0, &payload);
+
+        block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap();
+
+        assert_eq!(
+            pal.op.take(),
+            Some(StoreOp::Write {
+                slot: 1,
+                key_pair_id: 0,
                 cert_model: CERT_MODEL_DEVICE_CERT,
+                root_hash,
+                cert_chain: der,
+            })
+        );
+    }
+
+    #[test]
+    fn test_handle_set_certificate_v13_non_multi_key_uses_alias_cert() {
+        let pal = TestPal::default();
+        let mut state = state(SpdmVersion::V13);
+        let der = der_chain();
+        let root_hash = test_digest(&der[..5]);
+        let payload = cert_payload(&der, root_hash);
+        let io = request(SpdmVersion::V13, 2, 0, &payload);
+
+        block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap();
+
+        assert_eq!(
+            pal.op.take(),
+            Some(StoreOp::Write {
+                slot: 2,
+                key_pair_id: 0,
+                cert_model: CERT_MODEL_ALIAS_CERT,
                 root_hash,
                 cert_chain: der,
             })
@@ -671,7 +759,7 @@ mod tests {
 
         let err = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap_err();
 
-        assert_eq!(err, SPDM_UNSUPPORTED_REQUEST);
+        assert_eq!(err, unsupported_set_certificate());
         assert_eq!(pal.op.take(), None);
     }
 
@@ -690,6 +778,84 @@ mod tests {
 
         assert_eq!(err, SPDM_INVALID_REQUEST);
         assert_eq!(pal.op.take(), None);
+    }
+
+    #[test]
+    fn test_handle_set_certificate_rejects_unsupported_slot() {
+        let pal = TestPal {
+            supported_slots: u8::MAX ^ (1u8 << 2),
+            ..TestPal::default()
+        };
+        let mut state = state(SpdmVersion::V12);
+        let der = der_chain();
+        let payload = cert_payload(&der, test_digest(&der[..5]));
+        let io = request(SpdmVersion::V12, 2, 0, &payload);
+
+        let err = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap_err();
+
+        assert_eq!(err, SPDM_INVALID_REQUEST);
+        assert_eq!(pal.op.take(), None);
+    }
+
+    #[test]
+    fn test_handle_set_certificate_rejects_erase_for_unsupported_slot() {
+        let pal = TestPal {
+            supported_slots: u8::MAX ^ (1u8 << 3),
+            ..TestPal::default()
+        };
+        let mut state = state(SpdmVersion::V13);
+        let io = request(SpdmVersion::V13, 3 | (1 << 7), 0, &[]);
+
+        let err = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap_err();
+
+        assert_eq!(err, SPDM_INVALID_REQUEST);
+        assert_eq!(pal.op.take(), None);
+    }
+
+    #[test]
+    fn test_handle_set_certificate_rejects_unnegotiated_hash_algo() {
+        let pal = TestPal::default();
+        let mut state = state(SpdmVersion::V12);
+        state.negotiated_base_hash_sel = HashAlgos::EMPTY;
+        let der = der_chain();
+        let payload = cert_payload(&der, test_digest(&der[..5]));
+        let io = request(SpdmVersion::V12, 1, 0, &payload);
+
+        let err = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap_err();
+
+        assert_eq!(err, SPDM_UNSPECIFIED);
+        assert_eq!(pal.op.take(), None);
+    }
+
+    #[test]
+    fn test_handle_set_certificate_rejects_unnegotiated_base_asym_algo() {
+        let pal = TestPal::default();
+        let mut state = state(SpdmVersion::V12);
+        state.negotiated_base_asym_sel = AsymAlgos::EMPTY;
+        let der = der_chain();
+        let payload = cert_payload(&der, test_digest(&der[..5]));
+        let io = request(SpdmVersion::V12, 1, 0, &payload);
+
+        let err = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap_err();
+
+        assert_eq!(err, SPDM_UNSPECIFIED);
+        assert_eq!(pal.op.take(), None);
+    }
+
+    #[test]
+    fn test_reset_negotiation_clears_selected_algorithms() {
+        let mut state = state(SpdmVersion::V13);
+
+        state.reset_negotiation();
+
+        assert_eq!(
+            state.negotiated_base_hash_sel.into_bits(),
+            HashAlgos::EMPTY.into_bits()
+        );
+        assert_eq!(
+            state.negotiated_base_asym_sel.into_bits(),
+            AsymAlgos::EMPTY.into_bits()
+        );
     }
 
     #[test]
