@@ -74,11 +74,12 @@ impl PldmSocket for MctpPldmSocket {
             context.state = MctpPldmSocketState::FirstResponse;
             cvar.notify_all();
         } else {
+            let is_request = payload[0] & 0x80 == 0x80;
             let mut stream = self
                 .tx_stream
                 .try_clone()
                 .map_err(|_| PldmTransportError::Disconnected)?;
-            if payload[0] & 0x80 == 0x80 {
+            if is_request {
                 mctp_util.send_request(
                     self.msg_tag,
                     mctp_payload.as_mut_slice(),

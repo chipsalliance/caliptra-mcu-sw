@@ -171,7 +171,7 @@ impl I3c {
                 &self.tti_tx_desc_queue_raw[0].to_le_bytes()[..],
             )
             .unwrap();
-            let data_size = resp_desc.data_length().into();
+            let data_size: usize = resp_desc.data_length().into();
             if let Some(_data) = self.tti_tx_data_raw.front() {
                 if self.tti_tx_data_raw[0].len() >= data_size {
                     self.tti_tx_desc_queue_raw.pop_front();
@@ -189,8 +189,8 @@ impl I3c {
         if let Some(xfer) = self.i3c_target.read_command() {
             // TODO: we don't request data using rnw
             let rnw = (u64::from(xfer.cmd.clone()) & (1 << 29)) as u32;
-            self.tti_rx_desc_queue_raw
-                .push_back(xfer.cmd.raw_data_len() as u32 | rnw);
+            let data_len = xfer.cmd.raw_data_len();
+            self.tti_rx_desc_queue_raw.push_back(data_len as u32 | rnw);
             let data = match xfer.cmd.clone() {
                 I3cTcriCommand::Immediate(imm) => vec![
                     imm.data_byte_1(),
@@ -252,7 +252,8 @@ impl I3c {
             }
 
             // TODO: support sending more bytes of IBI to target
-            self.i3c_target.send_ibi((desc.0 >> 24) as u8);
+            let mdb = (desc.0 >> 24) as u8;
+            self.i3c_target.send_ibi(mdb);
             self.ibi_status = Some(ReadWriteRegister::new(0));
             self.tti_ibi_buffer.drain(0..(len + 4).next_multiple_of(4));
         }
@@ -656,7 +657,12 @@ impl I3cPeripheral for I3c {
                 .i3c_ec_soc_mgmt_if_rec_intf_cfg
                 .reg
                 .read(RecIntfCfg::RecIntfBypass);
-            if bypass_cfg == I3C_REC_INT_BYPASS_I3C_CORE {
+            if bypass_cfg == I3C_REC_INT_BYPASS_I3C_CORE || !self.tti_tx_data_raw.is_empty() {
+                // Route to I3C core TTI when bypass is not set, OR when a TTI TX
+                // descriptor is pending (tti_tx_data_raw non-empty). The latter case
+                // handles the scenario after a FirmwareBootReset where real HW would
+                // have cleared the bypass register but the emulator doesn't reset
+                // peripheral state across MCU resets.
                 let to_append = val.to_le_bytes();
                 let idx = self.tti_tx_data_raw.len() - 1;
                 self.tti_tx_data_raw[idx].extend_from_slice(&to_append);

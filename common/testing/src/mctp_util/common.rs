@@ -28,6 +28,11 @@ enum I3cControllerState {
     SendPrivateWrite,
     WaitForIbi,
     ReceivePrivateRead,
+    /// Reserved for paths that explicitly terminate the receive loop.
+    /// Currently unused by `wait_for_responder` (which returns directly
+    /// from the `EOM` branch); kept for future use without forcing a
+    /// public-API change.
+    #[allow(dead_code)]
     Finish,
 }
 
@@ -136,6 +141,16 @@ impl MctpUtil {
         let msg_type = msg[0];
 
         let mut retry = 100;
+        // Buffer for accumulating multi-packet responses. The first packet
+        // matching `msg_type` (post-MCTP-header byte) starts the message;
+        // subsequent packets without SOM are appended until EOM is seen.
+        let mut resp_pkts: VecDeque<Vec<u8>> = VecDeque::new();
+        let mut response_started = false;
+        // Track whether the request has been sent at least once so we do
+        // not re-send while waiting for the responder. Re-sending the same
+        // request causes duplicate responses on slow I/O paths and
+        // confuses subsequent `wait_for_responder` calls.
+        let mut request_sent = false;
 
         while MCU_RUNNING.load(Ordering::Relaxed) && retry > 0 {
             match i3c_state {
@@ -149,6 +164,7 @@ impl MctpUtil {
                 I3cControllerState::SendPrivateWrite => {
                     let write_pkt = pkts.front().unwrap().clone();
                     if stream.send_private_write(target_addr, write_pkt) {
+                        request_sent = true;
                         i3c_state = I3cControllerState::WaitForIbi;
                         sleep_emulator_ticks(100_000);
                     }
@@ -156,29 +172,82 @@ impl MctpUtil {
                 I3cControllerState::WaitForIbi => {
                     if stream.receive_ibi(target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
+                    } else if response_started {
+                        // We are mid-response; just wait for the next IBI
+                        // without rewinding to SendPrivateWrite.
+                        retry -= 1;
+                        sleep_emulator_ticks(100_000);
+                    } else if request_sent {
+                        // Request already on the wire — keep waiting for
+                        // the IBI without re-sending. Re-sending generates
+                        // duplicate responses that the responder must
+                        // process, which on slow I/O paths causes ordering
+                        // issues across `wait_for_responder` calls.
+                        retry -= 1;
+                        if retry == 0 {
+                            return None;
+                        }
+                        sleep_emulator_ticks(100_000);
                     } else {
                         retry -= 1;
-                        println!("MCTP_UTIL: IBI not received. Retrying {}...", retry);
                         i3c_state = I3cControllerState::SendPrivateWrite;
                     }
                 }
                 I3cControllerState::ReceivePrivateRead => {
                     if let Some(data) = stream.receive_private_read(target_addr) {
-                        if data[4] == msg_type {
-                            let mut resp_pkts = VecDeque::new();
+                        // Inspect the MCTP transport header to filter out
+                        // stale packets that do not belong to this exchange.
+                        if data.len() < MCTP_HDR_SIZE {
+                            i3c_state = I3cControllerState::WaitForIbi;
+                            continue;
+                        }
+                        let mctp_hdr = MCTPHdr::<[u8; MCTP_HDR_SIZE]>::read_from_bytes(
+                            &data[0..MCTP_HDR_SIZE],
+                        )
+                        .unwrap();
+
+                        if !response_started {
+                            // First packet of our response must:
+                            //   * be a SOM packet (start of a new message),
+                            //   * carry our msg_tag,
+                            //   * have its MCTP-common-header byte (the
+                            //     responder's `msg_type`) match our request.
+                            if mctp_hdr.som() != 1
+                                || mctp_hdr.msg_tag() != msg_tag
+                                || data.len() <= MCTP_HDR_SIZE
+                                || data[MCTP_HDR_SIZE] != msg_type
+                            {
+                                i3c_state = I3cControllerState::WaitForIbi;
+                                continue;
+                            }
+                            response_started = true;
+                        } else if mctp_hdr.msg_tag() != msg_tag {
+                            // Mid-message: discard packets from other tags.
+                            i3c_state = I3cControllerState::WaitForIbi;
+                            continue;
+                        }
+
+                        let is_last = mctp_hdr.eom() == 1;
+                        resp_pkts.push_back(data);
+
+                        if is_last {
                             let message_identifier = MessageIdentifier {
                                 dest_eid: self.src_eid, // Destination is the requester
                                 src_eid: self.dest_eid, // Source is the responder
                                 msg_tag,                // The message tag sent in the request
                                 tag_owner: 0,           // Not tag owner for response
                             };
-                            resp_pkts.push_back(data);
                             self.new_resp();
                             let resp = self.assemble(resp_pkts, &message_identifier);
                             return Some(resp);
                         }
 
-                        i3c_state = I3cControllerState::Finish;
+                        // More packets to come — wait for the next IBI.
+                        i3c_state = I3cControllerState::WaitForIbi;
+                    } else {
+                        // Give the emulator time to process the read command
+                        // and produce response data on the I3C bus.
+                        sleep_emulator_ticks(100_000);
                     }
                 }
                 I3cControllerState::Finish => {
@@ -359,6 +428,16 @@ impl MctpUtil {
             MCTPHdr::mut_from_bytes(&mut pkt[0..MCTP_HDR_SIZE]).unwrap();
 
         if mctp_hdr.som() == 1 {
+            // If we are already collecting a message, check if this SOM packet
+            // belongs to a different message. If so, ignore it for now.
+            // In a more robust implementation, we would multiplex multiple messages.
+            if !pkts.is_empty()
+                && (mctp_hdr.msg_tag() != message_identifier.msg_tag
+                    || mctp_hdr.src_eid() != message_identifier.src_eid)
+            {
+                return false;
+            }
+
             pkts.clear();
             if mctp_hdr.tag_owner() == 1 {
                 // This is a request
@@ -372,10 +451,15 @@ impl MctpUtil {
             message_identifier.src_eid = mctp_hdr.src_eid();
             message_identifier.msg_tag = mctp_hdr.msg_tag();
             message_identifier.tag_owner = mctp_hdr.tag_owner();
+        } else {
+            // Check if this packet belongs to the message we are currently collecting
+            if message_identifier.msg_tag != mctp_hdr.msg_tag()
+                || message_identifier.tag_owner != mctp_hdr.tag_owner()
+                || message_identifier.src_eid != mctp_hdr.src_eid()
+            {
+                return false;
+            }
         }
-
-        assert!(message_identifier.msg_tag == mctp_hdr.msg_tag());
-        assert!(message_identifier.tag_owner == mctp_hdr.tag_owner());
 
         if mctp_hdr.eom() == 1 {
             last_pkt = true;
