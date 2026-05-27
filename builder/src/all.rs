@@ -689,6 +689,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         if feature.contains("ocp-lock") {
             runtime_features.push("ocp-lock".to_string());
         }
+        // Propagate hw-2-1 from rom_features to runtime builds so that
+        // staging SRAM is enabled (required when ImageManifest > 16 KB).
+        if rom_features.contains("hw-2-1") && !runtime_features.iter().any(|f| f == "hw-2-1") {
+            runtime_features.push("hw-2-1".to_string());
+        }
         let runtime_features_ref: Vec<&str> = runtime_features.iter().map(|s| s.as_str()).collect();
 
         crate::runtime_build_with_apps(
