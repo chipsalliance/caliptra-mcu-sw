@@ -6,6 +6,7 @@ extern crate alloc;
 
 mod cert_store;
 
+use crate::caliptra_cmd_handler::CaliptraOcpVdm;
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -131,7 +132,7 @@ async fn spdm_mctp_responder() {
             &CERT_STORE,
         )
     };
-    let mut stack = SpdmStack::new(pal);
+    let mut stack = SpdmStack::with_vdm_backend(pal, CaliptraOcpVdm);
 
     crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lite MCTP run loop");
     if let Err(e) = stack.run().await {
@@ -185,7 +186,7 @@ async fn spdm_doe_responder() {
             &CERT_STORE,
         )
     };
-    let mut stack = SpdmStack::new(pal);
+    let mut stack = SpdmStack::with_vdm_backend(pal, CaliptraOcpVdm);
 
     crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lite DOE run loop");
     if let Err(e) = stack.run().await {

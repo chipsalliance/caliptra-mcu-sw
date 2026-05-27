@@ -8,37 +8,232 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, LogType,
+    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, LogType, Uid,
+    MAX_FW_VERSION_LEN, MAX_UID_LEN,
 };
 use caliptra_mcu_libapi_caliptra::certificate::{CertContext, IDEV_ECC_CSR_MAX_SIZE};
 use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
+use caliptra_mcu_mbox_common::config;
+use mcu_spdm_lite_stack::{SpdmVdmBackend, StandardsBodyId, VdmRequest};
+use zerocopy::IntoBytes;
 
 pub struct CaliptraCmdBackend;
+
+/// Size-conscious spdm-lite OCP Caliptra VDM backend.
+///
+/// This backend uses static dispatch through `SpdmVdmBackend`; it does not use
+/// `async_trait`, boxed futures, or a `dyn CaliptraCmdHandler` path.
+pub struct CaliptraOcpVdm;
+
+const OCP_VENDOR_ID: u32 = 42623;
+const CALIPTRA_VDM_COMMAND_VERSION: u8 = 0x01;
+
+impl CaliptraOcpVdm {
+    fn write_completion(
+        rsp: &mut [u8],
+        command: u8,
+        completion: CaliptraCompletionCode,
+    ) -> Result<usize, mcu_spdm_lite_stack::SpdmError> {
+        let out = rsp
+            .get_mut(..3)
+            .ok_or(mcu_spdm_lite_stack::SPDM_UNSPECIFIED)?;
+        out[0] = CALIPTRA_VDM_COMMAND_VERSION;
+        out[1] = command;
+        out[2] = completion as u8;
+        Ok(3)
+    }
+
+    fn write_bytes(
+        rsp: &mut [u8],
+        offset: usize,
+        bytes: &[u8],
+    ) -> Result<usize, mcu_spdm_lite_stack::SpdmError> {
+        let end = offset
+            .checked_add(bytes.len())
+            .ok_or(mcu_spdm_lite_stack::SPDM_UNSPECIFIED)?;
+        rsp.get_mut(offset..end)
+            .ok_or(mcu_spdm_lite_stack::SPDM_UNSPECIFIED)?
+            .copy_from_slice(bytes);
+        Ok(end)
+    }
+
+    fn write_u16(
+        rsp: &mut [u8],
+        offset: usize,
+        value: u16,
+    ) -> Result<usize, mcu_spdm_lite_stack::SpdmError> {
+        Self::write_bytes(rsp, offset, &value.to_le_bytes())
+    }
+
+    fn write_success(rsp: &mut [u8], command: u8) -> Result<usize, mcu_spdm_lite_stack::SpdmError> {
+        Self::write_completion(rsp, command, CaliptraCompletionCode::Success)
+    }
+
+    fn read_u32(payload: &[u8]) -> Result<u32, mcu_spdm_lite_stack::SpdmError> {
+        if payload.len() != 4 {
+            return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
+        }
+        let mut bytes = [0u8; 4];
+        bytes.copy_from_slice(payload);
+        Ok(u32::from_le_bytes(bytes))
+    }
+}
+
+impl SpdmVdmBackend for CaliptraOcpVdm {
+    fn match_request(&self, req: &VdmRequest<'_>) -> bool {
+        req.standard_id == StandardsBodyId::Iana && req.vendor_id == OCP_VENDOR_ID.to_le_bytes()
+    }
+
+    async fn handle_request(
+        &self,
+        req: VdmRequest<'_>,
+        rsp: &mut [u8],
+    ) -> mcu_spdm_lite_stack::SpdmResult<usize> {
+        let Some((&command_version, rest)) = req.payload.split_first() else {
+            return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
+        };
+        let Some((&command, payload)) = rest.split_first() else {
+            return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
+        };
+        if command_version != CALIPTRA_VDM_COMMAND_VERSION {
+            return Self::write_completion(
+                rsp,
+                command,
+                CaliptraCompletionCode::InvalidCommandVersion,
+            );
+        }
+
+        match command {
+            0x01 => {
+                let index = Self::read_u32(payload)?;
+                let version_str = config::TEST_FIRMWARE_VERSIONS
+                    .get(index as usize)
+                    .ok_or(CaliptraCompletionCode::InvalidParameter);
+                match version_str {
+                    Ok(version_str) if version_str.len() <= MAX_FW_VERSION_LEN => {
+                        let offset = Self::write_success(rsp, command)?;
+                        Self::write_bytes(rsp, offset, version_str.as_bytes())
+                    }
+                    Ok(_) => Self::write_completion(
+                        rsp,
+                        command,
+                        CaliptraCompletionCode::InvalidPayloadSize,
+                    ),
+                    Err(e) => Self::write_completion(rsp, command, e),
+                }
+            }
+            0x02 => {
+                if !payload.is_empty() {
+                    return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
+                }
+                let caps = &config::TEST_DEVICE_CAPABILITIES;
+                let mut out_caps = DeviceCapabilities::default();
+                out_caps.caliptra_rt = caps.caliptra_rt;
+                out_caps.caliptra_fmc = caps.caliptra_fmc;
+                out_caps.caliptra_rom = caps.caliptra_rom;
+                out_caps.mcu_rt = caps.mcu_rt;
+                out_caps.mcu_rom = caps.mcu_rom;
+                out_caps.reserved = caps.reserved;
+                let offset = Self::write_success(rsp, command)?;
+                Self::write_bytes(rsp, offset, out_caps.as_bytes())
+            }
+            0x03 => {
+                if !payload.is_empty() {
+                    return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
+                }
+                let device_id = &config::TEST_DEVICE_ID;
+                let mut offset = Self::write_success(rsp, command)?;
+                offset = Self::write_u16(rsp, offset, device_id.vendor_id)?;
+                offset = Self::write_u16(rsp, offset, device_id.device_id)?;
+                offset = Self::write_u16(rsp, offset, device_id.subsystem_vendor_id)?;
+                Self::write_u16(rsp, offset, device_id.subsystem_id)
+            }
+            0x04 => {
+                let index = Self::read_u32(payload)?;
+                if index != 0 {
+                    return Self::write_completion(
+                        rsp,
+                        command,
+                        CaliptraCompletionCode::InvalidParameter,
+                    );
+                }
+                let uid = &config::TEST_UID;
+                if uid.len() > MAX_UID_LEN {
+                    return Self::write_completion(
+                        rsp,
+                        command,
+                        CaliptraCompletionCode::InvalidPayloadSize,
+                    );
+                }
+                let offset = Self::write_success(rsp, command)?;
+                Self::write_bytes(rsp, offset, uid)
+            }
+            0x05 | 0x06 | 0x07 | 0x08 | 0x0C | 0x0F => {
+                Self::write_completion(rsp, command, CaliptraCompletionCode::UnsupportedOperation)
+            }
+            _ => Self::write_completion(rsp, command, CaliptraCompletionCode::UnsupportedOperation),
+        }
+    }
+}
 
 #[async_trait]
 impl CaliptraCmdHandler for CaliptraCmdBackend {
     async fn get_firmware_version(
         &self,
-        _index: u32,
-        _version: &mut FirmwareVersion,
+        index: u32,
+        version: &mut FirmwareVersion,
     ) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
+        let version_str = config::TEST_FIRMWARE_VERSIONS
+            .get(index as usize)
+            .ok_or(CaliptraCompletionCode::InvalidParameter)?;
+        let bytes = version_str.as_bytes();
+        if bytes.len() > MAX_FW_VERSION_LEN {
+            return Err(CaliptraCompletionCode::InvalidPayloadSize);
+        }
+        version.ver_str[..bytes.len()].copy_from_slice(bytes);
+        version.len = bytes.len();
+        Ok(())
     }
 
-    async fn get_device_id(&self, _device_id: &mut DeviceId) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
+    async fn get_device_id(&self, device_id: &mut DeviceId) -> CaliptraCmdResult<()> {
+        let test_device_id = &config::TEST_DEVICE_ID;
+        device_id.vendor_id = test_device_id.vendor_id;
+        device_id.device_id = test_device_id.device_id;
+        device_id.subsystem_vendor_id = test_device_id.subsystem_vendor_id;
+        device_id.subsystem_id = test_device_id.subsystem_id;
+        Ok(())
     }
 
-    async fn get_device_info(&self, _index: u32, _info: &mut DeviceInfo) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
+    async fn get_device_info(&self, index: u32, info: &mut DeviceInfo) -> CaliptraCmdResult<()> {
+        if index != 0 {
+            return Err(CaliptraCompletionCode::InvalidParameter);
+        }
+        let test_uid = &config::TEST_UID;
+        if test_uid.len() > MAX_UID_LEN {
+            return Err(CaliptraCompletionCode::InvalidPayloadSize);
+        }
+        let mut unique_chip_id = [0u8; MAX_UID_LEN];
+        unique_chip_id[..test_uid.len()].copy_from_slice(test_uid);
+        *info = DeviceInfo::Uid(Uid {
+            len: test_uid.len(),
+            unique_chip_id,
+        });
+        Ok(())
     }
 
     async fn get_device_capabilities(
         &self,
-        _capabilities: &mut DeviceCapabilities,
+        capabilities: &mut DeviceCapabilities,
     ) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
+        let test_capabilities = &config::TEST_DEVICE_CAPABILITIES;
+        capabilities.caliptra_rt = test_capabilities.caliptra_rt;
+        capabilities.caliptra_fmc = test_capabilities.caliptra_fmc;
+        capabilities.caliptra_rom = test_capabilities.caliptra_rom;
+        capabilities.mcu_rt = test_capabilities.mcu_rt;
+        capabilities.mcu_rom = test_capabilities.mcu_rom;
+        capabilities.reserved = test_capabilities.reserved;
+        Ok(())
     }
 
     async fn export_attested_csr(
