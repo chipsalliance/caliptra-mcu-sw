@@ -1014,13 +1014,6 @@ mod test {
     }
 
     pub fn start_runtime_hw_model(params: TestParams) -> DefaultHwModel {
-        // Each hw-model constructor now creates a fresh per-instance
-        // `EmulatorState` (with `running = true`) and installs it on the
-        // current thread via `init_emulator_state`, so no caller-side reset
-        // is required. Touching `set_emulator_running(true)` here would
-        // panic, since the test thread has no per-instance state until the
-        // model is built below.
-
         let TestBinaries {
             vendor_pk_hash_u8,
             caliptra_rom,
