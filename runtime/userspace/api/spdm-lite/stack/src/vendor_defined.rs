@@ -3,8 +3,8 @@
 //! VENDOR_DEFINED request dispatch for SPDM-Lite.
 
 use mcu_spdm_lite_codec::{
-    ReqRespCode, SpdmMsgHdrPdu, StandardsBodyId, VendorDefinedReqPdu, VendorDefinedRspPdu,
-    WireReader, WireWriter,
+    CapFlags, ReqRespCode, SpdmMsgHdrPdu, StandardsBodyId, VendorDefinedReqPdu,
+    VendorDefinedRspPdu, WireReader, WireWriter,
 };
 use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport};
 use zerocopy::{little_endian::U16, FromBytes};
@@ -12,8 +12,8 @@ use zerocopy::{little_endian::U16, FromBytes};
 use crate::build::build_error_response;
 use crate::chunk::effective_data_transfer_size;
 use crate::error::{
-    SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
-    SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
+    SpdmResult, SPDM_INVALID_REQUEST, SPDM_LARGE_RESPONSE, SPDM_UNEXPECTED_REQUEST,
+    SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
 use crate::stack::{ConnectionState, Phase};
 
@@ -46,6 +46,26 @@ pub trait VdmHandler: Sync {
     fn handle_request(&self, req: &[u8], rsp: &mut [u8]) -> SpdmResult<usize>;
 }
 
+/// Response payload buffers provided to a static-dispatch VDM backend.
+///
+/// `inline` is the normal one-message response payload area. `large`, when
+/// present, is backed by PAL persistent large-message storage and can be used
+/// for CHUNK_GET-served responses such as CSR data.
+pub struct VdmResponseBuffers<'a> {
+    /// Inline VDM response payload buffer.
+    pub inline: &'a mut [u8],
+    /// Optional large VDM response payload buffer.
+    pub large: Option<&'a mut [u8]>,
+}
+
+/// VDM backend response location and payload length.
+pub enum VdmResponseKind {
+    /// Backend wrote this many bytes into [`VdmResponseBuffers::inline`].
+    Inline(usize),
+    /// Backend wrote this many bytes into [`VdmResponseBuffers::large`].
+    Large(usize),
+}
+
 /// Static-dispatch VDM backend used by the spdm-lite dispatcher.
 ///
 /// Implementations may perform async work without heap allocation because the
@@ -57,7 +77,11 @@ pub trait SpdmVdmBackend: Sync {
     fn match_request(&self, req: &VdmRequest<'_>) -> bool;
 
     /// Handles a matched VDM request and writes only the VDM response payload.
-    async fn handle_request(&self, req: VdmRequest<'_>, rsp: &mut [u8]) -> SpdmResult<usize>;
+    async fn handle_request(
+        &self,
+        req: VdmRequest<'_>,
+        rsp: VdmResponseBuffers<'_>,
+    ) -> SpdmResult<VdmResponseKind>;
 }
 
 /// Sync-handler-table backend preserving `with_vdm_handlers` behavior.
@@ -81,7 +105,11 @@ impl SpdmVdmBackend for SyncVdmHandlers {
             .any(|handler| handler.match_id(req.standard_id, req.vendor_id, req.secure_session))
     }
 
-    async fn handle_request(&self, req: VdmRequest<'_>, rsp: &mut [u8]) -> SpdmResult<usize> {
+    async fn handle_request(
+        &self,
+        req: VdmRequest<'_>,
+        rsp: VdmResponseBuffers<'_>,
+    ) -> SpdmResult<VdmResponseKind> {
         let Some(handler) =
             self.handlers.iter().copied().find(|handler| {
                 handler.match_id(req.standard_id, req.vendor_id, req.secure_session)
@@ -89,7 +117,9 @@ impl SpdmVdmBackend for SyncVdmHandlers {
         else {
             return Err(SPDM_UNSUPPORTED_REQUEST);
         };
-        handler.handle_request(req.payload, rsp)
+        handler
+            .handle_request(req.payload, rsp.inline)
+            .map(VdmResponseKind::Inline)
     }
 }
 
@@ -164,7 +194,7 @@ fn unsupported_request<'a, Pal: SpdmPal>(
 }
 
 async fn build_vendor_defined_response<'a, Pal, Vdm>(
-    state: &ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     req: VdmRequest<'_>,
@@ -174,9 +204,10 @@ where
     Pal: SpdmPal,
     Vdm: SpdmVdmBackend,
 {
+    let vendor_id_len = req.vendor_id.len();
     let fixed_len = SpdmMsgHdrPdu::SIZE
         + VendorDefinedRspPdu::SIZE
-        + req.vendor_id.len()
+        + vendor_id_len
         + core::mem::size_of::<U16>();
     let max_rsp_len = effective_data_transfer_size(state, pal)
         .checked_sub(fixed_len)
@@ -187,34 +218,147 @@ where
 
     let head = pal.header_size();
     let mut rsp = pal.alloc_bytes(io, head + fixed_len + max_rsp_len)?;
-    let payload_len_offset =
-        head + SpdmMsgHdrPdu::SIZE + VendorDefinedRspPdu::SIZE + req.vendor_id.len();
+    let payload_len_pos = payload_len_offset(vendor_id_len);
+    let payload_len_offset = head + payload_len_pos;
     let payload_offset = payload_len_offset + core::mem::size_of::<U16>();
 
-    {
-        let mut writer = WireWriter::new(&mut rsp[head..payload_offset]);
-        writer.write(&SpdmMsgHdrPdu::new(
+    encode_vendor_defined_response_prefix(
+        &mut rsp[head..head + fixed_len],
+        state.version,
+        req.standard_id,
+        req.vendor_id,
+    )?;
+
+    let large_capacity = pal.large_message_capacity();
+    let large_total_len = if large_capacity >= fixed_len {
+        let large_rsp = pal.large_message_mut(large_capacity)?;
+        encode_vendor_defined_response_prefix(
+            large_rsp,
             state.version,
-            ReqRespCode::VENDOR_DEFINED_RESPONSE,
-        ))?;
-        writer.write(&VendorDefinedRspPdu {
-            param1: 0,
-            param2: 0,
-            standard_id: U16::new(req.standard_id.as_u16()),
-            vendor_id_len: req.vendor_id.len() as u8,
-        })?;
-        writer.write_bytes(req.vendor_id)?;
-        writer.write(&U16::new(0))?;
+            req.standard_id,
+            req.vendor_id,
+        )?;
+        let large_payload = &mut large_rsp[fixed_len..];
+        let response = backend
+            .handle_request(
+                req,
+                VdmResponseBuffers {
+                    inline: &mut rsp[payload_offset..],
+                    large: Some(large_payload),
+                },
+            )
+            .await?;
+        match response {
+            VdmResponseKind::Inline(rsp_len) => {
+                finish_inline_response::<Pal>(
+                    &mut rsp,
+                    head,
+                    fixed_len,
+                    payload_len_offset,
+                    max_rsp_len,
+                    rsp_len,
+                )?;
+                return Ok(rsp);
+            }
+            VdmResponseKind::Large(rsp_len) => {
+                if rsp_len > large_capacity - fixed_len || rsp_len > u16::MAX as usize {
+                    return Err(SPDM_UNSPECIFIED);
+                }
+                large_rsp[payload_len_pos..payload_len_pos + core::mem::size_of::<U16>()]
+                    .copy_from_slice(&(rsp_len as u16).to_le_bytes());
+                fixed_len + rsp_len
+            }
+        }
+    } else {
+        let response = backend
+            .handle_request(
+                req,
+                VdmResponseBuffers {
+                    inline: &mut rsp[payload_offset..],
+                    large: None,
+                },
+            )
+            .await?;
+        match response {
+            VdmResponseKind::Inline(rsp_len) => {
+                finish_inline_response::<Pal>(
+                    &mut rsp,
+                    head,
+                    fixed_len,
+                    payload_len_offset,
+                    max_rsp_len,
+                    rsp_len,
+                )?;
+                return Ok(rsp);
+            }
+            VdmResponseKind::Large(_) => return Err(SPDM_UNSPECIFIED),
+        }
+    };
+
+    if large_total_len <= fixed_len + max_rsp_len {
+        let large_rsp = pal.large_message(large_total_len)?;
+        rsp[head..head + large_total_len].copy_from_slice(large_rsp);
+        Pal::shrink_bytes(&mut rsp, head + large_total_len)?;
+        return Ok(rsp);
     }
 
-    let rsp_len = backend
-        .handle_request(req, &mut rsp[payload_offset..])
-        .await?;
+    let chunking =
+        state.cap_flags.contains(CapFlags::CHUNK) && state.peer_cap_flags.contains(CapFlags::CHUNK);
+    if !chunking {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    let handle = state.large_response.start_buffered(large_total_len);
+    build_error_response(
+        pal,
+        io,
+        state.version,
+        SPDM_LARGE_RESPONSE.spec_byte(),
+        0,
+        &[handle],
+    )
+}
+
+#[inline]
+fn payload_len_offset(vendor_id_len: usize) -> usize {
+    SpdmMsgHdrPdu::SIZE + VendorDefinedRspPdu::SIZE + vendor_id_len
+}
+
+fn encode_vendor_defined_response_prefix(
+    buf: &mut [u8],
+    version: mcu_spdm_lite_codec::SpdmVersion,
+    standard_id: StandardsBodyId,
+    vendor_id: &[u8],
+) -> SpdmResult<()> {
+    let fixed_len = payload_len_offset(vendor_id.len()) + core::mem::size_of::<U16>();
+    let mut writer = WireWriter::new(buf.get_mut(..fixed_len).ok_or(SPDM_UNSPECIFIED)?);
+    writer.write(&SpdmMsgHdrPdu::new(
+        version,
+        ReqRespCode::VENDOR_DEFINED_RESPONSE,
+    ))?;
+    writer.write(&VendorDefinedRspPdu {
+        param1: 0,
+        param2: 0,
+        standard_id: U16::new(standard_id.as_u16()),
+        vendor_id_len: vendor_id.len() as u8,
+    })?;
+    writer.write_bytes(vendor_id)?;
+    writer.write(&U16::new(0))?;
+    Ok(())
+}
+
+fn finish_inline_response<Pal: SpdmPal>(
+    rsp: &mut PalBytes<'_, Pal>,
+    head: usize,
+    fixed_len: usize,
+    payload_len_offset: usize,
+    max_rsp_len: usize,
+    rsp_len: usize,
+) -> SpdmResult<()> {
     if rsp_len > max_rsp_len || rsp_len > u16::MAX as usize {
         return Err(SPDM_UNSPECIFIED);
     }
     rsp[payload_len_offset..payload_len_offset + core::mem::size_of::<U16>()]
         .copy_from_slice(&(rsp_len as u16).to_le_bytes());
-    Pal::shrink_bytes(&mut rsp, head + fixed_len + rsp_len)?;
-    Ok(rsp)
+    Pal::shrink_bytes(rsp, head + fixed_len + rsp_len)?;
+    Ok(())
 }
