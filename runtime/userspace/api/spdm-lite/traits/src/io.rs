@@ -64,6 +64,15 @@ pub trait SpdmPalIoTransport {
     /// `buf[0..header_size()]` in place.
     fn header_size(&self) -> usize;
 
+    /// Required length-alignment for outbound message buffers.
+    ///
+    /// The response builder rounds up allocations to this multiple
+    /// so the transport receives a correctly-sized buffer.
+    /// DOE returns 4 (DWORD). Defaults to 1 (no padding).
+    fn send_len_alignment(&self) -> usize {
+        1
+    }
+
     /// Maximum SPDM payload the underlying transport will carry in a
     /// single message, excluding [`Self::header_size`] framing.
     /// Used by the SPDM stack to populate the `DataTransferSize` /

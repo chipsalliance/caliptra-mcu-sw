@@ -69,9 +69,7 @@ impl SpdmPalCertStore for McuSpdmPal {
         // Probe DPE chain length + measure leaf-cert size.
         let dpe_len = walk_dpe_chain(self, &mut CountSink).await?;
         let leaf_len = probe_leaf_len(self).await?;
-        let total = dpe_len
-            .checked_add(leaf_len as u32)
-            .ok_or(INVARIANT)? as usize;
+        let total = dpe_len.checked_add(leaf_len as u32).ok_or(INVARIANT)? as usize;
         self.set_cached_chain_len(slot, total as u32);
         Ok(total)
     }
@@ -296,15 +294,18 @@ mod tests {
     #[test]
     fn der_long_form_two_byte_len() {
         // SEQUENCE, length-of-length = 2, content_len = 0x0102 = 258
-        let mut buf = vec![0x30, 0x82, 0x01, 0x02];
-        buf.resize(2 + 2 + 258, 0);
+        let mut buf = [0u8; 2 + 2 + 258];
+        buf[0] = 0x30;
+        buf[1] = 0x82;
+        buf[2] = 0x01;
+        buf[3] = 0x02;
         assert_eq!(der_first_seq_len(&buf), Some(2 + 2 + 258));
     }
 
     #[test]
     fn der_malformed_returns_none() {
         assert_eq!(der_first_seq_len(&[]), None);
-        assert_eq!(der_first_seq_len(&[0x31, 0x01]), None);  // wrong tag
-        assert_eq!(der_first_seq_len(&[0x30]), None);        // truncated
+        assert_eq!(der_first_seq_len(&[0x31, 0x01]), None); // wrong tag
+        assert_eq!(der_first_seq_len(&[0x30]), None); // truncated
     }
 }

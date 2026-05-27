@@ -58,8 +58,8 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    let slot_size_only = state.version >= SpdmVersion::V13
-        && (req_body.attributes & ATTR_SLOT_SIZE_REQUESTED) != 0;
+    let slot_size_only =
+        state.version >= SpdmVersion::V13 && (req_body.attributes & ATTR_SLOT_SIZE_REQUESTED) != 0;
 
     // Total SPDM cert chain length = 52-byte header + raw DER chain.
     let der_len = pal
@@ -82,9 +82,7 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
         let remaining = total_len - off;
         // Cap to fit in the negotiated MTU (response header is the
         // 2-byte SPDM common header + 6-byte CERTIFICATE body header).
-        let max_per_resp = pal
-            .mtu()
-            .saturating_sub(SpdmMsgHdrPdu::SIZE + 6) as u16;
+        let max_per_resp = pal.mtu().saturating_sub(SpdmMsgHdrPdu::SIZE + 6) as u16;
         let portion = req_body.length.get().min(remaining).min(max_per_resp);
         (off, portion, remaining - portion)
     };
@@ -134,7 +132,9 @@ async fn fill_cert_chain_portion<Pal: SpdmPal>(
 ) -> mcu_error::McuResult<()> {
     let der_len = pal.cert_chain_len(io, slot).await?;
     let total_len = SPDM_CERT_CHAIN_HDR_LEN + der_len;
-    let end = offset.checked_add(dst.len()).ok_or(mcu_error::codes::INVARIANT)?;
+    let end = offset
+        .checked_add(dst.len())
+        .ok_or(mcu_error::codes::INVARIANT)?;
     if end > total_len {
         return Err(mcu_error::codes::INVARIANT);
     }

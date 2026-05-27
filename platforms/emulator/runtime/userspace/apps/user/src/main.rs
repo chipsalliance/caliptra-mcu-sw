@@ -111,7 +111,7 @@ pub(crate) async fn async_main() {
         feature = "test-firmware-update-flash",
         feature = "test-streaming-boot-flash-write-back",
     )))]
-    EXECUTOR.get().spawner().spawn(spdm::spdm_task()).unwrap();
+    spdm::spawn_spdm_tasks(&EXECUTOR.get().spawner());
 
     EXECUTOR
         .get()

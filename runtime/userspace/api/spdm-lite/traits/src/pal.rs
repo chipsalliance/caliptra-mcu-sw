@@ -19,7 +19,4 @@ use super::*;
 /// As the stack evolves, additional super-traits (e.g., for cryptographic
 /// operations or certificate provisioning) may be added here, keeping
 /// downstream consumers bound to a single `SpdmPal` constraint.
-pub trait SpdmPal:
-    SpdmPalAlloc + SpdmPalIoTransport + SpdmPalHash + SpdmPalCertStore
-{
-}
+pub trait SpdmPal: SpdmPalAlloc + SpdmPalIoTransport + SpdmPalHash + SpdmPalCertStore {}

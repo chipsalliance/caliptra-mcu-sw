@@ -40,3 +40,22 @@ pub mod mctp {
     pub const BUFFER_TOO_SMALL: McuErrorCode =
         McuErrorCode::new(domain::SPDM, SUBDOMAIN_MCTP, 0x0005);
 }
+
+/// Error codes returned by [`crate::doe::McuSpdmDoeTransport`].
+pub mod doe {
+    use super::{domain, McuErrorCode};
+    use mcu_spdm_lite_errors::SUBDOMAIN_DOE;
+
+    /// The received DOE data object type is not SPDM or Secure SPDM.
+    pub const UNEXPECTED_OBJECT_TYPE: McuErrorCode =
+        McuErrorCode::new(domain::SPDM, SUBDOMAIN_DOE, 0x0001);
+
+    /// The received message is malformed (shorter than the DOE header,
+    /// or longer than the receive buffer).
+    pub const INVALID_MESSAGE: McuErrorCode =
+        McuErrorCode::new(domain::SPDM, SUBDOMAIN_DOE, 0x0002);
+
+    /// The caller-provided receive buffer is too small.
+    pub const BUFFER_TOO_SMALL: McuErrorCode =
+        McuErrorCode::new(domain::SPDM, SUBDOMAIN_DOE, 0x0003);
+}
