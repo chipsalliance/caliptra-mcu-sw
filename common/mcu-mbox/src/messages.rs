@@ -22,7 +22,10 @@ pub use caliptra_api::mailbox::{
     MAX_CMB_DATA_SIZE,
 };
 pub use caliptra_api::{calc_checksum, verify_checksum};
-use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0;
+// SVP: antmicro OTP layout numbers vendor PK hashes 1..4 (no slot 0); slot 1
+// exists in both upstream and antmicro and has the same byte_size (48), so use
+// it to size the hash field below.
+use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_1;
 use core::convert::From;
 use core::num::NonZeroU32;
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout};
@@ -1601,7 +1604,7 @@ pub struct ProvisionVendorPkHashReq {
     /// The vendor PK hash slot to use
     pub slot: u32,
     /// New vendor PK hash
-    pub hash: [u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size],
+    pub hash: [u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_1.byte_size],
 }
 impl Request for ProvisionVendorPkHashReq {
     const ID: CommandId = CommandId::MC_PROVISION_VENDOR_PK_HASH;
