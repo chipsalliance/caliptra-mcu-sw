@@ -32,6 +32,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mctp-ctrl-cmds",
     "test-mctp-user-loopback",
     "test-mctp-vdm-cmds",
+    "test-mctp-spdm-set-certificate",
     "test-pldm-discovery",
     "test-pldm-fw-update",
     "test-mci",
@@ -63,6 +64,7 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mctp-spdm-attestation",
     "test-mctp-spdm-attestation-pcr-quote",
     "test-mctp-spdm-responder-conformance",
+    "test-mctp-spdm-set-certificate",
 ];
 
 /// Release-profile runtime test features (emulator).
