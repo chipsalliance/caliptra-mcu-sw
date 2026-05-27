@@ -1644,7 +1644,14 @@ unsafe fn convert_c_string(c_str: *const c_char) -> Result<String, std::str::Utf
 }
 
 unsafe fn convert_optional_c_string(c_str: *const c_char) -> Option<String> {
-    if c_str.is_null() {
+    // SVP: treat both NULL and the all-0xff "uninitialized" sentinel as None,
+    // mirroring how convert_optional_offset_size treats -1. This guards
+    // against ABI version skew: if a C++ caller was compiled against an older
+    // CEmulatorConfig layout (missing one of the newer optional-string fields
+    // we've added), the field will read uninitialized adjacent memory, which
+    // commonly comes back as 0xffff_ffff_ffff_ffff and would otherwise be
+    // dereferenced by strlen.
+    if c_str.is_null() || c_str as usize == usize::MAX {
         None
     } else {
         convert_c_string(c_str).ok()
