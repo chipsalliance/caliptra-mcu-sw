@@ -9,6 +9,7 @@
 
 extern crate alloc;
 
+use crate::caliptra_cmd_handler::CaliptraOcpVdm;
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -54,9 +55,8 @@ async fn spdm_mctp_responder() {
     // SAFETY: this task is the sole owner of `MCTP_SCRATCH` and
     // `MCTP_LARGE_MSG`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(MCTP_SCRATCH.0.as_mut_ptr()) };
-    let large_msg_ptr: NonNull<u8> = unsafe {
-        NonNull::new_unchecked(MCTP_LARGE_MSG.0.as_mut_ptr())
-    };
+    let large_msg_ptr: NonNull<u8> =
+        unsafe { NonNull::new_unchecked(MCTP_LARGE_MSG.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
     let transport = alloc::boxed::Box::new(
@@ -79,7 +79,7 @@ async fn spdm_mctp_responder() {
             SPDM_LITE_LARGE_MSG_SIZE,
         )
     };
-    let mut stack = SpdmStack::new(pal);
+    let mut stack = SpdmStack::with_vdm_backend(pal, CaliptraOcpVdm);
 
     crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lite MCTP run loop");
     if let Err(e) = stack.run().await {
@@ -110,7 +110,8 @@ async fn spdm_doe_responder() {
 
     // SAFETY: this task is the sole owner of `DOE_SCRATCH` and `DOE_LARGE_MSG`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(DOE_SCRATCH.0.as_mut_ptr()) };
-    let large_msg_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(DOE_LARGE_MSG.0.as_mut_ptr()) };
+    let large_msg_ptr: NonNull<u8> =
+        unsafe { NonNull::new_unchecked(DOE_LARGE_MSG.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
     let transport = alloc::boxed::Box::new(doe_transport);
@@ -126,7 +127,7 @@ async fn spdm_doe_responder() {
             SPDM_LITE_LARGE_MSG_SIZE,
         )
     };
-    let mut stack = SpdmStack::new(pal);
+    let mut stack = SpdmStack::with_vdm_backend(pal, CaliptraOcpVdm);
 
     crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lite DOE run loop");
     if let Err(e) = stack.run().await {
