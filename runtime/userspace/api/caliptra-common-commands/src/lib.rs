@@ -200,25 +200,3 @@ pub trait CommandAuthorizer {
     /// Set the challenge nonce to be used on the next authorized command.
     fn set_challenge(&mut self, challenge: [u8; 32]);
 }
-
-pub struct AuthorizationError;
-
-pub trait CommandAuthorizer {
-    /// Validates if a message is authorized.
-    ///
-    /// The request can contain authorization data (e.g. a HMAC).
-    /// This method is responsible for unpacking the contained
-    /// request message and returning it as a slice.
-    ///
-    /// # Arguments
-    /// * `cmd_id` - Command identifier
-    /// * `req` - Message to be authorized
-    ///
-    /// # Returns
-    /// * `Result<&[u8], CommandError>` - Unpacked command or Error
-    fn is_authorized<'a>(
-        &self,
-        cmd_id: CommandId,
-        req: &'a [u8],
-    ) -> Result<&'a [u8], AuthorizationError>;
-}
