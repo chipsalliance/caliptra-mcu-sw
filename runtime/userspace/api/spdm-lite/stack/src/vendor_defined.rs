@@ -133,13 +133,48 @@ where
     Pal: SpdmPal,
     Vdm: SpdmVdmBackend,
 {
-    if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
-        return Err(SPDM_UNEXPECTED_REQUEST);
+    if io.request().len() > pal.mtu() {
+        return Err(SPDM_INVALID_REQUEST);
     }
 
-    let req = io.request();
-    if req.len() > pal.mtu() {
-        return Err(SPDM_INVALID_REQUEST);
+    let vdm_req = match decode_vendor_defined_request::<Pal, Vdm>(state, io, io.request(), backend)
+    {
+        Ok(req) => req,
+        Err(e) if e == SPDM_UNSUPPORTED_REQUEST => {
+            return unsupported_request(pal, io, state.version)
+        }
+        Err(e) => return Err(e),
+    };
+    build_vendor_defined_response(state, pal, io, vdm_req, backend).await
+}
+
+pub(crate) async fn handle_large_vendor_defined_request<Pal, Vdm>(
+    state: &ConnectionState<Pal::State>,
+    io: &impl SpdmPalIo,
+    req: &[u8],
+    backend: &Vdm,
+    out: &mut [u8],
+) -> SpdmResult<usize>
+where
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+{
+    let vdm_req = decode_vendor_defined_request::<Pal, Vdm>(state, io, req, backend)?;
+    build_vendor_defined_response_into(state, vdm_req, backend, out).await
+}
+
+fn decode_vendor_defined_request<'a, Pal, Vdm>(
+    state: &ConnectionState<Pal::State>,
+    io: &impl SpdmPalIo,
+    req: &'a [u8],
+    backend: &Vdm,
+) -> SpdmResult<VdmRequest<'a>>
+where
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+{
+    if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
+        return Err(SPDM_UNEXPECTED_REQUEST);
     }
 
     let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
@@ -152,7 +187,7 @@ where
     let standard_id =
         StandardsBodyId::from_u16(req_pdu.standard_id.get()).ok_or(SPDM_INVALID_REQUEST)?;
     let Some(expected_vendor_id_len) = standard_id.vendor_id_len() else {
-        return unsupported_request(pal, io, state.version);
+        return Err(SPDM_UNSUPPORTED_REQUEST);
     };
     if req_pdu.vendor_id_len != expected_vendor_id_len {
         return Err(SPDM_INVALID_REQUEST);
@@ -172,10 +207,9 @@ where
         payload: vdm_payload,
     };
     if !backend.match_request(&vdm_req) {
-        return unsupported_request(pal, io, state.version);
+        return Err(SPDM_UNSUPPORTED_REQUEST);
     }
-
-    build_vendor_defined_response(state, pal, io, vdm_req, backend).await
+    Ok(vdm_req)
 }
 
 fn unsupported_request<'a, Pal: SpdmPal>(
@@ -318,6 +352,54 @@ where
         0,
         &[handle],
     )
+}
+
+async fn build_vendor_defined_response_into<Vdm>(
+    state: &ConnectionState<impl Clone>,
+    req: VdmRequest<'_>,
+    backend: &Vdm,
+    out: &mut [u8],
+) -> SpdmResult<usize>
+where
+    Vdm: SpdmVdmBackend,
+{
+    let vendor_id_len = req.vendor_id.len();
+    let fixed_len = SpdmMsgHdrPdu::SIZE
+        + VendorDefinedRspPdu::SIZE
+        + vendor_id_len
+        + core::mem::size_of::<U16>();
+    let max_rsp_len = out.len().checked_sub(fixed_len).ok_or(SPDM_UNSPECIFIED)?;
+    if max_rsp_len > u16::MAX as usize {
+        return Err(SPDM_UNSPECIFIED);
+    }
+
+    let payload_len_pos = payload_len_offset(vendor_id_len);
+    let payload_offset = payload_len_pos + core::mem::size_of::<U16>();
+    encode_vendor_defined_response_prefix(
+        &mut out[..fixed_len],
+        state.version,
+        req.standard_id,
+        req.vendor_id,
+    )?;
+
+    let response = backend
+        .handle_request(
+            req,
+            VdmResponseBuffers {
+                inline: &mut out[payload_offset..payload_offset + max_rsp_len],
+                large: None,
+            },
+        )
+        .await?;
+    let VdmResponseKind::Inline(rsp_len) = response else {
+        return Err(SPDM_UNSPECIFIED);
+    };
+    if rsp_len > max_rsp_len || rsp_len > u16::MAX as usize {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    out[payload_len_pos..payload_len_pos + core::mem::size_of::<U16>()]
+        .copy_from_slice(&(rsp_len as u16).to_le_bytes());
+    Ok(fixed_len + rsp_len)
 }
 
 #[inline]
