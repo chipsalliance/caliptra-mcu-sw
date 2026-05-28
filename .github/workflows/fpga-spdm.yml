@@ -127,6 +127,10 @@ jobs:
           mv subsystem.pdi /tmp/caliptra-bitstream.pdi
 
       - name: Build test firmware
+        env:
+          RUNTIME_FEATURES: >-
+            test-mctp-spdm-attestation,test-mctp-spdm-responder-conformance,
+            test-exit-immediately
         run: |
           # In the CI we really want to avoid lengthy build steps.
           # Vendoring OpenSSL is a huge time sink, and instead linking a prebuilt
@@ -143,6 +147,7 @@ jobs:
           echo "Cross compiling FPGA binaries"
           cargo xtask-fpga all-build --platform fpga \
             --rom-features "core_test" \
+            --runtime-features "${RUNTIME_FEATURES// /}" \
             --mcu_cfg mcu,0x0,0xB00C0000,2,2,2,test-fpga-flash-ctrl \
             --separate-runtimes
           sccache --show-stats
@@ -152,7 +157,12 @@ jobs:
             target/all-fw.zip
 
           echo "Cross compiling test binaries"
-          cargo xtask-fpga fpga build-test
+          FEATURES="fpga_realtime"
+          cargo nextest archive \
+            --features=${FEATURES} \
+            --release \
+            --target=aarch64-unknown-linux-gnu \
+            --archive-file=caliptra-test-binaries.tar.zst
           sccache --show-stats
 
           echo "Cross compiling xtask for FPGA"
