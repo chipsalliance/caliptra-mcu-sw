@@ -97,8 +97,16 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
         )
         .await
         .map_err(map_set_cert_validation_error)?;
-        pal.write_cert_chain(io, slot_id, state.asym_algo(), der)
-            .await?;
+        pal.write_cert_chain(
+            io,
+            slot_id,
+            state.asym_algo(),
+            req_body.key_pair_id,
+            cert_model,
+            &root_hash,
+            der,
+        )
+        .await?;
     }
 
     build_response(pal, io, state.version, &SetCertificateRsp { slot_id })
@@ -360,7 +368,6 @@ mod tests {
         validate_error: Option<McuErrorCode>,
         write_error: Option<McuErrorCode>,
         erase_error: Option<McuErrorCode>,
-        pending_write_metadata: RefCell<Option<(u8, u8, [u8; SHA384_DIGEST_SIZE])>>,
         op: RefCell<Option<StoreOp>>,
     }
 
@@ -374,7 +381,6 @@ mod tests {
                 validate_error: None,
                 write_error: None,
                 erase_error: None,
-                pending_write_metadata: RefCell::new(None),
                 op: RefCell::new(None),
             }
         }
@@ -498,16 +504,14 @@ mod tests {
             &self,
             _io: &Self::Io<'_>,
             _slot: u8,
-            key_pair_id: u8,
-            cert_model: u8,
-            root_hash: &[u8; SHA384_DIGEST_SIZE],
+            _key_pair_id: u8,
+            _cert_model: u8,
+            _root_hash: &[u8; SHA384_DIGEST_SIZE],
             _cert_chain: &[u8],
         ) -> McuResult<()> {
             if let Some(err) = self.validate_error {
                 Err(err)
             } else {
-                self.pending_write_metadata
-                    .replace(Some((key_pair_id, cert_model, *root_hash)));
                 Ok(())
             }
         }
@@ -559,20 +563,19 @@ mod tests {
             _io: &Self::Io<'_>,
             slot: u8,
             _algo: SpdmPalAsymAlgo,
+            key_pair_id: u8,
+            cert_model: u8,
+            root_hash: &[u8; SHA384_DIGEST_SIZE],
             cert_chain: &[u8],
         ) -> McuResult<()> {
             if let Some(err) = self.write_error {
                 return Err(err);
             }
-            let (key_pair_id, cert_model, root_hash) = self
-                .pending_write_metadata
-                .take()
-                .unwrap_or((0, 0, [0; SHA384_DIGEST_SIZE]));
             self.op.replace(Some(StoreOp::Write {
                 slot,
                 key_pair_id,
                 cert_model,
-                root_hash,
+                root_hash: *root_hash,
                 cert_chain: cert_chain.to_vec(),
             }));
             Ok(())
@@ -601,6 +604,11 @@ mod tests {
 
         fn key_usage_mask(&self, _slot: u8) -> Option<u16> {
             None
+        }
+
+        async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
+            out.fill(0xA5);
+            Ok(())
         }
     }
 

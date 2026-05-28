@@ -7,7 +7,9 @@
 //! array. Chunk buffers come from the per-IO bitmap pool — no
 //! stack-allocated `[u8; N]` arrays for cert content.
 
-use mcu_spdm_lite_codec::{DigestsRsp, OtherParamSupport, ResponseBody, SpdmMsgHdrPdu, SpdmVersion};
+use mcu_spdm_lite_codec::{
+    DigestsRsp, OtherParamSupport, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
+};
 use mcu_spdm_lite_traits::{
     PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
 };

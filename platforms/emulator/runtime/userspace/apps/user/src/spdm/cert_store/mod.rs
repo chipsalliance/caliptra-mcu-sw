@@ -10,6 +10,8 @@
 
 mod endorsement_certs;
 
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+use caliptra_mcu_config_emulator::flash::CERT_STORE_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use mcu_caliptra_api_lite::{populate_idev_ecc384_cert, ApiAlloc};
@@ -29,6 +31,11 @@ const ECC_DEVID_CERT_SIZE: usize = 547;
 
 /// OTP partition ID for the IDevID ECC certificate.
 const OTP_IDEVID_ECC_PARTITION: u32 = 0x01;
+
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+const MANAGED_SLOT_COUNT: usize = 2;
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+const MANAGED_SLOT_REGION_SIZE: usize = CERT_STORE_PARTITION.size / MANAGED_SLOT_COUNT;
 
 /// Initialize the cert store for all 3 slots.
 ///
@@ -61,8 +68,30 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
         }
     }
 
-    // Slots 1-2 (Owner/Tenant): Managed endorsement, initially empty.
-    // TODO: load existing managed endorsements from flash here.
+    // Slots 1-2 (Owner/Tenant): Managed endorsement, initially empty or loaded
+    // from the cert-store flash partition. This remains test-only until a
+    // production authorization/key-binding policy exists.
+    #[cfg(feature = "test-mctp-spdm-set-certificate")]
+    {
+        store
+            .set_managed_endorsement(
+                1,
+                OWNER_SPDM_SLOT,
+                CERT_STORE_PARTITION.driver_num,
+                0,
+                MANAGED_SLOT_REGION_SIZE,
+            )
+            .await?;
+        store
+            .set_managed_endorsement(
+                2,
+                TENANT_SPDM_SLOT,
+                CERT_STORE_PARTITION.driver_num,
+                MANAGED_SLOT_REGION_SIZE,
+                MANAGED_SLOT_REGION_SIZE,
+            )
+            .await?;
+    }
 
     Ok(())
 }

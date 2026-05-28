@@ -162,11 +162,15 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
 
     /// Write a cert chain into `slot` for the given algorithm.
     /// Used by SET_CERTIFICATE.
+    #[allow(clippy::too_many_arguments)]
     async fn write_cert_chain(
         &self,
         io: &Self::Io<'_>,
         slot: u8,
         algo: SpdmPalAsymAlgo,
+        key_pair_id: u8,
+        cert_info: u8,
+        root_hash: &[u8; 48],
         data: &[u8],
     ) -> McuResult<()>;
 
