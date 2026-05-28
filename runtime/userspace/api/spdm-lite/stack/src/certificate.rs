@@ -11,7 +11,8 @@
 //! stack-allocated `[u8; N]` array for cert payload.
 
 use mcu_spdm_lite_codec::{
-    CertificateRsp, GetCertificateReqBody, SpdmMsgHdrPdu, SpdmVersion, ATTR_SLOT_SIZE_REQUESTED,
+    CertificateRsp, GetCertificateReqBody, OtherParamSupport, SpdmMsgHdrPdu, SpdmVersion,
+    ATTR_SLOT_SIZE_REQUESTED,
 };
 use mcu_spdm_lite_traits::{
     PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
@@ -102,9 +103,11 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
         state.version,
         &CertificateRsp {
             slot_id,
-            // Param2: we don't yet expose CertModel — leave 0
-            // (Reserved on V1.0-V1.2; CertModel=0 on V1.3).
-            param2: 0,
+            param2: if multi_key_conn_rsp(state) {
+                pal.cert_info(slot_id).unwrap_or_default()
+            } else {
+                0
+            },
             portion_length: portion_len,
             remainder_length: remainder_len,
             chain_portion: &portion,
@@ -119,6 +122,15 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
 
     state.phase = Phase::AfterCertificate;
     Ok(resp)
+}
+
+fn multi_key_conn_rsp<S: Clone>(state: &ConnectionState<S>) -> bool {
+    state.version >= SpdmVersion::V13
+        && state
+            .other_param_sel
+            .contains(OtherParamSupport::MULTI_KEY_CONN)
+        && state.advertised_cap_flags.multi_key_conn_rsp()
+        && state.peer_cap_flags.multi_key_conn_rsp()
 }
 
 /// Splice the SPDM cert-chain header (first 52 bytes) with raw DER

@@ -65,8 +65,7 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
         .ok_or(SPDM_INVALID_REQUEST)?;
 
     let slot_id = req_body.slot_id();
-    validate_request_attributes(state, req_body, slot_id, pal.supported_slots())?;
-    validate_negotiated_set_certificate_algorithms(state)?;
+    validate_request_slot(slot_id, pal.supported_slots())?;
 
     let erase = req_body.erase();
     let cert_model = if erase {
@@ -77,6 +76,9 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
     if !pal.set_certificate_authorized(io, slot_id, req_body.key_pair_id, cert_model, erase) {
         return Err(SPDM_SESSION_REQUIRED);
     }
+
+    validate_request_attributes(state, req_body)?;
+    validate_negotiated_set_certificate_algorithms(state)?;
 
     if erase {
         if !payload.is_empty() || req_body.cert_model() != 0 {
@@ -106,19 +108,20 @@ fn unsupported_set_certificate() -> SpdmError {
     SPDM_UNSUPPORTED_REQUEST.with_data(ReqRespCode::SET_CERTIFICATE.0)
 }
 
-fn validate_request_attributes<S: Clone>(
-    state: &ConnectionState<S>,
-    req: &SetCertificateReqBody,
-    slot_id: u8,
-    supported_slots: u8,
-) -> SpdmResult<()> {
+fn validate_request_slot(slot_id: u8, supported_slots: u8) -> SpdmResult<()> {
     if slot_id == 0 || slot_id >= MAX_SLOTS {
         return Err(SPDM_INVALID_REQUEST);
     }
     if supported_slots & (1u8 << slot_id) == 0 {
         return Err(SPDM_INVALID_REQUEST);
     }
+    Ok(())
+}
 
+fn validate_request_attributes<S: Clone>(
+    state: &ConnectionState<S>,
+    req: &SetCertificateReqBody,
+) -> SpdmResult<()> {
     if state.version < SpdmVersion::V13 {
         if req.key_pair_id != 0 || req.cert_model() != 0 || req.erase() {
             return Err(SPDM_INVALID_REQUEST);
@@ -146,7 +149,7 @@ fn effective_cert_model<S: Clone>(state: &ConnectionState<S>, req: &SetCertifica
     if multi_key_conn_rsp(state) && req.cert_model() != 0 {
         req.cert_model()
     } else {
-        cert_model_from_capabilities(state.cap_flags)
+        cert_model_from_capabilities(state.advertised_cap_flags)
     }
 }
 
@@ -161,10 +164,11 @@ fn cert_model_from_capabilities(cap_flags: CapFlags) -> u8 {
 fn validate_negotiated_set_certificate_algorithms<S: Clone>(
     state: &ConnectionState<S>,
 ) -> SpdmResult<()> {
-    if state.negotiated_base_hash_sel != HashAlgos::SHA_384
-        || state.negotiated_base_asym_sel != AsymAlgos::ECDSA_ECC_NIST_P384
-    {
+    if state.negotiated_base_hash_sel != HashAlgos::SHA_384 {
         return Err(SPDM_UNSPECIFIED);
+    }
+    if state.negotiated_base_asym_sel != AsymAlgos::ECDSA_ECC_NIST_P384 {
+        return Err(SPDM_INVALID_REQUEST);
     }
     Ok(())
 }
@@ -174,7 +178,7 @@ fn multi_key_conn_rsp<S: Clone>(state: &ConnectionState<S>) -> bool {
         && state
             .other_param_sel
             .contains(OtherParamSupport::MULTI_KEY_CONN)
-        && state.cap_flags.multi_key_conn_rsp()
+        && state.advertised_cap_flags.multi_key_conn_rsp()
         && state.peer_cap_flags.multi_key_conn_rsp()
 }
 
@@ -289,7 +293,7 @@ mod tests {
     use mcu_error::McuErrorCode;
     use mcu_spdm_lite_codec::{errors as wire_errors, ReqRespCode};
     use mcu_spdm_lite_traits::{
-        McuResult, SpdmPalAlloc, SpdmPalCertStore, SpdmPalHash, SpdmPalIoKind,
+        McuResult, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash, SpdmPalIoKind,
     };
     use std::boxed::Box;
     use std::cell::RefCell;
@@ -356,6 +360,7 @@ mod tests {
         validate_error: Option<McuErrorCode>,
         write_error: Option<McuErrorCode>,
         erase_error: Option<McuErrorCode>,
+        pending_write_metadata: RefCell<Option<(u8, u8, [u8; SHA384_DIGEST_SIZE])>>,
         op: RefCell<Option<StoreOp>>,
     }
 
@@ -369,6 +374,7 @@ mod tests {
                 validate_error: None,
                 write_error: None,
                 erase_error: None,
+                pending_write_metadata: RefCell::new(None),
                 op: RefCell::new(None),
             }
         }
@@ -492,19 +498,26 @@ mod tests {
             &self,
             _io: &Self::Io<'_>,
             _slot: u8,
-            _key_pair_id: u8,
-            _cert_model: u8,
-            _root_hash: &[u8; SHA384_DIGEST_SIZE],
+            key_pair_id: u8,
+            cert_model: u8,
+            root_hash: &[u8; SHA384_DIGEST_SIZE],
             _cert_chain: &[u8],
         ) -> McuResult<()> {
             if let Some(err) = self.validate_error {
                 Err(err)
             } else {
+                self.pending_write_metadata
+                    .replace(Some((key_pair_id, cert_model, *root_hash)));
                 Ok(())
             }
         }
 
-        async fn cert_chain_len(&self, _io: &Self::Io<'_>, _slot: u8) -> McuResult<usize> {
+        async fn cert_chain_len(
+            &self,
+            _io: &Self::Io<'_>,
+            _slot: u8,
+            _algo: SpdmPalAsymAlgo,
+        ) -> McuResult<usize> {
             Err(mcu_error::codes::NOT_IMPLEMENTED)
         }
 
@@ -512,7 +525,8 @@ mod tests {
             &self,
             _io: &Self::Io<'_>,
             _slot: u8,
-            _algo: SpdmPalHashAlgo,
+            _algo: SpdmPalAsymAlgo,
+            _hash_algo: SpdmPalHashAlgo,
             _out: &mut [u8],
         ) -> McuResult<()> {
             Err(mcu_error::codes::NOT_IMPLEMENTED)
@@ -522,8 +536,20 @@ mod tests {
             &self,
             _io: &Self::Io<'_>,
             _slot: u8,
+            _algo: SpdmPalAsymAlgo,
             _offset: usize,
             _dst: &mut [u8],
+        ) -> McuResult<usize> {
+            Err(mcu_error::codes::NOT_IMPLEMENTED)
+        }
+
+        async fn sign_hash(
+            &self,
+            _io: &Self::Io<'_>,
+            _slot: u8,
+            _algo: SpdmPalAsymAlgo,
+            _digest: &[u8],
+            _signature: &mut [u8],
         ) -> McuResult<usize> {
             Err(mcu_error::codes::NOT_IMPLEMENTED)
         }
@@ -532,30 +558,49 @@ mod tests {
             &self,
             _io: &Self::Io<'_>,
             slot: u8,
-            key_pair_id: u8,
-            cert_model: u8,
-            root_hash: &[u8; SHA384_DIGEST_SIZE],
+            _algo: SpdmPalAsymAlgo,
             cert_chain: &[u8],
         ) -> McuResult<()> {
             if let Some(err) = self.write_error {
                 return Err(err);
             }
+            let (key_pair_id, cert_model, root_hash) = self
+                .pending_write_metadata
+                .take()
+                .unwrap_or((0, 0, [0; SHA384_DIGEST_SIZE]));
             self.op.replace(Some(StoreOp::Write {
                 slot,
                 key_pair_id,
                 cert_model,
-                root_hash: *root_hash,
+                root_hash,
                 cert_chain: cert_chain.to_vec(),
             }));
             Ok(())
         }
 
-        async fn erase_cert_chain(&self, _io: &Self::Io<'_>, slot: u8) -> McuResult<()> {
+        async fn erase_cert_chain(
+            &self,
+            _io: &Self::Io<'_>,
+            slot: u8,
+            _algo: SpdmPalAsymAlgo,
+        ) -> McuResult<()> {
             if let Some(err) = self.erase_error {
                 return Err(err);
             }
             self.op.replace(Some(StoreOp::Erase { slot }));
             Ok(())
+        }
+
+        fn key_pair_id(&self, _slot: u8) -> Option<u8> {
+            None
+        }
+
+        fn cert_info(&self, _slot: u8) -> Option<u8> {
+            None
+        }
+
+        fn key_usage_mask(&self, _slot: u8) -> Option<u16> {
+            None
         }
     }
 
@@ -573,6 +618,7 @@ mod tests {
         let mut state = ConnectionState::default();
         state.phase = Phase::AfterAlgorithms;
         state.version = version;
+        state.advertised_cap_flags = state.cap_flags;
         state.negotiated_base_hash_sel = HashAlgos::SHA_384;
         state.negotiated_base_asym_sel = AsymAlgos::ECDSA_ECC_NIST_P384;
         state
@@ -646,7 +692,7 @@ mod tests {
     fn test_handle_set_certificate_v12_uses_device_cert_without_alias_cap() {
         let pal = TestPal::default();
         let mut state = state(SpdmVersion::V12);
-        state.cap_flags = CapFlags::CERT
+        state.advertised_cap_flags = CapFlags::CERT
             | CapFlags::CHAL
             | CapFlags::MEAS_SIG
             | CapFlags::SET_CERT
@@ -691,6 +737,27 @@ mod tests {
                 cert_chain: der,
             })
         );
+    }
+
+    #[test]
+    fn test_handle_set_certificate_v13_rejects_multikey_when_not_advertised() {
+        let pal = TestPal::default();
+        let mut state = state_v13_multi_key();
+        state.advertised_cap_flags = CapFlags::CERT
+            | CapFlags::CHAL
+            | CapFlags::MEAS_SIG
+            | CapFlags::ALIAS_CERT
+            | CapFlags::SET_CERT;
+        let der = der_chain();
+        let root_hash = test_digest(&der[..5]);
+        let payload = cert_payload(&der, root_hash);
+        let attributes = 2 | (CERT_MODEL_GENERIC_CERT << 4);
+        let io = request(SpdmVersion::V13, attributes, 7, &payload);
+
+        let err = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap_err();
+
+        assert_eq!(err, SPDM_INVALID_REQUEST);
+        assert_eq!(pal.op.take(), None);
     }
 
     #[test]
@@ -838,7 +905,25 @@ mod tests {
 
         let err = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap_err();
 
-        assert_eq!(err, SPDM_UNSPECIFIED);
+        assert_eq!(err, SPDM_INVALID_REQUEST);
+        assert_eq!(pal.op.take(), None);
+    }
+
+    #[test]
+    fn test_handle_set_certificate_checks_authorization_before_algorithms() {
+        let pal = TestPal {
+            authorized: false,
+            ..TestPal::default()
+        };
+        let mut state = state(SpdmVersion::V12);
+        state.negotiated_base_hash_sel = HashAlgos::EMPTY;
+        let der = der_chain();
+        let payload = cert_payload(&der, test_digest(&der[..5]));
+        let io = request(SpdmVersion::V12, 1, 0, &payload);
+
+        let err = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap_err();
+
+        assert_eq!(err, SPDM_SESSION_REQUIRED);
         assert_eq!(pal.op.take(), None);
     }
 
@@ -855,6 +940,10 @@ mod tests {
         assert_eq!(
             state.negotiated_base_asym_sel.into_bits(),
             AsymAlgos::EMPTY.into_bits()
+        );
+        assert_eq!(
+            state.advertised_cap_flags.into_bits(),
+            CapFlags::EMPTY.into_bits()
         );
     }
 
