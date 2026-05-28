@@ -24,10 +24,12 @@ use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 
 /// Bitmap allocator pool size per responder task.
 const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
-/// Persistent CHUNK_SEND reassembly buffer. This is kept outside the
-/// async task frame and outside the per-I/O scratch allocator because
-/// it must live across multiple received chunk messages.
-const SPDM_LITE_LARGE_MSG_SIZE: usize = 16 * 1024;
+/// Persistent large-message buffer. This is kept outside the async task frame
+/// and outside the per-I/O scratch allocator because CHUNK_SEND reassembly and
+/// buffered large responses must live across multiple received chunk messages.
+/// 13 KiB covers the current largest OCP VDM CSR response (12.8 KiB attested
+/// CSR data plus mailbox/SPDM/VDM framing) without the extra slack of 16 KiB.
+const SPDM_LITE_LARGE_MSG_SIZE: usize = 13 * 1024;
 
 /// Spawn SPDM responder tasks (MCTP + DOE) on the given executor.
 pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
