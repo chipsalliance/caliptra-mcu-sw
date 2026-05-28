@@ -1768,7 +1768,12 @@ mod test {
         (pk_bytes.to_vec(), sk)
     }
 
-    /// Computes SHA-384 hash of the combined vendor public keys (ECC + MLDSA).
+    /// Computes SHA-384 of the combined vendor public keys using the
+    /// caliptra-sw owner-PK-hash convention: the ECC public key is
+    /// per-dword byte-reversed before hashing, the MLDSA public key is
+    /// hashed in its natural byte order. Inputs to this function are in
+    /// natural FIPS byte order (as the host sends them over the mailbox /
+    /// I3C wire).
     fn compute_recovery_pk_hash(
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
@@ -1776,9 +1781,21 @@ mod test {
     ) -> [u8; 48] {
         use sha2::{Digest, Sha384};
 
+        // Per-dword reverse the ECC x and y coordinates.
+        let mut ecc_x_rev = [0u8; 48];
+        let mut ecc_y_rev = [0u8; 48];
+        for (i, (xc, yc)) in ecc_pub_x
+            .chunks_exact(4)
+            .zip(ecc_pub_y.chunks_exact(4))
+            .enumerate()
+        {
+            ecc_x_rev[i * 4..(i + 1) * 4].copy_from_slice(&[xc[3], xc[2], xc[1], xc[0]]);
+            ecc_y_rev[i * 4..(i + 1) * 4].copy_from_slice(&[yc[3], yc[2], yc[1], yc[0]]);
+        }
+
         let mut hasher = Sha384::new();
-        hasher.update(ecc_pub_x);
-        hasher.update(ecc_pub_y);
+        hasher.update(ecc_x_rev);
+        hasher.update(ecc_y_rev);
         hasher.update(mldsa_pub);
         let result = hasher.finalize();
         let mut hash = [0u8; 48];
@@ -1788,6 +1805,13 @@ mod test {
 
     /// Creates OTP memory for override testing.
     /// Includes locked state fuses AND the vendor recovery PK hash.
+    ///
+    /// `pk_hash` is the SHA-384 digest in natural (FIPS) byte order. The
+    /// `VENDOR_RECOVERY_PK_HASH` fuse uses the same on-OTP layout as
+    /// `cptra_ss_owner_pk_hash` and the debug-unlock vendor PK hash:
+    /// each 4-byte word is stored byte-reversed relative to the natural
+    /// SHA-384 byte order. This helper performs that reversal before
+    /// scrambling and writing the bytes into the OTP image.
     fn create_challenge_recovery_otp_memory(pk_hash: &[u8; 48]) -> Vec<u8> {
         use caliptra_mcu_otp_digest::{otp_scramble, OTP_SCRAMBLE_KEYS};
         use caliptra_mcu_registers_generated::fuses;
@@ -1803,12 +1827,20 @@ mod test {
         otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
         otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
 
+        // Convert the FIPS-natural hash bytes to the caliptra-sw fuse layout
+        // (byte-reversed within each 4-byte word).
+        let mut fuse_layout = [0u8; 48];
+        for (i, chunk) in pk_hash.chunks_exact(4).enumerate() {
+            fuse_layout[i * 4..(i + 1) * 4]
+                .copy_from_slice(&[chunk[3], chunk[2], chunk[1], chunk[0]]);
+        }
+
         // Write recovery PK hash into partition 13 (VendorSecretProdPartition),
         // which is scrambled. Pre-scramble each 8-byte block so the DAI read
         // path unscrambles back to the original plaintext.
         let key = OTP_SCRAMBLE_KEYS[5]; // VendorSecretProdPartition
         let hash_offset = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset;
-        for (i, chunk) in pk_hash.chunks(8).enumerate() {
+        for (i, chunk) in fuse_layout.chunks(8).enumerate() {
             let off = hash_offset + i * 8;
             let mut block = [0u8; 8];
             block[..chunk.len()].copy_from_slice(chunk);
@@ -2026,6 +2058,191 @@ mod test {
         );
 
         println!("[TEST] DOT override succeeded: new unlocked blob written and fuse burned");
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Build OTP memory for an override test using the explicit
+    /// `cptra_ss_owner_pk_hash` storage convention from `get_owner_pk_hash`:
+    /// the 48 FIPS-natural hash bytes are first converted to `[u32; 12]` via
+    /// big-endian decode of each 4-byte chunk, and those u32 words are then
+    /// stored back to OTP as little-endian bytes.
+    ///
+    /// This is the same layout that integrators use today when burning
+    /// `cptra_ss_owner_pk_hash` or debug-unlock vendor PK hash into fuses.
+    /// The point of this helper is to prove — completely independently of
+    /// `create_challenge_recovery_otp_memory` — that the DOT recovery PK
+    /// hash fuse now accepts the same on-OTP byte layout.
+    fn create_recovery_otp_memory_via_owner_pk_hash_convention(pk_hash: &[u8; 48]) -> Vec<u8> {
+        use caliptra_mcu_otp_digest::{otp_scramble, OTP_SCRAMBLE_KEYS};
+        use caliptra_mcu_registers_generated::fuses;
+
+        let required_size = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset
+            + fuses::VENDOR_RECOVERY_PK_HASH.byte_size
+            + 16;
+        let otp_size =
+            required_size.max(fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size);
+        let mut otp = vec![0u8; otp_size];
+
+        otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
+        otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
+
+        // Step 1: Same conversion an integrator does for cptra_ss_owner_pk_hash.
+        let mut words = [0u32; 12];
+        for (i, chunk) in pk_hash.chunks_exact(4).enumerate() {
+            words[i] = u32::from_be_bytes(chunk.try_into().unwrap());
+        }
+
+        // Step 2: Pack the [u32; 12] back to bytes the way OTP stores them
+        // on a little-endian target (one LE-encoded u32 per word).
+        let mut fuse_bytes = [0u8; 48];
+        for (i, word) in words.iter().enumerate() {
+            fuse_bytes[i * 4..(i + 1) * 4].copy_from_slice(&word.to_le_bytes());
+        }
+
+        // Step 3: Pre-scramble (VENDOR_RECOVERY_PK_HASH lives in the
+        // VendorSecretProdPartition, scramble key index 5).
+        let key = OTP_SCRAMBLE_KEYS[5];
+        let hash_offset = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset;
+        for (i, chunk) in fuse_bytes.chunks(8).enumerate() {
+            let off = hash_offset + i * 8;
+            let mut block = [0u8; 8];
+            block[..chunk.len()].copy_from_slice(chunk);
+            let plaintext = u64::from_le_bytes(block);
+            let scrambled = otp_scramble(plaintext, key);
+            otp[off..off + 8].copy_from_slice(&scrambled.to_le_bytes());
+        }
+
+        otp
+    }
+
+    /// Regression test for the recovery-PK-hash / owner-PK-hash fuse layout
+    /// alignment.
+    ///
+    /// Burns a vendor recovery PK hash into OTP using the *exact same*
+    /// storage convention an integrator would use for
+    /// `cptra_ss_owner_pk_hash` (big-endian decode into `[u32; 12]`, stored
+    /// little-endian). The DOT override flow must accept that layout and
+    /// successfully verify the vendor public keys against the recovery PK
+    /// hash. This proves the three fuses (owner PK hash, debug-unlock
+    /// vendor PK hash, DOT recovery PK hash) use a single consistent
+    /// caliptra-sw fuse layout so an integrator can reuse the same value.
+    #[test]
+    fn test_dot_override_uses_owner_pk_hash_fuse_layout() {
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        // Identical setup to test_dot_override_challenge_success, but the
+        // OTP image is constructed via the owner-PK-hash storage convention
+        // rather than the DOT-specific helper.
+        let (vendor_pub_x, vendor_pub_y, vendor_priv_bytes) = generate_random_ecc_keys();
+        let (mldsa_pub, mldsa_priv) = generate_random_mldsa_keys();
+        let vendor_pk_hash = compute_recovery_pk_hash(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
+
+        // Sanity check: the two storage paths must produce byte-identical
+        // OTP images. If this ever diverges, the alignment is broken.
+        let otp_via_owner_convention =
+            create_recovery_otp_memory_via_owner_pk_hash_convention(&vendor_pk_hash);
+        let otp_via_dot_helper = create_challenge_recovery_otp_memory(&vendor_pk_hash);
+        assert_eq!(
+            otp_via_owner_convention, otp_via_dot_helper,
+            "Owner-PK-hash storage convention must produce the same OTP \
+             bytes as the DOT recovery PK hash helper; if this fails, the \
+             three fuse layouts are out of sync."
+        );
+
+        let flash_contents = vec![0u8; DOT_BLOB_SIZE];
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            otp_memory: Some(otp_via_owner_convention),
+            rom_feature: Some("test-dot-recovery"),
+            ..Default::default()
+        });
+
+        // Run the override challenge / response handshake.
+        let override_payload =
+            build_override_challenge_payload(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
+        hw.start_mailbox_execute(CMD_DOT_UNLOCK_CHALLENGE, &override_payload)
+            .expect("Failed to send DOT_UNLOCK_CHALLENGE");
+
+        let challenge = hw
+            .finish_mailbox_execute()
+            .expect("Failed to get override challenge response")
+            .expect("Expected challenge data from ROM");
+        assert_eq!(challenge.len(), 48, "Challenge should be 48 bytes");
+
+        // Sign the challenge with VendorKey.priv (ECDSA + MLDSA).
+        let challenge_hash: [u8; 48] = {
+            let mut hasher = Sha384::new();
+            hasher.update(&challenge);
+            hasher.finalize().into()
+        };
+        let vendor_secret_key =
+            p384::SecretKey::from_slice(&vendor_priv_bytes).expect("Invalid vendor private key");
+        let vendor_signing_key = SigningKey::from(&vendor_secret_key);
+        let ecc_sig: p384::ecdsa::Signature = vendor_signing_key
+            .sign_prehash(&challenge_hash)
+            .expect("ECDSA signing failed");
+        let ecc_r_bytes: [u8; 48] = ecc_sig.r().to_bytes().into();
+        let ecc_s_bytes: [u8; 48] = ecc_sig.s().to_bytes().into();
+
+        let mldsa_sig_bytes = mldsa_priv
+            .try_sign_with_seed(&[0u8; 32], &challenge, &[])
+            .expect("MLDSA signing failed");
+
+        let response_payload = build_override_response_payload(
+            &vendor_pub_x,
+            &vendor_pub_y,
+            &ecc_r_bytes,
+            &ecc_s_bytes,
+            &mldsa_pub,
+            &mldsa_sig_bytes,
+        );
+        hw.start_mailbox_execute(CMD_DOT_OVERRIDE, &response_payload)
+            .expect("Failed to send DOT_OVERRIDE");
+
+        // Let the ROM verify signatures, burn the fuse, write the new blob.
+        let start = hw.cycle_count();
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() - start > 20_000_000);
+
+        // The override must succeed: a new non-empty DOT blob with version 1
+        // and a non-zero HMAC must be written to flash, and the DOT fuse
+        // bit must be burned (from 1 → 2 bits set).
+        let dot_flash = hw.read_dot_flash();
+        let written_blob = &dot_flash[..DOT_BLOB_SIZE];
+        assert!(
+            !written_blob.iter().all(|&b| b == 0) && !written_blob.iter().all(|&b| b == 0xFF),
+            "DOT blob should have been written (not erased) after override; \
+             owner-PK-hash fuse layout was rejected by recovery PK hash check"
+        );
+        let blob_bytes: [u8; DOT_BLOB_SIZE] = written_blob.try_into().unwrap();
+        let blob: TestDotBlob = zerocopy::transmute!(blob_bytes);
+        assert_eq!(blob.cak, [0u32; 12]);
+        assert_eq!(blob.lak_pub, [0u32; 12]);
+        assert_eq!(blob.version, 1);
+        assert!(!blob.hmac.iter().all(|&w| w == 0));
+
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array_offset = caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
+        let lock_fuse_byte = otp_memory[fuse_array_offset];
+        assert_eq!(
+            lock_fuse_byte & 0x03,
+            0x03,
+            "DOT fuse should have 2 bits burned (1 → 2) after override"
+        );
+
+        println!(
+            "[TEST] DOT override accepted owner-PK-hash fuse layout: the same \
+             on-OTP byte layout used for cptra_ss_owner_pk_hash works for the \
+             vendor_recovery_pk_hash fuse."
+        );
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }

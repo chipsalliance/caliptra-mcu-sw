@@ -320,11 +320,11 @@ impl<'a> I3cMailboxHandler<'a> {
         };
 
         let ecc_key = crate::EccP384PublicKey { x: ecc_x, y: ecc_y };
-        let ecc_key_u32 = crate::device_ownership_transfer::ecc_key_as_u32_slice(&ecc_key);
 
-        let computed_hash = match crate::device_ownership_transfer::cm_sha384(
+        let computed_hash = match crate::device_ownership_transfer::cm_owner_pk_hash_sha384(
             ctx.soc_manager,
-            &[ecc_key_u32, &mldsa_pub_key],
+            &ecc_key,
+            &mldsa_pub_key,
         ) {
             Ok(h) => h,
             Err(err) => {

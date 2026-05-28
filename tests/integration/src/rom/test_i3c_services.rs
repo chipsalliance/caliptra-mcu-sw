@@ -548,15 +548,30 @@ mod test {
         (pk.into_bytes().to_vec(), sk)
     }
 
+    /// Computes SHA-384 of the combined vendor public keys using the
+    /// caliptra-sw owner-PK-hash convention: the ECC public key is
+    /// per-dword byte-reversed before hashing, the MLDSA public key is
+    /// hashed in its natural byte order. Inputs are in natural FIPS byte
+    /// order.
     fn compute_recovery_pk_hash(
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8],
     ) -> [u8; 48] {
         use sha2::{Digest, Sha384};
+        let mut ecc_x_rev = [0u8; 48];
+        let mut ecc_y_rev = [0u8; 48];
+        for (i, (xc, yc)) in ecc_pub_x
+            .chunks_exact(4)
+            .zip(ecc_pub_y.chunks_exact(4))
+            .enumerate()
+        {
+            ecc_x_rev[i * 4..(i + 1) * 4].copy_from_slice(&[xc[3], xc[2], xc[1], xc[0]]);
+            ecc_y_rev[i * 4..(i + 1) * 4].copy_from_slice(&[yc[3], yc[2], yc[1], yc[0]]);
+        }
         let mut hasher = Sha384::new();
-        hasher.update(ecc_pub_x);
-        hasher.update(ecc_pub_y);
+        hasher.update(ecc_x_rev);
+        hasher.update(ecc_y_rev);
         hasher.update(mldsa_pub);
         let result = hasher.finalize();
         let mut hash = [0u8; 48];
@@ -564,6 +579,15 @@ mod test {
         hash
     }
 
+    /// Build an OTP image for the DOT override / I3C recovery flow with the
+    /// given SHA-384 vendor recovery PK hash burned in.
+    ///
+    /// `pk_hash` is the digest in natural (FIPS) byte order. The
+    /// `VENDOR_RECOVERY_PK_HASH` fuse uses the caliptra-sw fuse layout —
+    /// each 4-byte word is byte-reversed relative to the natural SHA-384
+    /// byte order, matching `cptra_ss_owner_pk_hash` and the debug-unlock
+    /// vendor PK hash. The bytes are reversed within each 4-byte word
+    /// here before being scrambled into OTP.
     fn create_challenge_recovery_otp_memory(pk_hash: &[u8; 48]) -> Vec<u8> {
         use caliptra_mcu_otp_digest::{otp_scramble, OTP_SCRAMBLE_KEYS};
         use caliptra_mcu_registers_generated::fuses;
@@ -577,33 +601,26 @@ mod test {
         otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
         otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
 
-        // VENDOR_RECOVERY_PK_HASH lives in the vendor_secret_prod_partition,
-        // which is scrambled. Write pre-scrambled bytes for the entire
-        // partition so the DAI read path unscrambles them back to the
-        // intended values. (On FPGA, this test path is `#[ignore]`d because
-        // the FPGA stack does not currently support provisioning DOT fuses
-        // via `otp_memory`.)
-        let mut plaintext = vec![0u8; fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE];
-        let hash_off_in_partition = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset
-            - fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET;
-        plaintext[hash_off_in_partition..hash_off_in_partition + 32]
-            .copy_from_slice(&pk_hash[..32]);
-        let next_off_in_partition =
-            hash_off_in_partition + fuses::VENDOR_RECOVERY_PK_HASH.byte_size;
-        plaintext[next_off_in_partition..next_off_in_partition + 16]
-            .copy_from_slice(&pk_hash[32..48]);
-
-        let key = OTP_SCRAMBLE_KEYS[5];
-        let part_start = fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET;
-        let part_end = part_start + fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE;
-        let end = part_end.min(otp.len());
-        for (off, block) in (part_start..end).step_by(8).zip(plaintext.chunks_exact(8)) {
-            let plain_u64 = u64::from_le_bytes(block.try_into().unwrap());
-            let scrambled = otp_scramble(plain_u64, key);
-            let bytes = scrambled.to_le_bytes();
-            let copy_len = bytes.len().min(otp.len() - off);
-            otp[off..off + copy_len].copy_from_slice(&bytes[..copy_len]);
+        // VENDOR_RECOVERY_PK_HASH lives in the vendor_secret_prod_partition
+        // (partition 13) which is scrambled with key index 5. Pre-scramble
+        // the hash so DAI reads return the correct plaintext.
+        let scramble_key = OTP_SCRAMBLE_KEYS[5];
+        let hash_offset = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset;
+        let mut hash_buf = [0u8; 48];
+        for (i, chunk) in pk_hash.chunks_exact(4).enumerate() {
+            // Reverse each 4-byte word to convert FIPS-natural bytes into
+            // the caliptra-sw fuse layout stored in OTP.
+            hash_buf[i * 4..(i + 1) * 4].copy_from_slice(&[chunk[3], chunk[2], chunk[1], chunk[0]]);
         }
+        // Scramble in 8-byte chunks
+        for chunk in hash_buf.chunks_exact_mut(8) {
+            let plaintext = u64::from_le_bytes(chunk.try_into().unwrap());
+            let scrambled = otp_scramble(plaintext, scramble_key);
+            chunk.copy_from_slice(&scrambled.to_le_bytes());
+        }
+        otp[hash_offset..hash_offset + 32].copy_from_slice(&hash_buf[..32]);
+        let next_offset = hash_offset + fuses::VENDOR_RECOVERY_PK_HASH.byte_size;
+        otp[next_offset..next_offset + 16].copy_from_slice(&hash_buf[32..48]);
         otp
     }
 }
