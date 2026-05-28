@@ -438,7 +438,7 @@ where
         ReqRespCode::GET_DIGESTS => digests::handle_get_digests(state, pal, io).await,
         ReqRespCode::GET_CERTIFICATE => certificate::handle_get_certificate(state, pal, io).await,
         ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
-        ReqRespCode::CHUNK_SEND => chunk::handle_chunk_send(state, pal, io).await,
+        ReqRespCode::CHUNK_SEND => chunk::handle_chunk_send(state, pal, io, vdm_backend).await,
         ReqRespCode::CHUNK_GET => chunk::handle_chunk_get(state, pal, io).await,
         ReqRespCode::VENDOR_DEFINED_REQUEST => {
             vendor_defined::handle_vendor_defined_request(state, pal, io, vdm_backend).await
