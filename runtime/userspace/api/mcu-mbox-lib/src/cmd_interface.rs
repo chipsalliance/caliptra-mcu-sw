@@ -12,8 +12,6 @@ use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_libsyscall_caliptra::otp::Otp;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_libsyscall_caliptra::{mailbox::Mailbox, DefaultSyscalls};
-use caliptra_mcu_libtock_console::{Console, ConsoleWriter};
-use caliptra_mcu_libtock_platform::DefaultConfig;
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp,
     DeviceInfoReq, DeviceInfoResp, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
@@ -32,7 +30,6 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicStatusResp,
 };
 use caliptra_mcu_romtime::{fuse_read_dai_params, PartitionId};
-use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -828,8 +825,6 @@ impl<'a> CmdInterface<'a> {
         req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        let mut wr: ConsoleWriter<DefaultSyscalls> = Console::<_, DefaultConfig>::writer();
-        let _ = writeln!(wr, "[mcu-mbox] revoking vendor PK hash...");
         // Decode the request
         let req = FuseRevokeVendorPkHashReq::ref_from_bytes(req)
             .map_err(|_| MsgHandlerError::InvalidParams)?;
@@ -854,21 +849,11 @@ impl<'a> CmdInterface<'a> {
         };
 
         if same_key_used_to_boot()? {
-            let _ = writeln!(
-                wr,
-                "[mcu-mbox] revoke vendor PK hash failed: same key used to boot"
-            );
             Err(MsgHandlerError::InvalidParams)?;
         }
 
         otp.revoke_vendor_pk_hash(req.vendor_pk_hash_slot)
-            .map_err(|_| {
-                let _ = writeln!(
-                    wr,
-                    "[mcu-mbox] revoke vendor PK hash failed: failed to revoke pk hash"
-                );
-                MsgHandlerError::McuMboxCommon
-            })?;
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
 
         *resp = FuseRevokeVendorPkHashResp::default();
         let resp_len = resp.as_bytes().len();
