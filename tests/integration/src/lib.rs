@@ -34,6 +34,7 @@ mod test_owner_stable_key;
 mod test_pldm_fw_update;
 mod test_raw_lifecycle_boot;
 mod test_soc_boot;
+mod test_svn_manifest;
 mod test_usb_ocp_recovery;
 
 pub fn platform() -> &'static str {
@@ -1035,7 +1036,7 @@ mod test {
         )
         .unwrap();
 
-        let mcu_rom = if params.firmware_prefix.is_some() {
+        let mcu_rom = if params.firmware_prefix.is_some() && params.rom_feature.is_none() {
             if params.fw_manifest_dot_hitless {
                 ROM_FW_MANIFEST_DOT_HITLESS.clone()
             } else {

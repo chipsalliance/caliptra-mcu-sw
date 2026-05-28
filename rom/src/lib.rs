@@ -51,6 +51,7 @@ mod stable_owner_key;
 
 // Boot flow modules
 mod cold_boot;
+mod firmware_headers;
 mod fw_boot;
 mod warm_boot;
 pub use cold_boot::ColdBoot;

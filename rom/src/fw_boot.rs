@@ -14,14 +14,11 @@ Abstract:
 
 #[cfg(feature = "fw-manifest-dot")]
 use crate::device_ownership_transfer;
+use crate::firmware_headers::process_firmware_headers;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
 use caliptra_mcu_error::McuError;
-#[cfg(feature = "fw-manifest-dot")]
-use caliptra_mcu_romtime::HexWord;
 use caliptra_mcu_romtime::{McuBootMilestones, McuRomBootStatus};
 use core::fmt::Write;
-#[cfg(feature = "fw-manifest-dot")]
-use zerocopy::FromBytes;
 
 pub struct FwBoot {}
 
@@ -32,52 +29,10 @@ impl BootFlow for FwBoot {
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::FirmwareBootFlowStarted.into());
 
-        // Start with the static header offset; the DOT section (if present)
-        // is detected dynamically and added below.
-        #[allow(unused_mut)]
-        let mut firmware_offset = params.mcu_image_header_size as u32;
-
-        // --- Process optional firmware manifest DOT commands ---
-        // Runs during FwBoot so that firmware is always decrypted in SRAM
-        // (for encrypted boot, decryption happens during ColdBoot before the
-        // warm reset chain reaches FwBoot).
-        //
-        // Compile-gated by the fw-manifest-dot feature so ROMs that do not
-        // need this feature stay panic-free and pay no code-size cost.
-        // Additionally gated at runtime by fw_manifest_dot_enabled.
-        #[cfg(feature = "fw-manifest-dot")]
-        if params.fw_manifest_dot_enabled {
-            let manifest_size =
-                core::mem::size_of::<device_ownership_transfer::FwManifestDotSection>();
-            let sram = unsafe {
-                core::slice::from_raw_parts(MCU_MEMORY_MAP.sram_offset as *const u8, manifest_size)
-            };
-            if let Ok((section, _)) =
-                device_ownership_transfer::FwManifestDotSection::ref_from_prefix(sram)
-            {
-                if section.magic == device_ownership_transfer::FW_MANIFEST_DOT_MAGIC {
-                    firmware_offset += manifest_size as u32;
-
-                    env.mci.set_flow_checkpoint(
-                        McuRomBootStatus::FwManifestDotProcessingStarted.into(),
-                    );
-                    if let Err(err) = device_ownership_transfer::process_fw_manifest_dot_commands(
-                        env,
-                        section,
-                        params.dot_flash,
-                    ) {
-                        caliptra_mcu_romtime::println!(
-                            "[mcu-rom] Error in firmware manifest DOT: {}",
-                            HexWord(err.into())
-                        );
-                        fatal_error(err);
-                    }
-                    env.mci.set_flow_checkpoint(
-                        McuRomBootStatus::FwManifestDotProcessingComplete.into(),
-                    );
-                }
-            }
-        }
+        // Walk past any optional headers (DOT section, MCU Component
+        // SVN Manifest, ...) to find the firmware entry point.
+        let firmware_offset =
+            process_firmware_headers(env, &params, params.mcu_image_header_size as u32);
 
         // Check that the firmware was actually loaded before jumping to it
         let firmware_ptr = unsafe { (MCU_MEMORY_MAP.sram_offset + firmware_offset) as *const u32 };

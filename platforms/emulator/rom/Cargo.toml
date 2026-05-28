@@ -47,6 +47,7 @@ test-fw-manifest-dot-hitless = [
     "caliptra-mcu-rom-common/fw-manifest-dot",
     "caliptra-mcu-rom-common/test-force-hitless-update",
 ]
+test-svn-manifest = ["caliptra-mcu-rom-common/svn-manifest"]
 test-pldm-streaming-boot = []
 test-ocp-lock = []
 test-streaming-boot-flash-write-back = []

@@ -543,11 +543,26 @@ pub extern "C" fn rom_entry() -> ! {
                 ..Default::default()
             });
         }
+    } else if cfg!(feature = "test-svn-manifest") {
+        caliptra_mcu_rom_common::rom_start(RomParameters {
+            dot_flash: Some(dot_flash),
+            svn_manifest_enabled: true,
+            otp_enable_integrity_check: true,
+            otp_enable_consistency_check: true,
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
+            ..Default::default()
+        });
     } else if cfg!(feature = "hw-2-1")
         && !cfg!(any(
             feature = "test-dot-recovery",
             feature = "test-i3c-services",
             feature = "test-rom-hooks",
+            feature = "test-svn-manifest",
             feature = "test-usb-ocp-recovery",
         ))
     {

@@ -799,6 +799,11 @@ impl McuError {
             "Production debug unlock PK hash verification length mismatch"
         ),
         (
+            ROM_COMPONENT_SVN_MANIFEST_ERROR,
+            0x1_001b,
+            "MCU Component SVN Manifest validation error"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"
