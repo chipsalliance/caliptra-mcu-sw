@@ -412,10 +412,10 @@ pub fn handle_export_idevid_csr(
 // GetAuthCmdChallenge (CaliptraCommandId::GetAuthCmdChallenge)
 // ---------------------------------------------------------------------------
 
-/// Handle GetAuthCmdChallenge — request a challenge nonce for HMAC authorization.
+/// Handle GetAuthChallenge sub-command — request a challenge nonce for HMAC authorization.
 ///
-/// VDM wire format request:  [version, 0x12]
-/// VDM wire format response: [version, 0x12, completion_code, challenge(32)]
+/// VDM wire format request:  [version, 0x12 (AuthorizedCommand), sub_cmd_id=0x4D41_4343 (4 LE)]
+/// VDM wire format response: [version, 0x12 (AuthorizedCommand), completion_code, challenge(32)]
 pub fn handle_get_auth_challenge(
     _payload: &[u8],
     driver: &mut dyn SpdmVdmDriver,
@@ -426,9 +426,11 @@ pub fn handle_get_auth_challenge(
     };
 
     let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    // Sub-command 0x4D41_4343 (MC_GET_AUTH_CMD_CHALLENGE) within AuthorizedCommand (0x12)
+    let vdm_payload = 0x4D41_4343u32.to_le_bytes();
     let resp_len = send_vdm_request(
-        CaliptraVdmCommand::GetAuthCmdChallenge,
-        &[],
+        CaliptraVdmCommand::AuthorizedCommand,
+        &vdm_payload,
         driver,
         &mut resp_buf,
     )?;
@@ -454,10 +456,10 @@ pub fn handle_get_auth_challenge(
 // ProgramFieldEntropy (CaliptraCommandId::FeProg)
 // ---------------------------------------------------------------------------
 
-/// Handle ProgramFieldEntropy (FE_PROG) command.
+/// Handle ProgramFieldEntropy (FE_PROG) authorized sub-command.
 ///
-/// VDM wire format request:  [version, 0x10, partition(4 LE), mac(48)]
-/// VDM wire format response: [version, 0x10, completion_code]
+/// VDM wire format request:  [version, 0x12 (AuthorizedCommand), sub_cmd_id=0x4D43_4650 (4 LE), partition(4 LE), mac(48)]
+/// VDM wire format response: [version, 0x12 (AuthorizedCommand), completion_code]
 pub fn handle_fe_prog(
     payload: &[u8],
     driver: &mut dyn SpdmVdmDriver,
@@ -467,14 +469,15 @@ pub fn handle_fe_prog(
 
     let req = FeProgRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
 
-    // VDM payload: [partition(4 LE), mac(48)]
-    let mut vdm_payload = [0u8; 4 + 48];
-    vdm_payload[..4].copy_from_slice(&req.partition.to_le_bytes());
-    vdm_payload[4..].copy_from_slice(&req.mac);
+    // VDM payload: [sub_cmd_id=0x4D43_4650(4 LE), partition(4 LE), mac(48)]
+    let mut vdm_payload = [0u8; 4 + 4 + 48];
+    vdm_payload[0..4].copy_from_slice(&0x4D43_4650u32.to_le_bytes()); // sub_cmd_id = MC_FE_PROG
+    vdm_payload[4..8].copy_from_slice(&req.partition.to_le_bytes());
+    vdm_payload[8..].copy_from_slice(&req.mac);
 
     let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
     let _resp_len = send_vdm_request(
-        CaliptraVdmCommand::ProgramFieldEntropy,
+        CaliptraVdmCommand::AuthorizedCommand,
         &vdm_payload,
         driver,
         &mut resp_buf,

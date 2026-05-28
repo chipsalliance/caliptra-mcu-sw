@@ -15,7 +15,7 @@ use crate::config::{DeviceMode, TestConfig};
 use crate::SpdmVdmClient;
 use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
-use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
+use caliptra_mcu_core_util_host_command_types::fuse::MC_FE_PROG_CANONICAL_CMD_ID;
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
 
 /// Result of a single validation check.
@@ -389,7 +389,7 @@ pub fn run_fe_prog(
     }
 
     // Step 2: Compute MAC via the authorizer
-    let cmd_id = CaliptraCommandId::FeProg as u32;
+    let cmd_id = MC_FE_PROG_CANONICAL_CMD_ID;
     let mac_bytes = match authorizer.authorize(cmd_id, &partition.to_le_bytes(), &challenge_resp.challenge) {
         Ok(mac) => mac,
         Err(e) => {

@@ -21,6 +21,19 @@ pub const AUTH_CMD_CHALLENGE_SIZE: usize = 32;
 /// Size of the HMAC-SHA384 MAC in bytes
 pub const AUTH_CMD_MAC_SIZE: usize = 48;
 
+/// Canonical command identifier for the GET_AUTH_CMD_CHALLENGE command used in sub-command dispatch.
+///
+/// This is the MCU mailbox FOURCC for `MC_GET_AUTH_CMD_CHALLENGE` (`0x4D41_4343` = "MACC").
+/// Used as the `sub_cmd_id` in the SPDM VDM AuthorizedCommand (`0x12`) dispatch.
+pub const MC_GET_AUTH_CMD_CHALLENGE_CANONICAL_CMD_ID: u32 = 0x4D41_4343;
+
+/// Canonical command identifier for the FE_PROG command used in HMAC computation.
+///
+/// This is the MCU mailbox FOURCC for `MC_FE_PROG` (`0x4D43_4650` = "MCFP" in ASCII).
+/// It must be used as the `cmd_id` parameter in HMAC-SHA384 authorization across all
+/// transports (SPDM VDM and MCU mailbox) to ensure interoperability.
+pub const MC_FE_PROG_CANONICAL_CMD_ID: u32 = 0x4D43_4650;
+
 // ---- Get Authorization Command Challenge ----
 
 /// Request a challenge nonce for authorizing privileged commands.

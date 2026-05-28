@@ -46,9 +46,9 @@ pub enum CaliptraVdmCommand {
     SetSlot0Cert = 0x0D,
     GetSlot0State = 0x0E,
     ExportAttestedCsr = 0x0F,
-    ProgramFieldEntropy = 0x10,
     DeviceOwnershipTransfer = 0x11,
-    GetAuthCmdChallenge = 0x12,
+    /// Single entry point for all authorized sub-commands (GetAuthChallenge, ProgramFieldEntropy).
+    AuthorizedCommand = 0x12,
 }
 
 impl TryFrom<u8> for CaliptraVdmCommand {
@@ -71,9 +71,8 @@ impl TryFrom<u8> for CaliptraVdmCommand {
             0x0D => Ok(Self::SetSlot0Cert),
             0x0E => Ok(Self::GetSlot0State),
             0x0F => Ok(Self::ExportAttestedCsr),
-            0x10 => Ok(Self::ProgramFieldEntropy),
             0x11 => Ok(Self::DeviceOwnershipTransfer),
-            0x12 => Ok(Self::GetAuthCmdChallenge),
+            0x12 => Ok(Self::AuthorizedCommand),
             _ => Err(SpdmVdmProtocolError::UnknownCommand(value)),
         }
     }
@@ -166,9 +165,9 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         x if x == CaliptraCommandId::ProdDebugUnlockToken as u32 => {
             Some(CaliptraVdmCommand::AuthorizeDebugUnlockToken)
         }
-        x if x == CaliptraCommandId::FeProg as u32 => Some(CaliptraVdmCommand::ProgramFieldEntropy),
+        x if x == CaliptraCommandId::FeProg as u32 => Some(CaliptraVdmCommand::AuthorizedCommand),
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
-            Some(CaliptraVdmCommand::GetAuthCmdChallenge)
+            Some(CaliptraVdmCommand::AuthorizedCommand)
         }
         _ => None,
     }
@@ -180,11 +179,18 @@ mod tests {
 
     #[test]
     fn test_command_roundtrip() {
-        for code in 0x01u8..=0x12 {
+        // 0x10 (ProgramFieldEntropy) is no longer a top-level VDM command;
+        // it is dispatched as sub-command 0x02 of AuthorizedCommand (0x12).
+        let valid_codes: &[u8] = &[
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+            0x0F, 0x11, 0x12,
+        ];
+        for &code in valid_codes {
             let cmd = CaliptraVdmCommand::try_from(code).unwrap();
             assert_eq!(cmd as u8, code);
         }
         assert!(CaliptraVdmCommand::try_from(0x00).is_err());
+        assert!(CaliptraVdmCommand::try_from(0x10).is_err());
         assert!(CaliptraVdmCommand::try_from(0x13).is_err());
         assert!(CaliptraVdmCommand::try_from(0xFF).is_err());
     }
