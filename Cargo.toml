@@ -14,6 +14,7 @@ members = [
     "common/pldm",
     "common/poll",
     "common/testing",
+    "common/emulator-state",
     "emulator/app",
     "emulator/app/mcu-mbox",
     "emulator/bmc/pldm-fw-pkg",
@@ -269,6 +270,7 @@ caliptra-mcu-network-drivers = { path = "network/drivers" }
 caliptra-mcu-network-hil = { path = "network/hil" }
 caliptra-mcu-network-rom = { path = "network/rom" }
 caliptra-mcu-testing-common = { path = "common/testing" }
+caliptra-mcu-emulator-state = { path = "common/emulator-state" }
 caliptra-mcu-tock-veer = { path = "runtime/kernel/veer" }
 caliptra-mcu-mctp-vdm-common = { path = "common/mctp-vdm" }
 caliptra-mcu-otp-digest = { path = "common/otp-digest" }

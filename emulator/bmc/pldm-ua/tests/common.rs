@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 #![allow(clippy::result_unit_err)]
+use caliptra_mcu_emulator_state::{init_emulator_state, EmulatorState};
 use caliptra_mcu_pldm_common::message::firmware_update::query_devid::{
     QueryDeviceIdentifiersRequest, QueryDeviceIdentifiersResponse,
 };
@@ -219,6 +220,11 @@ pub fn setup<
 >(
     daemon_options: Options<D, U>,
 ) -> TestSetup<D, U> {
+    // Seed per-instance emulator state on the test thread so that
+    // `PldmDaemon::run` (which spawns workers via `spawn_with_emulator_state`)
+    // can propagate state to those workers.
+    init_emulator_state(EmulatorState::new_arc());
+
     // Initialize log level to info (only once)
     let _ = SimpleLogger::new().with_level(LevelFilter::Debug).init();
 

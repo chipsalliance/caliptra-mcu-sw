@@ -11,7 +11,7 @@ use crate::tests::spdm_responder_validator::SpdmTestType;
 use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
 use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
 use caliptra_mcu_testing_common::mctp_util::common::MctpUtil;
-use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+use caliptra_mcu_testing_common::wait_for_runtime_start;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::process::exit;
 use std::sync::atomic::Ordering;
@@ -56,7 +56,7 @@ impl MctpTransport {
         let mut resp = None;
         let mut cur_retry_count = 0;
 
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while caliptra_mcu_testing_common::is_emulator_running() {
             match self.tx_rx_state {
                 TxRxState::Start => {
                     // This is to give some time for send_done upcall to be invoked by the kernel to the app.
@@ -158,7 +158,7 @@ pub fn run_mctp_spdm_conformance_test(
     let stream = TcpStream::connect(addr).unwrap();
     let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
 
-    thread::spawn(move || {
+    caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
         thread::sleep(test_timeout_seconds);
         println!(
             "[{}] TIMED OUT AFTER {:?} SECONDS",
@@ -168,10 +168,10 @@ pub fn run_mctp_spdm_conformance_test(
         exit(-1);
     });
 
-    thread::spawn(move || {
+    caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
         wait_for_runtime_start();
 
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
+        if !caliptra_mcu_testing_common::is_emulator_running() {
             exit(-1);
         }
         let listener =
@@ -207,7 +207,7 @@ pub fn run_mctp_spdm_attestation_test(
     let stream = TcpStream::connect(addr).unwrap();
     let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
 
-    thread::spawn(move || {
+    caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
         thread::sleep(test_timeout_seconds);
         println!(
             "[{}] TIMED OUT AFTER {:?} SECONDS",
@@ -217,10 +217,10 @@ pub fn run_mctp_spdm_attestation_test(
         exit(-1);
     });
 
-    thread::spawn(move || {
+    caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
         wait_for_runtime_start();
 
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
+        if !caliptra_mcu_testing_common::is_emulator_running() {
             exit(-1);
         }
         let listener =

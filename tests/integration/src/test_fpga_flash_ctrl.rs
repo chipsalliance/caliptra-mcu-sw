@@ -11,11 +11,9 @@ pub mod test {
     use caliptra_mcu_romtime::StaticRef;
     use caliptra_mcu_testing_common::sleep_emulator_ticks;
     use caliptra_mcu_testing_common::wait_for_runtime_start;
-    use caliptra_mcu_testing_common::MCU_RUNNING;
     use random_port::PortPicker;
     use std::process::exit;
     use std::sync::atomic::Ordering;
-    use std::thread;
 
     #[test]
     pub fn test_imaginary_flash_controller() {
@@ -37,7 +35,7 @@ pub mod test {
 
         let test = finish_runtime_hw_model(&mut hw);
 
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        caliptra_mcu_testing_common::stop_emulator();
 
         assert_eq!(0, test);
 
@@ -46,9 +44,9 @@ pub mod test {
     }
 
     pub fn run_imaginary_flash_controller_service(mci_base: u64) {
-        thread::spawn(move || {
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
             let mci_base = unsafe { StaticRef::new(mci_base as *const mci::regs::Mci) };
@@ -60,7 +58,7 @@ pub mod test {
             );
             println!("Imaginary flash IO processor thread starting");
             loop {
-                if !MCU_RUNNING.load(Ordering::Relaxed) {
+                if !caliptra_mcu_testing_common::is_emulator_running() {
                     break;
                 }
                 flash_controller.process_flash_ios();
