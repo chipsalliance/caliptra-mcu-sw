@@ -23,6 +23,8 @@ use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::ptr::NonNull;
 
+use super::cert::store::SharedCertStore;
+
 /// MCU implementation of the SPDM-Lite Platform Abstraction Layer.
 ///
 /// Owns the underlying byte-oriented PAL transport (held behind an
@@ -34,30 +36,14 @@ use core::ptr::NonNull;
 /// single SPDM exchange even though the allocator object itself lives
 /// on the PAL.
 pub struct McuSpdmPal {
-    /// The wrapped byte-oriented PAL transport. Wrapped in
-    /// [`UnsafeCell`] because the
-    /// [`SpdmPalIoTransport`](mcu_spdm_lite_traits::SpdmPalIoTransport)
-    /// methods now take `&self` to allow `Self::Io<'_>` to remain
-    /// borrowed across `alloc` / `send_response`. The single-task
-    /// responder invariant rules out aliased access.
+    /// The wrapped byte-oriented PAL transport.
     pub(crate) transport: UnsafeCell<Box<dyn SpdmPalTransport>>,
 
     /// Per-IO scratch allocator, reset by every `recv_request`.
     pub(crate) allocator: BitmapAllocator,
 
-    /// Per-slot cache of the full SPDM cert-chain digest, indexed
-    /// `[slot as usize]`. Lazily populated on first GET_DIGESTS;
-    /// invalidation never required because the DPE-backed chain
-    /// bytes (and Caliptra's RFC-6979–deterministic ECDSA leaf
-    /// cert) are immutable for the responder's lifetime.
-    pub(crate) cached_chain_digest:
-        UnsafeCell<[Option<[u8; 48]>; mcu_spdm_lite_traits::MAX_SLOTS as usize]>,
-
-    /// Per-slot cache of the raw DER cert-chain length (DPE chain
-    /// bytes + leaf cert), indexed `[slot as usize]`. Populated as
-    /// a side effect of length probing.
-    pub(crate) cached_chain_len:
-        UnsafeCell<[Option<u32>; mcu_spdm_lite_traits::MAX_SLOTS as usize]>,
+    /// Shared cert store — same instance for all transports.
+    pub(crate) cert_store: &'static SharedCertStore,
 }
 
 impl McuSpdmPal {
@@ -93,12 +79,12 @@ impl McuSpdmPal {
         transport: Box<dyn SpdmPalTransport>,
         io_buf_ptr: NonNull<u8>,
         io_buf_capacity: usize,
+        cert_store: &'static SharedCertStore,
     ) -> Self {
         Self {
             transport: UnsafeCell::new(transport),
             allocator: BitmapAllocator::new(io_buf_ptr, io_buf_capacity),
-            cached_chain_digest: UnsafeCell::new([None; mcu_spdm_lite_traits::MAX_SLOTS as usize]),
-            cached_chain_len: UnsafeCell::new([None; mcu_spdm_lite_traits::MAX_SLOTS as usize]),
+            cert_store,
         }
     }
 

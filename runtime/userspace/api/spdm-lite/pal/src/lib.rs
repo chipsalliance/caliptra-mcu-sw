@@ -32,7 +32,7 @@
 #![no_std]
 
 mod alloc;
-mod cert;
+pub mod cert;
 mod hash;
 mod io;
 mod pal;

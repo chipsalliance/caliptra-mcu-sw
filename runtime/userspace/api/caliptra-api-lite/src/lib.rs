@@ -23,14 +23,16 @@
 #![allow(async_fn_in_trait)]
 
 mod alloc;
+mod cert;
 mod dpe;
 mod sha;
 mod wire;
 
 pub use alloc::ApiAlloc;
+pub use cert::populate_idev_ecc384_cert;
 pub use dpe::{
-    dpe_certify_key, dpe_get_cert_chain_chunk, walk_dpe_chain, DpeChainSink, DPE_LABEL_LEN,
-    DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE,
+    dpe_certify_key, dpe_get_cert_chain_chunk, dpe_sign_ecc_p384, walk_dpe_chain, DpeChainSink,
+    DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE, DPE_P384_SIGNATURE_SIZE,
 };
 pub use sha::{sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE};
 

@@ -57,12 +57,33 @@ pub(crate) const DPE_CMD_GET_CERTIFICATE_CHAIN: u32 = 0x10;
 /// DPE `CertifyKey` command ID (`dpe::commands::Command::CERTIFY_KEY`).
 pub(crate) const DPE_CMD_CERTIFY_KEY: u32 = 0x09;
 
+/// DPE `Sign` command ID (`dpe::commands::Command::SIGN`).
+pub(crate) const DPE_CMD_SIGN: u32 = 0x0A;
+
+/// Mailbox response header size: `chksum(4) + fips_status(4)`.
+pub(crate) const MBOX_RESP_HEADER_SIZE: usize = 8;
+
 // ---- Hash algorithm discriminator -----------------------------------------
 
 #[allow(dead_code)]
 pub(crate) const CM_HASH_ALGO_SHA384: u32 = 1;
 #[allow(dead_code)]
 pub(crate) const CM_HASH_ALGO_SHA512: u32 = 2;
+
+// ---- Mailbox error mapping -------------------------------------------------
+
+/// Map a mailbox error to an McuErrorCode, preserving Busy distinction.
+#[inline]
+pub(crate) fn map_mbox_err(
+    e: caliptra_mcu_libsyscall_caliptra::mailbox::MailboxError,
+) -> mcu_error::McuErrorCode {
+    use caliptra_mcu_libsyscall_caliptra::mailbox::MailboxError;
+    use caliptra_mcu_libtock_platform::ErrorCode;
+    match e {
+        MailboxError::ErrorCode(ErrorCode::Busy) => mcu_error::codes::MAILBOX_BUSY,
+        _ => mcu_error::codes::INTERNAL_BUG,
+    }
+}
 
 // ---- Checksum -------------------------------------------------------------
 
@@ -79,6 +100,21 @@ pub(crate) fn calc_checksum(cmd: u32, data: &[u8]) -> u32 {
         checksum = checksum.wrapping_add(*d as u32);
     }
     0u32.wrapping_sub(checksum)
+}
+
+// ---- Mailbox execute -------------------------------------------------------
+
+/// Execute a Caliptra mailbox command. Returns `MAILBOX_BUSY` on busy
+/// — caller decides whether to retry.
+pub(crate) async fn mbox_execute(
+    cmd: u32,
+    req: &[u8],
+    rsp: &mut [u8],
+) -> mcu_error::McuResult<usize> {
+    let mbox = caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox::<
+        caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+    >::new();
+    mbox.execute(cmd, req, rsp).await.map_err(map_mbox_err)
 }
 
 #[cfg(test)]
