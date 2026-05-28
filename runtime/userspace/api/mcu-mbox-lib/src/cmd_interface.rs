@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::transport::McuMboxTransport;
-use caliptra_api::mailbox::{CommandId as CaliptraCommandId, MailboxReqHeader};
+use caliptra_api::mailbox::{populate_checksum, CommandId as CaliptraCommandId, MailboxReqHeader};
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo,
     FirmwareVersion, MAX_UID_LEN,
