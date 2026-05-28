@@ -167,6 +167,9 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
         io: &Self::Io<'_>,
         slot: u8,
         algo: SpdmPalAsymAlgo,
+        key_pair_id: u8,
+        cert_info: u8,
+        root_hash: &[u8; 48],
         data: &[u8],
     ) -> McuResult<()>;
 
