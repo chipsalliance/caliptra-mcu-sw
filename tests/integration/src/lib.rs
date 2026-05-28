@@ -48,7 +48,7 @@ mod test {
     };
     use caliptra_mcu_emulator_periph::TapDevice;
     use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
-    use caliptra_mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
+    use caliptra_mcu_testing_common::DeviceLifecycle;
     use random_port::PortPicker;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{Arc, Mutex};
@@ -464,9 +464,6 @@ mod test {
     }
 
     pub fn start_runtime_hw_model(params: TestParams) -> DefaultHwModel {
-        // reset to known good state for beginning of test so that I3C socket will start correctly
-        MCU_RUNNING.store(true, Ordering::Relaxed);
-
         let TestBinaries {
             vendor_pk_hash_u8,
             caliptra_rom,

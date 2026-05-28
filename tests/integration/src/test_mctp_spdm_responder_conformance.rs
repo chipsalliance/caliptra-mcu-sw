@@ -12,7 +12,7 @@ mod test {
     use caliptra_mcu_testing_common::spdm_responder_validator::{
         execute_spdm_responder_validator, SpdmValidatorRunner, SERVER_LISTENING,
     };
-    use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use caliptra_mcu_testing_common::wait_for_runtime_start;
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::process::exit;
@@ -62,7 +62,7 @@ mod test {
         let stream = TcpStream::connect(addr).unwrap();
         let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
 
-        thread::spawn(move || {
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             thread::sleep(test_timeout_seconds);
             println!(
                 "[{}] TIMED OUT AFTER {:?} SECONDS",
@@ -72,14 +72,14 @@ mod test {
             exit(-1);
         });
 
-        thread::spawn(move || {
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
 
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
             thread::sleep(Duration::from_secs(5)); // give time for the app to be loaded and ready
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
             let listener = TcpListener::bind("127.0.0.1:2323")
@@ -102,7 +102,7 @@ mod test {
             }
         });
 
-        thread::spawn(move || {
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             execute_spdm_responder_validator("MCTP");
         });
     }

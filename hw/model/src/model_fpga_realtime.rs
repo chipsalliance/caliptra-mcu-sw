@@ -18,7 +18,7 @@ use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
-use caliptra_mcu_testing_common::{update_ticks, MCU_RUNNING, MCU_RUNTIME_STARTED};
+use caliptra_mcu_testing_common::{update_ticks, EmulatorState};
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
 use std::collections::VecDeque;
 use std::io::Write;
@@ -70,6 +70,10 @@ pub struct ModelFpgaRealtime {
     soc_manifest: Option<Vec<u8>>,
     mcu_firmware: Option<Vec<u8>>,
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+    /// Per-instance emulator coordination state. Kept alive for as long
+    /// as this model exists so worker threads that captured an Arc clone
+    /// observe writes from step()/boot().
+    _state: Arc<EmulatorState>,
 }
 
 impl ModelFpgaRealtime {
@@ -283,6 +287,13 @@ impl McuHwModel for ModelFpgaRealtime {
     {
         println!("ModelFpgaRealtime::new_unbooted");
 
+        // Install per-instance emulator state on this thread BEFORE any
+        // worker thread is spawned below (start_i3c_socket etc. spawn via
+        // spawn_with_emulator_state and inherit from this thread). The
+        // state is held by the returned model so it outlives the workers.
+        let state = EmulatorState::new_arc();
+        caliptra_mcu_testing_common::init_emulator_state(state.clone());
+
         let security_state_unprovisioned = SecurityState::default();
         let security_state_manufacturing =
             *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Manufacturing);
@@ -371,10 +382,8 @@ impl McuHwModel for ModelFpgaRealtime {
                 "Starting I3C socket on port {} and connected to hardware",
                 i3c_port
             );
-            let (rx, tx) = caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket(
-                &MCU_RUNNING,
-                i3c_port,
-            );
+            let (rx, tx) =
+                caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket(i3c_port);
 
             (Some(rx), Some(tx))
         } else {
@@ -412,6 +421,7 @@ impl McuHwModel for ModelFpgaRealtime {
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
             mcu_firmware: Some(params.mcu_firmware.to_vec()).filter(|f| !f.is_empty()),
             usb_host_controller,
+            _state: state,
         };
 
         // Set the FIPS zeroization PPD signal in the FPGA wrapper control
@@ -482,7 +492,7 @@ impl McuHwModel for ModelFpgaRealtime {
             assert!(self
                 .mci_boot_milestones()
                 .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
-            MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+            caliptra_mcu_testing_common::set_runtime_started(true);
             // turn off recovery
             self.base.recovery_started = false;
             println!("Resetting I3C controller");

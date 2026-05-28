@@ -1,14 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
-use caliptra_mcu_testing_common::{sleep_emulator_ticks, MCU_RUNNING};
+use caliptra_mcu_testing_common::sleep_emulator_ticks;
 use rand::Rng;
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 1; // minimum size of test vectors
 const MAX_TEST_DATA_DWORDS: usize = 250; // maximum size of test vectors
 use caliptra_mcu_testing_common::doe_util::common::DoeUtil;
 use caliptra_mcu_testing_common::doe_util::protocol::DataObjectType;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
 
 const TEST_NAME: &str = "DOE_USER_LOOPBACK_TEST";
@@ -53,7 +52,7 @@ impl DoeTransportTest for Test {
 
         self.test_state = DoeTestState::Start;
 
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while caliptra_mcu_testing_common::is_emulator_running() {
             match self.test_state {
                 DoeTestState::Start => {
                     if wait_for_responder {
