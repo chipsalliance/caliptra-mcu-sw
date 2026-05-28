@@ -119,7 +119,6 @@ test-mctp-spdm-responder-conformance = []
 # Test-only SPDM SET_CERTIFICATE path. Enables flash-backed certificate
 # installation without production authorization/key-binding.
 test-mctp-spdm-set-certificate = []
-test-doe-spdm-responder-conformance = []
 test-doe-spdm-tdisp-ide-validator = []
 test-mcu-mbox-fips-periodic = ["caliptra-mcu-mbox-lib/periodic-fips-self-test"]
 active-i3c1 = []

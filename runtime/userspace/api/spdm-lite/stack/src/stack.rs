@@ -101,6 +101,9 @@ pub struct ConnectionState<S: Clone> {
     pub peer_data_transfer_size: u32,
     /// Peer-advertised `MaxSPDMmsgSize` (V1.2+ `GET_CAPABILITIES`).
     pub peer_max_spdm_msg_size: u32,
+    /// Effective local capability flags advertised in CAPABILITIES for this
+    /// connection after version/PAL policy gating.
+    pub advertised_cap_flags: CapFlags,
     /// Peer-advertised capability flags.
     pub peer_cap_flags: CapFlags,
     /// Negotiated OtherParamsSel from NEGOTIATE_ALGORITHMS.
@@ -154,6 +157,7 @@ impl<S: Clone> ConnectionState<S> {
             version: SpdmVersion::V12,
             peer_data_transfer_size: 0,
             peer_max_spdm_msg_size: 0,
+            advertised_cap_flags: CapFlags::EMPTY,
             peer_cap_flags: CapFlags::EMPTY,
             other_param_sel: OtherParamSupport::EMPTY,
             negotiated_base_asym_sel: AsymAlgos::EMPTY,
@@ -171,6 +175,7 @@ impl<S: Clone> ConnectionState<S> {
         self.version = SpdmVersion::V12;
         self.peer_data_transfer_size = 0;
         self.peer_max_spdm_msg_size = 0;
+        self.advertised_cap_flags = CapFlags::EMPTY;
         self.peer_cap_flags = CapFlags::EMPTY;
         self.other_param_sel = OtherParamSupport::EMPTY;
         self.negotiated_base_asym_sel = AsymAlgos::EMPTY;

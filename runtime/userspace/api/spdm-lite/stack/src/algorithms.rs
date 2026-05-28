@@ -248,7 +248,7 @@ fn build_response_body<S: Clone>(
     let key_schedule = state.key_schedule & peer.key_schedule;
     let mut other_param_support = state.other_param_support & fixed.other_param_support;
     if state.version < SpdmVersion::V13
-        || !multi_key_conn_cap_negotiated(state.cap_flags, state.peer_cap_flags)
+        || !multi_key_conn_cap_negotiated(state.advertised_cap_flags, state.peer_cap_flags)
     {
         other_param_support = OtherParamSupport::from_bits(
             other_param_support.into_bits() & !OtherParamSupport::MULTI_KEY_CONN.into_bits(),

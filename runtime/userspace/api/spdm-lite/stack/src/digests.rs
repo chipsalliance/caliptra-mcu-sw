@@ -7,7 +7,7 @@
 //! array. Chunk buffers come from the per-IO bitmap pool — no
 //! stack-allocated `[u8; N]` arrays for cert content.
 
-use mcu_spdm_lite_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu};
+use mcu_spdm_lite_codec::{DigestsRsp, OtherParamSupport, ResponseBody, SpdmMsgHdrPdu, SpdmVersion};
 use mcu_spdm_lite_traits::{
     PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
 };
@@ -47,19 +47,21 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
     let num_slots = provisioned.count_ones() as usize;
     let digests_len = num_slots * digest_size;
     let asym_algo = state.asym_algo();
+    let multi_key = multi_key_conn_rsp(state);
+    let multi_key_len = if multi_key { num_slots * 4 } else { 0 };
 
-    // Compute digests directly into a pool-allocated buffer; the
-    // codec then copies these bytes into the response body via
-    // `DigestsRsp::digests` slice.
-    let mut digests = pal
-        .alloc_bytes(io, digests_len)
+    // Compute digests directly into a pool-allocated response-tail buffer.
+    // For SPDM 1.3 MultiKeyConnRsp, append KeyPairIDs, CertificateInfos, and
+    // KeyUsageMasks after the digest array without copying DER bytes.
+    let mut tail = pal
+        .alloc_bytes(io, digests_len + multi_key_len)
         .map_err(|_| SPDM_UNSPECIFIED)?;
     let mut cursor = 0;
     for slot in 0..MAX_SLOTS {
         if provisioned & (1 << slot) == 0 {
             continue;
         }
-        let dst = &mut digests[cursor..cursor + digest_size];
+        let dst = &mut tail[cursor..cursor + digest_size];
         if let Some(cached) = pal.cached_chain_digest(slot, SpdmPalHashAlgo::Sha384) {
             dst.copy_from_slice(&cached[..digest_size]);
         } else {
@@ -70,11 +72,14 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
         }
         cursor += digest_size;
     }
+    if multi_key {
+        fill_multi_key_conn_rsp_data(pal, provisioned, &mut tail[digests_len..]);
+    }
 
     let digests_body = DigestsRsp {
         supported_slots: supported,
         provisioned_slots: provisioned,
-        digests: &digests,
+        digests: &tail,
     };
     let spdm_len = digests_body.encoded_size();
 
@@ -91,6 +96,34 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
     Ok(resp)
 }
 
+fn multi_key_conn_rsp<S: Clone>(state: &ConnectionState<S>) -> bool {
+    state.version >= SpdmVersion::V13
+        && state
+            .other_param_sel
+            .contains(OtherParamSupport::MULTI_KEY_CONN)
+        && state.advertised_cap_flags.multi_key_conn_rsp()
+        && state.peer_cap_flags.multi_key_conn_rsp()
+}
+
+fn fill_multi_key_conn_rsp_data<Pal: SpdmPal>(pal: &Pal, provisioned: u8, dst: &mut [u8]) {
+    let slot_cnt = provisioned.count_ones() as usize;
+    debug_assert_eq!(dst.len(), slot_cnt * 4);
+    let (key_pair_ids, rest) = dst.split_at_mut(slot_cnt);
+    let (cert_infos, key_usage_masks) = rest.split_at_mut(slot_cnt);
+
+    let mut index = 0;
+    for slot in 0..MAX_SLOTS {
+        if provisioned & (1 << slot) == 0 {
+            continue;
+        }
+        key_pair_ids[index] = pal.key_pair_id(slot).unwrap_or_default();
+        cert_infos[index] = pal.cert_info(slot).unwrap_or_default() & 0x07;
+        let usage = index * 2;
+        key_usage_masks[usage..usage + 2]
+            .copy_from_slice(&pal.key_usage_mask(slot).unwrap_or_default().to_le_bytes());
+        index += 1;
+    }
+}
 /// Stream a slot's SPDM cert-chain bytes through the negotiated
 /// hash and write the digest into `out`.
 ///

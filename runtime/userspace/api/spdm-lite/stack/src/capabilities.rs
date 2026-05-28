@@ -88,6 +88,7 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
         let cleared = flags.into_bits() & !CapFlags::SET_CERT.into_bits();
         flags = CapFlags::from_bits(cleared);
     }
+    state.advertised_cap_flags = flags;
     let body = CapabilitiesRsp {
         ct_exponent: state.ct_exponent,
         flags,
