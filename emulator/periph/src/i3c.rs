@@ -231,6 +231,22 @@ impl I3c {
             self.tti_rx_desc_queue_raw
                 .push_back(xfer.cmd.raw_data_len() as u32 | rnw);
             self.tti_rx_data_raw.push_back(data);
+
+            // Every priv-xfer write needs an I3C-level response so the TCP
+            // socket loop can drain bus_response_rx. Reads are handled by
+            // write_tx_data_into_target() once the MCU runtime supplies the
+            // payload via the TTI TX queue. Without this ACK, an external BMC
+            // sending MCTP/PLDM/SPDM over the TCP socket hangs forever
+            // waiting on the response header (same logic the recovery
+            // dispatch path already implements; see try_dispatch_recovery).
+            if rnw == 0 {
+                let mut resp_desc = ResponseDescriptor::default();
+                resp_desc.set_data_length(0);
+                self.i3c_target.set_response(I3cTcriResponseXfer {
+                    resp: resp_desc,
+                    data: vec![],
+                });
+            }
         }
     }
 

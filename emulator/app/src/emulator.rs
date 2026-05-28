@@ -655,8 +655,7 @@ impl Emulator {
         let mut bmc_attached_signal: Option<Arc<AtomicBool>> = None;
         let mut i3c_controller = if let Some(i3c_port) = cli.i3c_port {
             if cli.wait_for_bmc {
-                let (rx, tx, signal) =
-                    start_i3c_socket_with_connect_signal(&MCU_RUNNING, i3c_port);
+                let (rx, tx, signal) = start_i3c_socket_with_connect_signal(&MCU_RUNNING, i3c_port);
                 bmc_attached_signal = Some(signal);
                 I3cController::new(rx, tx)
             } else {
@@ -1052,18 +1051,6 @@ impl Emulator {
                     mcu_event_sender,
                     mcu_event_receiver,
                 );
-            // Start the I3C controller so I3C-over-TCP transactions arriving
-            // from the external BMC actually reach the i3c_target on the bus.
-            // Flash-based-boot already gets along without this because nothing
-            // drives Phase 1 in that mode; external-recovery REQUIRES it.
-            if is_external_bmc_recovery {
-                i3c_controller_join_handle = Some(i3c_controller.start());
-                println!(
-                    "I3C controller started; target dynamic address = {}; \
-                     external BMC may now connect on the I3C TCP socket.",
-                    u8::from(i3c_dynamic_address)
-                );
-            }
         } else {
             let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
             let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
@@ -1083,6 +1070,24 @@ impl Emulator {
             bmc.push_recovery_image(soc_manifest);
             bmc.push_recovery_image(mcu_firmware);
             println!("Active mode enabled with 3 recovery images");
+        }
+
+        // Start the I3C controller so I3C-over-TCP transactions arriving
+        // from the external BMC actually reach the i3c_target on the bus.
+        // Required for both --mode external-recovery (Phase 1 OCP Recovery
+        // from external BMC) and --mode mcu-staged (post-Phase-1 MCTP /
+        // PLDM / SPDM from external BMC). When --i3c-port is absent the
+        // default I3cController has no TCP channels and this is skipped.
+        // Skip if a --test-feature branch above already started the
+        // controller (it can only be started once: `start()` consumes
+        // its rx/tx channels via `Option::take().unwrap()`).
+        if cli.i3c_port.is_some() && i3c_controller_join_handle.is_none() {
+            i3c_controller_join_handle = Some(i3c_controller.start());
+            println!(
+                "I3C controller started; target dynamic address = {}; \
+                 external BMC may now connect on the I3C TCP socket.",
+                u8::from(i3c_dynamic_address)
+            );
         }
 
         if test_feature == "test-mcu-mbox-soc-requester-loopback"
