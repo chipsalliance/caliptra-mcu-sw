@@ -16,6 +16,7 @@ use crate::error::{
     SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
 use crate::stack::{ConnectionState, Phase};
+use crate::vendor_defined::{self, SpdmVdmBackend};
 
 const CERTIFICATE_RESPONSE_HEADER_SIZE: usize = SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE;
 
@@ -226,33 +227,30 @@ struct ChunkInfo {
     complete: bool,
 }
 
-pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal>(
+pub(crate) async fn handle_chunk_send<'a, Pal, Vdm>(
     state: &mut ConnectionState<Pal::State>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-) -> SpdmResult<PalBytes<'a, Pal>> {
+    vdm_backend: &Vdm,
+) -> SpdmResult<PalBytes<'a, Pal>>
+where
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+{
     let result = process_chunk_send(state, pal, io);
     match result {
-        Ok(info) => {
-            let mut response_to_large_request = [0u8; 4];
-            let response = if info.complete {
-                let err = classify_large_request(state, pal);
-                encode_error_pdu(state.version, err, &mut response_to_large_request);
-                state.chunk.reset();
-                &response_to_large_request[..]
-            } else {
-                &[]
-            };
-            build_chunk_send_ack(
-                pal,
-                io,
-                state.version,
-                false,
-                info.handle,
-                info.chunk_seq_num,
-                response,
-            )
+        Ok(info) if info.complete => {
+            build_completed_chunk_send_ack(state, pal, io, info, vdm_backend).await
         }
+        Ok(info) => build_chunk_send_ack(
+            pal,
+            io,
+            state.version,
+            false,
+            info.handle,
+            info.chunk_seq_num,
+            &[],
+        ),
         Err(ChunkProcessError::Spdm(e)) => Err(e),
         Err(ChunkProcessError::Early {
             handle,
@@ -281,7 +279,68 @@ fn build_chunk_send_ack<'a, Pal: SpdmPal>(
         io,
         head + SpdmMsgHdrPdu::SIZE + 4 + response_to_large_request.len(),
     )?;
-    let mut w = WireWriter::new(&mut rsp[head..]);
+    write_chunk_send_ack_prefix(
+        &mut rsp[head..],
+        version,
+        early_error,
+        handle,
+        chunk_seq_num,
+    )?;
+    let response_offset = head + SpdmMsgHdrPdu::SIZE + 4;
+    rsp[response_offset..response_offset + response_to_large_request.len()]
+        .copy_from_slice(response_to_large_request);
+    Ok(rsp)
+}
+
+async fn build_completed_chunk_send_ack<'a, Pal, Vdm>(
+    state: &mut ConnectionState<Pal::State>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    info: ChunkInfo,
+    vdm_backend: &Vdm,
+) -> SpdmResult<PalBytes<'a, Pal>>
+where
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+{
+    let head = pal.header_size();
+    let ack_body_len = SpdmMsgHdrPdu::SIZE + 4;
+    let max_response_len = effective_data_transfer_size(state, pal).saturating_sub(ack_body_len);
+    let mut rsp = alloc_padded(pal, io, head + ack_body_len + max_response_len)?;
+
+    let response_offset = head + ack_body_len;
+    let response = &mut rsp[response_offset..response_offset + max_response_len];
+    let response_len =
+        match build_response_to_large_request(state, pal, io, vdm_backend, response).await {
+            Ok(len) => len,
+            Err(err) => {
+                let mut error = [0u8; 4];
+                encode_error_pdu(state.version, err, &mut error);
+                response[..error.len()].copy_from_slice(&error);
+                error.len()
+            }
+        };
+    state.chunk.reset();
+
+    write_chunk_send_ack_prefix(
+        &mut rsp[head..],
+        state.version,
+        false,
+        info.handle,
+        info.chunk_seq_num,
+    )?;
+    shrink_padded(pal, &mut rsp, response_offset + response_len)?;
+    Ok(rsp)
+}
+
+fn write_chunk_send_ack_prefix(
+    out: &mut [u8],
+    version: SpdmVersion,
+    early_error: bool,
+    handle: u8,
+    chunk_seq_num: u16,
+) -> SpdmResult<()> {
+    let mut w = WireWriter::new(out);
     w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::CHUNK_SEND_ACK))?;
     let attr = if early_error {
         CHUNK_ACK_ATTR_EARLY_ERROR
@@ -290,8 +349,43 @@ fn build_chunk_send_ack<'a, Pal: SpdmPal>(
     };
     w.write(&[attr, handle])?;
     w.write(&U16::new(chunk_seq_num))?;
-    w.write_bytes(response_to_large_request)?;
-    Ok(rsp)
+    Ok(())
+}
+
+async fn build_response_to_large_request<Pal, Vdm>(
+    state: &ConnectionState<Pal::State>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    vdm_backend: &Vdm,
+    out: &mut [u8],
+) -> SpdmResult<usize>
+where
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+{
+    let large_req = pal
+        .large_message(state.chunk.large_msg_size as usize)
+        .map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (hdr, _) = SpdmMsgHdrPdu::ref_from_prefix(large_req).map_err(|_| SPDM_INVALID_REQUEST)?;
+    if hdr.version != state.version.to_u8()
+        || hdr.code == ReqRespCode::CHUNK_SEND
+        || hdr.code == ReqRespCode::CHUNK_GET
+    {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    match hdr.code {
+        ReqRespCode::VENDOR_DEFINED_REQUEST => {
+            vendor_defined::handle_large_vendor_defined_request::<Pal, Vdm>(
+                state,
+                io,
+                large_req,
+                vdm_backend,
+                out,
+            )
+            .await
+        }
+        _ => Err(SPDM_UNSUPPORTED_REQUEST),
+    }
 }
 
 pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
@@ -638,27 +732,6 @@ fn process_next_chunk<Pal: SpdmPal>(
     Ok(())
 }
 
-fn classify_large_request<Pal: SpdmPal>(
-    state: &ConnectionState<Pal::State>,
-    pal: &Pal,
-) -> SpdmError {
-    let Ok(large_req) = pal.large_message(state.chunk.large_msg_size as usize) else {
-        return SPDM_INVALID_REQUEST;
-    };
-    let Ok((hdr, _)) = SpdmMsgHdrPdu::ref_from_prefix(large_req) else {
-        return SPDM_INVALID_REQUEST;
-    };
-    if hdr.version != state.version.to_u8()
-        || hdr.code == ReqRespCode::CHUNK_SEND
-        || hdr.code == ReqRespCode::CHUNK_GET
-    {
-        return SPDM_INVALID_REQUEST;
-    }
-    // TODO: Dispatch supported chunked large requests from `large_req` here.
-    // SPDM-lite currently only uses chunking for large responses.
-    SPDM_UNSUPPORTED_REQUEST
-}
-
 fn encode_error_pdu(version: SpdmVersion, err: SpdmError, out: &mut [u8; 4]) {
     out[0] = version.to_u8();
     out[1] = ReqRespCode::ERROR.0;
@@ -686,4 +759,17 @@ fn alloc_padded<'a, Pal: SpdmPal>(
         *b = 0;
     }
     Ok(buf)
+}
+
+fn shrink_padded<Pal: SpdmPal>(
+    pal: &Pal,
+    rsp: &mut PalBytes<'_, Pal>,
+    raw_len: usize,
+) -> SpdmResult<()> {
+    let shrink_len = padded_len(pal, raw_len)?;
+    for b in &mut rsp[raw_len..shrink_len] {
+        *b = 0;
+    }
+    Pal::shrink_bytes(rsp, shrink_len)?;
+    Ok(())
 }
