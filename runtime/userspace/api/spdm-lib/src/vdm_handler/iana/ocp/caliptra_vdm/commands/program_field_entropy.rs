@@ -7,14 +7,15 @@ use crate::vdm_handler::iana::ocp::caliptra_vdm::protocol::{
 use crate::vdm_handler::{VdmError, VdmResult};
 use caliptra_mcu_common_commands::{CaliptraCmdHandler, CommandAuthorizer};
 
-/// CaliptraCommandId::FeProg — the command ID used in the SPDM VDM namespace
-/// for HMAC computation. Must match the host-side value.
-const FE_PROG_CMD_ID: u32 = 0x8011;
+/// Canonical MCU mailbox external command ID for FE_PROG (`MC_FE_PROG`).
+/// This is also the sub-command ID used in the VDM AuthorizedCommand dispatch,
+/// so the HMAC input is identical across SPDM VDM and MCU mailbox transports.
+const FE_PROG_CMD_ID: u32 = 0x4D43_4650;
 
 /// Handle ProgramFieldEntropy with authorization via [`CommandAuthorizer`].
 ///
-/// VDM wire format request:  [version, 0x10, partition(4 LE), mac(48)]
-/// VDM wire format response: [version, 0x10, completion_code]
+/// VDM wire format request:  [version, 0x12 (AuthorizedCommand), sub_cmd_id=0x4D43_4650 (4 LE), partition(4 LE), mac(48)]
+/// VDM wire format response: [version, 0x12 (AuthorizedCommand), completion_code]
 ///
 /// Delegates MAC verification to the provided [`CommandAuthorizer::verify_mac`]
 /// using the SPDM VDM command ID namespace.

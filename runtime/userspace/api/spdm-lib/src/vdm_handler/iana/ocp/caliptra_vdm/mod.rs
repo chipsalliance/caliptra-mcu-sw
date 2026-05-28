@@ -122,22 +122,30 @@ impl VdmResponder for CaliptraVdmHandler<'_> {
                 debug_unlock::handle_authorize_debug_unlock_token(self.handler, req_buf, rsp_buf)
                     .await?
             }
-            CaliptraVdmCommand::ProgramFieldEntropy => {
-                program_field_entropy::handle_program_field_entropy(
-                    self.handler,
-                    req_buf,
-                    rsp_buf,
-                    &mut self.cmd_authorizer,
-                )
-                .await?
-            }
-            CaliptraVdmCommand::GetAuthCmdChallenge => {
-                get_auth_challenge::handle_get_auth_challenge(
-                    req_buf,
-                    rsp_buf,
-                    &mut self.cmd_authorizer,
-                )
-                .await?
+            CaliptraVdmCommand::AuthorizedCommand => {
+                let sub_cmd_id = u32::decode(req_buf).map_err(VdmError::Codec)?;
+                match sub_cmd_id {
+                    0x4D41_4343 => {
+                        get_auth_challenge::handle_get_auth_challenge(
+                            req_buf,
+                            rsp_buf,
+                            &mut self.cmd_authorizer,
+                        )
+                        .await?
+                    }
+                    0x4D43_4650 => {
+                        program_field_entropy::handle_program_field_entropy(
+                            self.handler,
+                            req_buf,
+                            rsp_buf,
+                            &mut self.cmd_authorizer,
+                        )
+                        .await?
+                    }
+                    _ => CaliptraVdmCmdResult::ErrorResponse(
+                        CaliptraCompletionCode::InvalidParameter,
+                    ),
+                }
             }
             _ => CaliptraVdmCmdResult::ErrorResponse(CaliptraCompletionCode::UnsupportedOperation),
         };

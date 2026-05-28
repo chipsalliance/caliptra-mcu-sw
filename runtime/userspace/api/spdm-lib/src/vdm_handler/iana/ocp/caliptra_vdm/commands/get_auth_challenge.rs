@@ -8,11 +8,11 @@ use crate::vdm_handler::{VdmError, VdmResult};
 use caliptra_mcu_common_commands::CommandAuthorizer;
 use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
 
-/// Handle GetAuthCmdChallenge — generate a random 32-byte challenge nonce
+/// Handle GetAuthChallenge sub-command \u2014 generate a random 32-byte challenge nonce
 /// and store it in the [`CommandAuthorizer`] for subsequent authorized command verification.
 ///
-/// VDM wire format request:  [version, 0x12]  (no additional payload)
-/// VDM wire format response: [version, 0x12, completion_code, challenge(32)]
+/// VDM wire format request:  [version, 0x12 (AuthorizedCommand), sub_cmd_id=0x4D41_4343 (4 LE)]
+/// VDM wire format response: [version, 0x12 (AuthorizedCommand), completion_code, challenge(32)]
 pub(crate) async fn handle_get_auth_challenge(
     _req_buf: &mut MessageBuf<'_>,
     rsp_buf: &mut MessageBuf<'_>,
