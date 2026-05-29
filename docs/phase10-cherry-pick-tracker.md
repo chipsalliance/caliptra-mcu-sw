@@ -11,16 +11,9 @@
 
 ## 1. caliptra-sw Cherry-Picks Needed (caliptra-2.0 → main)
 
-
-
 | PR | Description |
 |----|-------------|
 | [#3622](https://github.com/chipsalliance/caliptra-sw/pull/3622) | runtime: DPE ML-DSA hybrid support with stack overflow fix |
-
-
-
-
-
 
 
 ## 2. SPDM-lib Cherry-Picks Needed (caliptra-mcu-sw)
@@ -42,11 +35,10 @@ These are the commits on `origin/main` (present in the successful reference) tha
 
 | PR | Commit | Description | Impact | Status |
 |----|--------|-------------|--------|--------|
+| [#1297](https://github.com/chipsalliance/caliptra-mcu-sw/pull/1297) | `c26c4201` | **Enable SPDM tests on FPGA** | Adds `fpga-spdm.yml` workflow, hw-model based SPDM test wiring, `use_strap_secrets` flag (19 files, 487 new lines) | **MISSING** |
+| [#1294](https://github.com/chipsalliance/caliptra-mcu-sw/pull/1294) | `88992d8a` | Add evidence decode, appraise command, and CoRIM ref val fixes | OCP EAT attestation tooling (17 files, 1500 new lines) | **MISSING** |
+| [#1305](https://github.com/chipsalliance/caliptra-mcu-sw/pull/1305) | `fb29ec6a` | Run SPDM tests on FPGA as regular tests | Moves SPDM tests to regular FPGA test suite | **MISSING** |
 | [#1334](https://github.com/chipsalliance/caliptra-mcu-sw/pull/1334) | `b55397fd` | Add ExportAttestedCsr command on MCU mailbox and SPDM-over-MCTP transports | New VDM command | Ref only in build fix on phase10 |
-| [#1370](https://github.com/chipsalliance/caliptra-mcu-sw/pull/1370) | `2d5f5460` | Add ExportIdevidCsr VDM command | New VDM command | **MISSING** |
-| [#1373](https://github.com/chipsalliance/caliptra-mcu-sw/pull/1373) | `2660cc96` | Add SET_CERTIFICATE handling with persistent cert storage | New SPDM command (`set_certificate_rsp.rs` — 756 new lines) | **MISSING** |
-| [#1388](https://github.com/chipsalliance/caliptra-mcu-sw/pull/1388) | `555d295a` | Add GetLog/ClearLog commands support | New VDM commands | **MISSING** |
-| [#1426](https://github.com/chipsalliance/caliptra-mcu-sw/pull/1426) | `dfb49ed7` | Add VDM streaming for ProdDebugUnlock on MCU side | VDM streaming, `VdmStreamHandler` trait | **MISSING** |
 
 ## 4. Dependency Bumps Required
 
