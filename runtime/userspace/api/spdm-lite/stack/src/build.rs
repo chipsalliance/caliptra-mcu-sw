@@ -20,7 +20,7 @@ use crate::error::SpdmResult;
 /// Allocate a buffer of `raw_len` bytes, rounded up to the transport's
 /// [`send_len_alignment`](SpdmPalIoTransport::send_len_alignment).
 /// Padding bytes are zeroed.
-fn alloc_padded<'a, Pal: SpdmPal>(
+pub(crate) fn alloc_padded<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &Pal::Io<'_>,
     raw_len: usize,

@@ -10,6 +10,7 @@ use mcu_spdm_lite_codec::{
 use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::{little_endian::U16, little_endian::U32, FromBytes};
 
+use crate::build::alloc_padded;
 use crate::certificate;
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSUPPORTED_REQUEST,
@@ -246,7 +247,9 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
 
     let (chunk_req, rest) =
         ChunkGetReqBody::ref_from_prefix(body).map_err(|_| SPDM_INVALID_REQUEST)?;
-    if chunk_req.param1 != 0 || !rest.is_empty() {
+    if chunk_req.param1 != 0
+        || !valid_transport_padding(pal, SpdmMsgHdrPdu::SIZE + ChunkGetReqBody::SIZE, rest)
+    {
         return Err(SPDM_INVALID_REQUEST);
     }
 
@@ -277,10 +280,8 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     let chunk_size = remaining.min(max_chunk_size);
     let last_chunk = chunk_size == remaining;
     let head = pal.header_size();
-    let mut rsp = pal.alloc_bytes(
-        io,
-        head + SpdmMsgHdrPdu::SIZE + CHUNK_RESPONSE_FIXED_BODY_SIZE + extra + chunk_size,
-    )?;
+    let raw_len = head + SpdmMsgHdrPdu::SIZE + CHUNK_RESPONSE_FIXED_BODY_SIZE + extra + chunk_size;
+    let mut rsp = alloc_padded(pal, io, raw_len)?;
 
     {
         let mut w = WireWriter::new(&mut rsp[head..]);
@@ -304,6 +305,21 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
 
     state.large_response.sent(chunk_size);
     Ok(rsp)
+}
+
+fn valid_transport_padding<Pal: SpdmPal>(pal: &Pal, spdm_len: usize, padding: &[u8]) -> bool {
+    if padding.is_empty() {
+        return true;
+    }
+
+    let align = pal.send_len_alignment();
+    let expected = if align <= 1 {
+        0
+    } else {
+        (align - (spdm_len % align)) % align
+    };
+
+    padding.len() == expected && padding.iter().all(|&b| b == 0)
 }
 
 enum ChunkProcessError {
