@@ -8,7 +8,7 @@
 //! [`ConnectionState::reset_negotiation`] before invoking us so that
 //! GET_VERSION always resets the connection.
 
-use mcu_spdm_lite_codec::{SpdmMsgHdrPdu, SpdmVersion, VersionRsp};
+use mcu_spdm_lite_codec::{ResponseBody, SpdmMsgHdrPdu, SpdmVersion, VersionRsp};
 use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo};
 use zerocopy::FromBytes;
 
@@ -68,19 +68,20 @@ pub(crate) async fn handle_get_version<'a, Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    let resp = build_response(
-        pal,
-        io,
-        SpdmVersion::V10,
-        &VersionRsp {
-            versions: SUPPORTED_VERSIONS,
-        },
-    )?;
+    let body = VersionRsp {
+        versions: SUPPORTED_VERSIONS,
+    };
+    let spdm_len = body.encoded_size();
+    let resp = build_response(pal, io, SpdmVersion::V10, &body)?;
 
     // DSP0274 §10.4.1: GET_VERSION + VERSION contribute to VCA.
+    // Use spdm_len to exclude any transport-layer padding (e.g. DOE DWORD alignment).
     let head = pal.header_size();
     state.transcript.append_vca(pal, io, io.request()).await?;
-    state.transcript.append_vca(pal, io, &resp[head..]).await?;
+    state
+        .transcript
+        .append_vca(pal, io, &resp[head..head + spdm_len])
+        .await?;
 
     state.phase = Phase::AfterVersion;
     Ok(resp)

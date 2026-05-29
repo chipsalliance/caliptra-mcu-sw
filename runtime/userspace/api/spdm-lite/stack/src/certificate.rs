@@ -11,7 +11,8 @@
 //! stack-allocated `[u8; N]` array for cert payload.
 
 use mcu_spdm_lite_codec::{
-    CertificateRsp, GetCertificateReqBody, SpdmMsgHdrPdu, SpdmVersion, ATTR_SLOT_SIZE_REQUESTED,
+    CertificateRsp, GetCertificateReqBody, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
+    ATTR_SLOT_SIZE_REQUESTED,
 };
 use mcu_spdm_lite_traits::{
     PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
@@ -96,26 +97,23 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
     let mut portion = pal.alloc_bytes(io, portion_len as usize)?;
     fill_cert_chain_portion(pal, io, slot_id, asym_algo, offset as usize, &mut portion).await?;
 
-    let resp = build_response(
-        pal,
-        io,
-        state.version,
-        &CertificateRsp {
-            slot_id,
-            // Param2: we don't yet expose CertModel — leave 0
-            // (Reserved on V1.0-V1.2; CertModel=0 on V1.3).
-            param2: 0,
-            portion_length: portion_len,
-            remainder_length: remainder_len,
-            chain_portion: &portion,
-        },
-    )?;
+    let cert_body = CertificateRsp {
+        slot_id,
+        param2: 0,
+        portion_length: portion_len,
+        remainder_length: remainder_len,
+        chain_portion: &portion,
+    };
+    let spdm_len = cert_body.encoded_size();
 
-    // DSP0274 Table 47: GET_CERTIFICATE + CERTIFICATE contribute
-    // to `M1` (the `B` portion of `M1 = A ∥ B ∥ C`).
+    let resp = build_response(pal, io, state.version, &cert_body)?;
+
     let head = pal.header_size();
     state.transcript.append_m1(pal, io, io.request()).await?;
-    state.transcript.append_m1(pal, io, &resp[head..]).await?;
+    state
+        .transcript
+        .append_m1(pal, io, &resp[head..head + spdm_len])
+        .await?;
 
     state.phase = Phase::AfterCertificate;
     Ok(resp)

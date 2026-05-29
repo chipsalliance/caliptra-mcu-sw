@@ -33,6 +33,7 @@ pub(crate) const CMB_SHA_CONTEXT_SIZE: usize = 200;
 pub(crate) const CMD_CM_SHA_INIT: u32 = 0x434D_5349; // "CMSI"
 pub(crate) const CMD_CM_SHA_UPDATE: u32 = 0x434D_5355; // "CMSU"
 pub(crate) const CMD_CM_SHA_FINAL: u32 = 0x434D_5346; // "CMSF"
+pub(crate) const CMD_CM_RANDOM_GENERATE: u32 = 0x434D_5247; // "CMRG"
 
 // ---- DPE (Caliptra `InvokeDpeCommand`) ------------------------------------
 
