@@ -489,13 +489,14 @@ impl SpdmVdmBackend for CaliptraOcpVdm {
                     return Err(mcu_spdm_lite_stack::SPDM_INVALID_REQUEST);
                 }
                 let caps = &config::TEST_DEVICE_CAPABILITIES;
-                let mut out_caps = DeviceCapabilities::default();
-                out_caps.caliptra_rt = caps.caliptra_rt;
-                out_caps.caliptra_fmc = caps.caliptra_fmc;
-                out_caps.caliptra_rom = caps.caliptra_rom;
-                out_caps.mcu_rt = caps.mcu_rt;
-                out_caps.mcu_rom = caps.mcu_rom;
-                out_caps.reserved = caps.reserved;
+                let out_caps = DeviceCapabilities {
+                    caliptra_rt: caps.caliptra_rt,
+                    caliptra_fmc: caps.caliptra_fmc,
+                    caliptra_rom: caps.caliptra_rom,
+                    mcu_rt: caps.mcu_rt,
+                    mcu_rom: caps.mcu_rom,
+                    reserved: caps.reserved,
+                };
                 let offset = Self::write_success(inline, command_code)?;
                 Self::write_bytes(inline, offset, out_caps.as_bytes()).map(VdmResponseKind::Inline)
             }
