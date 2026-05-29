@@ -133,9 +133,10 @@ impl CertificateResponse {
     ) -> CommandResult<usize> {
         let certchain_offset: usize;
         let mut chunk_data_len = 0;
+        let total_response_len = CERTIFICATE_RESP_HEADER_SIZE + self.portion_len as usize;
         let mut rem_len = chunk
             .len()
-            .min((self.portion_len - cert_rsp_offset as u16) as usize);
+            .min(total_response_len.saturating_sub(cert_rsp_offset));
         if cert_rsp_offset < CERTIFICATE_RESP_HEADER_SIZE {
             // Read from the response header
             let header_bytes = self.resp_hdr().await?;
