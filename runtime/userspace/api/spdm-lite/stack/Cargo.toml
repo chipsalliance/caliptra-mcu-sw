@@ -18,6 +18,9 @@ zerocopy = { workspace = true }
 caliptra-mcu-libtock_console = { workspace = true, optional = true }
 caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
 
+[dev-dependencies]
+futures = { workspace = true }
+
 [features]
 default = []
 debug-trace = [
