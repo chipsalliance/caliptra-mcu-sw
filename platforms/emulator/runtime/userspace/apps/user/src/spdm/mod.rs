@@ -31,8 +31,8 @@ const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
 /// Persistent large-message buffer. This is kept outside the async task frame
 /// and outside the per-I/O scratch allocator because CHUNK_SEND reassembly and
 /// buffered large responses must live across multiple received chunk messages.
-/// 13 KiB covers the current largest OCP VDM CSR response (12.8 KiB attested
-/// CSR data plus mailbox/SPDM/VDM framing) without the extra slack of 16 KiB.
+/// The current VDM large-response path buffers the full CSR response before
+/// CHUNK_GET serves it, so this must cover the largest expected CSR response.
 const SPDM_LITE_LARGE_MSG_SIZE: usize = 13 * 1024;
 
 /// Single cert store shared by all SPDM responder tasks.

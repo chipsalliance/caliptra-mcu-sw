@@ -3,8 +3,8 @@
 //! VENDOR_DEFINED request dispatch for SPDM-Lite.
 
 use mcu_spdm_lite_codec::{
-    CapFlags, ReqRespCode, SpdmMsgHdrPdu, StandardsBodyId, VendorDefinedReqPdu,
-    VendorDefinedRspPdu, WireReader, WireWriter,
+    ReqRespCode, SpdmMsgHdrPdu, StandardsBodyId, VendorDefinedReqPdu, VendorDefinedRspPdu,
+    WireReader, WireWriter,
 };
 use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport};
 use zerocopy::{little_endian::U16, FromBytes};
@@ -263,9 +263,13 @@ where
         req.vendor_id,
     )?;
 
-    let large_capacity = pal.large_message_capacity();
+    let large_capacity = pal.capacity();
     let large_total_len = if large_capacity >= fixed_len {
-        let large_rsp = pal.large_message_mut(large_capacity)?;
+        // SAFETY: the SPDM-lite responder is single-tasked for this PAL, and
+        // this mutable borrow is scoped to building one VDM response. No other
+        // PAL operation accesses the persistent large-message buffer until this
+        // borrow is no longer used.
+        let large_rsp = unsafe { pal.large_message_mut(large_capacity)? };
         encode_vendor_defined_response_prefix(
             large_rsp,
             state.version,
@@ -332,15 +336,12 @@ where
     };
 
     if large_total_len <= fixed_len + max_rsp_len {
-        let large_rsp = pal.large_message(large_total_len)?;
-        rsp[head..head + large_total_len].copy_from_slice(large_rsp);
+        pal.read(0, &mut rsp[head..head + large_total_len])?;
         shrink_padded(pal, &mut rsp, head + large_total_len)?;
         return Ok(rsp);
     }
 
-    let chunking =
-        state.cap_flags.contains(CapFlags::CHUNK) && state.peer_cap_flags.contains(CapFlags::CHUNK);
-    if !chunking || large_total_len > effective_max_spdm_msg_size(state, pal) {
+    if !state.chunking_enabled() || large_total_len > effective_max_spdm_msg_size(state, pal) {
         return Err(SPDM_UNSPECIFIED);
     }
     let handle = state.large_response.start_buffered(large_total_len);

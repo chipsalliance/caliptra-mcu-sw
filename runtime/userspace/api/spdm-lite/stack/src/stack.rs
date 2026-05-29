@@ -23,7 +23,8 @@ use zerocopy::FromBytes;
 
 use crate::build::build_error_response;
 use crate::error::{
-    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
+    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSUPPORTED_REQUEST,
+    SPDM_VERSION_MISMATCH,
 };
 use crate::{
     algorithms, capabilities, certificate, challenge, chunk, digests, vendor_defined, version,
@@ -415,14 +416,14 @@ where
     Pal: SpdmPal,
     Vdm: vendor_defined::SpdmVdmBackend,
 {
+    if state.large_response.in_progress()
+        && code != ReqRespCode::CHUNK_GET
+        && code != ReqRespCode::GET_VERSION
+    {
+        return Err(SPDM_UNEXPECTED_REQUEST);
+    }
     if code != ReqRespCode::CHUNK_SEND && state.chunk.in_progress() {
         state.chunk.reset();
-    }
-    if code != ReqRespCode::CHUNK_GET
-        && code != ReqRespCode::CHUNK_SEND
-        && state.large_response.in_progress()
-    {
-        state.large_response.reset();
     }
     match code {
         ReqRespCode::GET_VERSION => {

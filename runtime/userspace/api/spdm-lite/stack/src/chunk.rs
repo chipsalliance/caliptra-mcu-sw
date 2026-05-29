@@ -23,7 +23,7 @@ const CERTIFICATE_RESPONSE_HEADER_SIZE: usize = SpdmMsgHdrPdu::SIZE + Certificat
 #[derive(Copy, Clone)]
 pub(crate) struct LargeResponseState {
     next_handle: u8,
-    active: Option<LargeResponseKind>,
+    active: Option<LargeResponse>,
 }
 
 impl Default for LargeResponseState {
@@ -47,27 +47,10 @@ impl LargeResponseState {
     }
 
     #[inline]
-    pub(crate) fn start_certificate(
-        &mut self,
-        slot_id: u8,
-        param2: u8,
-        asym_algo: SpdmPalAsymAlgo,
-        cert_offset: u16,
-        portion_len: u16,
-        remainder_len: u16,
-    ) -> u8 {
+    pub(crate) fn start(&mut self, mut rsp: LargeResponse) -> u8 {
         let handle = self.next_handle;
-        self.active = Some(LargeResponseKind::Certificate(CertificateLargeResponse {
-            handle,
-            next_seq_num: 0,
-            bytes_sent: 0,
-            slot_id,
-            param2,
-            asym_algo,
-            cert_offset,
-            portion_len,
-            remainder_len,
-        }));
+        rsp.assign_handle(handle);
+        self.active = Some(rsp);
         handle
     }
 
@@ -75,7 +58,7 @@ impl LargeResponseState {
     #[allow(dead_code)]
     pub(crate) fn start_buffered(&mut self, response_size: usize) -> u8 {
         let handle = self.next_handle;
-        self.active = Some(LargeResponseKind::Buffered(BufferedLargeResponse {
+        self.active = Some(LargeResponse::Buffered(BufferedLargeResponse {
             handle,
             next_seq_num: 0,
             bytes_sent: 0,
@@ -85,7 +68,7 @@ impl LargeResponseState {
     }
 
     #[inline]
-    fn response(self) -> Option<LargeResponseKind> {
+    fn response(self) -> Option<LargeResponse> {
         self.active
     }
 
@@ -120,12 +103,20 @@ impl LargeResponseState {
 
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
-enum LargeResponseKind {
+pub(crate) enum LargeResponse {
     Certificate(CertificateLargeResponse),
     Buffered(BufferedLargeResponse),
 }
 
-impl LargeResponseKind {
+impl LargeResponse {
+    #[inline]
+    fn assign_handle(&mut self, handle: u8) {
+        match self {
+            Self::Certificate(rsp) => rsp.handle = handle,
+            Self::Buffered(rsp) => rsp.handle = handle,
+        }
+    }
+
     #[inline]
     fn handle(self) -> u8 {
         match self {
@@ -190,13 +181,35 @@ pub(crate) struct CertificateLargeResponse {
 
 impl CertificateLargeResponse {
     #[inline]
+    pub(crate) fn new(
+        slot_id: u8,
+        param2: u8,
+        asym_algo: SpdmPalAsymAlgo,
+        cert_offset: u16,
+        portion_len: u16,
+        remainder_len: u16,
+    ) -> Self {
+        Self {
+            handle: 0,
+            next_seq_num: 0,
+            bytes_sent: 0,
+            slot_id,
+            param2,
+            asym_algo,
+            cert_offset,
+            portion_len,
+            remainder_len,
+        }
+    }
+
+    #[inline]
     fn response_size(self) -> usize {
         CERTIFICATE_RESPONSE_HEADER_SIZE + self.portion_len as usize
     }
 }
 
 #[derive(Copy, Clone)]
-struct BufferedLargeResponse {
+pub(crate) struct BufferedLargeResponse {
     handle: u8,
     next_seq_num: u16,
     bytes_sent: u32,
@@ -374,8 +387,8 @@ where
     // `state.chunk` is reset after this response is built. The returned borrow
     // is used read-only to decode and dispatch the completed large request, and
     // no other PAL large-message operation is performed while it is live.
-    let large_req = unsafe { pal.large_message_mut(large_req_len) }
-        .map_err(|_| SPDM_INVALID_REQUEST)?;
+    let large_req =
+        unsafe { pal.large_message_mut(large_req_len) }.map_err(|_| SPDM_INVALID_REQUEST)?;
     let (hdr, _) = SpdmMsgHdrPdu::ref_from_prefix(&*large_req).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8()
         || hdr.code == ReqRespCode::CHUNK_SEND
@@ -481,7 +494,7 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
         }
         let chunk = w.reserve(chunk_size)?;
         fill_large_response_chunk(pal, io, state.version, large_rsp, bytes_sent, chunk).await?;
-        if matches!(large_rsp, LargeResponseKind::Certificate(_)) {
+        if matches!(large_rsp, LargeResponse::Certificate(_)) {
             state.transcript.append_m1(pal, io, chunk).await?;
         }
     }
@@ -610,15 +623,15 @@ async fn fill_large_response_chunk<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     version: SpdmVersion,
-    rsp: LargeResponseKind,
+    rsp: LargeResponse,
     offset: usize,
     dst: &mut [u8],
 ) -> mcu_error::McuResult<()> {
     match rsp {
-        LargeResponseKind::Certificate(cert_rsp) => {
+        LargeResponse::Certificate(cert_rsp) => {
             fill_certificate_response_chunk(pal, io, version, cert_rsp, offset, dst).await
         }
-        LargeResponseKind::Buffered(buffered_rsp) => {
+        LargeResponse::Buffered(buffered_rsp) => {
             let end = offset
                 .checked_add(dst.len())
                 .ok_or(mcu_error::codes::INVARIANT)?;
