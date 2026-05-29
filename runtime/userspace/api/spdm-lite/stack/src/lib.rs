@@ -38,6 +38,7 @@ mod chunk;
 mod digests;
 mod error;
 mod measurements;
+pub mod pci_sig;
 #[cfg(feature = "set-certificate")]
 mod set_certificate;
 mod stack;
@@ -51,4 +52,5 @@ pub use stack::*;
 pub use transcript::*;
 pub use vendor_defined::{
     SpdmVdmBackend, SyncVdmHandlers, VdmHandler, VdmRequest, VdmResponseBuffers, VdmResponseKind,
+    VdmRouter,
 };

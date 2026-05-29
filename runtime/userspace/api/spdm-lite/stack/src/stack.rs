@@ -366,9 +366,7 @@ where
                         }
                         let _ = writeln!(&mut console);
                     }
-                    self.pal
-                        .send_response(&io, SpdmPalIoKind::Message, &mut rsp)
-                        .await?
+                    self.pal.send_response(&io, io.kind(), &mut rsp).await?
                 }
                 Err(e) => {
                     #[cfg(feature = "debug-trace")]
@@ -447,9 +445,7 @@ where
             return Ok(());
         };
 
-        self.pal
-            .send_response(io, SpdmPalIoKind::Message, &mut err_rsp)
-            .await
+        self.pal.send_response(io, io.kind(), &mut err_rsp).await
     }
 }
 

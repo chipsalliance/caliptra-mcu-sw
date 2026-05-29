@@ -50,12 +50,11 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
     if hdr.version != state.version.to_u8() {
         return Err(crate::error::SPDM_VERSION_MISMATCH);
     }
-    let req_body = GetCertificateReqBody::ref_from_bytes(
-        body.get(..GetCertificateReqBody::SIZE)
-            .ok_or(SPDM_INVALID_REQUEST)?,
-    )
-    .map_err(|_| SPDM_INVALID_REQUEST)?;
-
+    let (req_body, rest) =
+        GetCertificateReqBody::ref_from_prefix(body).map_err(|_| SPDM_INVALID_REQUEST)?;
+    if !rest.is_empty() {
+        return Err(SPDM_INVALID_REQUEST);
+    }
     let slot_id = req_body.slot_id & 0x0F;
     if slot_id >= MAX_SLOTS {
         return Err(SPDM_INVALID_REQUEST);

@@ -25,6 +25,14 @@ use embassy_sync::signal::Signal;
 use mcu_spdm_lite_pal::cert::store::SharedCertStore;
 use mcu_spdm_lite_pal::{McuSpdmPal, BITMAP_SLOT_SIZE};
 use mcu_spdm_lite_stack::SpdmStack;
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+use mcu_spdm_lite_stack::{
+    pci_sig::{
+        tdisp::{EmulatedTdispDriver, TdispResponder, TdispVersion},
+        PciSigTdispVdm,
+    },
+    VdmRouter,
+};
 use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 
 /// Bitmap allocator pool size per responder task.
@@ -39,6 +47,11 @@ const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
 /// The current VDM large-response path buffers the full CSR response before
 /// CHUNK_GET serves it, so this must cover the largest expected CSR response.
 const SPDM_LITE_LARGE_MSG_SIZE: usize = 13 * 1024;
+
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+const SUPPORTED_TDISP_VERSIONS: &[TdispVersion] = &[TdispVersion::V10];
 
 /// Single cert store shared by all SPDM responder tasks.
 static CERT_STORE: SharedCertStore = SharedCertStore::new();
@@ -152,7 +165,17 @@ async fn spdm_mctp_responder() {
             measurement_provider(),
         )
     };
-    let mut stack = SpdmStack::with_vdm_backend(pal, CaliptraOcpVdm);
+    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+    let vdm_backend = VdmRouter::new(
+        CaliptraOcpVdm,
+        PciSigTdispVdm::new(
+            TEST_PCI_SIG_VENDOR_ID,
+            TdispResponder::new(SUPPORTED_TDISP_VERSIONS, EmulatedTdispDriver::new()),
+        ),
+    );
+    #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
+    let vdm_backend = CaliptraOcpVdm;
+    let mut stack = SpdmStack::with_vdm_backend(pal, vdm_backend);
 
     crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lite MCTP run loop");
     if let Err(e) = stack.run().await {
@@ -204,7 +227,17 @@ async fn spdm_doe_responder() {
             measurement_provider(),
         )
     };
-    let mut stack = SpdmStack::with_vdm_backend(pal, CaliptraOcpVdm);
+    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+    let vdm_backend = VdmRouter::new(
+        CaliptraOcpVdm,
+        PciSigTdispVdm::new(
+            TEST_PCI_SIG_VENDOR_ID,
+            TdispResponder::new(SUPPORTED_TDISP_VERSIONS, EmulatedTdispDriver::new()),
+        ),
+    );
+    #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
+    let vdm_backend = CaliptraOcpVdm;
+    let mut stack = SpdmStack::with_vdm_backend(pal, vdm_backend);
 
     crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lite DOE run loop");
     if let Err(e) = stack.run().await {
