@@ -3,6 +3,9 @@
 name: FPGA SPDM Tests
 
 on:
+  push:
+    branches:
+      - phase10-debug
   pull_request:
   workflow_dispatch:
 
@@ -189,7 +192,7 @@ jobs:
           cp -r /tmp/spdm-emu/build/bin/* /tmp/spdm-emu-binaries/
 
           # Replace the default CA cert with the one that signed the IDevID CSR
-          cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der /tmp/spdm-emu-binaries/ecp384/ca.cert.der
+          cp ocp-eat-verifier/ocptoken-rs/test-data/ta-store/roots/slot0_ecc_test_root_ca.der /tmp/spdm-emu-binaries/ecp384/ca.cert.der
 
       - name: "Upload bitstream"
         uses: actions/upload-artifact@v4
