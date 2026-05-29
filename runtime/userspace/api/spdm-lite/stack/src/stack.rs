@@ -366,9 +366,7 @@ where
                         }
                         let _ = writeln!(&mut console);
                     }
-                    self.pal
-                        .send_response(&io, SpdmPalIoKind::Message, &mut rsp)
-                        .await?
+                    self.pal.send_response(&io, io.kind(), &mut rsp).await?
                 }
                 Err(e) => {
                     #[cfg(feature = "debug-trace")]
@@ -447,9 +445,7 @@ where
             return Ok(());
         };
 
-        self.pal
-            .send_response(io, SpdmPalIoKind::Message, &mut err_rsp)
-            .await
+        self.pal.send_response(io, io.kind(), &mut err_rsp).await
     }
 }
 
@@ -549,5 +545,340 @@ fn decode_header(req: &[u8]) -> (ReqRespCode, SpdmVersion) {
             SpdmVersion::from_u8(hdr.version).unwrap_or(SpdmVersion::V12),
         ),
         Err(_) => (ReqRespCode(0), SpdmVersion::V12),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use core::cell::Cell;
+    use core::marker::PhantomData;
+    use core::ops::{Deref, DerefMut};
+
+    use futures::executor::block_on;
+    use mcu_error::{codes, McuResult};
+    use mcu_spdm_lite_traits::{
+        SpdmPal, SpdmPalAlloc, SpdmPalCertStore, SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo,
+        SpdmPalIoKind, SpdmPalIoTransport, SpdmPalLargeMessage,
+    };
+
+    use super::*;
+
+    struct OwnedBox<'a, T> {
+        value: T,
+        _lifetime: PhantomData<&'a mut T>,
+    }
+
+    impl<T> Deref for OwnedBox<'_, T> {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            &self.value
+        }
+    }
+
+    impl<T> DerefMut for OwnedBox<'_, T> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.value
+        }
+    }
+
+    struct FixedBytes {
+        buf: [u8; 128],
+        len: usize,
+    }
+
+    impl Deref for FixedBytes {
+        type Target = [u8];
+
+        fn deref(&self) -> &Self::Target {
+            &self.buf[..self.len]
+        }
+    }
+
+    impl DerefMut for FixedBytes {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.buf[..self.len]
+        }
+    }
+
+    const GET_VERSION_REQ: &[u8] = &[0x10, ReqRespCode::GET_VERSION.0, 0, 0];
+
+    struct FakeIo {
+        kind: SpdmPalIoKind,
+        request: &'static [u8],
+    }
+
+    impl SpdmPalIo for FakeIo {
+        fn kind(&self) -> SpdmPalIoKind {
+            self.kind
+        }
+
+        fn request(&self) -> &[u8] {
+            self.request
+        }
+    }
+
+    #[derive(Default)]
+    struct FakePal {
+        recv_count: Cell<u8>,
+        sent_kind: Cell<Option<SpdmPalIoKind>>,
+    }
+
+    impl SpdmPalIoTransport for FakePal {
+        type Io<'a> = FakeIo;
+
+        fn secure_message_supported(&self) -> bool {
+            true
+        }
+
+        fn header_size(&self) -> usize {
+            0
+        }
+
+        fn mtu(&self) -> usize {
+            128
+        }
+
+        async fn recv_request(&self) -> McuResult<Self::Io<'_>> {
+            if self.recv_count.get() == 0 {
+                self.recv_count.set(1);
+                Ok(FakeIo {
+                    kind: SpdmPalIoKind::SecuredMessage,
+                    request: GET_VERSION_REQ,
+                })
+            } else {
+                Err(codes::NOT_IMPLEMENTED)
+            }
+        }
+
+        async fn send_response(
+            &self,
+            _io: &Self::Io<'_>,
+            kind: SpdmPalIoKind,
+            _msg: &mut [u8],
+        ) -> McuResult<()> {
+            self.sent_kind.set(Some(kind));
+            Ok(())
+        }
+    }
+
+    impl SpdmPalAlloc for FakePal {
+        type Box<'a, T>
+            = OwnedBox<'a, T>
+        where
+            Self: 'a,
+            T: Sized + 'a;
+        type Bytes<'a>
+            = FixedBytes
+        where
+            Self: 'a;
+
+        fn alloc<T: Sized>(&self, _io: &impl SpdmPalIo, value: T) -> McuResult<Self::Box<'_, T>> {
+            Ok(OwnedBox {
+                value,
+                _lifetime: PhantomData,
+            })
+        }
+
+        fn alloc_bytes(&self, _io: &impl SpdmPalIo, len: usize) -> McuResult<Self::Bytes<'_>> {
+            if len > 128 {
+                return Err(codes::OUT_OF_MEMORY);
+            }
+            Ok(FixedBytes { buf: [0; 128], len })
+        }
+
+        fn shrink_bytes(bytes: &mut Self::Bytes<'_>, new_len: usize) -> McuResult<()> {
+            if new_len > bytes.buf.len() {
+                return Err(codes::OUT_OF_MEMORY);
+            }
+            bytes.len = new_len;
+            Ok(())
+        }
+    }
+
+    impl SpdmPalHash for FakePal {
+        type State = ();
+
+        async fn hash_init(
+            &self,
+            _io: &impl SpdmPalIo,
+            _algo: SpdmPalHashAlgo,
+            _seed: &[u8],
+        ) -> McuResult<Self::State> {
+            Ok(())
+        }
+
+        async fn hash_update(
+            &self,
+            _io: &impl SpdmPalIo,
+            _state: &mut Self::State,
+            _data: &[u8],
+        ) -> McuResult<()> {
+            Ok(())
+        }
+
+        async fn hash_finish(
+            &self,
+            _io: &impl SpdmPalIo,
+            _state: &mut Self::State,
+            _out: &mut [u8],
+        ) -> McuResult<()> {
+            Ok(())
+        }
+    }
+
+    impl SpdmPalCertStore for FakePal {
+        fn supported_slots(&self) -> u8 {
+            0
+        }
+
+        fn provisioned_slots(&self) -> u8 {
+            0
+        }
+
+        async fn cert_chain_len(
+            &self,
+            _io: &Self::Io<'_>,
+            _slot: u8,
+            _algo: SpdmPalAsymAlgo,
+        ) -> McuResult<usize> {
+            Err(codes::NOT_IMPLEMENTED)
+        }
+
+        async fn root_cert_hash(
+            &self,
+            _io: &Self::Io<'_>,
+            _slot: u8,
+            _algo: SpdmPalAsymAlgo,
+            _hash_algo: SpdmPalHashAlgo,
+            _out: &mut [u8],
+        ) -> McuResult<()> {
+            Err(codes::NOT_IMPLEMENTED)
+        }
+
+        async fn read_cert_chain(
+            &self,
+            _io: &Self::Io<'_>,
+            _slot: u8,
+            _algo: SpdmPalAsymAlgo,
+            _offset: usize,
+            _dst: &mut [u8],
+        ) -> McuResult<usize> {
+            Err(codes::NOT_IMPLEMENTED)
+        }
+
+        async fn sign_hash(
+            &self,
+            _io: &Self::Io<'_>,
+            _slot: u8,
+            _algo: SpdmPalAsymAlgo,
+            _digest: &[u8],
+            _signature: &mut [u8],
+        ) -> McuResult<usize> {
+            Err(codes::NOT_IMPLEMENTED)
+        }
+
+        async fn write_cert_chain(
+            &self,
+            _io: &Self::Io<'_>,
+            _slot: u8,
+            _algo: SpdmPalAsymAlgo,
+            _key_pair_id: u8,
+            _cert_info: u8,
+            _root_hash: &[u8; 48],
+            _data: &[u8],
+        ) -> McuResult<()> {
+            Err(codes::NOT_IMPLEMENTED)
+        }
+
+        async fn erase_cert_chain(
+            &self,
+            _io: &Self::Io<'_>,
+            _slot: u8,
+            _algo: SpdmPalAsymAlgo,
+        ) -> McuResult<()> {
+            Err(codes::NOT_IMPLEMENTED)
+        }
+
+        fn key_pair_id(&self, _slot: u8) -> Option<u8> {
+            None
+        }
+
+        fn cert_info(&self, _slot: u8) -> Option<u8> {
+            None
+        }
+
+        fn key_usage_mask(&self, _slot: u8) -> Option<u16> {
+            None
+        }
+
+        async fn generate_nonce(&self, _io: &Self::Io<'_>, _out: &mut [u8]) -> McuResult<()> {
+            Err(codes::NOT_IMPLEMENTED)
+        }
+    }
+
+    impl SpdmPalLargeMessage for FakePal {
+        fn capacity(&self) -> usize {
+            0
+        }
+
+        fn write(&self, _offset: usize, _data: &[u8]) -> McuResult<()> {
+            Err(codes::NOT_IMPLEMENTED)
+        }
+
+        fn read(&self, _offset: usize, _out: &mut [u8]) -> McuResult<()> {
+            Err(codes::NOT_IMPLEMENTED)
+        }
+
+        unsafe fn large_message_mut(&self, _len: usize) -> McuResult<&mut [u8]> {
+            Err(codes::NOT_IMPLEMENTED)
+        }
+    }
+
+    impl SpdmPalMeasurements for FakePal {
+        fn measurement_info(&self) -> &[MeasurementInfo] {
+            &[]
+        }
+
+        async fn get_measurement_value(
+            &self,
+            _io: &Self::Io<'_>,
+            _index: u8,
+            _nonce: Option<&[u8; mcu_spdm_lite_traits::SPDM_NONCE_LEN]>,
+            _out: &mut [u8],
+        ) -> McuResult<usize> {
+            Err(codes::NOT_IMPLEMENTED)
+        }
+    }
+
+    impl SpdmPal for FakePal {}
+
+    #[test]
+    fn successful_response_preserves_secured_message_kind() {
+        let mut stack = SpdmStack::new(FakePal::default());
+
+        assert_eq!(block_on(stack.run()).unwrap_err(), codes::NOT_IMPLEMENTED);
+        assert_eq!(
+            stack.pal.sent_kind.get(),
+            Some(SpdmPalIoKind::SecuredMessage)
+        );
+    }
+
+    #[test]
+    fn error_response_preserves_secured_message_kind() {
+        let stack = SpdmStack::new(FakePal::default());
+        let io = FakeIo {
+            kind: SpdmPalIoKind::SecuredMessage,
+            request: &[],
+        };
+
+        block_on(stack.send_error_pdu(&io, SPDM_INVALID_REQUEST, SpdmVersion::V12)).unwrap();
+
+        assert_eq!(
+            stack.pal.sent_kind.get(),
+            Some(SpdmPalIoKind::SecuredMessage)
+        );
     }
 }

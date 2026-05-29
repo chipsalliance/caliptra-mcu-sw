@@ -37,6 +37,7 @@ mod challenge;
 mod chunk;
 mod digests;
 mod error;
+mod ide_km;
 mod measurements;
 #[cfg(feature = "set-certificate")]
 mod set_certificate;
@@ -46,6 +47,7 @@ mod vendor_defined;
 mod version;
 
 pub use error::*;
+pub use ide_km::*;
 pub use mcu_spdm_lite_codec::StandardsBodyId;
 pub use stack::*;
 pub use transcript::*;

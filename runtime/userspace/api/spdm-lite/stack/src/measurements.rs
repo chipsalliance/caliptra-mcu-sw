@@ -105,7 +105,7 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
             0
         }
         + requester_context_len;
-    if req.len() != spdm_req_len {
+    if req.len() < spdm_req_len || req[spdm_req_len..].iter().any(|&b| b != 0) {
         return Err(SPDM_INVALID_REQUEST);
     }
 
