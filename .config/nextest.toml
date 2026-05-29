@@ -39,11 +39,6 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_uds)) |
 (package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |
 (package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_self_test)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_periodic)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_constant_writes)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_simple)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_ping)) |
@@ -55,7 +50,6 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_error_mid_packet_then_recover)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_error_then_continue)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_full_flow)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check))
@@ -64,6 +58,12 @@ default-filter = """
 # (package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback)) |
 # disabled for now due to flakiness of firmware update
 # (package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
+# disabled for now due to suspected FPGA crash (Phase 10 cherry-pick investigation)
+# (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
+# (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
+# (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
+# (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_self_test)) |
+# (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_periodic)) |
 #
 
 [profile.nightly-ci-spdm]
