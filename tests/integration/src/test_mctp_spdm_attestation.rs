@@ -34,6 +34,7 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mctp-spdm-attestation"),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             ..Default::default()
         });
