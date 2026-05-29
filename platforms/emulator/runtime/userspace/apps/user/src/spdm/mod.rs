@@ -99,7 +99,8 @@ async fn spdm_mctp_responder() {
     // SAFETY: this task is the sole owner of `MCTP_SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(MCTP_SCRATCH.0.as_mut_ptr()) };
     // SAFETY: this task is the sole owner of `MCTP_LARGE_MSG`.
-    let large_msg_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(MCTP_LARGE_MSG.0.as_mut_ptr()) };
+    let large_msg_ptr: NonNull<u8> =
+        unsafe { NonNull::new_unchecked(MCTP_LARGE_MSG.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
     {
@@ -158,7 +159,8 @@ async fn spdm_doe_responder() {
     // SAFETY: this task is the sole owner of `DOE_SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(DOE_SCRATCH.0.as_mut_ptr()) };
     // SAFETY: this task is the sole owner of `DOE_LARGE_MSG`.
-    let large_msg_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(DOE_LARGE_MSG.0.as_mut_ptr()) };
+    let large_msg_ptr: NonNull<u8> =
+        unsafe { NonNull::new_unchecked(DOE_LARGE_MSG.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
     {

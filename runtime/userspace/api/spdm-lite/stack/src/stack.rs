@@ -212,14 +212,10 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
     pub fn new(pal: Pal) -> Self {
         let mut state = ConnectionState::<Pal::State>::default();
         if pal.large_message_capacity() == 0 {
-            state.cap_flags = CapFlags::from_bits(
-                state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits(),
-            );
+            state.cap_flags =
+                CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
         }
-        Self {
-            pal,
-            state,
-        }
+        Self { pal, state }
     }
 
     /// Main responder run loop.
@@ -334,7 +330,8 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
             req_version
         };
 
-        let Ok(mut err_rsp) = build_error_response(&self.pal, io, rsp_version, err.spec_byte(), 0, &[])
+        let Ok(mut err_rsp) =
+            build_error_response(&self.pal, io, rsp_version, err.spec_byte(), 0, &[])
         else {
             // Allocator exhausted or codec failure — nothing more we
             // can do for this exchange.

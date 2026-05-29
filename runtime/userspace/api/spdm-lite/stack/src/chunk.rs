@@ -7,9 +7,7 @@ use mcu_spdm_lite_codec::{
     SpdmMsgHdrPdu, SpdmVersion, WireWriter, CHUNK_ACK_ATTR_EARLY_ERROR, CHUNK_ATTR_LAST_CHUNK,
     CHUNK_RESPONSE_FIXED_BODY_SIZE, LARGE_RESPONSE_SIZE_FIELD_SIZE,
 };
-use mcu_spdm_lite_traits::{
-    PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport,
-};
+use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::{little_endian::U16, little_endian::U32, FromBytes};
 
 use crate::certificate;
@@ -299,15 +297,8 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
             w.write(&U32::new(large_response_size as u32))?;
         }
         let chunk = w.reserve(chunk_size)?;
-        fill_certificate_response_chunk(
-            pal,
-            io,
-            state.version,
-            cert_rsp,
-            bytes_sent,
-            chunk,
-        )
-        .await?;
+        fill_certificate_response_chunk(pal, io, state.version, cert_rsp, bytes_sent, chunk)
+            .await?;
         state.transcript.append_m1(pal, io, chunk).await?;
     }
 
