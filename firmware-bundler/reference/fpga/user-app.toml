@@ -14,24 +14,20 @@ size = 0x2_0000
 sram = { offset = 0xa8c0_0000, size = 0x8_0000 }
 
 [platform.dccm]
-offset = 0x50000000
-size = 0x3C00
-
-[platform.handoff]
-offset = 0x50003C00
-size = 1024
+offset = 0x5000_0000
+size = 0x4000
 
 # This section is optional.
 [rom]
-name = "caliptra-mcu-rom-fpga"
+name = "mcu-rom-fpga"
 stack = 0x2d00
 exception_stack = 0x200
 
 [kernel]
-name = "caliptra-mcu-runtime-fpga"
+name = "mcu-runtime-fpga"
 stack = 0x0_7000
 
 [[app]]
-name = "caliptra-mcu-user-app"
-stack = 0xd000
+name = "user-app"
+stack = 0xae00
 grant_space = 0x4000
