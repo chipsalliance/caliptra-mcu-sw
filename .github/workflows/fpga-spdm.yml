@@ -266,8 +266,10 @@ jobs:
 
       - name: Load bitstream
         run: |
-          chmod +x /tmp/caliptra-binaries/xtask
-          /tmp/caliptra-binaries/xtask fpga bootstrap --bitstream /tmp/caliptra-bitstream/caliptra-bitstream.pdi
+          sudo mkdir -p /lib/firmware
+          sudo cp /tmp/caliptra-bitstream/caliptra-bitstream.pdi /lib/firmware/caliptra-bitstream.pdi
+          sudo bash -c 'echo "caliptra-bitstream.pdi" > /sys/class/fpga_manager/fpga0/firmware'
+          echo "subsystem" > /dev/shm/fpga-config
 
       - name: Mount binaries
         run: |
