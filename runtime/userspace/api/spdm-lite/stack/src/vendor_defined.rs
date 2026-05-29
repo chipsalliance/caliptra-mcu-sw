@@ -72,7 +72,7 @@ pub enum VdmResponseKind {
 /// stack is generic over the backend type and the compiler builds one concrete
 /// async state machine.
 #[allow(async_fn_in_trait)]
-pub trait SpdmVdmBackend: Sync {
+pub trait SpdmVdmBackend {
     /// Returns true when this backend handles the decoded VDM request.
     fn match_request(&self, req: &VdmRequest<'_>) -> bool;
 
@@ -82,6 +82,45 @@ pub trait SpdmVdmBackend: Sync {
         req: VdmRequest<'_>,
         rsp: VdmResponseBuffers<'_>,
     ) -> SpdmResult<VdmResponseKind>;
+}
+
+/// Static-dispatch router for two VDM backends.
+///
+/// This keeps the SPDM-Lite VDM path allocation-free while allowing platform
+/// code to compose independent handlers such as OCP Caliptra VDM and PCI-SIG
+/// TDISP without a trait-object handler table.
+pub struct VdmRouter<A, B> {
+    first: A,
+    second: B,
+}
+
+impl<A, B> VdmRouter<A, B> {
+    /// Creates a router that tries `first` before `second`.
+    pub const fn new(first: A, second: B) -> Self {
+        Self { first, second }
+    }
+}
+
+impl<A, B> SpdmVdmBackend for VdmRouter<A, B>
+where
+    A: SpdmVdmBackend,
+    B: SpdmVdmBackend,
+{
+    fn match_request(&self, req: &VdmRequest<'_>) -> bool {
+        self.first.match_request(req) || self.second.match_request(req)
+    }
+
+    async fn handle_request(
+        &self,
+        req: VdmRequest<'_>,
+        rsp: VdmResponseBuffers<'_>,
+    ) -> SpdmResult<VdmResponseKind> {
+        if self.first.match_request(&req) {
+            self.first.handle_request(req, rsp).await
+        } else {
+            self.second.handle_request(req, rsp).await
+        }
+    }
 }
 
 /// Sync-handler-table backend preserving `with_vdm_handlers` behavior.

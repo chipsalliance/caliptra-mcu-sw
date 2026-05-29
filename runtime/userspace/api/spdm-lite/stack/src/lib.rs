@@ -37,6 +37,7 @@ mod challenge;
 mod chunk;
 mod digests;
 mod error;
+pub mod pci_sig;
 mod stack;
 mod transcript;
 mod vendor_defined;
@@ -48,4 +49,5 @@ pub use stack::*;
 pub use transcript::*;
 pub use vendor_defined::{
     SpdmVdmBackend, SyncVdmHandlers, VdmHandler, VdmRequest, VdmResponseBuffers, VdmResponseKind,
+    VdmRouter,
 };

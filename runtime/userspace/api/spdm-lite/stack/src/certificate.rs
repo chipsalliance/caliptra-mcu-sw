@@ -55,8 +55,8 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
         return Err(crate::error::SPDM_VERSION_MISMATCH);
     }
 
-    let (req_body, rest) = GetCertificateReqBody::ref_from_prefix(body)
-        .map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (req_body, rest) =
+        GetCertificateReqBody::ref_from_prefix(body).map_err(|_| SPDM_INVALID_REQUEST)?;
     if !rest.is_empty() {
         return Err(SPDM_INVALID_REQUEST);
     }

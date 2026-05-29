@@ -24,7 +24,9 @@ use crate::build::build_error_response;
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
-use crate::{algorithms, capabilities, certificate, challenge, chunk, digests, vendor_defined, version};
+use crate::{
+    algorithms, capabilities, certificate, challenge, chunk, digests, vendor_defined, version,
+};
 
 /// Connection phase tracked on the responder so the dispatcher can
 /// enforce the DSP0274 §10 ordering
@@ -290,9 +292,7 @@ where
                         }
                         let _ = writeln!(&mut console);
                     }
-                    self.pal
-                        .send_response(&io, SpdmPalIoKind::Message, &mut rsp)
-                        .await?
+                    self.pal.send_response(&io, io.kind(), &mut rsp).await?
                 }
                 Err(e) => {
                     #[cfg(feature = "debug-trace")]
@@ -366,9 +366,7 @@ where
             return Ok(());
         };
 
-        self.pal
-            .send_response(io, SpdmPalIoKind::Message, &mut err_rsp)
-            .await
+        self.pal.send_response(io, io.kind(), &mut err_rsp).await
     }
 }
 
