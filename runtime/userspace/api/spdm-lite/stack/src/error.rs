@@ -106,17 +106,17 @@ pub const SPDM_BUSY: SpdmError = SpdmError::new(0x03);
 pub const SPDM_UNEXPECTED_REQUEST: SpdmError = SpdmError::new(0x04);
 /// `Unspecified` — catch-all responder-side failure.
 pub const SPDM_UNSPECIFIED: SpdmError = SpdmError::new(0x05);
-/// `UnsupportedRequest` — request code is recognised but not
-/// implemented by this responder.
-pub const SPDM_UNSUPPORTED_REQUEST: SpdmError = SpdmError::new(0x07);
-/// `SessionRequired` — request must be issued inside an established
-/// secure session.
-pub const SPDM_SESSION_REQUIRED: SpdmError = SpdmError::new(0x0B);
-/// `SessionLimitExceeded` — responder cannot establish more sessions.
-pub const SPDM_SESSION_LIMIT_EXCEEDED: SpdmError = SpdmError::new(0x0A);
 /// `DecryptError` — secured-message decryption / MAC verification
 /// failed.
 pub const SPDM_DECRYPT_ERROR: SpdmError = SpdmError::new(0x06);
+/// `UnsupportedRequest` — request code is recognised but not
+/// implemented by this responder.
+pub const SPDM_UNSUPPORTED_REQUEST: SpdmError = SpdmError::new(0x07);
+/// `SessionLimitExceeded` — responder cannot establish more sessions.
+pub const SPDM_SESSION_LIMIT_EXCEEDED: SpdmError = SpdmError::new(0x0A);
+/// `SessionRequired` — request must be issued inside an established
+/// secure session.
+pub const SPDM_SESSION_REQUIRED: SpdmError = SpdmError::new(0x0B);
 /// `VersionMismatch` — requester's SPDM version is not supported.
 pub const SPDM_VERSION_MISMATCH: SpdmError = SpdmError::new(0x41);
 /// `ResponseNotReady` — responder needs more time; requester should

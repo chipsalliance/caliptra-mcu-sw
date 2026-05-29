@@ -27,13 +27,18 @@ impl SpdmPalLargeMessage for McuSpdmPal {
         Ok(())
     }
 
-    fn large_message(&self, len: usize) -> McuResult<&[u8]> {
+    fn read_large_message(&self, offset: usize, out: &mut [u8]) -> McuResult<()> {
         let ptr = self.large_msg_ptr.ok_or(INVARIANT)?;
-        if len > self.large_msg_capacity {
+        let end = offset.checked_add(out.len()).ok_or(INVARIANT)?;
+        if end > self.large_msg_capacity {
             return Err(INVARIANT);
         }
-        // SAFETY: see `write_large_message`; this returns a shared
-        // borrow of the currently reassembled prefix only.
-        Ok(unsafe { slice::from_raw_parts(ptr.as_ptr(), len) })
+        // SAFETY: see `write_large_message`; this only copies out of
+        // the currently reassembled range and does not return a borrow.
+        unsafe {
+            let src = slice::from_raw_parts(ptr.as_ptr().add(offset), out.len());
+            out.copy_from_slice(src);
+        }
+        Ok(())
     }
 }

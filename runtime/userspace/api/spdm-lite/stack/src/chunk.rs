@@ -555,10 +555,14 @@ fn classify_large_request<Pal: SpdmPal>(
     state: &ConnectionState<Pal::State>,
     pal: &Pal,
 ) -> SpdmError {
-    let Ok(large_req) = pal.large_message(state.chunk.large_msg_size as usize) else {
+    if (state.chunk.large_msg_size as usize) < SpdmMsgHdrPdu::SIZE {
+        return SPDM_INVALID_REQUEST;
+    }
+    let mut hdr_buf = [0u8; SpdmMsgHdrPdu::SIZE];
+    if pal.read_large_message(0, &mut hdr_buf).is_err() {
         return SPDM_INVALID_REQUEST;
     };
-    let Ok((hdr, _)) = SpdmMsgHdrPdu::ref_from_prefix(large_req) else {
+    let Ok((hdr, _)) = SpdmMsgHdrPdu::ref_from_prefix(&hdr_buf) else {
         return SPDM_INVALID_REQUEST;
     };
     if hdr.version != state.version.to_u8()

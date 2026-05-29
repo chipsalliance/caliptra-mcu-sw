@@ -15,6 +15,6 @@ pub trait SpdmPalLargeMessage {
     /// Copy `data` into the persistent large-message buffer at `offset`.
     fn write_large_message(&self, offset: usize, data: &[u8]) -> McuResult<()>;
 
-    /// Borrow the leading `len` bytes of the persistent large-message buffer.
-    fn large_message(&self, len: usize) -> McuResult<&[u8]>;
+    /// Copy bytes from the persistent large-message buffer into `out`.
+    fn read_large_message(&self, offset: usize, out: &mut [u8]) -> McuResult<()>;
 }

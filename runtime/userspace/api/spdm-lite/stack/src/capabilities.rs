@@ -77,12 +77,16 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
     state.peer_max_spdm_msg_size = peer_max;
     state.peer_cap_flags = body.flags;
 
-    let mtu = pal.mtu() as u32;
-    let max_spdm_msg_size = (pal.large_message_capacity().max(pal.mtu())) as u32;
+    let mtu = pal.mtu();
+    let max_spdm_msg_size = if state.cap_flags.contains(CapFlags::CHUNK) {
+        pal.large_message_capacity().max(mtu)
+    } else {
+        mtu
+    } as u32;
     let body = CapabilitiesRsp {
         ct_exponent: state.ct_exponent,
         flags: state.cap_flags,
-        data_transfer_size: mtu,
+        data_transfer_size: mtu as u32,
         max_spdm_msg_size,
     };
     let spdm_len = body.encoded_size();

@@ -197,8 +197,8 @@ pub struct SpdmStack<Pal: SpdmPal> {
 
 impl<Pal: SpdmPal> SpdmStack<Pal> {
     /// Constructs a new responder over `pal` with the default
-    /// (Caliptra) local-policy advertisement. If the PAL does not
-    /// provide persistent large-message storage, `CHUNK` is removed
+    /// (Caliptra) local-policy advertisement. If the PAL cannot hold
+    /// at least one transport-sized large message, `CHUNK` is removed
     /// from the advertised capabilities.
     ///
     /// # Parameters
@@ -211,7 +211,7 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
     /// A new `SpdmStack` in [`Phase::Start`].
     pub fn new(pal: Pal) -> Self {
         let mut state = ConnectionState::<Pal::State>::default();
-        if pal.large_message_capacity() == 0 {
+        if pal.large_message_capacity() < pal.mtu() {
             state.cap_flags =
                 CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
         }
