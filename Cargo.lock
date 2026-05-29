@@ -3824,6 +3824,7 @@ dependencies = [
  "bitfield-struct",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_console",
+ "futures",
  "mcu-caliptra-api-lite",
  "mcu-error",
  "mcu-spdm-lite-codec",
