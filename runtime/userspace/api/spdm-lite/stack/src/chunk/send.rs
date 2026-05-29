@@ -9,11 +9,13 @@ use mcu_spdm_lite_codec::{
 use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::{little_endian::U16, FromBytes};
 
+use crate::build::alloc_padded;
 use crate::error::{
-    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSUPPORTED_REQUEST,
-    SPDM_VERSION_MISMATCH,
+    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
+    SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
 use crate::stack::{ConnectionState, Phase};
+use crate::vendor_defined::{self, SpdmVdmBackend};
 
 struct ChunkInfo {
     handle: u8,
@@ -21,33 +23,30 @@ struct ChunkInfo {
     complete: bool,
 }
 
-pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal>(
+pub(crate) async fn handle_chunk_send<'a, Pal, Vdm>(
     state: &mut ConnectionState<Pal::State>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-) -> SpdmResult<PalBytes<'a, Pal>> {
+    vdm_backend: &Vdm,
+) -> SpdmResult<PalBytes<'a, Pal>>
+where
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+{
     let result = process_chunk_send(state, pal, io);
     match result {
-        Ok(info) => {
-            let mut response_to_large_request = [0u8; 4];
-            let response = if info.complete {
-                let err = build_response_to_large_request(state, pal);
-                encode_error_pdu(state.version, err, &mut response_to_large_request);
-                state.chunk.reset();
-                &response_to_large_request[..]
-            } else {
-                &[]
-            };
-            build_chunk_send_ack(
-                pal,
-                io,
-                state.version,
-                false,
-                info.handle,
-                info.chunk_seq_num,
-                response,
-            )
+        Ok(info) if info.complete => {
+            build_completed_chunk_send_ack(state, pal, io, info, vdm_backend).await
         }
+        Ok(info) => build_chunk_send_ack(
+            pal,
+            io,
+            state.version,
+            false,
+            info.handle,
+            info.chunk_seq_num,
+            &[],
+        ),
         Err(ChunkProcessError::Spdm(e)) => Err(e),
         Err(ChunkProcessError::Early {
             handle,
@@ -71,11 +70,71 @@ fn build_chunk_send_ack<'a, Pal: SpdmPal>(
     response_to_large_request: &[u8],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let head = pal.header_size();
-    let mut rsp = pal.alloc_bytes(
-        io,
-        head + SpdmMsgHdrPdu::SIZE + 4 + response_to_large_request.len(),
+    let raw_len = head + SpdmMsgHdrPdu::SIZE + 4 + response_to_large_request.len();
+    let mut rsp = alloc_padded(pal, io, raw_len)?;
+    write_chunk_send_ack_prefix(
+        &mut rsp[head..],
+        version,
+        early_error,
+        handle,
+        chunk_seq_num,
     )?;
-    let mut w = WireWriter::new(&mut rsp[head..]);
+    let response_offset = head + SpdmMsgHdrPdu::SIZE + 4;
+    rsp[response_offset..response_offset + response_to_large_request.len()]
+        .copy_from_slice(response_to_large_request);
+    Ok(rsp)
+}
+
+async fn build_completed_chunk_send_ack<'a, Pal, Vdm>(
+    state: &mut ConnectionState<Pal::State>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    info: ChunkInfo,
+    vdm_backend: &Vdm,
+) -> SpdmResult<PalBytes<'a, Pal>>
+where
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+{
+    let head = pal.header_size();
+    let ack_body_len = SpdmMsgHdrPdu::SIZE + 4;
+    let max_response_len =
+        super::effective_data_transfer_size(state, pal).saturating_sub(ack_body_len);
+    let mut rsp = alloc_padded(pal, io, head + ack_body_len + max_response_len)?;
+
+    let response_offset = head + ack_body_len;
+    let response = &mut rsp[response_offset..response_offset + max_response_len];
+    let response_len =
+        match build_response_to_large_request(state, pal, io, vdm_backend, response).await {
+            Ok(len) => len,
+            Err(err) => {
+                let mut error = [0u8; 4];
+                encode_error_pdu(state.version, err, &mut error);
+                response[..error.len()].copy_from_slice(&error);
+                error.len()
+            }
+        };
+    state.chunk.reset();
+
+    write_chunk_send_ack_prefix(
+        &mut rsp[head..],
+        state.version,
+        false,
+        info.handle,
+        info.chunk_seq_num,
+    )?;
+    shrink_padded(pal, &mut rsp, response_offset + response_len)?;
+    Ok(rsp)
+}
+
+fn write_chunk_send_ack_prefix(
+    out: &mut [u8],
+    version: SpdmVersion,
+    early_error: bool,
+    handle: u8,
+    chunk_seq_num: u16,
+) -> SpdmResult<()> {
+    let mut w = WireWriter::new(out);
     w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::CHUNK_SEND_ACK))?;
     let attr = if early_error {
         CHUNK_ACK_ATTR_EARLY_ERROR
@@ -84,8 +143,7 @@ fn build_chunk_send_ack<'a, Pal: SpdmPal>(
     };
     w.write(&[attr, handle])?;
     w.write(&U16::new(chunk_seq_num))?;
-    w.write_bytes(response_to_large_request)?;
-    Ok(rsp)
+    Ok(())
 }
 
 enum ChunkProcessError {
@@ -241,34 +299,74 @@ fn process_next_chunk<Pal: SpdmPal>(
     Ok(())
 }
 
-fn build_response_to_large_request<Pal: SpdmPal>(
+async fn build_response_to_large_request<Pal, Vdm>(
     state: &ConnectionState<Pal::State>,
     pal: &Pal,
-) -> SpdmError {
-    if (state.chunk.large_msg_size as usize) < SpdmMsgHdrPdu::SIZE {
-        return SPDM_INVALID_REQUEST;
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    vdm_backend: &Vdm,
+    out: &mut [u8],
+) -> SpdmResult<usize>
+where
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+{
+    let large_req_len = state.chunk.large_msg_size as usize;
+    if large_req_len < SpdmMsgHdrPdu::SIZE {
+        return Err(SPDM_INVALID_REQUEST);
     }
-    let mut hdr_buf = [0u8; SpdmMsgHdrPdu::SIZE];
-    if pal.read(0, &mut hdr_buf).is_err() {
-        return SPDM_INVALID_REQUEST;
-    };
-    let Ok((hdr, _)) = SpdmMsgHdrPdu::ref_from_prefix(&hdr_buf) else {
-        return SPDM_INVALID_REQUEST;
-    };
+    // SAFETY: CHUNK_SEND reassembly owns the PAL large-message buffer until
+    // `state.chunk` is reset after this response is built. The returned borrow
+    // is used read-only to decode and dispatch the completed large request, and
+    // no other PAL large-message operation is performed while it is live.
+    let large_req =
+        unsafe { pal.large_message_mut(large_req_len) }.map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (hdr, _) = SpdmMsgHdrPdu::ref_from_prefix(&*large_req).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8()
         || hdr.code == ReqRespCode::CHUNK_SEND
         || hdr.code == ReqRespCode::CHUNK_GET
     {
-        return SPDM_INVALID_REQUEST;
+        return Err(SPDM_INVALID_REQUEST);
     }
-    // TODO: Dispatch supported chunked large requests from `large_req` here.
-    // SPDM-lite currently only uses chunking for large responses.
-    SPDM_UNSUPPORTED_REQUEST
+    match hdr.code {
+        ReqRespCode::VENDOR_DEFINED_REQUEST => {
+            vendor_defined::handle_large_vendor_defined_request::<Pal, Vdm>(
+                state,
+                io,
+                large_req,
+                vdm_backend,
+                out,
+            )
+            .await
+        }
+        _ => Err(SPDM_UNSUPPORTED_REQUEST),
+    }
 }
 
 fn encode_error_pdu(version: SpdmVersion, err: SpdmError, out: &mut [u8; 4]) {
     out[0] = version.to_u8();
     out[1] = ReqRespCode::ERROR.0;
     out[2] = err.spec_byte();
-    out[3] = 0;
+    out[3] = err.error_data();
+}
+
+fn padded_len<Pal: SpdmPal>(pal: &Pal, raw_len: usize) -> SpdmResult<usize> {
+    let align = pal.send_len_alignment();
+    debug_assert!(align > 0 && align.is_power_of_two());
+    raw_len
+        .checked_add(align - 1)
+        .map(|len| len & !(align - 1))
+        .ok_or(SPDM_UNSPECIFIED)
+}
+
+fn shrink_padded<Pal: SpdmPal>(
+    pal: &Pal,
+    rsp: &mut PalBytes<'_, Pal>,
+    raw_len: usize,
+) -> SpdmResult<()> {
+    let shrink_len = padded_len(pal, raw_len)?;
+    for b in &mut rsp[raw_len..shrink_len] {
+        *b = 0;
+    }
+    Pal::shrink_bytes(rsp, shrink_len)?;
+    Ok(())
 }

@@ -23,7 +23,8 @@ use zerocopy::FromBytes;
 
 use crate::build::build_error_response;
 use crate::error::{
-    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
+    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSUPPORTED_REQUEST,
+    SPDM_VERSION_MISMATCH,
 };
 use crate::{
     algorithms, capabilities, certificate, challenge, chunk, digests, measurements, vendor_defined,
@@ -487,14 +488,14 @@ where
     Pal: SpdmPal,
     Vdm: vendor_defined::SpdmVdmBackend,
 {
+    if state.large_response.in_progress()
+        && code != ReqRespCode::CHUNK_GET
+        && code != ReqRespCode::GET_VERSION
+    {
+        return Err(SPDM_UNEXPECTED_REQUEST);
+    }
     if code != ReqRespCode::CHUNK_SEND && state.chunk.in_progress() {
         state.chunk.reset();
-    }
-    if code != ReqRespCode::CHUNK_GET
-        && code != ReqRespCode::CHUNK_SEND
-        && state.large_response.in_progress()
-    {
-        state.large_response.reset();
     }
     match code {
         ReqRespCode::GET_VERSION => {
@@ -518,7 +519,9 @@ where
         }
         #[cfg(not(feature = "set-certificate"))]
         ReqRespCode::SET_CERTIFICATE => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
-        ReqRespCode::GET_MEASUREMENTS => measurements::handle_get_measurements(state, pal, io).await,
+        ReqRespCode::GET_MEASUREMENTS => {
+            measurements::handle_get_measurements(state, pal, io).await
+        }
         ReqRespCode::VENDOR_DEFINED_REQUEST => {
             vendor_defined::handle_vendor_defined_request(state, pal, io, vdm_backend).await
         }
