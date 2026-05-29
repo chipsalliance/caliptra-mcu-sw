@@ -23,6 +23,9 @@ use crate::EXECUTOR;
 ))]
 use caliptra_mcu_libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 
+#[cfg(feature = "test-firmware-update-flash")]
+use caliptra_mcu_libapi_caliptra::firmware_update::FirmwareUpdateHooks;
+
 use caliptra_mcu_libtock_platform::ErrorCode;
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 
@@ -52,12 +55,39 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
             &fw_params,
             dma_mapping,
             EXECUTOR.get().spawner(),
+            None,
         );
         updater.start().await?;
     }
 
     #[cfg(feature = "test-firmware-update-flash")]
     {
+        use alloc::boxed::Box;
+        use core::sync::atomic::{AtomicBool, Ordering};
+
+        struct TestFwUpdateHooks {
+            pre_caliptra_called: AtomicBool,
+        }
+
+        #[async_trait::async_trait]
+        impl FirmwareUpdateHooks for TestFwUpdateHooks {
+            async fn pre_caliptra_activation(&self) -> Result<(), ErrorCode> {
+                self.pre_caliptra_called.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+
+            async fn pre_mcu_activation(&self) -> Result<(), ErrorCode> {
+                if !self.pre_caliptra_called.load(Ordering::SeqCst) {
+                    crate::console_writeln!(
+                        Console::<DefaultSyscalls>::writer(),
+                        "[FW Upd] ERROR: pre_caliptra_activation hook not called"
+                    );
+                    return Err(ErrorCode::Fail);
+                }
+                Ok(())
+            }
+        }
+
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
             fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
@@ -65,11 +95,15 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         let mut staging_memory = flash_memory::ExternalFlash::new().await?;
         let staging_memory: &'static flash_memory::ExternalFlash =
             unsafe { core::mem::transmute(&mut staging_memory) };
+        let hooks = TestFwUpdateHooks {
+            pre_caliptra_called: AtomicBool::new(false),
+        };
         let mut updater = FirmwareUpdater::new(
             staging_memory,
             &fw_params,
             dma_mapping,
             EXECUTOR.get().spawner(),
+            Some(&hooks),
         );
         updater.start().await?;
     }
@@ -88,6 +122,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
             &fw_params,
             dma_mapping,
             EXECUTOR.get().spawner(),
+            None,
         );
         updater.set_skip_activation(true);
         updater.set_verify_same_image(true);
