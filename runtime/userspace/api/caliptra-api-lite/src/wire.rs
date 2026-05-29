@@ -67,9 +67,24 @@ pub(crate) const CMD_QUOTE_PCRS_ECC384: u32 = 0x5043_5251; // "PCRQ"
 /// Mailbox response header size: `chksum(4) + fips_status(4)`.
 pub(crate) const MBOX_RESP_HEADER_SIZE: usize = 8;
 
+// ---- Crypto Manager command IDs -------------------------------------------
+
+pub(crate) const CMD_CM_ECDH_GENERATE: u32 = 0x434D_4547; // "CMEG"
+pub(crate) const CMD_CM_ECDH_FINISH: u32 = 0x434D_4546; // "CMEF"
+pub(crate) const CMD_CM_HMAC: u32 = 0x434D_484D; // "CMHM"
+pub(crate) const CMD_CM_HKDF_EXTRACT: u32 = 0x434D_4B54; // "CMKT"
+pub(crate) const CMD_CM_HKDF_EXPAND: u32 = 0x434D_4B50; // "CMKP"
+pub(crate) const CMD_CM_IMPORT: u32 = 0x434D_494D; // "CMIM"
+pub(crate) const CMD_CM_DELETE: u32 = 0x434D_444C; // "CMDL"
+pub(crate) const CMD_CM_AES_GCM_SPDM_ENCRYPT_INIT: u32 = 0x434D_5345; // "CMSE"
+pub(crate) const CMD_CM_AES_GCM_ENCRYPT_UPDATE: u32 = 0x434D_4755; // "CMGU"
+pub(crate) const CMD_CM_AES_GCM_ENCRYPT_FINAL: u32 = 0x434D_4746; // "CMGF"
+pub(crate) const CMD_CM_AES_GCM_SPDM_DECRYPT_INIT: u32 = 0x434D_5344; // "CMSD"
+pub(crate) const CMD_CM_AES_GCM_DECRYPT_UPDATE: u32 = 0x434D_4455; // "CMDU"
+pub(crate) const CMD_CM_AES_GCM_DECRYPT_FINAL: u32 = 0x434D_4446; // "CMDF"
+
 // ---- Hash algorithm discriminator -----------------------------------------
 
-#[allow(dead_code)]
 pub(crate) const CM_HASH_ALGO_SHA384: u32 = 1;
 #[allow(dead_code)]
 pub(crate) const CM_HASH_ALGO_SHA512: u32 = 2;
@@ -119,6 +134,24 @@ pub(crate) async fn mbox_execute(
         caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
     >::new();
     mbox.execute(cmd, req, rsp).await.map_err(map_mbox_err)
+}
+
+// ---- Shared utilities -----------------------------------------------------
+
+/// Round `n` up to the nearest multiple of 4 for mailbox alignment.
+pub(crate) fn pad4(n: usize) -> usize {
+    (n + 3) & !3
+}
+
+/// Write the Caliptra mailbox checksum into the first 4 bytes of
+/// `data`, which must have been zeroed in that position beforehand.
+pub(crate) fn populate_checksum(cmd: u32, data: &mut [u8]) -> mcu_error::McuResult<()> {
+    if data.len() < 4 {
+        return Err(mcu_error::codes::INVARIANT);
+    }
+    let checksum = calc_checksum(cmd, data);
+    data[..4].copy_from_slice(&checksum.to_le_bytes());
+    Ok(())
 }
 
 #[cfg(test)]

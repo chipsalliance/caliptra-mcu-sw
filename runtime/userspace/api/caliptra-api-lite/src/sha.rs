@@ -22,8 +22,8 @@ use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::wire::{
-    calc_checksum, CMB_SHA_CONTEXT_SIZE, CMD_CM_SHA_FINAL, CMD_CM_SHA_INIT, CMD_CM_SHA_UPDATE,
-    CM_HASH_ALGO_SHA384, MAX_CMB_DATA_SIZE,
+    pad4, populate_checksum, CMB_SHA_CONTEXT_SIZE, CMD_CM_SHA_FINAL, CMD_CM_SHA_INIT,
+    CMD_CM_SHA_UPDATE, CM_HASH_ALGO_SHA384, MAX_CMB_DATA_SIZE,
 };
 use crate::ApiAlloc;
 
@@ -284,18 +284,4 @@ fn algo_code(algo: HashAlgo) -> u32 {
     match algo {
         HashAlgo::Sha384 => CM_HASH_ALGO_SHA384,
     }
-}
-
-#[inline]
-fn pad4(n: usize) -> usize {
-    (n + 3) & !3
-}
-
-fn populate_checksum(cmd: u32, data: &mut [u8]) -> McuResult<()> {
-    if data.len() < 4 {
-        return Err(INVARIANT);
-    }
-    let checksum = calc_checksum(cmd, data);
-    data[..4].copy_from_slice(&checksum.to_le_bytes());
-    Ok(())
 }
