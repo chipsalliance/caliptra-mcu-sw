@@ -68,6 +68,7 @@ default-filter = """
 
 [profile.nightly-ci-spdm]
 inherits = "nightly"
+success-output = "immediate"
 default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_attestation)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_responder_conformance))
