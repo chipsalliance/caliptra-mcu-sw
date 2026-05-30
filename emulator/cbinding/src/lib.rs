@@ -163,6 +163,7 @@ pub struct CEmulatorConfig {
     pub hw_revision_minor: c_uint,
     pub hw_revision_patch: c_uint,
     pub flash_based_boot: c_uchar,
+    pub allow_sideloaded_rom: c_uchar,
     pub ocp_lock_en: c_uchar,
 
     // Memory layout override parameters (-1 means use default)
@@ -335,6 +336,7 @@ pub unsafe extern "C" fn emulator_init(
             config.hw_revision_patch as u64,
         ),
         flash_based_boot: config.flash_based_boot != 0,
+        allow_sideloaded_rom: config.allow_sideloaded_rom != 0,
         ocp_lock: config.ocp_lock_en != 0,
         // Use provided offset and size override parameters (-1 means use default)
         rom_offset: convert_optional_offset_size(config.rom_offset),

@@ -131,6 +131,10 @@ pub struct EmulatorArgs {
     #[arg(long = "stdin-uart", overrides_with = "stdin_uart")]
     pub _no_stdin_uart: bool,
 
+    /// Allow writing to the ROM while the emulator is running.
+    #[arg(long, action = ArgAction::SetTrue, default_value_t = false)]
+    pub allow_sideloaded_rom: bool,
+
     /// Enable flash based boot (default false).
     #[arg(long, default_value_t = false)]
     pub flash_based_boot: bool,
@@ -567,6 +571,7 @@ impl Emulator {
             uart_rx: stdin_uart.clone(),
             pic: pic.clone(),
             clock: clock.clone(),
+            allow_sideloaded_rom: cli.allow_sideloaded_rom,
         };
         let root_bus = McuRootBus::new(bus_args).unwrap();
 
