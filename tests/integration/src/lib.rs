@@ -1545,6 +1545,8 @@ mod test {
     }
 
     fn run_test(feature: &str, example_app: bool) {
+        use std::io::Write;
+
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -1556,6 +1558,25 @@ mod test {
         let caliptra_builder =
             create_caliptra_builder_with_prebuilt(test_runtime.clone(), &feature);
 
+        // Seed the primary flash with IDevID certs in the emulated external OTP
+        // partition so that the SPDM responder has valid certificates for
+        // signature verification (matches what start_runtime_hw_model does for
+        // in-process tests).
+        let primary_flash_file = build_primary_flash_initial_contents(
+            None,
+            Some(ECC_DEVID_CERT_DER.as_slice()),
+            Some(MLDSA_IDEVID_CERT.as_slice()),
+            None,
+        )
+        .map(|data| {
+            let mut f =
+                tempfile::NamedTempFile::new().expect("Failed to create primary flash temp file");
+            f.write_all(&data).unwrap();
+            f.flush().unwrap();
+            f
+        });
+        let flash_path = primary_flash_file.as_ref().map(|f| f.path().to_path_buf());
+
         let test = run_runtime(
             &feature,
             ROM.to_path_buf(),
@@ -1565,7 +1586,7 @@ mod test {
             DeviceLifecycle::Production, // set this to DeviceLifecycle::Manufacturing if you want to run in manufacturing mode
             None,
             None,
-            None,
+            flash_path,
             None,
             caliptra_builder,
             None,
@@ -1574,6 +1595,9 @@ mod test {
             None,
         );
         assert_eq!(0, test);
+
+        // primary_flash_file (NamedTempFile) is dropped here, after run_runtime completes
+        drop(primary_flash_file);
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
