@@ -36,6 +36,7 @@ mod test {
             feature: Some("test-mctp-spdm-responder-conformance"),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             use_strap_secrets: true,
+            debug_intent: true,
             ..Default::default()
         });
 
