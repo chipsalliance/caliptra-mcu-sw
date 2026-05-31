@@ -29,7 +29,7 @@ const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;
 ///
 /// # Safety
 /// Accesses memory-mapped registers.
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "release")))]
 #[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
@@ -42,6 +42,39 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         &*addr_of!(CHIP),
         &*addr_of!(PROCESS_PRINTER),
     );
+    exit_fpga(1);
+}
+
+/// Minimal panic handler for `release` builds.
+///
+/// `kernel::debug::panic_print` is ~2.6 KB on its own and drags in the full
+/// `DebugWriter` / `UartMux` / `ProcessPrinterText` / `Display`-impl chain.
+/// We deliberately do NOT format `pi.message()`: doing so would link
+/// `PanicMessage as Display` -> `core::fmt::write` -> `Formatter::pad`+`pad_integral` +
+/// `<&u32 as Debug>` (pulled by the standard `panic_bounds_check` message
+/// `"index out of bounds: the len is X but the index is Y"`), totalling
+/// ~2.4 KB.  Production panics carry enough context with just `file:line`.
+///
+/// Output format: `PANIC at <file>:<line>\n` (or `PANIC\n` if location missing).
+///
+/// # Safety
+/// Accesses memory-mapped registers.
+#[cfg(all(not(test), feature = "release"))]
+#[no_mangle]
+#[panic_handler]
+pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
+    use core::fmt::Write as _;
+    let writer = &mut *addr_of_mut!(WRITER);
+    let _ = writer.write_str("PANIC");
+    if let Some(loc) = pi.location() {
+        // Only the file path — deliberately skip `loc.line()` so we don't
+        // pull `Display<u32>` (~320 B), `Formatter::pad_integral` (~500 B),
+        // and the rest of the `core::fmt::pad` chain (~750 B more).  The
+        // file path alone narrows the panic to a single source file.
+        let _ = writer.write_str(" at ");
+        let _ = writer.write_str(loc.file());
+    }
+    let _ = writer.write_str("\n");
     exit_fpga(1);
 }
 

@@ -86,12 +86,11 @@ pub async fn vdm_responder(
     while running.load(Ordering::SeqCst) {
         if let Err(e) = cmd_interface.handle_responder_msg(&mut msg_buffer).await {
             // Debug print on error
-            writeln!(
+            let _ = writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "vdm_responder error: {:?}",
                 e
-            )
-            .unwrap();
+            );
         }
     }
 }

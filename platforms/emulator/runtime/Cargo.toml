@@ -46,7 +46,7 @@ default = []
 #   - romtime `print!`/`println!`      (via caliptra-mcu-romtime/no-print)
 #   - DebugWriter, Console, LowLevelDebug, ProcessConsole, ProcessPrinter
 # Default (off) = full debug / interactive experience.
-release = ["kernel/no_debug_panics", "caliptra-mcu-romtime/no-print"]
+release = ["kernel/no_debug_panics", "kernel/no_debug_subsystem", "caliptra-mcu-romtime/no-print", "caliptra-mcu-tock-veer/minimal-panic"]
 hw-2-1 = []
 test-caliptra-certs = []
 test-caliptra-crypto = []

@@ -150,6 +150,14 @@ jobs:
             --separate-runtimes
           sccache --show-stats
 
+          # TODO: build release-profile FPGA firmware bundle in CI once
+          # `xtask fpga build` supports a `--profile` flag.  For now we
+          # only build the FPGA runtime binary so we still exercise the
+          # release-feature gates on the FPGA platform in CI.
+          echo "Cross compiling FPGA release-profile runtime"
+          cargo xtask runtime-build --platform fpga --profile release
+          sccache --show-stats
+
           mkdir -p /tmp/caliptra-binaries
           tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz \
             all-fw.zip

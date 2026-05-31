@@ -22,11 +22,11 @@ use kernel::ErrorCode;
 
 pub(crate) static mut WRITER: Writer = Writer {};
 
-/// Panic handler.
+/// Panic handler — full (debug builds): prints process state via kernel debugger.
 ///
 /// # Safety
 /// Accesses memory-mapped registers.
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "release")))]
 #[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
@@ -39,6 +39,30 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         &*addr_of!(CHIP),
         &*addr_of!(PROCESS_PRINTER),
     );
+    exit_emulator(1);
+}
+
+/// Panic handler — release build: PANIC + file:line only.
+/// We deliberately drop `pi.message()` to break the
+/// `PanicMessage as Display` -> `core::fmt::write` -> `Formatter::pad` chain
+/// (pulled by the standard `panic_bounds_check` message that formats `&usize`
+/// values via `Debug`), saving ~2 KB.
+///
+/// # Safety
+/// Accesses the UART writer.
+#[cfg(all(not(test), feature = "release"))]
+#[no_mangle]
+#[panic_handler]
+pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
+    use core::fmt::Write as _;
+    let writer = &mut *addr_of_mut!(WRITER);
+    let _ = writer.write_str("PANIC");
+    if let Some(loc) = pi.location() {
+        // Skip `loc.line()` to avoid pulling `Display<u32>` + the fmt::pad chain.
+        let _ = writer.write_str(" at ");
+        let _ = writer.write_str(loc.file());
+    }
+    let _ = writer.write_str("\n");
     exit_emulator(1);
 }
 

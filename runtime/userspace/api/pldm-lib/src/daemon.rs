@@ -182,12 +182,11 @@ pub async fn pldm_initiator(
                         }
                     }
                     Err(e) => {
-                        writeln!(
+                        let _ = writeln!(
                             console_writer,
                             "PLDM_APP: Error in optimized download: {:?}",
                             e
-                        )
-                        .unwrap();
+                        );
                         // Sync and fall back to regular path
                         cmd_interface.sync_transfer_session(sess).await;
                         session = None;
@@ -217,12 +216,11 @@ pub async fn pldm_initiator(
                         }
                     }
                     Err(e) => {
-                        writeln!(
+                        let _ = writeln!(
                             console_writer,
                             "PLDM_APP: Error handling initiator msg: {:?}",
                             e
-                        )
-                        .unwrap();
+                        );
                     }
                 }
 
@@ -251,12 +249,11 @@ pub async fn pldm_responder(
             Ok(crate::cmd_interface::ResponderAction::Complete) => break,
             Ok(crate::cmd_interface::ResponderAction::Continue) => {}
             Err(e) => {
-                writeln!(
+                let _ = writeln!(
                     console_writer,
                     "PLDM_APP: Error handling responder msg: {:?}",
                     e
-                )
-                .unwrap();
+                );
             }
         }
 

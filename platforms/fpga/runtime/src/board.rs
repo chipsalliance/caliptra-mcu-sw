@@ -164,6 +164,8 @@ struct VeeR {
     external_otp: &'static caliptra_mcu_capsules_runtime::external_otp::ExternalOtpCapsule<'static>,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, FpgaExiter>,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
+    // Flash-backed logging capsule — always present.  Production feature
+    // exposed to user-space agents that drain the on-flash log.
     logging_flash:
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
 }
@@ -176,9 +178,11 @@ impl SyscallDriverLookup for VeeR {
     {
         match driver_num {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
+            #[cfg(not(feature = "release"))]
             capsules_core::console::DRIVER_NUM => f(self
                 .console
                 .map(|c| c as &dyn kernel::syscall::SyscallDriver)),
+            #[cfg(not(feature = "release"))]
             capsules_core::low_level_debug::DRIVER_NUM => {
                 f(self.lldb.map(|l| l as &dyn kernel::syscall::SyscallDriver))
             }
@@ -346,7 +350,7 @@ pub unsafe fn main() {
     let mut platform_regions = ArrayVec::<PlatformRegion, 12>::new();
 
     // Kernel text region (read + execute)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: addr_of!(_srom),
         size: addr_of!(_erom) as usize - addr_of!(_srom) as usize,
         is_mmio: false,
@@ -357,7 +361,7 @@ pub unsafe fn main() {
     });
 
     // Read-only region (ROM)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: addr_of!(_sprog),
         size: addr_of!(_eprog) as usize - addr_of!(_sprog) as usize,
         is_mmio: false,
@@ -368,7 +372,7 @@ pub unsafe fn main() {
     });
 
     // Data region (SRAM)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: addr_of!(_ssram),
         size: addr_of!(_esram) as usize - addr_of!(_ssram) as usize,
         is_mmio: false,
@@ -378,7 +382,7 @@ pub unsafe fn main() {
         execute: false,
     });
 
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: MCU_MEMORY_MAP.dccm_offset as *const u8,
         size: MCU_MEMORY_MAP.dccm_size as usize,
         is_mmio: false, // DCCM is memory, not MMIO
@@ -389,7 +393,7 @@ pub unsafe fn main() {
     });
 
     // User-accessible MMIO (FPGA peripherals and UART)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: 0xa401_0000 as *const u8,
         size: 0x2000,
         is_mmio: true,
@@ -400,7 +404,7 @@ pub unsafe fn main() {
     });
 
     // AXICDMA
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: caliptra_mcu_registers_generated::axicdma::AXICDMA_ADDR as *const u8,
         size: 0x1000,
         is_mmio: true,
@@ -411,7 +415,7 @@ pub unsafe fn main() {
     });
 
     // Staging SRAM
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: 0xB00C0000 as *const u8,
         size: 0x40000,
         is_mmio: true,
@@ -428,14 +432,23 @@ pub unsafe fn main() {
     };
 
     caliptra_mcu_romtime::println!("[mcu-runtime] Set PMP");
-    // Generate PMP region list using the shared infrastructure
-    let pmp_regions = caliptra_mcu_platforms_common::pmp_config::create_pmp_regions(config)
-        .expect("Failed to create PMP regions");
+    // Generate PMP region list using the shared infrastructure.
+    // Avoid `.expect(...)`/`.unwrap()`: those pull the error type's `Debug`
+    // impl (`CapacityError<PlatformRegion>` and the PMP-region error which
+    // includes `&u32`), which then drags in `core::fmt::Formatter::pad` and
+    // friends (~2 KB).  In `release` we accept a generic panic message.
+    let pmp_regions = match caliptra_mcu_platforms_common::pmp_config::create_pmp_regions(config) {
+        Ok(r) => r,
+        Err(_) => panic!("PMP region setup failed"),
+    };
 
     caliptra_mcu_romtime::println!("[mcu-runtime] Enabling PMP");
     caliptra_mcu_romtime::println!("PMP Regions:");
     caliptra_mcu_romtime::println!("{}", pmp_regions);
-    let epmp = VeeRProtectionMMLEPMP::new(pmp_regions).unwrap();
+    let epmp = match VeeRProtectionMMLEPMP::new(pmp_regions) {
+        Ok(e) => e,
+        Err(_) => panic!("ePMP setup failed"),
+    };
     caliptra_mcu_romtime::println!("[mcu-runtime] Set PMP done");
 
     // initialize capabilities
@@ -524,19 +537,26 @@ pub unsafe fn main() {
     caliptra_mcu_romtime::println!("[mcu-runtime] Chip initialized");
 
     // Create a shared UART channel for the console and for kernel debug.
-    // The DebugWriter must always be initialized because the kernel's `debug!()`
-    // macro and panic/fault handlers unconditionally call `get_debug_writer()`.
+    // Stripped in `release` builds — nothing references `uart_mux` once
+    // DebugWriter / LLDB / Console / ProcessConsole are all gated off, so
+    // `MuxUart` + `UartDevice` virtualizer code (~630 B) DCE's entirely.
     // TODO: add a new UART for the FPGA
+    #[cfg(not(feature = "release"))]
     let uart_mux = components::console::UartMuxComponent::new(&fpga_peripherals.uart, 115200)
         .finalize(components::uart_mux_component_static!());
+    #[cfg(not(feature = "release"))]
     caliptra_mcu_romtime::println!("[mcu-runtime] UART initialized");
 
     // Create the debugger object that handles calls to `debug!()`.
-    // Must always be present — the kernel's panic handler and fault diagnostics
-    // require it.
-    components::debug_writer::DebugWriterComponent::new(uart_mux)
-        .finalize(components::debug_writer_component_static!());
-    caliptra_mcu_romtime::println!("[mcu-runtime] DebugWriter initialized");
+    // Stripped in `release` builds (kernel `debug!`, `debug_println`, and the
+    // panic-print path are all no-ops under `kernel/no_debug_subsystem`), so
+    // the DebugWriter + MuxUart receive/transmit chain can be DCE'd entirely.
+    #[cfg(not(feature = "release"))]
+    {
+        components::debug_writer::DebugWriterComponent::new(uart_mux)
+            .finalize(components::debug_writer_component_static!());
+        caliptra_mcu_romtime::println!("[mcu-runtime] DebugWriter initialized");
+    }
 
     // LowLevelDebug capsule (alert-code printer used by user-app panic
     // handlers).  Stripped in `release` builds.
@@ -679,26 +699,31 @@ pub unsafe fn main() {
     caliptra_mcu_romtime::println!("[mcu-runtime] Flash partition component initialized");
 
     // Flash user for the logging capsule, sharing the primary flash mux.
-    let logging_fl_user = components::flash::FlashUserComponent::new(mux_mcu_mbox_flash).finalize(
-        components::flash_user_component_static!(caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl),
-    );
+    // Production feature: the user-space agent reads persisted log via the
+    // syscall driver.
+    let logging_flash = {
+        let logging_fl_user = components::flash::FlashUserComponent::new(mux_mcu_mbox_flash)
+            .finalize(components::flash_user_component_static!(
+                caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl
+            ));
 
-    // Logging flash capsule
-    let logging_flash = caliptra_mcu_components::logging::LoggingFlashComponent::new(
-        board_kernel,
-        caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM,
-        logging_fl_user,
-        caliptra_mcu_config_fpga::flash::LOGGING_PARTITION
-            .base_page(caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE),
-        caliptra_mcu_config_fpga::flash::LOGGING_PARTITION
-            .num_pages(caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE),
-        true,
-    )
-    .finalize(caliptra_mcu_components::logging_flash_component_static!(
-        virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl>,
-        caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
-    ));
-    caliptra_mcu_romtime::println!("[mcu-runtime] Logging flash component initialized");
+        let logging_flash = caliptra_mcu_components::logging::LoggingFlashComponent::new(
+            board_kernel,
+            caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM,
+            logging_fl_user,
+            caliptra_mcu_config_fpga::flash::LOGGING_PARTITION
+                .base_page(caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE),
+            caliptra_mcu_config_fpga::flash::LOGGING_PARTITION
+                .num_pages(caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE),
+            true,
+        )
+        .finalize(caliptra_mcu_components::logging_flash_component_static!(
+            virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl>,
+            caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
+        ));
+        caliptra_mcu_romtime::println!("[mcu-runtime] Logging flash component initialized");
+        logging_flash
+    };
 
     let total_heks = 0;
     let otp = caliptra_mcu_components::otp::OtpComponent::new(
@@ -810,11 +835,16 @@ pub unsafe fn main() {
         .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
-    debug!("MUX MCTP enable");
+    // Replaced `debug!(...)` with `caliptra_mcu_romtime::println!(...)`: the
+    // kernel `debug!` macro pulls in the full `DebugWriter`/`UartMux`/fmt
+    // chain (~4.7 KB).  `romtime::println!` is a no-op in `release` builds
+    // (`no-print` feature) and otherwise goes through the existing
+    // platform UART writer.
+    caliptra_mcu_romtime::println!("MUX MCTP enable");
     mux_mctp.enable();
 
-    debug!("MCU initialization complete.");
-    debug!("Entering main loop.");
+    caliptra_mcu_romtime::println!("MCU initialization complete.");
+    caliptra_mcu_romtime::println!("Entering main loop.");
 
     let scheduler =
         components::sched::cooperative::CooperativeComponent::new(&*addr_of!(PROCESSES))
@@ -868,8 +898,13 @@ pub unsafe fn main() {
         &process_mgmt_cap,
     )
     .unwrap_or_else(|err| {
-        debug!("Error loading processes!");
-        debug!("{:?}", err);
+        // See note above re: `debug!` -> `romtime::println!` replacement.
+        // `err` is a `ProcessLoadError` whose `Debug` impl is ~336 B of code
+        // plus rodata strings; we still want to log it in dev builds, so
+        // route through the runtime printer which strips the call entirely
+        // when `release` is active.
+        caliptra_mcu_romtime::println!("Error loading processes!");
+        caliptra_mcu_romtime::println!("{:?}", err);
     });
 
     #[cfg(any(
@@ -891,23 +926,23 @@ pub unsafe fn main() {
     let mut exit: Option<u32> = None;
     #[cfg(feature = "test-exit-immediately")]
     {
-        debug!("Executing test-exit-immediately");
+        caliptra_mcu_romtime::println!("Executing test-exit-immediately");
         exit = Some(0);
     }
     #[cfg(feature = "test-i3c-simple")]
     {
-        debug!("Executing test-i3c-simple");
+        caliptra_mcu_romtime::println!("Executing test-i3c-simple");
         exit = crate::tests::i3c_target_test::run_test_i3c_simple();
     }
     #[cfg(feature = "test-i3c-constant-writes")]
     {
-        debug!("Executing test-i3c-constant-writes");
+        caliptra_mcu_romtime::println!("Executing test-i3c-constant-writes");
         exit = crate::tests::i3c_target_test::run_test_i3c_constant_writes();
     }
 
     #[cfg(feature = "test-mctp-capsule-loopback")]
     {
-        debug!("Executing test-mctp-capsule-loopback");
+        caliptra_mcu_romtime::println!("Executing test-mctp-capsule-loopback");
         crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp);
     }
 

@@ -351,7 +351,13 @@ capsules-core = { git = "https://github.com/tock/tock.git", rev = "release-2.2" 
 capsules-extra = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 capsules-system = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 components = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
-kernel = { git = "https://github.com/tock/tock.git", rev = "release-2.2" , features = ["debug_load_processes"] }
+# `debug_load_processes` was previously enabled here.  It adds ~20+ `debug!()`
+# call sites in `process_loading.rs` / `process_standard.rs` /
+# `process_binary.rs` (each of which drags ~100B of format strings into the
+# binary) for purely diagnostic output during process startup.  Disabled to
+# shrink the release image; re-enable behind a per-crate dep override if
+# needed for development.
+kernel = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 riscv = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 riscv-csr = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 rv32i = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
@@ -403,3 +409,20 @@ inherits = "release"
 
 [patch.crates-io]
 openssl = { git = "https://github.com/clundin25/rust-openssl.git", rev = "4ada1c1d7c264e052e7bb71ecddbd196a5c2a0c7" } # MLDSA
+
+# Tier C kernel-image-size experiment: route the Tock crates we modify
+# through our personal fork at https://github.com/helloxiling/tock,
+# branch xsun/caliptra-size-opt.  `tock-registers` must be patched too —
+# the patched `kernel`/`riscv-csr`/etc. use `path = "../libraries/tock-register-interface"`
+# and would otherwise resolve to a different instance than the upstream-git
+# tock-registers, causing `RegisterLongName` trait mismatch errors.
+[patch."https://github.com/tock/tock.git"]
+capsules-core = { git = "https://github.com/helloxiling/tock.git", rev = "a6eb327ee" }
+capsules-extra = { git = "https://github.com/helloxiling/tock.git", rev = "a6eb327ee" }
+capsules-system = { git = "https://github.com/helloxiling/tock.git", rev = "a6eb327ee" }
+components = { git = "https://github.com/helloxiling/tock.git", rev = "a6eb327ee" }
+kernel = { git = "https://github.com/helloxiling/tock.git", rev = "a6eb327ee" }
+riscv = { git = "https://github.com/helloxiling/tock.git", rev = "a6eb327ee" }
+riscv-csr = { git = "https://github.com/helloxiling/tock.git", rev = "a6eb327ee" }
+rv32i = { git = "https://github.com/helloxiling/tock.git", rev = "a6eb327ee" }
+tock-registers = { git = "https://github.com/helloxiling/tock.git", rev = "a6eb327ee" }

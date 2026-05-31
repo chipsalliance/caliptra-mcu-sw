@@ -142,6 +142,9 @@ struct VeeR {
     >,
     caliptra: &'static caliptra_mcu_capsules_runtime::caliptra::Caliptra,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
+    // Flash-backed logging capsule — always present.  This is a production
+    // feature: the syscall driver is exposed to user-space agents that drain
+    // the on-flash log via `caliptra_cmd_handler::debug_log::drain`.
     logging_flash:
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
     mci: &'static caliptra_mcu_capsules_runtime::mci::Mci,
@@ -324,7 +327,7 @@ pub unsafe fn main() {
     let mut platform_regions = ArrayVec::<PlatformRegion, 9>::new();
 
     // Kernel text region (read + execute)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: addr_of!(_stext),
         size: addr_of!(_etext) as usize - addr_of!(_stext) as usize,
         is_mmio: false,
@@ -335,7 +338,7 @@ pub unsafe fn main() {
     });
 
     // Read-only region (ROM)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: addr_of!(_srom),
         size: addr_of!(_eprog) as usize - addr_of!(_srom) as usize,
         is_mmio: false,
@@ -346,7 +349,7 @@ pub unsafe fn main() {
     });
 
     // Data region (SRAM)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: addr_of!(_ssram),
         size: (addr_of!(_esram) as usize + 0x80) - addr_of!(_ssram) as usize,
         is_mmio: false,
@@ -361,7 +364,7 @@ pub unsafe fn main() {
     if !(MCU_MEMORY_MAP.dccm_offset..MCU_MEMORY_MAP.dccm_offset + MCU_MEMORY_MAP.dccm_size)
         .contains(&(addr_of!(STACK_MEMORY) as u32))
     {
-        platform_regions.push(PlatformRegion {
+        let _ = platform_regions.try_push(PlatformRegion {
             start_addr: MCU_MEMORY_MAP.dccm_offset as *const u8,
             size: MCU_MEMORY_MAP.dccm_size as usize,
             is_mmio: false,
@@ -373,7 +376,7 @@ pub unsafe fn main() {
     }
 
     // User-accessible MMIO (emulator control and UART)
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: 0x1000_0000 as *const u8,
         size: 0x1000_0000,
         is_mmio: true,
@@ -384,7 +387,7 @@ pub unsafe fn main() {
     });
 
     // TODO: Why is this not in the McuMemoryMap? What is this?
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: 0x2000_8000 as *const u8,
         size: 0x1000,
         is_mmio: true,
@@ -395,7 +398,7 @@ pub unsafe fn main() {
     });
 
     // Dummy DOE mailbox peripheral region
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: 0x2f00_0000 as *const u8,
         size: 0x10_1000,
         is_mmio: true,
@@ -406,7 +409,7 @@ pub unsafe fn main() {
     });
 
     // AXICDMA
-    platform_regions.push(PlatformRegion {
+    let _ = platform_regions.try_push(PlatformRegion {
         start_addr: caliptra_mcu_registers_generated::axicdma::AXICDMA_ADDR as *const u8,
         size: 0x1000,
         is_mmio: true,
@@ -422,13 +425,20 @@ pub unsafe fn main() {
         memory_map: &MCU_MEMORY_MAP,
     };
 
-    // Generate PMP region list using the shared infrastructure
-    let pmp_regions = caliptra_mcu_platforms_common::pmp_config::create_pmp_regions(config)
-        .expect("Failed to create PMP regions");
+    // Generate PMP region list using the shared infrastructure.
+    // Avoid `.expect(...)`/`.unwrap()`: those pull the error type's `Debug`
+    // impl, which drags in `core::fmt::Formatter::pad` (~2 KB).
+    let pmp_regions = match caliptra_mcu_platforms_common::pmp_config::create_pmp_regions(config) {
+        Ok(r) => r,
+        Err(_) => panic!("PMP region setup failed"),
+    };
 
     caliptra_mcu_romtime::println!("PMP Regions:");
     caliptra_mcu_romtime::println!("{}", pmp_regions);
-    let epmp = VeeRProtectionMMLEPMP::new(pmp_regions).unwrap();
+    let epmp = match VeeRProtectionMMLEPMP::new(pmp_regions) {
+        Ok(e) => e,
+        Err(_) => panic!("ePMP setup failed"),
+    };
     caliptra_mcu_romtime::println!("Finished setting up PMP");
 
     // initialize capabilities
@@ -557,17 +567,22 @@ pub unsafe fn main() {
     CHIP = Some(chip);
 
     // Create a shared UART channel for the console and for kernel debug.
-    // The DebugWriter must always be initialized because the kernel's `debug!()`
-    // macro and panic/fault handlers unconditionally call `get_debug_writer()`.
+    // Stripped in `release` builds — nothing references `uart_mux` once
+    // DebugWriter / LLDB / Console / ProcessConsole are all gated off, so
+    // `MuxUart` + `UartDevice` virtualizer code DCE's entirely.
+    #[cfg(not(feature = "release"))]
     let uart_mux = components::console::UartMuxComponent::new(&emulator_peripherals.uart, 115200)
         .finalize(components::uart_mux_component_static!());
 
     // Create the debugger object that handles calls to `debug!()`.
-    // Must always be present — the kernel's panic handler and fault diagnostics
-    // require it.  The `no_debug_panics` feature only gates process-info
-    // printing, not the writer itself.
-    components::debug_writer::DebugWriterComponent::new(uart_mux)
-        .finalize(components::debug_writer_component_static!());
+    // Stripped in `release` builds (kernel `debug!`, `debug_println`, and the
+    // panic-print path are all no-ops under `kernel/no_debug_subsystem`), so
+    // the DebugWriter + MuxUart receive/transmit chain can be DCE'd entirely.
+    #[cfg(not(feature = "release"))]
+    {
+        components::debug_writer::DebugWriterComponent::new(uart_mux)
+            .finalize(components::debug_writer_component_static!());
+    }
 
     // LowLevelDebug capsule (alert-code printer used by user-app panic
     // handlers).  Stripped in `release` builds.
@@ -721,28 +736,29 @@ pub unsafe fn main() {
         caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
     );
 
-    // Create flash user for logging capsule that is connected to the primary flash
-    let logging_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash).finalize(
-        components::flash_user_component_static!(
-            caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
-        ),
-    );
-
-    // Logging capsule
-    let logging_flash = caliptra_mcu_components::logging::LoggingFlashComponent::new(
-        board_kernel,
-        caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM,
-        logging_fl_user,
-        caliptra_mcu_config_emulator::flash::LOGGING_PARTITION
-            .base_page(caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE),
-        caliptra_mcu_config_emulator::flash::LOGGING_PARTITION
-            .num_pages(caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE),
-        true,
-    )
-    .finalize(caliptra_mcu_components::logging_flash_component_static!(
-        virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl>,
-        caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
-    ));
+    // Flash user + logging capsule.  Production feature: the user-space
+    // agent (`caliptra_cmd_handler::debug_log::drain`) reads the persisted
+    // log via the syscall driver.
+    let logging_flash = {
+        let logging_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash)
+            .finalize(components::flash_user_component_static!(
+                caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
+            ));
+        caliptra_mcu_components::logging::LoggingFlashComponent::new(
+            board_kernel,
+            caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM,
+            logging_fl_user,
+            caliptra_mcu_config_emulator::flash::LOGGING_PARTITION
+                .base_page(caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE),
+            caliptra_mcu_config_emulator::flash::LOGGING_PARTITION
+                .num_pages(caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE),
+            true,
+        )
+        .finalize(caliptra_mcu_components::logging_flash_component_static!(
+            virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl>,
+            caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
+        ))
+    };
 
     let dma = caliptra_mcu_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,
@@ -843,11 +859,11 @@ pub unsafe fn main() {
         .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
-    debug!("MUX MCTP enable");
+    caliptra_mcu_romtime::println!("[mcu-runtime] MUX MCTP enable");
     mux_mctp.enable();
 
-    debug!("MCU initialization complete.");
-    debug!("Entering main loop.");
+    caliptra_mcu_romtime::println!("[mcu-runtime] MCU initialization complete.");
+    caliptra_mcu_romtime::println!("[mcu-runtime] Entering main loop.");
 
     let scheduler =
         components::sched::cooperative::CooperativeComponent::new(&*addr_of!(PROCESSES))
@@ -901,8 +917,8 @@ pub unsafe fn main() {
         &process_mgmt_cap,
     )
     .unwrap_or_else(|err| {
-        debug!("Error loading processes!");
-        debug!("{:?}", err);
+        caliptra_mcu_romtime::println!("[mcu-runtime] Error loading processes!");
+        caliptra_mcu_romtime::println!("{:?}", err);
     });
 
     // Used by flash driver integration tests.
@@ -1068,7 +1084,7 @@ fn run_kernel_tests(
     }
 
     if let Some(exit) = exit {
-        debug!("Exiting with code {}", exit);
+        caliptra_mcu_romtime::println!("[mcu-runtime] Exiting with code {}", exit);
         crate::io::exit_emulator(exit);
     }
 }

@@ -42,6 +42,10 @@ rustflags = [
     # Repository sources become relative to repo root; cargo registry sources
     # become "registry/...".  Both reduce the size of file-path strings baked
     # into `core::panicking::panic_fmt` call sites (unwrap/expect/assert/etc.).
+    "--remap-path-prefix=/home/xsun/dev_work/caliptra-mcu-sw=.",
+    "--remap-path-prefix=/home/xsun/dev_work/caliptra-mcu-sw-kernel-size=.",
+    "--remap-path-prefix=/home/xsun/.cargo/registry=registry",
+    "--remap-path-prefix=/home/xsun/.cargo/git=git",
     "--remap-path-prefix=/root/caliptra-mcu-sw=.",
     "--remap-path-prefix=/root/.cargo/registry=registry",
     "--remap-path-prefix=/root/.cargo/git=git",

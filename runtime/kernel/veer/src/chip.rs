@@ -113,7 +113,13 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
             self.mcu_mbox0.handle_interrupt();
             return true;
         }
-        debug!("Unhandled interrupt {}", interrupt);
+        // `debug!("Unhandled interrupt {}", interrupt)` removed: the kernel
+        // `debug!` macro pulls in the full DebugWriter / UartMux / fmt
+        // machinery (~hundreds of bytes here plus the rv32i exception-name
+        // table reachable from formatting) and contributes nothing useful in
+        // a release build.  Callers already get `false` back, which is the
+        // signal that the interrupt was not serviced.
+        let _ = interrupt;
         false
     }
 }
@@ -234,7 +240,13 @@ fn handle_exception(exception: mcause::Exception) {
         | mcause::Exception::LoadPageFault
         | mcause::Exception::StorePageFault
         | mcause::Exception::Unknown => {
+            #[cfg(not(feature = "minimal-panic"))]
             panic!("fatal exception: {:?}: {:#x}", exception, CSR.mtval.get());
+            #[cfg(feature = "minimal-panic")]
+            {
+                let _ = exception;
+                panic!("fatal exception");
+            }
         }
     }
 }
