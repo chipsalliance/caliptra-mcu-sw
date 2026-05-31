@@ -87,20 +87,18 @@ impl StagingMemory for SpiFlashStagingMemory {
         }
 
         if images_match {
-            writeln!(
+            crate::console_writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] Staging matches Partition A, skipping copy"
-            )
-            .unwrap();
+            );
             return Ok(());
         }
 
-        writeln!(
+        crate::console_writeln!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Copying image from staging to Partition A, length {}",
             img_sz
-        )
-        .unwrap();
+        );
 
         // Erase Partition A before writing
         part_a_flash.erase(0, img_sz).await?;

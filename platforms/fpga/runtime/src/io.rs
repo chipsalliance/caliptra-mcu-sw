@@ -5,15 +5,21 @@
 
 #![allow(static_mut_refs)]
 
+#[cfg(not(feature = "release"))]
 use crate::CHIP;
+#[cfg(not(feature = "release"))]
 use crate::PROCESSES;
+#[cfg(not(feature = "release"))]
 use crate::PROCESS_PRINTER;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use core::ptr::{addr_of, addr_of_mut};
+#[cfg(not(feature = "release"))]
+use core::ptr::addr_of;
+use core::ptr::addr_of_mut;
+#[cfg(not(feature = "release"))]
 use kernel::debug;
 use kernel::debug::IoWrite;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
@@ -29,7 +35,7 @@ const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;
 ///
 /// # Safety
 /// Accesses memory-mapped registers.
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "release")))]
 #[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
@@ -42,6 +48,24 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         &*addr_of!(CHIP),
         &*addr_of!(PROCESS_PRINTER),
     );
+    exit_fpga(1);
+}
+
+/// Panic handler (release build).
+///
+/// # Safety
+/// Accesses memory-mapped registers.
+#[cfg(all(not(test), feature = "release"))]
+#[no_mangle]
+#[panic_handler]
+pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
+    use core::fmt::Write as _;
+    let writer = &mut *addr_of_mut!(WRITER);
+    let _ = writer.write_str("PANIC");
+    if let Some(loc) = pi.location() {
+        let _ = write!(writer, " at {}:{}", loc.file(), loc.line());
+    }
+    let _ = write!(writer, ": {}\n", pi.message());
     exit_fpga(1);
 }
 
