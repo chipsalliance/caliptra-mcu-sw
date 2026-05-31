@@ -89,7 +89,6 @@ The following table maps SPDM VDM command codes to Caliptra common commands. For
 | `0x0D`       | Set Slot 0 Cert             | R   | Set CA-signed IDevID certificate in slot 0.         |
 | `0x0E`       | Get Slot 0 State            | O   | Check provisioning state of certificate slot 0.     |
 | `0x0F`       | Export Attested CSR          | O   | Export attested CSR for a device identity key.      |
-| `0x10`       | Program Field Entropy        | O   | Program field entropy into the device.              |
-| `0x11`       | Device Ownership Transfer    | O   | Transfer device ownership.                          |
+| `0x12`       | Authorized Command           | O   | Execute an authorized sub-command via challenge-response MAC. Sub-commands: Get Auth Challenge (`0x01`), Program Field Entropy (`0x02`). |
 
 R = Required, O = Optional

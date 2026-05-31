@@ -1,0 +1,12 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-command-auth-challenge-signer"
+version.workspace = true
+edition.workspace = true
+description = "Command authorization trait and HMAC implementation for Caliptra MCU"
+
+[dependencies]
+anyhow.workspace = true
+hmac.workspace = true
+sha2.workspace = true
