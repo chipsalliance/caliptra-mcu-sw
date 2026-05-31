@@ -149,7 +149,7 @@ pub(crate) fn derive_stable_owner_key(env: &mut RomEnv) -> McuResult<Cmk> {
         &mut req32,
         &mut resp,
     ) {
-        caliptra_mcu_romtime::println!("[mcu-rom] Error deriving stable owner key: {:?}", err);
+        caliptra_mcu_romtime::println!("[mcu-rom] Error deriving stable owner key");
         return Err(McuError::ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR);
     }
 

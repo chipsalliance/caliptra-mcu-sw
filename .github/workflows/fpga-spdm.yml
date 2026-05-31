@@ -25,7 +25,7 @@ jobs:
 
       - name: Install cross compiler
         run: |
-          sudo apt-get update -qy && sudo apt-get install -y gcc-aarch64-linux-gnu squashfs-tools cmake
+          sudo apt-get update -qy && sudo apt-get install -y gcc-aarch64-linux-gnu squashfs-tools cmake libclang-dev
           rustup toolchain install 1.84-x86_64-unknown-linux-gnu
           rustup target add riscv32imc-unknown-none-elf
           rustup target add aarch64-unknown-linux-gnu
@@ -166,8 +166,8 @@ jobs:
           sccache --show-stats
 
           echo "Cross compiling xtask for FPGA"
-          cargo build --package xtask --features=fpga_realtime --target aarch64-unknown-linux-gnu
-          mv target/aarch64-unknown-linux-gnu/debug/xtask /tmp/caliptra-binaries/xtask
+          cargo build --features fpga_realtime --target aarch64-unknown-linux-gnu --bin caliptra-mcu-xtask
+          mv target/aarch64-unknown-linux-gnu/debug/caliptra-mcu-xtask /tmp/caliptra-binaries/xtask
 
           mkdir /tmp/caliptra-test-binaries/
           tar xvf caliptra-test-binaries.tar.zst -C /tmp/caliptra-test-binaries/
@@ -189,7 +189,7 @@ jobs:
           cp -r /tmp/spdm-emu/build/bin/* /tmp/spdm-emu-binaries/
 
           # Replace the default CA cert with the one that signed the IDevID CSR
-          cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der /tmp/spdm-emu-binaries/ecp384/ca.cert.der
+          cp ocp-eat-verifier/ocptoken-rs/test-data/ta-store/roots/slot0_ecc_test_root_ca.der /tmp/spdm-emu-binaries/ecp384/ca.cert.der
 
       - name: "Upload bitstream"
         uses: actions/upload-artifact@v4
@@ -263,8 +263,10 @@ jobs:
 
       - name: Load bitstream
         run: |
-          chmod +x /tmp/caliptra-binaries/xtask
-          /tmp/caliptra-binaries/xtask fpga bootstrap --bitstream /tmp/caliptra-bitstream/caliptra-bitstream.pdi
+          sudo mkdir -p /lib/firmware
+          sudo cp /tmp/caliptra-bitstream/caliptra-bitstream.pdi /lib/firmware/caliptra-bitstream.pdi
+          sudo bash -c 'echo "caliptra-bitstream.pdi" > /sys/class/fpga_manager/fpga0/firmware'
+          echo "subsystem" > /dev/shm/fpga-config
 
       - name: Mount binaries
         run: |

@@ -311,12 +311,10 @@ async fn fill_fw_config_info(
     journey_digests[AUTHMAN_MEASUREMENT_INDEX] = pcrs[RT_FW_JOURNEY_PCR_INDEX];
 
     // Populate for SOC FW components next
+    // TODO: Use image_info results once all SOC FW component metadata is
+    // guaranteed to be present in Caliptra RT. For now, set dummy values.
     #[allow(clippy::reversed_empty_ranges)]
     for i in 0..NUM_SOC_FW_COMPONENTS {
-        let _image_info = DeviceState::image_info(SOC_FW_IDS[i])
-            .await
-            .map_err(MeasurementsError::CaliptraApi)?;
-        // For now, set dummy values
         versions[NUM_DEFAULT_FW_COMPONENTS + i] = 0;
         svns[NUM_DEFAULT_FW_COMPONENTS + i] = 0;
         digests[NUM_DEFAULT_FW_COMPONENTS + i] = [0u32; SHA384_HASH_WORDS];

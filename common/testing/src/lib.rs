@@ -10,6 +10,7 @@ pub mod mctp_transport;
 pub mod mctp_vdm_transport;
 #[macro_use]
 pub mod mctp_util;
+pub mod spdm_responder_validator;
 
 pub use caliptra_api_types::DeviceLifecycle;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

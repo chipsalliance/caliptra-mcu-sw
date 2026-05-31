@@ -21,6 +21,8 @@ mod test_hek;
 mod test_i3c_constant_writes;
 mod test_i3c_simple;
 mod test_mctp_capsule_loopback;
+mod test_mctp_spdm_attestation;
+mod test_mctp_spdm_responder_conformance;
 mod test_mctp_vdm_cmds;
 mod test_mctp_vdm_validator;
 mod test_mcu_mbox;
@@ -39,7 +41,7 @@ pub fn platform() -> &'static str {
 
 #[cfg(test)]
 mod test {
-    use caliptra_image_types::FwVerificationPqcKeyType;
+
     use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
     use caliptra_mcu_builder::{
         CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET,
@@ -1060,8 +1062,6 @@ mod test {
     // run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
-    run_test!(test_mctp_spdm_responder_conformance, nightly);
-    run_test!(test_mctp_spdm_attestation, nightly);
     run_test!(test_doe_spdm_responder_conformance, nightly);
     run_test!(test_doe_spdm_tdisp_ide_validator, nightly);
     run_test!(test_mci, example_app);
