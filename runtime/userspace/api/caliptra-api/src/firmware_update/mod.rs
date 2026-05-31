@@ -55,6 +55,7 @@ pub struct FirmwareUpdater<'a, D: DMAMapping> {
     spawner: Spawner,
     skip_activation: bool,
     verify_same_image: bool,
+    hooks: Option<&'a dyn FirmwareUpdateHooks>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -75,6 +76,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         params: &'a PldmFirmwareDeviceParams,
         dma_mapping: &'a D,
         spawner: Spawner,
+        hooks: Option<&'a dyn FirmwareUpdateHooks>,
     ) -> Self {
         Self {
             staging_memory,
@@ -84,6 +86,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             spawner,
             skip_activation: false,
             verify_same_image: false,
+            hooks,
         }
     }
 
@@ -93,6 +96,10 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
 
     pub fn set_verify_same_image(&mut self, verify: bool) {
         self.verify_same_image = verify;
+    }
+
+    pub fn set_hooks(&mut self, hooks: &'a dyn FirmwareUpdateHooks) {
+        self.hooks = Some(hooks);
     }
 
     pub async fn start(&mut self) -> Result<(), ErrorCode> {
@@ -143,15 +150,25 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         }
 
         // Update Caliptra
+        if let Some(hooks) = self.hooks {
+            hooks.pre_caliptra_activation().await?;
+        }
         let result = self.update_caliptra(&flash_header).await;
         if result.is_err() {
             // Abort firmware update
             return Err(ErrorCode::Fail);
         }
 
+        // Set SoC authorization manifest
+        if let Some(hooks) = self.hooks {
+            hooks.pre_auth_manifest_activation().await?;
+        }
         self.set_auth_manifest().await?;
 
         // Update MCU and reboot
+        if let Some(hooks) = self.hooks {
+            hooks.pre_mcu_activation().await?;
+        }
         self.update_mcu(&flash_header).await?;
 
         Ok(())
@@ -878,6 +895,30 @@ pub trait StagingMemory: core::fmt::Debug + Send + Sync {
     async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode>;
     async fn image_valid(&self, img_sz: usize) -> Result<(), ErrorCode>;
     fn size(&self) -> usize;
+}
+
+/// Trait for platform-specific hooks invoked during the firmware update flow.
+///
+/// Platforms can implement this trait to inject SoC-specific actions at key
+/// points in the update sequence (e.g., quiescing host I/O before activation).
+/// All methods have default no-op implementations, so platforms only need to
+/// override the hooks they care about.
+#[async_trait]
+pub trait FirmwareUpdateHooks: Send + Sync {
+    /// Called before updating the Caliptra firmware. Returning an error aborts the update.
+    async fn pre_caliptra_activation(&self) -> Result<(), ErrorCode> {
+        Ok(())
+    }
+
+    /// Called before setting the SoC authorization manifest. Returning an error aborts the update.
+    async fn pre_auth_manifest_activation(&self) -> Result<(), ErrorCode> {
+        Ok(())
+    }
+
+    /// Called before updating the MCU firmware and activating. Returning an error aborts the update.
+    async fn pre_mcu_activation(&self) -> Result<(), ErrorCode> {
+        Ok(())
+    }
 }
 
 pub struct MailboxPayloadStream {
