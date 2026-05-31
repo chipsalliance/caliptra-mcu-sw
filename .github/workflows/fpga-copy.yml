@@ -1,0 +1,162 @@
+# Licensed under the Apache-2.0 license
+
+name: FPGA Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: 'Release tag (e.g. v1.0.0). Sub-tags are derived: v1.0.0b=bitstream, v1.0.0f=firmware+test-binaries'
+        required: false
+        default: 'v1.0.0'
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  download_and_upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download release artifacts
+        run: |
+          TAG="${{ inputs.release-tag || 'v1.0.0' }}"
+          BASE="https://github.com/mlvisaya/caliptra-mcu-sw/releases/download"
+
+          mkdir -p /tmp/caliptra-binaries
+
+          # Bitstream (tag: <release-tag>b)
+          curl -fL "${BASE}/${TAG}b/caliptra-bitstream.pdi" -o /tmp/caliptra-bitstream.pdi
+
+          # Firmware bundle (tag: <release-tag>f)
+          curl -fL "${BASE}/${TAG}f/caliptra-binaries.tar.gz" -o /tmp/caliptra-binaries/caliptra-binaries.tar.gz
+
+          # Test binaries squashfs (tag: <release-tag>f)
+          curl -fL "${BASE}/${TAG}f/caliptra-test-binaries.sqsh" -o /tmp/caliptra-test-binaries.sqsh
+
+      - name: "Upload bitstream"
+        uses: actions/upload-artifact@v4
+        with:
+          name: caliptra-bitstream${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-bitstream.pdi
+          retention-days: 1
+
+      - name: "Upload test binaries artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: caliptra-test-binaries${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-test-binaries.sqsh
+          retention-days: 1
+
+      - name: "Upload test firmware artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: caliptra-test-firmware${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-binaries
+          retention-days: 1
+
+  test_artifacts:
+    runs-on: vck190-subsystem
+    needs: download_and_upload
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+
+      - name: "Download Test Binaries Artifact"
+        uses: actions/download-artifact@v4
+        with:
+          name: caliptra-test-binaries${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-test-binaries.sqsh
+
+      - name: "Download Test Firmware Artifact"
+        uses: actions/download-artifact@v4
+        with:
+          name: caliptra-test-firmware${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-binaries
+
+      - name: "Download Bitstream"
+        uses: actions/download-artifact@v4
+        with:
+          name: caliptra-bitstream${{ inputs.artifact-suffix }}
+          path: /tmp/caliptra-bitstream
+
+      - name: Load bitstream
+        run: |
+          sudo mkdir -p /lib/firmware
+          ls /tmp/caliptra-bitstream
+          sudo cp /tmp/caliptra-bitstream/caliptra-bitstream.pdi /lib/firmware
+          sudo bash -c 'echo "caliptra-bitstream.pdi" > /sys/class/fpga_manager/fpga0/firmware'
+
+      - name: Mount binaries
+        run: |
+          tar -xvf /tmp/caliptra-binaries/caliptra-binaries.tar.gz
+
+          sudo mkdir /tmp/caliptra-test-binaries
+          echo mount squashfs
+          sudo mount /tmp/caliptra-test-binaries.sqsh/caliptra-test-binaries.sqsh /tmp/caliptra-test-binaries -t squashfs -o loop
+          find /tmp/caliptra-test-binaries
+
+      - name: Execute tests
+        run: |
+          export RUST_BACKTRACE=1
+          TEST_BIN=/tmp/caliptra-test-binaries
+
+          INTEGRATION_BIN=$(find "${TEST_BIN}/target" -name "caliptra_mcu_tests_integration-*" -type f -executable | head -1)
+          if [ -z "$INTEGRATION_BIN" ]; then
+            echo "ERROR: integration test binary not found in ${TEST_BIN}/target"
+            exit 1
+          fi
+          echo "Using test binary: ${INTEGRATION_BIN}"
+
+          TESTS=(
+            test_axi_bypass
+            test_imaginary_flash_controller
+            test_fw_update_e2e
+            test_mctp_vdm_cmds
+            test_mcu_mbox_usermode
+            test_mcu_mbox_cmds
+            test_mcu_mbox_fips_self_test
+            test_mcu_mbox_fips_periodic
+            test_i3c_constant_writes
+            test_i3c_simple
+            test_i3c_services_unknown_cmd
+            test_i3c_services_dot_unlock_challenge
+            test_i3c_services_dot_override_full_flow
+            test_sw_digest_lock
+            test_otp_blank_check
+            test_otp_scramble_check
+          )
+
+          FAILED=0
+          for TEST in "${TESTS[@]}"; do
+            echo "==> Running ${TEST}..."
+            if sudo CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip" \
+                "${INTEGRATION_BIN}" \
+                --test-threads=1 --include-ignored --nocapture \
+                "${TEST}"; then
+              echo "==> PASS: ${TEST}"
+            else
+              echo "==> FAIL: ${TEST}"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo "${FAILED} test(s) failed."
+            exit 1
+          fi
+
+      - name: "Upload test results"
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: caliptra-test-results${{ inputs.artifact-suffix }}
+          path: |
+            /tmp/junit.xml

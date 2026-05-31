@@ -27,16 +27,10 @@ store-failure-output = true
 
 [profile.nightly-ci]
 inherits = "nightly"
-# Modify test(test_uds) as we onboard crates to the FPGA test suite.
 default-filter = """
 (package(caliptra-mcu-hw-model)
     - test(model_emulated::test::test_new_unbooted)) |
 (package(caliptra-mcu-tests-integration) and test(test_axi_bypass)) |
-(package(caliptra-mcu-tests-integration) and test(test_jtag_taps)) |
-(package(caliptra-mcu-tests-integration) and test(test_lc_transitions)) |
-(package(caliptra-mcu-tests-integration) and test(test_manuf_debug_unlock)) |
-(package(caliptra-mcu-tests-integration) and test(test_prod_debug_unlock)) |
-(package(caliptra-mcu-tests-integration) and test(test_uds)) |
 (package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |
 (package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
@@ -46,14 +40,8 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_periodic)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_constant_writes)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_simple)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_ping)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_unknown_cmd)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_status)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_recovery_invalid_payload)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_unlock_challenge)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_without_challenge)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_error_mid_packet_then_recover)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_error_then_continue)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_full_flow)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
