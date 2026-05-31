@@ -13,9 +13,13 @@ mod challenge;
 mod chunk;
 mod digests;
 pub mod errors;
+mod finish;
 mod flag_macros;
 mod header;
+mod key_exchange;
 mod measurements;
+mod opaque;
+mod secured_message;
 mod set_certificate;
 mod version;
 mod wire;
@@ -36,6 +40,11 @@ pub use chunk::{
     CHUNK_RESPONSE_FIXED_BODY_SIZE, LARGE_RESPONSE_SIZE_FIELD_SIZE,
 };
 pub use digests::{DigestsRsp, DigestsRspBody};
+pub use finish::{FinishReqBody, FinishRsp};
+pub use key_exchange::{
+    KeyExchangeReqBody, KeyExchangeRsp, ECDH_P384_EXCHANGE_DATA_SIZE,
+    KEY_EXCHANGE_RANDOM_DATA_LEN,
+};
 pub use header::{
     ReqRespCode, SpdmMsgHdrPdu, ECC_P384_SIGNATURE_SIZE, REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE,
     SPDM_CONTEXT_LEN, SPDM_MSG_HDR_SIZE, SPDM_NONCE_LEN, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
@@ -47,3 +56,11 @@ pub use measurements::{
 pub use set_certificate::{SetCertificateReqBody, SetCertificateRsp, SetCertificateRspBody};
 pub use version::{SpdmVersion, VersionNumberEntry, VersionRsp, VersionRspBody};
 pub use wire::{WireError, WireReader, WireWriter};
+
+pub use opaque::{
+    encode_version_selection, parse_supported_versions, select_version, SmVersion,
+    SupportedVersions, OPAQUE_VERSION_SELECTION_SIZE,
+};
+pub use secured_message::{
+    encode_aad, SecuredMessageHeader, AES_256_GCM_TAG_SIZE, SECURED_MSG_HDR_SIZE,
+};
