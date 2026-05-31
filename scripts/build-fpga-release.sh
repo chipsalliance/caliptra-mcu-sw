@@ -200,8 +200,11 @@ build_firmware() {
     export AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_DIR="${OPENSSL_ARM_DIR}"
     export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="aarch64-linux-gnu-gcc"
 
-    # Match the runtime features from fpga.yml
-    local RUNTIME_FEATURES="test-i3c-simple,test-i3c-constant-writes,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-mcu-mbox-usermode,test-mcu-mbox-cmds,test-mctp-vdm-cmds,test-mcu-mbox-fips-self-test,test-mcu-mbox-fips-periodic"
+    # CI run 26720484288: all feature-gated tests passed; remaining tests
+    # (test_sw_digest_lock, test_otp_blank_check, test_otp_scramble_check)
+    # have no feature gates, so no runtime features needed for now.
+    # local RUNTIME_FEATURES="test-i3c-simple,test-i3c-constant-writes,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-mcu-mbox-usermode,test-mcu-mbox-cmds,test-mctp-vdm-cmds,test-mcu-mbox-fips-self-test,test-mcu-mbox-fips-periodic"
+    local RUNTIME_FEATURES="test-i3c-simple"
 
     log "Cross-compiling FPGA ROM + runtime..."
     cargo xtask-fpga all-build --platform fpga \

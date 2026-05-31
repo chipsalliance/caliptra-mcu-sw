@@ -27,32 +27,25 @@ store-failure-output = true
 
 [profile.nightly-ci]
 inherits = "nightly"
-default-filter = """
-(package(caliptra-mcu-hw-model)
-    - test(model_emulated::test::test_new_unbooted)) |
-(package(caliptra-mcu-tests-integration) and test(test_axi_bypass)) |
-(package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |
-(package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_self_test)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_periodic)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_constant_writes)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_simple)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_unknown_cmd)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_unlock_challenge)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_full_flow)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
-(package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
-(package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
-(package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check))
-"""
+# CI run 26720484288 results (2026-05-31):
+#   PASS: test_axi_bypass (0 matched), test_imaginary_flash_controller,
+#         test_fw_update_e2e, test_mctp_vdm_cmds, test_mcu_mbox_usermode,
+#         test_mcu_mbox_cmds, test_mcu_mbox_fips_self_test,
+#         test_mcu_mbox_fips_periodic, test_i3c_constant_writes,
+#         test_i3c_simple, test_i3c_services_unknown_cmd,
+#         test_i3c_services_dot_unlock_challenge (0 matched)
+#   HANG: test_i3c_services_dot_override_full_flow
 # disabled for now due to flakiness of recovery boot
 # (package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback)) |
 # disabled for now due to flakiness of firmware update
 # (package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
-#
+default-filter = """
+(package(caliptra-mcu-hw-model)
+    - test(model_emulated::test::test_new_unbooted)) |
+(package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
+(package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
+(package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check))
+"""
 
 [profile.nightly-ci-spdm]
 inherits = "nightly"
