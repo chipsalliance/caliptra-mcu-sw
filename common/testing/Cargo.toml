@@ -13,6 +13,7 @@ crc.workspace = true
 caliptra-mcu-mctp-vdm-common.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-ua.workspace = true
+caliptra-mcu-emulator-state.workspace = true
 zerocopy.workspace = true
 
 [dev-dependencies]

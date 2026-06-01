@@ -44,7 +44,7 @@ use caliptra_mcu_testing_common::i3c_socket;
 use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use caliptra_mcu_testing_common::mctp_transport::MctpTransport;
 use caliptra_mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
-use caliptra_mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
+use caliptra_mcu_testing_common::EmulatorState;
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
@@ -319,6 +319,10 @@ pub struct Emulator {
     pub i3c_controller_join_handle: Option<JoinHandle<()>>,
     #[allow(dead_code)]
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+    /// Per-instance emulator state. Multi-instance setups each get their
+    /// own state so stopping one does not stop the other.
+    /// The current thread's thread-local is set to this on construction.
+    pub state: Arc<EmulatorState>,
 }
 
 impl Emulator {
@@ -339,6 +343,14 @@ impl Emulator {
 
         #[cfg(not(feature = "test-flash-based-boot"))]
         let is_flash_based_boot = cli.flash_based_boot;
+
+        // Install per-instance state on the calling thread BEFORE any worker
+        // thread is spawned below (start_i3c_socket, doe_mbox_fsm.start, etc.
+        // all spawn via spawn_with_emulator_state and inherit state from this
+        // thread). The same Arc is later handed to Self::new so the emulator
+        // step loop writes the same state the workers read.
+        let state = EmulatorState::new_arc();
+        caliptra_mcu_testing_common::init_emulator_state(state.clone());
 
         // Configure stub warnings based on CLI flag
         caliptra_mcu_emulator_registers_generated::stub_warnings::set_stub_warnings(
@@ -587,7 +599,7 @@ impl Emulator {
         println!("Starting I3C Socket, port {}", cli.i3c_port.unwrap_or(0));
 
         let mut i3c_controller = if let Some(i3c_port) = cli.i3c_port {
-            let (rx, tx) = start_i3c_socket(&MCU_RUNNING, i3c_port);
+            let (rx, tx) = start_i3c_socket(i3c_port);
             I3cController::new(rx, tx)
         } else {
             I3cController::default()
@@ -1143,7 +1155,8 @@ impl Emulator {
         let sram_range = mcu_root_bus_offsets.ram_offset
             ..mcu_root_bus_offsets.ram_offset + mcu_root_bus_offsets.ram_size;
 
-        // Create the emulator instance
+        // Create the emulator instance with the same per-instance state
+        // we installed on this thread at the top of from_args_with_callbacks.
         Ok(Self::new(
             cpu,
             caliptra_cpu,
@@ -1160,6 +1173,7 @@ impl Emulator {
             Some(i3c_dynamic_address.into()),
             i3c_controller_join_handle,
             usb_host_controller,
+            state,
         ))
     }
 
@@ -1180,10 +1194,20 @@ impl Emulator {
         i3c_address: Option<u8>,
         i3c_controller_join_handle: Option<JoinHandle<()>>,
         usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+        state: Arc<EmulatorState>,
     ) -> Self {
+        // Note: the caller (from_args_with_callbacks, or a C-binding
+        // consumer constructing an Emulator directly) is responsible for
+        // having called init_emulator_state(state.clone()) on this thread
+        // before any worker thread is spawned. Re-initing here would be a
+        // no-op for from_args_with_callbacks and a footgun for direct
+        // constructors that pre-spawn workers.
+
         // read from the console in a separate thread to prevent blocking
         let stdin_uart_clone = stdin_uart.clone();
-        std::thread::spawn(move || read_console(stdin_uart_clone));
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+            read_console(stdin_uart_clone)
+        });
 
         let timer = Timer::new(&mcu_cpu.clock.clone());
         let trace_file = trace_path.map(|path| File::create(path).unwrap());
@@ -1205,6 +1229,7 @@ impl Emulator {
             i3c_address,
             i3c_controller_join_handle,
             usb_host_controller,
+            state,
         }
     }
 
@@ -1219,14 +1244,18 @@ impl Emulator {
     }
 
     pub fn step(&mut self) -> StepAction {
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
+        // Single source of truth: the per-instance running flag. Both
+        // emulator_stop(handle) (cbinding) and the C-binding
+        // emulator_trigger_exit() (which walks the cbinding registry of
+        // weak EmulatorState refs) write this flag.
+        if !self.state.running.load(Ordering::Relaxed) {
             return StepAction::Break;
         }
 
         let now = self.mcu_cpu.clock.now();
-        MCU_TICKS.store(now, Ordering::Relaxed);
+        self.state.ticks.store(now, Ordering::Relaxed);
         if now % 1000 == 0 {
-            TICK_COND.notify_all();
+            self.state.tick_cond.notify_all();
         }
 
         if let Some(ref stdin_uart) = self.stdin_uart {
@@ -1256,7 +1285,7 @@ impl Emulator {
         }
 
         if self.sram_range.contains(&self.mcu_cpu.read_pc()) {
-            MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+            self.state.runtime_started.store(true, Ordering::Relaxed);
         }
 
         let caliptra_action = if self.trace_file.is_some() {
@@ -1331,7 +1360,7 @@ fn disassemble(pc: u32, instr: u32) -> String {
 fn read_console(stdin_uart: Option<Arc<Mutex<Option<u8>>>>) {
     let mut buffer = vec![];
     if let Some(ref stdin_uart) = stdin_uart {
-        while MCU_RUNNING.load(std::sync::atomic::Ordering::Relaxed) {
+        while caliptra_mcu_testing_common::is_emulator_running() {
             if buffer.is_empty() {
                 match crossterm::event::read() {
                     Ok(Event::Key(KeyEvent {

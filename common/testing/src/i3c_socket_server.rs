@@ -38,7 +38,6 @@ use crate::i3c::{
 };
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
@@ -47,24 +46,20 @@ use zerocopy::{transmute, FromBytes, IntoBytes};
 
 pub const CRC8_SMBUS: crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
 
-pub fn start_i3c_socket(
-    running: &'static AtomicBool,
-    port: u16,
-) -> (Receiver<I3cBusCommand>, Sender<I3cBusResponse>) {
+pub fn start_i3c_socket(port: u16) -> (Receiver<I3cBusCommand>, Sender<I3cBusResponse>) {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
         .expect("Failed to bind TCP socket for port");
 
     let (bus_command_tx, bus_command_rx) = mpsc::channel::<I3cBusCommand>();
     let (bus_response_tx, bus_response_rx) = mpsc::channel::<I3cBusResponse>();
-    std::thread::spawn(move || {
-        handle_i3c_socket_loop(running, listener, bus_response_rx, bus_command_tx)
+    crate::spawn_with_emulator_state(move || {
+        handle_i3c_socket_loop(listener, bus_response_rx, bus_command_tx)
     });
 
     (bus_command_rx, bus_response_tx)
 }
 
 pub fn handle_i3c_socket_loop(
-    running: &'static AtomicBool,
     listener: TcpListener,
     mut bus_response_rx: Receiver<I3cBusResponse>,
     mut bus_command_tx: Sender<I3cBusCommand>,
@@ -72,12 +67,11 @@ pub fn handle_i3c_socket_loop(
     listener
         .set_nonblocking(true)
         .expect("Could not set non-blocking");
-    while running.load(Ordering::Relaxed) {
+    while crate::is_emulator_running() {
         match listener.accept() {
             Ok((stream, addr)) => {
                 println!("Accepting I3C socket connection from {:?}", addr);
                 handle_i3c_socket_connection(
-                    running,
                     stream,
                     addr,
                     &mut bus_response_rx,
@@ -108,7 +102,6 @@ pub struct OutgoingHeader {
 }
 
 fn handle_i3c_socket_connection(
-    running: &'static AtomicBool,
     mut stream: TcpStream,
     _addr: SocketAddr,
     bus_response_rx: &mut Receiver<I3cBusResponse>,
@@ -117,7 +110,7 @@ fn handle_i3c_socket_connection(
     let stream = &mut stream;
     stream.set_nonblocking(true).unwrap();
 
-    while running.load(Ordering::Relaxed) {
+    while crate::is_emulator_running() {
         // try reading
         let mut incoming_header_bytes = [0u8; 9];
         match stream.read_exact(&mut incoming_header_bytes) {

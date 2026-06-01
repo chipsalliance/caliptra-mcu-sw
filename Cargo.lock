@@ -1215,6 +1215,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-emulator-state"
+version = "0.1.0"
+
+[[package]]
 name = "caliptra-mcu-error"
 version = "0.1.0"
 
@@ -1795,6 +1799,7 @@ dependencies = [
 name = "caliptra-mcu-pldm-ua"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-emulator-state",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-fw-pkg",
  "chrono",
@@ -2164,6 +2169,7 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "caliptra-api-types",
+ "caliptra-mcu-emulator-state",
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-ua",

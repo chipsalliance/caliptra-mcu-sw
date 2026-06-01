@@ -19,11 +19,24 @@ use caliptra_emu_types::{RvAddr, RvSize};
 use caliptra_mcu_emulator::{
     gdb, Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback,
 };
-use caliptra_mcu_testing_common::MCU_RUNNING;
+use caliptra_mcu_testing_common::EmulatorState;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_longlong, c_uchar, c_uint};
 use std::ptr;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex, Weak};
+
+/// Registry of weak refs to every EmulatorState created through this C ABI.
+/// Used by `emulator_trigger_exit()` to broadcast a stop request to every
+/// live instance without requiring the C caller to track handles. Dead
+/// (expired) entries are pruned opportunistically on each registration.
+static EMULATOR_REGISTRY: Mutex<Vec<Weak<EmulatorState>>> = Mutex::new(Vec::new());
+
+fn register_emulator(state: &Arc<EmulatorState>) {
+    let mut reg = EMULATOR_REGISTRY.lock().unwrap();
+    reg.retain(|w| w.strong_count() > 0);
+    reg.push(Arc::downgrade(state));
+}
 
 #[cfg(test)]
 mod simple_test;
@@ -418,11 +431,14 @@ pub unsafe extern "C" fn emulator_init(
 
     // Create the emulator state - if GDB port specified, start in GDB mode
     let emulator_state = if let Some(port) = gdb_port {
+        let gdb_target = gdb::gdb_target::GdbTarget::new(emulator);
+        register_emulator(&gdb_target.emulator().state);
         CEmulatorState {
-            wrapper: EmulatorWrapper::Gdb(gdb::gdb_target::GdbTarget::new(emulator)),
+            wrapper: EmulatorWrapper::Gdb(gdb_target),
             gdb_port: Some(port),
         }
     } else {
+        register_emulator(&emulator.state);
         CEmulatorState {
             wrapper: EmulatorWrapper::Normal(emulator),
             gdb_port: None,
@@ -823,14 +839,61 @@ pub unsafe extern "C" fn emulator_start_i3c_controller(
     }
 }
 
-/// Trigger an exit request by setting EMULATOR_RUNNING to false
-/// This will cause any loops waiting on EMULATOR_RUNNING to exit
+/// Trigger an exit request on every live emulator instance created through
+/// this C ABI. Iterates the internal registry of weak EmulatorState refs
+/// and clears the per-instance running flag on each one that is still
+/// alive. For multi-instance setups that want to stop a single instance
+/// without touching the others, prefer `emulator_stop(handle)`.
 ///
 /// # Returns
 /// * `EmulatorError::Success` on success
 #[no_mangle]
 pub extern "C" fn emulator_trigger_exit() -> EmulatorError {
-    MCU_RUNNING.store(false, Ordering::Relaxed);
+    let reg = EMULATOR_REGISTRY.lock().unwrap();
+    for weak in reg.iter() {
+        if let Some(state) = weak.upgrade() {
+            state.running.store(false, Ordering::Relaxed);
+        }
+    }
+    EmulatorError::Success
+}
+
+/// Stop a specific emulator instance without affecting other instances.
+///
+/// Sets the per-instance running flag to false. The next call to
+/// emulator_step() for this instance will return CStepAction::Break.
+/// Other emulator instances in the same process are unaffected.
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator to stop
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * `EmulatorError::NullPointer` if emulator_memory is null
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+#[no_mangle]
+pub unsafe extern "C" fn emulator_stop(emulator_memory: *mut CEmulator) -> EmulatorError {
+    if emulator_memory.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &*emulator_ptr;
+
+    match &emulator_state.wrapper {
+        EmulatorWrapper::Normal(emulator) => {
+            emulator.state.running.store(false, Ordering::Relaxed);
+        }
+        EmulatorWrapper::Gdb(gdb_target) => {
+            gdb_target
+                .emulator()
+                .state
+                .running
+                .store(false, Ordering::Relaxed);
+        }
+    }
     EmulatorError::Success
 }
 

@@ -4,6 +4,7 @@ use crate::discovery_sm;
 use crate::events::PldmEvents;
 use crate::transport::{PldmSocket, RxPacket};
 use crate::update_sm;
+use caliptra_mcu_emulator_state::spawn_with_emulator_state;
 use caliptra_mcu_pldm_fw_pkg::manifest::FirmwareDeviceIdRecord;
 use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 use log::{debug, error, info, warn};
@@ -82,13 +83,13 @@ impl<
         let update_sm_clone = update_sm.clone();
         let running = Arc::new(AtomicBool::new(true));
 
-        std::thread::spawn(move || {
+        spawn_with_emulator_state(move || {
             let _ = PldmDaemon::<S, D, U>::rx_loop(socket_clone1, event_queue_tx_clone3);
         });
 
         event_queue_tx.send(PldmEvents::Start).unwrap();
 
-        let event_handle = std::thread::spawn(move || {
+        let event_handle = spawn_with_emulator_state(move || {
             let _ = PldmDaemon::event_loop(event_queue_rx, discovery_sm, update_sm_clone, running);
         });
 
