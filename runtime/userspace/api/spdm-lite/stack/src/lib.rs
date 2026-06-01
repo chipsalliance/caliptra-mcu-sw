@@ -37,6 +37,7 @@ mod challenge;
 mod chunk;
 mod digests;
 mod error;
+mod finish;
 mod key_exchange;
 pub mod key_schedule;
 mod measurements;
