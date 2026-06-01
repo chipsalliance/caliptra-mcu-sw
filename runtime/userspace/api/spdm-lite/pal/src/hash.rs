@@ -10,10 +10,11 @@
 //! request.
 
 use super::*;
+use super::measurements::MeasurementProvider;
 use mcu_caliptra_api_lite::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, HashState};
 use mcu_spdm_lite_traits::{SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo};
 
-impl ApiAlloc for McuSpdmPal {
+impl<M: MeasurementProvider> ApiAlloc for McuSpdmPal<M> {
     type Buf<'a>
         = BitmapBytes<'a>
     where
@@ -37,7 +38,7 @@ impl ApiAlloc for BitmapAllocator {
     }
 }
 
-impl SpdmPalHash for McuSpdmPal {
+impl<M: MeasurementProvider> SpdmPalHash for McuSpdmPal<M> {
     type State = HashState;
 
     #[inline]

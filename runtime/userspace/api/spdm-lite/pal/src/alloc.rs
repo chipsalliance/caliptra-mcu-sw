@@ -24,8 +24,9 @@
 //! methods concurrently is undefined behavior.
 
 use super::*;
+use super::measurements::MeasurementProvider;
 
-impl SpdmPalAlloc for McuSpdmPal {
+impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
     type Box<'a, T>
         = McuSpdmBox<'a, T>
     where

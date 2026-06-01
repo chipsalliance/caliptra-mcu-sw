@@ -25,6 +25,7 @@ mod alloc;
 mod cert;
 mod hash;
 mod io;
+mod measurements;
 mod pal;
 mod transport;
 
@@ -32,6 +33,7 @@ pub use alloc::*;
 pub use cert::*;
 pub use hash::*;
 pub use io::*;
+pub use measurements::*;
 pub use pal::*;
 pub use transport::*;
 

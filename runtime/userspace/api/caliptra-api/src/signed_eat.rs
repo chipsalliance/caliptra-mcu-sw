@@ -6,7 +6,10 @@ use crate::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use caliptra_ocp_eat::{cbor_tags, header_params, CoseHeaderPair, CoseSign1, ProtectedHeader};
 
-const MAX_SIG_CONTEXT_SIZE: usize = 2048;
+/// Maximum COSE Sig_structure size for signature computation.
+/// Callers of [`SignedEat::generate_with_kid`] must supply a scratch
+/// buffer of at least this size.
+pub const MAX_SIG_CONTEXT_SIZE: usize = 2048;
 
 pub struct SignedEat<'a> {
     asym_algo: AsymAlgo,
@@ -62,6 +65,54 @@ impl<'a> SignedEat<'a> {
             .await?;
 
         // Complete encoding with signature and EAT tags
+        cose_sign1
+            .signature(&signature[..])
+            .encode(Some(&[cbor_tags::SELF_DESCRIBED_CBOR, cbor_tags::CWT]))
+            .map_err(CaliptraApiError::Eat)
+    }
+
+    /// Generate a COSE_Sign1 EAT token using a key identifier (kid) in the
+    /// unprotected header instead of x5chain. This avoids embedding the full
+    /// certificate (~800 B), keeping the token small enough for constrained
+    /// transports (e.g., MCTP with 1024-byte message limit).
+    ///
+    /// The same attestation key identified by `leaf_cert_label` signs the
+    /// token. The verifier correlates `kid` to the SPDM attestation cert
+    /// obtained via GET_CERTIFICATE.
+    ///
+    /// `sig_scratch` must be at least [`MAX_SIG_CONTEXT_SIZE`] bytes.
+    pub async fn generate_with_kid(
+        &self,
+        payload: &[u8],
+        kid: &[u8],
+        eat_buffer: &mut [u8],
+        sig_scratch: &mut [u8],
+    ) -> CaliptraApiResult<usize> {
+        if sig_scratch.len() < MAX_SIG_CONTEXT_SIZE {
+            return Err(CaliptraApiError::BufferTooSmall);
+        }
+
+        let protected_header = ProtectedHeader::new_es384();
+
+        let kid_header = CoseHeaderPair {
+            key: header_params::KID,
+            value: kid,
+        };
+        let unprotected_headers = [kid_header];
+
+        let cose_sign1 = CoseSign1::new(eat_buffer)
+            .protected_header(&protected_header)
+            .unprotected_headers(&unprotected_headers)
+            .payload(payload);
+
+        let sig_context_len = cose_sign1
+            .get_signature_context(&mut sig_scratch[..MAX_SIG_CONTEXT_SIZE])
+            .map_err(CaliptraApiError::Eat)?;
+
+        let signature = self
+            .sign_context(&sig_scratch[..sig_context_len])
+            .await?;
+
         cose_sign1
             .signature(&signature[..])
             .encode(Some(&[cbor_tags::SELF_DESCRIBED_CBOR, cbor_tags::CWT]))

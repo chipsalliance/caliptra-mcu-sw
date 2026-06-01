@@ -12,8 +12,6 @@ concurrency:
 
 jobs:
   build_test_binaries:
-    # TODO: Re-enable when spdm-lite supports full attestation and conformance.
-    if: ${{ !startsWith(github.head_ref, 'spdm-lite') }}
     runs-on: [ e2-standard-8-big-disk ]
     timeout-minutes: 60
     env:

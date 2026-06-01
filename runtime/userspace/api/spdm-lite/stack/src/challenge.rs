@@ -5,7 +5,7 @@
 use mcu_spdm_lite_codec::{
     ChallengeAuthRsp, ChallengeReqBody, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
     ECC_P384_SIGNATURE_SIZE, REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE, SPDM_CONTEXT_LEN,
-    SPDM_NONCE_LEN, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
+    SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
