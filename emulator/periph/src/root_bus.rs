@@ -92,6 +92,7 @@ pub struct McuRootBusArgs {
     pub uart_rx: Option<Arc<Mutex<Option<u8>>>>,
     pub offsets: McuRootBusOffsets,
     pub allow_sideloaded_rom: bool,
+    pub straps: caliptra_mcu_config::McuStraps,
 }
 
 pub struct McuRootBus {
@@ -111,6 +112,7 @@ pub struct McuRootBus {
     event_sender: Option<mpsc::Sender<Event>>,
     offsets: McuRootBusOffsets,
     allow_sideloaded_rom: bool,
+    pub straps: caliptra_mcu_config::McuStraps,
 }
 
 impl McuRootBus {
@@ -161,6 +163,7 @@ impl McuRootBus {
             allow_sideloaded_rom: args.allow_sideloaded_rom,
             mcu_mailbox0,
             mcu_mailbox1,
+            straps: args.straps,
         })
     }
 

@@ -37,6 +37,8 @@ gdbstub.workspace = true
 hex.workspace = true
 log.workspace = true
 lazy_static.workspace = true
+caliptra-mcu-config.workspace = true
+caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-mbox-common.workspace = true
 caliptra-mcu-testing-common.workspace = true
 caliptra-mcu-otp-lifecycle.workspace = true
@@ -72,58 +74,3 @@ path = "src/lib.rs"
 [features]
 default = ["ocp-lock"]
 ocp-lock = []
-test-bare-metal = []
-test-caliptra-certs = []
-test-caliptra-crypto = []
-test-caliptra-mailbox = []
-test-caliptra-util-host-validator = []
-test-get-device-state = []
-test-dma = []
-test-doe-transport-loopback = ["caliptra-mcu-emulator-periph/test-doe-transport-loopback"]
-test-doe-discovery = ["caliptra-mcu-emulator-periph/test-doe-discovery"]
-test-doe-spdm-responder-conformance = [
-    "caliptra-mcu-emulator-periph/test-doe-spdm-responder-conformance",
-]
-test-doe-spdm-tdisp-ide-validator = [
-    "caliptra-mcu-emulator-periph/test-doe-spdm-tdisp-ide-validator",
-]
-test-doe-user-loopback = ["caliptra-mcu-emulator-periph/test-doe-user-loopback"]
-test-flash-based-boot = []
-test-flash-ctrl-init = []
-test-flash-ctrl-read-write-page = []
-test-flash-ctrl-erase-page = []
-test-flash-storage-read-write = []
-test-flash-storage-erase = []
-test-flash-usermode = []
-test-firmware-update-flash = ["test-flash-based-boot"]
-test-firmware-update-streaming = []
-test-fpga-flash-ctrl = []
-test-log-flash-linear = []
-test-log-flash-circular = []
-test-log-flash-usermode = []
-test-mbox-sram = []
-test-mci = []
-test-mctp-ctrl-cmds = ["caliptra-mcu-emulator-periph/test-mctp-ctrl-cmds"]
-test-mctp-user-loopback = ["caliptra-mcu-emulator-periph/test-mctp-user-loopback"]
-test-mctp-spdm-responder-conformance = [
-    "caliptra-mcu-emulator-periph/test-mctp-spdm-responder-conformance",
-]
-test-mctp-spdm-attestation = [
-    "caliptra-mcu-emulator-periph/test-mctp-spdm-attestation",
-]
-test-mcu-mbox-driver = ["caliptra-mcu-emulator-periph/test-mcu-mbox-driver"]
-test-mcu-mbox-soc-requester-loopback = []
-test-mcu-mbox-usermode = []
-test-mcu-mbox-cmds = []
-test-mcu-mbox-fips-self-test = []
-test-mcu-rom-flash-access = []
-test-mcu-svn-gt-fuse = []
-test-mcu-svn-lt-fuse = []
-test-ocp-lock = []
-test-exit-immediately = []
-test-pldm-request-response = []
-test-pldm-discovery = []
-test-pldm-fw-update = []
-test-pldm-fw-update-e2e = []
-test-pldm-streaming-boot = []
-test-warm-reset = []

@@ -329,6 +329,14 @@ pub enum LifecycleControllerState {
     PostTransition = 21,
 }
 
+impl LifecycleControllerState {
+    /// Returns the 30-bit redundant mnemonic for the lifecycle state used by the LC controller.
+    pub fn mnemonic(&self) -> u32 {
+        let s = (*self as u32) & 0x1F;
+        (s << 25) | (s << 20) | (s << 15) | (s << 10) | (s << 5) | s
+    }
+}
+
 impl core::fmt::Display for LifecycleControllerState {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {

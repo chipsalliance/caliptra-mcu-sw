@@ -21,11 +21,14 @@ mod test_hek;
 mod test_i3c_constant_writes;
 mod test_i3c_simple;
 mod test_mctp_capsule_loopback;
+mod test_mctp_spdm_attestation;
+mod test_mctp_spdm_responder_conformance;
 mod test_mctp_vdm_cmds;
 mod test_mctp_vdm_validator;
 mod test_mcu_mbox;
 mod test_owner_stable_key;
 mod test_pldm_fw_update;
+mod test_raw_lifecycle_boot;
 mod test_soc_boot;
 mod test_usb_ocp_recovery;
 
@@ -129,7 +132,6 @@ mod test {
             }
         }
     }
-
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         Path::new(&env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -222,7 +224,7 @@ mod test {
         // intermediate mcu-rom-<platform>.bin (without the appended ROM
         // digest), which would silently clobber the copy.
         let output: PathBuf =
-            caliptra_mcu_builder::rom_build(Some(platform().to_string()), Some(feature))
+            caliptra_mcu_builder::rom_build(Some(platform().to_string()), Some(feature), None)
                 .expect("ROM build failed");
         assert!(output.exists());
         output
@@ -249,6 +251,7 @@ mod test {
             Some(name),
             example_app,
             Some(platform),
+            None,
             None,
         )
         .expect("Runtime failed to compile");
@@ -588,6 +591,7 @@ mod test {
                 .iter()
                 .map(|(ecc, mldsa)| (ecc as &[u8; 96], mldsa as &[u8; 2592]))
                 .collect(),
+            active_i3c1: params.active_i3c1,
             ..Default::default()
         })
         .unwrap()
@@ -611,6 +615,7 @@ mod test {
         i3c_port: String,
         active_mode: bool,
         device_security_state: DeviceLifecycle,
+
         soc_images: Option<Vec<ImageCfg>>,
         streaming_boot_package_path: Option<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
@@ -634,6 +639,8 @@ mod test {
             runtime_path_str,
             "--i3c-port".to_string(),
             i3c_port.clone(),
+            "--test-feature".to_string(),
+            feature.to_string(),
         ];
 
         // map the memory map to the emulator
@@ -853,8 +860,6 @@ mod test {
                 "caliptra-mcu-emulator".to_string(),
                 "--profile".to_string(),
                 "test".to_string(),
-                "--features".to_string(),
-                feature.to_string(),
                 "--".to_string(),
             ];
             cargo_args.extend(emulator_args);
@@ -869,10 +874,10 @@ mod test {
     /// Uses the CPTRA_EMULATOR_BUNDLE environment variable.
     fn get_prebuilt_emulator(feature: &str) -> Option<PathBuf> {
         let binaries = EmulatorBinaries::from_env().ok()?;
-        let emulator_bytes = binaries.emulator(feature).ok()?;
+        let emulator_bytes = binaries.emulator().ok()?;
 
         // Write prebuilt emulator to target directory
-        let output = target_binary(&format!("emulator-{}", feature));
+        let output = target_binary("emulator");
         if let Some(parent) = output.parent() {
             std::fs::create_dir_all(parent).ok()?;
         }
@@ -1054,12 +1059,9 @@ mod test {
     run_test!(test_log_flash_circular);
     run_test!(test_log_flash_usermode, example_app);
     run_test!(test_mctp_ctrl_cmds);
-    // TODO(#694): re-enable
-    // run_test!(test_mctp_user_loopback, example_app);
+    run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
-    run_test!(test_mctp_spdm_responder_conformance, nightly);
-    run_test!(test_mctp_spdm_attestation, nightly);
     run_test!(test_doe_spdm_responder_conformance, nightly);
     run_test!(test_doe_spdm_tdisp_ide_validator, nightly);
     run_test!(test_mci, example_app);
@@ -1153,6 +1155,7 @@ mod test {
             true,
             None,
             Some(image_svn),
+            None,
         )
         .expect("Runtime build failed");
         assert!(test_runtime.exists());

@@ -6,7 +6,7 @@ use std::process::Command;
 
 pub(crate) fn rom_run(trace: bool) -> Result<()> {
     let platform = None;
-    let rom_binary = caliptra_mcu_builder::rom_build(platform, None)?;
+    let rom_binary = caliptra_mcu_builder::rom_build(platform, None, None)?;
 
     // Use a minimal infinite-loop binary as the MCU firmware instead of
     // building the full runtime — this command is for testing the ROM only.
