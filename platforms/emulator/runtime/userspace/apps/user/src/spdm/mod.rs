@@ -138,7 +138,7 @@ async fn spdm_mctp_responder() {
             device_measurements::ocp_eat::OcpEatMeasurementProvider::new(SLOT0_LEAF_LABEL),
         )
     };
-    let mut stack = SpdmStack::new(pal);
+    let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
 
     crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lite MCTP run loop");
     if let Err(e) = stack.run().await {
@@ -190,7 +190,7 @@ async fn spdm_doe_responder() {
             device_measurements::ocp_eat::OcpEatMeasurementProvider::new(SLOT0_LEAF_LABEL),
         )
     };
-    let mut stack = SpdmStack::new(pal);
+    let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
 
     crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lite DOE run loop");
     if let Err(e) = stack.run().await {

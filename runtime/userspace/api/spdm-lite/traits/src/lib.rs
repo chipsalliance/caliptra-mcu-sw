@@ -28,6 +28,7 @@ mod io;
 mod large_message;
 mod measurements;
 mod pal;
+mod session_crypto;
 mod transport;
 
 pub use alloc::*;
@@ -37,6 +38,7 @@ pub use io::*;
 pub use large_message::*;
 pub use measurements::*;
 pub use pal::*;
+pub use session_crypto::*;
 pub use transport::*;
 
 // Re-export the workspace-wide error type/alias for convenience: users

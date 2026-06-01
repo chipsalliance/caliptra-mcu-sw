@@ -25,6 +25,7 @@ use crate::build::build_error_response;
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
+use crate::session::SessionManager;
 use crate::{
     algorithms, capabilities, certificate, challenge, chunk, digests, measurements, version,
 };
@@ -260,15 +261,21 @@ fn set_certificate_other_params() -> OtherParamSupport {
 
 /// SPDM responder state machine + dispatcher.
 ///
-/// Owns a `Pal` (transport + allocator) and the [`ConnectionState`].
+/// Owns a `Pal` (transport + allocator), the [`ConnectionState`],
+/// and a fixed-size session table.
 /// Drive it with [`Self::run`], which loops forever until the
 /// transport returns a fatal error.
-pub struct SpdmStack<Pal: SpdmPal> {
+pub struct SpdmStack<Pal: SpdmPal, const MAX_SESSIONS: usize = 1> {
     pub(crate) pal: Pal,
     pub(crate) state: ConnectionState<Pal::State>,
+    pub(crate) sessions: SessionManager<
+        <Pal as SpdmPalSessionCrypto>::Key,
+        Pal::State,
+        MAX_SESSIONS,
+    >,
 }
 
-impl<Pal: SpdmPal> SpdmStack<Pal> {
+impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
     /// Constructs a new responder over `pal` with the default
     /// (Caliptra) local-policy advertisement. If the PAL cannot hold
     /// at least one transport-sized large message, `CHUNK` is removed
@@ -288,7 +295,11 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
             state.cap_flags =
                 CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
         }
-        Self { pal, state }
+        Self {
+            pal,
+            state,
+            sessions: SessionManager::new(),
+        }
     }
 
     /// Main responder run loop.
@@ -322,7 +333,7 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
                 }
                 let _ = writeln!(&mut console);
             }
-            match dispatch(&mut self.state, &self.pal, &io, code).await {
+            match dispatch(&mut self.state, &mut self.sessions, &self.pal, &io, code).await {
                 Ok(mut rsp) => {
                     #[cfg(feature = "debug-trace")]
                     {
@@ -446,8 +457,13 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
 /// * [`SPDM_UNSUPPORTED_REQUEST`] — code is recognised by SPDM but
 ///   not handled by this responder.
 /// * Whatever the specific handler returns.
-async fn dispatch<'a, Pal: SpdmPal>(
+async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     state: &mut ConnectionState<Pal::State>,
+    sessions: &mut SessionManager<
+        <Pal as SpdmPalSessionCrypto>::Key,
+        Pal::State,
+        MAX_SESSIONS,
+    >,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     code: ReqRespCode,
@@ -464,6 +480,7 @@ async fn dispatch<'a, Pal: SpdmPal>(
     match code {
         ReqRespCode::GET_VERSION => {
             state.reset_negotiation();
+            sessions.remove_all_and_destroy(pal, io).await;
             version::handle_get_version(state, pal, io).await
         }
         ReqRespCode::GET_CAPABILITIES => {

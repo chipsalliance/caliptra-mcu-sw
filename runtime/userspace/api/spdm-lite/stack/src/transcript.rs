@@ -190,4 +190,23 @@ impl<S: Clone> Transcript<S> {
             Slot::L1 => &mut self.l1,
         }
     }
+
+    /// Clone-and-finalize the VCA state to produce a VCA digest
+    /// without consuming the running state.
+    ///
+    /// This is used to seed per-session TH transcripts: TH starts
+    /// with `hash(VCA)` (the 48-byte SHA-384 digest), not a fork of
+    /// the running VCA hash state.
+    pub async fn vca_digest<H>(
+        &self,
+        hash: &H,
+        io: &impl SpdmPalIo,
+        out: &mut [u8],
+    ) -> McuResult<()>
+    where
+        H: SpdmPalHash<State = S>,
+    {
+        let mut clone = self.vca.clone().ok_or(mcu_error::codes::INVARIANT)?;
+        hash.hash_finish(io, &mut clone, out).await
+    }
 }
