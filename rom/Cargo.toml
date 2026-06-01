@@ -34,6 +34,7 @@ default = []   # default is 2.0
 hw-2-1 = []
 core_test = ["caliptra-mcu-romtime/core_test"]
 fw-manifest-dot = []
+svn-manifest = []
 # Test-only: at the end of cold boot, rewrite the reset-reason register to
 # force the next boot entry to `FirmwareHitlessUpdate` instead of
 # `FirmwareBootReset`. Used by the DOT manifest hitless-update integration

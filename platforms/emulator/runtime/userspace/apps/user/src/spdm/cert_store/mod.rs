@@ -76,6 +76,7 @@ async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
     while offset + 4 <= ECC_DEVID_CERT_SIZE as u32 {
         let word = otp
             .read(OTP_IDEVID_ECC_PARTITION, offset)
+            .await
             .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
         cert_buf[offset as usize..offset as usize + 4].copy_from_slice(&word.to_le_bytes());
         offset += 4;
@@ -85,6 +86,7 @@ async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
         let tail_offset = ECC_DEVID_CERT_SIZE as u32 - 4;
         let word = otp
             .read(OTP_IDEVID_ECC_PARTITION, tail_offset)
+            .await
             .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
         let word_bytes = word.to_le_bytes();
         let skip = (offset - tail_offset) as usize;

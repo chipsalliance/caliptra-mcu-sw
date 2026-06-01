@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use crate::spdm_responder_validator::transport::Transport;
-use crate::MCU_RUNNING;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::TcpStream;
@@ -57,7 +56,7 @@ impl SpdmValidatorRunner {
     }
 
     pub fn run_test(&mut self, stream: &mut TcpStream) {
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while crate::is_emulator_running() {
             match self.state {
                 SpdmServerState::Start => {
                     self.state = SpdmServerState::ReceiveRequest;
@@ -106,7 +105,7 @@ impl SpdmValidatorRunner {
 
         let mut command: u32 = 0;
         let mut transport_type: u32 = 0;
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while crate::is_emulator_running() {
             let s = spdm_stream
                 .read(&mut buffer[buffer_size..])
                 .expect("socket read error!");
@@ -246,7 +245,7 @@ impl SpdmValidatorRunner {
 }
 
 pub fn execute_spdm_tee_io_validator(transport: &'static str) {
-    std::thread::spawn(move || {
+    crate::spawn_with_emulator_state(move || {
         println!("Starting spdm_tee_io_validator process. Waiting for SPDM listener to start...");
         while !SERVER_LISTENING.load(Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_millis(200));
@@ -254,7 +253,7 @@ pub fn execute_spdm_tee_io_validator(transport: &'static str) {
 
         match start_spdm_tee_io_validator(transport, None, true) {
             Ok(mut child) => {
-                while MCU_RUNNING.load(Ordering::Relaxed) {
+                while crate::is_emulator_running() {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             println!("spdm_tee_io_validator exited with status: {:?}", status);
@@ -278,7 +277,7 @@ pub fn execute_spdm_tee_io_validator(transport: &'static str) {
 }
 
 pub fn execute_spdm_attestation(transport: &'static str) {
-    std::thread::spawn(move || {
+    crate::spawn_with_emulator_state(move || {
         println!("Starting spdm_requester_emu process. Waiting for SPDM listener to start...");
         while !SERVER_LISTENING.load(Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_millis(200));
@@ -286,7 +285,7 @@ pub fn execute_spdm_attestation(transport: &'static str) {
 
         match start_spdm_attestation(transport) {
             Ok(mut child) => {
-                while MCU_RUNNING.load(Ordering::Relaxed) {
+                while crate::is_emulator_running() {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             println!("spdm_requester_emu exited with status: {:?}", status);
@@ -310,7 +309,7 @@ pub fn execute_spdm_attestation(transport: &'static str) {
 }
 
 pub fn execute_spdm_responder_validator(transport: &'static str) {
-    std::thread::spawn(move || {
+    crate::spawn_with_emulator_state(move || {
         println!(
             "Starting spdm_device_validator_sample process on transport: {}. Waiting for SPDM listener to start...",
             transport
@@ -321,7 +320,7 @@ pub fn execute_spdm_responder_validator(transport: &'static str) {
 
         match start_spdm_responder_validator(transport) {
             Ok(mut child) => {
-                while MCU_RUNNING.load(Ordering::Relaxed) {
+                while crate::is_emulator_running() {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             println!(

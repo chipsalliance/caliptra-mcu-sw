@@ -3,8 +3,7 @@
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
 use caliptra_mcu_testing_common::doe_util::common::DoeUtil;
 use caliptra_mcu_testing_common::doe_util::protocol::*;
-use caliptra_mcu_testing_common::{sleep_emulator_ticks, MCU_RUNNING};
-use std::sync::atomic::Ordering;
+use caliptra_mcu_testing_common::sleep_emulator_ticks;
 use std::sync::mpsc::{Receiver, Sender};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -99,7 +98,7 @@ impl DoeTransportTest for Test {
 
         self.test_state = DoeTestState::Start;
 
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while caliptra_mcu_testing_common::is_emulator_running() {
             match self.test_state {
                 DoeTestState::Start => {
                     if wait_for_responder {

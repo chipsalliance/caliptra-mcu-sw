@@ -17,7 +17,9 @@ mod test {
     use caliptra_mcu_testing_common::spdm_responder_validator::{
         SpdmValidatorRunner, SERVER_LISTENING,
     };
-    use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use caliptra_mcu_testing_common::{
+        is_emulator_running, spawn_with_emulator_state, wait_for_runtime_start,
+    };
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::process::{exit, Command, Stdio};
@@ -61,14 +63,16 @@ mod test {
         let validator_args: Vec<String> = validator_args.iter().map(|s| s.to_string()).collect();
         let bridge_port_copy = bridge_port;
 
-        // Bridge thread
-        thread::spawn(move || {
+        // Bridge thread: uses spawn_with_emulator_state so it inherits the
+        // ModelEmulated's per-instance state and can call wait_for_runtime_start
+        // / is_emulator_running without panicking.
+        spawn_with_emulator_state(move || {
             wait_for_runtime_start();
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !is_emulator_running() {
                 exit(-1);
             }
             thread::sleep(Duration::from_secs(5));
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !is_emulator_running() {
                 exit(-1);
             }
 
@@ -93,8 +97,9 @@ mod test {
             }
         });
 
-        // Requester subprocess
-        thread::spawn(move || {
+        // Requester subprocess (uses spawn_with_emulator_state to inherit
+        // per-instance state for is_emulator_running()-style checks).
+        spawn_with_emulator_state(move || {
             println!("[{}]: Waiting for bridge to start...", TEST_NAME);
             while !SERVER_LISTENING.load(Ordering::Relaxed) {
                 thread::sleep(Duration::from_millis(200));
@@ -133,7 +138,7 @@ mod test {
                 exit(-1);
             });
 
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while is_emulator_running() {
             match child.try_wait() {
                 Ok(Some(status)) => {
                     println!(

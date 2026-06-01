@@ -43,7 +43,7 @@ use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
-use caliptra_mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
+use caliptra_mcu_testing_common::EmulatorState;
 use semver::Version;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -53,7 +53,6 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -92,6 +91,10 @@ pub struct ModelEmulated {
     // Synchronises cross-thread timer scheduling (I3C controller thread)
     // with the CPU step that advances the clock.
     step_lock: Arc<Mutex<()>>,
+    /// Per-instance emulator coordination state. Kept alive for as long as
+    /// this model exists so that worker threads that hold an Arc clone
+    /// (via spawn_with_emulator_state) observe writes from step()/boot().
+    _state: Arc<EmulatorState>,
 }
 
 fn hash_slice(slice: &[u8]) -> u64 {
@@ -105,6 +108,14 @@ impl McuHwModel for ModelEmulated {
     where
         Self: Sized,
     {
+        // Install per-instance emulator state on this thread BEFORE any
+        // worker thread is spawned below (start_i3c_socket, I3c::new, etc.
+        // spawn via spawn_with_emulator_state and inherit state from this
+        // thread). The state is then held by the returned ModelEmulated so
+        // it lives at least as long as the workers that captured an Arc clone.
+        let state = EmulatorState::new_arc();
+        caliptra_mcu_testing_common::init_emulator_state(state.clone());
+
         let clock = Rc::new(Clock::new());
         let pic = Rc::new(Pic::new());
 
@@ -143,7 +154,7 @@ impl McuHwModel for ModelEmulated {
         let mcu_root_bus = McuRootBus::new(bus_args).unwrap();
 
         let mut i3c_controller = if let Some(i3c_port) = params.i3c_port {
-            let (rx, tx) = start_i3c_socket(&MCU_RUNNING, i3c_port);
+            let (rx, tx) = start_i3c_socket(i3c_port);
             I3cController::new(rx, tx)
         } else {
             I3cController::default()
@@ -456,6 +467,7 @@ impl McuHwModel for ModelEmulated {
             mci_regs,
             check_booted_to_runtime: params.check_booted_to_runtime,
             step_lock,
+            _state: state,
         };
         // Turn tracing on if the trace path was set
         m.tracing_hint(true);
@@ -488,7 +500,7 @@ impl McuHwModel for ModelEmulated {
             assert!(self
                 .mci_boot_milestones()
                 .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
-            MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+            caliptra_mcu_testing_common::set_runtime_started(true);
         }
 
         Ok(())
@@ -737,7 +749,7 @@ impl Drop for ModelEmulated {
                 }
             }
         }
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        caliptra_mcu_testing_common::stop_emulator();
     }
 }
 

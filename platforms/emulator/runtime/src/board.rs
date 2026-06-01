@@ -14,7 +14,8 @@ use caliptra_mcu_components::{
     mctp_driver_component_static, mcu_mbox_component_static,
 };
 use caliptra_mcu_config_emulator::flash::{
-    CERT_STORE_PARTITION, IMAGE_A_PARTITION, IMAGE_B_PARTITION, PARTITION_TABLE, STAGING_PARTITION,
+    CERT_STORE_PARTITION, EMULATED_EXT_OTP_PARTITION, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
+    PARTITION_TABLE, STAGING_PARTITION,
 };
 use caliptra_mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
@@ -752,11 +753,11 @@ pub unsafe fn main() {
         caliptra_mcu_capsules_emulator::dma::Dma<'static>
     ));
 
-    // ExternalOTP: DMA-backed implementation using External SRAM storage.
-    // Integrators replace ExtSramBackedExternalOtp with their platform's actual
-    // fuse/EPROM controller driver.
+    // ExternalOTP: Async flash-backed implementation using the primary flash mux.
+    // OTP data is stored in the EMULATED_EXT_OTP_PARTITION region of primary flash,
+    // accessed through a dedicated FlashUser to avoid register conflicts.
     use caliptra_mcu_external_otp_driver::hil::ExternalOtpPartitionInfo;
-    use caliptra_mcu_external_otp_emulator::ext_sram_otp::ExtSramBackedExternalOtp;
+    use caliptra_mcu_external_otp_emulator::ext_flash_otp::ExtFlashBackedExternalOtp;
 
     const EXTERNAL_OTP_PARTITIONS: &[ExternalOtpPartitionInfo] = &[
         ExternalOtpPartitionInfo {
@@ -765,19 +766,49 @@ pub unsafe fn main() {
         }, // IDevID ECC Cert
         ExternalOtpPartitionInfo {
             id: 0x02,
-            size: 4627,
-        }, // IDevID MLDSA signature
+            size: 7741,
+        }, // IDevID MLDSA certificate
     ];
-    const EXTERNAL_OTP_SRAM_BASE: u64 = 0xB00C_0000; // External SRAM base (AXI address)
 
-    let external_otp_driver = static_init!(
-        ExtSramBackedExternalOtp<'static>,
-        ExtSramBackedExternalOtp::new(
-            EXTERNAL_OTP_PARTITIONS,
-            &emulator_peripherals.dma,
-            EXTERNAL_OTP_SRAM_BASE,
+    // Create a dedicated FlashUser from the primary flash mux for OTP access.
+    let otp_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash).finalize(
+        components::flash_user_component_static!(
+            caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
+        ),
+    );
+
+    // Bridge page-level flash to byte-addressed FlashStorage.
+    let otp_page_buffer = static_init!(
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
+    );
+    let otp_fs_to_pages = static_init!(
+        caliptra_mcu_flash_driver::flash_storage_to_pages::FlashStorageToPages<
+            'static,
+            capsules_core::virtualizers::virtual_flash::FlashUser<
+                'static,
+                caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl<'static>,
+            >,
+        >,
+        caliptra_mcu_flash_driver::flash_storage_to_pages::FlashStorageToPages::new(
+            otp_fl_user,
+            otp_page_buffer,
         )
     );
+    kernel::hil::flash::HasClient::set_client(otp_fl_user, otp_fs_to_pages);
+
+    let otp_buffer = static_init!([u8; 4], [0u8; 4]);
+
+    let external_otp_driver = static_init!(
+        ExtFlashBackedExternalOtp<'static>,
+        ExtFlashBackedExternalOtp::new(
+            EXTERNAL_OTP_PARTITIONS,
+            otp_fs_to_pages,
+            EMULATED_EXT_OTP_PARTITION.offset,
+            otp_buffer,
+        )
+    );
+    caliptra_mcu_flash_driver::hil::FlashStorage::set_client(otp_fs_to_pages, external_otp_driver);
 
     let external_otp = caliptra_mcu_components::external_otp::ExternalOtpComponent::new(
         external_otp_driver,

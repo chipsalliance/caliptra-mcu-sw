@@ -14,6 +14,12 @@ Abstract:
 
 #![no_std]
 
+mod component_svn_manifest;
+pub use component_svn_manifest::{
+    McuComponentSvnEntry, McuComponentSvnManifest, SvnLimits, SvnManifestError,
+    MCU_COMPONENT_SVN_MANIFEST_ENTRY_COUNT, MCU_COMPONENT_SVN_MANIFEST_MAGIC,
+    MCU_COMPONENT_SVN_MANIFEST_SIZE, MCU_COMPONENT_SVN_MANIFEST_VERSION,
+};
 mod device_ownership_transfer;
 pub use device_ownership_transfer::*;
 mod dot_override;
@@ -38,6 +44,7 @@ mod recovery;
 
 // Boot flow modules
 mod cold_boot;
+mod firmware_headers;
 mod fw_boot;
 mod warm_boot;
 pub use cold_boot::ColdBoot;

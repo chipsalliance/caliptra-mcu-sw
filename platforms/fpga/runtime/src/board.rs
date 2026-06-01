@@ -12,7 +12,7 @@ use caliptra_mcu_components::mctp_driver_component_static;
 use caliptra_mcu_components::mctp_mux_component_static;
 use caliptra_mcu_components::mcu_mbox_component_static;
 use caliptra_mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
-use caliptra_mcu_config_fpga::flash::STAGING_PARTITION;
+use caliptra_mcu_config_fpga::flash::{EMULATED_EXT_OTP_PARTITION, STAGING_PARTITION};
 use caliptra_mcu_config_fpga::flash_partition_list_imaginary_flash;
 use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use caliptra_mcu_registers_generated::mci;
@@ -725,11 +725,12 @@ pub unsafe fn main() {
         caliptra_mcu_capsules_emulator::dma::Dma<'static>
     ));
 
-    // ExternalOTP: DMA-backed implementation using External SRAM storage.
-    // Integrators replace ExtSramBackedExternalOtp with their platform's actual
-    // fuse/EPROM controller driver.
+    // ExternalOTP: Async flash-backed implementation using the MCU mailbox flash mux.
+    // OTP data is stored in the EMULATED_EXT_OTP_PARTITION region of the
+    // imaginary flash, accessed through a dedicated FlashUser to avoid
+    // register conflicts with the async EmulatedFlashCtrl.
     use caliptra_mcu_external_otp_driver::hil::ExternalOtpPartitionInfo;
-    use caliptra_mcu_external_otp_emulator::ext_sram_otp::ExtSramBackedExternalOtp;
+    use caliptra_mcu_external_otp_emulator::ext_flash_otp::ExtFlashBackedExternalOtp;
 
     const EXTERNAL_OTP_PARTITIONS: &[ExternalOtpPartitionInfo] = &[
         ExternalOtpPartitionInfo {
@@ -738,19 +739,47 @@ pub unsafe fn main() {
         }, // IDevID ECC Cert
         ExternalOtpPartitionInfo {
             id: 0x02,
-            size: 4627,
-        }, // IDevID MLDSA signature
+            size: 7741,
+        }, // IDevID MLDSA certificate
     ];
-    const EXTERNAL_OTP_SRAM_BASE: u64 = 0xB00C_0000; // External SRAM base (AXI address)
 
-    let external_otp_driver = static_init!(
-        ExtSramBackedExternalOtp<'static>,
-        ExtSramBackedExternalOtp::new(
-            EXTERNAL_OTP_PARTITIONS,
-            &fpga_peripherals.dma,
-            EXTERNAL_OTP_SRAM_BASE,
+    // Create a dedicated FlashUser from the MCU mailbox flash mux for OTP access.
+    let otp_fl_user = components::flash::FlashUserComponent::new(mux_mcu_mbox_flash).finalize(
+        components::flash_user_component_static!(caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl),
+    );
+
+    // Bridge page-level flash to byte-addressed FlashStorage.
+    let otp_page_buffer = static_init!(
+        caliptra_mcu_flash_ctrl_fpga::EmulatedFlashPage,
+        caliptra_mcu_flash_ctrl_fpga::EmulatedFlashPage::default()
+    );
+    let otp_fs_to_pages = static_init!(
+        caliptra_mcu_flash_driver::flash_storage_to_pages::FlashStorageToPages<
+            'static,
+            capsules_core::virtualizers::virtual_flash::FlashUser<
+                'static,
+                caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl<'static>,
+            >,
+        >,
+        caliptra_mcu_flash_driver::flash_storage_to_pages::FlashStorageToPages::new(
+            otp_fl_user,
+            otp_page_buffer,
         )
     );
+    kernel::hil::flash::HasClient::set_client(otp_fl_user, otp_fs_to_pages);
+
+    let otp_buffer = static_init!([u8; 4], [0u8; 4]);
+
+    let external_otp_driver = static_init!(
+        ExtFlashBackedExternalOtp<'static>,
+        ExtFlashBackedExternalOtp::new(
+            EXTERNAL_OTP_PARTITIONS,
+            otp_fs_to_pages,
+            EMULATED_EXT_OTP_PARTITION.offset,
+            otp_buffer,
+        )
+    );
+    caliptra_mcu_flash_driver::hil::FlashStorage::set_client(otp_fs_to_pages, external_otp_driver);
 
     let external_otp = caliptra_mcu_components::external_otp::ExternalOtpComponent::new(
         external_otp_driver,
@@ -758,7 +787,6 @@ pub unsafe fn main() {
         caliptra_mcu_capsules_runtime::external_otp::EXTERNAL_OTP_DRIVER_NUM,
     )
     .finalize(external_otp_component_static!());
-    caliptra_mcu_romtime::println!("[mcu-runtime] ExternalOTP component initialized");
 
     let mcu_mbox0 = caliptra_mcu_components::mcu_mbox::McuMboxComponent::new(
         board_kernel,

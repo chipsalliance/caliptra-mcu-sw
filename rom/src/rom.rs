@@ -748,6 +748,12 @@ pub struct RomParameters<'a> {
     /// of MCU SRAM during FwBoot and process any DOT commands found.
     /// Default: false (opt-in by platform integrators).
     pub fw_manifest_dot_enabled: bool,
+    /// Whether to check for and process the MCU Component SVN Manifest header.
+    /// When true, ROM looks for the manifest magic after the static
+    /// `mcu_image_header_size` plus any DOT section, validates it, and
+    /// advances the firmware entry offset past it. See `docs/src/svn.md`.
+    /// Default: false (opt-in by platform integrators).
+    pub svn_manifest_enabled: bool,
     /// Recovery/override transport for DOT challenge/response protocol (e.g., MCI mbox0, I3C).
     pub dot_recovery_transport: Option<&'a dyn crate::RecoveryTransport>,
     /// DOT recovery/override watchdog timeout in clock cycles. If non-zero,

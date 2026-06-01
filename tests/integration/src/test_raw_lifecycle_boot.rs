@@ -6,8 +6,6 @@ mod test {
     use caliptra_mcu_hw_model::{
         DeviceLifecycle, LifecycleControllerState, McuHwModel, McuManager,
     };
-    use caliptra_mcu_testing_common::MCU_RUNNING;
-    use std::sync::atomic::Ordering;
 
     #[test]
     fn test_raw_lifecycle_boot() {
@@ -46,7 +44,7 @@ mod test {
             "Lifecycle should be Production"
         );
 
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        caliptra_mcu_testing_common::stop_emulator();
 
         // Exit the test.
         let status = finish_runtime_hw_model(&mut hw);

@@ -33,12 +33,11 @@ pub mod test {
     use caliptra_mcu_testing_common::mctp_vdm_transport::{
         MctpVdmSocket, MctpVdmTransport, VdmClient, VdmTransportError,
     };
-    use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use caliptra_mcu_testing_common::wait_for_runtime_start;
     use log::{info, LevelFilter};
     use random_port::PortPicker;
     use simple_logger::SimpleLogger;
     use std::process::exit;
-    use std::sync::atomic::Ordering;
 
     /// Maximum buffer size for encoding VDM requests.
     const MAX_REQUEST_BUF_SIZE: usize = 1024;
@@ -379,9 +378,9 @@ pub mod test {
 
         /// Spawn test thread and run tests.
         pub fn run(socket: MctpVdmSocket, debug_level: LevelFilter) {
-            std::thread::spawn(move || {
+            caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
                 wait_for_runtime_start();
-                if !MCU_RUNNING.load(Ordering::Relaxed) {
+                if !caliptra_mcu_testing_common::is_emulator_running() {
                     exit(-1);
                 }
 
@@ -396,7 +395,7 @@ pub mod test {
                     exit(-1);
                 } else {
                     info!("All VDM tests passed!");
-                    MCU_RUNNING.store(false, Ordering::Relaxed);
+                    caliptra_mcu_testing_common::stop_emulator();
                     exit(0);
                 }
             });
@@ -418,6 +417,34 @@ pub mod test {
 
         hw.start_i3c_controller();
 
+        // FPGA-only setup:
+        //   1. MCU flash I/O goes via mcu_mbox0 to ImaginaryFlashController,
+        //      independent of emulator's primary_flash. Seed the file directly.
+        //   2. Sync with the user-space VDM responder before sending the first
+        //      Private Write, otherwise the request races the responder's
+        //      subscribe and is dropped (MctpUtil sends each request only once).
+        #[cfg(feature = "fpga_realtime")]
+        {
+            use caliptra_mcu_config_emulator::flash::LOGGING_PARTITION;
+            let seeded = caliptra_mcu_testing_common::logging_seed::splice_logging_partition_into_flash_image(
+                None,
+                config::TEST_DEBUG_LOG_ENTRIES,
+                LOGGING_PARTITION.offset,
+                LOGGING_PARTITION.size,
+                256,
+            );
+            let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
+            crate::test_fpga_flash_ctrl::test::run_imaginary_flash_controller_service_with_init(
+                mci_ptr,
+                Some(seeded),
+            );
+
+            hw.step_until_output_contains("Starting MCTP VDM service for integration tests")
+                .expect("MCU did not enter MCTP VDM service");
+            // Let the executor schedule the responder and subscribe.
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+
         let vdm_transport =
             MctpVdmTransport::new(hw.i3c_port().unwrap(), hw.i3c_address().unwrap().into());
         let vdm_socket = vdm_transport.create_socket().unwrap();
@@ -426,7 +453,7 @@ pub mod test {
         let test = finish_runtime_hw_model(&mut hw);
 
         assert_eq!(0, test);
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        caliptra_mcu_testing_common::stop_emulator();
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

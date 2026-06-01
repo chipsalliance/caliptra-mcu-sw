@@ -7,6 +7,7 @@ use caliptra_mcu_registers_generated::fuses::{
     OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
     OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID,
 };
+use caliptra_mcu_romtime::println;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
@@ -261,12 +262,16 @@ impl Otp {
                 }
             }
             reg::VENDOR_PK_HASH_VALID => {
-                match self
-                    .driver
-                    .write_entry(OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID, value)
-                {
+                const RAW_FUSE_BYTE_SIZE: usize = OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID.byte_size;
+                match self.driver.write_entry_multi::<1, RAW_FUSE_BYTE_SIZE>(
+                    OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID,
+                    &[value],
+                ) {
                     Ok(_) => CommandReturn::success(),
-                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                    Err(e) => {
+                        capsule_error!("OTP", "Error Writing vendor PK hash valid mask: {:?}", e);
+                        CommandReturn::failure(ErrorCode::FAIL)
+                    }
                 }
             }
             vendor_pk_hash @ reg::VENDOR_PK_HASH_0

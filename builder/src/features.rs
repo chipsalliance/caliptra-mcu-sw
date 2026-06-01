@@ -63,6 +63,7 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mctp-spdm-attestation",
     "test-mctp-spdm-attestation-pcr-quote",
     "test-mctp-spdm-responder-conformance",
+    "test-external-otp",
 ];
 
 /// Release-profile runtime test features (emulator).
@@ -77,6 +78,7 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-i3c-services",
     "test-fw-manifest-dot",
     "test-fw-manifest-dot-hitless",
+    "test-svn-manifest",
     "test-dot-recovery",
     "test-rom-hooks",
 ];

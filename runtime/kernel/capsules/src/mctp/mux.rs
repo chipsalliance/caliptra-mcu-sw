@@ -3,7 +3,9 @@
 use crate::mctp::base_protocol::{
     MCTPHeader, MessageType, MCTP_BASELINE_TRANSMISSION_UNIT, MCTP_HDR_SIZE,
 };
-use crate::mctp::control_msg::{MCTPCtrlCmd, MCTPCtrlMsgHdr, MCTP_CTRL_MSG_HEADER_LEN};
+use crate::mctp::control_msg::{
+    CmdCompletionCode, MCTPCtrlCmd, MCTPCtrlMsgHdr, MCTP_CTRL_MSG_HEADER_LEN,
+};
 use crate::mctp::recv::MCTPRxState;
 use crate::mctp::send::MCTPTxState;
 use crate::mctp::transport_binding::{MCTPTransportBinding, TransportRxClient, TransportTxClient};
@@ -233,7 +235,10 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
 
                     MCTPCtrlCmd::GetMsgTypeSupport => mctp_ctrl_cmd
                         .process_get_msg_type_support(req_buf, &mut resp_buf[msg_payload_start..]),
-                    _ => return Err(ErrorCode::NOSUPPORT),
+                    MCTPCtrlCmd::Unsupported => {
+                        resp_buf[msg_payload_start] = CmdCompletionCode::ErrorNotSupportedCmd as u8;
+                        Ok(())
+                    }
                 };
 
                 match result {

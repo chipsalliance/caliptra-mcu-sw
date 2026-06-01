@@ -21,6 +21,14 @@
     {"trng_health_test_window_size": 2},
     {"cptra_itrng_entropy_config_0": 4},
     {"cptra_itrng_entropy_config_1": 4},
+    // SVN anti-rollback fuses (see docs/src/svn.md).
+    // Sizes here are informational and refer to the raw OTP storage actually
+    // used by the OneHotLinearOr encoding (bits * duplication / 8). The
+    // underlying OTP slots (VENDOR_SPECIFIC_NON_SECRET_FUSE_5..7) are 32 bytes
+    // each; the remaining bits in each slot stay 0.
+    {"mcu_component_svn_manifest_min_svn": 4},
+    {"soc_image_min_svn_0": 4},
+    {"soc_image_min_svn_1": 4},
   ],
 
   // Field definitions specify bit-level details within fuse bytes
@@ -73,6 +81,36 @@
       partition: "VENDOR_SECRET_PROD_PARTITION",
       otp_item: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0",
       layout: {type: "Single"},
+    },
+    // SVN anti-rollback fuses (see docs/src/svn.md).
+    //
+    // OneHotLinearOr with 3x duplication: each effective bit is stored as
+    // three OR-tied raw bits, so the maximum representable min_svn equals
+    // `bits`. The MCU runtime SVN floor lives in CPTRA_CORE_SOC_MANIFEST_SVN
+    // (Caliptra-owned) and is not duplicated here.
+    {
+      name: "mcu_component_svn_manifest_min_svn",
+      bits: 10,
+      description: "MCU Component SVN Manifest min SVN (one-hot, used by MCU ROM for manifest-format anti-rollback).",
+      partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+      otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5",
+      layout: {type: "OneHotLinearOr", duplication: 3},
+    },
+    {
+      name: "soc_image_min_svn_0",
+      bits: 10,
+      description: "SoC component min SVN for fuse slot 0 (one-hot, optional per-component rollback floor mapped via SVN_FUSE_MAP).",
+      partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+      otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6",
+      layout: {type: "OneHotLinearOr", duplication: 3},
+    },
+    {
+      name: "soc_image_min_svn_1",
+      bits: 10,
+      description: "SoC component min SVN for fuse slot 1 (one-hot, optional per-component rollback floor mapped via SVN_FUSE_MAP).",
+      partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+      otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7",
+      layout: {type: "OneHotLinearOr", duplication: 3},
     },
     {
         name: "vendor_pk_hash_valid",

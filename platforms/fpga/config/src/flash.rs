@@ -12,6 +12,13 @@ pub const STAGING_PARTITION: FlashPartition = FlashPartition {
     driver_num: DRIVER_NUM_EMULATED_FLASH_CTRL as u32,
 };
 
+pub const EMULATED_EXT_OTP_PARTITION: FlashPartition = FlashPartition {
+    name: "emulated_ext_otp",
+    offset: STAGING_PARTITION.offset + STAGING_PARTITION.size,
+    size: (BLOCK_SIZE * 0x8),
+    driver_num: 0x7000_000B,
+};
+
 #[macro_export]
 macro_rules! flash_partition_list_imaginary_flash {
     ($macro:ident) => {{

@@ -7,11 +7,10 @@ mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
-    use caliptra_mcu_testing_common::{sleep_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
+    use caliptra_mcu_testing_common::{sleep_emulator_ticks, wait_for_runtime_start};
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpStream};
     use std::sync::atomic::Ordering;
-    use std::thread;
 
     #[test]
     fn test_i3c_constant_writes() {
@@ -30,10 +29,10 @@ mod test {
         let target_addr = hw.i3c_address().unwrap();
 
         // Spawn a thread to send constant writes to the I3C target
-        thread::spawn(move || {
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
 
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !caliptra_mcu_testing_common::is_emulator_running() {
                 return;
             }
 
@@ -47,7 +46,7 @@ mod test {
                 // Send 15+ writes to trigger the test pass condition (needs 10)
                 // Send quickly to beat the firmware timeout
                 for i in 0..15 {
-                    if !MCU_RUNNING.load(Ordering::Relaxed) {
+                    if !caliptra_mcu_testing_common::is_emulator_running() {
                         break;
                     }
                     let data = vec![0x01, 0x02, 0x03, (i & 0xff) as u8];
