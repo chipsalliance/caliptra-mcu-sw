@@ -224,6 +224,16 @@ impl Mci {
             .is_set(mci::bits::SsConfigDone::Done)
     }
 
+    /// Sets the FC_FIPS_ZEROZATION register mask.
+    ///
+    /// This must be called BEFORE `set_ss_config_done()` or
+    /// `set_ss_config_done_sticky()`, because those calls lock the
+    /// FC_FIPS_ZEROZATION register, making any subsequent writes silently
+    /// ignored.
+    pub fn set_fips_zeroization_mask(&self, mask: u32) {
+        self.registers.mci_reg_fc_fips_zerozation.set(mask);
+    }
+
     /// Sets the SS_CONFIG_DONE register to lock configuration registers.
     /// Once set, certain registers become read-only until the next warm reset.
     pub fn set_ss_config_done(&self) {

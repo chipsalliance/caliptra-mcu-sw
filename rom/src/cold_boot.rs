@@ -571,6 +571,16 @@ impl BootFlow for ColdBoot {
         );
         mci.set_fw_sram_exec_region_size(size_value);
 
+        // Set FC_FIPS_ZEROZATION before locking configuration registers.
+        // This register becomes read-only once SS_CONFIG_DONE is set, so the
+        // mask must be written here.  If no mask is provided the register
+        // retains its reset-default value (0 = no zeroization).
+        if let Some(mask) = params.fips_zeroization_mask {
+            caliptra_mcu_romtime::println!("[mcu-rom] Setting FIPS zeroization mask");
+            mci.set_fips_zeroization_mask(mask);
+            mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
+        }
+
         // Set SS_CONFIG_DONE_STICKY to lock MCI configuration registers
         caliptra_mcu_romtime::println!(
             "[mcu-rom] Setting SS_CONFIG_DONE_STICKY to lock configuration"
