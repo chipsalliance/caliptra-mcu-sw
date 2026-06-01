@@ -76,6 +76,7 @@ impl VdmResponder for TdispResponder<'_> {
         &mut self,
         req_buf: &mut MessageBuf<'_>,
         rsp_buf: &mut MessageBuf<'_>,
+        _large_rsp_buf: &mut [u8],
     ) -> VdmResult<usize> {
         let req_hdr = TdispMessageHeader::decode(req_buf).map_err(VdmError::Codec)?;
 

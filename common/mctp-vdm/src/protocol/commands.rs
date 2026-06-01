@@ -11,14 +11,19 @@ pub enum VdmCommand {
     DeviceCapabilities = 0x02,
     DeviceId = 0x03,
     DeviceInfo = 0x04,
-    ExportCsr = 0x05,
-    ImportCertificate = 0x06,
-    GetCertificateState = 0x07,
-    GetLog = 0x08,
-    ClearLog = 0x09,
+    GetDebugLog = 0x05,
+    ClearDebugLog = 0x06,
+    GetAttestationLog = 0x07,
+    ClearAttestationLog = 0x08,
+    GetAttestation = 0x09,
     RequestDebugUnlock = 0x0A,
     AuthorizeDebugUnlockToken = 0x0B,
-    ExportAttestedCsr = 0x0C,
+    ExportIdevidCsr = 0x0C,
+    SetSlot0Cert = 0x0D,
+    GetSlot0State = 0x0E,
+    ExportAttestedCsr = 0x0F,
+    ProgramFieldEntropy = 0x10,
+    DeviceOwnershipTransfer = 0x11,
 }
 
 impl TryFrom<u8> for VdmCommand {
@@ -30,14 +35,19 @@ impl TryFrom<u8> for VdmCommand {
             0x02 => Ok(VdmCommand::DeviceCapabilities),
             0x03 => Ok(VdmCommand::DeviceId),
             0x04 => Ok(VdmCommand::DeviceInfo),
-            0x05 => Ok(VdmCommand::ExportCsr),
-            0x06 => Ok(VdmCommand::ImportCertificate),
-            0x07 => Ok(VdmCommand::GetCertificateState),
-            0x08 => Ok(VdmCommand::GetLog),
-            0x09 => Ok(VdmCommand::ClearLog),
+            0x05 => Ok(VdmCommand::GetDebugLog),
+            0x06 => Ok(VdmCommand::ClearDebugLog),
+            0x07 => Ok(VdmCommand::GetAttestationLog),
+            0x08 => Ok(VdmCommand::ClearAttestationLog),
+            0x09 => Ok(VdmCommand::GetAttestation),
             0x0A => Ok(VdmCommand::RequestDebugUnlock),
             0x0B => Ok(VdmCommand::AuthorizeDebugUnlockToken),
-            0x0C => Ok(VdmCommand::ExportAttestedCsr),
+            0x0C => Ok(VdmCommand::ExportIdevidCsr),
+            0x0D => Ok(VdmCommand::SetSlot0Cert),
+            0x0E => Ok(VdmCommand::GetSlot0State),
+            0x0F => Ok(VdmCommand::ExportAttestedCsr),
+            0x10 => Ok(VdmCommand::ProgramFieldEntropy),
+            0x11 => Ok(VdmCommand::DeviceOwnershipTransfer),
             _ => Err(VdmError::UnsupportedCommand),
         }
     }
@@ -75,9 +85,39 @@ mod tests {
         );
         assert_eq!(VdmCommand::try_from(0x03), Ok(VdmCommand::DeviceId));
         assert_eq!(VdmCommand::try_from(0x04), Ok(VdmCommand::DeviceInfo));
+        assert_eq!(VdmCommand::try_from(0x05), Ok(VdmCommand::GetDebugLog));
+        assert_eq!(VdmCommand::try_from(0x06), Ok(VdmCommand::ClearDebugLog));
         assert_eq!(
-            VdmCommand::try_from(0x0C),
+            VdmCommand::try_from(0x07),
+            Ok(VdmCommand::GetAttestationLog)
+        );
+        assert_eq!(
+            VdmCommand::try_from(0x08),
+            Ok(VdmCommand::ClearAttestationLog)
+        );
+        assert_eq!(VdmCommand::try_from(0x09), Ok(VdmCommand::GetAttestation));
+        assert_eq!(
+            VdmCommand::try_from(0x0A),
+            Ok(VdmCommand::RequestDebugUnlock)
+        );
+        assert_eq!(
+            VdmCommand::try_from(0x0B),
+            Ok(VdmCommand::AuthorizeDebugUnlockToken)
+        );
+        assert_eq!(VdmCommand::try_from(0x0C), Ok(VdmCommand::ExportIdevidCsr));
+        assert_eq!(VdmCommand::try_from(0x0D), Ok(VdmCommand::SetSlot0Cert));
+        assert_eq!(VdmCommand::try_from(0x0E), Ok(VdmCommand::GetSlot0State));
+        assert_eq!(
+            VdmCommand::try_from(0x0F),
             Ok(VdmCommand::ExportAttestedCsr)
+        );
+        assert_eq!(
+            VdmCommand::try_from(0x10),
+            Ok(VdmCommand::ProgramFieldEntropy)
+        );
+        assert_eq!(
+            VdmCommand::try_from(0x11),
+            Ok(VdmCommand::DeviceOwnershipTransfer)
         );
         assert_eq!(
             VdmCommand::try_from(0xFF),
@@ -91,7 +131,19 @@ mod tests {
         assert_eq!(u8::from(VdmCommand::DeviceCapabilities), 0x02);
         assert_eq!(u8::from(VdmCommand::DeviceId), 0x03);
         assert_eq!(u8::from(VdmCommand::DeviceInfo), 0x04);
-        assert_eq!(u8::from(VdmCommand::ExportAttestedCsr), 0x0C);
+        assert_eq!(u8::from(VdmCommand::GetDebugLog), 0x05);
+        assert_eq!(u8::from(VdmCommand::ClearDebugLog), 0x06);
+        assert_eq!(u8::from(VdmCommand::GetAttestationLog), 0x07);
+        assert_eq!(u8::from(VdmCommand::ClearAttestationLog), 0x08);
+        assert_eq!(u8::from(VdmCommand::GetAttestation), 0x09);
+        assert_eq!(u8::from(VdmCommand::RequestDebugUnlock), 0x0A);
+        assert_eq!(u8::from(VdmCommand::AuthorizeDebugUnlockToken), 0x0B);
+        assert_eq!(u8::from(VdmCommand::ExportIdevidCsr), 0x0C);
+        assert_eq!(u8::from(VdmCommand::SetSlot0Cert), 0x0D);
+        assert_eq!(u8::from(VdmCommand::GetSlot0State), 0x0E);
+        assert_eq!(u8::from(VdmCommand::ExportAttestedCsr), 0x0F);
+        assert_eq!(u8::from(VdmCommand::ProgramFieldEntropy), 0x10);
+        assert_eq!(u8::from(VdmCommand::DeviceOwnershipTransfer), 0x11);
     }
 
     #[test]
@@ -101,7 +153,7 @@ mod tests {
         assert!(is_command_supported(VdmCommand::DeviceId));
         assert!(is_command_supported(VdmCommand::DeviceInfo));
         assert!(!is_command_supported(VdmCommand::ExportAttestedCsr));
-        assert!(!is_command_supported(VdmCommand::GetLog));
-        assert!(!is_command_supported(VdmCommand::ClearLog));
+        assert!(!is_command_supported(VdmCommand::GetDebugLog));
+        assert!(!is_command_supported(VdmCommand::ClearDebugLog));
     }
 }

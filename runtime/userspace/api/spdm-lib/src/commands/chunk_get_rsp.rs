@@ -176,29 +176,13 @@ async fn encode_chunk_data(
                     )
                     .await?
             }
-            LargeResponse::Measurements(meas_rsp) => {
-                // Get the session info for measurements chunked within a session
-                let session_info = match ctx.session_mgr.active_session_id() {
-                    Some(session_id) => match ctx.session_mgr.session_info_mut(session_id) {
-                        Ok(info) => Some(info),
-                        Err(e) => Err((false, CommandError::Session(e)))?,
-                    },
-                    None => None,
-                };
-                // Get the chunk data from the measurements response
-                meas_rsp
-                    .get_chunk(
-                        &mut ctx.measurements,
-                        &mut ctx.shared_transcript,
-                        ctx.device_certs_store,
-                        offset,
-                        chunk_buf,
-                        session_info,
-                    )
-                    .await?
-            }
-            LargeResponse::Vdm(_vdm_rsp) => {
-                todo!("implement chunking logic for VDM response")
+            LargeResponse::Buffered => {
+                // Simple memcpy from the pre-serialized shared buffer
+                let data = &ctx.large_resp_context.buf[..ctx.large_resp_context.data_len];
+                let available = data.len().saturating_sub(offset);
+                let copy_len = chunk_buf.len().min(available);
+                chunk_buf[..copy_len].copy_from_slice(&data[offset..offset + copy_len]);
+                copy_len
             }
         }
     } else {

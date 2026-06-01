@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cert_store::*;
-use crate::chunk_ctx::LargeResponseCtx;
+use crate::chunk_ctx::{LargeRequestCtx, LargeResponseCtx};
 use crate::codec::{encode_u8_slice, Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
@@ -38,7 +38,9 @@ pub struct SpdmContext<'a> {
     pub(crate) local_algorithms: LocalDeviceAlgorithms<'a>,
     pub(crate) device_certs_store: &'a dyn SpdmCertStore,
     pub(crate) measurements: SpdmMeasurements<'a>,
-    pub(crate) large_resp_context: LargeResponseCtx,
+    pub(crate) large_resp_context: LargeResponseCtx<'a>,
+    #[allow(dead_code)] // Scaffolding for future CHUNK_SEND support
+    pub(crate) large_req_context: LargeRequestCtx<'a>,
     pub(crate) session_mgr: SessionManager,
     pub(crate) vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
 }
@@ -54,6 +56,8 @@ impl<'a> SpdmContext<'a> {
         device_certs_store: &'a dyn SpdmCertStore,
         measurements: SpdmMeasurements<'a>,
         vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
+        large_resp_buf: &'a mut [u8],
+        large_req_buf: &'a mut [u8],
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -69,7 +73,8 @@ impl<'a> SpdmContext<'a> {
             local_algorithms,
             device_certs_store,
             measurements,
-            large_resp_context: LargeResponseCtx::default(),
+            large_resp_context: LargeResponseCtx::new(large_resp_buf),
+            large_req_context: LargeRequestCtx::new(large_req_buf),
             session_mgr: SessionManager::new(),
             vdm_handlers,
         })
