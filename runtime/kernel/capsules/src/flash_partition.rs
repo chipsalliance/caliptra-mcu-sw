@@ -228,11 +228,15 @@ impl<'a> FlashPartition<'a> {
                         // allowed are long enough.
                         let active_len = cmp::min(length, buffer.len());
 
-                        if command == FlashStorageCommand::Read {
+                        let result = if command == FlashStorageCommand::Read {
                             self.driver.read(buffer, physical_address, active_len)
                         } else {
                             self.driver.write(buffer, physical_address, active_len)
-                        }
+                        };
+                        result.map_err(|(e, buffer)| {
+                            self.buffer.replace(buffer);
+                            e
+                        })
                     })
             }
         }

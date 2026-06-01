@@ -5,10 +5,13 @@ use crate::{
     test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams},
 };
 use anyhow::Result;
-use caliptra_api::{error::CaliptraError, SocManager};
+use caliptra_api::{error::CaliptraError, mailbox::MailboxReqHeader, SocManager};
 use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
-use caliptra_mcu_mbox_common::messages::{FuseRevokeVendorPubKeyReq, RevokeVendorPubKeyType};
+use caliptra_mcu_mbox_common::messages::{
+    FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, ProvisionVendorPkHashReq,
+    RevokeVendorPubKeyType,
+};
 use caliptra_mcu_romtime::McuBootMilestones;
 
 fn get_fw() -> Result<(Vec<u8>, Vec<u8>, [u8; 48], Vec<u8>)> {
@@ -201,5 +204,84 @@ fn test_revoke_vendor_pub_key0_lms() -> Result<()> {
             .read(),
         u32::from(CaliptraError::IMAGE_VERIFIER_ERR_VENDOR_PQC_PUB_KEY_REVOKED)
     );
+    Ok(())
+}
+
+#[test]
+fn test_rotate_vendor_pk_hash() -> Result<()> {
+    let (caliptra_fw, _caliptra_fw_key2, vendor_pk_hash_arr, soc_manifest) = get_fw()?;
+
+    // Boot with default caliptra_fw
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        custom_caliptra_fw: Some(CustomCaliptraFw {
+            fw_bytes: caliptra_fw.clone(),
+            vendor_pk_hash: vendor_pk_hash_arr,
+            soc_manifest: soc_manifest.clone(),
+        }),
+        lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Check revoking the active PK hash fails
+    let cmd = FuseRevokeVendorPkHashReq {
+        vendor_pk_hash_slot: 0,
+        ..Default::default()
+    };
+    let result = execute_authorized_req(&mut hw, cmd);
+    assert!(result.is_err());
+
+    // We can reuse the existing pk hash,
+    // but have to change something for revocation to succeed.
+    let mut new_pk_hash = vendor_pk_hash_arr;
+    new_pk_hash[0] = 0x42;
+    // Provision a new vendor PK hash
+    let cmd = ProvisionVendorPkHashReq {
+        slot: 1,
+        hash: new_pk_hash,
+        hdr: MailboxReqHeader::default(),
+    };
+    let resp = execute_authorized_req(&mut hw, cmd);
+    assert!(resp.is_ok(), "{:?}", resp);
+
+    // Check revoking a pk hash that isn't active succeeds
+    let cmd = FuseRevokeVendorPkHashReq {
+        vendor_pk_hash_slot: 1,
+        ..Default::default()
+    };
+    let resp = execute_authorized_req(&mut hw, cmd);
+    assert!(resp.is_ok());
+
+    // Read OTP memory so we can use the same config in later boots.
+    let otp = hw.read_otp_memory();
+
+    // Boot with caliptra_fw again
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        custom_caliptra_fw: Some(CustomCaliptraFw {
+            fw_bytes: caliptra_fw,
+            vendor_pk_hash: vendor_pk_hash_arr,
+            soc_manifest: soc_manifest.clone(),
+        }),
+        otp_memory: Some(otp),
+        lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+        ..Default::default()
+    });
+
+    // Wait for the mailbox to become ready, indicating the runtime has booted.
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // TODO: Boot firmware for new vendor key, then revoke the old key in slot 0.
+    //       (For this, an image with new keys has to be created first.
+    //       The current key 2 image uses the same PK hash.)
+
     Ok(())
 }

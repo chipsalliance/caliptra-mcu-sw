@@ -8,7 +8,7 @@ mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use crate::test_fpga_flash_ctrl::test::run_imaginary_flash_controller_service;
     use caliptra_mcu_hw_model::McuHwModel;
-    use caliptra_mcu_testing_common::MCU_RUNNING;
+    use caliptra_mcu_testing_common::stop_emulator;
     use random_port::PortPicker;
     use std::sync::atomic::Ordering;
 
@@ -32,7 +32,7 @@ mod test {
         run_imaginary_flash_controller_service(mci_ptr);
 
         let test = finish_runtime_hw_model(&mut hw);
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        stop_emulator();
         assert_eq!(0, test);
 
         // force the compiler to keep the lock

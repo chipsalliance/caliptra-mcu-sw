@@ -70,7 +70,7 @@ impl MCTPCtrlCmd {
             MCTPCtrlCmd::GetEID => 4,
             MCTPCtrlCmd::GetVersionSupport => 18, // 2 bytes header + 4 entries * 4 bytes each
             MCTPCtrlCmd::GetMsgTypeSupport => 2 + MCTP_NUM_MSG_TYPES_SUPPORTED, // 1 byte for completion code + 1 byte for count + supported message types
-            MCTPCtrlCmd::Unsupported => 0,
+            MCTPCtrlCmd::Unsupported => 1, // 1 byte for completion code
         }
     }
 

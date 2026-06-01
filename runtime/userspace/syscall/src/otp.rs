@@ -168,7 +168,7 @@ impl<S: Syscalls> Otp<S> {
             // Return early when the fuse already contains the hash
             return Ok(());
         }
-        if fuse_value.iter().ne(repeat(&0)) {
+        if fuse_value.iter().ne(repeat(&0).take(fuse_value.len())) {
             // Error if the fuse is already containing something
             return Err(ErrorCode::Invalid);
         }
@@ -207,14 +207,13 @@ impl<S: Syscalls> Otp<S> {
 
         // Check if the slot is provisioned to not burn an empty slot
         let pk_hash = self.read_vendor_pk_hash(vendor_pk_hash_slot)?;
-        if pk_hash.iter().eq(repeat(&0)) {
+        if pk_hash.iter().eq(repeat(&0).take(pk_hash.len())) {
             Err(ErrorCode::Invalid)?
         }
 
         let valid_mask = self.read(reg::VENDOR_PK_HASH_VALID, 0)?;
 
         let valid_mask = valid_mask | (1 << vendor_pk_hash_slot);
-
         self.write(reg::VENDOR_PK_HASH_VALID, 0, valid_mask)
     }
 

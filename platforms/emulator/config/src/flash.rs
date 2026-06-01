@@ -5,11 +5,11 @@ use caliptra_mcu_config::flash::FlashPartition;
 use core::mem::offset_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-pub const FLASH_PARTITIONS_COUNT: usize = 5; // Number of flash partitions
+pub const FLASH_PARTITIONS_COUNT: usize = 6; // Number of flash partitions
 
 // Allocate driver numbers for flash partitions
 pub const DRIVER_NUM_START: usize = 0x7000_0006; // Base driver number for flash partitions
-pub const DRIVER_NUM_END: usize = 0x7000_000A; // End driver number for flash partitions
+pub const DRIVER_NUM_END: usize = 0x7000_000B; // End driver number for flash partitions
 
 pub const BLOCK_SIZE: usize = 64 * 1024; // Block size for flash partitions
 
@@ -48,20 +48,28 @@ pub const CERT_STORE_PARTITION: FlashPartition = FlashPartition {
     driver_num: 0x7000_000A,
 };
 
+pub const EMULATED_EXT_OTP_PARTITION: FlashPartition = FlashPartition {
+    name: "emulated_ext_otp",
+    offset: CERT_STORE_PARTITION.offset + CERT_STORE_PARTITION.size,
+    size: (BLOCK_SIZE * 0x8),
+    driver_num: 0x7000_000B,
+};
+
 #[macro_export]
 macro_rules! flash_partition_list_primary {
     ($macro:ident) => {{
         $macro!(0, image_a, IMAGE_A_PARTITION);
         $macro!(1, partition_table, PARTITION_TABLE);
+        $macro!(2, emulated_ext_otp, EMULATED_EXT_OTP_PARTITION);
     }};
 }
 
 #[macro_export]
 macro_rules! flash_partition_list_secondary {
     ($macro:ident) => {{
-        $macro!(2, image_b, IMAGE_B_PARTITION);
-        $macro!(3, staging, STAGING_PARTITION);
-        $macro!(4, cert_store, CERT_STORE_PARTITION);
+        $macro!(3, image_b, IMAGE_B_PARTITION);
+        $macro!(4, staging, STAGING_PARTITION);
+        $macro!(5, cert_store, CERT_STORE_PARTITION);
     }};
 }
 

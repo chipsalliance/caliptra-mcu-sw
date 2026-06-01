@@ -10,16 +10,15 @@ pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mcu_core_mctp_vdm_client::{DynamicI3cAddress, TestConfig, Validator};
     use caliptra_mcu_hw_model::McuHwModel;
-    use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use caliptra_mcu_testing_common::wait_for_runtime_start;
     use random_port::PortPicker;
     use std::process::exit;
-    use std::sync::atomic::Ordering;
 
     /// Run the MCTP VDM validator in-process against the emulated device.
     fn run_validator_in_process(i3c_port: u16, i3c_address: DynamicI3cAddress) {
-        std::thread::spawn(move || {
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
 
@@ -45,7 +44,7 @@ pub mod test {
                     let all_passed = results.iter().all(|r| r.passed);
                     if all_passed {
                         println!("✓ Caliptra MCTP VDM validator PASSED");
-                        MCU_RUNNING.store(false, Ordering::Relaxed);
+                        caliptra_mcu_testing_common::stop_emulator();
                     } else {
                         println!("✗ Caliptra MCTP VDM validator FAILED");
                         for r in &results {
@@ -87,7 +86,7 @@ pub mod test {
         let test = finish_runtime_hw_model(&mut hw);
         assert_eq!(0, test);
 
-        MCU_RUNNING.store(false, Ordering::Relaxed);
+        caliptra_mcu_testing_common::stop_emulator();
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_emulator_state::spawn_with_emulator_state;
 use std::sync::mpsc;
-use std::thread;
 use std::time::Duration;
 
 /// A oneshot timer that executes a callback after a specified duration.
@@ -45,7 +45,7 @@ impl Timer {
         let (tx, rx) = mpsc::channel();
         self.cancel_tx = Some(tx);
 
-        thread::spawn(move || {
+        spawn_with_emulator_state(move || {
             let result = rx.recv_timeout(duration);
             if result.is_err() {
                 // Timer expired, execute callback
@@ -75,7 +75,7 @@ impl Timer {
         let (tx, rx) = mpsc::channel();
         self.cancel_tx = Some(tx);
 
-        thread::spawn(move || {
+        spawn_with_emulator_state(move || {
             loop {
                 let result = rx.recv_timeout(duration);
                 if result.is_err() {
@@ -101,11 +101,15 @@ impl Timer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliptra_mcu_emulator_state::{init_emulator_state, EmulatorState};
+    use std::thread;
+
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
 
     #[test]
     fn test_timer_executes_successfully() {
+        init_emulator_state(EmulatorState::new_arc());
         let mut timer = Timer::new();
         let shared_data = Arc::new(Mutex::new(0));
         let shared_data_clone = shared_data.clone();
@@ -127,6 +131,7 @@ mod tests {
 
     #[test]
     fn test_timer_is_cancelled() {
+        init_emulator_state(EmulatorState::new_arc());
         let mut timer = Timer::new();
         let shared_data = Arc::new(Mutex::new(0));
         let shared_data_clone = shared_data.clone();
@@ -152,6 +157,7 @@ mod tests {
 
     #[test]
     fn test_multiple_timers_can_be_scheduled() {
+        init_emulator_state(EmulatorState::new_arc());
         let mut timer1 = Timer::new();
         let mut timer2 = Timer::new();
         let shared_data = Arc::new(Mutex::new(0));
@@ -189,6 +195,7 @@ mod tests {
 
     #[test]
     fn test_timer_interval_is_correct() {
+        init_emulator_state(EmulatorState::new_arc());
         let mut timer = Timer::new();
         let start_time = Arc::new(Mutex::new(None)); // Shared state to store the start time
         let start_time_clone = start_time.clone();
@@ -227,6 +234,7 @@ mod tests {
 
     #[test]
     fn test_rescheduling_cancels_previous_timer() {
+        init_emulator_state(EmulatorState::new_arc());
         let mut timer = Timer::new();
         let shared_data = Arc::new(Mutex::new(0));
 

@@ -7,5 +7,6 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-caliptra-mcu-dma-driver.workspace = true
 caliptra-mcu-external-otp-driver.workspace = true
+caliptra-mcu-flash-driver.workspace = true
+kernel.workspace = true

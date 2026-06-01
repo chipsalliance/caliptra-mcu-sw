@@ -5,6 +5,12 @@
 //! This trait abstracts partition-based OTP storage that lives outside Caliptra's
 //! built-in OTP controller. Integrators implement this trait for their platform's
 //! actual fuse controller, EPROM, or secure storage element.
+//!
+//! Operations that access the backing store (`read`, `write`, `lock_partition`,
+//! `is_partition_locked`) are **asynchronous**: the method starts the operation
+//! and returns immediately; the result is delivered via the [`ExternalOtpClient`]
+//! callback. Metadata queries (`partition_info`, `partition_count`) are
+//! synchronous because they do not touch the backing store.
 
 use kernel::ErrorCode;
 
@@ -30,6 +36,8 @@ pub enum ExternalOtpError {
     PartitionLocked,
     /// An underlying hardware error occurred.
     HardwareError,
+    /// The driver is busy with another operation.
+    Busy,
 }
 
 impl From<ExternalOtpError> for ErrorCode {
@@ -40,8 +48,24 @@ impl From<ExternalOtpError> for ErrorCode {
             ExternalOtpError::InvalidPartition => ErrorCode::INVAL,
             ExternalOtpError::PartitionLocked => ErrorCode::NOSUPPORT,
             ExternalOtpError::HardwareError => ErrorCode::FAIL,
+            ExternalOtpError::Busy => ErrorCode::BUSY,
         }
     }
+}
+
+/// Callback trait for asynchronous ExternalOtp operations.
+pub trait ExternalOtpClient {
+    /// Called when a `read` operation completes.
+    fn read_done(&self, result: Result<u32, ExternalOtpError>);
+
+    /// Called when a `write` operation completes.
+    fn write_done(&self, result: Result<(), ExternalOtpError>);
+
+    /// Called when a `lock_partition` operation completes.
+    fn lock_done(&self, result: Result<(), ExternalOtpError>);
+
+    /// Called when an `is_partition_locked` query completes.
+    fn lock_check_done(&self, result: Result<bool, ExternalOtpError>);
 }
 
 /// Hardware interface for an external OTP peripheral with partition-based access.
@@ -52,44 +76,47 @@ impl From<ExternalOtpError> for ErrorCode {
 /// access policies. This trait models that structure. Each partition is identified
 /// by a `u32` ID and has a fixed size.
 ///
+/// # Asynchronous Model
+///
+/// Operations that access the backing store are asynchronous. The method
+/// validates parameters and starts the operation, returning `Ok(())` on
+/// success or an error if the parameters are invalid or the driver is busy.
+/// The actual result is delivered via the [`ExternalOtpClient`] callback.
+///
 /// # For Integrators
 ///
-/// Replace the reference implementation (`ExtSramBackedExternalOtp`) with your
-/// platform's actual driver. Your implementation should:
+/// Implement this trait for your platform's actual OTP/EPROM driver. Your
+/// implementation should:
 /// - Enforce write-once semantics at the hardware level
 /// - Map partition IDs to physical fuse/EPROM regions
 /// - Return `HardwareError` for controller failures
-pub trait ExternalOtp {
-    /// Read a u32 from a partition at the given byte offset.
-    ///
-    /// # Arguments
-    /// - `partition`: The partition ID to read from.
-    /// - `offset`: Byte offset within the partition (must be 4-byte aligned).
-    ///
-    /// # Returns
-    /// The 32-bit value at the given offset, or an error.
-    fn read(&self, partition: u32, offset: u32) -> Result<u32, ExternalOtpError>;
+pub trait ExternalOtp<'a> {
+    /// Set the client that receives operation-complete callbacks.
+    fn set_client(&self, client: &'a dyn ExternalOtpClient);
 
-    /// Write a u32 to a partition at the given byte offset.
+    /// Start reading a u32 from a partition at the given byte offset.
     ///
-    /// # Arguments
-    /// - `partition`: The partition ID to write to.
-    /// - `offset`: Byte offset within the partition (must be 4-byte aligned).
-    /// - `value`: The 32-bit value to write.
+    /// The result is delivered via [`ExternalOtpClient::read_done`].
+    fn read(&self, partition: u32, offset: u32) -> Result<(), ExternalOtpError>;
+
+    /// Start writing a u32 to a partition at the given byte offset.
+    ///
+    /// The result is delivered via [`ExternalOtpClient::write_done`].
     fn write(&self, partition: u32, offset: u32, value: u32) -> Result<(), ExternalOtpError>;
 
-    /// Lock a partition, preventing further writes.
+    /// Start locking a partition, preventing further writes.
     ///
-    /// Once locked, any subsequent `write()` call to this partition will return
-    /// `PartitionLocked`. Locking is irreversible for the current power cycle.
+    /// The result is delivered via [`ExternalOtpClient::lock_done`].
     fn lock_partition(&self, partition: u32) -> Result<(), ExternalOtpError>;
 
-    /// Check whether a partition is locked.
-    fn is_partition_locked(&self, partition: u32) -> Result<bool, ExternalOtpError>;
+    /// Start checking whether a partition is locked.
+    ///
+    /// The result is delivered via [`ExternalOtpClient::lock_check_done`].
+    fn is_partition_locked(&self, partition: u32) -> Result<(), ExternalOtpError>;
 
-    /// Get metadata for a specific partition.
+    /// Get metadata for a specific partition (synchronous).
     fn partition_info(&self, partition: u32) -> Option<&ExternalOtpPartitionInfo>;
 
-    /// Get the total number of partitions.
+    /// Get the total number of partitions (synchronous).
     fn partition_count(&self) -> usize;
 }

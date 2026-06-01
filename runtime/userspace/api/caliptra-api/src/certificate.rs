@@ -11,7 +11,8 @@ use caliptra_api::mailbox::{
     GetRtAliasEcc384CertReq, InvokeDpeReq, InvokeDpeResp, MailboxRespHeader,
     PopulateIdevEcc384CertReq, Request, VarSizeDataResp,
 };
-use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
+use caliptra_mcu_libtock_platform::ErrorCode;
 use dpe::commands::{
     CertifyKeyCommand, CertifyKeyFlags, CertifyKeyP384Cmd, Command, CommandHdr,
     GetCertificateChainCmd, SignCommand, SignFlags, SignP384Cmd,
@@ -94,6 +95,46 @@ impl CertContext {
         let resp_bytes = resp.as_mut_bytes();
 
         execute_mailbox_cmd(&self.mbox, cmd, req_bytes, resp_bytes).await?;
+        Ok(())
+    }
+
+    pub async fn populate_idev_mldsa87_cert(
+        &mut self,
+        cert_size: usize,
+        cert_bytesum: u32,
+        payload: &mut dyn PayloadStream,
+    ) -> CaliptraApiResult<()> {
+        let cmd: u32 = CommandId::POPULATE_IDEV_MLDSA87_CERT.into();
+
+        // Build header: chksum (u32) + cert_size (u32)
+        let cert_size_bytes = (cert_size as u32).to_le_bytes();
+
+        // checksum = 0 - (sum(cmd LE bytes) + sum(header bytes with chksum=0) + sum(cert bytes))
+        let mut sum = cert_bytesum;
+        for b in cmd.to_le_bytes().iter() {
+            sum = sum.wrapping_add(u32::from(*b));
+        }
+        // chksum field is 0 so contributes nothing
+        for b in cert_size_bytes.iter() {
+            sum = sum.wrapping_add(u32::from(*b));
+        }
+        let chksum = 0u32.wrapping_sub(sum);
+
+        let mut header = [0u8; 8];
+        header[..4].copy_from_slice(&chksum.to_le_bytes());
+        header[4..8].copy_from_slice(&cert_size_bytes);
+
+        let mut resp = MailboxRespHeader::default();
+        let resp_bytes = resp.as_mut_bytes();
+
+        self.mbox
+            .execute_with_payload_stream(cmd, Some(&header), payload, resp_bytes)
+            .await
+            .map_err(|e| match e {
+                MailboxError::ErrorCode(ErrorCode::Busy) => CaliptraApiError::MailboxBusy,
+                _ => CaliptraApiError::Mailbox(e),
+            })?;
+
         Ok(())
     }
 
