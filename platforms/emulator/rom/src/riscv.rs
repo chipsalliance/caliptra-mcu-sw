@@ -228,6 +228,15 @@ pub extern "C" fn rom_entry() -> ! {
             8
         }
 
+        fn is_perma_bit_set(
+            &self,
+            otp: &caliptra_mcu_romtime::otp::Otp,
+        ) -> Result<bool, caliptra_mcu_romtime::ocp_lock::Error> {
+            otp.read_entry(&caliptra_mcu_registers_generated::fuses::PERMA_HEK_EN)
+                .map(|val| val != 0)
+                .map_err(|_| caliptra_mcu_romtime::ocp_lock::Error::INVALID_HEK_SLOT)
+        }
+
         fn get_slot_state(
             &mut self,
             otp: &caliptra_mcu_romtime::otp::Otp,
