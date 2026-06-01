@@ -101,11 +101,10 @@ pub enum PermaBitStatus {
 pub struct Error(u32);
 
 impl Error {
-    // TODO(clundin): Prefix with ROM
     // ROM Errors
-    pub const INVALID_HEK_SLOT: Self = Self(0x0000_0000_0000_0001);
-    pub const EXHAUSTED_HEK_SLOTS: Self = Self(0x0000_0000_0000_0002);
-    pub const MISSING_PLATFORM_IMPLEMENTATION: Self = Self(0x0000_0000_0000_0003);
+    pub const ROM_INVALID_HEK_SLOT: Self = Self(0x0000_0000_0000_0001);
+    pub const ROM_EXHAUSTED_HEK_SLOTS: Self = Self(0x0000_0000_0000_0002);
+    pub const ROM_MISSING_PLATFORM_IMPLEMENTATION: Self = Self(0x0000_0000_0000_0003);
 
     // Runtime Errors
     pub const RUNTIME_HPKE_ENDORSEMENT_FAILURE: Self = Self(0x0000_0000_1000_0000);
@@ -165,7 +164,7 @@ impl RomConfig<'_> {
         let platform = self
             .platform
             .as_mut()
-            .ok_or(Error::MISSING_PLATFORM_IMPLEMENTATION)?;
+            .ok_or(Error::ROM_MISSING_PLATFORM_IMPLEMENTATION)?;
         platform.is_perma_bit_set(otp)
     }
 
@@ -178,7 +177,7 @@ impl RomConfig<'_> {
         let platform = self
             .platform
             .as_mut()
-            .ok_or(Error::MISSING_PLATFORM_IMPLEMENTATION)?;
+            .ok_or(Error::ROM_MISSING_PLATFORM_IMPLEMENTATION)?;
         platform.get_active_slot(otp, perma_bit, seeds)
     }
 
@@ -186,7 +185,7 @@ impl RomConfig<'_> {
         let platform = self
             .platform
             .as_mut()
-            .ok_or(Error::MISSING_PLATFORM_IMPLEMENTATION)?;
+            .ok_or(Error::ROM_MISSING_PLATFORM_IMPLEMENTATION)?;
         Ok(platform.get_total_slots())
     }
 
@@ -200,7 +199,7 @@ impl RomConfig<'_> {
         let platform = self
             .platform
             .as_mut()
-            .ok_or(Error::MISSING_PLATFORM_IMPLEMENTATION)?;
+            .ok_or(Error::ROM_MISSING_PLATFORM_IMPLEMENTATION)?;
         platform.get_slot_state(otp, perma_bit, slot, seed)
     }
 }

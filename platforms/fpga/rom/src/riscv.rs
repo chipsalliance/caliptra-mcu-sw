@@ -286,7 +286,7 @@ pub extern "C" fn rom_entry() -> ! {
         ) -> Result<bool, caliptra_mcu_romtime::ocp_lock::Error> {
             otp.read_entry(&caliptra_mcu_registers_generated::fuses::PERMA_HEK_EN)
                 .map(|val| val != 0)
-                .map_err(|_| caliptra_mcu_romtime::ocp_lock::Error::INVALID_HEK_SLOT)
+                .map_err(|_| caliptra_mcu_romtime::ocp_lock::Error::ROM_INVALID_HEK_SLOT)
         }
 
         fn get_slot_state(
@@ -335,7 +335,7 @@ pub extern "C" fn rom_entry() -> ! {
                         );
                     }
                 }
-                _ => return Err(caliptra_mcu_romtime::ocp_lock::Error::INVALID_HEK_SLOT),
+                _ => return Err(caliptra_mcu_romtime::ocp_lock::Error::ROM_INVALID_HEK_SLOT),
             }
 
             Ok(caliptra_mcu_romtime::ocp_lock::HekSeedState::Programmed)
@@ -356,14 +356,14 @@ pub extern "C" fn rom_entry() -> ! {
             for i in 0..seeds.len() {
                 let buf = seeds
                     .get(i)
-                    .ok_or(caliptra_mcu_romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
+                    .ok_or(caliptra_mcu_romtime::ocp_lock::Error::ROM_INVALID_HEK_SLOT)?;
                 let state = self.get_slot_state(otp, perma_bit, i, buf)?;
 
                 if state == caliptra_mcu_romtime::ocp_lock::HekSeedState::Programmed {
                     return Ok(i);
                 }
             }
-            Err(caliptra_mcu_romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS)
+            Err(caliptra_mcu_romtime::ocp_lock::Error::ROM_EXHAUSTED_HEK_SLOTS)
         }
     }
 

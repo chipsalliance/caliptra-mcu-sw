@@ -459,7 +459,7 @@ impl Soc {
             // TODO(clundin): Need to communicate HEK availability to firmware.
             match self.set_ocp_lock_fuses(otp, config) {
                 Ok(state) => Some(state),
-                Err(caliptra_mcu_romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS) => None,
+                Err(caliptra_mcu_romtime::ocp_lock::Error::ROM_EXHAUSTED_HEK_SLOTS) => None,
                 Err(_) => fatal_error(McuError::ROM_OTP_OCP_LOCK_FAILURE),
             }
         } else {
@@ -512,8 +512,8 @@ impl Soc {
         let hek_seeds = caliptra_mcu_romtime::ocp_lock::HekSeeds::new(&seeds[..]);
         let active_slot = match config.get_active_slot(otp, &perma_status, &hek_seeds) {
             Ok(slot) => slot,
-            Err(caliptra_mcu_romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS) => {
-                return Err(caliptra_mcu_romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS)
+            Err(caliptra_mcu_romtime::ocp_lock::Error::ROM_EXHAUSTED_HEK_SLOTS) => {
+                return Err(caliptra_mcu_romtime::ocp_lock::Error::ROM_EXHAUSTED_HEK_SLOTS)
             }
             Err(_) => fatal_error(McuError::ROM_OTP_READ_ERROR),
         };
@@ -521,12 +521,12 @@ impl Soc {
         let platform = config
             .platform
             .as_mut()
-            .ok_or(caliptra_mcu_romtime::ocp_lock::Error::MISSING_PLATFORM_IMPLEMENTATION)?;
+            .ok_or(caliptra_mcu_romtime::ocp_lock::Error::ROM_MISSING_PLATFORM_IMPLEMENTATION)?;
 
         let (active_slot, active_state, seed_buf) = {
             let buf = hek_seeds
                 .get(active_slot)
-                .ok_or(caliptra_mcu_romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
+                .ok_or(caliptra_mcu_romtime::ocp_lock::Error::ROM_INVALID_HEK_SLOT)?;
             let state = platform.get_slot_state(otp, &perma_status, active_slot, buf)?;
             (active_slot, state, buf)
         };
