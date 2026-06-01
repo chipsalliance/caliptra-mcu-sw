@@ -223,6 +223,7 @@ impl NextestArchiveCommand {
         }
 
         cmd.push_str("--target=aarch64-unknown-linux-gnu ");
+        cmd.push_str("--release ");
         cmd.push_str("--archive-file=/work-dir/caliptra-test-binaries.tar.zst ");
         cmd.push_str("--target-dir cross-target/");
 
@@ -340,13 +341,31 @@ pub fn run_test_suite(
     target_host: Option<&str>,
     default_test_profile: &str,
 ) -> Result<()> {
-    let archive = std::env::var("CPTRA_TEST_ARCHIVE")
-        .unwrap_or_else(|_| "$HOME/caliptra-test-binaries.tar.zst".to_string());
+    // Prefer an unpacked binaries directory (mounted squashfs in CI) when one
+    // is available, falling back to the legacy tar.zst archive for local
+    // workflows that still produce one. `CPTRA_TEST_BIN_DIR` is the preferred
+    // explicit knob; `TEST_BIN` is honored for compatibility with the CI
+    // workflow that already exports it.
+    let bin_dir = std::env::var("CPTRA_TEST_BIN_DIR")
+        .or_else(|_| std::env::var("TEST_BIN"))
+        .ok();
+    let binaries_args = if let Some(dir) = bin_dir.as_deref() {
+        format!(
+            "--cargo-metadata={dir}/target/nextest/cargo-metadata.json \
+             --binaries-metadata={dir}/target/nextest/binaries-metadata.json \
+             --target-dir-remap={dir}/target \
+             --workspace-remap=. "
+        )
+    } else {
+        let archive = std::env::var("CPTRA_TEST_ARCHIVE")
+            .unwrap_or_else(|_| "$HOME/caliptra-test-binaries.tar.zst".to_string());
+        format!("--workspace-remap=. --archive-file {archive} ")
+    };
     let mut test_command = format!(
         "(cd {test_dir} && \
                 sudo {prelude} \
                 cargo-nextest nextest run \
-                --workspace-remap=. --archive-file {archive} \
+                {binaries_args}\
                 {test_output} --no-fail-fast "
     );
     if let Some(filters) = test_filters {
@@ -358,13 +377,16 @@ pub fn run_test_suite(
         test_command += format!("--profile={default_test_profile} ").as_str();
     }
     test_command += ")";
-    // Run test suite.
-    // Ignore error so we still copy the logs.
-    let _ = run_command(target_host, test_command.as_str());
+    // Run test suite, but capture the result so we can still copy logs even
+    // when the test command fails (failed download, nextest non-zero exit,
+    // etc.). The original code silently discarded this, which let
+    // download / extract failures sneak past the step-level success check.
+    let test_result = run_command(target_host, test_command.as_str());
     if let Some(target_host) = target_host {
         println!("Copying test log from FPGA to junit.xml");
         rsync_file(target_host, "/tmp/junit.xml", ".", true)?;
     }
+    test_result?;
     Ok(())
 }
 

@@ -233,22 +233,27 @@ jobs:
       - name: Execute tests
         run: |
           export RUST_BACKTRACE=1
-          export TEST_BIN=/tmp/caliptra-test-binaries
-          export CPTRA_FIRMWARE_BUNDLE="${PWD}/all-fw.zip"
+          TEST_BIN=/tmp/caliptra-test-binaries
+
+          COMMON_ARGS=(
+              --cargo-metadata="${TEST_BIN}/target/nextest/cargo-metadata.json"
+              --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json"
+              --target-dir-remap="${TEST_BIN}/target"
+              --workspace-remap=.
+              --profile=nightly-ci
+          )
 
           # Generate nextest metadata using the mounted binaries for CI reporting
           # and observability. This helps verify test discovery on the FPGA.
           cargo-nextest nextest list \
-            --cargo-metadata="${TEST_BIN}/target/nextest/cargo-metadata.json" \
-            --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json" \
-            --target-dir-remap="${TEST_BIN}/target" \
-            --workspace-remap=. \
-            --profile=nightly-ci \
-            --message-format json > /tmp/nextest-list.json
+              "${COMMON_ARGS[@]}" \
+              --message-format json > /tmp/nextest-list.json
 
           # all-fw.zip is in current directory after tar -xvf
-          chmod +x /tmp/caliptra-binaries/xtask
-          /tmp/caliptra-binaries/xtask fpga test
+          sudo CPTRA_FIRMWARE_BUNDLE="${PWD}/all-fw.zip" cargo-nextest nextest run \
+              "${COMMON_ARGS[@]}" \
+              --test-threads=1 \
+              --no-fail-fast
 
       - name: 'Upload test results'
         uses: actions/upload-artifact@v4
