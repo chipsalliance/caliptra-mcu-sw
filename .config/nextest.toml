@@ -36,7 +36,6 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(caliptra-mcu-tests-integration) and test(test_log_flash_usermode)) |
 (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
 (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_self_test)) |
 (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_periodic)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_constant_writes)) |
@@ -60,6 +59,10 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_fw_manifest_dot_hitless_lock)) |
 (package(caliptra-mcu-tests-integration) and test(test_external_otp))
 """
+# Disabled while investigating an FPGA test hang that causes the runner agent
+# to lose communication with GitHub (see PR #1475). Re-enable once the
+# hardware/kernel-level hang is root-caused.
+# (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
 # disabled for now due to flakiness of firmware update
 # (package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
 
