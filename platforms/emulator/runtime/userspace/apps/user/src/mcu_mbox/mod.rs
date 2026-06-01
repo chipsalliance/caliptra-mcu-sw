@@ -1,12 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-#[cfg(any(
-    feature = "test-mcu-mbox-cmds",
-    feature = "test-mcu-mbox-fips-self-test",
-    feature = "test-mcu-mbox-fips-periodic",
-    feature = "test-caliptra-util-host-validator"
-))]
-mod cmd_auth_mock;
+pub(crate) mod cmd_auth_mock;
 #[cfg(any(
     feature = "test-mcu-mbox-cmds",
     feature = "test-mcu-mbox-fips-self-test",

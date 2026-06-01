@@ -274,6 +274,8 @@ mod test {
             hw.i3c_address().unwrap().into(),
             Duration::from_secs(120),
             &[
+                "--config",
+                &config_path,
                 "--key-ids",
                 "1,2,3",
                 "--algorithm",

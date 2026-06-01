@@ -136,4 +136,8 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
     async fn clear_log(&self, log_type: u32) -> CaliptraCmdResult<()> {
         CaliptraCmdBackend.clear_log(log_type).await
     }
+
+    async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
+        CaliptraCmdBackend.program_field_entropy(partition).await
+    }
 }
