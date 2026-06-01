@@ -559,6 +559,7 @@ mod test {
         caliptra_mcu_hw_model::new(InitParams {
             fuses: Fuses {
                 fuse_pqc_key_type: params.vendor_pqc_type.map(|t| t as u32).unwrap_or(0),
+                soc_manifest_max_svn: 0,
                 vendor_pk_hash,
                 ..Default::default()
             },
