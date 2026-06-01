@@ -66,8 +66,16 @@ impl BootFlow for FwHitlessUpdate {
         #[cfg(not(feature = "test-force-hitless-update"))]
         while !soc.fw_ready() {}
 
-        // Silence unused-variable warnings when the test feature elides the
-        // mailbox release and fw-ready wait above.
+        // Same FW_INFO-driven CPTRA_CORE_RUNTIME_SVN burn as cold boot.
+        // Caliptra's update_reset clamps min_fw_svn = min(old, new), so
+        // this is typically a no-op for higher-SVN updates; explicit
+        // forward commits are driven by the runtime
+        // FuseIncreaseCaliptraMinSvn mailbox command. Burns committed
+        // here take effect on the next cold boot (Caliptra fuse
+        // registers are latched at cold boot).
+        #[cfg(not(feature = "test-force-hitless-update"))]
+        crate::caliptra_svn::process_caliptra_runtime_svn_burn(&env.otp, soc_manager);
+
         #[cfg(feature = "test-force-hitless-update")]
         {
             let _ = soc_manager;

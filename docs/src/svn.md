@@ -21,9 +21,9 @@ This document covers four categories of components:
    (the same value Caliptra Core authenticates and binds into the MCU
    Runtime's DPE context). Enforcement and the fuse floor are owned by
    Caliptra Core (`CPTRA_CORE_SOC_MANIFEST_SVN`). MCU ROM, as the OTP
-   writer for the subsystem, performs the actual OTP burn on Caliptra
-   Core's behalf when the authenticated SoC manifest SVN advances; it
-   does not maintain a separate MCU-side floor.
+   writer for the subsystem, performs the actual OTP burn when the
+   integrator provides the new floor; it does not maintain a separate
+   MCU-side floor.
 3. **MCU Component SVN Manifest** — its own SVN, enforced by MCU ROM against
    `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`.
 4. **SoC component images** — manifest-level SVN enforced by Caliptra Core;
@@ -39,12 +39,13 @@ independently of the SoC manifest: there is exactly one SVN per release
 for MCU Runtime, and it lives in the SoC manifest.
 
 The fuse-backed floor for this SVN is `CPTRA_CORE_SOC_MANIFEST_SVN`,
-which Caliptra Core both enforces and owns the policy for. Because all
-OTP writes in the subsystem go through MCU, MCU ROM is the entity that
-physically burns this fuse; it does so when Caliptra Core has
-authenticated a SoC manifest with a higher SVN than the current fuse
-value. There is no separate MCU-side floor or MCU-side burn request for
-the MCU Runtime SVN.
+which Caliptra Core both enforces and owns the policy for. Caliptra
+Core cannot burn its own fuses, so MCU ROM owns the OTP write. Today,
+the SoC manifest SVN is provisioned out-of-band; an integrator-driven
+`RomParameters` hook for the MCU-ROM-driven burn is planned (see
+[Cold Boot — Caliptra Core SVNs](#cold-boot--caliptra-core-svns)).
+There is no separate MCU-side floor or MCU-side burn request for the
+MCU Runtime SVN.
 
 ## Threat Model
 
@@ -231,17 +232,58 @@ sequenceDiagram
 
 MCU ROM reads the Caliptra Core SVN fuses from OTP and writes them to
 Caliptra's fuse registers (`CPTRA_CORE_FMC_KEY_MANIFEST_SVN` is forwarded but
-unused; see the note above). Caliptra Core ROM authenticates its firmware,
-compares image SVN against fuse SVN, rejects on mismatch, and asks MCU ROM
-(the OTP writer for the subsystem) to advance the corresponding SVN fuse if
-the image SVN is higher and `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` is not set.
-MCU ROM has no SVN-policy role; it only transports fuse reads to Caliptra
-registers and burns the OTP word Caliptra Core asks for.
+unused; see the note above). Caliptra Core ROM authenticates its firmware
+and compares image SVN against fuse SVN, rejecting on mismatch.
 
-The same applies to the SoC manifest SVN (used for both MCU Runtime and
-SoC components covered by the SoC manifest): the floor lives in
-`CPTRA_CORE_SOC_MANIFEST_SVN`, the enforcement decision is Caliptra
-Core's, and MCU ROM performs the OTP burn.
+Caliptra Core cannot burn its own fuses. After Caliptra Core's runtime
+mailbox is ready, MCU ROM issues a `FW_INFO` mailbox command, reads
+the `min_fw_svn` value Caliptra Core has computed for the running
+firmware bundle, and advances `CPTRA_CORE_RUNTIME_SVN` to that value
+when it exceeds the current fuse value and
+`CPTRA_CORE_ANTI_ROLLBACK_DISABLE` is not set. The burned floor takes
+effect on the next cold boot; this boot continues with the
+already-loaded fuse values that Caliptra Core consulted at
+authentication time.
+
+On **cold reset** Caliptra Core sets `data_vault.fw_min_svn = info.fw_svn`,
+so MCU ROM's `FW_INFO`-driven burn here advances the OTP floor to the
+running firmware's SVN.
+
+The SoC manifest SVN (used for the SoC manifest itself, and which also
+serves as the MCU Runtime SVN) is owned by Caliptra Core. As with
+`CPTRA_CORE_RUNTIME_SVN`, Caliptra cannot persist the floor itself;
+MCU ROM owns the OTP burn. Caliptra's `FW_INFO` does not currently
+expose the SoC manifest SVN separately, so integrators that wish MCU
+ROM to also advance `CPTRA_CORE_SOC_MANIFEST_SVN` must arrange the
+value to be passed in via a `RomParameters` field (planned future
+work). Until then, that fuse is provisioned out-of-band at manufacture
+or by the integrator's recovery flow.
+
+### Hitless Update — Caliptra Core SVNs
+
+When the bundle is delivered via a hitless update, Caliptra Core and
+MCU reset together. Caliptra Core takes its **update reset** path,
+which intentionally preserves rollback capability by clamping its
+internal floor:
+`data_vault.fw_min_svn = min(old_min_svn, new_fw_svn)`. After Caliptra
+authenticates the new bundle and its runtime is ready, MCU ROM enters
+`FwHitlessUpdate`, waits for `soc.fw_ready()`, and issues the same
+`FW_INFO`-driven burn as the cold-boot path.
+
+Because update reset can only hold the floor steady or lower it, the
+hitless-update burn is typically a no-op when the new firmware has a
+higher SVN. **Deployers commit the floor forward explicitly** via the
+runtime `FuseIncreaseCaliptraMinSvn` MCU mailbox command (which reads
+the running firmware's `fw_svn` via `FW_INFO` and burns the
+corresponding OTP fuses). This separation lets a deployer roll out a
+new release, validate it in the field, and then close the door on
+rolling back to the previous one as a separate decision.
+
+Note: Caliptra fuse registers are latched at cold-boot fuse-write time
+and cannot be re-written during a warm/update reset. Any OTP burn that
+MCU ROM performs after a hitless update therefore only gates Caliptra
+authentication on the *next* cold boot — power-fail safe via the OTP
+one-hot encoding.
 
 ### Cold Boot and Hitless Update — MCU Component SVN Manifest burn
 
@@ -350,23 +392,32 @@ mutable firmware has control. This applies to both MCU-owned fuses
 Caliptra-owned fuses like `CPTRA_CORE_SOC_MANIFEST_SVN` —
 all OTP writes in the subsystem go through MCU.
 
-Burns are triggered exclusively by authenticated firmware images: Caliptra
-Core requests the SoC manifest SVN burn once it has authenticated a manifest
-with a higher SVN than the current fuse value; the MCU Component SVN
-Manifest header's `min_svn` drives the manifest-self burn; and per-entry
-`min_svn` fields drive SoC component burns. ROM only burns when the
-requested `min_svn` strictly exceeds the current fuse value.
+Burns are triggered exclusively by authenticated firmware images. For
+Caliptra Core's runtime SVN, MCU ROM queries `FW_INFO` after Caliptra's
+runtime mailbox is ready and uses the reported `min_fw_svn` as the
+burn target — on both cold boot and hitless update. The MCU Component
+SVN Manifest header's `min_svn` drives the manifest-self burn, and
+per-entry `min_svn` fields drive SoC component burns. ROM only burns
+when the requested `min_svn` strictly exceeds the current fuse value.
+
+For the Caliptra runtime SVN specifically, `FW_INFO.min_fw_svn` reaches
+the new firmware's SVN only after Caliptra's *cold reset*; update reset
+clamps it down to preserve rollback. The hitless-update burn is
+therefore typically a no-op for higher-SVN updates; explicit forward
+commits are issued by deployer-controlled runtime mailbox traffic
+(`FuseIncreaseCaliptraMinSvn`).
 
 The burn is power-fail safe: one-hot encoding plus OR semantics mean a partial
 burn can never decrease the fuse value, and any incomplete burn will be
 re-attempted (and complete) on the next boot.
 
-| Component | Burned by | Source of `min_svn` |
-|---|---|---|
-| Caliptra Core FMC/RT | MCU ROM (on Caliptra Core's request) | Caliptra image SVN |
-| SoC manifest / MCU Runtime | MCU ROM (on Caliptra Core's request) | SoC manifest SVN |
-| MCU Component SVN Manifest | MCU ROM | manifest header's `min_svn` |
-| SoC images (optional) | MCU ROM | MCU Component SVN Manifest entry |
+| Component | Burned by | Source of `min_svn` | Trigger |
+|---|---|---|---|
+| Caliptra Core FMC/RT | MCU ROM | `FW_INFO.min_fw_svn` | cold boot and hitless update (no-op on hitless if floor unchanged) |
+| Caliptra Core FMC/RT | MCU Runtime → OTP syscall | running `FW_INFO.fw_svn` | `FuseIncreaseCaliptraMinSvn` mailbox command (deployer-driven) |
+| SoC manifest / MCU Runtime | MCU ROM | (planned) integrator-provided via `RomParameters` | cold boot |
+| MCU Component SVN Manifest | MCU ROM | manifest header's `min_svn` | cold boot and hitless update |
+| SoC images (optional) | MCU ROM | MCU Component SVN Manifest entry | cold boot and hitless update |
 
 ## Platform Configuration
 
@@ -425,7 +476,7 @@ leaking the running version through OTP state. A release can carry a high
 the SoC manifest SVN. Caliptra Core uses this value for the MCU Runtime
 DPE context and enforces it against `CPTRA_CORE_SOC_MANIFEST_SVN`. There
 is no separate MCU-side floor: MCU ROM only acts as the OTP writer for
-Caliptra Core's burn requests, so the value bound into DPE, the value
+the Caliptra-owned floor, so the value bound into DPE, the value
 enforced against the fuse, and the value physically burned are all the
 same single attested SVN — there is no way for the manifest signer to
 declare a different version to MCU than the one bound into DPE.

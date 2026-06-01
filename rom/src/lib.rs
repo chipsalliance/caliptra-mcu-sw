@@ -43,6 +43,7 @@ mod mailbox;
 mod recovery;
 
 // Boot flow modules
+mod caliptra_svn;
 mod cold_boot;
 mod firmware_headers;
 mod fw_boot;

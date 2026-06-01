@@ -852,6 +852,9 @@ impl BootFlow for ColdBoot {
         let stash_rom_digest = params.stash_rom_digest.unwrap_or(false);
         Self::rom_digest_integrity(soc_manager, stash_rom_digest);
 
+        crate::caliptra_svn::process_caliptra_runtime_svn_burn(&env.otp, soc_manager);
+        mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeSvnBurnComplete.into());
+
         // NOTE: Firmware manifest DOT command processing is intentionally
         // handled in FwBoot (fw_boot.rs), not here.  FwBoot runs after the
         // warm-reset chain, so firmware in MCU SRAM is always decrypted by
