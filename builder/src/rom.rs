@@ -47,7 +47,21 @@ pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<P
     )?;
     assert!(rom_binary.exists(), "{rom_binary:?} does not exist");
     append_rom_digest(&rom_binary, rom_size)?;
+    write_legacy_rom_alias(&rom_binary)?;
     Ok(rom_binary)
+}
+
+fn write_legacy_rom_alias(rom_binary: &PathBuf) -> Result<()> {
+    let Some(file_name) = rom_binary.file_name().and_then(|name| name.to_str()) else {
+        return Ok(());
+    };
+    let Some(suffix) = file_name.strip_prefix("caliptra-mcu-rom-") else {
+        return Ok(());
+    };
+
+    let legacy_binary = rom_binary.with_file_name(format!("mcu-rom-{suffix}"));
+    std::fs::copy(rom_binary, legacy_binary)?;
+    Ok(())
 }
 
 /// Pad the ROM binary to its full size and append a SHA384 digest of its contents to the end.
