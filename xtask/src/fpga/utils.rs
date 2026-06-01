@@ -223,6 +223,7 @@ impl NextestArchiveCommand {
         }
 
         cmd.push_str("--target=aarch64-unknown-linux-gnu ");
+        cmd.push_str("--release ");
         cmd.push_str("--archive-file=/work-dir/caliptra-test-binaries.tar.zst ");
         cmd.push_str("--target-dir cross-target/");
 
