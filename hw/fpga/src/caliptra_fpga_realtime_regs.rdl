@@ -248,6 +248,10 @@ regfile interface_regs {
     } spare_i3c_control_sts;
 
     reg {
+        field { sw=rw; hw=r; } value[32] = 32'b0;
+    } ss_strap_generic[4] @ 0x1F0;
+
+    reg {
         field { sw=rw; hw=na; desc = "OCP LOCK Media Encryption Key (MEK)"; } key[32] = 32'h0;
     } ocp_lock_key_release_reg[16] @ 0x200;
 
