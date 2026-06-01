@@ -10,11 +10,11 @@ use super::*;
 /// Platform-provided persistent storage for one in-flight large SPDM message.
 pub trait SpdmPalLargeMessage {
     /// Maximum reassembled message size this responder can hold.
-    fn large_message_capacity(&self) -> usize;
+    fn capacity(&self) -> usize;
 
     /// Copy `data` into the persistent large-message buffer at `offset`.
-    fn write_large_message(&self, offset: usize, data: &[u8]) -> McuResult<()>;
+    fn write(&self, offset: usize, data: &[u8]) -> McuResult<()>;
 
     /// Copy bytes from the persistent large-message buffer into `out`.
-    fn read_large_message(&self, offset: usize, out: &mut [u8]) -> McuResult<()>;
+    fn read(&self, offset: usize, out: &mut [u8]) -> McuResult<()>;
 }

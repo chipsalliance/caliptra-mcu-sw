@@ -11,8 +11,8 @@
 //! stack-allocated `[u8; N]` array for cert payload.
 
 use mcu_spdm_lite_codec::{
-    CapFlags, CertificateRsp, CertificateRspBody, GetCertificateReqBody, ResponseBody,
-    SpdmMsgHdrPdu, SpdmVersion, ATTR_SLOT_SIZE_REQUESTED,
+    CertificateRsp, CertificateRspBody, GetCertificateReqBody, ResponseBody, SpdmMsgHdrPdu,
+    SpdmVersion, ATTR_SLOT_SIZE_REQUESTED,
 };
 use mcu_spdm_lite_traits::{
     PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
@@ -91,8 +91,7 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
             return Err(SPDM_INVALID_REQUEST);
         }
         let remaining = total_len_usize - off;
-        let chunking = state.cap_flags.contains(CapFlags::CHUNK)
-            && state.peer_cap_flags.contains(CapFlags::CHUNK);
+        let chunking = state.chunking_enabled();
         let max_portion = if chunking {
             chunk::effective_max_spdm_msg_size(state, pal)
                 .saturating_sub(SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE)
@@ -108,7 +107,7 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
     };
 
     if !slot_size_only && (portion_len as usize) > single_frame_portion {
-        let handle = state.large_response.start_certificate(
+        let cert_rsp = chunk::CertificateLargeResponse::new(
             slot_id,
             0,
             asym_algo,
@@ -116,6 +115,9 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
             portion_len,
             remainder_len,
         );
+        let handle = state
+            .large_response
+            .start(chunk::LargeResponse::Certificate(cert_rsp));
         let resp = build_error_response(
             pal,
             io,

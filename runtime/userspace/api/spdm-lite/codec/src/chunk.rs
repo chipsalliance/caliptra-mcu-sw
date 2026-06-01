@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! SPDM chunking wire types (DSP0274 §10.26).
+//! SPDM chunking wire types.
 
 use zerocopy::{
     little_endian::U16, little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned,

@@ -171,6 +171,11 @@ impl<S: Clone> ConnectionState<S> {
         self.large_response.reset();
     }
 
+    /// Returns true when both peers negotiated CHUNK support.
+    pub(crate) fn chunking_enabled(&self) -> bool {
+        self.cap_flags.contains(CapFlags::CHUNK) && self.peer_cap_flags.contains(CapFlags::CHUNK)
+    }
+
     /// Convert the negotiated `base_asym_sel` bitfield to
     /// [`SpdmPalAsymAlgo`] for cert-store calls.
     pub(crate) fn asym_algo(&self) -> SpdmPalAsymAlgo {
@@ -211,7 +216,7 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
     /// A new `SpdmStack` in [`Phase::Start`].
     pub fn new(pal: Pal) -> Self {
         let mut state = ConnectionState::<Pal::State>::default();
-        if pal.large_message_capacity() < pal.mtu() {
+        if pal.capacity() < pal.mtu() {
             state.cap_flags =
                 CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
         }
@@ -314,7 +319,7 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
         err: SpdmError,
         req_version: SpdmVersion,
     ) -> McuResult<()> {
-        // DSP0274 §10.10.2: ERROR response uses the same version as
+        // DSP0274: ERROR response uses the same version as
         // the requester's message. For `VersionMismatch`, the
         // responder shall instead use the highest supported version
         // (libspdm matches: post-negotiation = negotiated, else V1.0;

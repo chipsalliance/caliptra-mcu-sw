@@ -2,7 +2,7 @@
 
 //! SPDM-level error type for handler ↔ dispatcher boundary.
 //!
-//! [`SpdmError`] carries the **wire byte** (DSP0274 §10.10.2) and any
+//! [`SpdmError`] carries the DSP0274 `ERROR` wire byte and any
 //! associated extended-data bytes that an SPDM responder needs to put
 //! into an `ERROR` PDU. Handlers return [`SpdmResult<T>`]; the
 //! dispatcher catches `Err(SpdmError)` and emits the wire-format
@@ -19,7 +19,7 @@ use mcu_spdm_lite_errors::{as_spdm_wire, is_mctp_error};
 
 /// SPDM-level error suitable for emission as an `ERROR` PDU.
 ///
-/// Carries only the DSP0274 §10.10.2 wire byte. Handlers that need
+/// Carries only the DSP0274 `ERROR` wire byte. Handlers that need
 /// extended error data, such as [`SPDM_LARGE_RESPONSE`], pass it at
 /// response construction time.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -31,7 +31,7 @@ pub struct SpdmError {
 pub type SpdmResult<T> = core::result::Result<T, SpdmError>;
 
 impl SpdmError {
-    /// Constructs an [`SpdmError`] from a DSP0274 §10.10.2 spec byte.
+    /// Constructs an [`SpdmError`] from a DSP0274 `ERROR` spec byte.
     ///
     /// # Parameters
     ///
@@ -46,7 +46,7 @@ impl SpdmError {
         Self { spec_byte }
     }
 
-    /// Returns the DSP0274 §10.10.2 wire byte for this error.
+    /// Returns the DSP0274 `ERROR` wire byte for this error.
     ///
     /// # Returns
     ///
@@ -59,7 +59,7 @@ impl SpdmError {
 }
 
 /// Implicit conversion from any [`McuErrorCode`] to the closest
-/// matching DSP0274 §10.10.2 wire byte.
+/// matching DSP0274 `ERROR` wire byte.
 ///
 /// This is the single classification point in the stack — handlers
 /// just use `?` and the conversion happens automatically.
@@ -94,7 +94,7 @@ impl From<mcu_spdm_lite_codec::WireError> for SpdmError {
     }
 }
 
-// ---- DSP0274 §10.10.2 wire-byte constants ----------------------------------
+// ---- DSP0274 ERROR wire-byte constants --------------------------------------
 
 /// `InvalidRequest` — malformed or syntactically invalid request.
 pub const SPDM_INVALID_REQUEST: SpdmError = SpdmError::new(0x01);

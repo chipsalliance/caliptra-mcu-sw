@@ -79,7 +79,7 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
 
     let mtu = pal.mtu();
     let max_spdm_msg_size = if state.cap_flags.contains(CapFlags::CHUNK) {
-        pal.large_message_capacity().max(mtu)
+        pal.capacity().max(mtu)
     } else {
         mtu
     } as u32;
