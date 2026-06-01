@@ -17,10 +17,14 @@ pub const SPDM_BUSY: McuErrorCode = spdm_wire(0x03);
 pub const SPDM_UNEXPECTED_REQUEST: McuErrorCode = spdm_wire(0x04);
 pub const SPDM_UNSPECIFIED: McuErrorCode = spdm_wire(0x05);
 pub const SPDM_UNSUPPORTED_REQUEST: McuErrorCode = spdm_wire(0x07);
+pub const SPDM_SESSION_REQUIRED: McuErrorCode = spdm_wire(0x09);
+pub const SPDM_RESET_REQUIRED: McuErrorCode = spdm_wire(0x0C);
 pub const SPDM_DECRYPT_ERROR: McuErrorCode = spdm_wire(0x0F);
 pub const SPDM_VERSION_MISMATCH: McuErrorCode = spdm_wire(0x41);
 pub const SPDM_RESPONSE_NOT_READY: McuErrorCode = spdm_wire(0x42);
 pub const SPDM_REQUEST_RESYNCH: McuErrorCode = spdm_wire(0x43);
+pub const SPDM_OPERATION_FAILED: McuErrorCode = spdm_wire(0x44);
+pub const SPDM_LARGE_RESPONSE: McuErrorCode = spdm_wire(0x45);
 
 // ---- spdm-lite local / codec errors (never on wire) -------------------------
 

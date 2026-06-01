@@ -12,7 +12,11 @@ use mcu_caliptra_api_lite::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo
 use mcu_error::McuResult;
 use mcu_spdm_lite_traits::MAX_SLOTS;
 
+#[cfg(feature = "set-certificate")]
+use super::endorsement::ManagedEndorsement;
 use super::endorsement::{CertSlot, ReadOnlyEndorsement, SlotEndorsement, NUM_CERT_SLOTS};
+
+const DEFAULT_CERT_INFO: u8 = 0x01;
 
 /// Static shared cert store.
 ///
@@ -143,6 +147,31 @@ impl SharedCertStore {
         let slot = self.cert_slot_mut(idx);
         slot.endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(chain, hash));
         slot.key_pair_id = Some(key_pair_id);
+        slot.cert_info = Some(DEFAULT_CERT_INFO);
+        Ok(())
+    }
+
+    /// Configure a flash-backed managed cert-chain slot and load any existing
+    /// record from flash. Uninitialized flash leaves the slot supported but not
+    /// provisioned, so SET_CERTIFICATE can install it later.
+    #[cfg(feature = "set-certificate")]
+    pub async fn set_managed_endorsement(
+        &self,
+        idx: usize,
+        spdm_slot: u8,
+        driver_num: u32,
+        base: usize,
+        capacity: usize,
+    ) -> McuResult<()> {
+        if idx >= NUM_CERT_SLOTS || capacity == 0 {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        let mut endorsement = ManagedEndorsement::new(spdm_slot, driver_num, base, capacity);
+        endorsement.load().await?;
+        let slot = self.cert_slot_mut(idx);
+        slot.key_pair_id = endorsement.key_pair_id();
+        slot.cert_info = endorsement.cert_info();
+        slot.endorsement = SlotEndorsement::Managed(endorsement);
         Ok(())
     }
 }

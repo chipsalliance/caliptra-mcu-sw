@@ -101,8 +101,17 @@ pub struct ConnectionState<S: Clone> {
     pub peer_data_transfer_size: u32,
     /// Peer-advertised `MaxSPDMmsgSize` (V1.2+ `GET_CAPABILITIES`).
     pub peer_max_spdm_msg_size: u32,
+    /// Effective local capability flags advertised in CAPABILITIES for this
+    /// connection after version/PAL policy gating.
+    pub advertised_cap_flags: CapFlags,
     /// Peer-advertised capability flags.
     pub peer_cap_flags: CapFlags,
+    /// Negotiated OtherParamsSel from NEGOTIATE_ALGORITHMS.
+    pub other_param_sel: OtherParamSupport,
+    /// Negotiated BaseAsymSel from NEGOTIATE_ALGORITHMS.
+    pub negotiated_base_asym_sel: AsymAlgos,
+    /// Negotiated BaseHashSel from NEGOTIATE_ALGORITHMS.
+    pub negotiated_base_hash_sel: HashAlgos,
     /// Transcript state (running VCA/M1/L1 hashes per DSP0274 §8.10).
     pub transcript: crate::transcript::Transcript<S>,
 }
@@ -125,12 +134,20 @@ impl<S: Clone> ConnectionState<S> {
     ///   `key_schedule = SPDM`, `other_param_support = OPAQUE_DATA_FMT1`.
     /// * `phase = Start`, `version = V12`, peer fields cleared.
     pub fn caliptra() -> Self {
+        let cap_flags = CapFlags::CERT
+            | CapFlags::CHAL
+            | CapFlags::MEAS_SIG
+            | CapFlags::ALIAS_CERT
+            | set_certificate_cap_flags();
+        let other_param_support =
+            OtherParamSupport::OPAQUE_DATA_FMT1 | set_certificate_other_params();
+
         Self {
             ct_exponent: 20, // 2^20 µs
-            cap_flags: CapFlags::CERT | CapFlags::CHAL | CapFlags::MEAS_SIG | CapFlags::ALIAS_CERT,
+            cap_flags,
 
             measurement_spec: MeasSpec::DMTF,
-            other_param_support: OtherParamSupport::OPAQUE_DATA_FMT1,
+            other_param_support,
             meas_hash_algo: MeasHashAlgos::SHA_384,
             base_asym_sel: AsymAlgos::ECDSA_ECC_NIST_P384,
             base_hash_sel: HashAlgos::SHA_384,
@@ -142,7 +159,11 @@ impl<S: Clone> ConnectionState<S> {
             version: SpdmVersion::V12,
             peer_data_transfer_size: 0,
             peer_max_spdm_msg_size: 0,
+            advertised_cap_flags: CapFlags::EMPTY,
             peer_cap_flags: CapFlags::EMPTY,
+            other_param_sel: OtherParamSupport::EMPTY,
+            negotiated_base_asym_sel: AsymAlgos::EMPTY,
+            negotiated_base_hash_sel: HashAlgos::EMPTY,
             transcript: crate::transcript::Transcript::new(),
         }
     }
@@ -156,7 +177,11 @@ impl<S: Clone> ConnectionState<S> {
         self.version = SpdmVersion::V12;
         self.peer_data_transfer_size = 0;
         self.peer_max_spdm_msg_size = 0;
+        self.advertised_cap_flags = CapFlags::EMPTY;
         self.peer_cap_flags = CapFlags::EMPTY;
+        self.other_param_sel = OtherParamSupport::EMPTY;
+        self.negotiated_base_asym_sel = AsymAlgos::EMPTY;
+        self.negotiated_base_hash_sel = HashAlgos::EMPTY;
         self.transcript.reset();
     }
 
@@ -172,6 +197,26 @@ impl<S: Clone> Default for ConnectionState<S> {
     fn default() -> Self {
         Self::caliptra()
     }
+}
+
+#[cfg(feature = "set-certificate")]
+fn set_certificate_cap_flags() -> CapFlags {
+    CapFlags::SET_CERT | CapFlags::MULTI_KEY_CONN_RSP
+}
+
+#[cfg(not(feature = "set-certificate"))]
+fn set_certificate_cap_flags() -> CapFlags {
+    CapFlags::EMPTY
+}
+
+#[cfg(feature = "set-certificate")]
+fn set_certificate_other_params() -> OtherParamSupport {
+    OtherParamSupport::MULTI_KEY_CONN
+}
+
+#[cfg(not(feature = "set-certificate"))]
+fn set_certificate_other_params() -> OtherParamSupport {
+    OtherParamSupport::EMPTY
 }
 
 /// SPDM responder state machine + dispatcher.
@@ -315,8 +360,13 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
             req_version
         };
 
-        let Ok(mut err_rsp) = build_error_response(&self.pal, io, rsp_version, err.spec_byte(), 0)
-        else {
+        let Ok(mut err_rsp) = build_error_response(
+            &self.pal,
+            io,
+            rsp_version,
+            err.spec_byte(),
+            err.error_data(),
+        ) else {
             // Allocator exhausted or codec failure — nothing more we
             // can do for this exchange.
             return Ok(());
@@ -372,8 +422,14 @@ async fn dispatch<'a, Pal: SpdmPal>(
         ReqRespCode::GET_DIGESTS => digests::handle_get_digests(state, pal, io).await,
         ReqRespCode::GET_CERTIFICATE => certificate::handle_get_certificate(state, pal, io).await,
         ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
+        #[cfg(feature = "set-certificate")]
+        ReqRespCode::SET_CERTIFICATE => {
+            crate::set_certificate::handle_set_certificate(state, pal, io).await
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        ReqRespCode::SET_CERTIFICATE => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
-        _ => Err(SPDM_UNSUPPORTED_REQUEST),
+        _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
     }
 }
 

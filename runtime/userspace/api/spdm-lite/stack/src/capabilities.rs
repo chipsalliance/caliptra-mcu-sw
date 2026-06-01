@@ -79,9 +79,19 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
 
     // DataTransferSize == MaxSPDMmsgSize since we don't yet advertise CHUNK.
     let mtu = pal.mtu() as u32;
+    let mut flags = state.cap_flags;
+    if version < SpdmVersion::V13 || !pal.set_certificate_supported() {
+        let cleared = flags.into_bits() & !(0b11 << 26);
+        flags = CapFlags::from_bits(cleared);
+    }
+    if !pal.set_certificate_supported() {
+        let cleared = flags.into_bits() & !CapFlags::SET_CERT.into_bits();
+        flags = CapFlags::from_bits(cleared);
+    }
+    state.advertised_cap_flags = flags;
     let body = CapabilitiesRsp {
         ct_exponent: state.ct_exponent,
-        flags: state.cap_flags,
+        flags,
         data_transfer_size: mtu,
         max_spdm_msg_size: mtu,
     };

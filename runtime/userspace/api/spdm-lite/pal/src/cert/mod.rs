@@ -2,20 +2,20 @@
 
 //! Certificate store for the spdm-lite PAL.
 //!
-//! Composes SPDM cert chains from three portions:
-//! 1. Endorsement chain (static root CA or flash-backed, per slot)
+//! Slot 0 composes an SPDM cert chain from three portions:
+//! 1. static endorsement/root chain
 //! 2. DPE device chain (IDevID → RT alias, from Caliptra Core)
 //! 3. DPE leaf certificate (CertifyKey, fetched on demand)
 //!
-//! The endorsement portion is managed by [`SlotEndorsement`] — an enum
-//! that dispatches to `ReadOnlyEndorsement` (slot 0) or
+//! Managed slots store the complete DER chain installed by SET_CERTIFICATE.
+//! [`SlotEndorsement`] dispatches to `ReadOnlyEndorsement` (slot 0) or
 //! `ManagedEndorsement` (slots 1-2) without dynamic dispatch.
 
 pub mod endorsement;
 pub mod store;
 
 use super::*;
-use endorsement::{slot_index, SUPPORTED_SLOT_MASK};
+use endorsement::slot_index;
 use mcu_caliptra_api_lite::{
     dpe_certify_key, dpe_get_cert_chain_chunk, dpe_sign_ecc_p384, walk_dpe_chain, ApiAlloc,
     DpeChainSink, DPE_LABEL_LEN, DPE_MAX_LEAF_CERT_SIZE,
@@ -31,9 +31,6 @@ const SLOT0_LEAF_LABEL: [u8; DPE_LABEL_LEN] = [
     0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
     0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
 ];
-
-/// Default CertificateInfo for all Caliptra slots.
-const DEFAULT_CERT_INFO: u8 = 0x01;
 
 /// Default KeyUsageMask for all Caliptra slots.
 const DEFAULT_KEY_USAGE_MASK: u16 = 0x0003;
@@ -56,7 +53,13 @@ impl DpeChainSink for CountSink {
 
 impl SpdmPalCertStore for McuSpdmPal {
     fn supported_slots(&self) -> u8 {
-        SUPPORTED_SLOT_MASK
+        let mut mask = 0u8;
+        for (i, slot) in self.cert_store.cert_slots().iter().enumerate() {
+            if slot.is_supported() {
+                mask |= 1 << endorsement::DEFAULT_SLOT_MAP[i];
+            }
+        }
+        mask
     }
 
     fn provisioned_slots(&self) -> u8 {
@@ -67,6 +70,69 @@ impl SpdmPalCertStore for McuSpdmPal {
             }
         }
         mask
+    }
+
+    async fn cert_chain_slot_size(
+        &self,
+        _io: &Self::Io<'_>,
+        slot: u8,
+        _algo: SpdmPalAsymAlgo,
+    ) -> McuResult<usize> {
+        let idx = slot_index(slot).ok_or(INVARIANT)?;
+        let cert_slot = &self.cert_store.cert_slots()[idx];
+        let capacity = cert_slot
+            .endorsement
+            .capacity(SpdmPalAsymAlgo::EccP384)
+            .await
+            .map_err(|_| INVARIANT)?;
+        if cert_slot.stores_complete_chain() {
+            return Ok(capacity);
+        }
+        let dpe_len = walk_dpe_chain(self, &mut CountSink).await? as usize;
+        let leaf_len = probe_leaf_len(self).await?;
+        capacity
+            .checked_add(dpe_len)
+            .and_then(|n| n.checked_add(leaf_len))
+            .ok_or(INVARIANT)
+    }
+
+    #[inline]
+    fn set_certificate_supported(&self) -> bool {
+        #[cfg(feature = "set-certificate")]
+        {
+            return self
+                .cert_store
+                .cert_slots()
+                .iter()
+                .any(|slot| slot.is_writable());
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            false
+        }
+    }
+
+    #[inline]
+    fn set_certificate_authorized(
+        &self,
+        _io: &Self::Io<'_>,
+        slot: u8,
+        _key_pair_id: u8,
+        _cert_model: u8,
+        _erase: bool,
+    ) -> bool {
+        #[cfg(feature = "set-certificate")]
+        {
+            return slot_index(slot)
+                .and_then(|idx| self.cert_store.cert_slots().get(idx))
+                .map(|slot| slot.is_writable())
+                .unwrap_or(false);
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            let _ = slot;
+            false
+        }
     }
 
     async fn cert_chain_len(
@@ -80,16 +146,21 @@ impl SpdmPalCertStore for McuSpdmPal {
             return Ok(n as usize);
         }
         let cert_slot = &self.cert_store.cert_slots()[idx];
-        let endorsement_len = cert_slot
+        let slot_chain_len = cert_slot
             .endorsement
             .size(SpdmPalAsymAlgo::EccP384)
+            .await
             .map_err(|_| INVARIANT)?;
-        let dpe_len = walk_dpe_chain(self, &mut CountSink).await?;
-        let leaf_len = probe_leaf_len(self).await?;
-        let total = (endorsement_len as u32)
-            .checked_add(dpe_len)
-            .and_then(|n| n.checked_add(leaf_len as u32))
-            .ok_or(INVARIANT)? as usize;
+        let total = if cert_slot.stores_complete_chain() {
+            slot_chain_len
+        } else {
+            let dpe_len = walk_dpe_chain(self, &mut CountSink).await?;
+            let leaf_len = probe_leaf_len(self).await?;
+            (slot_chain_len as u32)
+                .checked_add(dpe_len)
+                .and_then(|n| n.checked_add(leaf_len as u32))
+                .ok_or(INVARIANT)? as usize
+        };
         self.cert_store.set_cached_chain_len(slot, total as u32);
         Ok(total)
     }
@@ -106,6 +177,7 @@ impl SpdmPalCertStore for McuSpdmPal {
         self.cert_store.cert_slots()[idx]
             .endorsement
             .root_cert_hash(SpdmPalAsymAlgo::EccP384, out)
+            .await
     }
 
     async fn read_cert_chain(
@@ -128,16 +200,27 @@ impl SpdmPalCertStore for McuSpdmPal {
             return Ok(0);
         }
 
-        // Chain layout: [endorsement] [DPE chain] [leaf cert]
         let cert_slot = &self.cert_store.cert_slots()[idx];
-        let endorsement_len = cert_slot
+        let slot_chain_len = cert_slot
             .endorsement
             .size(SpdmPalAsymAlgo::EccP384)
+            .await
             .map_err(|_| INVARIANT)?;
+        let want = (total - offset).min(dst.len());
+        if cert_slot.stores_complete_chain() {
+            let n = cert_slot
+                .endorsement
+                .read(SpdmPalAsymAlgo::EccP384, offset, &mut dst[..want])
+                .await
+                .map_err(|_| INVARIANT)?;
+            return if n == want { Ok(n) } else { Err(INVARIANT) };
+        }
+
+        // Read-only chain layout: [endorsement] [DPE chain] [leaf cert]
+        let endorsement_len = slot_chain_len;
         let leaf_len = probe_leaf_len(self).await? as usize;
         let dpe_len = total - endorsement_len - leaf_len;
 
-        let want = (total - offset).min(dst.len());
         let mut written = 0usize;
         let mut cur_offset = offset;
 
@@ -150,6 +233,7 @@ impl SpdmPalCertStore for McuSpdmPal {
                     cur_offset,
                     &mut dst[written..want],
                 )
+                .await
                 .map_err(|_| INVARIANT)?;
             written += n;
             cur_offset = offset + written;
@@ -207,15 +291,36 @@ impl SpdmPalCertStore for McuSpdmPal {
         _io: &Self::Io<'_>,
         slot: u8,
         algo: SpdmPalAsymAlgo,
+        key_pair_id: u8,
+        cert_info: u8,
+        root_hash: &[u8; 48],
         data: &[u8],
     ) -> McuResult<()> {
-        let idx = slot_index(slot).ok_or(INVARIANT)?;
-        self.cert_store
-            .cert_slot_mut(idx)
-            .endorsement
-            .write(algo, data)?;
-        self.cert_store.invalidate_cache(slot);
-        Ok(())
+        #[cfg(feature = "set-certificate")]
+        {
+            let idx = slot_index(slot).ok_or(INVARIANT)?;
+            let managed = match &self.cert_store.cert_slots()[idx].endorsement {
+                endorsement::SlotEndorsement::Managed(e) => *e,
+                endorsement::SlotEndorsement::ReadOnly(_) => {
+                    return Err(mcu_error::codes::NOT_IMPLEMENTED);
+                }
+                endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
+            };
+            let managed = managed
+                .write_updated(algo, key_pair_id, cert_info, root_hash, data)
+                .await?;
+            let cert_slot = self.cert_store.cert_slot_mut(idx);
+            cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
+            cert_slot.key_pair_id = Some(key_pair_id);
+            cert_slot.cert_info = Some(cert_info);
+            self.cert_store.invalidate_cache(slot);
+            Ok(())
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            let _ = (slot, algo, key_pair_id, cert_info, root_hash, data);
+            Err(mcu_error::codes::NOT_IMPLEMENTED)
+        }
     }
 
     async fn erase_cert_chain(
@@ -224,10 +329,28 @@ impl SpdmPalCertStore for McuSpdmPal {
         slot: u8,
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {
-        let idx = slot_index(slot).ok_or(INVARIANT)?;
-        self.cert_store.cert_slot_mut(idx).endorsement.erase(algo)?;
-        self.cert_store.invalidate_cache(slot);
-        Ok(())
+        #[cfg(feature = "set-certificate")]
+        {
+            let idx = slot_index(slot).ok_or(INVARIANT)?;
+            let managed = match &self.cert_store.cert_slots()[idx].endorsement {
+                endorsement::SlotEndorsement::Managed(e) => *e,
+                endorsement::SlotEndorsement::ReadOnly(_) => {
+                    return Err(mcu_error::codes::NOT_IMPLEMENTED);
+                }
+                endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
+            };
+            let managed = managed.erase_updated(algo).await?;
+            let cert_slot = self.cert_store.cert_slot_mut(idx);
+            cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
+            cert_slot.clear_metadata();
+            self.cert_store.invalidate_cache(slot);
+            Ok(())
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            let _ = (slot, algo);
+            Err(mcu_error::codes::NOT_IMPLEMENTED)
+        }
     }
 
     fn key_pair_id(&self, slot: u8) -> Option<u8> {
@@ -240,15 +363,26 @@ impl SpdmPalCertStore for McuSpdmPal {
         if !self.cert_store.cert_slots()[idx].is_provisioned() {
             return None;
         }
-        Some(DEFAULT_CERT_INFO)
+        self.cert_store.cert_slots()[idx].cert_info
     }
 
     fn key_usage_mask(&self, slot: u8) -> Option<u16> {
         let idx = slot_index(slot)?;
-        if !self.cert_store.cert_slots()[idx].is_provisioned() {
+        let cert_slot = &self.cert_store.cert_slots()[idx];
+        if !cert_slot.is_provisioned() {
             return None;
         }
-        Some(DEFAULT_KEY_USAGE_MASK)
+        #[cfg(feature = "set-certificate")]
+        {
+            match &cert_slot.endorsement {
+                endorsement::SlotEndorsement::Managed(e) => e.key_usage_mask(),
+                _ => Some(DEFAULT_KEY_USAGE_MASK),
+            }
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            Some(DEFAULT_KEY_USAGE_MASK)
+        }
     }
 
     #[inline]
