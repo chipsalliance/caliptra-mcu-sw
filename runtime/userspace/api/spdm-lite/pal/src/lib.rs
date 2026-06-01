@@ -35,6 +35,7 @@ mod alloc;
 pub mod cert;
 mod hash;
 mod io;
+mod large_message;
 mod pal;
 
 pub use self::alloc::*;

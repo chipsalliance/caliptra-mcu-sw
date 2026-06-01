@@ -2,7 +2,7 @@
 
 //! SPDM-level error type for handler ↔ dispatcher boundary.
 //!
-//! [`SpdmError`] carries the **wire byte** (DSP0274 §10.10.2) and any
+//! [`SpdmError`] carries the DSP0274 `ERROR` wire byte and any
 //! associated extended-data bytes that an SPDM responder needs to put
 //! into an `ERROR` PDU. Handlers return [`SpdmResult<T>`]; the
 //! dispatcher catches `Err(SpdmError)` and emits the wire-format
@@ -19,10 +19,9 @@ use mcu_spdm_lite_errors::{as_spdm_wire, is_mctp_error};
 
 /// SPDM-level error suitable for emission as an `ERROR` PDU.
 ///
-/// Currently carries only the DSP0274 §10.10.2 wire byte. Will gain
-/// an `ExtData` field when handlers need to emit
-/// [`SPDM_RESPONSE_NOT_READY`] / [`SPDM_LARGE_RESPONSE`] /
-/// [`SPDM_VENDOR_DEFINED`] with associated bytes.
+/// Carries only the DSP0274 `ERROR` wire byte. Handlers that need
+/// extended error data, such as [`SPDM_LARGE_RESPONSE`], pass it at
+/// response construction time.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SpdmError {
     spec_byte: u8,
@@ -32,7 +31,7 @@ pub struct SpdmError {
 pub type SpdmResult<T> = core::result::Result<T, SpdmError>;
 
 impl SpdmError {
-    /// Constructs an [`SpdmError`] from a DSP0274 §10.10.2 spec byte.
+    /// Constructs an [`SpdmError`] from a DSP0274 `ERROR` spec byte.
     ///
     /// # Parameters
     ///
@@ -47,7 +46,7 @@ impl SpdmError {
         Self { spec_byte }
     }
 
-    /// Returns the DSP0274 §10.10.2 wire byte for this error.
+    /// Returns the DSP0274 `ERROR` wire byte for this error.
     ///
     /// # Returns
     ///
@@ -60,7 +59,7 @@ impl SpdmError {
 }
 
 /// Implicit conversion from any [`McuErrorCode`] to the closest
-/// matching DSP0274 §10.10.2 wire byte.
+/// matching DSP0274 `ERROR` wire byte.
 ///
 /// This is the single classification point in the stack — handlers
 /// just use `?` and the conversion happens automatically.
@@ -95,7 +94,7 @@ impl From<mcu_spdm_lite_codec::WireError> for SpdmError {
     }
 }
 
-// ---- DSP0274 §10.10.2 wire-byte constants ----------------------------------
+// ---- DSP0274 ERROR wire-byte constants --------------------------------------
 
 /// `InvalidRequest` — malformed or syntactically invalid request.
 pub const SPDM_INVALID_REQUEST: SpdmError = SpdmError::new(0x01);
@@ -107,17 +106,17 @@ pub const SPDM_BUSY: SpdmError = SpdmError::new(0x03);
 pub const SPDM_UNEXPECTED_REQUEST: SpdmError = SpdmError::new(0x04);
 /// `Unspecified` — catch-all responder-side failure.
 pub const SPDM_UNSPECIFIED: SpdmError = SpdmError::new(0x05);
+/// `DecryptError` — secured-message decryption / MAC verification
+/// failed.
+pub const SPDM_DECRYPT_ERROR: SpdmError = SpdmError::new(0x06);
 /// `UnsupportedRequest` — request code is recognised but not
 /// implemented by this responder.
 pub const SPDM_UNSUPPORTED_REQUEST: SpdmError = SpdmError::new(0x07);
+/// `SessionLimitExceeded` — responder cannot establish more sessions.
+pub const SPDM_SESSION_LIMIT_EXCEEDED: SpdmError = SpdmError::new(0x0A);
 /// `SessionRequired` — request must be issued inside an established
 /// secure session.
-pub const SPDM_SESSION_REQUIRED: SpdmError = SpdmError::new(0x09);
-/// `InvalidSession` — session ID does not refer to a valid session.
-pub const SPDM_INVALID_SESSION: SpdmError = SpdmError::new(0x0A);
-/// `DecryptError` — secured-message decryption / MAC verification
-/// failed.
-pub const SPDM_DECRYPT_ERROR: SpdmError = SpdmError::new(0x0F);
+pub const SPDM_SESSION_REQUIRED: SpdmError = SpdmError::new(0x0B);
 /// `VersionMismatch` — requester's SPDM version is not supported.
 pub const SPDM_VERSION_MISMATCH: SpdmError = SpdmError::new(0x41);
 /// `ResponseNotReady` — responder needs more time; requester should
@@ -128,6 +127,6 @@ pub const SPDM_RESPONSE_NOT_READY: SpdmError = SpdmError::new(0x42);
 pub const SPDM_REQUEST_RESYNCH: SpdmError = SpdmError::new(0x43);
 /// `LargeResponse` — response exceeds the single-frame size; requester
 /// must use chunked reads.
-pub const SPDM_LARGE_RESPONSE: SpdmError = SpdmError::new(0x45);
+pub const SPDM_LARGE_RESPONSE: SpdmError = SpdmError::new(0x0F);
 /// `VendorDefined` — vendor-specific error with extended data.
-pub const SPDM_VENDOR_DEFINED: SpdmError = SpdmError::new(0xFE);
+pub const SPDM_VENDOR_DEFINED: SpdmError = SpdmError::new(0xFF);

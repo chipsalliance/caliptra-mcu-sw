@@ -20,7 +20,7 @@ use crate::error::SpdmResult;
 /// Allocate a buffer of `raw_len` bytes, rounded up to the transport's
 /// [`send_len_alignment`](SpdmPalIoTransport::send_len_alignment).
 /// Padding bytes are zeroed.
-fn alloc_padded<'a, Pal: SpdmPal>(
+pub(crate) fn alloc_padded<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &Pal::Io<'_>,
     raw_len: usize,
@@ -94,7 +94,7 @@ where
     Ok(buf)
 }
 
-/// Non-generic helper for the error path. Builds a 4-byte ERROR PDU
+/// Non-generic helper for the error path. Builds an ERROR PDU
 /// (DSP0274 §10.10) without going through the generic
 /// [`build_response`] — saves one monomorphisation worth of code and
 /// keeps the dispatcher's error branch tiny.
@@ -105,13 +105,15 @@ pub(crate) fn build_error_response<'a, Pal: SpdmPal>(
     version: SpdmVersion,
     error_code: u8,
     error_data: u8,
+    extended_data: &[u8],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     use mcu_spdm_lite_codec::{ReqRespCode, SpdmMsgHdrPdu};
     let head = pal.header_size();
-    let raw_len = head + SpdmMsgHdrPdu::SIZE + 2;
+    let raw_len = head + SpdmMsgHdrPdu::SIZE + 2 + extended_data.len();
     let mut buf = alloc_padded(pal, io, raw_len)?;
     let mut w = WireWriter::new(&mut buf[head..]);
     w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::ERROR))?;
     w.write(&[error_code, error_data])?;
+    w.write(extended_data)?;
     Ok(buf)
 }
