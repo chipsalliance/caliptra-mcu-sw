@@ -34,12 +34,18 @@ mod build;
 mod capabilities;
 mod certificate;
 mod challenge;
+mod chunk;
 mod digests;
 mod error;
 mod stack;
 mod transcript;
+mod vendor_defined;
 mod version;
 
 pub use error::*;
+pub use mcu_spdm_lite_codec::StandardsBodyId;
 pub use stack::*;
 pub use transcript::*;
+pub use vendor_defined::{
+    SpdmVdmBackend, SyncVdmHandlers, VdmHandler, VdmRequest, VdmResponseBuffers, VdmResponseKind,
+};
