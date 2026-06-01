@@ -24,7 +24,7 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
 
 1. Check the MCI `RESET_REASON` register for MCU status (it should be in cold boot mode)
 1. Initialize I3C recovery interface. For AXI bypass boot, only the recovery interface initialization is required; basic I3C initialization can be skipped.
-   * For I3C boot: Initialize I3C registers according to the [initialization sequence](https://chipsalliance.github.io/i3c-core/initialization.html), then initialize I3C recovery interface per the [recovery flow](https://chipsalliance.github.io/i3c-core/recovery_flow.html).
+   * For I3C boot: Initialize I3C registers according to the [I3C Core Bring-Up Flow](https://github.com/chipsalliance/i3c-core/blob/main/doc/source/firmware_guide.md#i3c-core-bring-up-flow), then initialize I3C recovery interface per the [recovery flow](https://chipsalliance.github.io/i3c-core/recovery_flow.html). The ROM currently follows guidance to leave the SoC-management timing offset registers at `0`; platform-specific tuning can be added later if needed.
    * For AXI bypass boot: Only initialize the recovery interface registers needed for streaming boot.
 1. Assert Caliptra boot go signal to bring Caliptra out of reset.
 1. Read Caliptra SoC `FLOW_STATUS` register to wait for Caliptra Ready for Fuses state.
