@@ -52,25 +52,23 @@ impl I3c {
         // initialize timing registers
         caliptra_mcu_romtime::println!("[mcu-rom-i3c] Initialize timing registers");
 
-        // AXI clock is ~200 MHz, I3C clock is 12.5 MHz
-        // values of all of these set to 0-5 seem to work for receiving data correctly
-        // 6-7 gets corrupted data but will ACK
-        // 8+ will fail to ACK
-        //
-        // TODO: pass this timing information in
-        let clocks = 0;
-        regs.soc_mgmt_if_t_r_reg.set(clocks); // rise time of both SDA and SCL in clock units
-        regs.soc_mgmt_if_t_f_reg.set(clocks); // fall time of both SDA and SCL in clock units
+        // AXI clock is ~200 MHz, I3C clock is 12.5 MHz.
+        // Current I3C-core guidance is to leave these SoC-management timing offsets at 0.
+        // Lab bring-up also showed values 0-5 receive correctly, while larger values cause
+        // data corruption or NACKs.
+        const TIMING_OFFSET_CLOCKS: u32 = 0;
+        regs.soc_mgmt_if_t_r_reg.set(TIMING_OFFSET_CLOCKS); // rise time of both SDA and SCL in clock units
+        regs.soc_mgmt_if_t_f_reg.set(TIMING_OFFSET_CLOCKS); // fall time of both SDA and SCL in clock units
 
         // if this is set to 6+ then ACKs start failing
-        regs.soc_mgmt_if_t_hd_dat_reg.set(clocks); // data hold time in clock units
-        regs.soc_mgmt_if_t_su_dat_reg.set(clocks); // data setup time in clock units
+        regs.soc_mgmt_if_t_hd_dat_reg.set(TIMING_OFFSET_CLOCKS); // data hold time in clock units
+        regs.soc_mgmt_if_t_su_dat_reg.set(TIMING_OFFSET_CLOCKS); // data setup time in clock units
 
-        regs.soc_mgmt_if_t_high_reg.set(clocks); // High period of the SCL in clock units
-        regs.soc_mgmt_if_t_low_reg.set(clocks); // Low period of the SCL in clock units
-        regs.soc_mgmt_if_t_hd_sta_reg.set(clocks); // Hold time for (repeated) START in clock units
-        regs.soc_mgmt_if_t_su_sta_reg.set(clocks); // Setup time for repeated START in clock units
-        regs.soc_mgmt_if_t_su_sto_reg.set(clocks); // Setup time for STOP in clock units
+        regs.soc_mgmt_if_t_high_reg.set(TIMING_OFFSET_CLOCKS); // High period of the SCL in clock units
+        regs.soc_mgmt_if_t_low_reg.set(TIMING_OFFSET_CLOCKS); // Low period of the SCL in clock units
+        regs.soc_mgmt_if_t_hd_sta_reg.set(TIMING_OFFSET_CLOCKS); // Hold time for (repeated) START in clock units
+        regs.soc_mgmt_if_t_su_sta_reg.set(TIMING_OFFSET_CLOCKS); // Setup time for repeated START in clock units
+        regs.soc_mgmt_if_t_su_sto_reg.set(TIMING_OFFSET_CLOCKS); // Setup time for STOP in clock units
 
         // set this to 1 microsecond
         regs.soc_mgmt_if_t_free_reg.set(200); // Bus free time in clock units before doing IBI
