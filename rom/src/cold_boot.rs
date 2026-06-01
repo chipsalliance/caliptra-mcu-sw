@@ -884,7 +884,7 @@ impl BootFlow for ColdBoot {
         crate::call_hook(params.hooks, |h| h.pre_cold_boot());
         caliptra_mcu_romtime::println!(
             "[mcu-rom] Starting cold boot flow at time {}",
-            caliptra_mcu_romtime::mcycle()
+            caliptra_mcu_romtime::mcycle() as u32
         );
 
         env.mci

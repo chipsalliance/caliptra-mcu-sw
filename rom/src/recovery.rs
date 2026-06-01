@@ -35,7 +35,7 @@ pub trait ImageProvider {
     /// of bytes actually loaded.
     ///
     /// This call will block if the next bytes are not yet available.  The data will only be
-    /// partially populated in the case the image ends prior to the entire buffer.  
+    /// partially populated in the case the image ends prior to the entire buffer.
     ///
     /// This could return an error if the underlying provider encounters an error reading the
     /// image.
@@ -406,11 +406,11 @@ fn load_image_to_recovery(
                     // If the transfer is complete, we can move to the next state
                     let _ = state_machine.process_event(Events::TransferComplete);
                     let end_cycle = caliptra_mcu_romtime::mcycle();
-                    let cycles = (end_cycle - start_cycle.unwrap_or_default()).max(1);
+                    let cycles = ((end_cycle - start_cycle.unwrap_or_default()) as usize).max(1);
                     caliptra_mcu_romtime::println!(
                         "[mcu-rom] Image transfer complete after {} cycles (≈{} bytes per 1,000 cycles)",
                         cycles,
-                        (state_machine.context().image_size as u64 * 1000) / cycles,
+                        (state_machine.context().image_size / cycles) * 1000
                     );
                 } else {
                     // wait for fifo empty before transferring full 256 bytes
