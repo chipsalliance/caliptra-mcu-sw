@@ -720,18 +720,6 @@ impl Otp {
         Ok(set_bit_count == 0)
     }
 
-    /// Check if the HEK perma bit is set in the last non-secret vendor fuse (Slot 15).
-    /// NOTE: Integrators should consider a dedicated fuse.
-    pub fn is_hek_perma_set(&self) -> McuResult<bool> {
-        Ok(self.read_entry(fuses::PERMA_HEK_EN)? != 0)
-    }
-
-    /// Sets the HEK perma bit.
-    pub fn set_hek_perma(&self) -> McuResult<()> {
-        self.write_entry(fuses::PERMA_HEK_EN, 1)?;
-        Ok(())
-    }
-
     /// Compute the software digest of an OTP partition by reading its data
     /// (excluding the trailing 8-byte digest field) and hashing it with the
     /// PRESENT-based OTP digest algorithm.

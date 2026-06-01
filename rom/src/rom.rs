@@ -492,8 +492,8 @@ impl Soc {
             .ss_key_release_base_addr_l
             .set(config.key_release_addr as u32);
 
-        let perma_status = if otp
-            .is_hek_perma_set()
+        let perma_status = if config
+            .is_perma_bit_set(otp)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
         {
             caliptra_mcu_romtime::ocp_lock::PermaBitStatus::Set

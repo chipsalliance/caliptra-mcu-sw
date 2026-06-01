@@ -133,6 +133,9 @@ pub trait Platform {
     /// Total number of HEK Seed Slots
     fn get_total_slots(&self) -> usize;
 
+    /// Check if the HEK perma bit is set.
+    fn is_perma_bit_set(&self, otp: &crate::otp::Otp) -> Result<bool, Error>;
+
     /// The current HEK Seed Status of `slot`. `seed` is the fuse value of the slot.
     fn get_slot_state(
         &mut self,
@@ -158,6 +161,14 @@ pub struct RomConfig<'a> {
 }
 
 impl RomConfig<'_> {
+    pub fn is_perma_bit_set(&mut self, otp: &crate::otp::Otp) -> Result<bool, Error> {
+        let platform = self
+            .platform
+            .as_mut()
+            .ok_or(Error::MISSING_PLATFORM_IMPLEMENTATION)?;
+        platform.is_perma_bit_set(otp)
+    }
+
     pub fn get_active_slot(
         &mut self,
         otp: &crate::otp::Otp,
