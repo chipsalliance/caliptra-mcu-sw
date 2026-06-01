@@ -16,6 +16,16 @@ use rv32i::pmp::{pmpcfg_octet, NAPOTRegionSpec, TORRegionSpec, TORUserPMP, TORUs
 
 const MPU_REGIONS: usize = 16;
 pub const AVAILABLE_ENTRIES: usize = 64;
+pub const MAX_KERNEL_ENTRIES: usize = AVAILABLE_ENTRIES - MPU_REGIONS * 2;
+
+/// Maximum number of logical kernel PMP regions that can fit in a
+/// `PMPRegionList`.
+///
+/// Equal to `MAX_KERNEL_ENTRIES` because each region consumes at least one
+/// PMP entry (NAPOT).  This is used to size the in-list array; the binding
+/// hardware constraint is the *entry* budget (`MAX_KERNEL_ENTRIES`), which
+/// `add_region` enforces precisely via `total_entries`.
+pub const MAX_KERNEL_REGIONS: usize = MAX_KERNEL_ENTRIES;
 
 pub type VeeRPMP = PMPUserMPU<MPU_REGIONS, VeeRProtectionMMLEPMP>;
 
@@ -74,15 +84,16 @@ fn write_pmpaddr_pmpcfg(i: usize, pmpcfg: u8, pmpaddr: usize) {
 // these memory regions as arguments. They further encode whether a region
 // must adhere to the `NAPOT` or `TOR` addressing mode constraints:
 
-/// The code (kernel + apps) RAM region address range.
+/// A read-only data region (e.g., the ROM area covering constants, strings
+/// and other non-executable read-only data from the code section).
 ///
-/// Configured in the PMP as a `NAPOT` region.
+/// Configured in the PMP as a `TOR` region with R-only permissions.
 #[derive(Copy, Clone, Debug)]
 pub struct ReadOnlyRegion(pub TORRegionSpec);
 
 /// The Data RAM region address range.
 ///
-/// Configured in the PMP as a `NAPOT` region.
+/// Configured in the PMP as a `TOR` region with R+W permissions.
 #[derive(Copy, Clone, Debug)]
 pub struct DataRegion(pub TORRegionSpec);
 
@@ -109,38 +120,108 @@ pub enum PMPRegion {
     MachineMMIO(MMIORegion),
 }
 
-/// Configuration result containing all PMP regions in a simple list
+impl PMPRegion {
+    /// Returns the number of PMP hardware entries this region consumes.
+    /// TOR regions use 2 entries (start + end), NAPOT regions use 1 entry.
+    pub const fn entry_count(&self) -> usize {
+        match self {
+            PMPRegion::KernelText(_) | PMPRegion::ReadOnly(_) | PMPRegion::Data(_) => 2,
+            PMPRegion::UserMMIO(_) | PMPRegion::MachineMMIO(_) => 1,
+        }
+    }
+}
+
+/// An ordered list of kernel-side PMP regions, ready to be programmed into
+/// the PMP hardware.
+///
+/// The list is bounded by the kernel PMP hardware entry budget
+/// (`MAX_KERNEL_ENTRIES`), not by an artificial region count: NAPOT regions
+/// consume 1 PMP entry each while TOR regions consume 2, so the maximum
+/// number of logical regions depends on the mix of addressing modes. The
+/// internal storage is sized to `MAX_KERNEL_REGIONS` (the theoretical
+/// maximum when every region is NAPOT).
+///
+/// Invariants (maintained by [`PMPRegionList::add_region`]):
+/// - `count() <= MAX_KERNEL_REGIONS`
+/// - `total_entries() <= MAX_KERNEL_ENTRIES`
+/// - `total_entries() == sum of region.entry_count() over iter()`
+///
+/// Construct with [`PMPRegionList::new`], populate with
+/// [`PMPRegionList::add_region`], inspect with [`PMPRegionList::iter`],
+/// [`PMPRegionList::count`] and [`PMPRegionList::total_entries`].
 pub struct PMPRegionList {
-    /// Fixed-size array of regions (no heap allocation)
-    /// Size 16 assumes worst case that all regions are TOR regions (using 2 PMP entries each)
-    /// User regions: MPU_REGIONS, Kernel regions: ~3-4, total fits within AVAILABLE_ENTRIES
-    pub regions: [Option<PMPRegion>; 16],
-    /// Number of actual regions used
-    pub count: usize,
+    regions: [Option<PMPRegion>; MAX_KERNEL_REGIONS],
+    // Number of populated entries in `regions`.
+    count: usize,
+    // Cached sum of `region.entry_count()` over the populated entries.
+    total_entries: usize,
 }
 
 impl PMPRegionList {
-    /// Create a new empty region list
-    pub fn new() -> Self {
+    /// Create a new empty region list.
+    pub const fn new() -> Self {
         Self {
-            regions: [None; 16],
+            regions: [None; MAX_KERNEL_REGIONS],
             count: 0,
+            total_entries: 0,
         }
     }
 
     /// Add a region to the list
+    ///
+    /// Returns `Err(())` if either:
+    /// - the in-list array is already full (`MAX_KERNEL_REGIONS` regions), or
+    /// - accepting this region would exceed the kernel PMP hardware entry
+    ///   budget (`MAX_KERNEL_ENTRIES`).
+    ///
+    /// Both conditions are checked explicitly. Today they are equivalent
+    /// (`MAX_KERNEL_REGIONS == MAX_KERNEL_ENTRIES` and every region uses at
+    /// least one entry, so the entry-budget check implies the array-bound
+    /// check), but they guard distinct concerns — the array bound protects
+    /// the `regions` storage while the entry budget protects the PMP
+    /// hardware — so they are kept separate so the function remains correct
+    /// even if the two constants ever diverge.
     pub fn add_region(&mut self, region: PMPRegion) -> Result<(), ()> {
-        if self.count >= 16 {
+        let entries_needed = region.entry_count();
+        let new_total = self.total_entries + entries_needed;
+
+        // Array bound: refuse if the in-list array is already full.
+        if self.count >= MAX_KERNEL_REGIONS {
             return Err(());
         }
+        // Hardware budget: refuse if accepting this region would exceed the
+        // PMP hardware entries reserved for the kernel side.
+        if new_total > MAX_KERNEL_ENTRIES {
+            return Err(());
+        }
+
         self.regions[self.count] = Some(region);
         self.count += 1;
+        self.total_entries = new_total;
         Ok(())
     }
 
-    /// Iterate through all regions
+    /// Iterate through all regions in insertion order.
     pub fn iter(&self) -> impl Iterator<Item = &PMPRegion> {
         self.regions[..self.count].iter().filter_map(|r| r.as_ref())
+    }
+
+    /// Number of logical regions currently stored in the list.
+    pub fn count(&self) -> usize {
+        self.count
+    }
+
+    /// Total PMP hardware entries consumed by the regions in this list.
+    /// TOR regions contribute 2 entries each, NAPOT regions contribute 1.
+    /// Always `<= MAX_KERNEL_ENTRIES`.
+    pub fn total_entries(&self) -> usize {
+        self.total_entries
+    }
+}
+
+impl Default for PMPRegionList {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -193,7 +274,11 @@ impl fmt::Display for PMPRegion {
 
 impl fmt::Display for PMPRegionList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "PMPRegionList ({} regions):", self.count)?;
+        writeln!(
+            f,
+            "PMPRegionList ({} regions, {}/{} kernel PMP entries used):",
+            self.count, self.total_entries, MAX_KERNEL_ENTRIES
+        )?;
         writeln!(f, "  Format: [MODE, RWX, LOCK] where:")?;
         writeln!(
             f,
@@ -277,17 +362,18 @@ impl VeeRProtectionMMLEPMP {
             reset_entry(i);
         }
 
-        // Conservative approach: assume worst-case that all regions are TOR regions (2 entries each)
-        let max_kernel_entries = pmp_regions.count * 2;
+        // Use precise entry counting: TOR regions consume 2 entries, NAPOT regions consume 1.
+        // `PMPRegionList::add_region` guarantees `total_entries() <= MAX_KERNEL_ENTRIES`;
+        // we re-check below as defence in depth.
+        let actual_kernel_entries = pmp_regions.total_entries();
 
         // Ensure we don't exceed available PMP entries (reserve MPU_REGIONS*2 for user MPU)
-        if max_kernel_entries > (AVAILABLE_ENTRIES - MPU_REGIONS * 2) {
-            return Err(()); // Too many kernel regions
+        if actual_kernel_entries > MAX_KERNEL_ENTRIES {
+            return Err(()); // Too many kernel entries
         }
 
         // Calculate starting entry for kernel regions (at the end of PMP entries)
-        // We'll use conservative allocation but only consume what we actually need
-        let kernel_start_entry = AVAILABLE_ENTRIES - max_kernel_entries;
+        let kernel_start_entry = AVAILABLE_ENTRIES - actual_kernel_entries;
 
         // Process regions from PMPRegionList in order, writing directly to PMP registers
         // This creates a 1:1 mapping from PMPRegionList to PMP hardware entries.
