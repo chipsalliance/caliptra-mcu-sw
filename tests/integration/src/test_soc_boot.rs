@@ -257,37 +257,31 @@ mod test {
         new_options.fuse_soc_manifest_max_svn = Some(13);
         new_options.device_security_state = Some(DeviceLifecycle::Manufacturing);
 
-        // Replace the SoC Manifest in the PLDM package
-        let flash_offset = opts
-            .partition_table
-            .as_ref()
-            .and_then(|pt| pt.get_active_partition().1.as_ref().map(|p| p.offset))
-            .unwrap_or(0);
-        let (_, flash_image_path) = create_flash_image(
-            new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
-            new_options
-                .builder
-                .as_mut()
-                .unwrap()
-                .get_soc_manifest(None)
-                .ok(),
-            Some(opts.runtime.clone()),
-            opts.partition_table.clone(),
-            flash_offset,
-            new_options.soc_images_paths.clone(),
-        );
-        new_options.pldm_fw_pkg_path = if opts.pldm_fw_pkg_path.is_some() {
-            let device_uuid = get_device_uuid();
-            let flash_image =
-                std::fs::read(flash_image_path.clone()).expect("Failed to read flash image");
-            let pldm_manifest = get_streaming_boot_pldm_fw_manifest(&device_uuid, &flash_image);
-            Some(create_pldm_fw_package(&pldm_manifest))
-        } else {
-            None
-        };
+        if opts.primary_flash_image_path.is_some() {
+            let flash_offset = opts
+                .partition_table
+                .as_ref()
+                .and_then(|pt| pt.get_active_partition().1.as_ref().map(|p| p.offset))
+                .unwrap_or(0);
+            let (_, flash_image_path) = create_flash_image(
+                new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
+                new_options
+                    .builder
+                    .as_mut()
+                    .unwrap()
+                    .get_soc_manifest(None)
+                    .ok(),
+                Some(opts.runtime.clone()),
+                opts.partition_table.clone(),
+                flash_offset,
+                new_options.soc_images_paths.clone(),
+            );
+            new_options.primary_flash_image_path = Some(flash_image_path.clone());
+            new_options.secondary_flash_image_path = Some(flash_image_path);
+        }
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test);
+        assert_eq!(0, test);
     }
 
     // Test case: Image ID in the SOC manifest is different from the one being authorized in the firmware
