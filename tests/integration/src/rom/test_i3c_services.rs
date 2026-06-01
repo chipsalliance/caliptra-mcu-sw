@@ -321,7 +321,7 @@ mod test {
         // Step 3: Sign the challenge with vendor keys
         let challenge_hash: [u8; 48] = {
             let mut hasher = Sha384::new();
-            hasher.update(&challenge);
+            hasher.update(challenge);
             hasher.finalize().into()
         };
         let vendor_secret =

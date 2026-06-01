@@ -81,6 +81,9 @@ pub(crate) struct CertificateResponse {
     remainder_len: u16,
     total_cert_chain_len: u16,
     cert_info: Option<CertificateInfo>,
+    /// When true, this is a SlotSizeRequested query (SPDM 1.3+) and the
+    /// exchange must NOT be included in the M1/M2 transcript hash.
+    is_slot_size_query: bool,
 }
 
 impl CertificateResponse {
@@ -130,9 +133,10 @@ impl CertificateResponse {
     ) -> CommandResult<usize> {
         let certchain_offset: usize;
         let mut chunk_data_len = 0;
+        let total_response_len = CERTIFICATE_RESP_HEADER_SIZE + self.portion_len as usize;
         let mut rem_len = chunk
             .len()
-            .min((self.portion_len - cert_rsp_offset as u16) as usize);
+            .min(total_response_len.saturating_sub(cert_rsp_offset));
         if cert_rsp_offset < CERTIFICATE_RESP_HEADER_SIZE {
             // Read from the response header
             let header_bytes = self.resp_hdr().await?;
@@ -163,10 +167,12 @@ impl CertificateResponse {
             chunk_data_len += read_len;
         }
 
-        shared_transcript
-            .append(TranscriptContext::M1, None, &chunk[..chunk_data_len])
-            .await
-            .map_err(|e| (false, CommandError::Transcript(e)))?;
+        if !self.is_slot_size_query {
+            shared_transcript
+                .append(TranscriptContext::M1, None, &chunk[..chunk_data_len])
+                .await
+                .map_err(|e| (false, CommandError::Transcript(e)))?;
+        }
         Ok(chunk_data_len)
     }
 }
@@ -220,8 +226,11 @@ async fn generate_certificate_response<'a>(
     }
 
     // Append the response message to the M1 transcript
-    ctx.append_message_to_transcript(rsp, TranscriptContext::M1, None)
-        .await?;
+    // Per SPDM 1.3 spec: SlotSizeRequested exchanges shall not be included in M1.
+    if !rsp_ctx.is_slot_size_query {
+        ctx.append_message_to_transcript(rsp, TranscriptContext::M1, None)
+            .await?;
+    }
 
     rsp.push_data(payload_len)
         .map_err(|e| (false, CommandError::Codec(e)))?;
@@ -259,7 +268,9 @@ async fn process_get_certificate<'a>(
 
     // When SlotSizeRequested=1b in the GET_CERTIFICATE request, the Responder shall return
     // the number of bytes available for certificate chain storage in the RemainderLength field of the response.
-    if connection_version >= SpdmVersion::V13 && req.param2.slot_size_requested() != 0 {
+    let is_slot_size_query =
+        connection_version >= SpdmVersion::V13 && req.param2.slot_size_requested() != 0;
+    if is_slot_size_query {
         offset = 0;
         length = 0;
     }
@@ -268,8 +279,11 @@ async fn process_get_certificate<'a>(
     ctx.reset_transcript_via_req_code(ReqRespCode::GetCertificate);
 
     // Append the request to the M1 transcript
-    ctx.append_message_to_transcript(req_payload, TranscriptContext::M1, None)
-        .await?;
+    // Per SPDM 1.3 spec: SlotSizeRequested exchanges shall not be included in M1.
+    if !is_slot_size_query {
+        ctx.append_message_to_transcript(req_payload, TranscriptContext::M1, None)
+            .await?;
+    }
 
     // Prepare the response context
     let asym_algo = ctx.validate_negotiated_base_asym_algo(req_payload)?;
@@ -306,6 +320,7 @@ async fn process_get_certificate<'a>(
         remainder_len,
         total_cert_chain_len: certchain_len as u16,
         cert_info,
+        is_slot_size_query,
     };
 
     Ok(cert_resp_context)

@@ -1554,7 +1554,7 @@ mod tests {
         );
 
         // Step 3: MCU writes MCU_REQ - should preserve FW_BOOT_UPD_RESET
-        let mut reset_req = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
+        let reset_req = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
         reset_req.reg.modify(ResetRequest::McuReq::SET);
         mci.write_mci_reg_reset_request(reset_req);
 
@@ -1573,7 +1573,7 @@ mod tests {
 
         // Step 4: Second MCU_REQ (no new FW update bits written by Caliptra)
         // The stale FW_BOOT_UPD_RESET should be cleared and WARM_RESET set
-        let mut reset_req2 = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
+        let reset_req2 = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
         reset_req2.reg.modify(ResetRequest::McuReq::SET);
         mci.write_mci_reg_reset_request(reset_req2);
 
@@ -1606,7 +1606,7 @@ mod tests {
         assert_eq!(mci.read_mci_reg_reset_reason().reg.get(), 0x0);
 
         // MCU_REQ without any FW update bits → should produce WARM_RESET
-        let mut reset_req = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
+        let reset_req = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
         reset_req.reg.modify(ResetRequest::McuReq::SET);
         mci.write_mci_reg_reset_request(reset_req);
 

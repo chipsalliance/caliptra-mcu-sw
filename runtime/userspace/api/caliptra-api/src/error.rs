@@ -23,6 +23,7 @@ pub enum CaliptraApiError {
     AesGcmTagVerifyFailed,
     AsymAlgoUnsupported,
     InvalidResponse,
+    BufferTooSmall,
     UnprovisionedCsr,
     Eat(EatError),
     #[cfg(feature = "ocp-lock")]

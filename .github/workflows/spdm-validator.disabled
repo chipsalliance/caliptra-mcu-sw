@@ -199,6 +199,11 @@ jobs:
           cp -r test_key target/debug/
           ls -l target/debug/test_key/ecp384/
 
+      - name: Copy caliptra root CA cert into spdm-rs test_key
+        run: |
+          cp ${{ github.workspace }}/ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der \
+             ${{ github.workspace }}/spdm-rs/target/debug/test_key/ecp384/ca.cert.der
+
       - name: Run CCC spdm-requester-emu tests for TDISP+IDE
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug

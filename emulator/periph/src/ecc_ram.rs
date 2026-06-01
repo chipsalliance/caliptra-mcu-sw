@@ -513,7 +513,7 @@ mod tests {
             // Only test superset values — skip the non-superset cases
             // (those always fail on data bits alone).
             // Iterate over subsets of the complement bits.
-            let complement = !old & 0xFFFF;
+            let complement = !old;
             let mut extra = complement;
             loop {
                 let new_val = old | extra;

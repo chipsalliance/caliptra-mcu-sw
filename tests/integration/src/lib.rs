@@ -21,6 +21,8 @@ mod test_hek;
 mod test_i3c_constant_writes;
 mod test_i3c_simple;
 mod test_mctp_capsule_loopback;
+mod test_mctp_spdm_attestation;
+mod test_mctp_spdm_responder_conformance;
 mod test_mctp_vdm_cmds;
 mod test_mctp_vdm_validator;
 mod test_mcu_mbox;
@@ -39,7 +41,7 @@ pub fn platform() -> &'static str {
 
 #[cfg(test)]
 mod test {
-    use caliptra_image_types::FwVerificationPqcKeyType;
+
     use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
     use caliptra_mcu_builder::{
         CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET,
@@ -99,6 +101,7 @@ mod test {
         pub debug_intent: bool,
         /// Production debug unlock keypairs (ECC384 pub key bytes, MLDSA87 pub key bytes).
         pub prod_dbg_unlock_keypairs: Vec<([u8; 96], [u8; 2592])>,
+        pub use_strap_secrets: bool,
     }
 
     impl Default for TestParams<'_> {
@@ -126,6 +129,7 @@ mod test {
                 vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
                 debug_intent: false,
                 prod_dbg_unlock_keypairs: Vec::new(),
+                use_strap_secrets: false,
             }
         }
     }
@@ -587,6 +591,7 @@ mod test {
                 .iter()
                 .map(|(ecc, mldsa)| (ecc as &[u8; 96], mldsa as &[u8; 2592]))
                 .collect(),
+            use_strap_secrets: params.use_strap_secrets,
             ..Default::default()
         })
         .unwrap()
@@ -1057,8 +1062,6 @@ mod test {
     // run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
-    run_test!(test_mctp_spdm_responder_conformance, nightly);
-    run_test!(test_mctp_spdm_attestation, nightly);
     run_test!(test_doe_spdm_responder_conformance, nightly);
     run_test!(test_doe_spdm_tdisp_ide_validator, nightly);
     run_test!(test_mci, example_app);

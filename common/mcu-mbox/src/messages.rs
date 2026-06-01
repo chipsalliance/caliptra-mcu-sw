@@ -120,6 +120,7 @@ impl CommandId {
     pub const MC_FUSE_LOCK_PARTITION: Self = Self(0x4946_504B); // "IFPK"
 
     // Authorized commands
+    pub const MC_GET_AUTH_CMD_CHALLENGE: Self = Self(0x4D414343); // "MACC"
     pub const MC_ROTATE_VENDOR_PK_HASH: Self = Self(0x4D56_504B); // "MVPK"
 }
 
@@ -182,6 +183,8 @@ pub enum McuMailboxReq {
     FuseRead(FuseReadReq),
     FuseWrite(FuseWriteReq),
     FuseLockPartition(FuseLockPartitionReq),
+
+    GetAuthCmdChallenge(GetAuthCmdChallengeReq),
 }
 
 impl McuMailboxReq {
@@ -229,6 +232,8 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
+
+            McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -276,6 +281,8 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
+
+            McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -323,6 +330,8 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(_) => CommandId::MC_FUSE_READ,
             McuMailboxReq::FuseWrite(_) => CommandId::MC_FUSE_WRITE,
             McuMailboxReq::FuseLockPartition(_) => CommandId::MC_FUSE_LOCK_PARTITION,
+
+            McuMailboxReq::GetAuthCmdChallenge(_) => CommandId::MC_GET_AUTH_CMD_CHALLENGE,
         }
     }
 
@@ -395,6 +404,8 @@ pub enum McuMailboxResp {
     FuseRead(FuseReadResp),
     FuseWrite(FuseWriteResp),
     FuseLockPartition(FuseLockPartitionResp),
+
+    GetAuthCmdChallenge(GetAuthCmdChallengeResp),
 }
 
 /// A trait for responses with variable size data.
@@ -503,6 +514,8 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
+
+            McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -551,6 +564,8 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
+
+            McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -1347,6 +1362,29 @@ pub struct FuseLockPartitionResp {
     pub hdr: MailboxRespHeader,
 }
 impl Response for FuseLockPartitionResp {}
+
+/// MC_GET_AUTH_CMD_CHALLENGE request: Get a challenge nonce to prove freshness in auth commands
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct GetAuthCmdChallengeReq {
+    pub hdr: MailboxReqHeader,
+    pub flags: u32,
+    pub reserved: u32,
+}
+impl Request for GetAuthCmdChallengeReq {
+    const ID: CommandId = CommandId::MC_GET_AUTH_CMD_CHALLENGE;
+    type Resp = GetAuthCmdChallengeResp;
+}
+
+/// MC_GET_AUTH_CMD_CHALLENGE response: Indicates success or failure.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct GetAuthCmdChallengeResp {
+    pub hdr: MailboxRespHeader,
+    pub reserved: u32,
+    pub challenge: [u8; 32],
+}
+impl Response for GetAuthCmdChallengeResp {}
 
 #[cfg(test)]
 mod tests {
