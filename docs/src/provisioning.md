@@ -116,6 +116,94 @@ Below is a summary of the provisioning flow required to bring a Caliptra Subsyst
 10. \[Optional\] Tester program IDevID certificate into integration-specific non-volatile storage.
 11. Tester drives a lifecycle transition via JTAG: Manuf → Prod\[End\]
 
+# Provisioning Responsibilities
+
+Provisioning responsibilities vary depending on whether the SoC containing Caliptra Subsystem follows one of two integration scenarios (labeled 1 and 2 below). Below, we provide details on how the IDevID Certificate Signing Requests (CSRs) are authenticated and endorsed in each product integration scenario. We define two different roles to aid this discussion: "vendor/manufacturer" and "owner".
+
+| Role | Definition |
+| :--- | :--- |
+| Vendor/Manufacturer | The entity that manufactures or integrates the SoC/Caliptra hardware and defines the vendor public key(s). This entity may endorse Caliptra IDevID certificates. |
+| Owner | The downstream party that takes custody of the device for operational use, controls which firmware and identities are trusted, enforces ownership policies (e.g. via an owner public key), and is responsible for protecting Caliptra security assets once devices are in the field. This entity may also endorse Caliptra IDevID certificates, if the Vendor/Manufacturer does not. |
+
+## Scenario 1: Vendor and Owner are the Same Entity
+
+**Vendor and owner are the same entity**; provisioning is performed on owner controlled infrastructure. The owner may choose to deploy provisioning infrastructure at any stage in their silicon (e.g., FT or SLT stages) and/or platform (e.g. L5 or L10 stages) manufacturing process, since they own both silicon and platform manufacturing.  Specifically, at silicon manufacturing (typically at FT or SLT stages) the UDS should be programmed, and the IDevID CSR (and HMAC) extracted, using Caliptra APIs. Then, the IDevID CSR may either be (depending on the Vendor/Owner's product specific requirements),
+
+1. endorsed at the same silicon manufacturing stage (FT or SLT) after verifying the CSR HMAC, or
+2. collected, along with the CSR HMAC, and stored in an owner database to be authenticated and endorsed at a later platform manufacturing stage.
+
+Regardless of which manufacturing stage (silicon or platform) the owner chooses to deploy provisioning infrastructure at, two key infrastructure components will be required:
+
+*   **an HSM** to both:
+    *   verify the HMAC signature of each IDevID CSR, and
+    *   endorse each certificate.
+*   **a Device Registry Database** to either:
+    *   store IDevID CSRs harvested during silicon manufacturing to be endorsed later during platform manufacturing, or
+    *   store IDevID certificates that are endorsed during silicon manufacturing.
+
+## Scenario 2: Vendor builds a Caliptra device for a single Owner
+
+**The vendor is building a device for a single owner**. In this scenario, provisioning may be either:
+
+1. entirely performed by the vendor's infrastructure deployed at any silicon manufacturing stage (e.g., FT or SLT stages), or
+2. performed by a combination of the vendor's provisioning infrastructure, deployed at a silicon manufacturing stage (e.g., FT or SLT stages), and the ODM or owner's infrastructure, deployed at a platform manufacturing stage (e.g., L5 or L10 stages)
+
+
+### Option 1
+
+If option 1 is selected, the vendor will likely need to deploy the same two infrastructure components required in Scenario 1: an HSM and Device Registry Database. The vendor infrastructure is then responsible for:
+
+1. programming the UDS using Caliptra APIs,
+2. extracting the IDevID CSR (and HMAC) using Caliptra APIs
+3. validating CSR HMACs/endorsing CSRs with their HSM, and
+4. storing endorsed certificates in a database until they can be transferred to the intended owner.
+
+In this option, the owner is trusting the vendor's CA keys, and therefore their provisioning infrastructure.
+
+
+### Option 2
+
+If option 2 is selected, the vendor may only need to deploy a Device Registry Database, while the owner will need to deploy both an HSM and a Device Registry Database. The vendor then performs steps 1 and 2 in option 1 during silicon manufacturing, and stores the CSRs and their corresponding HMACs in a database to share with the owner. Later, during platform manufacturing, the owner validates each CSR HMAC and endorses each certificate with their HSM.
+
+# Lifecycle and Debug Unlock Token Requirements
+
+All lifecycle and debug tokens, except the raw unlock token, are provisioned during manufacturing (in the **TestUnlocked0** state), and stored by the manufacturer, or handed over to the device owner (e.g., the RMA unlock token). Below we provide guidance on how said tokens should be generated, stored, and/or transmitted to device owners.
+
+## Token Generation
+
+All lifecycle and manufacturing debug tokens should be generated using either a [NIST’s SP 800-90A](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-90Ar1.pdf) or [NIST’s SP 800-90C (Second Draft)](https://csrc.nist.gov/CSRC/media/Publications/sp/800-90c/draft/documents/sp800_90c_second_draft.pdf) compliant random bit generator (RBG), depending on the uniqueness requirements of the given token. Production debug unlock tokens should follow the guideline of [FIPS 186-5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and [FIPS 204](https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.204.pdf) for ECDSA and ML-DSA based signature schemes, respectively.
+
+## Token Uniqueness
+
+While product integration requirements should ultimately dictate the uniqueness of tokens across a set of chips for a given product, the following table provides a recommendation to maximize security of the provisioning process, while also facilitating ease of deployment. 
+
+| Token | Uniqueness |
+| :--- | :--- |
+| Raw Unlock | Unique of a specific chip tapeout, i.e. the same across all chips |
+| Test Unlock 1–7 | Unique per wafer lot or SKU. |
+| Test Exit to Manuf | Unique per wafer lot or SKU. |
+| Manuf to Prod | Unique per wafer lot or SKU. |
+| Prod to ProdEnd | Product specific. |
+| RMA | Unique per chip. |
+| Manuf Debug Unlock | Unique per wafer lot or SKU. |
+| Prod Debug Unlock | Unique per wafer lot or SKU. |
+
+## Token Storage and Use
+
+Manufacturers / Vendors should avoid storing these tokens in plaintext on disk. Instead, an HSM-backed Key Derivation Function should be used to produce the tokens on demand when possible. If tokens must be stored, as is the case with RMA and debug tokens, they should be encrypted with a key that is itself protected by an HSM.
+
+# Facility Guidelines
+
+To meet various security certification requirements (e.g. FIPS 140-3 Level 3) provisioning Caliptra Subsystem fuses (including secret fuse values like Field Entropy and UDS) may demand a highly controlled OSAT environment. Below we categorize some of these facility requirements:
+
+1. physical security and access controls,
+2. environmental controls,
+3. data logging and traceability,
+4. key management practices, and
+5. adherence to industry standards and certification requirements.
+
+It is the responsibility of the product integrator to ensure the appropriate requirements are met for the specific certification level relevant to their product.
+
 ## Appendix
 
 ### Lifecycle State Constraints for Provisioning Fuses
