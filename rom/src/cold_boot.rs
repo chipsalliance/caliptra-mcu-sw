@@ -38,8 +38,8 @@ use caliptra_mcu_registers_generated::mci::bits::{MboxExecute, MboxLock};
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_romtime::ocp_lock::HekState;
 use caliptra_mcu_romtime::{
-    CaliptraSoC, HexBytes, HexWord, LifecycleControllerState, LifecycleToken, McuBootMilestones,
-    McuRomBootStatus,
+    CaliptraSoC, FieldEntropySlot, FieldEntropyState, HexBytes, HexWord, LifecycleControllerState,
+    LifecycleToken, McuBootMilestones, McuRomBootStatus, Otp,
 };
 use core::fmt::Write;
 use core::ops::Deref;
@@ -165,16 +165,84 @@ impl ColdBoot {
         program_field_entropy: &[bool; 4],
         soc_manager: &mut CaliptraSoC,
         mci: &caliptra_mcu_romtime::Mci,
+        otp: &Otp,
     ) {
+        // Read current write state at the start of each iteration to avoid stale state bug
+        let Ok(raw_state) = otp.read_entry(fuses::FIELD_ENTROPY_STATE) else {
+            caliptra_mcu_romtime::println!("[mcu-rom] Error reading FIELD_ENTROPY_STATE");
+            fatal_error(McuError::ROM_OTP_READ_ERROR);
+        };
+        let mut state = FieldEntropyState::from_bits_retain(raw_state as u16);
+
         for (partition, _) in program_field_entropy
             .iter()
             .enumerate()
             .filter(|(_, partition)| **partition)
         {
+            // Convert partition index to FieldEntropySlot enum safely
+            let slot = FieldEntropySlot::try_from(partition).unwrap_or_else(|_| {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] Invalid field entropy partition {}",
+                    partition
+                );
+                fatal_error(McuError::ROM_OTP_INVALID_DATA_ERROR);
+            });
+
+            let started = state.started(slot);
+            let finished = state.finished(slot);
+            let zeroized = state.zeroized(slot);
+
+            // If it is zeroized, or partial mark it as an error.
+            if zeroized {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] Field entropy slot {} is zeroized, error!",
+                    partition
+                );
+                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_ZEROIZED);
+            }
+
+            if started && !finished {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] Field entropy slot {} is partially programmed, error!",
+                    partition
+                );
+                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PARTIAL);
+            }
+
+            // If slot is fully programmed, skip it and mark it as successful.
+            if finished {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] Field entropy slot {} already programmed, skipping",
+                    partition
+                );
+                // Set status for each partition completion
+                let partition_status = match partition {
+                    0 => McuRomBootStatus::FieldEntropyPartition0Complete.into(),
+                    1 => McuRomBootStatus::FieldEntropyPartition1Complete.into(),
+                    2 => McuRomBootStatus::FieldEntropyPartition2Complete.into(),
+                    3 => McuRomBootStatus::FieldEntropyPartition3Complete.into(),
+                    _ => mci.flow_checkpoint(),
+                };
+                mci.set_flow_checkpoint(partition_status);
+                continue;
+            }
+
+            // Only execute the command if the slot is empty.
             caliptra_mcu_romtime::println!(
                 "[mcu-rom] Executing FE_PROG command for partition {}",
                 partition
             );
+
+            // Before starting the command to caliptra mark the slot as started
+            state.set_started(slot, true);
+            let raw_state = raw_state | (state.bits() as u32);
+            otp.write_entry(fuses::FIELD_ENTROPY_STATE, raw_state)
+                .unwrap_or_else(|_| {
+                    caliptra_mcu_romtime::println!(
+                        "[mcu-rom] Error writing FIELD_ENTROPY_STATE (started)"
+                    );
+                    fatal_error(McuError::ROM_OTP_WRITE_WORD_ERROR);
+                });
 
             let mut req = FeProgReq {
                 partition: partition as u32,
@@ -220,6 +288,17 @@ impl ColdBoot {
                     fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
                 }
             }
+
+            // mark it as finished when Caliptra returns success
+            state.set_finished(slot, true);
+            let raw_state = raw_state | (state.bits() as u32);
+            otp.write_entry(fuses::FIELD_ENTROPY_STATE, raw_state)
+                .unwrap_or_else(|_| {
+                    caliptra_mcu_romtime::println!(
+                        "[mcu-rom] Error writing FIELD_ENTROPY_STATE (finished)"
+                    );
+                    fatal_error(McuError::ROM_OTP_WRITE_WORD_ERROR);
+                });
 
             // Set status for each partition completion
             let partition_status = match partition {
@@ -355,6 +434,19 @@ impl ColdBoot {
             );
             fatal_error(McuError::GENERIC_EXCEPTION);
         }
+    }
+
+    /// Measure the field_entropy_state fuses and stash it to DPE.
+    fn report_field_entropy_state(env: &mut RomEnv) {
+        let Ok(raw_state) = env.otp.read_entry(fuses::FIELD_ENTROPY_STATE) else {
+            caliptra_mcu_romtime::println!("[mcu-rom] Error reading FIELD_ENTROPY_STATE");
+            fatal_error(McuError::ROM_OTP_READ_ERROR);
+        };
+        let write_state = FieldEntropyState::from_bits_retain(raw_state as u16);
+
+        let measurement = mailbox::cm_sha384(&mut env.soc_manager, &[write_state.bits() as u32]);
+
+        Self::stash_measurement(&mut env.soc_manager, &measurement);
     }
 
     /// Import the test AES key via CM_IMPORT and return the CMK handle.
@@ -1317,6 +1409,9 @@ impl BootFlow for ColdBoot {
             crate::call_hook(params.hooks, |h| h.post_stable_owner_key_derivation());
         }
 
+        // Stash a measurement of the field_entropy_state before loading firmware
+        Self::report_field_entropy_state(env);
+
         // Enter I3C services unconditionally if force_i3c_services is set
         if params.force_i3c_services {
             if let Some(services) = params.i3c_services {
@@ -1526,7 +1621,12 @@ impl BootFlow for ColdBoot {
         if params.program_field_entropy.iter().any(|x| *x) {
             caliptra_mcu_romtime::println!("[mcu-rom] Programming field entropy");
             mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingStarted.into());
-            Self::program_field_entropy(&params.program_field_entropy, &mut env.soc_manager, mci);
+            Self::program_field_entropy(
+                &params.program_field_entropy,
+                &mut env.soc_manager,
+                mci,
+                &env.otp,
+            );
             mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
         }
 

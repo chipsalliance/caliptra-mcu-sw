@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::{HexBytes, HexWord, StaticRef};
+use bitflags::bitflags;
 use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_registers_generated::fuses::{self, FuseEntryInfo, OtpPartitionInfo};
 use caliptra_mcu_registers_generated::otp_ctrl;
@@ -1067,5 +1068,86 @@ pub fn vendor_mldsa_revocation_entry(index: usize) -> McuResult<&'static FuseEnt
         14 => Ok(fuses::VENDOR_MLDSA_REVOCATION_14),
         15 => Ok(fuses::VENDOR_MLDSA_REVOCATION_15),
         _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct FieldEntropyState: u16 {
+        // Slot 0
+        const SLOT0_STARTED = 1 << 0;
+        const SLOT0_FINISHED = 1 << 1;
+        const SLOT0_ZEROIZED = 1 << 2;
+        // Slot 1
+        const SLOT1_STARTED = 1 << 3;
+        const SLOT1_FINISHED = 1 << 4;
+        const SLOT1_ZEROIZED = 1 << 5;
+        // Slot 2
+        const SLOT2_STARTED = 1 << 6;
+        const SLOT2_FINISHED = 1 << 7;
+        const SLOT2_ZEROIZED = 1 << 8;
+        // Slot 3
+        const SLOT3_STARTED = 1 << 9;
+        const SLOT3_FINISHED = 1 << 10;
+        const SLOT3_ZEROIZED = 1 << 11;
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldEntropySlot {
+    Slot0 = 0,
+    Slot1 = 1,
+    Slot2 = 2,
+    Slot3 = 3,
+}
+
+impl TryFrom<usize> for FieldEntropySlot {
+    type Error = ();
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Slot0),
+            1 => Ok(Self::Slot1),
+            2 => Ok(Self::Slot2),
+            3 => Ok(Self::Slot3),
+            _ => Err(()),
+        }
+    }
+}
+
+impl FieldEntropyState {
+    pub fn started(&self, slot: FieldEntropySlot) -> bool {
+        self.contains(Self::started_flag(slot))
+    }
+
+    pub fn finished(&self, slot: FieldEntropySlot) -> bool {
+        self.contains(Self::finished_flag(slot))
+    }
+
+    pub fn zeroized(&self, slot: FieldEntropySlot) -> bool {
+        self.contains(Self::zeroized_flag(slot))
+    }
+
+    pub fn set_started(&mut self, slot: FieldEntropySlot, value: bool) {
+        self.set(Self::started_flag(slot), value);
+    }
+
+    pub fn set_finished(&mut self, slot: FieldEntropySlot, value: bool) {
+        self.set(Self::finished_flag(slot), value);
+    }
+
+    pub fn set_zeroized(&mut self, slot: FieldEntropySlot, value: bool) {
+        self.set(Self::zeroized_flag(slot), value);
+    }
+
+    fn started_flag(slot: FieldEntropySlot) -> Self {
+        Self::from_bits_retain(1 << (3 * (slot as usize)))
+    }
+
+    fn finished_flag(slot: FieldEntropySlot) -> Self {
+        Self::from_bits_retain(1 << (3 * (slot as usize) + 1))
+    }
+
+    fn zeroized_flag(slot: FieldEntropySlot) -> Self {
+        Self::from_bits_retain(1 << (3 * (slot as usize) + 2))
     }
 }

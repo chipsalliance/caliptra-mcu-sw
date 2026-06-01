@@ -491,6 +491,10 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
         name: "stable_owner_key_personalization_seed",
         size: Bytes(32),
     },
+    Fuse {
+        name: "field_entropy_state",
+        size: Bytes(2),
+    },
 ];
 pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
@@ -520,6 +524,10 @@ pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
         name: "stable_owner_key_personalization_seed",
         bits: Bits(256),
+    },
+    FuseField {
+        name: "field_entropy_state",
+        bits: Bits(12),
     },
     FuseField {
         name: "vendor_recovery_pk_hash",
@@ -854,6 +862,15 @@ pub const STABLE_OWNER_KEY_PERSONALIZATION_SEED: &FuseEntryInfo = &FuseEntryInfo
     byte_size: 32,
     name: "stable_owner_key_personalization_seed",
     layout: FuseLayoutType::Single { bits: 256 },
+};
+/// Fuse entry for `field_entropy_state`.
+pub const FIELD_ENTROPY_STATE: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 7,
+    byte_offset: 0xb88,
+    byte_size: 32,
+    name: "field_entropy_state",
+    layout: FuseLayoutType::Single { bits: 12 },
 };
 /// Fuse entry for `vendor_recovery_pk_hash`.
 pub const VENDOR_RECOVERY_PK_HASH: &FuseEntryInfo = &FuseEntryInfo {
@@ -3105,14 +3122,14 @@ pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6: &FuseEntryInfo = &Fuse
     name: "stable_owner_key_personalization_seed",
     layout: FuseLayoutType::Single { bits: 256 },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7`.
+/// OTP item entry for `field_entropy_state`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 7,
     byte_offset: 0xb88,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7",
-    layout: FuseLayoutType::Single { bits: 256 },
+    name: "field_entropy_state",
+    layout: FuseLayoutType::Single { bits: 12 },
 };
 /// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8: &FuseEntryInfo = &FuseEntryInfo {
