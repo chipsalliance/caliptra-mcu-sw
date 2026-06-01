@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn test_command_roundtrip() {
         // 0x10 (ProgramFieldEntropy) is no longer a top-level VDM command;
-        // it is dispatched as sub-command 0x02 of AuthorizedCommand (0x12).
+        // it is dispatched as sub-command 0x4D43_4650 (MCFP) of AuthorizedCommand (0x12).
         let valid_codes: &[u8] = &[
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
             0x0F, 0x11, 0x12,

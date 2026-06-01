@@ -30,31 +30,11 @@ pub fn sign_auth_cmd_challenge(challenge: &[u8; 32], cmd_id: u32, cmd: &[u8]) ->
     type HmacSha384 = Hmac<Sha384>;
     let cmd_id_bytes = cmd_id.to_be_bytes();
     let cmd_body = &cmd[size_of::<MailboxReqHeader>()..];
-    println!("[DEBUG sign_auth_cmd_challenge]");
-    println!("  cmd_id: 0x{:08x}", cmd_id);
-    println!("  cmd_id_BE: {:02X?}", cmd_id_bytes);
-    println!("  cmd (full {} bytes): {:02X?}", cmd.len(), cmd);
-    println!(
-        "  cmd_body (after hdr, {} bytes): {:02X?}",
-        cmd_body.len(),
-        cmd_body
-    );
-    println!(
-        "  challenge ({} bytes): {:02X?}",
-        challenge.len(),
-        challenge
-    );
-    println!(
-        "  key ({} bytes): {:02X?}",
-        TEST_AUTH_CMD_HMAC_KEY.len(),
-        &TEST_AUTH_CMD_HMAC_KEY
-    );
     let mut mac = HmacSha384::new_from_slice(&TEST_AUTH_CMD_HMAC_KEY)?;
     mac.update(&cmd_id_bytes);
     mac.update(cmd_body);
     mac.update(challenge);
     let result: [u8; 48] = mac.finalize().into_bytes().into();
-    println!("  computed MAC ({} bytes): {:02X?}", result.len(), result);
     Ok(result)
 }
 
@@ -80,10 +60,6 @@ pub fn execute_authorized_req<R: caliptra_mcu_mbox_common::messages::Request>(
     let hdr: &mut MailboxReqHeader =
         MailboxReqHeader::mut_from_bytes(&mut auth_cmd[..size_of::<MailboxReqHeader>()]).unwrap();
     hdr.chksum = checksum;
-
-    println!("[DEBUG execute_authorized_req]");
-    println!("  R::ID = 0x{:08x}", u32::from(R::ID));
-    println!("  auth_cmd ({} bytes): {:02X?}", auth_cmd.len(), auth_cmd);
 
     // Send the request to the mailbox
     let mut response = hw

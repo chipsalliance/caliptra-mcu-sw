@@ -87,7 +87,7 @@ fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
 }
 
 #[test]
-fn test_fe_prog_debug_bytes() -> Result<()> {
+fn test_fe_prog_authorized_req() -> Result<()> {
     use crate::runtime::execute_authorized_req;
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
 
@@ -129,33 +129,27 @@ fn test_fe_prog_debug_bytes() -> Result<()> {
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
     });
 
-    // First try SVN increase (known to work) on the SAME hw model
-    println!("\n========== SVN INCREASE (should work) ==========");
+    // Verify SVN increase (baseline authorized command) succeeds
     let svn_cmd = FuseIncreaseCaliptraMinSvnReq {
         svn: 0,
         ..Default::default()
     };
     let svn_result = execute_authorized_req(&mut hw, svn_cmd);
-    println!("SVN Result: {:?}", svn_result.is_ok());
-    if let Err(ref e) = svn_result {
-        println!("SVN Error: {:?}", e);
-    }
-    println!("========== END SVN ==========\n");
+    assert!(
+        svn_result.is_ok(),
+        "SVN increase authorized request failed: {svn_result:?}"
+    );
 
-    // Now try FE_PROG on the same hw model
+    // Verify FE_PROG authorized request succeeds
     let cmd = McuFeProgReq {
         partition: 0,
         ..Default::default()
     };
-
-    println!("\n========== FE_PROG INTEGRATION TEST DEBUG ==========");
     let result = execute_authorized_req(&mut hw, cmd);
-    println!("Result: {:?}", result.is_ok());
-    if let Err(ref e) = result {
-        println!("FE_PROG Error: {:?}", e);
-    }
-    println!("========== END FE_PROG DEBUG ==========\n");
+    assert!(
+        result.is_ok(),
+        "FE_PROG authorized request failed: {result:?}"
+    );
 
-    // We don't assert success - just want to see the bytes
     Ok(())
 }

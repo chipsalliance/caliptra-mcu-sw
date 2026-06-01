@@ -306,8 +306,9 @@ pub trait CaliptraCmdHandler: Send + Sync {
 
     /// Program field entropy for a given partition.
     ///
-    /// Over the VDM path, SPDM session authentication is considered sufficient
-    /// so no MCU-level HMAC authorization is required.
+    /// Over both the MCU mailbox and VDM paths, the dispatch layer verifies
+    /// HMAC authorization via `CommandAuthorizer::verify_mac` before invoking
+    /// this transport-agnostic handler.
     ///
     /// # Arguments
     /// * `partition` - The partition index to program.
