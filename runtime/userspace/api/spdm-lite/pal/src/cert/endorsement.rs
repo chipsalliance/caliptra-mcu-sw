@@ -7,9 +7,12 @@
 //! enum ([`SlotEndorsement`]) dispatching to `ReadOnly` (slot 0)
 //! or `Managed` (slots 1-2) without dynamic dispatch.
 
+#[cfg(feature = "set-certificate")]
 use caliptra_mcu_libsyscall_caliptra::{flash::SpiFlash, DefaultSyscalls};
+#[cfg(feature = "set-certificate")]
 use caliptra_mcu_libtock_platform::ErrorCode;
 use mcu_error::McuResult;
+#[cfg(feature = "set-certificate")]
 use mcu_spdm_lite_codec::errors::{SPDM_BUSY, SPDM_OPERATION_FAILED};
 use mcu_spdm_lite_traits::SpdmPalAsymAlgo;
 
@@ -108,6 +111,7 @@ pub enum SlotEndorsement {
     /// Read-only endorsement backed by static root CA certs (slot 0).
     ReadOnly(ReadOnlyEndorsement),
     /// Managed full certificate chain backed by flash (slots 1-2, SET_CERTIFICATE).
+    #[cfg(feature = "set-certificate")]
     Managed(ManagedEndorsement),
 }
 
@@ -115,6 +119,7 @@ impl SlotEndorsement {
     pub async fn root_cert_hash(&self, algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()> {
         match self {
             Self::ReadOnly(e) => e.root_cert_hash(algo, out),
+            #[cfg(feature = "set-certificate")]
             Self::Managed(e) => e.root_cert_hash(algo, out),
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
@@ -123,6 +128,7 @@ impl SlotEndorsement {
     pub async fn size(&self, algo: SpdmPalAsymAlgo) -> McuResult<usize> {
         match self {
             Self::ReadOnly(e) => e.size(algo),
+            #[cfg(feature = "set-certificate")]
             Self::Managed(e) => e.size(algo),
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
@@ -131,6 +137,7 @@ impl SlotEndorsement {
     pub async fn capacity(&self, algo: SpdmPalAsymAlgo) -> McuResult<usize> {
         match self {
             Self::ReadOnly(e) => e.size(algo),
+            #[cfg(feature = "set-certificate")]
             Self::Managed(e) => e.capacity(algo),
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
@@ -144,6 +151,7 @@ impl SlotEndorsement {
     ) -> McuResult<usize> {
         match self {
             Self::ReadOnly(e) => e.read(algo, offset, buf),
+            #[cfg(feature = "set-certificate")]
             Self::Managed(e) => e.read(algo, offset, buf).await,
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
@@ -154,16 +162,31 @@ impl SlotEndorsement {
     }
 
     pub fn is_writable(&self) -> bool {
-        matches!(self, Self::Managed(_))
+        #[cfg(feature = "set-certificate")]
+        {
+            return matches!(self, Self::Managed(_));
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            false
+        }
     }
 
     pub fn stores_complete_chain(&self) -> bool {
-        matches!(self, Self::Managed(_))
+        #[cfg(feature = "set-certificate")]
+        {
+            return matches!(self, Self::Managed(_));
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            false
+        }
     }
 
     pub fn is_provisioned(&self) -> bool {
         match self {
             Self::ReadOnly(_) => true,
+            #[cfg(feature = "set-certificate")]
             Self::Managed(e) => e.is_initialized(),
             Self::Empty => false,
         }
@@ -217,17 +240,26 @@ impl ReadOnlyEndorsement {
     }
 }
 
+#[cfg(feature = "set-certificate")]
 const MANAGED_MAGIC: [u8; 4] = *b"SPCE";
+#[cfg(feature = "set-certificate")]
 const MANAGED_FORMAT_VERSION: u16 = 1;
+#[cfg(feature = "set-certificate")]
 const MANAGED_HEADER_SIZE: usize = 80;
+#[cfg(feature = "set-certificate")]
 const MANAGED_ALGO_ECC_P384: u8 = 1;
+#[cfg(feature = "set-certificate")]
 const MANAGED_ERASED_BYTE: u8 = 0xFF;
+#[cfg(feature = "set-certificate")]
 const MANAGED_KEY_USAGE_MASK: u16 = 0x0003;
+#[cfg(feature = "set-certificate")]
 const MANAGED_MAX_DER_LEN: usize = (u16::MAX as usize) - 52;
 
+#[cfg(feature = "set-certificate")]
 type CertStoreFlash = SpiFlash<DefaultSyscalls>;
 
 /// Managed flash-backed full cert chain installed by SET_CERTIFICATE.
+#[cfg(feature = "set-certificate")]
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub struct ManagedEndorsement {
@@ -244,6 +276,7 @@ pub struct ManagedEndorsement {
     key_usage_mask: u16,
 }
 
+#[cfg(feature = "set-certificate")]
 #[allow(dead_code)]
 impl ManagedEndorsement {
     pub const fn new(slot: u8, driver_num: u32, base: usize, capacity: usize) -> Self {
@@ -464,6 +497,7 @@ impl ManagedEndorsement {
     }
 }
 
+#[cfg(feature = "set-certificate")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ManagedRecord {
     version: u16,
@@ -478,6 +512,7 @@ struct ManagedRecord {
     root_hash: [u8; 48],
 }
 
+#[cfg(feature = "set-certificate")]
 impl ManagedRecord {
     fn encode(&self, out: &mut [u8; MANAGED_HEADER_SIZE]) {
         out[0..4].copy_from_slice(&MANAGED_MAGIC);
@@ -511,11 +546,13 @@ impl ManagedRecord {
     }
 }
 
+#[cfg(feature = "set-certificate")]
 fn checksum(data: &[u8]) -> u32 {
     data.iter()
         .fold(0u32, |acc, &byte| acc.wrapping_add(byte as u32))
 }
 
+#[cfg(feature = "set-certificate")]
 fn map_flash_error(err: ErrorCode) -> mcu_error::McuErrorCode {
     match err {
         ErrorCode::Busy => SPDM_BUSY,
@@ -523,7 +560,7 @@ fn map_flash_error(err: ErrorCode) -> mcu_error::McuErrorCode {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "set-certificate"))]
 mod tests {
     use super::*;
 

@@ -36,6 +36,7 @@ mod certificate;
 mod challenge;
 mod digests;
 mod error;
+#[cfg(feature = "set-certificate")]
 mod set_certificate;
 mod stack;
 mod transcript;

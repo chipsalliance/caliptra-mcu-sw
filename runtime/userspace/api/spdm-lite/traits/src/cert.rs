@@ -87,7 +87,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// Whether this backend accepts SPDM SET_CERTIFICATE writes.
     #[inline]
     fn set_certificate_supported(&self) -> bool {
-        self.supported_slots() & !self.provisioned_slots() != 0
+        false
     }
 
     /// Check whether a specific SET_CERTIFICATE request is authorized.

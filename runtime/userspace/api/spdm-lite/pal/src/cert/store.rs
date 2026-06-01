@@ -12,9 +12,9 @@ use mcu_caliptra_api_lite::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo
 use mcu_error::McuResult;
 use mcu_spdm_lite_traits::MAX_SLOTS;
 
-use super::endorsement::{
-    CertSlot, ManagedEndorsement, ReadOnlyEndorsement, SlotEndorsement, NUM_CERT_SLOTS,
-};
+#[cfg(feature = "set-certificate")]
+use super::endorsement::ManagedEndorsement;
+use super::endorsement::{CertSlot, ReadOnlyEndorsement, SlotEndorsement, NUM_CERT_SLOTS};
 
 const DEFAULT_CERT_INFO: u8 = 0x01;
 
@@ -154,6 +154,7 @@ impl SharedCertStore {
     /// Configure a flash-backed managed cert-chain slot and load any existing
     /// record from flash. Uninitialized flash leaves the slot supported but not
     /// provisioned, so SET_CERTIFICATE can install it later.
+    #[cfg(feature = "set-certificate")]
     pub async fn set_managed_endorsement(
         &self,
         idx: usize,

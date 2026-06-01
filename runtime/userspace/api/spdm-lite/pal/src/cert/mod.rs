@@ -98,10 +98,18 @@ impl SpdmPalCertStore for McuSpdmPal {
 
     #[inline]
     fn set_certificate_supported(&self) -> bool {
-        self.cert_store
-            .cert_slots()
-            .iter()
-            .any(|slot| slot.is_writable())
+        #[cfg(feature = "set-certificate")]
+        {
+            return self
+                .cert_store
+                .cert_slots()
+                .iter()
+                .any(|slot| slot.is_writable());
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            false
+        }
     }
 
     #[inline]
@@ -113,10 +121,18 @@ impl SpdmPalCertStore for McuSpdmPal {
         _cert_model: u8,
         _erase: bool,
     ) -> bool {
-        slot_index(slot)
-            .and_then(|idx| self.cert_store.cert_slots().get(idx))
-            .map(|slot| slot.is_writable())
-            .unwrap_or(false)
+        #[cfg(feature = "set-certificate")]
+        {
+            return slot_index(slot)
+                .and_then(|idx| self.cert_store.cert_slots().get(idx))
+                .map(|slot| slot.is_writable())
+                .unwrap_or(false);
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            let _ = slot;
+            false
+        }
     }
 
     async fn cert_chain_len(
@@ -280,23 +296,31 @@ impl SpdmPalCertStore for McuSpdmPal {
         root_hash: &[u8; 48],
         data: &[u8],
     ) -> McuResult<()> {
-        let idx = slot_index(slot).ok_or(INVARIANT)?;
-        let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-            endorsement::SlotEndorsement::Managed(e) => *e,
-            endorsement::SlotEndorsement::ReadOnly(_) => {
-                return Err(mcu_error::codes::NOT_IMPLEMENTED)
-            }
-            endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
-        };
-        let managed = managed
-            .write_updated(algo, key_pair_id, cert_info, root_hash, data)
-            .await?;
-        let cert_slot = self.cert_store.cert_slot_mut(idx);
-        cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
-        cert_slot.key_pair_id = Some(key_pair_id);
-        cert_slot.cert_info = Some(cert_info);
-        self.cert_store.invalidate_cache(slot);
-        Ok(())
+        #[cfg(feature = "set-certificate")]
+        {
+            let idx = slot_index(slot).ok_or(INVARIANT)?;
+            let managed = match &self.cert_store.cert_slots()[idx].endorsement {
+                endorsement::SlotEndorsement::Managed(e) => *e,
+                endorsement::SlotEndorsement::ReadOnly(_) => {
+                    return Err(mcu_error::codes::NOT_IMPLEMENTED);
+                }
+                endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
+            };
+            let managed = managed
+                .write_updated(algo, key_pair_id, cert_info, root_hash, data)
+                .await?;
+            let cert_slot = self.cert_store.cert_slot_mut(idx);
+            cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
+            cert_slot.key_pair_id = Some(key_pair_id);
+            cert_slot.cert_info = Some(cert_info);
+            self.cert_store.invalidate_cache(slot);
+            Ok(())
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            let _ = (slot, algo, key_pair_id, cert_info, root_hash, data);
+            Err(mcu_error::codes::NOT_IMPLEMENTED)
+        }
     }
 
     async fn erase_cert_chain(
@@ -305,20 +329,28 @@ impl SpdmPalCertStore for McuSpdmPal {
         slot: u8,
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {
-        let idx = slot_index(slot).ok_or(INVARIANT)?;
-        let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-            endorsement::SlotEndorsement::Managed(e) => *e,
-            endorsement::SlotEndorsement::ReadOnly(_) => {
-                return Err(mcu_error::codes::NOT_IMPLEMENTED)
-            }
-            endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
-        };
-        let managed = managed.erase_updated(algo).await?;
-        let cert_slot = self.cert_store.cert_slot_mut(idx);
-        cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
-        cert_slot.clear_metadata();
-        self.cert_store.invalidate_cache(slot);
-        Ok(())
+        #[cfg(feature = "set-certificate")]
+        {
+            let idx = slot_index(slot).ok_or(INVARIANT)?;
+            let managed = match &self.cert_store.cert_slots()[idx].endorsement {
+                endorsement::SlotEndorsement::Managed(e) => *e,
+                endorsement::SlotEndorsement::ReadOnly(_) => {
+                    return Err(mcu_error::codes::NOT_IMPLEMENTED);
+                }
+                endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
+            };
+            let managed = managed.erase_updated(algo).await?;
+            let cert_slot = self.cert_store.cert_slot_mut(idx);
+            cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
+            cert_slot.clear_metadata();
+            self.cert_store.invalidate_cache(slot);
+            Ok(())
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            let _ = (slot, algo);
+            Err(mcu_error::codes::NOT_IMPLEMENTED)
+        }
     }
 
     fn key_pair_id(&self, slot: u8) -> Option<u8> {
@@ -340,9 +372,16 @@ impl SpdmPalCertStore for McuSpdmPal {
         if !cert_slot.is_provisioned() {
             return None;
         }
-        match &cert_slot.endorsement {
-            endorsement::SlotEndorsement::Managed(e) => e.key_usage_mask(),
-            _ => Some(DEFAULT_KEY_USAGE_MASK),
+        #[cfg(feature = "set-certificate")]
+        {
+            match &cert_slot.endorsement {
+                endorsement::SlotEndorsement::Managed(e) => e.key_usage_mask(),
+                _ => Some(DEFAULT_KEY_USAGE_MASK),
+            }
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            Some(DEFAULT_KEY_USAGE_MASK)
         }
     }
 

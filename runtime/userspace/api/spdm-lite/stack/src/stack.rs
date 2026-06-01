@@ -24,7 +24,7 @@ use crate::build::build_error_response;
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
-use crate::{algorithms, capabilities, certificate, challenge, digests, set_certificate, version};
+use crate::{algorithms, capabilities, certificate, challenge, digests, version};
 
 /// Connection phase tracked on the responder so the dispatcher can
 /// enforce the DSP0274 §10 ordering
@@ -134,18 +134,20 @@ impl<S: Clone> ConnectionState<S> {
     ///   `key_schedule = SPDM`, `other_param_support = OPAQUE_DATA_FMT1`.
     /// * `phase = Start`, `version = V12`, peer fields cleared.
     pub fn caliptra() -> Self {
+        let cap_flags = CapFlags::CERT
+            | CapFlags::CHAL
+            | CapFlags::MEAS_SIG
+            | CapFlags::ALIAS_CERT
+            | set_certificate_cap_flags();
+        let other_param_support =
+            OtherParamSupport::OPAQUE_DATA_FMT1 | set_certificate_other_params();
+
         Self {
             ct_exponent: 20, // 2^20 µs
-            cap_flags: CapFlags::CERT
-                | CapFlags::CHAL
-                | CapFlags::MEAS_SIG
-                | CapFlags::ALIAS_CERT
-                | CapFlags::SET_CERT
-                | CapFlags::MULTI_KEY_CONN_RSP,
+            cap_flags,
 
             measurement_spec: MeasSpec::DMTF,
-            other_param_support: OtherParamSupport::OPAQUE_DATA_FMT1
-                | OtherParamSupport::MULTI_KEY_CONN,
+            other_param_support,
             meas_hash_algo: MeasHashAlgos::SHA_384,
             base_asym_sel: AsymAlgos::ECDSA_ECC_NIST_P384,
             base_hash_sel: HashAlgos::SHA_384,
@@ -195,6 +197,26 @@ impl<S: Clone> Default for ConnectionState<S> {
     fn default() -> Self {
         Self::caliptra()
     }
+}
+
+#[cfg(feature = "set-certificate")]
+fn set_certificate_cap_flags() -> CapFlags {
+    CapFlags::SET_CERT | CapFlags::MULTI_KEY_CONN_RSP
+}
+
+#[cfg(not(feature = "set-certificate"))]
+fn set_certificate_cap_flags() -> CapFlags {
+    CapFlags::EMPTY
+}
+
+#[cfg(feature = "set-certificate")]
+fn set_certificate_other_params() -> OtherParamSupport {
+    OtherParamSupport::MULTI_KEY_CONN
+}
+
+#[cfg(not(feature = "set-certificate"))]
+fn set_certificate_other_params() -> OtherParamSupport {
+    OtherParamSupport::EMPTY
 }
 
 /// SPDM responder state machine + dispatcher.
@@ -400,9 +422,12 @@ async fn dispatch<'a, Pal: SpdmPal>(
         ReqRespCode::GET_DIGESTS => digests::handle_get_digests(state, pal, io).await,
         ReqRespCode::GET_CERTIFICATE => certificate::handle_get_certificate(state, pal, io).await,
         ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
+        #[cfg(feature = "set-certificate")]
         ReqRespCode::SET_CERTIFICATE => {
-            set_certificate::handle_set_certificate(state, pal, io).await
+            crate::set_certificate::handle_set_certificate(state, pal, io).await
         }
+        #[cfg(not(feature = "set-certificate"))]
+        ReqRespCode::SET_CERTIFICATE => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
     }
