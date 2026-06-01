@@ -27,7 +27,8 @@ use crate::error::{
 };
 use crate::session::SessionManager;
 use crate::{
-    algorithms, capabilities, certificate, challenge, chunk, digests, measurements, version,
+    algorithms, capabilities, certificate, challenge, chunk, digests, key_exchange, measurements,
+    version,
 };
 
 /// Connection phase tracked on the responder so the dispatcher can
@@ -132,8 +133,10 @@ impl<S: Clone> ConnectionState<S> {
     /// A new `ConnectionState` with:
     ///
     /// * `ct_exponent = 20` (≈ 1 s — `2^20` µs).
-    /// * `cap_flags = CERT | CHAL | MEAS_SIG | ALIAS_CERT | CHUNK`,
-    ///   plus SET_CERTIFICATE capabilities when that test feature is enabled.
+    /// * `cap_flags = CERT | CHAL | MEAS_SIG | ALIAS_CERT | KEY_EX |
+    ///   ENCRYPT | MAC | CHUNK`, plus SET_CERTIFICATE capabilities when
+    ///   that test feature is enabled. `HANDSHAKE_IN_THE_CLEAR` is
+    ///   intentionally omitted — FINISH is encrypted with handshake keys.
     /// * `measurement_spec = DMTF`, `meas_hash_algo = SHA_384`,
     ///   `base_asym_sel = ECDSA_ECC_NIST_P384`,
     ///   `base_hash_sel = SHA_384`.
@@ -145,6 +148,9 @@ impl<S: Clone> ConnectionState<S> {
             | CapFlags::CHAL
             | CapFlags::MEAS_SIG
             | CapFlags::ALIAS_CERT
+            | CapFlags::KEY_EX
+            | CapFlags::ENCRYPT
+            | CapFlags::MAC
             | CapFlags::CHUNK
             | set_certificate_cap_flags();
         let other_param_support =
@@ -159,9 +165,9 @@ impl<S: Clone> ConnectionState<S> {
             meas_hash_algo: MeasHashAlgos::SHA_384,
             base_asym_sel: AsymAlgos::ECDSA_ECC_NIST_P384,
             base_hash_sel: HashAlgos::SHA_384,
-            dhe: DheAlgos::EMPTY,
-            aead: AeadAlgos::EMPTY,
-            key_schedule: KeyScheduleAlgos::EMPTY,
+            dhe: DheAlgos::SECP_384_R1,
+            aead: AeadAlgos::AES_256_GCM,
+            key_schedule: KeyScheduleAlgos::SPDM,
 
             phase: Phase::Start,
             version: SpdmVersion::V12,
@@ -502,6 +508,9 @@ async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
         ReqRespCode::SET_CERTIFICATE => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
         ReqRespCode::GET_MEASUREMENTS => {
             measurements::handle_get_measurements(state, pal, io).await
+        }
+        ReqRespCode::KEY_EXCHANGE => {
+            key_exchange::handle_key_exchange(state, sessions, pal, io).await
         }
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),

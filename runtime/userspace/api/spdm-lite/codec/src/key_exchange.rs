@@ -5,7 +5,7 @@
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::{
-    ECC_P384_SIGNATURE_SIZE, ReqRespCode, ResponseBody, SHA384_HASH_SIZE,
+    ReqRespCode, ResponseBody, SHA384_HASH_SIZE,
     WireError, WireWriter,
 };
 
@@ -58,19 +58,18 @@ impl KeyExchangeReqBody {
 /// Wire layout (DSP0274 §10.11.3):
 /// ```text
 /// [ heartbeat_period(1) | reserved(1) | rsp_session_id(2) |
-///   mut_auth_requested(1) | slot_id_param(1) | random(32) |
+///   mut_auth_requested(1) | req_slot_id_param(1) | random(32) |
 ///   exchange_data(96) | meas_summary_hash(0|48) |
 ///   opaque_len(2) | opaque_data(var) |
 ///   signature(96) | responder_verify_data(0|48) ]
 /// ```
 pub struct KeyExchangeRsp<'a> {
     pub rsp_session_id: u16,
-    pub slot_id: u8,
     pub random_data: &'a [u8; KEY_EXCHANGE_RANDOM_DATA_LEN],
     pub exchange_data: &'a [u8; ECDH_P384_EXCHANGE_DATA_SIZE],
     pub meas_summary_hash: Option<&'a [u8; SHA384_HASH_SIZE]>,
     pub opaque_data: &'a [u8],
-    pub signature: &'a [u8; ECC_P384_SIGNATURE_SIZE],
+    pub signature: &'a [u8],
     /// Present when HBITC is NOT negotiated and session has MAC/ENCRYPT.
     pub responder_verify_data: Option<&'a [u8; SHA384_HASH_SIZE]>,
 }
@@ -85,7 +84,7 @@ impl ResponseBody for KeyExchangeRsp<'_> {
             + self.meas_hash_len()
             + 2
             + self.opaque_data.len()
-            + ECC_P384_SIGNATURE_SIZE
+            + self.signature.len()
             + self.verify_data_len()
     }
 
@@ -98,8 +97,8 @@ impl ResponseBody for KeyExchangeRsp<'_> {
         w.write_bytes(&self.rsp_session_id.to_le_bytes())?;
         // mut_auth_requested = 0 (no mutual auth)
         w.write_bytes(&[0u8])?;
-        // slot_id_param
-        w.write_bytes(&[self.slot_id])?;
+        // req_slot_id_param = 0 (no mutual auth)
+        w.write_bytes(&[0u8])?;
         // random_data
         w.write_bytes(self.random_data)?;
         // exchange_data
@@ -114,8 +113,10 @@ impl ResponseBody for KeyExchangeRsp<'_> {
         if !self.opaque_data.is_empty() {
             w.write_bytes(self.opaque_data)?;
         }
-        // signature
-        w.write_bytes(self.signature)?;
+        // signature (variable — empty for partial builds)
+        if !self.signature.is_empty() {
+            w.write_bytes(self.signature)?;
+        }
         // optional responder_verify_data
         if let Some(vd) = self.responder_verify_data {
             w.write_bytes(vd)?;

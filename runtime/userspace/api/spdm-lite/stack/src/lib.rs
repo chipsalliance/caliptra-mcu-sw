@@ -37,6 +37,7 @@ mod challenge;
 mod chunk;
 mod digests;
 mod error;
+mod key_exchange;
 pub mod key_schedule;
 mod measurements;
 #[cfg(feature = "set-certificate")]
