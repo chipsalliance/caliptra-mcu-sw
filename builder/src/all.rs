@@ -75,8 +75,6 @@ const MCI_BASE_AXI_ADDRESS: u64 = caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.mci_
 pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
     use std::process::Command;
 
-    println!("Building emulator with feature: {}", feature);
-
     let mut cmd = Command::new("cargo");
     cmd.current_dir(&*PROJECT_ROOT).args([
         "build",
@@ -84,9 +82,11 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
         "caliptra-mcu-emulator",
         "--profile",
         "test",
-        "--features",
-        feature,
     ]);
+
+    if !feature.is_empty() {
+        cmd.args(["--features", feature]);
+    }
 
     let output = cmd.output()?;
     if !output.status.success() {
@@ -436,7 +436,7 @@ impl EmulatorBinaries {
             let mut data = Vec::new();
             file.read_to_end(&mut data)?;
 
-            if name.starts_with("emulator-") {
+            if name == "emulator" {
                 binaries.emulators.push((name, data));
             }
         }
@@ -444,17 +444,15 @@ impl EmulatorBinaries {
         Ok(binaries)
     }
 
-    /// Get the prebuilt emulator binary for a specific test feature.
-    pub fn emulator(&self, feature: &str) -> Result<Vec<u8>> {
-        let expected_name = format!("emulator-{}", feature);
+    /// Get the prebuilt emulator binary.
+    pub fn emulator(&self) -> Result<Vec<u8>> {
         for (name, data) in self.emulators.iter() {
-            if &expected_name == name {
+            if name == "emulator" {
                 return Ok(data.clone());
             }
         }
-        Err(anyhow::anyhow!(
-            "Emulator not found. File name: {expected_name}, feature: {feature}"
-        ))
+
+        Err(anyhow::anyhow!("Emulator binary not found in bundle"))
     }
 }
 
@@ -494,7 +492,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // TODO: use temp files
     let platform = platform.unwrap_or("emulator");
     let rom_features = rom_features.unwrap_or_default();
-    let mcu_rom = crate::rom_build(Some(platform.to_string()), Some(rom_features.to_string()))?;
+    let mcu_rom = crate::rom_build(
+        Some(platform.to_string()),
+        Some(rom_features.to_string()),
+        None,
+    )?;
 
     // Build base network ROM (without features)
     let network_rom = crate::network_rom_build(None)?;
@@ -508,7 +510,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let mut used_filenames = std::collections::HashSet::new();
     let mut test_roms = vec![];
     for fwid in firmware::REGISTERED_FW {
-        let bin_path = PathBuf::from(crate::test_rom_build(Some(platform), fwid)?);
+        let bin_path = PathBuf::from(crate::test_rom_build(Some(platform), fwid, None)?);
         let filename = bin_path.file_name().unwrap().to_str().unwrap().to_string();
         if !used_filenames.insert(filename.clone()) {
             panic!("Multiple fwids with filename {filename}")
@@ -570,6 +572,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         Some(base_runtime_path.to_string()),
         false,
         Some(platform),
+        None,
         None,
     )?;
 
@@ -654,7 +657,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         }
     }
     for &feature in feature_roms_to_build.iter() {
-        match crate::rom_build(Some(platform.to_string()), Some(feature.to_string())) {
+        match crate::rom_build(Some(platform.to_string()), Some(feature.to_string()), None) {
             Ok(rom_path) => {
                 let rom_name = format!("mcu-test-rom-feature-{}.bin", feature);
                 println!("Built feature ROM: {rom_path:?} -> {}", rom_name);
@@ -709,6 +712,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             Some(feature_runtime_path),
             include_example_app,
             Some(platform),
+            None,
             None,
         )?;
 
@@ -955,28 +959,15 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 #[derive(Default)]
 pub struct EmulatorBuildArgs<'a> {
     pub output: Option<&'a str>,
-    pub features: Option<&'a str>,
 }
 
-/// Build emulator binaries for all specified features and package them in emulators.zip.
+/// Build the emulator binary and package it in emulators.zip.
 pub fn emulator_build(args: EmulatorBuildArgs) -> Result<()> {
-    let EmulatorBuildArgs { output, features } = args;
+    let EmulatorBuildArgs { output } = args;
 
-    let features = match features {
-        Some(f) if !f.is_empty() => f.split(",").collect::<Vec<&str>>(),
-        _ => crate::features::EMULATOR_TEST_FEATURES.to_vec(),
-    };
-
-    let mut emulators: Vec<(String, PathBuf)> = vec![];
-
-    for feature in features.iter() {
-        if let Some(emulator_path) = build_emulator_with_feature(feature)? {
-            // Copy to a unique path so we can keep all emulators
-            let emulator_dest = crate::target_dir().join(format!("emulator-{}", feature));
-            std::fs::copy(&emulator_path, &emulator_dest)?;
-            emulators.push((feature.to_string(), emulator_dest));
-        }
-    }
+    // Build the emulator (no features needed anymore)
+    let emulator_path = build_emulator_with_feature("")?
+        .ok_or_else(|| anyhow::anyhow!("Failed to build emulator"))?;
 
     let default_path = crate::target_dir().join("emulators.zip");
     let path = output.map(Path::new).unwrap_or(&default_path);
@@ -985,14 +976,11 @@ pub fn emulator_build(args: EmulatorBuildArgs) -> Result<()> {
     let mut zip = ZipWriter::new(file);
     let options = SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
-        .unix_permissions(0o755) // Make emulators executable
+        .unix_permissions(0o755) // Make emulator executable
         .last_modified_time(zip::DateTime::try_from(chrono::Local::now().naive_local())?);
 
-    for (feature, emulator_path) in emulators {
-        let emulator_name = format!("emulator-{}", feature);
-        println!("Adding {} -> {}", emulator_path.display(), emulator_name);
-        add_to_zip(&emulator_path, &emulator_name, &mut zip, options)?;
-    }
+    println!("Adding {} -> emulator", emulator_path.display());
+    add_to_zip(&emulator_path, "emulator", &mut zip, options)?;
 
     zip.finish()?;
     println!("Emulator build complete: {}", path.display());

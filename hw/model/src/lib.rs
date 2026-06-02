@@ -14,9 +14,8 @@ use caliptra_hw_model_types::{
 };
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_mbox_common::messages::calc_checksum;
-use caliptra_mcu_romtime::{
-    LifecycleControllerState, LifecycleRawTokens, LifecycleToken, McuBootMilestones,
-};
+use caliptra_mcu_romtime::McuBootMilestones;
+pub use caliptra_mcu_romtime::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 use caliptra_mcu_testing_common::MCU_RUNNING;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 pub use mcu_mgr::McuManager;
@@ -242,6 +241,8 @@ pub struct InitParams<'a> {
 
     /// Override the default AXI user that the model uses to access the Caliptra SoC interface.
     pub caliptra_soc_axi_user: Option<u32>,
+
+    pub active_i3c1: bool,
 }
 
 impl InitParams<'_> {
@@ -319,6 +320,7 @@ impl Default for InitParams<'_> {
             flash_boot: false,
             fips_zeroization: false,
             caliptra_soc_axi_user: None,
+            active_i3c1: false,
         }
     }
 }
@@ -984,6 +986,7 @@ mod tests {
             let rom_file = caliptra_mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::MAILBOX_RESPONDER,
+                None,
             )?;
             std::fs::read(&rom_file)?
         };
@@ -1050,6 +1053,7 @@ mod tests {
             let rom_file = caliptra_mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::USB_RESPONDER,
+                None,
             )?;
             std::fs::read(&rom_file)?
         };
@@ -1122,6 +1126,7 @@ mod tests {
             let rom_file = caliptra_mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::USB_OCP_RECOVERY,
+                None,
             )?;
             std::fs::read(&rom_file)?
         };

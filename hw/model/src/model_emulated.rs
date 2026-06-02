@@ -133,12 +133,18 @@ impl McuHwModel for ModelEmulated {
 
         let mcu_uart_output = Rc::new(RefCell::new(Vec::new()));
 
+        let mut straps = caliptra_mcu_config::McuStraps::default();
+        if params.active_i3c1 {
+            straps.active_i3c = 1;
+        }
+
         let bus_args = McuRootBusArgs {
             rom: params.mcu_rom.into(),
             pic: pic.clone(),
             clock: clock.clone(),
             offsets,
             uart_output: Some(mcu_uart_output.clone()),
+            straps,
             ..Default::default()
         };
         let mcu_root_bus = McuRootBus::new(bus_args).unwrap();
@@ -170,7 +176,7 @@ impl McuHwModel for ModelEmulated {
             &clock.clone(),
             &mut i3c_controller,
             i3c_irq,
-            hw_version,
+            hw_version.clone(),
             step_lock.clone(),
         );
 
@@ -293,7 +299,8 @@ impl McuHwModel for ModelEmulated {
         let device_lifecycle: Option<String> = match params.lifecycle_controller_state {
             Some(LifecycleControllerState::Dev) => Some("manufacturing".into()),
             Some(
-                LifecycleControllerState::TestUnlocked0
+                LifecycleControllerState::Raw
+                | LifecycleControllerState::TestUnlocked0
                 | LifecycleControllerState::TestUnlocked1
                 | LifecycleControllerState::TestUnlocked2
                 | LifecycleControllerState::TestUnlocked3
@@ -302,7 +309,7 @@ impl McuHwModel for ModelEmulated {
                 | LifecycleControllerState::TestUnlocked6
                 | LifecycleControllerState::TestUnlocked7,
             ) => Some("unprovisioned".into()),
-            // Raw, TestLocked*, Prod, ProdEnd, Rma, Scrap all map to production
+            // TestLocked*, Prod, ProdEnd, Rma, Scrap all map to production
             _ => Some("production".into()),
         };
 
@@ -786,9 +793,10 @@ mod test {
 
     #[test]
     fn test_new_unbooted() {
-        let mcu_rom = caliptra_mcu_builder::rom_build(None, None).expect("Could not build MCU ROM");
+        let mcu_rom =
+            caliptra_mcu_builder::rom_build(None, None, None).expect("Could not build MCU ROM");
         let mcu_runtime =
-            &caliptra_mcu_builder::runtime_build_with_apps(&[], None, false, None, None)
+            &caliptra_mcu_builder::runtime_build_with_apps(&[], None, false, None, None, None)
                 .expect("Could not build MCU runtime");
         let mut caliptra_builder = CaliptraBuilder::new(
             false,

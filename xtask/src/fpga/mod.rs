@@ -35,6 +35,7 @@ struct TestArgs<'a> {
 }
 trait ActionHandler<'a> {
     fn bootstrap(&self) -> Result<()>;
+    fn download_bitstream(&self) -> Result<()>;
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()>;
     fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()>;
     fn test(&self, args: &'a TestArgs) -> Result<()>;
@@ -46,6 +47,11 @@ pub(crate) enum Fpga {
     Bootstrap {
         #[arg(long)]
         target_host: Option<String>,
+        #[arg(long, default_value_t = Configuration::Subsystem, value_enum)]
+        configuration: Configuration,
+    },
+    /// Download an FPGA bitstream.
+    DownloadBitstream {
         #[arg(long, default_value_t = Configuration::Subsystem, value_enum)]
         configuration: Configuration,
     },
@@ -70,11 +76,11 @@ pub(crate) enum Fpga {
         otp: Option<PathBuf>,
 
         /// Save OTP memory to a file after running.
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         save_otp: bool,
 
         /// Run UDS provisioning flow
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         uds: bool,
 
         /// Number of "steps" to run the FPGA before stopping
@@ -82,7 +88,7 @@ pub(crate) enum Fpga {
         steps: u64,
 
         /// Whether to disable the recovery interface and I3C
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         no_recovery: bool,
 
         /// Lifecycle controller state to set (raw, test_unlocked0, manufacturing, prod, etc.).
@@ -96,7 +102,7 @@ pub(crate) enum Fpga {
         target_host: Option<String>,
 
         /// Only Build MCU binaries
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         mcu: bool,
 
         /// Only build the specified Caliptra Firmware
@@ -125,7 +131,7 @@ pub(crate) enum Fpga {
         #[arg(long)]
         test_filter: Option<String>,
         /// Print test output during execution.
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         test_output: bool,
     },
 }
@@ -254,6 +260,12 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 .set_target_host(target_host)
                 .set_caliptra_fpga(caliptra_fpga)
                 .bootstrap()?;
+        }
+        Fpga::DownloadBitstream { configuration } => {
+            println!("Downloading FPGA bitstream");
+            println!("configuration: {:?}", configuration);
+
+            configuration.executor().download_bitstream()?;
         }
         Fpga::Test {
             target_host,

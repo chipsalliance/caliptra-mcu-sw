@@ -8,7 +8,7 @@ use super::{
     run_command, run_command_with_output,
     utils::{
         build_base_container_command, build_caliptra_firmware, caliptra_sw_workspace_root,
-        check_ssh_access, download_bitstream_pdi, rsync_file, run_test_suite,
+        check_ssh_access, download_bitstream, load_bitstream, rsync_file, run_test_suite,
         NextestArchiveCommand,
     },
     ActionHandler, BuildArgs, BuildTestArgs, TestArgs,
@@ -97,6 +97,14 @@ impl<'a> ActionHandler<'a> for CommandExecutor {
         }
     }
 
+    fn download_bitstream(&self) -> Result<()> {
+        match self {
+            Self::Subsystem(sub) => sub.download_bitstream(),
+            Self::CoreOnSubsystem(core) => core.download_bitstream(),
+            Self::Core(core) => core.download_bitstream(),
+        }
+    }
+
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
         match self {
             Self::Subsystem(sub) => sub.build(args),
@@ -177,7 +185,18 @@ impl<'a> ActionHandler<'a> for Subsystem {
             .join("fpga")
             .join("bitstream_manifests")
             .join("subsystem.toml");
-        download_bitstream_pdi(self.target_host.as_deref(), &subsystem_bitstream)?;
+        download_bitstream(self.target_host.as_deref(), &subsystem_bitstream)?;
+        load_bitstream(self.target_host.as_deref())?;
+        Ok(())
+    }
+
+    fn download_bitstream(&self) -> Result<()> {
+        let subsystem_bitstream = PROJECT_ROOT
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("subsystem.toml");
+        download_bitstream(None, &subsystem_bitstream)?;
         Ok(())
     }
 
@@ -282,7 +301,19 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             .join("fpga")
             .join("bitstream_manifests")
             .join("subsystem.toml");
-        download_bitstream_pdi(self.target_host.as_deref(), &subsystem_bitstream)?;
+        download_bitstream(self.target_host.as_deref(), &subsystem_bitstream)?;
+        load_bitstream(self.target_host.as_deref())?;
+        Ok(())
+    }
+
+    fn download_bitstream(&self) -> Result<()> {
+        let caliptra_sw = caliptra_sw_workspace_root();
+        let subsystem_bitstream = caliptra_sw
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("subsystem.toml");
+        download_bitstream(None, &subsystem_bitstream)?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
@@ -290,6 +321,7 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         let rom_path = caliptra_mcu_builder::rom_build(
             Some("fpga".to_string()),
             Some("core_test".to_string()),
+            None,
         )?;
         if !args.mcu {
             build_caliptra_firmware(&caliptra_sw, args.fw_id.as_deref())?;
@@ -390,7 +422,19 @@ impl<'a> ActionHandler<'a> for Core {
             .join("fpga")
             .join("bitstream_manifests")
             .join("core.toml");
-        download_bitstream_pdi(self.target_host.as_deref(), &core_bitstream)?;
+        download_bitstream(self.target_host.as_deref(), &core_bitstream)?;
+        load_bitstream(self.target_host.as_deref())?;
+        Ok(())
+    }
+
+    fn download_bitstream(&self) -> Result<()> {
+        let caliptra_sw = caliptra_sw_workspace_root();
+        let core_bitstream = caliptra_sw
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("core.toml");
+        download_bitstream(None, &core_bitstream)?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {

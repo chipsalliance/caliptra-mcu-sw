@@ -17,7 +17,7 @@ This command runs all integration tests using `cargo nextest`. It automatically 
 Integration tests often require pre-built firmware and emulator binary bundles. These can be provided via command-line arguments:
 
 *   `--firmware-bundle <PATH>`: Path to a ZIP file containing Caliptra Core ROM, Core firmware, MCU ROM, and MCU runtime binaries. This is built with `cargo xtask all-build`.
-*   `--emulator-bundle <PATH>`: Path to a ZIP file containing pre-built emulator binaries with different test features. This is built with `cargo xtask emulator-build`.
+*   `--emulator-bundle <PATH>`: Path to a ZIP file containing the pre-built emulator binary. This is built with `cargo xtask emulator-build`.
 
 Example of running tests with pre-built bundles:
 
@@ -79,8 +79,7 @@ The second argument (`example_app`) indicates that the test uses the example app
 To ensure your test is built by default and included in CI, add the feature name to the constants in `builder/src/features.rs`:
 
 *   `RUNTIME_TEST_FEATURES`: Add to this list if the feature should be included in the MCU runtime build.
-*   `EMULATOR_TEST_FEATURES`: Add to this list if the feature should be included in the emulator build.
 
 ## Continuous Integration (CI)
 
-The CI workflow in `.github/workflows/build-test.yml` uses the same `xtask` commands to build and run tests. By maintaining the feature lists in `builder/src/features.rs`, you ensure that CI always tests the same set of features as your local default build.
+The CI workflow in `.github/workflows/build-test.yml` uses the same `xtask` commands to build and run tests. By maintaining the runtime feature list in `builder/src/features.rs`, you ensure that CI always tests the same set of features as your local default build. The emulator itself no longer uses feature flags; all test features are enabled at runtime using the `--test-feature` flag.
