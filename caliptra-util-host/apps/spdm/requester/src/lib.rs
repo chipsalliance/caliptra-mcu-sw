@@ -19,7 +19,7 @@ pub mod requester;
 pub mod transport;
 pub mod vdm;
 
-pub use requester::SpdmRequester;
+pub use requester::{KeyPairInfo, SpdmRequester};
 pub use transport::{SpdmDeviceIo, SpdmSocketDeviceIo, TcpSpdmDeviceIo};
 pub use vdm::SpdmVdmDriverImpl;
 
