@@ -139,6 +139,7 @@ impl CommandId {
 
     // OCP Lock commands
     pub const MC_OCP_LOCK_ROTATE_HEK: Self = Self(0x4F4C_5248); // "OLRH"
+    pub const MC_OCP_LOCK_SET_PERMA_HEK: Self = Self(0x4F4C_5350); // "OLSP"
 }
 
 impl From<u32> for CommandId {
@@ -212,6 +213,7 @@ pub enum McuMailboxReq {
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
     // OCP Lock
+    OcpLockSetPermaHek(OcpLockSetPermaHekReq),
     OcpLockRotateHek(OcpLockRotateHekReq),
 }
 
@@ -270,6 +272,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
+            McuMailboxReq::OcpLockSetPermaHek(req) => Ok(req.as_bytes()),
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_bytes()),
         }
     }
@@ -328,6 +331,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::OcpLockSetPermaHek(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_mut_bytes()),
         }
     }
@@ -388,6 +392,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
+            McuMailboxReq::OcpLockSetPermaHek(_) => CommandId::MC_OCP_LOCK_SET_PERMA_HEK,
             McuMailboxReq::OcpLockRotateHek(_) => CommandId::MC_OCP_LOCK_ROTATE_HEK,
         }
     }
@@ -471,6 +476,7 @@ pub enum McuMailboxResp {
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
     // OCP Lock
+    OcpLockSetPermaHek(OcpLockSetPermaHekResp),
     OcpLockRotateHek(OcpLockRotateHekResp),
 }
 
@@ -588,6 +594,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_bytes()),
         }
     }
@@ -645,6 +652,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_mut_bytes()),
         }
     }
@@ -1629,6 +1637,26 @@ pub struct ProvisionVendorPkHashResp {
 }
 impl Response for ProvisionVendorPkHashResp {}
 
+/// MC_OCP_LOCK_SET_PERMA_HEK request: Set the Permanent HEK state.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct OcpLockSetPermaHekReq {
+    pub hdr: MailboxReqHeader,
+}
+
+impl Request for OcpLockSetPermaHekReq {
+    const ID: CommandId = CommandId::MC_OCP_LOCK_SET_PERMA_HEK;
+    type Resp = OcpLockSetPermaHekResp;
+}
+
+/// MC_OCP_LOCK_SET_PERMA_HEK response: Indicates success or failure.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct OcpLockSetPermaHekResp {
+    pub hdr: MailboxRespHeader,
+}
+
+impl Response for OcpLockSetPermaHekResp {}
 /// MC_OCP_LOCK_ROTATE_HEK request: Rotate the active HEK.
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
@@ -1665,6 +1693,7 @@ mod tests {
     #[test]
     fn test_ocp_lock_command_ids() {
         assert_eq!(CommandId::MC_OCP_LOCK_ROTATE_HEK.0, 0x4F4C_5248); // "OLRH"
+        assert_eq!(CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0, 0x4F4C_5350); // "OLSP"
     }
 
     #[test]

@@ -5,8 +5,9 @@ use anyhow::Result;
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
     FirmwareVersionReq, GetAuthCmdChallengeReq, McuFeProgReq, OcpLockRotateHekReq,
-    OcpLockRotateHekResp,
+    OcpLockRotateHekResp, OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
 };
+use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_romtime::McuBootMilestones;
 
 #[test]
@@ -144,6 +145,83 @@ fn test_fe_prog_authorized_req() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn test_otp_perma_hek_mailbox() -> Result<()> {
+    let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let mut otp = vec![0u8; 4096];
+    for slot in 0..8 {
+        crate::test_hek::test::setup_otp_hek(&mut otp, slot, true, false);
+    }
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        otp_memory: Some(otp),
+        ocp_lock_en: true,
+        feature: Some("test-mcu-mbox-cmds,ocp-lock"),
+        rom_feature: Some("ocp-lock"),
+        ..Default::default()
+    });
+
+    // wait for the mailbox to come up
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // 1. Verify initial state in OTP memory is 0
+    let otp_before = hw.read_otp_memory();
+    assert_eq!(otp_before[fuses::PERMA_HEK_EN.byte_offset] & 0x7, 0);
+
+    // 2. Write to set Perma HEK
+    let write_req = OcpLockSetPermaHekReq::default();
+    let _write_resp: OcpLockSetPermaHekResp =
+        super::execute_authorized_req(&mut hw, write_req).unwrap();
+
+    // 3. Verify OTP memory has been updated
+    let otp_after = hw.read_otp_memory();
+    assert_eq!(otp_after[fuses::PERMA_HEK_EN.byte_offset] & 0x7, 0x7);
+
+    Ok(())
+}
+
+#[test]
+fn test_otp_perma_hek_mailbox_not_zeroized_failure() -> Result<()> {
+    let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let mut otp = vec![0u8; 4096];
+    // Program a valid HEK in slot 0 (so it is not zeroized)
+    crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
+    for slot in 1..8 {
+        crate::test_hek::test::setup_otp_hek(&mut otp, slot, true, false);
+    }
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        otp_memory: Some(otp),
+        ocp_lock_en: true,
+        feature: Some("test-mcu-mbox-cmds,ocp-lock"),
+        rom_feature: Some("ocp-lock"),
+        ..Default::default()
+    });
+
+    // wait for the mailbox to come up
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // 1. Verify initial state in OTP memory is 0
+    let otp_before = hw.read_otp_memory();
+    assert_eq!(otp_before[fuses::PERMA_HEK_EN.byte_offset] & 0x7, 0);
+
+    // 2. Write to set Perma HEK (should fail because slot 0 is not zeroized)
+    let write_req = OcpLockSetPermaHekReq::default();
+    let result = super::execute_authorized_req(&mut hw, write_req);
+    assert!(result.is_err());
+
+    // 3. Verify OTP memory has NOT been updated
+    let otp_after = hw.read_otp_memory();
+    assert_eq!(otp_after[fuses::PERMA_HEK_EN.byte_offset] & 0x7, 0);
+
+    Ok(())
+}
 #[test]
 fn test_otp_rotate_hek_mailbox() -> Result<()> {
     let _lock = crate::test::TEST_LOCK.lock().unwrap();

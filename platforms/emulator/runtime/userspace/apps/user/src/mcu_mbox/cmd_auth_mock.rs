@@ -5,7 +5,8 @@ use caliptra_mcu_libapi_caliptra::crypto::hmac::Hmac;
 use caliptra_mcu_libapi_caliptra::crypto::import::{CmKeyUsage, Import};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, FuseIncreaseCaliptraMinSvnReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
-    MailboxReqHeader, McuFeProgReq, OcpLockRotateHekReq, ProvisionVendorPkHashReq,
+    MailboxReqHeader, McuFeProgReq, OcpLockRotateHekReq, OcpLockSetPermaHekReq,
+    ProvisionVendorPkHashReq,
 };
 use constant_time_eq::constant_time_eq;
 use core::mem::size_of;
@@ -44,6 +45,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => size_of::<FuseRevokeVendorPubKeyReq>(),
             CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => size_of::<FuseRevokeVendorPkHashReq>(),
             CommandId::MC_OCP_LOCK_ROTATE_HEK => size_of::<OcpLockRotateHekReq>(),
+            CommandId::MC_OCP_LOCK_SET_PERMA_HEK => size_of::<OcpLockSetPermaHekReq>(),
             _ => Err(AuthorizationError)?,
         };
 
