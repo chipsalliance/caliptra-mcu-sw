@@ -78,14 +78,20 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
     state.peer_cap_flags = body.flags;
 
     let mtu = pal.mtu();
-    let max_spdm_msg_size = if state.cap_flags.contains(CapFlags::CHUNK) {
+    let mut flags = state.cap_flags;
+    if version < SpdmVersion::V13 {
+        let cleared = flags.into_bits() & !(0b11 << 26);
+        flags = CapFlags::from_bits(cleared);
+    }
+    state.advertised_cap_flags = flags;
+    let max_spdm_msg_size = if flags.contains(CapFlags::CHUNK) {
         pal.capacity().max(mtu)
     } else {
         mtu
     } as u32;
     let body = CapabilitiesRsp {
         ct_exponent: state.ct_exponent,
-        flags: state.cap_flags,
+        flags,
         data_transfer_size: mtu as u32,
         max_spdm_msg_size,
     };

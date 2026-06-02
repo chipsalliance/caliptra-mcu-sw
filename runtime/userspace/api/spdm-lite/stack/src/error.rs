@@ -19,12 +19,12 @@ use mcu_spdm_lite_errors::{as_spdm_wire, is_mctp_error};
 
 /// SPDM-level error suitable for emission as an `ERROR` PDU.
 ///
-/// Carries only the DSP0274 `ERROR` wire byte. Handlers that need
-/// extended error data, such as [`SPDM_LARGE_RESPONSE`], pass it at
-/// response construction time.
+/// Carries the DSP0274 `ERROR` wire byte and the one-byte `Param2`
+/// error data field used by errors such as `UnsupportedRequest`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SpdmError {
     spec_byte: u8,
+    error_data: u8,
 }
 
 /// Convenience alias for `core::result::Result<T, SpdmError>`.
@@ -43,7 +43,16 @@ impl SpdmError {
     /// A new `SpdmError` carrying `spec_byte`.
     #[inline]
     pub const fn new(spec_byte: u8) -> Self {
-        Self { spec_byte }
+        Self {
+            spec_byte,
+            error_data: 0,
+        }
+    }
+
+    /// Constructs an [`SpdmError`] with an explicit ERROR Param2 byte.
+    #[inline]
+    pub const fn with_data(self, error_data: u8) -> Self {
+        Self { error_data, ..self }
     }
 
     /// Returns the DSP0274 `ERROR` wire byte for this error.
@@ -55,6 +64,12 @@ impl SpdmError {
     #[inline]
     pub const fn spec_byte(&self) -> u8 {
         self.spec_byte
+    }
+
+    /// Returns the ERROR Param2 byte associated with this error.
+    #[inline]
+    pub const fn error_data(&self) -> u8 {
+        self.error_data
     }
 }
 
@@ -106,17 +121,19 @@ pub const SPDM_BUSY: SpdmError = SpdmError::new(0x03);
 pub const SPDM_UNEXPECTED_REQUEST: SpdmError = SpdmError::new(0x04);
 /// `Unspecified` — catch-all responder-side failure.
 pub const SPDM_UNSPECIFIED: SpdmError = SpdmError::new(0x05);
-/// `DecryptError` — secured-message decryption / MAC verification
-/// failed.
-pub const SPDM_DECRYPT_ERROR: SpdmError = SpdmError::new(0x06);
 /// `UnsupportedRequest` — request code is recognised but not
 /// implemented by this responder.
 pub const SPDM_UNSUPPORTED_REQUEST: SpdmError = SpdmError::new(0x07);
-/// `SessionLimitExceeded` — responder cannot establish more sessions.
-pub const SPDM_SESSION_LIMIT_EXCEEDED: SpdmError = SpdmError::new(0x0A);
 /// `SessionRequired` — request must be issued inside an established
 /// secure session.
 pub const SPDM_SESSION_REQUIRED: SpdmError = SpdmError::new(0x0B);
+/// `SessionLimitExceeded` — responder cannot establish more sessions.
+pub const SPDM_SESSION_LIMIT_EXCEEDED: SpdmError = SpdmError::new(0x0A);
+/// `ResetRequired` — responder requires a reset before the request can complete.
+pub const SPDM_RESET_REQUIRED: SpdmError = SpdmError::new(0x0C);
+/// `DecryptError` — secured-message decryption / MAC verification
+/// failed.
+pub const SPDM_DECRYPT_ERROR: SpdmError = SpdmError::new(0x06);
 /// `VersionMismatch` — requester's SPDM version is not supported.
 pub const SPDM_VERSION_MISMATCH: SpdmError = SpdmError::new(0x41);
 /// `ResponseNotReady` — responder needs more time; requester should
@@ -125,6 +142,8 @@ pub const SPDM_RESPONSE_NOT_READY: SpdmError = SpdmError::new(0x42);
 /// `RequestResynch` — responder needs the requester to restart the
 /// connection from `GET_VERSION`.
 pub const SPDM_REQUEST_RESYNCH: SpdmError = SpdmError::new(0x43);
+/// `OperationFailed` — requested operation failed in the responder.
+pub const SPDM_OPERATION_FAILED: SpdmError = SpdmError::new(0x44);
 /// `LargeResponse` — response exceeds the single-frame size; requester
 /// must use chunked reads.
 pub const SPDM_LARGE_RESPONSE: SpdmError = SpdmError::new(0x0F);

@@ -78,6 +78,8 @@ Caliptra uses three credential slots out of the minimum eight required by the SP
 
 To enable debugging and testing of `SET_CERTIFICATE` authorization when Caliptra MCU is not in the Production lifecycle state (such as TestUnlocked, TestLocked, or Manufacturing states), a well-known credential is provisioned in all credential slots (Vendor, Owner, and Tenant) and available for use. This test credential allows developers to verify authorization enforcement without requiring production credential infrastructure. The well-known credential is disabled in Production lifecycle state.
 
+Implementation note: the current `spdm-lite` SET_CERTIFICATE flash-store path is intentionally test-only unless an integrator supplies a production authorization/key-binding policy. The emulator user app configures flash-backed managed certificate slots, and therefore advertises this command, only when built with `test-mctp-spdm-set-certificate`. Default builds must not advertise SET_CERTIFICATE until secure-session/authorization and key-pair binding validation are enabled.
+
 ### Rationale for Using SPDM Authorization Specification
 
 This specification leverages the SPDM Authorization specification (DSP0289) rather than implementing alternative authorization mechanisms. An alternative approach would provision certificates in a physically secure or trusted environment and then lock the device to prevent further modifications. However, this approach presents significant challenges for device lifecycle management, particularly for enabling circular economy scenarios where devices must be repurposed or transferred between owners. The locked-device model would require designing custom unlock mechanisms and policies for legitimate device transfers.
