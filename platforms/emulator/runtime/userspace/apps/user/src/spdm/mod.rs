@@ -22,7 +22,6 @@ use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use mcu_spdm_lite_pal::cert::store::SharedCertStore;
-use mcu_spdm_lite_pal::cert::SLOT0_LEAF_LABEL;
 use mcu_spdm_lite_pal::{McuSpdmPal, BITMAP_SLOT_SIZE};
 use mcu_spdm_lite_stack::SpdmStack;
 use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
@@ -46,6 +45,18 @@ static CERT_STORE_DONE: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 
 /// Cert store init state: 0 = uninit, 1 = in progress, 2 = done.
 static CERT_STORE_STATE: AtomicU8 = AtomicU8::new(0);
+
+#[cfg(feature = "test-mctp-spdm-attestation-pcr-quote")]
+fn measurement_provider() -> device_measurements::pcr_quote::PcrQuoteMeasurementProvider {
+    device_measurements::pcr_quote::PcrQuoteMeasurementProvider::new()
+}
+
+#[cfg(not(feature = "test-mctp-spdm-attestation-pcr-quote"))]
+fn measurement_provider() -> device_measurements::ocp_eat::OcpEatMeasurementProvider {
+    device_measurements::ocp_eat::OcpEatMeasurementProvider::new(
+        mcu_spdm_lite_pal::cert::SLOT0_LEAF_LABEL,
+    )
+}
 
 /// Initialize the shared cert store. First caller does the work;
 /// concurrent callers wait on a Signal (no busy-loop).
@@ -135,7 +146,7 @@ async fn spdm_mctp_responder() {
             SPDM_LITE_SCRATCH_SIZE,
             &CERT_STORE,
             Some(large_msg),
-            device_measurements::ocp_eat::OcpEatMeasurementProvider::new(SLOT0_LEAF_LABEL),
+            measurement_provider(),
         )
     };
     let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
@@ -187,7 +198,7 @@ async fn spdm_doe_responder() {
             SPDM_LITE_SCRATCH_SIZE,
             &CERT_STORE,
             Some(large_msg),
-            device_measurements::ocp_eat::OcpEatMeasurementProvider::new(SLOT0_LEAF_LABEL),
+            measurement_provider(),
         )
     };
     let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);

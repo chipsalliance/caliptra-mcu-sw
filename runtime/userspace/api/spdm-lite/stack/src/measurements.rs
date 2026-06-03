@@ -10,7 +10,8 @@ use mcu_spdm_lite_codec::{
 use mcu_spdm_lite_traits::*;
 use zerocopy::{FromBytes, IntoBytes};
 
-use crate::build::{alloc_padded, valid_transport_padding};
+use crate::build::alloc_padded;
+use crate::chunk;
 use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
 
@@ -18,13 +19,19 @@ const MEASUREMENTS_FIXED_BODY_SIZE: usize = 1 + 1 + 1 + 3;
 const OPAQUE_DATA_LEN_SIZE: usize = 2;
 const SIGNATURE_REQUEST_FIELDS_SIZE: usize = SPDM_NONCE_LEN + 1; // Nonce + SlotIDParam
 
-pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
-    pal: &'a Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-) -> SpdmResult<PalBytes<'a, Pal>> {
-    let (resp, _) = handle_get_measurements_req(state, pal, io, io.request()).await?;
-    Ok(resp)
+struct MeasurementsResponseCtx<'a> {
+    meas_info: &'a [MeasurementInfo],
+    meas_op: u8,
+    meas_nonce: Option<&'a [u8; SPDM_NONCE_LEN]>,
+    signature_requested: bool,
+    slot_id: u8,
+    total_number_of_measurement: u8,
+    content_changed: u8,
+    number_of_blocks: u8,
+    measurement_record_len: usize,
+    nonce: &'a [u8; SPDM_NONCE_LEN],
+    requester_context: Option<&'a [u8]>,
+    large_resp_len: usize,
 }
 
 pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
@@ -103,10 +110,6 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
     if req.len() < spdm_req_len {
         return Err(SPDM_INVALID_REQUEST);
     }
-    let transport_padding = &req[spdm_req_len..];
-    if !valid_transport_padding(pal.send_len_alignment(), spdm_req_len, transport_padding) {
-        return Err(SPDM_INVALID_REQUEST);
-    }
 
     // Measurement enumeration from PAL.
     let meas_info = pal.measurement_info();
@@ -116,7 +119,6 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
     let (measurement_record_len, number_of_blocks) = measurement_record_shape(meas_info, meas_op)?;
 
     // If signature requested, append GET_MEASUREMENTS request to L1 transcript.
-    // Only canonical SPDM bytes contribute to L1; DOE may DWORD-pad the payload.
     if signature_requested {
         state
             .transcript
@@ -130,7 +132,6 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
     // Param1 reports total count only for the measurement-count query.
     let total_number_of_measurement = if meas_op == 0x00 { total_count } else { 0 };
 
-    let head = pal.header_size();
     let body_len_without_sig = MEASUREMENTS_FIXED_BODY_SIZE
         + measurement_record_len
         + SPDM_NONCE_LEN
@@ -142,9 +143,29 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
         0
     };
     let spdm_len = SpdmMsgHdrPdu::SIZE + body_len_without_sig + signature_len;
-    // TODO: If future measurement records exceed DataTransferSize, stage the
-    // complete MEASUREMENTS response once in the large-message buffer and
-    // serve it via CHUNK_GET after the chunk module is split/refactored.
+    let mut nonce = [0u8; SPDM_NONCE_LEN];
+    pal.generate_nonce(io, &mut nonce)
+        .await
+        .map_err(|_| SPDM_UNSPECIFIED)?;
+    if spdm_len > state.effective_data_transfer_size(pal) {
+        let plan = MeasurementsResponseCtx {
+            meas_info,
+            meas_op,
+            meas_nonce: requester_nonce,
+            signature_requested,
+            slot_id,
+            total_number_of_measurement,
+            content_changed,
+            number_of_blocks,
+            measurement_record_len,
+            nonce: &nonce,
+            requester_context,
+            large_resp_len: spdm_len,
+        };
+        return handle_large_measurements_response(state, pal, io, &plan).await;
+    }
+
+    let head = pal.header_size();
     let raw_len = head + spdm_len;
     let mut resp = alloc_padded(pal, io, raw_len).map_err(|_| SPDM_UNSPECIFIED)?;
 
@@ -169,10 +190,7 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
             return Err(SPDM_UNSPECIFIED);
         }
 
-        let nonce = w.reserve(SPDM_NONCE_LEN)?;
-        pal.generate_nonce(io, nonce)
-            .await
-            .map_err(|_| SPDM_UNSPECIFIED)?;
+        w.write_bytes(&nonce)?;
         w.write_bytes(&0u16.to_le_bytes())?;
         if let Some(ctx) = requester_context {
             w.write_bytes(ctx)?;
@@ -217,6 +235,79 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
     }
 
     Ok((resp, spdm_len))
+}
+
+async fn handle_large_measurements_response<'a, Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    plan: &MeasurementsResponseCtx<'_>,
+) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
+    chunk::validate_buffered_large_response(state, pal, plan.large_resp_len)?;
+
+    let mut offset = 0usize;
+    let hdr = SpdmMsgHdrPdu::new(state.version, ReqRespCode::MEASUREMENTS);
+    offset = write_large_measurement_bytes(pal, offset, hdr.as_bytes())?;
+
+    let mut fixed = [0u8; MEASUREMENTS_FIXED_BODY_SIZE];
+    fixed[0] = plan.total_number_of_measurement;
+    fixed[1] = (plan.slot_id & 0x0F) | ((plan.content_changed & 0x03) << 4);
+    fixed[2] = plan.number_of_blocks;
+    fixed[3..6].copy_from_slice(&u24_le(plan.measurement_record_len)?);
+    offset = write_large_measurement_bytes(pal, offset, &fixed)?;
+
+    let (next_offset, written_blocks) = write_measurement_record_large(
+        pal,
+        io,
+        plan.meas_info,
+        plan.meas_op,
+        plan.meas_nonce,
+        offset,
+    )
+    .await?;
+    if written_blocks != plan.number_of_blocks {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    offset = next_offset;
+
+    offset = write_large_measurement_bytes(pal, offset, plan.nonce)?;
+    offset = write_large_measurement_bytes(pal, offset, &0u16.to_le_bytes())?;
+    if let Some(ctx) = plan.requester_context {
+        offset = write_large_measurement_bytes(pal, offset, ctx)?;
+    }
+
+    let signature_offset = offset;
+    if plan.signature_requested {
+        append_buffered_l1(state, pal, io, signature_offset).await?;
+
+        let mut hash = [0u8; SHA384_HASH_SIZE];
+        state.transcript.finalize_l1(pal, io, &mut hash).await?;
+
+        let signing_ctx = build_signing_context(state.version);
+        compute_tbs_hash(pal, io, &signing_ctx, &mut hash)
+            .await
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+
+        let asym_algo = state.asym_algo();
+        let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
+        let sig_len = pal
+            .sign_hash(io, plan.slot_id, asym_algo, &hash, &mut signature)
+            .await
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+        if sig_len != ECC_P384_SIGNATURE_SIZE {
+            return Err(SPDM_UNSPECIFIED);
+        }
+        pal.write(signature_offset, &signature)
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+        offset += ECC_P384_SIGNATURE_SIZE;
+    }
+
+    if offset != plan.large_resp_len {
+        return Err(SPDM_UNSPECIFIED);
+    }
+
+    let resp = chunk::start_buffered_large_response(state, pal, io, plan.large_resp_len)?;
+    Ok((resp, 0))
 }
 
 fn measurement_record_shape(info: &[MeasurementInfo], meas_op: u8) -> SpdmResult<(usize, u8)> {
@@ -334,6 +425,63 @@ async fn write_measurement_record<Pal: SpdmPal>(
     Ok(blocks)
 }
 
+async fn write_measurement_record_large<Pal: SpdmPal>(
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    info: &[MeasurementInfo],
+    meas_op: u8,
+    nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+    mut offset: usize,
+) -> SpdmResult<(usize, u8)> {
+    let mut blocks = 0u8;
+    match meas_op {
+        0x00 => {}
+        0xFF => {
+            for entry in info {
+                offset = write_measurement_block_large(pal, io, entry, nonce, offset).await?;
+                blocks = blocks.checked_add(1).ok_or(SPDM_UNSPECIFIED)?;
+            }
+        }
+        idx => {
+            let entry = info
+                .iter()
+                .find(|m| m.index == idx)
+                .ok_or(SPDM_INVALID_REQUEST)?;
+            offset = write_measurement_block_large(pal, io, entry, nonce, offset).await?;
+            blocks = 1;
+        }
+    }
+    Ok((offset, blocks))
+}
+
+async fn write_measurement_block_large<Pal: SpdmPal>(
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    info: &MeasurementInfo,
+    nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+    mut offset: usize,
+) -> SpdmResult<usize> {
+    let block_hdr =
+        DmtfMeasurementBlockHeader::new(info.index, info.is_raw, info.value_type, info.value_size);
+    offset = write_large_measurement_bytes(pal, offset, block_hdr.as_bytes())?;
+
+    let value_size = info.value_size as usize;
+    if value_size == 0 {
+        return Ok(offset);
+    }
+
+    let mut value = pal.alloc_bytes(io, value_size)?;
+    let value_len = pal
+        .get_measurement_value(io, info.index, nonce, &mut value)
+        .await
+        .map_err(|_| SPDM_UNSPECIFIED)?;
+    if value_len != value_size {
+        return Err(SPDM_UNSPECIFIED);
+    }
+
+    write_large_measurement_bytes(pal, offset, &value)
+}
+
 /// Write a single DMTF measurement block (header + value) into `out`.
 /// Returns total bytes written.
 async fn write_measurement_block<Pal: SpdmPal>(
@@ -367,15 +515,47 @@ async fn write_measurement_block<Pal: SpdmPal>(
 }
 
 fn write_u24_le(w: &mut WireWriter<'_>, len: usize) -> SpdmResult<()> {
+    w.write_bytes(&u24_le(len)?)?;
+    Ok(())
+}
+
+fn u24_le(len: usize) -> SpdmResult<[u8; 3]> {
     let len = u32::try_from(len).map_err(|_| SPDM_UNSPECIFIED)?;
     if len > mcu_spdm_lite_codec::SPDM_MAX_MEASUREMENT_RECORD_SIZE {
         return Err(SPDM_UNSPECIFIED);
     }
-    w.write_bytes(&[
+    Ok([
         (len & 0xFF) as u8,
         ((len >> 8) & 0xFF) as u8,
         ((len >> 16) & 0xFF) as u8,
-    ])?;
+    ])
+}
+
+fn write_large_measurement_bytes<Pal: SpdmPal>(
+    pal: &Pal,
+    offset: usize,
+    bytes: &[u8],
+) -> SpdmResult<usize> {
+    let next = offset.checked_add(bytes.len()).ok_or(SPDM_UNSPECIFIED)?;
+    pal.write(offset, bytes).map_err(|_| SPDM_UNSPECIFIED)?;
+    Ok(next)
+}
+
+async fn append_buffered_l1<Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    len: usize,
+) -> SpdmResult<()> {
+    let mut offset = 0usize;
+    let mut buf = [0u8; 128];
+    while offset < len {
+        let n = (len - offset).min(buf.len());
+        pal.read(offset, &mut buf[..n])
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+        state.transcript.append_l1(pal, io, &buf[..n]).await?;
+        offset += n;
+    }
     Ok(())
 }
 
