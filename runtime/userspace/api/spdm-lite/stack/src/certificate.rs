@@ -122,9 +122,10 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
             portion_len,
             remainder_len,
         );
-        let handle = state
-            .large_response
-            .start(chunk::LargeResponse::Certificate(cert_rsp));
+        let handle = state.large_response.start(
+            chunk::LargeResponse::Certificate(cert_rsp),
+            cert_rsp.response_size(),
+        );
         let resp = build_error_response(
             pal,
             io,
