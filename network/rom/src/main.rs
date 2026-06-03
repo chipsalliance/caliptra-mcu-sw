@@ -79,8 +79,9 @@ pub extern "C" fn exception_handler() {
             core::arch::asm!("csrr {}, mcause", out(reg) mcause);
             core::arch::asm!("csrr {}, mepc", out(reg) mepc);
         }
-        // Print "Ec=" followed by 1 hex digit of mcause then 8 hex digits of mepc.
-        // This is only 12 AXI writes — small enough to complete within sim budget.
+        // Print "Ec=" followed by 8 hex digits of mcause, then "@" and 8 hex
+        // digits of mepc. Total 19 AXI byte writes — small enough to complete
+        // within the simulator's exit budget.
         #[inline(never)]
         unsafe fn putc(c: u8) {
             core::ptr::write_volatile(0x1000_1041_u32 as *mut u8, c);
@@ -89,15 +90,22 @@ pub extern "C" fn exception_handler() {
         unsafe fn puthex8(v: u32) {
             for i in (0..8).rev() {
                 let nibble = ((v >> (i * 4)) & 0xF) as u8;
-                putc(if nibble < 10 { b'0' + nibble } else { b'a' + nibble - 10 });
+                putc(if nibble < 10 {
+                    b'0' + nibble
+                } else {
+                    b'a' + nibble - 10
+                });
             }
         }
         unsafe {
-            putc(b'E'); putc(b'c'); putc(b'=');
+            putc(b'E');
+            putc(b'c');
+            putc(b'=');
             puthex8(mcause);
             putc(b'@');
             puthex8(mepc);
-            putc(b'\r'); putc(b'\n');
+            putc(b'\r');
+            putc(b'\n');
         }
     }
     exit_emulator(0x01);
