@@ -122,11 +122,11 @@ fn read_personalization_seed(
 ) -> McuResult<[u8; STABLE_OWNER_KEY_PERSONALIZATION_SEED_SIZE]> {
     let mut seed = [0u8; STABLE_OWNER_KEY_PERSONALIZATION_SEED_SIZE];
     if fuses::STABLE_OWNER_KEY_PERSONALIZATION_SEED.byte_size != seed.len() {
-        return Err(McuError::ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR);
+        return Err(McuError::ROM_STABLE_OWNER_KEY_PERSONALIZATION_SEED_SIZE_MISMATCH);
     }
     env.otp
         .read_entry_raw(fuses::STABLE_OWNER_KEY_PERSONALIZATION_SEED, &mut seed)
-        .map_err(|_| McuError::ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR)?;
+        .map_err(|_| McuError::ROM_STABLE_OWNER_KEY_PERSONALIZATION_SEED_READ_FAILED)?;
     Ok(seed)
 }
 
@@ -144,13 +144,16 @@ pub(crate) fn derive_stable_owner_key(env: &mut RomEnv) -> McuResult<Cmk> {
     };
     let mut req32: [u32; core::mem::size_of::<CmDeriveStableKeyReq>() / 4] = transmute!(req);
 
-    if let Err(err) = env.soc_manager.exec_mailbox_req_u32(
-        CommandId::CM_DERIVE_STABLE_KEY.into(),
-        &mut req32,
-        &mut resp,
-    ) {
-        caliptra_mcu_romtime::println!("[mcu-rom] Error deriving stable owner key: {:?}", err);
-        return Err(McuError::ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR);
+    if env
+        .soc_manager
+        .exec_mailbox_req_u32(
+            CommandId::CM_DERIVE_STABLE_KEY.into(),
+            &mut req32,
+            &mut resp,
+        )
+        .is_err()
+    {
+        return Err(McuError::ROM_STABLE_OWNER_KEY_DERIVATION_FAILED);
     }
 
     let resp: CmDeriveStableKeyResp = transmute!(resp);

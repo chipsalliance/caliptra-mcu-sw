@@ -240,21 +240,12 @@ pub fn fuse_read_dai_params(
     let info = PartitionId::try_from(partition)?.info();
 
     if info.is_secret {
-        crate::println!(
-            "[otp-provision] Read denied: partition {} is secret",
-            partition
-        );
         return Err(McuError::ROM_OTP_FUSE_SECRET_READ_DENIED);
     }
 
     let entry_offset = entry as usize;
     if entry_offset >= info.byte_size || entry_offset % 4 != 0 {
-        crate::println!(
-            "[otp-provision] Entry out of bounds or unaligned: offset={}, size={}",
-            entry_offset,
-            info.byte_size
-        );
-        return Err(McuError::ROM_OTP_FUSE_ENTRY_OUT_OF_BOUNDS);
+        return Err(McuError::ROM_OTP_FUSE_READ_ENTRY_OUT_OF_BOUNDS);
     }
 
     let remaining_bytes = info.byte_size - entry_offset;
@@ -292,10 +283,6 @@ pub fn fuse_read_dai(
         match otp.read_word(params.base_word_addr + i) {
             Ok(word) => *slot = word,
             Err(_) => {
-                crate::println!(
-                    "[otp-provision] DAI read error at word addr {}",
-                    params.base_word_addr + i
-                );
                 return Err(McuError::ROM_OTP_FUSE_DAI_READ_ERROR);
             }
         }
@@ -330,35 +317,28 @@ pub fn fuse_write_dai(
     let info = PartitionId::try_from(partition)?.info();
 
     if length == 0 {
-        return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
+        return Err(McuError::ROM_OTP_FUSE_WRITE_LEN_ZERO);
     }
 
     let entry_offset = entry as usize;
     if entry_offset >= info.byte_size || entry_offset % 4 != 0 {
-        return Err(McuError::ROM_OTP_FUSE_ENTRY_OUT_OF_BOUNDS);
+        return Err(McuError::ROM_OTP_FUSE_WRITE_ENTRY_OUT_OF_BOUNDS);
     }
 
     let data_area_bits = ((info.byte_size - entry_offset) * 8) as u32;
     let end_bit_excl = match start_bit.checked_add(length) {
         Some(v) => v,
         None => {
-            crate::println!("[otp-provision] Write overflow: start_bit + length wraps u32");
-            return Err(McuError::ROM_OTP_FUSE_ENTRY_OUT_OF_BOUNDS);
+            return Err(McuError::ROM_OTP_FUSE_WRITE_OVERFLOW);
         }
     };
     if end_bit_excl > data_area_bits {
-        crate::println!(
-            "[otp-provision] Write out of bounds: start_bit({}) + length({}) > {}",
-            start_bit,
-            length,
-            data_area_bits
-        );
-        return Err(McuError::ROM_OTP_FUSE_ENTRY_OUT_OF_BOUNDS);
+        return Err(McuError::ROM_OTP_FUSE_WRITE_OUT_OF_BOUNDS);
     }
 
     let required_data_words = ((length + 31) / 32) as usize;
     if data_len < required_data_words {
-        return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
+        return Err(McuError::ROM_OTP_FUSE_WRITE_DATA_LEN_TOO_SHORT);
     }
 
     let base_word_addr = (info.byte_offset + entry_offset) / 4;
@@ -421,18 +401,11 @@ pub fn fuse_write_dai(
         let current = match otp.read_word(word_addr) {
             Ok(v) => v,
             Err(_) => {
-                crate::println!("[otp-provision] DAI read error at word addr {}", word_addr);
                 return Err(McuError::ROM_OTP_FUSE_DAI_READ_ERROR);
             }
         };
 
         if (current & mask) & !new_bits != 0 {
-            crate::println!(
-                "[otp-provision] Bit-clear conflict at word {}: current={}, requested={}",
-                word_addr,
-                HexWord(current & mask),
-                HexWord(new_bits)
-            );
             return Err(McuError::ROM_OTP_FUSE_BIT_CLEAR_NOT_ALLOWED);
         }
 
@@ -441,7 +414,6 @@ pub fn fuse_write_dai(
             match otp.write_word(word_addr, write_value) {
                 Ok(_) => {}
                 Err(_) => {
-                    crate::println!("[otp-provision] DAI write error at word addr {}", word_addr);
                     return Err(McuError::ROM_OTP_FUSE_DAI_WRITE_ERROR);
                 }
             }
@@ -477,9 +449,6 @@ pub fn fuse_lock_partition_dai(otp: &Otp, partition: u32) -> Result<(), McuError
             );
             Ok(())
         }
-        Err(_) => {
-            crate::println!("[otp-provision] Failed to lock partition {}", partition);
-            Err(McuError::ROM_OTP_FUSE_LOCK_ERROR)
-        }
+        Err(_) => Err(McuError::ROM_OTP_FUSE_LOCK_ERROR),
     }
 }

@@ -87,16 +87,11 @@ impl Otp {
                 return Ok(());
             }
         }
-        crate::println!("[mcu-rom-otp] OTP pending check exceeded maximum iterations");
         Err(McuError::ROM_OTP_PENDING_TIMEOUT)
     }
 
     pub fn check_error_and_idle(&self) -> McuResult<()> {
         if self.registers.otp_status.get() & OTP_STATUS_ERROR_MASK != 0 {
-            crate::println!(
-                "[mcu-rom-otp] OTP error: {}",
-                self.registers.otp_status.get()
-            );
             return Err(McuError::ROM_OTP_INIT_STATUS_ERROR);
         }
 
@@ -106,7 +101,6 @@ impl Otp {
             .otp_status
             .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
         {
-            crate::println!("[mcu-rom-otp] OTP not idle");
             return Err(McuError::ROM_OTP_INIT_NOT_IDLE);
         }
 
@@ -194,8 +188,7 @@ impl Otp {
             .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
         {}
 
-        if let Some(err) = self.check_error() {
-            crate::println!("Error reading fuses: {}", HexWord(err));
+        if self.check_error().is_some() {
             return Err(McuError::ROM_OTP_READ_ERROR);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
@@ -221,8 +214,7 @@ impl Otp {
             .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
         {}
 
-        if let Some(err) = self.check_error() {
-            crate::println!("Error reading fuses: {}", HexWord(err));
+        if self.check_error().is_some() {
             return Err(McuError::ROM_OTP_READ_ERROR);
         }
         let lo = self.registers.dai_rdata_rf_direct_access_rdata_0.get() as u64;
@@ -261,9 +253,7 @@ impl Otp {
             .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
         {}
 
-        if let Some(err) = self.check_error() {
-            crate::println!("Error writing fuses: {}", HexWord(err));
-            self.print_errors();
+        if self.check_error().is_some() {
             return Err(McuError::ROM_OTP_WRITE_DWORD_ERROR);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
@@ -295,9 +285,7 @@ impl Otp {
             .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
         {}
 
-        if let Some(err) = self.check_error() {
-            crate::println!("[mcu-rom] Error writing fuses: {}", HexWord(err));
-            self.print_errors();
+        if self.check_error().is_some() {
             return Err(McuError::ROM_OTP_WRITE_WORD_ERROR);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
@@ -331,9 +319,7 @@ impl Otp {
             .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
         {}
 
-        if let Some(err) = self.check_error() {
-            crate::println!("[mcu-rom] Error writing digest: {}", HexWord(err));
-            self.print_errors();
+        if self.check_error().is_some() {
             return Err(McuError::ROM_OTP_FINALIZE_DIGEST_ERROR);
         }
         Ok(())
@@ -736,18 +722,15 @@ impl Otp {
         cnst: u128,
     ) -> McuResult<u64> {
         if !partition.sw_digest {
-            crate::println!("[mcu-rom-otp] Partition does not support sw_digest");
-            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+            return Err(McuError::ROM_OTP_PARTITION_NO_SW_DIGEST);
         }
         if partition.byte_size <= DIGEST_SIZE {
-            crate::println!("[mcu-rom-otp] Partition too small for digest");
-            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+            return Err(McuError::ROM_OTP_PARTITION_TOO_SMALL_FOR_DIGEST);
         }
 
         let data_size = partition.byte_size - DIGEST_SIZE;
         if data_size % 8 != 0 {
-            crate::println!("[mcu-rom-otp] Partition data not 8-byte aligned for digest");
-            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+            return Err(McuError::ROM_OTP_PARTITION_NOT_8BYTE_ALIGNED_FOR_DIGEST);
         }
 
         // Read two words at a time from OTP, yielding u64 blocks to the
@@ -801,7 +784,7 @@ impl Otp {
     ) -> McuResult<u64> {
         let digest_offset = partition
             .digest_offset
-            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+            .ok_or(McuError::ROM_OTP_PARTITION_NO_DIGEST_OFFSET)?;
 
         let digest = self.compute_sw_digest(partition, iv, cnst)?;
         crate::println!(
@@ -818,11 +801,6 @@ impl Otp {
         // Read back the digest using 64-bit granule (matching the write)
         let readback = self.read_dword(digest_offset / 8)?;
         if readback != digest {
-            crate::println!(
-                "[mcu-rom-otp] Digest verify failed: wrote {:#x}, read {:#x}",
-                digest,
-                readback
-            );
             return Err(McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
         }
 

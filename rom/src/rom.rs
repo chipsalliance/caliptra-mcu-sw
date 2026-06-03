@@ -767,11 +767,7 @@ pub fn verify_prod_debug_unlock_pk_hash(
     // Verify length matches: 384 bytes = 96 u32 words
     let pk_hash_len = mci.prod_debug_unlock_pk_hash_len();
     if pk_hash_len != 96 {
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom] PK hash length mismatch: expected 96, got {}",
-            pk_hash_len
-        );
-        return Err(McuError::ROM_SOC_PK_HASH_VERIFY_FAILED);
+        return Err(McuError::ROM_SOC_PK_HASH_VERIFY_LEN_MISMATCH);
     }
 
     // Compare word-by-word to minimize stack usage
@@ -780,13 +776,13 @@ pub fn verify_prod_debug_unlock_pk_hash(
     for hash_idx in 0..8 {
         let entry = PROD_DEBUG_UNLOCK_PK_ENTRIES
             .get(hash_idx)
-            .ok_or(McuError::ROM_SOC_PK_HASH_VERIFY_FAILED)?;
+            .ok_or(McuError::ROM_SOC_PK_HASH_VERIFY_INTERNAL_ERROR)?;
         let hash_base_offset = entry.byte_offset;
         for word_idx in 0..12 {
             let reg_idx = hash_idx * 12 + word_idx;
             let expected = otp
                 .read_u32_at(hash_base_offset + word_idx * 4)
-                .map_err(|_| McuError::ROM_SOC_PK_HASH_VERIFY_FAILED)?;
+                .map_err(|_| McuError::ROM_SOC_PK_HASH_VERIFY_OTP_READ_FAILED)?;
             let actual = mci.read_prod_debug_unlock_pk_hash(reg_idx).unwrap_or(0);
             // Use bitwise OR to accumulate mismatches (constant-time)
             mismatch |= expected != actual;
@@ -794,8 +790,7 @@ pub fn verify_prod_debug_unlock_pk_hash(
     }
 
     if mismatch {
-        caliptra_mcu_romtime::println!("[mcu-rom] Prod debug unlock PK hash verification failed");
-        return Err(McuError::ROM_SOC_PK_HASH_VERIFY_FAILED);
+        return Err(McuError::ROM_SOC_PK_HASH_VERIFY_MISMATCH);
     }
     caliptra_mcu_romtime::println!("[mcu-rom] Prod debug unlock PK hash verification passed");
     Ok(())
@@ -818,25 +813,13 @@ pub fn verify_mcu_mbox_axi_users(
         if let Some(expected_val) = *expected_user {
             let actual_val = mci.read_mbox0_valid_axi_user(i).unwrap_or(0);
             if expected_val != actual_val {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] MCU mailbox 0 user {} verification failed: expected {}, got {}",
-                    i,
-                    HexWord(expected_val),
-                    HexWord(actual_val)
-                );
-                return Err(McuError::ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED);
+                return Err(McuError::ROM_SOC_MCU_MBOX0_AXI_USER_VERIFY_FAILED);
             }
         }
         // Verify lock status matches expected
         let actual_locked = mci.read_mbox0_axi_user_lock(i).unwrap_or(false);
         if *expected_lock != actual_locked {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] MCU mailbox 0 user {} lock verification failed: expected {}, got {}",
-                i,
-                expected_lock,
-                actual_locked
-            );
-            return Err(McuError::ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED);
+            return Err(McuError::ROM_SOC_MCU_MBOX0_AXI_USER_LOCK_VERIFY_FAILED);
         }
     }
 
@@ -851,25 +834,13 @@ pub fn verify_mcu_mbox_axi_users(
         if let Some(expected_val) = *expected_user {
             let actual_val = mci.read_mbox1_valid_axi_user(i).unwrap_or(0);
             if expected_val != actual_val {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] MCU mailbox 1 user {} verification failed: expected {}, got {}",
-                    i,
-                    HexWord(expected_val),
-                    HexWord(actual_val)
-                );
-                return Err(McuError::ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED);
+                return Err(McuError::ROM_SOC_MCU_MBOX1_AXI_USER_VERIFY_FAILED);
             }
         }
         // Verify lock status matches expected
         let actual_locked = mci.read_mbox1_axi_user_lock(i).unwrap_or(false);
         if *expected_lock != actual_locked {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] MCU mailbox 1 user {} lock verification failed: expected {}, got {}",
-                i,
-                expected_lock,
-                actual_locked
-            );
-            return Err(McuError::ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED);
+            return Err(McuError::ROM_SOC_MCU_MBOX1_AXI_USER_LOCK_VERIFY_FAILED);
         }
     }
 

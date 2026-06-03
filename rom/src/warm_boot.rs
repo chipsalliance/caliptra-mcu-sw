@@ -115,14 +115,12 @@ impl BootFlow for WarmBoot {
 
         // Verify that SS_CONFIG_DONE_STICKY and SS_CONFIG_DONE are actually set
         if !mci.is_ss_config_done_sticky() || !mci.is_ss_config_done() {
-            caliptra_mcu_romtime::println!("[mcu-rom] SS_CONFIG_DONE verification failed");
             fatal_error(McuError::ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED);
         }
 
         // Verify MCU mailbox AXI users haven't been tampered with after locking
         caliptra_mcu_romtime::println!("[mcu-rom] Verifying MCU mailbox AXI users");
         if let Err(err) = verify_mcu_mbox_axi_users(mci, &mcu_mbox_config) {
-            caliptra_mcu_romtime::println!("[mcu-rom] MCU mailbox AXI user verification failed");
             fatal_error(err);
         }
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersVerified.into());
@@ -153,7 +151,6 @@ impl BootFlow for WarmBoot {
         };
         // Safety: this address is valid
         if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
-            caliptra_mcu_romtime::println!("Invalid firmware detected; halting");
             fatal_error(McuError::ROM_WARM_BOOT_INVALID_FIRMWARE);
         }
 
@@ -163,7 +160,6 @@ impl BootFlow for WarmBoot {
         mci.set_flow_milestone(McuBootMilestones::WARM_RESET_FLOW_COMPLETE.into());
         crate::call_hook(params.hooks, |h| h.post_warm_boot());
         mci.trigger_warm_reset();
-        caliptra_mcu_romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
         fatal_error(McuError::ROM_WARM_BOOT_RESET_ERROR);
     }
 }

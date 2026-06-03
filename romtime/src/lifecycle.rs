@@ -199,35 +199,27 @@ impl Lifecycle {
                 return Ok(());
             }
             if status.is_set(lc_ctrl::bits::Status::TransitionError) {
-                crate::println!("[mcu-rom-lcc] Transition error detected.");
                 return Err(McuError::ROM_LC_TRANSITION_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::TokenError) {
-                crate::println!("[mcu-rom-lcc] Token error detected.");
                 return Err(McuError::ROM_LC_TOKEN_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::OtpError) {
-                crate::println!("[mcu-rom-lcc] OTP error detected.");
                 return Err(McuError::ROM_LC_OTP_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::FlashRmaError) {
-                crate::println!("[mcu-rom-lcc] FLASH RMA error detected.");
                 return Err(McuError::ROM_LC_FLASH_RMA_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::TransitionCountError) {
-                crate::println!("[mcu-rom-lcc] Transition count error detected.");
                 return Err(McuError::ROM_LC_TRANSITION_COUNT_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::StateError) {
-                crate::println!("[mcu-rom-lcc] State error detected.");
                 return Err(McuError::ROM_LC_STATE_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::BusIntegError) {
-                crate::println!("[mcu-rom-lcc] Bus integrity error detected.");
                 return Err(McuError::ROM_LC_BUS_INTEG_ERROR);
             }
             if status.is_set(lc_ctrl::bits::Status::OtpPartitionError) {
-                crate::println!("[mcu-rom-lcc] OTP partition error detected.");
                 return Err(McuError::ROM_LC_OTP_PARTITION_ERROR);
             }
         }

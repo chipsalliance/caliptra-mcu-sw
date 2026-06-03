@@ -739,10 +739,10 @@ mod test {
 
         // Verify it's the correct error
         let error_code = fatal_error.unwrap();
-        let expected_error: u32 = McuError::ROM_COLD_BOOT_DOT_ERROR.into();
+        let expected_error: u32 = McuError::ROM_COLD_BOOT_DOT_NO_RECOVERY_HANDLERS.into();
         assert_eq!(
             error_code, expected_error,
-            "Expected ROM_COLD_BOOT_DOT_ERROR (0x{:x}), got 0x{:x}",
+            "Expected ROM_COLD_BOOT_DOT_NO_RECOVERY_HANDLERS (0x{:x}), got 0x{:x}",
             expected_error, error_code
         );
 
@@ -1738,8 +1738,8 @@ mod test {
         );
         assert_eq!(
             fatal_error.unwrap(),
-            u32::from(caliptra_mcu_error::McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
-            "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR, got 0x{:x}",
+            u32::from(caliptra_mcu_error::McuError::ROM_FW_MANIFEST_DOT_UNSUPPORTED_VERSION),
+            "Expected ROM_FW_MANIFEST_DOT_UNSUPPORTED_VERSION, got 0x{:x}",
             fatal_error.unwrap()
         );
 
@@ -2304,13 +2304,13 @@ mod test {
         );
         assert_eq!(
             fatal_error.unwrap(),
-            u32::from(caliptra_mcu_error::McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
-            "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR for unknown command, got 0x{:x}",
+            u32::from(caliptra_mcu_error::McuError::ROM_FW_MANIFEST_DOT_UNKNOWN_COMMAND),
+            "Expected ROM_FW_MANIFEST_DOT_UNKNOWN_COMMAND for unknown command, got 0x{:x}",
             fatal_error.unwrap()
         );
 
         println!(
-            "[TEST] Unknown DOT command correctly triggers ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR"
+            "[TEST] Unknown DOT command correctly triggers ROM_FW_MANIFEST_DOT_UNKNOWN_COMMAND"
         );
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }

@@ -23,7 +23,6 @@ use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
 use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
 #[cfg(not(feature = "test-force-hitless-update"))]
 use caliptra_mcu_error::McuError;
-use caliptra_mcu_romtime::HexWord;
 use core::fmt::Write;
 #[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
 use zerocopy::FromBytes;
@@ -49,17 +48,13 @@ impl BootFlow for FwHitlessUpdate {
             core::mem::size_of::<MailboxRespHeader>(),
         ) {
             match err {
-                CaliptraApiError::MailboxCmdFailed(code) => {
-                    caliptra_mcu_romtime::println!(
-                        "[mcu-rom] Error finishing mailbox command: {}",
-                        HexWord(code)
-                    );
+                CaliptraApiError::MailboxCmdFailed(_) => {
+                    fatal_error(McuError::ROM_FW_HITLESS_UPDATE_CLEAR_MB_CMD_FAILED);
                 }
                 _ => {
-                    caliptra_mcu_romtime::println!("[mcu-rom] Error finishing mailbox command");
+                    fatal_error(McuError::ROM_FW_HITLESS_UPDATE_CLEAR_MB_FAILED);
                 }
             }
-            fatal_error(McuError::ROM_FW_HITLESS_UPDATE_CLEAR_MB_ERROR);
         };
 
         #[cfg(not(feature = "test-force-hitless-update"))]
@@ -111,10 +106,6 @@ impl BootFlow for FwHitlessUpdate {
                                 _params.dot_flash,
                             )
                         {
-                            caliptra_mcu_romtime::println!(
-                                "[mcu-rom] Error in firmware manifest DOT: {}",
-                                HexWord(err.into())
-                            );
                             fatal_error(err);
                         }
                         env.mci.set_flow_checkpoint(

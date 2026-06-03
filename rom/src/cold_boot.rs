@@ -189,35 +189,29 @@ impl ColdBoot {
                 soc_manager.start_mailbox_req_bytes(CommandId::FE_PROG.into(), req.as_bytes())
             {
                 match err {
-                    CaliptraApiError::MailboxCmdFailed(code) => {
-                        caliptra_mcu_romtime::println!(
-                            "[mcu-rom] Error sending mailbox command: {}",
-                            HexWord(code)
+                    CaliptraApiError::MailboxCmdFailed(_) => {
+                        fatal_error(
+                            McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_START_MBOX_CMD_FAILED,
                         );
                     }
                     _ => {
-                        caliptra_mcu_romtime::println!("[mcu-rom] Error sending mailbox command");
+                        fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_START_FAILED);
                     }
                 }
-                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_START);
             }
             {
                 let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
                 if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
                     match err {
-                        CaliptraApiError::MailboxCmdFailed(code) => {
-                            caliptra_mcu_romtime::println!(
-                                "[mcu-rom] Error finishing mailbox command: {}",
-                                HexWord(code)
+                        CaliptraApiError::MailboxCmdFailed(_) => {
+                            fatal_error(
+                                McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH_MBOX_CMD_FAILED,
                             );
                         }
                         _ => {
-                            caliptra_mcu_romtime::println!(
-                                "[mcu-rom] Error finishing mailbox command"
-                            );
+                            fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH_FAILED);
                         }
                     }
-                    fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
                 }
             }
 
@@ -246,8 +240,7 @@ impl ColdBoot {
     /// After decryption the plaintext replaces the ciphertext in SRAM.
     fn decrypt_firmware(soc_manager: &mut CaliptraSoC, ciphertext_size: u32, sha384: &[u8; 48]) {
         if ciphertext_size == 0 {
-            caliptra_mcu_romtime::println!("[mcu-rom] Encrypted firmware ciphertext size is zero");
-            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_SIZE_ZERO);
         }
         let sram_base = unsafe { MCU_MEMORY_MAP.sram_offset } as usize;
 
@@ -362,7 +355,9 @@ impl ColdBoot {
         let mut input = [0u8; 64]; // MAX_KEY_SIZE = 64
         match input.get_mut(..32) {
             Some(dst) => dst.copy_from_slice(&MCU_TEST_AES_KEY),
-            None => fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR),
+            None => {
+                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_KEY_IMPORT_INTERNAL_FAILED)
+            }
         }
 
         let mut req = CmImportReq {
@@ -375,28 +370,28 @@ impl ColdBoot {
         let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
         req.hdr.chksum = chksum;
 
-        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] CM_IMPORT start error: {}",
-                HexWord(Self::err_code(&err))
-            );
-            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        if soc_manager
+            .start_mailbox_req_bytes(cmd, req.as_bytes())
+            .is_err()
+        {
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_KEY_IMPORT_START_FAILED);
         }
 
         let mut resp_buf = [0u8; core::mem::size_of::<CmImportResp>()];
-        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] CM_IMPORT finish error: {}",
-                HexWord(Self::err_code(&err))
-            );
-            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        if soc_manager
+            .finish_mailbox_resp_bytes(&mut resp_buf)
+            .is_err()
+        {
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_KEY_IMPORT_FINISH_FAILED);
         }
 
         // Extract CMK from response: hdr(8) + cmk(128)
         let mut cmk_bytes = [0u8; CMK_SIZE_BYTES];
         match resp_buf.get(8..8 + CMK_SIZE_BYTES) {
             Some(src) => cmk_bytes.copy_from_slice(src),
-            None => fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR),
+            None => {
+                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_KEY_IMPORT_RESP_INVALID)
+            }
         }
         Cmk(cmk_bytes)
     }
@@ -429,31 +424,26 @@ impl ColdBoot {
         let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
         req.hdr.chksum = chksum;
 
-        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] CM_AES_GCM_DECRYPT_DMA start error: {}",
-                HexWord(Self::err_code(&err))
-            );
-            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        if soc_manager
+            .start_mailbox_req_bytes(cmd, req.as_bytes())
+            .is_err()
+        {
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_DMA_START_FAILED);
         }
 
         let mut resp_buf = [0u8; core::mem::size_of::<CmAesGcmDecryptDmaResp>()];
-        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] CM_AES_GCM_DECRYPT_DMA finish error: {}",
-                HexWord(Self::err_code(&err))
-            );
-            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_FINISH_ERROR);
+        if soc_manager
+            .finish_mailbox_resp_bytes(&mut resp_buf)
+            .is_err()
+        {
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_DMA_FINISH_FAILED);
         }
 
         // CmAesGcmDecryptDmaResp: hdr(8) + tag_verified(4)
         let tag_verified = match resp_buf.get(8..12) {
             Some(b) => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
             None => {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] CM_AES_GCM_DECRYPT_DMA response too short"
-                );
-                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_FINISH_ERROR);
+                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_DMA_RESP_INVALID);
             }
         };
         if tag_verified != 1 {
@@ -489,21 +479,19 @@ impl ColdBoot {
         let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
         req.hdr.chksum = chksum;
 
-        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] ACTIVATE_FIRMWARE start error: {}",
-                HexWord(Self::err_code(&err))
-            );
-            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_START_ERROR);
+        if soc_manager
+            .start_mailbox_req_bytes(cmd, req.as_bytes())
+            .is_err()
+        {
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_START_FAILED);
         }
 
         let mut resp_buf = [0u8; core::mem::size_of::<ActivateFirmwareResp>()];
-        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] ACTIVATE_FIRMWARE finish error: {}",
-                HexWord(Self::err_code(&err))
-            );
-            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR);
+        if soc_manager
+            .finish_mailbox_resp_bytes(&mut resp_buf)
+            .is_err()
+        {
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_FAILED);
         }
     }
 
@@ -519,37 +507,33 @@ impl ColdBoot {
         let chksum = calc_checksum(CMD_GET_MCU_FW_SIZE, &[]);
         req.chksum = chksum;
 
-        if let Err(err) = soc_manager.start_mailbox_req_bytes(CMD_GET_MCU_FW_SIZE, req.as_bytes()) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] GET_MCU_FW_SIZE start error: {}",
-                HexWord(Self::err_code(&err))
-            );
-            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_START_ERROR);
+        if soc_manager
+            .start_mailbox_req_bytes(CMD_GET_MCU_FW_SIZE, req.as_bytes())
+            .is_err()
+        {
+            fatal_error(McuError::ROM_COLD_BOOT_GET_FW_SIZE_START_FAILED);
         }
 
         let mut resp_buf = [0u8; core::mem::size_of::<GetMcuFwSizeResp>()];
-        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] GET_MCU_FW_SIZE finish error: {}",
-                HexWord(Self::err_code(&err))
-            );
-            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR);
+        if soc_manager
+            .finish_mailbox_resp_bytes(&mut resp_buf)
+            .is_err()
+        {
+            fatal_error(McuError::ROM_COLD_BOOT_GET_FW_SIZE_FINISH_FAILED);
         }
 
         // GetMcuFwSizeResp: hdr(8) + size(4) + sha384(48)
         let size = match resp_buf.get(8..12) {
             Some(b) => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
             None => {
-                caliptra_mcu_romtime::println!("[mcu-rom] GET_MCU_FW_SIZE response too short");
-                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR);
+                fatal_error(McuError::ROM_COLD_BOOT_GET_FW_SIZE_RESP_INVALID);
             }
         };
         let mut sha384 = [0u8; 48];
         match resp_buf.get(12..60) {
             Some(src) => sha384.copy_from_slice(src),
             None => {
-                caliptra_mcu_romtime::println!("[mcu-rom] GET_MCU_FW_SIZE response missing sha384");
-                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR);
+                fatal_error(McuError::ROM_COLD_BOOT_GET_FW_SIZE_RESP_MISSING_SHA384);
             }
         }
         (size, sha384)
@@ -730,7 +714,7 @@ fn attempt_dot_locked_recovery(
     use crate::device_ownership_transfer::{DotLockedRecoveryContext, DotLockedRecoveryManager};
 
     if params.dot_locked_recovery_handlers.is_empty() {
-        return McuError::ROM_COLD_BOOT_DOT_ERROR;
+        return McuError::ROM_COLD_BOOT_DOT_NO_RECOVERY_HANDLERS;
     }
 
     let ctx = DotLockedRecoveryContext {
@@ -1238,12 +1222,8 @@ impl BootFlow for ColdBoot {
         let owner_pk_hash = if let Some(dot_flash) = params.dot_flash {
             caliptra_mcu_romtime::println!("[mcu-rom] Reading DOT blob");
             let mut dot_blob = [0u8; device_ownership_transfer::DOT_BLOB_SIZE];
-            if let Err(err) = dot_flash.read(&mut dot_blob, 0) {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] Fatal error reading DOT blob from flash: {}",
-                    HexWord(usize::from(err) as u32)
-                );
-                fatal_error(McuError::ROM_COLD_BOOT_DOT_ERROR);
+            if dot_flash.read(&mut dot_blob, 0).is_err() {
+                fatal_error(McuError::ROM_COLD_BOOT_DOT_FLASH_READ_FAILED);
             }
             mci.set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferFlashRead.into());
 

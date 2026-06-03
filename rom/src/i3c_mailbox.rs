@@ -168,8 +168,7 @@ impl<'a> I3cMailboxHandler<'a> {
             }
         }
 
-        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] I3C services timed out");
-        Err(McuError::ROM_COLD_BOOT_DOT_ERROR)
+        Err(McuError::ROM_I3C_SERVICES_TIMEOUT)
     }
 
     /// Check whether DOT commands are available.

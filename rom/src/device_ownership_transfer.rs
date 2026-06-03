@@ -303,16 +303,15 @@ pub(crate) fn cm_derive_stable_key_impl(
     };
     let mut req32: [u32; core::mem::size_of::<CmDeriveStableKeyReq>() / 4] = transmute!(req);
 
-    if let Err(err) = soc_manager.exec_mailbox_req_u32(
-        CommandId::CM_DERIVE_STABLE_KEY.into(),
-        &mut req32,
-        &mut resp,
-    ) {
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom] Error deriving DOT stable key: {}",
-            HexWord(crate::err_code(&err))
-        );
-        return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
+    if soc_manager
+        .exec_mailbox_req_u32(
+            CommandId::CM_DERIVE_STABLE_KEY.into(),
+            &mut req32,
+            &mut resp,
+        )
+        .is_err()
+    {
+        return Err(McuError::ROM_DOT_DERIVE_STABLE_KEY_FAILED);
     }
     let resp: CmDeriveStableKeyResp = transmute!(resp);
     let dot_effective_key = DotEffectiveKey(Cmk(transmute!(resp.cmk)));
@@ -346,14 +345,11 @@ pub(crate) fn cm_hmac(
     };
     let mut req: [u32; core::mem::size_of::<CmHmacDotBlobReq>() / 4] = transmute!(req);
 
-    if let Err(err) =
-        soc_manager.exec_mailbox_req_u32(CommandId::CM_HMAC.into(), &mut req, &mut resp)
+    if soc_manager
+        .exec_mailbox_req_u32(CommandId::CM_HMAC.into(), &mut req, &mut resp)
+        .is_err()
     {
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom] Error computing HMAC: {}",
-            HexWord(crate::err_code(&err))
-        );
-        return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
+        return Err(McuError::ROM_DOT_HMAC_FAILED);
     }
     let resp: CmHmacResp = transmute!(resp);
     Ok(transmute!(resp.mac))
@@ -520,8 +516,7 @@ pub(crate) fn burn_dot_lock_fuse(otp: &Otp, dot_fuses: &DotFuses) -> McuResult<(
     // Each state transition burns the next sequential bit in the dot_fuse_array.
     let next_bit = dot_fuses.burned as u32;
     if next_bit >= (dot_fuses.total as u32) {
-        caliptra_mcu_romtime::println!("[mcu-rom-dot] No more DOT fuse bits available");
-        return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
+        return Err(McuError::ROM_DOT_NO_MORE_FUSE_BITS);
     }
 
     // Calculate which word and bit within that word to burn.
@@ -1176,12 +1171,8 @@ fn create_and_seal_dot_blob(
 
     // Write the sealed DOT blob to flash.
     if let Some(flash) = dot_flash {
-        if let Err(err) = flash.write(blob.as_bytes(), 0) {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom-dot] Failed to write DOT blob to flash: {}",
-                caliptra_mcu_romtime::HexWord(usize::from(err) as u32)
-            );
-            return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
+        if flash.write(blob.as_bytes(), 0).is_err() {
+            return Err(McuError::ROM_DOT_FLASH_WRITE_FAILED);
         }
     }
 
@@ -1315,40 +1306,32 @@ pub fn process_fw_manifest_dot_commands(
     }
 
     if !section.verify_checksum() {
-        caliptra_mcu_romtime::println!("[mcu-rom-dot] Firmware manifest DOT checksum mismatch");
-        return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
+        return Err(McuError::ROM_FW_MANIFEST_DOT_CHECKSUM_MISMATCH);
     }
 
     if section.version != 1 {
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom-dot] Unsupported fw manifest DOT version: {}",
-            section.version
-        );
-        return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
+        return Err(McuError::ROM_FW_MANIFEST_DOT_UNSUPPORTED_VERSION);
     }
 
     caliptra_mcu_romtime::println!("[mcu-rom-dot] Processing manifest DOT commands");
 
     let num_commands = section.num_commands as usize;
     if num_commands > MAX_FW_MANIFEST_DOT_COMMANDS {
-        return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
+        return Err(McuError::ROM_FW_MANIFEST_DOT_TOO_MANY_COMMANDS);
     }
 
     // Reject manifests that contain both LOCK and UNLOCK commands.
     // Allowing both would rapidly burn through DOT fuses on every reset.
     let cmds = match section.commands.get(..num_commands) {
         Some(c) => c,
-        None => return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
+        None => return Err(McuError::ROM_FW_MANIFEST_DOT_COMMANDS_INVALID),
     };
     let has_lock = cmds
         .iter()
         .any(|&c| c == FW_MANIFEST_DOT_CMD_LOCK || c == FW_MANIFEST_DOT_CMD_DISABLE);
     let has_unlock = cmds.iter().any(|&c| c == FW_MANIFEST_DOT_CMD_UNLOCK);
     if has_lock && has_unlock {
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom-dot] Fatal: both LOCK/DISABLE and UNLOCK present in manifest"
-        );
-        return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
+        return Err(McuError::ROM_FW_MANIFEST_DOT_CONFLICTING_COMMANDS);
     }
 
     for &cmd in cmds {
@@ -1433,8 +1416,7 @@ pub fn process_fw_manifest_dot_commands(
             }
 
             _ => {
-                caliptra_mcu_romtime::println!("[mcu-rom-dot] Unknown DOT command: {}", cmd);
-                return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
+                return Err(McuError::ROM_FW_MANIFEST_DOT_UNKNOWN_COMMAND);
             }
         }
     }
@@ -1497,7 +1479,7 @@ impl<'a> DotLockedRecoveryManager<'a> {
     /// first successful handler.  Returns the last error if all are
     /// exhausted.
     pub fn run(&mut self, env: &mut RomEnv, ctx: &DotLockedRecoveryContext<'_>) -> McuResult<()> {
-        let mut last_err = McuError::ROM_COLD_BOOT_DOT_ERROR;
+        let mut last_err = McuError::ROM_COLD_BOOT_DOT_NO_RECOVERY_HANDLERS;
         while self.current < self.entries.len() {
             let entry = &self.entries[self.current];
             match entry.handler.attempt(env, ctx) {

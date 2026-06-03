@@ -125,26 +125,20 @@ fn dispatch_fuse_command(
     otp: &Otp,
 ) -> Result<usize, McuError> {
     if input_dlen < size_of::<u32>() || input_dlen > MAX_FUSE_REQ_BYTES {
-        crate::println!(
-            "[mci-mbox] Invalid dlen {} (must be {}..={})",
-            input_dlen,
-            size_of::<u32>(),
-            MAX_FUSE_REQ_BYTES
-        );
-        return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
+        return Err(McuError::ROM_MCI_MBOX_FUSE_REQ_INVALID_LENGTH);
     }
 
     sram_to_buf(sram, buf, input_dlen);
 
     let chksum_bytes: [u8; 4] = buf
         .get(..size_of::<u32>())
-        .ok_or(McuError::ROM_OTP_FUSE_INVALID_LENGTH)?
+        .ok_or(McuError::ROM_MCI_MBOX_FUSE_REQ_INVALID_LENGTH)?
         .try_into()
         .unwrap();
     let chksum = u32::from_le_bytes(chksum_bytes);
     let payload = buf
         .get(size_of::<u32>()..input_dlen)
-        .ok_or(McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
+        .ok_or(McuError::ROM_MCI_MBOX_FUSE_REQ_INVALID_LENGTH)?;
     if !verify_checksum(chksum, cmd, payload) {
         crate::println!("[mci-mbox] Checksum mismatch");
         return Err(McuError::ROM_OTP_FUSE_CHECKSUM_ERROR);
@@ -173,16 +167,11 @@ fn handle_fuse_read(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mcu
     crate::println!("[mci-mbox] Processing MC_FUSE_READ (IFPR)");
 
     if dlen != size_of::<FuseReadReq>() {
-        crate::println!(
-            "[mci-mbox] IFPR: unexpected dlen {} (expected {})",
-            dlen,
-            size_of::<FuseReadReq>()
-        );
-        return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
+        return Err(McuError::ROM_MCI_MBOX_FUSE_READ_REQ_INVALID_LENGTH);
     }
 
     let req = FuseReadReq::ref_from_bytes(&buf[..size_of::<FuseReadReq>()])
-        .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
+        .map_err(|_| McuError::ROM_MCI_MBOX_FUSE_READ_REQ_PARSE_FAILED)?;
     let partition = req.partition;
     let entry = req.entry;
     crate::println!(
@@ -194,19 +183,12 @@ fn handle_fuse_read(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mcu
     let params = fuse_read_dai_params(partition, entry, MAX_FUSE_DATA_WORDS)?;
 
     let resp = FuseReadResp::mut_from_bytes(&mut buf[..size_of::<FuseReadResp>()])
-        .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
+        .map_err(|_| McuError::ROM_MCI_MBOX_FUSE_READ_RESP_PARSE_FAILED)?;
     resp.valid_bits = params.valid_bits;
     for i in 0..params.words_to_read {
-        match otp.read_word(params.base_word_addr + i) {
-            Ok(word) => resp.data[i] = word,
-            Err(_) => {
-                crate::println!(
-                    "[mci-mbox] IFPR: DAI read error at word addr {}",
-                    params.base_word_addr + i
-                );
-                return Err(McuError::ROM_OTP_FUSE_DAI_READ_ERROR);
-            }
-        }
+        resp.data[i] = otp
+            .read_word(params.base_word_addr + i)
+            .map_err(|_| McuError::ROM_OTP_FUSE_DAI_READ_ERROR)?;
     }
 
     let resp_bytes = RESP_HDR_BYTES + size_of::<u32>() + params.words_to_read * size_of::<u32>();
@@ -219,16 +201,11 @@ fn handle_fuse_write(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mc
 
     let hdr_size = size_of::<FuseWriteReqHdr>();
     if dlen < hdr_size {
-        crate::println!(
-            "[mci-mbox] IFPW: dlen too short {} (minimum {})",
-            dlen,
-            hdr_size
-        );
-        return Err(McuError::ROM_OTP_FUSE_INPUT_TOO_SHORT);
+        return Err(McuError::ROM_MCI_MBOX_FUSE_WRITE_HDR_TOO_SHORT);
     }
 
     let req = FuseWriteReqHdr::ref_from_bytes(&buf[..hdr_size])
-        .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
+        .map_err(|_| McuError::ROM_MCI_MBOX_FUSE_WRITE_REQ_PARSE_FAILED)?;
     let partition = req.partition;
     let entry = req.entry;
     let start_bit = req.start_bit;
@@ -254,27 +231,16 @@ fn handle_fuse_write(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mc
         return Err(McuError::ROM_OTP_FUSE_DATA_TOO_LARGE);
     }
 
-    let expected_dlen = hdr_size.checked_add(data_bytes).ok_or_else(|| {
-        crate::println!("[mci-mbox] IFPW: expected dlen overflow");
-        McuError::ROM_OTP_FUSE_INVALID_LENGTH
-    })?;
+    let expected_dlen = hdr_size
+        .checked_add(data_bytes)
+        .ok_or(McuError::ROM_MCI_MBOX_FUSE_WRITE_DLEN_OVERFLOW)?;
 
     match dlen.cmp(&expected_dlen) {
         Ordering::Less => {
-            crate::println!(
-                "[mci-mbox] IFPW: input too short for data ({} < {})",
-                dlen,
-                expected_dlen
-            );
-            return Err(McuError::ROM_OTP_FUSE_INPUT_TOO_SHORT);
+            return Err(McuError::ROM_MCI_MBOX_FUSE_WRITE_DATA_TOO_SHORT);
         }
         Ordering::Greater => {
-            crate::println!(
-                "[mci-mbox] IFPW: input too long for data ({} > {})",
-                dlen,
-                expected_dlen
-            );
-            return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
+            return Err(McuError::ROM_MCI_MBOX_FUSE_WRITE_INPUT_TOO_LONG);
         }
         Ordering::Equal => {}
     }
@@ -295,16 +261,11 @@ fn handle_fuse_lock_partition(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<
     crate::println!("[mci-mbox] Processing MC_FUSE_LOCK_PARTITION (IFPK)");
 
     if dlen != size_of::<FuseLockPartitionReq>() {
-        crate::println!(
-            "[mci-mbox] IFPK: unexpected dlen {} (expected {})",
-            dlen,
-            size_of::<FuseLockPartitionReq>()
-        );
-        return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
+        return Err(McuError::ROM_MCI_MBOX_FUSE_LOCK_REQ_INVALID_LENGTH);
     }
 
     let req = FuseLockPartitionReq::ref_from_bytes(&buf[..size_of::<FuseLockPartitionReq>()])
-        .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
+        .map_err(|_| McuError::ROM_MCI_MBOX_FUSE_LOCK_REQ_PARSE_FAILED)?;
     let partition = req.partition;
     crate::println!("[mci-mbox] IFPK: partition={}", HexWord(partition));
 
