@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cmd_interface::CmdInterface;
+use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
@@ -86,12 +87,11 @@ pub async fn vdm_responder(
     while running.load(Ordering::SeqCst) {
         if let Err(e) = cmd_interface.handle_responder_msg(&mut msg_buffer).await {
             // Debug print on error
-            writeln!(
+            console_writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "vdm_responder error: {:?}",
                 e
-            )
-            .unwrap();
+            );
         }
     }
 }
