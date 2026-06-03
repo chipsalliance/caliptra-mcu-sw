@@ -334,11 +334,17 @@ impl MciPeripheral for Mci {
             CMD_TOGGLE_WARM_RESET => {
                 println!("MCI: debug_out CMD_TOGGLE_WARM_RESET (0x{:03x}) - requesting warm reset", val);
                 self.reset_reason.handle_warm_reset();
+                if let Some(flag) = &self.lc_reload_flag {
+                    flag.set(true);
+                }
                 self.reset_requested = true;
             }
             CMD_TOGGLE_COLD_RESET => {
                 println!("MCI: debug_out CMD_TOGGLE_COLD_RESET (0x{:03x}) - requesting cold reset", val);
                 self.reset_reason.handle_warm_reset();
+                if let Some(flag) = &self.lc_reload_flag {
+                    flag.set(true);
+                }
                 self.reset_requested = true;
             }
             _ => {

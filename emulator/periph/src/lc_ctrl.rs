@@ -156,12 +156,17 @@ pub struct LcCtrl {
     status: ReadWriteRegister<u32, lc_ctrl::bits::Status::Register>,
     /// Current lifecycle state index (5-bit, 0-21).
     lc_state_index: u32,
+    /// Lifecycle state loaded at boot (fallback when OTP lifecycle data is absent).
+    initial_lc_state_index: u32,
     /// Lifecycle transition count.
     lc_transition_cnt: u32,
+    /// Lifecycle transition count loaded at boot.
+    initial_lc_transition_cnt: u32,
     generated: LcGenerated,
 
     // Transition protocol state.
     mutex_claimed: bool,
+    transition_ctrl_volatile_raw_unlock: bool,
     transition_target: u32,
     token: [u32; 4],
 
@@ -201,9 +206,12 @@ impl LcCtrl {
         Self {
             status: (STATUS_INITIALIZED | STATUS_READY).into(),
             lc_state_index,
+            initial_lc_state_index: lc_state_index,
             lc_transition_cnt,
+            initial_lc_transition_cnt: lc_transition_cnt,
             generated: LcGenerated::default(),
             mutex_claimed: false,
+            transition_ctrl_volatile_raw_unlock: false,
             transition_target: 0,
             token: [0; 4],
             raw_unlock_token: DEFAULT_RAW_UNLOCK_TOKEN,
@@ -251,6 +259,7 @@ impl LcCtrl {
     /// Re-read lifecycle state from OTP and reset transient state.
     /// Called on warm/cold reset so the new LC state takes effect.
     fn reload_from_otp(&mut self) {
+        let mut loaded_from_otp = false;
         if let Some(otp) = &self.otp_partitions {
             let otp = otp.borrow();
             let start = LIFE_CYCLE_BYTE_OFFSET;
@@ -261,11 +270,18 @@ impl LcCtrl {
                 if let Ok((state_idx, count)) = caliptra_mcu_otp_lifecycle::lc_decode_memory(&mem) {
                     self.lc_state_index = state_idx as u32;
                     self.lc_transition_cnt = count as u32;
+                    loaded_from_otp = true;
                 }
             }
         }
+        if !loaded_from_otp {
+            // If lifecycle memory is not provisioned, return to boot baseline.
+            self.lc_state_index = self.initial_lc_state_index;
+            self.lc_transition_cnt = self.initial_lc_transition_cnt;
+        }
         self.status = (STATUS_INITIALIZED | STATUS_READY).into();
         self.mutex_claimed = false;
+        self.transition_ctrl_volatile_raw_unlock = false;
         self.transition_target = 0;
         self.token = [0; 4];
     }
@@ -379,7 +395,16 @@ impl LcCtrl {
         match token_req {
             TokenRequirement::None => {}
             TokenRequirement::RawUnlock => {
-                if self.token_as_bytes() != self.raw_unlock_token {
+                let supplied = self.token_as_bytes();
+                if self.transition_ctrl_volatile_raw_unlock {
+                    // Volatile raw unlock uses hashed token in SW
+                    // Reference: https://github.com/chipsalliance/caliptra-ss/blob/b5718a0f7fe7936b5082a8dfc23add896755af3a/docs/CaliptraSSHardwareSpecification.md#lcc-raw-unlock-token-generation--setting
+                    let expected_hash = hash_lc_token(&self.raw_unlock_token);
+                    if supplied != expected_hash {
+                        self.transition_error(STATUS_TOKEN_ERROR);
+                        return;
+                    }
+                } else if supplied != self.raw_unlock_token {
                     self.transition_error(STATUS_TOKEN_ERROR);
                     return;
                 }
@@ -399,10 +424,22 @@ impl LcCtrl {
             }
         }
 
-        // Success: update OTP, enter PostTransition.
-        self.write_mcu_otp_lifecycle(target_index as u8, self.lc_transition_cnt as u8);
+        if self.transition_ctrl_volatile_raw_unlock
+            && matches!(token_req, TokenRequirement::RawUnlock)
+            && self.lc_state_index == RAW
+            && target_index == TEST_UNLOCKED0
+        {
+            // Volatile raw-unlock: do not persist to OTP and do not consume
+            // transition count. State becomes visible immediately.
+            self.lc_transition_cnt = self.lc_transition_cnt.saturating_sub(1);
+            self.lc_state_index = target_index;
+        } else {
+            // Non-volatile transition:
+            // Success: update OTP, enter PostTransition.
+            self.write_mcu_otp_lifecycle(target_index as u8, self.lc_transition_cnt as u8);
+            self.lc_state_index = POST_TRANSITION;
+        }
 
-        self.lc_state_index = POST_TRANSITION;
         self.status = (STATUS_INITIALIZED | STATUS_READY | STATUS_TRANSITION_SUCCESSFUL).into();
     }
 
@@ -465,8 +502,18 @@ impl caliptra_mcu_emulator_registers_generated::lc::LcPeripheral for LcCtrl {
             self.mutex_claimed = true;
         } else {
             self.mutex_claimed = false;
+            self.transition_ctrl_volatile_raw_unlock = false;
             self.transition_target = 0;
             self.token = [0; 4];
+        }
+    }
+
+    fn write_transition_ctrl(
+        &mut self,
+        val: ReadWriteRegister<u32, lc_ctrl::bits::TransitionCtrl::Register>,
+    ) {       
+        if self.mutex_claimed {
+            self.transition_ctrl_volatile_raw_unlock = (val.reg.get() >> 1) & 0x1 != 0;
         }
     }
 
