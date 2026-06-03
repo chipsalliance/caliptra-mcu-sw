@@ -25,12 +25,14 @@ use zerocopy::FromBytes;
 use crate::build::{alloc_padded, build_error_response};
 use crate::error::{
     SpdmError, SpdmResult, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST, SPDM_INVALID_SESSION,
-    SPDM_UNSUPPORTED_REQUEST, SPDM_UNSPECIFIED, SPDM_VERSION_MISMATCH,
+    SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_UNSPECIFIED,
+    SPDM_VERSION_MISMATCH,
 };
 use crate::key_schedule::SessionKeyType;
 use crate::session::{SessionManager, SessionState};
 use crate::{
-    algorithms, capabilities, certificate, challenge, chunk, digests, finish, key_exchange,
+    algorithms, capabilities, certificate, challenge, chunk, digests, end_session, finish,
+    key_exchange,
     measurements, version,
 };
 
@@ -572,6 +574,7 @@ async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
         ReqRespCode::KEY_EXCHANGE => {
             key_exchange::handle_key_exchange(state, sessions, pal, io).await
         }
+        ReqRespCode::FINISH | ReqRespCode::END_SESSION => Err(SPDM_SESSION_REQUIRED),
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
     }
@@ -755,6 +758,52 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
                 ..hdr_off + 6 + rsp_ct_len + AES_256_GCM_TAG_SIZE]
                 .copy_from_slice(&rsp_tag);
 
+            Ok(buf)
+        }
+        ReqRespCode::END_SESSION => {
+            if session.state != SessionState::Established {
+                return Err(SPDM_UNEXPECTED_REQUEST);
+            }
+
+            let end_session_ack = end_session::handle_end_session(version, spdm_msg)?;
+
+            // Plaintext: app_data_length(2) || end_session_ack(4)
+            let rsp_pt_len = 2 + end_session_ack.len();
+            let mut rsp_plaintext = [0u8; 8]; // 2 + 4 = 6, padded
+            rsp_plaintext[0..2].copy_from_slice(&(end_session_ack.len() as u16).to_le_bytes());
+            rsp_plaintext[2..2 + end_session_ack.len()].copy_from_slice(&end_session_ack);
+
+            let rsp_ct_len = rsp_pt_len;
+            let rsp_length = (rsp_ct_len + AES_256_GCM_TAG_SIZE) as u16;
+            let mut rsp_aad = [0u8; SECURED_MSG_HDR_SIZE];
+            encode_aad(session_id, rsp_length, &mut rsp_aad).map_err(|_| SPDM_UNSPECIFIED)?;
+
+            let mut rsp_ct = [0u8; 8];
+            let (_, rsp_tag) = session
+                .key_schedule
+                .encrypt(
+                    pal,
+                    io,
+                    SessionKeyType::ResponseDataKey,
+                    version.to_u8(),
+                    &rsp_aad,
+                    &rsp_plaintext[..rsp_pt_len],
+                    &mut rsp_ct[..rsp_ct_len],
+                )
+                .await
+                .map_err(|_| SPDM_UNSPECIFIED)?;
+
+            let wire_body_len = SECURED_MSG_HDR_SIZE + rsp_ct_len + AES_256_GCM_TAG_SIZE;
+            let raw_len = pal.header_size() + wire_body_len;
+            let mut buf = alloc_padded(pal, io, raw_len).map_err(|_| SPDM_UNSPECIFIED)?;
+            let hdr_off = pal.header_size();
+            buf[hdr_off..hdr_off + 4].copy_from_slice(&session_id.to_le_bytes());
+            buf[hdr_off + 4..hdr_off + 6].copy_from_slice(&rsp_length.to_le_bytes());
+            buf[hdr_off + 6..hdr_off + 6 + rsp_ct_len].copy_from_slice(&rsp_ct[..rsp_ct_len]);
+            buf[hdr_off + 6 + rsp_ct_len..hdr_off + 6 + rsp_ct_len + AES_256_GCM_TAG_SIZE]
+                .copy_from_slice(&rsp_tag);
+
+            sessions.remove_and_destroy(pal, io, session_id).await;
             Ok(buf)
         }
         _ => Err(SPDM_UNSUPPORTED_REQUEST),

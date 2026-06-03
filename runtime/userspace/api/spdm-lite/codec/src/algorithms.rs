@@ -28,7 +28,7 @@ def_flag_set_u8! {
     /// OtherParamsSupport / OtherParamsSel (DSP0274 §10.6.1 Table 15
     /// byte 7) — opaque-data-format negotiation introduced in v1.2.
     pub struct OtherParamSupport {
-        OPAQUE_DATA_FMT1 = 1 << 0,
+        OPAQUE_DATA_FMT1 = 1 << 1,
         /// SPDM 1.3 MultiKeyConn negotiation.
         MULTI_KEY_CONN = 1 << 4,
     }

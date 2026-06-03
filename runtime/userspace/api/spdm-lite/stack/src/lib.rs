@@ -36,6 +36,7 @@ mod certificate;
 mod challenge;
 mod chunk;
 mod digests;
+mod end_session;
 mod error;
 mod finish;
 mod key_exchange;

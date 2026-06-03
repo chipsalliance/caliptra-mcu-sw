@@ -12,6 +12,7 @@ mod certificate;
 mod challenge;
 mod chunk;
 mod digests;
+mod end_session;
 pub mod errors;
 mod finish;
 mod flag_macros;
@@ -40,6 +41,7 @@ pub use chunk::{
     CHUNK_RESPONSE_FIXED_BODY_SIZE, LARGE_RESPONSE_SIZE_FIELD_SIZE,
 };
 pub use digests::{DigestsRsp, DigestsRspBody};
+pub use end_session::{EndSessionAck, EndSessionReqBody};
 pub use finish::{FinishReqBody, FinishRsp};
 pub use key_exchange::{
     KeyExchangeReqBody, KeyExchangeRsp, ECDH_P384_EXCHANGE_DATA_SIZE,
