@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 690" font-family="Consolas, monospace" font-size="14">
+  <defs>
+    <style>
+      .box{fill:#fafafa;stroke:#555;stroke-width:1.5;rx:6}
+      .box-new{fill:#e8f5e9;stroke:#2e7d32;stroke-width:2;rx:6}
+      .fab{fill:#f5f5f5;stroke:#333;stroke-width:1.5;rx:4}
+      .mci{fill:#fff3e0;stroke:#e65100;stroke-width:1.5;rx:6}
+      .mb{fill:#e3f2fd;stroke:#1565c0;stroke-width:1.5;rx:6}
+      .phy{fill:#f3e5f5;stroke:#6a1b9a;stroke-width:1.5;rx:6}
+      .title{font-weight:bold;font-size:15px;fill:#222}
+      .label-sm{font-size:13px;fill:#666}
+      .new{font-size:12px;font-weight:bold;fill:#2e7d32}
+      .arrow{stroke:#666;stroke-width:1.4;fill:none;marker-end:url(#a)}
+      .ccm{stroke:#2e7d32;stroke-width:1.6;fill:none;marker-end:url(#ag)}
+      .reset{stroke:#c62828;stroke-width:1.6;fill:none;stroke-dasharray:6,4;marker-end:url(#ar)}
+      .reset-line{stroke:#c62828;stroke-width:1.6;fill:none;stroke-dasharray:6,4}
+      .reset-tag{fill:#c62828;font-size:12px;font-weight:bold}
+      .ccm-tag{fill:#2e7d32;font-size:11px;font-style:italic}
+      .legend{font-size:13px;fill:#555}
+    </style>
+    <marker id="a" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7" fill="#666"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7" fill="#c62828"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7" fill="#2e7d32"/></marker>
+  </defs>
+
+  <text class="title" x="560" y="22" text-anchor="middle">NWP Integration — Top-level Block Diagram</text>
+
+  <rect x="20" y="34" width="14" height="12" fill="#fafafa" stroke="#555"/><text class="legend" x="40" y="44">Existing</text>
+  <rect x="100" y="34" width="14" height="12" fill="#e8f5e9" stroke="#2e7d32"/><text class="legend" x="120" y="44">Added (NWP)</text>
+  <line x1="200" y1="40" x2="225" y2="40" class="reset-line"/><text class="legend" x="232" y="44">Reset / lock (MCI → NWP)</text>
+  <line x1="430" y1="40" x2="455" y2="40" stroke="#2e7d32" stroke-width="1.6"/><text class="legend" x="462" y="44">CCM (closely-coupled, off-AXI)</text>
+
+  <!-- Top row: MCU side (existing / reused / extended) -->
+  <rect class="box" x="30" y="60" width="240" height="90"/>
+  <text class="title" x="150" y="82" text-anchor="middle">MCU VeeR core</text>
+  <text class="label-sm" x="150" y="104" text-anchor="middle">existing —</text>
+  <text class="label-sm" x="150" y="122" text-anchor="middle">controls NWP via MCI</text>
+
+  <rect class="box" x="290" y="60" width="200" height="90"/>
+  <text class="title" x="390" y="82" text-anchor="middle">MCU ROM</text>
+  <text class="label-sm" x="390" y="104" text-anchor="middle">existing —</text>
+  <text class="label-sm" x="390" y="122" text-anchor="middle">decides boot mode</text>
+
+  <rect class="mb" x="510" y="60" width="220" height="90"/>
+  <text class="title" x="620" y="82" text-anchor="middle">MCU Mailbox</text>
+  <text class="label-sm" x="620" y="104" text-anchor="middle">reused; polling,</text>
+  <text class="label-sm" x="620" y="122" text-anchor="middle">no interrupts in net-boot</text>
+
+  <rect class="mci" x="750" y="60" width="340" height="90"/>
+  <text class="title" x="920" y="82" text-anchor="middle">MCI (extended)</text>
+  <text class="label-sm" x="920" y="104" text-anchor="middle">+ NWP_RESET_CONTROL (hold_core / hold_rom / lock)</text>
+  <text class="label-sm" x="920" y="122" text-anchor="middle">+ fuse-shadow regs + NWP WDT</text>
+
+  <!-- AXI arrows: top boxes ↔ fabric -->
+  <line class="arrow" x1="150" y1="150" x2="150" y2="200"/>
+  <line class="arrow" x1="390" y1="150" x2="390" y2="200"/>
+  <line class="arrow" x1="620" y1="150" x2="620" y2="200"/>
+  <line class="arrow" x1="920" y1="150" x2="920" y2="200"/>
+
+  <!-- AXI fabric strip -->
+  <rect class="fab" x="30" y="200" width="1060" height="40"/>
+  <text class="title" x="560" y="225" text-anchor="middle">AXI Fabric — NWP is a full AXI master</text>
+
+  <!-- AXI arrows: fabric ↔ bottom boxes (DCCM intentionally NOT on AXI) -->
+  <line class="arrow" x1="135" y1="240" x2="135" y2="330"/>
+  <line class="arrow" x1="530" y1="240" x2="530" y2="330"/>
+  <line class="arrow" x1="730" y1="240" x2="730" y2="330"/>
+  <line class="arrow" x1="975" y1="240" x2="975" y2="330"/>
+
+  <!-- Reset / lock path: MCI (top) → NWP core + NWP ROM (bottom). Down-taps offset right of AXI arrowheads to avoid overlap. -->
+  <line class="reset-line" x1="870" y1="150" x2="870" y2="290"/>
+  <line class="reset-line" x1="870" y1="290" x2="160" y2="290"/>
+  <line class="reset" x1="555" y1="290" x2="555" y2="330"/>
+  <line class="reset" x1="160" y1="290" x2="160" y2="330"/>
+  <text class="reset-tag" x="778" y="172">RESET / LOCK</text>
+
+  <!-- Bottom row: NWP side (all NEW) + Ethernet PHY -->
+  <rect class="box-new" x="30" y="330" width="210" height="120"/>
+  <text class="title" x="135" y="354" text-anchor="middle">NWP VeeR core</text>
+  <text class="new" x="135" y="370" text-anchor="middle">NEW (VeeR EL2)</text>
+  <text class="label-sm" x="135" y="390" text-anchor="middle">replicated MCU core</text>
+  <text class="label-sm" x="135" y="408" text-anchor="middle">subordinate to MCU</text>
+  <text x="135" y="428" text-anchor="middle" style="font-size:11px;fill:#2e7d32;font-style:italic">reset_vec mux → NWP_ROM_BASE</text>
+  <text x="135" y="442" text-anchor="middle" style="font-size:11px;fill:#2e7d32;font-style:italic">(net-boot input, non-programmable)</text>
+
+  <!-- DCCM tucked beside NWP VeeR core, attached via LSU/CCM, NOT via AXI -->
+  <rect class="box-new" x="290" y="350" width="120" height="80"/>
+  <text class="title" x="350" y="372" text-anchor="middle">NWP DCCM</text>
+  <text class="new" x="350" y="388" text-anchor="middle">NEW</text>
+  <text class="label-sm" x="350" y="406" text-anchor="middle">data + stack</text>
+  <text class="label-sm" x="350" y="422" text-anchor="middle">64 KB</text>
+  <line class="ccm" x1="244" y1="390" x2="286" y2="390"/>
+  <text class="ccm-tag" x="265" y="383" text-anchor="middle">LSU/CCM</text>
+
+  <rect class="box-new" x="460" y="330" width="140" height="120"/>
+  <text class="title" x="530" y="354" text-anchor="middle">NWP ROM</text>
+  <text class="new" x="530" y="370" text-anchor="middle">NEW</text>
+  <text class="label-sm" x="530" y="392" text-anchor="middle">network-boot</text>
+  <text class="label-sm" x="530" y="410" text-anchor="middle">firmware</text>
+  <text class="label-sm" x="530" y="428" text-anchor="middle">held in reset</text>
+  <text class="label-sm" x="530" y="442" text-anchor="middle">until net-boot</text>
+
+  <rect class="box-new" x="650" y="330" width="160" height="120"/>
+  <text class="title" x="730" y="354" text-anchor="middle">NWP UART</text>
+  <text class="new" x="730" y="370" text-anchor="middle">NEW</text>
+  <text class="label-sm" x="730" y="392" text-anchor="middle">serial console</text>
+  <text class="label-sm" x="730" y="410" text-anchor="middle">for boot output</text>
+  <text class="label-sm" x="730" y="428" text-anchor="middle">FPGA UART pool</text>
+
+  <rect class="phy" x="860" y="330" width="230" height="120"/>
+  <text class="title" x="975" y="354" text-anchor="middle">Ethernet PHY</text>
+  <text class="label-sm" x="975" y="376" text-anchor="middle">FPGA-native IP</text>
+  <text class="label-sm" x="975" y="394" text-anchor="middle">via AXI-to-PHY shim (Phase 2)</text>
+  <text class="label-sm" x="975" y="412" text-anchor="middle">addr-map = integration</text>
+  <text class="label-sm" x="975" y="430" text-anchor="middle">decision</text>
+
+  <!-- Footer notes -->
+  <text class="label-sm" x="560" y="478" text-anchor="middle">All NWP control surfaces live in MCI; ENABLE_NWP-gated. No second MCI; no new mailbox; no IPC; no interrupts in net-boot.</text>
+  <text class="label-sm" x="560" y="496" text-anchor="middle">VeeR EL2 source: github.com/chipsalliance/Cores-VeeR-EL2</text>
+
+  <line x1="30" y1="516" x2="1090" y2="516" stroke="#bbb" stroke-width="1"/>
+  <text class="title" x="30" y="538">Box-by-box notes</text>
+
+  <rect x="30" y="548" width="14" height="12" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text class="legend" x="52" y="558"><tspan font-weight="bold">NWP VeeR core (NEW):</tspan> replicated MCU VeeR EL2; AXI master (LSU/IFU/SB); subordinate to MCU; no ICCM. reset_vec selected by recovery-mode mux; net-boot input pinned to NWP_ROM_BASE.</text>
+
+  <rect x="30" y="568" width="14" height="12" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text class="legend" x="52" y="578"><tspan font-weight="bold">NWP DCCM (NEW):</tspan> 64 KB closely-coupled memory; hangs off the NWP VeeR LSU port — <tspan font-style="italic">not</tspan> on AXI. No SRAM execution region (see §6.3, O8).</text>
+
+  <rect x="30" y="588" width="14" height="12" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text class="legend" x="52" y="598"><tspan font-weight="bold">NWP ROM (NEW):</tspan> network-boot firmware on AXI; held under reset by default, released only when MCU enters net-boot.</text>
+
+  <rect x="30" y="608" width="14" height="12" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text class="legend" x="52" y="618"><tspan font-weight="bold">NWP UART (NEW):</tspan> AXI peripheral; serial console for NWP boot output; drawn from the FPGA UART pool.</text>
+
+  <rect x="30" y="628" width="14" height="12" fill="#fff3e0" stroke="#e65100"/>
+  <text class="legend" x="52" y="638"><tspan font-weight="bold">MCI (extended, not new):</tspan> gains NWP_RESET_CONTROL (hold_core / hold_rom / lock), fuse-shadow regs, and NWP WDT — all `ENABLE_NWP`-gated.</text>
+
+  <rect x="30" y="648" width="14" height="12" fill="#e3f2fd" stroke="#1565c0"/>
+  <text class="legend" x="52" y="658"><tspan font-weight="bold">MCU Mailbox (reused, not new):</tspan> NWP writes packets; MCU polls. No new mailbox, no interrupts in net-boot mode.</text>
+
+  <rect x="30" y="668" width="14" height="12" fill="#f3e5f5" stroke="#6a1b9a"/>
+  <text class="legend" x="52" y="678"><tspan font-weight="bold">Ethernet PHY:</tspan> FPGA-native IP reached over AXI via an AXI-to-PHY shim (Phase 2 deliverable; not in repo yet).</text>
+</svg>

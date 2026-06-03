@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" font-family="Consolas, 'Courier New', monospace" font-size="14">
+  <defs>
+    <style>
+      .col { fill: #fff; stroke: #555; stroke-width: 1.5; rx: 6; }
+      .col-after { fill: #fff; stroke: #2e7d32; stroke-width: 1.5; rx: 6; }
+      .row { fill: #fafafa; stroke: #999; stroke-width: 1; rx: 3; }
+      .row-new { fill: #e8f5e9; stroke: #2e7d32; stroke-width: 1.5; rx: 3; }
+      .header { font-weight: bold; font-size: 16px; fill: #333; }
+      .label { font-size: 13px; fill: #333; }
+      .label-sm { font-size: 12px; fill: #777; }
+      .new-tag { font-size: 12px; font-weight: bold; fill: #2e7d32; }
+      .section { font-size: 13px; fill: #555; font-weight: bold; }
+    </style>
+  </defs>
+  <text class="header" x="220" y="24" text-anchor="middle">BEFORE (Phase 0, MCU only)</text>
+  <text class="header" x="660" y="24" text-anchor="middle">AFTER (Phase 1, MCU + NWP)</text>
+  <rect class="col" x="50" y="40" width="340" height="160"/>
+  <text class="section" x="220" y="60" text-anchor="middle">AXI Masters: 4</text>
+  <rect class="row" x="70" y="72" width="300" height="22"/><text class="label" x="84" y="87">cptra_core</text>
+  <rect class="row" x="70" y="98" width="300" height="22"/><text class="label" x="84" y="113">mcu_lsu</text>
+  <rect class="row" x="70" y="124" width="300" height="22"/><text class="label" x="84" y="139">mcu_ifu</text>
+  <rect class="row" x="70" y="150" width="300" height="22"/><text class="label" x="84" y="165">mcu_sb</text>
+  <rect class="col-after" x="490" y="40" width="340" height="240"/>
+  <text class="section" x="660" y="60" text-anchor="middle">AXI Masters: 7</text>
+  <rect class="row" x="510" y="72" width="300" height="22"/><text class="label" x="524" y="87">cptra_core</text>
+  <rect class="row" x="510" y="98" width="300" height="22"/><text class="label" x="524" y="113">mcu_lsu</text>
+  <rect class="row" x="510" y="124" width="300" height="22"/><text class="label" x="524" y="139">mcu_ifu</text>
+  <rect class="row" x="510" y="150" width="300" height="22"/><text class="label" x="524" y="165">mcu_sb</text>
+  <rect class="row-new" x="510" y="176" width="300" height="22"/><text class="label" x="524" y="191">nwp_lsu</text><text class="new-tag" x="800" y="191" text-anchor="end">NEW</text>
+  <rect class="row-new" x="510" y="202" width="300" height="22"/><text class="label" x="524" y="217">nwp_ifu</text><text class="new-tag" x="800" y="217" text-anchor="end">NEW</text>
+  <rect class="row-new" x="510" y="228" width="300" height="22"/><text class="label" x="524" y="243">nwp_sb</text><text class="new-tag" x="800" y="243" text-anchor="end">NEW</text>
+  <rect class="col" x="50" y="220" width="340" height="195"/>
+  <text class="section" x="220" y="240" text-anchor="middle">AXI Slaves: 6</text>
+  <rect class="row" x="70" y="252" width="300" height="22"/><text class="label" x="84" y="267">cptra_core</text>
+  <rect class="row" x="70" y="278" width="300" height="22"/><text class="label" x="84" y="293">i3c</text>
+  <rect class="row" x="70" y="304" width="300" height="22"/><text class="label" x="84" y="319">mcu_rom (256 KB)</text>
+  <rect class="row" x="70" y="330" width="300" height="22"/><text class="label" x="84" y="345">mci</text>
+  <rect class="row" x="70" y="356" width="300" height="22"/><text class="label" x="84" y="371">lc_ctrl</text>
+  <rect class="row" x="70" y="382" width="300" height="22"/><text class="label" x="84" y="397">otp_ctrl</text>
+  <rect class="col-after" x="490" y="300" width="340" height="115"/>
+  <text class="section" x="660" y="320" text-anchor="middle">AXI Slaves: 7 (+ nwp_rom)</text>
+  <rect class="row" x="510" y="332" width="300" height="22"/><text class="label" x="524" y="347">cptra_core, i3c, mcu_rom, mci, …</text>
+  <rect class="row-new" x="510" y="358" width="300" height="22"/><text class="label" x="524" y="373">nwp_rom (256 KB)</text><text class="new-tag" x="800" y="373" text-anchor="end">NEW</text>
+  <text class="label-sm" x="660" y="402" text-anchor="middle">(other slaves unchanged)</text>
+</svg>

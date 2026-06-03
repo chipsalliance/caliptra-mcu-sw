@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" font-family="Consolas, 'Courier New', monospace" font-size="14">
+  <defs>
+    <style>
+      .box { fill: #fafafa; stroke: #555; stroke-width: 1.5; rx: 6; }
+      .box-new { fill: #e8f5e9; stroke: #2e7d32; stroke-width: 2; rx: 6; }
+      .intc { fill: #e3f2fd; stroke: #1565c0; stroke-width: 2; rx: 6; }
+      .slave { fill: #fafafa; stroke: #888; stroke-width: 1; rx: 4; }
+      .slave-new { fill: #e8f5e9; stroke: #2e7d32; stroke-width: 2; rx: 4; }
+      .mem { fill: #e3f2fd; stroke: #90a4ae; stroke-width: 1; rx: 3; }
+      .port { fill: #fff3e0; stroke: #e65100; stroke-width: 1; rx: 3; }
+      .port-new { fill: #e8f5e9; stroke: #2e7d32; stroke-width: 1.5; rx: 3; }
+      .title { font-weight: bold; font-size: 16px; fill: #333; }
+      .subtitle { font-size: 13px; fill: #777; }
+      .label { font-size: 13px; fill: #333; }
+      .label-sm { font-size: 12px; fill: #888; }
+      .new-tag { font-size: 11px; font-weight: bold; fill: #2e7d32; }
+      .arrow { stroke: #999; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+      .arrow-new { stroke: #2e7d32; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead-green); }
+      .outer { fill: #fff; stroke: #333; stroke-width: 2; rx: 8; }
+      .footer { font-size: 13px; fill: #666; }
+      .note { font-size: 12px; fill: #999; font-style: italic; }
+    </style>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#999"/>
+    </marker>
+    <marker id="arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#2e7d32"/>
+    </marker>
+  </defs>
+
+  <!-- Outer frame -->
+  <rect class="outer" x="10" y="10" width="900" height="540"/>
+  <text class="title" x="460" y="36" text-anchor="middle">caliptra_ss_top — Phase 1 NWP Integration</text>
+
+  <!-- Legend -->
+  <rect x="620" y="46" width="12" height="12" fill="#fafafa" stroke="#555" stroke-width="1" rx="2"/>
+  <text class="label-sm" x="638" y="56">Pre-existing</text>
+  <rect x="730" y="46" width="12" height="12" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5" rx="2"/>
+  <text class="label-sm" x="748" y="56">Added in Phase 1</text>
+
+  <!-- MCU Core -->
+  <rect class="box" x="40" y="70" width="390" height="180"/>
+  <text class="title" x="235" y="92" text-anchor="middle">mcu_top (rvtop_wrapper)</text>
+  <text class="subtitle" x="235" y="106" text-anchor="middle">css_mcu0_ VeeR EL2</text>
+
+  <rect class="mem" x="60" y="115" width="110" height="36"/>
+  <text class="label" x="115" y="132" text-anchor="middle">DCCM 16 KB</text>
+  <text class="label-sm" x="115" y="145" text-anchor="middle">@0x5000_0000</text>
+
+  <rect class="mem" x="185" y="115" width="80" height="36"/>
+  <text class="label" x="225" y="137" text-anchor="middle">ICache</text>
+
+  <text class="label-sm" x="60" y="172">rst_vec: 0x8000_0000 (from MCI)</text>
+  <text class="label-sm" x="60" y="185">NMI / JTAG: connected</text>
+
+  <!-- MCU ports -->
+  <rect class="port" x="55" y="206" width="80" height="28"/>
+  <text class="label" x="95" y="222" text-anchor="middle">mcu_lsu</text>
+
+  <rect class="port" x="155" y="206" width="80" height="28"/>
+  <text class="label" x="195" y="222" text-anchor="middle">mcu_ifu</text>
+
+  <rect class="port" x="255" y="206" width="80" height="28"/>
+  <text class="label" x="295" y="222" text-anchor="middle">mcu_sb</text>
+
+  <!-- Caliptra Core DMA port -->
+  <rect class="port" x="355" y="206" width="60" height="28"/>
+  <text class="label" x="385" y="218" text-anchor="middle">cptra</text>
+  <text class="label-sm" x="385" y="230" text-anchor="middle">DMA</text>
+
+  <!-- NWP Core -->
+  <rect class="box-new" x="490" y="70" width="390" height="180"/>
+  <text class="title" x="685" y="92" text-anchor="middle">nwp_top_i</text>
+  <text class="subtitle" x="685" y="106" text-anchor="middle">css_nwp0_ VeeR EL2</text>
+  <text class="new-tag" x="775" y="106">NEW</text>
+
+  <rect class="mem" x="510" y="115" width="110" height="36"/>
+  <text class="label" x="565" y="132" text-anchor="middle">DCCM 64 KB</text>
+  <text class="label-sm" x="565" y="145" text-anchor="middle">@0x3000_0000</text>
+
+  <rect class="mem" x="640" y="115" width="80" height="36"/>
+  <text class="label" x="680" y="137" text-anchor="middle">ICache</text>
+
+  <text class="label-sm" x="510" y="172">rst_vec: 0x9000_0000 (hardcoded)</text>
+  <text class="label-sm" x="510" y="185">NMI / JTAG / DMA: tied off</text>
+
+  <!-- NWP ports -->
+  <rect class="port-new" x="520" y="206" width="80" height="28"/>
+  <text class="label" x="560" y="222" text-anchor="middle">nwp_lsu</text>
+
+  <rect class="port-new" x="620" y="206" width="80" height="28"/>
+  <text class="label" x="660" y="222" text-anchor="middle">nwp_ifu</text>
+
+  <rect class="port-new" x="720" y="206" width="80" height="28"/>
+  <text class="label" x="760" y="222" text-anchor="middle">nwp_sb</text>
+
+  <!-- Arrows: MCU ports to boundary -->
+  <line class="arrow" x1="95" y1="234" x2="95" y2="290"/>
+  <line class="arrow" x1="195" y1="234" x2="195" y2="290"/>
+  <line class="arrow" x1="295" y1="234" x2="295" y2="290"/>
+  <line class="arrow" x1="385" y1="234" x2="385" y2="290"/>
+
+  <!-- Arrows: NWP ports to boundary -->
+  <line class="arrow-new" x1="560" y1="234" x2="560" y2="290"/>
+  <line class="arrow-new" x1="660" y1="234" x2="660" y2="290"/>
+  <line class="arrow-new" x1="760" y1="234" x2="760" y2="290"/>
+
+  <!-- Module boundary / AXI port interface -->
+  <rect class="intc" x="40" y="290" width="840" height="40"/>
+  <text class="title" x="460" y="308" text-anchor="middle" fill="#1565c0">caliptra_ss_top Module Boundary</text>
+  <text class="subtitle" x="460" y="322" text-anchor="middle">7 AXI master ports (was 4) — crossbar is external</text>
+
+  <!-- Arrows: boundary to slaves -->
+  <line class="arrow" x1="60" y1="330" x2="60" y2="370"/>
+  <line class="arrow" x1="160" y1="330" x2="160" y2="370"/>
+  <line class="arrow" x1="280" y1="330" x2="280" y2="370"/>
+  <line class="arrow" x1="400" y1="330" x2="400" y2="370"/>
+  <line class="arrow" x1="520" y1="330" x2="520" y2="370"/>
+  <line class="arrow" x1="640" y1="330" x2="640" y2="370"/>
+  <line class="arrow-new" x1="810" y1="330" x2="810" y2="370"/>
+
+  <!-- AXI Slave ports -->
+  <rect class="slave" x="25" y="370" width="70" height="55"/>
+  <text class="label" x="60" y="388" text-anchor="middle">Caliptra</text>
+  <text class="label-sm" x="60" y="401" text-anchor="middle">Core</text>
+  <text class="label-sm" x="60" y="418" text-anchor="middle">cptra_core</text>
+
+  <rect class="slave" x="120" y="370" width="70" height="55"/>
+  <text class="label" x="155" y="388" text-anchor="middle">I3C</text>
+  <text class="label-sm" x="155" y="401" text-anchor="middle">Controller</text>
+  <text class="label-sm" x="155" y="418" text-anchor="middle">i3c</text>
+
+  <rect class="slave" x="235" y="370" width="85" height="55"/>
+  <text class="label" x="278" y="388" text-anchor="middle">MCU ROM</text>
+  <text class="label-sm" x="278" y="401" text-anchor="middle">256 KB</text>
+  <text class="label-sm" x="278" y="418" text-anchor="middle">mcu_rom</text>
+
+  <rect class="slave" x="365" y="370" width="70" height="55"/>
+  <text class="label" x="400" y="388" text-anchor="middle">MCI</text>
+  <text class="label-sm" x="400" y="401" text-anchor="middle">Mem Ctrl</text>
+  <text class="label-sm" x="400" y="418" text-anchor="middle">mci</text>
+
+  <rect class="slave" x="480" y="370" width="80" height="55"/>
+  <text class="label" x="520" y="388" text-anchor="middle">Lifecycle</text>
+  <text class="label-sm" x="520" y="401" text-anchor="middle">Controller</text>
+  <text class="label-sm" x="520" y="418" text-anchor="middle">lc_ctrl</text>
+
+  <rect class="slave" x="600" y="370" width="80" height="55"/>
+  <text class="label" x="640" y="388" text-anchor="middle">OTP/Fuse</text>
+  <text class="label-sm" x="640" y="401" text-anchor="middle">Controller</text>
+  <text class="label-sm" x="640" y="418" text-anchor="middle">otp_ctrl</text>
+
+  <rect class="slave-new" x="770" y="370" width="85" height="55"/>
+  <text class="label" x="813" y="388" text-anchor="middle">NWP ROM</text>
+  <text class="label-sm" x="813" y="401" text-anchor="middle">256 KB</text>
+  <text class="label-sm" x="813" y="418" text-anchor="middle">nwp_rom</text>
+  <text class="new-tag" x="830" y="378">NEW</text>
+
+  <!-- Slave count label -->
+  <text class="subtitle" x="460" y="450" text-anchor="middle">7 AXI slave ports (was 6)</text>
+
+  <!-- Footer -->
+  <text class="footer" x="460" y="490" text-anchor="middle">Clock: cptra_ss_mcu_clk_cg_o (shared MCU &amp; NWP)</text>
+  <text class="footer" x="460" y="505" text-anchor="middle">Reset: cptra_ss_mcu_rst_b_i (shared — NWP has no independent reset in Phase 1)</text>
+  <text class="note" x="460" y="525" text-anchor="middle">Note: AXI crossbar/interconnect is external to caliptra_ss_top — only port interfaces shown here</text>
+</svg>

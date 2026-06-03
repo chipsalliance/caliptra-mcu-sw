@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 470" font-family="Consolas, monospace" font-size="14">
+  <defs>
+    <style>
+      .box{fill:#fafafa;stroke:#555;stroke-width:1.6;rx:8}
+      .box-locked{fill:#fff3e0;stroke:#e65100;stroke-width:1.8;rx:8}
+      .box-init{fill:#e8f5e9;stroke:#2e7d32;stroke-width:1.8;rx:8}
+      .arrow{stroke:#666;stroke-width:1.8;fill:none;marker-end:url(#a)}
+      .arrow-hw{stroke:#c62828;stroke-width:1.8;fill:none;marker-end:url(#ar);stroke-dasharray:6,4}
+      .guide{stroke:#999;stroke-width:1.2;fill:none;stroke-dasharray:3,3}
+      .title{font-weight:bold;font-size:17px;fill:#222}
+      .label{font-size:15px;fill:#333}
+      .small{font-size:12px;fill:#666}
+      .note{font-size:13px;fill:#1565c0;font-style:italic}
+      .note-hw{font-size:13px;fill:#c62828;font-style:italic}
+      .legend{font-size:12px;fill:#555}
+    </style>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8" fill="#666"/></marker>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8" fill="#c62828"/></marker>
+  </defs>
+
+  <text class="title" x="490" y="26" text-anchor="middle">NWP reset / lock state machine (simplified view)</text>
+  <text class="legend" x="490" y="46" text-anchor="middle">State encoding uses hold_core / hold_rom, where 1=held in reset and 0=released.</text>
+
+  <rect class="box-init" x="60" y="92" width="220" height="76"/>
+  <text class="label" x="170" y="118" text-anchor="middle">Power-on default</text>
+  <text class="small" x="170" y="140" text-anchor="middle">U11</text>
+  <text class="small" x="170" y="158" text-anchor="middle">hold_core=1, hold_rom=1</text>
+
+  <rect class="box" x="350" y="76" width="280" height="108"/>
+  <text class="label" x="490" y="104" text-anchor="middle">Unlocked set (lock=0)</text>
+  <text class="small" x="490" y="126" text-anchor="middle">U11, U01, U10, U00</text>
+  <text class="small" x="490" y="146" text-anchor="middle">U01: hold_core=1, hold_rom=0</text>
+  <text class="small" x="490" y="164" text-anchor="middle">U10: hold_core=0, hold_rom=1</text>
+
+  <rect class="box-locked" x="700" y="76" width="220" height="108"/>
+  <text class="label" x="810" y="104" text-anchor="middle">Locked set (lock=1)</text>
+  <text class="small" x="810" y="126" text-anchor="middle">L11, L01, L10, L00</text>
+  <text class="small" x="810" y="146" text-anchor="middle">hold values frozen</text>
+  <text class="small" x="810" y="164" text-anchor="middle">writes ignored</text>
+
+  <line class="arrow" x1="280" y1="130" x2="350" y2="130"/>
+  <line class="guide" x1="315" y1="130" x2="315" y2="76"/>
+  <text class="note" x="315" y="70" text-anchor="middle">SW writes hold_core/hold_rom</text>
+
+  <line class="arrow" x1="630" y1="116" x2="700" y2="116"/>
+  <line class="guide" x1="665" y1="116" x2="665" y2="76"/>
+  <text class="note" x="665" y="70" text-anchor="middle">(a) SW lock: lock=1</text>
+
+  <line class="arrow-hw" x1="630" y1="146" x2="700" y2="146"/>
+  <text class="note-hw" x="665" y="202" text-anchor="middle">(b) HW auto-lock on first MCU SRAM fetch</text>
+
+  <path class="arrow" d="M 810 184 Q 810 250 490 250 Q 170 250 170 168"/>
+  <text class="note" x="490" y="276" text-anchor="middle">power cycle / mci_pwrgood reset: any Lxy -&gt; U11</text>
+
+  <rect class="box" x="60" y="306" width="860" height="128"/>
+  <text class="label" x="490" y="334" text-anchor="middle">How to read this figure</text>
+  <text class="small" x="490" y="356" text-anchor="middle">1) System starts at U11 (both core and ROM held in reset).</text>
+  <text class="small" x="490" y="374" text-anchor="middle">2) While unlocked, software can choose any Uxy combination by writing hold_core/hold_rom.</text>
+  <text class="small" x="490" y="392" text-anchor="middle">3) lock=1 (SW or HW auto-lock) moves current Uxy to matching Lxy and freezes it.</text>
+  <text class="small" x="490" y="410" text-anchor="middle">4) Only power cycle returns from locked states back to U11.</text>
+  <text class="small" x="490" y="428" text-anchor="middle">Aligned with Section 9 model: U11/U01/U10/U00 and L11/L01/L10/L00.</text>
+</svg>
