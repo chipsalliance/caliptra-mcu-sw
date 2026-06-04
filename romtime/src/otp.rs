@@ -95,16 +95,19 @@ impl Otp {
             return Err(McuError::ROM_OTP_INIT_STATUS_ERROR);
         }
 
-        // OTP DAI status should be idle
-        if !self
-            .registers
-            .otp_status
-            .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
-        {
-            return Err(McuError::ROM_OTP_INIT_NOT_IDLE);
+        // Wait for OTP DAI to become idle (controller may still be finishing
+        // power-on initialization after subsystem reset is released).
+        for _ in 0..OTP_PENDING_CHECK_MAX_ITERATIONS {
+            if self
+                .registers
+                .otp_status
+                .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
+            {
+                return Ok(());
+            }
         }
-
-        Ok(())
+        crate::println!("[mcu-rom-otp] OTP not idle");
+        Err(McuError::ROM_OTP_INIT_NOT_IDLE)
     }
 
     pub fn init(
