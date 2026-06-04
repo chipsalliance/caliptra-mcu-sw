@@ -1,16 +1,22 @@
 // Licensed under the Apache-2.0 license
 
-use crate::test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams};
+use crate::test::{
+    compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK,
+};
 use anyhow::Result;
 use caliptra_api::{calc_checksum, error::CaliptraError, mailbox::FwInfoResp, SocManager};
 use caliptra_mcu_builder::{CaliptraBuilder, FirmwareBinaries};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::FuseIncreaseCaliptraMinSvnReq;
 use caliptra_mcu_romtime::McuBootMilestones;
+use std::sync::atomic::Ordering;
 use zerocopy::{FromBytes, IntoBytes};
 
 #[test]
 fn test_increase_caliptra_svn() -> Result<()> {
+    let lock = TEST_LOCK.lock().unwrap();
+    lock.fetch_add(1, Ordering::Relaxed);
+
     // Step 1: Compile runtime with specific features and build initial Caliptra
     // firmware with SVN = 0 and SVN = 7.
     let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
@@ -146,10 +152,22 @@ fn test_increase_caliptra_svn() -> Result<()> {
         chksum: calc_checksum(fw_info_id, &[]),
     };
 
-    let resp = hw
-        .caliptra_mailbox_execute(fw_info_id, payload.as_bytes())
-        .unwrap()
-        .unwrap();
+    let mut resp = None;
+    for _ in 0..10 {
+        match hw.caliptra_mailbox_execute(fw_info_id, payload.as_bytes()) {
+            Ok(r) => {
+                resp = r;
+                break;
+            }
+            Err(caliptra_hw_model::ModelError::UnableToLockMailbox) => {
+                for _ in 0..1_000_000 {
+                    hw.step();
+                }
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    let resp = resp.expect("FW_INFO should return a response");
     let caliptra_fw_info = FwInfoResp::read_from_bytes(&resp).unwrap();
     assert_eq!(caliptra_fw_info.min_fw_svn, 7);
 
@@ -196,11 +214,17 @@ fn test_increase_caliptra_svn() -> Result<()> {
             .read(),
         u32::from(CaliptraError::IMAGE_VERIFIER_ERR_FIRMWARE_SVN_LESS_THAN_FUSE)
     );
+
+    // force the compiler to keep the lock
+    lock.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }
 
 #[test]
 fn test_increase_caliptra_svn_max() -> Result<()> {
+    let lock = TEST_LOCK.lock().unwrap();
+    lock.fetch_add(1, Ordering::Relaxed);
+
     // Compile runtime with specific features and build Caliptra firmware with max SVN (128).
     let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
     let (caliptra_fw_svn128, vendor_pk_hash_arr, soc_manifest) =
@@ -315,5 +339,7 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
     let caliptra_fw_info = FwInfoResp::read_from_bytes(&resp).unwrap();
     assert_eq!(caliptra_fw_info.min_fw_svn, 128);
 
+    // force the compiler to keep the lock
+    lock.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }

@@ -296,16 +296,26 @@ impl CaliptraBuilder {
 
         let cfg = if self.mcu_image_cfg.is_some() {
             self.mcu_image_cfg.clone().unwrap()
-        } else {
-            // Default MCU image configuration with valid addresses and exec_bit
-            // Uses FPGA memory map for DMA-accessible staging area
-            // exec_bit must be >= 2 (bits 0 and 1 are reserved by Caliptra)
+        } else if self.fpga {
+            // Default MCU image configuration for FPGA
             ImageCfg {
                 image_id: MCU_RT_IDENTIFIER,
                 component_id: MCU_RT_IDENTIFIER,
                 exec_bit: 2,
-                // MCU staging address in SRAM region (FPGA memory map)
                 staging_addr: caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64,
+                ..Default::default()
+            }
+        } else {
+            // Default MCU image configuration for emulator
+            const MCI_BASE_AXI_ADDRESS: u64 = 0xA800_0000;
+            const MCU_SRAM_OFFSET: u64 = 0xc0_0000;
+            const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
+            ImageCfg {
+                image_id: MCU_RT_IDENTIFIER,
+                component_id: MCU_RT_IDENTIFIER,
+                exec_bit: 2,
+                load_addr: MCI_BASE_AXI_ADDRESS + MCU_SRAM_OFFSET,
+                staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024),
                 ..Default::default()
             }
         };
@@ -500,7 +510,11 @@ impl CaliptraBuilder {
         Ok(path)
     }
 
-    fn compile_caliptra_fw_cached(fpga: bool, ocp_lock: bool, svn: Option<u16>) -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_cached(
+        fpga: bool,
+        ocp_lock: bool,
+        svn: Option<u16>,
+    ) -> Result<(PathBuf, String)> {
         let platform = if fpga { "fpga" } else { "emulator" };
         let ocp_lock_suffix = if ocp_lock { "-ocp-lock" } else { "" };
         if let Some(version) = Self::caliptra_version() {
@@ -641,7 +655,11 @@ impl CaliptraBuilder {
         Ok((new_bundle, vendor_hash, owner_hash))
     }
 
-    fn compile_caliptra_fw_uncached(fpga: bool, ocp_lock: bool, svn: Option<u16>) -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_uncached(
+        fpga: bool,
+        ocp_lock: bool,
+        svn: Option<u16>,
+    ) -> Result<(PathBuf, String)> {
         let opts = caliptra_builder::ImageOptions {
             pqc_key_type: FwVerificationPqcKeyType::LMS,
             fw_svn: svn.unwrap_or(0) as u32,

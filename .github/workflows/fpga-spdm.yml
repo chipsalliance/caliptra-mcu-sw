@@ -156,8 +156,8 @@ jobs:
           sccache --show-stats
 
           echo "Cross compiling xtask for FPGA"
-          cargo build --package xtask --features=fpga_realtime --target aarch64-unknown-linux-gnu
-          mv target/aarch64-unknown-linux-gnu/debug/xtask /tmp/caliptra-binaries/xtask
+          cargo build --package caliptra-mcu-xtask --features=fpga_realtime --target aarch64-unknown-linux-gnu
+          mv target/aarch64-unknown-linux-gnu/debug/caliptra-mcu-xtask /tmp/caliptra-binaries/xtask
 
           mkdir /tmp/caliptra-test-binaries/
           tar xvf caliptra-test-binaries.tar.zst -C /tmp/caliptra-test-binaries/

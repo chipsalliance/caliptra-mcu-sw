@@ -11,7 +11,6 @@ mod test {
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
     };
-    use caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
     use caliptra_mcu_flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
     use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
@@ -248,7 +247,7 @@ mod test {
         let update_runtime_firmware = compile_runtime(Some(feature), false);
         let mcu_cfg = ImageCfg {
             path: update_runtime_firmware.clone(),
-            load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
+            load_addr: MCI_BASE_AXI_ADDRESS + MCU_SRAM_OFFSET,
             staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
             component_id: MCU_RT_IDENTIFIER,
@@ -682,7 +681,7 @@ mod test {
 
         let mcu_cfg = ImageCfg {
             path: test_runtime.clone(),
-            load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
+            load_addr: MCI_BASE_AXI_ADDRESS + MCU_SRAM_OFFSET,
             staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
             component_id: MCU_RT_IDENTIFIER,
@@ -802,7 +801,7 @@ mod test {
 
         let mcu_cfg = ImageCfg {
             path: test_runtime.clone(),
-            load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
+            load_addr: MCI_BASE_AXI_ADDRESS + MCU_SRAM_OFFSET,
             staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
             component_id: MCU_RT_IDENTIFIER,

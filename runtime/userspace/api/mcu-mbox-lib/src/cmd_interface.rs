@@ -743,8 +743,7 @@ impl<'a> CmdInterface<'a> {
     ) -> Result<caliptra_api::mailbox::FwInfoResp, MsgHandlerError> {
         let mut req = caliptra_api::mailbox::MailboxReqHeader::default();
         use zerocopy::FromZeros;
-        let mut caliptra_info =
-            caliptra_api::mailbox::FwInfoResp::new_zeroed();
+        let mut caliptra_info = caliptra_api::mailbox::FwInfoResp::new_zeroed();
 
         // Invoke Caliptra mailbox API
         let len = execute_mailbox_cmd(

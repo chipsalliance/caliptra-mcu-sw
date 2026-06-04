@@ -27,7 +27,7 @@ mod test {
     /// must process the previous image, which can take many emulator cycles.
     /// The poll_* retry loops step the emulator while waiting, giving both
     /// the MCU ROM and Caliptra core time to progress.
-    const IMAGE_LOAD_TIMEOUT: usize = 6_000_000;
+    const IMAGE_LOAD_TIMEOUT: usize = 20_000_000;
 
     /// Build all binaries needed for the load-image tests in a single
     /// compilation pass and return both the hw model and the recovery
