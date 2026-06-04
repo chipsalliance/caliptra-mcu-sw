@@ -135,9 +135,11 @@ async fn spdm_mctp_responder() {
 
     // Caliptra VDM handler for SPDM over MCTP transport
     let caliptra_cmd_handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
+    let mut cmd_authorizer = crate::mcu_mbox::cmd_auth_mock::MockCommandAuthorizer::default();
     let mut caliptra_vdm_handler =
         caliptra_mcu_spdm_lib::vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdmHandler::new(
             &caliptra_cmd_handler,
+            &mut cmd_authorizer,
         );
     let mut handlers_array: [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler; 1] =
         [&mut caliptra_vdm_handler as &mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler];

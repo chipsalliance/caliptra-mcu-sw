@@ -28,11 +28,14 @@ pub fn get_auth_cmd_challenge(hw: &mut impl McuHwModel) -> Result<[u8; 32]> {
 
 pub fn sign_auth_cmd_challenge(challenge: &[u8; 32], cmd_id: u32, cmd: &[u8]) -> Result<[u8; 48]> {
     type HmacSha384 = Hmac<Sha384>;
+    let cmd_id_bytes = cmd_id.to_be_bytes();
+    let cmd_body = &cmd[size_of::<MailboxReqHeader>()..];
     let mut mac = HmacSha384::new_from_slice(&TEST_AUTH_CMD_HMAC_KEY)?;
-    mac.update(&cmd_id.to_be_bytes());
-    mac.update(&cmd[size_of::<MailboxReqHeader>()..]);
+    mac.update(&cmd_id_bytes);
+    mac.update(cmd_body);
     mac.update(challenge);
-    Ok(mac.finalize().into_bytes().into())
+    let result: [u8; 48] = mac.finalize().into_bytes().into();
+    Ok(result)
 }
 
 pub fn authorize_cmd(hw: &mut impl McuHwModel, cmd_id: u32, cmd: &[u8]) -> Result<Vec<u8>> {
