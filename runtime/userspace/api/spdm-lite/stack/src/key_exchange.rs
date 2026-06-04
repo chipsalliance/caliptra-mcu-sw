@@ -23,7 +23,9 @@ use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
-use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
+use crate::error::{
+    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
+};
 use crate::key_schedule::SessionKeyType;
 use crate::session::SessionManager;
 use crate::stack::{ConnectionState, Phase};
@@ -96,10 +98,11 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
     // ── Create session ──────────────────────────────────────────────
     let session_id = match sessions.create_session(req_session_id, state.version) {
         Ok(id) => id,
-        Err(_) => {
+        Err(e) => {
+            let err = SpdmError::from(e);
             // Destroy DHE secret so we don't leak the CMK handle.
             let _ = pal.delete_key(io, &dhe_secret).await;
-            return Err(SPDM_UNSPECIFIED);
+            return Err(err);
         }
     };
     let rsp_session_id = (session_id >> 16) as u16;

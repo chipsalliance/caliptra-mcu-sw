@@ -7,17 +7,17 @@
 //! never inflates the task future with multi-kilobyte mailbox-request
 //! structs.
 //!
-//! The 200-byte SHA running-context is held behind a fallibly
-//! heap-allocated pointer so [`HashState`] stays pointer-sized in
-//! async futures and other holders. That keeps the per-handler future
-//! state slim while the actual SHA context lives on the system heap
-//! and is freed automatically on drop.
+//! The 200-byte SHA running-context is held in a fallibly allocated
+//! [`Box`] so [`HashState`] stays pointer-sized in async futures and
+//! other holders. That keeps the per-handler future state slim while
+//! the actual SHA context lives on the system heap and is freed
+//! automatically on drop.
 
 extern crate alloc;
 
-use alloc::alloc::{alloc_zeroed, dealloc, Layout};
+use alloc::alloc::{alloc_zeroed, Layout};
+use alloc::boxed::Box;
 use core::mem::size_of;
-use core::ptr::NonNull;
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT, OUT_OF_MEMORY};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
@@ -55,21 +55,24 @@ const _: () = assert!(SHA_CHUNK_SIZE <= MAX_CMB_DATA_SIZE);
 /// for N = 1). Callers sizing the runtime heap budget must account
 /// for this.
 pub struct HashState {
-    inner: NonNull<[u8; CMB_SHA_CONTEXT_SIZE]>,
+    inner: Box<[u8; CMB_SHA_CONTEXT_SIZE]>,
 }
 
 impl HashState {
     /// Allocate a fresh, all-zero `HashState`. Not a valid running
     /// hash — must be initialized via [`sha_init`] before use.
     pub fn try_new() -> McuResult<Self> {
-        // SAFETY: `layout()` is non-zero and was constructed for the
-        // exact `[u8; CMB_SHA_CONTEXT_SIZE]` allocation we store in
-        // `inner`. A null return is handled as OUT_OF_MEMORY.
-        let ptr = unsafe { alloc_zeroed(Self::layout()) };
-        let Some(ptr) = NonNull::new(ptr.cast::<[u8; CMB_SHA_CONTEXT_SIZE]>()) else {
+        // SAFETY: `layout()` is non-zero and matches the boxed array
+        // type below. A null return is handled as OUT_OF_MEMORY.
+        let ptr = unsafe { alloc_zeroed(Self::layout()) }.cast::<[u8; CMB_SHA_CONTEXT_SIZE]>();
+        if ptr.is_null() {
             return Err(OUT_OF_MEMORY);
-        };
-        Ok(Self { inner: ptr })
+        }
+        // SAFETY: `ptr` came from the global allocator with the exact
+        // layout for `[u8; CMB_SHA_CONTEXT_SIZE]`; Box now owns and
+        // deallocates it.
+        let inner = unsafe { Box::from_raw(ptr) };
+        Ok(Self { inner })
     }
 
     /// Fallibly deep-copy this running hash state.
@@ -81,28 +84,16 @@ impl HashState {
 
     #[inline]
     fn ctx(&self) -> &[u8; CMB_SHA_CONTEXT_SIZE] {
-        // SAFETY: `inner` is created only by `try_new`, points to a live
-        // `[u8; CMB_SHA_CONTEXT_SIZE]`, and is not freed until `Drop`.
-        unsafe { self.inner.as_ref() }
+        self.inner.as_ref()
     }
 
     #[inline]
     fn ctx_mut(&mut self) -> &mut [u8; CMB_SHA_CONTEXT_SIZE] {
-        // SAFETY: `&mut self` guarantees exclusive access to the live
-        // allocation owned by this `HashState`.
-        unsafe { self.inner.as_mut() }
+        self.inner.as_mut()
     }
 
     const fn layout() -> Layout {
         Layout::new::<[u8; CMB_SHA_CONTEXT_SIZE]>()
-    }
-}
-
-impl Drop for HashState {
-    fn drop(&mut self) {
-        // SAFETY: `inner` was allocated by `alloc_zeroed` with exactly
-        // this layout in `try_new`, and `Drop` runs at most once.
-        unsafe { dealloc(self.inner.as_ptr().cast::<u8>(), Self::layout()) }
     }
 }
 

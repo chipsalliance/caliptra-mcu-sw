@@ -29,6 +29,8 @@
 
 #![no_std]
 
+extern crate alloc;
+
 mod algorithms;
 mod build;
 mod capabilities;

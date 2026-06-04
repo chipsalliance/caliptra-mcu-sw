@@ -11,6 +11,9 @@
 //! 3. Session used for secured message framing
 //! 4. GET_VERSION or error → [`SessionManager::remove_all_and_destroy`]
 
+use alloc::alloc::{alloc, Layout};
+use alloc::boxed::Box;
+use mcu_error::codes::OUT_OF_MEMORY;
 use mcu_spdm_lite_codec::SpdmVersion;
 use mcu_spdm_lite_traits::{McuResult, SpdmPalHash, SpdmPalIo, SpdmPalSessionCrypto};
 
@@ -47,8 +50,10 @@ pub enum SessionState {
 /// When `S = HashState` (the caliptra-api-lite backend), each
 /// `Option<S>` allocates 200 bytes on the global heap via `Box`.
 /// One instance exists per session, so N concurrent sessions add
-/// `N × 200` bytes of heap.  See [`HashState`](caliptra_api_lite::sha::HashState)
-/// for details and future fallible-allocation plans.
+/// `N × 200` bytes of heap for TH. The owning [`SessionInfo`] is also
+/// heap-allocated by [`SessionManager::create_session`], so secure
+/// session state does not inflate the responder task future while no
+/// session is active.
 pub struct SessionTranscript<S> {
     th: Option<S>,
 }
@@ -144,13 +149,37 @@ pub struct SessionInfo<K: Clone, S> {
     pub transcript: SessionTranscript<S>,
 }
 
+impl<K: Clone, S> SessionInfo<K, S> {
+    fn try_new(session_id: u32, version: SpdmVersion) -> McuResult<Box<Self>> {
+        let layout = Layout::new::<Self>();
+        // SAFETY: `layout` is for `SessionInfo<K, S>`. A null return is
+        // converted to OUT_OF_MEMORY; otherwise the allocation is
+        // initialized exactly once below and then owned by Box.
+        let ptr = unsafe { alloc(layout) }.cast::<Self>();
+        if ptr.is_null() {
+            return Err(OUT_OF_MEMORY);
+        }
+        // SAFETY: `ptr` is non-null and properly aligned for `Self`,
+        // and no references exist before we initialize it.
+        unsafe {
+            ptr.write(Self {
+                session_id,
+                state: SessionState::HandshakeInProgress,
+                key_schedule: KeySchedule::new(spdm_version_str(version)),
+                transcript: SessionTranscript::new(),
+            });
+            Ok(Box::from_raw(ptr))
+        }
+    }
+}
+
 // ── SessionManager ──────────────────────────────────────────────────
 
 /// Fixed-size session table.
 ///
 /// `K` = key handle, `S` = hash state, `N` = max concurrent sessions.
 pub struct SessionManager<K: Clone, S, const N: usize> {
-    sessions: [Option<SessionInfo<K, S>>; N],
+    sessions: [Option<Box<SessionInfo<K, S>>>; N],
     next_rsp_session_id: u16,
 }
 
@@ -183,12 +212,7 @@ impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
         let rsp_id = self.alloc_rsp_session_id(req_session_id)?;
         let session_id = ((rsp_id as u32) << 16) | (req_session_id as u32);
 
-        self.sessions[slot] = Some(SessionInfo {
-            session_id,
-            state: SessionState::HandshakeInProgress,
-            key_schedule: KeySchedule::new(spdm_version_str(version)),
-            transcript: SessionTranscript::new(),
-        });
+        self.sessions[slot] = Some(SessionInfo::try_new(session_id, version)?);
 
         Ok(session_id)
     }
@@ -199,6 +223,7 @@ impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
             .iter()
             .flatten()
             .find(|s| s.session_id == session_id)
+            .map(Box::as_ref)
     }
 
     /// Look up a session by combined ID (mutable).
@@ -207,6 +232,7 @@ impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
             .iter_mut()
             .flatten()
             .find(|s| s.session_id == session_id)
+            .map(Box::as_mut)
     }
 
     /// Remove a session and destroy all its key handles.
