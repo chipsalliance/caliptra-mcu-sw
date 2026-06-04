@@ -138,13 +138,13 @@ impl MctpUtil {
         assert!(pkts.len() == 1, "Only one packet is expected in message");
         let mut i3c_state = I3cControllerState::Start;
         let msg_type = msg[0];
-        // SPDM/SPDM-secured responders are sensitive to duplicate requests:
+        // SPDM/SPDM-secured and VDM responders are sensitive to duplicate requests:
         // a retransmitted request can leave stale responses queued and cause
         // later CHUNK_GET / VDM exchanges to consume the wrong packet. Other
         // protocols (notably PLDM firmware update/recovery) rely on the older
         // retry behavior when the first IBI is missed, so only suppress
-        // retransmission for SPDM message types.
-        let suppress_retransmit = matches!(msg_type & 0x7f, 0x05 | 0x06);
+        // retransmission for stateful SPDM/VDM message types.
+        let suppress_retransmit = matches!(msg_type & 0x7f, 0x05 | 0x06 | 0x7e);
 
         let mut retry = 100;
         // Buffer for accumulating multi-packet responses. The first packet
@@ -183,10 +183,10 @@ impl MctpUtil {
                         retry -= 1;
                         sleep_emulator_ticks(100_000);
                     } else if request_sent && suppress_retransmit {
-                        // SPDM request already on the wire — keep waiting for
+                        // Stateful request already on the wire — keep waiting for
                         // the IBI without re-sending. Re-sending generates
-                        // duplicate SPDM responses that can be consumed by a
-                        // later exchange.
+                        // duplicate responses that can be consumed by a later
+                        // exchange or mutate stateful responder cursors.
                         retry -= 1;
                         if retry == 0 {
                             println!("MCTP_UTIL: timed out waiting for IBI");
