@@ -172,10 +172,7 @@ fn validate_capabilities_body(body: &CapabilitiesBody) -> SpdmResult<(u32, u32)>
 ///
 /// * [`SPDM_VERSION_MISMATCH`] — byte is not a recognised version or
 ///   not in [`SUPPORTED_VERSIONS`].
-fn select_version<S>(
-    state: &mut ConnectionState<S>,
-    requested: u8,
-) -> SpdmResult<SpdmVersion> {
+fn select_version<S>(state: &mut ConnectionState<S>, requested: u8) -> SpdmResult<SpdmVersion> {
     let v = SpdmVersion::from_u8(requested).ok_or(SPDM_VERSION_MISMATCH)?;
     if !SUPPORTED_VERSIONS.contains(&v) {
         return Err(SPDM_VERSION_MISMATCH);

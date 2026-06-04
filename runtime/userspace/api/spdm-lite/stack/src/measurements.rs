@@ -16,6 +16,8 @@ use crate::stack::{ConnectionState, Phase};
 
 const MEASUREMENTS_FIXED_BODY_SIZE: usize = 1 + 1 + 1 + 3;
 const OPAQUE_DATA_LEN_SIZE: usize = 2;
+const SIGNATURE_REQUEST_FIELDS_SIZE: usize = SPDM_NONCE_LEN + 1; // Nonce + SlotIDParam
+const MAX_TRANSPORT_PADDING_SIZE: usize = 3;
 
 pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State>,
@@ -56,12 +58,12 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
     };
 
     if signature_requested {
-        if after.len() < SPDM_NONCE_LEN + 1 {
+        if after.len() < SIGNATURE_REQUEST_FIELDS_SIZE {
             return Err(SPDM_INVALID_REQUEST);
         }
         requester_nonce.copy_from_slice(&after[..SPDM_NONCE_LEN]);
         slot_id = after[SPDM_NONCE_LEN] & 0x0F;
-        after_sig_fields = &after[SPDM_NONCE_LEN + 1..];
+        after_sig_fields = &after[SIGNATURE_REQUEST_FIELDS_SIZE..];
 
         // Caliptra supports measurement signing only through provisioned
         // certificate slots; slot 0xF (public-key-only signing) is not supported.
@@ -84,12 +86,18 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
     let spdm_req_len = SpdmMsgHdrPdu::SIZE
         + core::mem::size_of::<GetMeasurementsReqBody>()
         + if signature_requested {
-            SPDM_NONCE_LEN + 1 // SlotIDParam
+            SIGNATURE_REQUEST_FIELDS_SIZE
         } else {
             0
         }
         + requester_context_len;
-    if req.len() != spdm_req_len {
+    if req.len() < spdm_req_len {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let transport_padding = &req[spdm_req_len..];
+    if transport_padding.len() > MAX_TRANSPORT_PADDING_SIZE
+        || transport_padding.iter().any(|&byte| byte != 0)
+    {
         return Err(SPDM_INVALID_REQUEST);
     }
 
@@ -107,7 +115,7 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
     let (measurement_record_len, number_of_blocks) = measurement_record_shape(meas_info, meas_op)?;
 
     // If signature requested, append GET_MEASUREMENTS request to L1 transcript.
-    // Only the actual SPDM bytes — strip any DOE DWORD padding at the end.
+    // Only canonical SPDM bytes contribute to L1; DOE may DWORD-pad the payload.
     if signature_requested {
         state
             .transcript

@@ -53,6 +53,12 @@ pub struct SessionTranscript<S> {
     th: Option<S>,
 }
 
+impl<S> Default for SessionTranscript<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S> SessionTranscript<S> {
     pub const fn new() -> Self {
         Self { th: None }
@@ -148,6 +154,12 @@ pub struct SessionManager<K: Clone, S, const N: usize> {
     next_rsp_session_id: u16,
 }
 
+impl<K: Clone, S, const N: usize> Default for SessionManager<K, S, N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
     pub fn new() -> Self {
         Self {
@@ -203,7 +215,7 @@ impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
         P: SpdmPalSessionCrypto<Key = K>,
     {
         for slot in self.sessions.iter_mut() {
-            if slot.as_ref().map_or(false, |s| s.session_id == session_id) {
+            if slot.as_ref().is_some_and(|s| s.session_id == session_id) {
                 if let Some(info) = slot.as_mut() {
                     info.key_schedule.destroy_all(pal, io).await;
                 }

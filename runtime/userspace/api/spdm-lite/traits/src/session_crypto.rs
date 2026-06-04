@@ -27,10 +27,7 @@ pub trait SpdmPalSessionCrypto {
     /// Returns `(encrypted_context, our_exchange_data)` where the
     /// context is an opaque 76-byte blob needed by [`Self::ecdh_finish`]
     /// and exchange_data is the 96-byte P-384 public point.
-    async fn ecdh_generate(
-        &self,
-        io: &impl SpdmPalIo,
-    ) -> McuResult<([u8; 76], [u8; 96])>;
+    async fn ecdh_generate(&self, io: &impl SpdmPalIo) -> McuResult<([u8; 76], [u8; 96])>;
 
     /// Complete the ECDH key exchange, producing a key handle to the
     /// shared secret (DHE_Secret).
@@ -78,18 +75,10 @@ pub trait SpdmPalSessionCrypto {
     ) -> McuResult<usize>;
 
     /// Import raw key material. Returns a key handle.
-    async fn import_key(
-        &self,
-        io: &impl SpdmPalIo,
-        data: &[u8],
-    ) -> McuResult<Self::Key>;
+    async fn import_key(&self, io: &impl SpdmPalIo, data: &[u8]) -> McuResult<Self::Key>;
 
     /// Destroy a key handle in the crypto backend.
-    async fn delete_key(
-        &self,
-        io: &impl SpdmPalIo,
-        key: &Self::Key,
-    ) -> McuResult<()>;
+    async fn delete_key(&self, io: &impl SpdmPalIo, key: &Self::Key) -> McuResult<()>;
 
     /// SPDM AES-256-GCM encrypt.
     ///
@@ -98,6 +87,7 @@ pub trait SpdmPalSessionCrypto {
     /// from (`key`, `spdm_version`, `seq`).
     ///
     /// Returns `(ciphertext_len, tag)`.
+    #[allow(clippy::too_many_arguments)]
     async fn aead_encrypt(
         &self,
         io: &impl SpdmPalIo,
@@ -112,6 +102,7 @@ pub trait SpdmPalSessionCrypto {
     /// SPDM AES-256-GCM decrypt with tag verification.
     ///
     /// Returns plaintext length.
+    #[allow(clippy::too_many_arguments)]
     async fn aead_decrypt(
         &self,
         io: &impl SpdmPalIo,

@@ -54,6 +54,6 @@ pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
 pub use import::{cm_delete, cm_import};
 pub use rng::rng_generate;
 pub use sha::{sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE};
-pub use types::{Cmk, CmKeyUsage, CMK_SIZE};
+pub use types::{CmKeyUsage, Cmk, CMK_SIZE};
 
 pub use mcu_error::{McuErrorCode, McuResult};

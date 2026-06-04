@@ -11,7 +11,7 @@ use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
-use crate::types::{Cmk, CmKeyUsage, CMK_SIZE};
+use crate::types::{CmKeyUsage, Cmk, CMK_SIZE};
 use crate::wire::{
     mbox_execute, pad4, populate_checksum, CMD_CM_DELETE, CMD_CM_IMPORT, MBOX_RESP_HEADER_SIZE,
 };
@@ -58,11 +58,7 @@ const DELETE_RSP_SIZE: usize = MBOX_RESP_HEADER_SIZE;
 ///
 /// `data` must be ≤ 64 bytes (512-bit max key).
 #[inline(never)]
-pub async fn cm_import<A: ApiAlloc>(
-    alloc: &A,
-    usage: CmKeyUsage,
-    data: &[u8],
-) -> McuResult<Cmk> {
+pub async fn cm_import<A: ApiAlloc>(alloc: &A, usage: CmKeyUsage, data: &[u8]) -> McuResult<Cmk> {
     if data.len() > CM_IMPORT_MAX_KEY_SIZE {
         return Err(INVARIANT);
     }

@@ -15,9 +15,9 @@
 //! itself is unaware of the phase.
 
 use mcu_spdm_lite_codec::{
-    AeadAlgos, AsymAlgos, CapFlags, DheAlgos, HashAlgos, KeyScheduleAlgos, MeasHashAlgos, MeasSpec,
-    OtherParamSupport, ReqRespCode, SpdmMsgHdrPdu, SpdmVersion,
-    AES_256_GCM_TAG_SIZE, SecuredMessageHeader, SECURED_MSG_HDR_SIZE, encode_aad,
+    encode_aad, AeadAlgos, AsymAlgos, CapFlags, DheAlgos, HashAlgos, KeyScheduleAlgos,
+    MeasHashAlgos, MeasSpec, OtherParamSupport, ReqRespCode, SecuredMessageHeader, SpdmMsgHdrPdu,
+    SpdmVersion, AES_256_GCM_TAG_SIZE, SECURED_MSG_HDR_SIZE,
 };
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
@@ -25,15 +25,14 @@ use zerocopy::FromBytes;
 use crate::build::{alloc_padded, build_error_response};
 use crate::error::{
     SpdmError, SpdmResult, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST, SPDM_INVALID_SESSION,
-    SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_UNSPECIFIED,
+    SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST,
     SPDM_VERSION_MISMATCH,
 };
 use crate::key_schedule::SessionKeyType;
 use crate::session::{SessionManager, SessionState};
 use crate::{
     algorithms, capabilities, certificate, challenge, chunk, digests, end_session, finish,
-    key_exchange,
-    measurements, version,
+    key_exchange, measurements, version,
 };
 
 /// Connection phase tracked on the responder so the dispatcher can
@@ -278,11 +277,8 @@ fn set_certificate_other_params() -> OtherParamSupport {
 pub struct SpdmStack<Pal: SpdmPal, const MAX_SESSIONS: usize = 1> {
     pub(crate) pal: Pal,
     pub(crate) state: ConnectionState<Pal::State>,
-    pub(crate) sessions: SessionManager<
-        <Pal as SpdmPalSessionCrypto>::Key,
-        Pal::State,
-        MAX_SESSIONS,
-    >,
+    pub(crate) sessions:
+        SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
 }
 
 impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
@@ -346,14 +342,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
             match io.kind() {
                 SpdmPalIoKind::Message => {
                     let (code, req_version) = decode_header(io.request());
-                    match dispatch(
-                        &mut self.state,
-                        &mut self.sessions,
-                        &self.pal,
-                        &io,
-                        code,
-                    )
-                    .await
+                    match dispatch(&mut self.state, &mut self.sessions, &self.pal, &io, code).await
                     {
                         Ok(mut rsp) => {
                             #[cfg(feature = "debug-trace")]
@@ -361,11 +350,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
                                 let head = self.pal.header_size();
                                 let body = &rsp[head..];
                                 let n = body.len().min(8);
-                                let _ = write!(
-                                    &mut console,
-                                    "[spdm] rsp len={}",
-                                    body.len()
-                                );
+                                let _ = write!(&mut console, "[spdm] rsp len={}", body.len());
                                 for x in &body[..n] {
                                     let _ = write!(&mut console, " {:02x}", x);
                                 }
@@ -401,18 +386,10 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
                         Ok(mut rsp) => {
                             #[cfg(feature = "debug-trace")]
                             {
-                                let _ = writeln!(
-                                    &mut console,
-                                    "[spdm] sec rsp len={}",
-                                    rsp.len()
-                                );
+                                let _ = writeln!(&mut console, "[spdm] sec rsp len={}", rsp.len());
                             }
                             self.pal
-                                .send_response(
-                                    &io,
-                                    SpdmPalIoKind::SecuredMessage,
-                                    &mut rsp,
-                                )
+                                .send_response(&io, SpdmPalIoKind::SecuredMessage, &mut rsp)
                                 .await?
                         }
                         Err(e) => {
@@ -424,8 +401,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
                                     e.spec_byte()
                                 );
                             }
-                            self.send_error_pdu(&io, e, self.state.version)
-                                .await?
+                            self.send_error_pdu(&io, e, self.state.version).await?
                         }
                     }
                 }
@@ -526,11 +502,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
 /// * Whatever the specific handler returns.
 async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     state: &mut ConnectionState<Pal::State>,
-    sessions: &mut SessionManager<
-        <Pal as SpdmPalSessionCrypto>::Key,
-        Pal::State,
-        MAX_SESSIONS,
-    >,
+    sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     code: ReqRespCode,
@@ -588,19 +560,14 @@ async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
 #[inline(never)]
 async fn handle_secured_request<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     state: &mut ConnectionState<Pal::State>,
-    sessions: &mut SessionManager<
-        <Pal as SpdmPalSessionCrypto>::Key,
-        Pal::State,
-        MAX_SESSIONS,
-    >,
+    sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let req = io.request();
 
     // Parse session_id from the secured message header.
-    let (hdr, _) = SecuredMessageHeader::ref_from_prefix(req)
-        .map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (hdr, _) = SecuredMessageHeader::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
     let session_id = hdr.session_id_u32();
 
     match handle_secured_inner(state, sessions, pal, io, session_id).await {
@@ -620,11 +587,7 @@ async fn handle_secured_request<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
 #[inline(never)]
 async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     state: &mut ConnectionState<Pal::State>,
-    sessions: &mut SessionManager<
-        <Pal as SpdmPalSessionCrypto>::Key,
-        Pal::State,
-        MAX_SESSIONS,
-    >,
+    sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     session_id: u32,
@@ -633,8 +596,8 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     let version = state.version;
 
     // ── Parse secured message envelope ──────────────────────────────
-    let (hdr, payload) = SecuredMessageHeader::ref_from_prefix(req)
-        .map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (hdr, payload) =
+        SecuredMessageHeader::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
     let length = hdr.length_u16() as usize;
 
     // length = ciphertext_len + tag_len
@@ -648,9 +611,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
         .map_err(|_| SPDM_INVALID_REQUEST)?;
 
     // ── Look up session ─────────────────────────────────────────────
-    let session = sessions
-        .find_mut(session_id)
-        .ok_or(SPDM_INVALID_SESSION)?;
+    let session = sessions.find_mut(session_id).ok_or(SPDM_INVALID_SESSION)?;
 
     // Determine key type based on session state.
     let decrypt_key_type = match session.state {
@@ -660,8 +621,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
 
     // ── Build AAD ───────────────────────────────────────────────────
     let mut aad = [0u8; SECURED_MSG_HDR_SIZE];
-    encode_aad(session_id, length as u16, &mut aad)
-        .map_err(|_| SPDM_UNSPECIFIED)?;
+    encode_aad(session_id, length as u16, &mut aad).map_err(|_| SPDM_UNSPECIFIED)?;
 
     // ── Decrypt ─────────────────────────────────────────────────────
     let mut plaintext = [0u8; 128];
@@ -670,7 +630,16 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     }
     session
         .key_schedule
-        .decrypt(pal, io, decrypt_key_type, version.to_u8(), &aad, ciphertext, tag, &mut plaintext[..ct_len])
+        .decrypt(
+            pal,
+            io,
+            decrypt_key_type,
+            version.to_u8(),
+            &aad,
+            ciphertext,
+            tag,
+            &mut plaintext[..ct_len],
+        )
         .await
         .map_err(|_| SPDM_DECRYPT_ERROR)?;
 
@@ -685,8 +654,8 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     let spdm_msg = &plaintext[2..2 + app_data_len];
 
     // ── Dispatch on SPDM code ───────────────────────────────────────
-    let (spdm_hdr, _) = SpdmMsgHdrPdu::ref_from_prefix(spdm_msg)
-        .map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (spdm_hdr, _) =
+        SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
 
     match spdm_hdr.code {
         ReqRespCode::FINISH => {
@@ -695,42 +664,18 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
                 return Err(SPDM_INVALID_REQUEST);
             }
 
-            let finish_rsp = finish::handle_finish::<Pal>(
-                version, session, pal, io, spdm_msg,
+            let finish_rsp =
+                finish::handle_finish::<Pal>(version, session, pal, io, spdm_msg).await?;
+            let rsp = encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                SessionKeyType::ResponseHandshakeKey,
+                &finish_rsp,
             )
             .await?;
-
-            // ── Encrypt FINISH_RSP with ResponseHandshakeKey ────────
-            // Plaintext: app_data_length(2) || finish_rsp(4)
-            let rsp_pt_len = 2 + finish_rsp.len();
-            let mut rsp_plaintext = [0u8; 8]; // 2 + 4 = 6, padded
-            rsp_plaintext[0..2]
-                .copy_from_slice(&(finish_rsp.len() as u16).to_le_bytes());
-            rsp_plaintext[2..2 + finish_rsp.len()]
-                .copy_from_slice(&finish_rsp);
-
-            // Build response AAD.
-            let rsp_ct_len = rsp_pt_len;
-            let rsp_length = (rsp_ct_len + AES_256_GCM_TAG_SIZE) as u16;
-            let mut rsp_aad = [0u8; SECURED_MSG_HDR_SIZE];
-            encode_aad(session_id, rsp_length, &mut rsp_aad)
-                .map_err(|_| SPDM_UNSPECIFIED)?;
-
-            // Encrypt in place.
-            let mut rsp_ct = [0u8; 8];
-            let (_, rsp_tag) = session
-                .key_schedule
-                .encrypt(
-                    pal,
-                    io,
-                    SessionKeyType::ResponseHandshakeKey,
-                    version.to_u8(),
-                    &rsp_aad,
-                    &rsp_plaintext[..rsp_pt_len],
-                    &mut rsp_ct[..rsp_ct_len],
-                )
-                .await
-                .map_err(|_| SPDM_UNSPECIFIED)?;
 
             // ── Destroy handshake secrets, set Established ──────────
             session
@@ -738,26 +683,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
                 .destroy_handshake_secrets(pal, io)
                 .await;
             session.state = SessionState::Established;
-
-            // ── Build secured message response buffer ───────────────
-            // Wire: transport_hdr | session_id(4) | length(2) | ct | tag(16)
-            let wire_body_len =
-                SECURED_MSG_HDR_SIZE + rsp_ct_len + AES_256_GCM_TAG_SIZE;
-            let raw_len = pal.header_size() + wire_body_len;
-            let mut buf = alloc_padded(pal, io, raw_len)
-                .map_err(|_| SPDM_UNSPECIFIED)?;
-            let hdr_off = pal.header_size();
-            buf[hdr_off..hdr_off + 4]
-                .copy_from_slice(&session_id.to_le_bytes());
-            buf[hdr_off + 4..hdr_off + 6]
-                .copy_from_slice(&rsp_length.to_le_bytes());
-            buf[hdr_off + 6..hdr_off + 6 + rsp_ct_len]
-                .copy_from_slice(&rsp_ct[..rsp_ct_len]);
-            buf[hdr_off + 6 + rsp_ct_len
-                ..hdr_off + 6 + rsp_ct_len + AES_256_GCM_TAG_SIZE]
-                .copy_from_slice(&rsp_tag);
-
-            Ok(buf)
+            Ok(rsp)
         }
         ReqRespCode::END_SESSION => {
             if session.state != SessionState::Established {
@@ -765,48 +691,74 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
             }
 
             let end_session_ack = end_session::handle_end_session(version, spdm_msg)?;
-
-            // Plaintext: app_data_length(2) || end_session_ack(4)
-            let rsp_pt_len = 2 + end_session_ack.len();
-            let mut rsp_plaintext = [0u8; 8]; // 2 + 4 = 6, padded
-            rsp_plaintext[0..2].copy_from_slice(&(end_session_ack.len() as u16).to_le_bytes());
-            rsp_plaintext[2..2 + end_session_ack.len()].copy_from_slice(&end_session_ack);
-
-            let rsp_ct_len = rsp_pt_len;
-            let rsp_length = (rsp_ct_len + AES_256_GCM_TAG_SIZE) as u16;
-            let mut rsp_aad = [0u8; SECURED_MSG_HDR_SIZE];
-            encode_aad(session_id, rsp_length, &mut rsp_aad).map_err(|_| SPDM_UNSPECIFIED)?;
-
-            let mut rsp_ct = [0u8; 8];
-            let (_, rsp_tag) = session
-                .key_schedule
-                .encrypt(
-                    pal,
-                    io,
-                    SessionKeyType::ResponseDataKey,
-                    version.to_u8(),
-                    &rsp_aad,
-                    &rsp_plaintext[..rsp_pt_len],
-                    &mut rsp_ct[..rsp_ct_len],
-                )
-                .await
-                .map_err(|_| SPDM_UNSPECIFIED)?;
-
-            let wire_body_len = SECURED_MSG_HDR_SIZE + rsp_ct_len + AES_256_GCM_TAG_SIZE;
-            let raw_len = pal.header_size() + wire_body_len;
-            let mut buf = alloc_padded(pal, io, raw_len).map_err(|_| SPDM_UNSPECIFIED)?;
-            let hdr_off = pal.header_size();
-            buf[hdr_off..hdr_off + 4].copy_from_slice(&session_id.to_le_bytes());
-            buf[hdr_off + 4..hdr_off + 6].copy_from_slice(&rsp_length.to_le_bytes());
-            buf[hdr_off + 6..hdr_off + 6 + rsp_ct_len].copy_from_slice(&rsp_ct[..rsp_ct_len]);
-            buf[hdr_off + 6 + rsp_ct_len..hdr_off + 6 + rsp_ct_len + AES_256_GCM_TAG_SIZE]
-                .copy_from_slice(&rsp_tag);
+            let rsp = encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                SessionKeyType::ResponseDataKey,
+                &end_session_ack,
+            )
+            .await?;
 
             sessions.remove_and_destroy(pal, io, session_id).await;
-            Ok(buf)
+            Ok(rsp)
         }
         _ => Err(SPDM_UNSUPPORTED_REQUEST),
     }
+}
+
+#[inline(never)]
+async fn encrypt_secured_spdm_response<'a, Pal: SpdmPal>(
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    session: &mut crate::session::SessionInfo<<Pal as SpdmPalSessionCrypto>::Key, Pal::State>,
+    session_id: u32,
+    version: SpdmVersion,
+    key_type: SessionKeyType,
+    spdm_response: &[u8],
+) -> SpdmResult<PalBytes<'a, Pal>> {
+    let rsp_pt_len = 2 + spdm_response.len();
+    if rsp_pt_len > 8 {
+        return Err(SPDM_UNSPECIFIED);
+    }
+
+    let mut rsp_plaintext = [0u8; 8];
+    rsp_plaintext[0..2].copy_from_slice(&(spdm_response.len() as u16).to_le_bytes());
+    rsp_plaintext[2..2 + spdm_response.len()].copy_from_slice(spdm_response);
+
+    let rsp_ct_len = rsp_pt_len;
+    let rsp_length = (rsp_ct_len + AES_256_GCM_TAG_SIZE) as u16;
+    let mut rsp_aad = [0u8; SECURED_MSG_HDR_SIZE];
+    encode_aad(session_id, rsp_length, &mut rsp_aad).map_err(|_| SPDM_UNSPECIFIED)?;
+
+    let mut rsp_ct = [0u8; 8];
+    let (_, rsp_tag) = session
+        .key_schedule
+        .encrypt(
+            pal,
+            io,
+            key_type,
+            version.to_u8(),
+            &rsp_aad,
+            &rsp_plaintext[..rsp_pt_len],
+            &mut rsp_ct[..rsp_ct_len],
+        )
+        .await
+        .map_err(|_| SPDM_UNSPECIFIED)?;
+
+    let wire_body_len = SECURED_MSG_HDR_SIZE + rsp_ct_len + AES_256_GCM_TAG_SIZE;
+    let raw_len = pal.header_size() + wire_body_len;
+    let mut buf = alloc_padded(pal, io, raw_len).map_err(|_| SPDM_UNSPECIFIED)?;
+    let hdr_off = pal.header_size();
+    buf[hdr_off..hdr_off + 4].copy_from_slice(&session_id.to_le_bytes());
+    buf[hdr_off + 4..hdr_off + 6].copy_from_slice(&rsp_length.to_le_bytes());
+    buf[hdr_off + 6..hdr_off + 6 + rsp_ct_len].copy_from_slice(&rsp_ct[..rsp_ct_len]);
+    buf[hdr_off + 6 + rsp_ct_len..hdr_off + 6 + rsp_ct_len + AES_256_GCM_TAG_SIZE]
+        .copy_from_slice(&rsp_tag);
+
+    Ok(buf)
 }
 
 /// Decodes the SPDM common header from a raw request buffer.

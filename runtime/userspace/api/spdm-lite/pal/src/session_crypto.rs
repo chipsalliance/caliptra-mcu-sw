@@ -10,7 +10,7 @@ use super::*;
 use mcu_caliptra_api_lite::{
     cm_delete, cm_hmac, cm_import, ecdh_finish as api_ecdh_finish,
     ecdh_generate as api_ecdh_generate, hkdf_expand, hkdf_extract, spdm_aes_gcm_decrypt,
-    spdm_aes_gcm_encrypt, Cmk, CmKeyUsage, HkdfSalt,
+    spdm_aes_gcm_encrypt, CmKeyUsage, Cmk, HkdfSalt,
 };
 use mcu_spdm_lite_traits::{McuResult, SpdmPalIo, SpdmPalSessionCrypto};
 
@@ -88,8 +88,16 @@ impl<M: MeasurementProvider> SpdmPalSessionCrypto for McuSpdmPal<M> {
         ciphertext: &mut [u8],
     ) -> McuResult<(usize, [u8; 16])> {
         let seq_bytes = seq.to_le_bytes();
-        spdm_aes_gcm_encrypt(self, key, spdm_version, &seq_bytes, aad, plaintext, ciphertext)
-            .await
+        spdm_aes_gcm_encrypt(
+            self,
+            key,
+            spdm_version,
+            &seq_bytes,
+            aad,
+            plaintext,
+            ciphertext,
+        )
+        .await
     }
 
     async fn aead_decrypt(

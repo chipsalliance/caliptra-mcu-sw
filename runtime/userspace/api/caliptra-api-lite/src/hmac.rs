@@ -12,7 +12,7 @@ use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::import::{cm_delete, cm_import};
-use crate::types::{Cmk, CmKeyUsage, CMK_SIZE};
+use crate::types::{CmKeyUsage, Cmk, CMK_SIZE};
 use crate::wire::{
     mbox_execute, pad4, populate_checksum, CMD_CM_HKDF_EXPAND, CMD_CM_HKDF_EXTRACT, CMD_CM_HMAC,
     CM_HASH_ALGO_SHA384, MAX_CMB_DATA_SIZE, MBOX_RESP_HEADER_SIZE,
@@ -160,11 +160,7 @@ pub async fn cm_hmac<A: ApiAlloc>(
 /// If `salt` is [`HkdfSalt::Data`], it is first imported into the
 /// key vault via `cm_import`.
 #[inline(never)]
-pub async fn hkdf_extract<A: ApiAlloc>(
-    alloc: &A,
-    salt: HkdfSalt<'_>,
-    ikm: &Cmk,
-) -> McuResult<Cmk> {
+pub async fn hkdf_extract<A: ApiAlloc>(alloc: &A, salt: HkdfSalt<'_>, ikm: &Cmk) -> McuResult<Cmk> {
     let imported = matches!(salt, HkdfSalt::Data(_));
     let salt_cmk: Cmk = match salt {
         HkdfSalt::Cmk(c) => *c,
@@ -215,8 +211,7 @@ pub async fn hkdf_expand<A: ApiAlloc>(
 
     let mut req = alloc.alloc(wire_len)?;
     req.fill(0);
-    let pfx =
-        HkdfExpandReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
+    let pfx = HkdfExpandReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
     pfx.prk.copy_from_slice(&prk.0);
     pfx.hash_algorithm = U32::new(CM_HASH_ALGO_SHA384);
     pfx.key_usage = U32::new(key_usage as u32);

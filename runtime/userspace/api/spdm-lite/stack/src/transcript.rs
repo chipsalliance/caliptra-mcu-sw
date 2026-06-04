@@ -12,10 +12,10 @@
 //!
 //! ## Design
 //!
-//! Spec rule: `M1 = A ∥ B ∥ C` and (for V1.2+) `L1 = A ∥ M`, where
-//! `A` is the VCA bytes. We keep an always-running VCA hash and
-//! **fork it with a fallible hash-clone operation** the first time
-//! M1 / L1 actually start contributing. This lets heap-backed hash
+//! Spec rule: `M1 = A ∥ B ∥ C` and `L1/L2` for MEASUREMENTS starts
+//! with `VCA`, where `A` is the VCA bytes. We keep an always-running
+//! VCA hash and **fork it with a fallible hash-clone operation** the
+//! first time M1 / L1 start contributing. This lets heap-backed hash
 //! states report allocation failure instead of panicking.
 
 use mcu_spdm_lite_traits::{McuResult, SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo};

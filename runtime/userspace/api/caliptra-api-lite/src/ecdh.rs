@@ -14,7 +14,7 @@ use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
-use crate::types::{Cmk, CmKeyUsage, CMK_SIZE};
+use crate::types::{CmKeyUsage, Cmk, CMK_SIZE};
 use crate::wire::{
     mbox_execute, populate_checksum, CMD_CM_ECDH_FINISH, CMD_CM_ECDH_GENERATE,
     MBOX_RESP_HEADER_SIZE,
@@ -54,8 +54,7 @@ struct EcdhFinishReqPrefix {
 
 const _: () = assert!(size_of::<EcdhFinishReqPrefix>() == 4 + 76 + 4);
 
-const FINISH_REQ_SIZE: usize =
-    size_of::<EcdhFinishReqPrefix>() + CMB_ECDH_EXCHANGE_DATA_MAX_SIZE;
+const FINISH_REQ_SIZE: usize = size_of::<EcdhFinishReqPrefix>() + CMB_ECDH_EXCHANGE_DATA_MAX_SIZE;
 
 /// Finish response: `chksum(4) + fips(4) + cmk(128)`.
 const FINISH_RSP_SIZE: usize = MBOX_RESP_HEADER_SIZE + CMK_SIZE;
@@ -100,9 +99,7 @@ pub async fn ecdh_generate<A: ApiAlloc>(alloc: &A) -> McuResult<EcdhGenerateResu
         exchange_data: [0u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE],
     };
     result.context.copy_from_slice(&rsp[ctx_start..ctx_end]);
-    result
-        .exchange_data
-        .copy_from_slice(&rsp[ctx_end..xd_end]);
+    result.exchange_data.copy_from_slice(&rsp[ctx_end..xd_end]);
     Ok(result)
 }
 
@@ -124,8 +121,7 @@ pub async fn ecdh_finish<A: ApiAlloc>(
     let mut req = alloc.alloc(FINISH_REQ_SIZE)?;
     req.fill(0);
     let prefix_len = size_of::<EcdhFinishReqPrefix>();
-    let pfx =
-        EcdhFinishReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
+    let pfx = EcdhFinishReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
     pfx.context.copy_from_slice(context);
     pfx.key_usage = U32::new(key_usage as u32);
     req[prefix_len..prefix_len + CMB_ECDH_EXCHANGE_DATA_MAX_SIZE]

@@ -23,7 +23,8 @@ pub(crate) fn handle_end_session(
         return Err(crate::error::SPDM_VERSION_MISMATCH);
     }
 
-    let (req, after) = EndSessionReqBody::ref_from_prefix(rest).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (req, after) =
+        EndSessionReqBody::ref_from_prefix(rest).map_err(|_| SPDM_INVALID_REQUEST)?;
     if !after.is_empty() || !req.reserved_is_zero() {
         return Err(SPDM_INVALID_REQUEST);
     }

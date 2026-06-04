@@ -151,70 +151,56 @@ impl<K: Clone> KeySchedule<K> {
             .ok_or(mcu_error::codes::INVARIANT)?;
 
         // request_hs = HKDF-Expand(hs, bin_str1(th1_hash), Hash.Length)
-        let req_hs = {
-            let (info, len) = bin_concat(
-                self.version_str,
-                BinStr::Str1,
-                SHA384_HASH_SIZE as u16,
-                Some(th1_hash),
-            );
-            pal.hkdf_expand(io, hs_ref, SHA384_HASH_SIZE as u32, &info[..len])
-                .await?
-        };
+        let req_hs = hkdf_expand_bin_str(
+            pal,
+            io,
+            self.version_str,
+            hs_ref,
+            BinStr::Str1,
+            Some(th1_hash),
+        )
+        .await?;
 
         // response_hs = HKDF-Expand(hs, bin_str2(th1_hash), Hash.Length)
-        let rsp_hs = {
-            let (info, len) = bin_concat(
-                self.version_str,
-                BinStr::Str2,
-                SHA384_HASH_SIZE as u16,
-                Some(th1_hash),
-            );
-            pal.hkdf_expand(io, hs_ref, SHA384_HASH_SIZE as u32, &info[..len])
-                .await?
-        };
+        let rsp_hs = hkdf_expand_bin_str(
+            pal,
+            io,
+            self.version_str,
+            hs_ref,
+            BinStr::Str2,
+            Some(th1_hash),
+        )
+        .await?;
 
         self.handshake_ctx.request_handshake_secret = Some(req_hs);
         self.handshake_ctx.response_handshake_secret = Some(rsp_hs);
 
         // finished keys = HKDF-Expand(handshake_secret, bin_str7, Hash.Length)
-        let req_fk = {
-            let (info, len) = bin_concat(
-                self.version_str,
-                BinStr::Str7,
-                SHA384_HASH_SIZE as u16,
-                None,
-            );
-            pal.hkdf_expand(
-                io,
-                self.handshake_ctx
-                    .request_handshake_secret
-                    .as_ref()
-                    .ok_or(mcu_error::codes::INVARIANT)?,
-                SHA384_HASH_SIZE as u32,
-                &info[..len],
-            )
-            .await?
-        };
+        let req_fk = hkdf_expand_bin_str(
+            pal,
+            io,
+            self.version_str,
+            self.handshake_ctx
+                .request_handshake_secret
+                .as_ref()
+                .ok_or(mcu_error::codes::INVARIANT)?,
+            BinStr::Str7,
+            None,
+        )
+        .await?;
 
-        let rsp_fk = {
-            let (info, len) = bin_concat(
-                self.version_str,
-                BinStr::Str7,
-                SHA384_HASH_SIZE as u16,
-                None,
-            );
-            pal.hkdf_expand(
-                io,
-                self.handshake_ctx
-                    .response_handshake_secret
-                    .as_ref()
-                    .ok_or(mcu_error::codes::INVARIANT)?,
-                SHA384_HASH_SIZE as u32,
-                &info[..len],
-            )
-            .await?
-        };
+        let rsp_fk = hkdf_expand_bin_str(
+            pal,
+            io,
+            self.version_str,
+            self.handshake_ctx
+                .response_handshake_secret
+                .as_ref()
+                .ok_or(mcu_error::codes::INVARIANT)?,
+            BinStr::Str7,
+            None,
+        )
+        .await?;
 
         self.handshake_ctx.request_finished_key = Some(req_fk);
         self.handshake_ctx.response_finished_key = Some(rsp_fk);
@@ -243,16 +229,8 @@ impl<K: Clone> KeySchedule<K> {
             .ok_or(mcu_error::codes::INVARIANT)?;
 
         // Salt_1 = HKDF-Expand(hs, bin_str0, Hash.Length)
-        let salt_1 = {
-            let (info, len) = bin_concat(
-                self.version_str,
-                BinStr::Str0,
-                SHA384_HASH_SIZE as u16,
-                None,
-            );
-            pal.hkdf_expand(io, hs_ref, SHA384_HASH_SIZE as u32, &info[..len])
-                .await?
-        };
+        let salt_1 =
+            hkdf_expand_bin_str(pal, io, self.version_str, hs_ref, BinStr::Str0, None).await?;
 
         // Master-Secret = HKDF-Extract(Salt_1, zero_filled)
         let zero_filled = [0u8; SHA384_HASH_SIZE];
@@ -269,28 +247,26 @@ impl<K: Clone> KeySchedule<K> {
             .ok_or(mcu_error::codes::INVARIANT)?;
 
         // req_data = HKDF-Expand(ms, bin_str3(th2), Hash.Length)
-        let req_data = {
-            let (info, len) = bin_concat(
-                self.version_str,
-                BinStr::Str3,
-                SHA384_HASH_SIZE as u16,
-                Some(th2_hash),
-            );
-            pal.hkdf_expand(io, ms_ref, SHA384_HASH_SIZE as u32, &info[..len])
-                .await?
-        };
+        let req_data = hkdf_expand_bin_str(
+            pal,
+            io,
+            self.version_str,
+            ms_ref,
+            BinStr::Str3,
+            Some(th2_hash),
+        )
+        .await?;
 
         // rsp_data = HKDF-Expand(ms, bin_str4(th2), Hash.Length)
-        let rsp_data = {
-            let (info, len) = bin_concat(
-                self.version_str,
-                BinStr::Str4,
-                SHA384_HASH_SIZE as u16,
-                Some(th2_hash),
-            );
-            pal.hkdf_expand(io, ms_ref, SHA384_HASH_SIZE as u32, &info[..len])
-                .await?
-        };
+        let rsp_data = hkdf_expand_bin_str(
+            pal,
+            io,
+            self.version_str,
+            ms_ref,
+            BinStr::Str4,
+            Some(th2_hash),
+        )
+        .await?;
 
         self.data_ctx.request_data_secret = Some(req_data);
         self.data_ctx.response_data_secret = Some(rsp_data);
@@ -314,6 +290,7 @@ impl<K: Clone> KeySchedule<K> {
     }
 
     /// Encrypt with the appropriate session key.
+    #[allow(clippy::too_many_arguments)]
     pub async fn encrypt<P: SpdmPalSessionCrypto<Key = K>>(
         &mut self,
         pal: &P,
@@ -333,6 +310,7 @@ impl<K: Clone> KeySchedule<K> {
     }
 
     /// Decrypt with the appropriate session key.
+    #[allow(clippy::too_many_arguments)]
     pub async fn decrypt<P: SpdmPalSessionCrypto<Key = K>>(
         &mut self,
         pal: &P,
@@ -487,6 +465,20 @@ impl BinStr {
             BinStr::Str7 => b"finished",
         }
     }
+}
+
+#[inline(never)]
+async fn hkdf_expand_bin_str<P: SpdmPalSessionCrypto>(
+    pal: &P,
+    io: &impl SpdmPalIo,
+    version_str: &[u8],
+    prk: &P::Key,
+    bin_str: BinStr,
+    context: Option<&[u8]>,
+) -> McuResult<P::Key> {
+    let (info, len) = bin_concat(version_str, bin_str, SHA384_HASH_SIZE as u16, context);
+    pal.hkdf_expand(io, prk, SHA384_HASH_SIZE as u32, &info[..len])
+        .await
 }
 
 /// Build the SPDM HKDF info field on the stack.

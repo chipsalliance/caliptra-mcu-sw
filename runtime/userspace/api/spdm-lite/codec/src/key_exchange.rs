@@ -4,10 +4,7 @@
 
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
-use crate::{
-    ReqRespCode, ResponseBody, SHA384_HASH_SIZE,
-    WireError, WireWriter,
-};
+use crate::{ReqRespCode, ResponseBody, WireError, WireWriter, SHA384_HASH_SIZE};
 
 // ---- Constants -------------------------------------------------------------
 
@@ -78,7 +75,10 @@ impl ResponseBody for KeyExchangeRsp<'_> {
     const RESPONSE_CODE: ReqRespCode = ReqRespCode::KEY_EXCHANGE_RSP;
 
     fn body_size(&self) -> usize {
-        1 + 1 + 2 + 1 + 1
+        1 + 1
+            + 2
+            + 1
+            + 1
             + KEY_EXCHANGE_RANDOM_DATA_LEN
             + ECDH_P384_EXCHANGE_DATA_SIZE
             + self.meas_hash_len()

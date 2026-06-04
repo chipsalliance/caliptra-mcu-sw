@@ -54,11 +54,7 @@ impl SecuredMessageHeader {
 ///
 /// AAD = session_id(4, LE) || length(2, LE).
 /// Returns 6 (= `SECURED_MSG_HDR_SIZE`).
-pub fn encode_aad(
-    session_id: u32,
-    length: u16,
-    out: &mut [u8],
-) -> Result<usize, WireError> {
+pub fn encode_aad(session_id: u32, length: u16, out: &mut [u8]) -> Result<usize, WireError> {
     if out.len() < SECURED_MSG_HDR_SIZE {
         return Err(WireError);
     }

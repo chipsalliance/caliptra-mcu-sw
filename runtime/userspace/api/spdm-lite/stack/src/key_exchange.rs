@@ -130,6 +130,7 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
 }
 
 /// Inner implementation that can fail; caller handles session cleanup.
+#[allow(clippy::too_many_arguments)]
 #[inline(never)]
 async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     state: &mut ConnectionState<Pal::State>,

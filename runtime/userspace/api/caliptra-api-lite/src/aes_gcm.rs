@@ -23,9 +23,9 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 use crate::types::{Cmk, CMK_SIZE};
 use crate::wire::{
     mbox_execute, pad4, populate_checksum, CMD_CM_AES_GCM_DECRYPT_FINAL,
-    CMD_CM_AES_GCM_DECRYPT_UPDATE, CMD_CM_AES_GCM_ENCRYPT_FINAL,
-    CMD_CM_AES_GCM_ENCRYPT_UPDATE, CMD_CM_AES_GCM_SPDM_DECRYPT_INIT,
-    CMD_CM_AES_GCM_SPDM_ENCRYPT_INIT, MAX_CMB_DATA_SIZE, MBOX_RESP_HEADER_SIZE,
+    CMD_CM_AES_GCM_DECRYPT_UPDATE, CMD_CM_AES_GCM_ENCRYPT_FINAL, CMD_CM_AES_GCM_ENCRYPT_UPDATE,
+    CMD_CM_AES_GCM_SPDM_DECRYPT_INIT, CMD_CM_AES_GCM_SPDM_ENCRYPT_INIT, MAX_CMB_DATA_SIZE,
+    MBOX_RESP_HEADER_SIZE,
 };
 use crate::ApiAlloc;
 
@@ -205,9 +205,12 @@ async fn encrypt_update<A: ApiAlloc>(
     }
 
     let ct_size_off = MBOX_RESP_HEADER_SIZE + AES_GCM_CTX_SIZE;
-    let ct_size =
-        u32::from_le_bytes([rsp[ct_size_off], rsp[ct_size_off + 1], rsp[ct_size_off + 2], rsp[ct_size_off + 3]])
-            as usize;
+    let ct_size = u32::from_le_bytes([
+        rsp[ct_size_off],
+        rsp[ct_size_off + 1],
+        rsp[ct_size_off + 2],
+        rsp[ct_size_off + 3],
+    ]) as usize;
     if ct_size > MAX_OUTPUT_SIZE || ct_size > out.len() {
         return Err(INVARIANT);
     }
@@ -253,9 +256,12 @@ async fn encrypt_final<A: ApiAlloc>(
     tag.copy_from_slice(&rsp[MBOX_RESP_HEADER_SIZE..MBOX_RESP_HEADER_SIZE + 16]);
 
     let ct_size_off = MBOX_RESP_HEADER_SIZE + 16;
-    let ct_size =
-        u32::from_le_bytes([rsp[ct_size_off], rsp[ct_size_off + 1], rsp[ct_size_off + 2], rsp[ct_size_off + 3]])
-            as usize;
+    let ct_size = u32::from_le_bytes([
+        rsp[ct_size_off],
+        rsp[ct_size_off + 1],
+        rsp[ct_size_off + 2],
+        rsp[ct_size_off + 3],
+    ]) as usize;
     if ct_size > MAX_OUTPUT_SIZE {
         return Err(INTERNAL_BUG);
     }
@@ -298,9 +304,12 @@ async fn decrypt_update<A: ApiAlloc>(
     }
 
     let pt_size_off = MBOX_RESP_HEADER_SIZE + AES_GCM_CTX_SIZE;
-    let pt_size =
-        u32::from_le_bytes([rsp[pt_size_off], rsp[pt_size_off + 1], rsp[pt_size_off + 2], rsp[pt_size_off + 3]])
-            as usize;
+    let pt_size = u32::from_le_bytes([
+        rsp[pt_size_off],
+        rsp[pt_size_off + 1],
+        rsp[pt_size_off + 2],
+        rsp[pt_size_off + 3],
+    ]) as usize;
     if pt_size > MAX_OUTPUT_SIZE || pt_size > out.len() {
         return Err(INVARIANT);
     }
@@ -352,9 +361,12 @@ async fn decrypt_final<A: ApiAlloc>(
     }
 
     let pt_size_off = MBOX_RESP_HEADER_SIZE + 4;
-    let pt_size =
-        u32::from_le_bytes([rsp[pt_size_off], rsp[pt_size_off + 1], rsp[pt_size_off + 2], rsp[pt_size_off + 3]])
-            as usize;
+    let pt_size = u32::from_le_bytes([
+        rsp[pt_size_off],
+        rsp[pt_size_off + 1],
+        rsp[pt_size_off + 2],
+        rsp[pt_size_off + 3],
+    ]) as usize;
     if pt_size > MAX_OUTPUT_SIZE || pt_size > out.len() {
         return Err(INVARIANT);
     }
@@ -392,9 +404,15 @@ pub async fn spdm_aes_gcm_encrypt<A: ApiAlloc>(
     if plaintext.len() > ciphertext.len() {
         return Err(INVARIANT);
     }
-    let mut ctx =
-        spdm_init(alloc, CMD_CM_AES_GCM_SPDM_ENCRYPT_INIT, cmk, spdm_version, seq_number, aad)
-            .await?;
+    let mut ctx = spdm_init(
+        alloc,
+        CMD_CM_AES_GCM_SPDM_ENCRYPT_INIT,
+        cmk,
+        spdm_version,
+        seq_number,
+        aad,
+    )
+    .await?;
 
     let chunk_size = MAX_CMB_DATA_SIZE;
     let full_chunks = plaintext.len() / chunk_size;
@@ -403,8 +421,13 @@ pub async fn spdm_aes_gcm_encrypt<A: ApiAlloc>(
     for i in 0..full_chunks {
         let start = i * chunk_size;
         let end = start + chunk_size;
-        let (n, new_ctx) =
-            encrypt_update(alloc, &ctx, &plaintext[start..end], &mut ciphertext[total..]).await?;
+        let (n, new_ctx) = encrypt_update(
+            alloc,
+            &ctx,
+            &plaintext[start..end],
+            &mut ciphertext[total..],
+        )
+        .await?;
         total += n;
         ctx = new_ctx;
     }
@@ -447,9 +470,15 @@ pub async fn spdm_aes_gcm_decrypt<A: ApiAlloc>(
     if ciphertext.len() > plaintext.len() {
         return Err(INVARIANT);
     }
-    let mut ctx =
-        spdm_init(alloc, CMD_CM_AES_GCM_SPDM_DECRYPT_INIT, cmk, spdm_version, seq_number, aad)
-            .await?;
+    let mut ctx = spdm_init(
+        alloc,
+        CMD_CM_AES_GCM_SPDM_DECRYPT_INIT,
+        cmk,
+        spdm_version,
+        seq_number,
+        aad,
+    )
+    .await?;
 
     let chunk_size = MAX_CMB_DATA_SIZE;
     let full_chunks = ciphertext.len() / chunk_size;
@@ -458,8 +487,13 @@ pub async fn spdm_aes_gcm_decrypt<A: ApiAlloc>(
     for i in 0..full_chunks {
         let start = i * chunk_size;
         let end = start + chunk_size;
-        let (n, new_ctx) =
-            decrypt_update(alloc, &ctx, &ciphertext[start..end], &mut plaintext[total..]).await?;
+        let (n, new_ctx) = decrypt_update(
+            alloc,
+            &ctx,
+            &ciphertext[start..end],
+            &mut plaintext[total..],
+        )
+        .await?;
         total += n;
         ctx = new_ctx;
     }

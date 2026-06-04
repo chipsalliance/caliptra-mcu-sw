@@ -42,9 +42,9 @@ mod finish;
 mod key_exchange;
 pub mod key_schedule;
 mod measurements;
+pub mod session;
 #[cfg(feature = "set-certificate")]
 mod set_certificate;
-pub mod session;
 mod stack;
 mod transcript;
 mod version;

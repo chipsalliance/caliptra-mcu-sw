@@ -7,16 +7,17 @@
 //! never inflates the task future with multi-kilobyte mailbox-request
 //! structs.
 //!
-//! The 200-byte SHA running-context is held behind a heap-allocated
-//! [`Vec`](alloc::vec::Vec) so [`HashState`] stays small in async
-//! futures and other holders. That keeps the per-handler future state
-//! slim while the actual SHA context lives on the system heap and is
-//! freed automatically on drop.
+//! The 200-byte SHA running-context is held behind a fallibly
+//! heap-allocated pointer so [`HashState`] stays pointer-sized in
+//! async futures and other holders. That keeps the per-handler future
+//! state slim while the actual SHA context lives on the system heap
+//! and is freed automatically on drop.
 
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::alloc::{alloc_zeroed, dealloc, Layout};
 use core::mem::size_of;
+use core::ptr::NonNull;
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT, OUT_OF_MEMORY};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
@@ -40,7 +41,7 @@ const _: () = assert!(SHA_CHUNK_SIZE <= MAX_CMB_DATA_SIZE);
 /// Caliptra-mailbox SHA running-context.
 ///
 /// The 200-byte opaque context blob is stored on the heap behind a
-/// [`Vec`], so `HashState` stays small inline. This is critical for
+/// pointer, so `HashState` stays small inline. This is critical for
 /// SPDM transcript-tracking where multiple [`HashState`]s live across
 /// many async `.await` points — keeping each holder slim avoids
 /// ballooning the task future.
@@ -48,42 +49,60 @@ const _: () = assert!(SHA_CHUNK_SIZE <= MAX_CMB_DATA_SIZE);
 /// # Heap allocation
 ///
 /// Each `HashState` allocates [`CMB_SHA_CONTEXT_SIZE`] (200) bytes
-/// from the **global heap** via [`Vec::try_reserve_exact`]. spdm-lite
-/// may hold up to `3 + N` live instances (3 main transcripts + 1 TH
-/// per session), so the peak heap cost is `(3 + N) × 200` bytes
-/// (800 B for N = 1). Callers sizing the runtime heap budget must
-/// account for this.
+/// from the **global heap** via a fallible allocation. spdm-lite may
+/// hold up to `3 + N` live instances (3 main transcripts + 1 TH per
+/// session), so the peak heap cost is `(3 + N) × 200` bytes (800 B
+/// for N = 1). Callers sizing the runtime heap budget must account
+/// for this.
 pub struct HashState {
-    inner: Vec<u8>,
+    inner: NonNull<[u8; CMB_SHA_CONTEXT_SIZE]>,
 }
 
 impl HashState {
     /// Allocate a fresh, all-zero `HashState`. Not a valid running
     /// hash — must be initialized via [`sha_init`] before use.
     pub fn try_new() -> McuResult<Self> {
-        let mut inner = Vec::new();
-        inner
-            .try_reserve_exact(CMB_SHA_CONTEXT_SIZE)
-            .map_err(|_| OUT_OF_MEMORY)?;
-        inner.resize(CMB_SHA_CONTEXT_SIZE, 0);
-        Ok(Self { inner })
+        // SAFETY: `layout()` is non-zero and was constructed for the
+        // exact `[u8; CMB_SHA_CONTEXT_SIZE]` allocation we store in
+        // `inner`. A null return is handled as OUT_OF_MEMORY.
+        let ptr = unsafe { alloc_zeroed(Self::layout()) };
+        let Some(ptr) = NonNull::new(ptr.cast::<[u8; CMB_SHA_CONTEXT_SIZE]>()) else {
+            return Err(OUT_OF_MEMORY);
+        };
+        Ok(Self { inner: ptr })
     }
 
     /// Fallibly deep-copy this running hash state.
     pub fn try_clone(&self) -> McuResult<Self> {
         let mut new = Self::try_new()?;
-        new.inner.copy_from_slice(&self.inner);
+        new.ctx_mut().copy_from_slice(self.ctx());
         Ok(new)
     }
 
     #[inline]
-    fn ctx(&self) -> McuResult<&[u8; CMB_SHA_CONTEXT_SIZE]> {
-        self.inner.as_slice().try_into().map_err(|_| INVARIANT)
+    fn ctx(&self) -> &[u8; CMB_SHA_CONTEXT_SIZE] {
+        // SAFETY: `inner` is created only by `try_new`, points to a live
+        // `[u8; CMB_SHA_CONTEXT_SIZE]`, and is not freed until `Drop`.
+        unsafe { self.inner.as_ref() }
     }
 
     #[inline]
-    fn ctx_mut(&mut self) -> McuResult<&mut [u8; CMB_SHA_CONTEXT_SIZE]> {
-        self.inner.as_mut_slice().try_into().map_err(|_| INVARIANT)
+    fn ctx_mut(&mut self) -> &mut [u8; CMB_SHA_CONTEXT_SIZE] {
+        // SAFETY: `&mut self` guarantees exclusive access to the live
+        // allocation owned by this `HashState`.
+        unsafe { self.inner.as_mut() }
+    }
+
+    const fn layout() -> Layout {
+        Layout::new::<[u8; CMB_SHA_CONTEXT_SIZE]>()
+    }
+}
+
+impl Drop for HashState {
+    fn drop(&mut self) {
+        // SAFETY: `inner` was allocated by `alloc_zeroed` with exactly
+        // this layout in `try_new`, and `Drop` runs at most once.
+        unsafe { dealloc(self.inner.as_ptr().cast::<u8>(), Self::layout()) }
     }
 }
 
@@ -234,7 +253,7 @@ async fn sha_call<A: ApiAlloc>(
     } else {
         let prefix =
             ShaUpdatePrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
-        prefix.context = *state.ctx()?;
+        prefix.context = *state.ctx();
         prefix.input_size = U32::new(chunk_len as u32);
     }
     req[prefix_len..prefix_len + chunk_len].copy_from_slice(data);
@@ -264,7 +283,7 @@ async fn sha_call<A: ApiAlloc>(
     } else {
         let parsed = ShaCtxResp::ref_from_bytes(&rsp[..size_of::<ShaCtxResp>()])
             .map_err(|_| INTERNAL_BUG)?;
-        *state.ctx_mut()? = parsed.context;
+        *state.ctx_mut() = parsed.context;
     }
     Ok(())
 }
