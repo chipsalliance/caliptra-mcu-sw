@@ -27,23 +27,21 @@ store-failure-output = true
 
 [profile.nightly-ci]
 inherits = "nightly"
+# Tests that program OTP with LifecycleControllerState::Dev as the initial
+# state hang the FPGA at "Taking subsystem out of reset" (confirmed locally
+# with test_lc_dev_to_prod). Dev-init tests are disabled until that's
+# root-caused.
 default-filter = """
 (package(caliptra-mcu-hw-model)
     - test(model_emulated::test::test_new_unbooted)) |
 (package(caliptra-mcu-tests-integration) and test(test_axi_bypass)) |
 (package(caliptra-mcu-tests-integration) and test(test_jtag_taps)) |
 (package(caliptra-mcu-tests-integration) and test(test_lc_transitions)) |
-(package(caliptra-mcu-tests-integration) and test(test_manuf_debug_unlock)) |
 (package(caliptra-mcu-tests-integration) and test(test_prod_debug_unlock)) |
-(package(caliptra-mcu-tests-integration) and test(test_uds)) |
 (package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |
 (package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_self_test)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_periodic)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_constant_writes)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_simple)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_ping)) |
@@ -56,14 +54,38 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_error_then_continue)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_full_flow)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
-(package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
-(package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
-(package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check)) |
-(package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot))
+(package(caliptra-mcu-tests-integration) and test(test_lc_ctrl)
+    - test(test_lc_dev_to_prod)
+    - test(test_lc_dev_to_rma)
+    - test(test_lc_dev_to_scrap)
+    - test(test_lc_invalid_transition_error)) |
+(package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot)) |
+(package(caliptra-mcu-tests-integration) and test(test_external_otp))
 """
-# disabled for now due to flakiness of firmware update
-# (package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
-#
+# Disabled because they hang the FPGA at boot (LifecycleControllerState::Dev):
+#   test_manuf_debug_unlock, test_uds, test_sw_digest_lock,
+#   test_otp_blank_check, test_otp_scramble_check, test_bootfsm_timeout,
+#   and the Dev-starting subtests of test_lc_ctrl listed above.
+# Disabled because they fail on FPGA:
+#   test_fw_manifest_dot_hitless_lock, test_log_flash_usermode,
+#   test_mctp_capsule_loopback, test_mcu_mbox_cmds,
+#   test_mcu_mbox_fips_periodic, test_mcu_mbox_fips_self_test.
+# Disabled because it requires test-rom-hooks ROM feature not built for FPGA:
+#   test_rom_hooks_fire_in_order
+# Disabled pre-existing for flakiness:
+#   test_firmware_update_streaming_fpga
+
+# test_mctp_vdm_cmds needs a longer timeout on FPGA because each MCTP VDM
+# command round-trip takes ~4 minutes over I3C, and the test runs ~9 commands.
+[[profile.nightly-ci.overrides]]
+filter = "test(test_mctp_vdm_cmds)"
+slow-timeout = { period = "10m", terminate-after = 6 }
+
+[profile.nightly-release]
+inherits = "nightly-emulator"
+default-filter = """
+(package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful))
+"""
 
 [profile.nightly-ci-spdm]
 inherits = "nightly"

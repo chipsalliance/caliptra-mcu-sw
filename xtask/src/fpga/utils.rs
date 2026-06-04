@@ -223,6 +223,7 @@ impl NextestArchiveCommand {
         }
 
         cmd.push_str("--target=aarch64-unknown-linux-gnu ");
+        cmd.push_str("--release ");
         cmd.push_str("--archive-file=/work-dir/caliptra-test-binaries.tar.zst ");
         cmd.push_str("--target-dir cross-target/");
 
@@ -340,14 +341,33 @@ pub fn run_test_suite(
     target_host: Option<&str>,
     default_test_profile: &str,
 ) -> Result<()> {
-    let archive = std::env::var("CPTRA_TEST_ARCHIVE")
-        .unwrap_or_else(|_| "$HOME/caliptra-test-binaries.tar.zst".to_string());
+    // Prefer an unpacked binaries directory (set by CI via TEST_BIN or
+    // CPTRA_TEST_BIN_DIR); fall back to a tar.zst archive for local runs.
+    let bin_dir = std::env::var("CPTRA_TEST_BIN_DIR")
+        .or_else(|_| std::env::var("TEST_BIN"))
+        .ok();
+    let binaries_args = if let Some(dir) = bin_dir.as_deref() {
+        format!(
+            "--cargo-metadata={dir}/target/nextest/cargo-metadata.json \
+             --binaries-metadata={dir}/target/nextest/binaries-metadata.json \
+             --target-dir-remap={dir}/target \
+             --workspace-remap=. "
+        )
+    } else {
+        let archive = std::env::var("CPTRA_TEST_ARCHIVE")
+            .unwrap_or_else(|_| "$HOME/caliptra-test-binaries.tar.zst".to_string());
+        format!("--workspace-remap=. --archive-file {archive} ")
+    };
+    // Allow CI (which runs xtask from the repo root) to override the cd target.
+    let workspace = std::env::var("CPTRA_TEST_WORKSPACE").unwrap_or_else(|_| test_dir.to_string());
+    // --status-level=all emits STARTING lines so a hung test is visible in the
+    // streamed log even if nextest never reports a PASS/FAIL.
     let mut test_command = format!(
-        "(cd {test_dir} && \
+        "(cd {workspace} && \
                 sudo {prelude} \
                 cargo-nextest nextest run \
-                --workspace-remap=. --archive-file {archive} \
-                {test_output} --no-fail-fast "
+                {binaries_args}\
+                {test_output} --no-fail-fast --status-level=all "
     );
     if let Some(filters) = test_filters {
         test_command += "--profile=nightly ";
@@ -358,13 +378,15 @@ pub fn run_test_suite(
         test_command += format!("--profile={default_test_profile} ").as_str();
     }
     test_command += ")";
-    // Run test suite.
-    // Ignore error so we still copy the logs.
-    let _ = run_command(target_host, test_command.as_str());
+    // Keep the result so logs are still copied on failure, but surface a
+    // non-zero exit to the caller so download / extract / nextest failures
+    // fail the CI step.
+    let test_result = run_command(target_host, test_command.as_str());
     if let Some(target_host) = target_host {
         println!("Copying test log from FPGA to junit.xml");
         rsync_file(target_host, "/tmp/junit.xml", ".", true)?;
     }
+    test_result?;
     Ok(())
 }
 
