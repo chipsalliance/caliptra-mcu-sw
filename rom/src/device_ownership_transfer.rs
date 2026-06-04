@@ -27,6 +27,16 @@ use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 const DOT_LABEL: &[u8; 23] = b"Caliptra DOT stable key";
 pub const DOT_BLOB_SIZE: usize = core::mem::size_of::<DotBlob>();
 
+/// Current DOT blob format version.
+pub const DOT_BLOB_VERSION: u32 = 1;
+
+/// Total number of bits in the `dot_fuse_array` OTP fuse field.
+///
+/// Derived from the generated fuse map so it stays in sync with the RDL
+/// definition of `DOT_FUSE_ARRAY` (a OneHot field).
+pub const DOT_FUSE_ARRAY_BITS: u16 =
+    (caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_size * 8) as u16;
+
 #[derive(Clone, Debug, FromBytes, IntoBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct LakPkHash(pub [u32; 12]);
 
@@ -105,7 +115,7 @@ impl DotFuses {
         Ok(DotFuses {
             enabled,
             burned,
-            total: 256,
+            total: DOT_FUSE_ARRAY_BITS,
             recovery_pk_hash,
         })
     }
@@ -173,7 +183,7 @@ pub struct DotBlobFields {
 impl Default for DotBlobFields {
     fn default() -> Self {
         Self {
-            version: 0,
+            version: DOT_BLOB_VERSION,
             cak: OwnerPkHash([0u32; 12]),
             lak_pub: LakPkHash([0u32; 12]),
             unlock_method: UnlockMethod::default(),
@@ -729,10 +739,8 @@ pub(crate) fn apply_override(
 
     // Derive the EVEN-state key (fuse count + 1) for the new blob
     let even_fuses = DotFuses {
-        enabled: dot_fuses.enabled,
         burned: dot_fuses.burned + 1,
-        total: dot_fuses.total,
-        recovery_pk_hash: dot_fuses.recovery_pk_hash.clone(),
+        ..dot_fuses.clone()
     };
     let even_key = cm_derive_stable_key_impl(soc_manager, &even_fuses, stable_key_type)?;
 
@@ -740,7 +748,6 @@ pub(crate) fn apply_override(
         fields: DotBlobFields::default(),
         hmac: [0u32; 16],
     };
-    new_blob.fields.version = 1;
     let hmac = cm_hmac(soc_manager, &even_key.0, &new_blob.fields)?;
     new_blob.hmac = hmac;
 
@@ -1207,11 +1214,10 @@ fn create_and_seal_dot_blob(
     // Build the blob payload (everything except the HMAC tag).
     let mut blob = DotBlob {
         fields: DotBlobFields {
-            version: 1,
             cak: cak.clone(),
             lak_pub: lak.clone(),
             unlock_method: CHALLENGE_RESPONSE,
-            reserved: [0u8; 3],
+            ..Default::default()
         },
         hmac: [0u32; 16],
     };
