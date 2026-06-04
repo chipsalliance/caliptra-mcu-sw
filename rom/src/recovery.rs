@@ -124,7 +124,7 @@ impl<'a> ImageProviderManager<'a> {
 }
 
 statemachine! {
-    derive_states: [Clone, Copy, Debug],
+    derive_states: [Clone, Copy],
     transitions: {
         // syntax: CurrentState Event [guard] / action = NextState
 
@@ -330,20 +330,10 @@ fn load_image_to_recovery(
     let context = Context::new();
     let mut state_machine = StateMachine::new(context);
 
-    let mut prev_state = States::ReadProtCap;
     let mut next_print_checkpoint = 0;
     let mut start_cycle = None;
 
     while *state_machine.state() != States::Done {
-        if prev_state != *state_machine.state() {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] Transitioning from {:?} to {:?}",
-                prev_state,
-                state_machine.state()
-            );
-            prev_state = *state_machine.state();
-        };
-
         match *state_machine.state() {
             States::ReadProtCap => {
                 // Read the ProtCap2 register
