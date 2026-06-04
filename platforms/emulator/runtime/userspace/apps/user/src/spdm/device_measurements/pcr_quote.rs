@@ -17,6 +17,7 @@ const PCR_QUOTE_MEAS_INFO: [MeasurementInfo; 1] = [MeasurementInfo {
     value_size: PCR_QUOTE_ECC384_LEN as u16,
     value_type: 4, // FreeformManifest
     is_raw: true,
+    is_tcb: true,
 }];
 
 pub struct PcrQuoteMeasurementProvider;
