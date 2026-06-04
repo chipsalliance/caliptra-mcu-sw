@@ -24,6 +24,7 @@ pub(crate) mod i3c_protocol;
 mod lc_ctrl;
 mod mci;
 mod mcu_mbox0;
+#[cfg(feature = "nwp")]
 mod network_root_bus;
 mod otp;
 pub use caliptra_mcu_otp_digest::{
@@ -48,6 +49,7 @@ pub use i3c_protocol::*;
 pub use lc_ctrl::LcCtrl;
 pub use mci::Mci;
 pub use mcu_mbox0::{MciMailboxRequester, McuMailbox0External, McuMailbox0Internal};
+#[cfg(feature = "nwp")]
 pub use network_root_bus::{NetworkRootBus, NetworkRootBusArgs, NetworkRootBusOffsets};
 pub use otp::{Otp, OtpArgs};
 pub use reset_reason::ResetReasonEmulator;

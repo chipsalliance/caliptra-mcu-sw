@@ -9,6 +9,11 @@ edition = "2021"
 default = []
 fpga_realtime = ["dep:uio", "caliptra-mcu-hw-model/fpga_realtime"]
 itrng = []
+nwp = [
+    "dep:caliptra-mcu-network-config",
+    "caliptra-mcu-emulator-periph/nwp",
+    "caliptra-mcu-hw-model/nwp",
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -59,7 +64,7 @@ caliptra-mcu-debug-unlock-signer.workspace = true
 caliptra-mcu-rom-common.workspace = true
 caliptra-mcu-ocp.workspace = true
 caliptra-mcu-testing-common.workspace = true
-caliptra-mcu-network-config.workspace = true
+caliptra-mcu-network-config = { workspace = true, optional = true }
 openssl.workspace = true
 caliptra-mcu-xtask.workspace = true
 p384 = { workspace = true, features = ["ecdsa"] }

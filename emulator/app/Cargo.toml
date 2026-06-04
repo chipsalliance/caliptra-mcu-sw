@@ -74,3 +74,4 @@ path = "src/lib.rs"
 [features]
 default = ["ocp-lock"]
 ocp-lock = []
+nwp = ["caliptra-mcu-emulator-periph/nwp"]

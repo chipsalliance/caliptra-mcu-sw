@@ -20,6 +20,7 @@ mod format;
 mod fpga;
 mod fuses;
 mod header;
+#[cfg(feature = "nwp")]
 mod network;
 mod pldm_fw_pkg;
 mod precheckin;
@@ -349,6 +350,7 @@ enum Commands {
         cmd: BundleCommands,
     },
     /// Network stack development tools (TAP, DHCP/TFTP server, lwip-rs)
+    #[cfg(feature = "nwp")]
     Network {
         #[command(subcommand)]
         cmd: network::NetworkCommands,
@@ -650,6 +652,7 @@ fn main() {
             }
         },
         Commands::FirmwareBundler { cmd } => caliptra_mcu_firmware_bundler::execute(cmd.clone()),
+        #[cfg(feature = "nwp")]
         Commands::Network { cmd } => network::run(cmd.clone()),
     };
     result.unwrap_or_else(|e| {
