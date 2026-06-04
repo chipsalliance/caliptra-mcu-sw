@@ -13,7 +13,9 @@
 
 use crate::config::{DeviceMode, TestConfig};
 use crate::SpdmVdmClient;
+use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
+use caliptra_mcu_core_util_host_command_types::fuse::MC_FE_PROG_CANONICAL_CMD_ID;
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
 
 /// Result of a single validation check.
@@ -102,6 +104,7 @@ pub fn run_all(
     client: &mut SpdmVdmClient,
     config: &TestConfig,
     debug_unlock_signer: Option<&dyn DebugUnlockSigner>,
+    fe_prog_authorizer: Option<&dyn CommandAuthChallengeSigner>,
     verbose: bool,
 ) -> Vec<ValidationResult> {
     let mut results = Vec::new();
@@ -137,6 +140,13 @@ pub fn run_all(
             verbose,
         ));
     }
+
+    results.push(run_fe_prog(
+        client,
+        config.fe_prog.partition,
+        fe_prog_authorizer,
+        verbose,
+    ));
 
     results
 }
@@ -332,6 +342,78 @@ pub fn run_prod_debug_unlock(
                 );
             }
             ValidationResult::fail(test_name, format!("debug unlock request failed: {}", msg))
+        }
+    }
+}
+
+/// Validate Field Entropy Programming (FE_PROG) via SPDM VDM.
+///
+/// When a [`CommandAuthChallengeSigner`] is provided, performs the full authorized flow:
+/// 1. Request an auth challenge
+/// 2. Ask the authorizer to produce the MAC
+/// 3. Submit FE_PROG with the MAC
+///
+/// Without an authorizer the test is skipped.
+pub fn run_fe_prog(
+    client: &mut SpdmVdmClient,
+    partition: u32,
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    verbose: bool,
+) -> ValidationResult {
+    let test_name = format!("FeProg(partition={})", partition);
+
+    if verbose {
+        println!("\n=== Validating Field Entropy Programming (SPDM VDM) ===");
+    }
+
+    let authorizer = match authorizer {
+        Some(a) => a,
+        None => {
+            return ValidationResult::skip(test_name, "no FE_PROG authorizer provided");
+        }
+    };
+
+    // Step 1: Get authorization challenge
+    let challenge_resp = match client.get_auth_challenge() {
+        Ok(resp) => resp,
+        Err(e) => {
+            return ValidationResult::fail(
+                test_name,
+                format!("Failed to get auth challenge: {}", e),
+            );
+        }
+    };
+
+    if verbose {
+        println!("  Got challenge: {:02X?}...", &challenge_resp.challenge[..8]);
+    }
+
+    // Step 2: Compute MAC via the authorizer
+    let cmd_id = MC_FE_PROG_CANONICAL_CMD_ID;
+    let mac_bytes = match authorizer.authorize(cmd_id, &partition.to_le_bytes(), &challenge_resp.challenge) {
+        Ok(mac) => mac,
+        Err(e) => {
+            return ValidationResult::fail(
+                test_name,
+                format!("Authorization failed: {}", e),
+            );
+        }
+    };
+
+    // Step 3: Submit FE_PROG
+    match client.fe_prog(partition, &mac_bytes) {
+        Ok(_) => {
+            if verbose {
+                println!("  FE_PROG succeeded for partition {}", partition);
+            }
+            ValidationResult::pass(test_name, format!("partition {} programmed", partition))
+        }
+        Err(e) => {
+            let msg = format!("{}", e);
+            if verbose {
+                println!("  FE_PROG failed: {}", msg);
+            }
+            ValidationResult::fail(test_name, msg)
         }
     }
 }

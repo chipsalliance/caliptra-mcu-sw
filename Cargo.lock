@@ -918,6 +918,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-command-auth-challenge-signer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hmac",
+ "sha2",
+]
+
+[[package]]
 name = "caliptra-mcu-common-commands"
 version = "0.1.0"
 dependencies = [
@@ -1643,6 +1652,7 @@ name = "caliptra-mcu-mailbox-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "caliptra-mcu-command-auth-challenge-signer",
  "caliptra-mcu-core-util-host-command-types",
  "caliptra-mcu-core-util-host-mailbox-test-config",
  "caliptra-mcu-core-util-host-transport",
@@ -1652,7 +1662,6 @@ dependencies = [
  "clap 4.5.51",
  "ecdsa",
  "fips204",
- "hmac",
  "p384",
  "sha2",
  "zerocopy",

@@ -409,7 +409,7 @@ checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 [[package]]
 name = "caliptra-api"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "bitflags 2.11.1",
  "caliptra-api-types",
@@ -424,7 +424,7 @@ dependencies = [
 [[package]]
 name = "caliptra-api-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "caliptra-image-types",
 ]
@@ -432,9 +432,9 @@ dependencies = [
 [[package]]
 name = "caliptra-cfi-derive"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=aa96c53073ce7f298f7482c1ac57f5f65ffc115e#aa96c53073ce7f298f7482c1ac57f5f65ffc115e"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
- "pastey",
+ "paste",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
@@ -443,22 +443,27 @@ dependencies = [
 [[package]]
 name = "caliptra-cfi-lib"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=aa96c53073ce7f298f7482c1ac57f5f65ffc115e#aa96c53073ce7f298f7482c1ac57f5f65ffc115e"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
+dependencies = [
+ "caliptra-error",
+ "caliptra-registers",
+ "ufmt",
+]
 
 [[package]]
 name = "caliptra-emu-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 
 [[package]]
 name = "caliptra-error"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 
 [[package]]
 name = "caliptra-image-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "caliptra-cfi-derive",
  "caliptra-cfi-lib",
@@ -472,7 +477,7 @@ dependencies = [
 [[package]]
 name = "caliptra-lms-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "caliptra-cfi-derive",
  "caliptra-cfi-lib",
@@ -481,17 +486,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-mctp-vdm-client"
+name = "caliptra-mailbox-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "caliptra-mcu-command-auth-challenge-signer",
  "caliptra-mcu-core-util-host-command-types",
+ "caliptra-mcu-core-util-host-mailbox-test-config",
  "caliptra-mcu-core-util-host-transport",
- "caliptra-mcu-mctp-vdm-common",
- "caliptra-mcu-testing-common",
- "caliptra-util-host-mctp-vdm-test-config",
+ "caliptra-mcu-debug-unlock-signer",
+ "caliptra-util-host-commands",
+ "caliptra-util-host-session",
  "clap 4.6.1",
+ "ecdsa",
+ "fips204",
+ "p384",
+ "sha2",
  "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-command-auth-challenge-signer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hmac",
+ "sha2",
 ]
 
 [[package]]
@@ -505,6 +525,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-core-mctp-vdm-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-mcu-core-util-host-command-types",
+ "caliptra-mcu-core-util-host-mctp-vdm-test-config",
+ "caliptra-mcu-core-util-host-transport",
+ "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-testing-common",
+ "clap 4.6.1",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-core-util-host-command-types"
 version = "0.1.0"
 dependencies = [
@@ -513,6 +547,15 @@ dependencies = [
 
 [[package]]
 name = "caliptra-mcu-core-util-host-mailbox-test-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "caliptra-mcu-core-util-host-mctp-vdm-test-config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -541,26 +584,6 @@ dependencies = [
  "anyhow",
  "ecdsa",
  "fips204",
- "p384",
- "sha2",
- "zerocopy",
-]
-
-[[package]]
-name = "caliptra-mcu-mailbox-client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "caliptra-mcu-core-util-host-command-types",
- "caliptra-mcu-core-util-host-mailbox-test-config",
- "caliptra-mcu-core-util-host-transport",
- "caliptra-mcu-debug-unlock-signer",
- "caliptra-util-host-commands",
- "caliptra-util-host-session",
- "clap 4.6.1",
- "ecdsa",
- "fips204",
- "hmac",
  "p384",
  "sha2",
  "zerocopy",
@@ -624,7 +647,7 @@ dependencies = [
 [[package]]
 name = "caliptra-registers"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "caliptra-registers-latest",
 ]
@@ -632,7 +655,7 @@ dependencies = [
 [[package]]
 name = "caliptra-registers-latest"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "caliptra-ureg",
 ]
@@ -653,6 +676,7 @@ name = "caliptra-spdm-vdm-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "caliptra-mcu-command-auth-challenge-signer",
  "caliptra-mcu-core-util-host-command-types",
  "caliptra-mcu-core-util-host-transport",
  "caliptra-mcu-debug-unlock-signer",
@@ -660,6 +684,7 @@ dependencies = [
  "caliptra-util-host-commands",
  "caliptra-util-host-session",
  "clap 4.6.1",
+ "hex",
  "log",
  "serde",
  "simple_logger",
@@ -669,7 +694,7 @@ dependencies = [
 [[package]]
 name = "caliptra-ureg"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 
 [[package]]
 name = "caliptra-util-host"
@@ -703,15 +728,6 @@ dependencies = [
  "caliptra-mcu-core-util-host-osal",
  "caliptra-util-host-session",
  "zerocopy",
-]
-
-[[package]]
-name = "caliptra-util-host-mctp-vdm-test-config"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "toml 0.8.23",
 ]
 
 [[package]]
@@ -799,9 +815,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.61"
+version = "1.2.62"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d16d90359e986641506914ba71350897565610e87ce0ad9e6f28569db3dd5c6d"
+checksum = "a1dce859f0832a7d088c4f1119888ab94ef4b5d6795d1ce05afb7fe159d79f98"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -1424,9 +1440,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.17.0"
+version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f467dd6dccf739c208452f8014c75c18bb8301b050ad1cfb27153803edb0f51"
+checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
 name = "heck"
@@ -1454,6 +1470,12 @@ name = "hermit-abi"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hkdf"
@@ -1535,7 +1557,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
- "hashbrown 0.17.0",
+ "hashbrown 0.17.1",
  "serde",
  "serde_core",
 ]
@@ -1575,9 +1597,9 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "js-sys"
-version = "0.3.97"
+version = "0.3.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1840c94c045fbcf8ba2812c95db44499f7c64910a912551aaaa541decebcacf"
+checksum = "67df7112613f8bfd9150013a0314e196f4800d3201ae742489d999db2f979f08"
 dependencies = [
  "cfg-if",
  "futures-util",
@@ -1878,10 +1900,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
 
 [[package]]
-name = "pastey"
-version = "0.2.3"
+name = "paste"
+version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "peeking_take_while"
@@ -2127,9 +2149,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.228"
+version = "1.0.227"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
+checksum = "80ece43fc6fbed4eb5392ab50c07334d3e577cbf40997ee896fe7af40bba4245"
 dependencies = [
  "serde_core",
  "serde_derive",
@@ -2137,18 +2159,18 @@ dependencies = [
 
 [[package]]
 name = "serde_core"
-version = "1.0.228"
+version = "1.0.227"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41d385c7d4ca58e59fc732af25c3983b67ac852c1a25000afe1175de458b67ad"
+checksum = "7a576275b607a2c86ea29e410193df32bc680303c82f31e275bbfcafe8b33be5"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.228"
+version = "1.0.227"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
+checksum = "51e694923b8824cf0e9b382adf0f60d4e05f348f357b38833a3fa5ed7c2ede04"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2528,6 +2550,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
+name = "ufmt"
+version = "0.2.0"
+source = "git+https://github.com/korran/ufmt.git?rev=1d0743c1ffffc68bc05ca8eeb81c166192863f33#1d0743c1ffffc68bc05ca8eeb81c166192863f33"
+dependencies = [
+ "ufmt-macros",
+ "ufmt-write",
+]
+
+[[package]]
+name = "ufmt-macros"
+version = "0.3.0"
+source = "git+https://github.com/korran/ufmt.git?rev=1d0743c1ffffc68bc05ca8eeb81c166192863f33#1d0743c1ffffc68bc05ca8eeb81c166192863f33"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "ufmt-write"
+version = "0.1.0"
+source = "git+https://github.com/korran/ufmt.git?rev=1d0743c1ffffc68bc05ca8eeb81c166192863f33#1d0743c1ffffc68bc05ca8eeb81c166192863f33"
+
+[[package]]
 name = "unescaper"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2616,9 +2662,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.120"
+version = "0.2.121"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df52b6d9b87e0c74c9edfa1eb2d9bf85e5d63515474513aa50fa181b3c4f5db1"
+checksum = "49ace1d07c165b0864824eee619580c4689389afa9dc9ed3a4c75040d82e6790"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -2629,9 +2675,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.70"
+version = "0.4.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af934872acec734c2d80e6617bbb5ff4f12b052dd8e6332b0817bce889516084"
+checksum = "96492d0d3ffba25305a7dc88720d250b1401d7edca02cc3bcd50633b424673b8"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -2639,9 +2685,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.120"
+version = "0.2.121"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78b1041f495fb322e64aca85f5756b2172e35cd459376e67f2a6c9dffcedb103"
+checksum = "8e68e6f4afd367a562002c05637acb8578ff2dea1943df76afb9e83d177c8578"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -2649,9 +2695,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.120"
+version = "0.2.121"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dcd0ff20416988a18ac686d4d4d0f6aae9ebf08a389ff5d29012b05af2a1b41"
+checksum = "d95a9ec35c64b2a7cb35d3fead40c4238d0940c86d107136999567a4703259f2"
 dependencies = [
  "bumpalo",
  "proc-macro2",
@@ -2662,9 +2708,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.120"
+version = "0.2.121"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49757b3c82ebf16c57d69365a142940b384176c24df52a087fb748e2085359ea"
+checksum = "c4e0100b01e9f0d03189a92b96772a1fb998639d981193d7dbab487302513441"
 dependencies = [
  "unicode-ident",
 ]

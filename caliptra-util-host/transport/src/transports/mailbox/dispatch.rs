@@ -22,6 +22,7 @@ use super::delete::DeleteCmd;
 use super::device_info::{
     GetDeviceCapabilitiesCmd, GetDeviceIdCmd, GetDeviceInfoCmd, GetFirmwareVersionCmd,
 };
+use super::fuse::{FeProgCmd, GetAuthCmdChallengeCmd};
 use super::hmac::{HmacCmd, HmacKdfCounterCmd};
 use super::import::ImportCmd;
 use super::sha::{ShaFinalCmd, ShaInitCmd, ShaUpdateCmd};
@@ -82,6 +83,9 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x7011 => Some(process_command_with_metadata::<ProdDebugUnlockTokenCmd>), // ProdDebugUnlockToken
         // Certificate Commands (0x1005)
         0x1005 => Some(process_command_with_metadata::<ExportAttestedCsrCmd>), // ExportAttestedCsr
+        // Authorized / Fuse Commands (0x8010-0x8011)
+        0x8010 => Some(process_command_with_metadata::<GetAuthCmdChallengeCmd>), // GetAuthCmdChallenge
+        0x8011 => Some(process_command_with_metadata::<FeProgCmd>),              // FeProg
         _ => None,
     }
 }
@@ -135,6 +139,9 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x7011 => Some(0x4D50_5554), // ProdDebugUnlockToken -> MC_PROD_DEBUG_UNLOCK_TOKEN ("MPUT")
         // Certificate Commands
         0x1005 => Some(0x4D45_4143), // ExportAttestedCsr -> MC_EXPORT_ATTESTED_CSR ("MEAC")
+        // Authorized / Fuse Commands
+        0x8010 => Some(0x4D41_4343), // GetAuthCmdChallenge -> MC_GET_AUTH_CMD_CHALLENGE ("MACC")
+        0x8011 => Some(0x4D43_4650), // FeProg -> MC_FE_PROG ("MCFP")
         _ => None,
     }
 }
