@@ -6,7 +6,7 @@
 //!
 //! 1. Parse + validate the request (slot, meas hash type, opaque)
 //! 2. ECDH generate + finish → DHE shared secret
-//! 3. Create session, init TH transcript with `hash(VCA)`
+//! 3. Create session, fork VCA running hash into session TH
 //! 4. Feed cert_chain_hash, request, partial response to TH
 //! 5. Sign TH1 → signature
 //! 6. Derive handshake keys from TH1'
@@ -14,31 +14,23 @@
 //! 8. Build final response with signature + verify_data
 
 use mcu_spdm_lite_codec::{
-    KeyExchangeReqBody, KeyExchangeRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
-    ECDH_P384_EXCHANGE_DATA_SIZE, ECC_P384_SIGNATURE_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN,
-    SHA384_HASH_SIZE, SPDM_CONTEXT_LEN, SPDM_PREFIX_LEN,
-    SPDM_SIGNING_CONTEXT_LEN,
-    encode_version_selection, parse_supported_versions, select_version,
-    OPAQUE_VERSION_SELECTION_SIZE,
+    encode_version_selection, parse_supported_versions, select_version, KeyExchangeReqBody,
+    KeyExchangeRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, ECC_P384_SIGNATURE_SIZE,
+    ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN, OPAQUE_VERSION_SELECTION_SIZE,
+    SHA384_HASH_SIZE, SPDM_CONTEXT_LEN, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
-use crate::error::{
-    SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
-};
+use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::key_schedule::SessionKeyType;
 use crate::session::SessionManager;
 use crate::stack::{ConnectionState, Phase};
 
 pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
     state: &mut ConnectionState<Pal::State>,
-    sessions: &mut SessionManager<
-        <Pal as SpdmPalSessionCrypto>::Key,
-        Pal::State,
-        N,
-    >,
+    sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, N>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
@@ -54,8 +46,7 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
 
     // ── Parse request ───────────────────────────────────────────────
     let req = io.request();
-    let (hdr, rest) =
-        SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8() {
         return Err(crate::error::SPDM_VERSION_MISMATCH);
     }
@@ -72,8 +63,9 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    // Validate meas_summary_hash_type: 0 (none) or 0xFF (all).
-    if meas_hash_type != 0 && meas_hash_type != 0xFF {
+    // Validate meas_summary_hash_type: 0 (none), 1 (TCB), or 0xFF (all).
+    // DSP0274 §10.11 — must accept all three when MEAS_CAP != 0.
+    if meas_hash_type != 0 && meas_hash_type != 1 && meas_hash_type != 0xFF {
         return Err(SPDM_INVALID_REQUEST);
     }
 
@@ -88,16 +80,12 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
     let opaque_data = &after[2..2 + opaque_len];
 
     // Select secured-message version from requester's list.
-    let supported = parse_supported_versions(opaque_data)
-        .map_err(|_| SPDM_INVALID_REQUEST)?;
-    let selected_version = select_version(&supported)
-        .map_err(|_| SPDM_INVALID_REQUEST)?;
+    let supported = parse_supported_versions(opaque_data).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let selected_version = select_version(&supported).map_err(|_| SPDM_INVALID_REQUEST)?;
 
     // ── ECDH key generation ─────────────────────────────────────────
-    let (ecdh_context, our_exchange_data) = pal
-        .ecdh_generate(io)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
+    let (ecdh_context, our_exchange_data) =
+        pal.ecdh_generate(io).await.map_err(|_| SPDM_UNSPECIFIED)?;
 
     // Complete ECDH with peer's exchange data → DHE shared secret.
     let dhe_secret = pal
@@ -118,9 +106,19 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
 
     // From here on, errors must clean up the session.
     let result = key_exchange_inner(
-        state, sessions, pal, io, req, ke_req, slot_id, meas_hash_type,
-        session_id, rsp_session_id, dhe_secret,
-        &our_exchange_data, &selected_version,
+        state,
+        sessions,
+        pal,
+        io,
+        req,
+        ke_req,
+        slot_id,
+        meas_hash_type,
+        session_id,
+        rsp_session_id,
+        dhe_secret,
+        &our_exchange_data,
+        &selected_version,
     )
     .await;
 
@@ -135,11 +133,7 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
 #[inline(never)]
 async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     state: &mut ConnectionState<Pal::State>,
-    sessions: &mut SessionManager<
-        <Pal as SpdmPalSessionCrypto>::Key,
-        Pal::State,
-        N,
-    >,
+    sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, N>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     req: &[u8],
@@ -152,20 +146,16 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     our_exchange_data: &[u8; ECDH_P384_EXCHANGE_DATA_SIZE],
     selected_version: &[u8; 2],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    let session = sessions
-        .find_mut(session_id)
-        .ok_or(SPDM_UNSPECIFIED)?;
+    let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
 
     // Store DHE secret for later key derivation.
     session.key_schedule.set_dhe_secret(dhe_secret);
 
-    // ── Init session TH with hash(VCA) ──────────────────────────────
-    let mut vca_digest = [0u8; SHA384_HASH_SIZE];
-    state
-        .transcript
-        .vca_digest(pal, io, &mut vca_digest)
-        .await?;
-    session.transcript.init(pal, io, &vca_digest).await?;
+    // ── Init session TH by forking the VCA running hash ────────────
+    // The VCA hash state already contains the raw VCA message bytes.
+    // Cloning it avoids the incorrect hash(hash(VCA)) nesting.
+    let vca_state = state.transcript.vca.as_ref().ok_or(SPDM_UNSPECIFIED)?;
+    session.transcript.init_from_running(pal, io, vca_state)?;
 
     // ── Cert chain hash ─────────────────────────────────────────────
     let asym_algo = state.asym_algo();
@@ -174,8 +164,12 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
         cert_chain_hash = cached;
     } else {
         crate::digests::cert_chain_hash(
-            pal, io, slot_id, asym_algo,
-            SpdmPalHashAlgo::Sha384, &mut cert_chain_hash,
+            pal,
+            io,
+            slot_id,
+            asym_algo,
+            SpdmPalHashAlgo::Sha384,
+            &mut cert_chain_hash,
         )
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
@@ -183,10 +177,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     }
 
     // ── Feed TH: cert_chain_hash ────────────────────────────────────
-    session
-        .transcript
-        .append(pal, io, &cert_chain_hash)
-        .await?;
+    session.transcript.append(pal, io, &cert_chain_hash).await?;
 
     // ── Feed TH: full KEY_EXCHANGE request ──────────────────────────
     // Use only the actual SPDM bytes (not transport padding).
@@ -219,8 +210,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
 
     // ── Encode opaque version selection ─────────────────────────────
     let mut opaque_buf = [0u8; OPAQUE_VERSION_SELECTION_SIZE];
-    encode_version_selection(*selected_version, &mut opaque_buf)
-        .map_err(|_| SPDM_UNSPECIFIED)?;
+    encode_version_selection(*selected_version, &mut opaque_buf).map_err(|_| SPDM_UNSPECIFIED)?;
 
     // ── Build partial response (no signature, no verify_data) ───────
     let partial_body = KeyExchangeRsp {
@@ -234,8 +224,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     };
 
     let partial_resp =
-        build_response(pal, io, state.version, &partial_body)
-            .map_err(|_| SPDM_UNSPECIFIED)?;
+        build_response(pal, io, state.version, &partial_body).map_err(|_| SPDM_UNSPECIFIED)?;
 
     // Feed partial response (SPDM bytes only) to TH.
     let head = pal.header_size();
@@ -269,10 +258,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     }
 
     // ── Feed signature to TH ────────────────────────────────────────
-    session
-        .transcript
-        .append(pal, io, &signature)
-        .await?;
+    session.transcript.append(pal, io, &signature).await?;
 
     // ── TH1' = clone-and-finalize (for HMAC + key derivation) ──────
     let mut th1_prime = [0u8; SHA384_HASH_SIZE];
@@ -304,10 +290,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     }
 
     // Feed verify_data to TH (state persists for FINISH phase).
-    session
-        .transcript
-        .append(pal, io, &verify_data)
-        .await?;
+    session.transcript.append(pal, io, &verify_data).await?;
 
     // ── Build full response ─────────────────────────────────────────
     let full_body = KeyExchangeRsp {
@@ -321,8 +304,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     };
 
     let full_resp =
-        build_response(pal, io, state.version, &full_body)
-            .map_err(|_| SPDM_UNSPECIFIED)?;
+        build_response(pal, io, state.version, &full_body).map_err(|_| SPDM_UNSPECIFIED)?;
 
     Ok(full_resp)
 }

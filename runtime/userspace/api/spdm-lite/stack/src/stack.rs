@@ -74,8 +74,7 @@ pub enum Phase {
 ///    `GET_VERSION` → `GET_CAPABILITIES` → `NEGOTIATE_ALGORITHMS`
 ///    handshake and reset on every `GET_VERSION` via
 ///    [`Self::reset_negotiation`].
-#[derive(Clone)]
-pub struct ConnectionState<S: Clone> {
+pub struct ConnectionState<S> {
     // ---- Local responder policy (fixed at startup) -----------------------
     /// Responder `CT` time exponent (DSP0274 §10.3, `CAPABILITIES.CTExponent`).
     /// Maximum response time is `2^ct_exponent` µs.
@@ -130,7 +129,7 @@ pub struct ConnectionState<S: Clone> {
     pub(crate) large_response: chunk::LargeResponseState,
 }
 
-impl<S: Clone> ConnectionState<S> {
+impl<S> ConnectionState<S> {
     /// Builds the Caliptra responder's fixed local-policy advertisement.
     ///
     /// # Returns
@@ -221,13 +220,13 @@ impl<S: Clone> ConnectionState<S> {
     }
 }
 
-impl<S: Clone> Default for ConnectionState<S> {
+impl<S> Default for ConnectionState<S> {
     fn default() -> Self {
         Self::caliptra()
     }
 }
 
-pub(crate) fn multi_key_conn_rsp<S: Clone>(state: &ConnectionState<S>) -> SpdmResult<bool> {
+pub(crate) fn multi_key_conn_rsp<S>(state: &ConnectionState<S>) -> SpdmResult<bool> {
     let selected = state
         .other_param_sel
         .contains(OtherParamSupport::MULTI_KEY_CONN);

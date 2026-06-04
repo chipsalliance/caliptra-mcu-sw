@@ -12,9 +12,7 @@
 //! 4. GET_VERSION or error → [`SessionManager::remove_all_and_destroy`]
 
 use mcu_spdm_lite_codec::SpdmVersion;
-use mcu_spdm_lite_traits::{
-    McuResult, SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo, SpdmPalSessionCrypto,
-};
+use mcu_spdm_lite_traits::{McuResult, SpdmPalHash, SpdmPalIo, SpdmPalSessionCrypto};
 
 use crate::key_schedule::{spdm_version_str, KeySchedule};
 
@@ -36,30 +34,51 @@ pub enum SessionState {
 /// Wraps the PAL's running-hash state (`S`) with methods that enforce
 /// the correct TH feeding order.
 ///
-/// The TH is started from `hash(VCA)` (the digest of VCA, not the
-/// running VCA state).  Handlers then append cert_chain_hash,
+/// The TH is started by **forking** (cloning) the connection's
+/// running VCA hash state via [`init_from_running`](Self::init_from_running).
+/// This ensures the raw VCA message bytes are already consumed in
+/// the hash, producing `TH = hash(raw_VCA ‖ …)` as DSP0274 §10.11.3
+/// requires.  Handlers then append cert_chain_hash,
 /// KEY_EXCHANGE_REQ, KEY_EXCHANGE_RSP, signature, FINISH_REQ, and
 /// FINISH_RSP.
-pub struct SessionTranscript<S: Clone> {
+///
+/// # Heap allocation
+///
+/// When `S = HashState` (the caliptra-api-lite backend), each
+/// `Option<S>` allocates 200 bytes on the global heap via `Box`.
+/// One instance exists per session, so N concurrent sessions add
+/// `N × 200` bytes of heap.  See [`HashState`](caliptra_api_lite::sha::HashState)
+/// for details and future fallible-allocation plans.
+pub struct SessionTranscript<S> {
     th: Option<S>,
 }
 
-impl<S: Clone> SessionTranscript<S> {
+impl<S> SessionTranscript<S> {
     pub const fn new() -> Self {
         Self { th: None }
     }
 
-    /// Start the TH with `vca_digest` (hash(VCA)) as the first input.
-    pub async fn init<H: SpdmPalHash<State = S>>(
+    /// Fork the running VCA hash state into this session's TH.
+    ///
+    /// The cloned state already contains the raw VCA message bytes
+    /// (GET_VERSION ‖ VERSION ‖ … ‖ ALGORITHMS).  Subsequent
+    /// [`Self::append`] calls add cert_chain_hash, KEY_EXCHANGE_REQ,
+    /// KEY_EXCHANGE_RSP, etc., producing the correct TH input:
+    ///
+    /// ```text
+    /// TH = hash(raw_VCA ‖ cert_chain_hash ‖ req ‖ rsp_partial)
+    /// ```
+    ///
+    /// **Do not** feed `hash(VCA)` into a fresh hash — that would
+    /// produce `hash(hash(VCA) ‖ …)`, which is incorrect per
+    /// DSP0274 §10.11.3.
+    pub fn init_from_running<H: SpdmPalHash<State = S>>(
         &mut self,
         hash: &H,
         io: &impl SpdmPalIo,
-        vca_digest: &[u8],
+        running: &S,
     ) -> McuResult<()> {
-        self.th = Some(
-            hash.hash_init(io, SpdmPalHashAlgo::Sha384, vca_digest)
-                .await?,
-        );
+        self.th = Some(hash.hash_clone(io, running)?);
         Ok(())
     }
 
@@ -70,10 +89,7 @@ impl<S: Clone> SessionTranscript<S> {
         io: &impl SpdmPalIo,
         data: &[u8],
     ) -> McuResult<()> {
-        let state = self
-            .th
-            .as_mut()
-            .ok_or(mcu_error::codes::INVARIANT)?;
+        let state = self.th.as_mut().ok_or(mcu_error::codes::INVARIANT)?;
         hash.hash_update(io, state, data).await
     }
 
@@ -87,10 +103,8 @@ impl<S: Clone> SessionTranscript<S> {
         io: &impl SpdmPalIo,
         out: &mut [u8],
     ) -> McuResult<()> {
-        let mut clone = self
-            .th
-            .clone()
-            .ok_or(mcu_error::codes::INVARIANT)?;
+        let state = self.th.as_ref().ok_or(mcu_error::codes::INVARIANT)?;
+        let mut clone = hash.hash_clone(io, state)?;
         hash.hash_finish(io, &mut clone, out).await
     }
 
@@ -101,10 +115,7 @@ impl<S: Clone> SessionTranscript<S> {
         io: &impl SpdmPalIo,
         out: &mut [u8],
     ) -> McuResult<()> {
-        let state = self
-            .th
-            .as_mut()
-            .ok_or(mcu_error::codes::INVARIANT)?;
+        let state = self.th.as_mut().ok_or(mcu_error::codes::INVARIANT)?;
         hash.hash_finish(io, state, out).await?;
         self.th = None;
         Ok(())
@@ -116,7 +127,7 @@ impl<S: Clone> SessionTranscript<S> {
 /// Per-session state.
 ///
 /// `K` = [`SpdmPalSessionCrypto::Key`], `S` = [`SpdmPalHash::State`].
-pub struct SessionInfo<K: Clone, S: Clone> {
+pub struct SessionInfo<K: Clone, S> {
     /// Combined session ID: `(rsp_session_id << 16) | req_session_id`.
     pub session_id: u32,
     /// Lifecycle state.
@@ -132,12 +143,12 @@ pub struct SessionInfo<K: Clone, S: Clone> {
 /// Fixed-size session table.
 ///
 /// `K` = key handle, `S` = hash state, `N` = max concurrent sessions.
-pub struct SessionManager<K: Clone, S: Clone, const N: usize> {
+pub struct SessionManager<K: Clone, S, const N: usize> {
     sessions: [Option<SessionInfo<K, S>>; N],
     next_rsp_session_id: u16,
 }
 
-impl<K: Clone, S: Clone, const N: usize> SessionManager<K, S, N> {
+impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
     pub fn new() -> Self {
         Self {
             sessions: core::array::from_fn(|_| None),
@@ -149,11 +160,7 @@ impl<K: Clone, S: Clone, const N: usize> SessionManager<K, S, N> {
     ///
     /// Returns the combined session ID on success. The session starts
     /// in [`SessionState::HandshakeInProgress`].
-    pub fn create_session(
-        &mut self,
-        req_session_id: u16,
-        version: SpdmVersion,
-    ) -> McuResult<u32> {
+    pub fn create_session(&mut self, req_session_id: u16, version: SpdmVersion) -> McuResult<u32> {
         let slot = self
             .sessions
             .iter()
@@ -191,12 +198,8 @@ impl<K: Clone, S: Clone, const N: usize> SessionManager<K, S, N> {
     }
 
     /// Remove a session and destroy all its key handles.
-    pub async fn remove_and_destroy<P>(
-        &mut self,
-        pal: &P,
-        io: &impl SpdmPalIo,
-        session_id: u32,
-    ) where
+    pub async fn remove_and_destroy<P>(&mut self, pal: &P, io: &impl SpdmPalIo, session_id: u32)
+    where
         P: SpdmPalSessionCrypto<Key = K>,
     {
         for slot in self.sessions.iter_mut() {
@@ -211,11 +214,8 @@ impl<K: Clone, S: Clone, const N: usize> SessionManager<K, S, N> {
     }
 
     /// Remove all sessions and destroy all key handles.
-    pub async fn remove_all_and_destroy<P>(
-        &mut self,
-        pal: &P,
-        io: &impl SpdmPalIo,
-    ) where
+    pub async fn remove_all_and_destroy<P>(&mut self, pal: &P, io: &impl SpdmPalIo)
+    where
         P: SpdmPalSessionCrypto<Key = K>,
     {
         for slot in self.sessions.iter_mut() {

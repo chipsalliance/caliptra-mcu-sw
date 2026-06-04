@@ -8,16 +8,16 @@
 //! structs.
 //!
 //! The 200-byte SHA running-context is held behind a heap-allocated
-//! [`Box`](alloc::boxed::Box) so [`HashState`] is only a single
-//! 8-byte pointer in async futures and other holders. That keeps the
-//! per-handler future state slim while the actual SHA context lives
-//! on the system heap and is freed automatically on drop.
+//! [`Vec`](alloc::vec::Vec) so [`HashState`] stays small in async
+//! futures and other holders. That keeps the per-handler future state
+//! slim while the actual SHA context lives on the system heap and is
+//! freed automatically on drop.
 
 extern crate alloc;
 
-use alloc::boxed::Box;
+use alloc::vec::Vec;
 use core::mem::size_of;
-use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
+use mcu_error::codes::{INTERNAL_BUG, INVARIANT, OUT_OF_MEMORY};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
@@ -40,55 +40,50 @@ const _: () = assert!(SHA_CHUNK_SIZE <= MAX_CMB_DATA_SIZE);
 /// Caliptra-mailbox SHA running-context.
 ///
 /// The 200-byte opaque context blob is stored on the heap behind a
-/// [`Box`], so `HashState` itself is only a pointer's worth of
-/// inline storage. This is critical for SPDM transcript-tracking
-/// where multiple [`HashState`]s live across many async `.await`
-/// points — keeping each holder slim avoids ballooning the task
-/// future.
+/// [`Vec`], so `HashState` stays small inline. This is critical for
+/// SPDM transcript-tracking where multiple [`HashState`]s live across
+/// many async `.await` points — keeping each holder slim avoids
+/// ballooning the task future.
 ///
-/// Implements [`Clone`] (deep-copies the underlying context) so
-/// callers can fork a running hash — e.g. the SPDM transcript's
-/// `M1 = VCA.clone(); ...` pattern.
+/// # Heap allocation
+///
+/// Each `HashState` allocates [`CMB_SHA_CONTEXT_SIZE`] (200) bytes
+/// from the **global heap** via [`Vec::try_reserve_exact`]. spdm-lite
+/// may hold up to `3 + N` live instances (3 main transcripts + 1 TH
+/// per session), so the peak heap cost is `(3 + N) × 200` bytes
+/// (800 B for N = 1). Callers sizing the runtime heap budget must
+/// account for this.
 pub struct HashState {
-    inner: Box<[u8; CMB_SHA_CONTEXT_SIZE]>,
+    inner: Vec<u8>,
 }
 
 impl HashState {
     /// Allocate a fresh, all-zero `HashState`. Not a valid running
     /// hash — must be initialized via [`sha_init`] before use.
-    ///
-    /// Panics on allocation failure — the underlying allocator
-    /// (Caliptra-MCU runtime heap) is statically sized, so an OOM
-    /// at this 200-byte allocation indicates a heap-budget
-    /// configuration bug rather than a recoverable condition.
-    pub fn new() -> Self {
-        Self {
-            inner: Box::new([0u8; CMB_SHA_CONTEXT_SIZE]),
-        }
+    pub fn try_new() -> McuResult<Self> {
+        let mut inner = Vec::new();
+        inner
+            .try_reserve_exact(CMB_SHA_CONTEXT_SIZE)
+            .map_err(|_| OUT_OF_MEMORY)?;
+        inner.resize(CMB_SHA_CONTEXT_SIZE, 0);
+        Ok(Self { inner })
+    }
+
+    /// Fallibly deep-copy this running hash state.
+    pub fn try_clone(&self) -> McuResult<Self> {
+        let mut new = Self::try_new()?;
+        new.inner.copy_from_slice(&self.inner);
+        Ok(new)
     }
 
     #[inline]
-    fn ctx(&self) -> &[u8; CMB_SHA_CONTEXT_SIZE] {
-        &self.inner
+    fn ctx(&self) -> McuResult<&[u8; CMB_SHA_CONTEXT_SIZE]> {
+        self.inner.as_slice().try_into().map_err(|_| INVARIANT)
     }
 
     #[inline]
-    fn ctx_mut(&mut self) -> &mut [u8; CMB_SHA_CONTEXT_SIZE] {
-        &mut self.inner
-    }
-}
-
-impl Default for HashState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Clone for HashState {
-    fn clone(&self) -> Self {
-        let mut new = Self::new();
-        new.inner.copy_from_slice(self.inner.as_ref());
-        new
+    fn ctx_mut(&mut self) -> McuResult<&mut [u8; CMB_SHA_CONTEXT_SIZE]> {
+        self.inner.as_mut_slice().try_into().map_err(|_| INVARIANT)
     }
 }
 
@@ -161,7 +156,7 @@ const FINAL_RSP_MAX_LEN: usize = size_of::<ShaFinalRespPrefix>() + 64;
 /// Begin a new running hash and return the resulting state.
 #[inline(never)]
 pub async fn sha_init<A: ApiAlloc>(alloc: &A, algo: HashAlgo, seed: &[u8]) -> McuResult<HashState> {
-    let mut state = HashState::new();
+    let mut state = HashState::try_new()?;
     if seed.len() > SHA_CHUNK_SIZE {
         return Err(INVARIANT);
     }
@@ -239,7 +234,7 @@ async fn sha_call<A: ApiAlloc>(
     } else {
         let prefix =
             ShaUpdatePrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
-        prefix.context = *state.ctx();
+        prefix.context = *state.ctx()?;
         prefix.input_size = U32::new(chunk_len as u32);
     }
     req[prefix_len..prefix_len + chunk_len].copy_from_slice(data);
@@ -269,7 +264,7 @@ async fn sha_call<A: ApiAlloc>(
     } else {
         let parsed = ShaCtxResp::ref_from_bytes(&rsp[..size_of::<ShaCtxResp>()])
             .map_err(|_| INTERNAL_BUG)?;
-        *state.ctx_mut() = parsed.context;
+        *state.ctx_mut()? = parsed.context;
     }
     Ok(())
 }

@@ -86,7 +86,7 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
 
     let alg_structs = locate_alg_structs(fixed, body)?;
     let peer = parse_peer_algs(alg_structs)?;
-    let rsp_body = build_response_body(state, fixed, &peer);
+    let rsp_body = build_response_body(state, fixed, &peer, pal.secure_message_supported());
     let spdm_len = rsp_body.encoded_size();
     state.other_param_sel = rsp_body.other_param_support;
     state.negotiated_base_asym_sel = rsp_body.base_asym_sel;
@@ -238,15 +238,27 @@ fn parse_peer_algs(slice: &[u8]) -> SpdmResult<PeerAlgs> {
 ///
 /// An [`AlgorithmsRsp`] ready to hand to [`build_response`]. Families
 /// with no overlap are omitted from `alg_structs` (encoded as `None`).
-fn build_response_body<S: Clone>(
+fn build_response_body<S>(
     state: &ConnectionState<S>,
     fixed: &NegotiateAlgorithmsReqBodyFixed,
     peer: &PeerAlgs,
+    secure_message_supported: bool,
 ) -> AlgorithmsRsp {
-    let dhe = state.dhe & peer.dhe;
-    let aead = state.aead & peer.aead;
-    let key_schedule = state.key_schedule & peer.key_schedule;
-    let mut other_param_support = state.other_param_support & fixed.other_param_support;
+    let (dhe, aead, key_schedule, mut other_param_support) = if secure_message_supported {
+        (
+            state.dhe & peer.dhe,
+            state.aead & peer.aead,
+            state.key_schedule & peer.key_schedule,
+            state.other_param_support & fixed.other_param_support,
+        )
+    } else {
+        (
+            DheAlgos::EMPTY,
+            AeadAlgos::EMPTY,
+            KeyScheduleAlgos::EMPTY,
+            mcu_spdm_lite_codec::OtherParamSupport::EMPTY,
+        )
+    };
     if state.version < SpdmVersion::V13
         || !multi_key_cap_allows_connection(state.advertised_cap_flags, state.peer_cap_flags)
     {

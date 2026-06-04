@@ -14,10 +14,9 @@
 //!
 //! Spec rule: `M1 = A ∥ B ∥ C` and (for V1.2+) `L1 = A ∥ M`, where
 //! `A` is the VCA bytes. We keep an always-running VCA hash and
-//! **fork it by clone** the first time M1 / L1 actually start
-//! contributing. The [`Hash`] trait guarantees `State: Clone`, so
-//! cloning the running state produces an independent fork that can
-//! continue hashing.
+//! **fork it with a fallible hash-clone operation** the first time
+//! M1 / L1 actually start contributing. This lets heap-backed hash
+//! states report allocation failure instead of panicking.
 
 use mcu_spdm_lite_traits::{McuResult, SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo};
 
@@ -35,20 +34,26 @@ pub enum Slot {
 /// SPDM-Lite transcript state.
 ///
 /// `S` is the [`Hash::State`] of the chosen hash backend.
-#[derive(Clone)]
-pub struct Transcript<S: Clone> {
+///
+/// # Heap allocation
+///
+/// When `S = HashState` (the caliptra-api-lite backend), each of
+/// the three `Option<S>` slots allocates 200 bytes on the global
+/// heap via `Box` when initialized — up to 600 bytes total.
+/// See [`HashState`](caliptra_api_lite::sha::HashState) for details.
+pub struct Transcript<S> {
     pub(crate) vca: Option<S>,
     pub(crate) m1: Option<S>,
     pub(crate) l1: Option<S>,
 }
 
-impl<S: Clone> Default for Transcript<S> {
+impl<S> Default for Transcript<S> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<S: Clone> Transcript<S> {
+impl<S> Transcript<S> {
     pub const fn new() -> Self {
         Self {
             vca: None,
@@ -145,10 +150,12 @@ impl<S: Clone> Transcript<S> {
                 return Ok(());
             }
             Slot::M1 if self.m1.is_none() => {
-                self.m1 = self.vca.clone();
+                let vca = self.vca.as_ref().ok_or(mcu_error::codes::INVARIANT)?;
+                self.m1 = Some(hash.hash_clone(io, vca)?);
             }
             Slot::L1 if self.l1.is_none() => {
-                self.l1 = self.vca.clone();
+                let vca = self.vca.as_ref().ok_or(mcu_error::codes::INVARIANT)?;
+                self.l1 = Some(hash.hash_clone(io, vca)?);
             }
             _ => {}
         }
@@ -206,7 +213,8 @@ impl<S: Clone> Transcript<S> {
     where
         H: SpdmPalHash<State = S>,
     {
-        let mut clone = self.vca.clone().ok_or(mcu_error::codes::INVARIANT)?;
+        let vca = self.vca.as_ref().ok_or(mcu_error::codes::INVARIANT)?;
+        let mut clone = hash.hash_clone(io, vca)?;
         hash.hash_finish(io, &mut clone, out).await
     }
 }

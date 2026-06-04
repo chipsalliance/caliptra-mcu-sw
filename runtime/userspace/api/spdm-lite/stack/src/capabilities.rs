@@ -83,6 +83,10 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
         let cleared = flags.into_bits() & !(0b11 << 26);
         flags = CapFlags::from_bits(cleared);
     }
+    if !pal.secure_message_supported() {
+        let secure_session_caps = CapFlags::KEY_EX | CapFlags::ENCRYPT | CapFlags::MAC;
+        flags = CapFlags::from_bits(flags.into_bits() & !secure_session_caps.into_bits());
+    }
     state.advertised_cap_flags = flags;
     let max_spdm_msg_size = if flags.contains(CapFlags::CHUNK) {
         pal.capacity().max(mtu)
@@ -168,7 +172,7 @@ fn validate_capabilities_body(body: &CapabilitiesBody) -> SpdmResult<(u32, u32)>
 ///
 /// * [`SPDM_VERSION_MISMATCH`] — byte is not a recognised version or
 ///   not in [`SUPPORTED_VERSIONS`].
-fn select_version<S: Clone>(
+fn select_version<S>(
     state: &mut ConnectionState<S>,
     requested: u8,
 ) -> SpdmResult<SpdmVersion> {
