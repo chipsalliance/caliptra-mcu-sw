@@ -60,26 +60,24 @@ const FINISH_REQ_SIZE: usize = size_of::<EcdhFinishReqPrefix>() + CMB_ECDH_EXCHA
 const FINISH_RSP_SIZE: usize = MBOX_RESP_HEADER_SIZE + CMK_SIZE;
 
 // ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
-
-/// Result of [`ecdh_generate`]: our encrypted context and public
-/// exchange data to send to the peer.
-pub struct EcdhGenerateResult {
-    pub context: [u8; CMB_ECDH_ENCRYPTED_CONTEXT_SIZE],
-    pub exchange_data: [u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE],
-}
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /// Generate an ephemeral ECDH key pair.
 ///
-/// Returns the encrypted context (needed for [`ecdh_finish`]) and our
+/// Writes the encrypted context (needed for [`ecdh_finish`]) and our
 /// public exchange data (to be sent to the peer in KEY_EXCHANGE_RSP).
 #[inline(never)]
-pub async fn ecdh_generate<A: ApiAlloc>(alloc: &A) -> McuResult<EcdhGenerateResult> {
+pub async fn ecdh_generate<A: ApiAlloc>(
+    alloc: &A,
+    context: &mut [u8],
+    exchange_data: &mut [u8],
+) -> McuResult<()> {
+    if context.len() != CMB_ECDH_ENCRYPTED_CONTEXT_SIZE
+        || exchange_data.len() != CMB_ECDH_EXCHANGE_DATA_MAX_SIZE
+    {
+        return Err(INVARIANT);
+    }
     let mut req = alloc.alloc(GENERATE_REQ_SIZE)?;
     req.fill(0);
     populate_checksum(CMD_CM_ECDH_GENERATE, &mut req)?;
@@ -94,13 +92,9 @@ pub async fn ecdh_generate<A: ApiAlloc>(alloc: &A) -> McuResult<EcdhGenerateResu
     let ctx_end = ctx_start + CMB_ECDH_ENCRYPTED_CONTEXT_SIZE;
     let xd_end = ctx_end + CMB_ECDH_EXCHANGE_DATA_MAX_SIZE;
 
-    let mut result = EcdhGenerateResult {
-        context: [0u8; CMB_ECDH_ENCRYPTED_CONTEXT_SIZE],
-        exchange_data: [0u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE],
-    };
-    result.context.copy_from_slice(&rsp[ctx_start..ctx_end]);
-    result.exchange_data.copy_from_slice(&rsp[ctx_end..xd_end]);
-    Ok(result)
+    context.copy_from_slice(&rsp[ctx_start..ctx_end]);
+    exchange_data.copy_from_slice(&rsp[ctx_end..xd_end]);
+    Ok(())
 }
 
 /// Complete the ECDH exchange, producing a CMK handle to the shared
@@ -114,10 +108,15 @@ pub async fn ecdh_generate<A: ApiAlloc>(alloc: &A) -> McuResult<EcdhGenerateResu
 #[inline(never)]
 pub async fn ecdh_finish<A: ApiAlloc>(
     alloc: &A,
-    context: &[u8; CMB_ECDH_ENCRYPTED_CONTEXT_SIZE],
+    context: &[u8],
     key_usage: CmKeyUsage,
-    peer_exchange_data: &[u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE],
+    peer_exchange_data: &[u8],
 ) -> McuResult<Cmk> {
+    if context.len() != CMB_ECDH_ENCRYPTED_CONTEXT_SIZE
+        || peer_exchange_data.len() != CMB_ECDH_EXCHANGE_DATA_MAX_SIZE
+    {
+        return Err(INVARIANT);
+    }
     let mut req = alloc.alloc(FINISH_REQ_SIZE)?;
     req.fill(0);
     let prefix_len = size_of::<EcdhFinishReqPrefix>();

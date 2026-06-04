@@ -37,7 +37,11 @@ pub mod signed_eat;
 mod types;
 mod wire;
 
-pub use aes_gcm::{spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt, Aes256GcmTag};
+pub use aes_gcm::{
+    spdm_aes_gcm_decrypt, spdm_aes_gcm_decrypt_final, spdm_aes_gcm_decrypt_init,
+    spdm_aes_gcm_decrypt_update, spdm_aes_gcm_encrypt, spdm_aes_gcm_encrypt_final,
+    spdm_aes_gcm_encrypt_init, spdm_aes_gcm_encrypt_update, Aes256GcmTag, AesGcmCtx,
+};
 pub use alloc::ApiAlloc;
 pub use cert::populate_idev_ecc384_cert;
 pub use device_state::get_pcr_value;
@@ -47,8 +51,7 @@ pub use dpe::{
     DPE_P384_SIGNATURE_SIZE,
 };
 pub use ecdh::{
-    ecdh_finish, ecdh_generate, EcdhGenerateResult, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE,
-    CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
+    ecdh_finish, ecdh_generate, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
 };
 pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
 pub use import::{cm_delete, cm_import};

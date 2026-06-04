@@ -13,7 +13,7 @@
 //! The SPDM init variants (`CM_AES_GCM_SPDM_ENCRYPT_INIT` /
 //! `CM_AES_GCM_SPDM_DECRYPT_INIT`) derive key + IV from the CMK
 //! handle, SPDM version, and sequence number — matching the
-//! SPDM-Secured-Messages-1.1 key schedule.
+//! SPDM secured-message key schedule.
 
 use core::mem::size_of;
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
@@ -36,7 +36,10 @@ use crate::ApiAlloc;
 pub type Aes256GcmTag = [u8; 16];
 
 /// Encrypted AES-GCM context size returned by Caliptra.
-const AES_GCM_CTX_SIZE: usize = 128;
+pub const AES_GCM_CTX_SIZE: usize = 128;
+
+/// Opaque AES-GCM context returned by SPDM encrypt/decrypt init.
+pub type AesGcmCtx<'a, A> = <A as ApiAlloc>::Buf<'a>;
 
 /// Maximum output bytes per update/final (plaintext or ciphertext +
 /// possible 16-byte expansion).
@@ -140,14 +143,14 @@ const DECRYPT_FINAL_RSP_MAX: usize = DECRYPT_FINAL_RSP_HDR + MAX_OUTPUT_SIZE;
 /// Execute SPDM AES-GCM init (encrypt or decrypt variant).
 ///
 /// Returns the 128-byte encrypted context on success.
-async fn spdm_init<A: ApiAlloc>(
-    alloc: &A,
+async fn spdm_init<'a, A: ApiAlloc>(
+    alloc: &'a A,
     cmd: u32,
     cmk: &Cmk,
     spdm_version: u8,
     seq_number: &[u8; 8],
     aad: &[u8],
-) -> McuResult<[u8; AES_GCM_CTX_SIZE]> {
+) -> McuResult<AesGcmCtx<'a, A>> {
     if aad.len() > MAX_CMB_DATA_SIZE {
         return Err(INVARIANT);
     }
@@ -173,19 +176,60 @@ async fn spdm_init<A: ApiAlloc>(
         return Err(INTERNAL_BUG);
     }
 
-    let mut ctx = [0u8; AES_GCM_CTX_SIZE];
+    let mut ctx = alloc.alloc(AES_GCM_CTX_SIZE)?;
     ctx.copy_from_slice(&rsp[MBOX_RESP_HEADER_SIZE..SPDM_INIT_RSP_SIZE]);
     Ok(ctx)
 }
 
+/// Start SPDM AES-256-GCM encryption for one secured message fragment.
+pub async fn spdm_aes_gcm_encrypt_init<'a, A: ApiAlloc>(
+    alloc: &'a A,
+    cmk: &Cmk,
+    spdm_version: u8,
+    seq_number: &[u8; 8],
+    aad: &[u8],
+) -> McuResult<AesGcmCtx<'a, A>> {
+    spdm_init(
+        alloc,
+        CMD_CM_AES_GCM_SPDM_ENCRYPT_INIT,
+        cmk,
+        spdm_version,
+        seq_number,
+        aad,
+    )
+    .await
+}
+
+/// Start SPDM AES-256-GCM decryption for one secured message fragment.
+pub async fn spdm_aes_gcm_decrypt_init<'a, A: ApiAlloc>(
+    alloc: &'a A,
+    cmk: &Cmk,
+    spdm_version: u8,
+    seq_number: &[u8; 8],
+    aad: &[u8],
+) -> McuResult<AesGcmCtx<'a, A>> {
+    spdm_init(
+        alloc,
+        CMD_CM_AES_GCM_SPDM_DECRYPT_INIT,
+        cmk,
+        spdm_version,
+        seq_number,
+        aad,
+    )
+    .await
+}
+
 /// Encrypt one chunk (update, not final). Returns bytes written to
 /// `out` and the updated context.
-async fn encrypt_update<A: ApiAlloc>(
-    alloc: &A,
-    ctx: &[u8; AES_GCM_CTX_SIZE],
+pub async fn spdm_aes_gcm_encrypt_update<'a, A: ApiAlloc>(
+    alloc: &'a A,
+    ctx: &[u8],
     chunk: &[u8],
     out: &mut [u8],
-) -> McuResult<(usize, [u8; AES_GCM_CTX_SIZE])> {
+) -> McuResult<(usize, AesGcmCtx<'a, A>)> {
+    if ctx.len() != AES_GCM_CTX_SIZE || chunk.len() > MAX_CMB_DATA_SIZE {
+        return Err(INVARIANT);
+    }
     let prefix_len = size_of::<EncryptDataReqPrefix>();
     let wire_len = pad4(prefix_len + chunk.len());
 
@@ -221,18 +265,21 @@ async fn encrypt_update<A: ApiAlloc>(
     }
     out[..ct_size].copy_from_slice(&rsp[ct_start..ct_start + ct_size]);
 
-    let mut new_ctx = [0u8; AES_GCM_CTX_SIZE];
+    let mut new_ctx = alloc.alloc(AES_GCM_CTX_SIZE)?;
     new_ctx.copy_from_slice(&rsp[MBOX_RESP_HEADER_SIZE..MBOX_RESP_HEADER_SIZE + AES_GCM_CTX_SIZE]);
     Ok((ct_size, new_ctx))
 }
 
 /// Encrypt the final chunk. Returns bytes written and the 16-byte tag.
-async fn encrypt_final<A: ApiAlloc>(
+pub async fn spdm_aes_gcm_encrypt_final<A: ApiAlloc>(
     alloc: &A,
-    ctx: &[u8; AES_GCM_CTX_SIZE],
+    ctx: &[u8],
     chunk: &[u8],
     out: &mut [u8],
 ) -> McuResult<(usize, Aes256GcmTag)> {
+    if ctx.len() != AES_GCM_CTX_SIZE || chunk.len() > MAX_CMB_DATA_SIZE {
+        return Err(INVARIANT);
+    }
     let prefix_len = size_of::<EncryptDataReqPrefix>();
     let wire_len = pad4(prefix_len + chunk.len());
 
@@ -279,12 +326,15 @@ async fn encrypt_final<A: ApiAlloc>(
 
 /// Decrypt one chunk (update, not final). Returns bytes written to
 /// `out` and the updated context.
-async fn decrypt_update<A: ApiAlloc>(
-    alloc: &A,
-    ctx: &[u8; AES_GCM_CTX_SIZE],
+pub async fn spdm_aes_gcm_decrypt_update<'a, A: ApiAlloc>(
+    alloc: &'a A,
+    ctx: &[u8],
     chunk: &[u8],
     out: &mut [u8],
-) -> McuResult<(usize, [u8; AES_GCM_CTX_SIZE])> {
+) -> McuResult<(usize, AesGcmCtx<'a, A>)> {
+    if ctx.len() != AES_GCM_CTX_SIZE || chunk.len() > MAX_CMB_DATA_SIZE {
+        return Err(INVARIANT);
+    }
     let prefix_len = size_of::<DecryptDataReqPrefix>();
     let wire_len = pad4(prefix_len + chunk.len());
 
@@ -320,20 +370,23 @@ async fn decrypt_update<A: ApiAlloc>(
     }
     out[..pt_size].copy_from_slice(&rsp[pt_start..pt_start + pt_size]);
 
-    let mut new_ctx = [0u8; AES_GCM_CTX_SIZE];
+    let mut new_ctx = alloc.alloc(AES_GCM_CTX_SIZE)?;
     new_ctx.copy_from_slice(&rsp[MBOX_RESP_HEADER_SIZE..MBOX_RESP_HEADER_SIZE + AES_GCM_CTX_SIZE]);
     Ok((pt_size, new_ctx))
 }
 
 /// Decrypt the final chunk with tag verification. Returns bytes
 /// written to `out`.
-async fn decrypt_final<A: ApiAlloc>(
+pub async fn spdm_aes_gcm_decrypt_final<A: ApiAlloc>(
     alloc: &A,
-    ctx: &[u8; AES_GCM_CTX_SIZE],
+    ctx: &[u8],
     tag: &Aes256GcmTag,
     chunk: &[u8],
     out: &mut [u8],
 ) -> McuResult<usize> {
+    if ctx.len() != AES_GCM_CTX_SIZE || chunk.len() > MAX_CMB_DATA_SIZE {
+        return Err(INVARIANT);
+    }
     let prefix_len = size_of::<DecryptFinalReqPrefix>();
     let wire_len = pad4(prefix_len + chunk.len());
 
@@ -386,8 +439,9 @@ async fn decrypt_final<A: ApiAlloc>(
 /// Encrypt a message using SPDM-specific AES-256-GCM key/IV
 /// derivation.
 ///
-/// Internally performs init + (update)* + final, chunking the
-/// plaintext into ≤ 4096-byte pieces.
+/// Encrypts one secured-message fragment. Callers that need to protect
+/// a larger SPDM message must split it at the SPDM chunk layer and call
+/// this once per secured fragment.
 ///
 /// Returns `(bytes_written_to_ciphertext, tag)`.
 #[allow(clippy::too_many_arguments)]
@@ -401,58 +455,19 @@ pub async fn spdm_aes_gcm_encrypt<A: ApiAlloc>(
     plaintext: &[u8],
     ciphertext: &mut [u8],
 ) -> McuResult<(usize, Aes256GcmTag)> {
-    if plaintext.len() > ciphertext.len() {
+    if plaintext.len() > ciphertext.len() || plaintext.len() > MAX_CMB_DATA_SIZE {
         return Err(INVARIANT);
     }
-    let mut ctx = spdm_init(
-        alloc,
-        CMD_CM_AES_GCM_SPDM_ENCRYPT_INIT,
-        cmk,
-        spdm_version,
-        seq_number,
-        aad,
-    )
-    .await?;
-
-    let chunk_size = MAX_CMB_DATA_SIZE;
-    let full_chunks = plaintext.len() / chunk_size;
-    let mut total = 0usize;
-
-    for i in 0..full_chunks {
-        let start = i * chunk_size;
-        let end = start + chunk_size;
-        let (n, new_ctx) = encrypt_update(
-            alloc,
-            &ctx,
-            &plaintext[start..end],
-            &mut ciphertext[total..],
-        )
-        .await?;
-        total += n;
-        ctx = new_ctx;
-    }
-
-    let remaining_start = full_chunks * chunk_size;
-    let tag = if remaining_start < plaintext.len() {
-        let (n, tag) = encrypt_final(
-            alloc,
-            &ctx,
-            &plaintext[remaining_start..],
-            &mut ciphertext[total..],
-        )
-        .await?;
-        total += n;
-        tag
-    } else {
-        let (_n, tag) = encrypt_final(alloc, &ctx, &[], &mut []).await?;
-        tag
-    };
-
-    Ok((total, tag))
+    let ctx = spdm_aes_gcm_encrypt_init(alloc, cmk, spdm_version, seq_number, aad).await?;
+    spdm_aes_gcm_encrypt_final(alloc, &ctx, plaintext, ciphertext).await
 }
 
 /// Decrypt a message using SPDM-specific AES-256-GCM key/IV
 /// derivation with tag verification.
+///
+/// Decrypts one secured-message fragment. Callers that receive a
+/// larger SPDM message must reassemble it at the SPDM chunk layer after
+/// decrypting each secured fragment.
 ///
 /// Returns the number of plaintext bytes written.
 #[allow(clippy::too_many_arguments)]
@@ -467,52 +482,9 @@ pub async fn spdm_aes_gcm_decrypt<A: ApiAlloc>(
     tag: &Aes256GcmTag,
     plaintext: &mut [u8],
 ) -> McuResult<usize> {
-    if ciphertext.len() > plaintext.len() {
+    if ciphertext.len() > plaintext.len() || ciphertext.len() > MAX_CMB_DATA_SIZE {
         return Err(INVARIANT);
     }
-    let mut ctx = spdm_init(
-        alloc,
-        CMD_CM_AES_GCM_SPDM_DECRYPT_INIT,
-        cmk,
-        spdm_version,
-        seq_number,
-        aad,
-    )
-    .await?;
-
-    let chunk_size = MAX_CMB_DATA_SIZE;
-    let full_chunks = ciphertext.len() / chunk_size;
-    let mut total = 0usize;
-
-    for i in 0..full_chunks {
-        let start = i * chunk_size;
-        let end = start + chunk_size;
-        let (n, new_ctx) = decrypt_update(
-            alloc,
-            &ctx,
-            &ciphertext[start..end],
-            &mut plaintext[total..],
-        )
-        .await?;
-        total += n;
-        ctx = new_ctx;
-    }
-
-    let remaining_start = full_chunks * chunk_size;
-    if remaining_start < ciphertext.len() {
-        let n = decrypt_final(
-            alloc,
-            &ctx,
-            tag,
-            &ciphertext[remaining_start..],
-            &mut plaintext[total..],
-        )
-        .await?;
-        total += n;
-    } else {
-        let n = decrypt_final(alloc, &ctx, tag, &[], &mut []).await?;
-        total += n;
-    }
-
-    Ok(total)
+    let ctx = spdm_aes_gcm_decrypt_init(alloc, cmk, spdm_version, seq_number, aad).await?;
+    spdm_aes_gcm_decrypt_final(alloc, &ctx, tag, ciphertext, plaintext).await
 }

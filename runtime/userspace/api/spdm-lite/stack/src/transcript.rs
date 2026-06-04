@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Transcript manager (DSP0274 §8.10).
+//! Transcript manager.
 //!
 //! Generic over the [`Hash::State`](mcu_spdm_lite_traits::Hash)
 //! associated type so the manager works with any hash backend —
@@ -12,7 +12,7 @@
 //!
 //! ## Design
 //!
-//! Spec rule: `M1 = A ∥ B ∥ C` and `L1/L2` for MEASUREMENTS starts
+//! `M1 = A ∥ B ∥ C` and `L1/L2` for MEASUREMENTS starts
 //! with `VCA`, where `A` is the VCA bytes. We keep an always-running
 //! VCA hash and **fork it with a fallible hash-clone operation** the
 //! first time M1 / L1 start contributing. This lets heap-backed hash
@@ -23,7 +23,7 @@ use mcu_spdm_lite_traits::{McuResult, SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo};
 /// One of the running transcripts the responder maintains.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Slot {
-    /// Always-running VCA hash (DSP0274 §10.4.1).
+    /// Always-running VCA hash.
     Vca,
     /// `M1` transcript — CHALLENGE_AUTH signature input.
     M1,
@@ -63,7 +63,7 @@ impl<S> Transcript<S> {
     }
 
     /// Drops every connection-scoped transcript context. Called by
-    /// the dispatcher on every `GET_VERSION` per DSP0274 §10.4.
+    /// the dispatcher on every `GET_VERSION` per SPDM
     pub fn reset(&mut self) {
         self.vca = None;
         self.m1 = None;

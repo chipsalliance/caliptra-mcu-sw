@@ -3,7 +3,7 @@
 //! `CM_HMAC`, `CM_HKDF_EXTRACT`, and `CM_HKDF_EXPAND` mailbox
 //! commands.
 //!
-//! All three use SHA-384 internally.  HKDF extract/expand produce
+//! All three use SHA-384 internally. HKDF extract/expand produce
 //! [`Cmk`] handles — actual key material never leaves Caliptra.
 
 use core::mem::size_of;
@@ -11,7 +11,7 @@ use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
-use crate::import::{cm_delete, cm_import};
+use crate::import::cm_import;
 use crate::types::{CmKeyUsage, Cmk, CMK_SIZE};
 use crate::wire::{
     mbox_execute, pad4, populate_checksum, CMD_CM_HKDF_EXPAND, CMD_CM_HKDF_EXTRACT, CMD_CM_HMAC,
@@ -157,11 +157,10 @@ pub async fn cm_hmac<A: ApiAlloc>(
 
 /// HKDF-Extract(salt, ikm) → PRK as a CMK handle.
 ///
-/// If `salt` is [`HkdfSalt::Data`], it is first imported into the
-/// key vault via `cm_import`.
+/// If `salt` is [`HkdfSalt::Data`], it is first imported into an
+/// encrypted CMK blob via `cm_import`.
 #[inline(never)]
 pub async fn hkdf_extract<A: ApiAlloc>(alloc: &A, salt: HkdfSalt<'_>, ikm: &Cmk) -> McuResult<Cmk> {
-    let imported = matches!(salt, HkdfSalt::Data(_));
     let salt_cmk: Cmk = match salt {
         HkdfSalt::Cmk(c) => *c,
         HkdfSalt::Data(data) => cm_import(alloc, CmKeyUsage::Hmac, data).await?,
@@ -178,11 +177,6 @@ pub async fn hkdf_extract<A: ApiAlloc>(alloc: &A, salt: HkdfSalt<'_>, ikm: &Cmk)
 
     let mut rsp = alloc.alloc(HKDF_EXTRACT_RSP_SIZE)?;
     let rsp_len = mbox_execute(CMD_CM_HKDF_EXTRACT, &req, &mut rsp).await?;
-
-    // Clean up internally-imported salt handle
-    if imported {
-        let _ = cm_delete(alloc, &salt_cmk).await;
-    }
 
     if rsp_len < HKDF_EXTRACT_RSP_SIZE {
         return Err(INTERNAL_BUG);

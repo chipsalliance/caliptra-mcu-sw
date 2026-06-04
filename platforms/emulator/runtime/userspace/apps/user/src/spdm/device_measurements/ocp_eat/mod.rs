@@ -32,6 +32,8 @@ const OCP_EAT_MEAS_INFO: [MeasurementInfo; 1] = [MeasurementInfo {
     is_raw: true,
     is_tcb: true,
 }];
+const KID_LEN: usize = 48;
+static ZERO_NONCE: [u8; SPDM_NONCE_LEN] = [0u8; SPDM_NONCE_LEN];
 
 /// Measurement provider that returns OCP EAT signed evidence.
 ///
@@ -51,8 +53,8 @@ impl OcpEatMeasurementProvider {
 }
 
 impl MeasurementProvider for OcpEatMeasurementProvider {
-    /// Scratch holds the claims payload before it is copied into COSE_Sign1.
-    const SCRATCH_SIZE: usize = claims::EAT_PAYLOAD_LEN;
+    /// Scratch holds kid plus the claims payload before COSE_Sign1 assembly.
+    const SCRATCH_SIZE: usize = KID_LEN + claims::EAT_PAYLOAD_LEN;
 
     fn measurement_info(&self) -> &[MeasurementInfo] {
         &OCP_EAT_MEAS_INFO
@@ -70,18 +72,18 @@ impl MeasurementProvider for OcpEatMeasurementProvider {
             return Err(mcu_error::codes::INTERNAL_BUG);
         }
 
-        // Use a zero nonce if none provided (unsigned GET_MEASUREMENTS).
-        let zero_nonce = [0u8; SPDM_NONCE_LEN];
-        let eat_nonce: &[u8] = match nonce {
+        let eat_nonce: &[u8; SPDM_NONCE_LEN] = match nonce {
             Some(n) => n,
-            None => &zero_nonce,
+            None => &ZERO_NONCE,
         };
 
+        let (kid, claims_buf) = scratch.split_at_mut(KID_LEN);
+        let kid: &mut [u8; KID_LEN] = kid.try_into().map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
+
         // Compute kid = SHA-384(pubkey_x || pubkey_y) via alloc-backed DPE.
-        let kid = compute_kid(&self.key_label, alloc).await?;
+        compute_kid(&self.key_label, alloc, kid).await?;
 
         // 1. Generate CBOR EAT claims payload into scratch.
-        let claims_buf = &mut scratch[..claims::EAT_PAYLOAD_LEN];
         let payload_size = claims::generate_claims(alloc, claims_buf, eat_nonce)
             .await
             .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
@@ -90,7 +92,7 @@ impl MeasurementProvider for OcpEatMeasurementProvider {
         let signed_eat = SignedEatLite::new(&self.key_label);
 
         signed_eat
-            .generate_with_kid(alloc, &claims_buf[..payload_size], &kid, out)
+            .generate_with_kid(alloc, &claims_buf[..payload_size], kid, out)
             .await
             .map_err(|_| mcu_error::codes::INTERNAL_BUG)
     }
@@ -102,20 +104,16 @@ impl MeasurementProvider for OcpEatMeasurementProvider {
 async fn compute_kid(
     key_label: &[u8; DPE_LABEL_LEN],
     alloc: &BitmapAllocator,
-) -> McuResult<[u8; 48]> {
-    let mut pubkey_x = [0u8; 48];
-    let mut pubkey_y = [0u8; 48];
+    kid: &mut [u8; KID_LEN],
+) -> McuResult<()> {
+    let mut pubkey_x = [0u8; KID_LEN];
+    let mut pubkey_y = [0u8; KID_LEN];
 
     dpe_certify_key_pubkey(alloc, key_label, &mut pubkey_x, &mut pubkey_y).await?;
 
-    let mut concat = [0u8; 96];
-    concat[..48].copy_from_slice(&pubkey_x);
-    concat[48..].copy_from_slice(&pubkey_y);
+    let mut state = sha_init(alloc, HashAlgo::Sha384, &pubkey_x).await?;
+    sha_update(alloc, &mut state, &pubkey_y).await?;
+    sha_finish(alloc, &mut state, kid).await?;
 
-    let mut kid = [0u8; 48];
-    let mut state = sha_init(alloc, HashAlgo::Sha384, &[]).await?;
-    sha_update(alloc, &mut state, &concat).await?;
-    sha_finish(alloc, &mut state, &mut kid).await?;
-
-    Ok(kid)
+    Ok(())
 }

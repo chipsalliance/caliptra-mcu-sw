@@ -8,25 +8,29 @@
 use super::measurements::MeasurementProvider;
 use super::*;
 use mcu_caliptra_api_lite::{
-    cm_delete, cm_hmac, cm_import, ecdh_finish as api_ecdh_finish,
-    ecdh_generate as api_ecdh_generate, hkdf_expand, hkdf_extract, spdm_aes_gcm_decrypt,
-    spdm_aes_gcm_encrypt, CmKeyUsage, Cmk, HkdfSalt,
+    cm_hmac, cm_import, ecdh_finish as api_ecdh_finish, ecdh_generate as api_ecdh_generate,
+    hkdf_expand, hkdf_extract, spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt, CmKeyUsage, Cmk,
+    HkdfSalt,
 };
 use mcu_spdm_lite_traits::{McuResult, SpdmPalIo, SpdmPalSessionCrypto};
 
 impl<M: MeasurementProvider> SpdmPalSessionCrypto for McuSpdmPal<M> {
     type Key = Cmk;
 
-    async fn ecdh_generate(&self, _io: &impl SpdmPalIo) -> McuResult<([u8; 76], [u8; 96])> {
-        let result = api_ecdh_generate(self).await?;
-        Ok((result.context, result.exchange_data))
+    async fn ecdh_generate(
+        &self,
+        _io: &impl SpdmPalIo,
+        context: &mut [u8],
+        exchange_data: &mut [u8],
+    ) -> McuResult<()> {
+        api_ecdh_generate(self, context, exchange_data).await
     }
 
     async fn ecdh_finish(
         &self,
         _io: &impl SpdmPalIo,
-        context: &[u8; 76],
-        peer_exchange_data: &[u8; 96],
+        context: &[u8],
+        peer_exchange_data: &[u8],
     ) -> McuResult<Cmk> {
         api_ecdh_finish(self, context, CmKeyUsage::Hmac, peer_exchange_data).await
     }
@@ -71,10 +75,6 @@ impl<M: MeasurementProvider> SpdmPalSessionCrypto for McuSpdmPal<M> {
 
     async fn import_key(&self, _io: &impl SpdmPalIo, data: &[u8]) -> McuResult<Cmk> {
         cm_import(self, CmKeyUsage::Hmac, data).await
-    }
-
-    async fn delete_key(&self, _io: &impl SpdmPalIo, key: &Cmk) -> McuResult<()> {
-        cm_delete(self, key).await
     }
 
     async fn aead_encrypt(

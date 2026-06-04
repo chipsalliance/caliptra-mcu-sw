@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! END_SESSION / END_SESSION_ACK wire types (DSP0274 §10.25).
+//! END_SESSION / END_SESSION_ACK wire types.
 
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 

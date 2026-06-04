@@ -4,7 +4,7 @@
 //!
 //! This module owns the [`SpdmStack`] run loop, the connection-scoped
 //! [`ConnectionState`], and the [`Phase`] enum that enforces the
-//! strict DSP0274 §10 ordering
+//! strict SPDM ordering
 //! `GET_VERSION → GET_CAPABILITIES → NEGOTIATE_ALGORITHMS`. Per-command
 //! handlers live in `algorithms`, `capabilities`, `certificate`,
 //! `chunk`, `digests`, and `version`.
@@ -36,7 +36,7 @@ use crate::{
 };
 
 /// Connection phase tracked on the responder so the dispatcher can
-/// enforce the DSP0274 §10 ordering
+/// enforce the SPDM ordering
 /// `GET_VERSION → GET_CAPABILITIES → NEGOTIATE_ALGORITHMS`.
 ///
 /// `GET_VERSION` is legal in every phase (it resets the connection),
@@ -75,7 +75,7 @@ pub enum Phase {
 ///    [`Self::reset_negotiation`].
 pub struct ConnectionState<S> {
     // ---- Local responder policy (fixed at startup) -----------------------
-    /// Responder `CT` time exponent (DSP0274 §10.3, `CAPABILITIES.CTExponent`).
+    /// Responder `CT` time exponent.
     /// Maximum response time is `2^ct_exponent` µs.
     pub ct_exponent: u8,
     /// Responder capability bitmap advertised in `CAPABILITIES`.
@@ -120,7 +120,7 @@ pub struct ConnectionState<S> {
     pub negotiated_base_asym_sel: AsymAlgos,
     /// Negotiated BaseHashSel from NEGOTIATE_ALGORITHMS.
     pub negotiated_base_hash_sel: HashAlgos,
-    /// Transcript state (running VCA/M1/L1 hashes per DSP0274 §8.10).
+    /// Transcript state (running VCA/M1/L1 hashes per SPDM).
     pub transcript: crate::transcript::Transcript<S>,
     /// In-progress CHUNK_SEND large-request reassembly state.
     pub(crate) chunk: chunk::ChunkState,
@@ -189,8 +189,8 @@ impl<S> ConnectionState<S> {
 
     /// Drops every connection-scoped negotiation result.
     ///
-    /// Called by the dispatcher on every `GET_VERSION` per DSP0274
-    /// §10.4. Local-policy fields (the upper block) are not modified.
+    /// Called by the dispatcher on every `GET_VERSION` per SPDM
+    /// Local-policy fields (the upper block) are not modified.
     pub(crate) fn reset_negotiation(&mut self) {
         self.phase = Phase::Start;
         self.version = SpdmVersion::V12;
@@ -312,7 +312,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
     ///
     /// On each iteration: receive one request, dispatch it to the
     /// matching handler, and send back either the handler's response
-    /// or a DSP0274 §10.10 `ERROR` PDU. Returns only on a fatal
+    /// or a SPDM `ERROR` PDU. Returns only on a fatal
     /// transport error (`recv_request` / `send_response` failure).
     ///
     /// # Returns
@@ -409,7 +409,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
         }
     }
 
-    /// Builds and sends a DSP0274 §10.10 `ERROR` PDU.
+    /// Builds and sends a SPDM `ERROR` PDU.
     ///
     /// If the `ERROR` PDU itself cannot be built (e.g. allocator
     /// exhausted) the request is silently dropped — there is nothing
@@ -441,7 +441,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
         err: SpdmError,
         req_version: SpdmVersion,
     ) -> McuResult<()> {
-        // DSP0274: ERROR response uses the same version as
+        // ERROR response uses the same version as
         // the requester's message. For `VersionMismatch`, the
         // responder shall instead use the highest supported version
         // (libspdm matches: post-negotiation = negotiated, else V1.0;
@@ -500,6 +500,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
 /// * [`SPDM_UNSUPPORTED_REQUEST`] — code is recognised by SPDM but
 ///   not handled by this responder.
 /// * Whatever the specific handler returns.
+#[inline(never)]
 async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     state: &mut ConnectionState<Pal::State>,
     sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
@@ -519,7 +520,7 @@ async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     match code {
         ReqRespCode::GET_VERSION => {
             state.reset_negotiation();
-            sessions.remove_all_and_destroy(pal, io).await;
+            sessions.remove_all_and_destroy();
             version::handle_get_version(state, pal, io).await
         }
         ReqRespCode::GET_CAPABILITIES => {
@@ -574,7 +575,7 @@ async fn handle_secured_request<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
         Ok(rsp) => Ok(rsp),
         Err(e) => {
             // On any error, destroy the session (conservative).
-            sessions.remove_and_destroy(pal, io, session_id).await;
+            sessions.remove_and_destroy(session_id);
             Err(e)
         }
     }
@@ -620,14 +621,11 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     };
 
     // ── Build AAD ───────────────────────────────────────────────────
-    let mut aad = [0u8; SECURED_MSG_HDR_SIZE];
+    let mut aad = pal.alloc_bytes(io, SECURED_MSG_HDR_SIZE)?;
     encode_aad(session_id, length as u16, &mut aad).map_err(|_| SPDM_UNSPECIFIED)?;
 
     // ── Decrypt ─────────────────────────────────────────────────────
-    let mut plaintext = [0u8; 128];
-    if ct_len > plaintext.len() {
-        return Err(SPDM_INVALID_REQUEST);
-    }
+    let mut plaintext = pal.alloc_bytes(io, ct_len)?;
     session
         .key_schedule
         .decrypt(
@@ -678,10 +676,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
             .await?;
 
             // ── Destroy handshake secrets, set Established ──────────
-            session
-                .key_schedule
-                .destroy_handshake_secrets(pal, io)
-                .await;
+            session.key_schedule.destroy_handshake_secrets();
             session.state = SessionState::Established;
             Ok(rsp)
         }
@@ -702,7 +697,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
             )
             .await?;
 
-            sessions.remove_and_destroy(pal, io, session_id).await;
+            sessions.remove_and_destroy(session_id);
             Ok(rsp)
         }
         _ => Err(SPDM_UNSUPPORTED_REQUEST),
@@ -720,20 +715,21 @@ async fn encrypt_secured_spdm_response<'a, Pal: SpdmPal>(
     spdm_response: &[u8],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let rsp_pt_len = 2 + spdm_response.len();
-    if rsp_pt_len > 8 {
+    let rsp_ct_len = rsp_pt_len;
+    let rsp_length_len = rsp_ct_len + AES_256_GCM_TAG_SIZE;
+    if rsp_length_len > u16::MAX as usize {
         return Err(SPDM_UNSPECIFIED);
     }
 
-    let mut rsp_plaintext = [0u8; 8];
+    let mut rsp_plaintext = pal.alloc_bytes(io, rsp_pt_len)?;
     rsp_plaintext[0..2].copy_from_slice(&(spdm_response.len() as u16).to_le_bytes());
     rsp_plaintext[2..2 + spdm_response.len()].copy_from_slice(spdm_response);
 
-    let rsp_ct_len = rsp_pt_len;
-    let rsp_length = (rsp_ct_len + AES_256_GCM_TAG_SIZE) as u16;
-    let mut rsp_aad = [0u8; SECURED_MSG_HDR_SIZE];
+    let rsp_length = rsp_length_len as u16;
+    let mut rsp_aad = pal.alloc_bytes(io, SECURED_MSG_HDR_SIZE)?;
     encode_aad(session_id, rsp_length, &mut rsp_aad).map_err(|_| SPDM_UNSPECIFIED)?;
 
-    let mut rsp_ct = [0u8; 8];
+    let mut rsp_ct = pal.alloc_bytes(io, rsp_ct_len)?;
     let (_, rsp_tag) = session
         .key_schedule
         .encrypt(
@@ -742,21 +738,33 @@ async fn encrypt_secured_spdm_response<'a, Pal: SpdmPal>(
             key_type,
             version.to_u8(),
             &rsp_aad,
-            &rsp_plaintext[..rsp_pt_len],
-            &mut rsp_ct[..rsp_ct_len],
+            &rsp_plaintext,
+            &mut rsp_ct,
         )
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
 
-    let wire_body_len = SECURED_MSG_HDR_SIZE + rsp_ct_len + AES_256_GCM_TAG_SIZE;
+    build_secured_response_wire(pal, io, session_id, rsp_length, &rsp_ct, &rsp_tag)
+}
+
+#[inline(never)]
+fn build_secured_response_wire<'a, Pal: SpdmPal>(
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    session_id: u32,
+    rsp_length: u16,
+    ciphertext: &[u8],
+    tag: &[u8; AES_256_GCM_TAG_SIZE],
+) -> SpdmResult<PalBytes<'a, Pal>> {
+    let wire_body_len = SECURED_MSG_HDR_SIZE + ciphertext.len() + AES_256_GCM_TAG_SIZE;
     let raw_len = pal.header_size() + wire_body_len;
     let mut buf = alloc_padded(pal, io, raw_len).map_err(|_| SPDM_UNSPECIFIED)?;
     let hdr_off = pal.header_size();
     buf[hdr_off..hdr_off + 4].copy_from_slice(&session_id.to_le_bytes());
     buf[hdr_off + 4..hdr_off + 6].copy_from_slice(&rsp_length.to_le_bytes());
-    buf[hdr_off + 6..hdr_off + 6 + rsp_ct_len].copy_from_slice(&rsp_ct[..rsp_ct_len]);
-    buf[hdr_off + 6 + rsp_ct_len..hdr_off + 6 + rsp_ct_len + AES_256_GCM_TAG_SIZE]
-        .copy_from_slice(&rsp_tag);
+    buf[hdr_off + 6..hdr_off + 6 + ciphertext.len()].copy_from_slice(ciphertext);
+    buf[hdr_off + 6 + ciphertext.len()..hdr_off + 6 + ciphertext.len() + AES_256_GCM_TAG_SIZE]
+        .copy_from_slice(tag);
 
     Ok(buf)
 }

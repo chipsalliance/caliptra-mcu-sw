@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Opaque data helpers for KEY_EXCHANGE (DSP0274 §10.11.3,
-//! DSP0277 §6.1 Secured Message version negotiation).
+//! Opaque data helpers for secured-message version negotiation.
 //!
 //! The requester sends a *supported-version-list* opaque element;
 //! the responder replies with a *version-selection* opaque element.
@@ -29,11 +28,11 @@ const MAX_SM_VERSION_COUNT: usize = 4;
 ///
 /// Layout:
 /// ```text
-/// GeneralOpaqueDataHdr:  total_elements(1) + reserved(3) = 4
-/// OpaqueElementHdr:      standards_body_id(1) + vendor_id_len(1) +
-///                        opaque_element_data_len(2) = 4
-/// SmData:                sm_data_version(1) + sm_data_id(1) +
-///                        selected_version(2) = 4
+/// GeneralOpaqueDataHdr: total_elements(1) + reserved(3) = 4
+/// OpaqueElementHdr:   standards_body_id(1) + vendor_id_len(1) +
+///            opaque_element_data_len(2) = 4
+/// SmData:        sm_data_version(1) + sm_data_id(1) +
+///            selected_version(2) = 4
 /// Total = 12 (4-byte aligned, no padding needed)
 /// ```
 pub const OPAQUE_VERSION_SELECTION_SIZE: usize = 12;

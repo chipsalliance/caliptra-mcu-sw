@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! `NEGOTIATE_ALGORITHMS` → `ALGORITHMS` handler (DSP0274 §10.4).
+//! `NEGOTIATE_ALGORITHMS` → `ALGORITHMS` handler.
 //!
 //! The responder picks **at most one** algorithm per family. The
 //! selection rule is "intersect local-supported with peer-offered";
@@ -11,7 +11,7 @@
 //!
 //! ```text
 //!   [ fixed prefix | ext-asym entries | ext-hash entries | AlgStruct[] ]
-//!     SIZE bytes     ext_asym_count*4   ext_hash_count*4   num_alg_struct * SIZE
+//!   SIZE bytes   ext_asym_count*4  ext_hash_count*4  num_alg_struct * SIZE
 //! ```
 //!
 //! Extended (vendor-defined) asym/hash entries are present in the
@@ -62,7 +62,7 @@ struct PeerAlgs {
 /// * [`SPDM_UNEXPECTED_REQUEST`] — connection is not in
 ///   [`Phase::AfterCapabilities`].
 /// * [`SPDM_INVALID_REQUEST`] — header undecodable or body violates
-///   §10.4 Table 15 (see [`locate_alg_structs`] / [`parse_peer_algs`]
+///   the corresponding table (see [`locate_alg_structs`] / [`parse_peer_algs`]
 ///   for the exact rules).
 pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State>,
@@ -94,7 +94,7 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
 
     let resp = build_response(pal, io, state.version, &rsp_body)?;
 
-    // DSP0274 §10.4.1: NEGOTIATE_ALGORITHMS + ALGORITHMS contribute to VCA.
+    // SPDM: NEGOTIATE_ALGORITHMS + ALGORITHMS contribute to VCA.
     let head = pal.header_size();
     state.transcript.append_vca(pal, io, io.request()).await?;
     state
@@ -179,7 +179,7 @@ fn locate_alg_structs<'a>(
 ///
 /// # Errors
 ///
-/// * [`SPDM_INVALID_REQUEST`] — any entry fails §10.4's per-entry
+/// * [`SPDM_INVALID_REQUEST`] — any entry fails 's per-entry
 ///   rules: `alg_type` must monotonically increase across the array,
 ///   `FixedAlgCount` must equal 2, `ExtAlgCount` must be 0, and
 ///   `AlgSupported` must be non-zero.

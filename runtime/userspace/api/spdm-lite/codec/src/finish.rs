@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! FINISH / FINISH_RSP wire types (DSP0274 §10.11.4).
+//! FINISH / FINISH_RSP wire types.
 
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 

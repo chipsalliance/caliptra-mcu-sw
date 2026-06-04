@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! KEY_EXCHANGE / KEY_EXCHANGE_RSP wire types (DSP0274 §10.11.3).
+//! KEY_EXCHANGE / KEY_EXCHANGE_RSP wire types.
 
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
@@ -52,7 +52,7 @@ impl KeyExchangeReqBody {
 
 /// KEY_EXCHANGE_RSP response builder.
 ///
-/// Wire layout (DSP0274 §10.11.3):
+/// Wire layout:
 /// ```text
 /// [ heartbeat_period(1) | reserved(1) | rsp_session_id(2) |
 ///   mut_auth_requested(1) | req_slot_id_param(1) | random(32) |

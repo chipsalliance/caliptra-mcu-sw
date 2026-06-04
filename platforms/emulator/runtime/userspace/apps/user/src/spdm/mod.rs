@@ -30,8 +30,8 @@ use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 /// Bitmap allocator pool size per responder task.
 ///
 /// Must hold `MEAS_RECORD_BUF_SIZE + MeasurementProvider::SCRATCH_SIZE`
-/// (1,024 + 3,072 = 4,096) plus transient DPE/SHA mailbox buffers
-/// (peak ~2.4 KB during certify_key for kid computation).
+/// plus transient DPE/SHA mailbox buffers (peak ~2.4 KB during
+/// certify_key for kid computation).
 const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
 /// Persistent CHUNK_SEND reassembly buffer. This is kept outside the
 /// async task frame and outside the per-I/O scratch allocator because

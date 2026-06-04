@@ -20,7 +20,7 @@
 //!
 //! [`SpdmPalHash::hash_clone`] lets the transcript manager fork a
 //! running hash and continue both branches independently — e.g.
-//! `M1 = VCA.fork().extend(B).extend(C)` per DSP0274 §10.4.1. The
+//! `M1 = VCA.fork().extend(B).extend(C)` per SPDM The
 //! operation is fallible because some backends allocate heap storage
 //! for running hash contexts.
 

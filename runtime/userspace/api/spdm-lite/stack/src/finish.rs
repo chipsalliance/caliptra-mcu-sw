@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! FINISH handler (DSP0274 §10.11.4).
+//! FINISH handler.
 //!
 //! Processes the decrypted FINISH request from an SPDM secured message:
 //!

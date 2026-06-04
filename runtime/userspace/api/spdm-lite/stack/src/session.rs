@@ -3,7 +3,7 @@
 //! SPDM secure session management.
 //!
 //! Owns the fixed-size session table ([`SessionManager`]) and
-//! per-session state ([`SessionInfo`]).  Session lifecycle:
+//! per-session state ([`SessionInfo`]). Session lifecycle:
 //!
 //! 1. KEY_EXCHANGE → [`SessionManager::create_session`] →
 //!    `HandshakeInProgress`
@@ -15,7 +15,7 @@ use alloc::alloc::{alloc, Layout};
 use alloc::boxed::Box;
 use mcu_error::codes::OUT_OF_MEMORY;
 use mcu_spdm_lite_codec::SpdmVersion;
-use mcu_spdm_lite_traits::{McuResult, SpdmPalHash, SpdmPalIo, SpdmPalSessionCrypto};
+use mcu_spdm_lite_traits::{McuResult, SpdmPalHash, SpdmPalIo};
 
 use crate::key_schedule::{spdm_version_str, KeySchedule};
 
@@ -40,8 +40,8 @@ pub enum SessionState {
 /// The TH is started by **forking** (cloning) the connection's
 /// running VCA hash state via [`init_from_running`](Self::init_from_running).
 /// This ensures the raw VCA message bytes are already consumed in
-/// the hash, producing `TH = hash(raw_VCA ‖ …)` as DSP0274 §10.11.3
-/// requires.  Handlers then append cert_chain_hash,
+/// the hash, producing `TH = hash(raw_VCA ‖ …)` as SPDM
+/// requires. Handlers then append cert_chain_hash,
 /// KEY_EXCHANGE_REQ, KEY_EXCHANGE_RSP, signature, FINISH_REQ, and
 /// FINISH_RSP.
 ///
@@ -72,7 +72,7 @@ impl<S> SessionTranscript<S> {
     /// Fork the running VCA hash state into this session's TH.
     ///
     /// The cloned state already contains the raw VCA message bytes
-    /// (GET_VERSION ‖ VERSION ‖ … ‖ ALGORITHMS).  Subsequent
+    /// (GET_VERSION ‖ VERSION ‖ … ‖ ALGORITHMS). Subsequent
     /// [`Self::append`] calls add cert_chain_hash, KEY_EXCHANGE_REQ,
     /// KEY_EXCHANGE_RSP, etc., producing the correct TH input:
     ///
@@ -82,7 +82,7 @@ impl<S> SessionTranscript<S> {
     ///
     /// **Do not** feed `hash(VCA)` into a fresh hash — that would
     /// produce `hash(hash(VCA) ‖ …)`, which is incorrect per
-    /// DSP0274 §10.11.3.
+    /// SPDM
     pub fn init_from_running<H: SpdmPalHash<State = S>>(
         &mut self,
         hash: &H,
@@ -235,15 +235,12 @@ impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
             .map(Box::as_mut)
     }
 
-    /// Remove a session and destroy all its key handles.
-    pub async fn remove_and_destroy<P>(&mut self, pal: &P, io: &impl SpdmPalIo, session_id: u32)
-    where
-        P: SpdmPalSessionCrypto<Key = K>,
-    {
+    /// Remove a session and clear all local key blobs.
+    pub fn remove_and_destroy(&mut self, session_id: u32) {
         for slot in self.sessions.iter_mut() {
             if slot.as_ref().is_some_and(|s| s.session_id == session_id) {
                 if let Some(info) = slot.as_mut() {
-                    info.key_schedule.destroy_all(pal, io).await;
+                    info.key_schedule.destroy_all();
                 }
                 *slot = None;
                 return;
@@ -251,14 +248,11 @@ impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
         }
     }
 
-    /// Remove all sessions and destroy all key handles.
-    pub async fn remove_all_and_destroy<P>(&mut self, pal: &P, io: &impl SpdmPalIo)
-    where
-        P: SpdmPalSessionCrypto<Key = K>,
-    {
+    /// Remove all sessions and clear all local key blobs.
+    pub fn remove_all_and_destroy(&mut self) {
         for slot in self.sessions.iter_mut() {
             if let Some(info) = slot.as_mut() {
-                info.key_schedule.destroy_all(pal, io).await;
+                info.key_schedule.destroy_all();
             }
             *slot = None;
         }

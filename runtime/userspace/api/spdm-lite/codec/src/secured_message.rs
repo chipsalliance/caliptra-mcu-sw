@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Secured SPDM message framing (DSP0277).
+//! Secured SPDM message framing.
 //!
 //! Wire layout:
 //! ```text

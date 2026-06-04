@@ -2,9 +2,9 @@
 
 //! `CM_IMPORT` and `CM_DELETE` mailbox commands.
 //!
-//! `cm_import` imports raw key material into the Caliptra key vault,
-//! returning an opaque [`Cmk`] handle.  `cm_delete` destroys a
-//! previously issued handle.
+//! `cm_import` imports raw key material into an encrypted [`Cmk`] blob.
+//! `cm_delete` notifies Caliptra that a previously issued blob is no
+//! longer needed.
 
 use core::mem::size_of;
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
@@ -54,7 +54,7 @@ const DELETE_RSP_SIZE: usize = MBOX_RESP_HEADER_SIZE;
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Import raw key material into the Caliptra key vault.
+/// Import raw key material into an encrypted CMK blob.
 ///
 /// `data` must be ≤ 64 bytes (512-bit max key).
 #[inline(never)]
@@ -85,7 +85,7 @@ pub async fn cm_import<A: ApiAlloc>(alloc: &A, usage: CmKeyUsage, data: &[u8]) -
     Ok(cmk)
 }
 
-/// Destroy a CMK handle in the Caliptra key vault.
+/// Delete a CMK blob.
 #[inline(never)]
 pub async fn cm_delete<A: ApiAlloc>(alloc: &A, cmk: &Cmk) -> McuResult<()> {
     let wire_len = size_of::<DeleteReq>();

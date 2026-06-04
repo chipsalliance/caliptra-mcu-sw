@@ -2,17 +2,17 @@
 
 //! SPDM key schedule for secure sessions.
 //!
-//! Implements the DSP0274 key derivation chain:
+//! Implements the SPDM secure-session key derivation chain:
 //! ```text
 //! DHE_Secret ──HKDF-Extract(Salt_0)──▸ handshake_secret
 //!   ├─ HKDF-Expand(bin_str1, TH1') ──▸ request_handshake_secret
 //!   ├─ HKDF-Expand(bin_str2, TH1') ──▸ response_handshake_secret
-//!   │   ├─ HKDF-Expand(bin_str7)    ──▸ request_finished_key
-//!   │   └─ HKDF-Expand(bin_str7)    ──▸ response_finished_key
-//!   └─ HKDF-Expand(bin_str0)        ──▸ Salt_1
-//!       └─ HKDF-Extract(Salt_1, 0)  ──▸ master_secret
-//!           ├─ HKDF-Expand(bin_str3, TH2) ──▸ request_data_secret
-//!           └─ HKDF-Expand(bin_str4, TH2) ──▸ response_data_secret
+//!   │  ├─ HKDF-Expand(bin_str7)  ──▸ request_finished_key
+//!   │  └─ HKDF-Expand(bin_str7)  ──▸ response_finished_key
+//!   └─ HKDF-Expand(bin_str0)    ──▸ Salt_1
+//!    └─ HKDF-Extract(Salt_1, 0) ──▸ master_secret
+//!      ├─ HKDF-Expand(bin_str3, TH2) ──▸ request_data_secret
+//!      └─ HKDF-Expand(bin_str4, TH2) ──▸ response_data_secret
 //! ```
 //!
 //! All crypto operations go through [`SpdmPalSessionCrypto`] so the
@@ -20,13 +20,14 @@
 //! opaque 128-byte `Cmk` blobs.
 
 use mcu_spdm_lite_codec::SpdmVersion;
-use mcu_spdm_lite_traits::{McuResult, SpdmPalIo, SpdmPalSessionCrypto};
+use mcu_spdm_lite_traits::{McuResult, SpdmPalAlloc, SpdmPalIo, SpdmPalSessionCrypto};
 
 /// SHA-384 digest size in bytes.
 pub const SHA384_HASH_SIZE: usize = 48;
 
 /// Maximum length of the HKDF info field built by [`bin_concat`].
-const MAX_BIN_STR_LEN: usize = 128;
+const MAX_BIN_STR_LABEL_LEN: usize = 12;
+const MAX_BIN_STR_LEN: usize = 2 + 8 + MAX_BIN_STR_LABEL_LEN + SHA384_HASH_SIZE;
 
 /// Which session key to use for HMAC or AEAD operations.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -127,7 +128,7 @@ impl<K: Clone> KeySchedule<K> {
     ///
     /// Destroys the DHE secret handle on success.
     #[inline(never)]
-    pub async fn generate_handshake_keys<P: SpdmPalSessionCrypto<Key = K>>(
+    pub async fn generate_handshake_keys<P: SpdmPalAlloc + SpdmPalSessionCrypto<Key = K>>(
         &mut self,
         pal: &P,
         io: &impl SpdmPalIo,
@@ -139,9 +140,9 @@ impl<K: Clone> KeySchedule<K> {
             .dhe_secret
             .take()
             .ok_or(mcu_error::codes::INVARIANT)?;
-        let salt_0 = [0u8; SHA384_HASH_SIZE];
+        let mut salt_0 = pal.alloc_bytes(io, SHA384_HASH_SIZE)?;
+        salt_0.fill(0);
         let hs = pal.hkdf_extract_bytes(io, &salt_0, &dhe).await?;
-        let _ = pal.delete_key(io, &dhe).await;
         self.master_ctx.handshake_secret = Some(hs);
 
         let hs_ref = self
@@ -216,7 +217,7 @@ impl<K: Clone> KeySchedule<K> {
     /// - master_secret (intermediate, kept for export if needed)
     /// - request / response data secrets (AEAD major secrets)
     #[inline(never)]
-    pub async fn generate_data_keys<P: SpdmPalSessionCrypto<Key = K>>(
+    pub async fn generate_data_keys<P: SpdmPalAlloc + SpdmPalSessionCrypto<Key = K>>(
         &mut self,
         pal: &P,
         io: &impl SpdmPalIo,
@@ -233,11 +234,10 @@ impl<K: Clone> KeySchedule<K> {
             hkdf_expand_bin_str(pal, io, self.version_str, hs_ref, BinStr::Str0, None).await?;
 
         // Master-Secret = HKDF-Extract(Salt_1, zero_filled)
-        let zero_filled = [0u8; SHA384_HASH_SIZE];
+        let mut zero_filled = pal.alloc_bytes(io, SHA384_HASH_SIZE)?;
+        zero_filled.fill(0);
         let zero_cmk = pal.import_key(io, &zero_filled).await?;
         let ms = pal.hkdf_extract_key(io, &salt_1, &zero_cmk).await?;
-        let _ = pal.delete_key(io, &zero_cmk).await;
-        let _ = pal.delete_key(io, &salt_1).await;
         self.master_ctx.master_secret = Some(ms);
 
         let ms_ref = self
@@ -332,46 +332,25 @@ impl<K: Clone> KeySchedule<K> {
 
     // ── Cleanup ─────────────────────────────────────────────────────
 
-    /// Destroy handshake-phase secrets (after FINISH completes).
+    /// Clear handshake-phase secrets after FINISH completes.
     ///
-    /// Destroys: req/rsp handshake secrets, req/rsp finished keys,
-    /// and the intermediate handshake_secret. Individual delete
-    /// failures are silently ignored (best-effort cleanup).
-    pub async fn destroy_handshake_secrets<P: SpdmPalSessionCrypto<Key = K>>(
-        &mut self,
-        pal: &P,
-        io: &impl SpdmPalIo,
-    ) {
-        Self::delete_opt(pal, io, &mut self.handshake_ctx.request_handshake_secret).await;
-        Self::delete_opt(pal, io, &mut self.handshake_ctx.response_handshake_secret).await;
-        Self::delete_opt(pal, io, &mut self.handshake_ctx.request_finished_key).await;
-        Self::delete_opt(pal, io, &mut self.handshake_ctx.response_finished_key).await;
-        Self::delete_opt(pal, io, &mut self.master_ctx.handshake_secret).await;
+    /// Clears: req/rsp handshake secrets, req/rsp finished keys, and
+    /// the intermediate handshake_secret.
+    pub fn destroy_handshake_secrets(&mut self) {
+        self.handshake_ctx.request_handshake_secret = None;
+        self.handshake_ctx.response_handshake_secret = None;
+        self.handshake_ctx.request_finished_key = None;
+        self.handshake_ctx.response_finished_key = None;
+        self.master_ctx.handshake_secret = None;
     }
 
-    /// Destroy all key handles.
-    pub async fn destroy_all<P: SpdmPalSessionCrypto<Key = K>>(
-        &mut self,
-        pal: &P,
-        io: &impl SpdmPalIo,
-    ) {
-        self.destroy_handshake_secrets(pal, io).await;
-        Self::delete_opt(pal, io, &mut self.master_ctx.dhe_secret).await;
-        Self::delete_opt(pal, io, &mut self.master_ctx.master_secret).await;
-        Self::delete_opt(pal, io, &mut self.data_ctx.request_data_secret).await;
-        Self::delete_opt(pal, io, &mut self.data_ctx.response_data_secret).await;
-    }
-
-    // ── Internal helpers ────────────────────────────────────────────
-
-    async fn delete_opt<P: SpdmPalSessionCrypto<Key = K>>(
-        pal: &P,
-        io: &impl SpdmPalIo,
-        slot: &mut Option<K>,
-    ) {
-        if let Some(k) = slot.take() {
-            let _ = pal.delete_key(io, &k).await;
-        }
+    /// Clear all key blobs.
+    pub fn destroy_all(&mut self) {
+        self.destroy_handshake_secrets();
+        self.master_ctx.dhe_secret = None;
+        self.master_ctx.master_secret = None;
+        self.data_ctx.request_data_secret = None;
+        self.data_ctx.response_data_secret = None;
     }
 
     fn finished_key(&self, key_type: SessionKeyType) -> McuResult<&K> {
@@ -437,7 +416,7 @@ impl<K: Clone> KeySchedule<K> {
 
 // ── bin_concat helper ───────────────────────────────────────────────
 
-/// SPDM HKDF bin_str label identifiers (DSP0274 Table 17).
+/// SPDM HKDF bin_str label identifiers.
 #[derive(Copy, Clone)]
 enum BinStr {
     /// `"derived"` — Salt_1 derivation
@@ -468,7 +447,7 @@ impl BinStr {
 }
 
 #[inline(never)]
-async fn hkdf_expand_bin_str<P: SpdmPalSessionCrypto>(
+async fn hkdf_expand_bin_str<P: SpdmPalAlloc + SpdmPalSessionCrypto>(
     pal: &P,
     io: &impl SpdmPalIo,
     version_str: &[u8],
@@ -476,25 +455,36 @@ async fn hkdf_expand_bin_str<P: SpdmPalSessionCrypto>(
     bin_str: BinStr,
     context: Option<&[u8]>,
 ) -> McuResult<P::Key> {
-    let (info, len) = bin_concat(version_str, bin_str, SHA384_HASH_SIZE as u16, context);
+    let mut info = pal.alloc_bytes(io, MAX_BIN_STR_LEN)?;
+    let len = bin_concat(
+        version_str,
+        bin_str,
+        SHA384_HASH_SIZE as u16,
+        context,
+        &mut info,
+    )?;
     pal.hkdf_expand(io, prk, SHA384_HASH_SIZE as u32, &info[..len])
         .await
 }
 
-/// Build the SPDM HKDF info field on the stack.
+/// Build the SPDM HKDF info field in caller-provided scratch.
 ///
 /// Format: `length(2LE) ‖ version_str ‖ label ‖ context`.
 ///
-/// Returns `(buffer, actual_length)`. The buffer is
+/// Returns the actual length. The caller-provided buffer must be
 /// [`MAX_BIN_STR_LEN`] bytes; only `[0..actual_length]` is valid.
 fn bin_concat(
     version_str: &[u8],
     bin_str: BinStr,
     length: u16,
     context: Option<&[u8]>,
-) -> ([u8; MAX_BIN_STR_LEN], usize) {
-    let mut buf = [0u8; MAX_BIN_STR_LEN];
+    buf: &mut [u8],
+) -> McuResult<usize> {
     let mut pos = 0;
+    let needed = 2 + version_str.len() + bin_str.label().len() + context.map_or(0, |ctx| ctx.len());
+    if needed > buf.len() {
+        return Err(mcu_error::codes::INVARIANT);
+    }
 
     let len_bytes = length.to_le_bytes();
     buf[pos..pos + 2].copy_from_slice(&len_bytes);
@@ -512,5 +502,5 @@ fn bin_concat(
         pos += ctx.len();
     }
 
-    (buf, pos)
+    Ok(pos)
 }

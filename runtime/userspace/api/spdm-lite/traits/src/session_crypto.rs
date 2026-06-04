@@ -14,8 +14,8 @@ use super::*;
 
 /// Session cryptography backend.
 ///
-/// Implementors provide ECDH, HKDF, HMAC, AES-GCM, key import, and
-/// key deletion operations through opaque [`Self::Key`] handles.
+/// Implementors provide ECDH, HKDF, HMAC, AES-GCM, and key import
+/// operations over opaque [`Self::Key`] blobs.
 pub trait SpdmPalSessionCrypto {
     /// Opaque key handle (e.g. `Cmk` on Caliptra).
     ///
@@ -24,18 +24,22 @@ pub trait SpdmPalSessionCrypto {
 
     /// Generate an ephemeral ECDH key pair.
     ///
-    /// Returns `(encrypted_context, our_exchange_data)` where the
-    /// context is an opaque 76-byte blob needed by [`Self::ecdh_finish`]
-    /// and exchange_data is the 96-byte P-384 public point.
-    async fn ecdh_generate(&self, io: &impl SpdmPalIo) -> McuResult<([u8; 76], [u8; 96])>;
+    /// Writes the opaque 76-byte context needed by [`Self::ecdh_finish`]
+    /// and the 96-byte P-384 public exchange data.
+    async fn ecdh_generate(
+        &self,
+        io: &impl SpdmPalIo,
+        context: &mut [u8],
+        exchange_data: &mut [u8],
+    ) -> McuResult<()>;
 
     /// Complete the ECDH key exchange, producing a key handle to the
     /// shared secret (DHE_Secret).
     async fn ecdh_finish(
         &self,
         io: &impl SpdmPalIo,
-        context: &[u8; 76],
-        peer_exchange_data: &[u8; 96],
+        context: &[u8],
+        peer_exchange_data: &[u8],
     ) -> McuResult<Self::Key>;
 
     /// HKDF-Extract with raw-byte salt.
@@ -77,14 +81,14 @@ pub trait SpdmPalSessionCrypto {
     /// Import raw key material. Returns a key handle.
     async fn import_key(&self, io: &impl SpdmPalIo, data: &[u8]) -> McuResult<Self::Key>;
 
-    /// Destroy a key handle in the crypto backend.
-    async fn delete_key(&self, io: &impl SpdmPalIo, key: &Self::Key) -> McuResult<()>;
-
-    /// SPDM AES-256-GCM encrypt.
+    /// SPDM AES-256-GCM encrypt for one secured-message fragment.
     ///
     /// `key` is the major secret (request/response handshake or data
     /// secret). Caliptra derives the actual AES key + IV internally
     /// from (`key`, `spdm_version`, `seq`).
+    ///
+    /// Callers own SPDM message fragmentation and must pass one
+    /// backend-sized secured fragment per call.
     ///
     /// Returns `(ciphertext_len, tag)`.
     #[allow(clippy::too_many_arguments)]
@@ -99,7 +103,10 @@ pub trait SpdmPalSessionCrypto {
         ciphertext: &mut [u8],
     ) -> McuResult<(usize, [u8; 16])>;
 
-    /// SPDM AES-256-GCM decrypt with tag verification.
+    /// SPDM AES-256-GCM decrypt one secured-message fragment with tag verification.
+    ///
+    /// Callers own SPDM message reassembly and must pass one
+    /// backend-sized secured fragment per call.
     ///
     /// Returns plaintext length.
     #[allow(clippy::too_many_arguments)]

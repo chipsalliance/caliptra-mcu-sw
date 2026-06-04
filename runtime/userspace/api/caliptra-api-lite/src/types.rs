@@ -5,11 +5,11 @@
 /// Size in bytes of a CMK handle.
 pub const CMK_SIZE: usize = 128;
 
-/// Opaque handle to a key in the Caliptra key vault.
+/// Encrypted Caliptra Cryptographic Manager key blob.
 ///
-/// Actual key material never leaves Caliptra — `Cmk` is just a
-/// 128-byte handle used to reference it in subsequent mailbox
-/// commands.
+/// Actual key material never leaves Caliptra unwrapped. `Cmk` is the
+/// 128-byte encrypted key material returned by CM mailbox commands and
+/// supplied back to subsequent CM commands.
 #[repr(transparent)]
 #[derive(Clone, Copy)]
 pub struct Cmk(pub [u8; CMK_SIZE]);
