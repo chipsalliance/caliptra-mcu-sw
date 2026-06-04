@@ -116,8 +116,8 @@ enum Commands {
         platform: Option<String>,
 
         /// Build bare metal runtime instead of TockOS runtime
-        #[arg(long, default_value_t = false)]
-        bare_metal: bool,
+        #[arg(long, default_missing_value = "caliptra-mcu-bare-metal", num_args = 0..=1)]
+        bare_metal: Option<String>,
 
         /// Cargo profile to build with.  Default: `devel` (1 MB SRAM, all
         /// debug components present, `release` cargo feature OFF — suitable for
@@ -615,8 +615,9 @@ fn main() {
             bare_metal,
             profile,
         } => {
-            if *bare_metal {
-                caliptra_mcu_builder::bare_metal_build().map(|_| ())
+            if let Some(bare_metal_pkg) = bare_metal {
+                caliptra_mcu_builder::bare_metal_build(platform.as_deref(), bare_metal_pkg)
+                    .map(|_| ())
             } else {
                 // The opt-in `release` cargo profile auto-enables the `release` cargo
                 // feature, which strips the kernel `debug!()` macro, romtime

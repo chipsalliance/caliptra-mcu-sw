@@ -22,6 +22,6 @@ offset = 0x3BFE_0000
 size = 0x2_0000
 
 [bare_metal]
-name = "caliptra-mcu-bare-metal"
+name = "{{BARE_METAL_NAME}}"
 stack = 0x4000
 exception_stack = 0x400

@@ -18,6 +18,6 @@ offset = 0x5000_0000
 size = 0x4000 # 16KB
 
 [bare_metal]
-name = "caliptra-mcu-bare-metal"
+name = "{{BARE_METAL_NAME}}"
 stack = 0x4000
 exception_stack = 0x400

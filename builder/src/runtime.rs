@@ -6,12 +6,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-use crate::utils::manifest_file_for_profile;
-use crate::{CaliptraBuildArgs, PROJECT_ROOT};
+use crate::utils::{bare_metal_manifest_file, manifest_file_for_profile};
+use crate::CaliptraBuildArgs;
 use anyhow::Result;
 use caliptra_mcu_firmware_bundler::args::{
     BuildArgs, BundleArgs, Commands as BundleCommands, Common, LdArgs,
 };
+use std::io::Write;
 use std::path::PathBuf;
 
 pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
@@ -64,20 +65,44 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     Ok(runtime_bin)
 }
 
-pub fn bare_metal_build() -> Result<PathBuf> {
-    let manifest = PROJECT_ROOT.join("runtime/bare-metal/manifest.toml");
-    let output_name = "runtime-bare-metal.bin".to_string();
+pub fn bare_metal_build(platform: Option<&str>, package_name: &str) -> Result<PathBuf> {
+    let base_manifest_path = bare_metal_manifest_file(platform)?;
+    let platform_str = platform.unwrap_or("emulator");
+    let output_name = format!("{}-{}.bin", package_name, platform_str);
+
+    let manifest_content = std::fs::read_to_string(&base_manifest_path)?;
+    let new_manifest_content = manifest_content.replace("{{BARE_METAL_NAME}}", package_name);
+
+    if new_manifest_content == manifest_content {
+        anyhow::bail!(
+            "Failed to find {{BARE_METAL_NAME}} placeholder in manifest template {:?}",
+            base_manifest_path
+        );
+    }
+
+    let mut temp_manifest = tempfile::NamedTempFile::new()?;
+    temp_manifest.write_all(new_manifest_content.as_bytes())?;
+    temp_manifest.flush()?;
 
     let common = Common {
-        manifest,
+        manifest: temp_manifest.path().to_path_buf(),
         ..Default::default()
     };
     let runtime_bin = common.release_dir()?.join(&output_name);
 
+    let runtime_features = if platform == Some("fpga") {
+        Some("fpga".to_string())
+    } else {
+        None
+    };
+
     let bundle_cmd = BundleCommands::Bundle {
         common,
         ld: LdArgs::default(),
-        build: BuildArgs::default(),
+        build: BuildArgs {
+            runtime_features,
+            ..Default::default()
+        },
         bundle: BundleArgs {
             bundle_name: Some(output_name),
         },
