@@ -36,6 +36,7 @@ default-filter = """
     - test(model_emulated::test::test_new_unbooted)) |
 (package(caliptra-mcu-tests-integration) and test(test_axi_bypass)) |
 (package(caliptra-mcu-tests-integration) and test(test_jtag_taps)) |
+(package(caliptra-mcu-tests-integration) and test(test_bare_metal_jtag_sideload)) |
 (package(caliptra-mcu-tests-integration) and test(test_lc_transitions)) |
 (package(caliptra-mcu-tests-integration) and test(test_prod_debug_unlock)) |
 (package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |

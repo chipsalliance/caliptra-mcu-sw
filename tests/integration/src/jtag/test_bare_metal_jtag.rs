@@ -16,8 +16,6 @@ mod test {
 
     use anyhow::{bail, Result};
 
-    const DCSR_SET_EBREAKM: u32 = 0x8003; // to enable debug mode on an ebreak
-
     fn sideload_bare_metal(tap: &mut OpenOcdJtagTap, bytes: &[u8]) -> Result<()> {
         // SRAM base offset
         let sram_base = FPGA_MEMORY_MAP.sram_offset;
@@ -64,14 +62,16 @@ mod test {
 
         // Pull bare-metal bytes from prebuilt bundle environment.
         let binaries = FirmwareBinaries::from_env().expect("Firmware bundle not found");
-        let bare_metal_bytes = &binaries.mcu_bare_metal_runtime;
+        let bare_metal_bytes = binaries
+            .get_bare_metal("caliptra-mcu-bare-metal")
+            .expect("mcu_bare_metal binary not found");
         assert!(
             !bare_metal_bytes.is_empty(),
             "mcu_bare_metal binary is empty"
         );
 
         // Sideload and execute bare metal binary
-        sideload_bare_metal(&mut *mcu_tap, bare_metal_bytes)
+        sideload_bare_metal(&mut *mcu_tap, &bare_metal_bytes)
             .expect("Failed to sideload and execute bare metal binary");
 
         // the ROM throws an error and the sim attempts to exit due to the lack

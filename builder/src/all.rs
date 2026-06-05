@@ -258,7 +258,6 @@ pub struct FirmwareBinaries {
     pub caliptra_fw_key2: Vec<u8>,
     pub mcu_rom: Vec<u8>,
     pub mcu_runtime: Vec<u8>,
-    pub mcu_bare_metal_runtime: Vec<u8>,
     pub soc_manifest: Vec<u8>,
     pub test_roms: Vec<(String, Vec<u8>)>,
     pub caliptra_test_roms: Vec<(String, Vec<u8>)>,
@@ -268,6 +267,7 @@ pub struct FirmwareBinaries {
     pub test_flash_images: Vec<(String, Vec<u8>)>,
     /// Update flash images without partition table (for PLDM update packages)
     pub test_update_flash_images: Vec<(String, Vec<u8>)>,
+    pub bare_metal_images: Vec<(String, Vec<u8>)>,
 }
 
 impl FirmwareBinaries {
@@ -278,7 +278,6 @@ impl FirmwareBinaries {
     const CALIPTRA_FW_KEY2_NAME: &'static str = "caliptra_fw_key2.bin";
     const MCU_ROM_NAME: &'static str = "mcu_rom.bin";
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
-    const MCU_BARE_METAL_RUNTIME_NAME: &'static str = "mcu_bare_metal_runtime.bin";
     const SOC_MANIFEST_NAME: &'static str = "soc_manifest.bin";
     const FLASH_IMAGE_NAME: &'static str = "flash_image.bin";
     const PLDM_FW_PKG_NAME: &'static str = "pldm_fw_pkg.bin";
@@ -321,7 +320,6 @@ impl FirmwareBinaries {
                 Self::CALIPTRA_FW_KEY2_NAME => binaries.caliptra_fw_key2 = data,
                 Self::MCU_ROM_NAME => binaries.mcu_rom = data,
                 Self::MCU_RUNTIME_NAME => binaries.mcu_runtime = data,
-                Self::MCU_BARE_METAL_RUNTIME_NAME => binaries.mcu_bare_metal_runtime = data,
                 Self::SOC_MANIFEST_NAME => binaries.soc_manifest = data,
                 name if name.contains("mcu-test-soc-manifest") => {
                     binaries.test_soc_manifests.push((name.to_string(), data));
@@ -346,11 +344,30 @@ impl FirmwareBinaries {
                 name if name.contains("mcu-test-flash-image") => {
                     binaries.test_flash_images.push((name.to_string(), data));
                 }
+                name if name.starts_with("bare_metal/") => {
+                    let stripped_name = name.strip_prefix("bare_metal/").unwrap();
+                    let stripped_name = stripped_name
+                        .strip_suffix(".bin")
+                        .unwrap_or(stripped_name)
+                        .to_string();
+                    binaries.bare_metal_images.push((stripped_name, data));
+                }
                 _ => continue,
             }
         }
 
         Ok(binaries)
+    }
+
+    pub fn get_bare_metal(&self, name: &str) -> Result<Vec<u8>> {
+        for (bin_name, data) in self.bare_metal_images.iter() {
+            if bin_name == name {
+                return Ok(data.clone());
+            }
+        }
+        Err(anyhow::anyhow!(
+            "Bare-metal binary {name} not found in bundle"
+        ))
     }
 
     pub fn vendor_pk_hash(&self) -> Option<[u8; 48]> {
@@ -716,8 +733,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         ..Default::default()
     })?;
 
-    let mcu_bare_metal_runtime =
-        crate::bare_metal_build(Some(platform), "caliptra-mcu-bare-metal")?;
+    let mut bare_metal_paths = vec![];
+    for package in crate::features::BARE_METAL_BINARIES {
+        let path = crate::bare_metal_build(Some(platform), package)?;
+        bare_metal_paths.push((package.to_string(), path));
+    }
 
     let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
     let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
@@ -1034,12 +1054,10 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         &mut zip,
         options,
     )?;
-    add_to_zip(
-        &mcu_bare_metal_runtime,
-        FirmwareBinaries::MCU_BARE_METAL_RUNTIME_NAME,
-        &mut zip,
-        options,
-    )?;
+    for (package, path) in bare_metal_paths {
+        let zip_name = format!("bare_metal/{}.bin", package);
+        add_to_zip(&path, &zip_name, &mut zip, options)?;
+    }
     add_to_zip(
         &soc_manifest,
         FirmwareBinaries::SOC_MANIFEST_NAME,
