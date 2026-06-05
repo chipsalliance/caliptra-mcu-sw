@@ -80,6 +80,9 @@ mod test {
         /// Custom OTP memory contents. If provided, takes precedence over dot_enabled.
         pub otp_memory: Option<Vec<u8>>,
         pub flash_boot: bool,
+        /// If true, drive the MCI generic input wire strap that forces the ROM
+        /// to use the `CPTRA_SS_OWNER_PK_HASH` fuse as the owner, bypassing DOT.
+        pub force_fuse_owner_pk_hash: bool,
         /// ROM feature flag. If set, compiles a ROM with this feature enabled.
         pub rom_feature: Option<&'a str>,
         pub active_i3c1: bool,
@@ -118,6 +121,7 @@ mod test {
                 custom_caliptra_fw: None,
                 otp_memory: None,
                 flash_boot: false,
+                force_fuse_owner_pk_hash: false,
                 rom_feature: None,
                 active_i3c1: false,
                 lifecycle_controller_state: None,
@@ -1179,6 +1183,7 @@ mod test {
             lifecycle_controller_state: params.lifecycle_controller_state,
             primary_flash_initial_contents,
             flash_boot: params.flash_boot,
+            force_fuse_owner_pk_hash: params.force_fuse_owner_pk_hash,
             active_i3c1: params.active_i3c1,
             debug_intent: params.debug_intent,
             prod_dbg_unlock_keypairs: params
