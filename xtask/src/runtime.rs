@@ -3,7 +3,9 @@
 use crate::Commands;
 use anyhow::{anyhow, Result};
 use caliptra_api_types::DeviceLifecycle;
-use caliptra_mcu_builder::{runtime_build_with_apps, CaliptraBuilder, PROJECT_ROOT};
+use caliptra_mcu_builder::{
+    runtime_build_with_apps, CaliptraBuildArgs, CaliptraBuilder, PROJECT_ROOT,
+};
 use std::process::Command;
 
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
@@ -35,24 +37,25 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     }
     // include debug features since this is interactive
     features.push("debug");
-    let rom_binary = caliptra_mcu_builder::rom_build(None, None, None)?;
-    let tock_binary = runtime_build_with_apps(&features, None, false, None, None, None)?;
-    let mut caliptra_builder = CaliptraBuilder::new(
-        false,
-        false,
+    let rom_binary = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs::default())?;
+    let features_str = features.join(",");
+    let tock_binary = runtime_build_with_apps(&CaliptraBuildArgs {
+        features: if features.is_empty() {
+            None
+        } else {
+            Some(&features_str)
+        },
+        ..Default::default()
+    })?;
+    let mut caliptra_builder = CaliptraBuilder::new(&CaliptraBuildArgs {
         caliptra_rom,
         caliptra_firmware,
         soc_manifest,
         vendor_pk_hash,
-        Some(tock_binary.clone()),
+        mcu_firmware: Some(tock_binary.clone()),
         soc_images,
-        None,
-        None,
-        None,
-        None,
-        None,
-        false,
-    );
+        ..Default::default()
+    });
 
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_firmware = caliptra_builder.get_caliptra_fw()?;

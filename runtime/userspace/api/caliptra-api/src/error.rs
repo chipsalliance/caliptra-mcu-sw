@@ -135,6 +135,8 @@ impl CaliptraApiError {
             CaliptraApiError::Mailbox(_) => 0x19,
             CaliptraApiError::Syscall(_) => 0x1A,
             CaliptraApiError::Eat(_) => 0x1B,
+            #[cfg(feature = "ocp-lock")]
+            CaliptraApiError::OcpLock(_) => 0x1C,
         }
     }
 

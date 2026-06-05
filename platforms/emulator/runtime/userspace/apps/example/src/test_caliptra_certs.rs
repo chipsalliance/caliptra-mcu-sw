@@ -2,8 +2,8 @@
 
 use caliptra_mcu_libapi_caliptra::certificate::{
     AsymAlgo, CertContext, IDEV_ECC_CSR_MAX_SIZE, KEY_LABEL_SIZE, MAX_ATTESTED_CSR_SIZE,
+    MAX_ECC_CERT_SIZE,
 };
-use caliptra_mcu_libapi_caliptra::mailbox_api::MAX_ECC_CERT_SIZE;
 use caliptra_mcu_romtime::println;
 use caliptra_mcu_romtime::test_exit;
 

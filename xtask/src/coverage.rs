@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Result};
-use caliptra_mcu_builder::{rom_build, PROJECT_ROOT};
+use caliptra_mcu_builder::{rom_build, CaliptraBuildArgs, PROJECT_ROOT};
 use std::process::Command;
 
 pub(crate) fn coverage(analyze_only: bool) -> Result<()> {
@@ -18,7 +18,7 @@ pub(crate) fn coverage(analyze_only: bool) -> Result<()> {
     }
 
     // Build MCU ROM so we have the binary and ELF for analysis
-    let rom_path = rom_build(None, None, None);
+    let rom_path = rom_build(&CaliptraBuildArgs::default());
     let (rom_path, rom_elf) = match rom_path {
         Ok(p) => {
             let elf = p.with_extension("");

@@ -63,3 +63,7 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mctp-spdm-attestation-pcr-quote",
     "test-mctp-spdm-responder-conformance",
 ];
+
+/// Features that only require a ROM build (no runtime build).
+/// These are ROM-specific test features that don't have a corresponding runtime feature.
+pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[];

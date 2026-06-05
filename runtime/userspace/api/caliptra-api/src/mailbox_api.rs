@@ -50,7 +50,9 @@ use dpe::response::{
     CertifyKeyResp, GetCertificateChainResp as OriginalGetCertificateChainResp, SignResp,
 };
 use dpe::DpeProfile;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
+
+pub const DPE_PROFILE: DpeProfile = DpeProfile::P384Sha384;
 
 pub const MAX_CRYPTO_MBOX_DATA_SIZE: usize = 1024;
 pub const MAX_DPE_RESP_DATA_SIZE: usize = 4096;
@@ -144,7 +146,7 @@ impl Default for DpeEcResp {
 
 // DPE Commands
 
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant, dead_code)]
 pub(crate) enum DpeResponse {
     CertifyKey(CertifyEcKeyResp),
     Sign(SignResp),
@@ -186,6 +188,18 @@ pub(crate) struct CertificateChainResp {
     pub data_size: u32,
     pub certificate_size: u32,
     pub certificate_chain: [u8; MAX_CERT_CHUNK_SIZE],
+}
+
+/// Header portion of the CertifyKey DPE response (without the variable-length cert data).
+/// Used to parse the fixed fields before reading the cert bytes.
+#[repr(C)]
+#[derive(Debug, PartialEq, Eq, TryFromBytes, Immutable, KnownLayout)]
+pub struct CertifyKeyRespHdr {
+    pub resp_hdr: dpe::response::ResponseHdr,
+    pub new_context_handle: ContextHandle,
+    pub derived_pubkey_x: [u8; DPE_PROFILE.ecc_int_size()],
+    pub derived_pubkey_y: [u8; DPE_PROFILE.ecc_int_size()],
+    pub cert_size: u32,
 }
 
 pub async fn execute_mailbox_cmd(

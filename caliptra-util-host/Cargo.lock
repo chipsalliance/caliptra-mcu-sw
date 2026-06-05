@@ -409,7 +409,7 @@ checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 [[package]]
 name = "caliptra-api"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
 dependencies = [
  "bitflags 2.11.1",
  "caliptra-api-types",
@@ -424,7 +424,7 @@ dependencies = [
 [[package]]
 name = "caliptra-api-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
 dependencies = [
  "caliptra-image-types",
 ]
@@ -432,9 +432,9 @@ dependencies = [
 [[package]]
 name = "caliptra-cfi-derive"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
+source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=aa96c53073ce7f298f7482c1ac57f5f65ffc115e#aa96c53073ce7f298f7482c1ac57f5f65ffc115e"
 dependencies = [
- "paste",
+ "pastey",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
@@ -443,27 +443,22 @@ dependencies = [
 [[package]]
 name = "caliptra-cfi-lib"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
-dependencies = [
- "caliptra-error",
- "caliptra-registers",
- "ufmt",
-]
+source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=aa96c53073ce7f298f7482c1ac57f5f65ffc115e#aa96c53073ce7f298f7482c1ac57f5f65ffc115e"
 
 [[package]]
 name = "caliptra-emu-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
 
 [[package]]
 name = "caliptra-error"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
 
 [[package]]
 name = "caliptra-image-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
 dependencies = [
  "caliptra-cfi-derive",
  "caliptra-cfi-lib",
@@ -477,7 +472,7 @@ dependencies = [
 [[package]]
 name = "caliptra-lms-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
 dependencies = [
  "caliptra-cfi-derive",
  "caliptra-cfi-lib",
@@ -486,22 +481,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-mailbox-client"
+name = "caliptra-mctp-vdm-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "caliptra-mcu-core-util-host-command-types",
- "caliptra-mcu-core-util-host-mailbox-test-config",
  "caliptra-mcu-core-util-host-transport",
- "caliptra-mcu-debug-unlock-signer",
- "caliptra-util-host-commands",
- "caliptra-util-host-session",
+ "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-testing-common",
+ "caliptra-util-host-mctp-vdm-test-config",
  "clap 4.6.1",
- "ecdsa",
- "fips204",
- "hmac",
- "p384",
- "sha2",
  "zerocopy",
 ]
 
@@ -516,20 +505,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-mcu-core-mctp-vdm-client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "caliptra-mcu-core-util-host-command-types",
- "caliptra-mcu-core-util-host-mctp-vdm-test-config",
- "caliptra-mcu-core-util-host-transport",
- "caliptra-mcu-mctp-vdm-common",
- "caliptra-mcu-testing-common",
- "clap 4.6.1",
- "zerocopy",
-]
-
-[[package]]
 name = "caliptra-mcu-core-util-host-command-types"
 version = "0.1.0"
 dependencies = [
@@ -538,15 +513,6 @@ dependencies = [
 
 [[package]]
 name = "caliptra-mcu-core-util-host-mailbox-test-config"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "caliptra-mcu-core-util-host-mctp-vdm-test-config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -575,6 +541,26 @@ dependencies = [
  "anyhow",
  "ecdsa",
  "fips204",
+ "p384",
+ "sha2",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-mailbox-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-mcu-core-util-host-command-types",
+ "caliptra-mcu-core-util-host-mailbox-test-config",
+ "caliptra-mcu-core-util-host-transport",
+ "caliptra-mcu-debug-unlock-signer",
+ "caliptra-util-host-commands",
+ "caliptra-util-host-session",
+ "clap 4.6.1",
+ "ecdsa",
+ "fips204",
+ "hmac",
  "p384",
  "sha2",
  "zerocopy",
@@ -638,7 +624,7 @@ dependencies = [
 [[package]]
 name = "caliptra-registers"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
 dependencies = [
  "caliptra-registers-latest",
 ]
@@ -646,7 +632,7 @@ dependencies = [
 [[package]]
 name = "caliptra-registers-latest"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
 dependencies = [
  "caliptra-ureg",
 ]
@@ -682,7 +668,7 @@ dependencies = [
 [[package]]
 name = "caliptra-ureg"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba#bfccd8ad9e07b6dff1d9cf7ccc858b1666a6eaba"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=3986e3a95683f178701c12209cc504a5e4a37f59#3986e3a95683f178701c12209cc504a5e4a37f59"
 
 [[package]]
 name = "caliptra-util-host"
@@ -716,6 +702,15 @@ dependencies = [
  "caliptra-mcu-core-util-host-osal",
  "caliptra-util-host-session",
  "zerocopy",
+]
+
+[[package]]
+name = "caliptra-util-host-mctp-vdm-test-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "toml 0.8.23",
 ]
 
 [[package]]
@@ -1882,10 +1877,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
 
 [[package]]
-name = "paste"
-version = "1.0.15"
+name = "pastey"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
 name = "peeking_take_while"
@@ -2530,30 +2525,6 @@ name = "typenum"
 version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
-
-[[package]]
-name = "ufmt"
-version = "0.2.0"
-source = "git+https://github.com/korran/ufmt.git?rev=1d0743c1ffffc68bc05ca8eeb81c166192863f33#1d0743c1ffffc68bc05ca8eeb81c166192863f33"
-dependencies = [
- "ufmt-macros",
- "ufmt-write",
-]
-
-[[package]]
-name = "ufmt-macros"
-version = "0.3.0"
-source = "git+https://github.com/korran/ufmt.git?rev=1d0743c1ffffc68bc05ca8eeb81c166192863f33#1d0743c1ffffc68bc05ca8eeb81c166192863f33"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "ufmt-write"
-version = "0.1.0"
-source = "git+https://github.com/korran/ufmt.git?rev=1d0743c1ffffc68bc05ca8eeb81c166192863f33#1d0743c1ffffc68bc05ca8eeb81c166192863f33"
 
 [[package]]
 name = "unescaper"

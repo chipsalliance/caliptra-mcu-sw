@@ -195,7 +195,31 @@ fn load_file(filename: &str) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
-pub fn flash_image_create(
+pub fn flash_image_create(args: &crate::CaliptraBuildArgs) -> Result<()> {
+    let caliptra_fw = args
+        .caliptra_firmware
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string());
+    let soc_manifest = args
+        .soc_manifest
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string());
+    let mcu_runtime = args
+        .mcu_firmware
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string());
+    let output_path = args.output_path.as_deref().unwrap_or("flash_image.bin");
+    flash_image_create_inner(
+        &caliptra_fw,
+        &soc_manifest,
+        &mcu_runtime,
+        &args.soc_image_paths,
+        args.offset,
+        output_path,
+    )
+}
+
+pub fn flash_image_create_inner(
     caliptra_fw_path: &Option<String>,
     soc_manifest_path: &Option<String>,
     mcu_runtime_path: &Option<String>,
@@ -423,7 +447,7 @@ mod tests {
         let output_path = output_file.path().to_str().unwrap();
 
         // Build the flash image
-        flash_image_create(
+        flash_image_create_inner(
             &Some(caliptra_fw.path().to_str().unwrap().to_string()),
             &Some(soc_manifest.path().to_str().unwrap().to_string()),
             &Some(mcu_runtime.path().to_str().unwrap().to_string()),

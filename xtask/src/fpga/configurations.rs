@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Context, Result};
-use caliptra_mcu_builder::{AllBuildArgs, ImageCfg, PROJECT_ROOT};
+use caliptra_mcu_builder::{AllBuildArgs, CaliptraBuildArgs, ImageCfg, PROJECT_ROOT};
 use clap::ValueEnum;
 
 use super::{
@@ -331,8 +331,11 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             .rom_features
             .clone()
             .unwrap_or_else(|| "core_test".to_string());
-        let rom_path =
-            caliptra_mcu_builder::rom_build(Some("fpga".to_string()), Some(rom_features), None)?;
+        let rom_path = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
+            platform: Some("fpga"),
+            features: Some(&rom_features),
+            ..Default::default()
+        })?;
         if !args.mcu {
             build_caliptra_firmware(&caliptra_sw, args.fw_id.as_deref())?;
         }

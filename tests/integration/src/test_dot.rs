@@ -15,7 +15,9 @@ mod test {
     use caliptra_auth_man_types::{AuthManifestPrivKeysConfig, AuthManifestPubKeysConfig};
     use caliptra_image_gen::ImageGeneratorOwnerConfig;
     use caliptra_image_types::{ImageManifest, ImageOwnerPrivKeys, OwnerPubKeyConfig};
-    use caliptra_mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
+    use caliptra_mcu_builder::{
+        AuthManifestOwnerConfig, CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries,
+    };
     use caliptra_mcu_error::McuError;
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_romtime::McuBootMilestones;
@@ -102,22 +104,10 @@ mod test {
         }
 
         // Fall back to computing from compiled FW bundle
-        let mut builder = CaliptraBuilder::new(
-            cfg!(feature = "fpga_realtime"),
-            false,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            false,
-        );
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            fpga: cfg!(feature = "fpga_realtime"),
+            ..Default::default()
+        });
         let fw_path = builder
             .get_caliptra_fw()
             .expect("Failed to get Caliptra FW");
@@ -386,22 +376,13 @@ mod test {
                 (rt_path, None, None)
             };
 
-        let mut builder = CaliptraBuilder::new(
-            cfg!(feature = "fpga_realtime"),
-            false,
-            None,
-            prebuilt_caliptra_fw,
-            None,
-            prebuilt_vendor_pk_hash,
-            Some(mcu_runtime_path),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            false,
-        )
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            fpga: cfg!(feature = "fpga_realtime"),
+            caliptra_firmware: prebuilt_caliptra_fw,
+            vendor_pk_hash: prebuilt_vendor_pk_hash,
+            mcu_firmware: Some(mcu_runtime_path),
+            ..Default::default()
+        })
         .with_owner_config(custom_owner_config)
         .with_auth_manifest_owner_config(auth_manifest_owner_config);
 

@@ -93,60 +93,36 @@ pub struct CaliptraBuilder {
 
 impl CaliptraBuilder {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        fpga: bool,
-        ocp_lock: bool,
-        caliptra_rom: Option<PathBuf>,
-        caliptra_firmware: Option<PathBuf>,
-        soc_manifest: Option<PathBuf>,
-        vendor_pk_hash: Option<String>,
-        mcu_firmware: Option<PathBuf>,
-        soc_images: Option<Vec<ImageCfg>>,
-        mcu_image_cfg: Option<ImageCfg>,
-        soc_manifest_svn: Option<u32>,
-        vendor: Option<String>,
-        model: Option<String>,
-        svn: Option<u16>,
-        use_second_key: bool,
-    ) -> Self {
+    pub fn new(args: &crate::CaliptraBuildArgs) -> Self {
         Self {
-            fpga,
-            ocp_lock,
-            caliptra_rom,
-            caliptra_firmware,
-            soc_manifest,
-            vendor_pk_hash,
+            fpga: args.fpga,
+            ocp_lock: args.ocp_lock,
+            caliptra_rom: args.caliptra_rom.clone(),
+            caliptra_firmware: args.caliptra_firmware.clone(),
+            soc_manifest: args.soc_manifest.clone(),
+            vendor_pk_hash: args.vendor_pk_hash.clone(),
             owner_pk_hash: None,
-            mcu_firmware,
-            soc_images,
-            mcu_image_cfg,
-            soc_manifest_svn,
-            vendor: vendor.unwrap_or_else(|| "ChipsAlliance".to_string()),
-            model: model.unwrap_or_else(|| "Caliptra-SS".to_string()),
+            mcu_firmware: args.mcu_firmware.clone(),
+            soc_images: args.soc_images.clone(),
+            mcu_image_cfg: args.mcu_image_cfg.clone(),
+            soc_manifest_svn: args.soc_manifest_svn,
+            vendor: args
+                .vendor
+                .clone()
+                .unwrap_or_else(|| "ChipsAlliance".to_string()),
+            model: args
+                .model
+                .clone()
+                .unwrap_or_else(|| "Caliptra-SS".to_string()),
             owner_config: None,
             auth_manifest_owner_config: None,
-            svn,
-            use_second_key,
+            svn: args.svn,
+            use_second_key: args.use_second_key,
         }
     }
 
     pub fn from_args(args: &crate::CaliptraBuildArgs) -> Self {
-        Self::new(
-            args.fpga,
-            false,
-            args.caliptra_rom.clone(),
-            args.caliptra_firmware.clone(),
-            args.soc_manifest.clone(),
-            args.vendor_pk_hash.clone(),
-            args.mcu_firmware.clone(),
-            args.soc_images.clone(),
-            args.mcu_image_cfg.clone(),
-            args.soc_manifest_svn,
-            args.vendor.clone(),
-            args.model.clone(),
-            args.svn,
-            args.use_second_key,
-        )
+        Self::new(args)
     }
 
     /// Sets a custom owner configuration for re-signing the FW bundle.

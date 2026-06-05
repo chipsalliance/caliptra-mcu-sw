@@ -64,7 +64,7 @@ mod test {
 
         // Pull bare-metal bytes from prebuilt bundle environment.
         let binaries = FirmwareBinaries::from_env().expect("Firmware bundle not found");
-        let bare_metal_bytes = &binaries.mcu_bare_metal;
+        let bare_metal_bytes = &binaries.mcu_bare_metal_runtime;
         assert!(
             !bare_metal_bytes.is_empty(),
             "mcu_bare_metal binary is empty"

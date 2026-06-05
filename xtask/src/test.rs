@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use caliptra_mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
+use caliptra_mcu_builder::{rom_build, CaliptraBuildArgs, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
 use crate::emulator_cbinding;
@@ -241,7 +241,10 @@ pub(crate) fn test_panic_missing() -> Result<()> {
     ];
 
     for test_feature in test_features.into_iter() {
-        rom_build(None, test_feature, None)?;
+        rom_build(&CaliptraBuildArgs {
+            features: test_feature.as_deref(),
+            ..Default::default()
+        })?;
         let rom_elf = PROJECT_ROOT
             .join("target")
             .join(TARGET)

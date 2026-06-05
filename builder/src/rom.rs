@@ -7,12 +7,19 @@ use anyhow::{bail, Result};
 
 use crate::utils::manifest_file;
 use crate::PROJECT_ROOT;
-use caliptra_builder::FwId;
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
 use caliptra_mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
-pub fn rom_build(
+pub fn rom_build(args: &crate::CaliptraBuildArgs) -> Result<PathBuf> {
+    rom_build_inner(
+        args.platform.map(String::from),
+        args.features.map(String::from),
+        args.target_dir.clone(),
+    )
+}
+
+fn rom_build_inner(
     platform: Option<String>,
     features: Option<String>,
     target_dir: Option<PathBuf>,
@@ -91,12 +98,10 @@ pub fn append_rom_digest(binary: &PathBuf, rom_size: usize) -> Result<()> {
     Ok(())
 }
 
-pub fn test_rom_build(
-    platform: Option<&str>,
-    fwid: &FwId,
-    target_dir: Option<PathBuf>,
-) -> Result<String> {
-    let platform = platform.unwrap_or("emulator");
+pub fn test_rom_build(args: &crate::CaliptraBuildArgs) -> Result<String> {
+    let platform = args.platform.unwrap_or("emulator");
+    let fwid = args.fwid.expect("fwid required for test_rom_build");
+    let target_dir = args.target_dir.clone();
 
     let template_name = if platform == "fpga" {
         "fpga.toml"

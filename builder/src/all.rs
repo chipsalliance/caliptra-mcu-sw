@@ -129,8 +129,11 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
         );
     }
 
-    // The emulator binary is at target/debug/emulator (profile "test" uses the debug directory)
-    let emulator_path = PROJECT_ROOT.join("target").join("debug").join("emulator");
+    // The emulator binary is at target/debug/caliptra-mcu-emulator (profile "test" uses the debug directory)
+    let emulator_path = PROJECT_ROOT
+        .join("target")
+        .join("debug")
+        .join("caliptra-mcu-emulator");
 
     if !emulator_path.exists() {
         bail!("Emulator binary not found at {:?}", emulator_path);
@@ -689,7 +692,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // Only build the bare-metal runtime for the emulator platform, as it
     // is currently only configured and supported for the emulator.
     let mcu_bare_metal_runtime = if platform == "emulator" {
-        Some(crate::bare_metal_build()?)
+        Some(crate::bare_metal_build(None)?)
     } else {
         None
     };
