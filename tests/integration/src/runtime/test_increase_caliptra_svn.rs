@@ -6,7 +6,7 @@ use crate::test::{
 };
 use anyhow::Result;
 use caliptra_api::{calc_checksum, error::CaliptraError, mailbox::FwInfoResp, SocManager};
-use caliptra_mcu_builder::{CaliptraBuilder, FirmwareBinaries};
+use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::FuseIncreaseCaliptraMinSvnReq;
 use caliptra_mcu_romtime::McuBootMilestones;
@@ -29,39 +29,17 @@ fn test_increase_caliptra_svn() -> Result<()> {
             let manifest = binaries.test_soc_manifest("test-mcu-mbox-cmds").unwrap();
             (fw_svn0, fw_svn7, pk_hash, manifest)
         } else {
-            let mut builder = CaliptraBuilder::new(
-                false,
-                false,
-                None,
-                None,
-                None,
-                None,
-                Some(mcu_runtime_path.clone()),
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(0),
-                false,
-            );
+            let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+                mcu_firmware: Some(mcu_runtime_path.clone()),
+                svn: Some(0),
+                ..Default::default()
+            });
             let fw_svn0 = std::fs::read(builder.get_caliptra_fw()?).unwrap();
-            let mut builder = CaliptraBuilder::new(
-                false,
-                false,
-                None,
-                None,
-                None,
-                None,
-                Some(mcu_runtime_path),
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(7),
-                false,
-            );
+            let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+                mcu_firmware: Some(mcu_runtime_path),
+                svn: Some(7),
+                ..Default::default()
+            });
             let fw_svn7 = std::fs::read(builder.get_caliptra_fw()?).unwrap();
             let pk_hash_str = builder.get_vendor_pk_hash()?.to_string();
             let pk_hash = hex::decode(&pk_hash_str).unwrap();
@@ -237,22 +215,11 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
             let manifest = binaries.test_soc_manifest("test-mcu-mbox-cmds").unwrap();
             (fw, pk_hash, manifest)
         } else {
-            let mut builder = CaliptraBuilder::new(
-                false,
-                false,
-                None,
-                None,
-                None,
-                None,
-                Some(mcu_runtime_path.clone()),
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(128),
-                false,
-            );
+            let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+                mcu_firmware: Some(mcu_runtime_path.clone()),
+                svn: Some(128),
+                ..Default::default()
+            });
             let fw = std::fs::read(builder.get_caliptra_fw()?).unwrap();
             let pk_hash_str = builder.get_vendor_pk_hash()?.to_string();
             let pk_hash = hex::decode(&pk_hash_str).unwrap();

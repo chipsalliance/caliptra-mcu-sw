@@ -813,7 +813,7 @@ impl Drop for ModelEmulated {
 mod test {
     use super::*;
     use crate::{InitParams, McuHwModel, ModelEmulated};
-    use caliptra_mcu_builder::CaliptraBuilder;
+    use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder};
 
     #[test]
     fn test_new_unbooted() {
@@ -828,33 +828,15 @@ mod test {
                     binaries.soc_manifest.clone(),
                 )
             } else {
-                let mcu_rom = caliptra_mcu_builder::rom_build(None, None, None)
+                let mcu_rom = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs::default())
                     .expect("Could not build MCU ROM");
-                let mcu_runtime = caliptra_mcu_builder::runtime_build_with_apps(
-                    &[],
-                    None,
-                    false,
-                    None,
-                    None,
-                    None,
-                )
-                .expect("Could not build MCU runtime");
-                let mut caliptra_builder = CaliptraBuilder::new(
-                    false,
-                    false,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(mcu_runtime.clone()),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    false,
-                );
+                let mcu_runtime =
+                    caliptra_mcu_builder::runtime_build_with_apps(&CaliptraBuildArgs::default())
+                        .expect("Could not build MCU runtime");
+                let mut caliptra_builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+                    mcu_firmware: Some(mcu_runtime.clone()),
+                    ..Default::default()
+                });
                 let caliptra_rom = caliptra_builder
                     .get_caliptra_rom()
                     .expect("Could not build Caliptra ROM");

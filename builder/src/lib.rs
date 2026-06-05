@@ -21,6 +21,7 @@ pub use runtime::{bare_metal_build, runtime_build_with_apps};
 #[derive(Default, Clone)]
 pub struct CaliptraBuildArgs<'a> {
     pub fpga: bool,
+    pub ocp_lock: bool,
     pub platform: Option<&'a str>,
     pub features: Option<&'a str>,
     pub target_dir: Option<PathBuf>,

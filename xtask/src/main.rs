@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_api_types::DeviceLifecycle;
-use caliptra_mcu_builder::ImageCfg;
+use caliptra_mcu_builder::{CaliptraBuildArgs, ImageCfg};
 use caliptra_mcu_firmware_bundler::args::Commands as BundleCommands;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
@@ -507,8 +507,8 @@ fn main() {
             output,
             platform,
             rom_features,
-            test_rom_features,
-            network_rom_features,
+            test_rom_features: _,
+            network_rom_features: _,
             runtime_features,
             separate_runtimes,
             soc_images,
@@ -520,8 +520,6 @@ fn main() {
             output: output.as_deref(),
             platform: platform.as_deref(),
             rom_features: rom_features.as_deref(),
-            test_rom_features: test_rom_features.as_deref(),
-            network_rom_features: network_rom_features.as_deref(),
             runtime_features: runtime_features.as_deref(),
             separate_runtimes: *separate_runtimes,
             soc_images: soc_images.clone(),
@@ -545,21 +543,28 @@ fn main() {
             if *bare_metal {
                 caliptra_mcu_builder::bare_metal_build(platform.as_deref()).map(|_| ())
             } else {
-                let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-                caliptra_mcu_builder::runtime_build_with_apps(
-                    &features,
-                    output.clone(),
-                    false,
-                    platform.as_deref(),
-                    None,
-                    None,
-                )
+                let features_str = features.join(",");
+                caliptra_mcu_builder::runtime_build_with_apps(&CaliptraBuildArgs {
+                    features: if features.is_empty() {
+                        None
+                    } else {
+                        Some(&features_str)
+                    },
+                    output_name: output.clone(),
+                    platform: platform.as_deref(),
+                    ..Default::default()
+                })
                 .map(|_| ())
             }
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {
-            caliptra_mcu_builder::rom_build(platform.clone(), features.clone(), None).map(|_| ())
+            caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
+                platform: platform.as_deref(),
+                features: features.as_deref(),
+                ..Default::default()
+            })
+            .map(|_| ())
         }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
@@ -568,7 +573,7 @@ fn main() {
                 mcu_runtime,
                 soc_images,
                 output,
-            } => caliptra_mcu_builder::flash_image::flash_image_create(
+            } => caliptra_mcu_builder::flash_image::flash_image_create_inner(
                 caliptra_fw,
                 soc_manifest,
                 mcu_runtime,

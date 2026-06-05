@@ -93,12 +93,37 @@ jobs:
 
       - name: Build ROM and runtime binaries
         run: |
+          echo "=== Disk usage before build ==="
+          df -h .
+          du -sh target/ 2>/dev/null || true
+          # Monitor disk usage in background every 60s; dump full breakdown when <5G free
+          ( while true; do
+            sleep 60
+            AVAIL_KB=$(df --output=avail . | tail -1 | tr -d ' ')
+            echo "=== Disk monitor: $(date -u +%H:%M:%S) ==="
+            df -h . | tail -1
+            du -sh target/ 2>/dev/null || true
+            if [ "$AVAIL_KB" -lt 5242880 ] 2>/dev/null; then
+              echo "--- WARNING: <5G free ($((AVAIL_KB/1024))M) - Full breakdown ---"
+              du -sh /* 2>/dev/null | sort -rh || true
+              echo "--- Home directory ---"
+              du -sh ~/*/ 2>/dev/null | sort -rh || true
+              echo "--- Cargo cache ---"
+              du -sh ~/.cargo/*/ 2>/dev/null | sort -rh || true
+              echo "--- All target subdirs ---"
+              du -sh target/*/ 2>/dev/null | sort -rh || true
+              echo "--- Largest files in target ---"
+              find target/ -type f -size +50M -exec ls -lh {} \; 2>/dev/null | sort -k5 -rh | head -30 || true
+            fi
+          done ) &
+          MONITOR_PID=$!
           # Build all test runtime features used by integration tests
           # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
-          cargo run -p caliptra-mcu-xtask --features parallel-build -- all-build --platform emulator \
+          cargo run -p caliptra-mcu-xtask -- all-build --platform emulator \
             --rom-features "hw-2-1" \
             --test-rom-features "ocp-lock,stable-owner-key" \
             --separate-runtimes
+          kill $MONITOR_PID 2>/dev/null || true
           sccache --show-stats
 
       - name: Upload firmware bundle
@@ -284,6 +309,9 @@ jobs:
         with:
           name: firmware-bundle
           path: target/
+
+
+
 
       - name: Download emulator bundle
         uses: actions/download-artifact@v4

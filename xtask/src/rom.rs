@@ -1,12 +1,11 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::Result;
-use caliptra_mcu_builder::{CaliptraBuilder, PROJECT_ROOT};
+use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, PROJECT_ROOT};
 use std::process::Command;
 
 pub(crate) fn rom_run(trace: bool) -> Result<()> {
-    let platform = None;
-    let rom_binary = caliptra_mcu_builder::rom_build(platform, None, None)?;
+    let rom_binary = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs::default())?;
 
     // Use a minimal infinite-loop binary as the MCU firmware instead of
     // building the full runtime — this command is for testing the ROM only.
@@ -16,22 +15,10 @@ pub(crate) fn rom_run(trace: bool) -> Result<()> {
     // RISC-V JAL x0, 0 — jump-to-self infinite loop
     std::fs::write(&firmware_path, [0x6fu8, 0x00, 0x00, 0x00])?;
 
-    let mut caliptra_builder = CaliptraBuilder::new(
-        false,
-        false,
-        None,
-        None,
-        None,
-        None,
-        Some(firmware_path.clone()),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        false,
-    );
+    let mut caliptra_builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+        mcu_firmware: Some(firmware_path.clone()),
+        ..Default::default()
+    });
 
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_firmware = caliptra_builder.get_caliptra_fw()?;

@@ -32,11 +32,12 @@ caliptra-mcu-core-util-host-command-types = { path = "command-types" }
 caliptra-util-host-commands = { path = "commands" }
 caliptra-util-host-session = { path = "session" }
 caliptra-mcu-core-util-host-transport = { path = "transport" }
+caliptra-util-host-transport = { path = "transport", package = "caliptra-mcu-core-util-host-transport" }
 caliptra-util-host-cbinding = { path = "cbinding" }
 caliptra-mcu-core-util-host-mailbox-test-config = { path = "apps/mailbox/config" }
 caliptra-mcu-mailbox-client = { path = "apps/mailbox/client" }
 caliptra-mcu-core-mailbox-server = { path = "apps/mailbox/server" }
-caliptra-mcu-core-util-host-mctp-vdm-test-config = { path = "apps/mctp-vdm/config" }
+caliptra-util-host-mctp-vdm-test-config = { path = "apps/mctp-vdm/config" }
 caliptra-mcu-core-mctp-vdm-client = { path = "apps/mctp-vdm/client" }
 caliptra-spdm-requester = { path = "apps/spdm/requester" }
 caliptra-spdm-vdm-client = { path = "apps/spdm/client" }

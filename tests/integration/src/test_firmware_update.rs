@@ -6,7 +6,7 @@ mod test {
         compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
     };
     use caliptra_image_types::ImageManifest;
-    use caliptra_mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
+    use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries, ImageCfg};
     use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
@@ -87,7 +87,7 @@ mod test {
         let mcu_runtime_path_str = mcu_runtime_path
             .as_ref()
             .map(|p| p.to_string_lossy().to_string());
-        caliptra_mcu_builder::flash_image::flash_image_create(
+        caliptra_mcu_builder::flash_image::flash_image_create_inner(
             &caliptra_fw_path_str,
             &soc_manifest_path_str,
             &mcu_runtime_path_str,
@@ -255,22 +255,12 @@ mod test {
             feature: feature.to_string(),
         };
 
-        let mut update_builder = CaliptraBuilder::new(
-            false,
-            false,
-            None,
-            None,
-            None,
-            None,
-            Some(update_runtime_firmware.clone()),
-            Some(update_soc_images.clone()),
-            Some(mcu_cfg.clone()),
-            None,
-            None,
-            None,
-            None,
-            false,
-        );
+        let mut update_builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            mcu_firmware: Some(update_runtime_firmware.clone()),
+            soc_images: Some(update_soc_images.clone()),
+            mcu_image_cfg: Some(mcu_cfg.clone()),
+            ..Default::default()
+        });
         let update_caliptra_fw = update_builder
             .get_caliptra_fw()
             .expect("Failed to build Caliptra firmware for update");
@@ -600,9 +590,7 @@ mod test {
 
         // Get prebuilt feature-specific MCU ROM from the bundle
         let mcu_rom_path = std::env::temp_dir().join(format!("fw-update-mcu-rom-{}.bin", feature));
-        let mcu_rom_data = binaries
-            .test_feature_rom(feature)
-            .unwrap_or_else(|err| panic!("Prebuilt MCU ROM not found for {feature}: {err}"));
+        let mcu_rom_data = binaries.test_feature_rom(feature);
         std::fs::write(&mcu_rom_path, mcu_rom_data).expect("Failed to write MCU ROM");
         let mcu_rom = mcu_rom_path;
 
@@ -691,22 +679,16 @@ mod test {
         };
 
         // Build the Caliptra builder with prebuilt paths
-        let builder = CaliptraBuilder::new(
-            false,
-            false,
-            Some(caliptra_rom_path),
-            Some(caliptra_fw_path.clone()),
-            Some(soc_manifest_path.clone()),
-            Some(vendor_pk_hash),
-            Some(test_runtime.clone()),
-            Some(soc_images.clone()),
-            Some(mcu_cfg),
-            None,
-            None,
-            None,
-            None,
-            false,
-        );
+        let builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            caliptra_rom: Some(caliptra_rom_path),
+            caliptra_firmware: Some(caliptra_fw_path.clone()),
+            soc_manifest: Some(soc_manifest_path.clone()),
+            vendor_pk_hash: Some(vendor_pk_hash),
+            mcu_firmware: Some(test_runtime.clone()),
+            soc_images: Some(soc_images.clone()),
+            mcu_image_cfg: Some(mcu_cfg),
+            ..Default::default()
+        });
 
         // Create partition table matching what's used in the build path
         // This is needed for tests that modify flash images
@@ -812,22 +794,12 @@ mod test {
         };
 
         // Build the Runtime image
-        let mut builder = CaliptraBuilder::new(
-            false,
-            false,
-            None,
-            None,
-            None,
-            None,
-            Some(test_runtime.clone()),
-            Some(soc_images.clone()),
-            Some(mcu_cfg.clone()),
-            None,
-            None,
-            None,
-            None,
-            false,
-        );
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            mcu_firmware: Some(test_runtime.clone()),
+            soc_images: Some(soc_images.clone()),
+            mcu_image_cfg: Some(mcu_cfg.clone()),
+            ..Default::default()
+        });
 
         // Build Caliptra firmware
         let caliptra_fw = builder

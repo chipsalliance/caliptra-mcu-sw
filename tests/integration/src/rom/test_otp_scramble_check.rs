@@ -14,7 +14,7 @@
 #[cfg(test)]
 mod test {
     use crate::platform;
-    use caliptra_mcu_builder::firmware;
+    use caliptra_mcu_builder::{firmware, CaliptraBuildArgs};
     use caliptra_mcu_hw_model::{InitParams, McuHwModel};
     use caliptra_mcu_registers_generated::fuses;
     use caliptra_mcu_romtime::LifecycleControllerState;
@@ -28,11 +28,11 @@ mod test {
                     .unwrap(),
             )
         } else {
-            let rom_file = caliptra_mcu_builder::test_rom_build(
-                Some(platform()),
-                &firmware::hw_model_tests::OTP_SCRAMBLE_CHECK,
-                None,
-            )
+            let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {
+                platform: Some(platform()),
+                fwid: Some(&firmware::hw_model_tests::OTP_SCRAMBLE_CHECK),
+                ..Default::default()
+            })
             .unwrap();
             (vec![], std::fs::read(&rom_file).unwrap())
         }

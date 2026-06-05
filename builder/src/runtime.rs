@@ -18,7 +18,24 @@ use caliptra_mcu_firmware_bundler::args::{
 };
 use std::path::PathBuf;
 
-pub fn runtime_build_with_apps(
+pub fn runtime_build_with_apps(args: &crate::CaliptraBuildArgs) -> Result<PathBuf> {
+    let features_str = args.features.unwrap_or("");
+    let features: Vec<&str> = if features_str.is_empty() {
+        vec![]
+    } else {
+        features_str.split(',').collect()
+    };
+    runtime_build_with_apps_inner(
+        &features,
+        args.output_name.clone(),
+        args.example_app,
+        args.platform,
+        args.svn,
+        args.target_dir.clone(),
+    )
+}
+
+fn runtime_build_with_apps_inner(
     features: &[&str],
     output_name: Option<String>,
     example_app: bool,
