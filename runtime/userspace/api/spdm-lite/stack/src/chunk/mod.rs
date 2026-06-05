@@ -153,6 +153,16 @@ pub(crate) struct ChunkState {
     pub(super) seq_num: u16,
     pub(super) bytes_received: u32,
     pub(super) large_msg_size: u32,
+    pub(super) stream: Option<StreamingRequest>,
+}
+
+#[derive(Copy, Clone)]
+pub(crate) struct StreamingRequest {
+    pub(super) stream_id: u32,
+    pub(super) standard_id: mcu_spdm_lite_codec::StandardsBodyId,
+    pub(super) vendor_id: [u8; 4],
+    pub(super) vendor_id_len: u8,
+    pub(super) command_code: u8,
 }
 
 impl ChunkState {

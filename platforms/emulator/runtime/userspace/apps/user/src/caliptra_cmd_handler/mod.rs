@@ -23,6 +23,7 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_mbox_common::config;
 use mcu_spdm_lite_stack::{
     SpdmVdmBackend, StandardsBodyId, VdmRequest, VdmResponseBuffers, VdmResponseKind,
+    VdmStreamRequest,
 };
 use zerocopy::IntoBytes;
 
@@ -428,6 +429,68 @@ impl CaliptraOcpVdm {
 impl SpdmVdmBackend for CaliptraOcpVdm {
     fn match_request(&self, req: &VdmRequest<'_>) -> bool {
         req.standard_id == StandardsBodyId::Iana && req.vendor_id == OCP_VENDOR_ID.to_le_bytes()
+    }
+
+    fn stream_supported(&self, req: &VdmStreamRequest<'_>) -> Option<u32> {
+        use caliptra_api::mailbox::CommandId;
+        let matches_ocp = req.standard_id == StandardsBodyId::Iana
+            && req.vendor_id == OCP_VENDOR_ID.to_le_bytes();
+        if matches_ocp && req.command_code == CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8 {
+            Some(CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.0)
+        } else {
+            None
+        }
+    }
+
+    async fn stream_init(
+        &self,
+        mailbox_cmd: u32,
+        total_payload_len: usize,
+        first_payload: &[u8],
+    ) -> mcu_spdm_lite_stack::SpdmResult<()> {
+        let mailbox = Mailbox::<caliptra_mcu_libsyscall_caliptra::DefaultSyscalls>::new();
+        {
+            let mut remainder = STREAM_REMAINDER.lock().await;
+            remainder.len = 0;
+        }
+        mailbox
+            .start_chunked_request(mailbox_cmd, total_payload_len)
+            .await
+            .map_err(|_| mcu_spdm_lite_stack::SPDM_UNSPECIFIED)?;
+        send_aligned(&mailbox, first_payload)
+            .await
+            .map_err(|_| mcu_spdm_lite_stack::SPDM_UNSPECIFIED)
+    }
+
+    async fn stream_chunk(
+        &self,
+        _mailbox_cmd: u32,
+        payload: &[u8],
+    ) -> mcu_spdm_lite_stack::SpdmResult<()> {
+        let mailbox = Mailbox::<caliptra_mcu_libsyscall_caliptra::DefaultSyscalls>::new();
+        send_aligned(&mailbox, payload)
+            .await
+            .map_err(|_| mcu_spdm_lite_stack::SPDM_UNSPECIFIED)
+    }
+
+    async fn stream_finish(
+        &self,
+        mailbox_cmd: u32,
+        out: &mut [u8],
+    ) -> mcu_spdm_lite_stack::SpdmResult<usize> {
+        let mailbox = Mailbox::<caliptra_mcu_libsyscall_caliptra::DefaultSyscalls>::new();
+        flush_remainder(&mailbox)
+            .await
+            .map_err(|_| mcu_spdm_lite_stack::SPDM_UNSPECIFIED)?;
+        mailbox
+            .execute_chunked_request(mailbox_cmd, out)
+            .await
+            .map_err(|_| mcu_spdm_lite_stack::SPDM_UNSPECIFIED)
+    }
+
+    async fn stream_abort(&self, _mailbox_cmd: u32) {
+        let mut remainder = STREAM_REMAINDER.lock().await;
+        remainder.len = 0;
     }
 
     async fn handle_request(

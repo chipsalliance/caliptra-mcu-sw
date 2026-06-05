@@ -66,6 +66,14 @@ pub enum VdmResponseKind {
     Large(usize),
 }
 
+/// Metadata for a CHUNK_SEND-streamed VDM request.
+pub struct VdmStreamRequest<'a> {
+    pub standard_id: StandardsBodyId,
+    pub vendor_id: &'a [u8],
+    pub secure_session: bool,
+    pub command_code: u8,
+}
+
 /// Static-dispatch VDM backend used by the spdm-lite dispatcher.
 ///
 /// Implementations may perform async work without heap allocation because the
@@ -82,6 +90,37 @@ pub trait SpdmVdmBackend: Sync {
         req: VdmRequest<'_>,
         rsp: VdmResponseBuffers<'_>,
     ) -> SpdmResult<VdmResponseKind>;
+
+    /// Returns a backend-specific stream identifier when this VDM command can
+    /// consume a CHUNK_SEND request payload incrementally.
+    fn stream_supported(&self, _req: &VdmStreamRequest<'_>) -> Option<u32> {
+        None
+    }
+
+    /// Starts a streamed VDM request. `first_payload` is the vendor command
+    /// payload after the VDM command header.
+    async fn stream_init(
+        &self,
+        _stream_id: u32,
+        _total_payload_len: usize,
+        _first_payload: &[u8],
+    ) -> SpdmResult<()> {
+        Err(SPDM_UNSUPPORTED_REQUEST)
+    }
+
+    /// Appends a subsequent streamed VDM request payload chunk.
+    async fn stream_chunk(&self, _stream_id: u32, _payload: &[u8]) -> SpdmResult<()> {
+        Err(SPDM_UNSUPPORTED_REQUEST)
+    }
+
+    /// Finishes a streamed VDM request and writes response data after the VDM
+    /// success completion byte. Returns the number of response data bytes.
+    async fn stream_finish(&self, _stream_id: u32, _out: &mut [u8]) -> SpdmResult<usize> {
+        Err(SPDM_UNSUPPORTED_REQUEST)
+    }
+
+    /// Aborts a streamed VDM request after an SPDM chunking or backend error.
+    async fn stream_abort(&self, _stream_id: u32) {}
 }
 
 /// Sync-handler-table backend preserving `with_vdm_handlers` behavior.

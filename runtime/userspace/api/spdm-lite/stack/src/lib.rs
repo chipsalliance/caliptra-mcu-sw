@@ -51,4 +51,5 @@ pub use stack::*;
 pub use transcript::*;
 pub use vendor_defined::{
     SpdmVdmBackend, SyncVdmHandlers, VdmHandler, VdmRequest, VdmResponseBuffers, VdmResponseKind,
+    VdmStreamRequest,
 };
