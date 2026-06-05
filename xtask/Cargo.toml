@@ -14,6 +14,7 @@ fpga_realtime = [
 	"dep:caliptra-mcu-rom-common",
 ]
 
+
 [dependencies]
 base64.workspace = true
 caliptra-api-types.workspace = true
@@ -60,6 +61,11 @@ walkdir.workspace = true
 zerocopy.workspace = true
 zip.workspace = true
 caliptra-bitstream-downloader.workspace = true
+
+# infra dependecies for CI
+size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", package = "caliptra-size-history", rev = "64e75e17e1a2eb07ff8dd6698932af82182da85e" }
+log = "0.4.26"
+
 
 [build-dependencies]
 cc.workspace = true

@@ -27,6 +27,7 @@ mod rom;
 mod runtime;
 mod sizes;
 mod test;
+mod ci;
 
 #[cfg(feature = "fpga_realtime")]
 use fpga::Fpga;
@@ -392,7 +393,19 @@ enum Commands {
         #[command(subcommand)]
         cmd: BundleCommands,
     },
+    /// Run CI tools
+    CI {
+        #[command(subcommand)]
+        command: CICommands,
+    },
 }
+
+#[derive(Subcommand)]
+pub enum CICommands {
+    /// Run size-history tool.
+    SizeHistory,
+}
+
 
 #[derive(Subcommand)]
 enum FlashImageCommands {
@@ -748,6 +761,9 @@ fn main() {
             }
         },
         Commands::FirmwareBundler { cmd } => caliptra_mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::CI { command } => match command {
+            CICommands::SizeHistory => ci::size_history(),
+        },
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);
