@@ -193,8 +193,8 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
     state.transcript.finalize_l1(pal, io, &mut l1_hash).await?;
 
     // Build signing context and compute TBS hash.
-    let signing_ctx = build_signing_context(state.version);
-    let tbs_hash = compute_tbs_hash(pal, io, &signing_ctx, &l1_hash)
+    let signing_ctx = signing_context(state.version);
+    let tbs_hash = compute_tbs_hash(pal, io, signing_ctx, &l1_hash)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
 
@@ -374,31 +374,51 @@ fn write_u24_le(w: &mut WireWriter<'_>, len: usize) -> SpdmResult<()> {
     Ok(())
 }
 
-/// Build the 100-byte SPDM signing context for MEASUREMENTS.
-fn build_signing_context(version: SpdmVersion) -> [u8; SPDM_SIGNING_CONTEXT_LEN] {
+/// Precomputed 100-byte SPDM signing contexts for "responder-measurements signing".
+/// Layout: 4 × "dmtf-spdm-v<x>.<y>.*" (prefix) || zero-pad || "responder-measurements signing".
+const SIGNING_CTX_V10: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context_const(b"1.0.*");
+const SIGNING_CTX_V11: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context_const(b"1.1.*");
+const SIGNING_CTX_V12: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context_const(b"1.2.*");
+const SIGNING_CTX_V13: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context_const(b"1.3.*");
+
+const fn build_signing_context_const(ver: &[u8; 5]) -> [u8; SPDM_SIGNING_CONTEXT_LEN] {
     let mut ctx = [0u8; SPDM_SIGNING_CONTEXT_LEN];
-
     let base = b"dmtf-spdm-v";
-    let ver = match version {
-        SpdmVersion::V10 => b"1.0.*",
-        SpdmVersion::V11 => b"1.1.*",
-        SpdmVersion::V12 => b"1.2.*",
-        SpdmVersion::V13 => b"1.3.*",
-    };
     let mut pos = 0;
-    for _ in 0..4 {
-        ctx[pos..pos + base.len()].copy_from_slice(base);
+    let mut i = 0;
+    while i < 4 {
+        let mut j = 0;
+        while j < base.len() {
+            ctx[pos + j] = base[j];
+            j += 1;
+        }
         pos += base.len();
-        ctx[pos..pos + ver.len()].copy_from_slice(ver);
+        let mut j = 0;
+        while j < ver.len() {
+            ctx[pos + j] = ver[j];
+            j += 1;
+        }
         pos += ver.len();
+        i += 1;
     }
-
-    // Operation context for measurements.
     let op = b"responder-measurements signing";
     let pad = SPDM_CONTEXT_LEN - op.len();
-    ctx[SPDM_PREFIX_LEN + pad..SPDM_PREFIX_LEN + pad + op.len()].copy_from_slice(op);
-
+    let mut j = 0;
+    while j < op.len() {
+        ctx[SPDM_PREFIX_LEN + pad + j] = op[j];
+        j += 1;
+    }
     ctx
+}
+
+/// Returns the 100-byte SPDM signing context for MEASUREMENTS, by version.
+fn signing_context(version: SpdmVersion) -> &'static [u8; SPDM_SIGNING_CONTEXT_LEN] {
+    match version {
+        SpdmVersion::V10 => &SIGNING_CTX_V10,
+        SpdmVersion::V11 => &SIGNING_CTX_V11,
+        SpdmVersion::V12 => &SIGNING_CTX_V12,
+        SpdmVersion::V13 => &SIGNING_CTX_V13,
+    }
 }
 
 /// Hash(signing_context || L1_hash) → TBS digest for signing.

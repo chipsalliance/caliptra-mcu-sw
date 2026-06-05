@@ -286,8 +286,8 @@ pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
     pubkey_y: &mut [u8; 48],
 ) -> McuResult<()> {
     certify_key_response(alloc, label, |resp_prefix, _cert| {
-        pubkey_x.copy_from_slice(&resp_prefix.derived_pubkey_x);
-        pubkey_y.copy_from_slice(&resp_prefix.derived_pubkey_y);
+        *pubkey_x = resp_prefix.derived_pubkey_x;
+        *pubkey_y = resp_prefix.derived_pubkey_y;
         Ok(())
     })
     .await

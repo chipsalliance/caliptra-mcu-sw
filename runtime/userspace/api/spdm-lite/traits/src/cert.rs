@@ -98,6 +98,12 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     }
 
     /// Validate an incoming SET_CERTIFICATE chain before it is committed.
+    ///
+    /// The PAL implementation **must** verify that `SHA-384(first DER
+    /// certificate in `cert_chain`) == *root_hash`. The stack no longer
+    /// performs this check, since the PAL already has access to hashing
+    /// machinery and avoids a duplicate async hash pass at the SPDM
+    /// responder layer.
     async fn validate_set_certificate_chain(
         &self,
         _io: &Self::Io<'_>,

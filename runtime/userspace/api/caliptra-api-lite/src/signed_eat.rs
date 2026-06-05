@@ -97,39 +97,50 @@ impl<'a> SignedEatLite<'a> {
         kid: &[u8],
         eat_buffer: &mut [u8],
     ) -> McuResult<usize> {
-        if kid.len() != KID_LEN {
-            return Err(INVARIANT);
-        }
+        let kid_arr: &[u8; KID_LEN] = kid.try_into().map_err(|_| INVARIANT)?;
         let cose_len = cose_sign1_len(payload.len());
         if eat_buffer.len() < cose_len {
             return Err(INVARIANT);
         }
 
-        let signature = self.sign_cose_sig_context(alloc, payload).await?;
+        // Walk `eat_buffer` with `split_first_chunk_mut` so each
+        // fixed-size write becomes a panic-free `*chunk = SRC` array
+        // assignment instead of a `copy_from_slice` length-check.
+        let rest = eat_buffer;
+        let (preamble_slot, rest) = rest
+            .split_first_chunk_mut::<{ COSE_PREAMBLE.len() }>()
+            .ok_or(INVARIANT)?;
+        *preamble_slot = COSE_PREAMBLE;
+        let (kid_slot, rest) = rest.split_first_chunk_mut::<KID_LEN>().ok_or(INVARIANT)?;
+        *kid_slot = *kid_arr;
+        let pl_hdr_len =
+            write_cose_payload_bstr_len(rest, payload.len()).ok_or(INVARIANT)?;
+        let rest = rest.get_mut(pl_hdr_len..).ok_or(INVARIANT)?;
+        let (payload_slot, rest) = rest.split_at_mut_checked(payload.len()).ok_or(INVARIANT)?;
+        // Variable-length payload: still requires `copy_from_slice`,
+        // but only one panic site for this entire function.
+        payload_slot.copy_from_slice(payload);
+        let (sig_hdr_slot, rest) = rest
+            .split_first_chunk_mut::<{ SIGNATURE_BSTR_HEADER.len() }>()
+            .ok_or(INVARIANT)?;
+        *sig_hdr_slot = SIGNATURE_BSTR_HEADER;
+        let (sig_slot, _) = rest
+            .split_first_chunk_mut::<ECDSA_P384_SIGNATURE_LEN>()
+            .ok_or(INVARIANT)?;
+        self.sign_cose_sig_context(alloc, payload, sig_slot).await?;
 
-        let mut pos = 0;
-        eat_buffer[pos..pos + COSE_PREAMBLE.len()].copy_from_slice(&COSE_PREAMBLE);
-        pos += COSE_PREAMBLE.len();
-        eat_buffer[pos..pos + KID_LEN].copy_from_slice(kid);
-        pos += KID_LEN;
-        pos +=
-            write_cose_payload_bstr_len(&mut eat_buffer[pos..], payload.len()).ok_or(INVARIANT)?;
-        eat_buffer[pos..pos + payload.len()].copy_from_slice(payload);
-        pos += payload.len();
-        eat_buffer[pos..pos + SIGNATURE_BSTR_HEADER.len()].copy_from_slice(&SIGNATURE_BSTR_HEADER);
-        pos += SIGNATURE_BSTR_HEADER.len();
-        eat_buffer[pos..pos + ECDSA_P384_SIGNATURE_LEN].copy_from_slice(&signature);
-        pos += ECDSA_P384_SIGNATURE_LEN;
-
-        Ok(pos)
+        Ok(cose_len)
     }
 
     /// Hash the COSE Sig_structure and sign via DPE — all alloc-backed.
+    /// Writes the signature directly into `sig_out` to avoid an extra
+    /// 96-byte buffer in the caller's async frame.
     async fn sign_cose_sig_context<A: ApiAlloc>(
         &self,
         alloc: &A,
         payload: &[u8],
-    ) -> McuResult<[u8; DPE_P384_SIGNATURE_SIZE]> {
+        sig_out: &mut [u8; DPE_P384_SIGNATURE_SIZE],
+    ) -> McuResult<()> {
         let mut state = sha_init(alloc, HashAlgo::Sha384, &SIG_PREAMBLE).await?;
         let mut payload_header = [0u8; 9];
         let payload_header_len =
@@ -139,9 +150,8 @@ impl<'a> SignedEatLite<'a> {
         let mut hash = [0u8; 48];
         sha_finish(alloc, &mut state, &mut hash).await?;
 
-        let mut sig = [0u8; DPE_P384_SIGNATURE_SIZE];
-        dpe_sign_ecc_p384(alloc, self.key_label, &hash, &mut sig).await?;
-        Ok(sig)
+        dpe_sign_ecc_p384(alloc, self.key_label, &hash, sig_out).await?;
+        Ok(())
     }
 }
 
