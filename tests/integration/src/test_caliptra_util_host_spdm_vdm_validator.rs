@@ -15,7 +15,9 @@ mod test {
     use caliptra_mcu_testing_common::spdm_responder_validator::{
         SpdmValidatorRunner, SERVER_LISTENING,
     };
-    use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use caliptra_mcu_testing_common::{
+        is_emulator_running, spawn_with_emulator_state, wait_for_runtime_start,
+    };
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::process::{exit, Command, Stdio};
@@ -59,13 +61,13 @@ mod test {
         let bridge_port_copy = bridge_port;
 
         // Bridge thread
-        thread::spawn(move || {
+        spawn_with_emulator_state(move || {
             wait_for_runtime_start();
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !is_emulator_running() {
                 exit(-1);
             }
             thread::sleep(Duration::from_secs(5));
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !is_emulator_running() {
                 exit(-1);
             }
 
@@ -130,7 +132,7 @@ mod test {
                 exit(-1);
             });
 
-        while MCU_RUNNING.load(Ordering::Relaxed) {
+        while is_emulator_running() {
             match child.try_wait() {
                 Ok(Some(status)) => {
                     println!(

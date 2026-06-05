@@ -11,7 +11,9 @@ mod test {
     use caliptra_mcu_testing_common::spdm_responder_validator::{
         execute_spdm_attestation, SpdmValidatorRunner, SERVER_LISTENING,
     };
-    use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use caliptra_mcu_testing_common::{
+        is_emulator_running, spawn_with_emulator_state, wait_for_runtime_start,
+    };
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::process::exit;
@@ -53,14 +55,14 @@ mod test {
             exit(-1);
         });
 
-        thread::spawn(move || {
+        spawn_with_emulator_state(move || {
             wait_for_runtime_start();
 
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !is_emulator_running() {
                 exit(-1);
             }
             thread::sleep(Duration::from_secs(5));
-            if !MCU_RUNNING.load(Ordering::Relaxed) {
+            if !is_emulator_running() {
                 exit(-1);
             }
             let listener = TcpListener::bind("127.0.0.1:2323")
