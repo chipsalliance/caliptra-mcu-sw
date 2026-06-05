@@ -2,7 +2,6 @@
 
 use std::{env, error::Error, io, path::Path};
 
-use anyhow::anyhow;
 use caliptra_builder::{elf_size, FwId};
 use caliptra_mcu_builder::firmware;
 use size_history::{
@@ -29,14 +28,14 @@ pub(crate) fn size_history() -> Result<(), anyhow::Error> {
             "ROM prod size",
             firmware::MCU_KERNAL,
         )))
-        .add_builder(Box::new(CaliptraFirmwareBuilder::new(
-            "ROM with-uart size",
-            firmware::MCU_ROM,
-        )))
-        .add_builder(Box::new(CaliptraFirmwareBuilder::new(
-            "FMC size",
-            firmware::MCU_USER,
-        )))
+        // .add_builder(Box::new(CaliptraFirmwareBuilder::new(
+        //     "ROM with-uart size",
+        //     firmware::MCU_ROM,
+        // )))
+        // .add_builder(Box::new(CaliptraFirmwareBuilder::new(
+        //     "FMC size",
+        //     firmware::MCU_USER,
+        // )))
         // .add_builder(Box::new(CaliptraFirmwareBuilder::new(
         //     "App size",
         //     firmware::APP_WITH_UART,
@@ -89,6 +88,7 @@ impl ArtifactBuilder for CaliptraFirmwareBuilder {
     }
 
     fn build_and_measure(&self, workspace: &Path) -> Option<u64> {
+        println!("Custom Step...");
         match self.build_elf(workspace) {
             Ok(size) => Some(size),
             Err(err) => {
@@ -99,16 +99,3 @@ impl ArtifactBuilder for CaliptraFirmwareBuilder {
     }
 }
 
-// pub fn bitstream_download(manifest_path: String) -> Result<(), anyhow::Error> {
-//     let rt = tokio::runtime::Runtime::new()?;
-//     let out_path = rt
-//         .block_on(bitstream_downloader::download_bitstream(Path::new(
-//             manifest_path.as_str(),
-//         )))
-//         .map_err(|e| anyhow::anyhow!("{}", e))?;
-//     let out = out_path
-//         .to_str()
-//         .ok_or_else(|| anyhow!("invalid output file path"))?;
-//     log::info!("Download path bitstream: {}", out);
-//     Ok(())
-// }
