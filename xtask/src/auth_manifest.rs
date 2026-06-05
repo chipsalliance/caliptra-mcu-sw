@@ -53,6 +53,7 @@ pub fn create(soc_images: &[ImageCfg], mcu_image: &ImageCfg, output: &str) -> Re
         None,
         None,
         None,
+        false,
     );
     let path = builder.get_soc_manifest(None)?;
     std::fs::copy(&path, output)?;

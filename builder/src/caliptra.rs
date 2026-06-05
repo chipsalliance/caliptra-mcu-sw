@@ -107,6 +107,7 @@ impl CaliptraBuilder {
         vendor: Option<String>,
         model: Option<String>,
         svn: Option<u16>,
+        use_second_key: bool,
     ) -> Self {
         Self {
             fpga,
@@ -125,8 +126,27 @@ impl CaliptraBuilder {
             owner_config: None,
             auth_manifest_owner_config: None,
             svn,
-            use_second_key: args.use_second_key,
+            use_second_key,
         }
+    }
+
+    pub fn from_args(args: &crate::CaliptraBuildArgs) -> Self {
+        Self::new(
+            args.fpga,
+            false,
+            args.caliptra_rom.clone(),
+            args.caliptra_firmware.clone(),
+            args.soc_manifest.clone(),
+            args.vendor_pk_hash.clone(),
+            args.mcu_firmware.clone(),
+            args.soc_images.clone(),
+            args.mcu_image_cfg.clone(),
+            args.soc_manifest_svn,
+            args.vendor.clone(),
+            args.model.clone(),
+            args.svn,
+            args.use_second_key,
+        )
     }
 
     /// Sets a custom owner configuration for re-signing the FW bundle.
@@ -170,8 +190,12 @@ impl CaliptraBuilder {
             }
             caliptra_firmware.clone()
         } else {
-            let (path, vendor_pk_hash) =
-                Self::compile_caliptra_fw_cached(self.fpga, self.ocp_lock, self.svn, self.use_second_key)?;
+            let (path, vendor_pk_hash) = Self::compile_caliptra_fw_cached(
+                self.fpga,
+                self.ocp_lock,
+                self.svn,
+                self.use_second_key,
+            )?;
             self.vendor_pk_hash = Some(vendor_pk_hash);
             self.caliptra_firmware = Some(path.clone());
             path
@@ -535,7 +559,8 @@ impl CaliptraBuilder {
                 "Caliptra FW bundle version {} not found in cache, compiling...",
                 version
             );
-            let compiled_fw_bundle = Self::compile_caliptra_fw_uncached(fpga, ocp_lock, svn, use_second_key)?.0;
+            let compiled_fw_bundle =
+                Self::compile_caliptra_fw_uncached(fpga, ocp_lock, svn, use_second_key)?.0;
             // std::fs::copy truncates the file to 0 bytes if both paths are the same
             if compiled_fw_bundle != path {
                 std::fs::copy(compiled_fw_bundle, &path)?;

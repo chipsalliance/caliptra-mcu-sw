@@ -706,6 +706,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         vendor.map(|s| s.to_string()),
         model.map(|s| s.to_string()),
         None,
+        false,
     );
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_fw = caliptra_builder.get_caliptra_fw()?;
@@ -727,6 +728,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         None,
         None,
         Some(7),
+        false,
     );
     let caliptra_fw_svn7 = builder_svn7.get_caliptra_fw()?;
 
@@ -744,9 +746,10 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         None,
         None,
         Some(128),
+        false,
     );
     let caliptra_fw_svn128 = builder_svn128.get_caliptra_fw()?;
-    let mut builder_key2 = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
+    let mut builder_key2 = crate::CaliptraBuilder::from_args(&crate::CaliptraBuildArgs {
         fpga: platform == "fpga",
         use_second_key: true,
         ..Default::default()
@@ -911,6 +914,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             vendor.map(|s| s.to_string()),
             model.map(|s| s.to_string()),
             None,
+            false,
         );
         let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
         caliptra_builder.get_soc_manifest(feature_soc_manifest_file.path().to_str())?;

@@ -412,6 +412,7 @@ mod test {
             None,
             None,
             None,
+            false,
         );
         let caliptra_rom = std::fs::read(
             builder
@@ -760,6 +761,7 @@ mod test {
                 None,
                 None,
                 None,
+                false,
             )
         };
 
@@ -965,6 +967,7 @@ mod test {
             None,
             None,
             None,
+            false,
         );
 
         Some(caliptra_builder)

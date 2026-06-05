@@ -55,7 +55,7 @@ pub(crate) fn coverage(analyze_only: bool) -> Result<()> {
             "caliptra-mcu-runtime-fpga",
             "caliptra-mcu-emulator",
             "caliptra-mcu-test-hello",
-            "caliptra-mcu-user-app",
+            "user-app",
             "caliptra-mcu-example-app",
             "caliptra-mcu-libtock_unittest",
             "caliptra-mcu-syscalls_tests",

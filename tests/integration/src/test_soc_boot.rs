@@ -846,6 +846,7 @@ mod test {
             None,
             None,
             None,
+            false,
         );
 
         // Create partition table matching what's used in the build path
@@ -980,6 +981,7 @@ mod test {
             None,
             None,
             None,
+            false,
         );
 
         // Build Caliptra firmware

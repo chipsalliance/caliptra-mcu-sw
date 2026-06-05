@@ -269,6 +269,7 @@ mod test {
             None,
             None,
             None,
+            false,
         );
         let update_caliptra_fw = update_builder
             .get_caliptra_fw()
@@ -704,6 +705,7 @@ mod test {
             None,
             None,
             None,
+            false,
         );
 
         // Create partition table matching what's used in the build path
@@ -824,6 +826,7 @@ mod test {
             None,
             None,
             None,
+            false,
         );
 
         // Build Caliptra firmware

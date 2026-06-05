@@ -51,6 +51,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         None,
         None,
         None,
+        false,
     );
 
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;

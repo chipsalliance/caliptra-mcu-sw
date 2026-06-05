@@ -20,12 +20,12 @@ fn get_fw() -> Result<(Vec<u8>, Vec<u8>, [u8; 48], Vec<u8>)> {
         Ok((fw, fw_key2, pk_hash, manifest))
     } else {
         let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
-        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+        let mut builder = CaliptraBuilder::from_args(&CaliptraBuildArgs {
             mcu_firmware: Some(mcu_runtime_path.clone()),
             ..Default::default()
         });
         let fw = std::fs::read(builder.get_caliptra_fw()?).unwrap();
-        let mut builder_key2 = CaliptraBuilder::new(&CaliptraBuildArgs {
+        let mut builder_key2 = CaliptraBuilder::from_args(&CaliptraBuildArgs {
             mcu_firmware: Some(mcu_runtime_path),
             use_second_key: true,
             ..Default::default()

@@ -853,6 +853,7 @@ mod test {
                     None,
                     None,
                     None,
+                    false,
                 );
                 let caliptra_rom = caliptra_builder
                     .get_caliptra_rom()

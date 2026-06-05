@@ -2305,46 +2305,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-mcu-user-app"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "async-trait",
- "caliptra-api",
- "caliptra-mcu-common-commands",
- "caliptra-mcu-config",
- "caliptra-mcu-config-emulator",
- "caliptra-mcu-config-fpga",
- "caliptra-mcu-libapi-caliptra",
- "caliptra-mcu-libapi-emulated-caliptra",
- "caliptra-mcu-libsyscall-caliptra",
- "caliptra-mcu-libtock",
- "caliptra-mcu-libtock_console",
- "caliptra-mcu-libtock_debug_panic",
- "caliptra-mcu-libtock_platform",
- "caliptra-mcu-libtock_runtime",
- "caliptra-mcu-libtock_unittest",
- "caliptra-mcu-libtockasync",
- "caliptra-mcu-mbox-common",
- "caliptra-mcu-mbox-lib",
- "caliptra-mcu-mctp-vdm-common",
- "caliptra-mcu-mctp-vdm-lib",
- "caliptra-mcu-pldm-common",
- "caliptra-mcu-pldm-lib",
- "caliptra-mcu-romtime",
- "caliptra-mcu-spdm-lib",
- "caliptra-ocp-eat",
- "constant_time_eq 0.4.2",
- "critical-section",
- "embassy-executor",
- "embassy-sync",
- "embedded-alloc",
- "portable-atomic",
- "static_cell",
- "zerocopy",
-]
-
-[[package]]
 name = "caliptra-mcu-xtask"
 version = "0.1.0"
 dependencies = [
@@ -3406,7 +3366,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3769,11 +3729,11 @@ dependencies = [
 
 [[package]]
 name = "home"
-version = "0.5.12"
+version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
+checksum = "589533453244b0995c858700322199b2becb13b627df2851f64a2775d024abcf"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4341,7 +4301,7 @@ dependencies = [
  "const-oid 0.10.2",
  "hybrid-array 0.4.12",
  "module-lattice",
- "pkcs8 0.11.0",
+ "pkcs8 0.11.0-rc.11",
  "rand_core 0.10.1",
  "sha3 0.11.0",
  "signature 3.0.0",
@@ -4662,9 +4622,9 @@ dependencies = [
 
 [[package]]
 name = "pkcs8"
-version = "0.11.0"
+version = "0.11.0-rc.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "451913da69c775a56034ea8d9003d27ee8948e12443eae7c038ba100a4f21cb7"
+checksum = "12922b6296c06eb741b02d7b5161e3aaa22864af38dfa025a1a3ba3f68c84577"
 dependencies = [
  "der 0.8.0",
  "spki 0.8.0",
@@ -5157,7 +5117,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.11.0",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5677,7 +5637,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6183,6 +6143,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "user-app"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "async-trait",
+ "caliptra-api",
+ "caliptra-mcu-common-commands",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-libapi-caliptra",
+ "caliptra-mcu-libapi-emulated-caliptra",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_debug_panic",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
+ "caliptra-mcu-libtockasync",
+ "caliptra-mcu-mbox-common",
+ "caliptra-mcu-mbox-lib",
+ "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-mctp-vdm-lib",
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-lib",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-spdm-lib",
+ "caliptra-ocp-eat",
+ "constant_time_eq 0.4.2",
+ "critical-section",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+ "portable-atomic",
+ "static_cell",
+ "zerocopy",
+]
+
+[[package]]
 name = "utf8_iter"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6373,7 +6373,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

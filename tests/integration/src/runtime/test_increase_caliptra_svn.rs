@@ -43,6 +43,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
                 None,
                 None,
                 Some(0),
+                false,
             );
             let fw_svn0 = std::fs::read(builder.get_caliptra_fw()?).unwrap();
             let mut builder = CaliptraBuilder::new(
@@ -59,6 +60,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
                 None,
                 None,
                 Some(7),
+                false,
             );
             let fw_svn7 = std::fs::read(builder.get_caliptra_fw()?).unwrap();
             let pk_hash_str = builder.get_vendor_pk_hash()?.to_string();
@@ -249,6 +251,7 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
                 None,
                 None,
                 Some(128),
+                false,
             );
             let fw = std::fs::read(builder.get_caliptra_fw()?).unwrap();
             let pk_hash_str = builder.get_vendor_pk_hash()?.to_string();

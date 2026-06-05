@@ -116,6 +116,7 @@ mod test {
             None,
             None,
             None,
+            false,
         );
         let fw_path = builder
             .get_caliptra_fw()
@@ -399,6 +400,7 @@ mod test {
             None,
             None,
             None,
+            false,
         )
         .with_owner_config(custom_owner_config)
         .with_auth_manifest_owner_config(auth_manifest_owner_config);
