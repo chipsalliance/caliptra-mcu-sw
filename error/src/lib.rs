@@ -179,6 +179,11 @@ impl McuError {
             "Cold boot ROM integrity check failed"
         ),
         (
+            ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED,
+            0x1_001a,
+            "INSTALL_OWNER_PK_HASH mailbox command failed"
+        ),
+        (
             ROM_LC_TRANSITION_ERROR,
             0x2_0000,
             "Lifecycle transition error"

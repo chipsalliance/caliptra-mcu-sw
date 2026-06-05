@@ -17,7 +17,8 @@ use crate::hil::FlashStorage;
 use crate::RomEnv;
 use caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacResp, CmShaReqHdr,
-    CmShaResp, CmStableKeyType, CommandId, EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader,
+    CmShaResp, CmStableKeyType, CommandId, EcdsaVerifyReq, InstallOwnerPkHashReq,
+    InstallOwnerPkHashResp, MailboxReqHeader, MailboxRespHeader,
 };
 use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_romtime::Otp;
@@ -126,6 +127,42 @@ pub fn load_owner_pkhash(otp: &Otp) -> Option<OwnerPkHash> {
     let hash: [u8; 48] = otp.read_cptra_ss_owner_pk_hash().ok()?;
     let hash: [u32; 12] = transmute!(hash);
     Some(OwnerPkHash(hash))
+}
+
+/// Installs the owner public key hash into Caliptra core via the
+/// `INSTALL_OWNER_PK_HASH` mailbox command, used because the
+/// `cptra_owner_pk_hash` register is locked once `cptra_fuse_wr_done` is set.
+///
+/// The `digest` payload uses the same word layout as the register, so the
+/// `OwnerPkHash` words are forwarded unchanged.
+pub(crate) fn install_owner_pk_hash(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    owner_pk_hash: &OwnerPkHash,
+) -> McuResult<()> {
+    caliptra_mcu_romtime::print!("[mcu-rom-dot] Installing owner PK hash: ");
+    for word in owner_pk_hash.0.iter() {
+        caliptra_mcu_romtime::print!("{}", HexWord(*word));
+    }
+    caliptra_mcu_romtime::println!("");
+
+    let req = InstallOwnerPkHashReq {
+        hdr: MailboxReqHeader::default(),
+        digest: owner_pk_hash.0,
+    };
+    let mut req32: [u32; core::mem::size_of::<InstallOwnerPkHashReq>() / 4] = transmute!(req);
+    let mut resp32: [u32; core::mem::size_of::<InstallOwnerPkHashResp>() / 4] =
+        transmute!(InstallOwnerPkHashResp::default());
+
+    if let Err(err) = soc_manager.exec_mailbox_req_u32(
+        CommandId::INSTALL_OWNER_PK_HASH.into(),
+        &mut req32,
+        &mut resp32,
+    ) {
+        let _ = err;
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] INSTALL_OWNER_PK_HASH failed");
+        return Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED);
+    }
+    Ok(())
 }
 
 /// Caliptra Cryptographic Mailbox Key (CMK) handle.

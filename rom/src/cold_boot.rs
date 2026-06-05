@@ -705,10 +705,22 @@ impl BootFlow for ColdBoot {
             device_ownership_transfer::load_owner_pkhash(&env.otp)
         };
 
-        // Write owner PK hash to Caliptra if available
+        // Deliver the owner PK hash via mailbox; the cptra_owner_pk_hash register
+        // is locked once fuse write done is set. An all-zero hash means no owner
+        // is provisioned and must not be installed (it would make Caliptra reject
+        // every image).
         if let Some(ref owner) = owner_pk_hash {
-            env.soc.set_owner_pk_hash(owner);
-            env.soc.lock_owner_pk_hash();
+            if owner.0.iter().any(|&word| word != 0) {
+                if let Err(err) =
+                    device_ownership_transfer::install_owner_pk_hash(&mut env.soc_manager, owner)
+                {
+                    caliptra_mcu_romtime::println!(
+                        "[mcu-rom] Fatal error installing owner PK hash: {}",
+                        HexWord(err.into())
+                    );
+                    fatal_error(err);
+                }
+            }
         }
 
         // Enter I3C services unconditionally if force_i3c_services is set
