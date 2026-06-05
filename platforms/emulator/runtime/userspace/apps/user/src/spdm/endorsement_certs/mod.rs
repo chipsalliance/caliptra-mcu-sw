@@ -42,7 +42,13 @@ async fn populate_idev_cert() -> CertStoreResult<()> {
             .read(0x01, offset)
             .await
             .map_err(|_| CertStoreError::CertReadError)?;
-        cert_buf[offset as usize..offset as usize + 4].copy_from_slice(&word.to_le_bytes());
+        // Panic-free word store: fixed-size array write -> memcpy, no panic.
+        if let Some(slot) = cert_buf
+            .get_mut(offset as usize..)
+            .and_then(|s| s.first_chunk_mut::<4>())
+        {
+            *slot = word.to_le_bytes();
+        }
         offset += 4;
     }
     // Handle remaining 3 bytes (547 % 4 == 3).
@@ -54,8 +60,13 @@ async fn populate_idev_cert() -> CertStoreResult<()> {
             .map_err(|_| CertStoreError::CertReadError)?;
         let word_bytes = word.to_le_bytes();
         let skip = (offset - tail_offset) as usize;
-        for i in skip..4 {
-            cert_buf[tail_offset as usize + i] = word_bytes[i];
+        // Panic-free tail store: copy word_bytes[skip..] without indexing.
+        for (d, s) in cert_buf
+            .iter_mut()
+            .skip(tail_offset as usize + skip)
+            .zip(word_bytes.iter().skip(skip))
+        {
+            *d = *s;
         }
     }
 
@@ -131,7 +142,10 @@ impl PayloadStream for OtpPayloadStream {
                 .read(self.partition_id, self.cursor as u32)
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
-            buffer[written..written + 4].copy_from_slice(&word.to_le_bytes());
+            // Fixed-size array write -> memcpy, no panic.
+            if let Some(slot) = buffer.get_mut(written..).and_then(|s| s.first_chunk_mut::<4>()) {
+                *slot = word.to_le_bytes();
+            }
             written += 4;
             self.cursor += 4;
         }
@@ -145,8 +159,10 @@ impl PayloadStream for OtpPayloadStream {
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
             let word_bytes = word.to_le_bytes();
-            let n = tail_len.min(buffer.len() - written);
-            buffer[written..written + n].copy_from_slice(&word_bytes[..n]);
+            let n = tail_len.min(buffer.len().saturating_sub(written));
+            for (d, s) in buffer.iter_mut().skip(written).zip(word_bytes.iter().take(n)) {
+                *d = *s;
+            }
             written += n;
             self.cursor += n;
         }
@@ -227,7 +243,8 @@ impl EndorsementCertChainTrait for EndorsementCertChain<'_> {
         if asym_algo != AsymAlgo::EccP384 {
             return Err(CertStoreError::UnsupportedAsymAlgo);
         }
-        root_hash.copy_from_slice(&self.root_cert_hash);
+        // Equal fixed-size arrays: a direct copy lowers to memcpy, no panic.
+        *root_hash = self.root_cert_hash;
         Ok(())
     }
 
@@ -257,8 +274,18 @@ impl EndorsementCertChainTrait for EndorsementCertChain<'_> {
 
         for cert in self.root_cert_chain.iter() {
             if cert_offset < cert.len() {
-                let len = (cert.len() - cert_offset).min(buf.len() - pos);
-                buf[pos..pos + len].copy_from_slice(&cert[cert_offset..cert_offset + len]);
+                let len = cert
+                    .len()
+                    .saturating_sub(cert_offset)
+                    .min(buf.len().saturating_sub(pos));
+                if let (Some(dst), Some(src)) = (
+                    buf.get_mut(pos..pos + len),
+                    cert.get(cert_offset..cert_offset + len),
+                ) {
+                    for (d, s) in dst.iter_mut().zip(src.iter()) {
+                        *d = *s;
+                    }
+                }
                 pos += len;
                 cert_offset = 0; // Reset offset for subsequent certs
                 if pos == buf.len() {
