@@ -22,12 +22,40 @@ pub async fn generate_claims(
 ) -> McuResult<usize> {
     let pcr_value = get_pcr_value(alloc, PLATFORM_STATE_PCR_INDEX).await?;
 
-    if claims_buf.len() < EAT_PAYLOAD_LEN {
-        return Err(mcu_error::codes::INTERNAL_BUG);
+    // Nonce from SPDM is variable-length; pad/truncate to 32 bytes.
+    // `iter_mut().zip(...)` avoids the `copy_from_slice` length-check
+    // panic site (and its file/Location rodata cost).
+    let mut nonce_buf = [0u8; 32];
+    for (dst, src) in nonce_buf.iter_mut().zip(nonce.iter().take(32)) {
+        *dst = *src;
     }
-    claims_buf[..EAT_PAYLOAD_LEN].copy_from_slice(&EAT_PAYLOAD_TEMPLATE);
-    claims_buf[NONCE_OFFSET..NONCE_OFFSET + SPDM_NONCE_LEN].copy_from_slice(nonce);
-    claims_buf[MEASUREMENT_DIGEST_OFFSETS[0]..MEASUREMENT_DIGEST_OFFSETS[0] + 48]
-        .copy_from_slice(&pcr_value);
+
+    // Convert the output prefix to a fixed-size array reference once;
+    // this is the only panic site for the whole function (single
+    // `Location` shared by all writes below).
+    let claims_array: &mut [u8; EAT_PAYLOAD_LEN] = claims_buf
+        .first_chunk_mut::<EAT_PAYLOAD_LEN>()
+        .ok_or(mcu_error::codes::INTERNAL_BUG)?;
+    *claims_array = EAT_PAYLOAD_TEMPLATE;
+
+    // Splice nonce and PCR digest at compile-time-known offsets.
+    const _: () = assert!(NONCE_OFFSET + 32 <= EAT_PAYLOAD_LEN);
+    const _: () = assert!(MEASUREMENT_DIGEST_OFFSETS[0] + 48 <= EAT_PAYLOAD_LEN);
+    // SAFETY: the const asserts above prove both writes stay inside
+    // the `[u8; EAT_PAYLOAD_LEN]` `claims_array`. Source slices are
+    // 32 and 48 bytes respectively, matching the copy lengths.
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            nonce_buf.as_ptr(),
+            claims_array.as_mut_ptr().add(NONCE_OFFSET),
+            32,
+        );
+        core::ptr::copy_nonoverlapping(
+            pcr_value.as_ptr(),
+            claims_array.as_mut_ptr().add(MEASUREMENT_DIGEST_OFFSETS[0]),
+            48,
+        );
+    }
+
     Ok(EAT_PAYLOAD_LEN)
 }
