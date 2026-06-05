@@ -224,11 +224,13 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
 
-    // Sign the TBS hash.
+    // Sign the TBS hash directly into the response's signature slot, avoiding
+    // a 96-byte stack buffer that would otherwise live across the sign .await.
     let asym_algo = state.asym_algo();
-    let signature = &mut resp[signature_offset..signature_offset + ECC_P384_SIGNATURE_SIZE];
-    let sig_len = pal
-        .sign_hash(io, slot_id, asym_algo, &hash, signature)
+    let sig_slot = resp
+        .get_mut(signature_offset..signature_offset + ECC_P384_SIGNATURE_SIZE)
+        .ok_or(SPDM_UNSPECIFIED)?;
+    let sig_len = pal.sign_hash(io, slot_id, asym_algo, &hash, sig_slot)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if sig_len != ECC_P384_SIGNATURE_SIZE {

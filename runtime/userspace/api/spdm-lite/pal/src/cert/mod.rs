@@ -313,7 +313,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             let managed = managed
                 .write_updated(algo, key_pair_id, cert_info, root_hash, data)
                 .await?;
-            let cert_slot = self.cert_store.cert_slot_mut(idx);
+            let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
             cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
             cert_slot.key_pair_id = Some(key_pair_id);
             cert_slot.cert_info = Some(cert_info);
@@ -344,7 +344,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
             };
             let managed = managed.erase_updated(algo).await?;
-            let cert_slot = self.cert_store.cert_slot_mut(idx);
+            let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
             cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
             cert_slot.clear_metadata();
             self.cert_store.invalidate_cache(slot);

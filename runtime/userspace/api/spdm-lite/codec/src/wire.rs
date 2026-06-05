@@ -15,7 +15,7 @@
 //! Errors are a single ZST so `Result<T, WireError>` shares the same
 //! niche as `McuResult<T>` after enum-niche optimisation.
 
-use core::mem::{size_of, size_of_val};
+use core::mem::size_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -48,20 +48,21 @@ impl<'b> WireWriter<'b> {
     /// payloads or crypto output buffers).
     #[inline]
     pub fn reserve(&mut self, n: usize) -> Result<&mut [u8], WireError> {
-        if self.remaining() < n {
-            return Err(WireError);
-        }
         let start = self.pos;
-        self.pos += n;
-        Ok(&mut self.buf[start..start + n])
+        let end = start.checked_add(n).ok_or(WireError)?;
+        let slice = self.buf.get_mut(start..end).ok_or(WireError)?;
+        self.pos = end;
+        Ok(slice)
     }
 
     /// Write a whole zerocopy value at the current position.
     #[inline]
     pub fn write<T: IntoBytes + Immutable + ?Sized>(&mut self, v: &T) -> Result<(), WireError> {
-        let n = size_of_val(v);
-        let dst = self.reserve(n)?;
-        dst.copy_from_slice(v.as_bytes());
+        let bytes = v.as_bytes();
+        let dst = self.reserve(bytes.len())?;
+        for (d, s) in dst.iter_mut().zip(bytes) {
+            *d = *s;
+        }
         Ok(())
     }
 

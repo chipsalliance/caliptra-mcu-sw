@@ -106,28 +106,35 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         None
     };
 
-    // Build response body (without signature — appended after M1 finalize).
-    let body_no_sig = ChallengeAuthRsp {
+    // Build the full response with a zeroed signature placeholder, then sign
+    // into the trailing signature slot in place. This avoids a 96-byte stack
+    // buffer that would live across the sign `.await`, and avoids building the
+    // response twice.
+    const ZERO_SIG: [u8; ECC_P384_SIGNATURE_SIZE] = [0u8; ECC_P384_SIGNATURE_SIZE];
+    let body = ChallengeAuthRsp {
         slot_id,
         cert_chain_hash: &cert_chain_hash,
         nonce: &nonce,
         meas_summary_hash: meas_hash_ref,
         opaque_len: 0,
         requester_context: requester_context.as_ref(),
-        signature: &[],
+        signature: &ZERO_SIG,
     };
 
-    let resp =
-        build_response(pal, io, state.version, &body_no_sig).map_err(|_| SPDM_UNSPECIFIED)?;
+    let mut resp = build_response(pal, io, state.version, &body).map_err(|_| SPDM_UNSPECIFIED)?;
+
+    let head = pal.header_size();
+    // The signature is the trailing field; everything before it is the
+    // no-signature message that gets appended to M1.
+    let no_sig_len = body
+        .encoded_size()
+        .checked_sub(ECC_P384_SIGNATURE_SIZE)
+        .ok_or(SPDM_UNSPECIFIED)?;
 
     // Append CHALLENGE_AUTH response (without signature) to M1.
     // Only the SPDM message bytes, not transport padding.
-    let head = pal.header_size();
-    let spdm_len = body_no_sig.encoded_size();
-    state
-        .transcript
-        .append_m1(pal, io, &resp[head..head + spdm_len])
-        .await?;
+    let prefix = resp.get(head..head + no_sig_len).ok_or(SPDM_UNSPECIFIED)?;
+    state.transcript.append_m1(pal, io, prefix).await?;
 
     // Finalize M1 transcript hash.
     let mut m1_hash = [0u8; SHA384_HASH_SIZE];
@@ -139,37 +146,25 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
 
-    // Sign the TBS hash.
-    let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
+    // Sign the TBS hash directly into the response's signature slot.
+    let sig_slot = resp
+        .get_mut(head + no_sig_len..head + no_sig_len + ECC_P384_SIGNATURE_SIZE)
+        .ok_or(SPDM_UNSPECIFIED)?;
     let sig_len = pal
-        .sign_hash(io, slot_id, asym_algo, &tbs_hash, &mut signature)
+        .sign_hash(io, slot_id, asym_algo, &tbs_hash, sig_slot)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if sig_len != ECC_P384_SIGNATURE_SIZE {
         return Err(SPDM_UNSPECIFIED);
     }
 
-    // Now rebuild the full response with signature.
-    let full_body = ChallengeAuthRsp {
-        slot_id,
-        cert_chain_hash: &cert_chain_hash,
-        nonce: &nonce,
-        meas_summary_hash: meas_hash_ref,
-        opaque_len: 0,
-        requester_context: requester_context.as_ref(),
-        signature: &signature,
-    };
-
-    let full_resp =
-        build_response(pal, io, state.version, &full_body).map_err(|_| SPDM_UNSPECIFIED)?;
-
     // Transition to authenticated.
     state.phase = Phase::AfterCertificate; // TODO: add Phase::Authenticated
 
-    Ok(full_resp)
+    Ok(resp)
 }
 
-/// Build the 100-byte SPDM signing context for CHALLENGE_AUTH.
+/// Build the SPDM signing context for CHALLENGE_AUTH.
 fn build_signing_context(version: SpdmVersion) -> [u8; SPDM_SIGNING_CONTEXT_LEN] {
     let mut ctx = [0u8; SPDM_SIGNING_CONTEXT_LEN];
 
@@ -183,17 +178,15 @@ fn build_signing_context(version: SpdmVersion) -> [u8; SPDM_SIGNING_CONTEXT_LEN]
     };
     let mut pos = 0;
     for _ in 0..4 {
-        ctx[pos..pos + base.len()].copy_from_slice(base);
-        pos += base.len();
-        ctx[pos..pos + ver.len()].copy_from_slice(ver);
-        pos += ver.len();
         // Each block is 16 bytes: 11 + 5 = 16.
+        pos = crate::build::write_fixed(&mut ctx, pos, base);
+        pos = crate::build::write_fixed(&mut ctx, pos, ver);
     }
 
     // Operation context: zero-padded on the left, string at the end.
     let op = b"responder-challenge_auth signing";
-    let pad = SPDM_CONTEXT_LEN - op.len();
-    ctx[SPDM_PREFIX_LEN + pad..SPDM_PREFIX_LEN + pad + op.len()].copy_from_slice(op);
+    let pad = SPDM_CONTEXT_LEN.saturating_sub(op.len());
+    crate::build::write_fixed(&mut ctx, SPDM_PREFIX_LEN + pad, op);
 
     ctx
 }

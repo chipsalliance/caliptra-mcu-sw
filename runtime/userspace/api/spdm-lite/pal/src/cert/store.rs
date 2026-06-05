@@ -59,9 +59,9 @@ impl SharedCertStore {
     }
 
     #[allow(clippy::mut_from_ref)]
-    pub(crate) fn cert_slot_mut(&self, idx: usize) -> &mut CertSlot {
+    pub(crate) fn cert_slot_mut(&self, idx: usize) -> Option<&mut CertSlot> {
         // SAFETY: single-task invariant.
-        unsafe { &mut (*self.cert_slots.get())[idx] }
+        unsafe { (*self.cert_slots.get()).get_mut(idx) }
     }
 
     // ---------------------------------------------------------------
@@ -104,7 +104,9 @@ impl SharedCertStore {
             return;
         }
         let mut entry = [0u8; 48];
-        entry[..digest.len()].copy_from_slice(digest);
+        for (d, s) in entry.iter_mut().zip(digest) {
+            *d = *s;
+        }
         unsafe {
             (*self.cached_chain_digest.get())[slot as usize] = Some(entry);
         }
@@ -147,7 +149,7 @@ impl SharedCertStore {
         let mut hash = [0u8; 48];
         sha_finish(alloc, &mut state, &mut hash).await?;
 
-        let slot = self.cert_slot_mut(idx);
+        let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
         slot.endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(chain, hash));
         slot.key_pair_id = Some(key_pair_id);
         slot.cert_info = Some(DEFAULT_CERT_INFO);
@@ -171,7 +173,7 @@ impl SharedCertStore {
         }
         let mut endorsement = ManagedEndorsement::new(spdm_slot, driver_num, base, capacity);
         endorsement.load().await?;
-        let slot = self.cert_slot_mut(idx);
+        let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
         slot.key_pair_id = endorsement.key_pair_id();
         slot.cert_info = endorsement.cert_info();
         slot.endorsement = SlotEndorsement::Managed(endorsement);

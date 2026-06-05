@@ -211,8 +211,11 @@ impl ReadOnlyEndorsement {
     }
 
     fn root_cert_hash(&self, _algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()> {
-        let n = out.len().min(self.root_cert_hash.len());
-        out[..n].copy_from_slice(&self.root_cert_hash[..n]);
+        // Copies `min(out.len(), root_cert_hash.len())` bytes with no
+        // length-equality check, so no `copy_from_slice` panic path.
+        for (d, s) in out.iter_mut().zip(&self.root_cert_hash) {
+            *d = *s;
+        }
         Ok(())
     }
 
@@ -225,8 +228,18 @@ impl ReadOnlyEndorsement {
         let mut pos = 0;
         for cert in self.chain.iter() {
             if cert_offset < cert.len() {
-                let len = (cert.len() - cert_offset).min(buf.len() - pos);
-                buf[pos..pos + len].copy_from_slice(&cert[cert_offset..cert_offset + len]);
+                let len = cert
+                    .len()
+                    .saturating_sub(cert_offset)
+                    .min(buf.len().saturating_sub(pos));
+                if let (Some(dst), Some(src)) = (
+                    buf.get_mut(pos..pos + len),
+                    cert.get(cert_offset..cert_offset + len),
+                ) {
+                    for (d, s) in dst.iter_mut().zip(src) {
+                        *d = *s;
+                    }
+                }
                 pos += len;
                 cert_offset = 0;
                 if pos == buf.len() {
