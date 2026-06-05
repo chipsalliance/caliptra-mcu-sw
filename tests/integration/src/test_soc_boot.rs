@@ -277,8 +277,39 @@ mod test {
         new_options.fuse_soc_manifest_max_svn = Some(13);
         new_options.device_security_state = Some(DeviceLifecycle::Manufacturing);
 
-        // Replace the SoC Manifest in the PLDM package
         let builder = new_options.builder.as_mut().unwrap();
+        if opts.primary_flash_image_path.is_some() {
+            let flash_offset = opts
+                .partition_table
+                .as_ref()
+                .and_then(|pt| pt.get_active_partition().1.as_ref().map(|p| p.offset))
+                .unwrap_or(0);
+            let (_, flash_image_path) = create_flash_image_with_owner_manifest(
+                Some(
+                    builder
+                        .get_caliptra_fw()
+                        .expect("Failed to get Caliptra firmware"),
+                ),
+                Some(
+                    builder
+                        .get_soc_manifest(None)
+                        .expect("Failed to get SoC manifest"),
+                ),
+                Some(opts.runtime.clone()),
+                Some(
+                    builder
+                        .get_owner_auth_manifest(None)
+                        .expect("Failed to get Owner Authorization Manifest"),
+                ),
+                Some(new_options.soc_images.clone()),
+                opts.partition_table.clone(),
+                flash_offset,
+                new_options.soc_images_paths.clone(),
+            );
+            new_options.primary_flash_image_path = Some(flash_image_path.clone());
+            new_options.secondary_flash_image_path = Some(flash_image_path);
+        }
+
         let (_, flash_image_path) = create_flash_image_with_owner_manifest(
             Some(
                 builder
