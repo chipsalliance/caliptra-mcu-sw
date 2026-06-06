@@ -2,7 +2,7 @@
 
 use caliptra_mcu_libapi_caliptra::certificate::{
     AsymAlgo, CertContext, IDEV_ECC_CSR_MAX_SIZE, KEY_LABEL_SIZE, MAX_ATTESTED_CSR_SIZE,
-    MAX_ECC_CERT_SIZE,
+    MAX_CERT_CHUNK_SIZE, MAX_ECC_CERT_SIZE,
 };
 use caliptra_mcu_romtime::println;
 use caliptra_mcu_romtime::test_exit;
@@ -188,10 +188,9 @@ pub async fn test_get_cert_chain() {
     println!("Starting Caliptra mailbox get cert chain test");
 
     let mut cert_chain = [0u8; 4098];
-    const CERT_CHUNK_SIZE: usize = 2048;
 
     let mut cert_mgr = CertContext::new();
-    let mut cert_chunk = [0u8; CERT_CHUNK_SIZE];
+    let mut cert_chunk = [0u8; MAX_CERT_CHUNK_SIZE];
     let mut offset = 0;
 
     let mut cert_chain_complete = false;
@@ -210,7 +209,7 @@ pub async fn test_get_cert_chain() {
             Ok(size) => {
                 println!("Retrieved certificate chain of size: {}", size);
 
-                if size < CERT_CHUNK_SIZE {
+                if size < MAX_CERT_CHUNK_SIZE {
                     println!("Certificate chain retrieval completed");
                     cert_chain_complete = true;
                 }
