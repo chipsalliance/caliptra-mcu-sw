@@ -93,6 +93,7 @@ fn test_emulator_args_creation() {
         fuse_soc_manifest_svn: None,
         fuse_vendor_hashes_prod_partition: None,
         fuse_vendor_test_partition: None,
+        #[cfg(feature = "nwp")]
         network_rom: None,
         stub_warnings: false,
         active_i3c1: false,

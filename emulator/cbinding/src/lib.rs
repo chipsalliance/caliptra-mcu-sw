@@ -378,6 +378,7 @@ pub unsafe extern "C" fn emulator_init(
             config.fuse_vendor_hashes_prod_partition,
         ),
         fuse_vendor_test_partition: convert_optional_c_string(config.fuse_vendor_test_partition),
+        #[cfg(feature = "nwp")]
         network_rom: None,
         stub_warnings: config.stub_warnings != 0,
         active_i3c1: config.active_i3c1 != 0,

@@ -9,6 +9,9 @@ edition = "2021"
 name = "caliptra_mcu_emulator_cbinding"
 crate-type = ["staticlib"]
 
+[features]
+nwp = ["caliptra-mcu-emulator/nwp"]
+
 [dependencies]
 caliptra-mcu-emulator.workspace = true
 libc.workspace = true
