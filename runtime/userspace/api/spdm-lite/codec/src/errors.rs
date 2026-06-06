@@ -18,6 +18,7 @@ pub const SPDM_UNEXPECTED_REQUEST: McuErrorCode = spdm_wire(0x04);
 pub const SPDM_UNSPECIFIED: McuErrorCode = spdm_wire(0x05);
 pub const SPDM_DECRYPT_ERROR: McuErrorCode = spdm_wire(0x06);
 pub const SPDM_UNSUPPORTED_REQUEST: McuErrorCode = spdm_wire(0x07);
+pub const SPDM_SESSION_LIMIT_EXCEEDED: McuErrorCode = spdm_wire(0x0A);
 pub const SPDM_SESSION_REQUIRED: McuErrorCode = spdm_wire(0x0B);
 pub const SPDM_RESET_REQUIRED: McuErrorCode = spdm_wire(0x0C);
 pub const SPDM_LARGE_RESPONSE: McuErrorCode = spdm_wire(0x0F);

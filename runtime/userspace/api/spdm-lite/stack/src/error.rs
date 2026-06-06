@@ -131,8 +131,6 @@ pub const SPDM_SESSION_REQUIRED: SpdmError = SpdmError::new(0x0B);
 pub const SPDM_SESSION_LIMIT_EXCEEDED: SpdmError = SpdmError::new(0x0A);
 /// `ResetRequired` — responder requires a reset before the request can complete.
 pub const SPDM_RESET_REQUIRED: SpdmError = SpdmError::new(0x0C);
-/// `InvalidSession` — session ID does not refer to a valid session.
-pub const SPDM_INVALID_SESSION: SpdmError = SpdmError::new(0x0A);
 /// `DecryptError` — secured-message decryption / MAC verification
 /// failed.
 pub const SPDM_DECRYPT_ERROR: SpdmError = SpdmError::new(0x06);

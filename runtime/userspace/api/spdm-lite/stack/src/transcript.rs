@@ -62,8 +62,10 @@ impl<S> Transcript<S> {
         }
     }
 
-    /// Drops every connection-scoped transcript context. Called by
-    /// the dispatcher on every `GET_VERSION` per SPDM
+    /// Drops every connection-scoped transcript context.
+    ///
+    /// Called by the dispatcher on every `GET_VERSION` so a restarted
+    /// negotiation cannot reuse VCA/M1/L1 state from the prior connection.
     pub fn reset(&mut self) {
         self.vca = None;
         self.m1 = None;

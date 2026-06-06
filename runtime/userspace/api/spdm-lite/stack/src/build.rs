@@ -35,6 +35,18 @@ pub(crate) fn alloc_padded<'a, Pal: SpdmPal>(
     Ok(buf)
 }
 
+pub(crate) fn valid_transport_padding(align: usize, spdm_len: usize, padding: &[u8]) -> bool {
+    if padding.is_empty() {
+        return true;
+    }
+    let expected = if align <= 1 {
+        0
+    } else {
+        (align - (spdm_len % align)) % align
+    };
+    padding.len() == expected && padding.iter().all(|&byte| byte == 0)
+}
+
 /// Allocates and encodes an SPDM response.
 ///
 /// The returned buffer is laid out as:

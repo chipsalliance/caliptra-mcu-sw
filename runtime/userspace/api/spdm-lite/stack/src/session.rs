@@ -14,7 +14,7 @@
 use alloc::alloc::{alloc, Layout};
 use alloc::boxed::Box;
 use mcu_error::codes::OUT_OF_MEMORY;
-use mcu_spdm_lite_codec::SpdmVersion;
+use mcu_spdm_lite_codec::{errors::SPDM_SESSION_LIMIT_EXCEEDED, SpdmVersion};
 use mcu_spdm_lite_traits::{McuResult, SpdmPalHash, SpdmPalIo};
 
 use crate::key_schedule::{spdm_version_str, KeySchedule};
@@ -206,7 +206,7 @@ impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
             .sessions
             .iter()
             .position(|s| s.is_none())
-            .ok_or(mcu_error::codes::INVARIANT)?;
+            .ok_or(SPDM_SESSION_LIMIT_EXCEEDED)?;
 
         // Pick a responder session ID that avoids collision.
         let rsp_id = self.alloc_rsp_session_id(req_session_id)?;
@@ -287,6 +287,6 @@ impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
                 return Ok(rsp_id);
             }
         }
-        Err(mcu_error::codes::INVARIANT)
+        Err(SPDM_SESSION_LIMIT_EXCEEDED)
     }
 }

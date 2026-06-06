@@ -179,7 +179,7 @@ fn locate_alg_structs<'a>(
 ///
 /// # Errors
 ///
-/// * [`SPDM_INVALID_REQUEST`] — any entry fails 's per-entry
+/// * [`SPDM_INVALID_REQUEST`] — any entry fails the per-entry
 ///   rules: `alg_type` must monotonically increase across the array,
 ///   `FixedAlgCount` must equal 2, `ExtAlgCount` must be 0, and
 ///   `AlgSupported` must be non-zero.

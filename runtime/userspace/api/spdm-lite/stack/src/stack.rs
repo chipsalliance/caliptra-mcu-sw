@@ -24,9 +24,8 @@ use zerocopy::FromBytes;
 
 use crate::build::{alloc_padded, build_error_response};
 use crate::error::{
-    SpdmError, SpdmResult, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST, SPDM_INVALID_SESSION,
-    SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST,
-    SPDM_VERSION_MISMATCH,
+    SpdmError, SpdmResult, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST, SPDM_SESSION_REQUIRED,
+    SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
 use crate::key_schedule::SessionKeyType;
 use crate::session::{SessionManager, SessionState};
@@ -383,7 +382,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
                     )
                     .await
                     {
-                        Ok(mut rsp) => {
+                        Ok(Some(mut rsp)) => {
                             #[cfg(feature = "debug-trace")]
                             {
                                 let _ = writeln!(&mut console, "[spdm] sec rsp len={}", rsp.len());
@@ -392,6 +391,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
                                 .send_response(&io, SpdmPalIoKind::SecuredMessage, &mut rsp)
                                 .await?
                         }
+                        Ok(None) => {}
                         Err(e) => {
                             #[cfg(feature = "debug-trace")]
                             {
@@ -564,19 +564,47 @@ async fn handle_secured_request<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-) -> SpdmResult<PalBytes<'a, Pal>> {
+) -> SpdmResult<Option<PalBytes<'a, Pal>>> {
     let req = io.request();
 
     // Parse session_id from the secured message header.
     let (hdr, _) = SecuredMessageHeader::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
     let session_id = hdr.session_id_u32();
+    if sessions.find(session_id).is_none() {
+        return Ok(None);
+    }
 
     match handle_secured_inner(state, sessions, pal, io, session_id).await {
-        Ok(rsp) => Ok(rsp),
+        Ok(rsp) => Ok(Some(rsp)),
         Err(e) => {
-            // On any error, destroy the session (conservative).
-            sessions.remove_and_destroy(session_id);
-            Err(e)
+            let Some(session) = sessions.find_mut(session_id) else {
+                return Ok(None);
+            };
+            let key_type = match session.state {
+                SessionState::HandshakeInProgress => SessionKeyType::ResponseHandshakeKey,
+                SessionState::Established => SessionKeyType::ResponseDataKey,
+            };
+            let error_rsp = [
+                state.version.to_u8(),
+                ReqRespCode::ERROR.0,
+                e.spec_byte(),
+                e.error_data(),
+            ];
+            let rsp = encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                state.version,
+                key_type,
+                &error_rsp,
+            )
+            .await
+            .ok();
+            if e.spec_byte() == SPDM_DECRYPT_ERROR.spec_byte() {
+                sessions.remove_and_destroy(session_id);
+            }
+            Ok(rsp)
         }
     }
 }
@@ -612,7 +640,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
         .map_err(|_| SPDM_INVALID_REQUEST)?;
 
     // ── Look up session ─────────────────────────────────────────────
-    let session = sessions.find_mut(session_id).ok_or(SPDM_INVALID_SESSION)?;
+    let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
 
     // Determine key type based on session state.
     let decrypt_key_type = match session.state {
@@ -626,7 +654,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
 
     // ── Decrypt ─────────────────────────────────────────────────────
     let mut plaintext = pal.alloc_bytes(io, ct_len)?;
-    session
+    if session
         .key_schedule
         .decrypt(
             pal,
@@ -639,7 +667,11 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
             &mut plaintext[..ct_len],
         )
         .await
-        .map_err(|_| SPDM_DECRYPT_ERROR)?;
+        .map_err(|_| SPDM_DECRYPT_ERROR)?
+        != ct_len
+    {
+        return Err(SPDM_DECRYPT_ERROR);
+    }
 
     // ── Parse app_data_length + spdm_msg ────────────────────────────
     if ct_len < 2 {
@@ -659,7 +691,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
         ReqRespCode::FINISH => {
             // FINISH is only valid during handshake.
             if session.state != SessionState::HandshakeInProgress {
-                return Err(SPDM_INVALID_REQUEST);
+                return Err(SPDM_UNEXPECTED_REQUEST);
             }
 
             let finish_rsp =
@@ -700,6 +732,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
             sessions.remove_and_destroy(session_id);
             Ok(rsp)
         }
+        ReqRespCode::KEY_EXCHANGE => Err(SPDM_UNEXPECTED_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST),
     }
 }
@@ -730,7 +763,7 @@ async fn encrypt_secured_spdm_response<'a, Pal: SpdmPal>(
     encode_aad(session_id, rsp_length, &mut rsp_aad).map_err(|_| SPDM_UNSPECIFIED)?;
 
     let mut rsp_ct = pal.alloc_bytes(io, rsp_ct_len)?;
-    let (_, rsp_tag) = session
+    let (rsp_written, rsp_tag) = session
         .key_schedule
         .encrypt(
             pal,
@@ -743,6 +776,9 @@ async fn encrypt_secured_spdm_response<'a, Pal: SpdmPal>(
         )
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
+    if rsp_written != rsp_ct_len {
+        return Err(SPDM_UNSPECIFIED);
+    }
 
     build_secured_response_wire(pal, io, session_id, rsp_length, &rsp_ct, &rsp_tag)
 }

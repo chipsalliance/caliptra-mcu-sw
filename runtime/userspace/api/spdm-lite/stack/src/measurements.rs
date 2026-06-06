@@ -10,14 +10,13 @@ use mcu_spdm_lite_codec::{
 use mcu_spdm_lite_traits::*;
 use zerocopy::{FromBytes, IntoBytes};
 
-use crate::build::alloc_padded;
+use crate::build::{alloc_padded, valid_transport_padding};
 use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
 
 const MEASUREMENTS_FIXED_BODY_SIZE: usize = 1 + 1 + 1 + 3;
 const OPAQUE_DATA_LEN_SIZE: usize = 2;
 const SIGNATURE_REQUEST_FIELDS_SIZE: usize = SPDM_NONCE_LEN + 1; // Nonce + SlotIDParam
-const MAX_TRANSPORT_PADDING_SIZE: usize = 3;
 
 pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State>,
@@ -95,9 +94,7 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
     let transport_padding = &req[spdm_req_len..];
-    if transport_padding.len() > MAX_TRANSPORT_PADDING_SIZE
-        || transport_padding.iter().any(|&byte| byte != 0)
-    {
+    if !valid_transport_padding(pal.send_len_alignment(), spdm_req_len, transport_padding) {
         return Err(SPDM_INVALID_REQUEST);
     }
 
