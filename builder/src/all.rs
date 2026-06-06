@@ -612,7 +612,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             .collect();
     test_roms.extend(cptra_test_roms?);
 
-    let runtime_features = match runtime_features {
+    let mut runtime_features = match runtime_features {
         Some(r) if !r.is_empty() => r.split(",").collect::<Vec<&str>>(),
         _ => {
             if separate_runtimes {
@@ -626,6 +626,13 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             }
         }
     };
+
+    // Propagate hw-2-1 from rom_features to runtime builds so that
+    // staging SRAM is enabled (required when ImageManifest > 16 KB).
+    let propagate_hw_2_1 = rom_features.contains("hw-2-1");
+    if propagate_hw_2_1 && !runtime_features.iter().any(|f| *f == "hw-2-1") {
+        runtime_features.push("hw-2-1");
+    }
 
     let mut base_runtime_features = vec![];
     let mut separate_features = vec![];
@@ -676,7 +683,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let base_runtime_path = base_runtime_file.path().to_str().unwrap();
 
     let base_runtime_features_str = if base_runtime_features.is_empty() {
-        None
+        if propagate_hw_2_1 {
+            Some("hw-2-1".to_string())
+        } else {
+            None
+        }
     } else {
         Some(base_runtime_features.join(","))
     };
@@ -826,8 +837,16 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
             let include_example_app = FEATURES_WITH_EXAMPLE_APP.contains(feature);
 
+            // When hw-2-1 is in rom_features, combine it with each separate
+            // runtime feature so the staging SRAM path is enabled.
+            let combined_features = if propagate_hw_2_1 && *feature != "hw-2-1" {
+                format!("{},hw-2-1", feature)
+            } else {
+                feature.to_string()
+            };
+
             crate::runtime_build_with_apps(&CaliptraBuildArgs {
-                features: Some(feature),
+                features: Some(&combined_features),
                 output_name: Some(feature_runtime_path),
                 example_app: include_example_app,
                 platform: Some(platform),

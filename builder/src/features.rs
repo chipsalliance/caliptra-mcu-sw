@@ -66,4 +66,11 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
 
 /// Features that only require a ROM build (no runtime build).
 /// These are ROM-specific test features that don't have a corresponding runtime feature.
-pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[];
+pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
+    "ocp-lock",
+    "stable-owner-key",
+    "test-dot-recovery",
+    "test-i3c-services",
+    "test-rom-hooks",
+    "test-usb-ocp-recovery",
+];
