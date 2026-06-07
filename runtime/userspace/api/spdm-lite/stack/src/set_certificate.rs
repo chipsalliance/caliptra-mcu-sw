@@ -196,9 +196,7 @@ fn validate_negotiated_set_certificate_algorithms<S, L>(
     Ok(())
 }
 
-fn validate_spdm_cert_chain(
-    payload: &[u8],
-) -> SpdmResult<(&[u8; SHA384_DIGEST_SIZE], &[u8])> {
+fn validate_spdm_cert_chain(payload: &[u8]) -> SpdmResult<(&[u8; SHA384_DIGEST_SIZE], &[u8])> {
     if payload.len() < SPDM_CERT_CHAIN_HDR_LEN {
         return Err(SPDM_INVALID_REQUEST);
     }

@@ -79,9 +79,10 @@ pub async fn cm_import<A: ApiAlloc>(alloc: &A, usage: CmKeyUsage, data: &[u8]) -
         return Err(INTERNAL_BUG);
     }
 
-    let mut cmk = Cmk::default();
-    cmk.0
-        .copy_from_slice(&rsp[MBOX_RESP_HEADER_SIZE..IMPORT_RSP_SIZE]);
+    let cmk = Cmk(*rsp
+        .get(MBOX_RESP_HEADER_SIZE..)
+        .and_then(|s| s.first_chunk::<CMK_SIZE>())
+        .ok_or(INTERNAL_BUG)?);
     Ok(cmk)
 }
 
@@ -93,7 +94,7 @@ pub async fn cm_delete<A: ApiAlloc>(alloc: &A, cmk: &Cmk) -> McuResult<()> {
     let mut req = alloc.alloc(wire_len)?;
     req.fill(0);
     let r = DeleteReq::mut_from_bytes(&mut req[..wire_len]).map_err(|_| INVARIANT)?;
-    r.cmk.copy_from_slice(&cmk.0);
+    r.cmk = cmk.0;
     populate_checksum(CMD_CM_DELETE, &mut req)?;
 
     let mut rsp = alloc.alloc(DELETE_RSP_SIZE)?;

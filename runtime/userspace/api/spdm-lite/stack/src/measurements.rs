@@ -230,7 +230,8 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
     let sig_slot = resp
         .get_mut(signature_offset..signature_offset + ECC_P384_SIGNATURE_SIZE)
         .ok_or(SPDM_UNSPECIFIED)?;
-    let sig_len = pal.sign_hash(io, slot_id, asym_algo, &hash, sig_slot)
+    let sig_len = pal
+        .sign_hash(io, slot_id, asym_algo, &hash, sig_slot)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if sig_len != ECC_P384_SIGNATURE_SIZE {
@@ -535,7 +536,9 @@ async fn write_measurement_block<Pal: SpdmPal>(
     // Build and write the block header.
     let block_hdr =
         DmtfMeasurementBlockHeader::new(info.index, info.is_raw, info.value_type, info.value_size);
-    out[..MEAS_BLOCK_METADATA_SIZE].copy_from_slice(block_hdr.as_bytes());
+    for (d, s) in out.iter_mut().zip(block_hdr.as_bytes()) {
+        *d = *s;
+    }
 
     Ok(MEAS_BLOCK_METADATA_SIZE + value_size)
 }

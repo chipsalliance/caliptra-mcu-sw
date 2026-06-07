@@ -90,10 +90,19 @@ pub async fn ecdh_generate<A: ApiAlloc>(
 
     let ctx_start = MBOX_RESP_HEADER_SIZE;
     let ctx_end = ctx_start + CMB_ECDH_ENCRYPTED_CONTEXT_SIZE;
-    let xd_end = ctx_end + CMB_ECDH_EXCHANGE_DATA_MAX_SIZE;
 
-    context.copy_from_slice(&rsp[ctx_start..ctx_end]);
-    exchange_data.copy_from_slice(&rsp[ctx_end..xd_end]);
+    *context
+        .first_chunk_mut::<CMB_ECDH_ENCRYPTED_CONTEXT_SIZE>()
+        .ok_or(INVARIANT)? = *rsp
+        .get(ctx_start..)
+        .and_then(|s| s.first_chunk::<CMB_ECDH_ENCRYPTED_CONTEXT_SIZE>())
+        .ok_or(INTERNAL_BUG)?;
+    *exchange_data
+        .first_chunk_mut::<CMB_ECDH_EXCHANGE_DATA_MAX_SIZE>()
+        .ok_or(INVARIANT)? = *rsp
+        .get(ctx_end..)
+        .and_then(|s| s.first_chunk::<CMB_ECDH_EXCHANGE_DATA_MAX_SIZE>())
+        .ok_or(INTERNAL_BUG)?;
     Ok(())
 }
 
@@ -121,10 +130,15 @@ pub async fn ecdh_finish<A: ApiAlloc>(
     req.fill(0);
     let prefix_len = size_of::<EcdhFinishReqPrefix>();
     let pfx = EcdhFinishReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
-    pfx.context.copy_from_slice(context);
+    pfx.context = *context
+        .first_chunk::<CMB_ECDH_ENCRYPTED_CONTEXT_SIZE>()
+        .ok_or(INVARIANT)?;
     pfx.key_usage = U32::new(key_usage as u32);
-    req[prefix_len..prefix_len + CMB_ECDH_EXCHANGE_DATA_MAX_SIZE]
-        .copy_from_slice(peer_exchange_data);
+    *req.get_mut(prefix_len..)
+        .and_then(|s| s.first_chunk_mut::<CMB_ECDH_EXCHANGE_DATA_MAX_SIZE>())
+        .ok_or(INVARIANT)? = *peer_exchange_data
+        .first_chunk::<CMB_ECDH_EXCHANGE_DATA_MAX_SIZE>()
+        .ok_or(INVARIANT)?;
     populate_checksum(CMD_CM_ECDH_FINISH, &mut req)?;
 
     let mut rsp = alloc.alloc(FINISH_RSP_SIZE)?;
@@ -133,8 +147,9 @@ pub async fn ecdh_finish<A: ApiAlloc>(
         return Err(INTERNAL_BUG);
     }
 
-    let mut cmk = Cmk::default();
-    cmk.0
-        .copy_from_slice(&rsp[MBOX_RESP_HEADER_SIZE..FINISH_RSP_SIZE]);
+    let cmk = Cmk(*rsp
+        .get(MBOX_RESP_HEADER_SIZE..)
+        .and_then(|s| s.first_chunk::<CMK_SIZE>())
+        .ok_or(INTERNAL_BUG)?);
     Ok(cmk)
 }

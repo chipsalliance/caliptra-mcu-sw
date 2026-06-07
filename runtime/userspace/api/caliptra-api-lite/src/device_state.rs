@@ -96,9 +96,8 @@ pub async fn get_pcr_value<A: ApiAlloc>(
     // Build request (zero nonce — we don't verify the quote signature).
     let mut req = alloc.alloc(REQ_SIZE)?;
     req.fill(0);
-    let (cs_slot, body): (&mut [u8; 4], &mut [u8]) = req
-        .split_first_chunk_mut::<4>()
-        .ok_or(INVARIANT)?;
+    let (cs_slot, body): (&mut [u8; 4], &mut [u8]) =
+        req.split_first_chunk_mut::<4>().ok_or(INVARIANT)?;
     *cs_slot = calc_checksum(CMD_QUOTE_PCRS_ECC384, body).to_le_bytes();
 
     // Execute mailbox command.

@@ -56,8 +56,9 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         if after.len() < REQUESTER_CONTEXT_LEN {
             return Err(SPDM_INVALID_REQUEST);
         }
-        let mut ctx = [0u8; REQUESTER_CONTEXT_LEN];
-        ctx.copy_from_slice(&after[..REQUESTER_CONTEXT_LEN]);
+        let ctx = *after
+            .first_chunk::<REQUESTER_CONTEXT_LEN>()
+            .ok_or(SPDM_INVALID_REQUEST)?;
         requester_context = Some(ctx);
     }
 

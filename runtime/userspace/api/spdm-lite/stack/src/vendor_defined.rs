@@ -10,13 +10,13 @@
 
 use mcu_spdm_lite_codec::{
     decode_vendor_defined_req, ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
-    VendorDefinedRspBody,
+    VendorDefinedRspBody, WireWriter,
 };
 use mcu_spdm_lite_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry, VdmResponse,
     VdmResponseBuffer,
 };
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::FromBytes;
 
 use crate::build::build_response;
 use crate::chunk;
@@ -90,7 +90,11 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
 
     let outcome = {
         let large_slice: &mut [u8] = match large_guard.as_mut() {
-            Some(guard) => &mut guard.buf.as_deref_mut().unwrap()[envelope..envelope + large_cap],
+            Some(guard) => guard
+                .buf
+                .as_deref_mut()
+                .and_then(|buf| buf.get_mut(envelope..envelope + large_cap))
+                .ok_or(SPDM_UNSPECIFIED)?,
             None => &mut [],
         };
         let rsp = VdmResponseBuffer {
@@ -168,21 +172,15 @@ fn write_vendor_defined_envelope(
     let resp_len = u16::try_from(payload_len).map_err(|_| SPDM_UNSPECIFIED)?;
     let hdr = SpdmMsgHdrPdu::new(version, ReqRespCode::VENDOR_DEFINED_RESPONSE);
 
-    let mut o = 0usize;
-    let mut put = |bytes: &[u8]| -> SpdmResult<()> {
-        let end = o.checked_add(bytes.len()).ok_or(SPDM_UNSPECIFIED)?;
-        out.get_mut(o..end)
-            .ok_or(SPDM_UNSPECIFIED)?
-            .copy_from_slice(bytes);
-        o = end;
-        Ok(())
-    };
-
-    put(hdr.as_bytes())?;
-    put(&[0u8, 0u8])?; // param1, param2
-    put(&standard_id.to_le_bytes())?;
-    put(&[vendor_id.len() as u8])?;
-    put(vendor_id)?;
-    put(&resp_len.to_le_bytes())?;
+    let mut w = WireWriter::new(out);
+    w.write(&hdr).map_err(|_| SPDM_UNSPECIFIED)?;
+    w.write_bytes(&[0u8, 0u8]).map_err(|_| SPDM_UNSPECIFIED)?; // param1, param2
+    w.write_bytes(&standard_id.to_le_bytes())
+        .map_err(|_| SPDM_UNSPECIFIED)?;
+    w.write_bytes(&[vendor_id.len() as u8])
+        .map_err(|_| SPDM_UNSPECIFIED)?;
+    w.write_bytes(vendor_id).map_err(|_| SPDM_UNSPECIFIED)?;
+    w.write_bytes(&resp_len.to_le_bytes())
+        .map_err(|_| SPDM_UNSPECIFIED)?;
     Ok(())
 }

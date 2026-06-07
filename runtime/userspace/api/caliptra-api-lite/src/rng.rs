@@ -40,7 +40,7 @@ pub async fn rng_generate<A: ApiAlloc>(alloc: &A, out: &mut [u8]) -> McuResult<(
         r.size = U32::new(out.len() as u32);
     }
     let checksum = calc_checksum(CMD_CM_RANDOM_GENERATE, &req);
-    req[..4].copy_from_slice(&checksum.to_le_bytes());
+    *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
 
     let rsp_max = RSP_HEADER_SIZE + MAX_RANDOM_SIZE;
     let mut rsp = alloc.alloc(rsp_max)?;

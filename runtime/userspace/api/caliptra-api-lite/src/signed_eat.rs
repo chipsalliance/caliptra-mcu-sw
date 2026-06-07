@@ -113,8 +113,7 @@ impl<'a> SignedEatLite<'a> {
         *preamble_slot = COSE_PREAMBLE;
         let (kid_slot, rest) = rest.split_first_chunk_mut::<KID_LEN>().ok_or(INVARIANT)?;
         *kid_slot = *kid_arr;
-        let pl_hdr_len =
-            write_cose_payload_bstr_len(rest, payload.len()).ok_or(INVARIANT)?;
+        let pl_hdr_len = write_cose_payload_bstr_len(rest, payload.len()).ok_or(INVARIANT)?;
         let rest = rest.get_mut(pl_hdr_len..).ok_or(INVARIANT)?;
         let (payload_slot, rest) = rest.split_at_mut_checked(payload.len()).ok_or(INVARIANT)?;
         // Variable-length payload: still requires `copy_from_slice`,
