@@ -610,9 +610,6 @@ async fn handle_secured_request<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
 }
 
 /// Inner secured message handler: decrypt → dispatch → encrypt.
-///
-/// Currently handles FINISH during `HandshakeInProgress`.
-/// Future phases will add data-phase message dispatch.
 #[inline(never)]
 async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     state: &mut ConnectionState<Pal::State>,
@@ -639,11 +636,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
         .try_into()
         .map_err(|_| SPDM_INVALID_REQUEST)?;
 
-    // ── Look up session ─────────────────────────────────────────────
-    let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
-
-    // Determine key type based on session state.
-    let decrypt_key_type = match session.state {
+    let decrypt_key_type = match sessions.find(session_id).ok_or(SPDM_UNSPECIFIED)?.state {
         SessionState::HandshakeInProgress => SessionKeyType::RequestHandshakeKey,
         SessionState::Established => SessionKeyType::RequestDataKey,
     };
@@ -654,23 +647,26 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
 
     // ── Decrypt ─────────────────────────────────────────────────────
     let mut plaintext = pal.alloc_bytes(io, ct_len)?;
-    if session
-        .key_schedule
-        .decrypt(
-            pal,
-            io,
-            decrypt_key_type,
-            version.to_u8(),
-            &aad,
-            ciphertext,
-            tag,
-            &mut plaintext[..ct_len],
-        )
-        .await
-        .map_err(|_| SPDM_DECRYPT_ERROR)?
-        != ct_len
     {
-        return Err(SPDM_DECRYPT_ERROR);
+        let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+        if session
+            .key_schedule
+            .decrypt(
+                pal,
+                io,
+                decrypt_key_type,
+                version.to_u8(),
+                &aad,
+                ciphertext,
+                tag,
+                &mut plaintext[..ct_len],
+            )
+            .await
+            .map_err(|_| SPDM_DECRYPT_ERROR)?
+            != ct_len
+        {
+            return Err(SPDM_DECRYPT_ERROR);
+        }
     }
 
     // ── Parse app_data_length + spdm_msg ────────────────────────────
@@ -686,14 +682,12 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     // ── Dispatch on SPDM code ───────────────────────────────────────
     let (spdm_hdr, _) =
         SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let session_state = sessions.find(session_id).ok_or(SPDM_UNSPECIFIED)?.state;
+    let response_key_type = validate_message_allowed_phase(spdm_hdr.code, session_state)?;
 
     match spdm_hdr.code {
         ReqRespCode::FINISH => {
-            // FINISH is only valid during handshake.
-            if session.state != SessionState::HandshakeInProgress {
-                return Err(SPDM_UNEXPECTED_REQUEST);
-            }
-
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
             let finish_rsp =
                 finish::handle_finish::<Pal>(version, session, pal, io, spdm_msg).await?;
             let rsp = encrypt_secured_spdm_response(
@@ -702,21 +696,16 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
                 session,
                 session_id,
                 version,
-                SessionKeyType::ResponseHandshakeKey,
+                response_key_type,
                 &finish_rsp,
             )
             .await?;
-
-            // ── Destroy handshake secrets, set Established ──────────
             session.key_schedule.destroy_handshake_secrets();
             session.state = SessionState::Established;
             Ok(rsp)
         }
         ReqRespCode::END_SESSION => {
-            if session.state != SessionState::Established {
-                return Err(SPDM_UNEXPECTED_REQUEST);
-            }
-
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
             let end_session_ack = end_session::handle_end_session(version, spdm_msg)?;
             let rsp = encrypt_secured_spdm_response(
                 pal,
@@ -724,16 +713,71 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
                 session,
                 session_id,
                 version,
-                SessionKeyType::ResponseDataKey,
+                response_key_type,
                 &end_session_ack,
             )
             .await?;
-
             sessions.remove_and_destroy(session_id);
             Ok(rsp)
         }
-        ReqRespCode::KEY_EXCHANGE => Err(SPDM_UNEXPECTED_REQUEST),
-        _ => Err(SPDM_UNSUPPORTED_REQUEST),
+        ReqRespCode::GET_MEASUREMENTS => {
+            let (measurements_rsp, spdm_len) =
+                measurements::handle_get_measurements_req(state, pal, io, spdm_msg).await?;
+            let head = pal.header_size();
+            let spdm_rsp = &measurements_rsp[head..head + spdm_len];
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+            encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                response_key_type,
+                spdm_rsp,
+            )
+            .await
+        }
+        _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(spdm_hdr.code.0)),
+    }
+}
+
+fn validate_message_allowed_phase(
+    code: ReqRespCode,
+    session_state: SessionState,
+) -> SpdmResult<SessionKeyType> {
+    let application_key = || {
+        if session_state == SessionState::Established {
+            Ok(SessionKeyType::ResponseDataKey)
+        } else {
+            Err(SPDM_UNEXPECTED_REQUEST)
+        }
+    };
+    let current_key = || match session_state {
+        SessionState::HandshakeInProgress => Ok(SessionKeyType::ResponseHandshakeKey),
+        SessionState::Established => Ok(SessionKeyType::ResponseDataKey),
+    };
+
+    match code {
+        ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
+        ReqRespCode::GET_VERSION
+        | ReqRespCode::GET_CAPABILITIES
+        | ReqRespCode::NEGOTIATE_ALGORITHMS
+        | ReqRespCode::CHALLENGE
+        | ReqRespCode::KEY_EXCHANGE => Err(SPDM_UNEXPECTED_REQUEST),
+        ReqRespCode::GET_DIGESTS
+        | ReqRespCode::GET_CERTIFICATE
+        | ReqRespCode::SET_CERTIFICATE
+        | ReqRespCode::GET_MEASUREMENTS
+        | ReqRespCode::END_SESSION => application_key(),
+        ReqRespCode::FINISH => {
+            if session_state == SessionState::HandshakeInProgress {
+                Ok(SessionKeyType::ResponseHandshakeKey)
+            } else {
+                Err(SPDM_UNEXPECTED_REQUEST)
+            }
+        }
+        ReqRespCode::VENDOR_DEFINED_REQUEST => current_key(),
+        _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
     }
 }
 
@@ -804,7 +848,6 @@ fn build_secured_response_wire<'a, Pal: SpdmPal>(
 
     Ok(buf)
 }
-
 /// Decodes the SPDM common header from a raw request buffer.
 ///
 /// # Parameters
