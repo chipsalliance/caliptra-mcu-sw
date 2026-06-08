@@ -5,6 +5,7 @@
 
 use crate::dma::hil::{Dma, DmaRoute, DmaStatus};
 use caliptra_api::CaliptraApiError;
+use caliptra_mcu_romtime::println;
 use caliptra_mcu_romtime::CaliptraSoC;
 use core::cell::Cell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};

@@ -564,6 +564,11 @@ SECTIONS
         let dccm = self.manifest.platform.dccm();
         sub_map.insert("DCCM_OFFSET", format!("{:#x}", dccm.offset));
         sub_map.insert("DCCM_LENGTH", format!("{:#x}", dccm.size));
+
+        let flash = self.manifest.platform.flash();
+        sub_map.insert("FLASH_OFFSET", format!("{:#x}", flash.offset));
+        sub_map.insert("FLASH_LENGTH", format!("{:#x}", flash.size));
+
         sub_map.insert("HANDOFF_ADDR", format!("{:#x}", handoff.offset));
         sub_map.insert("HANDOFF_SIZE", format!("{:#x}", handoff.size));
 

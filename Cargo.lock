@@ -2033,6 +2033,8 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-dma-driver",
+ "caliptra-mcu-external-otp-driver",
+ "caliptra-mcu-external-otp-emulator",
  "caliptra-mcu-flash-ctrl-fpga",
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
@@ -4270,113 +4272,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
-<<<<<<< HEAD
-=======
-name = "mcu-rom-emulator"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "caliptra-mcu-builder",
- "caliptra-mcu-config",
- "caliptra-mcu-config-emulator",
- "caliptra-mcu-error",
- "caliptra-mcu-image-header",
- "caliptra-mcu-registers-generated",
- "caliptra-mcu-rom-common",
- "caliptra-mcu-romtime",
- "riscv-csr",
- "rv32i",
- "tock-registers",
- "zerocopy",
- "zeroize",
-]
-
-[[package]]
-name = "mcu-rom-fpga"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-builder",
- "caliptra-mcu-config",
- "caliptra-mcu-config-fpga",
- "caliptra-mcu-otp-lifecycle",
- "caliptra-mcu-registers-generated",
- "caliptra-mcu-rom-common",
- "caliptra-mcu-romtime",
- "riscv-csr",
- "rv32i",
- "tock-registers",
- "zeroize",
-]
-
-[[package]]
-name = "mcu-runtime-emulator"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "caliptra-mcu-capsules-emulator",
- "caliptra-mcu-capsules-runtime",
- "caliptra-mcu-components",
- "caliptra-mcu-config",
- "caliptra-mcu-config-emulator",
- "caliptra-mcu-dma-driver",
- "caliptra-mcu-doe-mbox-driver",
- "caliptra-mcu-doe-transport",
- "caliptra-mcu-external-otp-driver",
- "caliptra-mcu-external-otp-emulator",
- "caliptra-mcu-flash-ctrl-emulator",
- "caliptra-mcu-flash-driver",
- "caliptra-mcu-i3c-driver",
- "caliptra-mcu-mbox-comm",
- "caliptra-mcu-mbox-driver",
- "caliptra-mcu-platforms-common",
- "caliptra-mcu-registers-generated",
- "caliptra-mcu-romtime",
- "caliptra-mcu-tock-veer",
- "capsules-core",
- "capsules-extra",
- "capsules-system",
- "components",
- "kernel",
- "riscv 0.2.2",
- "riscv-csr",
- "rv32i",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-runtime-fpga"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "caliptra-mcu-capsules-emulator",
- "caliptra-mcu-capsules-runtime",
- "caliptra-mcu-components",
- "caliptra-mcu-config",
- "caliptra-mcu-config-fpga",
- "caliptra-mcu-dma-driver",
- "caliptra-mcu-external-otp-driver",
- "caliptra-mcu-external-otp-emulator",
- "caliptra-mcu-flash-ctrl-fpga",
- "caliptra-mcu-flash-driver",
- "caliptra-mcu-i3c-driver",
- "caliptra-mcu-mbox-driver",
- "caliptra-mcu-platforms-common",
- "caliptra-mcu-registers-generated",
- "caliptra-mcu-romtime",
- "caliptra-mcu-tock-veer",
- "capsules-core",
- "capsules-extra",
- "capsules-system",
- "components",
- "kernel",
- "riscv 0.2.2",
- "riscv-csr",
- "rv32i",
- "tock-registers",
-]
-
-[[package]]
->>>>>>> bb6a4e9b (Put whole idevID Cert in ExternalOTP (#1457))
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

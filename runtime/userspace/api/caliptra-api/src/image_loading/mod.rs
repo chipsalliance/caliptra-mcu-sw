@@ -13,7 +13,6 @@ use caliptra_api::mailbox::{
     AuthAndStashFlags, AuthorizeAndStashReq, AuthorizeAndStashResp, CommandId, GetImageInfoReq,
     GetImageInfoResp, ImageHashSource, MailboxReqHeader, MailboxRespHeader, Request,
 };
-use caliptra_auth_man_types::ImageMetadataFlags;
 use caliptra_mcu_flash_image::{FlashHeader, SOC_MANIFEST_IDENTIFIER};
 use caliptra_mcu_libsyscall_caliptra::dma::DMAMapping;
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash as FlashSyscall;

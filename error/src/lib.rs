@@ -458,6 +458,16 @@ impl McuError {
             "OTP partition does not have a digest offset"
         ),
         (
+            ROM_OTP_FUSE_INPUT_TOO_SHORT,
+            0x3_0030,
+            "OTP fuse provisioning: input too short"
+        ),
+        (
+            ROM_OTP_FUSE_INVALID_LENGTH,
+            0x3_0031,
+            "OTP fuse provisioning: invalid length"
+        ),
+        (
             ROM_I3C_CONFIG_RING_HEADER_ERROR,
             0x4_0000,
             "I3C config ring header error"

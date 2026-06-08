@@ -38,5 +38,4 @@ pub static SLOT0_ECC_TEST_ROOT_CA_CERT_DER: [u8; 553] = [
     0x6b, 0x59, 0x47, 0x8b, 0x05, 0x10, 0x66, 0xf6, 0x47,
 ];
 
-
 pub const SLOT0_ECC_ROOT_CERT_CHAIN: &[&[u8]] = &[&SLOT0_ECC_TEST_ROOT_CA_CERT_DER];

@@ -101,14 +101,9 @@ impl<'a, A: Alarm<'a>> Dma for NoDMA<'a, A> {
         Ok(())
     }
 
-<<<<<<< HEAD
     fn poll_status(&self) -> Result<DmaStatus, DmaError> {
-        // Not supported
-        Err(DmaError::CommandError)
-=======
-    fn poll_status(&self) -> Result<crate::hil::DMAStatus, DMAError> {
         if !*self.busy.borrow() {
-            return Ok(crate::hil::DMAStatus::TxnDone);
+            return Ok(DmaStatus::TxnDone);
         }
         // Perform the transfer synchronously (direct memory access).
         // The alarm will fire later but is a no-op once busy is cleared.
@@ -121,8 +116,7 @@ impl<'a, A: Alarm<'a>> Dma for NoDMA<'a, A> {
             }
         }
         *self.busy.borrow_mut() = false;
-        Ok(crate::hil::DMAStatus::TxnDone)
->>>>>>> bb6a4e9b (Put whole idevID Cert in ExternalOTP (#1457))
+        Ok(DmaStatus::TxnDone)
     }
 
     fn write_fifo(&self, _data: &[u8]) -> Result<(), DmaError> {
