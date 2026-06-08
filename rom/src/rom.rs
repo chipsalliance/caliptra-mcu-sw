@@ -347,8 +347,8 @@ impl Soc {
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_mldsa_revocation.set(word);
 
-        // Owner PK Hash is written separately after Device Ownership Transfer flow.
-        // See set_owner_pk_hash() method.
+        // Owner PK hash is sent via mailbox after the DOT flow; see
+        // device_ownership_transfer::install_owner_pk_hash().
 
         // Stable owner key builds forward HEK for derivation here.
         // OCP LOCK keeps its HEK selection and handoff metadata in the OCP path below.
@@ -643,29 +643,6 @@ impl Soc {
         }
     }
 
-    /// Sets the owner public key hash in Caliptra's SoC interface registers.
-    ///
-    /// This is called after Device Ownership Transfer (DOT) flow completes to set
-    /// the owner PK hash from either the DOT blob or the fuses.
-    ///
-    /// # Arguments
-    /// * `owner_pk_hash` - The owner public key hash to set.
-    pub fn set_owner_pk_hash(&self, owner_pk_hash: &crate::fuses::OwnerPkHash) {
-        caliptra_mcu_romtime::print!("[mcu-fuse-write] Writing owner PK hash: ");
-        for (i, word) in owner_pk_hash.0.iter().enumerate() {
-            caliptra_mcu_romtime::print!("{}", HexWord(*word));
-            self.registers.cptra_owner_pk_hash[i].set(*word);
-        }
-        caliptra_mcu_romtime::println!("");
-    }
-
-    /// Locks the owner public key hash register.
-    ///
-    /// Once locked, the owner PK hash cannot be modified until the next reset.
-    pub fn lock_owner_pk_hash(&self) {
-        self.registers.cptra_owner_pk_hash_lock.set(1);
-    }
-
     #[cfg_attr(all(not(test), feature = "cfi"), cfi_impl_fn)]
     pub fn fuse_write_done(&self) {
         self.registers.cptra_fuse_wr_done.set(1);
@@ -910,6 +887,10 @@ pub struct RomParameters<'a> {
     pub dot_stable_key_type: Option<CmStableKeyType>,
     /// Flash storage interface for DOT blob.
     pub dot_flash: Option<&'a dyn FlashStorage>,
+    /// Selects whether the owner PK hash comes from the DOT flow (with fuse
+    /// fallback) or is forced to the `CPTRA_SS_OWNER_PK_HASH` fuse, bypassing
+    /// the DOT blob. Default: [`OwnerPkHashPolicy::DotThenFuse`].
+    pub owner_pk_hash_policy: crate::device_ownership_transfer::OwnerPkHashPolicy,
     /// Whether to check for and process firmware manifest DOT commands.
     /// When true, the ROM will look for a FwManifestDotSection at the start
     /// of MCU SRAM during FwBoot and process any DOT commands found.

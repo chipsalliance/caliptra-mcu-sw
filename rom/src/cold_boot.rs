@@ -1241,8 +1241,22 @@ impl BootFlow for ColdBoot {
             }
         };
 
-        // Determine owner PK hash: from DOT flow if available, otherwise from fuses
-        let owner_pk_hash = if let Some(dot_flash) = params.dot_flash {
+        // Determine owner PK hash: forced from fuse, or from DOT flow with fuse fallback
+        let owner_pk_hash = if params.owner_pk_hash_policy
+            == device_ownership_transfer::OwnerPkHashPolicy::ForceFuse
+        {
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] Forcing fused owner PK hash, bypassing DOT blob"
+            );
+            let owner = device_ownership_transfer::load_owner_pkhash(&env.otp);
+            if owner.as_ref().is_none_or(|h| h.0.iter().all(|&w| w == 0)) {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] Forced fuse owner requested but CPTRA_SS_OWNER_PK_HASH is not provisioned"
+                );
+                fatal_error(McuError::ROM_DOT_FORCE_FUSE_OWNER_NOT_PROVISIONED);
+            }
+            owner
+        } else if let Some(dot_flash) = params.dot_flash {
             caliptra_mcu_romtime::println!("[mcu-rom] Reading DOT blob");
             let mut dot_blob = [0u8; device_ownership_transfer::DOT_BLOB_SIZE];
             if dot_flash.read(&mut dot_blob, 0).is_err() {
@@ -1299,10 +1313,22 @@ impl BootFlow for ColdBoot {
             device_ownership_transfer::load_owner_pkhash(&env.otp)
         };
 
-        // Write owner PK hash to Caliptra if available
+        // Deliver the owner PK hash via mailbox; the cptra_owner_pk_hash register
+        // is locked once fuse write done is set. An all-zero hash means no owner
+        // is provisioned and must not be installed (it would make Caliptra reject
+        // every image).
         if let Some(ref owner) = owner_pk_hash {
-            env.soc.set_owner_pk_hash(owner);
-            env.soc.lock_owner_pk_hash();
+            if owner.0.iter().any(|&word| word != 0) {
+                if let Err(err) =
+                    device_ownership_transfer::install_owner_pk_hash(&mut env.soc_manager, owner)
+                {
+                    caliptra_mcu_romtime::println!(
+                        "[mcu-rom] Fatal error installing owner PK hash: {}",
+                        HexWord(err.into())
+                    );
+                    fatal_error(err);
+                }
+            }
         }
 
         // OCP LOCK and stable owner key are mutually exclusive HEK consumers.

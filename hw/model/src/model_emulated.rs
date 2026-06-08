@@ -347,10 +347,15 @@ impl McuHwModel for ModelEmulated {
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
         // Start with go-bit unset so ROM-based tests can configure
         // wires before the ROM proceeds (matching FPGA behavior).
-        let mci_generic_input_wires = if params.flash_boot {
-            [0, 1 << 29]
-        } else {
-            [0, 0]
+        let mci_generic_input_wires = {
+            let mut wire1 = 0u32;
+            if params.flash_boot {
+                wire1 |= 1 << 29;
+            }
+            if params.force_fuse_owner_pk_hash {
+                wire1 |= 1 << 28;
+            }
+            [0, wire1]
         };
         let mci_regs = ext_mci.regs.clone();
         let mut mci = Mci::new(

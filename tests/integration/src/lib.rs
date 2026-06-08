@@ -95,6 +95,9 @@ mod test {
         /// Enable FIPS zeroization PPD signal for cold boot testing.
         pub fips_zeroization: bool,
         pub ocp_lock_en: bool,
+        /// If true, drive the MCI generic input wire strap that forces the ROM
+        /// to use the `CPTRA_SS_OWNER_PK_HASH` fuse as the owner, bypassing DOT.
+        pub force_fuse_owner_pk_hash: bool,
         /// Optional custom MCU ROM bytes (overrides the default/compiled ROM).
         pub custom_mcu_rom: Option<Vec<u8>>,
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
@@ -134,6 +137,7 @@ mod test {
                 otp_memory: None,
                 fips_zeroization: false,
                 ocp_lock_en: false,
+                force_fuse_owner_pk_hash: false,
                 custom_mcu_rom: None,
                 firmware_prefix: None,
                 fw_manifest_dot_hitless: false,
@@ -1247,6 +1251,7 @@ mod test {
             flash_boot: params.flash_boot,
             ocp_lock_en: params.ocp_lock_en,
             fips_zeroization: params.fips_zeroization,
+            force_fuse_owner_pk_hash: params.force_fuse_owner_pk_hash,
             debug_intent: params.debug_intent,
             prod_dbg_unlock_keypairs: params
                 .prod_dbg_unlock_keypairs

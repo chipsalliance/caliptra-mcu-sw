@@ -51,6 +51,26 @@ fn record_hook_bit(bit: u32) {
     }
 }
 
+/// Read the MCI generic-input-wire strap selecting the owner PK hash source.
+fn read_owner_pk_hash_policy() -> caliptra_mcu_rom_common::OwnerPkHashPolicy {
+    use tock_registers::interfaces::Readable;
+    // Safety: `MCU_MEMORY_MAP.mci_offset` is the linker-provided MCI register
+    // block base; the resulting reference is only used for typed reads.
+    let mci: caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::mci::regs::Mci> = unsafe {
+        caliptra_mcu_romtime::StaticRef::new(
+            MCU_MEMORY_MAP.mci_offset as *const caliptra_mcu_registers_generated::mci::regs::Mci,
+        )
+    };
+    if mci.mci_reg_generic_input_wires[1].get()
+        & caliptra_mcu_rom_common::FORCE_FUSE_OWNER_PK_HASH_WIRE_BIT
+        != 0
+    {
+        caliptra_mcu_rom_common::OwnerPkHashPolicy::ForceFuse
+    } else {
+        caliptra_mcu_rom_common::OwnerPkHashPolicy::DotThenFuse
+    }
+}
+
 impl RomHooks for LoggingRomHooks {
     fn pre_cold_boot(&self) {
         caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_cold_boot");
@@ -385,6 +405,7 @@ pub extern "C" fn rom_entry() -> ! {
         otp_enable_consistency_check: true,
         image_provider_manager: Some(manager),
         dot_flash: Some(dot_flash),
+        owner_pk_hash_policy: read_owner_pk_hash_policy(),
         cptra_mbox_axi_users: mbox_axi_users,
         cptra_fuse_axi_user: axi_user0,
         cptra_trng_axi_user: axi_user0,

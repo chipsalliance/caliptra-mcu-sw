@@ -139,6 +139,20 @@ mod test {
         blob.with_hmac(&hmac)
     }
 
+    /// Build OTP memory with DOT enabled and the `CPTRA_SS_OWNER_PK_HASH` fuse
+    /// provisioned to `owner`, so the forced-fuse owner path has a value to use.
+    fn build_dot_otp_with_owner_pk_hash(owner: [u8; 48]) -> Vec<u8> {
+        use caliptra_mcu_registers_generated::fuses::{
+            OTP_CPTRA_SS_OWNER_PK_HASH, VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
+        };
+        let mut otp = vec![0u8; VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 256];
+        // dot_initialized = 1 (backed by 3 bits) at the start of the partition.
+        otp[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET] = 0x7;
+        let off = OTP_CPTRA_SS_OWNER_PK_HASH.byte_offset;
+        otp[off..off + OTP_CPTRA_SS_OWNER_PK_HASH.byte_size].copy_from_slice(&owner);
+        otp
+    }
+
     fn compute_hmac_cached(blob: &[u8]) -> Vec<u8> {
         compute_hmac(blob)
     }
@@ -689,6 +703,86 @@ mod test {
             fatal_error.is_none(),
             "Empty DOT blob in EVEN state should not be a fatal error, got: 0x{:x}",
             fatal_error.unwrap_or(0)
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// The force-fuse-owner strap (MCI generic input wire bit 28) makes the ROM
+    /// bypass a valid DOT blob and use the `CPTRA_SS_OWNER_PK_HASH` fuse instead.
+    #[test]
+    fn test_dot_force_fuse_owner_bypasses_blob() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        // A valid DOT blob whose CAK would normally be processed by the DOT flow.
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak());
+        let flash_contents = blob.to_flash_contents();
+
+        // Provision a non-zero owner PK hash fuse so the forced fuse owner exists.
+        let otp = build_dot_otp_with_owner_pk_hash([0x11u8; 48]);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            otp_memory: Some(otp),
+            rom_only: true,
+            force_fuse_owner_pk_hash: true,
+            ..Default::default()
+        });
+
+        // Run until the bypass is logged, a fatal error occurs, or we time out.
+        hw.step_until(|m| {
+            m.output().peek().contains("Forcing fused owner PK hash")
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 50_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Forced fuse owner boot should not fatal: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        let output = hw.output().peek().to_string();
+        assert!(
+            output.contains("Forcing fused owner PK hash"),
+            "Expected force-fuse bypass message in ROM output"
+        );
+        // The DOT flow must be skipped entirely.
+        assert!(
+            !output.contains("Performing Device Ownership Transfer flow"),
+            "DOT flow should be bypassed when force-fuse-owner is set"
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Forcing the fuse owner with an unprovisioned (all-zero)
+    /// `CPTRA_SS_OWNER_PK_HASH` fuse is a fatal error.
+    #[test]
+    fn test_dot_force_fuse_owner_unprovisioned_fails() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak());
+        let flash_contents = blob.to_flash_contents();
+
+        // dot_enabled auto-OTP leaves CPTRA_SS_OWNER_PK_HASH all-zero.
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            dot_enabled: true,
+            force_fuse_owner_pk_hash: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 20_000_000);
+
+        assert_eq!(
+            u32::from(McuError::ROM_DOT_FORCE_FUSE_OWNER_NOT_PROVISIONED),
+            hw.mci_fw_fatal_error().unwrap_or(0),
+            "Expected force-fuse unprovisioned fatal error"
         );
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
