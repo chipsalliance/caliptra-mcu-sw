@@ -819,6 +819,15 @@ pub struct RomParameters<'a> {
     /// ROM uses the reference fuse map count (number of entries in
     /// `PROD_DEBUG_UNLOCK_PK_ENTRIES`).
     pub prod_debug_unlock_auth_pk_hash_count: Option<u32>,
+    /// Optional I3C bus timing parameters for the primary controller (i3c),
+    /// written to its timing registers during I3C initialization. When `None`,
+    /// [`I3cTimings::default`] is used (recommended settings for high-speed
+    /// parts).
+    pub i3c_timings: Option<crate::I3cTimings>,
+    /// Optional I3C bus timing parameters for the secondary controller (i3c1),
+    /// used when it is the active controller. When `None`,
+    /// [`I3cTimings::default`] is used.
+    pub i3c1_timings: Option<crate::I3cTimings>,
 }
 
 #[inline(always)]
