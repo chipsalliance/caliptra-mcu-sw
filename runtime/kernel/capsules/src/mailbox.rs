@@ -399,7 +399,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             // The mailbox FIFO is 32-bit wide and the payload length is delimited
             // by `dlen`, so a trailing partial word is zero-padded into a u32
             // (matching the policy in `start_request`).
-            let _ = self
+            let _: Result<(), ErrorCode> = self
                 .driver
                 .map(|driver| {
                     for chunk in app_buffer.chunks(4) {

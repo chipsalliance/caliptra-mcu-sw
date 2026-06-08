@@ -45,7 +45,7 @@ fn clippy_rom_variants(variants: &[RomVariant]) -> Result<()> {
     for variant in variants {
         let display = variant.display();
         let platform = variant.platform.unwrap_or("emulator");
-        let package = format!("mcu-rom-{platform}");
+        let package = format!("caliptra-mcu-rom-{platform}");
         println!("Running: cargo clippy --package {package} for {display}");
         let mut args = vec![
             "clippy".to_string(),

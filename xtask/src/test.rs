@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Context, Result};
-use caliptra_mcu_builder::{rom_build, CaliptraBuildArgs, PROJECT_ROOT, TARGET};
+use caliptra_mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
 use crate::emulator_cbinding;
@@ -263,7 +263,7 @@ fn check_no_panic(rom_elf_path: &std::path::Path, label: &str) -> Result<()> {
         bail!(
             "The MCU ROM ({label}) contains the panic_is_possible symbol, which is not allowed. \
                 Please remove any code that might panic."
-            );
+        );
     }
     Ok(())
 }

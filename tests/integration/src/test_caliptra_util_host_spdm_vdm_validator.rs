@@ -267,7 +267,7 @@ mod test {
         // This is required for Caliptra RT to accept debug unlock commands.
         hw.caliptra_soc_manager()
             .soc_ifc()
-            .ss_dbg_manuf_service_reg_req()
+            .ss_dbg_service_reg_req()
             .write(|w| w.prod_dbg_unlock_req(true));
 
         let config_path = test_config_path();

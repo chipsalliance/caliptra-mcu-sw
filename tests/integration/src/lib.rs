@@ -710,7 +710,7 @@ mod test {
             lifecycle_controller_state: params.lifecycle_controller_state,
             check_booted_to_runtime: !params.rom_only,
             otp_memory: otp_memory.as_deref(),
-            primary_flash_initial_contents: flash_image,
+            primary_flash_initial_contents,
             flash_boot: params.flash_boot,
             ocp_lock_en: params.ocp_lock_en,
             fips_zeroization: params.fips_zeroization,
