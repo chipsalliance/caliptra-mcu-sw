@@ -183,10 +183,14 @@ impl ModelFpgaRealtime {
                     I3cTcriCommand::Regular(_cmd) => {
                         if !rx.cmd.data.is_empty() {
                             // wait for space in the write FIFOs
-                            while controller.cmd_fifo_level() == 0
-                                || controller.write_fifo_level() < 16
+                            while running.load(Ordering::Relaxed)
+                                && (controller.cmd_fifo_level() == 0
+                                    || controller.write_fifo_level() < 16)
                             {
                                 std::thread::sleep(Duration::from_millis(1));
+                            }
+                            if !running.load(Ordering::Relaxed) {
+                                break;
                             }
                             match controller.write(&rx.cmd.data) {
                                 Ok(_) => {}
@@ -373,10 +377,22 @@ impl McuHwModel for ModelFpgaRealtime {
         // re-provisioned from those bytes overlaid with the saved init
         // params (LC partition, tokens, etc.). This is how the FPGA model
         // emulates persistent OTP state across boots in tests.
+        println!(
+            "[DEBUG-MODEL-INIT] params.otp_memory is_some={}",
+            params.otp_memory.is_some()
+        );
         if let Some(otp_mem) = params.otp_memory {
+            println!(
+                "[DEBUG-MODEL-INIT] Seeding OTP from params, size={}",
+                otp_mem.len()
+            );
             base.set_otp_init(otp_mem.to_vec());
             base.cold_reset();
         }
+        println!(
+            "[DEBUG-MODEL] OTP[0xaa8..0xab0] after init: {:02x?}",
+            &base.otp_slice()[0xaa8..0xab0]
+        );
 
         // In Manufacturing lifecycle, enable IDevID CSR generation by writing
         // the GENERATE_IDEVID_CSR flag to cptra_dbg_manuf_service_reg.
@@ -516,9 +532,12 @@ impl McuHwModel for ModelFpgaRealtime {
             // ROM-only mode: wait for recovery to deliver firmware, but don't
             // assert FIRMWARE_BOOT_FLOW_COMPLETE since the ROM may stay in a
             // service loop instead of booting the runtime.
-            const ROM_ONLY_WAIT_CYCLES: u64 = 50_000_000;
+            const ROM_ONLY_WAIT_CYCLES: u64 = 500_000_000;
             let start_cycle = self.cycle_count();
-            self.step_until(|hw| hw.cycle_count() - start_cycle >= ROM_ONLY_WAIT_CYCLES);
+            self.step_until(|hw| {
+                hw.cycle_count() - start_cycle >= ROM_ONLY_WAIT_CYCLES
+                    || hw.mci_fw_fatal_error().is_some()
+            });
             println!(
                 "ROM-only boot wait completed at cycle count {}, flow status {}",
                 self.cycle_count(),
@@ -770,9 +789,6 @@ impl Drop for ModelFpgaRealtime {
         self.base
             .realtime_thread_exit_flag
             .store(false, Ordering::Relaxed);
-        if let Some(handle) = self.i3c_handle.take() {
-            handle.join().expect("Failed to join I3C thread");
-        }
     }
 }
 

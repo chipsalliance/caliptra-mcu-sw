@@ -403,6 +403,10 @@ pub extern "C" fn rom_entry() -> ! {
             None
         },
 
+        fw_manifest_dot_enabled: cfg!(any(
+            feature = "test-fw-manifest-dot",
+            feature = "test-fw-manifest-dot-hitless"
+        )),
         #[cfg(feature = "ocp-lock")]
         ocp_lock_config,
         ..Default::default()

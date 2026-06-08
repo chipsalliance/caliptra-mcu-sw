@@ -338,7 +338,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             is_module_loaded("io_module", target_host)?;
 
             // Clear old test logs
-            run_command(target_host, "(sudo rm /tmp/junit.xml || true)")?;
+            run_command(target_host.as_deref(), "(rm -f /tmp/junit.xml || true)")?;
 
             let config = Configuration::from_cmd(target_host)?;
             config

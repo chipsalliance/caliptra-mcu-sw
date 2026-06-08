@@ -115,6 +115,7 @@ mod test {
         pub seeded_log_entries: Option<&'static [&'static [u8]]>,
         /// If true, include the example app in the runtime build instead of the user app.
         pub example_app: bool,
+        pub uds_seed: Option<[u32; 16]>,
     }
 
     impl Default for TestParams<'_> {
@@ -145,6 +146,7 @@ mod test {
                 use_strap_secrets: false,
                 seeded_log_entries: None,
                 example_app: false,
+                uds_seed: None,
             }
         }
     }
@@ -942,32 +944,36 @@ mod test {
     }
 
     pub fn build_test_binaries(params: &TestParams) -> TestBinaries {
-        // Get MCU runtime: prefer prebuilt for the requested feature, fall back to compilation
-        let mcu_runtime_path = if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let runtime_bytes = if let Some(feature) = params.feature {
-                match binaries.test_runtime(feature) {
-                    Ok(bytes) => Some(bytes.clone()),
-                    Err(_) => None,
+        // Get MCU runtime: prefer prebuilt for the requested feature, panic if not available
+        let mcu_runtime_path = match FirmwareBinaries::from_env() {
+            Ok(binaries) => {
+                let runtime_bytes = if let Some(feature) = params.feature {
+                    match binaries.test_runtime(feature) {
+                        Ok(bytes) => Some(bytes.clone()),
+                        Err(_) => None,
+                    }
+                } else {
+                    Some(binaries.mcu_runtime.clone())
+                };
+                if let Some(bytes) = runtime_bytes {
+                    let path = target_binary("mcu_runtime_prebuilt_for_builder.bin");
+                    if let Some(parent) = path.parent() {
+                        std::fs::create_dir_all(parent).ok();
+                    }
+                    std::fs::write(&path, &bytes)
+                        .expect("Failed to write prebuilt runtime to file");
+                    path
+                } else {
+                    panic!("Prebuilt runtime missing for feature: {:?}", params.feature);
                 }
-            } else {
-                Some(binaries.mcu_runtime.clone())
-            };
-            if let Some(bytes) = runtime_bytes {
-                let path = target_binary("mcu_runtime_prebuilt_for_builder.bin");
-                if let Some(parent) = path.parent() {
-                    std::fs::create_dir_all(parent).ok();
-                }
-                std::fs::write(&path, &bytes).expect("Failed to write prebuilt runtime to file");
-                path
-            } else if params.rom_only {
-                compile_runtime(None, false)
-            } else {
-                compile_runtime(params.feature, false)
             }
-        } else if params.rom_only {
-            compile_runtime(None, false)
-        } else {
-            compile_runtime(params.feature, params.example_app)
+            Err(e) => {
+                panic!(
+                    "FirmwareBinaries::from_env() failed: {:?}, CPTRA_FIRMWARE_BUNDLE: {:?}",
+                    e,
+                    std::env::var("CPTRA_FIRMWARE_BUNDLE")
+                );
+            }
         };
 
         // When a firmware prefix is provided, create a modified binary that
@@ -975,8 +981,11 @@ mod test {
         let (mcu_runtime_for_builder, mcu_runtime_bytes) =
             if let Some(prefix) = &params.firmware_prefix {
                 let original = std::fs::read(&mcu_runtime_path).unwrap();
+
                 let mut prefixed = prefix.to_vec();
                 prefixed.extend_from_slice(&original);
+                let aligned_len = prefixed.len().next_multiple_of(256);
+                prefixed.resize(aligned_len, 0);
 
                 // Write the prefixed binary to a temp file for CaliptraBuilder
                 let prefixed_path = mcu_runtime_path.with_extension("prefixed");
@@ -984,6 +993,7 @@ mod test {
                 (prefixed_path, prefixed)
             } else {
                 let bytes = std::fs::read(&mcu_runtime_path).unwrap();
+
                 (mcu_runtime_path, bytes)
             };
 
@@ -1068,7 +1078,10 @@ mod test {
         }
     }
 
-    pub fn start_runtime_hw_model(params: TestParams) -> DefaultHwModel {
+    pub fn start_runtime_hw_model(mut params: TestParams) -> DefaultHwModel {
+        if params.feature.is_none() {
+            params.feature = Some("test-do-nothing");
+        }
         let TestBinaries {
             vendor_pk_hash_u8,
             caliptra_rom,
@@ -1191,6 +1204,17 @@ mod test {
         } else {
             None
         };
+        println!(
+            "[DEBUG-TEST-INIT] params.dot_enabled={}",
+            params.dot_enabled
+        );
+        println!(
+            "[DEBUG-TEST-INIT] otp_memory is_some={}",
+            otp_memory.is_some()
+        );
+        if let Some(ref otp) = otp_memory {
+            println!("[DEBUG-TEST-INIT] otp_memory size={}, dot_initialized offset byte={:02x?}", otp.len(), otp[caliptra_mcu_registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET]);
+        }
 
         // Build flash image for flash-based boot, or use individual images for streaming boot
         let (flash_image, caliptra_firmware, soc_manifest_bytes, mcu_firmware) =
@@ -1221,12 +1245,20 @@ mod test {
             params.seeded_log_entries,
         );
 
+        let mut fuses = Fuses {
+            fuse_pqc_key_type: params.vendor_pqc_type.map(|t| t as u32).unwrap_or(0),
+            vendor_pk_hash,
+            ..Default::default()
+        };
+        if let Some(uds_seed) = params.uds_seed {
+            fuses.uds_seed = uds_seed;
+        }
+
+        println!("[DEBUG-TEST] params.uds_seed: {:x?}", params.uds_seed);
+        println!("[DEBUG-TEST] fuses.uds_seed: {:x?}", fuses.uds_seed);
+
         caliptra_mcu_hw_model::new(InitParams {
-            fuses: Fuses {
-                fuse_pqc_key_type: params.vendor_pqc_type.map(|t| t as u32).unwrap_or(0),
-                vendor_pk_hash,
-                ..Default::default()
-            },
+            fuses,
             caliptra_rom: &caliptra_rom,
             mcu_rom: &mcu_rom,
             caliptra_firmware: &caliptra_firmware,

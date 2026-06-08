@@ -10,7 +10,7 @@ use caliptra_mcu_registers_generated::primary_flash_ctrl::{
 };
 use caliptra_mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
 use caliptra_mcu_romtime::StaticRef;
-use core::ops::{Index, IndexMut};
+use core::ops::{Deref, Index, IndexMut};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 /// FPGA wrapper primary flash controller address
@@ -216,8 +216,8 @@ impl FpgaFlashCtrl {
             .fl_control
             .modify(FlControl::Op::CLEAR + FlControl::Start::CLEAR);
 
-        // Use the fixed SRAM buffer address for FPGA
-        let page_buf_addr = FLASH_PAGE_BUFFER_SRAM_OFFSET;
+        // Use the SRAM buffer address relative to registers base
+        let page_buf_addr = (self.registers.deref() as *const _ as u32) + 0x100;
 
         // Program page_num, page_addr registers (page_size is fixed on FPGA)
         self.registers.page_num.set(page_number as u32);
@@ -252,8 +252,8 @@ impl FpgaFlashCtrl {
             .fl_control
             .modify(FlControl::Op::CLEAR + FlControl::Start::CLEAR);
 
-        // Use the fixed SRAM buffer address for FPGA
-        let page_buf_addr = FLASH_PAGE_BUFFER_SRAM_OFFSET;
+        // Use the SRAM buffer address relative to registers base
+        let page_buf_addr = (self.registers.deref() as *const _ as u32) + 0x100;
 
         // Copy data from the provided buffer to SRAM buffer
         let sram_ptr = page_buf_addr as *mut u8;
