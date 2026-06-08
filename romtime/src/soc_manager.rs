@@ -14,7 +14,6 @@ use zerocopy::{FromBytes, IntoBytes};
 const MAILBOX_SIZE: usize = 256 * 1024;
 pub struct CaliptraSoC {
     _private: (), // ensure that this struct cannot be instantiated directly except through new
-    counter: u64,
     soc_ifc_addr: *mut u32,
     soc_ifc_trng_addr: *mut u32,
     soc_mbox_addr: *mut u32,
@@ -39,7 +38,7 @@ impl SocManager for CaliptraSoC {
 
     /// Provides a delay function to be invoked when polling mailbox status.
     fn delay(&mut self) {
-        self.counter = core::hint::black_box(self.counter) + 1;
+        core::hint::spin_loop();
     }
 
     /// A register block that can be used to manipulate the soc_ifc peripheral
@@ -84,7 +83,6 @@ impl CaliptraSoC {
     ) -> Self {
         CaliptraSoC {
             _private: (),
-            counter: 0,
             soc_ifc_addr: soc_ifc_addr.unwrap_or(soc::SOC_IFC_REG_ADDR) as *mut u32,
             soc_ifc_trng_addr: soc_ifc_trng_addr.unwrap_or(soc::SOC_IFC_REG_ADDR) as *mut u32,
             soc_mbox_addr: soc_mbox_addr.unwrap_or(mbox::MBOX_CSR_ADDR) as *mut u32,
