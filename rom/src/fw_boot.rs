@@ -12,8 +12,6 @@ Abstract:
 
 --*/
 
-#[cfg(feature = "fw-manifest-dot")]
-use crate::device_ownership_transfer;
 use crate::firmware_headers::process_firmware_headers;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
 use caliptra_mcu_error::McuError;

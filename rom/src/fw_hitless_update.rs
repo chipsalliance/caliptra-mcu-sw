@@ -26,10 +26,6 @@ use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
 #[cfg(not(feature = "test-force-hitless-update"))]
 use caliptra_mcu_error::McuError;
 #[cfg(not(feature = "test-force-hitless-update"))]
-use caliptra_mcu_romtime::HexWord;
-#[cfg(target_arch = "riscv32")]
-use caliptra_mcu_romtime::McuBootMilestones;
-#[cfg(not(feature = "test-force-hitless-update"))]
 use core::fmt::Write;
 
 pub struct FwHitlessUpdate {}
