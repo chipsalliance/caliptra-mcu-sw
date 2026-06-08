@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::Result;
-use caliptra_mcu_builder::CaliptraBuildArgs;
 
 pub(crate) fn precheckin() -> Result<()> {
     crate::cargo_lock::cargo_lock()?;

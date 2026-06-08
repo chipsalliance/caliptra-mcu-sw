@@ -55,7 +55,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     // The bundle step rebuilds the ROM via objcopy, which strips the SHA-384
     // digest appended by rom_build(). Re-apply the digest so the ROM binary
     // stays valid regardless of build order.
-    let rom_binary = release_dir.join(format!("mcu-rom-{platform_str}.bin"));
+    let rom_binary = release_dir.join(format!("caliptra-mcu-rom-{platform_str}.bin"));
     if rom_binary.exists() {
         let rom_size = crate::rom::rom_size_for_platform(platform_str);
         crate::rom::append_rom_digest(&rom_binary, rom_size)?;

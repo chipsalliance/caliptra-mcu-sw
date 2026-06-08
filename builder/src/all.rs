@@ -718,7 +718,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // Only build the bare-metal runtime for the emulator platform, as it
     // is currently only configured and supported for the emulator.
     let mcu_bare_metal_runtime = if platform == "emulator" {
-        Some(crate::bare_metal_build(None)?)
+        Some(crate::bare_metal_build()?)
     } else {
         None
     };

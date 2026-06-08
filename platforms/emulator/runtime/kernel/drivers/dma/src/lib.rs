@@ -4,4 +4,5 @@
 
 //#[cfg(target_arch = "riscv32")]
 pub mod axicdma;
+pub mod hil;
 pub mod nodma;

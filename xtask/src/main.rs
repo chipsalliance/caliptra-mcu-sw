@@ -562,7 +562,7 @@ fn main() {
             profile,
         } => {
             if *bare_metal {
-                caliptra_mcu_builder::bare_metal_build(platform.as_deref()).map(|_| ())
+                caliptra_mcu_builder::bare_metal_build().map(|_| ())
             } else {
                 // The opt-in `release` cargo profile auto-enables the `release` cargo
                 // feature, which strips the kernel `debug!()` macro, romtime
@@ -583,8 +583,9 @@ fn main() {
                         platform: platform.as_deref(),
                         profile: Some(profile.as_str()),
                         ..Default::default()
-                    })
-                    .map(|_| ())
+                    },
+                )
+                .map(|_| ())
             }
         }
         Commands::Rom { trace } => rom::rom_run(*trace),

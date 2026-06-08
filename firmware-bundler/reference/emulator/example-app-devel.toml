@@ -21,7 +21,11 @@ sram = { offset = 0x4000_0000, size = 0x10_0000 }
 
 [platform.dccm]
 offset = 0x5000_0000
-size = 0x4000
+size = 0x3800
+
+[platform.handoff]
+offset = 0x5000_3800
+size = 0x800
 
 [platform.flash]
 offset = 0x3BFE_0000
@@ -29,12 +33,12 @@ size = 0x2_0000
 
 # This section is optional.
 [rom]
-name = "mcu-rom-emulator"
+name = "caliptra-mcu-rom-emulator"
 stack = 0x2d00
 exception_stack = 0x200
 
 [kernel]
-name = "mcu-runtime-emulator"
+name = "caliptra-mcu-runtime-emulator"
 stack = 0x0_7000
 
 [[app]]
