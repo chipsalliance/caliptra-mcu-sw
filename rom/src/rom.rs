@@ -976,6 +976,15 @@ pub struct RomParameters<'a> {
     /// An optional entropy source used for the initialization of CFI counters before Caliptra
     /// mailbox is available. If `None` and CFI is enabled, initialization will error out.
     pub cfi_entropy_source: Option<&'a mut dyn CfiEntropySource>,
+    /// Optional I3C bus timing parameters for the primary controller (i3c),
+    /// written to its timing registers during I3C initialization. When `None`,
+    /// [`I3cTimings::default`] is used (recommended settings for high-speed
+    /// parts).
+    pub i3c_timings: Option<crate::I3cTimings>,
+    /// Optional I3C bus timing parameters for the secondary controller (i3c1),
+    /// used when it is the active controller. When `None`,
+    /// [`I3cTimings::default`] is used.
+    pub i3c1_timings: Option<crate::I3cTimings>,
 }
 
 fn initialize_cfi_state(params: &mut RomParameters) {

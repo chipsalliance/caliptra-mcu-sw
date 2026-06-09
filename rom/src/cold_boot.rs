@@ -1053,9 +1053,17 @@ impl BootFlow for ColdBoot {
         caliptra_mcu_romtime::println!("[mcu-rom] Initializing I3C");
         if straps.active_i3c == 1 {
             caliptra_mcu_romtime::println!("[mcu-rom] Initializing I3C1 (active)");
-            i3c1.configure(straps.i3c1_static_addr, true);
+            i3c1.configure(crate::I3cConfig {
+                static_addr: straps.i3c1_static_addr,
+                recovery_enabled: true,
+                timings: params.i3c1_timings.unwrap_or_default(),
+            });
         } else {
-            i3c.configure(straps.i3c_static_addr, true);
+            i3c.configure(crate::I3cConfig {
+                static_addr: straps.i3c_static_addr,
+                recovery_enabled: true,
+                timings: params.i3c_timings.unwrap_or_default(),
+            });
         }
         mci.set_flow_checkpoint(McuRomBootStatus::I3cInitialized.into());
 
