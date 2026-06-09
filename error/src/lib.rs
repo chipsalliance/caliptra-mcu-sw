@@ -642,6 +642,7 @@ impl McuError {
             0x5_0017,
             "DCCM uncorrectable ECC error"
         ),
+        (ROM_CFI_PANIC, 0x6_0000, "ROM CFI panic"),
         (
             ROM_SOC_MCU_MBOX0_AXI_USER_LOCK_VERIFY_FAILED,
             0x5_0018,

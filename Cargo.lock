@@ -414,6 +414,17 @@ dependencies = [
 [[package]]
 name = "caliptra-cfi-derive"
 version = "0.1.0"
+source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba#767d4ef59a106aea683b883c07bd65456fb3ba6b"
+dependencies = [
+ "paste",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "caliptra-cfi-derive"
+version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba6b#767d4ef59a106aea683b883c07bd65456fb3ba6b"
 dependencies = [
  "paste",
@@ -432,6 +443,11 @@ dependencies = [
  "quote",
  "syn 1.0.109",
 ]
+
+[[package]]
+name = "caliptra-cfi-lib"
+version = "0.1.0"
+source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba#767d4ef59a106aea683b883c07bd65456fb3ba6b"
 
 [[package]]
 name = "caliptra-cfi-lib"
@@ -1923,6 +1939,8 @@ dependencies = [
  "bitflags 2.10.0",
  "caliptra-api",
  "caliptra-api-types",
+ "caliptra-cfi-derive 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba)",
+ "caliptra-cfi-lib 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba)",
  "caliptra-drivers",
  "caliptra-mcu-config",
  "caliptra-mcu-error",
@@ -1985,6 +2003,8 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.10.0",
  "caliptra-api",
+ "caliptra-cfi-derive 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba)",
+ "caliptra-cfi-lib 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba)",
  "caliptra-mcu-error",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-digest",

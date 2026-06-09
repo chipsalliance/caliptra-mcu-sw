@@ -31,6 +31,9 @@ use caliptra_api::mailbox::{
 };
 use caliptra_api::{calc_checksum, CaliptraApiError};
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
+use caliptra_cfi_lib::{
+    cfi_assert, cfi_assert_bool, cfi_assert_eq_12_words, cfi_launder, CfiCounter, CfiError,
+};
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg;
@@ -294,10 +297,13 @@ impl ColdBoot {
             HexBytes(expected_digest)
         );
 
-        if digest != *expected_digest {
+        if cfi_launder(digest != *expected_digest) {
             caliptra_mcu_romtime::println!("[mcu-rom] MCU ROM digest mismatch");
             fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH);
         }
+        let digest_words: [u32; 12] = transmute!(digest);
+        let expected_words: [u32; 12] = transmute!(*expected_digest);
+        cfi_assert_eq_12_words(&digest_words, &expected_words);
 
         if stash {
             Self::stash_measurement(soc_manager, &digest);
@@ -1149,24 +1155,44 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::SsConfigDoneSet.into());
 
         // Verify that SS_CONFIG_DONE_STICKY and SS_CONFIG_DONE are actually set
-        if !mci.is_ss_config_done_sticky() || !mci.is_ss_config_done() {
+        if cfi_launder(!mci.is_ss_config_done_sticky()) {
             caliptra_mcu_romtime::println!("[mcu-rom] SS_CONFIG_DONE verification failed");
             fatal_error(McuError::ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED);
         }
+        if cfi_launder(!mci.is_ss_config_done()) {
+            caliptra_mcu_romtime::println!("[mcu-rom] SS_CONFIG_DONE verification failed");
+            fatal_error(McuError::ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED);
+        }
+        cfi_assert!(mci.is_ss_config_done_sticky());
+        cfi_assert!(mci.is_ss_config_done());
 
         // Verify PK hashes haven't been tampered with after locking
         caliptra_mcu_romtime::println!("[mcu-rom] Verifying production debug unlock PK hashes");
-        if let Err(err) = verify_prod_debug_unlock_pk_hash(mci, otp) {
-            caliptra_mcu_romtime::println!("[mcu-rom] PK hash verification failed");
-            fatal_error(err);
+        let result = verify_prod_debug_unlock_pk_hash(mci, otp);
+        if cfi_launder(result.is_ok()) {
+            cfi_assert!(result.is_ok());
+        } else {
+            cfi_assert!(result.is_err());
+            if let Err(err) = result {
+                caliptra_mcu_romtime::println!("[mcu-rom] PK hash verification failed");
+                fatal_error(err);
+            }
         }
         mci.set_flow_checkpoint(McuRomBootStatus::PkHashVerified.into());
 
         // Verify MCU mailbox AXI users haven't been tampered with after locking
         caliptra_mcu_romtime::println!("[mcu-rom] Verifying MCU mailbox AXI users");
-        if let Err(err) = verify_mcu_mbox_axi_users(mci, &mcu_mbox_config) {
-            caliptra_mcu_romtime::println!("[mcu-rom] MCU mailbox AXI user verification failed");
-            fatal_error(err);
+        let result = verify_mcu_mbox_axi_users(mci, &mcu_mbox_config);
+        if cfi_launder(result.is_ok()) {
+            cfi_assert!(result.is_ok());
+        } else {
+            cfi_assert!(result.is_err());
+            if let Err(err) = result {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] MCU mailbox AXI user verification failed"
+                );
+                fatal_error(err);
+            }
         }
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersVerified.into());
 
@@ -1197,6 +1223,11 @@ impl BootFlow for ColdBoot {
         crate::call_hook(params.hooks, |h| h.post_caliptra_boot());
         caliptra_mcu_romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForMailbox.into());
+
+        if let Err(e) = reinitialize_cfi_state(&mut env.soc_manager) {
+            caliptra_mcu_romtime::println!("[mcu-rom] Error initialize CFI state");
+            fatal_error(e);
+        }
 
         // Execute full FIPS zeroization flow now that Caliptra is ready for
         // mailbox commands. This never returns (halts for cold reset).
@@ -1552,4 +1583,21 @@ impl BootFlow for ColdBoot {
         caliptra_mcu_romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
         fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
     }
+}
+
+fn reinitialize_cfi_state(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+) -> caliptra_mcu_error::McuResult<()> {
+    let mut gen = || {
+        let bytes = device_ownership_transfer::cm_random_generate(soc_manager)
+            .map_err(|e| CfiError(u32::from(e)))?;
+        let words: [u32; 12] = transmute!(bytes);
+        Ok((words[0], words[1], words[2], words[3]))
+    };
+
+    CfiCounter::reset(&mut gen);
+    CfiCounter::reset(&mut gen);
+    CfiCounter::reset(&mut gen);
+
+    Ok(())
 }

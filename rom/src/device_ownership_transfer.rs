@@ -19,6 +19,9 @@ use caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacResp, CmShaReqHdr,
     CmShaResp, CmStableKeyType, CommandId, EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader,
 };
+#[cfg(all(not(test), feature = "cfi"))]
+use caliptra_cfi_derive::cfi_mod_fn;
+use caliptra_cfi_lib::{cfi_assert, cfi_assert_bool, cfi_launder};
 use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_romtime::otp::Otp;
 use caliptra_mcu_romtime::{HexWord, McuRomBootStatus};
@@ -392,6 +395,7 @@ pub(crate) fn cm_hmac(
 /// # Returns
 /// * `Ok(())` - If the DOT blob is authentic.
 /// * `Err(McuError)` - If HMAC verification fails (blob is corrupted or invalid).
+#[cfg_attr(all(not(test), feature = "cfi"), cfi_mod_fn)]
 pub fn verify_dot_blob(
     soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     blob: &DotBlob,
@@ -402,6 +406,12 @@ pub fn verify_dot_blob(
         caliptra_mcu_romtime::println!("[mcu-rom] DOT blob HMAC did not match");
         return Err(McuError::ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR);
     }
+
+    cfi_assert!(cfi_launder(constant_time_eq::constant_time_eq(
+        verify.as_bytes(),
+        blob.hmac.as_bytes()
+    )));
+
     Ok(())
 }
 
