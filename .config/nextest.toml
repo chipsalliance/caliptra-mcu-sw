@@ -60,8 +60,7 @@ default-filter = """
     - test(test_lc_dev_to_scrap)
     - test(test_lc_invalid_transition_error)) |
 (package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot)) |
-(package(caliptra-mcu-tests-integration) and test(test_rom_hooks_fire_in_order)) |
-(package(caliptra-mcu-tests-integration) and test(test_external_otp))
+(package(caliptra-mcu-tests-integration) and test(test_rom_hooks_fire_in_order))
 """
 # Disabled because they hang the FPGA at boot (LifecycleControllerState::Dev):
 #   test_manuf_debug_unlock, test_uds, test_sw_digest_lock,

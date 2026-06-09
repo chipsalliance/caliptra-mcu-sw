@@ -228,6 +228,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
             output: Some("all-fw.zip"),
             platform: Some("fpga"),
             rom_features: args.rom_features.as_deref(),
+            runtime_features: args.runtime_features.as_deref(),
             mcu_cfgs: mcu_cfgs,
             separate_runtimes: args.separate_runtimes,
             ..Default::default()

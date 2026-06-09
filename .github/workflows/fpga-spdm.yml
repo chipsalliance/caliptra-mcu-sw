@@ -148,7 +148,8 @@ jobs:
             --configuration subsystem \
             --rom-features "core_test" \
             --mcu_cfg mcu,0x0,0xB00C0000,2,2,2,test-fpga-flash-ctrl \
-            --separate-runtimes
+            --separate-runtimes \
+            --runtime-features "test-mctp-spdm-attestation,test-mctp-spdm-attestation-pcr-quote,test-mctp-spdm-responder-conformance"
           sccache --show-stats
 
           mkdir -p /tmp/caliptra-binaries

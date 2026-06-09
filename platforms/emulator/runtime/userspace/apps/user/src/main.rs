@@ -91,6 +91,8 @@ pub(crate) async fn async_main() {
         feature = "test-firmware-update-streaming",
         feature = "test-firmware-update-flash",
         feature = "test-streaming-boot-flash-write-back",
+        feature = "test-pldm-fw-update-e2e",
+        feature = "test-mcu-mbox-fips-periodic",
     )))]
     EXECUTOR
         .get()

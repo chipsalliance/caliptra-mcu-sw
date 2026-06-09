@@ -24,6 +24,7 @@ struct BuildArgs<'a> {
     mcu: bool,
     fw_id: &'a Option<String>,
     rom_features: &'a Option<String>,
+    runtime_features: &'a Option<String>,
     separate_runtimes: bool,
     mcu_cfgs: &'a Option<Vec<ImageCfg>>,
 }
@@ -127,6 +128,10 @@ pub(crate) enum Fpga {
         /// Rom features to build with
         #[arg(long)]
         rom_features: Option<String>,
+
+        /// Comma-separated list of runtime feature flags to build
+        #[arg(long)]
+        runtime_features: Option<String>,
 
         /// Build a separate runtime for each feature flag
         #[arg(long)]
@@ -246,6 +251,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             mcu,
             fw_id,
             rom_features,
+            runtime_features,
             separate_runtimes,
             mcu_cfgs,
         } => {
@@ -258,6 +264,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                     mcu: *mcu,
                     fw_id,
                     rom_features,
+                    runtime_features,
                     separate_runtimes: *separate_runtimes,
                     mcu_cfgs,
                 })?;
