@@ -135,8 +135,13 @@ pub fn run_command_extended(args: RunCommandArgs) -> Result<Option<String>> {
             println!("[FPGA] Running command: {}", args.command);
         }
         let mut cmd = Command::new("ssh");
-        cmd.current_dir(&*PROJECT_ROOT)
-            .args([target_host, "-t", args.command]);
+        cmd.current_dir(&*PROJECT_ROOT).args([
+            "-o",
+            "ConnectTimeout=5",
+            target_host,
+            "-t",
+            args.command,
+        ]);
         cmd
     } else {
         if args.output != Output::Silence {
@@ -501,4 +506,22 @@ pub fn check_ssh_access(target_host: Option<&str>) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Resolves the target host. Defaults to "caliptra-fpga" if available.
+pub fn resolve_target_host(target_host: Option<&str>) -> Option<String> {
+    if let Some(host) = target_host {
+        Some(host.to_string())
+    } else {
+        let default_host = "caliptra-fpga";
+        if check_ssh_access(Some(default_host)).is_ok() {
+            Some(default_host.to_string())
+        } else {
+            println!(
+                "Could not connect to default target '{}', falling back to local machine.",
+                default_host
+            );
+            None
+        }
+    }
 }

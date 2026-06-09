@@ -12,8 +12,8 @@ use configurations::Configuration;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use utils::{
-    check_fpga_dependencies, check_host_dependencies, check_ssh_access, run_command,
-    run_command_with_output,
+    check_fpga_dependencies, check_host_dependencies, check_ssh_access, resolve_target_host,
+    run_command, run_command_with_output,
 };
 
 mod configurations;
@@ -250,10 +250,12 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             mcu_cfgs,
         } => {
             println!("Building FPGA firmware");
-            let config = get_and_validate_configuration(*configuration, target_host.as_deref())?;
+            let resolved_target = resolve_target_host(target_host.as_deref());
+            let config =
+                get_and_validate_configuration(*configuration, resolved_target.as_deref())?;
             config
                 .executor()
-                .set_target_host(target_host.as_deref())
+                .set_target_host(resolved_target.as_deref())
                 .build(&BuildArgs {
                     mcu: *mcu,
                     fw_id,
@@ -268,10 +270,12 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             package_filter,
         } => {
             println!("Building FPGA tests");
-            let config = get_and_validate_configuration(*configuration, target_host.as_deref())?;
+            let resolved_target = resolve_target_host(target_host.as_deref());
+            let config =
+                get_and_validate_configuration(*configuration, resolved_target.as_deref())?;
             config
                 .executor()
-                .set_target_host(target_host.as_deref())
+                .set_target_host(resolved_target.as_deref())
                 .build_test(&BuildTestArgs { package_filter })?;
         }
         Fpga::Bootstrap {
@@ -282,7 +286,8 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             println!("Bootstrapping FPGA");
             println!("configuration: {:?}", configuration);
 
-            let target_host = target_host.as_deref();
+            let resolved_target = resolve_target_host(target_host.as_deref());
+            let target_host = resolved_target.as_deref();
             check_ssh_access(target_host)?;
             check_fpga_dependencies(target_host)?;
 
@@ -321,15 +326,17 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             test_output,
         } => {
             println!("Running test suite on FPGA");
-            is_module_loaded("io_module", target_host.as_deref())?;
+            let resolved_target = resolve_target_host(target_host.as_deref());
+            let target_host = resolved_target.as_deref();
+            is_module_loaded("io_module", target_host)?;
 
             // Clear old test logs
-            run_command(target_host.as_deref(), "(sudo rm /tmp/junit.xml || true)")?;
+            run_command(target_host, "(sudo rm /tmp/junit.xml || true)")?;
 
-            let config = Configuration::from_cmd(target_host.as_deref())?;
+            let config = Configuration::from_cmd(target_host)?;
             config
                 .executor()
-                .set_target_host(target_host.as_deref())
+                .set_target_host(target_host)
                 .test(&TestArgs {
                     test_filter,
                     test_output,
