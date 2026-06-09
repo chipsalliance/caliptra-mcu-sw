@@ -17,6 +17,7 @@ Reference: [OCP Device Ownership Transfer specification](https://opencomputeproj
 1. [Runtime Commands](#runtime-commands)
 1. [Lifecycle Transitions](#lifecycle-transitions)
 1. [Recovery Mechanisms](#recovery-mechanisms)
+1. [Ownership RAM Recommendations](#ownership-ram-recommendations)
 1. [Security Considerations](#security-considerations)
 
 
@@ -201,6 +202,8 @@ The DOT_BLOB is authenticated on every boot in ODD state to ensure the CAK and L
 - Ownership data must be invalidated and/or scrubbed on power cycle
 - Ownership data must not be updatable once marked as valid by a non-Caliptra entity
 - Stores desired DOT_FUSE_ARRAY state for pending transitions
+
+See [Ownership RAM Recommendations](#ownership-ram-recommendations) for detailed guidance on how this storage should be sized, laid out, retained across resets, and used to coordinate DOT flows between ROM and runtime.
 
 ### Storage (Flash)
 - Non-volatile external storage
@@ -1547,6 +1550,143 @@ OTP fuses before verifying signatures. The ECDSA signature is over
 - VendorKey public key hash must match the vendor recovery PK hash in OTP fuses
 - MCI mbox0 must be accessible to the BMC
 - Override failure is non-fatal: boot continues with recovery attempts
+
+---
+
+## Ownership RAM Recommendations
+
+The `Ownership_Storage` (also referred to as *ownership RAM*) is the volatile,
+reset-surviving scratch area that DOT uses to carry ownership material and DOT
+boot intent across resets and between the ROM and runtime (RT/FMC) flows. The
+DOT specification deliberately describes it abstractly (a "FLOP-based register"
+or sticky RAM) so that integrators can map it onto whatever hardware their SoC
+provides. This section gives concrete recommendations for implementing and using
+it.
+
+> **Optional / not yet implemented:** Ownership RAM is one recommended way to
+> carry DOT material and intent across the flows described here, but it is
+> **optional**. Integrators may instead use flash, other sticky/scratch
+> registers, or any storage that meets the retention and access-control
+> properties below. These flows are **not currently supported** in the MCU
+> reference ROM/runtime code, the emulator, or the FPGA integration; the
+> recommendations in this section are forward-looking design guidance, not a
+> description of existing behavior.
+
+> **Why ownership RAM is needed:** DOT state transitions and recovery span
+> multiple boot stages and multiple resets. The CAK/LAK extracted from the
+> DOT_BLOB by ROM must be visible to RT; the desired fuse state requested by RT
+> must be visible to the ROM/FMC component that actually burns fuses; and the
+> "this is a DOT recovery/transition boot, do not run normal boot" intent must
+> survive the reset that hands control between stages. A volatile RAM that is
+> retained across resets but cleared on power loss is one natural primitive for
+> this hand-off, but the same intent can be carried in flash or other sticky
+> registers if they provide equivalent retention and integrity guarantees.
+
+### Retention and Reset Domain
+
+Ownership RAM must sit in a reset domain that is **retained across MCU/subsystem
+resets but cleared when `powergood` drops (power cycle)**. Mapping this onto the
+MCU reset flows (selected by the MCI `RESET_REASON` register, see the
+[Reference ROM Specification](rom.md)):
+
+| Reset / event | `RESET_REASON` | Ownership RAM |
+|---|---|---|
+| Cold boot (first boot after power-good asserted / MCI reset) | none set | **Cleared / invalid** (must be re-derived from DOT_BLOB) |
+| Firmware Boot Reset | `FwBootUpdReset` | **Retained** |
+| Firmware Hitless Update | `FwHitlessUpdReset` | **Retained** |
+| Warm Reset (subsystem reset with `powergood` held) | `WarmReset` | **Retained** |
+| Power cycle / `powergood` de-assert | (next boot is cold) | **Cleared / scrubbed** |
+
+Recommendations:
+
+- Place ownership RAM in MCI sticky/FLOP storage (or equivalent SoC sticky
+  registers) that shares the retention domain of other reset-surviving MCI
+  state, so that warm and firmware resets preserve it while a power-good drop
+  clears it.
+- It must be retained across **at least one** MCU reset level (required for the
+  RT→ROM/FMC fuse-burn hand-off); retaining it across as many MCU reset levels
+  as possible simplifies multi-reset transition and recovery sequences.
+- On any boot where the hardware cannot guarantee retention (e.g. a cold boot),
+  the contents must be treated as invalid and re-derived from the DOT_BLOB.
+
+### Sizing and Layout
+
+Size the region to hold the largest CAK/LAK material plus control and integrity
+fields. A recommended logical layout:
+
+| Field | Purpose | Writer |
+|---|---|---|
+| `magic` / `version` | Identifies a valid, correctly-versioned ownership RAM block | ROM |
+| `valid` flag | Set once ROM has populated the block this power cycle | ROM |
+| `locked` flag | Set once the block is sealed; further non-Caliptra writes are rejected | ROM/RT |
+| `dot_boot_mode` | Normal boot vs. DOT recovery/transition boot (see below) | ROM |
+| `current_fuse_state` (n) | DOT_FUSE_ARRAY value observed at boot | ROM |
+| `desired_fuse_state` (n+1) | Pending transition requested by RT for ROM/FMC to apply | RT |
+| `CAK` | Current code authentication key (present in Volatile/Locked) | ROM (from blob) / RT (install) |
+| `LAK` | Current lock authentication key | ROM (from blob) / RT (install) |
+| `integrity` (CRC/checksum) | Detects corruption of the block | last writer |
+
+Keep the layout fixed and versioned so that ROM and RT agree on the contents
+across firmware updates. Reserve space for future fields.
+
+### Access Control and Locking
+
+- **Ownership data must not be updatable once marked valid by a non-Caliptra
+  entity.** Once ROM (or RT, on `DOT_CAK_INSTALL`) seals the block, set the
+  `locked` flag and have the hardware/firmware reject further writes from
+  untrusted AXI users until the next power cycle. This prevents another agent
+  from substituting CAK/LAK after they have been committed.
+- Lock ownership RAM before handing control to less-trusted code or exposing
+  mailbox/interfaces to external entities (mirror the MCI configuration locking
+  performed around `SS_CONFIG_DONE_STICKY` / `SS_CONFIG_DONE` in the ROM).
+- Only ROM/FMC should be permitted to act on `desired_fuse_state` (fuse burning
+  is never performed by RT during normal operation — see
+  [ROM vs FMC Implementation Options](#rom-vs-fmc-implementation-options)).
+
+### Integrity and Scrubbing
+
+- Protect the block with a `magic`/`version` and a CRC/checksum so consumers can
+  distinguish a validly retained block from uninitialized or corrupted RAM. If
+  the integrity check fails, treat the block as invalid and fall back to the
+  DOT_BLOB / fuse state on flash and OTP.
+- **Scrub secrets on power cycle and on transition completion.** CAK/LAK must be
+  zeroized when ownership is lost (power cycle, or `DOT_UNLOCK`/`DOT_OVERRIDE`
+  that drops to Uninitialized). Do not rely solely on the retention domain
+  clearing — explicitly invalidate the `valid` flag and zero secret fields when
+  a flow completes so stale keys are never re-used.
+
+### Using Ownership RAM Across Boot Stages
+
+Ownership RAM is the hand-off channel between the DOT actors at each boot stage.
+The producer/consumer relationships are:
+
+1. **ROM (boot):** Reads `DOT_FUSE_ARRAY` to get the current state (n). In ODD
+   state, authenticates the DOT_BLOB and, if valid, programs `CAK`/`LAK` into
+   ownership RAM and marks it valid. Records `current_fuse_state` and the
+   `dot_boot_mode` (normal vs. recovery/transition) for RT to read.
+2. **ROM → RT hand-off (recovery/transition boot):** When the DOT_BLOB is
+   corrupt/missing in ODD state, or a fuse transition is pending, ROM sets
+   `dot_boot_mode` to indicate a DOT recovery/transition boot. After the reset
+   that jumps to RT, RT reads this field and **only accepts DOT
+   recovery/override/transition commands** instead of running the normal boot
+   flow. This is the concrete mechanism behind the "a flag should be passed from
+   MCU ROM to RT" note in the [Recovery Mechanisms](#recovery-mechanisms) and
+   [State Management](#state-management) flows.
+3. **RT (runtime):** On `DOT_CAK_INSTALL`, writes `CAK`/`LAK` into ownership RAM
+   (Volatile state). On `DOT_LOCK`/`DOT_DISABLE`/`DOT_UNLOCK`, writes
+   `desired_fuse_state = n+1` so the fuse-burning component can apply it on the
+   next boot, then requests a subsystem reset that preserves ownership RAM.
+4. **ROM/FMC (transition boot):** Reads `desired_fuse_state`, verifies it is
+   exactly `n+1` of `current_fuse_state`, validates the DOT_BLOB where required,
+   burns `DOT_FUSE_ARRAY`, updates flash storage, and clears the pending
+   `desired_fuse_state` before requesting the final reset.
+
+Because each of these steps is separated by a reset, the retention guarantees
+above are what make the multi-reset DOT state machine work. The reset that
+hands control between stages must be a level that preserves ownership RAM (a
+subsystem/warm/firmware reset, **not** a power cycle); a power cycle in the
+middle of a transition simply returns the device to a clean state derived from
+the persisted `DOT_FUSE_ARRAY` and DOT_BLOB.
 
 ---
 
