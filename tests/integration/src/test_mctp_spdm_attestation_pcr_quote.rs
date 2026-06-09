@@ -47,7 +47,7 @@ mod test {
         let stream = TcpStream::connect(addr).unwrap();
         let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
 
-        thread::spawn(move || {
+        spawn_with_emulator_state(move || {
             thread::sleep(Duration::from_secs(9000));
             println!("[{}] TIMED OUT AFTER 9000 SECONDS", TEST_NAME,);
             exit(-1);
@@ -83,7 +83,7 @@ mod test {
             }
         });
 
-        thread::spawn(move || {
+        spawn_with_emulator_state(move || {
             execute_spdm_attestation("MCTP");
         });
 
