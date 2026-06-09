@@ -800,6 +800,17 @@ pub struct RomParameters<'a> {
     /// ROM uses the reference fuse map count (number of entries in
     /// `PROD_DEBUG_UNLOCK_PK_ENTRIES`).
     pub prod_debug_unlock_auth_pk_hash_count: Option<u32>,
+    /// [2.1] Bitmask to write to `FC_FIPS_ZEROZATION` before configuration
+    /// registers are locked by `SS_CONFIG_DONE`.
+    ///
+    /// When the FIPS PPD (Power Protection Detection) signal is asserted,
+    /// this mask controls which hardware components participate in FIPS
+    /// zeroization.  The mask **must** be programmed before `SS_CONFIG_DONE`
+    /// is set, because that register becomes read-only after locking.
+    /// Platform integrators should detect the FIPS PPD signal and supply the
+    /// appropriate mask here.  When `None`, the register is left at its
+    /// reset-default value (all zeroes = no zeroization).
+    pub fips_zeroization_mask: Option<u32>,
 }
 
 #[inline(always)]

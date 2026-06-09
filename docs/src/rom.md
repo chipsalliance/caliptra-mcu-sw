@@ -59,8 +59,8 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
     * See [the ROM fuses](rom-fuses.md) documentation for details on how these are read and interpreted.
 1. Configure MCU mailbox AXI users (see [Security Configuration](#security-configuration) below).
 1. Set mailbox AXI user lock registers.
-1. [2.1] Set [FC_FIPS_ZEROZATION](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) to the appropriate value.
 1. Configure the MCU SRAM execution region size by writing to the `FW_SRAM_EXEC_REGION_SIZE` register. If not specified in `RomParameters`, it defaults to reserving 32KB at the top of SRAM for the Protected Data Region.
+1. [2.1] Set [FC_FIPS_ZEROZATION](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) to the value provided by `RomParameters::fips_zeroization_mask`. This **must** happen before `SS_CONFIG_DONE` is set, because that register becomes read-only once configuration is locked. Platform integrators detect the FIPS PPD signal and supply the appropriate mask; if `None` the register is left at its reset-default (0 = no zeroization).
 1. Set `SS_CONFIG_DONE_STICKY`, `SS_CONFIG_DONE` registers to lock MCI configuration.
 1. Verify PK hashes and MCU mailbox AXI users after locking (see [Security Configuration](#security-configuration) below).
 1. Poll on Caliptra `FLOW_STATUS` registers for Caliptra to deassert the Ready for Fuses state.
