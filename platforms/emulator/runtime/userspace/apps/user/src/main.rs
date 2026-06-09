@@ -18,6 +18,8 @@ use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 pub use caliptra_mcu_libsyscall_caliptra::console_writeln;
 
 mod caliptra_cmd_handler;
+#[cfg(feature = "test-defmt-logging")]
+mod defmt_test;
 #[cfg(any(
     feature = "test-firmware-update-streaming",
     feature = "test-firmware-update-flash",
@@ -26,6 +28,8 @@ mod caliptra_cmd_handler;
 mod firmware_update;
 mod image_loader;
 mod mcu_mbox;
+#[cfg(target_arch = "riscv32")]
+mod panic;
 mod soc_env;
 mod spdm;
 mod vdm;
@@ -124,6 +128,18 @@ pub(crate) async fn async_main() {
         feature = "test-caliptra-util-host-mctp-vdm-validator"
     ))]
     EXECUTOR.get().spawner().spawn(vdm::vdm_task()).unwrap();
+
+    // Production userspace defmt logging: drain staged frames to the flash log
+    // capsule for host-side decoding. Device-only (defmt's linker section).
+    #[cfg(all(feature = "userspace-log", target_arch = "riscv32"))]
+    EXECUTOR
+        .get()
+        .spawner()
+        .spawn(caliptra_mcu_userlog::drain_task())
+        .unwrap();
+
+    #[cfg(feature = "test-defmt-logging")]
+    defmt_test::emit_test_frames();
 
     loop {
         EXECUTOR.get().poll();

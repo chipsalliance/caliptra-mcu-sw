@@ -5,7 +5,8 @@ pub(crate) mod cmd_auth_mock;
     feature = "test-mcu-mbox-cmds",
     feature = "test-mcu-mbox-fips-self-test",
     feature = "test-mcu-mbox-fips-periodic",
-    feature = "test-caliptra-util-host-validator"
+    feature = "test-caliptra-util-host-validator",
+    feature = "test-defmt-logging"
 ))]
 mod cmd_handler_mock;
 
@@ -37,7 +38,8 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
         feature = "test-mcu-mbox-cmds",
         feature = "test-mcu-mbox-fips-self-test",
         feature = "test-mcu-mbox-fips-periodic",
-        feature = "test-caliptra-util-host-validator"
+        feature = "test-caliptra-util-host-validator",
+        feature = "test-defmt-logging"
     ))]
     {
         let handler = cmd_handler_mock::NonCryptoCmdHandlerMock::default();
