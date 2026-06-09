@@ -256,7 +256,7 @@ impl SpdmSocketDeviceIo {
     /// Connect to the SPDM bridge socket with a specified transport type.
     pub fn connect(addr: &str, transport_type: u32) -> anyhow::Result<Self> {
         let stream = TcpStream::connect(addr)?;
-        stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+        stream.set_read_timeout(Some(Duration::from_secs(120)))?;
         stream.set_write_timeout(Some(Duration::from_secs(10)))?;
         Ok(Self {
             stream,
