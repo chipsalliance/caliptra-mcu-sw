@@ -13,7 +13,7 @@
 //! reserve the transport-framing header.
 
 use mcu_spdm_lite_codec::{ResponseBody, SpdmVersion, WireWriter};
-use mcu_spdm_lite_traits::{PalBytes, SpdmPal};
+use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo};
 
 use crate::error::SpdmResult;
 
@@ -22,7 +22,7 @@ use crate::error::SpdmResult;
 /// Padding bytes are zeroed.
 pub(crate) fn alloc_padded<'a, Pal: SpdmPal>(
     pal: &'a Pal,
-    io: &Pal::Io<'_>,
+    io: &impl SpdmPalIo,
     raw_len: usize,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let align = pal.send_len_alignment();
@@ -79,7 +79,7 @@ pub(crate) fn alloc_padded<'a, Pal: SpdmPal>(
 #[inline(never)]
 pub(crate) fn build_response<'a, Pal, B>(
     pal: &'a Pal,
-    io: &Pal::Io<'_>,
+    io: &impl SpdmPalIo,
     version: SpdmVersion,
     body: &B,
 ) -> SpdmResult<PalBytes<'a, Pal>>
@@ -101,7 +101,7 @@ where
 #[inline(never)]
 pub(crate) fn build_error_response<'a, Pal: SpdmPal>(
     pal: &'a Pal,
-    io: &Pal::Io<'_>,
+    io: &impl SpdmPalIo,
     version: SpdmVersion,
     error_code: u8,
     error_data: u8,

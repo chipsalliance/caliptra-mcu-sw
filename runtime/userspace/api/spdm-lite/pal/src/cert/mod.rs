@@ -75,7 +75,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 
     async fn cert_chain_slot_size(
         &self,
-        _io: &Self::Io<'_>,
+        _io: &impl SpdmPalIo,
         slot: u8,
         _algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
@@ -100,7 +100,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
     #[inline]
     fn set_certificate_authorized(
         &self,
-        _io: &Self::Io<'_>,
+        _io: &impl SpdmPalIo,
         slot: u8,
         _key_pair_id: u8,
         _cert_model: u8,
@@ -122,7 +122,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 
     async fn cert_chain_len(
         &self,
-        _io: &Self::Io<'_>,
+        _io: &impl SpdmPalIo,
         slot: u8,
         _algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
@@ -152,7 +152,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 
     async fn root_cert_hash(
         &self,
-        _io: &Self::Io<'_>,
+        _io: &impl SpdmPalIo,
         slot: u8,
         _algo: SpdmPalAsymAlgo,
         _hash_algo: SpdmPalHashAlgo,
@@ -167,7 +167,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 
     async fn read_cert_chain(
         &self,
-        _io: &Self::Io<'_>,
+        _io: &impl SpdmPalIo,
         slot: u8,
         _algo: SpdmPalAsymAlgo,
         offset: usize,
@@ -261,7 +261,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 
     async fn sign_hash(
         &self,
-        _io: &Self::Io<'_>,
+        _io: &impl SpdmPalIo,
         slot: u8,
         _algo: SpdmPalAsymAlgo,
         digest: &[u8],
@@ -273,7 +273,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 
     async fn write_cert_chain(
         &self,
-        _io: &Self::Io<'_>,
+        _io: &impl SpdmPalIo,
         slot: u8,
         algo: SpdmPalAsymAlgo,
         key_pair_id: u8,
@@ -310,7 +310,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 
     async fn erase_cert_chain(
         &self,
-        _io: &Self::Io<'_>,
+        _io: &impl SpdmPalIo,
         slot: u8,
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {
@@ -380,7 +380,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         self.cert_store.cache_chain_digest(slot, digest);
     }
 
-    async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
+    async fn generate_nonce(&self, _io: &impl SpdmPalIo, out: &mut [u8]) -> McuResult<()> {
         mcu_caliptra_api_lite::rng_generate(self, out).await
     }
 }

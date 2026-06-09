@@ -17,4 +17,15 @@ pub trait SpdmPalLargeMessage {
 
     /// Copy bytes from the persistent large-message buffer into `out`.
     fn read(&self, offset: usize, out: &mut [u8]) -> McuResult<()>;
+
+    /// Take ownership of the persistent large-message buffer.
+    ///
+    /// The caller must return it with [`Self::replace`] before handling the
+    /// next large-message operation. This lets the stack borrow a reassembled
+    /// request in place without copying certificate-sized payloads into the
+    /// per-I/O scratch allocator.
+    fn take(&self) -> McuResult<&'static mut [u8]>;
+
+    /// Return a buffer previously acquired with [`Self::take`].
+    fn replace(&self, buf: &'static mut [u8]);
 }

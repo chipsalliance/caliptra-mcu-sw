@@ -77,7 +77,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// chain length so existing read-only stores preserve behavior.
     async fn cert_chain_slot_size(
         &self,
-        io: &Self::Io<'_>,
+        io: &impl crate::SpdmPalIo,
         slot: u8,
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
@@ -88,7 +88,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     #[inline]
     fn set_certificate_authorized(
         &self,
-        _io: &Self::Io<'_>,
+        _io: &impl crate::SpdmPalIo,
         _slot: u8,
         _key_pair_id: u8,
         _cert_model: u8,
@@ -100,7 +100,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// Validate an incoming SET_CERTIFICATE chain before it is committed.
     async fn validate_set_certificate_chain(
         &self,
-        _io: &Self::Io<'_>,
+        _io: &impl crate::SpdmPalIo,
         _slot: u8,
         _key_pair_id: u8,
         _cert_model: u8,
@@ -114,7 +114,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// algorithm (excludes the 52-byte SPDM cert-chain header).
     async fn cert_chain_len(
         &self,
-        io: &Self::Io<'_>,
+        io: &impl crate::SpdmPalIo,
         slot: u8,
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize>;
@@ -122,7 +122,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// Write the digest of slot's **root certificate** into `out`.
     async fn root_cert_hash(
         &self,
-        io: &Self::Io<'_>,
+        io: &impl crate::SpdmPalIo,
         slot: u8,
         algo: SpdmPalAsymAlgo,
         hash_algo: SpdmPalHashAlgo,
@@ -133,7 +133,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// for the given algorithm at `offset` into `dst`.
     async fn read_cert_chain(
         &self,
-        io: &Self::Io<'_>,
+        io: &impl crate::SpdmPalIo,
         slot: u8,
         algo: SpdmPalAsymAlgo,
         offset: usize,
@@ -143,7 +143,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// Sign `digest` using the key in `slot` for the given algorithm.
     async fn sign_hash(
         &self,
-        io: &Self::Io<'_>,
+        io: &impl crate::SpdmPalIo,
         slot: u8,
         algo: SpdmPalAsymAlgo,
         digest: &[u8],
@@ -155,7 +155,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     #[allow(clippy::too_many_arguments)]
     async fn write_cert_chain(
         &self,
-        io: &Self::Io<'_>,
+        io: &impl crate::SpdmPalIo,
         slot: u8,
         algo: SpdmPalAsymAlgo,
         key_pair_id: u8,
@@ -167,7 +167,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// Erase the cert chain in `slot` for the given algorithm.
     async fn erase_cert_chain(
         &self,
-        io: &Self::Io<'_>,
+        io: &impl crate::SpdmPalIo,
         slot: u8,
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()>;
@@ -200,5 +200,5 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     fn cache_chain_digest(&self, _slot: u8, _algo: SpdmPalHashAlgo, _digest: &[u8]) {}
 
     /// Fill `out` with random bytes from the platform RNG.
-    async fn generate_nonce(&self, io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()>;
+    async fn generate_nonce(&self, io: &impl crate::SpdmPalIo, out: &mut [u8]) -> McuResult<()>;
 }

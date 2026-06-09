@@ -13,9 +13,7 @@ use mcu_spdm_lite_codec::{
     SpdmMsgHdrPdu, SpdmVersion,
 };
 use mcu_spdm_lite_errors::as_spdm_wire;
-use mcu_spdm_lite_traits::{
-    PalBytes, SpdmPal, SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
-};
+use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalHashAlgo, SpdmPalIo, MAX_SLOTS};
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
@@ -34,7 +32,7 @@ const CERT_MODEL_GENERIC_CERT: u8 = 3;
 pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State>,
     pal: &'a Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    io: &impl SpdmPalIo,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
         return Err(SPDM_UNEXPECTED_REQUEST);
@@ -44,7 +42,12 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
     }
 
     let req = io.request();
-    if req.len() > pal.mtu() {
+    let max_request_len = if state.chunk.in_progress() {
+        state.chunk.large_msg_size() as usize
+    } else {
+        pal.mtu()
+    };
+    if req.len() > max_request_len {
         return Err(SPDM_INVALID_REQUEST);
     }
     let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
@@ -86,6 +89,7 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
         }
         pal.erase_cert_chain(io, slot_id, state.asym_algo()).await?;
     } else {
+        let payload = split_cert_payload(state, pal, payload)?;
         let (root_hash, der) = validate_spdm_cert_chain(pal, io, payload).await?;
         pal.validate_set_certificate_chain(
             io,
@@ -186,9 +190,42 @@ fn validate_negotiated_set_certificate_algorithms<S: Clone>(
     Ok(())
 }
 
+fn split_cert_payload<'payload, Pal: SpdmPal, S: Clone>(
+    state: &ConnectionState<S>,
+    pal: &Pal,
+    payload: &'payload [u8],
+) -> SpdmResult<&'payload [u8]> {
+    if payload.len() < SPDM_CERT_CHAIN_HDR_LEN {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+
+    let length = u16::from_le_bytes([payload[0], payload[1]]) as usize;
+    if length < SPDM_CERT_CHAIN_HDR_LEN || length > payload.len() {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+
+    let cert_payload = &payload[..length];
+    let padding = &payload[length..];
+    if state.chunk.in_progress() {
+        if !padding.is_empty() {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+    } else {
+        let spdm_len = SpdmMsgHdrPdu::SIZE
+            .checked_add(SetCertificateReqBody::SIZE)
+            .and_then(|n| n.checked_add(length))
+            .ok_or(SPDM_INVALID_REQUEST)?;
+        if !crate::chunk::valid_transport_padding(pal, spdm_len, padding) {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+    }
+
+    Ok(cert_payload)
+}
+
 async fn validate_spdm_cert_chain<'payload, Pal: SpdmPal>(
     pal: &Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    io: &impl SpdmPalIo,
     payload: &'payload [u8],
 ) -> SpdmResult<([u8; SHA384_DIGEST_SIZE], &'payload [u8])> {
     if payload.len() < SPDM_CERT_CHAIN_HDR_LEN {
@@ -256,7 +293,7 @@ fn der_sequence_len(input: &[u8]) -> Option<usize> {
 
 async fn validate_root_hash<Pal: SpdmPal>(
     pal: &Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    io: &impl SpdmPalIo,
     expected: &[u8; SHA384_DIGEST_SIZE],
     root_cert: &[u8],
 ) -> SpdmResult<()> {
@@ -290,15 +327,22 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use crate::error::{SPDM_BUSY, SPDM_OPERATION_FAILED, SPDM_RESET_REQUIRED, SPDM_UNSPECIFIED};
+    use crate::error::{
+        SPDM_BUSY, SPDM_INVALID_REQUEST, SPDM_OPERATION_FAILED, SPDM_RESET_REQUIRED,
+        SPDM_UNSPECIFIED, SPDM_VERSION_MISMATCH,
+    };
     use core::marker::PhantomData;
     use core::ops::{Deref, DerefMut};
     use futures::executor::block_on;
     use mcu_error::McuErrorCode;
-    use mcu_spdm_lite_codec::{errors as wire_errors, OtherParamSupport, ReqRespCode};
+    use mcu_spdm_lite_codec::{
+        errors as wire_errors, OtherParamSupport, ReqRespCode, CHUNK_ACK_ATTR_EARLY_ERROR,
+        CHUNK_ATTR_LAST_CHUNK,
+    };
     use mcu_spdm_lite_traits::{
-        McuResult, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash, SpdmPalIoKind,
-        SpdmPalLargeMessage,
+        McuResult, MeasurementInfo, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash,
+        SpdmPalIoKind, SpdmPalIoTransport, SpdmPalLargeMessage, SpdmPalMeasurements,
+        SPDM_NONCE_LEN,
     };
     use std::boxed::Box;
     use std::cell::RefCell;
@@ -359,24 +403,30 @@ mod tests {
 
     struct TestPal {
         mtu: usize,
+        header_size: usize,
+        send_len_alignment: usize,
         supported_slots: u8,
         authorized: bool,
         validate_error: Option<McuErrorCode>,
         write_error: Option<McuErrorCode>,
         erase_error: Option<McuErrorCode>,
         op: RefCell<Option<StoreOp>>,
+        large_msg: RefCell<Option<&'static mut [u8]>>,
     }
 
     impl Default for TestPal {
         fn default() -> Self {
             Self {
                 mtu: 1024,
+                header_size: 0,
+                send_len_alignment: 1,
                 supported_slots: u8::MAX,
                 authorized: true,
                 validate_error: None,
                 write_error: None,
                 erase_error: None,
                 op: RefCell::new(None),
+                large_msg: RefCell::new(None),
             }
         }
     }
@@ -415,7 +465,11 @@ mod tests {
         }
 
         fn header_size(&self) -> usize {
-            0
+            self.header_size
+        }
+
+        fn send_len_alignment(&self) -> usize {
+            self.send_len_alignment
         }
 
         fn mtu(&self) -> usize {
@@ -438,16 +492,47 @@ mod tests {
 
     impl SpdmPalLargeMessage for TestPal {
         fn capacity(&self) -> usize {
-            self.mtu
+            self.large_msg
+                .borrow()
+                .as_ref()
+                .map_or(self.mtu, |buf| buf.len())
         }
 
-        fn write(&self, _offset: usize, _data: &[u8]) -> McuResult<()> {
+        fn write(&self, offset: usize, data: &[u8]) -> McuResult<()> {
+            let mut large_msg = self.large_msg.borrow_mut();
+            let buf = large_msg
+                .as_deref_mut()
+                .ok_or(mcu_error::codes::INVARIANT)?;
+            let end = offset
+                .checked_add(data.len())
+                .ok_or(mcu_error::codes::INVARIANT)?;
+            let dst = buf
+                .get_mut(offset..end)
+                .ok_or(mcu_error::codes::INVARIANT)?;
+            dst.copy_from_slice(data);
             Ok(())
         }
 
-        fn read(&self, _offset: usize, out: &mut [u8]) -> McuResult<()> {
-            out.fill(0);
+        fn read(&self, offset: usize, out: &mut [u8]) -> McuResult<()> {
+            let large_msg = self.large_msg.borrow();
+            let buf = large_msg.as_deref().ok_or(mcu_error::codes::INVARIANT)?;
+            let end = offset
+                .checked_add(out.len())
+                .ok_or(mcu_error::codes::INVARIANT)?;
+            let src = buf.get(offset..end).ok_or(mcu_error::codes::INVARIANT)?;
+            out.copy_from_slice(src);
             Ok(())
+        }
+
+        fn take(&self) -> McuResult<&'static mut [u8]> {
+            self.large_msg
+                .borrow_mut()
+                .take()
+                .ok_or(mcu_error::codes::INVARIANT)
+        }
+
+        fn replace(&self, buf: &'static mut [u8]) {
+            self.large_msg.replace(Some(buf));
         }
     }
 
@@ -486,6 +571,22 @@ mod tests {
         }
     }
 
+    impl SpdmPalMeasurements for TestPal {
+        fn measurement_info(&self) -> &[MeasurementInfo] {
+            &[]
+        }
+
+        async fn get_measurement_value(
+            &self,
+            _io: &Self::Io<'_>,
+            _index: u8,
+            _nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+            _out: &mut [u8],
+        ) -> McuResult<usize> {
+            Err(mcu_error::codes::NOT_IMPLEMENTED)
+        }
+    }
+
     impl SpdmPalCertStore for TestPal {
         fn provisioned_slots(&self) -> u8 {
             0
@@ -497,7 +598,7 @@ mod tests {
 
         fn set_certificate_authorized(
             &self,
-            _io: &Self::Io<'_>,
+            _io: &impl SpdmPalIo,
             _slot: u8,
             _key_pair_id: u8,
             _cert_model: u8,
@@ -508,7 +609,7 @@ mod tests {
 
         async fn validate_set_certificate_chain(
             &self,
-            _io: &Self::Io<'_>,
+            _io: &impl SpdmPalIo,
             _slot: u8,
             _key_pair_id: u8,
             _cert_model: u8,
@@ -524,7 +625,7 @@ mod tests {
 
         async fn cert_chain_len(
             &self,
-            _io: &Self::Io<'_>,
+            _io: &impl SpdmPalIo,
             _slot: u8,
             _algo: SpdmPalAsymAlgo,
         ) -> McuResult<usize> {
@@ -533,7 +634,7 @@ mod tests {
 
         async fn root_cert_hash(
             &self,
-            _io: &Self::Io<'_>,
+            _io: &impl SpdmPalIo,
             _slot: u8,
             _algo: SpdmPalAsymAlgo,
             _hash_algo: SpdmPalHashAlgo,
@@ -544,7 +645,7 @@ mod tests {
 
         async fn read_cert_chain(
             &self,
-            _io: &Self::Io<'_>,
+            _io: &impl SpdmPalIo,
             _slot: u8,
             _algo: SpdmPalAsymAlgo,
             _offset: usize,
@@ -555,7 +656,7 @@ mod tests {
 
         async fn sign_hash(
             &self,
-            _io: &Self::Io<'_>,
+            _io: &impl SpdmPalIo,
             _slot: u8,
             _algo: SpdmPalAsymAlgo,
             _digest: &[u8],
@@ -566,7 +667,7 @@ mod tests {
 
         async fn write_cert_chain(
             &self,
-            _io: &Self::Io<'_>,
+            _io: &impl SpdmPalIo,
             slot: u8,
             _algo: SpdmPalAsymAlgo,
             key_pair_id: u8,
@@ -589,7 +690,7 @@ mod tests {
 
         async fn erase_cert_chain(
             &self,
-            _io: &Self::Io<'_>,
+            _io: &impl SpdmPalIo,
             slot: u8,
             _algo: SpdmPalAsymAlgo,
         ) -> McuResult<()> {
@@ -612,7 +713,7 @@ mod tests {
             None
         }
 
-        async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
+        async fn generate_nonce(&self, _io: &impl SpdmPalIo, out: &mut [u8]) -> McuResult<()> {
             out.fill(0xA5);
             Ok(())
         }
@@ -670,6 +771,647 @@ mod tests {
         TestIo { request }
     }
 
+    fn chunk_send(
+        version: SpdmVersion,
+        handle: u8,
+        seq: u16,
+        last: bool,
+        large_msg_size: Option<usize>,
+        chunk: &[u8],
+    ) -> TestIo {
+        chunk_send_with_padding(version, handle, seq, last, large_msg_size, chunk, &[])
+    }
+
+    fn chunk_send_with_padding(
+        version: SpdmVersion,
+        handle: u8,
+        seq: u16,
+        last: bool,
+        large_msg_size: Option<usize>,
+        chunk: &[u8],
+        padding: &[u8],
+    ) -> TestIo {
+        let mut request = vec![version.to_u8(), ReqRespCode::CHUNK_SEND.0];
+        request.push(if last { CHUNK_ATTR_LAST_CHUNK } else { 0 });
+        request.push(handle);
+        request.extend_from_slice(&seq.to_le_bytes());
+        request.extend_from_slice(&0u16.to_le_bytes());
+        request.extend_from_slice(&(chunk.len() as u32).to_le_bytes());
+        if let Some(size) = large_msg_size {
+            request.extend_from_slice(&(size as u32).to_le_bytes());
+        }
+        request.extend_from_slice(chunk);
+        request.extend_from_slice(padding);
+        TestIo { request }
+    }
+
+    fn chunk_test_pal(mtu: usize) -> TestPal {
+        let pal = TestPal {
+            mtu,
+            ..TestPal::default()
+        };
+        pal.large_msg
+            .replace(Some(Box::leak(vec![0u8; 128].into_boxed_slice())));
+        pal
+    }
+
+    fn run_two_chunk_request(
+        state: &mut ConnectionState<TestHashState>,
+        pal: &TestPal,
+        handle: u8,
+        large_request: &[u8],
+    ) -> Vec<u8> {
+        assert!(large_request.len() > pal.mtu());
+        let (first, second) = large_request.split_at(30);
+
+        let first_io = chunk_send(
+            state.version,
+            handle,
+            0,
+            false,
+            Some(large_request.len()),
+            first,
+        );
+        let first_ack = block_on(crate::chunk::handle_chunk_send(state, pal, &first_io)).unwrap();
+        assert_eq!(
+            &first_ack[..],
+            &[
+                state.version.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                handle,
+                0,
+                0
+            ]
+        );
+        assert!(state.chunk.in_progress());
+
+        let second_io = chunk_send(state.version, handle, 1, true, None, second);
+        block_on(crate::chunk::handle_chunk_send(state, pal, &second_io)).unwrap()
+    }
+
+    #[test]
+    fn test_chunk_send_ack_respects_transport_padding() {
+        let pal = TestPal {
+            mtu: 48,
+            header_size: 1,
+            send_len_alignment: 4,
+            ..TestPal::default()
+        };
+        pal.large_msg
+            .replace(Some(Box::leak(vec![0u8; 128].into_boxed_slice())));
+        let mut state = state(SpdmVersion::V12);
+        state.peer_cap_flags = CapFlags::CHUNK;
+        let mut large_request = vec![0u8; 50];
+        large_request[0] = SpdmVersion::V12.to_u8();
+        large_request[1] = ReqRespCode::SET_CERTIFICATE.0;
+        let (first, second) = large_request.split_at(30);
+
+        let first_io =
+            chunk_send_with_padding(SpdmVersion::V12, 14, 0, false, Some(50), first, &[0, 0]);
+        let first_ack =
+            block_on(crate::chunk::handle_chunk_send(&mut state, &pal, &first_io)).unwrap();
+        assert_eq!(first_ack.len(), 8);
+        assert_eq!(first_ack[0], 0);
+        assert_eq!(
+            &first_ack[1..7],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                14,
+                0,
+                0,
+            ]
+        );
+        assert_eq!(first_ack[7], 0);
+        assert!(state.chunk.in_progress());
+
+        let second_io = chunk_send(SpdmVersion::V12, 14, 1, true, None, second);
+        let second_ack = block_on(crate::chunk::handle_chunk_send(
+            &mut state, &pal, &second_io,
+        ))
+        .unwrap();
+        assert_eq!(second_ack.len(), 12);
+        assert_eq!(second_ack[0], 0);
+        assert_eq!(
+            &second_ack[1..11],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                14,
+                1,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::ERROR.0,
+                SPDM_INVALID_REQUEST.spec_byte(),
+                0,
+            ]
+        );
+        assert_eq!(second_ack[11], 0);
+        assert!(!state.chunk.in_progress());
+    }
+
+    #[test]
+    fn test_chunk_send_accepts_doe_padding_on_set_certificate_chunks() {
+        let pal = TestPal {
+            mtu: 48,
+            send_len_alignment: 4,
+            ..TestPal::default()
+        };
+        pal.large_msg
+            .replace(Some(Box::leak(vec![0u8; 128].into_boxed_slice())));
+        let mut state = state(SpdmVersion::V12);
+        state.peer_cap_flags = CapFlags::CHUNK;
+        let der = der_chain();
+        let root_hash = test_digest(&der[..5]);
+        let payload = cert_payload(&der, root_hash);
+        let large_request = request(SpdmVersion::V12, 1, 0, &payload).request;
+        assert_eq!(large_request.len(), 64);
+        let (first, second) = large_request.split_at(30);
+
+        // First CHUNK_SEND SPDM length: common header(2) + body(10) +
+        // LargeMessageSize(4) + ChunkSize(30) = 46, so DOE pads 2 bytes.
+        let first_io = chunk_send_with_padding(
+            SpdmVersion::V12,
+            15,
+            0,
+            false,
+            Some(large_request.len()),
+            first,
+            &[0, 0],
+        );
+        let first_ack =
+            block_on(crate::chunk::handle_chunk_send(&mut state, &pal, &first_io)).unwrap();
+        assert_eq!(first_ack.len(), 8);
+        assert_eq!(
+            &first_ack[..6],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                15,
+                0,
+                0,
+            ]
+        );
+        assert_eq!(&first_ack[6..], &[0, 0]);
+        assert!(state.chunk.in_progress());
+
+        // Final CHUNK_SEND SPDM length: common header(2) + body(10) +
+        // ChunkSize(34) = 46, so DOE pads 2 bytes. The reassembled request
+        // must use only ChunkSize bytes, not the trailing padding.
+        let second_io =
+            chunk_send_with_padding(SpdmVersion::V12, 15, 1, true, None, second, &[0, 0]);
+        let second_ack = block_on(crate::chunk::handle_chunk_send(
+            &mut state, &pal, &second_io,
+        ))
+        .unwrap();
+
+        assert_eq!(second_ack.len(), 12);
+        assert_eq!(
+            &second_ack[..10],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                15,
+                1,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::SET_CERTIFICATE_RSP.0,
+                1,
+                0,
+            ]
+        );
+        assert_eq!(&second_ack[10..], &[0, 0]);
+        assert!(!state.chunk.in_progress());
+        assert_eq!(
+            pal.op.take(),
+            Some(StoreOp::Write {
+                slot: 1,
+                key_pair_id: 0,
+                cert_model: CERT_MODEL_ALIAS_CERT,
+                root_hash,
+                cert_chain: der,
+            })
+        );
+    }
+
+    #[test]
+    fn test_chunk_send_rejects_nonzero_doe_padding() {
+        let pal = TestPal {
+            mtu: 48,
+            send_len_alignment: 4,
+            ..TestPal::default()
+        };
+        pal.large_msg
+            .replace(Some(Box::leak(vec![0u8; 128].into_boxed_slice())));
+        let mut state = state(SpdmVersion::V12);
+        state.peer_cap_flags = CapFlags::CHUNK;
+        let mut large_request = vec![0u8; 64];
+        large_request[0] = SpdmVersion::V12.to_u8();
+        large_request[1] = ReqRespCode::SET_CERTIFICATE.0;
+        let first = &large_request[..30];
+
+        let first_io = chunk_send_with_padding(
+            SpdmVersion::V12,
+            16,
+            0,
+            false,
+            Some(large_request.len()),
+            first,
+            &[0, 1],
+        );
+        let ack = block_on(crate::chunk::handle_chunk_send(&mut state, &pal, &first_io)).unwrap();
+
+        assert_eq!(ack.len(), 12);
+        assert_eq!(
+            &ack[..10],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                CHUNK_ACK_ATTR_EARLY_ERROR,
+                16,
+                0,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::ERROR.0,
+                SPDM_INVALID_REQUEST.spec_byte(),
+                0,
+            ]
+        );
+        assert_eq!(&ack[10..], &[0, 0]);
+        assert!(!state.chunk.in_progress());
+        assert_eq!(pal.op.take(), None);
+    }
+
+    #[test]
+    fn test_chunk_send_rejects_incorrect_doe_padding_length() {
+        let pal = TestPal {
+            mtu: 48,
+            send_len_alignment: 4,
+            ..TestPal::default()
+        };
+        pal.large_msg
+            .replace(Some(Box::leak(vec![0u8; 128].into_boxed_slice())));
+        let mut state = state(SpdmVersion::V12);
+        state.peer_cap_flags = CapFlags::CHUNK;
+        let mut large_request = vec![0u8; 64];
+        large_request[0] = SpdmVersion::V12.to_u8();
+        large_request[1] = ReqRespCode::SET_CERTIFICATE.0;
+        let first = &large_request[..30];
+
+        // SPDM length is 46, so a 4-byte-aligned transport may only append
+        // exactly 2 padding bytes; a single zero byte is malformed padding.
+        let first_io = chunk_send_with_padding(
+            SpdmVersion::V12,
+            17,
+            0,
+            false,
+            Some(large_request.len()),
+            first,
+            &[0],
+        );
+        let ack = block_on(crate::chunk::handle_chunk_send(&mut state, &pal, &first_io)).unwrap();
+
+        assert_eq!(ack.len(), 12);
+        assert_eq!(
+            &ack[..10],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                CHUNK_ACK_ATTR_EARLY_ERROR,
+                17,
+                0,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::ERROR.0,
+                SPDM_INVALID_REQUEST.spec_byte(),
+                0,
+            ]
+        );
+        assert_eq!(&ack[10..], &[0, 0]);
+        assert!(!state.chunk.in_progress());
+        assert_eq!(pal.op.take(), None);
+    }
+
+    #[test]
+    fn test_chunk_send_rejects_missing_doe_padding_on_first_chunk() {
+        let pal = TestPal {
+            mtu: 48,
+            send_len_alignment: 4,
+            ..TestPal::default()
+        };
+        pal.large_msg
+            .replace(Some(Box::leak(vec![0u8; 128].into_boxed_slice())));
+        let mut state = state(SpdmVersion::V12);
+        state.peer_cap_flags = CapFlags::CHUNK;
+        let mut large_request = vec![0u8; 64];
+        large_request[0] = SpdmVersion::V12.to_u8();
+        large_request[1] = ReqRespCode::SET_CERTIFICATE.0;
+        let first = &large_request[..30];
+
+        // First CHUNK_SEND SPDM length is 46, so DOE must append two zeros.
+        let first_io = chunk_send(
+            SpdmVersion::V12,
+            18,
+            0,
+            false,
+            Some(large_request.len()),
+            first,
+        );
+        let ack = block_on(crate::chunk::handle_chunk_send(&mut state, &pal, &first_io)).unwrap();
+
+        assert_eq!(ack.len(), 12);
+        assert_eq!(
+            &ack[..10],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                CHUNK_ACK_ATTR_EARLY_ERROR,
+                18,
+                0,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::ERROR.0,
+                SPDM_INVALID_REQUEST.spec_byte(),
+                0,
+            ]
+        );
+        assert_eq!(&ack[10..], &[0, 0]);
+        assert!(!state.chunk.in_progress());
+        assert_eq!(pal.op.take(), None);
+    }
+
+    #[test]
+    fn test_chunk_send_rejects_missing_doe_padding_on_final_chunk() {
+        let pal = TestPal {
+            mtu: 48,
+            send_len_alignment: 4,
+            ..TestPal::default()
+        };
+        pal.large_msg
+            .replace(Some(Box::leak(vec![0u8; 128].into_boxed_slice())));
+        let mut state = state(SpdmVersion::V12);
+        state.peer_cap_flags = CapFlags::CHUNK;
+        let der = der_chain();
+        let root_hash = test_digest(&der[..5]);
+        let payload = cert_payload(&der, root_hash);
+        let large_request = request(SpdmVersion::V12, 1, 0, &payload).request;
+        assert_eq!(large_request.len(), 64);
+        let (first, second) = large_request.split_at(30);
+
+        let first_io = chunk_send_with_padding(
+            SpdmVersion::V12,
+            19,
+            0,
+            false,
+            Some(large_request.len()),
+            first,
+            &[0, 0],
+        );
+        let first_ack =
+            block_on(crate::chunk::handle_chunk_send(&mut state, &pal, &first_io)).unwrap();
+        assert_eq!(
+            &first_ack[..6],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                19,
+                0,
+                0,
+            ]
+        );
+        assert!(state.chunk.in_progress());
+
+        // Final CHUNK_SEND SPDM length is 46, so DOE must append two zeros.
+        let second_io = chunk_send(SpdmVersion::V12, 19, 1, true, None, second);
+        let ack = block_on(crate::chunk::handle_chunk_send(
+            &mut state, &pal, &second_io,
+        ))
+        .unwrap();
+
+        assert_eq!(ack.len(), 12);
+        assert_eq!(
+            &ack[..10],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                CHUNK_ACK_ATTR_EARLY_ERROR,
+                19,
+                1,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::ERROR.0,
+                SPDM_INVALID_REQUEST.spec_byte(),
+                0,
+            ]
+        );
+        assert_eq!(&ack[10..], &[0, 0]);
+        assert!(!state.chunk.in_progress());
+        assert_eq!(pal.op.take(), None);
+    }
+
+    #[test]
+    fn test_chunked_set_certificate_v12_writes_cert_chain() {
+        let pal = TestPal {
+            mtu: 48,
+            ..TestPal::default()
+        };
+        pal.large_msg
+            .replace(Some(Box::leak(vec![0u8; 128].into_boxed_slice())));
+        let mut state = state(SpdmVersion::V12);
+        state.peer_cap_flags = CapFlags::CHUNK;
+        let der = der_chain();
+        let root_hash = test_digest(&der[..5]);
+        let payload = cert_payload(&der, root_hash);
+        let large_request = request(SpdmVersion::V12, 1, 0, &payload).request;
+        assert!(large_request.len() > pal.mtu());
+        let (first, second) = large_request.split_at(30);
+
+        let first_io = chunk_send(
+            SpdmVersion::V12,
+            9,
+            0,
+            false,
+            Some(large_request.len()),
+            first,
+        );
+        let first_ack =
+            block_on(crate::chunk::handle_chunk_send(&mut state, &pal, &first_io)).unwrap();
+        assert_eq!(
+            &first_ack[..],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                9,
+                0,
+                0
+            ]
+        );
+        assert!(state.chunk.in_progress());
+
+        let second_io = chunk_send(SpdmVersion::V12, 9, 1, true, None, second);
+        let second_ack = block_on(crate::chunk::handle_chunk_send(
+            &mut state, &pal, &second_io,
+        ))
+        .unwrap();
+
+        assert_eq!(
+            &second_ack[..],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                9,
+                1,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::SET_CERTIFICATE_RSP.0,
+                1,
+                0,
+            ]
+        );
+        assert!(!state.chunk.in_progress());
+        assert_eq!(
+            pal.op.take(),
+            Some(StoreOp::Write {
+                slot: 1,
+                key_pair_id: 0,
+                cert_model: CERT_MODEL_ALIAS_CERT,
+                root_hash,
+                cert_chain: der,
+            })
+        );
+        assert!(pal.large_msg.borrow().is_some());
+    }
+
+    #[test]
+    fn test_chunked_nested_chunk_send_returns_early_error_ack() {
+        let pal = chunk_test_pal(48);
+        let mut state = state(SpdmVersion::V12);
+        state.peer_cap_flags = CapFlags::CHUNK;
+        let mut large_request = vec![0u8; 50];
+        large_request[0] = SpdmVersion::V12.to_u8();
+        large_request[1] = ReqRespCode::CHUNK_SEND.0;
+
+        let ack = run_two_chunk_request(&mut state, &pal, 10, &large_request);
+
+        assert_eq!(
+            &ack[..],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                CHUNK_ACK_ATTR_EARLY_ERROR,
+                10,
+                1,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::ERROR.0,
+                SPDM_INVALID_REQUEST.spec_byte(),
+                0,
+            ]
+        );
+        assert!(!state.chunk.in_progress());
+        assert!(pal.large_msg.borrow().is_some());
+    }
+
+    #[test]
+    fn test_chunked_nested_chunk_get_returns_early_error_ack() {
+        let pal = chunk_test_pal(48);
+        let mut state = state(SpdmVersion::V12);
+        state.peer_cap_flags = CapFlags::CHUNK;
+        let mut large_request = vec![0u8; 50];
+        large_request[0] = SpdmVersion::V12.to_u8();
+        large_request[1] = ReqRespCode::CHUNK_GET.0;
+
+        let ack = run_two_chunk_request(&mut state, &pal, 11, &large_request);
+
+        assert_eq!(
+            &ack[..],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                CHUNK_ACK_ATTR_EARLY_ERROR,
+                11,
+                1,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::ERROR.0,
+                SPDM_INVALID_REQUEST.spec_byte(),
+                0,
+            ]
+        );
+        assert!(!state.chunk.in_progress());
+        assert!(pal.large_msg.borrow().is_some());
+    }
+
+    #[test]
+    fn test_chunked_set_certificate_version_mismatch_embeds_error() {
+        let pal = chunk_test_pal(48);
+        let mut state = state(SpdmVersion::V12);
+        state.peer_cap_flags = CapFlags::CHUNK;
+        let mut large_request = vec![0u8; 50];
+        large_request[0] = SpdmVersion::V13.to_u8();
+        large_request[1] = ReqRespCode::SET_CERTIFICATE.0;
+
+        let ack = run_two_chunk_request(&mut state, &pal, 12, &large_request);
+
+        assert_eq!(
+            &ack[..],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                12,
+                1,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::ERROR.0,
+                SPDM_VERSION_MISMATCH.spec_byte(),
+                0,
+            ]
+        );
+        assert!(!state.chunk.in_progress());
+        assert_eq!(pal.op.take(), None);
+        assert!(pal.large_msg.borrow().is_some());
+    }
+
+    #[test]
+    fn test_chunked_set_certificate_validation_error_embeds_error_and_returns_buffer() {
+        let pal = chunk_test_pal(48);
+        let mut state = state(SpdmVersion::V12);
+        state.peer_cap_flags = CapFlags::CHUNK;
+        let der = der_chain();
+        let payload = cert_payload(&der, [0xa5; SHA384_DIGEST_SIZE]);
+        let large_request = request(SpdmVersion::V12, 1, 0, &payload).request;
+
+        let ack = run_two_chunk_request(&mut state, &pal, 13, &large_request);
+
+        assert_eq!(
+            &ack[..],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                13,
+                1,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::ERROR.0,
+                SPDM_INVALID_REQUEST.spec_byte(),
+                0,
+            ]
+        );
+        assert!(!state.chunk.in_progress());
+        assert_eq!(pal.op.take(), None);
+        assert!(pal.large_msg.borrow().is_some());
+    }
+
     #[test]
     fn test_handle_set_certificate_v12_writes_cert_chain() {
         let pal = TestPal::default();
@@ -700,6 +1442,63 @@ mod tests {
                 cert_chain: der,
             })
         );
+    }
+
+    #[test]
+    fn test_handle_set_certificate_accepts_doe_padding() {
+        let pal = TestPal {
+            send_len_alignment: 4,
+            ..TestPal::default()
+        };
+        let mut state = state(SpdmVersion::V12);
+        let der = vec![0x30, 0x02, 1, 2, 0x30, 0x01, 4];
+        let root_hash = test_digest(&der[..4]);
+        let payload = cert_payload(&der, root_hash);
+        let mut io = request(SpdmVersion::V12, 1, 0, &payload);
+        assert_eq!(io.request.len() % 4, 3);
+        io.request.push(0);
+
+        let rsp = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap();
+
+        assert_eq!(
+            &rsp[..],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::SET_CERTIFICATE_RSP.0,
+                1,
+                0
+            ]
+        );
+        assert_eq!(
+            pal.op.take(),
+            Some(StoreOp::Write {
+                slot: 1,
+                key_pair_id: 0,
+                cert_model: CERT_MODEL_ALIAS_CERT,
+                root_hash,
+                cert_chain: der,
+            })
+        );
+    }
+
+    #[test]
+    fn test_handle_set_certificate_rejects_bad_doe_padding() {
+        let pal = TestPal {
+            send_len_alignment: 4,
+            ..TestPal::default()
+        };
+        let mut state = state(SpdmVersion::V12);
+        let der = vec![0x30, 0x02, 1, 2, 0x30, 0x01, 4];
+        let root_hash = test_digest(&der[..4]);
+        let payload = cert_payload(&der, root_hash);
+        let mut io = request(SpdmVersion::V12, 1, 0, &payload);
+        assert_eq!(io.request.len() % 4, 3);
+        io.request.push(1);
+
+        let err = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap_err();
+
+        assert_eq!(err, SPDM_INVALID_REQUEST);
+        assert_eq!(pal.op.take(), None);
     }
 
     #[test]

@@ -40,4 +40,12 @@ impl<M: MeasurementProvider> SpdmPalLargeMessage for McuSpdmPal<M> {
         self.large_msg.set(large_msg);
         result
     }
+
+    fn take(&self) -> McuResult<&'static mut [u8]> {
+        self.large_msg.take().ok_or(INVARIANT)
+    }
+
+    fn replace(&self, buf: &'static mut [u8]) {
+        self.large_msg.set(Some(buf));
+    }
 }
