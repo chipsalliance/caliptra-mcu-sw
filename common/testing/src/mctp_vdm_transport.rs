@@ -63,6 +63,7 @@ pub struct MctpVdmSocket {
     target_addr: u8,
     msg_tag: u8,
     stream: BufferedStream,
+    mctp_util: MctpUtil,
 }
 
 impl MctpVdmSocket {
@@ -72,6 +73,7 @@ impl MctpVdmSocket {
             target_addr,
             msg_tag: 0,
             stream,
+            mctp_util: MctpUtil::new(),
         }
     }
 
@@ -80,8 +82,6 @@ impl MctpVdmSocket {
     /// The request should contain the full VDM payload (header + data).
     /// Returns the response payload (header + data).
     pub fn send_request(&mut self, request: &[u8]) -> Result<Vec<u8>, VdmTransportError> {
-        let mut mctp_util = MctpUtil::new();
-
         // Build MCTP payload: common header + VDM request
         let mut mctp_payload: Vec<u8> = Vec::new();
         let mctp_common_header = MctpVdmCommonHeader::new();
@@ -89,8 +89,9 @@ impl MctpVdmSocket {
         mctp_payload.extend_from_slice(request);
 
         // Send request and wait for response
-        mctp_util.new_req(self.msg_tag);
-        let response = mctp_util
+        self.mctp_util.new_req(self.msg_tag);
+        let response = self
+            .mctp_util
             .wait_for_responder(
                 self.msg_tag,
                 mctp_payload.as_mut_slice(),
@@ -98,6 +99,10 @@ impl MctpVdmSocket {
                 self.target_addr,
             )
             .ok_or(VdmTransportError::Timeout)?;
+
+        // First successful exchange — the MCU is booted; skip the boot
+        // delay on all subsequent requests.
+        self.mctp_util.set_boot_delay_ticks(0);
 
         // Increment message tag for next request
         self.msg_tag = (self.msg_tag + 1) & 0x07;

@@ -800,7 +800,7 @@ impl McuError {
         ),
         (
             ROM_COMPONENT_SVN_MANIFEST_ERROR,
-            0x1_001b,
+            0x5_001E,
             "MCU Component SVN Manifest validation error"
         ),
         (

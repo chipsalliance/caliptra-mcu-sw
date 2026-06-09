@@ -19,6 +19,12 @@ pub struct MctpUtil {
     msg_tag: u8,
     tag_owner: u8,
     pkt_payload_size: usize,
+    /// Number of emulator ticks to sleep in the `Start` state before
+    /// sending the first packet.  The default (50 000 000) gives the MCU
+    /// firmware enough time to boot.  After the first successful exchange
+    /// callers should set this to 0 so subsequent requests are not
+    /// artificially delayed.
+    boot_delay_ticks: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +60,7 @@ impl MctpUtil {
             msg_tag: DEFAULT_MSG_TAG,
             tag_owner: 1,
             pkt_payload_size: DEFAULT_PKT_PAYLOAD_SIZE,
+            boot_delay_ticks: 50_000_000,
         }
     }
 
@@ -97,6 +104,11 @@ impl MctpUtil {
     #[allow(dead_code)]
     pub fn set_pkt_payload_size(&mut self, size: usize) {
         self.pkt_payload_size = size;
+    }
+
+    #[allow(dead_code)]
+    pub fn set_boot_delay_ticks(&mut self, ticks: u32) {
+        self.boot_delay_ticks = ticks;
     }
 
     #[allow(dead_code)]
@@ -158,7 +170,9 @@ impl MctpUtil {
                     // The MCU might need some time to boot up and be ready to receive the request.
                     // Firmware update tests need extra time because the ROM processes
                     // recovery images (multiple indices) before the runtime starts.
-                    sleep_emulator_ticks(50_000_000);
+                    if self.boot_delay_ticks > 0 {
+                        sleep_emulator_ticks(self.boot_delay_ticks);
+                    }
                     i3c_state = I3cControllerState::SendPrivateWrite;
                 }
 
