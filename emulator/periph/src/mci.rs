@@ -1750,6 +1750,7 @@ mod tests {
             Some(McuMailbox0Internal::new_with_mbox_index(&clock, 1)),
             None,
             [0, 0],
+            false,
             Rc::new(Cell::new(true)),
         );
         // Sanity: mailbox1 is constructed with index 1 so its IRQ events get
