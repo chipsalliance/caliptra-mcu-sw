@@ -22,7 +22,7 @@ use mcu_spdm_lite_codec::{
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
 
-use crate::build::{build_response, valid_transport_padding};
+use crate::build::build_response;
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
 };
@@ -54,7 +54,6 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
     sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, N>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-    send_len_alignment: usize,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     // ── Phase check ─────────────────────────────────────────────────
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
@@ -96,18 +95,10 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
         return Err(SPDM_INVALID_REQUEST);
     }
     let opaque_len = u16::from_le_bytes([after[0], after[1]]) as usize;
-    let after_opaque_len = &after[2..];
-    let Some((opaque_data, transport_padding)) = after_opaque_len.split_at_checked(opaque_len)
-    else {
-        return Err(SPDM_INVALID_REQUEST);
-    };
-    let spdm_req_len =
-        SpdmMsgHdrPdu::SIZE + core::mem::size_of::<KeyExchangeReqBody>() + 2 + opaque_len;
-    if !transport_padding.is_empty()
-        && !valid_transport_padding(send_len_alignment, spdm_req_len, transport_padding)
-    {
+    if after.len() < 2 + opaque_len {
         return Err(SPDM_INVALID_REQUEST);
     }
+    let opaque_data = &after[2..2 + opaque_len];
 
     // Select secured-message version from requester's list.
     let supported = parse_supported_versions(opaque_data).map_err(|_| SPDM_INVALID_REQUEST)?;

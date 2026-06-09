@@ -22,7 +22,7 @@ use mcu_spdm_lite_codec::{
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
 
-use crate::build::{alloc_padded, build_error_response, valid_transport_padding};
+use crate::build::{alloc_padded, build_error_response};
 use crate::error::{
     SpdmError, SpdmResult, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST, SPDM_SESSION_REQUIRED,
     SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
@@ -379,7 +379,6 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
                         &mut self.sessions,
                         &self.pal,
                         &io,
-                        self.pal.send_len_alignment(),
                     )
                     .await
                     {
@@ -545,8 +544,7 @@ async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
             measurements::handle_get_measurements(state, pal, io).await
         }
         ReqRespCode::KEY_EXCHANGE => {
-            key_exchange::handle_key_exchange(state, sessions, pal, io, pal.send_len_alignment())
-                .await
+            key_exchange::handle_key_exchange(state, sessions, pal, io).await
         }
         ReqRespCode::FINISH | ReqRespCode::END_SESSION => Err(SPDM_SESSION_REQUIRED),
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
@@ -566,7 +564,6 @@ async fn handle_secured_request<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-    send_len_alignment: usize,
 ) -> SpdmResult<Option<PalBytes<'a, Pal>>> {
     let req = io.request();
 
@@ -577,7 +574,7 @@ async fn handle_secured_request<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
         return Ok(None);
     }
 
-    match handle_secured_inner(state, sessions, pal, io, session_id, send_len_alignment).await {
+    match handle_secured_inner(state, sessions, pal, io, session_id).await {
         Ok(rsp) => Ok(Some(rsp)),
         Err(e) => {
             let Some(session) = sessions.find_mut(session_id) else {
@@ -620,7 +617,6 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     session_id: u32,
-    send_len_alignment: usize,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let req = io.request();
     let version = state.version;
@@ -631,23 +627,14 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     let length = hdr.length_u16() as usize;
 
     // length = ciphertext_len + tag_len
-    if length < AES_256_GCM_TAG_SIZE {
-        return Err(SPDM_INVALID_REQUEST);
-    }
-    let Some((payload, transport_padding)) = payload.split_at_checked(length) else {
-        return Err(SPDM_INVALID_REQUEST);
-    };
-    let secured_msg_len = SECURED_MSG_HDR_SIZE + length;
-    if !transport_padding.is_empty()
-        && !valid_transport_padding(send_len_alignment, secured_msg_len, transport_padding)
-    {
+    if payload.len() < length || length < AES_256_GCM_TAG_SIZE {
         return Err(SPDM_INVALID_REQUEST);
     }
     let ct_len = length - AES_256_GCM_TAG_SIZE;
-    let Some((ciphertext, tag)) = payload.split_at_checked(ct_len) else {
-        return Err(SPDM_INVALID_REQUEST);
-    };
-    let tag: &[u8; AES_256_GCM_TAG_SIZE] = tag.try_into().map_err(|_| SPDM_INVALID_REQUEST)?;
+    let ciphertext = &payload[..ct_len];
+    let tag: &[u8; AES_256_GCM_TAG_SIZE] = payload[ct_len..ct_len + AES_256_GCM_TAG_SIZE]
+        .try_into()
+        .map_err(|_| SPDM_INVALID_REQUEST)?;
 
     let decrypt_key_type = match sessions.find(session_id).ok_or(SPDM_UNSPECIFIED)?.state {
         SessionState::HandshakeInProgress => SessionKeyType::RequestHandshakeKey,
