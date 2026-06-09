@@ -344,6 +344,36 @@ impl McuHwModel for ModelFpgaRealtime {
         let mut base = ModelFpgaSubsystem::new_unbooted(cptra_init)
             .map_err(|e| anyhow::anyhow!("Failed to initialized base model: {e}"))?;
 
+        // Overlay test-provided OTP fuse contents (e.g. DOT/recovery fuses) on
+        // top of the standard fuses the base model already provisioned. The
+        // base `new_unbooted` powers the subsystem up at the end, latching the
+        // OTP image (buffered secret partitions latch at power-up); mutating
+        // the OTP backing while the controller is live corrupts its background
+        // integrity/consistency checks. Hold the subsystem in reset, OR in the
+        // requested fuses, then power back up so the OTP controller latches
+        // them cleanly. OTP is one-time programmable (bits only go 0->1), and
+        // the DOT/vendor-secret partitions are zero in the base image, so the
+        // standard fuses are preserved. The read-modify-write goes through a
+        // heap Vec + `copy_from_slice` so LLVM emits a memcpy: byte-by-byte
+        // writes to the FPGA block RAM fault with SIGBUS.
+        if let Some(otp_memory) = params.otp_memory {
+            base.set_subsystem_reset(true);
+            std::thread::sleep(Duration::from_micros(1));
+            let mut otp_data = base.otp_slice().to_vec();
+            if otp_memory.len() > otp_data.len() {
+                bail!(
+                    "otp_memory ({} bytes) is larger than the OTP backing memory ({} bytes)",
+                    otp_memory.len(),
+                    otp_data.len()
+                );
+            }
+            for (dst, src) in otp_data.iter_mut().zip(otp_memory.iter()) {
+                *dst |= *src;
+            }
+            base.otp_slice().copy_from_slice(&otp_data);
+            base.set_subsystem_reset(false);
+        }
+
         // In Manufacturing lifecycle, enable IDevID CSR generation by writing
         // the GENERATE_IDEVID_CSR flag to cptra_dbg_manuf_service_reg.
         if matches!(
@@ -398,6 +428,25 @@ impl McuHwModel for ModelFpgaRealtime {
 
         if let Some(dot_flash_data) = params.dot_flash_initial_contents.as_deref() {
             m.write_dot_flash(dot_flash_data)?;
+        }
+
+        // Overlay test-provided OTP fuse contents on top of the base model's
+        // standard fuses so DOT/recovery tests can provision fuses on FPGA.
+        // OTP is one-time programmable (bits only go 0->1), and the DOT and
+        // vendor-secret partitions are zero in the base image, so OR-ing the
+        // requested bytes preserves the standard fuses in other byte ranges.
+        if let Some(otp_memory) = params.otp_memory {
+            let slice = m.base.otp_slice();
+            if otp_memory.len() > slice.len() {
+                bail!(
+                    "otp_memory ({} bytes) is larger than the OTP backing memory ({} bytes)",
+                    otp_memory.len(),
+                    slice.len()
+                );
+            }
+            for (dst, src) in slice.iter_mut().zip(otp_memory.iter()) {
+                *dst |= *src;
+            }
         }
 
         Ok(m)

@@ -226,10 +226,6 @@ mod test {
     /// 5. Send DOT_OVERRIDE with public keys and signatures
     /// 6. Verify ROM logs success
     #[test]
-    #[cfg_attr(
-        feature = "fpga_realtime",
-        ignore = "FPGA does not support otp_memory provisioning for DOT fuses"
-    )]
     fn test_i3c_services_dot_override_full_flow() {
         use caliptra_mcu_rom_common::DOT_BLOB_SIZE;
         use ecdsa::signature::hazmat::PrehashSigner;
