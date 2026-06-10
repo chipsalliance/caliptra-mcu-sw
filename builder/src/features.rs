@@ -40,6 +40,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-mbox-cmds",
     "test-mbox-sram",
     "test-external-otp",
+    "test-handoff",
     "test-warm-reset",
     "test-ocp-lock",
     "test-exit-immediately",
