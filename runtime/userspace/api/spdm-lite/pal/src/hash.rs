@@ -62,6 +62,11 @@ impl<M: MeasurementProvider> SpdmPalHash for McuSpdmPal<M> {
     }
 
     #[inline]
+    fn hash_clone(&self, _io: &impl SpdmPalIo, state: &HashState) -> McuResult<HashState> {
+        state.try_clone()
+    }
+
+    #[inline]
     async fn hash_finish(
         &self,
         _io: &impl SpdmPalIo,

@@ -4,7 +4,7 @@
 //!
 //! This module owns the [`SpdmStack`] run loop, the connection-scoped
 //! [`ConnectionState`], and the [`Phase`] enum that enforces the
-//! strict DSP0274 §10 ordering
+//! strict SPDM ordering
 //! `GET_VERSION → GET_CAPABILITIES → NEGOTIATE_ALGORITHMS`. Per-command
 //! handlers live in `algorithms`, `capabilities`, `certificate`,
 //! `chunk`, `digests`, and `version`.
@@ -15,22 +15,27 @@
 //! itself is unaware of the phase.
 
 use mcu_spdm_lite_codec::{
-    AeadAlgos, AsymAlgos, CapFlags, DheAlgos, HashAlgos, KeyScheduleAlgos, MeasHashAlgos, MeasSpec,
-    OtherParamSupport, ReqRespCode, SpdmMsgHdrPdu, SpdmVersion,
+    encode_aad, AeadAlgos, AsymAlgos, CapFlags, DheAlgos, HashAlgos, KeyScheduleAlgos,
+    MeasHashAlgos, MeasSpec, OtherParamSupport, ReqRespCode, SecuredMessageHeader, SpdmMsgHdrPdu,
+    SpdmVersion, AES_256_GCM_TAG_SIZE, SECURED_MSG_HDR_SIZE,
 };
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
 
-use crate::build::build_error_response;
+use crate::build::{alloc_padded, build_error_response};
 use crate::error::{
-    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
+    SpdmError, SpdmResult, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST, SPDM_SESSION_REQUIRED,
+    SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
+use crate::key_schedule::SessionKeyType;
+use crate::session::{SessionManager, SessionState};
 use crate::{
-    algorithms, capabilities, certificate, challenge, chunk, digests, measurements, version,
+    algorithms, capabilities, certificate, challenge, chunk, digests, end_session, finish,
+    key_exchange, measurements, version,
 };
 
 /// Connection phase tracked on the responder so the dispatcher can
-/// enforce the DSP0274 §10 ordering
+/// enforce the SPDM ordering
 /// `GET_VERSION → GET_CAPABILITIES → NEGOTIATE_ALGORITHMS`.
 ///
 /// `GET_VERSION` is legal in every phase (it resets the connection),
@@ -67,10 +72,9 @@ pub enum Phase {
 ///    `GET_VERSION` → `GET_CAPABILITIES` → `NEGOTIATE_ALGORITHMS`
 ///    handshake and reset on every `GET_VERSION` via
 ///    [`Self::reset_negotiation`].
-#[derive(Clone)]
-pub struct ConnectionState<S: Clone> {
+pub struct ConnectionState<S> {
     // ---- Local responder policy (fixed at startup) -----------------------
-    /// Responder `CT` time exponent (DSP0274 §10.3, `CAPABILITIES.CTExponent`).
+    /// Responder `CT` time exponent.
     /// Maximum response time is `2^ct_exponent` µs.
     pub ct_exponent: u8,
     /// Responder capability bitmap advertised in `CAPABILITIES`.
@@ -115,7 +119,7 @@ pub struct ConnectionState<S: Clone> {
     pub negotiated_base_asym_sel: AsymAlgos,
     /// Negotiated BaseHashSel from NEGOTIATE_ALGORITHMS.
     pub negotiated_base_hash_sel: HashAlgos,
-    /// Transcript state (running VCA/M1/L1 hashes per DSP0274 §8.10).
+    /// Transcript state (running VCA/M1/L1 hashes per SPDM).
     pub transcript: crate::transcript::Transcript<S>,
     /// In-progress CHUNK_SEND large-request reassembly state.
     pub(crate) chunk: chunk::ChunkState,
@@ -123,7 +127,7 @@ pub struct ConnectionState<S: Clone> {
     pub(crate) large_response: chunk::LargeResponseState,
 }
 
-impl<S: Clone> ConnectionState<S> {
+impl<S> ConnectionState<S> {
     /// Builds the Caliptra responder's fixed local-policy advertisement.
     ///
     /// # Returns
@@ -131,8 +135,10 @@ impl<S: Clone> ConnectionState<S> {
     /// A new `ConnectionState` with:
     ///
     /// * `ct_exponent = 20` (≈ 1 s — `2^20` µs).
-    /// * `cap_flags = CERT | CHAL | MEAS_SIG | ALIAS_CERT | CHUNK`,
-    ///   plus SET_CERTIFICATE capabilities when that test feature is enabled.
+    /// * `cap_flags = CERT | CHAL | MEAS_SIG | ALIAS_CERT | KEY_EX |
+    ///   ENCRYPT | MAC | CHUNK`, plus SET_CERTIFICATE capabilities when
+    ///   that test feature is enabled. `HANDSHAKE_IN_THE_CLEAR` is
+    ///   intentionally omitted — FINISH is encrypted with handshake keys.
     /// * `measurement_spec = DMTF`, `meas_hash_algo = SHA_384`,
     ///   `base_asym_sel = ECDSA_ECC_NIST_P384`,
     ///   `base_hash_sel = SHA_384`.
@@ -144,6 +150,9 @@ impl<S: Clone> ConnectionState<S> {
             | CapFlags::CHAL
             | CapFlags::MEAS_SIG
             | CapFlags::ALIAS_CERT
+            | CapFlags::KEY_EX
+            | CapFlags::ENCRYPT
+            | CapFlags::MAC
             | CapFlags::CHUNK
             | set_certificate_cap_flags();
         let other_param_support =
@@ -158,9 +167,9 @@ impl<S: Clone> ConnectionState<S> {
             meas_hash_algo: MeasHashAlgos::SHA_384,
             base_asym_sel: AsymAlgos::ECDSA_ECC_NIST_P384,
             base_hash_sel: HashAlgos::SHA_384,
-            dhe: DheAlgos::EMPTY,
-            aead: AeadAlgos::EMPTY,
-            key_schedule: KeyScheduleAlgos::EMPTY,
+            dhe: DheAlgos::SECP_384_R1,
+            aead: AeadAlgos::AES_256_GCM,
+            key_schedule: KeyScheduleAlgos::SPDM,
 
             phase: Phase::Start,
             version: SpdmVersion::V12,
@@ -179,8 +188,8 @@ impl<S: Clone> ConnectionState<S> {
 
     /// Drops every connection-scoped negotiation result.
     ///
-    /// Called by the dispatcher on every `GET_VERSION` per DSP0274
-    /// §10.4. Local-policy fields (the upper block) are not modified.
+    /// Called by the dispatcher on every `GET_VERSION` per SPDM
+    /// Local-policy fields (the upper block) are not modified.
     pub(crate) fn reset_negotiation(&mut self) {
         self.phase = Phase::Start;
         self.version = SpdmVersion::V12;
@@ -209,13 +218,13 @@ impl<S: Clone> ConnectionState<S> {
     }
 }
 
-impl<S: Clone> Default for ConnectionState<S> {
+impl<S> Default for ConnectionState<S> {
     fn default() -> Self {
         Self::caliptra()
     }
 }
 
-pub(crate) fn multi_key_conn_rsp<S: Clone>(state: &ConnectionState<S>) -> SpdmResult<bool> {
+pub(crate) fn multi_key_conn_rsp<S>(state: &ConnectionState<S>) -> SpdmResult<bool> {
     let selected = state
         .other_param_sel
         .contains(OtherParamSupport::MULTI_KEY_CONN);
@@ -260,15 +269,18 @@ fn set_certificate_other_params() -> OtherParamSupport {
 
 /// SPDM responder state machine + dispatcher.
 ///
-/// Owns a `Pal` (transport + allocator) and the [`ConnectionState`].
+/// Owns a `Pal` (transport + allocator), the [`ConnectionState`],
+/// and a fixed-size session table.
 /// Drive it with [`Self::run`], which loops forever until the
 /// transport returns a fatal error.
-pub struct SpdmStack<Pal: SpdmPal> {
+pub struct SpdmStack<Pal: SpdmPal, const MAX_SESSIONS: usize = 1> {
     pub(crate) pal: Pal,
     pub(crate) state: ConnectionState<Pal::State>,
+    pub(crate) sessions:
+        SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
 }
 
-impl<Pal: SpdmPal> SpdmStack<Pal> {
+impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
     /// Constructs a new responder over `pal` with the default
     /// (Caliptra) local-policy advertisement. If the PAL cannot hold
     /// at least one transport-sized large message, `CHUNK` is removed
@@ -288,14 +300,18 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
             state.cap_flags =
                 CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
         }
-        Self { pal, state }
+        Self {
+            pal,
+            state,
+            sessions: SessionManager::new(),
+        }
     }
 
     /// Main responder run loop.
     ///
     /// On each iteration: receive one request, dispatch it to the
     /// matching handler, and send back either the handler's response
-    /// or a DSP0274 §10.10 `ERROR` PDU. Returns only on a fatal
+    /// or a SPDM `ERROR` PDU. Returns only on a fatal
     /// transport error (`recv_request` / `send_response` failure).
     ///
     /// # Returns
@@ -311,7 +327,6 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
         >::writer();
         loop {
             let io = self.pal.recv_request().await?;
-            let (code, req_version) = decode_header(io.request());
             #[cfg(feature = "debug-trace")]
             {
                 let r = io.request();
@@ -322,40 +337,79 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
                 }
                 let _ = writeln!(&mut console);
             }
-            match dispatch(&mut self.state, &self.pal, &io, code).await {
-                Ok(mut rsp) => {
-                    #[cfg(feature = "debug-trace")]
+
+            match io.kind() {
+                SpdmPalIoKind::Message => {
+                    let (code, req_version) = decode_header(io.request());
+                    match dispatch(&mut self.state, &mut self.sessions, &self.pal, &io, code).await
                     {
-                        let head = self.pal.header_size();
-                        let body = &rsp[head..];
-                        let n = body.len().min(8);
-                        let _ = write!(&mut console, "[spdm] rsp len={}", body.len());
-                        for x in &body[..n] {
-                            let _ = write!(&mut console, " {:02x}", x);
+                        Ok(mut rsp) => {
+                            #[cfg(feature = "debug-trace")]
+                            {
+                                let head = self.pal.header_size();
+                                let body = &rsp[head..];
+                                let n = body.len().min(8);
+                                let _ = write!(&mut console, "[spdm] rsp len={}", body.len());
+                                for x in &body[..n] {
+                                    let _ = write!(&mut console, " {:02x}", x);
+                                }
+                                let _ = writeln!(&mut console);
+                            }
+                            self.pal
+                                .send_response(&io, SpdmPalIoKind::Message, &mut rsp)
+                                .await?
                         }
-                        let _ = writeln!(&mut console);
+                        Err(e) => {
+                            #[cfg(feature = "debug-trace")]
+                            {
+                                let _ = writeln!(
+                                    &mut console,
+                                    "[spdm] err spec=0x{:02x} req_ver=0x{:02x}",
+                                    e.spec_byte(),
+                                    req_version.to_u8()
+                                );
+                            }
+                            self.send_error_pdu(&io, e, req_version).await?
+                        }
                     }
-                    self.pal
-                        .send_response(&io, SpdmPalIoKind::Message, &mut rsp)
-                        .await?
                 }
-                Err(e) => {
-                    #[cfg(feature = "debug-trace")]
+                SpdmPalIoKind::SecuredMessage => {
+                    match handle_secured_request(
+                        &mut self.state,
+                        &mut self.sessions,
+                        &self.pal,
+                        &io,
+                    )
+                    .await
                     {
-                        let _ = writeln!(
-                            &mut console,
-                            "[spdm] err spec=0x{:02x} req_ver=0x{:02x}",
-                            e.spec_byte(),
-                            req_version.to_u8()
-                        );
+                        Ok(Some(mut rsp)) => {
+                            #[cfg(feature = "debug-trace")]
+                            {
+                                let _ = writeln!(&mut console, "[spdm] sec rsp len={}", rsp.len());
+                            }
+                            self.pal
+                                .send_response(&io, SpdmPalIoKind::SecuredMessage, &mut rsp)
+                                .await?
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            #[cfg(feature = "debug-trace")]
+                            {
+                                let _ = writeln!(
+                                    &mut console,
+                                    "[spdm] sec err spec=0x{:02x}",
+                                    e.spec_byte()
+                                );
+                            }
+                            self.send_error_pdu(&io, e, self.state.version).await?
+                        }
                     }
-                    self.send_error_pdu(&io, e, req_version).await?
                 }
             }
         }
     }
 
-    /// Builds and sends a DSP0274 §10.10 `ERROR` PDU.
+    /// Builds and sends a SPDM `ERROR` PDU.
     ///
     /// If the `ERROR` PDU itself cannot be built (e.g. allocator
     /// exhausted) the request is silently dropped — there is nothing
@@ -387,7 +441,7 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
         err: SpdmError,
         req_version: SpdmVersion,
     ) -> McuResult<()> {
-        // DSP0274: ERROR response uses the same version as
+        // ERROR response uses the same version as
         // the requester's message. For `VersionMismatch`, the
         // responder shall instead use the highest supported version
         // (libspdm matches: post-negotiation = negotiated, else V1.0;
@@ -446,8 +500,10 @@ impl<Pal: SpdmPal> SpdmStack<Pal> {
 /// * [`SPDM_UNSUPPORTED_REQUEST`] — code is recognised by SPDM but
 ///   not handled by this responder.
 /// * Whatever the specific handler returns.
-async fn dispatch<'a, Pal: SpdmPal>(
+#[inline(never)]
+async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
     state: &mut ConnectionState<Pal::State>,
+    sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     code: ReqRespCode,
@@ -464,6 +520,7 @@ async fn dispatch<'a, Pal: SpdmPal>(
     match code {
         ReqRespCode::GET_VERSION => {
             state.reset_negotiation();
+            sessions.remove_all_and_destroy();
             version::handle_get_version(state, pal, io).await
         }
         ReqRespCode::GET_CAPABILITIES => {
@@ -486,11 +543,311 @@ async fn dispatch<'a, Pal: SpdmPal>(
         ReqRespCode::GET_MEASUREMENTS => {
             measurements::handle_get_measurements(state, pal, io).await
         }
+        ReqRespCode::KEY_EXCHANGE => {
+            key_exchange::handle_key_exchange(state, sessions, pal, io).await
+        }
+        ReqRespCode::FINISH | ReqRespCode::END_SESSION => Err(SPDM_SESSION_REQUIRED),
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
     }
 }
 
+// ── Secured message handling ────────────────────────────────────────
+
+/// Handle an incoming secured message.
+///
+/// Parses the session ID, dispatches to the inner handler, and
+/// destroys the session on any error (conservative cleanup).
+#[inline(never)]
+async fn handle_secured_request<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
+    state: &mut ConnectionState<Pal::State>,
+    sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+) -> SpdmResult<Option<PalBytes<'a, Pal>>> {
+    let req = io.request();
+
+    // Parse session_id from the secured message header.
+    let (hdr, _) = SecuredMessageHeader::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let session_id = hdr.session_id_u32();
+    if sessions.find(session_id).is_none() {
+        return Ok(None);
+    }
+
+    match handle_secured_inner(state, sessions, pal, io, session_id).await {
+        Ok(rsp) => Ok(Some(rsp)),
+        Err(e) => {
+            let Some(session) = sessions.find_mut(session_id) else {
+                return Ok(None);
+            };
+            let key_type = match session.state {
+                SessionState::HandshakeInProgress => SessionKeyType::ResponseHandshakeKey,
+                SessionState::Established => SessionKeyType::ResponseDataKey,
+            };
+            let error_rsp = [
+                state.version.to_u8(),
+                ReqRespCode::ERROR.0,
+                e.spec_byte(),
+                e.error_data(),
+            ];
+            let rsp = encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                state.version,
+                key_type,
+                &error_rsp,
+            )
+            .await
+            .ok();
+            if e.spec_byte() == SPDM_DECRYPT_ERROR.spec_byte() {
+                sessions.remove_and_destroy(session_id);
+            }
+            Ok(rsp)
+        }
+    }
+}
+
+/// Inner secured message handler: decrypt → dispatch → encrypt.
+#[inline(never)]
+async fn handle_secured_inner<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
+    state: &mut ConnectionState<Pal::State>,
+    sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    session_id: u32,
+) -> SpdmResult<PalBytes<'a, Pal>> {
+    let req = io.request();
+    let version = state.version;
+
+    // ── Parse secured message envelope ──────────────────────────────
+    let (hdr, payload) =
+        SecuredMessageHeader::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let length = hdr.length_u16() as usize;
+
+    // length = ciphertext_len + tag_len
+    if payload.len() < length || length < AES_256_GCM_TAG_SIZE {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let ct_len = length - AES_256_GCM_TAG_SIZE;
+    let ciphertext = &payload[..ct_len];
+    let tag: &[u8; AES_256_GCM_TAG_SIZE] = payload[ct_len..ct_len + AES_256_GCM_TAG_SIZE]
+        .try_into()
+        .map_err(|_| SPDM_INVALID_REQUEST)?;
+
+    let decrypt_key_type = match sessions.find(session_id).ok_or(SPDM_UNSPECIFIED)?.state {
+        SessionState::HandshakeInProgress => SessionKeyType::RequestHandshakeKey,
+        SessionState::Established => SessionKeyType::RequestDataKey,
+    };
+
+    // ── Build AAD ───────────────────────────────────────────────────
+    let mut aad = pal.alloc_bytes(io, SECURED_MSG_HDR_SIZE)?;
+    encode_aad(session_id, length as u16, &mut aad).map_err(|_| SPDM_UNSPECIFIED)?;
+
+    // ── Decrypt ─────────────────────────────────────────────────────
+    let mut plaintext = pal.alloc_bytes(io, ct_len)?;
+    {
+        let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+        if session
+            .key_schedule
+            .decrypt(
+                pal,
+                io,
+                decrypt_key_type,
+                version.to_u8(),
+                &aad,
+                ciphertext,
+                tag,
+                &mut plaintext[..ct_len],
+            )
+            .await
+            .map_err(|_| SPDM_DECRYPT_ERROR)?
+            != ct_len
+        {
+            return Err(SPDM_DECRYPT_ERROR);
+        }
+    }
+
+    // ── Parse app_data_length + spdm_msg ────────────────────────────
+    if ct_len < 2 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let app_data_len = u16::from_le_bytes([plaintext[0], plaintext[1]]) as usize;
+    if app_data_len + 2 != ct_len {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let spdm_msg = &plaintext[2..2 + app_data_len];
+
+    // ── Dispatch on SPDM code ───────────────────────────────────────
+    let (spdm_hdr, _) =
+        SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let session_state = sessions.find(session_id).ok_or(SPDM_UNSPECIFIED)?.state;
+    let response_key_type = validate_message_allowed_phase(spdm_hdr.code, session_state)?;
+
+    match spdm_hdr.code {
+        ReqRespCode::FINISH => {
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+            let finish_rsp =
+                finish::handle_finish::<Pal>(version, session, pal, io, spdm_msg).await?;
+            let rsp = encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                response_key_type,
+                &finish_rsp,
+            )
+            .await?;
+            session.key_schedule.destroy_handshake_secrets();
+            session.state = SessionState::Established;
+            Ok(rsp)
+        }
+        ReqRespCode::END_SESSION => {
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+            let end_session_ack = end_session::handle_end_session(version, spdm_msg)?;
+            let rsp = encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                response_key_type,
+                &end_session_ack,
+            )
+            .await?;
+            sessions.remove_and_destroy(session_id);
+            Ok(rsp)
+        }
+        ReqRespCode::GET_MEASUREMENTS => {
+            let (measurements_rsp, spdm_len) =
+                measurements::handle_get_measurements_req(state, pal, io, spdm_msg).await?;
+            let head = pal.header_size();
+            let spdm_rsp = &measurements_rsp[head..head + spdm_len];
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+            encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                response_key_type,
+                spdm_rsp,
+            )
+            .await
+        }
+        _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(spdm_hdr.code.0)),
+    }
+}
+
+fn validate_message_allowed_phase(
+    code: ReqRespCode,
+    session_state: SessionState,
+) -> SpdmResult<SessionKeyType> {
+    let application_key = || {
+        if session_state == SessionState::Established {
+            Ok(SessionKeyType::ResponseDataKey)
+        } else {
+            Err(SPDM_UNEXPECTED_REQUEST)
+        }
+    };
+    let current_key = || match session_state {
+        SessionState::HandshakeInProgress => Ok(SessionKeyType::ResponseHandshakeKey),
+        SessionState::Established => Ok(SessionKeyType::ResponseDataKey),
+    };
+
+    match code {
+        ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
+        ReqRespCode::GET_VERSION
+        | ReqRespCode::GET_CAPABILITIES
+        | ReqRespCode::NEGOTIATE_ALGORITHMS
+        | ReqRespCode::CHALLENGE
+        | ReqRespCode::KEY_EXCHANGE => Err(SPDM_UNEXPECTED_REQUEST),
+        ReqRespCode::GET_DIGESTS
+        | ReqRespCode::GET_CERTIFICATE
+        | ReqRespCode::SET_CERTIFICATE
+        | ReqRespCode::GET_MEASUREMENTS
+        | ReqRespCode::END_SESSION => application_key(),
+        ReqRespCode::FINISH => {
+            if session_state == SessionState::HandshakeInProgress {
+                Ok(SessionKeyType::ResponseHandshakeKey)
+            } else {
+                Err(SPDM_UNEXPECTED_REQUEST)
+            }
+        }
+        ReqRespCode::VENDOR_DEFINED_REQUEST => current_key(),
+        _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
+    }
+}
+
+#[inline(never)]
+async fn encrypt_secured_spdm_response<'a, Pal: SpdmPal>(
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    session: &mut crate::session::SessionInfo<<Pal as SpdmPalSessionCrypto>::Key, Pal::State>,
+    session_id: u32,
+    version: SpdmVersion,
+    key_type: SessionKeyType,
+    spdm_response: &[u8],
+) -> SpdmResult<PalBytes<'a, Pal>> {
+    let rsp_pt_len = 2 + spdm_response.len();
+    let rsp_ct_len = rsp_pt_len;
+    let rsp_length_len = rsp_ct_len + AES_256_GCM_TAG_SIZE;
+    if rsp_length_len > u16::MAX as usize {
+        return Err(SPDM_UNSPECIFIED);
+    }
+
+    let mut rsp_plaintext = pal.alloc_bytes(io, rsp_pt_len)?;
+    rsp_plaintext[0..2].copy_from_slice(&(spdm_response.len() as u16).to_le_bytes());
+    rsp_plaintext[2..2 + spdm_response.len()].copy_from_slice(spdm_response);
+
+    let rsp_length = rsp_length_len as u16;
+    let mut rsp_aad = pal.alloc_bytes(io, SECURED_MSG_HDR_SIZE)?;
+    encode_aad(session_id, rsp_length, &mut rsp_aad).map_err(|_| SPDM_UNSPECIFIED)?;
+
+    let mut rsp_ct = pal.alloc_bytes(io, rsp_ct_len)?;
+    let (rsp_written, rsp_tag) = session
+        .key_schedule
+        .encrypt(
+            pal,
+            io,
+            key_type,
+            version.to_u8(),
+            &rsp_aad,
+            &rsp_plaintext,
+            &mut rsp_ct,
+        )
+        .await
+        .map_err(|_| SPDM_UNSPECIFIED)?;
+    if rsp_written != rsp_ct_len {
+        return Err(SPDM_UNSPECIFIED);
+    }
+
+    build_secured_response_wire(pal, io, session_id, rsp_length, &rsp_ct, &rsp_tag)
+}
+
+#[inline(never)]
+fn build_secured_response_wire<'a, Pal: SpdmPal>(
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    session_id: u32,
+    rsp_length: u16,
+    ciphertext: &[u8],
+    tag: &[u8; AES_256_GCM_TAG_SIZE],
+) -> SpdmResult<PalBytes<'a, Pal>> {
+    let wire_body_len = SECURED_MSG_HDR_SIZE + ciphertext.len() + AES_256_GCM_TAG_SIZE;
+    let raw_len = pal.header_size() + wire_body_len;
+    let mut buf = alloc_padded(pal, io, raw_len).map_err(|_| SPDM_UNSPECIFIED)?;
+    let hdr_off = pal.header_size();
+    buf[hdr_off..hdr_off + 4].copy_from_slice(&session_id.to_le_bytes());
+    buf[hdr_off + 4..hdr_off + 6].copy_from_slice(&rsp_length.to_le_bytes());
+    buf[hdr_off + 6..hdr_off + 6 + ciphertext.len()].copy_from_slice(ciphertext);
+    buf[hdr_off + 6 + ciphertext.len()..hdr_off + 6 + ciphertext.len() + AES_256_GCM_TAG_SIZE]
+        .copy_from_slice(tag);
+
+    Ok(buf)
+}
 /// Decodes the SPDM common header from a raw request buffer.
 ///
 /// # Parameters

@@ -30,8 +30,8 @@ use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 /// Bitmap allocator pool size per responder task.
 ///
 /// Must hold `MEAS_RECORD_BUF_SIZE + MeasurementProvider::SCRATCH_SIZE`
-/// (1,024 + 3,072 = 4,096) plus transient DPE/SHA mailbox buffers
-/// (peak ~2.4 KB during certify_key for kid computation).
+/// plus transient DPE/SHA mailbox buffers (peak ~2.4 KB during
+/// certify_key for kid computation).
 const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
 /// Persistent CHUNK_SEND reassembly buffer. This is kept outside the
 /// async task frame and outside the per-I/O scratch allocator because
@@ -138,7 +138,7 @@ async fn spdm_mctp_responder() {
             device_measurements::ocp_eat::OcpEatMeasurementProvider::new(SLOT0_LEAF_LABEL),
         )
     };
-    let mut stack = SpdmStack::new(pal);
+    let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
 
     crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lite MCTP run loop");
     if let Err(e) = stack.run().await {
@@ -190,7 +190,7 @@ async fn spdm_doe_responder() {
             device_measurements::ocp_eat::OcpEatMeasurementProvider::new(SLOT0_LEAF_LABEL),
         )
     };
-    let mut stack = SpdmStack::new(pal);
+    let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
 
     crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lite DOE run loop");
     if let Err(e) = stack.run().await {

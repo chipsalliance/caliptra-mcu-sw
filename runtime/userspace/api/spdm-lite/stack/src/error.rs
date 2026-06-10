@@ -2,7 +2,7 @@
 
 //! SPDM-level error type for handler ↔ dispatcher boundary.
 //!
-//! [`SpdmError`] carries the DSP0274 `ERROR` wire byte and any
+//! [`SpdmError`] carries the SPDM `ERROR` wire byte and any
 //! associated extended-data bytes that an SPDM responder needs to put
 //! into an `ERROR` PDU. Handlers return [`SpdmResult<T>`]; the
 //! dispatcher catches `Err(SpdmError)` and emits the wire-format
@@ -19,7 +19,7 @@ use mcu_spdm_lite_errors::{as_spdm_wire, is_mctp_error};
 
 /// SPDM-level error suitable for emission as an `ERROR` PDU.
 ///
-/// Carries the DSP0274 `ERROR` wire byte and the one-byte `Param2`
+/// Carries the SPDM `ERROR` wire byte and the one-byte `Param2`
 /// error data field used by errors such as `UnsupportedRequest`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SpdmError {
@@ -31,11 +31,11 @@ pub struct SpdmError {
 pub type SpdmResult<T> = core::result::Result<T, SpdmError>;
 
 impl SpdmError {
-    /// Constructs an [`SpdmError`] from a DSP0274 `ERROR` spec byte.
+    /// Constructs an [`SpdmError`] from an SPDM `ERROR` spec byte.
     ///
     /// # Parameters
     ///
-    /// * `spec_byte` — The DSP0274 `ERROR` PDU `param1` byte (e.g.
+    /// * `spec_byte` — The SPDM `ERROR` PDU `param1` byte (e.g.
     ///   `0x01` for `InvalidRequest`).
     ///
     /// # Returns
@@ -55,7 +55,7 @@ impl SpdmError {
         Self { error_data, ..self }
     }
 
-    /// Returns the DSP0274 `ERROR` wire byte for this error.
+    /// Returns the SPDM `ERROR` wire byte for this error.
     ///
     /// # Returns
     ///
@@ -74,7 +74,7 @@ impl SpdmError {
 }
 
 /// Implicit conversion from any [`McuErrorCode`] to the closest
-/// matching DSP0274 `ERROR` wire byte.
+/// matching SPDM `ERROR` wire byte.
 ///
 /// This is the single classification point in the stack — handlers
 /// just use `?` and the conversion happens automatically.
@@ -109,7 +109,7 @@ impl From<mcu_spdm_lite_codec::WireError> for SpdmError {
     }
 }
 
-// ---- DSP0274 ERROR wire-byte constants --------------------------------------
+// ---- SPDM ERROR wire-byte constants -----------------------------------------
 
 /// `InvalidRequest` — malformed or syntactically invalid request.
 pub const SPDM_INVALID_REQUEST: SpdmError = SpdmError::new(0x01);

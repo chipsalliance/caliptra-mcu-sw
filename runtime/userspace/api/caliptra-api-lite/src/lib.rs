@@ -22,16 +22,26 @@
 #![no_std]
 #![allow(async_fn_in_trait)]
 
+mod aes_gcm;
 mod alloc;
 mod cert;
 mod device_state;
 mod dpe;
 pub mod eat;
+mod ecdh;
+mod hmac;
+mod import;
 mod rng;
 mod sha;
 pub mod signed_eat;
+mod types;
 mod wire;
 
+pub use aes_gcm::{
+    spdm_aes_gcm_decrypt, spdm_aes_gcm_decrypt_final, spdm_aes_gcm_decrypt_init,
+    spdm_aes_gcm_decrypt_update, spdm_aes_gcm_encrypt, spdm_aes_gcm_encrypt_final,
+    spdm_aes_gcm_encrypt_init, spdm_aes_gcm_encrypt_update, Aes256GcmTag, AesGcmCtx,
+};
 pub use alloc::ApiAlloc;
 pub use cert::populate_idev_ecc384_cert;
 pub use device_state::get_pcr_value;
@@ -40,7 +50,13 @@ pub use dpe::{
     walk_dpe_chain, DpeChainSink, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE,
     DPE_P384_SIGNATURE_SIZE,
 };
+pub use ecdh::{
+    ecdh_finish, ecdh_generate, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
+};
+pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
+pub use import::{cm_delete, cm_import};
 pub use rng::rng_generate;
 pub use sha::{sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE};
+pub use types::{CmKeyUsage, Cmk, CMK_SIZE};
 
 pub use mcu_error::{McuErrorCode, McuResult};

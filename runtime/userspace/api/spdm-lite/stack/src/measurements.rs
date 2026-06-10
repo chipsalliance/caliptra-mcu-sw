@@ -10,25 +10,34 @@ use mcu_spdm_lite_codec::{
 use mcu_spdm_lite_traits::*;
 use zerocopy::{FromBytes, IntoBytes};
 
-use crate::build::alloc_padded;
+use crate::build::{alloc_padded, valid_transport_padding};
 use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
 
 const MEASUREMENTS_FIXED_BODY_SIZE: usize = 1 + 1 + 1 + 3;
 const OPAQUE_DATA_LEN_SIZE: usize = 2;
+const SIGNATURE_REQUEST_FIELDS_SIZE: usize = SPDM_NONCE_LEN + 1; // Nonce + SlotIDParam
 
 pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
+    let (resp, _) = handle_get_measurements_req(state, pal, io, io.request()).await?;
+    Ok(resp)
+}
+
+pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    req: &[u8],
+) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
     // Phase: must be after algorithms negotiation.
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
-
     // Validate version matches negotiated.
-    let req = io.request();
     let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8() {
         return Err(crate::error::SPDM_VERSION_MISMATCH);
@@ -46,7 +55,7 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
     }
 
     // If signature requested, parse Nonce + SlotID.
-    let mut requester_nonce = [0u8; SPDM_NONCE_LEN];
+    let mut requester_nonce = None;
     let mut slot_id: u8 = 0;
     let mut after_sig_fields = after;
     let requester_context_len = if state.version >= SpdmVersion::V13 {
@@ -56,12 +65,16 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
     };
 
     if signature_requested {
-        if after.len() < SPDM_NONCE_LEN + 1 {
+        if after.len() < SIGNATURE_REQUEST_FIELDS_SIZE {
             return Err(SPDM_INVALID_REQUEST);
         }
-        requester_nonce.copy_from_slice(&after[..SPDM_NONCE_LEN]);
+        requester_nonce = Some(
+            after[..SPDM_NONCE_LEN]
+                .try_into()
+                .map_err(|_| SPDM_INVALID_REQUEST)?,
+        );
         slot_id = after[SPDM_NONCE_LEN] & 0x0F;
-        after_sig_fields = &after[SPDM_NONCE_LEN + 1..];
+        after_sig_fields = &after[SIGNATURE_REQUEST_FIELDS_SIZE..];
 
         // Caliptra supports measurement signing only through provisioned
         // certificate slots; slot 0xF (public-key-only signing) is not supported.
@@ -76,20 +89,22 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
         if after_sig_fields.len() < REQUESTER_CONTEXT_LEN {
             return Err(SPDM_INVALID_REQUEST);
         }
-        let mut ctx = [0u8; REQUESTER_CONTEXT_LEN];
-        ctx.copy_from_slice(&after_sig_fields[..REQUESTER_CONTEXT_LEN]);
-        requester_context = Some(ctx);
+        requester_context = Some(&after_sig_fields[..REQUESTER_CONTEXT_LEN]);
     }
 
     let spdm_req_len = SpdmMsgHdrPdu::SIZE
         + core::mem::size_of::<GetMeasurementsReqBody>()
         + if signature_requested {
-            SPDM_NONCE_LEN + 1 // SlotIDParam
+            SIGNATURE_REQUEST_FIELDS_SIZE
         } else {
             0
         }
         + requester_context_len;
-    if req.len() != spdm_req_len {
+    if req.len() < spdm_req_len {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let transport_padding = &req[spdm_req_len..];
+    if !valid_transport_padding(pal.send_len_alignment(), spdm_req_len, transport_padding) {
         return Err(SPDM_INVALID_REQUEST);
     }
 
@@ -98,28 +113,16 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
     let total_count = total_measurement_count(meas_info)?;
 
     // Nonce for measurement providers (Some when signature requested).
-    let meas_nonce: Option<&[u8; SPDM_NONCE_LEN]> = if signature_requested {
-        Some(&requester_nonce)
-    } else {
-        None
-    };
-
     let (measurement_record_len, number_of_blocks) = measurement_record_shape(meas_info, meas_op)?;
 
     // If signature requested, append GET_MEASUREMENTS request to L1 transcript.
-    // Only the actual SPDM bytes — strip any DOE DWORD padding at the end.
+    // Only canonical SPDM bytes contribute to L1; DOE may DWORD-pad the payload.
     if signature_requested {
         state
             .transcript
             .append_l1(pal, io, &req[..spdm_req_len])
             .await?;
     }
-
-    // Generate responder nonce.
-    let mut nonce = [0u8; SPDM_NONCE_LEN];
-    pal.generate_nonce(io, &mut nonce)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
 
     // Content changed: 2 = no change detected (when signature requested).
     let content_changed = if signature_requested { 2u8 } else { 0u8 };
@@ -138,10 +141,11 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
     } else {
         0
     };
+    let spdm_len = SpdmMsgHdrPdu::SIZE + body_len_without_sig + signature_len;
     // TODO: If future measurement records exceed DataTransferSize, stage the
     // complete MEASUREMENTS response once in the large-message buffer and
     // serve it via CHUNK_GET after the chunk module is split/refactored.
-    let raw_len = head + SpdmMsgHdrPdu::SIZE + body_len_without_sig + signature_len;
+    let raw_len = head + spdm_len;
     let mut resp = alloc_padded(pal, io, raw_len).map_err(|_| SPDM_UNSPECIFIED)?;
 
     let spdm_len_without_sig;
@@ -160,26 +164,29 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
 
         let record = w.reserve(measurement_record_len)?;
         let written_blocks =
-            write_measurement_record(pal, io, meas_info, meas_op, meas_nonce, record).await?;
+            write_measurement_record(pal, io, meas_info, meas_op, requester_nonce, record).await?;
         if written_blocks != number_of_blocks {
             return Err(SPDM_UNSPECIFIED);
         }
 
-        w.write_bytes(&nonce)?;
+        let nonce = w.reserve(SPDM_NONCE_LEN)?;
+        pal.generate_nonce(io, nonce)
+            .await
+            .map_err(|_| SPDM_UNSPECIFIED)?;
         w.write_bytes(&0u16.to_le_bytes())?;
-        if let Some(ctx) = requester_context.as_ref() {
+        if let Some(ctx) = requester_context {
             w.write_bytes(ctx)?;
         }
 
         spdm_len_without_sig = w.position();
         signature_offset = head + spdm_len_without_sig;
         if signature_requested {
-            w.reserve(ECC_P384_SIGNATURE_SIZE)?.fill(0);
+            w.reserve(ECC_P384_SIGNATURE_SIZE)?;
         }
     }
 
     if !signature_requested {
-        return Ok(resp);
+        return Ok((resp, spdm_len));
     }
 
     // Append MEASUREMENTS response (without signature) to L1.
@@ -189,29 +196,27 @@ pub(crate) async fn handle_get_measurements<'a, Pal: SpdmPal>(
         .await?;
 
     // Finalize L1 transcript hash.
-    let mut l1_hash = [0u8; SHA384_HASH_SIZE];
-    state.transcript.finalize_l1(pal, io, &mut l1_hash).await?;
+    let mut hash = [0u8; SHA384_HASH_SIZE];
+    state.transcript.finalize_l1(pal, io, &mut hash).await?;
 
     // Build signing context and compute TBS hash.
     let signing_ctx = build_signing_context(state.version);
-    let tbs_hash = compute_tbs_hash(pal, io, &signing_ctx, &l1_hash)
+    compute_tbs_hash(pal, io, &signing_ctx, &mut hash)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
 
     // Sign the TBS hash.
     let asym_algo = state.asym_algo();
-    let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
+    let signature = &mut resp[signature_offset..signature_offset + ECC_P384_SIGNATURE_SIZE];
     let sig_len = pal
-        .sign_hash(io, slot_id, asym_algo, &tbs_hash, &mut signature)
+        .sign_hash(io, slot_id, asym_algo, &hash, signature)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if sig_len != ECC_P384_SIGNATURE_SIZE {
         return Err(SPDM_UNSPECIFIED);
     }
 
-    resp[signature_offset..signature_offset + ECC_P384_SIGNATURE_SIZE].copy_from_slice(&signature);
-
-    Ok(resp)
+    Ok((resp, spdm_len))
 }
 
 fn measurement_record_shape(info: &[MeasurementInfo], meas_op: u8) -> SpdmResult<(usize, u8)> {
@@ -397,7 +402,6 @@ fn build_signing_context(version: SpdmVersion) -> [u8; SPDM_SIGNING_CONTEXT_LEN]
     let op = b"responder-measurements signing";
     let pad = SPDM_CONTEXT_LEN - op.len();
     ctx[SPDM_PREFIX_LEN + pad..SPDM_PREFIX_LEN + pad + op.len()].copy_from_slice(op);
-
     ctx
 }
 
@@ -406,13 +410,11 @@ async fn compute_tbs_hash<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     signing_ctx: &[u8; SPDM_SIGNING_CONTEXT_LEN],
-    l1_hash: &[u8; SHA384_HASH_SIZE],
-) -> mcu_error::McuResult<[u8; SHA384_HASH_SIZE]> {
+    hash: &mut [u8; SHA384_HASH_SIZE],
+) -> mcu_error::McuResult<()> {
     let mut state = pal
         .hash_init(io, SpdmPalHashAlgo::Sha384, signing_ctx)
         .await?;
-    pal.hash_update(io, &mut state, l1_hash).await?;
-    let mut tbs = [0u8; SHA384_HASH_SIZE];
-    pal.hash_finish(io, &mut state, &mut tbs).await?;
-    Ok(tbs)
+    pal.hash_update(io, &mut state, hash).await?;
+    pal.hash_finish(io, &mut state, hash).await
 }

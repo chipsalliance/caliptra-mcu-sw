@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! `GET_CAPABILITIES` → `CAPABILITIES` handler (DSP0274 §10.3).
+//! `GET_CAPABILITIES` → `CAPABILITIES` handler.
 //!
 //! On a successful exchange this handler:
 //!
@@ -8,7 +8,7 @@
 //! 2. Negotiates the SPDM version using the requester's
 //!    common-header `version` byte (must be one of
 //!    [`SUPPORTED_VERSIONS`](crate::version::SUPPORTED_VERSIONS)).
-//! 3. Validates the V1.2+ `CapabilitiesBody` fields per §10.3 Table 11.
+//! 3. Validates the V1.2+ `CapabilitiesBody` fields per the corresponding table.
 //! 4. Stashes the peer's advertised `DataTransferSize`,
 //!    `MaxSPDMmsgSize`, and capability flags into [`ConnectionState`].
 //! 5. Builds the `CAPABILITIES` response from the responder's fixed
@@ -50,7 +50,7 @@ use crate::version::SUPPORTED_VERSIONS;
 ///   [`Phase::AfterVersion`].
 /// * [`SPDM_INVALID_REQUEST`] — header undecodable, body too short,
 ///   any reserved field non-zero, `ct_exponent` out of range, or
-///   `DataTransferSize` / `MaxSPDMmsgSize` violate §10.3 Table 11.
+///   `DataTransferSize` / `MaxSPDMmsgSize` violate the corresponding table.
 /// * [`SPDM_VERSION_MISMATCH`] — requested version is not in
 ///   [`SUPPORTED_VERSIONS`].
 pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
@@ -83,6 +83,10 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
         let cleared = flags.into_bits() & !(0b11 << 26);
         flags = CapFlags::from_bits(cleared);
     }
+    if !pal.secure_message_supported() {
+        let secure_session_caps = CapFlags::KEY_EX | CapFlags::ENCRYPT | CapFlags::MAC;
+        flags = CapFlags::from_bits(flags.into_bits() & !secure_session_caps.into_bits());
+    }
     state.advertised_cap_flags = flags;
     let max_spdm_msg_size = if flags.contains(CapFlags::CHUNK) {
         pal.capacity().max(mtu)
@@ -98,7 +102,7 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
     let spdm_len = body.encoded_size();
     let resp = build_response(pal, io, version, &body)?;
 
-    // DSP0274 §10.4.1: GET_CAPABILITIES + CAPABILITIES contribute to VCA.
+    // SPDM: GET_CAPABILITIES + CAPABILITIES contribute to VCA.
     let head = pal.header_size();
     state.transcript.append_vca(pal, io, io.request()).await?;
     state
@@ -110,7 +114,7 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
     Ok(resp)
 }
 
-/// Validates a `CapabilitiesBody` against DSP0274 §10.3 Table 11.
+/// Validates a `CapabilitiesBody` against SPDM the corresponding table.
 ///
 /// # Parameters
 ///
@@ -125,7 +129,7 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
 /// # Errors
 ///
 /// * [`SPDM_INVALID_REQUEST`] — any reserved field is non-zero,
-///   `ct_exponent` exceeds the spec maximum, `DataTransferSize` is
+///   `ct_exponent` exceeds the protocol maximum, `DataTransferSize` is
 ///   below the spec minimum or above `MaxSPDMmsgSize`, or the
 ///   requester clears `CHUNK` but advertises
 ///   `DataTransferSize != MaxSPDMmsgSize`.
@@ -168,10 +172,7 @@ fn validate_capabilities_body(body: &CapabilitiesBody) -> SpdmResult<(u32, u32)>
 ///
 /// * [`SPDM_VERSION_MISMATCH`] — byte is not a recognised version or
 ///   not in [`SUPPORTED_VERSIONS`].
-fn select_version<S: Clone>(
-    state: &mut ConnectionState<S>,
-    requested: u8,
-) -> SpdmResult<SpdmVersion> {
+fn select_version<S>(state: &mut ConnectionState<S>, requested: u8) -> SpdmResult<SpdmVersion> {
     let v = SpdmVersion::from_u8(requested).ok_or(SPDM_VERSION_MISMATCH)?;
     if !SUPPORTED_VERSIONS.contains(&v) {
         return Err(SPDM_VERSION_MISMATCH);

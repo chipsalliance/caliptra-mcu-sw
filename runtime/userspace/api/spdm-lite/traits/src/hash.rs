@@ -16,14 +16,13 @@
 //! currently-in-flight SPDM exchange. Software backends ignore
 //! the `io` argument entirely.
 //!
-//! # `Clone` on `State`
+//! # Fallible clone on `State`
 //!
-//! [`SpdmPalHash::State: Clone`] is required so the transcript
-//! manager can fork a running hash and continue both branches
-//! independently — e.g.
-//! `M1 = VCA.fork().extend(B).extend(C)` per DSP0274 §10.4.1.
-//! Cloning must produce an independent state: updates to one
-//! clone must not affect the other.
+//! [`SpdmPalHash::hash_clone`] lets the transcript manager fork a
+//! running hash and continue both branches independently — e.g.
+//! `M1 = VCA.fork().extend(B).extend(C)` per SPDM The
+//! operation is fallible because some backends allocate heap storage
+//! for running hash contexts.
 
 use super::*;
 
@@ -62,12 +61,7 @@ impl SpdmPalHashAlgo {
 /// digest written by `finish` is observable externally.
 pub trait SpdmPalHash {
     /// Backend-defined running-hash state.
-    ///
-    /// `Clone` is required so the transcript manager can fork a
-    /// snapshot (e.g. `M1 = VCA.fork().extend(B).extend(C)`).
-    /// Cloning must yield an independent state — updates to one
-    /// clone must not affect the other.
-    type State: Clone;
+    type State;
 
     /// Begins a new running hash and returns the initial state.
     ///
@@ -130,6 +124,14 @@ pub trait SpdmPalHash {
         state: &mut Self::State,
         data: &[u8],
     ) -> McuResult<()>;
+
+    /// Fallibly clones a running hash state.
+    ///
+    /// The returned state must be independent: updates to one state
+    /// must not affect the other. Backends that allocate per-state
+    /// storage should return `OUT_OF_MEMORY` instead of panicking when
+    /// cloning cannot allocate.
+    fn hash_clone(&self, io: &impl SpdmPalIo, state: &Self::State) -> McuResult<Self::State>;
 
     /// Finalises the running hash and writes the digest into the
     /// leading prefix of `out`.

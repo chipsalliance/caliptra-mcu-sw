@@ -7,23 +7,24 @@
 //! never inflates the task future with multi-kilobyte mailbox-request
 //! structs.
 //!
-//! The 200-byte SHA running-context is held behind a heap-allocated
-//! [`Box`](alloc::boxed::Box) so [`HashState`] is only a single
-//! 8-byte pointer in async futures and other holders. That keeps the
-//! per-handler future state slim while the actual SHA context lives
-//! on the system heap and is freed automatically on drop.
+//! The 200-byte SHA running-context is held in a fallibly allocated
+//! [`Box`] so [`HashState`] stays pointer-sized in async futures and
+//! other holders. That keeps the per-handler future state slim while
+//! the actual SHA context lives on the system heap and is freed
+//! automatically on drop.
 
 extern crate alloc;
 
+use alloc::alloc::{alloc_zeroed, Layout};
 use alloc::boxed::Box;
 use core::mem::size_of;
-use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
+use mcu_error::codes::{INTERNAL_BUG, INVARIANT, OUT_OF_MEMORY};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::wire::{
-    calc_checksum, CMB_SHA_CONTEXT_SIZE, CMD_CM_SHA_FINAL, CMD_CM_SHA_INIT, CMD_CM_SHA_UPDATE,
-    CM_HASH_ALGO_SHA384, MAX_CMB_DATA_SIZE,
+    pad4, populate_checksum, CMB_SHA_CONTEXT_SIZE, CMD_CM_SHA_FINAL, CMD_CM_SHA_INIT,
+    CMD_CM_SHA_UPDATE, CM_HASH_ALGO_SHA384, MAX_CMB_DATA_SIZE,
 };
 use crate::ApiAlloc;
 
@@ -40,15 +41,19 @@ const _: () = assert!(SHA_CHUNK_SIZE <= MAX_CMB_DATA_SIZE);
 /// Caliptra-mailbox SHA running-context.
 ///
 /// The 200-byte opaque context blob is stored on the heap behind a
-/// [`Box`], so `HashState` itself is only a pointer's worth of
-/// inline storage. This is critical for SPDM transcript-tracking
-/// where multiple [`HashState`]s live across many async `.await`
-/// points — keeping each holder slim avoids ballooning the task
-/// future.
+/// pointer, so `HashState` stays small inline. This is critical for
+/// SPDM transcript-tracking where multiple [`HashState`]s live across
+/// many async `.await` points — keeping each holder slim avoids
+/// ballooning the task future.
 ///
-/// Implements [`Clone`] (deep-copies the underlying context) so
-/// callers can fork a running hash — e.g. the SPDM transcript's
-/// `M1 = VCA.clone(); ...` pattern.
+/// # Heap allocation
+///
+/// Each `HashState` allocates [`CMB_SHA_CONTEXT_SIZE`] (200) bytes
+/// from the **global heap** via a fallible allocation. spdm-lite may
+/// hold up to `3 + N` live instances (3 main transcripts + 1 TH per
+/// session), so the peak heap cost is `(3 + N) × 200` bytes (800 B
+/// for N = 1). Callers sizing the runtime heap budget must account
+/// for this.
 pub struct HashState {
     inner: Box<[u8; CMB_SHA_CONTEXT_SIZE]>,
 }
@@ -56,39 +61,39 @@ pub struct HashState {
 impl HashState {
     /// Allocate a fresh, all-zero `HashState`. Not a valid running
     /// hash — must be initialized via [`sha_init`] before use.
-    ///
-    /// Panics on allocation failure — the underlying allocator
-    /// (Caliptra-MCU runtime heap) is statically sized, so an OOM
-    /// at this 200-byte allocation indicates a heap-budget
-    /// configuration bug rather than a recoverable condition.
-    pub fn new() -> Self {
-        Self {
-            inner: Box::new([0u8; CMB_SHA_CONTEXT_SIZE]),
+    pub fn try_new() -> McuResult<Self> {
+        // SAFETY: `layout()` is non-zero and matches the boxed array
+        // type below. A null return is handled as OUT_OF_MEMORY.
+        let ptr = unsafe { alloc_zeroed(Self::layout()) }.cast::<[u8; CMB_SHA_CONTEXT_SIZE]>();
+        if ptr.is_null() {
+            return Err(OUT_OF_MEMORY);
         }
+        // SAFETY: `ptr` came from the global allocator with the exact
+        // layout for `[u8; CMB_SHA_CONTEXT_SIZE]`; Box now owns and
+        // deallocates it.
+        let inner = unsafe { Box::from_raw(ptr) };
+        Ok(Self { inner })
+    }
+
+    /// Fallibly deep-copy this running hash state.
+    pub fn try_clone(&self) -> McuResult<Self> {
+        let mut new = Self::try_new()?;
+        new.ctx_mut().copy_from_slice(self.ctx());
+        Ok(new)
     }
 
     #[inline]
     fn ctx(&self) -> &[u8; CMB_SHA_CONTEXT_SIZE] {
-        &self.inner
+        self.inner.as_ref()
     }
 
     #[inline]
     fn ctx_mut(&mut self) -> &mut [u8; CMB_SHA_CONTEXT_SIZE] {
-        &mut self.inner
+        self.inner.as_mut()
     }
-}
 
-impl Default for HashState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Clone for HashState {
-    fn clone(&self) -> Self {
-        let mut new = Self::new();
-        new.inner.copy_from_slice(self.inner.as_ref());
-        new
+    const fn layout() -> Layout {
+        Layout::new::<[u8; CMB_SHA_CONTEXT_SIZE]>()
     }
 }
 
@@ -161,7 +166,7 @@ const FINAL_RSP_MAX_LEN: usize = size_of::<ShaFinalRespPrefix>() + 64;
 /// Begin a new running hash and return the resulting state.
 #[inline(never)]
 pub async fn sha_init<A: ApiAlloc>(alloc: &A, algo: HashAlgo, seed: &[u8]) -> McuResult<HashState> {
-    let mut state = HashState::new();
+    let mut state = HashState::try_new()?;
     if seed.len() > SHA_CHUNK_SIZE {
         return Err(INVARIANT);
     }
@@ -284,18 +289,4 @@ fn algo_code(algo: HashAlgo) -> u32 {
     match algo {
         HashAlgo::Sha384 => CM_HASH_ALGO_SHA384,
     }
-}
-
-#[inline]
-fn pad4(n: usize) -> usize {
-    (n + 3) & !3
-}
-
-fn populate_checksum(cmd: u32, data: &mut [u8]) -> McuResult<()> {
-    if data.len() < 4 {
-        return Err(INVARIANT);
-    }
-    let checksum = calc_checksum(cmd, data);
-    data[..4].copy_from_slice(&checksum.to_le_bytes());
-    Ok(())
 }

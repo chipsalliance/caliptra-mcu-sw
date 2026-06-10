@@ -14,8 +14,8 @@ use super::*;
 ///
 /// Implementors of this trait provide a complete platform binding for the
 /// SPDM-Lite stack: per-I/O allocation, transport I/O, hashing, certificate
-/// access, measurement retrieval, and persistent large-message storage for
-/// chunking.
+/// access, measurement retrieval, persistent large-message storage for
+/// chunking, and secure-session cryptographic operations.
 pub trait SpdmPal:
     SpdmPalAlloc
     + SpdmPalIoTransport
@@ -23,5 +23,6 @@ pub trait SpdmPal:
     + SpdmPalCertStore
     + SpdmPalMeasurements
     + SpdmPalLargeMessage
+    + SpdmPalSessionCrypto
 {
 }

@@ -38,6 +38,7 @@ mod io;
 mod large_message;
 pub mod measurements;
 mod pal;
+mod session_crypto;
 
 pub use self::alloc::*;
 pub use measurements::MeasurementProvider;
