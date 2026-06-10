@@ -10,6 +10,7 @@
 //! defines the on-disk layout, parsing, and structural validation; fuse
 //! reads and burns happen in the caller.
 
+use caliptra_mcu_registers_generated::fuses::FuseEntryInfo;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 /// Magic at the start of the header. On disk (little-endian) the bytes
@@ -208,6 +209,29 @@ impl McuComponentSvnManifest {
             .iter()
             .enumerate()
             .filter(|(_, e)| !e.is_empty())
+    }
+}
+
+/// Platform-defined mapping from a SoC `component_id` to a
+/// `SOC_IMAGE_MIN_SVN[i]` fuse slot. See `docs/src/svn.md`.
+///
+/// The map is many-to-one: multiple `component_id` values may share the
+/// same fuse slot (typically for components that always update
+/// together).
+#[derive(Debug, Clone, Copy)]
+pub struct SvnFuseMapEntry {
+    pub component_id: u32,
+    pub fuse_entry: &'static FuseEntryInfo,
+}
+
+impl SvnFuseMapEntry {
+    /// Look up the fuse slot for `component_id` in `map`. Returns the
+    /// first matching entry (the map is many-to-one, so multiple
+    /// entries with the same `component_id` are equivalent).
+    pub fn lookup(map: &[SvnFuseMapEntry], component_id: u32) -> Option<&'static FuseEntryInfo> {
+        map.iter()
+            .find(|e| e.component_id == component_id)
+            .map(|e| e.fuse_entry)
     }
 }
 
@@ -413,5 +437,55 @@ mod tests {
         };
         let present: alloc::vec::Vec<_> = m.entries_present().map(|(i, _)| i).collect();
         assert_eq!(present, vec![5, 100]);
+    }
+
+    // SvnFuseMapEntry tests use generated fuse entries as stand-in
+    // targets; we only exercise the lookup, not OTP access.
+    const TEST_FUSE_A: &FuseEntryInfo =
+        caliptra_mcu_registers_generated::fuses::SOC_IMAGE_MIN_SVN_0;
+    const TEST_FUSE_B: &FuseEntryInfo =
+        caliptra_mcu_registers_generated::fuses::SOC_IMAGE_MIN_SVN_1;
+
+    #[test]
+    fn svn_fuse_map_lookup_matches_component_id() {
+        let map = [
+            SvnFuseMapEntry {
+                component_id: 0x1000,
+                fuse_entry: TEST_FUSE_A,
+            },
+            SvnFuseMapEntry {
+                component_id: 0x2000,
+                fuse_entry: TEST_FUSE_B,
+            },
+        ];
+        let got = SvnFuseMapEntry::lookup(&map, 0x2000).unwrap();
+        assert_eq!(got.name, TEST_FUSE_B.name);
+    }
+
+    #[test]
+    fn svn_fuse_map_lookup_missing_returns_none() {
+        let map = [SvnFuseMapEntry {
+            component_id: 0x1000,
+            fuse_entry: TEST_FUSE_A,
+        }];
+        assert!(SvnFuseMapEntry::lookup(&map, 0xdeadbeef).is_none());
+    }
+
+    #[test]
+    fn svn_fuse_map_lookup_returns_first_for_many_to_one() {
+        // Two component_ids share TEST_FUSE_A; lookup returns the first
+        // match, which is equivalent for burn purposes.
+        let map = [
+            SvnFuseMapEntry {
+                component_id: 0x1000,
+                fuse_entry: TEST_FUSE_A,
+            },
+            SvnFuseMapEntry {
+                component_id: 0x1001,
+                fuse_entry: TEST_FUSE_A,
+            },
+        ];
+        let got = SvnFuseMapEntry::lookup(&map, 0x1001).unwrap();
+        assert_eq!(got.name, TEST_FUSE_A.name);
     }
 }

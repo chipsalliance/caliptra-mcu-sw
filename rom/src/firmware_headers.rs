@@ -45,7 +45,7 @@ pub(crate) fn process_firmware_headers(
 
     #[cfg(feature = "svn-manifest")]
     if params.svn_manifest_enabled {
-        offset += process_svn_manifest(env, offset);
+        offset += process_svn_manifest(env, params, offset);
     }
 
     // Suppress unused-parameter warnings when neither feature is enabled.
@@ -109,7 +109,8 @@ fn process_fw_manifest_dot(env: &mut RomEnv, params: &RomParameters, offset: u32
 /// floor. All fuse interaction is gated by
 /// `CPTRA_CORE_ANTI_ROLLBACK_DISABLE`.
 #[cfg(feature = "svn-manifest")]
-fn process_svn_manifest(env: &mut RomEnv, offset: u32) -> u32 {
+fn process_svn_manifest(env: &mut RomEnv, params: &RomParameters, offset: u32) -> u32 {
+    use caliptra_mcu_registers_generated::fuses::MCU_COMPONENT_SVN_MANIFEST_MIN_SVN;
     use caliptra_mcu_romtime::{
         McuComponentSvnManifest, SvnLimits, MCU_COMPONENT_SVN_MANIFEST_SIZE,
     };
@@ -138,15 +139,12 @@ fn process_svn_manifest(env: &mut RomEnv, offset: u32) -> u32 {
         .set_flow_checkpoint(McuRomBootStatus::ComponentSvnManifestProcessingStarted.into());
 
     let limits = SvnLimits {
-        manifest_min_svn_max: svn_manifest_min_svn_max(),
+        manifest_min_svn_max: one_hot_bits(MCU_COMPONENT_SVN_MANIFEST_MIN_SVN),
         caliptra_runtime_min_svn_max: crate::caliptra_svn::CALIPTRA_SVN_BITS,
         soc_manifest_min_svn_max: crate::caliptra_svn::CALIPTRA_SVN_BITS,
     };
-    if let Err(err) = manifest.validate(&limits) {
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom] Component SVN Manifest validation failed: {:?}",
-            err
-        );
+    if manifest.validate(&limits).is_err() {
+        caliptra_mcu_romtime::println!("[mcu-rom] Component SVN Manifest validation failed");
         fatal_error(McuError::ROM_COMPONENT_SVN_MANIFEST_ERROR);
     }
 
@@ -163,6 +161,7 @@ fn process_svn_manifest(env: &mut RomEnv, offset: u32) -> u32 {
 
     if anti_rollback_on {
         enforce_and_burn_manifest_min_svn(env, manifest);
+        burn_per_component_min_svn(env, manifest, params.svn_fuse_map);
         crate::caliptra_svn::burn_caliptra_owned_svns(env, manifest);
     }
 
@@ -187,16 +186,7 @@ fn enforce_and_burn_manifest_min_svn(
 ) {
     use caliptra_mcu_registers_generated::fuses::MCU_COMPONENT_SVN_MANIFEST_MIN_SVN;
 
-    let fuse_min_svn = match env.otp.read_entry(MCU_COMPONENT_SVN_MANIFEST_MIN_SVN) {
-        Ok(v) => v,
-        Err(err) => {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] Error reading MCU_COMPONENT_SVN_MANIFEST_MIN_SVN: {}",
-                HexWord(err.into())
-            );
-            fatal_error(err);
-        }
-    };
+    let fuse_min_svn = read_fuse(env, MCU_COMPONENT_SVN_MANIFEST_MIN_SVN);
 
     if u32::from(manifest.current_svn) < fuse_min_svn {
         caliptra_mcu_romtime::println!(
@@ -207,43 +197,93 @@ fn enforce_and_burn_manifest_min_svn(
         fatal_error(McuError::ROM_COMPONENT_SVN_MANIFEST_ERROR);
     }
 
-    if u32::from(manifest.min_svn) <= fuse_min_svn {
+    burn_min_svn(
+        env,
+        MCU_COMPONENT_SVN_MANIFEST_MIN_SVN,
+        fuse_min_svn,
+        manifest.min_svn.into(),
+    );
+}
+
+/// For each non-empty entry whose `component_id` is in `svn_fuse_map`,
+/// validate that the entry fits the mapped slot's one-hot range and is
+/// not rolled back relative to the fuse, then burn the slot up to
+/// `entry.min_svn` when the manifest requests a higher floor. Entries
+/// with an unmapped `component_id` are skipped with a logged warning
+/// (spec'd behaviour).
+///
+/// Caller must have already verified that
+/// `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` is not set.
+#[cfg(feature = "svn-manifest")]
+fn burn_per_component_min_svn(
+    env: &mut RomEnv,
+    manifest: &caliptra_mcu_romtime::McuComponentSvnManifest,
+    svn_fuse_map: &[crate::SvnFuseMapEntry],
+) {
+    use crate::SvnFuseMapEntry;
+    if svn_fuse_map.is_empty() {
         return;
     }
+    for (idx, entry) in manifest.entries_present() {
+        let Some(fuse_entry) = SvnFuseMapEntry::lookup(svn_fuse_map, entry.component_id) else {
+            caliptra_mcu_romtime::println!("[mcu-rom] SVN entry {} unmapped; skipping", idx);
+            continue;
+        };
 
-    if let Err(err) = env
-        .otp
-        .write_entry(MCU_COMPONENT_SVN_MANIFEST_MIN_SVN, manifest.min_svn.into())
-    {
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom] Error burning MCU_COMPONENT_SVN_MANIFEST_MIN_SVN: {}",
-            HexWord(err.into())
-        );
-        fatal_error(err);
+        let slot_max = one_hot_bits(fuse_entry);
+        if u32::from(entry.current_svn) > slot_max || u32::from(entry.min_svn) > slot_max {
+            caliptra_mcu_romtime::println!("[mcu-rom] SVN entry {} out of range", idx);
+            fatal_error(McuError::ROM_COMPONENT_SVN_MANIFEST_ERROR);
+        }
+
+        let fuse_min_svn = read_fuse(env, fuse_entry);
+
+        if u32::from(entry.current_svn) < fuse_min_svn {
+            caliptra_mcu_romtime::println!("[mcu-rom] SVN entry {} rolled back", idx);
+            fatal_error(McuError::ROM_COMPONENT_SVN_MANIFEST_ERROR);
+        }
+
+        burn_min_svn(env, fuse_entry, fuse_min_svn, entry.min_svn.into());
     }
-    let new_fuse = match env.otp.read_entry(MCU_COMPONENT_SVN_MANIFEST_MIN_SVN) {
+}
+
+/// Read a one-hot-encoded SVN fuse via the OTP entry's layout. Halts
+/// the boot on any OTP error.
+#[cfg(feature = "svn-manifest")]
+fn read_fuse(
+    env: &mut RomEnv,
+    entry: &'static caliptra_mcu_registers_generated::fuses::FuseEntryInfo,
+) -> u32 {
+    match env.otp.read_entry(entry) {
         Ok(v) => v,
         Err(err) => {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] Error reading back MCU_COMPONENT_SVN_MANIFEST_MIN_SVN: {}",
-                HexWord(err.into())
-            );
+            caliptra_mcu_romtime::println!("[mcu-rom] OTP read error: {}", HexWord(err.into()));
             fatal_error(err);
         }
-    };
-    if new_fuse < u32::from(manifest.min_svn) {
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom] MCU_COMPONENT_SVN_MANIFEST_MIN_SVN readback failed: requested {}, read {}",
-            manifest.min_svn,
-            new_fuse
-        );
+    }
+}
+
+/// Advance `entry` to `requested` if it exceeds `current` and verify via
+/// readback. No-op when `requested <= current`.
+#[cfg(feature = "svn-manifest")]
+fn burn_min_svn(
+    env: &mut RomEnv,
+    entry: &'static caliptra_mcu_registers_generated::fuses::FuseEntryInfo,
+    current: u32,
+    requested: u32,
+) {
+    if requested <= current {
+        return;
+    }
+    if let Err(err) = env.otp.write_entry(entry, requested) {
+        caliptra_mcu_romtime::println!("[mcu-rom] OTP burn error: {}", HexWord(err.into()));
+        fatal_error(err);
+    }
+    if read_fuse(env, entry) < requested {
+        caliptra_mcu_romtime::println!("[mcu-rom] {} readback failed", entry.name);
         fatal_error(McuError::ROM_COMPONENT_SVN_MANIFEST_ERROR);
     }
-    caliptra_mcu_romtime::println!(
-        "[mcu-rom] Burned MCU_COMPONENT_SVN_MANIFEST_MIN_SVN: {} -> {}",
-        fuse_min_svn,
-        new_fuse
-    );
+    caliptra_mcu_romtime::println!("[mcu-rom] Burned {} to {}", entry.name, requested);
 }
 
 /// Returns true iff `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` is *not* set,
@@ -254,12 +294,12 @@ fn anti_rollback_enabled(otp: &caliptra_mcu_romtime::Otp) -> Result<bool, McuErr
     Ok(raw.iter().all(|b| *b == 0))
 }
 
+/// Number of effective (one-hot) bits in `entry`'s layout, i.e. the max
+/// representable logical value. Returns 0 for non-one-hot layouts.
 #[cfg(feature = "svn-manifest")]
-fn svn_manifest_min_svn_max() -> u32 {
-    use caliptra_mcu_registers_generated::fuses::{
-        FuseLayoutType, MCU_COMPONENT_SVN_MANIFEST_MIN_SVN,
-    };
-    match MCU_COMPONENT_SVN_MANIFEST_MIN_SVN.layout {
+fn one_hot_bits(entry: &caliptra_mcu_registers_generated::fuses::FuseEntryInfo) -> u32 {
+    use caliptra_mcu_registers_generated::fuses::FuseLayoutType;
+    match entry.layout {
         FuseLayoutType::OneHot { bits }
         | FuseLayoutType::OneHotLinearMajorityVote { bits, .. }
         | FuseLayoutType::OneHotLinearOr { bits, .. } => bits,

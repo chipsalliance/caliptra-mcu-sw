@@ -18,7 +18,7 @@ Abstract:
 // here so existing `caliptra_mcu_rom_common::McuComponentSvn*` paths
 // keep working.
 pub use caliptra_mcu_romtime::{
-    McuComponentSvnEntry, McuComponentSvnManifest, SvnLimits, SvnManifestError,
+    McuComponentSvnEntry, McuComponentSvnManifest, SvnFuseMapEntry, SvnLimits, SvnManifestError,
     MCU_COMPONENT_SVN_MANIFEST_ENTRY_COUNT, MCU_COMPONENT_SVN_MANIFEST_MAGIC,
     MCU_COMPONENT_SVN_MANIFEST_SIZE, MCU_COMPONENT_SVN_MANIFEST_VERSION,
 };

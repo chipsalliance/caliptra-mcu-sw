@@ -320,12 +320,21 @@ burn the fuse and read back to verify.
 
 ### Cold Boot and Hitless Update — SoC Component min_svn Burn
 
-When the manifest is present, for each entry with `min_svn > 0` MCU ROM
-burns the corresponding `SOC_IMAGE_MIN_SVN[i]` slot:
+When the manifest is present, MCU ROM walks each non-empty entry and,
+for those whose `component_id` is in `SVN_FUSE_MAP`, advances the mapped
+`SOC_IMAGE_MIN_SVN[i]` slot:
 
-1. Look up `component_id` in `SVN_FUSE_MAP` to find the fuse slot.
-2. If `entry.min_svn > fuse_min_svn` and anti-rollback is not disabled:
-   burn the fuse.
+1. Look up `component_id` in `SVN_FUSE_MAP`. If absent, skip the entry
+   with a logged warning (lets new components ship without a dedicated
+   fuse slot).
+2. Reject the boot if `entry.current_svn` or `entry.min_svn` exceeds the
+   slot's one-hot range, or if `entry.current_svn < fuse_min_svn`
+   (rollback).
+3. If `entry.min_svn > fuse_min_svn` and anti-rollback is not disabled,
+   burn the slot to `entry.min_svn` and read back to verify.
+
+The map is many-to-one: several `component_id`s may target the same
+slot, in which case the highest requested floor wins.
 
 ### PLDM Firmware Update — SVN Verification
 

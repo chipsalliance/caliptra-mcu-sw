@@ -735,6 +735,11 @@ pub struct RomParameters<'a> {
     /// advances the firmware entry offset past it. See `docs/src/svn.md`.
     /// Default: false (opt-in by platform integrators).
     pub svn_manifest_enabled: bool,
+    /// Platform mapping from SoC `component_id` to a `SOC_IMAGE_MIN_SVN[i]`
+    /// fuse slot, used to burn per-component SVN floors from the MCU
+    /// Component SVN Manifest entries. Empty (the default) disables
+    /// per-component burns. See `docs/src/svn.md`.
+    pub svn_fuse_map: &'a [crate::SvnFuseMapEntry],
     /// Recovery/override transport for DOT challenge/response protocol (e.g., MCI mbox0, I3C).
     pub dot_recovery_transport: Option<&'a dyn crate::RecoveryTransport>,
     /// DOT recovery/override watchdog timeout in clock cycles. If non-zero,
