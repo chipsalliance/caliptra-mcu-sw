@@ -152,59 +152,61 @@ impl<K: Clone> KeySchedule<K> {
             .ok_or(mcu_error::codes::INVARIANT)?;
 
         // request_hs = HKDF-Expand(hs, bin_str1(th1_hash), Hash.Length)
-        let req_hs = hkdf_expand_bin_str(
-            pal,
-            io,
-            self.version_str,
-            hs_ref,
-            BinStr::Str1,
-            Some(th1_hash),
-        )
-        .await?;
+        self.handshake_ctx.request_handshake_secret = Some(
+            hkdf_expand_bin_str(
+                pal,
+                io,
+                self.version_str,
+                hs_ref,
+                BinStr::Str1,
+                Some(th1_hash),
+            )
+            .await?,
+        );
 
         // response_hs = HKDF-Expand(hs, bin_str2(th1_hash), Hash.Length)
-        let rsp_hs = hkdf_expand_bin_str(
-            pal,
-            io,
-            self.version_str,
-            hs_ref,
-            BinStr::Str2,
-            Some(th1_hash),
-        )
-        .await?;
-
-        self.handshake_ctx.request_handshake_secret = Some(req_hs);
-        self.handshake_ctx.response_handshake_secret = Some(rsp_hs);
+        self.handshake_ctx.response_handshake_secret = Some(
+            hkdf_expand_bin_str(
+                pal,
+                io,
+                self.version_str,
+                hs_ref,
+                BinStr::Str2,
+                Some(th1_hash),
+            )
+            .await?,
+        );
 
         // finished keys = HKDF-Expand(handshake_secret, bin_str7, Hash.Length)
-        let req_fk = hkdf_expand_bin_str(
-            pal,
-            io,
-            self.version_str,
-            self.handshake_ctx
-                .request_handshake_secret
-                .as_ref()
-                .ok_or(mcu_error::codes::INVARIANT)?,
-            BinStr::Str7,
-            None,
-        )
-        .await?;
+        self.handshake_ctx.request_finished_key = Some(
+            hkdf_expand_bin_str(
+                pal,
+                io,
+                self.version_str,
+                self.handshake_ctx
+                    .request_handshake_secret
+                    .as_ref()
+                    .ok_or(mcu_error::codes::INVARIANT)?,
+                BinStr::Str7,
+                None,
+            )
+            .await?,
+        );
 
-        let rsp_fk = hkdf_expand_bin_str(
-            pal,
-            io,
-            self.version_str,
-            self.handshake_ctx
-                .response_handshake_secret
-                .as_ref()
-                .ok_or(mcu_error::codes::INVARIANT)?,
-            BinStr::Str7,
-            None,
-        )
-        .await?;
-
-        self.handshake_ctx.request_finished_key = Some(req_fk);
-        self.handshake_ctx.response_finished_key = Some(rsp_fk);
+        self.handshake_ctx.response_finished_key = Some(
+            hkdf_expand_bin_str(
+                pal,
+                io,
+                self.version_str,
+                self.handshake_ctx
+                    .response_handshake_secret
+                    .as_ref()
+                    .ok_or(mcu_error::codes::INVARIANT)?,
+                BinStr::Str7,
+                None,
+            )
+            .await?,
+        );
 
         Ok(())
     }
@@ -237,8 +239,7 @@ impl<K: Clone> KeySchedule<K> {
         let mut zero_filled = pal.alloc_bytes(io, SHA384_HASH_SIZE)?;
         zero_filled.fill(0);
         let zero_cmk = pal.import_key(io, &zero_filled).await?;
-        let ms = pal.hkdf_extract_key(io, &salt_1, &zero_cmk).await?;
-        self.master_ctx.master_secret = Some(ms);
+        self.master_ctx.master_secret = Some(pal.hkdf_extract_key(io, &salt_1, &zero_cmk).await?);
 
         let ms_ref = self
             .master_ctx
@@ -247,29 +248,30 @@ impl<K: Clone> KeySchedule<K> {
             .ok_or(mcu_error::codes::INVARIANT)?;
 
         // req_data = HKDF-Expand(ms, bin_str3(th2), Hash.Length)
-        let req_data = hkdf_expand_bin_str(
-            pal,
-            io,
-            self.version_str,
-            ms_ref,
-            BinStr::Str3,
-            Some(th2_hash),
-        )
-        .await?;
+        self.data_ctx.request_data_secret = Some(
+            hkdf_expand_bin_str(
+                pal,
+                io,
+                self.version_str,
+                ms_ref,
+                BinStr::Str3,
+                Some(th2_hash),
+            )
+            .await?,
+        );
 
         // rsp_data = HKDF-Expand(ms, bin_str4(th2), Hash.Length)
-        let rsp_data = hkdf_expand_bin_str(
-            pal,
-            io,
-            self.version_str,
-            ms_ref,
-            BinStr::Str4,
-            Some(th2_hash),
-        )
-        .await?;
-
-        self.data_ctx.request_data_secret = Some(req_data);
-        self.data_ctx.response_data_secret = Some(rsp_data);
+        self.data_ctx.response_data_secret = Some(
+            hkdf_expand_bin_str(
+                pal,
+                io,
+                self.version_str,
+                ms_ref,
+                BinStr::Str4,
+                Some(th2_hash),
+            )
+            .await?,
+        );
 
         Ok(())
     }
