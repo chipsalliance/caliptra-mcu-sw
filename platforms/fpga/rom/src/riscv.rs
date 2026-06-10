@@ -239,8 +239,16 @@ pub extern "C" fn rom_entry() -> ! {
         lifecycle_transition,
         burn_lifecycle_tokens,
         program_field_entropy: [program_field_entropy; 4],
-        otp_enable_integrity_check: true,
-        otp_enable_consistency_check: true,
+        // The DOT/recovery FPGA tests inject OTP fuses (DOT state + the
+        // vendor recovery PK hash in the scrambled VENDOR_SECRET_PROD
+        // partition) through the hw-model OTP backdoor. That backdoor image is
+        // not formatted for the OTP controller's background integrity/
+        // consistency checks, which then fault the controller on real
+        // hardware. Skip enabling those background checks for the test ROM so
+        // the DOT recovery flow can be exercised on FPGA. The emulator is
+        // lenient and runs the same tests with the checks enabled.
+        otp_enable_integrity_check: !cfg!(feature = "test-i3c-services"),
+        otp_enable_consistency_check: !cfg!(feature = "test-i3c-services"),
         flash_partition_driver: Some(&mut flash_partition),
         dot_flash: Some(dot_flash),
         owner_pk_hash_policy: read_owner_pk_hash_policy(),
