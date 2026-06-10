@@ -7,6 +7,7 @@ use crate::firmware_device::fd_ops::FdOps;
 use crate::firmware_device::transfer_session::TransferSession;
 use crate::timer::AsyncAlarm;
 use crate::transport::MctpTransport;
+use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::mctp::driver_num;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
@@ -182,12 +183,11 @@ pub async fn pldm_initiator(
                         }
                     }
                     Err(e) => {
-                        writeln!(
+                        console_writeln!(
                             console_writer,
                             "PLDM_APP: Error in optimized download: {:?}",
                             e
-                        )
-                        .unwrap();
+                        );
                         // Sync and fall back to regular path
                         cmd_interface.sync_transfer_session(sess).await;
                         session = None;
@@ -217,12 +217,11 @@ pub async fn pldm_initiator(
                         }
                     }
                     Err(e) => {
-                        writeln!(
+                        console_writeln!(
                             console_writer,
                             "PLDM_APP: Error handling initiator msg: {:?}",
                             e
-                        )
-                        .unwrap();
+                        );
                     }
                 }
 
@@ -251,12 +250,11 @@ pub async fn pldm_responder(
             Ok(crate::cmd_interface::ResponderAction::Complete) => break,
             Ok(crate::cmd_interface::ResponderAction::Continue) => {}
             Err(e) => {
-                writeln!(
+                console_writeln!(
                     console_writer,
                     "PLDM_APP: Error handling responder msg: {:?}",
                     e
-                )
-                .unwrap();
+                );
             }
         }
 

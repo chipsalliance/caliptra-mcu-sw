@@ -19,10 +19,10 @@ caliptra-mcu-libapi-caliptra.workspace = true
 caliptra-mcu-libapi-emulated-caliptra.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true
 caliptra-mcu-libtock_console.workspace = true
-caliptra-mcu-libtock_debug_panic.workspace = true
+caliptra-mcu-libtock_low_level_debug.workspace = true
 caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtock_runtime.workspace = true
-caliptra-mcu-libtock.workspace = true
+caliptra-mcu-libtock = { workspace = true, features = ["no_panic_handler"] }
 caliptra-mcu-libtockasync.workspace = true
 caliptra-mcu-config.workspace = true
 caliptra-mcu-config-emulator.workspace = true
@@ -52,6 +52,8 @@ caliptra-mcu-libtock_unittest.workspace = true
 embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
 embedded-alloc.workspace = true
 portable-atomic = { workspace = true, features = ["critical-section"] }
+defmt = { workspace = true, optional = true }
+caliptra-mcu-userlog = { workspace = true, optional = true }
 
 [build-dependencies]
 caliptra-ocp-eat.workspace = true
@@ -59,6 +61,8 @@ caliptra-ocp-eat.workspace = true
 [features]
 default = []
 hw-2-1 = []
+doe = []
+userspace-log = ["dep:defmt", "dep:caliptra-mcu-userlog"]
 # Production / minimal-size build for user-app.  Activated automatically by
 # `xtask runtime-build --profile release` (via `--features release` forwarded
 # through the bundler).  Gates `console_writeln!` to a no-op so all of
@@ -66,11 +70,15 @@ hw-2-1 = []
 # format paths) is stripped, and forwards to `caliptra-mcu-romtime/no-print`
 # so the romtime `print!`/`println!` macros become no-ops inside user-app's
 # private dependency build of `caliptra-mcu-romtime`.
-release = ["caliptra-mcu-romtime/no-print"]
+release = [
+    "caliptra-mcu-romtime/no-print",
+    "caliptra-mcu-libsyscall-caliptra/release",
+]
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []
 test-caliptra-util-host-validator = []
+test-defmt-logging = ["userspace-log"]
 test-doe-transport-loopback = []
 test-doe-discovery = []
 test-doe-user-loopback = []

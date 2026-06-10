@@ -150,6 +150,10 @@ jobs:
             --separate-runtimes
           sccache --show-stats
 
+          echo "Cross compiling FPGA release-profile runtime"
+          cargo xtask runtime-build --platform fpga --profile release
+          sccache --show-stats
+
           mkdir -p /tmp/caliptra-binaries
           tar -cvz -f /tmp/caliptra-binaries/caliptra-binaries.tar.gz \
             all-fw.zip
@@ -233,21 +237,26 @@ jobs:
       - name: Execute tests
         run: |
           export RUST_BACKTRACE=1
+          # Point xtask at the mounted binaries bundle and the current
+          # workspace (the runner's checkout, not a `caliptra-mcu-sw` subdir).
           export TEST_BIN=/tmp/caliptra-test-binaries
+          export CPTRA_TEST_WORKSPACE=.
           export CPTRA_FIRMWARE_BUNDLE="${PWD}/all-fw.zip"
 
-          # Generate nextest metadata using the mounted binaries for CI reporting
-          # and observability. This helps verify test discovery on the FPGA.
+          # Emit nextest metadata up front so test discovery is observable
+          # even if the run itself fails.
           cargo-nextest nextest list \
-            --cargo-metadata="${TEST_BIN}/target/nextest/cargo-metadata.json" \
-            --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json" \
-            --target-dir-remap="${TEST_BIN}/target" \
-            --workspace-remap=. \
-            --profile=nightly-ci \
-            --message-format json > /tmp/nextest-list.json
+              --cargo-metadata="${TEST_BIN}/target/nextest/cargo-metadata.json" \
+              --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json" \
+              --target-dir-remap="${TEST_BIN}/target" \
+              --workspace-remap=. \
+              --profile=nightly-ci \
+              --message-format json > /tmp/nextest-list.json
 
-          # all-fw.zip is in current directory after tar -xvf
-          chmod +x /tmp/caliptra-binaries/xtask
+          # Run through xtask to keep the xtask FPGA flow exercised by CI;
+          # the bootstrap step wrote `subsystem` into /dev/shm/fpga-config,
+          # so xtask picks the Subsystem configuration (and its default
+          # `nightly-ci` nextest profile) automatically.
           /tmp/caliptra-binaries/xtask fpga test
 
       - name: 'Upload test results'

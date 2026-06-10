@@ -25,3 +25,9 @@ algorithm = 1
 [export_idevid_csr]
 # ECC384 = 1, MlDsa87 = 2
 algorithms = [1]
+
+[fe_prog]
+partition = 0
+# Hex-encoded HMAC-SHA384 key for FE_PROG authorization.
+# Must match AUTH_CMD_HMAC_KEY in the MCU firmware.
+auth_key = "72ec12027769b9dc04bdd0c086ca1b202f471eeef28c2da8c54c75c248a6800a11bfd5cd09ed570cb4c2a1376ba2cbcd"

@@ -11,7 +11,8 @@ use anyhow::Result;
 use caliptra_spdm_requester::{SpdmConfig, SpdmRequester, SpdmSocketDeviceIo, SpdmVdmDriverImpl};
 use caliptra_spdm_vdm_client::config::{self, DeviceMode, TestConfig};
 use caliptra_spdm_vdm_client::{
-    validator, DebugUnlockKeys, DebugUnlockSigner, LocalDebugUnlockSigner, SpdmVdmClient,
+    validator, CommandAuthChallengeSigner, DebugUnlockKeys, DebugUnlockSigner, HmacCommandAuthorizer,
+    LocalDebugUnlockSigner, SpdmVdmClient,
 };
 use clap::Parser;
 
@@ -115,6 +116,14 @@ fn main() -> Result<()> {
         };
     let config = args.into_config()?;
 
+    let fe_prog_authorizer: Option<Box<dyn CommandAuthChallengeSigner>> =
+        if let Some(hex_key) = &config.fe_prog.auth_key {
+            let key = hex::decode(hex_key)?;
+            Some(Box::new(HmacCommandAuthorizer::new(key)))
+        } else {
+            None
+        };
+
     println!(
         "[caliptra-spdm-validator] Connecting to bridge at {}",
         config.network.server_address
@@ -139,7 +148,13 @@ fn main() -> Result<()> {
     let results = {
         let mut vdm = SpdmVdmDriverImpl::new(&mut requester, None);
         let mut client = SpdmVdmClient::new(&mut vdm);
-        validator::run_all(&mut client, &config, debug_unlock_signer.as_deref(), true)
+        validator::run_all(
+            &mut client,
+            &config,
+            debug_unlock_signer.as_deref(),
+            fe_prog_authorizer.as_deref(),
+            true,
+        )
     };
     validator::print_summary(&results);
 

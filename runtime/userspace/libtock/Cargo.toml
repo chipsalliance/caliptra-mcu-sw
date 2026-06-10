@@ -10,6 +10,10 @@ repository = "https://www.github.com/tock/libtock-rs"
 version = "0.1.0"
 
 [features]
+# Suppress libtock's built-in panic handler so the application can define its
+# own `#[panic_handler]`. Additive/opt-out: only binaries that enable it lose
+# the default handler; all other apps keep it.
+no_panic_handler = []
 rust_embedded = [
     "embedded-hal",
     "caliptra-mcu-libtock_platform/rust_embedded",
