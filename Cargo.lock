@@ -1102,6 +1102,7 @@ dependencies = [
  "caliptra-emu-bus",
  "caliptra-emu-cpu",
  "caliptra-emu-periph",
+ "caliptra-emu-types",
  "caliptra-hw-model-types",
  "caliptra-mcu-emulator-consts",
  "caliptra-registers",
