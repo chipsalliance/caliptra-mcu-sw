@@ -31,7 +31,7 @@ use crate::key_schedule::SessionKeyType;
 use crate::session::{SessionManager, SessionState};
 use crate::{
     algorithms, capabilities, certificate, challenge, chunk, digests, end_session, finish,
-    key_exchange, measurements, version,
+    key_exchange, measurements, vendor_defined, version,
 };
 
 /// Connection phase tracked on the responder so the dispatcher can
@@ -292,14 +292,21 @@ fn set_certificate_other_params() -> OtherParamSupport {
 /// and a fixed-size session table.
 /// Drive it with [`Self::run`], which loops forever until the
 /// transport returns a fatal error.
-pub struct SpdmStack<Pal: SpdmPal, const MAX_SESSIONS: usize = 1> {
+pub struct SpdmStack<
+    Pal: SpdmPal,
+    const MAX_SESSIONS: usize = 1,
+    Vdm: mcu_spdm_lite_traits::SpdmVdmBackend = mcu_spdm_lite_traits::NoVdmBackend,
+> {
     pub(crate) pal: Pal,
     pub(crate) state: ConnectionState<Pal::State>,
     pub(crate) sessions:
         SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
+    vdm_backend: Vdm,
 }
 
-impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
+impl<Pal: SpdmPal, const MAX_SESSIONS: usize>
+    SpdmStack<Pal, MAX_SESSIONS, mcu_spdm_lite_traits::NoVdmBackend>
+{
     /// Constructs a new responder over `pal` with the default
     /// (Caliptra) local-policy advertisement. If the PAL cannot hold
     /// at least one transport-sized large message, `CHUNK` is removed
@@ -314,6 +321,18 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
     ///
     /// A new `SpdmStack` in [`Phase::Start`].
     pub fn new(pal: Pal) -> Self {
+        Self::with_vdm_backend(pal, mcu_spdm_lite_traits::NoVdmBackend)
+    }
+}
+
+impl<Pal, const MAX_SESSIONS: usize, Vdm> SpdmStack<Pal, MAX_SESSIONS, Vdm>
+where
+    Pal: SpdmPal,
+    Vdm: mcu_spdm_lite_traits::SpdmVdmBackend,
+    Vdm::Error: Into<crate::error::SpdmError>,
+{
+    /// Constructs a responder with a static-dispatch VDM backend.
+    pub fn with_vdm_backend(pal: Pal, vdm_backend: Vdm) -> Self {
         let mut state = ConnectionState::<Pal::State>::default();
         if pal.capacity() < pal.mtu() {
             state.cap_flags =
@@ -323,6 +342,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
             pal,
             state,
             sessions: SessionManager::new(),
+            vdm_backend,
         }
     }
 
@@ -360,7 +380,15 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
             match io.kind() {
                 SpdmPalIoKind::Message => {
                     let (code, req_version) = decode_header(io.request());
-                    match dispatch(&mut self.state, &mut self.sessions, &self.pal, &io, code).await
+                    match dispatch(
+                        &mut self.state,
+                        &mut self.sessions,
+                        &self.pal,
+                        &io,
+                        code,
+                        &self.vdm_backend,
+                    )
+                    .await
                     {
                         Ok(mut rsp) => {
                             #[cfg(feature = "debug-trace")]
@@ -520,13 +548,19 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize> SpdmStack<Pal, MAX_SESSIONS> {
 ///   not handled by this responder.
 /// * Whatever the specific handler returns.
 #[inline(never)]
-async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
+async fn dispatch<'a, Pal, Vdm, const MAX_SESSIONS: usize>(
     state: &mut ConnectionState<Pal::State>,
     sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     code: ReqRespCode,
-) -> SpdmResult<PalBytes<'a, Pal>> {
+    vdm_backend: &Vdm,
+) -> SpdmResult<PalBytes<'a, Pal>>
+where
+    Pal: SpdmPal,
+    Vdm: mcu_spdm_lite_traits::SpdmVdmBackend,
+    Vdm::Error: Into<crate::error::SpdmError>,
+{
     if code != ReqRespCode::CHUNK_SEND && state.chunk.in_progress() {
         state.chunk.reset();
     }
@@ -551,7 +585,7 @@ async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
         ReqRespCode::GET_DIGESTS => digests::handle_get_digests(state, pal, io).await,
         ReqRespCode::GET_CERTIFICATE => certificate::handle_get_certificate(state, pal, io).await,
         ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
-        ReqRespCode::CHUNK_SEND => chunk::handle_chunk_send(state, pal, io).await,
+        ReqRespCode::CHUNK_SEND => chunk::handle_chunk_send(state, pal, io, vdm_backend).await,
         ReqRespCode::CHUNK_GET => chunk::handle_chunk_get(state, pal, io).await,
         #[cfg(feature = "set-certificate")]
         ReqRespCode::SET_CERTIFICATE => {
@@ -563,6 +597,9 @@ async fn dispatch<'a, Pal: SpdmPal, const MAX_SESSIONS: usize>(
             let (resp, _) =
                 measurements::handle_get_measurements_req(state, pal, io, io.request()).await?;
             Ok(resp)
+        }
+        ReqRespCode::VENDOR_DEFINED_REQUEST => {
+            vendor_defined::handle_vendor_defined_request(state, pal, io, vdm_backend).await
         }
         ReqRespCode::KEY_EXCHANGE => {
             key_exchange::handle_key_exchange(state, sessions, pal, io).await

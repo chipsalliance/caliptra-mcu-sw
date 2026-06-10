@@ -98,7 +98,7 @@ pub fn handle_firmware_version(
     response_buffer: &mut [u8],
 ) -> Result<usize, TransportError> {
     // Parse internal request (may be empty → default to index 0)
-    let _area_index = if payload.len() >= core::mem::size_of::<GetFirmwareVersionRequest>() {
+    let area_index = if payload.len() >= core::mem::size_of::<GetFirmwareVersionRequest>() {
         let req = GetFirmwareVersionRequest::from_bytes(payload)
             .map_err(|_| TransportError::InvalidMessage)?;
         req.index
@@ -106,11 +106,12 @@ pub fn handle_firmware_version(
         0
     };
 
-    // VDM payload for FirmwareVersion: empty (no additional data needed)
+    // VDM payload for FirmwareVersion: area_index (u32 little-endian).
+    let area_index = area_index.to_le_bytes();
     let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
     let resp_len = send_vdm_request(
         CaliptraVdmCommand::FirmwareVersion,
-        &[],
+        &area_index,
         driver,
         &mut resp_buf,
     )?;

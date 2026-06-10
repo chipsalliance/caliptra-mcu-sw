@@ -297,8 +297,8 @@ mod tests {
     use mcu_error::McuErrorCode;
     use mcu_spdm_lite_codec::{errors as wire_errors, OtherParamSupport, ReqRespCode};
     use mcu_spdm_lite_traits::{
-        McuResult, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash, SpdmPalIoKind,
-        SpdmPalLargeMessage,
+        McuResult, MeasurementInfo, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash,
+        SpdmPalIoKind, SpdmPalLargeMessage, SpdmPalMeasurements, SPDM_NONCE_LEN,
     };
     use std::boxed::Box;
     use std::cell::RefCell;
@@ -401,6 +401,11 @@ mod tests {
 
         fn alloc_bytes(&self, _io: &impl SpdmPalIo, len: usize) -> McuResult<Self::Bytes<'_>> {
             Ok(vec![0u8; len])
+        }
+
+        fn shrink_bytes(bytes: &mut Self::Bytes<'_>, new_len: usize) -> McuResult<()> {
+            bytes.truncate(new_len);
+            Ok(())
         }
     }
 
@@ -615,6 +620,22 @@ mod tests {
         async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
             out.fill(0xA5);
             Ok(())
+        }
+    }
+
+    impl SpdmPalMeasurements for TestPal {
+        fn measurement_info(&self) -> &[MeasurementInfo] {
+            &[]
+        }
+
+        async fn get_measurement_value(
+            &self,
+            _io: &Self::Io<'_>,
+            _index: u8,
+            _nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+            _out: &mut [u8],
+        ) -> McuResult<usize> {
+            Err(mcu_error::codes::NOT_IMPLEMENTED)
         }
     }
 

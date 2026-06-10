@@ -3,22 +3,17 @@
 extern crate alloc;
 use caliptra_mcu_common_commands::{CaliptraCompletionCode, GetLogResult};
 use caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
-const LOG_ENTRY_SCRATCH: usize = 256;
-
 struct DebugLogState {
-    holdover_len: usize,
-    holdover: [u8; LOG_ENTRY_SCRATCH],
     cursor_at_start: bool,
 }
 
 impl DebugLogState {
     const fn new() -> Self {
         Self {
-            holdover_len: 0,
-            holdover: [0; LOG_ENTRY_SCRATCH],
             cursor_at_start: false,
         }
     }
@@ -48,43 +43,28 @@ pub async fn drain(dst: &mut [u8]) -> Result<GetLogResult, CaliptraCompletionCod
     let mut written = 0usize;
     let mut more_data = false;
 
-    // 1) Flush a held-over entry from a prior call, if any.
-    if state.holdover_len > 0 {
-        if state.holdover_len <= dst.len() {
-            let n = state.holdover_len;
-            dst[..n].copy_from_slice(&state.holdover[..n]);
-            written += n;
-            state.holdover_len = 0;
-        } else {
-            // Caller buffer cannot fit even the held entry. Per the
-            // entry-boundary contract we must not partial-copy; signal
-            // more_data and let the caller retry with a larger buffer.
-            return Ok(GetLogResult {
-                bytes_written: 0,
-                more_data: true,
-            });
-        }
-    }
-
-    // 2) Pull fresh entries from the kernel.
-    let mut scratch = [0u8; LOG_ENTRY_SCRATCH];
     loop {
-        match log.read_entry(&mut scratch).await {
+        if written == dst.len() {
+            // We cannot probe for another entry without either consuming it or
+            // violating the entry-boundary contract. Return a conservative
+            // `more_data`; a follow-up call will either drain the next entry or
+            // report an empty final chunk.
+            more_data = true;
+            break;
+        }
+
+        match log.read_entry(&mut dst[written..]).await {
             Ok(0) => break, // defensive: empty entry => treat as drained
-            Ok(n) => {
-                if written + n <= dst.len() {
-                    dst[written..written + n].copy_from_slice(&scratch[..n]);
-                    written += n;
-                } else {
-                    // Stash for the next call; this call returns short.
-                    state.holdover[..n].copy_from_slice(&scratch[..n]);
-                    state.holdover_len = n;
-                    more_data = true;
-                    break;
-                }
+            Ok(n) => written += n,
+            Err(ErrorCode::Size) => {
+                // The next entry does not fit in the remaining caller buffer.
+                // The logging capsule leaves its read cursor unchanged on
+                // SIZE, so the caller can retry and receive that entry first.
+                more_data = true;
+                break;
             }
-            // The capsule reports "no more entries" via Err. Any I/O error
-            // surfaces the same way; treat it as end-of-drain so the caller
+            // The capsule reports "no more entries" via Err. Other I/O errors
+            // surface the same way; treat them as end-of-drain so the caller
             // gets whatever was already accumulated.
             Err(_) => break,
         }
@@ -105,7 +85,6 @@ pub async fn clear() -> Result<(), CaliptraCompletionCode> {
     log.clear()
         .await
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    state.holdover_len = 0;
     // Force the next `drain` to re-seek to the (now empty) head of log.
     state.cursor_at_start = false;
     Ok(())

@@ -48,8 +48,14 @@ pub mod session;
 mod set_certificate;
 mod stack;
 mod transcript;
+mod vendor_defined;
 mod version;
 
 pub use error::*;
+pub use mcu_spdm_lite_codec::StandardsBodyId;
+pub use mcu_spdm_lite_traits::{
+    NoVdmBackend, SpdmVdmBackend, VdmLargeResponseWriter, VdmRequest, VdmResponseBuffers,
+    VdmResponseKind,
+};
 pub use stack::*;
 pub use transcript::*;

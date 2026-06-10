@@ -22,6 +22,7 @@ mod measurements;
 mod opaque;
 mod secured_message;
 mod set_certificate;
+mod vendor_defined;
 mod version;
 mod wire;
 
@@ -56,6 +57,7 @@ pub use measurements::{
     SPDM_MAX_MEASUREMENT_RECORD_SIZE,
 };
 pub use set_certificate::{SetCertificateReqBody, SetCertificateRsp, SetCertificateRspBody};
+pub use vendor_defined::{StandardsBodyId, VendorDefinedReqPdu, VendorDefinedRspPdu};
 pub use version::{SpdmVersion, VersionNumberEntry, VersionRsp, VersionRspBody};
 pub use wire::{WireError, WireReader, WireWriter};
 

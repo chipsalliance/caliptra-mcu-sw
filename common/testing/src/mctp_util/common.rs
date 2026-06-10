@@ -138,6 +138,13 @@ impl MctpUtil {
         assert!(pkts.len() == 1, "Only one packet is expected in message");
         let mut i3c_state = I3cControllerState::Start;
         let msg_type = msg[0];
+        // SPDM/SPDM-secured and VDM responders are sensitive to duplicate requests:
+        // a retransmitted request can leave stale responses queued and cause
+        // later CHUNK_GET / VDM exchanges to consume the wrong packet. Other
+        // protocols (notably PLDM firmware update/recovery) rely on the older
+        // retry behavior when the first IBI is missed, so only suppress
+        // retransmission for stateful SPDM/VDM message types.
+        let suppress_retransmit = matches!(msg_type & 0x7f, 0x05 | 0x06 | 0x7e);
 
         let mut retry = 100;
         // Buffer for accumulating multi-packet responses. The first packet
@@ -145,10 +152,9 @@ impl MctpUtil {
         // subsequent packets without SOM are appended until EOM is seen.
         let mut resp_pkts: VecDeque<Vec<u8>> = VecDeque::new();
         let mut response_started = false;
-        // Track whether the request has been sent at least once so we do
-        // not re-send while waiting for the responder. Re-sending the same
-        // request causes duplicate responses on slow I/O paths and
-        // confuses subsequent `wait_for_responder` calls.
+        // Track whether the request has been sent at least once. For SPDM we
+        // do not re-send while waiting for the responder; for other protocols
+        // we preserve the historical retry-by-retransmit behavior.
         let mut request_sent = false;
 
         while crate::is_emulator_running() && retry > 0 {
@@ -176,12 +182,11 @@ impl MctpUtil {
                         // without rewinding to SendPrivateWrite.
                         retry -= 1;
                         sleep_emulator_ticks(100_000);
-                    } else if request_sent {
-                        // Request already on the wire — keep waiting for
+                    } else if request_sent && suppress_retransmit {
+                        // Stateful request already on the wire — keep waiting for
                         // the IBI without re-sending. Re-sending generates
-                        // duplicate responses that the responder must
-                        // process, which on slow I/O paths causes ordering
-                        // issues across `wait_for_responder` calls.
+                        // duplicate responses that can be consumed by a later
+                        // exchange or mutate stateful responder cursors.
                         retry -= 1;
                         if retry == 0 {
                             println!("MCTP_UTIL: timed out waiting for IBI");
@@ -190,18 +195,8 @@ impl MctpUtil {
                         sleep_emulator_ticks(100_000);
                     } else {
                         retry -= 1;
-                        // Wait longer for the responder to wake up and post
-                        // its first IBI. Do NOT retransmit the request: the
-                        // firmware processes every private-write as a fresh
-                        // SPDM request, and any duplicate responses end up
-                        // stuck in the I3C queue and get consumed out-of-
-                        // order by subsequent receive_response calls,
-                        // creating a hard-to-debug request/response
-                        // mis-pairing across the whole conformance run.
-                        sleep_emulator_ticks(500_000);
-                        if retry % 10 == 0 {
-                            println!("MCTP_UTIL: IBI not received. Retrying {}...", retry);
-                        }
+                        println!("MCTP_UTIL: IBI not received. Retrying {}...", retry);
+                        i3c_state = I3cControllerState::SendPrivateWrite;
                     }
                 }
                 I3cControllerState::ReceivePrivateRead => {

@@ -11,6 +11,7 @@ extern crate alloc;
 mod cert_store;
 mod device_measurements;
 
+use crate::caliptra_cmd_handler::CaliptraOcpVdm;
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -32,10 +33,17 @@ use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 /// plus transient DPE/SHA mailbox buffers (peak ~2.4 KB during
 /// certify_key for kid computation).
 const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
-/// Persistent CHUNK_SEND reassembly buffer. This is kept outside the
-/// async task frame and outside the per-I/O scratch allocator because
-/// it must live across multiple received chunk messages.
-const SPDM_LITE_LARGE_MSG_SIZE: usize = 8 * 1024;
+/// Persistent large-message buffer. This is kept outside the async task frame
+/// and outside the per-I/O scratch allocator because CHUNK_SEND reassembly and
+/// buffered large responses must live across multiple received chunk messages.
+///
+/// With attested CSR VDM disabled, this only needs to cover regular Caliptra
+/// response data (9 KiB) plus VDM framing.  Opting into attested CSR VDM keeps
+/// enough room for Caliptra's 12.5 KiB attested CSR mailbox response.
+#[cfg(not(feature = "test-mctp-spdm-attested-csr-vdm"))]
+const SPDM_LITE_LARGE_MSG_SIZE: usize = 10 * 1024;
+#[cfg(feature = "test-mctp-spdm-attested-csr-vdm")]
+const SPDM_LITE_LARGE_MSG_SIZE: usize = 13 * 1024;
 
 /// Single cert store shared by all SPDM responder tasks.
 static CERT_STORE: SharedCertStore = SharedCertStore::new();
@@ -149,7 +157,8 @@ async fn spdm_mctp_responder() {
             measurement_provider(),
         )
     };
-    let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
+    let mut stack: SpdmStack<_, 1, CaliptraOcpVdm> =
+        SpdmStack::with_vdm_backend(pal, CaliptraOcpVdm);
 
     crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lite MCTP run loop");
     if let Err(e) = stack.run().await {
@@ -201,7 +210,8 @@ async fn spdm_doe_responder() {
             measurement_provider(),
         )
     };
-    let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
+    let mut stack: SpdmStack<_, 1, CaliptraOcpVdm> =
+        SpdmStack::with_vdm_backend(pal, CaliptraOcpVdm);
 
     crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lite DOE run loop");
     if let Err(e) = stack.run().await {
