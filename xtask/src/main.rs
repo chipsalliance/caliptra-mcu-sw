@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 mod auth_manifest;
 mod cargo_lock;
+mod ci;
 mod clippy;
 mod corim;
 mod coverage;
@@ -27,7 +28,6 @@ mod rom;
 mod runtime;
 mod sizes;
 mod test;
-mod ci;
 
 #[cfg(feature = "fpga_realtime")]
 use fpga::Fpga;
@@ -405,7 +405,6 @@ pub enum CICommands {
     /// Run size-history tool.
     SizeHistory,
 }
-
 
 #[derive(Subcommand)]
 enum FlashImageCommands {

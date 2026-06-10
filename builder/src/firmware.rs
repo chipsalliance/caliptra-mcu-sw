@@ -46,26 +46,25 @@ pub mod hw_model_tests {
         bin_name: "caliptra-mcu-test-fw-lc-ctrl",
         features: &["emu"],
     };
-
 }
 
 pub const MCU_KERNAL: FwId = FwId {
     crate_name: "mcu-runtime-fpga",
     bin_name: "mcu-runtime-fpga",
     features: &[],
-};    
+};
 
 pub const MCU_ROM: FwId = FwId {
     crate_name: "mcu-rom-fpga",
     bin_name: "mcu-rom-fpga",
     features: &[],
-};    
+};
 
 pub const MCU_USER: FwId = FwId {
     crate_name: "user-app",
     bin_name: "user-app",
     features: &[],
-}; 
+};
 
 pub const REGISTERED_FW: &[&FwId] = &[
     &hw_model_tests::MAILBOX_RESPONDER,
@@ -75,9 +74,9 @@ pub const REGISTERED_FW: &[&FwId] = &[
     &hw_model_tests::OTP_BLANK_CHECK,
     &hw_model_tests::OTP_SCRAMBLE_CHECK,
     &hw_model_tests::LC_CTRL,
-    &MCU_KERNAL, 
+    &MCU_KERNAL,
     &MCU_ROM,
-    &MCU_USER
+    &MCU_USER,
 ];
 
 pub const CPTRA_REGISTERED_FW: &[&FwId] =

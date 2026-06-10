@@ -320,6 +320,8 @@ dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "a26db5b869
 crypto = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "a26db5b869f13f0d2c5762b75f8892b9fe2d8055", default-features = false }
 platform = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "a26db5b869f13f0d2c5762b75f8892b9fe2d8055", default-features = false }
 
+size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", package = "caliptra-size-history", rev = "64e75e17e1a2eb07ff8dd6698932af82182da85e" }
+
 # local caliptra dependency; useful when developing
 # caliptra-api = { path = "../caliptra-sw/api" }
 # caliptra-api-types = { path = "../caliptra-sw/api/types" }
