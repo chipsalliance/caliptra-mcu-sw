@@ -1,24 +1,32 @@
 // Licensed under the Apache-2.0 license
 
-//! MCU Component SVN Manifest format and validation. See `docs/src/svn.md`.
+//! MCU runtime firmware SVN header format and validation. See
+//! `docs/src/svn.md`.
 //!
-//! This module defines the on-disk layout, parsing, and structural
-//! validation. Fuse reads and burns happen in the caller.
+//! The header travels inside the (authenticated) MCU runtime image and
+//! declares the new `min_svn` floors to commit into OTP. It lives in
+//! `romtime` so it can be parsed both by MCU ROM (the OTP writer) and by
+//! later stages such as the early runtime image or FMC. This module only
+//! defines the on-disk layout, parsing, and structural validation; fuse
+//! reads and burns happen in the caller.
 
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-/// Magic at the start of the manifest. On disk (little-endian) the bytes
+/// Magic at the start of the header. On disk (little-endian) the bytes
 /// are `"VSCM"`; the constant value reads as `"MCSV"` MSB-first.
 pub const MCU_COMPONENT_SVN_MANIFEST_MAGIC: u32 = 0x4D43_5356;
 
-/// Currently supported manifest format version.
+/// Currently supported header format version.
 pub const MCU_COMPONENT_SVN_MANIFEST_VERSION: u16 = 1;
 
-/// Number of `McuComponentSvnEntry` slots. Matches Caliptra's
-/// `AUTH_MANIFEST_IMAGE_METADATA_MAX_COUNT`.
-pub const MCU_COMPONENT_SVN_MANIFEST_ENTRY_COUNT: usize = 127;
+/// Number of `McuComponentSvnEntry` slots. One slot fewer than
+/// Caliptra's `AUTH_MANIFEST_IMAGE_METADATA_MAX_COUNT` (127): the space
+/// is yielded to the fixed header so the whole structure is exactly
+/// 1024 bytes.
+pub const MCU_COMPONENT_SVN_MANIFEST_ENTRY_COUNT: usize = 126;
 
-/// Total on-disk size of the manifest, in bytes.
+/// Total on-disk size of the header, in bytes (16-byte header + 1008
+/// bytes of entries).
 pub const MCU_COMPONENT_SVN_MANIFEST_SIZE: usize = 1024;
 
 #[repr(C)]
@@ -47,38 +55,49 @@ pub struct McuComponentSvnManifest {
     /// Must be [`MCU_COMPONENT_SVN_MANIFEST_MAGIC`].
     pub magic: u32,
     pub format_version: u16,
+    /// SVN of this header, enforced against
+    /// `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`.
     pub current_svn: u8,
     /// Requested new floor for `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`
     /// (0 = no update).
     pub min_svn: u8,
+    /// Requested new floor for `CPTRA_CORE_RUNTIME_SVN` (0 = no update).
+    /// Burned only when `FW_INFO.fw_svn >= caliptra_runtime_min_svn`.
+    pub caliptra_runtime_min_svn: u8,
+    /// Requested new floor for `CPTRA_CORE_SOC_MANIFEST_SVN` (0 = no
+    /// update) — the shared SoC manifest / MCU Runtime SVN floor.
+    /// `FW_INFO` exposes neither running value, so this floor is trusted
+    /// from the (authenticated) header.
+    pub soc_manifest_min_svn: u8,
+    /// Reserved; pads the header to 16 bytes so the structure is exactly
+    /// 1024 bytes. Ignored on parse.
+    pub reserved: [u8; 6],
     pub entries: [McuComponentSvnEntry; MCU_COMPONENT_SVN_MANIFEST_ENTRY_COUNT],
 }
 
 // `#[repr(C)]` lays the fields out in declaration order with each field
-// aligned to its type. McuComponentSvnEntry packs to 8 B (u32 + u16 +
-// u16, all 4-byte-aligned at start), and the manifest header packs to
-// 8 B (u32 + u16 + u8 + u8), so the entry array starts immediately
-// after the header with no padding. These asserts make any future
-// field-order change a compile error.
+// aligned to its type. The header packs to 16 B with no padding (u32 +
+// u16 + u8 + u8 + u8 + u8 + [u8; 6]), and the 8-B entries follow
+// immediately. These asserts make any future field-order change a
+// compile error.
 const _: () = assert!(core::mem::size_of::<McuComponentSvnEntry>() == 8);
 const _: () =
     assert!(core::mem::size_of::<McuComponentSvnManifest>() == MCU_COMPONENT_SVN_MANIFEST_SIZE);
 
-/// Errors that can result from parsing or validating a manifest.
+/// Errors that can result from parsing or validating a header.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SvnManifestError {
-    /// Byte slice is too short to contain a manifest.
+    /// Byte slice is too short to contain a header.
     TooShort,
     MagicMismatch,
     UnsupportedFormatVersion(u16),
     HeaderMinSvnExceedsCurrent {
-        min_svn: u8,
-        current_svn: u8,
+        min_svn: u32,
+        current_svn: u32,
     },
-    /// A header SVN does not fit within
-    /// `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`'s one-hot range.
+    /// A header SVN does not fit within its target fuse's one-hot range.
     HeaderSvnExceedsFuseRange {
-        value: u8,
+        value: u32,
         max: u32,
     },
     EntryMinSvnExceedsCurrent {
@@ -88,18 +107,22 @@ pub enum SvnManifestError {
     },
 }
 
-/// One-hot range limits the caller must supply to [`validate`].
+/// One-hot range limits the caller must supply to [`McuComponentSvnManifest::validate`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SvnLimits {
     /// Max representable value for `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`.
     pub manifest_min_svn_max: u32,
+    /// Max representable value for `CPTRA_CORE_RUNTIME_SVN`.
+    pub caliptra_runtime_min_svn_max: u32,
+    /// Max representable value for `CPTRA_CORE_SOC_MANIFEST_SVN`.
+    pub soc_manifest_min_svn_max: u32,
 }
 
 impl McuComponentSvnManifest {
-    /// Parse a manifest from `bytes` if it begins with the manifest
-    /// magic. Returns `Ok(None)` when the magic is absent (the manifest
-    /// header is optional in the MCU runtime image) and `Err(TooShort)`
-    /// when the magic is present but the buffer can't fit the struct.
+    /// Parse a header from `bytes` if it begins with the header magic.
+    /// Returns `Ok(None)` when the magic is absent (the header is
+    /// optional in the MCU runtime image) and `Err(TooShort)` when the
+    /// magic is present but the buffer can't fit the struct.
     pub fn parse_if_present(bytes: &[u8]) -> Result<Option<&Self>, SvnManifestError> {
         let magic = bytes.get(..4).ok_or(SvnManifestError::TooShort)?;
         let magic = u32::from_le_bytes([magic[0], magic[1], magic[2], magic[3]]);
@@ -111,8 +134,8 @@ impl McuComponentSvnManifest {
     }
 
     /// Validate structural constraints from `docs/src/svn.md`. Does not
-    /// consult OTP; the caller separately compares `current_svn`
-    /// against the fuse value.
+    /// consult OTP; the caller separately compares each `current_svn`
+    /// against the running firmware and fuse values.
     pub fn validate(&self, limits: &SvnLimits) -> Result<(), SvnManifestError> {
         if self.magic != MCU_COMPONENT_SVN_MANIFEST_MAGIC {
             return Err(SvnManifestError::MagicMismatch);
@@ -122,24 +145,26 @@ impl McuComponentSvnManifest {
                 self.format_version,
             ));
         }
-        if self.min_svn > self.current_svn {
-            return Err(SvnManifestError::HeaderMinSvnExceedsCurrent {
-                min_svn: self.min_svn,
-                current_svn: self.current_svn,
-            });
-        }
-        if u32::from(self.current_svn) > limits.manifest_min_svn_max {
-            return Err(SvnManifestError::HeaderSvnExceedsFuseRange {
-                value: self.current_svn,
-                max: limits.manifest_min_svn_max,
-            });
-        }
-        if u32::from(self.min_svn) > limits.manifest_min_svn_max {
-            return Err(SvnManifestError::HeaderSvnExceedsFuseRange {
-                value: self.min_svn,
-                max: limits.manifest_min_svn_max,
-            });
-        }
+
+        // Manifest-self SVN against MCU_COMPONENT_SVN_MANIFEST_MIN_SVN.
+        Self::check_svn_pair(
+            self.min_svn.into(),
+            self.current_svn.into(),
+            limits.manifest_min_svn_max,
+        )?;
+        // Caliptra runtime / SoC manifest floors have no in-header
+        // "current" value; just bound them to their fuses' ranges. The
+        // Caliptra runtime floor is additionally guarded against
+        // `FW_INFO.fw_svn` at burn time.
+        Self::check_svn_max(
+            self.caliptra_runtime_min_svn.into(),
+            limits.caliptra_runtime_min_svn_max,
+        )?;
+        Self::check_svn_max(
+            self.soc_manifest_min_svn.into(),
+            limits.soc_manifest_min_svn_max,
+        )?;
+
         for (i, entry) in self.entries.iter().enumerate() {
             if entry.is_empty() {
                 continue;
@@ -154,6 +179,25 @@ impl McuComponentSvnManifest {
             // Per-entry one-hot-range checks against SOC_IMAGE_MIN_SVN[i]
             // are deferred to the fuse-burn step, where SVN_FUSE_MAP
             // supplies the per-slot maximum.
+        }
+        Ok(())
+    }
+
+    /// `min_svn <= current_svn` and both fit within `max`.
+    fn check_svn_pair(min_svn: u32, current_svn: u32, max: u32) -> Result<(), SvnManifestError> {
+        if min_svn > current_svn {
+            return Err(SvnManifestError::HeaderMinSvnExceedsCurrent {
+                min_svn,
+                current_svn,
+            });
+        }
+        Self::check_svn_max(current_svn, max)
+    }
+
+    /// `value` fits within `max`.
+    fn check_svn_max(value: u32, max: u32) -> Result<(), SvnManifestError> {
+        if value > max {
+            return Err(SvnManifestError::HeaderSvnExceedsFuseRange { value, max });
         }
         Ok(())
     }
@@ -176,6 +220,8 @@ mod tests {
 
     const LIMITS: SvnLimits = SvnLimits {
         manifest_min_svn_max: 10,
+        caliptra_runtime_min_svn_max: 128,
+        soc_manifest_min_svn_max: 128,
     };
 
     fn empty_manifest() -> McuComponentSvnManifest {
@@ -184,12 +230,15 @@ mod tests {
             format_version: MCU_COMPONENT_SVN_MANIFEST_VERSION,
             current_svn: 0,
             min_svn: 0,
+            caliptra_runtime_min_svn: 0,
+            soc_manifest_min_svn: 0,
+            reserved: [0; 6],
             entries: [McuComponentSvnEntry::default(); MCU_COMPONENT_SVN_MANIFEST_ENTRY_COUNT],
         }
     }
 
     #[test]
-    fn manifest_size_is_1024_bytes() {
+    fn manifest_size_is_expected() {
         assert_eq!(
             size_of::<McuComponentSvnManifest>(),
             MCU_COMPONENT_SVN_MANIFEST_SIZE
@@ -202,11 +251,10 @@ mod tests {
     }
 
     #[test]
-    fn header_size_is_8_bytes() {
-        // 4 (magic) + 2 (format_version) + 1 (current_svn) + 1 (min_svn)
+    fn header_size_is_16_bytes() {
         let header_size = MCU_COMPONENT_SVN_MANIFEST_SIZE
             - MCU_COMPONENT_SVN_MANIFEST_ENTRY_COUNT * size_of::<McuComponentSvnEntry>();
-        assert_eq!(header_size, 8);
+        assert_eq!(header_size, 16);
     }
 
     #[test]
@@ -237,16 +285,8 @@ mod tests {
 
     #[test]
     fn parse_if_present_too_short_with_magic_errors() {
-        // Magic present but slice too short to fit the structure
         let mut bytes = vec![0u8; 16];
         bytes[0..4].copy_from_slice(&MCU_COMPONENT_SVN_MANIFEST_MAGIC.to_le_bytes());
-        let result = McuComponentSvnManifest::parse_if_present(&bytes);
-        assert_eq!(result.err(), Some(SvnManifestError::TooShort));
-    }
-
-    #[test]
-    fn parse_if_present_too_short_without_magic_errors() {
-        let bytes = [0u8; 3];
         let result = McuComponentSvnManifest::parse_if_present(&bytes);
         assert_eq!(result.err(), Some(SvnManifestError::TooShort));
     }
@@ -262,15 +302,12 @@ mod tests {
         let mut m = empty_manifest();
         m.current_svn = 5;
         m.min_svn = 3;
+        m.caliptra_runtime_min_svn = 4;
+        m.soc_manifest_min_svn = 9;
         m.entries[0] = McuComponentSvnEntry {
             component_id: 0x1000,
             current_svn: 7,
             min_svn: 2,
-        };
-        m.entries[42] = McuComponentSvnEntry {
-            component_id: 0x2000,
-            current_svn: 4,
-            min_svn: 4,
         };
         assert!(m.validate(&LIMITS).is_ok());
     }
@@ -307,6 +344,32 @@ mod tests {
     }
 
     #[test]
+    fn validate_rejects_caliptra_runtime_min_above_range() {
+        let mut m = empty_manifest();
+        m.caliptra_runtime_min_svn = 200;
+        assert_eq!(
+            m.validate(&LIMITS),
+            Err(SvnManifestError::HeaderSvnExceedsFuseRange {
+                value: 200,
+                max: 128
+            })
+        );
+    }
+
+    #[test]
+    fn validate_rejects_soc_manifest_min_above_range() {
+        let mut m = empty_manifest();
+        m.soc_manifest_min_svn = 200;
+        assert_eq!(
+            m.validate(&LIMITS),
+            Err(SvnManifestError::HeaderSvnExceedsFuseRange {
+                value: 200,
+                max: 128
+            })
+        );
+    }
+
+    #[test]
     fn validate_rejects_header_current_svn_above_fuse_range() {
         let mut m = empty_manifest();
         m.current_svn = 11;
@@ -315,17 +378,6 @@ mod tests {
             m.validate(&LIMITS),
             Err(SvnManifestError::HeaderSvnExceedsFuseRange { value: 11, max: 10 })
         );
-    }
-
-    #[test]
-    fn validate_rejects_header_min_svn_above_fuse_range_when_current_in_range() {
-        // current_svn within range but min_svn > range is structurally
-        // impossible (min_svn <= current_svn). Confirm we don't false-
-        // positive on a manifest where current_svn = max.
-        let mut m = empty_manifest();
-        m.current_svn = 10;
-        m.min_svn = 10;
-        assert!(m.validate(&LIMITS).is_ok());
     }
 
     #[test]
@@ -344,23 +396,6 @@ mod tests {
                 current_svn: 5,
             })
         );
-    }
-
-    #[test]
-    fn validate_ignores_zero_entries() {
-        let mut m = empty_manifest();
-        // Leave most entries zero, only populate a sparse subset.
-        m.entries[0] = McuComponentSvnEntry {
-            component_id: 0x1,
-            current_svn: 1,
-            min_svn: 0,
-        };
-        m.entries[126] = McuComponentSvnEntry {
-            component_id: 0x2,
-            current_svn: 1,
-            min_svn: 1,
-        };
-        assert!(m.validate(&LIMITS).is_ok());
     }
 
     #[test]

@@ -110,14 +110,14 @@ fn process_fw_manifest_dot(env: &mut RomEnv, params: &RomParameters, offset: u32
 /// `CPTRA_CORE_ANTI_ROLLBACK_DISABLE`.
 #[cfg(feature = "svn-manifest")]
 fn process_svn_manifest(env: &mut RomEnv, offset: u32) -> u32 {
-    use crate::component_svn_manifest::{
+    use caliptra_mcu_romtime::{
         McuComponentSvnManifest, SvnLimits, MCU_COMPONENT_SVN_MANIFEST_SIZE,
     };
 
     // Safety: see `process_fw_manifest_dot` — same SRAM contract. The
-    // 1024-byte manifest fits well within SRAM, and the caller invokes
-    // us only after the static header (and any DOT section), so the
-    // computed pointer stays inside the populated runtime image.
+    // header fits well within SRAM, and the caller invokes us only after
+    // the static header (and any DOT section), so the computed pointer
+    // stays inside the populated runtime image.
     let sram = unsafe {
         core::slice::from_raw_parts(
             (MCU_MEMORY_MAP.sram_offset + offset) as *const u8,
@@ -139,6 +139,8 @@ fn process_svn_manifest(env: &mut RomEnv, offset: u32) -> u32 {
 
     let limits = SvnLimits {
         manifest_min_svn_max: svn_manifest_min_svn_max(),
+        caliptra_runtime_min_svn_max: crate::caliptra_svn::CALIPTRA_SVN_BITS,
+        soc_manifest_min_svn_max: crate::caliptra_svn::CALIPTRA_SVN_BITS,
     };
     if let Err(err) = manifest.validate(&limits) {
         caliptra_mcu_romtime::println!(
@@ -161,6 +163,7 @@ fn process_svn_manifest(env: &mut RomEnv, offset: u32) -> u32 {
 
     if anti_rollback_on {
         enforce_and_burn_manifest_min_svn(env, manifest);
+        crate::caliptra_svn::burn_caliptra_owned_svns(env, manifest);
     }
 
     env.mci
@@ -180,7 +183,7 @@ fn process_svn_manifest(env: &mut RomEnv, offset: u32) -> u32 {
 #[cfg(feature = "svn-manifest")]
 fn enforce_and_burn_manifest_min_svn(
     env: &mut RomEnv,
-    manifest: &crate::component_svn_manifest::McuComponentSvnManifest,
+    manifest: &caliptra_mcu_romtime::McuComponentSvnManifest,
 ) {
     use caliptra_mcu_registers_generated::fuses::MCU_COMPONENT_SVN_MANIFEST_MIN_SVN;
 

@@ -5,6 +5,8 @@
 
 mod boot_status;
 pub use boot_status::*;
+mod component_svn_manifest;
+pub use component_svn_manifest::*;
 mod lifecycle;
 pub use lifecycle::*;
 mod fuse_layout;

@@ -23,7 +23,10 @@ mod test {
             format_version: MCU_COMPONENT_SVN_MANIFEST_VERSION,
             current_svn,
             min_svn,
-            entries: [McuComponentSvnEntry::default(); 127],
+            caliptra_runtime_min_svn: 0,
+            soc_manifest_min_svn: 0,
+            reserved: [0; 6],
+            entries: [McuComponentSvnEntry::default(); 126],
         };
         for (i, e) in entries {
             m.entries[*i] = *e;
