@@ -28,7 +28,7 @@ pub struct MockCommandAuthorizer {
     challenge: Option<[u8; 32]>,
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl CommandAuthorizer for MockCommandAuthorizer {
     async fn is_authorized<'a>(
         &mut self,
@@ -46,41 +46,48 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             _ => Err(AuthorizationError)?,
         };
 
-        let challenge = self.challenge.take().ok_or_else(|| AuthorizationError)?;
+        let received_mac = req.get(cmd_len..cmd_len + 48).ok_or(AuthorizationError)?;
 
-        let received_mac = req
-            .get(cmd_len..cmd_len + 48)
-            .ok_or_else(|| AuthorizationError)?;
+        let cmd_body = req
+            .get(size_of::<MailboxReqHeader>()..cmd_len)
+            .ok_or(AuthorizationError)?;
+
+        self.verify_mac(u32::from(cmd_id), cmd_body, received_mac)
+            .await?;
+
+        Ok(&req[..cmd_len])
+    }
+
+    async fn verify_mac(
+        &mut self,
+        cmd_id: u32,
+        payload: &[u8],
+        mac: &[u8],
+    ) -> Result<(), AuthorizationError> {
+        let challenge = self.challenge.take().ok_or(AuthorizationError)?;
 
         // Import the key using Caliptra API
         let import_resp = Import::import(CmKeyUsage::Hmac, &TEST_AUTH_CMD_HMAC_KEY)
             .await
             .map_err(|_| AuthorizationError)?;
-        let cmk = import_resp.cmk;
 
-        // Reconstruct the buffer to hash: cmd_id + cmd_body + challenge
+        // Reconstruct the buffer to hash: cmd_id(BE,4) + payload + challenge(32)
         let mut buf = arrayvec::ArrayVec::<u8, 256>::new();
-        let cmd_id_bytes = u32::from(cmd_id).to_be_bytes();
-        let cmd_body = req
-            .get(size_of::<MailboxReqHeader>()..cmd_len)
-            .ok_or_else(|| AuthorizationError)?;
-
-        buf.extend(cmd_id_bytes);
-        buf.extend(cmd_body.iter().copied());
+        buf.extend(cmd_id.to_be_bytes());
+        buf.extend(payload.iter().copied());
         buf.extend(challenge.iter().copied());
 
         // Compute HMAC using Caliptra API
-        let hmac_resp = Hmac::hmac(&cmk, buf.as_slice())
+        let hmac_resp = Hmac::hmac(&import_resp.cmk, buf.as_slice())
             .await
             .map_err(|_| AuthorizationError)?;
 
-        let computed_mac_all = hmac_resp.mac.as_bytes();
-        let computed_mac = &computed_mac_all[..48];
+        let computed_mac = &hmac_resp.mac.as_bytes()[..48];
 
-        if !constant_time_eq(computed_mac, received_mac) {
+        if !constant_time_eq(computed_mac, mac) {
             Err(AuthorizationError)?;
         }
-        Ok(&req[..cmd_len])
+        Ok(())
     }
 
     fn take_challenge(&mut self) -> Option<[u8; 32]> {

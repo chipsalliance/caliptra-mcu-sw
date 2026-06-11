@@ -12,31 +12,14 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 
-/// Console `writeln!` that compiles to a no-op in `release` cargo-feature
-/// builds (i.e. the shipping `--profile release` build that auto-enables
-/// `--features release`).  In `devel` builds the macro is a real `writeln!`,
-/// preserving every diagnostic and informational message.
-///
-/// The `release` arm expands to a never-called closure so its arguments are
-/// type-checked (no unused-var warnings, formatting traits satisfied) but the
-/// closure body is unreachable.  LTO + lld `--gc-sections` strip the format
-/// strings, any `Debug` impls reached via `{:?}`, and the entire console
-/// syscall path from the binary.
-#[macro_export]
-macro_rules! console_writeln {
-    ($($arg:tt)*) => {{
-        #[cfg(not(feature = "release"))]
-        {
-            let _ = ::core::writeln!($($arg)*);
-        }
-        #[cfg(feature = "release")]
-        {
-            let _ = || -> ::core::fmt::Result { ::core::writeln!($($arg)*) };
-        }
-    }};
-}
+// Re-export the shared `console_writeln!` from libsyscall-caliptra so existing
+// `crate::console_writeln!(...)` call sites in this crate continue to resolve.
+#[allow(unused_imports)]
+pub use caliptra_mcu_libsyscall_caliptra::console_writeln;
 
 mod caliptra_cmd_handler;
+#[cfg(feature = "test-defmt-logging")]
+mod defmt_test;
 #[cfg(any(
     feature = "test-firmware-update-streaming",
     feature = "test-firmware-update-flash",
@@ -45,6 +28,8 @@ mod caliptra_cmd_handler;
 mod firmware_update;
 mod image_loader;
 mod mcu_mbox;
+#[cfg(target_arch = "riscv32")]
+mod panic;
 mod soc_env;
 mod spdm;
 mod vdm;
@@ -141,6 +126,18 @@ pub(crate) async fn async_main() {
         feature = "test-caliptra-util-host-mctp-vdm-validator"
     ))]
     EXECUTOR.get().spawner().spawn(vdm::vdm_task()).unwrap();
+
+    // Production userspace defmt logging: drain staged frames to the flash log
+    // capsule for host-side decoding. Device-only (defmt's linker section).
+    #[cfg(all(feature = "userspace-log", target_arch = "riscv32"))]
+    EXECUTOR
+        .get()
+        .spawner()
+        .spawn(caliptra_mcu_userlog::drain_task())
+        .unwrap();
+
+    #[cfg(feature = "test-defmt-logging")]
+    defmt_test::emit_test_frames();
 
     loop {
         EXECUTOR.get().poll();

@@ -1,9 +1,18 @@
 // Licensed under the Apache-2.0 license
 
 use crate::DefaultSyscalls;
-use caliptra_mcu_libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
+use caliptra_mcu_libtock_platform::subscribe::OneId;
+use caliptra_mcu_libtock_platform::{
+    share, AllowRo, DefaultConfig, ErrorCode, Subscribe, Syscalls, Upcall,
+};
 use caliptra_mcu_libtockasync::TockSubscribe;
+use core::cell::Cell;
 use core::marker::PhantomData;
+
+/// Upper bound on `yield_wait` calls [`LoggingSyscall::append_entry_sync`] makes
+/// before giving up, so a capsule delivering unrelated upcalls can't spin it
+/// forever in the panic/shutdown path.
+const MAX_APPEND_SYNC_YIELDS: u32 = 64;
 
 pub struct LoggingSyscall<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,
@@ -77,6 +86,55 @@ impl<S: Syscalls> LoggingSyscall<S> {
         S::unallow_ro(self.driver_num, ro_allow::APPEND);
         result.and_then(|(_len, _lost, err)| upcall_err_to_result(err).map(|_| ()))
     }
+
+    /// Append an entry to the log synchronously, blocking until the kernel
+    /// signals completion. For panic/shutdown contexts where `.await` is
+    /// unavailable; spins on `yield_wait` until the append-done upcall fires.
+    ///
+    /// The wait is bounded: if `MAX_APPEND_SYNC_YIELDS` upcalls arrive without
+    /// append-done, it gives up with `ErrorCode::Busy` rather than spin forever.
+    /// A fully unresponsive capsule (no upcall at all) still blocks in
+    /// `yield_wait` and relies on the platform watchdog.
+    pub fn append_entry_sync(&self, entry: &[u8]) -> Result<(), ErrorCode> {
+        let done = Cell::new(false);
+        let err = Cell::new(0u32);
+        let listener = AppendDoneListener(&done, &err);
+
+        share::scope::<
+            (
+                AllowRo<S, { driver_num::LOGGING_FLASH }, { ro_allow::APPEND }>,
+                Subscribe<S, { driver_num::LOGGING_FLASH }, { subscribe::APPEND_DONE }>,
+            ),
+            _,
+            _,
+        >(|handle| {
+            let (allow_ro, subscribe) = handle.split();
+            S::allow_ro::<DefaultConfig, { driver_num::LOGGING_FLASH }, { ro_allow::APPEND }>(
+                allow_ro, entry,
+            )?;
+            S::subscribe::<
+                _,
+                _,
+                DefaultConfig,
+                { driver_num::LOGGING_FLASH },
+                { subscribe::APPEND_DONE },
+            >(subscribe, &listener)?;
+            S::command(self.driver_num, logging_cmd::APPEND, entry.len() as u32, 0)
+                .to_result::<(), ErrorCode>()?;
+            let mut yields = 0;
+            while !done.get() {
+                if yields >= MAX_APPEND_SYNC_YIELDS {
+                    return Err::<(), ErrorCode>(ErrorCode::Busy);
+                }
+                yields += 1;
+                S::yield_wait();
+            }
+            Ok::<(), ErrorCode>(())
+        })?;
+
+        upcall_err_to_result(err.get())
+    }
+
     /// Reads an entry from the log asynchronously into the provided buffer.
     ///
     /// # Arguments
@@ -149,6 +207,19 @@ fn upcall_err_to_result(err: u32) -> Result<(), ErrorCode> {
         Ok(())
     } else {
         Err(ErrorCode::try_from(err).unwrap_or(ErrorCode::Fail))
+    }
+}
+
+/// Captures the append-done upcall for [`LoggingSyscall::append_entry_sync`].
+/// The append-done upcall arguments are `(length, records_lost, error)`.
+struct AppendDoneListener<'a>(&'a Cell<bool>, &'a Cell<u32>);
+
+impl Upcall<OneId<{ driver_num::LOGGING_FLASH }, { subscribe::APPEND_DONE }>>
+    for AppendDoneListener<'_>
+{
+    fn upcall(&self, _len: u32, _records_lost: u32, error: u32) {
+        self.1.set(error);
+        self.0.set(true);
     }
 }
 

@@ -57,6 +57,7 @@ p384 = { workspace = true, features = ["ecdsa"] }
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-fw-pkg.workspace = true
 caliptra-mcu-pldm-ua.workspace = true
+defmt-decoder.workspace = true
 rand.workspace = true
 random-port.workspace = true
 caliptra-mcu-registers-generated.workspace = true

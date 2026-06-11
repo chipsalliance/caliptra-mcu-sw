@@ -12,6 +12,72 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use crate::fatal_error;
 
+/// I3C bus timing parameters, in clock units.
+///
+/// Each value is written to the corresponding `soc_mgmt_if_t_*_reg` timing
+/// register during [`I3c::configure`]. The fields are sized as `u32` because
+/// every timing register field is 20 bits wide (the smallest Rust integer that
+/// holds 20 bits is `u32`); `t_free` is a plain 32-bit register.
+///
+/// The [`Default`] implementation provides the recommended settings for
+/// high-speed parts: all values are 0 except `t_free`, which is 200 (~1
+/// microsecond bus free time before issuing an IBI).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct I3cTimings {
+    /// Rise time of both SDA and SCL in clock units.
+    pub t_r: u32,
+    /// Fall time of both SDA and SCL in clock units.
+    pub t_f: u32,
+    /// Data hold time in clock units.
+    pub t_hd_dat: u32,
+    /// Data setup time in clock units.
+    pub t_su_dat: u32,
+    /// High period of the SCL in clock units.
+    pub t_high: u32,
+    /// Low period of the SCL in clock units.
+    pub t_low: u32,
+    /// Hold time for (repeated) START in clock units.
+    pub t_hd_sta: u32,
+    /// Setup time for repeated START in clock units.
+    pub t_su_sta: u32,
+    /// Setup time for STOP in clock units.
+    pub t_su_sto: u32,
+    /// Bus free time in clock units before doing IBI.
+    pub t_free: u32,
+}
+
+impl Default for I3cTimings {
+    /// Recommended timing settings for high-speed parts.
+    fn default() -> Self {
+        Self {
+            t_r: 0,
+            t_f: 0,
+            t_hd_dat: 0,
+            t_su_dat: 0,
+            t_high: 0,
+            t_low: 0,
+            t_hd_sta: 0,
+            t_su_sta: 0,
+            t_su_sto: 0,
+            t_free: 200,
+        }
+    }
+}
+
+/// Configuration for a single I3C controller, passed to [`I3c::configure`].
+///
+/// Each controller (primary and secondary) has its own static address and
+/// timing parameters, so these are bundled together and specified individually.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct I3cConfig {
+    /// Static (initial) I3C target address for this controller.
+    pub static_addr: u8,
+    /// Whether recovery is enabled (also programs the virtual device address).
+    pub recovery_enabled: bool,
+    /// Bus timing parameters for this controller.
+    pub timings: I3cTimings,
+}
+
 pub struct I3c {
     registers: StaticRef<i3c::regs::I3c>,
 }
@@ -22,7 +88,12 @@ impl I3c {
     }
 
     /// Run the initialization steps for the primary and secondary controller.
-    pub fn configure(&mut self, addr: u8, recovery_enabled: bool) {
+    pub fn configure(&mut self, config: I3cConfig) {
+        let I3cConfig {
+            static_addr: addr,
+            recovery_enabled,
+            timings,
+        } = config;
         let regs = self.registers;
         caliptra_mcu_romtime::println!(
             "[mcu-rom-i3c] HCI version: {:x}",
@@ -56,24 +127,20 @@ impl I3c {
         // values of all of these set to 0-5 seem to work for receiving data correctly
         // 6-7 gets corrupted data but will ACK
         // 8+ will fail to ACK
-        //
-        // TODO: pass this timing information in
-        let clocks = 0;
-        regs.soc_mgmt_if_t_r_reg.set(clocks); // rise time of both SDA and SCL in clock units
-        regs.soc_mgmt_if_t_f_reg.set(clocks); // fall time of both SDA and SCL in clock units
+        regs.soc_mgmt_if_t_r_reg.set(timings.t_r); // rise time of both SDA and SCL in clock units
+        regs.soc_mgmt_if_t_f_reg.set(timings.t_f); // fall time of both SDA and SCL in clock units
 
         // if this is set to 6+ then ACKs start failing
-        regs.soc_mgmt_if_t_hd_dat_reg.set(clocks); // data hold time in clock units
-        regs.soc_mgmt_if_t_su_dat_reg.set(clocks); // data setup time in clock units
+        regs.soc_mgmt_if_t_hd_dat_reg.set(timings.t_hd_dat); // data hold time in clock units
+        regs.soc_mgmt_if_t_su_dat_reg.set(timings.t_su_dat); // data setup time in clock units
 
-        regs.soc_mgmt_if_t_high_reg.set(clocks); // High period of the SCL in clock units
-        regs.soc_mgmt_if_t_low_reg.set(clocks); // Low period of the SCL in clock units
-        regs.soc_mgmt_if_t_hd_sta_reg.set(clocks); // Hold time for (repeated) START in clock units
-        regs.soc_mgmt_if_t_su_sta_reg.set(clocks); // Setup time for repeated START in clock units
-        regs.soc_mgmt_if_t_su_sto_reg.set(clocks); // Setup time for STOP in clock units
+        regs.soc_mgmt_if_t_high_reg.set(timings.t_high); // High period of the SCL in clock units
+        regs.soc_mgmt_if_t_low_reg.set(timings.t_low); // Low period of the SCL in clock units
+        regs.soc_mgmt_if_t_hd_sta_reg.set(timings.t_hd_sta); // Hold time for (repeated) START in clock units
+        regs.soc_mgmt_if_t_su_sta_reg.set(timings.t_su_sta); // Setup time for repeated START in clock units
+        regs.soc_mgmt_if_t_su_sto_reg.set(timings.t_su_sto); // Setup time for STOP in clock units
 
-        // set this to 1 microsecond
-        regs.soc_mgmt_if_t_free_reg.set(200); // Bus free time in clock units before doing IBI
+        regs.soc_mgmt_if_t_free_reg.set(timings.t_free); // Bus free time in clock units before doing IBI
 
         caliptra_mcu_romtime::println!(
             "[mcu-rom-i3c] Timing registers t_r: {}, t_f: {}, t_hd_dat: {}, t_su_dat: {}, t_high: {}, t_low: {}, t_hd_sta: {}, t_su_sta: {}, t_su_sto: {}, t_free: {}",

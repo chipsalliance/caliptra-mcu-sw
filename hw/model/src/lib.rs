@@ -224,6 +224,10 @@ pub struct InitParams<'a> {
 
     pub flash_boot: bool,
 
+    /// When true, drive the MCI generic input wire strap that forces the ROM
+    /// to use the `CPTRA_SS_OWNER_PK_HASH` fuse as the owner, bypassing DOT.
+    pub force_fuse_owner_pk_hash: bool,
+
     pub active_i3c1: bool,
 
     /// Initial contents of the vendor test partition in OTP.
@@ -304,6 +308,7 @@ impl Default for InitParams<'_> {
             check_booted_to_runtime: true,
             caliptra_soc_axi_user: None,
             flash_boot: false,
+            force_fuse_owner_pk_hash: false,
             active_i3c1: false,
             vendor_test_partition: None,
             use_strap_secrets: false,
