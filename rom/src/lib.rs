@@ -161,7 +161,6 @@ pub fn err_code(err: &CaliptraApiError) -> u32 {
     }
 }
 
-#[allow(unused)]
 #[no_mangle]
 #[used]
 static mut CFI_STATE_ORG: [u32; 6] = [0; 6];
