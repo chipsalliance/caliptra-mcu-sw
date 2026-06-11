@@ -59,6 +59,10 @@ walkdir.workspace = true
 zerocopy.workspace = true
 zip.workspace = true
 caliptra-bitstream-downloader.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+google-cloud-aiplatform-v1.workspace = true
+google-cloud-auth.workspace = true
+rustls = { workspace = true, features = ["ring"] }
 
 [build-dependencies]
 cc.workspace = true

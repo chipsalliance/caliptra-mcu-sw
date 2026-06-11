@@ -28,6 +28,7 @@ mod rom;
 mod runtime;
 mod sizes;
 mod test;
+mod vertex_ai;
 
 #[cfg(feature = "fpga_realtime")]
 use fpga::Fpga;
@@ -412,6 +413,23 @@ enum Commands {
         #[command(subcommand)]
         cmd: network::NetworkCommands,
     },
+    /// Call Vertex AI Gemini API
+    VertexPrompt {
+        /// The prompt to send to the model
+        prompt: String,
+
+        /// Model to use
+        #[arg(long, default_value = "gemini-2.5-flash")]
+        model: String,
+
+        /// GCP Project ID. If not specified, will try to detect.
+        #[arg(long)]
+        project: Option<String>,
+
+        /// GCP Location
+        #[arg(long, default_value = "us-central1")]
+        location: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -777,6 +795,12 @@ fn main() {
         },
         Commands::FirmwareBundler { cmd } => caliptra_mcu_firmware_bundler::execute(cmd.clone()),
         Commands::Network { cmd } => network::run(cmd.clone()),
+        Commands::VertexPrompt {
+            prompt,
+            model,
+            project,
+            location,
+        } => vertex_ai::prompt(prompt, model, project.clone(), location),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);
