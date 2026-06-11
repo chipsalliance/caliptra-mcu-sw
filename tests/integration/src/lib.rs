@@ -27,6 +27,7 @@ mod test_mctp_spdm_responder_conformance;
 mod test_mctp_vdm_cmds;
 mod test_mctp_vdm_validator;
 mod test_mcu_mbox;
+mod test_ocp_dev_identity_provision_tool;
 mod test_pldm_fw_update;
 mod test_raw_lifecycle_boot;
 mod test_soc_boot;
@@ -229,13 +230,39 @@ mod test {
         };
         let name = format!("runtime{}-{}.bin", feature_name, platform);
 
+        // `MCU_TEST_PROFILE` opt-in: lets a developer switch the
+        // test firmware build between `devel` (default; 1 MB SRAM,
+        // debug components present) and `release` (512 KB SRAM,
+        // debug stripped) without code churn. Mirrors xtask's
+        // semantics: when the caller asks for `release`, also enable
+        // the `release` cargo feature so kernel `debug!()` macros,
+        // `romtime::println!`, DebugWriter, Console, LowLevelDebug
+        // and ProcessConsole are stripped.
+        let profile_env = std::env::var("MCU_TEST_PROFILE").ok();
+        let want_release = matches!(profile_env.as_deref(), Some("release"));
+        let release_feature_str;
+        let combined_feature;
+        let effective_feature = if want_release {
+            release_feature_str = "release";
+            match feature {
+                Some(f) if !f.is_empty() => {
+                    combined_feature = format!("{f},{release_feature_str}");
+                    Some(combined_feature.as_str())
+                }
+                _ => Some(release_feature_str),
+            }
+        } else {
+            feature
+        };
+
         let output = caliptra_mcu_builder::runtime_build_with_apps(
             &caliptra_mcu_builder::CaliptraBuildArgs {
-                features: feature,
+                features: effective_feature,
                 output_name: Some(name),
                 example_app,
                 platform: Some(platform),
                 no_default_features: true,
+                profile: profile_env.as_deref(),
                 ..Default::default()
             },
         )

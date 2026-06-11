@@ -14,7 +14,7 @@ use ocptoken::ta_store::TrustAnchorStore;
 use ocptoken::token::evidence::Evidence;
 
 use crate::common::load_evidence;
-use crate::display::print_corim_payload;
+use crate::display::{print_claims, print_corim_payload};
 
 use crate::common::SIGNED_REFVAL_CORIM_PATH;
 
@@ -43,6 +43,10 @@ header. The resulting chain is validated against the Trust Anchor Store.
 Omit this option if the x5chain already contains the full chain."
     )]
     cert_chain: Option<PathBuf>,
+
+    /// Print decoded EAT claims after evidence authentication.
+    #[arg(long = "show-claims")]
+    show_claims: bool,
 }
 
 /// Load, decode, authenticate, and verify the evidence.
@@ -195,6 +199,10 @@ pub(crate) fn run(
     verifier: &CoseSign1Verifier<impl CryptoBackend>,
 ) {
     let result = authenticate(args, ta_store, verifier);
+
+    if args.show_claims {
+        print_claims(result.evidence.claims());
+    }
 
     if let Some(ref refval_corims) = result.refval_corims {
         if !refval_corims.is_empty() {

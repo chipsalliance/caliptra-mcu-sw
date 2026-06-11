@@ -11,7 +11,6 @@ arrayvec.workspace = true
 async-trait.workspace = true
 caliptra-api.workspace = true
 constant_time_eq.workspace = true
-caliptra-ocp-eat.workspace = true
 critical-section.workspace = true
 embassy-executor.workspace = true
 embassy-sync.workspace = true
@@ -37,6 +36,12 @@ caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-lib.workspace = true
 caliptra-mcu-romtime.workspace = true
 caliptra-mcu-spdm-lib.workspace = true
+mcu-caliptra-api-lite.workspace = true
+mcu-error.workspace = true
+mcu-spdm-lite-pal.workspace = true
+mcu-spdm-lite-stack = { workspace = true }
+mcu-spdm-lite-transports.workspace = true
+mcu-spdm-lite-traits.workspace = true
 static_cell.workspace = true
 zerocopy.workspace = true
 
@@ -50,6 +55,9 @@ portable-atomic = { workspace = true, features = ["critical-section"] }
 defmt = { workspace = true, optional = true }
 caliptra-mcu-userlog = { workspace = true, optional = true }
 
+[build-dependencies]
+caliptra-ocp-eat.workspace = true
+
 [features]
 default = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe"]
 spdm = ["mcu-mbox-service"]
@@ -61,9 +69,14 @@ mctp-vdm-service = []
 debug = []
 hw-2-1 = []
 doe = []
-pcr-quote-measurements = []
 userspace-log = ["dep:defmt", "dep:caliptra-mcu-userlog"]
-# Minimal-size build: gates `console_writeln!` to no-op and forwards no-print.
+# Production / minimal-size build for user-app.  Activated automatically by
+# `xtask runtime-build --profile release` (via `--features release` forwarded
+# through the bundler).  Gates `console_writeln!` to a no-op so all of
+# user-app's informational and diagnostic output (including the `{:?}` Debug
+# format paths) is stripped, and forwards to `caliptra-mcu-romtime/no-print`
+# so the romtime `print!`/`println!` macros become no-ops inside user-app's
+# private dependency build of `caliptra-mcu-romtime`.
 release = [
     "caliptra-mcu-romtime/no-print",
     "caliptra-mcu-libsyscall-caliptra/release",
@@ -122,8 +135,14 @@ test-pldm-fw-update-e2e = []
 test-pldm-streaming-boot = ["streaming-boot"]
 test-streaming-boot-flash-write-back = ["streaming-boot", "firmware-update"]
 test-mctp-spdm-attestation = []
-test-mctp-spdm-attestation-pcr-quote = ["pcr-quote-measurements"]
+test-mctp-spdm-attestation-pcr-quote = []
 test-mctp-spdm-responder-conformance = []
+# Test-only SPDM SET_CERTIFICATE path. Enables flash-backed certificate
+# installation without production authorization/key-binding.
+test-mctp-spdm-set-certificate = [
+  "mcu-spdm-lite-pal/set-certificate",
+  "mcu-spdm-lite-stack/set-certificate",
+]
 test-doe-spdm-responder-conformance = ["doe"]
 test-doe-spdm-tdisp-ide-validator = ["doe"]
 test-mcu-mbox-fips-periodic = ["mcu-mbox-service", "caliptra-mcu-mbox-lib/periodic-fips-self-test"]

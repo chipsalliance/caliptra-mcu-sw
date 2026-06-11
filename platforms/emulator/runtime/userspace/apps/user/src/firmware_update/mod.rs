@@ -33,7 +33,10 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         return Ok(());
     }
     crate::console_writeln!(console_writer, "[FW Upd] Start");
-    #[cfg(all(feature = "streaming-boot", not(feature = "test-streaming-boot-flash-write-back")))]
+    #[cfg(all(
+        feature = "streaming-boot",
+        not(feature = "test-streaming-boot-flash-write-back")
+    ))]
     {
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],

@@ -18,6 +18,7 @@
 //! ```
 
 pub mod config;
+pub mod ocp_dev_identity_provision;
 pub mod validator;
 
 pub use config::TestConfig;
