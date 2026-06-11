@@ -282,6 +282,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d7e60934ceec538daadb9d8432424ed043a904d8e0243f3c6446bce549a46ac"
 
 [[package]]
+name = "bitfield-struct"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ca6739863c590881f038d033a146c51ddae239186a4327014839fd864f44ed5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.109",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4332,6 +4343,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
+name = "mcu-caliptra-api-lite"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "mcu-error",
+ "zerocopy",
+]
+
+[[package]]
+name = "mcu-error"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_platform",
+]
+
+[[package]]
 name = "mcu-rom-emulator"
 version = "0.1.0"
 dependencies = [
@@ -4433,6 +4461,71 @@ dependencies = [
  "riscv-csr",
  "rv32i",
  "tock-registers",
+]
+
+[[package]]
+name = "mcu-spdm-lite-codec"
+version = "0.1.0"
+dependencies = [
+ "mcu-error",
+ "mcu-spdm-lite-errors",
+ "mcu-spdm-lite-traits",
+ "zerocopy",
+]
+
+[[package]]
+name = "mcu-spdm-lite-errors"
+version = "0.1.0"
+dependencies = [
+ "mcu-error",
+]
+
+[[package]]
+name = "mcu-spdm-lite-pal"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "mcu-caliptra-api-lite",
+ "mcu-error",
+ "mcu-spdm-lite-codec",
+ "mcu-spdm-lite-traits",
+ "zerocopy",
+]
+
+[[package]]
+name = "mcu-spdm-lite-stack"
+version = "0.1.0"
+dependencies = [
+ "bitfield-struct",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_console",
+ "futures",
+ "mcu-caliptra-api-lite",
+ "mcu-error",
+ "mcu-spdm-lite-codec",
+ "mcu-spdm-lite-errors",
+ "mcu-spdm-lite-traits",
+ "zerocopy",
+]
+
+[[package]]
+name = "mcu-spdm-lite-traits"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "mcu-error",
+]
+
+[[package]]
+name = "mcu-spdm-lite-transports"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-libsyscall-caliptra",
+ "mcu-error",
+ "mcu-spdm-lite-errors",
+ "mcu-spdm-lite-traits",
 ]
 
 [[package]]
@@ -6651,6 +6744,12 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
+ "mcu-caliptra-api-lite",
+ "mcu-error",
+ "mcu-spdm-lite-pal",
+ "mcu-spdm-lite-stack",
+ "mcu-spdm-lite-traits",
+ "mcu-spdm-lite-transports",
  "portable-atomic",
  "static_cell",
  "zerocopy",

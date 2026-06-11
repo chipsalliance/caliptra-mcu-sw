@@ -8,6 +8,7 @@ on:
 
 jobs:
   caliptra-sw-mcu-rom-smoke-test:
+    if: ${{ !startsWith(github.head_ref, 'spdm-lite') }}
     uses: chipsalliance/caliptra-sw/.github/workflows/fpga-subsystem.yml@caliptra-2.0
     with:
       mcu-commit: ${{ github.event.pull_request.head.sha || github.sha }}

@@ -36,6 +36,7 @@ pub fn rom_build(args: &CaliptraBuildArgs) -> Result<PathBuf> {
         ld: LdArgs::default(),
         build: BuildArgs {
             rom_features: features.filter(|s| !s.is_empty()).map(|s| s.to_string()),
+            no_default_features: true,
             ..Default::default()
         },
         target: Some(target_name.clone()),
@@ -124,6 +125,7 @@ pub fn test_rom_build(args: &CaliptraBuildArgs) -> Result<String> {
         ld: LdArgs::default(),
         build: BuildArgs {
             rom_features: Some(features.join(",")),
+            no_default_features: true,
             ..Default::default()
         },
         target: Some(fwid.crate_name.to_string()),

@@ -20,6 +20,7 @@ pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
     )?;
     caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
         platform: Some("fpga"),
+        no_default_features: true,
         ..Default::default()
     })?;
 

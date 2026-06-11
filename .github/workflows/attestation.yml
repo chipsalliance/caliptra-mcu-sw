@@ -3,6 +3,9 @@
 name: End-to-End Attestation
 
 on:
+  pull_request:
+    branches:
+      - spdm-lite
   schedule:
     - cron: "0 0 * * *"
   # Allows you to run this workflow manually from the Actions tab
@@ -138,7 +141,7 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
           CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
         run: |
-          cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_attestation --nocapture  --include-ignored
+          cargo t -p caliptra-mcu-tests-integration -- --include-ignored --nocapture --exact test_mctp_spdm_attestation::test::test_mctp_spdm_attestation
 
       - name: Upload attestation logs
         if: always()
@@ -195,7 +198,7 @@ jobs:
           echo "Trust Anchor Store contents:"
           find "$TA_STORE_DIR" -type f | sort
 
-      # ---- Authenticate and verify attestation inputs -------------------------------
+      # ---- Authenticate, verify, and display EAT claims -------------------------------
       - name: Authenticate and verify attestation inputs
         working-directory: ocp-eat-verifier
         env:
@@ -204,18 +207,19 @@ jobs:
           SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
         run: |
           cargo build --release -p ocptoken
-          ./target/release/ocptoken authenticate \
+          ./target/release/ocptoken authenticate --show-claims \
             -e $EVIDENCE_DIR/measurement_block_fd.bin \
             -c $EVIDENCE_DIR/certificate_chain_slot_00.der
 
       # ---- Appraise evidence against reference values (OCP EAT Verifier Algorithm) -------------------------------
-      - name: Appraise evidence against reference values
-        working-directory: ocp-eat-verifier
-        env:
-          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
-          TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
-          SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
-        run: |
-          ./target/release/ocptoken appraise \
-            -e $EVIDENCE_DIR/measurement_block_fd.bin \
-            -c $EVIDENCE_DIR/certificate_chain_slot_00.der
+      # TODO: Re-enable once ocptoken supports spdm-lite EAT format
+      # - name: Appraise evidence against reference values
+      #   working-directory: ocp-eat-verifier
+      #   env:
+      #     EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
+      #     TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
+      #     SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
+      #   run: |
+      #     ./target/release/ocptoken appraise \
+      #       -e $EVIDENCE_DIR/measurement_block_fd.bin \
+      #       -c $EVIDENCE_DIR/certificate_chain_slot_00.der
