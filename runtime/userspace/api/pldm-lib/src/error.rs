@@ -1,18 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use crate::firmware_device::fd_ops::FdOpsError;
-use crate::transport::TransportError;
-use caliptra_mcu_pldm_common::codec::PldmCodecError;
-use caliptra_mcu_pldm_common::error::{PldmError, UtilError};
+//! Legacy error module — kept for backwards compatibility.
+//!
+//! New code should use [`crate::errors`] constants directly with
+//! [`mcu_error::McuResult`].
 
-/// Handle non-protocol specific error conditions.
-#[derive(Debug)]
-pub enum MsgHandlerError {
-    Codec(PldmCodecError),
-    Transport(TransportError),
-    PldmCommon(PldmError),
-    Util(UtilError),
-    FdOps(FdOpsError),
-    FdInitiatorModeError,
-    NotReady,
-}
+pub use crate::errors;
+pub use mcu_error::{McuErrorCode, McuResult};

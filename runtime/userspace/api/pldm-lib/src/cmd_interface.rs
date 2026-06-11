@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::control_context::{ControlContext, CtrlCmdResponder, ProtocolCapability};
-use crate::error::MsgHandlerError;
+use crate::errors;
 use crate::firmware_device::fd_context::FirmwareDeviceContext;
 use crate::transport::MctpTransport;
 use caliptra_mcu_pldm_common::codec::PldmCodec;
@@ -13,6 +13,7 @@ use caliptra_mcu_pldm_common::util::mctp_transport::{
     construct_mctp_pldm_msg, extract_pldm_msg, MCTP_PLDM_MSG_HDR_LEN,
 };
 use core::sync::atomic::{AtomicBool, Ordering};
+use mcu_error::McuResult;
 
 pub type PldmCompletionErrorCode = u8;
 
@@ -29,13 +30,13 @@ pub enum ResponderAction {
 pub(crate) fn generate_failure_response(
     payload: &mut [u8],
     completion_code: u8,
-) -> Result<usize, MsgHandlerError> {
-    let header = PldmMsgHeader::decode(payload).map_err(MsgHandlerError::Codec)?;
+) -> McuResult<usize> {
+    let header = PldmMsgHeader::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
     let resp = PldmFailureResponse {
         hdr: header.into_response(),
         completion_code,
     };
-    resp.encode(payload).map_err(MsgHandlerError::Codec)
+    resp.encode(payload).map_err(|_| errors::CODEC_ERROR)
 }
 
 pub struct CmdInterface<'a> {
@@ -61,12 +62,12 @@ impl<'a> CmdInterface<'a> {
         &self,
         transport: &mut MctpTransport,
         msg_buf: &mut [u8],
-    ) -> Result<ResponderAction, MsgHandlerError> {
+    ) -> McuResult<ResponderAction> {
         // Receive msg from mctp transport
         transport
             .receive_request(msg_buf)
             .await
-            .map_err(MsgHandlerError::Transport)?;
+            .map_err(|_| errors::TRANSPORT_ERROR)?;
 
         // Process the request
         let (resp_len, action) = self.process_request(msg_buf).await?;
@@ -75,7 +76,7 @@ impl<'a> CmdInterface<'a> {
         transport
             .send_response(&msg_buf[..resp_len])
             .await
-            .map_err(MsgHandlerError::Transport)?;
+            .map_err(|_| errors::TRANSPORT_ERROR)?;
 
         Ok(action)
     }
@@ -84,12 +85,12 @@ impl<'a> CmdInterface<'a> {
         &self,
         transport: &mut MctpTransport,
         msg_buf: &mut [u8],
-    ) -> Result<(), MsgHandlerError> {
+    ) -> McuResult<()> {
         // Retrieve the UA EID from the configuration
         let ua_eid: u8 = crate::config::UA_EID;
 
         // Prepare the request payload
-        let payload = construct_mctp_pldm_msg(msg_buf).map_err(MsgHandlerError::Util)?;
+        let payload = construct_mctp_pldm_msg(msg_buf).map_err(|_| errors::UTIL_ERROR)?;
         let reserved_len = MCTP_PLDM_MSG_HDR_LEN;
 
         // Generate the request
@@ -102,15 +103,15 @@ impl<'a> CmdInterface<'a> {
         transport
             .send_request(ua_eid, &msg_buf[..req_len + reserved_len])
             .await
-            .map_err(MsgHandlerError::Transport)?;
+            .map_err(|_| errors::TRANSPORT_ERROR)?;
 
         // Wait for and process the response
         transport
             .receive_response(msg_buf)
             .await
-            .map_err(MsgHandlerError::Transport)?;
+            .map_err(|_| errors::TRANSPORT_ERROR)?;
 
-        let payload = extract_pldm_msg(msg_buf).map_err(MsgHandlerError::Util)?;
+        let payload = extract_pldm_msg(msg_buf).map_err(|_| errors::UTIL_ERROR)?;
 
         // Handle the response
         self.fd_ctx.handle_response(payload).await?;
@@ -156,13 +157,10 @@ impl<'a> CmdInterface<'a> {
         self.fd_ctx.ops()
     }
 
-    async fn process_request(
-        &self,
-        msg_buf: &mut [u8],
-    ) -> Result<(usize, ResponderAction), MsgHandlerError> {
+    async fn process_request(&self, msg_buf: &mut [u8]) -> McuResult<(usize, ResponderAction)> {
         // Check if the handler is busy processing a request
         if self.busy.load(Ordering::SeqCst) {
-            return Err(MsgHandlerError::NotReady);
+            return Err(errors::NOT_READY);
         }
 
         self.busy.store(true, Ordering::SeqCst);
@@ -196,11 +194,7 @@ impl<'a> CmdInterface<'a> {
         Ok((reserved_len + resp_len, action))
     }
 
-    fn process_control_cmd(
-        &self,
-        cmd_opcode: u8,
-        payload: &mut [u8],
-    ) -> Result<usize, MsgHandlerError> {
+    fn process_control_cmd(&self, cmd_opcode: u8, payload: &mut [u8]) -> McuResult<usize> {
         match PldmControlCmd::try_from(cmd_opcode) {
             Ok(cmd) => match cmd {
                 PldmControlCmd::GetTid => self.ctrl_ctx.get_tid_rsp(payload),
@@ -219,7 +213,7 @@ impl<'a> CmdInterface<'a> {
         &self,
         cmd_opcode: u8,
         payload: &mut [u8],
-    ) -> Result<(usize, ResponderAction), MsgHandlerError> {
+    ) -> McuResult<(usize, ResponderAction)> {
         match FwUpdateCmd::try_from(cmd_opcode) {
             Ok(cmd) => match cmd {
                 FwUpdateCmd::QueryDeviceIdentifiers => self

@@ -24,6 +24,7 @@ caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtock_runtime.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-lib.workspace = true
+mcu-error.workspace = true
 zerocopy.workspace = true
 
 

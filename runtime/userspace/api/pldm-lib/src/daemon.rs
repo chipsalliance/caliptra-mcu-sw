@@ -2,6 +2,7 @@
 
 use crate::cmd_interface::CmdInterface;
 use crate::config;
+use crate::errors;
 use crate::firmware_device::fd_context::FirmwareDeviceContext;
 use crate::firmware_device::fd_ops::FdOps;
 use crate::firmware_device::transfer_session::TransferSession;
@@ -26,6 +27,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
+use mcu_error::McuResult;
 const YIELD_EVERY_ITERATIONS: u32 = 32;
 
 #[derive(Debug)]
@@ -278,7 +280,7 @@ async fn run_optimized_download(
     transport: &mut MctpTransport,
     msg_buffer: &mut [u8],
     session: &mut TransferSession,
-) -> Result<bool, crate::error::MsgHandlerError> {
+) -> McuResult<bool> {
     let ua_eid: u8 = crate::config::UA_EID;
     let ops = cmd_interface.ops();
 
@@ -310,7 +312,7 @@ async fn run_optimized_download(
     let (requested_offset, requested_length) = ops
         .query_download_offset_and_length(&session.component)
         .await
-        .map_err(crate::error::MsgHandlerError::FdOps)?;
+        .map_err(|_| errors::FD_OPS_ERROR)?;
 
     // Calculate chunk parameters using local session state
     let (chunk_offset, chunk_length) =
@@ -328,8 +330,7 @@ async fn run_optimized_download(
 
     // Build request message
     let instance_id = session.alloc_next_instance_id();
-    let payload =
-        construct_mctp_pldm_msg(msg_buffer).map_err(crate::error::MsgHandlerError::Util)?;
+    let payload = construct_mctp_pldm_msg(msg_buffer).map_err(|_| errors::UTIL_ERROR)?;
 
     let msg_len = RequestFirmwareDataRequest::new(
         instance_id,
@@ -338,7 +339,7 @@ async fn run_optimized_download(
         chunk_length,
     )
     .encode(payload)
-    .map_err(crate::error::MsgHandlerError::Codec)?;
+    .map_err(|_| errors::CODEC_ERROR)?;
 
     // Mark as sent
     session.mark_sent(cmd_interface.now(), FwUpdateCmd::RequestFirmwareData as u8);
@@ -347,19 +348,19 @@ async fn run_optimized_download(
     transport
         .send_request(ua_eid, &msg_buffer[..msg_len + MCTP_PLDM_MSG_HDR_LEN])
         .await
-        .map_err(crate::error::MsgHandlerError::Transport)?;
+        .map_err(|_| errors::TRANSPORT_ERROR)?;
 
     // Receive response
     transport
         .receive_response(msg_buffer)
         .await
-        .map_err(crate::error::MsgHandlerError::Transport)?;
+        .map_err(|_| errors::TRANSPORT_ERROR)?;
 
     // Process response
-    let resp_payload = extract_pldm_msg(msg_buffer).map_err(crate::error::MsgHandlerError::Util)?;
+    let resp_payload = extract_pldm_msg(msg_buffer).map_err(|_| errors::UTIL_ERROR)?;
 
-    let rsp_fixed = RequestFirmwareDataResponseFixed::decode(resp_payload)
-        .map_err(crate::error::MsgHandlerError::Codec)?;
+    let rsp_fixed =
+        RequestFirmwareDataResponseFixed::decode(resp_payload).map_err(|_| errors::CODEC_ERROR)?;
 
     // Update T1 timestamp on response
     session.update_t1_timestamp(cmd_interface.now());
@@ -369,14 +370,12 @@ async fn run_optimized_download(
             // Extract firmware data and pass to ops
             let fw_data = &resp_payload[core::mem::size_of::<RequestFirmwareDataResponseFixed>()..]
                 .get(..chunk_length as usize)
-                .ok_or(crate::error::MsgHandlerError::Codec(
-                    caliptra_mcu_pldm_common::codec::PldmCodecError::BufferTooShort,
-                ))?;
+                .ok_or(errors::CODEC_ERROR)?;
 
             let result = ops
                 .download_fw_data(chunk_offset as usize, fw_data, &session.component)
                 .await
-                .map_err(crate::error::MsgHandlerError::FdOps)?;
+                .map_err(|_| errors::FD_OPS_ERROR)?;
 
             if result == TransferResult::TransferSuccess {
                 if ops.is_download_complete(&session.component) {
