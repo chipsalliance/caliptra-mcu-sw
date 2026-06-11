@@ -48,7 +48,7 @@ pub mod hw_model_tests {
     };
 }
 
-pub const MCU_KERNAL: FwId = FwId {
+pub const MCU_KERNEL: FwId = FwId {
     crate_name: "mcu-runtime-fpga",
     bin_name: "mcu-runtime-fpga",
     features: &[],
@@ -74,9 +74,6 @@ pub const REGISTERED_FW: &[&FwId] = &[
     &hw_model_tests::OTP_BLANK_CHECK,
     &hw_model_tests::OTP_SCRAMBLE_CHECK,
     &hw_model_tests::LC_CTRL,
-    &MCU_KERNAL,
-    &MCU_ROM,
-    &MCU_USER,
 ];
 
 pub const CPTRA_REGISTERED_FW: &[&FwId] =
