@@ -242,6 +242,13 @@ mod test {
 
         // Compute vendor PK hash for OTP fuses
         let vendor_pk_hash = compute_recovery_pk_hash(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
+        println!(
+            "[test] expected recovery PK hash: {}",
+            vendor_pk_hash
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<String>()
+        );
 
         let i3c_port = PortPicker::new().random(true).pick().unwrap();
         let dot_flash = vec![0u8; DOT_BLOB_SIZE];
