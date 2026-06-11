@@ -1171,12 +1171,9 @@ impl BootFlow for ColdBoot {
         let result = verify_prod_debug_unlock_pk_hash(mci, otp);
         if cfi_launder(result.is_ok()) {
             cfi_assert!(result.is_ok());
-        } else {
-            cfi_assert!(result.is_err());
-            if let Err(err) = result {
-                caliptra_mcu_romtime::println!("[mcu-rom] PK hash verification failed");
-                fatal_error(err);
-            }
+        } else if let Err(err) = result {
+            caliptra_mcu_romtime::println!("[mcu-rom] PK hash verification failed");
+            fatal_error(err);
         }
         mci.set_flow_checkpoint(McuRomBootStatus::PkHashVerified.into());
 
@@ -1185,14 +1182,9 @@ impl BootFlow for ColdBoot {
         let result = verify_mcu_mbox_axi_users(mci, &mcu_mbox_config);
         if cfi_launder(result.is_ok()) {
             cfi_assert!(result.is_ok());
-        } else {
-            cfi_assert!(result.is_err());
-            if let Err(err) = result {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] MCU mailbox AXI user verification failed"
-                );
-                fatal_error(err);
-            }
+        } else if let Err(err) = result {
+            caliptra_mcu_romtime::println!("[mcu-rom] MCU mailbox AXI user verification failed");
+            fatal_error(err);
         }
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersVerified.into());
 
