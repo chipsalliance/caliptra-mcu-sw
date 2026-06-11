@@ -37,8 +37,9 @@ pub use certificate::{
 };
 pub use challenge::{ChallengeAuthRsp, ChallengeReqBody};
 pub use chunk::{
-    ChunkGetReqBody, ChunkSendReqBody, CHUNK_ACK_ATTR_EARLY_ERROR, CHUNK_ATTR_LAST_CHUNK,
-    CHUNK_RESPONSE_FIXED_BODY_SIZE, LARGE_RESPONSE_SIZE_FIELD_SIZE,
+    ChunkGetReqBody, ChunkResponseBody, ChunkSendAckBody, ChunkSendReqBody,
+    CHUNK_ACK_ATTR_EARLY_ERROR, CHUNK_ATTR_LAST_CHUNK, CHUNK_RESPONSE_FIXED_BODY_SIZE,
+    LARGE_RESPONSE_SIZE_FIELD_SIZE,
 };
 pub use digests::{DigestsRsp, DigestsRspBody};
 pub use end_session::{EndSessionAck, EndSessionReqBody};

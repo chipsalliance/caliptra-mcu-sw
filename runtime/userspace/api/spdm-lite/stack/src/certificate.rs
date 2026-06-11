@@ -11,16 +11,16 @@
 //! stack-allocated `[u8; N]` array for cert payload.
 
 use mcu_spdm_lite_codec::{
-    CertificateRsp, CertificateRspBody, GetCertificateReqBody, ResponseBody, SpdmMsgHdrPdu,
-    SpdmVersion, ATTR_SLOT_SIZE_REQUESTED,
+    CertificateRsp, CertificateRspBody, GetCertificateReqBody, ReqRespCode, ResponseBody,
+    SpdmMsgHdrPdu, SpdmVersion, WireWriter, ATTR_SLOT_SIZE_REQUESTED,
 };
 use mcu_spdm_lite_traits::{
     PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
 };
-use zerocopy::FromBytes;
+use zerocopy::{little_endian::U16, FromBytes};
 
 use crate::build::{build_error_response, build_response};
-use crate::chunk;
+use crate::chunk::LargeResponse;
 use crate::error::{
     SpdmResult, SPDM_INVALID_REQUEST, SPDM_LARGE_RESPONSE, SPDM_UNEXPECTED_REQUEST,
     SPDM_UNSPECIFIED,
@@ -32,6 +32,101 @@ use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 /// `Length(2) | Reserved(2) | RootHash(48)`.
 const SPDM_CERT_CHAIN_HDR_LEN: usize = 4 + 48;
 const SHA384_DIGEST_SIZE: usize = 48;
+const CERTIFICATE_RESPONSE_HEADER_SIZE: usize = SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE;
+
+#[derive(Copy, Clone)]
+pub(crate) struct CertificateLargeResponse {
+    slot_id: u8,
+    param2: u8,
+    asym_algo: SpdmPalAsymAlgo,
+    cert_offset: u16,
+    portion_len: u16,
+    remainder_len: u16,
+}
+
+impl CertificateLargeResponse {
+    #[inline]
+    pub(crate) fn new(
+        slot_id: u8,
+        param2: u8,
+        asym_algo: SpdmPalAsymAlgo,
+        cert_offset: u16,
+        portion_len: u16,
+        remainder_len: u16,
+    ) -> Self {
+        Self {
+            slot_id,
+            param2,
+            asym_algo,
+            cert_offset,
+            portion_len,
+            remainder_len,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn response_size(&self) -> usize {
+        CERTIFICATE_RESPONSE_HEADER_SIZE + self.portion_len as usize
+    }
+
+    pub(crate) async fn fill_chunk<Pal: SpdmPal>(
+        &self,
+        pal: &Pal,
+        io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+        version: SpdmVersion,
+        offset: usize,
+        dst: &mut [u8],
+    ) -> mcu_error::McuResult<()> {
+        let end = offset
+            .checked_add(dst.len())
+            .ok_or(mcu_error::codes::INVARIANT)?;
+        if end > self.response_size() {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+
+        let mut written = 0;
+        if offset < CERTIFICATE_RESPONSE_HEADER_SIZE {
+            let mut hdr = [0u8; CERTIFICATE_RESPONSE_HEADER_SIZE];
+            let mut writer = WireWriter::new(&mut hdr);
+            writer
+                .write(&SpdmMsgHdrPdu::new(version, ReqRespCode::CERTIFICATE))
+                .map_err(|_| mcu_error::codes::INVARIANT)?;
+            writer
+                .write(&CertificateRspBody {
+                    slot_id: self.slot_id,
+                    param2: self.param2,
+                    portion_length: U16::new(self.portion_len),
+                    remainder_length: U16::new(self.remainder_len),
+                })
+                .map_err(|_| mcu_error::codes::INVARIANT)?;
+            let hdr_end = CERTIFICATE_RESPONSE_HEADER_SIZE.min(end);
+            let copy_len = hdr_end - offset;
+            let src = hdr
+                .get(offset..hdr_end)
+                .ok_or(mcu_error::codes::INVARIANT)?;
+            let dst_head = dst.get_mut(..copy_len).ok_or(mcu_error::codes::INVARIANT)?;
+            for (d, s) in dst_head.iter_mut().zip(src) {
+                *d = *s;
+            }
+            written = copy_len;
+        }
+
+        if written < dst.len() {
+            let cert_offset =
+                self.cert_offset as usize + offset + written - CERTIFICATE_RESPONSE_HEADER_SIZE;
+            fill_cert_chain_portion(
+                pal,
+                io,
+                self.slot_id,
+                self.asym_algo,
+                cert_offset,
+                &mut dst[written..],
+            )
+            .await?;
+        }
+        Ok(())
+    }
+}
 
 pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State>,
@@ -80,7 +175,8 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
         .ok_or(SPDM_UNSPECIFIED)?;
     let total_len = u16::try_from(total_len_usize).map_err(|_| SPDM_UNSPECIFIED)?;
 
-    let single_frame_portion = chunk::effective_data_transfer_size(state, pal)
+    let single_frame_portion = state
+        .effective_data_transfer_size(pal)
         .saturating_sub(SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE);
 
     let (offset, portion_len, remainder_len) = if slot_size_only {
@@ -94,7 +190,8 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
         let remaining = total_len_usize - off;
         let chunking = state.chunking_enabled();
         let max_portion = if chunking {
-            chunk::effective_max_spdm_msg_size(state, pal)
+            state
+                .effective_max_spdm_msg_size(pal)
                 .saturating_sub(SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE)
         } else {
             single_frame_portion
@@ -114,7 +211,7 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
     };
 
     if !slot_size_only && (portion_len as usize) > single_frame_portion {
-        let cert_rsp = chunk::CertificateLargeResponse::new(
+        let cert_rsp = CertificateLargeResponse::new(
             slot_id,
             cert_info,
             asym_algo,
@@ -122,9 +219,7 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
             portion_len,
             remainder_len,
         );
-        let handle = state
-            .large_response
-            .start(chunk::LargeResponse::Certificate(cert_rsp));
+        let handle = state.large_response.next_handle();
         let resp = build_error_response(
             pal,
             io,
@@ -135,6 +230,10 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
         )?;
 
         state.transcript.append_m1(pal, io, io.request()).await?;
+        state.large_response.start(
+            LargeResponse::Certificate(cert_rsp),
+            cert_rsp.response_size(),
+        );
         state.phase = Phase::AfterCertificate;
         return Ok(resp);
     }
@@ -218,19 +317,31 @@ pub(crate) async fn fill_cert_chain_portion<Pal: SpdmPal>(
     let mut written = 0;
     if offset < SPDM_CERT_CHAIN_HDR_LEN {
         let mut hdr = [0u8; SPDM_CERT_CHAIN_HDR_LEN];
-        hdr[0..2].copy_from_slice(&(total_len as u16).to_le_bytes());
+        let len_bytes = (total_len as u16).to_le_bytes();
+        for (d, s) in hdr.iter_mut().take(len_bytes.len()).zip(&len_bytes) {
+            *d = *s;
+        }
         // bytes 2..4 (Reserved) stay zero
+        let root_hash = hdr
+            .get_mut(4..4 + SHA384_DIGEST_SIZE)
+            .ok_or(mcu_error::codes::INVARIANT)?;
         pal.root_cert_hash(
             io,
             slot,
             asym_algo,
             mcu_spdm_lite_traits::SpdmPalHashAlgo::Sha384,
-            &mut hdr[4..4 + SHA384_DIGEST_SIZE],
+            root_hash,
         )
         .await?;
         let hdr_end = SPDM_CERT_CHAIN_HDR_LEN.min(end);
         let copy_len = hdr_end - offset;
-        dst[..copy_len].copy_from_slice(&hdr[offset..hdr_end]);
+        let src = hdr
+            .get(offset..hdr_end)
+            .ok_or(mcu_error::codes::INVARIANT)?;
+        let dst_head = dst.get_mut(..copy_len).ok_or(mcu_error::codes::INVARIANT)?;
+        for (d, s) in dst_head.iter_mut().zip(src) {
+            *d = *s;
+        }
         written = copy_len;
     }
 
