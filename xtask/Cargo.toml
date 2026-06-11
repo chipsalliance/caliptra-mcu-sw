@@ -68,8 +68,6 @@ rustls = { workspace = true, features = ["ring"] }
 
 # infra dependencies for CI
 size-history.workspace = true
-log.workspace = true
-
 
 [build-dependencies]
 cc.workspace = true
