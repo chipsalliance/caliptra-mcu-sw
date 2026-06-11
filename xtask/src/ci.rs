@@ -27,8 +27,8 @@ pub(crate) fn size_history() -> Result<(), anyhow::Error> {
         .cache_version(CACHE_FORMAT_VERSION)
         .with_pr_squashing(true)
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
-            "Kernal size",
-            firmware::MCU_KERNAL,
+            "Kernel size",
+            firmware::MCU_KERNEL,
             SizeType::Instruction,
             true,
         )))
@@ -45,8 +45,8 @@ pub(crate) fn size_history() -> Result<(), anyhow::Error> {
             false,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
-            "Kernal stack size",
-            firmware::MCU_KERNAL,
+            "Kernel stack size",
+            firmware::MCU_KERNEL,
             SizeType::Stack,
             false,
         )))
@@ -104,7 +104,7 @@ fn other_err(e: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Erro
 pub fn elf_stack_size(elf_bytes: &[u8]) -> io::Result<u64> {
     let elf = elf::ElfBytes::<LittleEndian>::minimal_parse(elf_bytes).map_err(other_err)?;
     let Ok(Some(section)) = elf.section_header_by_name(".stack") else {
-        return Err(other_err("ELF file has no .stack segment"));
+        return Err(other_err("ELF file has no .stack section"));
     };
 
     let mut min_addr = u64::MAX;
