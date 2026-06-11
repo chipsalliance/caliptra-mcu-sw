@@ -62,9 +62,9 @@ zerocopy.workspace = true
 zip.workspace = true
 caliptra-bitstream-downloader.workspace = true
 
-# infra dependecies for CI
-size-history.workspace = true 
-log.workspace = true 
+# infra dependencies for CI
+size-history.workspace = true
+log.workspace = true
 
 
 [build-dependencies]
