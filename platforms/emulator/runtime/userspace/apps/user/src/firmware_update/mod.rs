@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 mod config;
+#[cfg(feature = "test-streaming-boot-flash-write-back")]
 pub mod flash_staging;
 
 extern crate alloc;
@@ -141,6 +142,7 @@ fn get_reset_reason() -> Result<u32, ErrorCode> {
 }
 
 #[cfg(feature = "streaming-boot")]
+#[allow(dead_code)]
 mod external_memory {
     extern crate alloc;
     use alloc::boxed::Box;
@@ -205,7 +207,7 @@ mod external_memory {
             self.dma_syscall.xfer(&transaction).await
         }
 
-        async fn image_valid(&self, img_sz: usize) -> Result<(), ErrorCode> {
+        async fn image_valid(&self, _img_sz: usize) -> Result<(), ErrorCode> {
             Ok(())
         }
 
@@ -279,7 +281,7 @@ mod flash_memory {
     extern crate alloc;
     use alloc::boxed::Box;
     use async_trait::async_trait;
-    use caliptra_mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
+    use caliptra_mcu_config::boot::{BootConfigAsync, PartitionStatus};
     use caliptra_mcu_config_emulator::flash::STAGING_PARTITION;
     use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
     use caliptra_mcu_libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;

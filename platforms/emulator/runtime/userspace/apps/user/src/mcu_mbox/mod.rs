@@ -31,7 +31,7 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
 
     #[cfg(feature = "mcu-mbox-service")]
     {
-        let handler = cmd_handler_mock::NonCryptoCmdHandlerMock::default();
+        let handler = cmd_handler_mock::NonCryptoCmdHandlerMock;
         let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer::default();
         let mut transport = caliptra_mcu_mbox_lib::transport::McuMboxTransport::new(
             caliptra_mcu_libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
