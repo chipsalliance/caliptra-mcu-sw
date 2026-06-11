@@ -57,9 +57,12 @@ inherits = "nightly"
 # (package(caliptra-mcu-tests-integration) and test(test_external_otp))
 # """
 default-filter = """
-(package(caliptra-mcu-tests-integration) and test(test_revoke_vendor_pub_key0_ecdsa)) |
-(package(caliptra-mcu-tests-integration) and test(test_revoke_vendor_pub_key0_lms)) |
-(package(caliptra-mcu-tests-integration) and test(test_revoke_vendor_pk_hash))
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_self_test)) |
+(package(caliptra-mcu-tests-integration) and test(test_invalid_mailbox_cmd)) |
+(package(caliptra-mcu-tests-integration) and test(test_firmware_version_cmd)) |
+(package(caliptra-mcu-tests-integration) and test(test_get_auth_cmd_challenge_cmd))
 """
 # Disabled because they hang the FPGA at boot (LifecycleControllerState::Dev):
 #   test_manuf_debug_unlock, test_uds, test_sw_digest_lock,
