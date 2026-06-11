@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-//! Emulator round-trip test for defmt userspace logging.
+//! Emulator round-trip test for defmt userspace logging over the MCU mailbox.
 //!
-//! Boots with `test-defmt-logging`, reads the appended frames back via
+//! Boots with `test-defmt-logging-mailbox`, reads the appended frames back via
 //! `MC_GET_LOG`, and decodes them against the user-app ELF with `defmt-decoder`.
 
 #[cfg(all(test, not(feature = "fpga_realtime")))]
@@ -17,7 +17,7 @@ mod test {
     use std::sync::atomic::Ordering;
     use zerocopy::FromBytes;
 
-    const FEATURE: &str = "test-defmt-logging";
+    const FEATURE: &str = "test-defmt-logging-mailbox";
     /// Decoded messages the user app emits at startup (see `defmt_test.rs`).
     /// Values: 0x00C0_FFEE -> 12648430, 0xBEEF -> 48879, 0x2A -> 42,
     /// 0xDEAD_BEEF -> "deadbeef" via `{=u32:08x}`, byte slice rendered decimal.
@@ -101,24 +101,33 @@ mod test {
         })
     }
 
-    /// Read the user-app ELF emitted by the runtime build. The `.defmt` section
-    /// holds the interned format strings the decoder needs. The ELF is located
-    /// next to the runtime binary produced by the build so the path stays
-    /// consistent with the firmware bundler's target directory, which can differ
-    /// from `caliptra_mcu_builder::target_dir()` when tests boot from a prebuilt
-    /// bundle (e.g. in CI). `compile_runtime` is a no-op when already built.
+    /// Read the user-app ELF that the device booted with. The `.defmt` section
+    /// holds the interned format strings the decoder needs.
+    ///
+    /// Tries the firmware bundle first (works on CI where the host has no
+    /// access to the build tree because firmware is prebuilt by a separate
+    /// job and shipped as artifacts), then falls back to the build's on-disk
+    /// path (typical local emulator runs that build firmware on demand).
     fn user_app_elf() -> Vec<u8> {
-        let runtime_bin = compile_runtime(Some(FEATURE), false);
-        let path = runtime_bin
-            .parent()
-            .expect("runtime binary path has no parent")
+        if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
+            if let Some(bytes) = binaries.test_user_app_elf(FEATURE) {
+                return bytes.to_vec();
+            }
+        }
+
+        let path = caliptra_mcu_builder::target_dir()
+            .join(caliptra_mcu_builder::TARGET)
+            .join("devel")
             .join("user-app");
+        if !path.exists() {
+            let _ = compile_runtime(Some(FEATURE), false);
+        }
         std::fs::read(&path)
             .unwrap_or_else(|e| panic!("failed to read user-app ELF {}: {}", path.display(), e))
     }
 
     #[test]
-    fn test_defmt_logging() {
+    fn test_defmt_logging_mailbox() {
         let lock = TEST_LOCK.lock().unwrap();
 
         let mut hw = start_runtime_hw_model(TestParams {

@@ -12,6 +12,7 @@ pub mod crypto_asymmetric;
 pub mod debug_unlock;
 pub mod delete;
 pub mod device_info;
+pub mod device_log;
 pub mod dispatch;
 pub mod fuse;
 pub mod hmac;
