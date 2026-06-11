@@ -36,6 +36,19 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
+      - name: Set up Rust
+        run: |
+          if ! command -v rustup &> /dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          else
+            rustup toolchain install stable --profile minimal
+            rustup default stable
+          fi
+
+      - name: Prebuild xtask
+        run: cargo build -p xtask && cp target/debug/xtask /tmp/xtask
+
       - name: Determine cherry-pick parameters
         id: params
         env:
@@ -92,15 +105,6 @@ jobs:
             echo "::warning::Cherry-pick has conflicts — Gemini will attempt to resolve"
           fi
 
-      - name: Set up Rust
-        run: |
-          if ! command -v rustup &> /dev/null; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-          else
-            rustup toolchain install stable --profile minimal
-            rustup default stable
-          fi
 
       - name: Gemini — Evaluate clean cherry-pick for adaptations
         if: steps.cherry_pick.outputs.status == 'clean'
@@ -115,7 +119,7 @@ jobs:
           COMMIT_SHA="${{ steps.params.outputs.commit_sha }}"
           TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
 
-          cargo xtask vertex-prompt "A commit (${COMMIT_SHA}) was just cherry-picked cleanly from 'main' \
+          /tmp/xtask vertex-prompt "A commit (${COMMIT_SHA}) was just cherry-picked cleanly from 'main' \
           onto the '${TARGET_BRANCH}' branch. \
 
           Review the cherry-picked changes ('git diff HEAD~1') and the surrounding code \
@@ -139,7 +143,7 @@ jobs:
           COMMIT_SHA="${{ steps.params.outputs.commit_sha }}"
           TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
 
-          cargo xtask vertex-prompt "A cherry-pick of commit ${COMMIT_SHA} from 'main' onto \
+          /tmp/xtask vertex-prompt "A cherry-pick of commit ${COMMIT_SHA} from 'main' onto \
           '${TARGET_BRANCH}' has merge conflicts. \
 
           Steps: \
@@ -177,7 +181,7 @@ jobs:
             PR_BODY="${PR_BODY}\n\nOriginal PR: #${{ github.event.pull_request.number }}"
           fi
 
-          cargo xtask vertex-prompt "Push the branch '${BACKPORT_BRANCH}' to origin. \
+          /tmp/xtask vertex-prompt "Push the branch '${BACKPORT_BRANCH}' to origin. \
           Then create a pull request to '${TARGET_BRANCH}' with the following details: \
           Title: [Backport ${TARGET_BRANCH}] ${ORIGINAL_MSG} \
           Body: ${PR_BODY} \
