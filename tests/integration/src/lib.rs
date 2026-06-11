@@ -235,6 +235,7 @@ mod test {
                 output_name: Some(name),
                 example_app,
                 platform: Some(platform),
+                no_default_features: true,
                 ..Default::default()
             },
         )

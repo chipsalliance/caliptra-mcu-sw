@@ -15,7 +15,7 @@ use crate::EXECUTOR;
 #[cfg(feature = "firmware-update")]
 use caliptra_mcu_libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 
-#[cfg(feature = "test-firmware-update-flash")]
+#[cfg(feature = "flash-boot")]
 use caliptra_mcu_libapi_caliptra::firmware_update::FirmwareUpdateHooks;
 
 use caliptra_mcu_libtock_platform::ErrorCode;
@@ -33,7 +33,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         return Ok(());
     }
     crate::console_writeln!(console_writer, "[FW Upd] Start");
-    #[cfg(feature = "streaming-boot")]
+    #[cfg(all(feature = "streaming-boot", not(feature = "test-streaming-boot-flash-write-back")))]
     {
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],

@@ -52,7 +52,7 @@ caliptra-mcu-userlog = { workspace = true, optional = true }
 
 [features]
 default = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe"]
-spdm = []
+spdm = ["mcu-mbox-service"]
 streaming-boot = []
 flash-boot = []
 firmware-update = []
@@ -67,6 +67,11 @@ userspace-log = ["dep:defmt", "dep:caliptra-mcu-userlog"]
 release = [
     "caliptra-mcu-romtime/no-print",
     "caliptra-mcu-libsyscall-caliptra/release",
+    "spdm",
+    "streaming-boot",
+    "flash-boot",
+    "firmware-update",
+    "doe"
 ]
 test-caliptra-certs = []
 test-caliptra-crypto = []

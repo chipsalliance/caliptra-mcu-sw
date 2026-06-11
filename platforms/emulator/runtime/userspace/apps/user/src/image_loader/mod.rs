@@ -100,7 +100,7 @@ pub async fn image_loading_task() {
     }
     #[cfg(any(
         feature = "streaming-boot",
-        feature = "flash-boot",
+        all(feature = "flash-boot", not(feature = "firmware-update")),
         feature = "test-pldm-discovery",
         feature = "test-pldm-fw-update",
         feature = "test-pldm-fw-update-e2e",
