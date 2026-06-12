@@ -133,6 +133,6 @@ test-mctp-spdm-set-certificate = [
   "mcu-spdm-lite-pal/set-certificate",
   "mcu-spdm-lite-stack/set-certificate",
 ]
-test-doe-spdm-tdisp-ide-validator = []
+test-doe-spdm-tdisp-ide-validator = ["mcu-spdm-lite-vdm-handler/emulated-tdisp"]
 test-mcu-mbox-fips-periodic = ["caliptra-mcu-mbox-lib/periodic-fips-self-test"]
 active-i3c1 = []
