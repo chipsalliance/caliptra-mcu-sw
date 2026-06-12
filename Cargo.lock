@@ -1546,6 +1546,7 @@ dependencies = [
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-runtime-userspace-error",
  "caliptra-ocp-eat",
  "const-oid 0.9.6",
  "der 0.7.10",
@@ -1772,6 +1773,7 @@ dependencies = [
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-runtime-userspace-error",
  "embassy-executor",
  "embassy-sync",
  "zerocopy",
@@ -1910,6 +1912,7 @@ dependencies = [
  "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
+ "caliptra-mcu-runtime-userspace-error",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
@@ -2130,6 +2133,13 @@ dependencies = [
  "riscv-csr",
  "rv32i",
  "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-runtime-userspace-error"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_platform",
 ]
 
 [[package]]
@@ -7272,6 +7282,7 @@ dependencies = [
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-spdm-lib",
  "caliptra-mcu-userlog",
  "caliptra-ocp-eat",

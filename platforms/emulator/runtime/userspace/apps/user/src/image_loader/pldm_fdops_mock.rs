@@ -16,11 +16,13 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::{
     PLDM_FWUP_MAX_PADDING_SIZE,
 };
 use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
-use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
+use caliptra_mcu_pldm_lib::errors as pldm_errors;
+use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps};
 use core::cell::RefCell;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::lazy_lock::LazyLock;
 use embassy_sync::signal::Signal;
+use mcu_error::McuResult;
 
 const FD_DESCRIPTORS_COUNT: usize = 1;
 const FD_FW_COMPONENTS_COUNT: usize = 1;
@@ -102,29 +104,23 @@ impl FdOpsObject {
 
 #[async_trait(?Send)]
 impl FdOps for FdOpsObject {
-    fn get_device_identifiers(
-        &self,
-        device_identifiers: &mut [Descriptor],
-    ) -> Result<usize, FdOpsError> {
+    fn get_device_identifiers(&self, device_identifiers: &mut [Descriptor]) -> McuResult<usize> {
         let dev_id = DESCRIPTORS.get();
         if device_identifiers.len() < dev_id.len() {
-            Err(FdOpsError::DeviceIdentifiersError)
+            Err(pldm_errors::DEVICE_IDENTIFIERS_ERROR)
         } else {
             device_identifiers[..dev_id.len()].copy_from_slice(dev_id);
             Ok(dev_id.len())
         }
     }
 
-    fn get_firmware_parms(
-        &self,
-        firmware_params: &mut FirmwareParameters,
-    ) -> Result<(), FdOpsError> {
+    fn get_firmware_parms(&self, firmware_params: &mut FirmwareParameters) -> McuResult<()> {
         let fw_params = FIRMWARE_PARAMS.get();
         *firmware_params = (*fw_params).clone();
         Ok(())
     }
 
-    async fn get_xfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError> {
+    async fn get_xfer_size(&self, ua_transfer_size: usize) -> McuResult<usize> {
         Ok(PLDM_FWUP_BASELINE_TRANSFER_SIZE
             .max(ua_transfer_size.min(caliptra_mcu_pldm_lib::config::FD_MAX_XFER_SIZE)))
     }
@@ -134,7 +130,7 @@ impl FdOps for FdOpsObject {
         component: &FirmwareComponent,
         fw_params: &FirmwareParameters,
         op: ComponentOperation,
-    ) -> Result<ComponentResponseCode, FdOpsError> {
+    ) -> McuResult<ComponentResponseCode> {
         let comp_resp_code = component.evaluate_update_eligibility(fw_params);
 
         // If it is update component operation, reset download context
@@ -150,7 +146,7 @@ impl FdOps for FdOpsObject {
     async fn query_download_offset_and_length(
         &self,
         component: &FirmwareComponent,
-    ) -> Result<(usize, usize), FdOpsError> {
+    ) -> McuResult<(usize, usize)> {
         let download_ctx = self.download_ctx.borrow();
         match component.comp_image_size {
             Some(image_size) => {
@@ -158,7 +154,7 @@ impl FdOps for FdOpsObject {
                 let length = (image_size as usize - offset).min(64);
                 Ok((offset, length))
             }
-            None => Err(FdOpsError::ComponentError),
+            None => Err(pldm_errors::COMPONENT_ERROR),
         }
     }
 
@@ -167,10 +163,10 @@ impl FdOps for FdOpsObject {
         offset: usize,
         data: &[u8],
         component: &FirmwareComponent,
-    ) -> Result<TransferResult, FdOpsError> {
+    ) -> McuResult<TransferResult> {
         let component_image_size = component
             .comp_image_size
-            .ok_or(FdOpsError::FwDownloadError)? as usize;
+            .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)? as usize;
 
         let max_allowed_size = component_image_size + PLDM_FWUP_MAX_PADDING_SIZE;
         let mut download_ctx = self.download_ctx.borrow_mut();
@@ -179,7 +175,7 @@ impl FdOps for FdOpsObject {
             // reset download context if offset is not as expected
             download_ctx.offset = 0;
             download_ctx.length = 0;
-            return Err(FdOpsError::FwDownloadError);
+            return Err(pldm_errors::FW_DOWNLOAD_ERROR);
         }
 
         download_ctx.offset += data.len();
@@ -201,7 +197,7 @@ impl FdOps for FdOpsObject {
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<(), FdOpsError> {
+    ) -> McuResult<()> {
         *progress_percent = ProgressPercent::default();
         Ok(())
     }
@@ -210,7 +206,7 @@ impl FdOps for FdOpsObject {
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<VerifyResult, FdOpsError> {
+    ) -> McuResult<VerifyResult> {
         let mut verify_ctx = self.verify_ctx.borrow_mut();
         // Increment the verification progress by 30% on each call. Reset to 0 once it reaches 100%.
         if verify_ctx.value() < 100 {
@@ -228,7 +224,7 @@ impl FdOps for FdOpsObject {
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<ApplyResult, FdOpsError> {
+    ) -> McuResult<ApplyResult> {
         let mut apply_ctx = self.apply_ctx.borrow_mut();
         // Increment the apply progress by 30% on each call. Reset to 0 once it reaches 100% for next test.
         if apply_ctx.value() < 100 {
@@ -241,11 +237,7 @@ impl FdOps for FdOpsObject {
         Ok(ApplyResult::ApplySuccess)
     }
 
-    fn activate(
-        &self,
-        self_contained_activation: u8,
-        estimated_time: &mut u16,
-    ) -> Result<u8, FdOpsError> {
+    fn activate(&self, self_contained_activation: u8, estimated_time: &mut u16) -> McuResult<u8> {
         if self_contained_activation == 1 {
             *estimated_time = TEST_SELF_ACTIVATION_MAX_TIME_IN_SECONDS;
         }
@@ -253,7 +245,7 @@ impl FdOps for FdOpsObject {
         Ok(0) // PLDM completion code for success
     }
 
-    fn cancel_update_component(&self, _component: &FirmwareComponent) -> Result<(), FdOpsError> {
+    fn cancel_update_component(&self, _component: &FirmwareComponent) -> McuResult<()> {
         // Clean up download, verify, and apply contexts
         let mut download_ctx = self.download_ctx.borrow_mut();
         download_ctx.offset = 0;

@@ -16,21 +16,9 @@ use caliptra_mcu_pldm_common::{
     message::firmware_update::get_fw_params::FirmwareParameters,
     protocol::firmware_update::{ComponentResponseCode, Descriptor, PldmFdTime},
 };
+use mcu_error::{McuErrorCode, McuResult};
 
 use crate::timer::AsyncAlarm;
-
-#[derive(Debug)]
-pub enum FdOpsError {
-    DeviceIdentifiersError,
-    FirmwareParametersError,
-    TransferSizeError,
-    ComponentError,
-    FwDownloadError,
-    VerifyError,
-    ApplyError,
-    ActivateError,
-    CancelUpdateError,
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComponentOperation {
@@ -54,12 +42,9 @@ pub trait FdOps {
     ///
     /// # Returns
     ///
-    /// * `Result<usize, FdOpsError>` - On success, returns the number of device identifiers retrieved.
-    ///   On failure, returns an `FdOpsError`.
-    fn get_device_identifiers(
-        &self,
-        device_identifiers: &mut [Descriptor],
-    ) -> Result<usize, FdOpsError>;
+    /// * `McuResult<usize>` - On success, returns the number of device identifiers retrieved.
+    ///   On failure, returns an `McuErrorCode`.
+    fn get_device_identifiers(&self, device_identifiers: &mut [Descriptor]) -> McuResult<usize>;
 
     /// Asynchronously retrieves firmware parameters.
     ///
@@ -69,11 +54,8 @@ pub trait FdOps {
     ///
     /// # Returns
     ///
-    /// * `Result<(), FdOpsError>` - On success, returns `Ok(())`. On failure, returns an `FdOpsError`.
-    fn get_firmware_parms(
-        &self,
-        firmware_params: &mut FirmwareParameters,
-    ) -> Result<(), FdOpsError>;
+    /// * `McuResult<()>` - On success, returns `Ok(())`. On failure, returns an `McuErrorCode`.
+    fn get_firmware_parms(&self, firmware_params: &mut FirmwareParameters) -> McuResult<()>;
 
     /// Retrieves the transfer size for the firmware update operation.
     ///
@@ -83,9 +65,9 @@ pub trait FdOps {
     ///
     /// # Returns
     ///
-    /// * `Result<usize, FdOpsError>` - On success, returns the transfer size in bytes.
-    ///   On failure, returns an `FdOpsError`.
-    async fn get_xfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError>;
+    /// * `McuResult<usize>` - On success, returns the transfer size in bytes.
+    ///   On failure, returns an `McuErrorCode`.
+    async fn get_xfer_size(&self, ua_transfer_size: usize) -> McuResult<usize>;
 
     /// Handles firmware component operations such as passing or updating components.
     ///
@@ -97,14 +79,14 @@ pub trait FdOps {
     ///
     /// # Returns
     ///
-    /// * `Result<ComponentResponseCode, FdOpsError>` - On success, returns a `ComponentResponseCode`.
-    ///   On failure, returns an `FdOpsError`.
+    /// * `McuResult<ComponentResponseCode>` - On success, returns a `ComponentResponseCode`.
+    ///   On failure, returns an `McuErrorCode`.
     fn handle_component(
         &self,
         component: &FirmwareComponent,
         fw_params: &FirmwareParameters,
         op: ComponentOperation,
-    ) -> Result<ComponentResponseCode, FdOpsError>;
+    ) -> McuResult<ComponentResponseCode>;
 
     /// Queries the download offset and length for a given firmware component.
     ///
@@ -114,12 +96,12 @@ pub trait FdOps {
     ///
     /// # Returns
     ///
-    /// * `Result<(usize, usize), FdOpsError>` - On success, returns a tuple containing the offset and length in bytes.
-    ///   On failure, returns an `FdOpsError`.
+    /// * `McuResult<(usize, usize)>` - On success, returns a tuple containing the offset and length in bytes.
+    ///   On failure, returns an `McuErrorCode`.
     async fn query_download_offset_and_length(
         &self,
         component: &FirmwareComponent,
-    ) -> Result<(usize, usize), FdOpsError>;
+    ) -> McuResult<(usize, usize)>;
 
     /// Handles firmware data downloading operations.
     ///
@@ -131,14 +113,14 @@ pub trait FdOps {
     ///
     /// # Returns
     ///
-    /// * `Result<TransferResult, FdOpsError>` - On success, returns a `TransferResult` indicating the outcome of the operation.
-    ///   On failure, returns an `FdOpsError`.
+    /// * `McuResult<TransferResult>` - On success, returns a `TransferResult` indicating the outcome of the operation.
+    ///   On failure, returns an `McuErrorCode`.
     async fn download_fw_data(
         &self,
         offset: usize,
         data: &[u8],
         component: &FirmwareComponent,
-    ) -> Result<TransferResult, FdOpsError>;
+    ) -> McuResult<TransferResult>;
 
     /// Checks if the firmware download for a given component is complete.
     ///
@@ -160,12 +142,12 @@ pub trait FdOps {
     ///
     /// # Returns
     ///
-    /// * `Result<(), FdOpsError>` - On success, returns `Ok(())`. On failure, returns an `FdOpsError`.
+    /// * `McuResult<()>` - On success, returns `Ok(())`. On failure, returns an `McuErrorCode`.
     fn query_download_progress(
         &self,
         component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<(), FdOpsError>;
+    ) -> McuResult<()>;
 
     /// Verifies the firmware component.
     ///
@@ -176,13 +158,13 @@ pub trait FdOps {
     ///
     /// # Returns
     ///
-    /// * `Result<VerifyResult, FdOpsError>` - On success, returns a `VerifyResult` indicating the outcome of the verification.
-    /// *   On failure, returns an `FdOpsError`.
+    /// * `McuResult<VerifyResult>` - On success, returns a `VerifyResult` indicating the outcome of the verification.
+    /// *   On failure, returns an `McuErrorCode`.
     async fn verify(
         &self,
         component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<VerifyResult, FdOpsError>;
+    ) -> McuResult<VerifyResult>;
 
     /// Applies the firmware component.
     ///
@@ -193,13 +175,13 @@ pub trait FdOps {
     ///
     /// # Returns
     ///
-    /// * `Result<ApplyResult, FdOpsError>` - On success, returns an `ApplyResult` indicating the outcome of the application.
-    /// *   On failure, returns an `FdOpsError`.
+    /// * `McuResult<ApplyResult>` - On success, returns an `ApplyResult` indicating the outcome of the application.
+    /// *   On failure, returns an `McuErrorCode`.
     async fn apply(
         &self,
         component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<ApplyResult, FdOpsError>;
+    ) -> McuResult<ApplyResult>;
 
     /// Activates new firmware.
     ///
@@ -211,16 +193,12 @@ pub trait FdOps {
     ///
     /// # Returns
     ///
-    /// * `Result<u8, FdOpsError>` - On success, returns a PLDM completion code.
-    ///   On failure, returns an `FdOpsError`.
+    /// * `McuResult<u8>` - On success, returns a PLDM completion code.
+    ///   On failure, returns an `McuErrorCode`.
     ///
     /// The device implementation is responsible for verifying that the expected components
     /// have been updated. If not, it should return `PLDM_FWUP_INCOMPLETE_UPDATE`.
-    fn activate(
-        &self,
-        self_contained_activation: u8,
-        estimated_time: &mut u16,
-    ) -> Result<u8, FdOpsError>;
+    fn activate(&self, self_contained_activation: u8, estimated_time: &mut u16) -> McuResult<u8>;
 
     /// Cancels the update operation for a specific firmware component.
     ///
@@ -230,19 +208,19 @@ pub trait FdOps {
     ///
     /// # Returns
     ///
-    /// * `Result<(), FdOpsError>` - On success, returns `Ok(())`. On failure, returns an `FdOpsError`.
-    fn cancel_update_component(&self, component: &FirmwareComponent) -> Result<(), FdOpsError>;
+    /// * `McuResult<()>` - On success, returns `Ok(())`. On failure, returns an `McuErrorCode`.
+    fn cancel_update_component(&self, component: &FirmwareComponent) -> McuResult<()>;
 
     /// Indicates which components will be in a non-functioning state upon exiting update mode
     /// due to cancel update request from UA.
     ///
     /// # Returns
     ///
-    /// * `Result<(NonFunctioningComponentIndication, NonFunctioningComponentBitmap), FdOpsError>` -
+    /// * `Result<(NonFunctioningComponentIndication, NonFunctioningComponentBitmap), McuErrorCode>` -
     ///   On success, returns a tuple containing:
     ///     - `NonFunctioningComponentIndication`: Indicates whether components are functioning or not.
     ///     - `NonFunctioningComponentBitmap`: A bitmap representing non-functioning components.
-    ///   On failure, returns an `FdOpsError`.
+    ///   On failure, returns an `McuErrorCode`.
     async fn get_non_functional_component_info(
         &self,
     ) -> Result<
@@ -250,7 +228,7 @@ pub trait FdOps {
             NonFunctioningComponentIndication,
             NonFunctioningComponentBitmap,
         ),
-        FdOpsError,
+        McuErrorCode,
     > {
         Ok((
             NonFunctioningComponentIndication::ComponentsFunctioning,

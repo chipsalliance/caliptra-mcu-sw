@@ -26,6 +26,7 @@ caliptra-mcu-libtock_runtime.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-lib.workspace = true
 caliptra-mcu-romtime.workspace = true
+mcu-error.workspace = true
 spki.workspace = true
 zerocopy.workspace = true
 caliptra-ocp-eat.workspace = true

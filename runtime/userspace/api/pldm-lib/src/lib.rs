@@ -7,6 +7,7 @@ pub mod config;
 pub mod control_context;
 pub mod daemon;
 pub mod error;
+pub mod errors;
 pub mod firmware_device;
 pub mod timer;
 pub mod transport;

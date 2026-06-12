@@ -88,6 +88,7 @@ members = [
     "runtime/userspace/api/mctp-vdm-lib",
     "runtime/userspace/api/pldm-lib",
     "runtime/userspace/api/spdm-lib",
+    "runtime/userspace/error",
     "runtime/userspace/libtock/apis/interface/console",
     "runtime/userspace/libtock/apis/kernel/low_level_debug",
     "runtime/userspace/libtock/apis/peripherals/alarm",
@@ -259,6 +260,8 @@ caliptra-mcu-debug-unlock-signer = { path = "common/debug-unlock-signer" }
 caliptra-mcu-config-emulator = { path = "platforms/emulator/config" }
 caliptra-mcu-config-fpga = { path = "platforms/fpga/config" }
 caliptra-mcu-error = { path = "error" }
+caliptra-mcu-runtime-userspace-error = { path = "runtime/userspace/error" }
+mcu-error = { path = "runtime/userspace/error", package = "caliptra-mcu-runtime-userspace-error" }
 caliptra-mcu-firmware-bundler = { path = "firmware-bundler" }
 caliptra-mcu-fuses-generator = { path = "registers/fuses" }
 caliptra-mcu-coverage = { path = "coverage" }
