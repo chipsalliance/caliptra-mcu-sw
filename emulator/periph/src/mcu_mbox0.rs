@@ -172,8 +172,12 @@ impl From<u32> for MciMailboxRequester {
 }
 
 impl MciMailboxImpl {
-    const LOCK_VAL: u32 = 0x0;
-    const USER_VAL: u32 = 0x0;
+    // After reset the hardware holds the mailbox lock for the root AXI user
+    // (the MCU) and only releases it once the SRAM has been zeroized. Model
+    // that here so firmware must explicitly release and re-acquire the lock,
+    // matching the FPGA. `USER_VAL` is the MCU requester id (0xFFFF_FFFF).
+    const LOCK_VAL: u32 = 0x1;
+    const USER_VAL: u32 = 0xFFFF_FFFF;
     const TARGET_USER_VAL: u32 = 0x0;
     const TARGET_USER_VALID_VAL: u32 = 0x0;
     const CMD_VAL: u32 = 0x0;
