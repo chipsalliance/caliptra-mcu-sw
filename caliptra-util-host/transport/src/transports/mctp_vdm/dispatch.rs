@@ -24,6 +24,7 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         2 => Some(encode::handle_device_capabilities), // GetDeviceCapabilities
         3 => Some(encode::handle_device_id),        // GetDeviceId
         4 => Some(encode::handle_device_info),      // GetDeviceInfo
+        0x7005 => Some(encode::handle_get_debug_log), // DebugGetLog
         _ => None,
     }
 }

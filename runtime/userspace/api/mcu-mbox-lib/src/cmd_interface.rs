@@ -736,11 +736,7 @@ impl<'a> CmdInterface<'a> {
             ..Default::default()
         };
 
-        // Calculate checksum
-        caliptra_req.hdr.chksum =
-            caliptra_api::calc_checksum(CaliptraCommandId::FE_PROG.into(), caliptra_req.as_bytes());
-
-        // Invoke Caliptra mailbox API
+        // Invoke Caliptra mailbox API (checksum is computed by execute_mailbox_cmd)
         let _caliptra_resp_len = execute_mailbox_cmd(
             &self.caliptra_mbox,
             CaliptraCommandId::FE_PROG.into(),

@@ -136,6 +136,31 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         }
     }
 
+    async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
+        use caliptra_api::mailbox::{CommandId, FeProgReq};
+        use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
+        use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+        use zerocopy::IntoBytes;
+
+        let mailbox = Mailbox::new();
+        let mut req = FeProgReq {
+            partition,
+            ..Default::default()
+        };
+
+        let mut resp_buf = [0u8; 8];
+        execute_mailbox_cmd(
+            &mailbox,
+            CommandId::FE_PROG.0,
+            req.as_mut_bytes(),
+            &mut resp_buf,
+        )
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+
+        Ok(())
+    }
+
     async fn request_debug_unlock(
         &self,
         unlock_level: u8,

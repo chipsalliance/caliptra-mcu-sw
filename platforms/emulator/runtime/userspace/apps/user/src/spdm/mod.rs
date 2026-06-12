@@ -49,7 +49,7 @@ fn log_spdm_err<W: Write>(w: &mut W, prefix: &str, msg: &str, e: &SpdmError) {
     let path = e.error_code();
     let ext = e.ext_code();
     if ext != 0 {
-        writeln!(
+        crate::console_writeln!(
             w,
             "{}: {}: {} 0x{:08x} ext=0x{:08x}",
             prefix,
@@ -57,10 +57,9 @@ fn log_spdm_err<W: Write>(w: &mut W, prefix: &str, msg: &str, e: &SpdmError) {
             e.category(),
             path,
             ext
-        )
-        .unwrap();
+        );
     } else {
-        writeln!(w, "{}: {}: {} 0x{:08x}", prefix, msg, e.category(), path).unwrap();
+        crate::console_writeln!(w, "{}: {}: {} 0x{:08x}", prefix, msg, e.category(), path);
     }
 }
 
@@ -87,20 +86,18 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
     init_target_env_claims();
 
     if spawner.spawn(spdm_mctp_responder()).is_err() {
-        writeln!(
+        crate::console_writeln!(
             console_writer,
             "SPDM_TASK: Failed to spawn spdm_mctp_responder"
-        )
-        .unwrap();
+        );
     }
 
     #[cfg(feature = "doe")]
     if spawner.spawn(spdm_doe_responder()).is_err() {
-        writeln!(
+        crate::console_writeln!(
             console_writer,
             "SPDM_TASK: Failed to spawn spdm_doe_responder"
-        )
-        .unwrap();
+        );
     }
 }
 
@@ -138,9 +135,11 @@ async fn spdm_mctp_responder() {
 
     // Caliptra VDM handler for SPDM over MCTP transport
     let caliptra_cmd_handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
+    let mut cmd_authorizer = crate::mcu_mbox::cmd_auth_mock::MockCommandAuthorizer::default();
     let mut caliptra_vdm_handler =
         caliptra_mcu_spdm_lib::vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdmHandler::new(
             &caliptra_cmd_handler,
+            &mut cmd_authorizer,
         );
     let mut handlers_array: [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler; 1] =
         [&mut caliptra_vdm_handler as &mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler];

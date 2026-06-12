@@ -76,6 +76,8 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
 
     > **Note:** Revocation or rotation of the `CPTRA_SS_OWNER_PK_HASH` fuse value is outside the scope of DOT. DOT provides its own key lifecycle (install, lock, unlock, disable) through the DOT blob and fuse array. If an integrator needs to revoke or rotate the fuse-based owner key independently, that must be managed through a separate platform-specific mechanism.
 
+    > **Ownership RAM (optional, not yet implemented):** When DOT is configured, the ROM can use the DOT *ownership RAM* (`Ownership_Storage`) — a volatile, reset-surviving sticky region — to carry the CAK/LAK extracted from the DOT blob into the runtime, to receive a pending fuse-state transition request from the runtime, and to signal a DOT recovery/transition boot (so the runtime accepts only DOT recovery/override commands instead of running the normal boot flow). This region must be retained across MCU/warm/firmware resets but cleared on a power cycle. Using ownership RAM is optional — flash or other sticky registers may be used instead — and these flows are **not currently supported** in the reference ROM/runtime code, the emulator, or the FPGA integration. See [Ownership RAM Recommendations](dot.md#ownership-ram-recommendations) for sizing, layout, retention, locking, and usage guidance.
+
 1. Send the `RI_DOWNLOAD_FIRMWARE` command to Caliptra to start the firmware loading process. Caliptra will:
    1. Follow all of the [steps](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#firmware-processor-stage) in the Caliptra ROM documentation for firmware loading in the ROM cold reset.
    1. Transition to Caliptra runtime firmware.

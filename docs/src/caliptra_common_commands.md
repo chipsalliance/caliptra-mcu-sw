@@ -55,12 +55,18 @@ The following table describes the commands defined under this specification. The
 | Get Slot 0 State              | O   | Check the provisioning state of certificate slot 0 (Vendor PKI). |
 | Export Attested CSR           | O   | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias). |
 
+*Authorized Commands*
+
+| Message Name              | R/O | Description                                                         |
+|---------------------------|-----|---------------------------------------------------------------------|
+| Get Auth Challenge        | O   | Request a one-time 32-byte nonce to authorize a subsequent command. |
+| Program Field Entropy     | O   | Program field entropy into a specific OTP partition.                |
+
 *Device Lifecycle*
 
-| Message Name                  | R/O | Description                                         |
-|-------------------------------|-----|-----------------------------------------------------|
-| Program Field Entropy         | O   | Program field entropy into the device. Requires authorization. |
-| Device Ownership Transfer     | O   | Transfer device ownership. Requires authorization.  |
+| Message Name                  | R/O | Description                                        |
+|-------------------------------|-----|----------------------------------------------------|
+| Device Ownership Transfer     | O   | Transfer device ownership. Requires authorization. |
 
 ## Command Definitions
 
@@ -282,21 +288,83 @@ Exports an attested Certificate Signing Request (CSR) for a specified device key
 | 4:7     | data_size       | u32           | Length in bytes of the attested CSR data       |
 | 8:N     | data            | u8[data_size] | Attested CSR data blob                        |
 
-### Program Field Entropy
+### Authorized Commands
 
-Programs field entropy into the device. Requires authorization.
+All commands that require cryptographic authorization are dispatched through the single `Authorized Command (0x12)` SPDM VDM code using a 1-byte `sub_cmd_id` field. This ensures a consistent challenge-response flow regardless of which operation is being authorized.
 
-**Request Payload**:
+#### Authorization Flow
 
-| Byte(s) | Name    | Type | Description |
-|---------|---------|------|-------------|
-| 0:N     | entropy | u8[N]| Field entropy data |
+The requester must first obtain a one-time challenge nonce from the device, then compute an HMAC-SHA384 MAC over the nonce and command parameters, and include that MAC in the subsequent command request.
 
-**Response Payload**:
+```
+Requester                                       Device
+    |                                               |
+    |-- Authorized Command (sub_cmd_id=0x01) ------>|
+    |                                               |-- generate 32-byte nonce
+    |<-- challenge[32] -----------------------------|    stored internally (one-time use)
+    |                                               |
+    | compute MAC:                                  |
+    |   HMAC-SHA384(key,                            |
+    |     cmd_id_be32(4) || payload_le(N) ||        |
+    |     challenge(32))                            |
+    |                                               |
+    |-- Authorized Command (sub_cmd_id=0x02,        |
+    |   payload + mac) ---------------------------->|
+    |                                               |-- verify MAC, execute command
+    |<-- completion_code ---------------------------|
+```
 
-| Byte(s) | Name            | Type | Description                |
-|---------|-----------------|------|----------------------------|
-| 0:3     | completion_code | u32  | Command completion status  |
+The `cmd_id` used in the HMAC input is the `sub_cmd_id` itself, serialized as a 4-byte big-endian integer. Because sub-command IDs match the canonical MCU mailbox command IDs, the HMAC input is identical across SPDM VDM and MCU mailbox transports.
+
+#### Request Payload
+
+| Byte(s) | Name        | Type  | Description                                          |
+|---------|-------------|-------|------------------------------------------------------|
+| 0:3     | sub_cmd_id  | u32   | Sub-command identifier (see Sub-Command List below)  |
+| 4:N     | sub_payload | u8[N] | Sub-command-specific payload (see sub-command definitions) |
+
+#### Response Payload
+
+| Byte(s) | Name            | Type  | Description                                                          |
+|---------|-----------------|-------|----------------------------------------------------------------------|
+| 0       | completion_code | u8    | OCP completion code (`0x00` = Success, `0x0C` = Access Denied)       |
+| 1:N     | sub_response    | u8[N] | Sub-command-specific response data (absent if completion_code != 0x00) |
+
+#### Sub-Command List
+
+| Sub-Command ID   | Name                  | Description                                                       |
+|------------------|-----------------------|-------------------------------------------------------------------|
+| `0x4D41_4343`    | Get Auth Challenge    | Request a one-time 32-byte nonce to authorize a subsequent command. |
+| `0x4D43_4650`    | Program Field Entropy | Program field entropy into a specific OTP partition.              |
+
+#### Sub-Command: Get Auth Challenge
+
+Requests a one-time 32-byte challenge nonce from the device. The nonce is stored internally and consumed after the next authorized command is received (or discarded if another `Get Auth Challenge` is issued).
+
+**Sub-Payload**: Empty
+
+**Sub-Response**:
+
+| Byte(s) | Name      | Type   | Description                                                                       |
+|---------|-----------|--------|-----------------------------------------------------------------------------------|
+| 0:31    | challenge | u8[32] | Random 32-byte nonce. One-time use — consumed after the next authorized command.  |
+
+#### Sub-Command: Program Field Entropy
+
+Programs device-unique entropy into a specific OTP partition. This operation is write-once and irreversible. The requester must have previously obtained a challenge nonce via `Get Auth Challenge` and computed a valid MAC.
+
+**MAC input**: `HMAC-SHA384(key, sub_cmd_id_be32(4) || partition_le(4) || challenge(32))`
+
+where `sub_cmd_id = 0x4D43_4650` (`MC_FE_PROG`). Because the sub-command ID is the same as the canonical MCU mailbox command ID, the HMAC input is identical across SPDM VDM and MCU mailbox transports.
+
+**Sub-Payload**:
+
+| Byte(s) | Name      | Type   | Description                                                                                              |
+|---------|-----------|--------|----------------------------------------------------------------------------------------------------------|
+| 0:3     | partition | u32    | OTP partition index to program (little-endian).                                                          |
+| 4:51    | mac       | u8[48] | HMAC-SHA384 authorization token computed over `cmd_id_be32(4) || partition_le(4) || challenge(32)`. |
+
+**Sub-Response**: Empty (success indicated by outer `completion_code = 0x00`).
 
 ### Device Ownership Transfer
 

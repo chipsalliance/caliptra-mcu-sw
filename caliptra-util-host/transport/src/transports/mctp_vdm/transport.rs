@@ -12,7 +12,7 @@ use super::dispatch::get_command_handler;
 use crate::{Transport, TransportError, TransportResult};
 
 /// Maximum VDM response buffer size in bytes.
-pub const MAX_VDM_RESP_BUF: usize = 2 * 1024;
+pub const MAX_VDM_RESP_BUF: usize = 8 * 1024;
 
 /// Trait for MCTP VDM low-level communication.
 ///

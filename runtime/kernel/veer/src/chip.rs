@@ -17,7 +17,6 @@ use caliptra_mcu_registers_generated::otp_ctrl;
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
 use core::fmt::Write;
 use core::ptr::addr_of;
-use kernel::debug;
 use kernel::platform::chip::{Chip, InterruptService};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::StaticRef;
@@ -113,7 +112,7 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
             self.mcu_mbox0.handle_interrupt();
             return true;
         }
-        debug!("Unhandled interrupt {}", interrupt);
+        let _ = interrupt;
         false
     }
 }
@@ -150,7 +149,7 @@ impl<'a, I: InterruptService + 'a> VeeR<'a, I> {
     unsafe fn handle_pic_interrupts(&self) {
         while let Some(interrupt) = self.pic.get_saved_interrupts() {
             if !self.peripherals.service_interrupt(interrupt) {
-                panic!("Unhandled interrupt {}", interrupt);
+                panic!("Unhandled interrupt");
             }
             self.atomic(|| {
                 // Safe as interrupts are disabled

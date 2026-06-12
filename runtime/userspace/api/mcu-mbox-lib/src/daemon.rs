@@ -3,6 +3,7 @@
 use crate::cmd_interface::CmdInterface;
 use crate::transport::McuMboxTransport;
 use caliptra_mcu_common_commands::{CaliptraCmdHandler, CommandAuthorizer};
+use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_mbox_common::messages::{McuMailboxReq, McuMailboxResp};
@@ -90,12 +91,11 @@ pub async fn mcu_mbox_responder(
             .await
         {
             // Debug print on error
-            writeln!(
+            console_writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "mcu_mbox_responder error: {:?}",
                 e
-            )
-            .unwrap();
+            );
         }
     }
 }

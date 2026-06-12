@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 #![no_std]
 
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, not(feature = "no_panic_handler")))]
 extern crate caliptra_mcu_libtock_debug_panic;
-#[cfg(not(debug_assertions))]
+#[cfg(all(not(debug_assertions), not(feature = "no_panic_handler")))]
 extern crate caliptra_mcu_libtock_small_panic;
 
 pub use caliptra_mcu_libtock_platform as platform;

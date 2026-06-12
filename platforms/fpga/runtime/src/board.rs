@@ -38,7 +38,7 @@ use kernel::process;
 use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
-use kernel::{create_capability, debug, static_init};
+use kernel::{create_capability, static_init};
 use rv32i::csr;
 
 // These symbols are defined in the linker script.
@@ -130,7 +130,9 @@ struct VeeR {
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
+    #[cfg_attr(feature = "release", allow(dead_code))]
     console: Option<&'static capsules_core::console::Console<'static>>,
+    #[cfg_attr(feature = "release", allow(dead_code))]
     lldb: Option<
         &'static capsules_core::low_level_debug::LowLevelDebug<
             'static,
@@ -176,9 +178,11 @@ impl SyscallDriverLookup for VeeR {
     {
         match driver_num {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
+            #[cfg(not(feature = "release"))]
             capsules_core::console::DRIVER_NUM => f(self
                 .console
                 .map(|c| c as &dyn kernel::syscall::SyscallDriver)),
+            #[cfg(not(feature = "release"))]
             capsules_core::low_level_debug::DRIVER_NUM => {
                 f(self.lldb.map(|l| l as &dyn kernel::syscall::SyscallDriver))
             }
@@ -810,11 +814,11 @@ pub unsafe fn main() {
         .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
-    debug!("MUX MCTP enable");
+    caliptra_mcu_romtime::println!("MUX MCTP enable");
     mux_mctp.enable();
 
-    debug!("MCU initialization complete.");
-    debug!("Entering main loop.");
+    caliptra_mcu_romtime::println!("MCU initialization complete.");
+    caliptra_mcu_romtime::println!("Entering main loop.");
 
     let scheduler =
         components::sched::cooperative::CooperativeComponent::new(&*addr_of!(PROCESSES))
@@ -868,8 +872,8 @@ pub unsafe fn main() {
         &process_mgmt_cap,
     )
     .unwrap_or_else(|err| {
-        debug!("Error loading processes!");
-        debug!("{:?}", err);
+        caliptra_mcu_romtime::println!("Error loading processes!");
+        caliptra_mcu_romtime::println!("{:?}", err);
     });
 
     #[cfg(any(
@@ -891,23 +895,23 @@ pub unsafe fn main() {
     let mut exit: Option<u32> = None;
     #[cfg(feature = "test-exit-immediately")]
     {
-        debug!("Executing test-exit-immediately");
+        caliptra_mcu_romtime::println!("Executing test-exit-immediately");
         exit = Some(0);
     }
     #[cfg(feature = "test-i3c-simple")]
     {
-        debug!("Executing test-i3c-simple");
+        caliptra_mcu_romtime::println!("Executing test-i3c-simple");
         exit = crate::tests::i3c_target_test::run_test_i3c_simple();
     }
     #[cfg(feature = "test-i3c-constant-writes")]
     {
-        debug!("Executing test-i3c-constant-writes");
+        caliptra_mcu_romtime::println!("Executing test-i3c-constant-writes");
         exit = crate::tests::i3c_target_test::run_test_i3c_constant_writes();
     }
 
     #[cfg(feature = "test-mctp-capsule-loopback")]
     {
-        debug!("Executing test-mctp-capsule-loopback");
+        caliptra_mcu_romtime::println!("Executing test-mctp-capsule-loopback");
         crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp);
     }
 

@@ -90,6 +90,26 @@ fn record_hook_bit(bit: u32) {
     }
 }
 
+/// Read the MCI generic-input-wire strap selecting the owner PK hash source.
+fn read_owner_pk_hash_policy() -> caliptra_mcu_rom_common::OwnerPkHashPolicy {
+    use tock_registers::interfaces::Readable;
+    // Safety: `MCU_MEMORY_MAP.mci_offset` is the linker-provided MCI register
+    // block base; the resulting reference is only used for typed reads.
+    let mci: caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::mci::regs::Mci> = unsafe {
+        caliptra_mcu_romtime::StaticRef::new(
+            MCU_MEMORY_MAP.mci_offset as *const caliptra_mcu_registers_generated::mci::regs::Mci,
+        )
+    };
+    if mci.mci_reg_generic_input_wires[1].get()
+        & caliptra_mcu_rom_common::FORCE_FUSE_OWNER_PK_HASH_WIRE_BIT
+        != 0
+    {
+        caliptra_mcu_rom_common::OwnerPkHashPolicy::ForceFuse
+    } else {
+        caliptra_mcu_rom_common::OwnerPkHashPolicy::DotThenFuse
+    }
+}
+
 impl RomHooks for LoggingRomHooks {
     fn pre_cold_boot(&self) {
         caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_cold_boot");
@@ -234,6 +254,7 @@ pub extern "C" fn rom_entry() -> ! {
         caliptra_mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_image_partition_driver),
             dot_flash: Some(dot_flash),
+            owner_pk_hash_policy: read_owner_pk_hash_policy(),
             request_flash_boot: true,
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
@@ -254,6 +275,7 @@ pub extern "C" fn rom_entry() -> ! {
             mcu_image_header_size: core::mem::size_of::<caliptra_mcu_image_header::McuImageHeader>(
             ),
             dot_flash: Some(dot_flash),
+            owner_pk_hash_policy: read_owner_pk_hash_policy(),
             otp_enable_integrity_check: true,
             otp_enable_consistency_check: true,
             cptra_mbox_axi_users: mbox_axi_users,
@@ -271,6 +293,7 @@ pub extern "C" fn rom_entry() -> ! {
     )) {
         caliptra_mcu_rom_common::rom_start(RomParameters {
             dot_flash: Some(dot_flash),
+            owner_pk_hash_policy: read_owner_pk_hash_policy(),
             fw_manifest_dot_enabled: true,
             otp_enable_integrity_check: true,
             otp_enable_consistency_check: true,
@@ -285,6 +308,7 @@ pub extern "C" fn rom_entry() -> ! {
     } else if cfg!(feature = "test-svn-manifest") {
         caliptra_mcu_rom_common::rom_start(RomParameters {
             dot_flash: Some(dot_flash),
+            owner_pk_hash_policy: read_owner_pk_hash_policy(),
             svn_manifest_enabled: true,
             otp_enable_integrity_check: true,
             otp_enable_consistency_check: true,
@@ -315,6 +339,7 @@ pub extern "C" fn rom_entry() -> ! {
         caliptra_mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_partition),
             dot_flash: Some(dot_flash),
+            owner_pk_hash_policy: read_owner_pk_hash_policy(),
             // Let the generic wire (bit 29 of mci_reg_generic_input_wires[1]) control flash boot
             // request_flash_boot defaults to false - emulator sets the wire when flash boot is requested
             cptra_mbox_axi_users: mbox_axi_users,
@@ -374,6 +399,7 @@ pub extern "C" fn rom_entry() -> ! {
 
         caliptra_mcu_rom_common::rom_start(RomParameters {
             dot_flash: Some(dot_flash),
+            owner_pk_hash_policy: read_owner_pk_hash_policy(),
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,

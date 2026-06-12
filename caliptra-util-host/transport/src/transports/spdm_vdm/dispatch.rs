@@ -28,6 +28,7 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         }
         x if x == CaliptraCommandId::GetDeviceId as u32 => Some(commands::handle_device_id),
         x if x == CaliptraCommandId::GetDeviceInfo as u32 => Some(commands::handle_device_info),
+        x if x == CaliptraCommandId::DebugGetLog as u32 => Some(commands::handle_get_debug_log),
         x if x == CaliptraCommandId::ExportAttestedCsr as u32 => {
             Some(commands::handle_export_attested_csr)
         }
@@ -39,6 +40,10 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         }
         x if x == CaliptraCommandId::ProdDebugUnlockToken as u32 => {
             Some(commands::handle_prod_debug_unlock_token)
+        }
+        x if x == CaliptraCommandId::FeProg as u32 => Some(commands::handle_fe_prog),
+        x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
+            Some(commands::handle_get_auth_challenge)
         }
         _ => None,
     }

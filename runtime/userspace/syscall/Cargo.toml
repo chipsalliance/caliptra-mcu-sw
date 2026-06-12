@@ -19,3 +19,11 @@ caliptra-mcu-registers-generated.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 caliptra-mcu-libtock_unittest.workspace = true
+
+[features]
+default = []
+# Strip `console_writeln!` macro bodies from this crate's transitive consumers
+# in shipping builds.  Activated automatically by `xtask runtime-build
+# --profile release` via feature unification through user-app's `release`
+# feature.
+release = []

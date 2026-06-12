@@ -43,7 +43,7 @@ use kernel::process;
 use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
-use kernel::{create_capability, debug, static_init};
+use kernel::{create_capability, static_init};
 use rv32i::csr;
 
 // These symbols are defined in the linker script.
@@ -843,11 +843,11 @@ pub unsafe fn main() {
         .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
-    debug!("MUX MCTP enable");
+    caliptra_mcu_romtime::println!("[mcu-runtime] MUX MCTP enable");
     mux_mctp.enable();
 
-    debug!("MCU initialization complete.");
-    debug!("Entering main loop.");
+    caliptra_mcu_romtime::println!("[mcu-runtime] MCU initialization complete.");
+    caliptra_mcu_romtime::println!("[mcu-runtime] Entering main loop.");
 
     let scheduler =
         components::sched::cooperative::CooperativeComponent::new(&*addr_of!(PROCESSES))
@@ -901,8 +901,8 @@ pub unsafe fn main() {
         &process_mgmt_cap,
     )
     .unwrap_or_else(|err| {
-        debug!("Error loading processes!");
-        debug!("{:?}", err);
+        caliptra_mcu_romtime::println!("[mcu-runtime] Error loading processes!");
+        caliptra_mcu_romtime::println!("{:?}", err);
     });
 
     // Used by flash driver integration tests.
@@ -982,57 +982,57 @@ fn run_kernel_tests(
 
     #[cfg(feature = "test-exit-immediately")]
     {
-        debug!("Executing test-exit-immediately");
+        caliptra_mcu_romtime::println!("Executing test-exit-immediately");
         exit = Some(0);
     }
     #[cfg(feature = "test-i3c-simple")]
     {
-        debug!("Executing test-i3c-simple");
+        caliptra_mcu_romtime::println!("Executing test-i3c-simple");
         exit = crate::tests::i3c_target_test::run_test_i3c_simple();
     }
     #[cfg(feature = "test-i3c-constant-writes")]
     {
-        debug!("Executing test-i3c-constant-writes");
+        caliptra_mcu_romtime::println!("Executing test-i3c-constant-writes");
         exit = crate::tests::i3c_target_test::run_test_i3c_constant_writes();
     }
     #[cfg(feature = "test-flash-ctrl-init")]
     {
-        debug!("Executing test-flash-ctrl-init");
+        caliptra_mcu_romtime::println!("Executing test-flash-ctrl-init");
         exit = crate::tests::flash_ctrl_test::test_flash_ctrl_init();
     }
     #[cfg(feature = "test-flash-ctrl-read-write-page")]
     {
-        debug!("Executing test-flash-ctrl-read-write-page");
+        caliptra_mcu_romtime::println!("Executing test-flash-ctrl-read-write-page");
         exit = crate::tests::flash_ctrl_test::test_flash_ctrl_read_write_page();
     }
     #[cfg(feature = "test-flash-ctrl-erase-page")]
     {
-        debug!("Executing test-flash-ctrl-erase-page");
+        caliptra_mcu_romtime::println!("Executing test-flash-ctrl-erase-page");
         exit = crate::tests::flash_ctrl_test::test_flash_ctrl_erase_page();
     }
     #[cfg(feature = "test-flash-storage-read-write")]
     {
-        debug!("Executing test-flash-storage-read-write");
+        caliptra_mcu_romtime::println!("Executing test-flash-storage-read-write");
         exit = crate::tests::flash_storage_test::test_flash_storage_read_write();
     }
     #[cfg(feature = "test-flash-storage-erase")]
     {
-        debug!("Executing test-flash-storage-erase");
+        caliptra_mcu_romtime::println!("Executing test-flash-storage-erase");
         exit = crate::tests::flash_storage_test::test_flash_storage_erase();
     }
     #[cfg(feature = "test-mcu-rom-flash-access")]
     {
-        debug!("Executing test-mcu-rom-flash-access");
+        caliptra_mcu_romtime::println!("Executing test-mcu-rom-flash-access");
         exit = Some(0);
     }
     #[cfg(feature = "test-doe-transport-loopback")]
     {
-        debug!("Executing test-doe-transport-loopback");
+        caliptra_mcu_romtime::println!("Executing test-doe-transport-loopback");
         exit = crate::tests::doe_transport_test::test_doe_transport_loopback();
     }
     #[cfg(feature = "test-log-flash-circular")]
     {
-        debug!("Executing test-log-flash-circular");
+        caliptra_mcu_romtime::println!("Executing test-log-flash-circular");
         unsafe {
             exit = crate::tests::circular_log_test::run(
                 mux_alarm,
@@ -1042,7 +1042,7 @@ fn run_kernel_tests(
     }
     #[cfg(feature = "test-log-flash-linear")]
     {
-        debug!("Executing test-log-flash-linear");
+        caliptra_mcu_romtime::println!("Executing test-log-flash-linear");
         unsafe {
             exit = crate::tests::linear_log_test::run(
                 mux_alarm,
@@ -1052,23 +1052,23 @@ fn run_kernel_tests(
     }
     #[cfg(feature = "test-mcu-mbox-driver")]
     {
-        debug!("Executing test-mcu-mbox-driver");
+        caliptra_mcu_romtime::println!("Executing test-mcu-mbox-driver");
         exit = crate::tests::mcu_mbox_test::test_mcu_mbox();
     }
     #[cfg(feature = "test-mcu-mbox-soc-requester-loopback")]
     {
-        debug!("Executing test-mcu-mbox-soc-requester-loopback");
+        caliptra_mcu_romtime::println!("Executing test-mcu-mbox-soc-requester-loopback");
         crate::tests::mcu_mbox_driver_loopback_test::test_mcu_mbox_soc_requester_loopback();
     }
 
     #[cfg(feature = "test-mctp-capsule-loopback")]
     {
-        debug!("Executing test-mctp-capsule-loopback");
+        caliptra_mcu_romtime::println!("Executing test-mctp-capsule-loopback");
         crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp);
     }
 
     if let Some(exit) = exit {
-        debug!("Exiting with code {}", exit);
+        caliptra_mcu_romtime::println!("[mcu-runtime] Exiting with code {}", exit);
         crate::io::exit_emulator(exit);
     }
 }

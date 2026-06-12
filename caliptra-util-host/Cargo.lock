@@ -38,6 +38,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "alterable_logger"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a1f292171444480aedbc1b7d1a11192d1b6e48f26154cf4635481c58b9b419f"
+dependencies = [
+ "arc-swap",
+ "log",
+ "once_cell",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -101,6 +112,15 @@ name = "anyhow"
 version = "1.0.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+
+[[package]]
+name = "arc-swap"
+version = "1.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a3a1fd6f75306b68087b831f025c712524bcb19aad54e557b1129cfa0a2b207"
+dependencies = [
+ "rustversion",
+]
 
 [[package]]
 name = "asn1-rs"
@@ -407,9 +427,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 
 [[package]]
+name = "byteorder"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
+
+[[package]]
 name = "caliptra-api"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=b86bbb793cc236e80b37f3d4359a9758672b70a1#b86bbb793cc236e80b37f3d4359a9758672b70a1"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "bitflags 2.11.1",
  "caliptra-api-types",
@@ -424,7 +450,7 @@ dependencies = [
 [[package]]
 name = "caliptra-api-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=b86bbb793cc236e80b37f3d4359a9758672b70a1#b86bbb793cc236e80b37f3d4359a9758672b70a1"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "caliptra-image-types",
 ]
@@ -432,7 +458,7 @@ dependencies = [
 [[package]]
 name = "caliptra-cfi-derive"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=b86bbb793cc236e80b37f3d4359a9758672b70a1#b86bbb793cc236e80b37f3d4359a9758672b70a1"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "paste",
  "proc-macro2",
@@ -443,7 +469,7 @@ dependencies = [
 [[package]]
 name = "caliptra-cfi-lib"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=b86bbb793cc236e80b37f3d4359a9758672b70a1#b86bbb793cc236e80b37f3d4359a9758672b70a1"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "caliptra-error",
  "caliptra-registers",
@@ -453,17 +479,17 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=b86bbb793cc236e80b37f3d4359a9758672b70a1#b86bbb793cc236e80b37f3d4359a9758672b70a1"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 
 [[package]]
 name = "caliptra-error"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=b86bbb793cc236e80b37f3d4359a9758672b70a1#b86bbb793cc236e80b37f3d4359a9758672b70a1"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 
 [[package]]
 name = "caliptra-image-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=b86bbb793cc236e80b37f3d4359a9758672b70a1#b86bbb793cc236e80b37f3d4359a9758672b70a1"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "caliptra-cfi-derive",
  "caliptra-cfi-lib",
@@ -477,7 +503,7 @@ dependencies = [
 [[package]]
 name = "caliptra-lms-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=b86bbb793cc236e80b37f3d4359a9758672b70a1#b86bbb793cc236e80b37f3d4359a9758672b70a1"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "caliptra-cfi-derive",
  "caliptra-cfi-lib",
@@ -490,6 +516,7 @@ name = "caliptra-mailbox-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "caliptra-mcu-command-auth-challenge-signer",
  "caliptra-mcu-core-util-host-command-types",
  "caliptra-mcu-core-util-host-mailbox-test-config",
  "caliptra-mcu-core-util-host-transport",
@@ -499,10 +526,18 @@ dependencies = [
  "clap 4.6.1",
  "ecdsa",
  "fips204",
- "hmac",
  "p384",
  "sha2",
  "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-command-auth-challenge-signer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hmac",
+ "sha2",
 ]
 
 [[package]]
@@ -526,6 +561,7 @@ dependencies = [
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-testing-common",
  "clap 4.6.1",
+ "defmt-decoder",
  "zerocopy",
 ]
 
@@ -581,6 +617,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-emulator-state"
+version = "0.1.0"
+
+[[package]]
 name = "caliptra-mcu-mctp-vdm-common"
 version = "0.1.0"
 dependencies = [
@@ -616,6 +656,7 @@ dependencies = [
 name = "caliptra-mcu-pldm-ua"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-emulator-state",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-fw-pkg",
  "log",
@@ -628,6 +669,7 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "caliptra-api-types",
+ "caliptra-mcu-emulator-state",
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-ua",
@@ -638,7 +680,7 @@ dependencies = [
 [[package]]
 name = "caliptra-registers"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=b86bbb793cc236e80b37f3d4359a9758672b70a1#b86bbb793cc236e80b37f3d4359a9758672b70a1"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "caliptra-registers-latest",
 ]
@@ -646,7 +688,7 @@ dependencies = [
 [[package]]
 name = "caliptra-registers-latest"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=b86bbb793cc236e80b37f3d4359a9758672b70a1#b86bbb793cc236e80b37f3d4359a9758672b70a1"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 dependencies = [
  "caliptra-ureg",
 ]
@@ -667,6 +709,7 @@ name = "caliptra-spdm-vdm-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "caliptra-mcu-command-auth-challenge-signer",
  "caliptra-mcu-core-util-host-command-types",
  "caliptra-mcu-core-util-host-transport",
  "caliptra-mcu-debug-unlock-signer",
@@ -674,6 +717,7 @@ dependencies = [
  "caliptra-util-host-commands",
  "caliptra-util-host-session",
  "clap 4.6.1",
+ "hex",
  "log",
  "serde",
  "simple_logger",
@@ -683,7 +727,7 @@ dependencies = [
 [[package]]
 name = "caliptra-ureg"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=b86bbb793cc236e80b37f3d4359a9758672b70a1#b86bbb793cc236e80b37f3d4359a9758672b70a1"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5#fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5"
 
 [[package]]
 name = "caliptra-util-host"
@@ -800,6 +844,23 @@ dependencies = [
  "syn 1.0.109",
  "tempfile",
  "toml 0.5.11",
+]
+
+[[package]]
+name = "cbor-edn"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9b43829b1f353168aa8593c2e4ef6e71a81d6749fe09edfc33849f890c69278"
+dependencies = [
+ "chrono",
+ "data-encoding",
+ "data-encoding-macro",
+ "encoding_rs",
+ "hex",
+ "hexfloat2",
+ "num-bigint",
+ "num-traits",
+ "peg",
 ]
 
 [[package]]
@@ -1037,6 +1098,70 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 
 [[package]]
+name = "data-encoding-macro"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3259c913752a86488b501ed8680446a5ed2d5aeac6e596cb23ba3800768ea32c"
+dependencies = [
+ "data-encoding",
+ "data-encoding-macro-internal",
+]
+
+[[package]]
+name = "data-encoding-macro-internal"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
+dependencies = [
+ "data-encoding",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "defmt-decoder"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e0427c033f70d46bffe9fc575aa27cb43b1a73d6a0bbe25710c7308809196d2"
+dependencies = [
+ "alterable_logger",
+ "anyhow",
+ "byteorder",
+ "cbor-edn",
+ "colored",
+ "defmt-json-schema",
+ "defmt-parser",
+ "dissimilar",
+ "gimli",
+ "log",
+ "nom",
+ "object",
+ "regex",
+ "ryu",
+ "serde",
+ "serde_json",
+ "time",
+]
+
+[[package]]
+name = "defmt-json-schema"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96b04d228e57a61cf385d86bc8980bb41b47c6fc0eace90592668df97b2dad6a"
+dependencies = [
+ "log",
+ "serde",
+]
+
+[[package]]
+name = "defmt-parser"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1063,9 +1188,9 @@ dependencies = [
 
 [[package]]
 name = "deranged"
-version = "0.5.8"
+version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
+checksum = "b42b6fa04a440b495c8b04d0e71b707c585f83cb9cb28cf8cd0d976c315e31b4"
 dependencies = [
  "powerfmt",
 ]
@@ -1092,6 +1217,12 @@ dependencies = [
  "quote",
  "syn 2.0.117",
 ]
+
+[[package]]
+name = "dissimilar"
+version = "1.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aeda16ab4059c5fd2a83f2b9c9e9c981327b18aa8e3b313f7e6563799d4f093e"
 
 [[package]]
 name = "ecdsa"
@@ -1139,6 +1270,15 @@ name = "embedded-crc-macros"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f1c75747a43b086df1a87fb2a889590bc0725e0abf54bba6d0c4bf7bd9e762c"
+
+[[package]]
+name = "encoding_rs"
+version = "0.8.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
+dependencies = [
+ "cfg-if",
+]
 
 [[package]]
 name = "env_logger"
@@ -1195,6 +1335,12 @@ dependencies = [
  "event-listener 5.4.1",
  "pin-project-lite",
 ]
+
+[[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
 
 [[package]]
 name = "fastrand"
@@ -1373,6 +1519,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gimli"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40ecd4077b5ae9fd2e9e169b102c6c330d0605168eb0e8bf79952b256dbefffd"
+dependencies = [
+ "fallible-iterator",
+ "stable_deref_trait",
+]
+
+[[package]]
 name = "glob"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1461,6 +1617,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
 
 [[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hexfloat2"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "befe65164a090041cdf6e0d21a0ec3198d856fbfe2b76e324a073e790bb49f8c"
+
+[[package]]
 name = "hkdf"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1480,11 +1648,11 @@ dependencies = [
 
 [[package]]
 name = "home"
-version = "0.5.12"
+version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
+checksum = "589533453244b0995c858700322199b2becb13b627df2851f64a2775d024abcf"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1689,6 +1857,7 @@ version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 dependencies = [
+ "serde_core",
  "value-bag",
 ]
 
@@ -1795,9 +1964,9 @@ dependencies = [
 
 [[package]]
 name = "num-conv"
-version = "0.2.1"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6673768db2d862beb9b39a78fdcb1a69439615d5794a1be50caa9bc92c81967"
+checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
 
 [[package]]
 name = "num-derive"
@@ -1835,6 +2004,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "object"
+version = "0.36.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62948e14d923ea95ea2c7c86c71013138b66525b86bdc08d2dcc262bdb497b87"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -1893,6 +2071,33 @@ name = "peeking_take_while"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
+
+[[package]]
+name = "peg"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0aad070be5b63aa72103f2fcdd70a83adbd5e90112ce5b574171ff1c65501773"
+dependencies = [
+ "peg-macros",
+ "peg-runtime",
+]
+
+[[package]]
+name = "peg-macros"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddd8ef6825cae95355031ae26a99b616a2a21f22ba2de0197c43dfb05acbe7ee"
+dependencies = [
+ "peg-runtime",
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
+name = "peg-runtime"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7011d97b484a5ebdc4b1fdb3b12d5e4bbbea56e9d22b688f2e79e04b65a7d8a6"
 
 [[package]]
 name = "pem-rfc7468"
@@ -2101,6 +2306,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
+name = "ryu"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+
+[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2297,6 +2508,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "stable_deref_trait"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
 name = "string_morph"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2445,9 +2662,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.47"
+version = "0.3.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
+checksum = "5dfd88e563464686c916c7e46e623e520ddc6d79fa6641390f2e3fa86e83e885"
 dependencies = [
  "deranged",
  "itoa",
@@ -2455,22 +2672,22 @@ dependencies = [
  "num-conv",
  "num_threads",
  "powerfmt",
- "serde_core",
+ "serde",
  "time-core",
  "time-macros",
 ]
 
 [[package]]
 name = "time-core"
-version = "0.1.8"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
+checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
 
 [[package]]
 name = "time-macros"
-version = "0.2.27"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e70e4c5a0e0a8a4823ad65dfe1a6930e4f4d756dcd9dd7939022b5e8c501215"
+checksum = "3f252a68540fde3a3877aeea552b832b40ab9a69e318efd078774a01ddee1ccf"
 dependencies = [
  "num-conv",
  "time-core",
