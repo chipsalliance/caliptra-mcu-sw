@@ -103,12 +103,12 @@ impl DotFuses {
         otp.read_entry_raw(fuses::DOT_FUSE_ARRAY, &mut raw)?;
         let burned = raw.iter().map(|b| b.count_ones() as u16).sum::<u16>();
 
-        // vendor_recovery_pk_hash: 48 bytes (384 bits) in the scrambled
-        // VENDOR_SECRET_PROD partition. Secret partitions must be read at
-        // 64-bit granularity (see `read_secret_data`); the 48 bytes are
-        // physically contiguous starting at the entry offset.
+        // vendor_recovery_pk_hash: 48 bytes (384 bits) in the non-secret
+        // VENDOR_NON_SECRET_PROD partition, physically contiguous from the
+        // entry offset (the 384-bit field spans the 32-byte entry plus the
+        // next slot).
         let mut pk_buf = [0u8; 48];
-        otp.read_secret_data(fuses::VENDOR_RECOVERY_PK_HASH.byte_offset, &mut pk_buf)?;
+        otp.read_otp_data(fuses::VENDOR_RECOVERY_PK_HASH.byte_offset, &mut pk_buf)?;
 
         let recovery_pk_hash = if pk_buf.iter().all(|&b| b == 0) {
             None

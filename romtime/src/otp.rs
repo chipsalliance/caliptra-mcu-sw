@@ -366,27 +366,6 @@ impl Otp {
         self.read_data(byte_offset, data.len(), data)
     }
 
-    /// Read bytes from a secret (scrambled) OTP partition.
-    ///
-    /// Secret partitions are descrambled by the OTP controller in 64-bit
-    /// blocks, so they must be read at dword (8-byte) granularity. Reading
-    /// them with 32-bit DAI accesses returns incorrect data on hardware: a
-    /// read offset by 4 bytes within a block re-reads the block's low half
-    /// rather than the requested high half. (The emulator masks this by
-    /// descrambling the aligned block and returning the requested half.)
-    ///
-    /// `byte_offset` and `data.len()` must both be 8-byte aligned.
-    pub fn read_secret_data(&self, byte_offset: usize, data: &mut [u8]) -> McuResult<()> {
-        if byte_offset % 8 != 0 || data.len() % 8 != 0 {
-            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
-        }
-        for (i, chunk) in data.chunks_exact_mut(8).enumerate() {
-            let dword = self.read_dword(byte_offset / 8 + i)?;
-            chunk.copy_from_slice(&dword.to_le_bytes());
-        }
-        Ok(())
-    }
-
     /// Reads a u32 from OTP at the given byte offset.
     pub fn read_u32_at(&self, byte_offset: usize) -> McuResult<u32> {
         self.read_word(byte_offset / 4)

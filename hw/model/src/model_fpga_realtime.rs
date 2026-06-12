@@ -372,26 +372,6 @@ impl McuHwModel for ModelFpgaRealtime {
             }
             base.otp_slice().copy_from_slice(&otp_data);
             base.set_subsystem_reset(false);
-
-            // Diagnostic: dump the OTP backing at the VENDOR_RECOVERY_PK_HASH
-            // offset (0x870, 48 bytes) so we can compare the scrambled bytes
-            // actually present in the OTP RAM against what the test wrote.
-            const REC_OFF: usize = 0x870;
-            let written: String = otp_memory
-                .get(REC_OFF..REC_OFF + 48)
-                .unwrap_or(&[])
-                .iter()
-                .map(|b| format!("{:02X}", b))
-                .collect();
-            let backing: String = base
-                .otp_slice()
-                .get(REC_OFF..REC_OFF + 48)
-                .unwrap_or(&[])
-                .iter()
-                .map(|b| format!("{:02X}", b))
-                .collect();
-            println!("[hw-model] otp_memory recovery bytes: {written}");
-            println!("[hw-model] otp backing  recovery bytes: {backing}");
         }
 
         // In Manufacturing lifecycle, enable IDevID CSR generation by writing
