@@ -10,6 +10,7 @@ mod rom;
 #[cfg(test)]
 mod runtime;
 mod test_active_i3c;
+mod test_caliptra_runtime_svn_burn;
 mod test_caliptra_util_host_mcu_mailbox_validator;
 mod test_caliptra_util_host_spdm_vdm_validator;
 mod test_defmt_logging_mailbox;
@@ -120,6 +121,11 @@ mod test {
         pub seeded_log_entries: Option<&'static [&'static [u8]]>,
         /// If true, include the example app in the runtime build instead of the user app.
         pub example_app: bool,
+        /// Override the Caliptra firmware SVN. Forces a from-source
+        /// Caliptra FW + SoC manifest build (ignoring any prebuilt
+        /// Caliptra FW) so the reported `FW_INFO.fw_svn` is known. Only
+        /// honored on the `firmware_prefix` build path.
+        pub caliptra_svn: Option<u16>,
     }
 
     impl Default for TestParams<'_> {
@@ -151,6 +157,7 @@ mod test {
                 use_strap_secrets: false,
                 seeded_log_entries: None,
                 example_app: false,
+                caliptra_svn: None,
             }
         }
     }
@@ -1015,7 +1022,16 @@ mod test {
                 (None, None, None)
             };
 
-        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+        // When a Caliptra SVN override is requested, force a from-source
+        // build of the Caliptra FW (and matching SoC manifest) so the
+        // requested SVN is honored rather than a prebuilt SVN-0 image.
+        let (prebuilt_caliptra_fw, prebuilt_vendor_pk_hash) = if params.caliptra_svn.is_some() {
+            (None, None)
+        } else {
+            (prebuilt_caliptra_fw, prebuilt_vendor_pk_hash)
+        };
+
+        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             fpga: cfg!(feature = "fpga_realtime"),
             ocp_lock: params
                 .feature
@@ -1026,6 +1042,7 @@ mod test {
             caliptra_firmware: prebuilt_caliptra_fw,
             vendor_pk_hash: prebuilt_vendor_pk_hash,
             mcu_firmware: Some(mcu_runtime_for_builder),
+            svn: params.caliptra_svn,
             ..Default::default()
         });
         let caliptra_rom = std::fs::read(

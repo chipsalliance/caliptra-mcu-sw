@@ -61,8 +61,6 @@ impl BootFlow for FwHitlessUpdate {
         #[cfg(not(feature = "test-force-hitless-update"))]
         while !soc.fw_ready() {}
 
-        // Silence unused-variable warnings when the test feature elides the
-        // mailbox release and fw-ready wait above.
         #[cfg(feature = "test-force-hitless-update")]
         {
             let _ = soc_manager;

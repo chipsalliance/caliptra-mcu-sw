@@ -567,10 +567,31 @@ pub extern "C" fn rom_entry() -> ! {
             });
         }
     } else if cfg!(feature = "test-svn-manifest") {
+        use caliptra_mcu_registers_generated::fuses::{SOC_IMAGE_MIN_SVN_0, SOC_IMAGE_MIN_SVN_1};
+        use caliptra_mcu_rom_common::SvnFuseMapEntry;
+        // Test SVN_FUSE_MAP: component_ids 0x1000 and 0x1001 share slot
+        // 0 (many-to-one); 0x1002 maps to slot 1. Any other component_id
+        // appearing in the manifest is left unmapped (the spec says
+        // unmapped entries are skipped with a logged warning).
+        const SVN_FUSE_MAP: &[SvnFuseMapEntry] = &[
+            SvnFuseMapEntry {
+                component_id: 0x1000,
+                fuse_entry: SOC_IMAGE_MIN_SVN_0,
+            },
+            SvnFuseMapEntry {
+                component_id: 0x1001,
+                fuse_entry: SOC_IMAGE_MIN_SVN_0,
+            },
+            SvnFuseMapEntry {
+                component_id: 0x1002,
+                fuse_entry: SOC_IMAGE_MIN_SVN_1,
+            },
+        ];
         caliptra_mcu_rom_common::rom_start(RomParameters {
             dot_flash: Some(dot_flash),
             owner_pk_hash_policy: read_owner_pk_hash_policy(),
             svn_manifest_enabled: true,
+            svn_fuse_map: SVN_FUSE_MAP,
             otp_enable_integrity_check: true,
             otp_enable_consistency_check: true,
             cptra_mbox_axi_users: mbox_axi_users,

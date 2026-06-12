@@ -21,7 +21,7 @@ mod test {
     use crate::test::{
         compile_runtime, finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK,
     };
-    use caliptra_mcu_core_mctp_vdm_client::{
+    use caliptra_mctp_vdm_client::{
         DefmtRoundTripCheck, DynamicI3cAddress, TestConfig, Validator,
     };
     use caliptra_mcu_hw_model::McuHwModel;
@@ -92,7 +92,7 @@ mod test {
             }
 
             let config = TestConfig {
-                network: caliptra_mcu_core_mctp_vdm_client::NetworkConfig {
+                network: caliptra_mctp_vdm_client::NetworkConfig {
                     default_server_address: format!("127.0.0.1:{}", i3c_port),
                     target_i3c_address: i3c_address.into(),
                 },

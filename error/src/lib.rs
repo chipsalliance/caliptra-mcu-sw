@@ -820,6 +820,11 @@ impl McuError {
             "MCU Component SVN Manifest validation error"
         ),
         (
+            ROM_CALIPTRA_RUNTIME_SVN_BURN_ERROR,
+            0x1_001e,
+            "Caliptra runtime SVN fuse burn failed"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"

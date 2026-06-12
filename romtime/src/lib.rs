@@ -3,6 +3,8 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(static_mut_refs)]
 
+mod component_svn_manifest;
+pub use component_svn_manifest::*;
 mod fuse_layout;
 pub use fuse_layout::*;
 pub mod handoff;
