@@ -6117,7 +6117,6 @@ dependencies = [
  "ecdsa",
  "elf",
  "hex",
- "log",
  "p384",
  "proc-macro2",
  "quote",

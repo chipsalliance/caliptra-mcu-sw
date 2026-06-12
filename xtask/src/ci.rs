@@ -111,7 +111,7 @@ pub fn elf_stack_size(elf_bytes: &[u8]) -> io::Result<u64> {
     let mut max_addr = u64::MIN;
 
     min_addr = min_addr.min(section.sh_addr);
-    max_addr = max_addr.max(section.sh_addr + section.sh_size);
+    max_addr = max_addr.max(section.sh_addr.saturating_add(section.sh_size));
 
     Ok(max_addr.saturating_sub(min_addr))
 }
@@ -166,7 +166,7 @@ impl ArtifactBuilder for CaliptraElfSizeGenerator {
         match self.build_elf(workspace) {
             Ok(size) => Some(size),
             Err(err) => {
-                log::error!("Error building {}: {err}", self.name);
+                eprintln!("Error building {}: {err}", self.name);
                 None
             }
         }

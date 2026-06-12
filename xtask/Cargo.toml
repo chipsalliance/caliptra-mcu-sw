@@ -64,8 +64,6 @@ caliptra-bitstream-downloader.workspace = true
 
 # infra dependecies for CI
 size-history.workspace = true 
-log.workspace = true 
-
 
 [build-dependencies]
 cc.workspace = true
