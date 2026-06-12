@@ -24,35 +24,38 @@ use zerocopy::{FromBytes, IntoBytes};
 /// floor equals the number of trailing 1 bits.
 pub(crate) const CALIPTRA_SVN_BITS: u32 = 128;
 
-/// Apply the header's Caliptra-owned SVN burns. The caller must have
-/// verified `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` is not set.
-pub(crate) fn burn_caliptra_owned_svns(env: &mut RomEnv, manifest: &McuComponentSvnManifest) {
-    let needs_caliptra = manifest.caliptra_runtime_min_svn > 0;
-    let needs_soc = manifest.soc_manifest_min_svn > 0;
-    if !needs_caliptra && !needs_soc {
+/// Validate the header's Caliptra-owned floors against `FW_INFO` before
+/// any OTP write. The only such check is that the runtime floor doesn't
+/// exceed the running Caliptra runtime SVN (which would brick the next
+/// boot); the SoC manifest SVN is not exposed by `FW_INFO`. No OTP
+/// writes. Caller must have verified `CPTRA_CORE_ANTI_ROLLBACK_DISABLE`
+/// is not set.
+pub(crate) fn check_caliptra_owned_svns(env: &mut RomEnv, manifest: &McuComponentSvnManifest) {
+    if manifest.caliptra_runtime_min_svn == 0 {
         return;
     }
+    let fw_svn = query_fw_svn(&mut env.soc_manager);
+    if fw_svn < manifest.caliptra_runtime_min_svn.into() {
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom] SVN header caliptra_runtime_min_svn {} > FW_INFO.fw_svn {}",
+            manifest.caliptra_runtime_min_svn,
+            fw_svn
+        );
+        fatal_error(McuError::ROM_CALIPTRA_RUNTIME_SVN_BURN_ERROR);
+    }
+}
 
-    if needs_caliptra {
-        // Don't raise the floor above what the running Caliptra runtime
-        // firmware reports — that would brick the next boot.
-        let fw_svn = query_fw_svn(&mut env.soc_manager);
-        if fw_svn < manifest.caliptra_runtime_min_svn.into() {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] SVN header caliptra_runtime_min_svn {} > FW_INFO.fw_svn {}",
-                manifest.caliptra_runtime_min_svn,
-                fw_svn
-            );
-            fatal_error(McuError::ROM_CALIPTRA_RUNTIME_SVN_BURN_ERROR);
-        }
+/// Apply the header's Caliptra-owned SVN burns. Caller must have run
+/// [`check_caliptra_owned_svns`] first; only OTP HW errors fatal here.
+pub(crate) fn burn_caliptra_owned_svns(env: &mut RomEnv, manifest: &McuComponentSvnManifest) {
+    if manifest.caliptra_runtime_min_svn > 0 {
         burn_svn(
             &env.otp,
             OTP_CPTRA_CORE_RUNTIME_SVN,
             manifest.caliptra_runtime_min_svn.into(),
         );
     }
-
-    if needs_soc {
+    if manifest.soc_manifest_min_svn > 0 {
         burn_svn(
             &env.otp,
             OTP_CPTRA_CORE_SOC_MANIFEST_SVN,

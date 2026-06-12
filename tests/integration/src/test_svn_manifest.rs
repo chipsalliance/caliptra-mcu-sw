@@ -496,4 +496,64 @@ mod test {
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+
+    /// Regression test for the validate-before-burn invariant: a header
+    /// that requests manifest-self and per-component burns but whose
+    /// Caliptra-runtime cross-check fails (caliptra_runtime_min_svn=1 >
+    /// FW_INFO.fw_svn=0) must reject the boot *without* committing any
+    /// burn, so the device isn't left with partially-advanced floors.
+    #[test]
+    fn test_svn_manifest_no_burn_before_fatal() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut m = McuComponentSvnManifest {
+            magic: MCU_COMPONENT_SVN_MANIFEST_MAGIC,
+            format_version: MCU_COMPONENT_SVN_MANIFEST_VERSION,
+            current_svn: 3,
+            min_svn: 3,                  // would burn MCU_COMPONENT_SVN_MANIFEST_MIN_SVN
+            caliptra_runtime_min_svn: 1, // fatals: > FW_INFO.fw_svn (0)
+            soc_manifest_min_svn: 0,
+            reserved: [0; 6],
+            entries: [McuComponentSvnEntry::default(); 126],
+        };
+        m.entries[0] = McuComponentSvnEntry {
+            component_id: 0x1000, // maps to SOC_IMAGE_MIN_SVN_0
+            current_svn: 4,
+            min_svn: 3, // would burn SOC_IMAGE_MIN_SVN_0
+        };
+        let manifest = m.as_bytes().to_vec();
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            rom_feature: Some("test-svn-manifest"),
+            firmware_prefix: Some(manifest),
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 100_000_000);
+
+        assert_eq!(
+            hw.mci_fw_fatal_error(),
+            Some(u32::from(McuError::ROM_CALIPTRA_RUNTIME_SVN_BURN_ERROR)),
+            "expected ROM_CALIPTRA_RUNTIME_SVN_BURN_ERROR, got {:?}",
+            hw.mci_fw_fatal_error()
+        );
+
+        // The fatal happened in the validation phase, so neither the
+        // manifest-self nor the per-component floor should be burned.
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            manifest_min_svn_from_otp(&otp),
+            0,
+            "MCU_COMPONENT_SVN_MANIFEST_MIN_SVN burned before fatal"
+        );
+        assert_eq!(
+            fuse_value(&otp, SOC_IMAGE_MIN_SVN_0),
+            0,
+            "SOC_IMAGE_MIN_SVN_0 burned before fatal"
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }

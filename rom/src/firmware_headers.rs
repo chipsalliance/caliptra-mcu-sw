@@ -160,7 +160,15 @@ fn process_svn_manifest(env: &mut RomEnv, params: &RomParameters, offset: u32) -
     };
 
     if anti_rollback_on {
-        enforce_and_burn_manifest_min_svn(env, manifest);
+        // Validate every condition that can reject the boot *before*
+        // committing any irreversible OTP burn, so a later fatal can't
+        // leave the device with partially-advanced SVN floors. After
+        // this point only genuine OTP write/readback HW errors fatal.
+        check_manifest_min_svn(env, manifest);
+        check_per_component_min_svn(env, manifest, params.svn_fuse_map);
+        crate::caliptra_svn::check_caliptra_owned_svns(env, manifest);
+
+        burn_manifest_min_svn(env, manifest);
         burn_per_component_min_svn(env, manifest, params.svn_fuse_map);
         crate::caliptra_svn::burn_caliptra_owned_svns(env, manifest);
     }
@@ -170,24 +178,15 @@ fn process_svn_manifest(env: &mut RomEnv, params: &RomParameters, offset: u32) -
     MCU_COMPONENT_SVN_MANIFEST_SIZE as u32
 }
 
-/// Enforce manifest-self rollback and apply any requested
-/// `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` advance:
-///
-/// - Reject the boot if `manifest.current_svn < fuse_min_svn`.
-/// - Burn the fuse up to `manifest.min_svn` (with readback verification)
-///   when the manifest requests a higher floor.
-///
-/// Caller must have already verified that
-/// `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` is not set.
+/// Reject the boot if the manifest is rolled back relative to
+/// `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`. No OTP writes.
 #[cfg(feature = "svn-manifest")]
-fn enforce_and_burn_manifest_min_svn(
+fn check_manifest_min_svn(
     env: &mut RomEnv,
     manifest: &caliptra_mcu_romtime::McuComponentSvnManifest,
 ) {
     use caliptra_mcu_registers_generated::fuses::MCU_COMPONENT_SVN_MANIFEST_MIN_SVN;
-
     let fuse_min_svn = read_fuse(env, MCU_COMPONENT_SVN_MANIFEST_MIN_SVN);
-
     if u32::from(manifest.current_svn) < fuse_min_svn {
         caliptra_mcu_romtime::println!(
             "[mcu-rom] Component SVN Manifest rolled back: current_svn {} < fuse {}",
@@ -196,7 +195,17 @@ fn enforce_and_burn_manifest_min_svn(
         );
         fatal_error(McuError::ROM_COMPONENT_SVN_MANIFEST_ERROR);
     }
+}
 
+/// Burn `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` up to `manifest.min_svn`.
+/// Caller must have run [`check_manifest_min_svn`] first.
+#[cfg(feature = "svn-manifest")]
+fn burn_manifest_min_svn(
+    env: &mut RomEnv,
+    manifest: &caliptra_mcu_romtime::McuComponentSvnManifest,
+) {
+    use caliptra_mcu_registers_generated::fuses::MCU_COMPONENT_SVN_MANIFEST_MIN_SVN;
+    let fuse_min_svn = read_fuse(env, MCU_COMPONENT_SVN_MANIFEST_MIN_SVN);
     burn_min_svn(
         env,
         MCU_COMPONENT_SVN_MANIFEST_MIN_SVN,
@@ -205,17 +214,12 @@ fn enforce_and_burn_manifest_min_svn(
     );
 }
 
-/// For each non-empty entry whose `component_id` is in `svn_fuse_map`,
-/// validate that the entry fits the mapped slot's one-hot range and is
-/// not rolled back relative to the fuse, then burn the slot up to
-/// `entry.min_svn` when the manifest requests a higher floor. Entries
+/// Validate each mapped per-component entry against its
+/// `SOC_IMAGE_MIN_SVN[i]` slot (one-hot range and rollback). Entries
 /// with an unmapped `component_id` are skipped with a logged warning
-/// (spec'd behaviour).
-///
-/// Caller must have already verified that
-/// `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` is not set.
+/// (spec'd behaviour). No OTP writes.
 #[cfg(feature = "svn-manifest")]
-fn burn_per_component_min_svn(
+fn check_per_component_min_svn(
     env: &mut RomEnv,
     manifest: &caliptra_mcu_romtime::McuComponentSvnManifest,
     svn_fuse_map: &[crate::SvnFuseMapEntry],
@@ -236,13 +240,31 @@ fn burn_per_component_min_svn(
             fatal_error(McuError::ROM_COMPONENT_SVN_MANIFEST_ERROR);
         }
 
-        let fuse_min_svn = read_fuse(env, fuse_entry);
-
-        if u32::from(entry.current_svn) < fuse_min_svn {
+        if u32::from(entry.current_svn) < read_fuse(env, fuse_entry) {
             caliptra_mcu_romtime::println!("[mcu-rom] SVN entry {} rolled back", idx);
             fatal_error(McuError::ROM_COMPONENT_SVN_MANIFEST_ERROR);
         }
+    }
+}
 
+/// Burn each mapped per-component `SOC_IMAGE_MIN_SVN[i]` slot up to
+/// `entry.min_svn`. Caller must have run [`check_per_component_min_svn`]
+/// first.
+#[cfg(feature = "svn-manifest")]
+fn burn_per_component_min_svn(
+    env: &mut RomEnv,
+    manifest: &caliptra_mcu_romtime::McuComponentSvnManifest,
+    svn_fuse_map: &[crate::SvnFuseMapEntry],
+) {
+    use crate::SvnFuseMapEntry;
+    if svn_fuse_map.is_empty() {
+        return;
+    }
+    for (_idx, entry) in manifest.entries_present() {
+        let Some(fuse_entry) = SvnFuseMapEntry::lookup(svn_fuse_map, entry.component_id) else {
+            continue;
+        };
+        let fuse_min_svn = read_fuse(env, fuse_entry);
         burn_min_svn(env, fuse_entry, fuse_min_svn, entry.min_svn.into());
     }
 }

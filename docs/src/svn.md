@@ -442,6 +442,13 @@ authenticated header. A deployer can also advance the Caliptra runtime
 floor independently of any header via the runtime
 `FuseIncreaseCaliptraMinSvn` mailbox command.
 
+**Validate before burn.** Because OTP burns are irreversible, MCU ROM
+runs *all* fatal-able checks across every floor (manifest-self,
+per-component, and the Caliptra-runtime `FW_INFO` cross-check) before
+committing *any* burn. This guarantees a rejected boot never leaves the
+device with partially-advanced floors; once the burn phase starts, only
+a genuine OTP write/readback hardware error can halt it.
+
 The burn is power-fail safe: one-hot encoding plus OR semantics mean a partial
 burn can never decrease the fuse value, and any incomplete burn will be
 re-attempted (and complete) on the next boot.
