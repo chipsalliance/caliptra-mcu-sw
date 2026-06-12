@@ -2,7 +2,8 @@
 
 #[cfg(any(
     feature = "test-mctp-vdm-cmds",
-    feature = "test-caliptra-util-host-mctp-vdm-validator"
+    feature = "test-caliptra-util-host-mctp-vdm-validator",
+    feature = "test-defmt-logging-vdm"
 ))]
 mod cmd_handler_mock;
 
@@ -17,7 +18,8 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 #[cfg(any(
     feature = "test-mctp-vdm-cmds",
-    feature = "test-caliptra-util-host-mctp-vdm-validator"
+    feature = "test-caliptra-util-host-mctp-vdm-validator",
+    feature = "test-defmt-logging-vdm"
 ))]
 use static_cell::StaticCell;
 
@@ -37,7 +39,8 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
 
     #[cfg(any(
         feature = "test-mctp-vdm-cmds",
-        feature = "test-caliptra-util-host-mctp-vdm-validator"
+        feature = "test-caliptra-util-host-mctp-vdm-validator",
+        feature = "test-defmt-logging-vdm"
     ))]
     {
         // Use static storage to ensure 'static lifetime for handler, transport, and cmd_interface.

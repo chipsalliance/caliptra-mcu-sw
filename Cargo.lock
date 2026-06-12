@@ -895,6 +895,7 @@ dependencies = [
  "caliptra-mcu-testing-common",
  "caliptra-util-host-mctp-vdm-test-config",
  "clap 4.5.51",
+ "defmt-decoder",
  "zerocopy",
 ]
 

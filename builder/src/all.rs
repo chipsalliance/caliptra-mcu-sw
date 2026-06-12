@@ -40,6 +40,9 @@ struct FeatureTestResource {
     flash_image: PathBuf,
     pldm_fw_pkg: tempfile::NamedTempFile,
     update_flash_image: Option<PathBuf>,
+    /// Raw bytes of the user-app ELF for this feature build. Carries the
+    /// `.defmt` table needed by host-side defmt decoders.
+    user_app_elf: Option<Vec<u8>>,
 }
 
 cfg_if::cfg_if! {
@@ -268,6 +271,9 @@ pub struct FirmwareBinaries {
     /// Update flash images without partition table (for PLDM update packages)
     pub test_update_flash_images: Vec<(String, Vec<u8>)>,
     pub bare_metal_images: Vec<(String, Vec<u8>)>,
+    /// User-app ELFs per test feature. Carry the `.defmt` table that host-side
+    /// defmt decoders need to render frames retrieved from the device.
+    pub test_user_app_elfs: Vec<(String, Vec<u8>)>,
 }
 
 impl FirmwareBinaries {
@@ -335,6 +341,9 @@ impl FirmwareBinaries {
                 }
                 name if name.contains("mcu-test-pldm-fw-pkg") => {
                     binaries.test_pldm_fw_pkgs.push((name.to_string(), data));
+                }
+                name if name.contains("mcu-test-user-app-elf") => {
+                    binaries.test_user_app_elfs.push((name.to_string(), data));
                 }
                 name if name.contains("mcu-test-update-flash-image") => {
                     binaries
@@ -487,6 +496,17 @@ impl FirmwareBinaries {
             }
         }
         self.mcu_rom.clone()
+    }
+
+    /// Get the user-app ELF for a specific test feature, if archived in the
+    /// firmware bundle. The ELF carries the `.defmt` table needed to decode
+    /// frames retrieved from the device via the debug-log command.
+    pub fn test_user_app_elf(&self, feature: &str) -> Option<&[u8]> {
+        let expected_name = format!("mcu-test-user-app-elf-{}.bin", feature);
+        self.test_user_app_elfs
+            .iter()
+            .find(|(name, _)| name == &expected_name)
+            .map(|(_, data)| data.as_slice())
     }
 }
 
@@ -886,9 +906,21 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 example_app: include_example_app,
                 platform: Some(platform),
                 profile,
-                target_dir,
+                target_dir: target_dir.clone(),
                 ..Default::default()
             })?;
+
+            // Capture the user-app ELF bytes for this feature so host-side
+            // defmt decoders can read them out of the firmware bundle. Without
+            // `parallel-build`, all features share `target/<TARGET>/<profile>/`
+            // and overwrite each other, so we must read immediately.
+            let user_app_profile = profile.unwrap_or("devel");
+            let user_app_target_dir = target_dir.unwrap_or_else(crate::target_dir);
+            let user_app_elf_path = user_app_target_dir
+                .join(TARGET)
+                .join(user_app_profile)
+                .join("user-app");
+            let user_app_elf = std::fs::read(&user_app_elf_path).ok();
 
             let mcu_image_cfg =
                 get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature);
@@ -997,6 +1029,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 flash_image: feature_flash_image,
                 pldm_fw_pkg: feature_pldm_fw_pkg,
                 update_flash_image: feature_update_flash_image,
+                user_app_elf,
             })
         })
         .collect();
@@ -1087,6 +1120,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         flash_image,
         pldm_fw_pkg,
         update_flash_image,
+        user_app_elf,
     } in test_runtimes
     {
         let runtime_name = format!("mcu-test-runtime-{}.bin", feature);
@@ -1110,6 +1144,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             &mut zip,
             options,
         )?;
+
+        if let Some(elf_bytes) = user_app_elf.as_ref() {
+            let elf_name = format!("mcu-test-user-app-elf-{}.bin", feature);
+            add_bytes_to_zip(elf_bytes, &elf_name, &mut zip, options)?;
+        }
 
         println!(
             "Adding {} -> mcu-test-flash-image-{}.bin",
@@ -1200,6 +1239,18 @@ fn add_to_zip(
     println!("Adding {}: {} bytes", name, data.len());
     zip.start_file(name, options)?;
     zip.write_all(&data)?;
+    Ok(())
+}
+
+fn add_bytes_to_zip(
+    data: &[u8],
+    name: &str,
+    zip: &mut ZipWriter<std::fs::File>,
+    options: FileOptions<'_, ()>,
+) -> Result<()> {
+    println!("Adding {}: {} bytes", name, data.len());
+    zip.start_file(name, options)?;
+    zip.write_all(data)?;
     Ok(())
 }
 
