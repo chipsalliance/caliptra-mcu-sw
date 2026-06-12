@@ -109,6 +109,15 @@ pub fn run_all(
 ) -> Vec<ValidationResult> {
     let mut results = Vec::new();
 
+    results.extend(run_firmware_version(
+        client,
+        &config.firmware_version.indices,
+        verbose,
+    ));
+    results.push(run_device_capabilities(client, verbose));
+    results.push(run_device_id(client, verbose));
+    results.push(run_device_info(client, 0, verbose));
+
     match config.mode {
         DeviceMode::Production => {
             results.extend(run_export_attested_csr(
@@ -149,6 +158,133 @@ pub fn run_all(
     ));
 
     results
+}
+
+/// Validate GetFirmwareVersion for each configured firmware index.
+pub fn run_firmware_version(
+    client: &mut SpdmVdmClient,
+    indices: &[u32],
+    verbose: bool,
+) -> Vec<ValidationResult> {
+    indices
+        .iter()
+        .map(|&index| {
+            let test_name = format!("GetFirmwareVersion(index={})", index);
+            match client.get_firmware_version(index) {
+                Ok(response) if response.common.fips_status == 0 => {
+                    if verbose {
+                        println!(
+                            "  firmware[{}]: {}.{}.{}.{} commit={:02x?}",
+                            index,
+                            response.version[0],
+                            response.version[1],
+                            response.version[2],
+                            response.version[3],
+                            response.commit_id
+                        );
+                    }
+                    ValidationResult::pass(
+                        test_name,
+                        format!(
+                            "{}.{}.{}.{}",
+                            response.version[0],
+                            response.version[1],
+                            response.version[2],
+                            response.version[3]
+                        ),
+                    )
+                }
+                Ok(response) => ValidationResult::fail(
+                    test_name,
+                    format!("fips_status={}", response.common.fips_status),
+                ),
+                Err(msg) => ValidationResult::fail(test_name, format!("{}", msg)),
+            }
+        })
+        .collect()
+}
+
+/// Validate GetDeviceCapabilities using the typed client.
+pub fn run_device_capabilities(
+    client: &mut SpdmVdmClient,
+    verbose: bool,
+) -> ValidationResult {
+    let test_name = "GetDeviceCapabilities";
+    match client.get_device_capabilities() {
+        Ok(response) if response.common.fips_status == 0 => {
+            if verbose {
+                println!(
+                    "  capabilities=0x{:08x} max_cert_size={} max_csr_size={} lifecycle={}",
+                    response.capabilities,
+                    response.max_cert_size,
+                    response.max_csr_size,
+                    response.device_lifecycle
+                );
+            }
+            ValidationResult::pass(test_name, format!("capabilities=0x{:08x}", response.capabilities))
+        }
+        Ok(response) => ValidationResult::fail(
+            test_name,
+            format!("fips_status={}", response.common.fips_status),
+        ),
+        Err(msg) => ValidationResult::fail(test_name, format!("{}", msg)),
+    }
+}
+
+/// Validate GetDeviceId using the typed client.
+pub fn run_device_id(client: &mut SpdmVdmClient, verbose: bool) -> ValidationResult {
+    let test_name = "GetDeviceId";
+    match client.get_device_id() {
+        Ok(response) => {
+            if verbose {
+                println!(
+                    "  vendor=0x{:04x} device=0x{:04x} subsystem_vendor=0x{:04x} subsystem=0x{:04x}",
+                    response.vendor_id,
+                    response.device_id,
+                    response.subsystem_vendor_id,
+                    response.subsystem_id
+                );
+            }
+            if response.vendor_id == 0 || response.device_id == 0 {
+                ValidationResult::fail(test_name, "vendor_id/device_id must be non-zero")
+            } else {
+                ValidationResult::pass(
+                    test_name,
+                    format!(
+                        "vendor=0x{:04x} device=0x{:04x}",
+                        response.vendor_id, response.device_id
+                    ),
+                )
+            }
+        }
+        Err(msg) => ValidationResult::fail(test_name, format!("{}", msg)),
+    }
+}
+
+/// Validate GetDeviceInfo using the typed client.
+pub fn run_device_info(
+    client: &mut SpdmVdmClient,
+    info_index: u32,
+    verbose: bool,
+) -> ValidationResult {
+    let test_name = format!("GetDeviceInfo(index={})", info_index);
+    match client.get_device_info(info_index) {
+        Ok(response) if response.common.fips_status == 0 => {
+            let len = response.info_length as usize;
+            if len == 0 || len > response.info_data.len() {
+                return ValidationResult::fail(test_name, format!("invalid info_length={}", len));
+            }
+            if verbose {
+                println!("  device_info[{}]: {:02x?}", info_index, &response.info_data[..len]);
+            }
+            ValidationResult::pass(test_name, format!("{} bytes", len))
+        }
+        Ok(response) => ValidationResult::fail(
+            test_name,
+            format!("fips_status={}", response.common.fips_status),
+        ),
+        Err(msg) => ValidationResult::fail(test_name, format!("{}", msg)),
+    }
 }
 
 /// Validate ExportAttestedCsr for each key ID using the typed client.

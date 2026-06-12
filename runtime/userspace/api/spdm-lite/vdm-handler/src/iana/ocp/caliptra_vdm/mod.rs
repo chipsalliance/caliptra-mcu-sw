@@ -25,6 +25,11 @@ pub use protocol::{
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
 const VDM_HEADER_LEN: usize = 2;
+/// Maximum CSR/log payload staged in one Caliptra VDM response.
+const MAX_LARGE_COMMAND_DATA_LEN: usize = 4 * 1024;
+/// Maximum complete Caliptra VDM large payload:
+/// `[command_version, command_code, completion, data_len, data...]`.
+const MAX_LARGE_VDM_PAYLOAD_LEN: usize = VDM_HEADER_LEN + 1 + 4 + MAX_LARGE_COMMAND_DATA_LEN;
 
 /// Platform hook for executing Caliptra VDM commands ("device operations").
 ///
@@ -48,12 +53,59 @@ pub trait CaliptraVdmCommands {
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize>;
 
+    /// Retrieves device capability bytes into `out`.
+    async fn device_capabilities<A: SpdmPalAlloc, I: SpdmPalIo>(
+        &self,
+        scratch: &A,
+        io: &I,
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<usize>;
+
+    /// Retrieves device identifier bytes into `out`.
+    async fn device_id<A: SpdmPalAlloc, I: SpdmPalIo>(
+        &self,
+        scratch: &A,
+        io: &I,
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<usize>;
+
+    /// Retrieves device information for `info_index` into `out`.
+    async fn device_info<A: SpdmPalAlloc, I: SpdmPalIo>(
+        &self,
+        info_index: u32,
+        scratch: &A,
+        io: &I,
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<usize>;
+
+    /// Drains log bytes of `log_type` into `out`.
+    async fn get_log<A: SpdmPalAlloc, I: SpdmPalIo>(
+        &self,
+        log_type: u32,
+        scratch: &A,
+        io: &I,
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<CaliptraVdmLogResult>;
+
+    /// Clears the log identified by `log_type`.
+    async fn clear_log<A: SpdmPalAlloc, I: SpdmPalIo>(
+        &self,
+        log_type: u32,
+        scratch: &A,
+        io: &I,
+    ) -> CaliptraVdmResult<()>;
+
+    /// Exports an IDevID CSR for `algorithm`, writing CSR bytes into `out`.
+    async fn export_idevid_csr<A: SpdmPalAlloc, I: SpdmPalIo>(
+        &self,
+        algorithm: u32,
+        scratch: &A,
+        io: &I,
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<usize>;
+
     /// Exports an attested CSR for `device_key_id` using `algorithm` and `nonce`,
     /// writing the raw CSR bytes into `out` and returning their length.
-    ///
-    /// This is the largest Caliptra VDM response, which is why the backend sets
-    /// `USES_LARGE_RESPONSE`; the lib decides inline vs chunked framing from the
-    /// returned length.
     async fn export_attested_csr<A: SpdmPalAlloc, I: SpdmPalIo>(
         &self,
         device_key_id: u32,
@@ -63,6 +115,31 @@ pub trait CaliptraVdmCommands {
         io: &I,
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize>;
+
+    /// Generates an authorization challenge nonce into `out`.
+    async fn get_auth_challenge<A: SpdmPalAlloc, I: SpdmPalIo>(
+        &self,
+        scratch: &A,
+        io: &I,
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<usize>;
+
+    /// Verifies `mac` for FE_PROG and programs field entropy for `partition`.
+    async fn program_field_entropy<A: SpdmPalAlloc, I: SpdmPalIo>(
+        &self,
+        partition: u32,
+        mac: &[u8; 48],
+        scratch: &A,
+        io: &I,
+    ) -> CaliptraVdmResult<()>;
+}
+
+/// Result metadata for log-drain commands.
+pub struct CaliptraVdmLogResult {
+    /// Number of bytes written into the caller-provided log buffer.
+    pub bytes_written: usize,
+    /// Indicates whether more log data remains to be drained.
+    pub more_data: bool,
 }
 
 /// Caliptra VDM backend, parameterized over a platform [`CaliptraVdmCommands`] hook.
@@ -79,9 +156,9 @@ impl<'a, H: CaliptraVdmCommands> CaliptraVdm<'a, H> {
 
 impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
     // Caliptra VDM can emit responses (CSRs, logs) larger than one transport
-    // frame. TODO(stack-vdm-large): the large path is stubbed in the stack until
-    // the chunking work in increment 6.
+    // frame, so the stack provisions the buffered large-response path.
     const USES_LARGE_RESPONSE: bool = true;
+    const LARGE_RESPONSE_CAPACITY: usize = MAX_LARGE_VDM_PAYLOAD_LEN;
 
     fn match_id(&self, registry: &VdmRegistry<'_>) -> bool {
         registry.standard_id == StandardsBodyId::Iana.as_u16()
@@ -136,6 +213,40 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
             Ok(CaliptraVdmCommand::FirmwareVersion) => {
                 commands::firmware_version::handle(self.cmds, cmd_req, alloc, io, payload).await
             }
+            Ok(CaliptraVdmCommand::DeviceCapabilities) => {
+                commands::device_capabilities::handle(self.cmds, cmd_req, alloc, io, payload).await
+            }
+            Ok(CaliptraVdmCommand::DeviceId) => {
+                commands::device_id::handle(self.cmds, cmd_req, alloc, io, payload).await
+            }
+            Ok(CaliptraVdmCommand::DeviceInfo) => {
+                commands::device_info::handle(self.cmds, cmd_req, alloc, io, payload).await
+            }
+            Ok(CaliptraVdmCommand::GetDebugLog) => {
+                commands::get_debug_log::handle(self.cmds, cmd_req, alloc, io, payload).await
+            }
+            Ok(CaliptraVdmCommand::ClearDebugLog) => {
+                commands::clear_debug_log::handle(self.cmds, cmd_req, alloc, io, payload).await
+            }
+            Ok(CaliptraVdmCommand::GetAttestationLog) => {
+                commands::get_attestation_log::handle(self.cmds, cmd_req, alloc, io, payload).await
+            }
+            Ok(CaliptraVdmCommand::ClearAttestationLog) => {
+                commands::clear_attestation_log::handle(self.cmds, cmd_req, alloc, io, payload)
+                    .await
+            }
+            Ok(CaliptraVdmCommand::ExportIdevidCsr) => {
+                commands::export_idevid_csr::handle(
+                    self.cmds,
+                    cmd_req,
+                    command_code,
+                    payload,
+                    large,
+                    alloc,
+                    io,
+                )
+                .await
+            }
             Ok(CaliptraVdmCommand::ExportAttestedCsr) => {
                 commands::export_attested_csr::handle(
                     self.cmds,
@@ -147,6 +258,9 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
                     io,
                 )
                 .await
+            }
+            Ok(CaliptraVdmCommand::AuthorizedCommand) => {
+                commands::authorized_command::handle(self.cmds, cmd_req, alloc, io, payload).await
             }
             // Recognized-but-unimplemented and unknown command codes both map to
             // an UnsupportedOperation completion.
@@ -162,5 +276,396 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
                 Ok(VdmResponse::Inline(VDM_HEADER_LEN + 1))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use core::future::Future;
+    use core::marker::PhantomData;
+    use core::ops::{Deref, DerefMut};
+    use core::pin::Pin;
+    use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
+    use mcu_error::McuResult;
+    use mcu_spdm_lite_traits::{
+        SpdmPalAlloc, SpdmPalIo, SpdmPalIoKind, SpdmVdmBackend, VdmResponse, VdmResponseBuffer,
+    };
+    use std::boxed::Box;
+    use std::vec;
+    use std::vec::Vec;
+
+    use super::*;
+
+    struct TestIo;
+
+    impl SpdmPalIo for TestIo {
+        fn kind(&self) -> SpdmPalIoKind {
+            SpdmPalIoKind::Message
+        }
+
+        fn request(&self) -> &[u8] {
+            &[]
+        }
+    }
+
+    struct TestBox<'a, T: 'a> {
+        value: Box<T>,
+        _lifetime: PhantomData<&'a ()>,
+    }
+
+    impl<T> Deref for TestBox<'_, T> {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            &self.value
+        }
+    }
+
+    impl<T> DerefMut for TestBox<'_, T> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.value
+        }
+    }
+
+    struct TestAlloc;
+
+    impl SpdmPalAlloc for TestAlloc {
+        type Box<'a, T>
+            = TestBox<'a, T>
+        where
+            Self: 'a,
+            T: 'a;
+        type Bytes<'a>
+            = Vec<u8>
+        where
+            Self: 'a;
+
+        fn alloc<T: Sized>(&self, _io: &impl SpdmPalIo, value: T) -> McuResult<Self::Box<'_, T>> {
+            Ok(TestBox {
+                value: Box::new(value),
+                _lifetime: PhantomData,
+            })
+        }
+
+        fn alloc_bytes(&self, _io: &impl SpdmPalIo, len: usize) -> McuResult<Self::Bytes<'_>> {
+            Ok(vec![0; len])
+        }
+
+        fn large_capacity(&self) -> usize {
+            4096
+        }
+
+        fn large_begin(&self, _len: usize) -> McuResult<()> {
+            Ok(())
+        }
+
+        fn large_write(&self, _offset: usize, _data: &[u8]) -> McuResult<()> {
+            Ok(())
+        }
+
+        fn large_read(&self, _offset: usize, _out: &mut [u8]) -> McuResult<()> {
+            Ok(())
+        }
+
+        fn large_end(&self) {}
+    }
+
+    struct TestCommands {
+        csr_len: usize,
+    }
+
+    impl TestCommands {
+        fn write_csr(&self, out: &mut [u8]) -> CaliptraVdmResult<usize> {
+            if out.len() < self.csr_len {
+                return Err(CaliptraCompletionCode::InsufficientResources);
+            }
+            for (i, byte) in out[..self.csr_len].iter_mut().enumerate() {
+                *byte = i as u8;
+            }
+            Ok(self.csr_len)
+        }
+    }
+
+    impl CaliptraVdmCommands for TestCommands {
+        async fn firmware_version<A: SpdmPalAlloc, I: SpdmPalIo>(
+            &self,
+            area_index: u32,
+            _scratch: &A,
+            _io: &I,
+            out: &mut [u8],
+        ) -> CaliptraVdmResult<usize> {
+            let version = match area_index {
+                0 => b"0.0.0 test".as_slice(),
+                1 => b"1.0.0 test".as_slice(),
+                _ => return Err(CaliptraCompletionCode::InvalidParameter),
+            };
+            if out.len() < version.len() {
+                return Err(CaliptraCompletionCode::InsufficientResources);
+            }
+            out[..version.len()].copy_from_slice(version);
+            Ok(version.len())
+        }
+
+        async fn device_capabilities<A: SpdmPalAlloc, I: SpdmPalIo>(
+            &self,
+            _scratch: &A,
+            _io: &I,
+            _out: &mut [u8],
+        ) -> CaliptraVdmResult<usize> {
+            Err(CaliptraCompletionCode::UnsupportedOperation)
+        }
+
+        async fn device_id<A: SpdmPalAlloc, I: SpdmPalIo>(
+            &self,
+            _scratch: &A,
+            _io: &I,
+            _out: &mut [u8],
+        ) -> CaliptraVdmResult<usize> {
+            Err(CaliptraCompletionCode::UnsupportedOperation)
+        }
+
+        async fn device_info<A: SpdmPalAlloc, I: SpdmPalIo>(
+            &self,
+            _info_index: u32,
+            _scratch: &A,
+            _io: &I,
+            _out: &mut [u8],
+        ) -> CaliptraVdmResult<usize> {
+            Err(CaliptraCompletionCode::UnsupportedOperation)
+        }
+
+        async fn get_log<A: SpdmPalAlloc, I: SpdmPalIo>(
+            &self,
+            _log_type: u32,
+            _scratch: &A,
+            _io: &I,
+            _out: &mut [u8],
+        ) -> CaliptraVdmResult<CaliptraVdmLogResult> {
+            Err(CaliptraCompletionCode::UnsupportedOperation)
+        }
+
+        async fn clear_log<A: SpdmPalAlloc, I: SpdmPalIo>(
+            &self,
+            _log_type: u32,
+            _scratch: &A,
+            _io: &I,
+        ) -> CaliptraVdmResult<()> {
+            Err(CaliptraCompletionCode::UnsupportedOperation)
+        }
+
+        async fn export_idevid_csr<A: SpdmPalAlloc, I: SpdmPalIo>(
+            &self,
+            _algorithm: u32,
+            _scratch: &A,
+            _io: &I,
+            out: &mut [u8],
+        ) -> CaliptraVdmResult<usize> {
+            self.write_csr(out)
+        }
+
+        async fn export_attested_csr<A: SpdmPalAlloc, I: SpdmPalIo>(
+            &self,
+            _device_key_id: u32,
+            _algorithm: u32,
+            _nonce: &[u8; 32],
+            _scratch: &A,
+            _io: &I,
+            out: &mut [u8],
+        ) -> CaliptraVdmResult<usize> {
+            self.write_csr(out)
+        }
+
+        async fn get_auth_challenge<A: SpdmPalAlloc, I: SpdmPalIo>(
+            &self,
+            _scratch: &A,
+            _io: &I,
+            out: &mut [u8],
+        ) -> CaliptraVdmResult<usize> {
+            if out.len() < 32 {
+                return Err(CaliptraCompletionCode::InsufficientResources);
+            }
+            out[..32].copy_from_slice(&[0xA5; 32]);
+            Ok(32)
+        }
+
+        async fn program_field_entropy<A: SpdmPalAlloc, I: SpdmPalIo>(
+            &self,
+            _partition: u32,
+            _mac: &[u8; 48],
+            _scratch: &A,
+            _io: &I,
+        ) -> CaliptraVdmResult<()> {
+            Ok(())
+        }
+    }
+
+    fn block_on<F: Future>(future: F) -> F::Output {
+        fn raw_waker() -> RawWaker {
+            fn clone(_: *const ()) -> RawWaker {
+                raw_waker()
+            }
+            fn wake(_: *const ()) {}
+            fn wake_by_ref(_: *const ()) {}
+            fn drop(_: *const ()) {}
+            RawWaker::new(
+                core::ptr::null(),
+                &RawWakerVTable::new(clone, wake, wake_by_ref, drop),
+            )
+        }
+
+        // SAFETY: The no-op waker never dereferences the data pointer; these
+        // tests only poll futures that complete synchronously.
+        let waker = unsafe { Waker::from_raw(raw_waker()) };
+        let mut context = Context::from_waker(&waker);
+        let mut future = Box::pin(future);
+        loop {
+            match Future::poll(Pin::as_mut(&mut future), &mut context) {
+                Poll::Ready(output) => return output,
+                Poll::Pending => core::hint::spin_loop(),
+            }
+        }
+    }
+
+    fn dispatch(
+        cmds: &TestCommands,
+        req: &[u8],
+        inline_len: usize,
+        large_len: usize,
+    ) -> (VdmResponse, Vec<u8>, Vec<u8>) {
+        let alloc = TestAlloc;
+        let io = TestIo;
+        let backend = CaliptraVdm::new(cmds);
+        let mut inline = vec![0; inline_len];
+        let mut large = vec![0; large_len];
+        let response = block_on(backend.handle_request(
+            req,
+            VdmResponseBuffer {
+                inline: &mut inline,
+                large: &mut large,
+                alloc: &alloc,
+                io: &io,
+            },
+        ))
+        .expect("VDM dispatch should complete");
+        (response, inline, large)
+    }
+
+    fn assert_inline(response: VdmResponse, expected_len: usize) {
+        match response {
+            VdmResponse::Inline(len) => assert_eq!(len, expected_len),
+            VdmResponse::Large(_) => panic!("expected inline response"),
+        }
+    }
+
+    fn assert_large(response: VdmResponse, expected_len: usize) {
+        match response {
+            VdmResponse::Large(len) => assert_eq!(len, expected_len),
+            VdmResponse::Inline(_) => panic!("expected large response"),
+        }
+    }
+
+    fn export_attested_csr_req() -> Vec<u8> {
+        let mut req = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::ExportAttestedCsr as u8,
+        ];
+        req.extend_from_slice(&7u32.to_le_bytes());
+        req.extend_from_slice(&1u32.to_le_bytes());
+        req.extend_from_slice(&[0x5A; 32]);
+        req
+    }
+
+    #[test]
+    fn bad_command_version_returns_vdm_completion() {
+        let cmds = TestCommands { csr_len: 0 };
+        let (response, inline, _) = dispatch(
+            &cmds,
+            &[0x7F, CaliptraVdmCommand::FirmwareVersion as u8],
+            32,
+            0,
+        );
+
+        assert_inline(response, 3);
+        assert_eq!(
+            &inline[..3],
+            &[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::FirmwareVersion as u8,
+                CaliptraCompletionCode::InvalidCommandVersion as u8,
+            ]
+        );
+    }
+
+    #[test]
+    fn invalid_payload_length_returns_vdm_completion() {
+        let cmds = TestCommands { csr_len: 0 };
+        let (response, inline, _) = dispatch(
+            &cmds,
+            &[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::ExportAttestedCsr as u8,
+                0,
+            ],
+            32,
+            64,
+        );
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+    }
+
+    #[test]
+    fn unsupported_command_returns_vdm_completion() {
+        let cmds = TestCommands { csr_len: 0 };
+        let (response, inline, _) = dispatch(
+            &cmds,
+            &[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::GetAttestation as u8,
+            ],
+            32,
+            0,
+        );
+
+        assert_inline(response, 3);
+        assert_eq!(
+            &inline[..3],
+            &[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::GetAttestation as u8,
+                CaliptraCompletionCode::UnsupportedOperation as u8,
+            ]
+        );
+    }
+
+    #[test]
+    fn export_attested_csr_uses_inline_response_when_it_fits() {
+        let cmds = TestCommands { csr_len: 12 };
+        let req = export_attested_csr_req();
+        let (response, inline, _) = dispatch(&cmds, &req, 64, 64);
+
+        assert_inline(response, 2 + 1 + 4 + 12);
+        assert_eq!(inline[0], CALIPTRA_VDM_COMMAND_VERSION);
+        assert_eq!(inline[1], CaliptraVdmCommand::ExportAttestedCsr as u8);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(u32::from_le_bytes(inline[3..7].try_into().unwrap()), 12);
+        assert_eq!(&inline[7..19], &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    }
+
+    #[test]
+    fn export_attested_csr_uses_large_response_when_inline_is_too_small() {
+        let cmds = TestCommands { csr_len: 12 };
+        let req = export_attested_csr_req();
+        let (response, _inline, large) = dispatch(&cmds, &req, 10, 64);
+
+        assert_large(response, 2 + 1 + 4 + 12);
+        assert_eq!(large[0], CALIPTRA_VDM_COMMAND_VERSION);
+        assert_eq!(large[1], CaliptraVdmCommand::ExportAttestedCsr as u8);
+        assert_eq!(large[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(u32::from_le_bytes(large[3..7].try_into().unwrap()), 12);
+        assert_eq!(&large[7..19], &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     }
 }

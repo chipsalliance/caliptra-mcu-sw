@@ -25,14 +25,13 @@ pub enum CaliptraVdmCommand {
     GetAttestationLog = 0x07,
     ClearAttestationLog = 0x08,
     GetAttestation = 0x09,
-    RequestDebugUnlock = 0x0A,
-    AuthorizeDebugUnlockToken = 0x0B,
     ExportIdevidCsr = 0x0C,
     SetSlot0Cert = 0x0D,
     GetSlot0State = 0x0E,
     ExportAttestedCsr = 0x0F,
-    ProgramFieldEntropy = 0x10,
     DeviceOwnershipTransfer = 0x11,
+    /// Single entry point for authorization-related sub-commands.
+    AuthorizedCommand = 0x12,
 }
 
 impl TryFrom<u8> for CaliptraVdmCommand {
@@ -49,14 +48,12 @@ impl TryFrom<u8> for CaliptraVdmCommand {
             0x07 => Self::GetAttestationLog,
             0x08 => Self::ClearAttestationLog,
             0x09 => Self::GetAttestation,
-            0x0A => Self::RequestDebugUnlock,
-            0x0B => Self::AuthorizeDebugUnlockToken,
             0x0C => Self::ExportIdevidCsr,
             0x0D => Self::SetSlot0Cert,
             0x0E => Self::GetSlot0State,
             0x0F => Self::ExportAttestedCsr,
-            0x10 => Self::ProgramFieldEntropy,
             0x11 => Self::DeviceOwnershipTransfer,
+            0x12 => Self::AuthorizedCommand,
             _ => return Err(()),
         })
     }

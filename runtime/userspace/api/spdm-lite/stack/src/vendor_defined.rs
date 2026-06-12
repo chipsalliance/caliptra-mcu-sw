@@ -73,6 +73,7 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
             .effective_max_spdm_msg_size(pal)
             .min(pal.large_capacity())
             .saturating_sub(envelope)
+            .min(V::LARGE_RESPONSE_CAPACITY)
     } else {
         0
     };

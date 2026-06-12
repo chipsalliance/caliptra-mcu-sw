@@ -47,6 +47,14 @@ pub trait SpdmVdmBackend {
     /// `true`.
     const USES_LARGE_RESPONSE: bool = false;
 
+    /// Maximum VDM payload bytes this backend needs for a large response.
+    ///
+    /// The stack still caps this by the negotiated maximum SPDM message size and
+    /// PAL large-message capacity, but this backend-specific bound avoids
+    /// reserving a worst-case SPDM-sized scratch buffer for small vendor command
+    /// sets.
+    const LARGE_RESPONSE_CAPACITY: usize = usize::MAX;
+
     /// Returns true when this backend owns the decoded VDM registry ID.
     fn match_id(&self, registry: &VdmRegistry<'_>) -> bool;
 

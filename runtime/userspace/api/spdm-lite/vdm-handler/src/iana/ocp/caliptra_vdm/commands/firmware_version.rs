@@ -27,10 +27,11 @@ where
     A: SpdmPalAlloc,
     I: SpdmPalIo,
 {
-    if req.len() < AREA_INDEX_LEN {
-        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
-    }
-    let area_index = u32::from_le_bytes([req[0], req[1], req[2], req[3]]);
+    let area_index = match req.len() {
+        0 => 0,
+        AREA_INDEX_LEN => u32::from_le_bytes([req[0], req[1], req[2], req[3]]),
+        _ => return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize),
+    };
 
     // out[0] = completion code, out[1..] = version string.
     if out.is_empty() {
