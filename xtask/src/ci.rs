@@ -28,31 +28,31 @@ pub(crate) fn size_history() -> Result<(), anyhow::Error> {
         .with_pr_squashing(true)
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "Kernel size",
-            firmware::MCU_KERNEL,
+            firmware::MCU_KERNEL_FPGA,
             SizeType::Instruction,
             true,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "ROM size",
-            firmware::MCU_ROM,
+            firmware::MCU_ROM_FPGA,
             SizeType::Instruction,
             false,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "App size",
-            firmware::MCU_USER,
+            firmware::MCU_USER_FPGA,
             SizeType::Instruction,
             false,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "Kernel stack size",
-            firmware::MCU_KERNEL,
+            firmware::MCU_KERNEL_FPGA,
             SizeType::Stack,
             false,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "User stack size",
-            firmware::MCU_USER,
+            firmware::MCU_USER_FPGA,
             SizeType::Stack,
             false,
         )))
