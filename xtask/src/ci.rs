@@ -63,8 +63,8 @@ pub(crate) fn size_history() -> Result<(), anyhow::Error> {
 fn create_cache() -> Result<Box<dyn Cache>, Box<dyn Error>> {
     Ok(GithubActionCache::new().map(box_cache).or_else(|e| {
         let fs_cache_path = "/tmp/caliptra-mcu-size-cache";
-        println!(
-            "Unable to create github action cache: {e}; using fs-cache instead at {fs_cache_path}"
+        eprintln!(
+            "Unable to create GitHub Actions cache: {e}; using fs-cache instead at {fs_cache_path}"
         );
         FsCache::new(fs_cache_path.into()).map(box_cache)
     })?)
@@ -74,7 +74,7 @@ fn box_cache(val: impl Cache + 'static) -> Box<dyn Cache> {
     Box::new(val)
 }
 
-fn build_runtime(target_dir: &PathBuf) -> Result<PathBuf> {
+fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
     // FPGA does not have a `*-devel.toml` manifest variant (HW-fixed SRAM);
     // still exercise the `release` cargo feature / `release` cargo profile
     // against its single 512 KB layout so size regressions and
@@ -88,7 +88,7 @@ fn build_runtime(target_dir: &PathBuf) -> Result<PathBuf> {
     })
 }
 
-fn get_elf_bytes<'a>(target_dir: &PathBuf, fwid: FwId<'a>) -> io::Result<Vec<u8>> {
+fn get_elf_bytes(target_dir: &Path, fwid: FwId<'_>) -> io::Result<Vec<u8>> {
     fs::read(
         target_dir
             .join("riscv32imc-unknown-none-elf")

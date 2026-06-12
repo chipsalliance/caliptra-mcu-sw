@@ -66,8 +66,8 @@ google-cloud-aiplatform-v1.workspace = true
 google-cloud-auth.workspace = true
 rustls = { workspace = true, features = ["ring"] }
 
-# infra dependecies for CI
-size-history.workspace = true 
-
+ # infra dependencies for CI
+ size-history.workspace = true
+ 
 [build-dependencies]
 cc.workspace = true
