@@ -644,6 +644,11 @@ impl McuError {
         ),
         (ROM_CFI_PANIC, 0x6_0000, "ROM CFI panic"),
         (
+            ROM_CFI_NO_EARLY_ENTROPY_SOURCE,
+            0x6_0001,
+            "CFI enabled but no early entropy source available"
+        ),
+        (
             ROM_SOC_MCU_MBOX0_AXI_USER_LOCK_VERIFY_FAILED,
             0x5_0018,
             "MCU mailbox 0 AXI user lock verification failed after locking"

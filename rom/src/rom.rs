@@ -999,8 +999,10 @@ fn initialize_cfi_state(params: &mut RomParameters) {
     match &mut params.cfi_entropy_source {
         None => {
             if cfg!(feature = "cfi") {
-                caliptra_mcu_romtime::println!("[mcu-rom] Invalid reset reason: multiple bits set");
-                fatal_error(McuError::ROM_ROM_INVALID_RESET_REASON);
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] CFI enabled but no early entropy source available"
+                );
+                fatal_error(McuError::ROM_CFI_NO_EARLY_ENTROPY_SOURCE);
             }
         }
         Some(source) => {
