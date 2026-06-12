@@ -27,7 +27,7 @@ use crate::WarmBoot;
 use caliptra_api::mailbox::CmStableKeyType;
 #[cfg(all(not(test), feature = "cfi"))]
 use caliptra_cfi_derive::{cfi_impl_fn, cfi_mod_fn};
-use caliptra_cfi_lib::{cfi_assert_eq, cfi_launder, CfiCounter};
+use caliptra_cfi_lib::{cfi_assert_eq, cfi_launder, CfiCounter, CfiError};
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::mci;
@@ -57,6 +57,11 @@ pub const MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS: u32 = 8; // 32 kB / 4 kB chu
 pub trait BootFlow {
     /// Execute the boot flow
     fn run(env: &mut RomEnv, params: RomParameters) -> !;
+}
+
+/// An entropy source provided by the integrator, used for initializing the CFI counters.
+pub trait CfiEntropySource {
+    fn entropy(&mut self) -> Result<(u32, u32, u32, u32), CfiError>;
 }
 
 extern "C" {
@@ -985,27 +990,34 @@ pub struct RomParameters<'a> {
     /// ROM uses the reference fuse map count (number of entries in
     /// `PROD_DEBUG_UNLOCK_PK_ENTRIES`).
     pub prod_debug_unlock_auth_pk_hash_count: Option<u32>,
+    /// An optional entropy source used for the initialization of CFI counters before Caliptra
+    /// mailbox is available. If `None` and CFI is enabled, initialization will error out.
+    pub cfi_entropy_source: Option<&'a mut dyn CfiEntropySource>,
 }
 
-pub fn rom_start(params: RomParameters) {
+fn initialize_cfi_state(params: &mut RomParameters) {
+    match &mut params.cfi_entropy_source {
+        None => {
+            if cfg!(feature = "cfi") {
+                caliptra_mcu_romtime::println!("[mcu-rom] Invalid reset reason: multiple bits set");
+                fatal_error(McuError::ROM_ROM_INVALID_RESET_REASON);
+            }
+        }
+        Some(source) => {
+            let mut entropy_gen = || source.entropy();
+            CfiCounter::reset(&mut entropy_gen);
+            CfiCounter::reset(&mut entropy_gen);
+            CfiCounter::reset(&mut entropy_gen);
+        }
+    }
+}
+
+pub fn rom_start(mut params: RomParameters) {
     caliptra_mcu_romtime::println!("[mcu-rom] Hello from ROM");
     #[cfg(feature = "ocp-lock")]
     caliptra_mcu_romtime::println!("[mcu-rom] OCP LOCK feature enabled");
 
-    let mut entropy_gen = || {
-        let cycle1 = caliptra_mcu_romtime::mcycle();
-        let cycle2 = caliptra_mcu_romtime::mcycle();
-        Ok((
-            cycle1 as u32,
-            (cycle1 >> 32) as u32,
-            cycle2 as u32,
-            (cycle2 >> 32) as u32,
-        ))
-    };
-
-    CfiCounter::reset(&mut entropy_gen);
-    CfiCounter::reset(&mut entropy_gen);
-    CfiCounter::reset(&mut entropy_gen);
+    initialize_cfi_state(&mut params);
 
     // Create ROM environment with all peripherals
     let mut env = RomEnv::new();
