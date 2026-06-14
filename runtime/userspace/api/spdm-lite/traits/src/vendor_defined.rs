@@ -1,0 +1,95 @@
+// Licensed under the Apache-2.0 license
+
+//! VENDOR_DEFINED extension points implemented by platform/user code.
+
+use super::*;
+
+/// Decoded VENDOR_DEFINED registry identity used to select a responder.
+pub struct VdmRegistry<'a> {
+    /// Standards body registry value decoded from the SPDM envelope.
+    pub standard_id: u16,
+    /// Vendor ID bytes decoded from the SPDM envelope.
+    pub vendor_id: &'a [u8],
+    /// True when the transport delivered this request as a secured message.
+    pub secure_session: bool,
+}
+
+/// Outcome of a handled VDM request: which response buffer was written.
+pub enum VdmResponse {
+    /// Wrote N payload bytes into [`VdmResponseBuffer::inline`] (fits one frame).
+    Inline(usize),
+    /// Wrote N payload bytes into [`VdmResponseBuffer::large`] (sent via chunking).
+    Large(usize),
+}
+
+/// Response buffers and scratch allocator provided to a VDM handler.
+pub struct VdmResponseBuffer<'a, Alloc: SpdmPalAlloc, Io: SpdmPalIo> {
+    /// Per-request payload buffer sized to fit a single transport frame.
+    pub inline: &'a mut [u8],
+    /// Buffer for responses that do not fit `inline`; the stack transmits it via
+    /// chunking. Non-empty only when [`SpdmVdmBackend::USES_LARGE_RESPONSE`] is set (and
+    /// chunking is available). Its backing memory is owned by the stack (today a
+    /// persistent large-message store; planned: the per-task scratch allocator) and is
+    /// not the handler's concern.
+    pub large: &'a mut [u8],
+    /// Allocator for per-request VDM working scratch (e.g. staging a mailbox call).
+    pub alloc: &'a Alloc,
+    /// I/O handle associated with the current request; scopes allocator usage.
+    pub io: &'a Io,
+}
+
+/// Static-dispatch VDM backend used by the spdm-lite dispatcher.
+#[allow(async_fn_in_trait)]
+pub trait SpdmVdmBackend {
+    /// True when this backend can emit a response that does not fit the inline
+    /// transport frame and must use [`VdmResponseBuffer::large`]. PCI-SIG IDE_KM/TDISP
+    /// set this `false` (they chunk large reports at the protocol level); OCP sets it
+    /// `true`.
+    const USES_LARGE_RESPONSE: bool = false;
+
+    /// Returns true when this backend owns the decoded VDM registry ID.
+    fn match_id(&self, registry: &VdmRegistry<'_>) -> bool;
+
+    /// Handles a matched VDM request and writes only the VDM response payload.
+    ///
+    /// Called only after [`SpdmVdmBackend::match_id`] has selected this backend, so it
+    /// already owns the request. Intra-backend routing (e.g. PCI-SIG IDE_KM vs TDISP
+    /// by `protocol_id`, or an OCP command code) is decoded from `req`.
+    ///
+    /// Writes the payload into [`VdmResponseBuffer::inline`] when it fits, otherwise
+    /// into [`VdmResponseBuffer::large`], and reports which via [`VdmResponse`].
+    async fn handle_request<Alloc, Io>(
+        &self,
+        req: &[u8],
+        rsp: VdmResponseBuffer<'_, Alloc, Io>,
+    ) -> McuResult<VdmResponse>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo;
+}
+
+/// Default VDM backend used when no platform VDM support is registered.
+///
+/// [`match_id`](SpdmVdmBackend::match_id) always returns `false`, so the stack answers
+/// every VENDOR_DEFINED request with `SPDM_UNSUPPORTED_REQUEST` before `handle_request`
+/// is ever reached.
+#[derive(Clone, Copy, Default)]
+pub struct NoVdmBackend;
+
+impl SpdmVdmBackend for NoVdmBackend {
+    fn match_id(&self, _registry: &VdmRegistry<'_>) -> bool {
+        false
+    }
+
+    async fn handle_request<Alloc, Io>(
+        &self,
+        _req: &[u8],
+        _rsp: VdmResponseBuffer<'_, Alloc, Io>,
+    ) -> McuResult<VdmResponse>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+}

@@ -43,7 +43,7 @@ pub use aes_gcm::{
     spdm_aes_gcm_encrypt_init, spdm_aes_gcm_encrypt_update, Aes256GcmTag, AesGcmCtx,
 };
 pub use alloc::ApiAlloc;
-pub use cert::populate_idev_ecc384_cert;
+pub use cert::{get_attested_csr_ecc384, get_attested_csr_mldsa87, populate_idev_ecc384_cert};
 pub use device_state::{get_pcr_value, pcr_quote_ecc384, PCR_QUOTE_ECC384_LEN};
 pub use dpe::{
     dpe_certify_key, dpe_certify_key_pubkey, dpe_get_cert_chain_chunk, dpe_sign_ecc_p384,

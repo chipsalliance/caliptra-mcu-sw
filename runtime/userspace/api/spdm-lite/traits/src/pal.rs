@@ -22,7 +22,6 @@ pub trait SpdmPal:
     + SpdmPalHash
     + SpdmPalCertStore
     + SpdmPalMeasurements
-    + SpdmPalLargeMessage
     + SpdmPalSessionCrypto
 {
 }

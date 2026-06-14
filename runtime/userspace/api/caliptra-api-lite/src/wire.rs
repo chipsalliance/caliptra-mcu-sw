@@ -64,6 +64,12 @@ pub(crate) const DPE_CMD_SIGN: u32 = 0x0A;
 /// `QUOTE_PCRS_ECC384` command ID.
 pub(crate) const CMD_QUOTE_PCRS_ECC384: u32 = 0x5043_5251; // "PCRQ"
 
+/// `GET_ATTESTED_ECC384_CSR` command ID.
+pub(crate) const CMD_GET_ATTESTED_ECC384_CSR: u32 = 0x4145_4352; // "AECR"
+
+/// `GET_ATTESTED_MLDSA87_CSR` command ID.
+pub(crate) const CMD_GET_ATTESTED_MLDSA87_CSR: u32 = 0x414D_4352; // "AMCR"
+
 /// Mailbox response header size: `chksum(4) + fips_status(4)`.
 pub(crate) const MBOX_RESP_HEADER_SIZE: usize = 8;
 

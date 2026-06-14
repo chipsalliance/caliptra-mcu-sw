@@ -4070,6 +4070,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-spdm-lite-vdm-handler"
+version = "0.1.0"
+dependencies = [
+ "mcu-error",
+ "mcu-spdm-lite-codec",
+ "mcu-spdm-lite-traits",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5972,6 +5981,7 @@ dependencies = [
  "mcu-spdm-lite-stack",
  "mcu-spdm-lite-traits",
  "mcu-spdm-lite-transports",
+ "mcu-spdm-lite-vdm-handler",
  "portable-atomic",
  "static_cell",
  "zerocopy",

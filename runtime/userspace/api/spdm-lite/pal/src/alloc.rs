@@ -76,6 +76,57 @@ impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
     fn alloc_bytes(&self, _io: &impl SpdmPalIo, len: usize) -> McuResult<Self::Bytes<'_>> {
         self.allocator.alloc_bytes(len)
     }
+
+    fn large_capacity(&self) -> usize {
+        let large_buf = self.large_buf.take();
+        let capacity = large_buf.as_deref().map_or(0, <[u8]>::len);
+        self.large_buf.set(large_buf);
+        capacity
+    }
+
+    fn large_begin(&self, len: usize) -> McuResult<()> {
+        // Static buffer: nothing to allocate — just bound-check against capacity.
+        if len > self.large_capacity() {
+            return Err(ERR_OUT_OF_MEMORY);
+        }
+        Ok(())
+    }
+
+    fn large_write(&self, offset: usize, data: &[u8]) -> McuResult<()> {
+        let mut held = self.large_buf.take();
+        let result = (|| {
+            let buf = held.as_deref_mut().ok_or(INVARIANT)?;
+            let end = offset.checked_add(data.len()).ok_or(INVARIANT)?;
+            buf.get_mut(offset..end)
+                .ok_or(INVARIANT)?
+                .copy_from_slice(data);
+            Ok(())
+        })();
+        self.large_buf.set(held);
+        result
+    }
+
+    fn large_read(&self, offset: usize, out: &mut [u8]) -> McuResult<()> {
+        let held = self.large_buf.take();
+        let result = (|| {
+            let buf = held.as_deref().ok_or(INVARIANT)?;
+            let end = offset.checked_add(out.len()).ok_or(INVARIANT)?;
+            out.copy_from_slice(buf.get(offset..end).ok_or(INVARIANT)?);
+            Ok(())
+        })();
+        self.large_buf.set(held);
+        result
+    }
+
+    fn large_end(&self) {
+        // Wipe the message bytes but keep the static slice parked in the Cell
+        // for reuse by the next large message.
+        let mut held = self.large_buf.take();
+        if let Some(buf) = held.as_deref_mut() {
+            buf.fill(0);
+        }
+        self.large_buf.set(held);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +162,9 @@ use core::ptr::NonNull;
 /// bitmap small (1 bit per 64 bytes ≈ 0.2 % overhead).
 pub const BITMAP_SLOT_SIZE: usize = 64;
 
-use mcu_error::codes::{BAD_ALIGNMENT as ERR_BAD_ALIGNMENT, OUT_OF_MEMORY as ERR_OUT_OF_MEMORY};
+use mcu_error::codes::{
+    BAD_ALIGNMENT as ERR_BAD_ALIGNMENT, INVARIANT, OUT_OF_MEMORY as ERR_OUT_OF_MEMORY,
+};
 
 /// Single-threaded bitmap allocator over a caller-supplied buffer.
 ///
@@ -363,7 +416,9 @@ impl BitmapAllocator {
         None
     }
 
-    /// Releases a previously-reserved run of slots back to the pool.
+    /// Releases a previously-reserved run of slots back to the pool by clearing
+    /// their occupancy bits. The slot bytes are left as-is; per-request `reset`
+    /// plus the write-before-read discipline scope their reuse.
     ///
     /// # Parameters
     ///

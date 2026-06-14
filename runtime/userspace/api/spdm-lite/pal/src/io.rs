@@ -147,9 +147,10 @@ impl<M: MeasurementProvider> SpdmPalIoTransport for McuSpdmPal<M> {
     /// * Any [`McuErrorCode`] surfaced by the underlying
     ///   [`SpdmPalTransport::recv_request`].
     async fn recv_request(&self) -> McuResult<Self::Io<'_>> {
-        // SAFETY: `&self` + single-task responder ⇒ no live `McuSpdmIo`
-        // exists when this returns. Reset clears the bitmap for the new
-        // exchange.
+        // SAFETY: `&self` + single-task responder ⇒ no live `McuSpdmIo` exists
+        // when this returns. Reset clears the bitmap for the new exchange. The
+        // large-message buffer is a separate static (not part of this pool), so
+        // it survives across requests for chunked transfers.
         unsafe { self.allocator.reset() };
 
         // Need room for header + MTU; the transport writes both into the

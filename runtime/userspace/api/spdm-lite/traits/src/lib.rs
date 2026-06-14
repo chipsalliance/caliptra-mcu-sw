@@ -25,21 +25,21 @@ mod alloc;
 mod cert;
 mod hash;
 mod io;
-mod large_message;
 mod measurements;
 mod pal;
 mod session_crypto;
 mod transport;
+mod vendor_defined;
 
 pub use alloc::*;
 pub use cert::*;
 pub use hash::*;
 pub use io::*;
-pub use large_message::*;
 pub use measurements::*;
 pub use pal::*;
 pub use session_crypto::*;
 pub use transport::*;
+pub use vendor_defined::*;
 
 // Re-export the workspace-wide error type/alias for convenience: users
 // of this crate get them transitively without needing `mcu-error` as a

@@ -57,4 +57,34 @@ pub trait SpdmPalAlloc {
     /// reading. Useful for response-building paths that need a
     /// variable-size buffer without using stack arrays.
     fn alloc_bytes(&self, io: &impl SpdmPalIo, len: usize) -> McuResult<Self::Bytes<'_>>;
+
+    // ---- Persistent large-message buffer ------------------------------------
+    //
+    // One in-flight large SPDM message (a `CHUNK_GET` response or a `CHUNK_SEND`
+    // reassembly buffer) is held in a single persistent buffer that outlives the
+    // request that produces it and is served/consumed over later exchanges.
+    // Backed by the same pool as the per-request scratch (allocated on demand,
+    // reusable as scratch when idle) rather than a dedicated static region.
+
+    /// Maximum size, in bytes, of a single in-flight large SPDM message this
+    /// responder can hold. Drives the `CHUNK` capability advertisement
+    /// (`MaxSPDMmsgSize`) and buffered large-response/request validation.
+    fn large_capacity(&self) -> usize;
+
+    /// Reserves the persistent large-message buffer (`len` bytes) from the pool,
+    /// replacing (freeing) any previously-held one. Must be called before
+    /// [`Self::large_write`] / [`Self::large_read`]. The buffer persists across
+    /// requests until [`Self::large_end`] releases it (or the next `large_begin`
+    /// replaces it).
+    fn large_begin(&self, len: usize) -> McuResult<()>;
+
+    /// Copies `data` into the held large-message buffer at `offset`.
+    fn large_write(&self, offset: usize, data: &[u8]) -> McuResult<()>;
+
+    /// Copies bytes from the held large-message buffer at `offset` into `out`.
+    fn large_read(&self, offset: usize, out: &mut [u8]) -> McuResult<()>;
+
+    /// Releases the large-message buffer back to the pool (freed and zeroed).
+    /// Idempotent: a no-op when no large buffer is currently held.
+    fn large_end(&self);
 }

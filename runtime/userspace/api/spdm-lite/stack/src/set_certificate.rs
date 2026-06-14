@@ -298,7 +298,6 @@ mod tests {
     use mcu_spdm_lite_codec::{errors as wire_errors, OtherParamSupport, ReqRespCode};
     use mcu_spdm_lite_traits::{
         McuResult, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash, SpdmPalIoKind,
-        SpdmPalLargeMessage,
     };
     use std::boxed::Box;
     use std::cell::RefCell;
@@ -402,6 +401,25 @@ mod tests {
         fn alloc_bytes(&self, _io: &impl SpdmPalIo, len: usize) -> McuResult<Self::Bytes<'_>> {
             Ok(vec![0u8; len])
         }
+
+        fn large_capacity(&self) -> usize {
+            self.mtu
+        }
+
+        fn large_begin(&self, _len: usize) -> McuResult<()> {
+            Ok(())
+        }
+
+        fn large_write(&self, _offset: usize, _data: &[u8]) -> McuResult<()> {
+            Ok(())
+        }
+
+        fn large_read(&self, _offset: usize, out: &mut [u8]) -> McuResult<()> {
+            out.fill(0);
+            Ok(())
+        }
+
+        fn large_end(&self) {}
     }
 
     impl SpdmPalIoTransport for TestPal {
@@ -433,21 +451,6 @@ mod tests {
             _msg: &mut [u8],
         ) -> McuResult<()> {
             Err(mcu_error::codes::NOT_IMPLEMENTED)
-        }
-    }
-
-    impl SpdmPalLargeMessage for TestPal {
-        fn capacity(&self) -> usize {
-            self.mtu
-        }
-
-        fn write(&self, _offset: usize, _data: &[u8]) -> McuResult<()> {
-            Ok(())
-        }
-
-        fn read(&self, _offset: usize, out: &mut [u8]) -> McuResult<()> {
-            out.fill(0);
-            Ok(())
         }
     }
 

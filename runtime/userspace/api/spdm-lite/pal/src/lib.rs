@@ -35,7 +35,6 @@ mod alloc;
 pub mod cert;
 mod hash;
 mod io;
-mod large_message;
 pub mod measurements;
 mod pal;
 mod session_crypto;

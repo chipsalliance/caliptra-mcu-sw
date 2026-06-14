@@ -48,6 +48,7 @@ pub mod session;
 mod set_certificate;
 mod stack;
 mod transcript;
+mod vendor_defined;
 mod version;
 
 pub use error::*;

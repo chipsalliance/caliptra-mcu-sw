@@ -53,6 +53,9 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     }
 
     let large_response_size = active_rsp.response_size;
+    // Whether this large response is served from the pinned large buffer (vs a
+    // Certificate response, which regenerates each chunk and holds no pin).
+    let is_buffered = matches!(active_rsp.kind, LargeResponse::Buffered);
     let extra = if seq_num == 0 {
         LARGE_RESPONSE_SIZE_FIELD_SIZE
     } else {
@@ -98,11 +101,16 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
                 state.transcript.append_m1(pal, io, chunk).await?;
             }
             LargeResponse::Buffered => {
-                pal.read(bytes_sent, chunk)?;
+                pal.large_read(bytes_sent, chunk)?;
             }
         }
     }
 
     state.large_response.chunk_sent(chunk_size);
+    // Once the final chunk of a buffered response ships, release the pinned
+    // large buffer (RAII free + zero) back to the pool.
+    if last_chunk && is_buffered {
+        pal.large_end();
+    }
     Ok(rsp)
 }

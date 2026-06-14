@@ -35,6 +35,8 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal>(
                 let err = build_response_to_large_request(state, pal);
                 encode_error_pdu(state.version, err, &mut response_to_large_request);
                 state.chunk.reset();
+                // Reassembly consumed: release the pinned buffer (free + zero).
+                pal.large_end();
                 &response_to_large_request[..]
             } else {
                 &[]
@@ -57,6 +59,8 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal>(
             let mut error = [0u8; 4];
             encode_error_pdu(state.version, SPDM_INVALID_REQUEST, &mut error);
             state.chunk.reset();
+            // Release any pinned reassembly buffer reserved before the error.
+            pal.large_end();
             build_chunk_send_ack(pal, io, state.version, true, handle, chunk_seq_num, &error)
         }
     }
@@ -196,8 +200,15 @@ fn process_first_chunk<Pal: SpdmPal>(
         || chunk_size < min_chunk_size
         || chunk_size >= large_msg_size
         || large_msg_size <= CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
-        || large_msg_size > pal.capacity();
-    if invalid || pal.write(0, chunk).is_err() {
+        || large_msg_size > pal.large_capacity();
+    if invalid {
+        return Err(ChunkProcessError::Early {
+            handle,
+            chunk_seq_num,
+        });
+    }
+    // Reserve the pinned reassembly buffer, then store the first chunk into it.
+    if pal.large_begin(large_msg_size).is_err() || pal.large_write(0, chunk).is_err() {
         return Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
@@ -241,7 +252,7 @@ fn process_next_chunk<Pal: SpdmPal>(
         || end > large_msg_size
         || (last_chunk && end != large_msg_size)
         || (!last_chunk && (end >= large_msg_size || chunk_size < min_chunk_size));
-    if invalid || pal.write(bytes_received, chunk).is_err() {
+    if invalid || pal.large_write(bytes_received, chunk).is_err() {
         return Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
@@ -261,7 +272,7 @@ fn build_response_to_large_request<Pal: SpdmPal>(
         return SPDM_INVALID_REQUEST;
     }
     let mut hdr_buf = [0u8; SpdmMsgHdrPdu::SIZE];
-    if pal.read(0, &mut hdr_buf).is_err() {
+    if pal.large_read(0, &mut hdr_buf).is_err() {
         return SPDM_INVALID_REQUEST;
     };
     let Ok((hdr, _)) = SpdmMsgHdrPdu::ref_from_prefix(&hdr_buf) else {
