@@ -10,3 +10,6 @@ edition.workspace = true
 mcu-spdm-lite-traits = { workspace = true }
 mcu-spdm-lite-codec = { workspace = true }
 mcu-error = { workspace = true }
+
+[dev-dependencies]
+mcu-caliptra-api-lite = { workspace = true }

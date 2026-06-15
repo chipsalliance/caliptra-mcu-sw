@@ -4074,6 +4074,7 @@ dependencies = [
 name = "mcu-spdm-lite-vdm-handler"
 version = "0.1.0"
 dependencies = [
+ "mcu-caliptra-api-lite",
  "mcu-error",
  "mcu-spdm-lite-codec",
  "mcu-spdm-lite-traits",

@@ -380,6 +380,17 @@ mod tests {
         }
     }
 
+    impl mcu_caliptra_api_lite::ApiAlloc for TestPal {
+        type Buf<'a>
+            = Vec<u8>
+        where
+            Self: 'a;
+
+        fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
+            Ok(vec![0u8; len])
+        }
+    }
+
     impl SpdmPalAlloc for TestPal {
         type Box<'a, T>
             = TestBox<'a, T>

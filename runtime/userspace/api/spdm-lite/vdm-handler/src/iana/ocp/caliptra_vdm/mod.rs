@@ -265,6 +265,17 @@ mod tests {
 
     struct TestAlloc;
 
+    impl mcu_caliptra_api_lite::ApiAlloc for TestAlloc {
+        type Buf<'a>
+            = Vec<u8>
+        where
+            Self: 'a;
+
+        fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
+            Ok(vec![0u8; len])
+        }
+    }
+
     impl SpdmPalAlloc for TestAlloc {
         type Box<'a, T>
             = TestBox<'a, T>

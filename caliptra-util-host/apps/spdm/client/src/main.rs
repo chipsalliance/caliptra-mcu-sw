@@ -11,8 +11,8 @@ use anyhow::Result;
 use caliptra_spdm_requester::{SpdmConfig, SpdmRequester, SpdmSocketDeviceIo, SpdmVdmDriverImpl};
 use caliptra_spdm_vdm_client::config::{self, DeviceMode, TestConfig};
 use caliptra_spdm_vdm_client::{
-    validator, CommandAuthChallengeSigner, DebugUnlockKeys, DebugUnlockSigner, HmacCommandAuthorizer,
-    LocalDebugUnlockSigner, SpdmVdmClient,
+    validator, CommandAuthChallengeSigner, DebugUnlockKeys, DebugUnlockSigner,
+    HmacCommandAuthorizer, LocalDebugUnlockSigner, SpdmVdmClient,
 };
 use clap::Parser;
 
