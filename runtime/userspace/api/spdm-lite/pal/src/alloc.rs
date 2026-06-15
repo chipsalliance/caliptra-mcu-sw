@@ -25,6 +25,46 @@
 
 use super::measurements::MeasurementProvider;
 use super::*;
+use core::cell::Cell;
+use core::ops::{Deref, DerefMut};
+
+/// RAII guard handed out by [`SpdmPalAlloc::large_take`]. While alive, owns
+/// the static large-message slice and derefs to `&mut [u8]` of exactly the
+/// requested length. On drop, returns the slice to the PAL's [`Cell`] without
+/// wiping — the bytes survive for `CHUNK_GET` to serve via `large_read`.
+pub struct BitmapLargeBuf<'a> {
+    slice: Option<&'static mut [u8]>,
+    len: usize,
+    cell: &'a Cell<Option<&'static mut [u8]>>,
+}
+
+impl Deref for BitmapLargeBuf<'_> {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        let buf = self.slice.as_deref().expect("BitmapLargeBuf slice missing");
+        &buf[..self.len]
+    }
+}
+
+impl DerefMut for BitmapLargeBuf<'_> {
+    fn deref_mut(&mut self) -> &mut [u8] {
+        let buf = self
+            .slice
+            .as_deref_mut()
+            .expect("BitmapLargeBuf slice missing");
+        &mut buf[..self.len]
+    }
+}
+
+impl Drop for BitmapLargeBuf<'_> {
+    fn drop(&mut self) {
+        // Park the slice back in the PAL. Do NOT wipe — the bytes need to
+        // survive across the rest of this request and the subsequent
+        // CHUNK_GET cycles. `pal.large_end()` (called by the chunking layer
+        // after the final chunk ships) is responsible for the wipe.
+        self.cell.set(self.slice.take());
+    }
+}
 
 impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
     type Box<'a, T>
@@ -126,6 +166,35 @@ impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
             buf.fill(0);
         }
         self.large_buf.set(held);
+    }
+
+    type LargeBuf<'a>
+        = BitmapLargeBuf<'a>
+    where
+        Self: 'a;
+
+    /// Takes the static large-message slice into an RAII handle of exactly
+    /// `len` bytes. While the handle is alive the slice is detached from the
+    /// PAL Cell, so callers must drop the handle before invoking any other
+    /// `large_*` method (capacity / write / read / end) on this PAL.
+    fn large_take(&self, len: usize) -> McuResult<Self::LargeBuf<'_>> {
+        let held = self.large_buf.take();
+        let Some(slice) = held else {
+            // Either no static buffer was provisioned at PAL construction, or
+            // a prior `large_take` handle is still alive. Either way, there is
+            // nothing to hand out.
+            self.large_buf.set(None);
+            return Err(INVARIANT);
+        };
+        if len > slice.len() {
+            self.large_buf.set(Some(slice));
+            return Err(ERR_OUT_OF_MEMORY);
+        }
+        Ok(BitmapLargeBuf {
+            slice: Some(slice),
+            len,
+            cell: &self.large_buf,
+        })
     }
 }
 

@@ -77,12 +77,27 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
     } else {
         0
     };
-    let mut large_buf = pal.alloc_bytes(io, large_cap)?;
+
+    // Take the persistent large-message buffer directly (no scratch hop): the
+    // backend writes its payload at offsets [envelope..envelope+large_cap] in
+    // the same static slice that `CHUNK_GET` will later serve from. The envelope
+    // is written into [0..envelope] only after the backend reports `Large(n)`.
+    // The guard must be dropped before invoking any other `large_*` PAL method
+    // (e.g. `chunk::start_buffered_large_response` calls `large_capacity`).
+    let mut large_guard = if large_cap > 0 {
+        Some(pal.large_take(envelope + large_cap)?)
+    } else {
+        None
+    };
 
     let outcome = {
+        let large_slice: &mut [u8] = match large_guard.as_deref_mut() {
+            Some(buf) => &mut buf[envelope..envelope + large_cap],
+            None => &mut [],
+        };
         let rsp = VdmResponseBuffer {
             inline: &mut inline_buf[..],
-            large: &mut large_buf[..],
+            large: large_slice,
             alloc: pal,
             io,
         };
@@ -91,6 +106,8 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
 
     match outcome {
         VdmResponse::Inline(n) => {
+            // Drop the static-buffer guard early; not needed for inline.
+            drop(large_guard);
             if n > inline_buf.len() {
                 return Err(SPDM_UNSPECIFIED);
             }
@@ -104,77 +121,65 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
             Ok((buf, spdm_len))
         }
         VdmResponse::Large(n) => {
-            if n > large_buf.len() {
+            let Some(mut guard) = large_guard else {
+                return Err(SPDM_UNSPECIFIED);
+            };
+            if n > large_cap {
                 return Err(SPDM_UNSPECIFIED);
             }
-            handle_large_vendor_defined_response(
-                state,
-                pal,
-                io,
+            // Backend has written its payload at static_buf[envelope..envelope+n].
+            // Frame the VENDOR_DEFINED envelope in-place at offset 0.
+            write_vendor_defined_envelope(
                 version,
                 decoded.standard_id,
                 decoded.vendor_id,
-                &large_buf[..n],
-            )
-            .await
+                n,
+                &mut guard[..envelope],
+            )?;
+            let full_len = envelope + n;
+            // Release the static slice back to the PAL so the chunking layer's
+            // `large_capacity` / `large_read` calls observe it again.
+            drop(guard);
+            chunk::validate_buffered_large_response(state, pal, full_len)?;
+            let resp = chunk::start_buffered_large_response(state, pal, io, full_len)?;
+            Ok((resp, 0))
         }
     }
 }
 
-/// Frames a VENDOR_DEFINED_RESPONSE that overflows a single transport frame into
-/// the buffered large-response store and starts chunked delivery.
-///
-/// `payload` is the complete Caliptra VDM payload the backend wrote into the large
-/// staging buffer. The full SPDM message `[SPDM header][VENDOR_DEFINED envelope]
-/// [payload]` is written into the store at increasing offsets (mirroring
-/// `handle_large_measurements_response`); `CHUNK_GET` then serves it over multiple
-/// requests. Returns the `SPDM_LARGE_RESPONSE` handshake PDU (spdm_len 0).
-#[allow(clippy::too_many_arguments)]
-async fn handle_large_vendor_defined_response<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
-    pal: &'a Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+/// Frames the VENDOR_DEFINED_RESPONSE envelope (SPDM header + param1/param2 +
+/// standard_id + vendor_id + resp_len) directly into `out` (which must be sized
+/// to the envelope). The backend's payload is expected to follow at the same
+/// buffer's offset `out.len()`.
+fn write_vendor_defined_envelope(
     version: SpdmVersion,
     standard_id: u16,
     vendor_id: &[u8],
-    payload: &[u8],
-) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
-    let prefix_len = SpdmMsgHdrPdu::SIZE + 2 + 2 + 1 + vendor_id.len() + 2;
-    let full_len = prefix_len
-        .checked_add(payload.len())
-        .ok_or(SPDM_UNSPECIFIED)?;
-    chunk::validate_buffered_large_response(state, pal, full_len)?;
-    // Reserve the pinned large buffer before framing the response into it; it is
-    // released (RAII free + zero) once CHUNK_GET ships the final chunk.
-    pal.large_begin(full_len)?;
-
-    // Write the full SPDM message into the large-response store at offsets,
-    // matching VendorDefinedRspBody's wire layout.
-    let mut offset = 0usize;
-    let hdr = SpdmMsgHdrPdu::new(version, ReqRespCode::VENDOR_DEFINED_RESPONSE);
-    offset = write_large_vdm_bytes(pal, offset, hdr.as_bytes())?;
-    offset = write_large_vdm_bytes(pal, offset, &[0u8, 0u8])?; // param1, param2
-    offset = write_large_vdm_bytes(pal, offset, &standard_id.to_le_bytes())?;
-    offset = write_large_vdm_bytes(pal, offset, &[vendor_id.len() as u8])?;
-    offset = write_large_vdm_bytes(pal, offset, vendor_id)?;
-    let resp_len = u16::try_from(payload.len()).map_err(|_| SPDM_UNSPECIFIED)?;
-    offset = write_large_vdm_bytes(pal, offset, &resp_len.to_le_bytes())?;
-    offset = write_large_vdm_bytes(pal, offset, payload)?;
-    if offset != full_len {
+    payload_len: usize,
+    out: &mut [u8],
+) -> SpdmResult<()> {
+    let envelope_len = SpdmMsgHdrPdu::SIZE + 2 + 2 + 1 + vendor_id.len() + 2;
+    if out.len() != envelope_len {
         return Err(SPDM_UNSPECIFIED);
     }
+    let resp_len = u16::try_from(payload_len).map_err(|_| SPDM_UNSPECIFIED)?;
+    let hdr = SpdmMsgHdrPdu::new(version, ReqRespCode::VENDOR_DEFINED_RESPONSE);
 
-    let resp = chunk::start_buffered_large_response(state, pal, io, full_len)?;
-    Ok((resp, 0))
-}
+    let mut o = 0usize;
+    let mut put = |bytes: &[u8]| -> SpdmResult<()> {
+        let end = o.checked_add(bytes.len()).ok_or(SPDM_UNSPECIFIED)?;
+        out.get_mut(o..end)
+            .ok_or(SPDM_UNSPECIFIED)?
+            .copy_from_slice(bytes);
+        o = end;
+        Ok(())
+    };
 
-fn write_large_vdm_bytes<Pal: SpdmPal>(
-    pal: &Pal,
-    offset: usize,
-    bytes: &[u8],
-) -> SpdmResult<usize> {
-    let next = offset.checked_add(bytes.len()).ok_or(SPDM_UNSPECIFIED)?;
-    pal.large_write(offset, bytes)
-        .map_err(|_| SPDM_UNSPECIFIED)?;
-    Ok(next)
+    put(hdr.as_bytes())?;
+    put(&[0u8, 0u8])?; // param1, param2
+    put(&standard_id.to_le_bytes())?;
+    put(&[vendor_id.len() as u8])?;
+    put(vendor_id)?;
+    put(&resp_len.to_le_bytes())?;
+    Ok(())
 }

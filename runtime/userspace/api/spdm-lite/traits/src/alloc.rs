@@ -87,4 +87,28 @@ pub trait SpdmPalAlloc: mcu_caliptra_api_lite::ApiAlloc {
     /// Releases the large-message buffer back to the pool (freed and zeroed).
     /// Idempotent: a no-op when no large buffer is currently held.
     fn large_end(&self);
+
+    /// RAII guard type returned by [`Self::large_take`].
+    ///
+    /// Implementors return any owning handle that derefs to a `[u8]` slice of
+    /// exactly the requested length over the persistent large-message buffer.
+    /// Dropping the guard must return the underlying slice to the PAL so that
+    /// subsequent [`Self::large_read`] / [`Self::large_capacity`] calls see it
+    /// again. The drop **must not** wipe the slice — the bytes need to survive
+    /// for chunked delivery.
+    type LargeBuf<'a>: DerefMut<Target = [u8]>
+    where
+        Self: 'a;
+
+    /// Reserves the persistent large-message buffer and hands out a mutable
+    /// view of exactly `len` bytes to the caller. The bytes survive after the
+    /// guard drops (so `CHUNK_GET` can serve them via [`Self::large_read`]).
+    ///
+    /// While the returned guard is alive, the underlying slice is not parked
+    /// in the PAL, so calls to [`Self::large_capacity`], [`Self::large_begin`],
+    /// [`Self::large_write`], or [`Self::large_read`] from another code path
+    /// will observe an empty buffer. A single-task SPDM responder runs requests
+    /// sequentially, so this is safe — but callers must drop the guard before
+    /// invoking those methods.
+    fn large_take(&self, len: usize) -> McuResult<Self::LargeBuf<'_>>;
 }

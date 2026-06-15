@@ -401,6 +401,10 @@ mod tests {
             = Vec<u8>
         where
             Self: 'a;
+        type LargeBuf<'a>
+            = Vec<u8>
+        where
+            Self: 'a;
 
         fn alloc<T: Sized>(&self, _io: &impl SpdmPalIo, value: T) -> McuResult<Self::Box<'_, T>> {
             Ok(TestBox {
@@ -431,6 +435,10 @@ mod tests {
         }
 
         fn large_end(&self) {}
+
+        fn large_take(&self, len: usize) -> McuResult<Self::LargeBuf<'_>> {
+            Ok(vec![0u8; len])
+        }
     }
 
     impl SpdmPalIoTransport for TestPal {
