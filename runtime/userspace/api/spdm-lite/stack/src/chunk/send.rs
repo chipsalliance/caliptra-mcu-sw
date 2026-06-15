@@ -14,6 +14,8 @@ use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSUPPORTED_REQUEST,
     SPDM_VERSION_MISMATCH,
 };
+#[cfg(feature = "set-certificate")]
+use crate::set_certificate;
 use crate::stack::{ConnectionState, Phase};
 
 struct ChunkInfo {
@@ -32,8 +34,8 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal>(
         Ok(info) => {
             let mut response_to_large_request = [0u8; 4];
             let response = if info.complete {
-                let err = build_response_to_large_request(state, pal);
-                encode_error_pdu(state.version, err, &mut response_to_large_request);
+                build_response_to_large_request(state, pal, io, &mut response_to_large_request)
+                    .await;
                 state.chunk.reset();
                 // Reassembly consumed: release the pinned buffer (free + zero).
                 pal.large_end();
@@ -264,29 +266,56 @@ fn process_next_chunk<Pal: SpdmPal>(
     Ok(())
 }
 
-fn build_response_to_large_request<Pal: SpdmPal>(
-    state: &ConnectionState<Pal::State>,
+async fn build_response_to_large_request<Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State>,
     pal: &Pal,
-) -> SpdmError {
-    if (state.chunk.large_msg_size as usize) < SpdmMsgHdrPdu::SIZE {
-        return SPDM_INVALID_REQUEST;
-    }
-    let mut hdr_buf = [0u8; SpdmMsgHdrPdu::SIZE];
-    if pal.large_read(0, &mut hdr_buf).is_err() {
-        return SPDM_INVALID_REQUEST;
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    out: &mut [u8; 4],
+) {
+    let len = state.chunk.large_msg_size as usize;
+    let err = if len < SpdmMsgHdrPdu::SIZE {
+        SPDM_INVALID_REQUEST
+    } else {
+        match dispatch_large_request(state, pal, io, len, out).await {
+            Ok(()) => return,
+            Err(err) => err,
+        }
     };
-    let Ok((hdr, _)) = SpdmMsgHdrPdu::ref_from_prefix(&hdr_buf) else {
-        return SPDM_INVALID_REQUEST;
-    };
+    encode_error_pdu(state.version, err, out);
+}
+
+async fn dispatch_large_request<Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    len: usize,
+    out: &mut [u8; 4],
+) -> Result<(), SpdmError> {
+    #[cfg(not(feature = "set-certificate"))]
+    let _ = (io, out);
+
+    let large_req = pal.large_take(len).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (hdr, _) = SpdmMsgHdrPdu::ref_from_prefix(&large_req).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8()
         || hdr.code == ReqRespCode::CHUNK_SEND
         || hdr.code == ReqRespCode::CHUNK_GET
     {
-        return SPDM_INVALID_REQUEST;
+        return Err(SPDM_INVALID_REQUEST);
     }
-    // TODO: Dispatch supported chunked large requests from `large_req` here.
-    // SPDM-lite currently only uses chunking for large responses.
-    SPDM_UNSUPPORTED_REQUEST
+
+    match hdr.code {
+        #[cfg(feature = "set-certificate")]
+        ReqRespCode::SET_CERTIFICATE => {
+            let slot_id =
+                set_certificate::handle_set_certificate_request(state, pal, io, &large_req).await?;
+            out[0] = state.version.to_u8();
+            out[1] = ReqRespCode::SET_CERTIFICATE_RSP.0;
+            out[2] = slot_id;
+            out[3] = 0;
+            Ok(())
+        }
+        _ => Err(SPDM_UNSUPPORTED_REQUEST),
+    }
 }
 
 fn encode_error_pdu(version: SpdmVersion, err: SpdmError, out: &mut [u8; 4]) {

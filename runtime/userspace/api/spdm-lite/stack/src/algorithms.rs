@@ -244,20 +244,15 @@ fn build_response_body<S>(
     peer: &PeerAlgs,
     secure_message_supported: bool,
 ) -> AlgorithmsRsp {
-    let (dhe, aead, key_schedule, mut other_param_support) = if secure_message_supported {
+    let mut other_param_support = state.other_param_support & fixed.other_param_support;
+    let (dhe, aead, key_schedule) = if secure_message_supported {
         (
             state.dhe & peer.dhe,
             state.aead & peer.aead,
             state.key_schedule & peer.key_schedule,
-            state.other_param_support & fixed.other_param_support,
         )
     } else {
-        (
-            DheAlgos::EMPTY,
-            AeadAlgos::EMPTY,
-            KeyScheduleAlgos::EMPTY,
-            mcu_spdm_lite_codec::OtherParamSupport::EMPTY,
-        )
+        (DheAlgos::EMPTY, AeadAlgos::EMPTY, KeyScheduleAlgos::EMPTY)
     };
     if state.version < SpdmVersion::V13
         || !multi_key_cap_allows_connection(state.advertised_cap_flags, state.peer_cap_flags)

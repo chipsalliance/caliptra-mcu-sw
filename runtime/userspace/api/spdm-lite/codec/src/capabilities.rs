@@ -48,6 +48,7 @@ def_flag_set_le! {
         SET_CERT = 1 << 19,
         /// `MULTI_KEY_CAP` field bits 27:26 set to `10b` (`MultiKeyConnRsp`).
         MULTI_KEY_CONN_RSP = 2 << 26,
+        GET_KEY_PAIR_INFO = 1 << 28,
     }
 }
 

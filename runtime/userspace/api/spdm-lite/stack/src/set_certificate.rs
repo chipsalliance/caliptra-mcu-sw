@@ -36,6 +36,20 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
+    let req = io.request();
+    if req.len() > pal.mtu() {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let slot_id = handle_set_certificate_request(state, pal, io, req).await?;
+    build_response(pal, io, state.version, &SetCertificateRsp { slot_id })
+}
+
+pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    req: &[u8],
+) -> SpdmResult<u8> {
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
@@ -43,10 +57,6 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
         return Err(unsupported_set_certificate());
     }
 
-    let req = io.request();
-    if req.len() > pal.mtu() {
-        return Err(SPDM_INVALID_REQUEST);
-    }
     let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8() {
         return Err(SPDM_VERSION_MISMATCH);
@@ -109,7 +119,7 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
         .await?;
     }
 
-    build_response(pal, io, state.version, &SetCertificateRsp { slot_id })
+    Ok(slot_id)
 }
 
 fn unsupported_set_certificate() -> SpdmError {
@@ -128,7 +138,7 @@ fn validate_request_slot(slot_id: u8, supported_slots: u8) -> SpdmResult<()> {
     Ok(())
 }
 
-fn validate_request_attributes<S: Clone>(
+fn validate_request_attributes<S>(
     state: &ConnectionState<S>,
     req: &SetCertificateReqBody,
 ) -> SpdmResult<()> {
@@ -155,7 +165,7 @@ fn validate_request_attributes<S: Clone>(
     Ok(())
 }
 
-fn effective_cert_model<S: Clone>(
+fn effective_cert_model<S>(
     state: &ConnectionState<S>,
     req: &SetCertificateReqBody,
 ) -> SpdmResult<u8> {
@@ -174,9 +184,7 @@ fn cert_model_from_capabilities(cap_flags: CapFlags) -> u8 {
     }
 }
 
-fn validate_negotiated_set_certificate_algorithms<S: Clone>(
-    state: &ConnectionState<S>,
-) -> SpdmResult<()> {
+fn validate_negotiated_set_certificate_algorithms<S>(state: &ConnectionState<S>) -> SpdmResult<()> {
     if state.negotiated_base_hash_sel != HashAlgos::SHA_384 {
         return Err(SPDM_UNSPECIFIED);
     }

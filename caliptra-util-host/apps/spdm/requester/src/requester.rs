@@ -12,6 +12,33 @@ use libspdm::spdm::{self, LibspdmReturnStatus, TransportLayer};
 use crate::transport::{self, SpdmDeviceIo};
 use crate::SpdmConfig;
 
+unsafe extern "C" {
+    fn libspdm_register_verify_spdm_cert_chain_func(
+        spdm_context: *mut c_void,
+        verify_spdm_cert_chain: Option<
+            unsafe extern "C" fn(
+                spdm_context: *mut c_void,
+                slot_id: u8,
+                cert_chain_size: usize,
+                cert_chain: *const c_void,
+                trust_anchor: *mut *const c_void,
+                trust_anchor_size: *mut usize,
+            ) -> bool,
+        >,
+    );
+}
+
+unsafe extern "C" fn accept_peer_cert_chain(
+    _spdm_context: *mut c_void,
+    _slot_id: u8,
+    _cert_chain_size: usize,
+    _cert_chain: *const c_void,
+    _trust_anchor: *mut *const c_void,
+    _trust_anchor_size: *mut usize,
+) -> bool {
+    true
+}
+
 /// SPDM requester wrapping a libspdm context.
 ///
 /// Only one `SpdmRequester` should be active per process (libspdm uses
@@ -61,6 +88,16 @@ impl SpdmRequester {
         unsafe {
             spdm::setup_transport_layer(context, TransportLayer::Mctp, config.max_spdm_msg_size)
                 .map_err(|_| anyhow::anyhow!("Failed to setup transport layer"))?;
+        }
+
+        if config.accept_unverified_peer_cert_chain {
+            // OCP owner provisioning verifies that GET_CERTIFICATE returns the
+            // just-installed bytes. The provisioned owner cert is not a normal
+            // responder identity cert, so libspdm's default leaf-cert checks are
+            // intentionally bypassed for that opt-in flow only.
+            unsafe {
+                libspdm_register_verify_spdm_cert_chain_func(context, Some(accept_peer_cert_chain));
+            }
         }
 
         // Register device I/O callbacks
@@ -181,6 +218,19 @@ impl SpdmRequester {
             &parameter,
             &mut data as *mut _ as *mut core::ffi::c_void,
             core::mem::size_of::<u16>(),
+        );
+
+        // Other parameters: advertise opaque data format 1 and SPDM 1.3
+        // MultiKeyConn support so SET_CERTIFICATE can carry KeyPairID and
+        // SetCertModel when the responder advertises negotiable multi-key.
+        let mut data: u8 =
+            (SPDM_ALGORITHMS_OPAQUE_DATA_FORMAT_1 | SPDM_ALGORITHMS_MULTI_KEY_CONN) as u8;
+        libspdm_set_data(
+            self.context,
+            libspdm_data_type_t_LIBSPDM_DATA_OTHER_PARAMS_SUPPORT,
+            &parameter,
+            &mut data as *mut _ as *mut core::ffi::c_void,
+            core::mem::size_of::<u8>(),
         );
 
         Ok(())

@@ -268,7 +268,7 @@ pub(crate) fn multi_key_conn_rsp<S>(state: &ConnectionState<S>) -> SpdmResult<bo
 
 #[cfg(feature = "set-certificate")]
 fn set_certificate_cap_flags() -> CapFlags {
-    CapFlags::SET_CERT | CapFlags::MULTI_KEY_CONN_RSP
+    CapFlags::SET_CERT | CapFlags::MULTI_KEY_CONN_RSP | CapFlags::GET_KEY_PAIR_INFO
 }
 
 #[cfg(not(feature = "set-certificate"))]
