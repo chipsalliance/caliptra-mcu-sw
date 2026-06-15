@@ -16,16 +16,11 @@ pub const CALIPTRA_VDM_COMMAND_VERSION: u8 = 0x01;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CaliptraVdmCommand {
-    FirmwareVersion = 0x01,
-    DeviceCapabilities = 0x02,
-    DeviceId = 0x03,
-    DeviceInfo = 0x04,
     GetDebugLog = 0x05,
     ClearDebugLog = 0x06,
     GetAttestationLog = 0x07,
     ClearAttestationLog = 0x08,
     GetAttestation = 0x09,
-    ExportIdevidCsr = 0x0C,
     SetSlot0Cert = 0x0D,
     GetSlot0State = 0x0E,
     ExportAttestedCsr = 0x0F,
@@ -39,16 +34,11 @@ impl TryFrom<u8> for CaliptraVdmCommand {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Ok(match value {
-            0x01 => Self::FirmwareVersion,
-            0x02 => Self::DeviceCapabilities,
-            0x03 => Self::DeviceId,
-            0x04 => Self::DeviceInfo,
             0x05 => Self::GetDebugLog,
             0x06 => Self::ClearDebugLog,
             0x07 => Self::GetAttestationLog,
             0x08 => Self::ClearAttestationLog,
             0x09 => Self::GetAttestation,
-            0x0C => Self::ExportIdevidCsr,
             0x0D => Self::SetSlot0Cert,
             0x0E => Self::GetSlot0State,
             0x0F => Self::ExportAttestedCsr,

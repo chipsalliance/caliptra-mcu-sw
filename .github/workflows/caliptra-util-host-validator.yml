@@ -3,6 +3,9 @@
 name: Caliptra Util Host Validator Tests
 
 on:
+  pull_request:
+    branches:
+      - spdm-lite
   schedule:
     - cron: "0 0 * * *"
   # Allows you to run this workflow manually from the Actions tab

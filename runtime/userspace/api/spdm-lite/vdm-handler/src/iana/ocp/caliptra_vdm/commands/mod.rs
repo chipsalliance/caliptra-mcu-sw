@@ -11,12 +11,7 @@ use crate::iana::ocp::caliptra_vdm::protocol::CaliptraCompletionCode;
 pub(crate) mod authorized_command;
 pub(crate) mod clear_attestation_log;
 pub(crate) mod clear_debug_log;
-pub(crate) mod device_capabilities;
-pub(crate) mod device_id;
-pub(crate) mod device_info;
 pub(crate) mod export_attested_csr;
-pub(crate) mod export_idevid_csr;
-pub(crate) mod firmware_version;
 pub(crate) mod get_attestation_log;
 pub(crate) mod get_debug_log;
 
@@ -28,21 +23,6 @@ pub(crate) fn require_empty(req: &[u8]) -> Result<(), CaliptraCompletionCode> {
         Ok(())
     } else {
         Err(CaliptraCompletionCode::InvalidPayloadSize)
-    }
-}
-
-pub(crate) fn read_u32_le(req: &[u8]) -> Result<u32, CaliptraCompletionCode> {
-    let bytes: [u8; 4] = req
-        .try_into()
-        .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
-    Ok(u32::from_le_bytes(bytes))
-}
-
-pub(crate) fn read_optional_u32_le(req: &[u8]) -> Result<u32, CaliptraCompletionCode> {
-    if req.is_empty() {
-        Ok(0)
-    } else {
-        read_u32_le(req)
     }
 }
 

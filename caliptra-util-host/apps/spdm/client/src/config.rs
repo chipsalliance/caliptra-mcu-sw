@@ -30,8 +30,6 @@ pub struct TestConfig {
     #[serde(default)]
     pub mode: DeviceMode,
     #[serde(default)]
-    pub firmware_version: FirmwareVersionConfig,
-    #[serde(default)]
     pub export_attested_csr: ExportAttestedCsrConfig,
     #[serde(default)]
     pub export_idevid_csr: ExportIdevidCsrConfig,
@@ -86,25 +84,6 @@ impl Default for ExportAttestedCsrConfig {
         Self {
             key_ids: default_key_ids(),
             algorithm: default_algorithm(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct FirmwareVersionConfig {
-    /// Firmware indices to test (0=Caliptra core, 1=MCU runtime, 2=SoC in emulator fixtures).
-    #[serde(default = "default_firmware_indices")]
-    pub indices: Vec<u32>,
-}
-
-fn default_firmware_indices() -> Vec<u32> {
-    vec![0, 1, 2]
-}
-
-impl Default for FirmwareVersionConfig {
-    fn default() -> Self {
-        Self {
-            indices: default_firmware_indices(),
         }
     }
 }

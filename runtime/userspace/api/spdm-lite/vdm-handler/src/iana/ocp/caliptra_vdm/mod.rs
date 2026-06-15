@@ -44,40 +44,6 @@ const MAX_LARGE_VDM_PAYLOAD_LEN: usize = VDM_HEADER_LEN + 1 + 4 + MAX_LARGE_COMM
 /// building a Caliptra mailbox request and receiving its response — without
 /// owning persistent buffers.
 pub trait CaliptraVdmCommands {
-    /// Retrieves the firmware version string for `area_index` into `out`.
-    async fn firmware_version<A: SpdmPalAlloc, I: SpdmPalIo>(
-        &self,
-        area_index: u32,
-        scratch: &A,
-        io: &I,
-        out: &mut [u8],
-    ) -> CaliptraVdmResult<usize>;
-
-    /// Retrieves device capability bytes into `out`.
-    async fn device_capabilities<A: SpdmPalAlloc, I: SpdmPalIo>(
-        &self,
-        scratch: &A,
-        io: &I,
-        out: &mut [u8],
-    ) -> CaliptraVdmResult<usize>;
-
-    /// Retrieves device identifier bytes into `out`.
-    async fn device_id<A: SpdmPalAlloc, I: SpdmPalIo>(
-        &self,
-        scratch: &A,
-        io: &I,
-        out: &mut [u8],
-    ) -> CaliptraVdmResult<usize>;
-
-    /// Retrieves device information for `info_index` into `out`.
-    async fn device_info<A: SpdmPalAlloc, I: SpdmPalIo>(
-        &self,
-        info_index: u32,
-        scratch: &A,
-        io: &I,
-        out: &mut [u8],
-    ) -> CaliptraVdmResult<usize>;
-
     /// Drains log bytes of `log_type` into `out`.
     async fn get_log<A: SpdmPalAlloc, I: SpdmPalIo>(
         &self,
@@ -94,15 +60,6 @@ pub trait CaliptraVdmCommands {
         scratch: &A,
         io: &I,
     ) -> CaliptraVdmResult<()>;
-
-    /// Exports an IDevID CSR for `algorithm`, writing CSR bytes into `out`.
-    async fn export_idevid_csr<A: SpdmPalAlloc, I: SpdmPalIo>(
-        &self,
-        algorithm: u32,
-        scratch: &A,
-        io: &I,
-        out: &mut [u8],
-    ) -> CaliptraVdmResult<usize>;
 
     /// Exports an attested CSR for `device_key_id` using `algorithm` and `nonce`,
     /// writing the raw CSR bytes into `out` and returning their length.
@@ -210,18 +167,6 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
         }
 
         let result = match CaliptraVdmCommand::try_from(command_code) {
-            Ok(CaliptraVdmCommand::FirmwareVersion) => {
-                commands::firmware_version::handle(self.cmds, cmd_req, alloc, io, payload).await
-            }
-            Ok(CaliptraVdmCommand::DeviceCapabilities) => {
-                commands::device_capabilities::handle(self.cmds, cmd_req, alloc, io, payload).await
-            }
-            Ok(CaliptraVdmCommand::DeviceId) => {
-                commands::device_id::handle(self.cmds, cmd_req, alloc, io, payload).await
-            }
-            Ok(CaliptraVdmCommand::DeviceInfo) => {
-                commands::device_info::handle(self.cmds, cmd_req, alloc, io, payload).await
-            }
             Ok(CaliptraVdmCommand::GetDebugLog) => {
                 commands::get_debug_log::handle(self.cmds, cmd_req, alloc, io, payload).await
             }
@@ -234,18 +179,6 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
             Ok(CaliptraVdmCommand::ClearAttestationLog) => {
                 commands::clear_attestation_log::handle(self.cmds, cmd_req, alloc, io, payload)
                     .await
-            }
-            Ok(CaliptraVdmCommand::ExportIdevidCsr) => {
-                commands::export_idevid_csr::handle(
-                    self.cmds,
-                    cmd_req,
-                    command_code,
-                    payload,
-                    large,
-                    alloc,
-                    io,
-                )
-                .await
             }
             Ok(CaliptraVdmCommand::ExportAttestedCsr) => {
                 commands::export_attested_csr::handle(
@@ -390,53 +323,6 @@ mod tests {
     }
 
     impl CaliptraVdmCommands for TestCommands {
-        async fn firmware_version<A: SpdmPalAlloc, I: SpdmPalIo>(
-            &self,
-            area_index: u32,
-            _scratch: &A,
-            _io: &I,
-            out: &mut [u8],
-        ) -> CaliptraVdmResult<usize> {
-            let version = match area_index {
-                0 => b"0.0.0 test".as_slice(),
-                1 => b"1.0.0 test".as_slice(),
-                _ => return Err(CaliptraCompletionCode::InvalidParameter),
-            };
-            if out.len() < version.len() {
-                return Err(CaliptraCompletionCode::InsufficientResources);
-            }
-            out[..version.len()].copy_from_slice(version);
-            Ok(version.len())
-        }
-
-        async fn device_capabilities<A: SpdmPalAlloc, I: SpdmPalIo>(
-            &self,
-            _scratch: &A,
-            _io: &I,
-            _out: &mut [u8],
-        ) -> CaliptraVdmResult<usize> {
-            Err(CaliptraCompletionCode::UnsupportedOperation)
-        }
-
-        async fn device_id<A: SpdmPalAlloc, I: SpdmPalIo>(
-            &self,
-            _scratch: &A,
-            _io: &I,
-            _out: &mut [u8],
-        ) -> CaliptraVdmResult<usize> {
-            Err(CaliptraCompletionCode::UnsupportedOperation)
-        }
-
-        async fn device_info<A: SpdmPalAlloc, I: SpdmPalIo>(
-            &self,
-            _info_index: u32,
-            _scratch: &A,
-            _io: &I,
-            _out: &mut [u8],
-        ) -> CaliptraVdmResult<usize> {
-            Err(CaliptraCompletionCode::UnsupportedOperation)
-        }
-
         async fn get_log<A: SpdmPalAlloc, I: SpdmPalIo>(
             &self,
             _log_type: u32,
@@ -454,16 +340,6 @@ mod tests {
             _io: &I,
         ) -> CaliptraVdmResult<()> {
             Err(CaliptraCompletionCode::UnsupportedOperation)
-        }
-
-        async fn export_idevid_csr<A: SpdmPalAlloc, I: SpdmPalIo>(
-            &self,
-            _algorithm: u32,
-            _scratch: &A,
-            _io: &I,
-            out: &mut [u8],
-        ) -> CaliptraVdmResult<usize> {
-            self.write_csr(out)
         }
 
         async fn export_attested_csr<A: SpdmPalAlloc, I: SpdmPalIo>(
@@ -581,19 +457,15 @@ mod tests {
     #[test]
     fn bad_command_version_returns_vdm_completion() {
         let cmds = TestCommands { csr_len: 0 };
-        let (response, inline, _) = dispatch(
-            &cmds,
-            &[0x7F, CaliptraVdmCommand::FirmwareVersion as u8],
-            32,
-            0,
-        );
+        let (response, inline, _) =
+            dispatch(&cmds, &[0x7F, CaliptraVdmCommand::GetDebugLog as u8], 32, 0);
 
         assert_inline(response, 3);
         assert_eq!(
             &inline[..3],
             &[
                 CALIPTRA_VDM_COMMAND_VERSION,
-                CaliptraVdmCommand::FirmwareVersion as u8,
+                CaliptraVdmCommand::GetDebugLog as u8,
                 CaliptraCompletionCode::InvalidCommandVersion as u8,
             ]
         );

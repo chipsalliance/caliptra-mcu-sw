@@ -12,10 +12,6 @@ server_address = "127.0.0.1:63333"
 # Certificate slot ID (0-7)
 slot_id = 0
 
-[firmware_version]
-# Firmware indices to test (0=Caliptra core, 1=MCU runtime, 2=SoC)
-indices = [0, 1, 2]
-
 [validation]
 timeout_seconds = 30
 verbose_output = false

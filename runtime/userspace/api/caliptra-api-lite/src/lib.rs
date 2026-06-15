@@ -29,6 +29,7 @@ mod device_state;
 mod dpe;
 pub mod eat;
 mod ecdh;
+mod fe_prog;
 mod hmac;
 mod import;
 mod rng;
@@ -53,6 +54,7 @@ pub use dpe::{
 pub use ecdh::{
     ecdh_finish, ecdh_generate, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
 };
+pub use fe_prog::fe_prog;
 pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
 pub use import::{cm_delete, cm_import};
 pub use rng::rng_generate;

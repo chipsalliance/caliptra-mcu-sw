@@ -35,6 +35,8 @@ where
     A: SpdmPalAlloc,
     I: SpdmPalIo,
 {
+    use crate::iana::ocp::caliptra_vdm::CaliptraCompletionCode;
+
     if let Err(code) = super::require_empty(req) {
         return CaliptraVdmCmdResult::Error(code);
     }
@@ -42,22 +44,34 @@ where
         Ok(data) => data,
         Err(code) => return CaliptraVdmCmdResult::Error(code),
     };
-    if data.len() < 5 {
-        return CaliptraVdmCmdResult::Error(
-            crate::iana::ocp::caliptra_vdm::CaliptraCompletionCode::InsufficientResources,
-        );
-    }
-    let log_buf = &mut data[5..];
+
+    // Carve out [more_data(1) | data_size(4) | log_buf(rest)] without
+    // bounds-checked indexing. split_first_mut / split_at_mut_checked /
+    // try_into are all panic-free; `data_size_arr` becomes a typed
+    // &mut [u8; 4] so the later assignment is a direct array store
+    // (no copy_from_slice length panic).
+    let (more_data_byte, after_md) = match data.split_first_mut() {
+        Some(parts) => parts,
+        None => return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources),
+    };
+    let Some((data_size_bytes, log_buf)) = after_md.split_at_mut_checked(4) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+    let data_size_arr: &mut [u8; 4] = match data_size_bytes.try_into() {
+        Ok(arr) => arr,
+        Err(_) => {
+            return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources)
+        }
+    };
+
     match cmds.get_log(log_type, scratch, io, log_buf).await {
         Ok(result) => {
             if result.bytes_written > log_buf.len() {
-                return CaliptraVdmCmdResult::Error(
-                    crate::iana::ocp::caliptra_vdm::CaliptraCompletionCode::InsufficientResources,
-                );
+                return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
             }
-            data[0] = if result.more_data { 1 } else { 0 };
-            data[1..5].copy_from_slice(&(result.bytes_written as u32).to_le_bytes());
-            CaliptraVdmCmdResult::Response(1 + 1 + 4 + result.bytes_written)
+            *more_data_byte = if result.more_data { 1 } else { 0 };
+            *data_size_arr = (result.bytes_written as u32).to_le_bytes();
+            CaliptraVdmCmdResult::Response(1 + 4 + result.bytes_written)
         }
         Err(code) => CaliptraVdmCmdResult::Error(code),
     }

@@ -30,7 +30,7 @@ use core::ops::DerefMut;
 /// fully-encoded response buffer up to the dispatcher.
 pub type PalBytes<'a, Pal> = <Pal as SpdmPalAlloc>::Bytes<'a>;
 
-pub trait SpdmPalAlloc {
+pub trait SpdmPalAlloc: mcu_caliptra_api_lite::ApiAlloc {
     /// RAII guard type returned by [`Self::alloc`].
     ///
     /// Implementors return any owning handle that derefs to `T` (e.g.,

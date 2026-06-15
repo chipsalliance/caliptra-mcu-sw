@@ -70,6 +70,9 @@ pub(crate) const CMD_GET_ATTESTED_ECC384_CSR: u32 = 0x4145_4352; // "AECR"
 /// `GET_ATTESTED_MLDSA87_CSR` command ID.
 pub(crate) const CMD_GET_ATTESTED_MLDSA87_CSR: u32 = 0x414D_4352; // "AMCR"
 
+/// `FE_PROG` (field-entropy program) command ID.
+pub(crate) const CMD_FE_PROG: u32 = 0x4645_5052; // "FEPR"
+
 /// Mailbox response header size: `chksum(4) + fips_status(4)`.
 pub(crate) const MBOX_RESP_HEADER_SIZE: usize = 8;
 
