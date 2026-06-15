@@ -4055,6 +4055,7 @@ name = "mcu-spdm-lite-traits"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "mcu-caliptra-api-lite",
  "mcu-error",
 ]
 
@@ -4066,6 +4067,16 @@ dependencies = [
  "caliptra-mcu-libsyscall-caliptra",
  "mcu-error",
  "mcu-spdm-lite-errors",
+ "mcu-spdm-lite-traits",
+]
+
+[[package]]
+name = "mcu-spdm-lite-vdm-handler"
+version = "0.1.0"
+dependencies = [
+ "mcu-caliptra-api-lite",
+ "mcu-error",
+ "mcu-spdm-lite-codec",
  "mcu-spdm-lite-traits",
 ]
 
@@ -5972,6 +5983,7 @@ dependencies = [
  "mcu-spdm-lite-stack",
  "mcu-spdm-lite-traits",
  "mcu-spdm-lite-transports",
+ "mcu-spdm-lite-vdm-handler",
  "portable-atomic",
  "static_cell",
  "zerocopy",

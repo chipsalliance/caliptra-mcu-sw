@@ -3,6 +3,9 @@
 name: Caliptra Util Host Validator Tests
 
 on:
+  pull_request:
+    branches:
+      - spdm-lite
   schedule:
     - cron: "0 0 * * *"
   # Allows you to run this workflow manually from the Actions tab
@@ -39,25 +42,32 @@ jobs:
           cargo fetch
           popd
 
-      - name: Build libspdm from caliptra-spdm-emu
+      - name: Build libspdm from SPDM-Utils
         run: |
-          SPDM_EMU_DIR="${GITHUB_WORKSPACE}/spdm-emu"
-          BUILD_DIR="${SPDM_EMU_DIR}/build"
+          SPDM_UTILS_DIR=$(cargo metadata --manifest-path caliptra-util-host/Cargo.toml --format-version=1 | \
+            python3 -c 'import json, os, sys; data = json.load(sys.stdin); print(os.path.dirname(next(p["manifest_path"] for p in data["packages"] if p["name"] == "SPDM-Utils")))')
+          BUILD_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-build"
           export LIBSPDM_LIB_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-lib"
-          git clone --recursive --branch caliptra-main https://github.com/chipsalliance/caliptra-spdm-emu.git "${SPDM_EMU_DIR}"
-          mkdir -p "${BUILD_DIR}"
-          cd "${BUILD_DIR}"
-          cmake \
+          OPENSSL_LIB_DIR=$(pkg-config --variable=libdir openssl)
+          cmake -S "${SPDM_UTILS_DIR}/third-party/libspdm" -B "${BUILD_DIR}" \
             -DARCH=x64 \
             -DTOOLCHAIN=GCC \
             -DTARGET=Debug \
             -DCRYPTO=openssl \
-            -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000" \
-            ..
-          make copy_sample_key
-          make -j$(nproc)
+            -DENABLE_BINARY_BUILD=1 \
+            -DSTACK_USAGE=ON \
+            -DCOMPILED_LIBCRYPTO_PATH="${OPENSSL_LIB_DIR}" \
+            -DCOMPILED_LIBSSL_PATH="${OPENSSL_LIB_DIR}" \
+            -DDISABLE_TESTS=1 \
+            -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000 \
+              -DLIBSPDM_ENABLE_CAPABILITY_EVENT_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_MEL_CAP=0 \
+              -DLIBSPDM_HAL_PASS_SPDM_CONTEXT=1 \
+              -DLIBSPDM_ENABLE_CAPABILITY_GET_KEY_PAIR_INFO_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_SET_KEY_PAIR_INFO_CAP=0"
+          cmake --build "${BUILD_DIR}" --parallel "$(nproc)"
           mkdir -p "${LIBSPDM_LIB_DIR}"
-          find "${BUILD_DIR}" -name "*.a" -exec cp {} "${LIBSPDM_LIB_DIR}/" \;
+          find "${BUILD_DIR}/lib" -name "*.a" -exec cp {} "${LIBSPDM_LIB_DIR}/" \;
           echo "LIBSPDM_LIB_DIR=${LIBSPDM_LIB_DIR}" >> $GITHUB_ENV
 
       - name: Run caliptra-util-host precheckin
@@ -102,25 +112,32 @@ jobs:
           cargo fetch
           popd
 
-      - name: Build libspdm from caliptra-spdm-emu
+      - name: Build libspdm from SPDM-Utils
         run: |
-          SPDM_EMU_DIR="${GITHUB_WORKSPACE}/spdm-emu"
-          BUILD_DIR="${SPDM_EMU_DIR}/build"
+          SPDM_UTILS_DIR=$(cargo metadata --manifest-path caliptra-util-host/Cargo.toml --format-version=1 | \
+            python3 -c 'import json, os, sys; data = json.load(sys.stdin); print(os.path.dirname(next(p["manifest_path"] for p in data["packages"] if p["name"] == "SPDM-Utils")))')
+          BUILD_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-build"
           export LIBSPDM_LIB_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-lib"
-          git clone --recursive --branch caliptra-main https://github.com/chipsalliance/caliptra-spdm-emu.git "${SPDM_EMU_DIR}"
-          mkdir -p "${BUILD_DIR}"
-          cd "${BUILD_DIR}"
-          cmake \
+          OPENSSL_LIB_DIR=$(pkg-config --variable=libdir openssl)
+          cmake -S "${SPDM_UTILS_DIR}/third-party/libspdm" -B "${BUILD_DIR}" \
             -DARCH=x64 \
             -DTOOLCHAIN=GCC \
             -DTARGET=Debug \
             -DCRYPTO=openssl \
-            -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000" \
-            ..
-          make copy_sample_key
-          make -j$(nproc)
+            -DENABLE_BINARY_BUILD=1 \
+            -DSTACK_USAGE=ON \
+            -DCOMPILED_LIBCRYPTO_PATH="${OPENSSL_LIB_DIR}" \
+            -DCOMPILED_LIBSSL_PATH="${OPENSSL_LIB_DIR}" \
+            -DDISABLE_TESTS=1 \
+            -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000 \
+              -DLIBSPDM_ENABLE_CAPABILITY_EVENT_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_MEL_CAP=0 \
+              -DLIBSPDM_HAL_PASS_SPDM_CONTEXT=1 \
+              -DLIBSPDM_ENABLE_CAPABILITY_GET_KEY_PAIR_INFO_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_SET_KEY_PAIR_INFO_CAP=0"
+          cmake --build "${BUILD_DIR}" --parallel "$(nproc)"
           mkdir -p "${LIBSPDM_LIB_DIR}"
-          find "${BUILD_DIR}" -name "*.a" -exec cp {} "${LIBSPDM_LIB_DIR}/" \;
+          find "${BUILD_DIR}/lib" -name "*.a" -exec cp {} "${LIBSPDM_LIB_DIR}/" \;
           echo "LIBSPDM_LIB_DIR=${LIBSPDM_LIB_DIR}" >> $GITHUB_ENV
 
       - name: Restore sccache binary

@@ -49,9 +49,12 @@ pub struct McuSpdmPal<M: MeasurementProvider> {
     /// Shared cert store — same instance for all transports.
     pub(crate) cert_store: &'static SharedCertStore,
 
-    /// Optional persistent byte buffer used to reassemble one SPDM
-    /// `CHUNK_SEND` large request across multiple I/O exchanges.
-    pub(crate) large_msg: Cell<Option<&'static mut [u8]>>,
+    /// Persistent static buffer holding one in-flight large SPDM message
+    /// (`CHUNK_GET` response or `CHUNK_SEND` reassembly). Lent out for reads /
+    /// writes via [`Cell::take`]/[`Cell::set`] (the empty slice marks it
+    /// "checked out"), so a chunked transfer survives the per-request allocator
+    /// `reset`. No `unsafe` is needed to hand out the writable slice.
+    pub(crate) large_buf: Cell<Option<&'static mut [u8]>>,
 
     /// Measurement data provider (monomorphized).
     pub(crate) meas_provider: M,
@@ -67,8 +70,10 @@ impl<M: MeasurementProvider> McuSpdmPal<M> {
     ///   [`BITMAP_SLOT_SIZE`](super::alloc::BITMAP_SLOT_SIZE) and point
     ///   to `io_buf_capacity` bytes of writable memory exclusively
     ///   owned by this `McuSpdmPal` for its entire lifetime.
-    /// * When present, `large_msg` must be exclusively owned by this
-    ///   `McuSpdmPal` for its entire lifetime.
+    /// * `large_buf` — When present, a dedicated static buffer holding one
+    ///   in-flight large SPDM message (`CHUNK_GET` response / `CHUNK_SEND`
+    ///   reassembly). Must be exclusively owned by this `McuSpdmPal` for its
+    ///   entire lifetime; its length caps `MaxSPDMmsgSize`.
     /// * The constructed `McuSpdmPal` must only be driven from a single
     ///   task; calling `recv_request` / `send_response` concurrently is
     ///   undefined behavior (interior mutability is not synchronized).
@@ -77,14 +82,14 @@ impl<M: MeasurementProvider> McuSpdmPal<M> {
         io_buf_ptr: NonNull<u8>,
         io_buf_capacity: usize,
         cert_store: &'static SharedCertStore,
-        large_msg: Option<&'static mut [u8]>,
+        large_buf: Option<&'static mut [u8]>,
         meas_provider: M,
     ) -> Self {
         Self {
             transport: UnsafeCell::new(transport),
             allocator: BitmapAllocator::new(io_buf_ptr, io_buf_capacity),
             cert_store,
-            large_msg: Cell::new(large_msg),
+            large_buf: Cell::new(large_buf),
             meas_provider,
         }
     }

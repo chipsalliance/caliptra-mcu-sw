@@ -385,20 +385,21 @@ pub fn run_fe_prog(
     };
 
     if verbose {
-        println!("  Got challenge: {:02X?}...", &challenge_resp.challenge[..8]);
+        println!(
+            "  Got challenge: {:02X?}...",
+            &challenge_resp.challenge[..8]
+        );
     }
 
     // Step 2: Compute MAC via the authorizer
     let cmd_id = MC_FE_PROG_CANONICAL_CMD_ID;
-    let mac_bytes = match authorizer.authorize(cmd_id, &partition.to_le_bytes(), &challenge_resp.challenge) {
-        Ok(mac) => mac,
-        Err(e) => {
-            return ValidationResult::fail(
-                test_name,
-                format!("Authorization failed: {}", e),
-            );
-        }
-    };
+    let mac_bytes =
+        match authorizer.authorize(cmd_id, &partition.to_le_bytes(), &challenge_resp.challenge) {
+            Ok(mac) => mac,
+            Err(e) => {
+                return ValidationResult::fail(test_name, format!("Authorization failed: {}", e));
+            }
+        };
 
     // Step 3: Submit FE_PROG
     match client.fe_prog(partition, &mac_bytes) {

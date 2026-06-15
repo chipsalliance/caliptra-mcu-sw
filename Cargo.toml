@@ -83,6 +83,7 @@ members = [
     "runtime/userspace/api/spdm-lite/transports",
     "runtime/userspace/api/spdm-lite/pal",
     "runtime/userspace/api/spdm-lite/errors",
+    "runtime/userspace/api/spdm-lite/vdm-handler",
     "runtime/userspace/error",
     "runtime/userspace/libtock/apis/interface/console",
     "runtime/userspace/libtock/apis/kernel/low_level_debug",
@@ -294,6 +295,7 @@ mcu-caliptra-api-lite = { path = "runtime/userspace/api/caliptra-api-lite" }
 mcu-spdm-lite-transports = { path = "runtime/userspace/api/spdm-lite/transports" }
 mcu-spdm-lite-pal = { path = "runtime/userspace/api/spdm-lite/pal" }
 mcu-spdm-lite-errors = { path = "runtime/userspace/api/spdm-lite/errors" }
+mcu-spdm-lite-vdm-handler = { path = "runtime/userspace/api/spdm-lite/vdm-handler" }
 mcu-error = { path = "runtime/userspace/error" }
 caliptra-mcu-libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 caliptra-mcu-userlog = { path = "runtime/userspace/userlog" }

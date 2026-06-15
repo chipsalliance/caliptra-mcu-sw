@@ -15,6 +15,7 @@
 //! For production use (e.g., OpenBMC), implement `SpdmDeviceIo` over AF_MCTP
 //! or your platform's MCTP transport.
 
+mod libspdm_hal_stubs;
 pub mod requester;
 pub mod transport;
 pub mod vdm;
@@ -30,6 +31,9 @@ pub struct SpdmConfig {
     pub slot_id: u8,
     /// Maximum SPDM message size.
     pub max_spdm_msg_size: u32,
+    /// Accept peer certificate chains returned by GET_CERTIFICATE without
+    /// libspdm's built-in X.509 responder-identity validation.
+    pub accept_unverified_peer_cert_chain: bool,
 }
 
 impl Default for SpdmConfig {
@@ -37,6 +41,7 @@ impl Default for SpdmConfig {
         Self {
             slot_id: 0,
             max_spdm_msg_size: libspdm::spdm::LIBSPDM_MAX_SPDM_MSG_SIZE,
+            accept_unverified_peer_cert_chain: false,
         }
     }
 }

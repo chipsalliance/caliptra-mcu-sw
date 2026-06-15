@@ -42,6 +42,7 @@ mcu-spdm-lite-pal.workspace = true
 mcu-spdm-lite-stack = { workspace = true }
 mcu-spdm-lite-transports.workspace = true
 mcu-spdm-lite-traits.workspace = true
+mcu-spdm-lite-vdm-handler.workspace = true
 static_cell.workspace = true
 zerocopy.workspace = true
 

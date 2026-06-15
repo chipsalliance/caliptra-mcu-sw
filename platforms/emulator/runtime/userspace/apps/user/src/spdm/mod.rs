@@ -8,6 +8,7 @@
 
 extern crate alloc;
 
+mod caliptra_vdm;
 mod cert_store;
 mod device_measurements;
 
@@ -25,6 +26,7 @@ use mcu_spdm_lite_pal::cert::store::SharedCertStore;
 use mcu_spdm_lite_pal::{McuSpdmPal, BITMAP_SLOT_SIZE};
 use mcu_spdm_lite_stack::SpdmStack;
 use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
+use mcu_spdm_lite_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
 
 /// Bitmap allocator pool size per responder task.
 ///
@@ -32,9 +34,10 @@ use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 /// plus transient DPE/SHA mailbox buffers (peak ~2.4 KB during
 /// certify_key for kid computation).
 const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
-/// Persistent CHUNK_SEND reassembly buffer. This is kept outside the
-/// async task frame and outside the per-I/O scratch allocator because
-/// it must live across multiple received chunk messages.
+/// Size of the dedicated static buffer holding one in-flight large SPDM message
+/// (a `CHUNK_GET` response or `CHUNK_SEND` reassembly). Separate from the
+/// scratch pool so it survives the per-request allocator reset; its length caps
+/// `MaxSPDMmsgSize`.
 const SPDM_LITE_LARGE_MSG_SIZE: usize = 8 * 1024;
 
 /// Single cert store shared by all SPDM responder tasks.
@@ -137,8 +140,8 @@ async fn spdm_mctp_responder() {
     );
 
     // SAFETY: `MCTP_SCRATCH` and `MCTP_LARGE_MSG` are statically allocated and
-    // exclusively owned by this task; `MCTP_SCRATCH` is aligned for the
-    // bitmap allocator by `#[repr(align(64))]`.
+    // exclusively owned by this task; `MCTP_SCRATCH` is aligned for the bitmap
+    // allocator by `#[repr(align(64))]`.
     let pal = unsafe {
         McuSpdmPal::new(
             transport,
@@ -149,7 +152,11 @@ async fn spdm_mctp_responder() {
             measurement_provider(),
         )
     };
-    let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
+    // MCTP hosts the IANA / Caliptra VDM backend (plaintext today). DOE hosts
+    // PCI-SIG and stays on the default NoVdmBackend.
+    static MCTP_VDM_HOOK: caliptra_vdm::CaliptraVdmHook = caliptra_vdm::CaliptraVdmHook;
+    let vdm = CaliptraVdm::new(&MCTP_VDM_HOOK);
+    let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 
     crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lite MCTP run loop");
     if let Err(e) = stack.run().await {
@@ -189,8 +196,8 @@ async fn spdm_doe_responder() {
 
     let transport = alloc::boxed::Box::new(doe_transport);
     // SAFETY: `DOE_SCRATCH` and `DOE_LARGE_MSG` are statically allocated and
-    // exclusively owned by this task; `DOE_SCRATCH` is aligned for the
-    // bitmap allocator by `#[repr(align(64))]`.
+    // exclusively owned by this task; `DOE_SCRATCH` is aligned for the bitmap
+    // allocator by `#[repr(align(64))]`.
     let pal = unsafe {
         McuSpdmPal::new(
             transport,

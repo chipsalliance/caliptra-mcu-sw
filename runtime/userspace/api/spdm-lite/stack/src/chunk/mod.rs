@@ -141,7 +141,9 @@ pub(crate) fn validate_buffered_large_response<Pal: SpdmPal>(
     if state.chunk.in_progress() || !state.chunking_enabled() {
         return Err(SPDM_UNSPECIFIED);
     }
-    if large_resp_len > pal.capacity() || large_resp_len > state.effective_max_spdm_msg_size(pal) {
+    if large_resp_len > pal.large_capacity()
+        || large_resp_len > state.effective_max_spdm_msg_size(pal)
+    {
         return Err(SPDM_UNSPECIFIED);
     }
     Ok(())

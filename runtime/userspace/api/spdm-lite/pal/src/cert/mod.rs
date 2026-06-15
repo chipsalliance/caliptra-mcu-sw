@@ -120,6 +120,25 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         }
     }
 
+    async fn validate_set_certificate_chain(
+        &self,
+        _io: &Self::Io<'_>,
+        _slot: u8,
+        _key_pair_id: u8,
+        _cert_model: u8,
+        _root_hash: &[u8; 48],
+        _cert_chain: &[u8],
+    ) -> McuResult<()> {
+        #[cfg(feature = "set-certificate")]
+        {
+            Ok(())
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            Err(mcu_error::codes::NOT_IMPLEMENTED)
+        }
+    }
+
     async fn cert_chain_len(
         &self,
         _io: &Self::Io<'_>,

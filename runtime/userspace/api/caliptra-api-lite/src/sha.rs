@@ -164,21 +164,27 @@ const FINAL_RSP_MAX_LEN: usize = size_of::<ShaFinalRespPrefix>() + 64;
 // ---------------------------------------------------------------------------
 
 /// Begin a new running hash and return the resulting state.
+///
+/// `seed` may be any length; data beyond [`SHA_CHUNK_SIZE`] is fed through
+/// chunked [`sha_update`] calls after the initial `CM_SHA_INIT`, mirroring
+/// how `sha_update` chunks internally.
 #[inline(never)]
 pub async fn sha_init<A: ApiAlloc>(alloc: &A, algo: HashAlgo, seed: &[u8]) -> McuResult<HashState> {
     let mut state = HashState::try_new()?;
-    if seed.len() > SHA_CHUNK_SIZE {
-        return Err(INVARIANT);
-    }
+    let first_len = seed.len().min(SHA_CHUNK_SIZE);
+    let (first, rest) = seed.split_at(first_len);
     sha_call(
         alloc,
         CMD_CM_SHA_INIT,
         Some(algo_code(algo)),
-        seed,
+        first,
         &mut state,
         None,
     )
     .await?;
+    if !rest.is_empty() {
+        sha_update(alloc, &mut state, rest).await?;
+    }
     Ok(state)
 }
 

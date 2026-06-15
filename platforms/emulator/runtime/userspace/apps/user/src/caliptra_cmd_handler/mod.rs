@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-mod debug_log;
+pub(crate) mod debug_log;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;

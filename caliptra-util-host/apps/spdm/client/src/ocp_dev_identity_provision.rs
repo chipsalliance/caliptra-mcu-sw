@@ -54,6 +54,7 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
 
     let spdm_config = SpdmConfig {
         slot_id: options.slot_id,
+        accept_unverified_peer_cert_chain: true,
         ..SpdmConfig::default()
     };
     let mut requester = SpdmRequester::new(spdm_config, Box::new(device_io))?;

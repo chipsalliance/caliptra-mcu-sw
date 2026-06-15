@@ -25,7 +25,9 @@ pub use config::TestConfig;
 pub use validator::{all_passed, print_summary, run_all, ValidationResult, ValidationStatus};
 
 // Re-export the command authorizer trait and types from the common crate
-pub use caliptra_mcu_command_auth_challenge_signer::{CommandAuthChallengeSigner, HmacCommandAuthorizer};
+pub use caliptra_mcu_command_auth_challenge_signer::{
+    CommandAuthChallengeSigner, HmacCommandAuthorizer,
+};
 
 // Re-export the debug unlock signer trait and types from the common crate
 pub use caliptra_mcu_debug_unlock_signer::{
@@ -39,7 +41,9 @@ use caliptra_mcu_core_util_host_command_types::certificate::{
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
-use caliptra_mcu_core_util_host_command_types::fuse::{FeProgResponse, GetAuthCmdChallengeResponse};
+use caliptra_mcu_core_util_host_command_types::fuse::{
+    FeProgResponse, GetAuthCmdChallengeResponse,
+};
 use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
     GetFirmwareVersionResponse,
@@ -54,12 +58,12 @@ use caliptra_util_host_commands::api::certificate::{
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
-use caliptra_util_host_commands::api::fuse::{
-    caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
-};
 use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
     caliptra_cmd_get_firmware_version,
+};
+use caliptra_util_host_commands::api::fuse::{
+    caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
 };
 use caliptra_util_host_session::CaliptraSession;
 

@@ -244,6 +244,9 @@ async fn handle_large_measurements_response<'a, Pal: SpdmPal>(
     plan: &MeasurementsResponseCtx<'_>,
 ) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
     chunk::validate_buffered_large_response(state, pal, plan.large_resp_len)?;
+    // Reserve the pinned large buffer before writing the response into it; it is
+    // freed (RAII) once CHUNK_GET ships the final chunk.
+    pal.large_begin(plan.large_resp_len)?;
 
     let mut offset = 0usize;
     let hdr = SpdmMsgHdrPdu::new(state.version, ReqRespCode::MEASUREMENTS);
@@ -297,7 +300,7 @@ async fn handle_large_measurements_response<'a, Pal: SpdmPal>(
         if sig_len != ECC_P384_SIGNATURE_SIZE {
             return Err(SPDM_UNSPECIFIED);
         }
-        pal.write(signature_offset, &signature)
+        pal.large_write(signature_offset, &signature)
             .map_err(|_| SPDM_UNSPECIFIED)?;
         offset += ECC_P384_SIGNATURE_SIZE;
     }
@@ -537,7 +540,8 @@ fn write_large_measurement_bytes<Pal: SpdmPal>(
     bytes: &[u8],
 ) -> SpdmResult<usize> {
     let next = offset.checked_add(bytes.len()).ok_or(SPDM_UNSPECIFIED)?;
-    pal.write(offset, bytes).map_err(|_| SPDM_UNSPECIFIED)?;
+    pal.large_write(offset, bytes)
+        .map_err(|_| SPDM_UNSPECIFIED)?;
     Ok(next)
 }
 
@@ -551,7 +555,7 @@ async fn append_buffered_l1<Pal: SpdmPal>(
     let mut buf = [0u8; 128];
     while offset < len {
         let n = (len - offset).min(buf.len());
-        pal.read(offset, &mut buf[..n])
+        pal.large_read(offset, &mut buf[..n])
             .map_err(|_| SPDM_UNSPECIFIED)?;
         state.transcript.append_l1(pal, io, &buf[..n]).await?;
         offset += n;
