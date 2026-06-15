@@ -503,6 +503,18 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
         name: "soc_image_min_svn_1",
         size: Bytes(4),
     },
+    Fuse {
+        name: "fpga_test_uds_seed_lo",
+        size: Bytes(32),
+    },
+    Fuse {
+        name: "fpga_test_uds_seed_hi",
+        size: Bytes(32),
+    },
+    Fuse {
+        name: "fpga_test_field_entropy",
+        size: Bytes(32),
+    },
 ];
 pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
@@ -808,6 +820,18 @@ pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
         name: "vendor_pqc_key_type_15",
         bits: Bits(2),
+    },
+    FuseField {
+        name: "fpga_test_uds_seed_lo",
+        bits: Bits(256),
+    },
+    FuseField {
+        name: "fpga_test_uds_seed_hi",
+        bits: Bits(256),
+    },
+    FuseField {
+        name: "fpga_test_field_entropy",
+        bits: Bits(256),
     },
 ];
 /// Fuse entry for `dot_initialized`.
@@ -1703,6 +1727,33 @@ pub const VENDOR_PQC_KEY_TYPE_15: &FuseEntryInfo = &FuseEntryInfo {
         bits: 2,
         duplication: 3,
     },
+};
+/// Fuse entry for `fpga_test_uds_seed_lo`.
+pub const FPGA_TEST_UDS_SEED_LO: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 8,
+    byte_offset: 0xba8,
+    byte_size: 32,
+    name: "fpga_test_uds_seed_lo",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// Fuse entry for `fpga_test_uds_seed_hi`.
+pub const FPGA_TEST_UDS_SEED_HI: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 9,
+    byte_offset: 0xbc8,
+    byte_size: 32,
+    name: "fpga_test_uds_seed_hi",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// Fuse entry for `fpga_test_field_entropy`.
+pub const FPGA_TEST_FIELD_ENTROPY: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 10,
+    byte_offset: 0xbe8,
+    byte_size: 32,
+    name: "fpga_test_field_entropy",
+    layout: FuseLayoutType::Single { bits: 256 },
 };
 /// OTP item entry for `CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN`.
 pub const OTP_CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN: &FuseEntryInfo = &FuseEntryInfo {
@@ -3183,31 +3234,31 @@ pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7: &FuseEntryInfo = &Fuse
         duplication: 3,
     },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8`.
+/// OTP item entry for `fpga_test_uds_seed_lo`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 8,
     byte_offset: 0xba8,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8",
+    name: "fpga_test_uds_seed_lo",
     layout: FuseLayoutType::Single { bits: 256 },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9`.
+/// OTP item entry for `fpga_test_uds_seed_hi`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 9,
     byte_offset: 0xbc8,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9",
+    name: "fpga_test_uds_seed_hi",
     layout: FuseLayoutType::Single { bits: 256 },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_10`.
+/// OTP item entry for `fpga_test_field_entropy`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_10: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 10,
     byte_offset: 0xbe8,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_10",
+    name: "fpga_test_field_entropy",
     layout: FuseLayoutType::Single { bits: 256 },
 };
 /// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_11`.

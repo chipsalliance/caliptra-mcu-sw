@@ -31,6 +31,9 @@
     {"mcu_component_svn_manifest_min_svn": 4},
     {"soc_image_min_svn_0": 4},
     {"soc_image_min_svn_1": 4},
+    {"fpga_test_uds_seed_lo": 32},
+    {"fpga_test_uds_seed_hi": 32},
+    {"fpga_test_field_entropy": 32},
   ],
 
   // Field definitions specify bit-level details within fuse bytes
@@ -649,6 +652,30 @@
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_15",
         layout: {type: "OneHotLinearOr", duplication: 3},
+    },
+    {
+        name: "fpga_test_uds_seed_lo",
+        bits: 256,
+        description: "UDS Seed low 256 bits (for FPGA test harness handoff only)",
+        partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+        otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8",
+        layout: {type: "Single"},
+    },
+    {
+        name: "fpga_test_uds_seed_hi",
+        bits: 256,
+        description: "UDS Seed high 256 bits (for FPGA test harness handoff only)",
+        partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+        otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9",
+        layout: {type: "Single"},
+    },
+    {
+        name: "fpga_test_field_entropy",
+        bits: 256,
+        description: "Field Entropy (for FPGA test harness handoff only)",
+        partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+        otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_10",
+        layout: {type: "Single"},
     },
   ]
 }

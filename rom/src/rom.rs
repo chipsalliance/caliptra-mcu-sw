@@ -426,27 +426,29 @@ impl Soc {
 
         // We use non secret production fuses to have caliptra tests pass some initial fuse values
         if cfg!(feature = "core_test") {
-            // UDS Seed from vendor_non_secret_prod_partition (first 64 bytes)
+            // UDS Seed from fuses (split into low and high 256-bit halves)
             caliptra_mcu_romtime::println!("[mcu-fuse-write] Writing UDS seed");
-            for i in 0..self.registers.fuse_uds_seed.len() {
+            let uds_seed_lo_offset = fuses::FPGA_TEST_UDS_SEED_LO.byte_offset;
+            let uds_seed_hi_offset = fuses::FPGA_TEST_UDS_SEED_HI.byte_offset;
+            for i in 0..8 {
                 let word = otp
-                    .read_u32_at(
-                        caliptra_mcu_registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET
-                            + i * 4,
-                    )
+                    .read_u32_at(uds_seed_lo_offset + i * 4)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
                 self.registers.fuse_uds_seed[i].set(word);
             }
+            for i in 0..8 {
+                let word = otp
+                    .read_u32_at(uds_seed_hi_offset + i * 4)
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+                self.registers.fuse_uds_seed[8 + i].set(word);
+            }
 
-            // Field Entropy from vendor_non_secret_prod_partition (32 bytes after UDS)
+            // Field Entropy from fuses
             caliptra_mcu_romtime::println!("[mcu-fuse-write] Writing field entropy");
+            let field_entropy_offset = fuses::FPGA_TEST_FIELD_ENTROPY.byte_offset;
             for i in 0..self.registers.fuse_field_entropy.len() {
                 let word = otp
-                    .read_u32_at(
-                        caliptra_mcu_registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET
-                            + 64
-                            + i * 4,
-                    )
+                    .read_u32_at(field_entropy_offset + i * 4)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
                 self.registers.fuse_field_entropy[i].set(word);
             }
