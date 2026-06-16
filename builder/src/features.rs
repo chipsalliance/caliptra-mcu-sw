@@ -30,6 +30,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-log-flash-linear",
     "test-log-flash-usermode",
     "test-defmt-logging-mailbox",
+    "test-defmt-logging-release",
     "test-defmt-logging-vdm",
     "test-mctp-ctrl-cmds",
     "test-mctp-user-loopback",
@@ -74,6 +75,7 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mctp-spdm-responder-conformance",
     "test-do-nothing",
     "test-log-flash-usermode",
+    "test-ocp-lock",
 ];
 
 /// Release-profile runtime test features (emulator).

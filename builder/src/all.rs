@@ -79,6 +79,7 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-mctp-user-loopback",
     "test-mcu-mbox-soc-requester-loopback",
     "test-mcu-mbox-usermode",
+    "test-ocp-lock",
     "test-warm-reset",
 ];
 
@@ -246,6 +247,7 @@ pub struct FirmwareBinaries {
     pub caliptra_fw_svn7: Vec<u8>,
     pub caliptra_fw_svn128: Vec<u8>,
     pub caliptra_fw_key2: Vec<u8>,
+    pub caliptra_fw_ocp_lock: Vec<u8>,
     pub mcu_rom: Vec<u8>,
     pub mcu_runtime: Vec<u8>,
     pub soc_manifest: Vec<u8>,
@@ -269,6 +271,7 @@ impl FirmwareBinaries {
     const CALIPTRA_FW_SVN7_NAME: &'static str = "caliptra_fw_svn7.bin";
     const CALIPTRA_FW_SVN128_NAME: &'static str = "caliptra_fw_svn128.bin";
     const CALIPTRA_FW_KEY2_NAME: &'static str = "caliptra_fw_key2.bin";
+    const CALIPTRA_FW_OCP_LOCK_NAME: &'static str = "caliptra_fw_ocp_lock.bin";
     const MCU_ROM_NAME: &'static str = "mcu_rom.bin";
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
     const USER_APP_ELF_NAME: &'static str = "user_app_elf.bin";
@@ -312,6 +315,7 @@ impl FirmwareBinaries {
                 Self::CALIPTRA_FW_SVN7_NAME => binaries.caliptra_fw_svn7 = data,
                 Self::CALIPTRA_FW_SVN128_NAME => binaries.caliptra_fw_svn128 = data,
                 Self::CALIPTRA_FW_KEY2_NAME => binaries.caliptra_fw_key2 = data,
+                Self::CALIPTRA_FW_OCP_LOCK_NAME => binaries.caliptra_fw_ocp_lock = data,
                 Self::MCU_ROM_NAME => binaries.mcu_rom = data,
                 Self::MCU_RUNTIME_NAME => binaries.mcu_runtime = data,
                 Self::USER_APP_ELF_NAME => {
@@ -814,6 +818,13 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         ..Default::default()
     });
     let caliptra_fw_key2 = builder_key2.get_caliptra_fw()?;
+
+    let mut builder_ocp_lock = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
+        fpga: platform == "fpga",
+        ocp_lock: true,
+        ..Default::default()
+    });
+    let caliptra_fw_ocp_lock = builder_ocp_lock.get_caliptra_fw()?;
     let flash_image = create_flash_image(
         Some(caliptra_fw.clone()),
         Some(soc_manifest.clone()),
@@ -1102,6 +1113,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     add_to_zip(
         &caliptra_fw_key2,
         FirmwareBinaries::CALIPTRA_FW_KEY2_NAME,
+        &mut zip,
+        options,
+    )?;
+    add_to_zip(
+        &caliptra_fw_ocp_lock,
+        FirmwareBinaries::CALIPTRA_FW_OCP_LOCK_NAME,
         &mut zip,
         options,
     )?;

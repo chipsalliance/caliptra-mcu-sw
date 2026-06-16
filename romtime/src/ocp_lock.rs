@@ -215,8 +215,15 @@ impl Default for RomConfig<'_> {
     }
 }
 
+/// Platform specific OCP LOCK configuration
+pub trait RuntimeConfig: Send + Sync {
+    /// Get the endorsement certificate serial number
+    /// NOTE: Do not include leading 0s in the serial number
+    fn endorsement_cert_serial_number(&self) -> &[u8; 20];
+}
+
 /// Platform specific OCP LOCK behavior for runtime key rotation
-pub trait PlatformRuntime {
+pub trait KernelConfig: Send + Sync {
     /// Sanitize a HEK slot
     fn sanitize_hek_slot(&self, otp: &crate::otp::Otp, slot: usize) -> Result<(), Error>;
 

@@ -183,7 +183,7 @@ pub mod test {
             otp_memory: Some(otp),
             rom_only: false,
             ocp_lock_en: true,
-            feature: Some("test-ocp-lock"),
+            feature: Some("test-handoff"),
             rom_feature: Some("ocp-lock"),
             ..Default::default()
         });
@@ -209,7 +209,7 @@ pub mod test {
             otp_memory: Some(otp),
             rom_only: false,
             ocp_lock_en: true,
-            feature: Some("test-ocp-lock"),
+            feature: Some("test-handoff"),
             rom_feature: Some("ocp-lock"),
             ..Default::default()
         });
@@ -238,7 +238,7 @@ pub mod test {
             otp_memory: Some(otp),
             rom_only: false,
             ocp_lock_en: true,
-            feature: Some("test-ocp-lock"),
+            feature: Some("test-handoff"),
             rom_feature: Some("ocp-lock"),
             ..Default::default()
         });

@@ -21,7 +21,7 @@ use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
 
 #[cfg(feature = "ocp-lock")]
-use caliptra_mcu_romtime::ocp_lock::PlatformRuntime;
+use caliptra_mcu_romtime::ocp_lock::KernelConfig;
 use caliptra_mcu_romtime::{fuse_lock_partition_dai, fuse_write_dai};
 
 #[cfg(feature = "ocp-lock")]
@@ -145,13 +145,13 @@ pub struct OcpLockState {
 #[cfg(feature = "ocp-lock")]
 pub struct OcpLockContext {
     pub state: OcpLockState,
-    pub platform: &'static dyn PlatformRuntime,
+    pub platform: &'static dyn KernelConfig,
     pub has_rotated: Cell<bool>,
 }
 
 #[cfg(feature = "ocp-lock")]
 impl OcpLockContext {
-    pub fn new(state: OcpLockState, platform: &'static dyn PlatformRuntime) -> Self {
+    pub fn new(state: OcpLockState, platform: &'static dyn KernelConfig) -> Self {
         Self {
             state,
             platform,

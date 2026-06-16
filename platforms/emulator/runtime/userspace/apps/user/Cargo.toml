@@ -78,6 +78,7 @@ debug = []
 hw-2-1 = []
 ocp-lock = [
     "caliptra-mcu-libapi-caliptra/ocp-lock",
+    "mcu-mbox-service",
 ]
 doe = []
 userspace-log = [
@@ -150,7 +151,7 @@ test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
 test-caliptra-util-host-validator = ["mcu-mbox-service"]
 test-mcu-mbox-cmds = ["mcu-mbox-service"]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
-test-ocp-lock = ["caliptra-mcu-libapi-caliptra/ocp-lock"]
+test-ocp-lock = ["ocp-lock"]
 test-handoff = ["caliptra-mcu-libapi-caliptra/ocp-lock"]
 test-pldm-discovery = []
 test-pldm-fw-update = []
