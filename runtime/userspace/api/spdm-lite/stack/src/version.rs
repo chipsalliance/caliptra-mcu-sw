@@ -9,7 +9,7 @@
 //! GET_VERSION always resets the connection.
 
 use mcu_spdm_lite_codec::{ResponseBody, SpdmMsgHdrPdu, SpdmVersion, VersionRsp};
-use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo};
+use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo};
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
@@ -53,7 +53,7 @@ pub(crate) const SUPPORTED_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V13, SpdmVe
 ///   `?` and end up as [`SPDM_BUSY`](crate::error::SPDM_BUSY) /
 ///   [`SPDM_INVALID_REQUEST`] respectively.
 pub(crate) async fn handle_get_version<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &Pal::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {

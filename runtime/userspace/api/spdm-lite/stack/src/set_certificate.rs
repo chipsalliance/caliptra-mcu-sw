@@ -32,7 +32,7 @@ const CERT_MODEL_ALIAS_CERT: u8 = 2;
 const CERT_MODEL_GENERIC_CERT: u8 = 3;
 
 pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
@@ -45,7 +45,7 @@ pub(crate) async fn handle_set_certificate<'a, Pal: SpdmPal>(
 }
 
 pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     req: &[u8],
@@ -138,8 +138,8 @@ fn validate_request_slot(slot_id: u8, supported_slots: u8) -> SpdmResult<()> {
     Ok(())
 }
 
-fn validate_request_attributes<S>(
-    state: &ConnectionState<S>,
+fn validate_request_attributes<S, L>(
+    state: &ConnectionState<S, L>,
     req: &SetCertificateReqBody,
 ) -> SpdmResult<()> {
     if state.version < SpdmVersion::V13 {
@@ -165,8 +165,8 @@ fn validate_request_attributes<S>(
     Ok(())
 }
 
-fn effective_cert_model<S>(
-    state: &ConnectionState<S>,
+fn effective_cert_model<S, L>(
+    state: &ConnectionState<S, L>,
     req: &SetCertificateReqBody,
 ) -> SpdmResult<u8> {
     if multi_key_conn_rsp(state)? && req.cert_model() != 0 {
@@ -184,7 +184,9 @@ fn cert_model_from_capabilities(cap_flags: CapFlags) -> u8 {
     }
 }
 
-fn validate_negotiated_set_certificate_algorithms<S>(state: &ConnectionState<S>) -> SpdmResult<()> {
+fn validate_negotiated_set_certificate_algorithms<S, L>(
+    state: &ConnectionState<S, L>,
+) -> SpdmResult<()> {
     if state.negotiated_base_hash_sel != HashAlgos::SHA_384 {
         return Err(SPDM_UNSPECIFIED);
     }
@@ -409,10 +411,7 @@ mod tests {
             = Vec<u8>
         where
             Self: 'a;
-        type LargeBuf<'a>
-            = Vec<u8>
-        where
-            Self: 'a;
+        type LargeBuf = Vec<u8>;
 
         fn alloc<T: Sized>(&self, _io: &impl SpdmPalIo, value: T) -> McuResult<Self::Box<'_, T>> {
             Ok(TestBox {
@@ -429,22 +428,7 @@ mod tests {
             self.mtu
         }
 
-        fn large_begin(&self, _len: usize) -> McuResult<()> {
-            Ok(())
-        }
-
-        fn large_write(&self, _offset: usize, _data: &[u8]) -> McuResult<()> {
-            Ok(())
-        }
-
-        fn large_read(&self, _offset: usize, out: &mut [u8]) -> McuResult<()> {
-            out.fill(0);
-            Ok(())
-        }
-
-        fn large_end(&self) {}
-
-        fn large_take(&self, len: usize) -> McuResult<Self::LargeBuf<'_>> {
+        fn alloc_large_buf(&self, len: usize) -> McuResult<Self::LargeBuf> {
             Ok(vec![0u8; len])
         }
     }
@@ -658,7 +642,7 @@ mod tests {
         digest
     }
 
-    fn state(version: SpdmVersion) -> ConnectionState<TestHashState> {
+    fn state(version: SpdmVersion) -> ConnectionState<TestHashState, Vec<u8>> {
         let mut state = ConnectionState::default();
         state.phase = Phase::AfterAlgorithms;
         state.version = version;
@@ -668,7 +652,7 @@ mod tests {
         state
     }
 
-    fn state_v13_multi_key() -> ConnectionState<TestHashState> {
+    fn state_v13_multi_key() -> ConnectionState<TestHashState, Vec<u8>> {
         let mut state = state(SpdmVersion::V13);
         state.other_param_sel = OtherParamSupport::MULTI_KEY_CONN;
         state.peer_cap_flags = CapFlags::MULTI_KEY_CONN_RSP;

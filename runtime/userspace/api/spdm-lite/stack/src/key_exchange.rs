@@ -19,6 +19,7 @@ use mcu_spdm_lite_codec::{
     ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN, OPAQUE_VERSION_SELECTION_SIZE,
     SHA384_HASH_SIZE, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
+use mcu_spdm_lite_traits::SpdmPalAlloc;
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
 
@@ -50,7 +51,7 @@ const KEY_EXCHANGE_SIGNING_PREFIX_V13: &[u8; KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_L
 const KEY_EXCHANGE_SIGNING_OP: &[u8; 34] = b"responder-key_exchange_rsp signing";
 
 pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, N>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
@@ -157,7 +158,7 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
 #[allow(clippy::too_many_arguments)]
 #[inline(never)]
 async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, N>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
