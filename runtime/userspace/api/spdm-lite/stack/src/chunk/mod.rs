@@ -8,12 +8,18 @@ mod send;
 pub(crate) use get::handle_chunk_get;
 pub(crate) use send::handle_chunk_send;
 
+use mcu_spdm_lite_codec::SpdmMsgHdrPdu;
 use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIoTransport};
 
 use crate::build::build_error_response;
 use crate::certificate::CertificateLargeResponse;
 use crate::error::{SpdmResult, SPDM_LARGE_RESPONSE, SPDM_UNSPECIFIED};
 use crate::stack::ConnectionState;
+
+/// SPDM payload length of the `ERROR(LargeResponse)` handshake returned before
+/// a buffered response is read with `CHUNK_GET`: SPDM header + param1/param2 +
+/// one-byte large-response handle.
+pub(crate) const LARGE_RESPONSE_HANDSHAKE_LEN: usize = SpdmMsgHdrPdu::SIZE + 2 + 1;
 
 #[derive(Copy, Clone)]
 pub(crate) struct LargeResponseState {

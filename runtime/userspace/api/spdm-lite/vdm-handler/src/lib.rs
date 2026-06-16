@@ -13,7 +13,7 @@
 //! used by the full `spdm-lib` stack:
 //!
 //! * [`iana`] — IANA-registered vendors (OCP / Caliptra VDM).
-//! * [`pci_sig`] — PCI-SIG protocols (IDE_KM, TDISP) — reserved.
+//! * [`pci_sig`] — PCI-SIG protocols (IDE-KM today; TDISP can be added alongside it).
 #![no_std]
 #![allow(async_fn_in_trait)]
 

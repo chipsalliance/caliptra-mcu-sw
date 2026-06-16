@@ -2,8 +2,12 @@
 
 //! PCI-SIG VENDOR_DEFINED protocols (Standards Body ID `PciSig`, 0x03).
 //!
-//! Reserved for the PCI-SIG VDM handlers — IDE_KM and TDISP — which are always
-//! delivered inside a secure session on the DOE transport. Not yet implemented.
-//!
-//! TODO: add `ide_km` and `tdisp` submodules implementing
-//! [`mcu_spdm_lite_traits::SpdmVdmBackend`].
+//! PCI-SIG VDMs are delivered inside a secure SPDM session. This module
+//! currently implements IDE-KM and keeps the protocol selected by the PCI-SIG
+//! protocol-id byte that prefixes the vendor-defined payload.
+
+pub mod ide_km;
+
+#[cfg(feature = "emulated-ide-km")]
+pub use ide_km::EmulatedIdeDriver;
+pub use ide_km::{IdeDriver, IdeDriverError, IdeDriverResult, IdeKmResponder, PciSigIdeKmVdm};

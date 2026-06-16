@@ -26,11 +26,14 @@ pub enum VdmResponse {
 pub struct VdmResponseBuffer<'a, Alloc: SpdmPalAlloc, Io: SpdmPalIo> {
     /// Per-request payload buffer sized to fit a single transport frame.
     pub inline: &'a mut [u8],
-    /// Buffer for responses that do not fit `inline`; the stack transmits it via
-    /// chunking. Non-empty only when [`SpdmVdmBackend::USES_LARGE_RESPONSE`] is set (and
-    /// chunking is available). Its backing memory is owned by the stack (today a
-    /// persistent large-message store; planned: the per-task scratch allocator) and is
-    /// not the handler's concern.
+    /// Buffer for responses that do not fit `inline`; when the handler returns
+    /// [`VdmResponse::Large`], the stack transmits these bytes via chunking.
+    /// Empty when chunking is unavailable or the backend indicates this request
+    /// cannot produce a large response.
+    ///
+    /// The backing storage is chosen by the stack and may be the persistent
+    /// large-message store directly, so handlers must only write the returned
+    /// byte count and must not assume this is disposable scratch.
     pub large: &'a mut [u8],
     /// Allocator for per-request VDM working scratch (e.g. staging a mailbox call).
     pub alloc: &'a Alloc,
@@ -42,18 +45,32 @@ pub struct VdmResponseBuffer<'a, Alloc: SpdmPalAlloc, Io: SpdmPalIo> {
 #[allow(async_fn_in_trait)]
 pub trait SpdmVdmBackend {
     /// True when this backend can emit a response that does not fit the inline
-    /// transport frame and must use [`VdmResponseBuffer::large`]. PCI-SIG IDE_KM/TDISP
-    /// set this `false` (they chunk large reports at the protocol level); OCP sets it
-    /// `true`.
+    /// transport frame and must use [`VdmResponseBuffer::large`]. Backends should
+    /// keep this `false` unless at least one response can overflow one SPDM frame
+    /// and should still choose [`VdmResponse::Inline`] whenever the actual
+    /// response fits inline.
     const USES_LARGE_RESPONSE: bool = false;
 
-    /// Maximum VDM payload bytes this backend needs for a large response.
+    /// Maximum VDM payload bytes this backend needs for any large response.
     ///
     /// The stack still caps this by the negotiated maximum SPDM message size and
     /// PAL large-message capacity, but this backend-specific bound avoids
     /// reserving a worst-case SPDM-sized scratch buffer for small vendor command
     /// sets.
     const LARGE_RESPONSE_CAPACITY: usize = usize::MAX;
+
+    /// Returns the large-response capacity needed for this request.
+    ///
+    /// Backends that can cheaply identify only some large-capable requests should
+    /// override this to avoid reserving the persistent large-message buffer for
+    /// requests that will stay inline.
+    fn large_response_capacity(&self, _req: &[u8]) -> usize {
+        if Self::USES_LARGE_RESPONSE {
+            Self::LARGE_RESPONSE_CAPACITY
+        } else {
+            0
+        }
+    }
 
     /// Returns true when this backend owns the decoded VDM registry ID.
     fn match_id(&self, registry: &VdmRegistry<'_>) -> bool;

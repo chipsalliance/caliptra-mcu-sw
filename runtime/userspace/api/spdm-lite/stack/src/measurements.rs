@@ -310,7 +310,7 @@ async fn handle_large_measurements_response<'a, Pal: SpdmPal>(
     }
 
     let resp = chunk::start_buffered_large_response(state, pal, io, plan.large_resp_len)?;
-    Ok((resp, 0))
+    Ok((resp, chunk::LARGE_RESPONSE_HANDSHAKE_LEN))
 }
 
 fn measurement_record_shape(info: &[MeasurementInfo], meas_op: u8) -> SpdmResult<(usize, u8)> {
