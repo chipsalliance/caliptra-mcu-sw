@@ -116,7 +116,11 @@ fn handle_i3c_socket_connection(
             Ok(()) => {
                 let incoming_header: IncomingHeader = transmute!(incoming_header_bytes);
                 let cmd: I3cTcriCommand = incoming_header.command.try_into().unwrap();
-                let mut data = vec![0u8; cmd.data_len()];
+                // For read commands (rnw=1), data_length specifies how much to
+                // read FROM the target — no payload follows on the socket.
+                let is_read = matches!(&cmd, I3cTcriCommand::Regular(r) if r.rnw() == 1);
+                let wire_data_len = if is_read { 0 } else { cmd.data_len() };
+                let mut data = vec![0u8; wire_data_len];
                 stream.set_nonblocking(false).unwrap();
                 stream
                     .read_exact(&mut data)

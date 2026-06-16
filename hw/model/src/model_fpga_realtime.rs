@@ -26,12 +26,24 @@ use std::marker::PhantomData;
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 use tock_registers::interfaces::{Readable, Writeable};
 
 const DEFAULT_AXI_PAUSER: u32 = 0x1;
+
+/// MCTP-over-I3C Mandatory Data Byte value. Only IBIs with this MDB
+/// carry a pending-read length in bytes 1-2.
+const MCTP_MDB: u8 = 0xAE;
+
+/// Default private-read length used when the client requests a read
+/// but the IBI did not carry a length (non-MCTP flows).
+const DEFAULT_PRIVATE_READ_LEN: u16 = 256;
+
+/// Maximum number of step() calls to retry a client-requested private
+/// read before giving up (target may not have data queued yet).
+const CLIENT_READ_MAX_RETRIES: u32 = 5000;
 
 struct CaliptraMmio {
     ptr: *mut u32,
@@ -62,8 +74,12 @@ pub struct ModelFpgaRealtime {
     i3c_handle: Option<JoinHandle<()>>,
     i3c_tx: Option<mpsc::Sender<I3cBusResponse>>,
     i3c_next_private_read_len: Option<u16>,
-    // queue of IBIs to handle, in order
-    pending_ibi: VecDeque<u16>,
+    // queue of IBIs to handle, in order: (MDB, data_length)
+    pending_ibi: VecDeque<(u8, u16)>,
+    /// Shared queue for client-requested private reads (from socket rnw=1 cmds).
+    i3c_read_requests: Arc<Mutex<VecDeque<u16>>>,
+    /// Retry counter for current client-requested read.
+    i3c_client_read_retries: u32,
     flash_boot: bool,
     caliptra_firmware: Option<Vec<u8>>,
     soc_manifest: Option<Vec<u8>>,
@@ -155,12 +171,23 @@ impl ModelFpgaRealtime {
         running: Arc<AtomicBool>,
         i3c_rx: mpsc::Receiver<I3cBusCommand>,
         controller: XI3CWrapper,
+        read_requests: Arc<Mutex<VecDeque<u16>>>,
     ) {
         while running.load(Ordering::Relaxed) {
             for rx in i3c_rx.try_iter() {
                 match rx.cmd.cmd {
-                    I3cTcriCommand::Regular(_cmd) => {
-                        if !rx.cmd.data.is_empty() {
+                    I3cTcriCommand::Regular(ref cmd) => {
+                        if cmd.rnw() == 1 {
+                            // Client requested a private read. Queue it for
+                            // handle_i3c() to process (it has access to the
+                            // response channel).
+                            let len = if cmd.data_length() == 0 {
+                                DEFAULT_PRIVATE_READ_LEN
+                            } else {
+                                cmd.data_length()
+                            };
+                            read_requests.lock().unwrap().push_back(len);
+                        } else if !rx.cmd.data.is_empty() {
                             // wait for space in the write FIFOs
                             while controller.cmd_fifo_level() == 0
                                 || controller.write_fifo_level() < 16
@@ -185,7 +212,6 @@ impl ModelFpgaRealtime {
     }
 
     fn handle_i3c(&mut self) {
-        const MCTP_MDB: u8 = 0xae;
         let Some(tx) = self.i3c_tx.as_ref() else {
             return;
         };
@@ -196,14 +222,23 @@ impl ModelFpgaRealtime {
         if self.base.i3c_controller().unwrap().ibi_ready() {
             match self.base.i3c_controller().unwrap().ibi_recv(None) {
                 Ok(ibi) => {
-                    // process each IBI in the buffer (each is 4 bytes)
+                    // process each IBI in the buffer (each is 4 bytes:
+                    // [MDB, data0, data1, data2])
                     for ibi in ibi.chunks(4) {
-                        if ibi.len() < 4 || ibi[0] != MCTP_MDB {
-                            println!("Ignoring unexpected I3C IBI received: {:02x?}", ibi);
+                        if ibi.len() < 4 {
+                            println!("Ignoring short I3C IBI: {:02x?}", ibi);
                             continue;
                         }
-                        let len = u16::from_be_bytes([ibi[1], ibi[2]]);
-                        self.pending_ibi.push_back(len);
+                        let mdb = ibi[0];
+                        // Only MCTP IBIs (MDB=0xAE) carry a pending-read
+                        // length in bytes 1-2.  Other MDBs (e.g. ROM services
+                        // 0x1F) use those bytes for payload data, not length.
+                        let len = if mdb == MCTP_MDB {
+                            u16::from_be_bytes([ibi[1], ibi[2]])
+                        } else {
+                            0
+                        };
+                        self.pending_ibi.push_back((mdb, len));
                     }
                 }
                 Err(e) => {
@@ -215,7 +250,7 @@ impl ModelFpgaRealtime {
         // we have to do these in strict order, IBI then private read, repeat, to avoid
         // interpreting an IBI as a private read or vice versa
 
-        // check if we should do attempt a private read
+        // check if we should do attempt a private read (IBI-triggered)
         if let Some(private_read_len) = self.i3c_next_private_read_len.take() {
             match self.base.i3c_controller().unwrap().read(private_read_len) {
                 Ok(data) => {
@@ -229,26 +264,75 @@ impl ModelFpgaRealtime {
                         resp: I3cTcriResponseXfer { resp, data },
                     })
                     .expect("Failed to forward I3C private read response to channel");
+                    self.i3c_client_read_retries = 0;
                 }
                 Err(e) => {
-                    println!("Error receiving I3C private read: {:?}", e);
-                    // retry
-                    self.i3c_next_private_read_len = Some(private_read_len);
+                    // For IBI-triggered reads (MCTP), retry a bounded number
+                    // of times since the IBI guarantees data should be ready.
+                    self.i3c_client_read_retries += 1;
+                    if self.i3c_client_read_retries < CLIENT_READ_MAX_RETRIES {
+                        self.i3c_next_private_read_len = Some(private_read_len);
+                    } else {
+                        println!(
+                            "Error receiving I3C private read after {} retries: {:?}, giving up",
+                            self.i3c_client_read_retries, e
+                        );
+                        self.i3c_client_read_retries = 0;
+                    }
                 }
             }
         } else if !self.pending_ibi.is_empty() {
             // forward an IBI if we have no private read to attempt
-            let len = self.pending_ibi.pop_front().unwrap();
+            let (mdb, len) = self.pending_ibi.pop_front().unwrap();
             tx.send(I3cBusResponse {
                 addr: self.i3c_address().unwrap_or_default().into(),
-                ibi: Some(MCTP_MDB),
+                ibi: Some(mdb),
                 resp: I3cTcriResponseXfer {
                     resp: ResponseDescriptor::default(),
                     data: vec![],
                 },
             })
             .expect("Failed to forward I3C IBI response to channel");
-            self.i3c_next_private_read_len = Some(len);
+            // Only schedule a private read if the IBI carried a length
+            if len > 0 {
+                self.i3c_next_private_read_len = Some(len);
+            }
+        }
+
+        // Always check for client-requested reads, regardless of IBI state.
+        // These are explicit reads from the test (not IBI-triggered) and must
+        // not be starved by a steady stream of IBIs.
+        if self.i3c_next_private_read_len.is_none() {
+            if let Some(len) = self.i3c_read_requests.lock().unwrap().pop_front() {
+                match self.base.i3c_controller().unwrap().read(len) {
+                    Ok(data) => {
+                        let actual_len = data.len().min(len as usize);
+                        let data = data[0..actual_len].to_vec();
+                        let mut resp = ResponseDescriptor::default();
+                        resp.set_data_length(data.len() as u16);
+                        tx.send(I3cBusResponse {
+                            addr: self.i3c_address().unwrap_or_default().into(),
+                            ibi: None,
+                            resp: I3cTcriResponseXfer { resp, data },
+                        })
+                        .expect("Failed to forward I3C client read response to channel");
+                        self.i3c_client_read_retries = 0;
+                    }
+                    Err(e) => {
+                        // Data not ready yet — re-queue with retry limit
+                        self.i3c_client_read_retries += 1;
+                        if self.i3c_client_read_retries < CLIENT_READ_MAX_RETRIES {
+                            self.i3c_read_requests.lock().unwrap().push_front(len);
+                        } else {
+                            println!(
+                                "Error: I3C client-requested read failed after {} retries: {:?}",
+                                self.i3c_client_read_retries, e
+                            );
+                            self.i3c_client_read_retries = 0;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -396,12 +480,15 @@ impl McuHwModel for ModelFpgaRealtime {
             (None, None)
         };
 
+        let i3c_read_requests = Arc::new(Mutex::new(VecDeque::new()));
+
         let i3c_handle = if let Some(i3c_rx) = i3c_rx {
             // start a thread to forward I3C packets from the mpsc receiver to the I3C controller in the FPGA model
             let running = base.realtime_thread_exit_flag.clone();
             let controller = base.i3c_controller().unwrap();
+            let read_requests_clone = i3c_read_requests.clone();
             let i3c_handle = std::thread::spawn(move || {
-                Self::forward_i3c_to_controller(running, i3c_rx, controller);
+                Self::forward_i3c_to_controller(running, i3c_rx, controller, read_requests_clone);
             });
             Some(i3c_handle)
         } else {
@@ -418,6 +505,8 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_tx,
             i3c_next_private_read_len: None,
             pending_ibi: VecDeque::new(),
+            i3c_read_requests,
+            i3c_client_read_retries: 0,
             flash_boot: params.flash_boot,
             caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
@@ -430,24 +519,10 @@ impl McuHwModel for ModelFpgaRealtime {
             m.write_dot_flash(dot_flash_data)?;
         }
 
-        // Overlay test-provided OTP fuse contents on top of the base model's
-        // standard fuses so DOT/recovery tests can provision fuses on FPGA.
-        // OTP is one-time programmable (bits only go 0->1), and the DOT and
-        // vendor-secret partitions are zero in the base image, so OR-ing the
-        // requested bytes preserves the standard fuses in other byte ranges.
-        if let Some(otp_memory) = params.otp_memory {
-            let slice = m.base.otp_slice();
-            if otp_memory.len() > slice.len() {
-                bail!(
-                    "otp_memory ({} bytes) is larger than the OTP backing memory ({} bytes)",
-                    otp_memory.len(),
-                    slice.len()
-                );
-            }
-            for (dst, src) in slice.iter_mut().zip(otp_memory.iter()) {
-                *dst |= *src;
-            }
-        }
+        // OTP fuse contents were already provisioned above (before boot) using
+        // the SIGBUS-safe Vec + copy_from_slice path. Do NOT write again here:
+        // byte-by-byte writes to FPGA block RAM fault with SIGBUS, corrupting
+        // the data (only the last byte of each 32-bit word survives).
 
         Ok(m)
     }
