@@ -6,7 +6,7 @@ use mcu_spdm_lite_codec::{
     CapabilitiesBody, ChunkSendAckBody, ChunkSendReqBody, ReqRespCode, SpdmMsgHdrPdu, SpdmVersion,
     WireWriter, CHUNK_ACK_ATTR_EARLY_ERROR, CHUNK_ATTR_LAST_CHUNK,
 };
-use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoTransport};
+use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::{little_endian::U16, FromBytes};
 
 use crate::build::alloc_padded;
@@ -25,7 +25,7 @@ struct ChunkInfo {
 }
 
 pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
@@ -37,8 +37,7 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal>(
                 build_response_to_large_request(state, pal, io, &mut response_to_large_request)
                     .await;
                 state.chunk.reset();
-                // Reassembly consumed: release the pinned buffer (free + zero).
-                pal.large_end();
+                state.large_buf = None;
                 &response_to_large_request[..]
             } else {
                 &[]
@@ -61,8 +60,7 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal>(
             let mut error = [0u8; 4];
             encode_error_pdu(state.version, SPDM_INVALID_REQUEST, &mut error);
             state.chunk.reset();
-            // Release any pinned reassembly buffer reserved before the error.
-            pal.large_end();
+            state.large_buf = None;
             build_chunk_send_ack(pal, io, state.version, true, handle, chunk_seq_num, &error)
         }
     }
@@ -102,7 +100,7 @@ enum ChunkProcessError {
 }
 
 fn process_chunk_send<Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,
     io: &impl SpdmPalIo,
 ) -> Result<ChunkInfo, ChunkProcessError> {
@@ -168,7 +166,7 @@ fn process_chunk_send<Pal: SpdmPal>(
 }
 
 fn process_first_chunk<Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,
     handle: u8,
     chunk_seq_num: u16,
@@ -209,12 +207,17 @@ fn process_first_chunk<Pal: SpdmPal>(
             chunk_seq_num,
         });
     }
-    // Reserve the pinned reassembly buffer, then store the first chunk into it.
-    if pal.large_begin(large_msg_size).is_err() || pal.large_write(0, chunk).is_err() {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
+    match pal.alloc_large_buf(large_msg_size) {
+        Ok(mut buf) => {
+            buf[..chunk_size].copy_from_slice(chunk);
+            state.large_buf = Some(buf);
+        }
+        Err(_) => {
+            return Err(ChunkProcessError::Early {
+                handle,
+                chunk_seq_num,
+            })
+        }
     }
 
     state.chunk = super::ChunkState {
@@ -228,8 +231,8 @@ fn process_first_chunk<Pal: SpdmPal>(
 }
 
 fn process_next_chunk<Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
-    pal: &Pal,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    _pal: &Pal,
     handle: u8,
     chunk_seq_num: u16,
     chunk_size: usize,
@@ -254,11 +257,20 @@ fn process_next_chunk<Pal: SpdmPal>(
         || end > large_msg_size
         || (last_chunk && end != large_msg_size)
         || (!last_chunk && (end >= large_msg_size || chunk_size < min_chunk_size));
-    if invalid || pal.large_write(bytes_received, chunk).is_err() {
+    if invalid {
         return Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
         });
+    }
+    match state.large_buf.as_deref_mut() {
+        Some(buf) => buf[bytes_received..end].copy_from_slice(chunk),
+        None => {
+            return Err(ChunkProcessError::Early {
+                handle,
+                chunk_seq_num,
+            })
+        }
     }
 
     state.chunk.seq_num = chunk_seq_num;
@@ -267,7 +279,7 @@ fn process_next_chunk<Pal: SpdmPal>(
 }
 
 async fn build_response_to_large_request<Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     out: &mut [u8; 4],
@@ -285,29 +297,35 @@ async fn build_response_to_large_request<Pal: SpdmPal>(
 }
 
 async fn dispatch_large_request<Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     len: usize,
     out: &mut [u8; 4],
 ) -> Result<(), SpdmError> {
     #[cfg(not(feature = "set-certificate"))]
-    let _ = (io, out);
+    let _ = (pal, io, out);
 
-    let large_req = pal.large_take(len).map_err(|_| SPDM_INVALID_REQUEST)?;
-    let (hdr, _) = SpdmMsgHdrPdu::ref_from_prefix(&large_req).map_err(|_| SPDM_INVALID_REQUEST)?;
+    // Take the large buffer out of state so we can pass state mutably to
+    // the handler while still reading from the reassembled request.
+    let mut large_buf = state.large_buf.take().ok_or(SPDM_INVALID_REQUEST)?;
+    let buf = large_buf.as_mut();
+    let large_req = buf.get(..len).ok_or(SPDM_INVALID_REQUEST)?;
+    let (hdr, _) = SpdmMsgHdrPdu::ref_from_prefix(large_req).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8()
         || hdr.code == ReqRespCode::CHUNK_SEND
         || hdr.code == ReqRespCode::CHUNK_GET
     {
         return Err(SPDM_INVALID_REQUEST);
     }
+    let code = hdr.code;
 
-    match hdr.code {
+    match code {
         #[cfg(feature = "set-certificate")]
         ReqRespCode::SET_CERTIFICATE => {
             let slot_id =
-                set_certificate::handle_set_certificate_request(state, pal, io, &large_req).await?;
+                set_certificate::handle_set_certificate_request(state, pal, io, &buf[..len])
+                    .await?;
             out[0] = state.version.to_u8();
             out[1] = ReqRespCode::SET_CERTIFICATE_RSP.0;
             out[2] = slot_id;

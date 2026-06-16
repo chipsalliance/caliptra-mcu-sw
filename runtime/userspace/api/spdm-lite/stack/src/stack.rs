@@ -19,6 +19,7 @@ use mcu_spdm_lite_codec::{
     MeasHashAlgos, MeasSpec, OtherParamSupport, ReqRespCode, SecuredMessageHeader, SpdmMsgHdrPdu,
     SpdmVersion, AES_256_GCM_TAG_SIZE, SECURED_MSG_HDR_SIZE,
 };
+use mcu_spdm_lite_traits::SpdmPalAlloc;
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
 
@@ -28,7 +29,7 @@ use crate::error::{
     SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
 use crate::key_schedule::SessionKeyType;
-use crate::session::{SessionManager, SessionState};
+use crate::session::{SessionInfo, SessionManager, SessionState};
 use crate::{
     algorithms, capabilities, certificate, challenge, chunk, digests, end_session, finish,
     key_exchange, measurements, vendor_defined, version,
@@ -72,7 +73,7 @@ pub enum Phase {
 ///    `GET_VERSION` → `GET_CAPABILITIES` → `NEGOTIATE_ALGORITHMS`
 ///    handshake and reset on every `GET_VERSION` via
 ///    [`Self::reset_negotiation`].
-pub struct ConnectionState<S> {
+pub struct ConnectionState<S, L> {
     // ---- Local responder policy (fixed at startup) -----------------------
     /// Responder `CT` time exponent.
     /// Maximum response time is `2^ct_exponent` µs.
@@ -125,9 +126,10 @@ pub struct ConnectionState<S> {
     pub(crate) chunk: chunk::ChunkState,
     /// Pending large response served by CHUNK_GET.
     pub(crate) large_response: chunk::LargeResponseState,
+    pub(crate) large_buf: Option<L>,
 }
 
-impl<S> ConnectionState<S> {
+impl<S, L> ConnectionState<S, L> {
     /// Builds the Caliptra responder's fixed local-policy advertisement.
     ///
     /// # Returns
@@ -183,6 +185,7 @@ impl<S> ConnectionState<S> {
             transcript: crate::transcript::Transcript::new(),
             chunk: chunk::ChunkState::default(),
             large_response: chunk::LargeResponseState::default(),
+            large_buf: None,
         }
     }
 
@@ -203,6 +206,7 @@ impl<S> ConnectionState<S> {
         self.transcript.reset();
         self.chunk.reset();
         self.large_response.reset();
+        self.large_buf = None;
     }
 
     /// Returns true when both peers negotiated CHUNK support.
@@ -237,13 +241,13 @@ impl<S> ConnectionState<S> {
     }
 }
 
-impl<S> Default for ConnectionState<S> {
+impl<S, L> Default for ConnectionState<S, L> {
     fn default() -> Self {
         Self::caliptra()
     }
 }
 
-pub(crate) fn multi_key_conn_rsp<S>(state: &ConnectionState<S>) -> SpdmResult<bool> {
+pub(crate) fn multi_key_conn_rsp<S, L>(state: &ConnectionState<S, L>) -> SpdmResult<bool> {
     let selected = state
         .other_param_sel
         .contains(OtherParamSupport::MULTI_KEY_CONN);
@@ -298,9 +302,9 @@ pub struct SpdmStack<
     Vdm: SpdmVdmBackend = NoVdmBackend,
 > {
     pub(crate) pal: Pal,
-    pub(crate) state: ConnectionState<Pal::State>,
-    pub(crate) sessions:
-        SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
+    pub(crate) state: ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    #[allow(clippy::type_complexity)]
+    pub(crate) sessions: Sessions<Pal, MAX_SESSIONS>,
     vdm_backend: Vdm,
 }
 
@@ -331,7 +335,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
     /// If the PAL cannot hold at least one transport-sized large message,
     /// `CHUNK` is removed from the advertised capabilities.
     pub fn with_vdm_backend(pal: Pal, vdm_backend: Vdm) -> Self {
-        let mut state = ConnectionState::<Pal::State>::default();
+        let mut state = ConnectionState::<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>::default();
         if pal.large_capacity() < pal.mtu() {
             state.cap_flags =
                 CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
@@ -521,6 +525,16 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
     }
 }
 
+/// Type alias for the SessionManager with full PAL type resolution.
+type Sessions<Pal, const N: usize> = SessionManager<
+    <Pal as SpdmPalSessionCrypto>::Key,
+    <Pal as SpdmPalHash>::State,
+    <Pal as SpdmPalAlloc>::PersistentBox<
+        SessionInfo<<Pal as SpdmPalSessionCrypto>::Key, <Pal as SpdmPalHash>::State>,
+    >,
+    N,
+>;
+
 /// Routes a decoded request code to the matching handler.
 ///
 /// Free-standing (rather than a method on [`SpdmStack`]) so the
@@ -547,8 +561,8 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
 /// * Whatever the specific handler returns.
 #[inline(never)]
 async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usize>(
-    state: &mut ConnectionState<Pal::State>,
-    sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    sessions: &mut Sessions<Pal, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     code: ReqRespCode,
@@ -562,6 +576,7 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         && state.large_response.in_progress()
     {
         state.large_response.reset();
+        state.large_buf = None;
     }
     match code {
         ReqRespCode::GET_VERSION => {
@@ -625,8 +640,8 @@ async fn handle_secured_request<
     Vdm: SpdmVdmBackend,
     const MAX_SESSIONS: usize,
 >(
-    state: &mut ConnectionState<Pal::State>,
-    sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    sessions: &mut Sessions<Pal, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
@@ -678,8 +693,8 @@ async fn handle_secured_request<
 /// Inner secured message handler: decrypt → dispatch → encrypt.
 #[inline(never)]
 async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usize>(
-    state: &mut ConnectionState<Pal::State>,
-    sessions: &mut SessionManager<<Pal as SpdmPalSessionCrypto>::Key, Pal::State, MAX_SESSIONS>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    sessions: &mut Sessions<Pal, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     session_id: u32,

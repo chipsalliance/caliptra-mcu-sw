@@ -18,6 +18,7 @@ pub mod claims;
 use mcu_caliptra_api_lite::signed_eat::SignedEatLite;
 use mcu_caliptra_api_lite::{
     dpe_certify_key_pubkey, sha_finish, sha_init, sha_update, HashAlgo, DPE_LABEL_LEN,
+    SHA_CONTEXT_SIZE,
 };
 use mcu_error::McuResult;
 use mcu_spdm_lite_pal::measurements::MeasurementProvider;
@@ -111,7 +112,8 @@ async fn compute_kid(
 
     dpe_certify_key_pubkey(alloc, key_label, &mut pubkey_x, &mut pubkey_y).await?;
 
-    let mut state = sha_init(alloc, HashAlgo::Sha384, &pubkey_x).await?;
+    let sha_buf = alloc.alloc_bytes(SHA_CONTEXT_SIZE)?;
+    let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &pubkey_x).await?;
     sha_update(alloc, &mut state, &pubkey_y).await?;
     sha_finish(alloc, &mut state, kid).await?;
 

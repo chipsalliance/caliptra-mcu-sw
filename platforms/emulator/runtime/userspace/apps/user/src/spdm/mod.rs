@@ -27,7 +27,7 @@ use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use mcu_spdm_lite_pal::cert::store::SharedCertStore;
-use mcu_spdm_lite_pal::{McuSpdmPal, BITMAP_SLOT_SIZE};
+use mcu_spdm_lite_pal::{BitmapAllocator, McuSpdmPal, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use mcu_spdm_lite_stack::SpdmStack;
 use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 use mcu_spdm_lite_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
@@ -42,12 +42,7 @@ use mcu_spdm_lite_vdm_handler::pci_sig::{
 /// Must hold `MEAS_RECORD_BUF_SIZE + MeasurementProvider::SCRATCH_SIZE`
 /// plus transient DPE/SHA mailbox buffers (peak ~2.4 KB during
 /// certify_key for kid computation).
-const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
-/// Size of the dedicated static buffer holding one in-flight large SPDM message
-/// (a `CHUNK_GET` response or `CHUNK_SEND` reassembly). Separate from the
-/// scratch pool so it survives the per-request allocator reset; its length caps
-/// `MaxSPDMmsgSize`.
-const SPDM_LITE_LARGE_MSG_SIZE: usize = 8 * 1024;
+const SPDM_LITE_SCRATCH_SIZE: usize = 12 * 1024;
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
@@ -128,18 +123,18 @@ async fn spdm_mctp_responder() {
     #[repr(C, align(64))]
     struct ScratchBuf([u8; SPDM_LITE_SCRATCH_SIZE]);
     static mut MCTP_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_LITE_SCRATCH_SIZE]);
-    struct LargeMsgBuf([u8; SPDM_LITE_LARGE_MSG_SIZE]);
-    static mut MCTP_LARGE_MSG: LargeMsgBuf = LargeMsgBuf([0u8; SPDM_LITE_LARGE_MSG_SIZE]);
     // SAFETY: this task is the sole owner of `MCTP_SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(MCTP_SCRATCH.0.as_mut_ptr()) };
-    // SAFETY: this task is the sole owner of `MCTP_LARGE_MSG`.
-    let large_msg: &'static mut [u8] = unsafe { &mut (*core::ptr::addr_of_mut!(MCTP_LARGE_MSG)).0 };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
+    // SAFETY: `init_once` is called once per task lifetime; this is the
+    // MCTP responder task. Backing memory (`MCTP_SCRATCH`) is `'static`.
+    static MCTP_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
+    let allocator: &'static BitmapAllocator =
+        unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, SPDM_LITE_SCRATCH_SIZE) };
+
     {
-        let init_alloc =
-            unsafe { mcu_spdm_lite_pal::BitmapAllocator::new(scratch_ptr, SPDM_LITE_SCRATCH_SIZE) };
-        if let Err(e) = ensure_cert_store_init(&init_alloc).await {
+        if let Err(e) = ensure_cert_store_init(allocator).await {
             crate::console_writeln!(cw, "SPDM_MCTP: cert store init failed: 0x{:08x}", e);
             return;
         }
@@ -153,19 +148,9 @@ async fn spdm_mctp_responder() {
         .expect("MCTP_SPDM driver with MCTP_MSG_TYPE_SPDM is a valid pairing"),
     );
 
-    // SAFETY: `MCTP_SCRATCH` and `MCTP_LARGE_MSG` are statically allocated and
-    // exclusively owned by this task; `MCTP_SCRATCH` is aligned for the bitmap
-    // allocator by `#[repr(align(64))]`.
-    let pal = unsafe {
-        McuSpdmPal::new(
-            transport,
-            scratch_ptr,
-            SPDM_LITE_SCRATCH_SIZE,
-            &CERT_STORE,
-            Some(large_msg),
-            measurement_provider(),
-        )
-    };
+    // SAFETY: `allocator` is the `&'static` handle obtained above and is
+    // exclusive to this task.
+    let pal = unsafe { McuSpdmPal::new(transport, allocator, &CERT_STORE, measurement_provider()) };
     // MCTP hosts the IANA / Caliptra VDM backend (plaintext today). DOE uses
     // the default NoVdmBackend unless the TDISP validator feature wires PCI-SIG.
     static MCTP_VDM_HOOK: caliptra_vdm::CaliptraVdmHook = caliptra_vdm::CaliptraVdmHook;
@@ -191,37 +176,27 @@ async fn spdm_doe_responder() {
     #[repr(C, align(64))]
     struct ScratchBuf([u8; SPDM_LITE_SCRATCH_SIZE]);
     static mut DOE_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_LITE_SCRATCH_SIZE]);
-    struct LargeMsgBuf([u8; SPDM_LITE_LARGE_MSG_SIZE]);
-    static mut DOE_LARGE_MSG: LargeMsgBuf = LargeMsgBuf([0u8; SPDM_LITE_LARGE_MSG_SIZE]);
     // SAFETY: this task is the sole owner of `DOE_SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(DOE_SCRATCH.0.as_mut_ptr()) };
-    // SAFETY: this task is the sole owner of `DOE_LARGE_MSG`.
-    let large_msg: &'static mut [u8] = unsafe { &mut (*core::ptr::addr_of_mut!(DOE_LARGE_MSG)).0 };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
+    // SAFETY: `init_once` is called once per task lifetime; this is the
+    // DOE responder task. Backing memory (`DOE_SCRATCH`) is `'static`.
+    static DOE_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
+    let allocator: &'static BitmapAllocator =
+        unsafe { DOE_ALLOC_CELL.init_once(scratch_ptr, SPDM_LITE_SCRATCH_SIZE) };
+
     {
-        let init_alloc =
-            unsafe { mcu_spdm_lite_pal::BitmapAllocator::new(scratch_ptr, SPDM_LITE_SCRATCH_SIZE) };
-        if let Err(e) = ensure_cert_store_init(&init_alloc).await {
+        if let Err(e) = ensure_cert_store_init(allocator).await {
             crate::console_writeln!(cw, "SPDM_DOE: cert store init failed: 0x{:08x}", e);
             return;
         }
     }
 
     let transport = alloc::boxed::Box::new(doe_transport);
-    // SAFETY: `DOE_SCRATCH` and `DOE_LARGE_MSG` are statically allocated and
-    // exclusively owned by this task; `DOE_SCRATCH` is aligned for the bitmap
-    // allocator by `#[repr(align(64))]`.
-    let pal = unsafe {
-        McuSpdmPal::new(
-            transport,
-            scratch_ptr,
-            SPDM_LITE_SCRATCH_SIZE,
-            &CERT_STORE,
-            Some(large_msg),
-            measurement_provider(),
-        )
-    };
+    // SAFETY: `allocator` is the `&'static` handle obtained above and is
+    // exclusive to this task.
+    let pal = unsafe { McuSpdmPal::new(transport, allocator, &CERT_STORE, measurement_provider()) };
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(
         pal,

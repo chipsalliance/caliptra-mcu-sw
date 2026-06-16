@@ -13,7 +13,7 @@ use mcu_spdm_lite_codec::{
     VendorDefinedRspBody,
 };
 use mcu_spdm_lite_traits::{
-    PalBytes, SpdmPal, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry, VdmResponse,
+    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry, VdmResponse,
     VdmResponseBuffer,
 };
 use zerocopy::{FromBytes, IntoBytes};
@@ -32,7 +32,7 @@ use crate::stack::ConnectionState;
 /// Returns the framed response buffer and its SPDM-payload length.
 pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBackend>(
     vdm: &V,
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     spdm_msg: &[u8],
@@ -85,7 +85,7 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
     // The guard must be dropped before invoking any other `large_*` PAL method
     // (e.g. `chunk::start_buffered_large_response` calls `large_capacity`).
     let mut large_guard = if large_cap > 0 {
-        Some(pal.large_take(envelope + large_cap)?)
+        Some(pal.alloc_large_buf(envelope + large_cap)?)
     } else {
         None
     };
@@ -137,10 +137,8 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
                 &mut guard[..envelope],
             )?;
             let full_len = envelope + n;
-            // Release the static slice back to the PAL so the chunking layer's
-            // `large_capacity` / `large_read` calls observe it again.
-            drop(guard);
-            chunk::validate_buffered_large_response(state, pal, full_len)?;
+            state.large_buf = Some(guard);
+            chunk::validate_buffered_large_response::<Pal>(state, pal, full_len)?;
             let resp = chunk::start_buffered_large_response(state, pal, io, full_len)?;
             Ok((resp, 0))
         }

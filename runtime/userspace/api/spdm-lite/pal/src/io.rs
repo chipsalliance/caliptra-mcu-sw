@@ -13,15 +13,13 @@
 //!
 //! On every `recv_request`:
 //!
-//! 1. The [`BitmapAllocator`] is reset — every previous allocation
-//!    has been dropped by now, so this just zeroes the bitmap.
-//! 2. A single `header_size + mtu` buffer is allocated; the
-//!    transport writes both its framing header *and* the SPDM
-//!    payload into it (no shift / copy is performed afterwards).
-//! 3. The buffer is shrunk to the actual frame length, releasing
-//!    the trailing slots back to the pool.
-//! 4. The resulting [`McuSpdmIo`] is returned to the stack and
-//!    keeps the frame alive until it is dropped.
+//! 1. A single `header_size + mtu` buffer is allocated; the transport
+//!    writes both its framing header *and* the SPDM payload into it
+//!    (no shift / copy is performed afterwards).
+//! 2. The buffer is shrunk to the actual frame length, releasing the
+//!    trailing slots back to the pool.
+//! 3. The resulting [`McuSpdmIo`] is returned to the stack and keeps
+//!    the frame alive until it is dropped.
 //!
 //! On `send_response`, the caller-provided `msg` already has the
 //! SPDM payload at offset `header_size()`; the transport fills
@@ -147,11 +145,8 @@ impl<M: MeasurementProvider> SpdmPalIoTransport for McuSpdmPal<M> {
     /// * Any [`McuErrorCode`] surfaced by the underlying
     ///   [`SpdmPalTransport::recv_request`].
     async fn recv_request(&self) -> McuResult<Self::Io<'_>> {
-        // SAFETY: `&self` + single-task responder ⇒ no live `McuSpdmIo` exists
-        // when this returns. Reset clears the bitmap for the new exchange. The
-        // large-message buffer is a separate static (not part of this pool), so
-        // it survives across requests for chunked transfers.
-        unsafe { self.allocator.reset() };
+        // Transient allocations are released by RAII. The persistent large-message
+        // buffer (if any) lives on ConnectionState and survives across cycles.
 
         // Need room for header + MTU; the transport writes both into the
         // same buffer (no shifting).

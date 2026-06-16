@@ -8,7 +8,7 @@ mod send;
 pub(crate) use get::handle_chunk_get;
 pub(crate) use send::handle_chunk_send;
 
-use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIoTransport};
+use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport};
 
 use crate::build::build_error_response;
 use crate::certificate::CertificateLargeResponse;
@@ -134,7 +134,7 @@ impl ChunkState {
 }
 
 pub(crate) fn validate_buffered_large_response<Pal: SpdmPal>(
-    state: &ConnectionState<Pal::State>,
+    state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,
     large_resp_len: usize,
 ) -> SpdmResult<()> {
@@ -150,7 +150,7 @@ pub(crate) fn validate_buffered_large_response<Pal: SpdmPal>(
 }
 
 pub(crate) fn start_buffered_large_response<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     large_resp_len: usize,

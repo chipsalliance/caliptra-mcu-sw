@@ -6,7 +6,7 @@ use mcu_spdm_lite_codec::{
     ChunkGetReqBody, ChunkResponseBody, ReqRespCode, SpdmMsgHdrPdu, WireWriter,
     CHUNK_ATTR_LAST_CHUNK, CHUNK_RESPONSE_FIXED_BODY_SIZE, LARGE_RESPONSE_SIZE_FIELD_SIZE,
 };
-use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoTransport};
+use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::{little_endian::U16, little_endian::U32, FromBytes};
 
 use crate::build::alloc_padded;
@@ -18,7 +18,7 @@ use crate::stack::{ConnectionState, Phase};
 use super::LargeResponse;
 
 pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
@@ -101,7 +101,11 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
                 state.transcript.append_m1(pal, io, chunk).await?;
             }
             LargeResponse::Buffered => {
-                pal.large_read(bytes_sent, chunk)?;
+                let large = state
+                    .large_buf
+                    .as_deref()
+                    .ok_or(crate::error::SPDM_UNSPECIFIED)?;
+                chunk.copy_from_slice(&large[bytes_sent..bytes_sent + chunk_size]);
             }
         }
     }
@@ -110,7 +114,7 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     // Once the final chunk of a buffered response ships, release the pinned
     // large buffer (RAII free + zero) back to the pool.
     if last_chunk && is_buffered {
-        pal.large_end();
+        state.large_buf = None;
     }
     Ok(rsp)
 }

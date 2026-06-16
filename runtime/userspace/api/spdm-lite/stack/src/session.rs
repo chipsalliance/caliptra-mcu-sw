@@ -11,9 +11,7 @@
 //! 3. Session used for secured message framing
 //! 4. GET_VERSION or error → [`SessionManager::remove_all_and_destroy`]
 
-use alloc::alloc::{alloc, Layout};
-use alloc::boxed::Box;
-use mcu_error::codes::OUT_OF_MEMORY;
+use core::ops::{Deref, DerefMut};
 use mcu_spdm_lite_codec::{errors::SPDM_SESSION_LIMIT_EXCEEDED, SpdmVersion};
 use mcu_spdm_lite_traits::{McuResult, SpdmPalHash, SpdmPalIo};
 
@@ -150,25 +148,14 @@ pub struct SessionInfo<K: Clone, S> {
 }
 
 impl<K: Clone, S> SessionInfo<K, S> {
-    fn try_new(session_id: u32, version: SpdmVersion) -> McuResult<Box<Self>> {
-        let layout = Layout::new::<Self>();
-        // SAFETY: `layout` is for `SessionInfo<K, S>`. A null return is
-        // converted to OUT_OF_MEMORY; otherwise the allocation is
-        // initialized exactly once below and then owned by Box.
-        let ptr = unsafe { alloc(layout) }.cast::<Self>();
-        if ptr.is_null() {
-            return Err(OUT_OF_MEMORY);
-        }
-        // SAFETY: `ptr` is non-null and properly aligned for `Self`,
-        // and no references exist before we initialize it.
-        unsafe {
-            ptr.write(Self {
-                session_id,
-                state: SessionState::HandshakeInProgress,
-                key_schedule: KeySchedule::new(spdm_version_str(version)),
-                transcript: SessionTranscript::new(),
-            });
-            Ok(Box::from_raw(ptr))
+    /// Construct a new `SessionInfo` value. Caller is responsible for
+    /// wrapping it in the appropriate box type via the PAL allocator.
+    pub fn new(session_id: u32, version: SpdmVersion) -> Self {
+        Self {
+            session_id,
+            state: SessionState::HandshakeInProgress,
+            key_schedule: KeySchedule::new(spdm_version_str(version)),
+            transcript: SessionTranscript::new(),
         }
     }
 }
@@ -177,31 +164,46 @@ impl<K: Clone, S> SessionInfo<K, S> {
 
 /// Fixed-size session table.
 ///
-/// `K` = key handle, `S` = hash state, `N` = max concurrent sessions.
-pub struct SessionManager<K: Clone, S, const N: usize> {
-    sessions: [Option<Box<SessionInfo<K, S>>>; N],
+/// `K` = key handle, `S` = hash state, `B` = box type wrapping
+/// `SessionInfo<K, S>`, `N` = max concurrent sessions.
+pub struct SessionManager<K: Clone, S, B, const N: usize> {
+    sessions: [Option<B>; N],
     next_rsp_session_id: u16,
+    _phantom: core::marker::PhantomData<(K, S)>,
 }
 
-impl<K: Clone, S, const N: usize> Default for SessionManager<K, S, N> {
+impl<K: Clone, S, B, const N: usize> Default for SessionManager<K, S, B, N> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
+impl<K: Clone, S, B, const N: usize> SessionManager<K, S, B, N> {
     pub fn new() -> Self {
         Self {
             sessions: core::array::from_fn(|_| None),
             next_rsp_session_id: 1,
+            _phantom: core::marker::PhantomData,
         }
     }
+}
 
+impl<K: Clone, S, B: Deref<Target = SessionInfo<K, S>> + DerefMut, const N: usize>
+    SessionManager<K, S, B, N>
+{
     /// Allocate a new session slot.
+    ///
+    /// `alloc_fn` is called to wrap the constructed `SessionInfo` in the
+    /// platform box type (e.g., `McuSpdmBox` from bitmap, or `Box` in tests).
     ///
     /// Returns the combined session ID on success. The session starts
     /// in [`SessionState::HandshakeInProgress`].
-    pub fn create_session(&mut self, req_session_id: u16, version: SpdmVersion) -> McuResult<u32> {
+    pub fn create_session(
+        &mut self,
+        req_session_id: u16,
+        version: SpdmVersion,
+        alloc_fn: impl FnOnce(SessionInfo<K, S>) -> McuResult<B>,
+    ) -> McuResult<u32> {
         let slot = self
             .sessions
             .iter()
@@ -212,7 +214,8 @@ impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
         let rsp_id = self.alloc_rsp_session_id(req_session_id)?;
         let session_id = ((rsp_id as u32) << 16) | (req_session_id as u32);
 
-        self.sessions[slot] = Some(SessionInfo::try_new(session_id, version)?);
+        let info = SessionInfo::new(session_id, version);
+        self.sessions[slot] = Some(alloc_fn(info)?);
 
         Ok(session_id)
     }
@@ -223,7 +226,7 @@ impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
             .iter()
             .flatten()
             .find(|s| s.session_id == session_id)
-            .map(Box::as_ref)
+            .map(|b| &**b)
     }
 
     /// Look up a session by combined ID (mutable).
@@ -232,7 +235,7 @@ impl<K: Clone, S, const N: usize> SessionManager<K, S, N> {
             .iter_mut()
             .flatten()
             .find(|s| s.session_id == session_id)
-            .map(Box::as_mut)
+            .map(|b| &mut **b)
     }
 
     /// Remove a session and clear all local key blobs.

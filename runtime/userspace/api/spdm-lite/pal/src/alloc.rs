@@ -13,9 +13,8 @@
 //!   (used by receive paths that allocate `mtu()` and trim to the real
 //!   message length).
 //!
-//! The allocator is reset by [`McuSpdmPal`] at the start of every
-//! `recv_request`, so allocations are logically scoped to a single SPDM
-//! exchange even though the allocator object itself outlives every box.
+//! The allocator serves both per-request scratch allocations and any
+//! connection-scoped large-message buffer parked on `ConnectionState`.
 //!
 //! # Soundness
 //!
@@ -26,45 +25,6 @@
 use super::measurements::MeasurementProvider;
 use super::*;
 use core::cell::Cell;
-use core::ops::{Deref, DerefMut};
-
-/// RAII guard handed out by [`SpdmPalAlloc::large_take`]. While alive, owns
-/// the static large-message slice and derefs to `&mut [u8]` of exactly the
-/// requested length. On drop, returns the slice to the PAL's [`Cell`] without
-/// wiping — the bytes survive for `CHUNK_GET` to serve via `large_read`.
-pub struct BitmapLargeBuf<'a> {
-    slice: Option<&'static mut [u8]>,
-    len: usize,
-    cell: &'a Cell<Option<&'static mut [u8]>>,
-}
-
-impl Deref for BitmapLargeBuf<'_> {
-    type Target = [u8];
-    fn deref(&self) -> &[u8] {
-        let buf = self.slice.as_deref().expect("BitmapLargeBuf slice missing");
-        &buf[..self.len]
-    }
-}
-
-impl DerefMut for BitmapLargeBuf<'_> {
-    fn deref_mut(&mut self) -> &mut [u8] {
-        let buf = self
-            .slice
-            .as_deref_mut()
-            .expect("BitmapLargeBuf slice missing");
-        &mut buf[..self.len]
-    }
-}
-
-impl Drop for BitmapLargeBuf<'_> {
-    fn drop(&mut self) {
-        // Park the slice back in the PAL. Do NOT wipe — the bytes need to
-        // survive across the rest of this request and the subsequent
-        // CHUNK_GET cycles. `pal.large_end()` (called by the chunking layer
-        // after the final chunk ships) is responsible for the wipe.
-        self.cell.set(self.slice.take());
-    }
-}
 
 impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
     type Box<'a, T>
@@ -118,83 +78,19 @@ impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
     }
 
     fn large_capacity(&self) -> usize {
-        let large_buf = self.large_buf.take();
-        let capacity = large_buf.as_deref().map_or(0, <[u8]>::len);
-        self.large_buf.set(large_buf);
-        capacity
+        self.allocator.largest_free_run() * crate::BITMAP_SLOT_SIZE
     }
 
-    fn large_begin(&self, len: usize) -> McuResult<()> {
-        // Static buffer: nothing to allocate — just bound-check against capacity.
-        if len > self.large_capacity() {
-            return Err(ERR_OUT_OF_MEMORY);
-        }
-        Ok(())
+    type LargeBuf = BitmapBytes<'static>;
+
+    fn alloc_large_buf(&self, len: usize) -> McuResult<Self::LargeBuf> {
+        self.allocator.alloc_bytes(len)
     }
 
-    fn large_write(&self, offset: usize, data: &[u8]) -> McuResult<()> {
-        let mut held = self.large_buf.take();
-        let result = (|| {
-            let buf = held.as_deref_mut().ok_or(INVARIANT)?;
-            let end = offset.checked_add(data.len()).ok_or(INVARIANT)?;
-            buf.get_mut(offset..end)
-                .ok_or(INVARIANT)?
-                .copy_from_slice(data);
-            Ok(())
-        })();
-        self.large_buf.set(held);
-        result
-    }
+    type PersistentBox<T: Sized + 'static> = McuSpdmBox<'static, T>;
 
-    fn large_read(&self, offset: usize, out: &mut [u8]) -> McuResult<()> {
-        let held = self.large_buf.take();
-        let result = (|| {
-            let buf = held.as_deref().ok_or(INVARIANT)?;
-            let end = offset.checked_add(out.len()).ok_or(INVARIANT)?;
-            out.copy_from_slice(buf.get(offset..end).ok_or(INVARIANT)?);
-            Ok(())
-        })();
-        self.large_buf.set(held);
-        result
-    }
-
-    fn large_end(&self) {
-        // Wipe the message bytes but keep the static slice parked in the Cell
-        // for reuse by the next large message.
-        let mut held = self.large_buf.take();
-        if let Some(buf) = held.as_deref_mut() {
-            buf.fill(0);
-        }
-        self.large_buf.set(held);
-    }
-
-    type LargeBuf<'a>
-        = BitmapLargeBuf<'a>
-    where
-        Self: 'a;
-
-    /// Takes the static large-message slice into an RAII handle of exactly
-    /// `len` bytes. While the handle is alive the slice is detached from the
-    /// PAL Cell, so callers must drop the handle before invoking any other
-    /// `large_*` method (capacity / write / read / end) on this PAL.
-    fn large_take(&self, len: usize) -> McuResult<Self::LargeBuf<'_>> {
-        let held = self.large_buf.take();
-        let Some(slice) = held else {
-            // Either no static buffer was provisioned at PAL construction, or
-            // a prior `large_take` handle is still alive. Either way, there is
-            // nothing to hand out.
-            self.large_buf.set(None);
-            return Err(INVARIANT);
-        };
-        if len > slice.len() {
-            self.large_buf.set(Some(slice));
-            return Err(ERR_OUT_OF_MEMORY);
-        }
-        Ok(BitmapLargeBuf {
-            slice: Some(slice),
-            len,
-            cell: &self.large_buf,
-        })
+    fn alloc_persistent<T: Sized + 'static>(&self, value: T) -> McuResult<Self::PersistentBox<T>> {
+        self.allocator.alloc(value)
     }
 }
 
@@ -219,7 +115,7 @@ impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
 
 use core::cell::UnsafeCell;
 use core::marker::PhantomData;
-use core::mem::{align_of, size_of};
+use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr::NonNull;
 
 /// Slot granularity in bytes. Each bit in the occupancy bitmap tracks one
@@ -231,9 +127,7 @@ use core::ptr::NonNull;
 /// bitmap small (1 bit per 64 bytes ≈ 0.2 % overhead).
 pub const BITMAP_SLOT_SIZE: usize = 64;
 
-use mcu_error::codes::{
-    BAD_ALIGNMENT as ERR_BAD_ALIGNMENT, INVARIANT, OUT_OF_MEMORY as ERR_OUT_OF_MEMORY,
-};
+use mcu_error::codes::{BAD_ALIGNMENT as ERR_BAD_ALIGNMENT, OUT_OF_MEMORY as ERR_OUT_OF_MEMORY};
 
 /// Single-threaded bitmap allocator over a caller-supplied buffer.
 ///
@@ -249,6 +143,13 @@ pub struct BitmapAllocator {
     data: NonNull<u8>,
     /// Number of slots managed by the bitmap.
     num_slots: usize,
+    /// Running count of slots currently marked live (incremented by
+    /// `alloc_run`, decremented by `free_run`). Maintained for cheap
+    /// `live_slots()` and as the running input to `max_live_slots`.
+    live_count: Cell<u32>,
+    /// High-water mark of `live_count` over the allocator's lifetime.
+    /// Updated on every `alloc_run`. Read via `max_live_slots()`.
+    max_live: Cell<u32>,
     /// Interior mutability marker; the actual bitmap storage lives in the buffer.
     _state: UnsafeCell<()>,
     /// `!Send` + `!Sync` marker.
@@ -315,6 +216,8 @@ impl BitmapAllocator {
             base: ptr,
             data,
             num_slots,
+            live_count: Cell::new(0),
+            max_live: Cell::new(0),
             _state: UnsafeCell::new(()),
             _not_send: PhantomData,
         }
@@ -328,6 +231,51 @@ impl BitmapAllocator {
     /// number of single-slot allocations that can be live at once.
     pub fn num_slots(&self) -> usize {
         self.num_slots
+    }
+
+    /// Returns the number of slots currently marked live (the running
+    /// count maintained by [`Self::alloc_run`] and [`Self::free_run`]).
+    ///
+    /// A correctly-functioning steady-state responder returns to a known
+    /// baseline (zero, or the count of slots held by persistent allocations
+    /// owned by `ConnectionState`) between SPDM requests. A drift above the
+    /// baseline points at a leaked [`BitmapBytes`] / [`McuSpdmBox`] handle.
+    pub fn live_slots(&self) -> usize {
+        self.live_count.get() as usize
+    }
+
+    /// Returns the highest value [`Self::live_slots`] has reached since
+    /// allocator construction. Updated on every [`Self::alloc_run`].
+    ///
+    /// Useful for sizing the scratch region against observed peaks.
+    pub fn max_live_slots(&self) -> usize {
+        self.max_live.get() as usize
+    }
+
+    /// Returns the largest contiguous run of currently-free slots, in
+    /// slot units. O(num_slots) scan — intended for diagnostics, not
+    /// the hot path.
+    ///
+    /// Useful for spotting fragmentation: `live_slots() + largest_free_run()`
+    /// can be less than `num_slots()` when free space is split across the
+    /// bitmap.
+    pub fn largest_free_run(&self) -> usize {
+        let mut best = 0usize;
+        let mut run = 0usize;
+        for i in 0..self.num_slots {
+            if self.bit(i) {
+                if run > best {
+                    best = run;
+                }
+                run = 0;
+            } else {
+                run += 1;
+            }
+        }
+        if run > best {
+            best = run;
+        }
+        best
     }
 
     /// Resets the allocator by clearing every bit in the occupancy bitmap.
@@ -345,6 +293,7 @@ impl BitmapAllocator {
     pub unsafe fn reset(&self) {
         let bm_bytes = self.num_slots.div_ceil(8);
         core::ptr::write_bytes(self.base.as_ptr(), 0, bm_bytes);
+        self.live_count.set(0);
     }
 
     /// Allocates a byte buffer of `len` bytes from the pool.
@@ -412,7 +361,7 @@ impl BitmapAllocator {
         if n > u16::MAX as usize {
             return Err(ERR_OUT_OF_MEMORY);
         }
-        let start = self.alloc_run(n).ok_or(ERR_OUT_OF_MEMORY)?;
+        let start = self.alloc_run_backwards(n).ok_or(ERR_OUT_OF_MEMORY)?;
 
         // SAFETY: `start..start+n` slots are now marked used (exclusive
         // ownership), within bounds, and properly aligned for `T`.
@@ -476,6 +425,35 @@ impl BitmapAllocator {
                     for j in start..start + n {
                         self.set_bit(j, true);
                     }
+                    let new_live = self.live_count.get().saturating_add(n as u32);
+                    self.live_count.set(new_live);
+                    if new_live > self.max_live.get() {
+                        self.max_live.set(new_live);
+                    }
+                    return Some(start);
+                }
+            } else {
+                run = 0;
+            }
+        }
+        None
+    }
+
+    fn alloc_run_backwards(&self, n: usize) -> Option<usize> {
+        let mut run = 0usize;
+        for i in (0..self.num_slots).rev() {
+            if !self.bit(i) {
+                run += 1;
+                if run == n {
+                    let start = i;
+                    for j in start..start + n {
+                        self.set_bit(j, true);
+                    }
+                    let new_live = self.live_count.get().saturating_add(n as u32);
+                    self.live_count.set(new_live);
+                    if new_live > self.max_live.get() {
+                        self.max_live.set(new_live);
+                    }
                     return Some(start);
                 }
             } else {
@@ -497,6 +475,8 @@ impl BitmapAllocator {
         for j in start..start + n {
             self.set_bit(j, false);
         }
+        self.live_count
+            .set(self.live_count.get().saturating_sub(n as u32));
     }
 
     /// Reads bit `i` of the occupancy bitmap.
@@ -526,6 +506,7 @@ impl BitmapAllocator {
 /// Sized to be cheap to embed in async state machines: `&BitmapAllocator` +
 /// `(u16 start, u16 count)` = 8 bytes on a 32-bit target (12 bytes on
 /// 64-bit). The data pointer is recomputed from the allocator base.
+#[must_use = "dropping a McuSpdmBox without holding it would immediately free the underlying slots"]
 pub struct McuSpdmBox<'a, T> {
     /// Borrow of the backing allocator; used to free slots on drop.
     alloc: &'a BitmapAllocator,
@@ -596,6 +577,7 @@ impl<T> core::ops::DerefMut for McuSpdmBox<'_, T> {
 /// `unused` is the number of trailing bytes in the last slot that are
 /// *not* part of the logical buffer; valid range 0..63. Logical length
 /// is therefore `num_slots * SLOT_SIZE - unused`.
+#[must_use = "dropping a BitmapBytes without holding it would immediately free the underlying slots"]
 pub struct BitmapBytes<'a> {
     /// Borrow of the backing allocator; used to free slots on drop or
     /// shrink.
@@ -802,3 +784,293 @@ impl core::ops::DerefMut for BitmapBytes<'_> {
 /// machines, so growth here is felt across the firmware.
 #[cfg(target_pointer_width = "32")]
 const _: () = assert!(core::mem::size_of::<BitmapBytes<'_>>() == 8);
+
+// ---------------------------------------------------------------------------
+// Static allocator cell
+// ---------------------------------------------------------------------------
+
+/// One-shot cell that holds a [`BitmapAllocator`] as a `static`, returning a
+/// `&'static BitmapAllocator` after the single call to [`Self::init_once`].
+///
+/// `BitmapAllocator` is deliberately `!Sync` because its interior mutability
+/// is single-task by construction. We cannot wrap it in `OnceLock` /
+/// `OnceCell::sync` (those require `Sync`). Instead we hand-roll the minimal
+/// pattern: an `UnsafeCell<MaybeUninit<…>>` accessible via a `Sync` outer
+/// wrapper whose contract requires the caller to enforce the single-task
+/// invariant.
+///
+/// # Safety contract
+///
+/// * [`Self::init_once`] must be called at most once for the lifetime of the
+///   program. A second call invokes UB. Caller may enforce this with their
+///   own "this task ran" flag or by structural single-task ownership (the
+///   common pattern: one cell per `#[embassy_executor::task]`).
+/// * After `init_once`, the returned `&'static BitmapAllocator` is the
+///   canonical handle for that allocator and may be freely shared within the
+///   owning task. Sharing across tasks is undefined behavior.
+/// * The byte region passed to `init_once` must outlive every allocation
+///   produced from the returned allocator. In practice this means the region
+///   is itself `static`.
+pub struct StaticBitmapAllocatorCell {
+    inner: UnsafeCell<MaybeUninit<BitmapAllocator>>,
+}
+
+// SAFETY: The cell is `Sync` so it can appear in `static`. Actual access to
+// `inner` is `unsafe` and the contract requires single-task usage.
+unsafe impl Sync for StaticBitmapAllocatorCell {}
+
+impl StaticBitmapAllocatorCell {
+    /// Constructs an empty cell. The contained allocator is uninitialized
+    /// until [`Self::init_once`] is called.
+    pub const fn new() -> Self {
+        Self {
+            inner: UnsafeCell::new(MaybeUninit::uninit()),
+        }
+    }
+
+    /// Initializes the contained `BitmapAllocator` in place over
+    /// `[ptr, ptr + capacity)` and returns a `&'static` handle to it.
+    ///
+    /// # Safety
+    ///
+    /// All of the safety conditions on [`BitmapAllocator::new`] apply, plus:
+    ///
+    /// * MUST be called at most once for this cell.
+    /// * Must not be called concurrently with any access to the cell.
+    pub unsafe fn init_once(
+        &'static self,
+        ptr: NonNull<u8>,
+        capacity: usize,
+    ) -> &'static BitmapAllocator {
+        let slot = self.inner.get();
+        let alloc = BitmapAllocator::new(ptr, capacity);
+        (*slot).write(alloc);
+        (*slot).assume_init_ref()
+    }
+}
+
+impl Default for StaticBitmapAllocatorCell {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    extern crate alloc;
+    use alloc::vec;
+
+    /// Construct a fresh allocator over a heap-backed buffer for tests.
+    fn make_alloc(capacity: usize) -> (BitmapAllocator, alloc::vec::Vec<u8>) {
+        // Heap-backed buffer keeps the test target-independent. The Vec is
+        // returned alongside so the caller can keep it alive for the
+        // allocator's borrow.
+        let mut buf = vec![0u8; capacity + BITMAP_SLOT_SIZE];
+        // Round the base up to BITMAP_SLOT_SIZE alignment.
+        let raw = buf.as_mut_ptr();
+        let off = (raw as usize).wrapping_neg() & (BITMAP_SLOT_SIZE - 1);
+        let ptr = unsafe { NonNull::new_unchecked(raw.add(off)) };
+        let alloc = unsafe { BitmapAllocator::new(ptr, capacity) };
+        (alloc, buf)
+    }
+
+    #[test]
+    fn live_slots_balance_alloc_drop() {
+        let (alloc, _buf) = make_alloc(4 * 1024);
+        assert_eq!(alloc.live_slots(), 0);
+
+        let a = alloc.alloc_bytes(100).unwrap();
+        assert_eq!(alloc.live_slots(), 2); // 100 B over 64 B slots = 2 slots
+
+        let b = alloc.alloc_bytes(64).unwrap();
+        assert_eq!(alloc.live_slots(), 3);
+
+        drop(a);
+        assert_eq!(alloc.live_slots(), 1);
+        drop(b);
+        assert_eq!(alloc.live_slots(), 0);
+    }
+
+    #[test]
+    fn max_live_tracks_peak() {
+        let (alloc, _buf) = make_alloc(4 * 1024);
+        assert_eq!(alloc.max_live_slots(), 0);
+
+        let a = alloc.alloc_bytes(64).unwrap();
+        let b = alloc.alloc_bytes(64).unwrap();
+        let c = alloc.alloc_bytes(64).unwrap();
+        assert_eq!(alloc.max_live_slots(), 3);
+
+        drop(c);
+        // max stays at 3 even after free
+        assert_eq!(alloc.max_live_slots(), 3);
+
+        let _d = alloc.alloc_bytes(64).unwrap();
+        // back at 3 live; max unchanged
+        assert_eq!(alloc.live_slots(), 3);
+        assert_eq!(alloc.max_live_slots(), 3);
+
+        let _e = alloc.alloc_bytes(64).unwrap();
+        // now 4 live → new peak
+        assert_eq!(alloc.live_slots(), 4);
+        assert_eq!(alloc.max_live_slots(), 4);
+
+        drop(a);
+        drop(b);
+    }
+
+    #[test]
+    fn largest_free_run_finds_holes() {
+        let (alloc, _buf) = make_alloc(8 * 1024);
+        let total = alloc.num_slots();
+        assert_eq!(alloc.largest_free_run(), total);
+
+        let a = alloc.alloc_bytes(64).unwrap();
+        let b = alloc.alloc_bytes(64).unwrap();
+        let c = alloc.alloc_bytes(64).unwrap();
+        // 3 slots taken at the bottom; rest free.
+        assert_eq!(alloc.largest_free_run(), total - 3);
+
+        drop(b); // hole in the middle
+                 // Free regions: [bit 1..2] (1 slot) + [bit 3..total] (total-3 slots).
+                 // Largest = total - 3.
+        assert_eq!(alloc.largest_free_run(), total - 3);
+        drop(a);
+        drop(c);
+        assert_eq!(alloc.largest_free_run(), total);
+    }
+
+    #[test]
+    fn bidirectional_split_allocation() {
+        let (alloc, _buf) = make_alloc(8 * 1024);
+        let total = alloc.num_slots();
+
+        let low = alloc.alloc_bytes(2 * BITMAP_SLOT_SIZE).unwrap();
+        let high = alloc.alloc(0u64).unwrap();
+
+        assert_eq!(low.start_slot, 0);
+        assert_eq!(high.start_slot as usize, total - 1);
+        assert_eq!(alloc.live_slots(), 3);
+
+        drop(low);
+        drop(high);
+        assert_eq!(alloc.live_slots(), 0);
+    }
+
+    #[test]
+    fn oom_does_not_leak_slots() {
+        let (alloc, _buf) = make_alloc(4 * 1024);
+        let total = alloc.num_slots();
+
+        // Allocate up to (just under) capacity; one of these will be at the
+        // limit. Then attempt an oversized request and verify nothing leaked.
+        let huge = (total * BITMAP_SLOT_SIZE) + 1;
+        assert!(alloc.alloc_bytes(huge).is_err());
+        assert_eq!(alloc.live_slots(), 0);
+    }
+
+    #[test]
+    fn drop_alloc_box_releases_slots() {
+        let (alloc, _buf) = make_alloc(4 * 1024);
+        assert_eq!(alloc.live_slots(), 0);
+        {
+            let _b = alloc.alloc(0u64).unwrap();
+            assert_eq!(alloc.live_slots(), 1); // u64 fits in one slot
+        }
+        assert_eq!(alloc.live_slots(), 0);
+    }
+
+    /// Deterministic fragmentation soak — emulates the steady-state SPDM
+    /// responder allocation mix and verifies that an 8 KiB large-message
+    /// allocation can still succeed after many request cycles under
+    /// realistic interleaving of long-lived (transcript / session) and
+    /// transient (request / response framing) allocations.
+    ///
+    /// This test gates Phase 6 (delete static large buffer). If first-fit
+    /// fragments the bitmap enough that the 8 KiB contiguous run cannot
+    /// be allocated after the simulated workload, we must add directional
+    /// allocation (low for persistent, high for large) before deleting the
+    /// static buffer.
+    ///
+    /// Allocation mix per request cycle:
+    ///   * recv-buffer (~1.5 KiB) — transient
+    ///   * response-buffer (~1.5 KiB) — transient
+    ///   * 1-2 small scratch allocations (~256 B each) — transient
+    ///
+    /// Long-lived (allocated once at "session start", held for whole soak):
+    ///   * SessionInfo placeholder (~1 KiB)
+    ///   * Transcript hashes — VCA, M1, L1, TH (4 × 256 B)
+    ///
+    /// Cycles: 50 request cycles, all transients drop at end of each cycle.
+    ///
+    /// At the end of the soak, attempt an 8 KiB allocation for a hypothetical
+    /// CHUNK_GET large response. Pass means the bitmap allocator (with simple
+    /// first-fit) can sustain the realistic workload without fragmenting too
+    /// badly. Fail means we need directional allocation.
+    #[test]
+    fn fragmentation_soak_8k_alloc_after_realistic_workload() {
+        // 16 KiB pool — close to the realistic per-task budget for our
+        // platform after deleting the static large buffer.
+        let (alloc, _buf) = make_alloc(16 * 1024);
+
+        // Phase A — bring up the "session": one big object + four transcript
+        // hashes. These hold their slots for the whole soak.
+        let _session = alloc.alloc_bytes(1024).expect("session alloc");
+        let _vca = alloc.alloc_bytes(256).expect("vca alloc");
+        let _m1 = alloc.alloc_bytes(256).expect("m1 alloc");
+        let _l1 = alloc.alloc_bytes(256).expect("l1 alloc");
+        let _th = alloc.alloc_bytes(256).expect("th alloc");
+
+        let baseline_live = alloc.live_slots();
+        assert!(baseline_live > 0);
+
+        // Phase B — run 50 request cycles of transient churn.
+        for cycle in 0..50 {
+            {
+                let _recv = alloc
+                    .alloc_bytes(1536)
+                    .unwrap_or_else(|_| panic!("recv alloc failed at cycle {}", cycle));
+                let _resp = alloc
+                    .alloc_bytes(1536)
+                    .unwrap_or_else(|_| panic!("resp alloc failed at cycle {}", cycle));
+                let _scratch1 = alloc
+                    .alloc_bytes(256)
+                    .unwrap_or_else(|_| panic!("scratch1 alloc failed at cycle {}", cycle));
+                let _scratch2 = alloc
+                    .alloc_bytes(256)
+                    .unwrap_or_else(|_| panic!("scratch2 alloc failed at cycle {}", cycle));
+                // all transients drop here
+            }
+            // After cycle, live count must be back to baseline.
+            assert_eq!(
+                alloc.live_slots(),
+                baseline_live,
+                "transient leak at cycle {}",
+                cycle
+            );
+        }
+
+        // Phase C — record fragmentation state, then attempt the 8 KiB large
+        // allocation. This is the GATE: if it fails, Phase 6 needs directional
+        // allocation before deleting the static buffer.
+        let largest_run_slots = alloc.largest_free_run();
+        let largest_run_bytes = largest_run_slots * BITMAP_SLOT_SIZE;
+        let large = alloc.alloc_bytes(8 * 1024);
+
+        match large {
+            Ok(buf) => {
+                assert_eq!(buf.len(), 8 * 1024);
+                // Soak passes — first-fit holds up.
+            }
+            Err(_) => {
+                panic!(
+                    "FRAGMENTATION SOAK FAILED: 8 KiB allocation failed after 50 cycles. \
+                     baseline_live={}, largest_free_run={} slots ({} bytes). \
+                     Phase 6 (delete static large buffer) needs directional allocation.",
+                    baseline_live, largest_run_slots, largest_run_bytes
+                );
+            }
+        }
+    }
+}

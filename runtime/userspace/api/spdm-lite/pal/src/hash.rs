@@ -2,16 +2,16 @@
 
 //! [`SpdmPalHash`] + [`ApiAlloc`] implementations on [`McuSpdmPal`].
 //!
-//! The file is named `hash.rs` mirroring
-//! [`mcu_spdm_lite_traits::SpdmPalHash`] in
-//! [`traits/src/hash.rs`](../../traits/src/hash.rs). The
-//! [`ApiAlloc`] binding lives here as well because it shares the
-//! same dependency on the pool allocator that backs every hash
-//! request.
+//! Hash state buffers are allocated from the per-task bitmap pool via
+//! `alloc_bytes(SHA_CONTEXT_SIZE)`, making them deterministic and
+//! independent of the global heap. Each `HashState<BitmapBytes<'static>>`
+//! is 8 bytes on 32-bit targets.
 
 use super::measurements::MeasurementProvider;
 use super::*;
-use mcu_caliptra_api_lite::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, HashState};
+use mcu_caliptra_api_lite::{
+    sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, HashState, SHA_CONTEXT_SIZE,
+};
 use mcu_spdm_lite_traits::{SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo};
 
 impl<M: MeasurementProvider> ApiAlloc for McuSpdmPal<M> {
@@ -39,7 +39,7 @@ impl ApiAlloc for BitmapAllocator {
 }
 
 impl<M: MeasurementProvider> SpdmPalHash for McuSpdmPal<M> {
-    type State = HashState;
+    type State = HashState<BitmapBytes<'static>>;
 
     #[inline]
     async fn hash_init(
@@ -47,30 +47,32 @@ impl<M: MeasurementProvider> SpdmPalHash for McuSpdmPal<M> {
         _io: &impl SpdmPalIo,
         algo: SpdmPalHashAlgo,
         seed: &[u8],
-    ) -> McuResult<HashState> {
-        sha_init(self, to_api_algo(algo), seed).await
+    ) -> McuResult<Self::State> {
+        let buf = self.allocator.alloc_bytes(SHA_CONTEXT_SIZE)?;
+        sha_init(self, buf, to_api_algo(algo), seed).await
     }
 
     #[inline]
     async fn hash_update(
         &self,
         _io: &impl SpdmPalIo,
-        state: &mut HashState,
+        state: &mut Self::State,
         data: &[u8],
     ) -> McuResult<()> {
         sha_update(self, state, data).await
     }
 
     #[inline]
-    fn hash_clone(&self, _io: &impl SpdmPalIo, state: &HashState) -> McuResult<HashState> {
-        state.try_clone()
+    fn hash_clone(&self, _io: &impl SpdmPalIo, state: &Self::State) -> McuResult<Self::State> {
+        let buf = self.allocator.alloc_bytes(SHA_CONTEXT_SIZE)?;
+        Ok(state.clone_into(buf))
     }
 
     #[inline]
     async fn hash_finish(
         &self,
         _io: &impl SpdmPalIo,
-        state: &mut HashState,
+        state: &mut Self::State,
         out: &mut [u8],
     ) -> McuResult<()> {
         sha_finish(self, state, out).await

@@ -15,7 +15,7 @@ use mcu_spdm_lite_codec::{
     SpdmMsgHdrPdu, SpdmVersion, WireWriter, ATTR_SLOT_SIZE_REQUESTED,
 };
 use mcu_spdm_lite_traits::{
-    PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
+    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
 };
 use zerocopy::{little_endian::U16, FromBytes};
 
@@ -129,7 +129,7 @@ impl CertificateLargeResponse {
 }
 
 pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {

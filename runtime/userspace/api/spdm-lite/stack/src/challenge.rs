@@ -7,6 +7,7 @@ use mcu_spdm_lite_codec::{
     ECC_P384_SIGNATURE_SIZE, REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE, SPDM_CONTEXT_LEN,
     SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
+use mcu_spdm_lite_traits::SpdmPalAlloc;
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
 
@@ -15,7 +16,7 @@ use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SP
 use crate::stack::{ConnectionState, Phase};
 
 pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {

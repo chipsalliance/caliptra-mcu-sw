@@ -26,7 +26,7 @@ use mcu_spdm_lite_codec::{
     alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, CapFlags, DheAlgos, KeyScheduleAlgos,
     NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
 };
-use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoTransport};
+use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
@@ -65,7 +65,7 @@ struct PeerAlgs {
 ///   the corresponding table (see [`locate_alg_structs`] / [`parse_peer_algs`]
 ///   for the exact rules).
 pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
@@ -238,8 +238,8 @@ fn parse_peer_algs(slice: &[u8]) -> SpdmResult<PeerAlgs> {
 ///
 /// An [`AlgorithmsRsp`] ready to hand to [`build_response`]. Families
 /// with no overlap are omitted from `alg_structs` (encoded as `None`).
-fn build_response_body<S>(
-    state: &ConnectionState<S>,
+fn build_response_body<S, L>(
+    state: &ConnectionState<S, L>,
     fixed: &NegotiateAlgorithmsReqBodyFixed,
     peer: &PeerAlgs,
     secure_message_supported: bool,
