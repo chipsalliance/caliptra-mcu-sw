@@ -458,10 +458,7 @@ pub const PARTITIONS: &[Partition] = &[
         dot: false,
     },
 ];
-pub const SECRET_VENDOR_FUSES: &[Fuse] = &[Fuse {
-    name: "vendor_recovery_pk_hash",
-    size: Bytes(48),
-}];
+pub const SECRET_VENDOR_FUSES: &[Fuse] = &[];
 pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
     Fuse {
         name: "dot_initialized",
@@ -514,6 +511,10 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
     Fuse {
         name: "fpga_test_field_entropy",
         size: Bytes(32),
+    },
+    Fuse {
+        name: "vendor_recovery_pk_hash",
+        size: Bytes(48),
     },
 ];
 pub const FUSE_FIELDS: &[FuseField] = &[
@@ -905,9 +906,9 @@ pub const STABLE_OWNER_KEY_PERSONALIZATION_SEED: &FuseEntryInfo = &FuseEntryInfo
 };
 /// Fuse entry for `vendor_recovery_pk_hash`.
 pub const VENDOR_RECOVERY_PK_HASH: &FuseEntryInfo = &FuseEntryInfo {
-    partition_num: 13,
-    entry_num: 0,
-    byte_offset: 0x898,
+    partition_num: 14,
+    entry_num: 8,
+    byte_offset: 0xba8,
     byte_size: 32,
     name: "vendor_recovery_pk_hash",
     layout: FuseLayoutType::Single { bits: 384 },
@@ -3003,14 +3004,14 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_15: &FuseEntryInfo = &FuseEntryInfo {
         duplication: 3,
     },
 };
-/// OTP item entry for `vendor_recovery_pk_hash`.
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 13,
     entry_num: 0,
     byte_offset: 0x898,
     byte_size: 32,
-    name: "vendor_recovery_pk_hash",
-    layout: FuseLayoutType::Single { bits: 384 },
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0",
+    layout: FuseLayoutType::Single { bits: 256 },
 };
 /// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_1`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_1: &FuseEntryInfo = &FuseEntryInfo {

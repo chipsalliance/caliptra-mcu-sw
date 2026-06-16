@@ -68,6 +68,11 @@ impl<'a, A: Alarm<'a>> MboxSram<'a, A> {
 
     pub fn init(&'static self) {
         self.alarm.set_alarm_client(self);
+        // Release the lock held from reset so userspace can acquire it.
+        // The hardware (and emulator) starts with the mailbox locked until
+        // SRAM zeroization completes; writing execute=0 triggers that
+        // zeroization and releases the lock.
+        let _ = self.release_lock();
     }
 
     pub fn write(&self, offset: usize, processid: ProcessId) -> Result<(), ErrorCode> {

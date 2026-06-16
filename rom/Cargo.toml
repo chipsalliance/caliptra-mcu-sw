@@ -37,6 +37,8 @@ default = ["hw-2-1"]              # default is 2.1
 cfi = []
 hw-2-1 = []
 core_test = ["caliptra-mcu-romtime/core_test"]
+# Test-only: enables extra diagnostics in the I3C services / DOT recovery path.
+test-i3c-services = []
 fw-manifest-dot = []
 ocp-lock = ["caliptra-mcu-romtime/ocp-lock"]
 svn-manifest = []

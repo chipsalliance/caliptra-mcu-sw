@@ -6,7 +6,6 @@
 {
   // Vendor-specific secret fuses for DOT operations
   secret_vendor: [
-    {"vendor_recovery_pk_hash": 48},    // Vendor master key for catastrophic recovery (384 bits)
   ],
 
   // Vendor-specific non-secret fuses
@@ -34,6 +33,9 @@
     {"fpga_test_uds_seed_lo": 32},
     {"fpga_test_uds_seed_hi": 32},
     {"fpga_test_field_entropy": 32},
+    // Hash of the vendor recovery public keys for DOT_OVERRIDE catastrophic
+    // recovery.
+    {"vendor_recovery_pk_hash": 48},
   ],
 
   // Field definitions specify bit-level details within fuse bytes
@@ -99,8 +101,8 @@
       name: "vendor_recovery_pk_hash",
       bits: 384,
       description: "Vendor recovery key for DOT_OVERRIDE catastrophic recovery operations",
-      partition: "VENDOR_SECRET_PROD_PARTITION",
-      otp_item: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0",
+      partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+      otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8",
       layout: {type: "Single"},
     },
     // SVN anti-rollback fuses (see docs/src/svn.md).

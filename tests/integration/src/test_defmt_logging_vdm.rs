@@ -21,9 +21,7 @@ mod test {
     use crate::test::{
         compile_runtime, finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK,
     };
-    use caliptra_mctp_vdm_client::{
-        DefmtRoundTripCheck, DynamicI3cAddress, TestConfig, Validator,
-    };
+    use caliptra_mctp_vdm_client::{DefmtRoundTripCheck, DynamicI3cAddress, TestConfig, Validator};
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_testing_common::wait_for_runtime_start;
     use random_port::PortPicker;
