@@ -13,6 +13,24 @@ use std::{env, error::Error, fs, io};
 
 const CACHE_FORMAT_VERSION: &str = "v4";
 
+pub const MCU_KERNEL_FPGA: FwId = FwId {
+    crate_name: "mcu-runtime-fpga",
+    bin_name: "mcu-runtime-fpga",
+    features: &[],
+};
+
+pub const MCU_ROM_FPGA: FwId = FwId {
+    crate_name: "mcu-rom-fpga",
+    bin_name: "mcu-rom-fpga",
+    features: &[],
+};
+
+pub const MCU_USER_FPGA: FwId = FwId {
+    crate_name: "user-app",
+    bin_name: "user-app",
+    features: &[],
+};
+
 pub(crate) fn size_history() -> Result<(), anyhow::Error> {
     let cache = create_cache().map_err(|e| anyhow::anyhow!("{}", e))?;
     let reporter = HtmlTableReport::new("https://github.com/chipsalliance/caliptra-mcu-sw");
@@ -28,31 +46,31 @@ pub(crate) fn size_history() -> Result<(), anyhow::Error> {
         .with_pr_squashing(true)
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "Kernel size",
-            firmware::MCU_KERNEL_FPGA,
+            MCU_KERNEL_FPGA,
             SizeType::Instruction,
             true,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "ROM size",
-            firmware::MCU_ROM_FPGA,
+            MCU_ROM_FPGA,
             SizeType::Instruction,
             false,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "App size",
-            firmware::MCU_USER_FPGA,
+            MCU_USER_FPGA,
             SizeType::Instruction,
             false,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "Kernel stack size",
-            firmware::MCU_KERNEL_FPGA,
+            MCU_KERNEL_FPGA,
             SizeType::Stack,
             false,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "User stack size",
-            firmware::MCU_USER_FPGA,
+            MCU_USER_FPGA,
             SizeType::Stack,
             false,
         )))

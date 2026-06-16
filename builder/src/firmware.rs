@@ -48,24 +48,6 @@ pub mod hw_model_tests {
     };
 }
 
-pub const MCU_KERNEL_FPGA: FwId = FwId {
-    crate_name: "mcu-runtime-fpga",
-    bin_name: "mcu-runtime-fpga",
-    features: &[],
-};
-
-pub const MCU_ROM_FPGA: FwId = FwId {
-    crate_name: "mcu-rom-fpga",
-    bin_name: "mcu-rom-fpga",
-    features: &[],
-};
-
-pub const MCU_USER_FPGA: FwId = FwId {
-    crate_name: "user-app",
-    bin_name: "user-app",
-    features: &[],
-};
-
 pub const REGISTERED_FW: &[&FwId] = &[
     &hw_model_tests::MAILBOX_RESPONDER,
     &hw_model_tests::HITLESS_UPDATE_FLOW,
