@@ -80,6 +80,10 @@ pub struct ModelFpgaRealtime {
     i3c_read_requests: Arc<Mutex<VecDeque<u16>>>,
     /// Retry counter for current client-requested read.
     i3c_client_read_retries: u32,
+    /// Number of IBI-triggered reads the model will perform. Each MCTP
+    /// IBI queues one read; the client also sends a 256-byte read for
+    /// each IBI it sees. We must discard those stale client reads.
+    i3c_ibi_reads_pending: u32,
     flash_boot: bool,
     caliptra_firmware: Option<Vec<u8>>,
     soc_manifest: Option<Vec<u8>>,
@@ -186,6 +190,7 @@ impl ModelFpgaRealtime {
                             } else {
                                 cmd.data_length()
                             };
+                            println!("[hw-model-fpga] forward: queuing client read len={}", len);
                             read_requests.lock().unwrap().push_back(len);
                         } else if !rx.cmd.data.is_empty() {
                             // wait for space in the write FIFOs
@@ -238,6 +243,10 @@ impl ModelFpgaRealtime {
                         } else {
                             0
                         };
+                        println!(
+                            "[hw-model-fpga] IBI received: mdb=0x{:02x}, len={}",
+                            mdb, len
+                        );
                         self.pending_ibi.push_back((mdb, len));
                     }
                 }
@@ -293,9 +302,18 @@ impl ModelFpgaRealtime {
                 },
             })
             .expect("Failed to forward I3C IBI response to channel");
-            // Only schedule a private read if the IBI carried a length
+            // For MCTP IBIs (len > 0), schedule an IBI-triggered read
+            // with the correct length. The model performs this read itself
+            // (one per step), so data arrives gradually as the firmware
+            // produces it. The client will also send a 256-byte read in
+            // response to this IBI; we track how many to discard.
             if len > 0 {
+                println!(
+                    "[hw-model-fpga] MCTP IBI: scheduling IBI-triggered read len={}",
+                    len
+                );
                 self.i3c_next_private_read_len = Some(len);
+                self.i3c_ibi_reads_pending += 1;
             }
         }
 
@@ -303,32 +321,47 @@ impl ModelFpgaRealtime {
         // These are explicit reads from the test (not IBI-triggered) and must
         // not be starved by a steady stream of IBIs.
         if self.i3c_next_private_read_len.is_none() {
-            if let Some(len) = self.i3c_read_requests.lock().unwrap().pop_front() {
-                match self.base.i3c_controller().unwrap().read(len) {
-                    Ok(data) => {
-                        let actual_len = data.len().min(len as usize);
-                        let data = data[0..actual_len].to_vec();
-                        let mut resp = ResponseDescriptor::default();
-                        resp.set_data_length(data.len() as u16);
-                        tx.send(I3cBusResponse {
-                            addr: self.i3c_address().unwrap_or_default().into(),
-                            ibi: None,
-                            resp: I3cTcriResponseXfer { resp, data },
-                        })
-                        .expect("Failed to forward I3C client read response to channel");
-                        self.i3c_client_read_retries = 0;
-                    }
-                    Err(e) => {
-                        // Data not ready yet — re-queue with retry limit
-                        self.i3c_client_read_retries += 1;
-                        if self.i3c_client_read_retries < CLIENT_READ_MAX_RETRIES {
-                            self.i3c_read_requests.lock().unwrap().push_front(len);
-                        } else {
-                            println!(
-                                "Error: I3C client-requested read failed after {} retries: {:?}",
-                                self.i3c_client_read_retries, e
-                            );
+            if let Some(client_len) = self.i3c_read_requests.lock().unwrap().pop_front() {
+                // If this read was triggered by the client's response to an
+                // MCTP IBI, the model already performed the read via the
+                // IBI-triggered path. Discard the stale client request.
+                if self.i3c_ibi_reads_pending > 0 {
+                    self.i3c_ibi_reads_pending -= 1;
+                    println!(
+                        "[hw-model-fpga] Discarding stale client read (len={}), {} remaining",
+                        client_len, self.i3c_ibi_reads_pending
+                    );
+                } else {
+                    println!("[hw-model-fpga] Client read: len={}", client_len);
+                    match self.base.i3c_controller().unwrap().read(client_len) {
+                        Ok(data) => {
+                            let actual_len = data.len().min(client_len as usize);
+                            let data = data[0..actual_len].to_vec();
+                            let mut resp = ResponseDescriptor::default();
+                            resp.set_data_length(data.len() as u16);
+                            tx.send(I3cBusResponse {
+                                addr: self.i3c_address().unwrap_or_default().into(),
+                                ibi: None,
+                                resp: I3cTcriResponseXfer { resp, data },
+                            })
+                            .expect("Failed to forward I3C client read response to channel");
                             self.i3c_client_read_retries = 0;
+                        }
+                        Err(e) => {
+                            // Data not ready yet — re-queue with retry limit
+                            self.i3c_client_read_retries += 1;
+                            if self.i3c_client_read_retries < CLIENT_READ_MAX_RETRIES {
+                                self.i3c_read_requests
+                                    .lock()
+                                    .unwrap()
+                                    .push_front(client_len);
+                            } else {
+                                println!(
+                                    "Error: I3C client-requested read failed after {} retries: {:?}",
+                                    self.i3c_client_read_retries, e
+                                );
+                                self.i3c_client_read_retries = 0;
+                            }
                         }
                     }
                 }
@@ -507,6 +540,7 @@ impl McuHwModel for ModelFpgaRealtime {
             pending_ibi: VecDeque::new(),
             i3c_read_requests,
             i3c_client_read_retries: 0,
+            i3c_ibi_reads_pending: 0,
             flash_boot: params.flash_boot,
             caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
