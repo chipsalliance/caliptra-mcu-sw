@@ -161,6 +161,9 @@ pub fn start_caliptra(
     // in active mode, we don't update firmware here, as MCU will trigger it
     let upload_update_fw = UploadUpdateFwCb::new(|_| {});
 
+    // In subsystem mode the MCU owns clearing REQ_IDEVID_CSR.
+    let subsystem_mode = true;
+
     let bus_args = CaliptraRootBusArgs {
         clock: clock.clone(),
         pic: pic.clone(),
@@ -180,10 +183,15 @@ pub fn start_caliptra(
                 u32,
                 DebugManufService::Register,
             >| {
-                download_idev_id_csr(mailbox, log_dir.clone(), cptra_dbg_manuf_service_reg);
+                download_idev_id_csr(
+                    mailbox,
+                    log_dir.clone(),
+                    cptra_dbg_manuf_service_reg,
+                    subsystem_mode,
+                );
             },
         ),
-        subsystem_mode: true,
+        subsystem_mode,
         use_mcu_recovery_interface: args_use_mcu_recovery_interface,
         debug_intent: args.debug_intent,
         prod_dbg_unlock_keypairs: args.prod_dbg_unlock_keypairs.clone(),
@@ -269,6 +277,7 @@ fn download_idev_id_csr(
     mailbox: &mut MailboxInternal,
     path: Rc<PathBuf>,
     cptra_dbg_manuf_service_reg: &mut InMemoryRegister<u32, DebugManufService::Register>,
+    subsystem_mode: bool,
 ) {
     let mut path = path.to_path_buf();
     path.push("caliptra_ldevid_cert.der");
@@ -297,6 +306,10 @@ fn download_idev_id_csr(
     // Complete the mailbox command.
     soc_mbox.status().write(|w| w.status(|w| w.cmd_complete()));
 
-    // Clear the Idevid CSR requested bit.
-    cptra_dbg_manuf_service_reg.modify(DebugManufService::REQ_IDEVID_CSR::CLEAR);
+    if !subsystem_mode {
+        // Standalone mode: callback acts as SoC side and clears REQ_IDEVID_CSR.
+        cptra_dbg_manuf_service_reg.modify(DebugManufService::REQ_IDEVID_CSR::CLEAR);
+    }
+    // Subsystem mode: MCU polls idevid_csr_ready then clears REQ_IDEVID_CSR.
+    // Clearing here can race ROM and lose the ready indication.
 }
