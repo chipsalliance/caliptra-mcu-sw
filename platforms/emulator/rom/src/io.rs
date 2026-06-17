@@ -28,7 +28,9 @@ pub(crate) static mut FATAL_ERROR_HANDLER: EmulatorFatalErrorHandler = EmulatorF
 impl FatalErrorHandler for EmulatorFatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> ! {
         let _ = writeln!(EmulatorWriter {}, "MCU fatal error: {}", HexWord(code));
-        RomEnv::new().mci.set_fw_fatal_error(code);
+        let mut env = RomEnv::new();
+        env.report_i3c_recovery_fatal_error();
+        env.mci.set_fw_fatal_error(code);
         exit_emulator(code);
     }
 }

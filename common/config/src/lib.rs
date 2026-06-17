@@ -115,6 +115,10 @@ pub struct McuStraps {
     /// Selects which I3C core is used for MCTP transport.
     /// 0 = i3c0 (default), 1 = i3c1.
     pub active_i3c: u8,
+    /// Mirrors Caliptra ROM `SS_STRAP_GENERIC[3][1]` behavior.
+    /// When non-zero, Caliptra ROM waits for recovery `DEVICE_RESET` before
+    /// reporting fatal errors.
+    pub cptra_wait_for_device_reset_before_fatal_error: u8,
     pub cptra_wdt_cfg0: u32,
     pub cptra_wdt_cfg1: u32,
     pub mcu_wdt_cfg0: u32,
@@ -131,6 +135,7 @@ impl McuStraps {
             i3c_static_addr: 0x3a,
             i3c1_static_addr: 0x3c,
             active_i3c: 0,
+            cptra_wait_for_device_reset_before_fatal_error: 0,
             cptra_wdt_cfg0: 100_000_000,
             cptra_wdt_cfg1: 100_000_000,
             mcu_wdt_cfg0: 20_000_000,

@@ -15,6 +15,7 @@ Abstract:
 use crate::Soc;
 use caliptra_mcu_registers_generated::{i3c, lc_ctrl, mci, otp_ctrl, soc};
 use caliptra_mcu_romtime::{CaliptraSoC, Lifecycle, Mci, Otp, StaticRef};
+use core::ops::Deref;
 use core::ptr::addr_of;
 
 /// ROM Environment containing all peripherals and managers
@@ -80,6 +81,35 @@ impl RomEnv {
                 soc_manager,
                 straps,
             }
+        }
+    }
+
+    pub fn report_i3c_recovery_fatal_error(&mut self) {
+        let straps = self.straps.deref();
+        if straps.active_i3c == 1 {
+            if let Err(err) = self.i3c1.try_configure(crate::I3cConfig {
+                static_addr: straps.i3c1_static_addr,
+                recovery_enabled: true,
+                timings: crate::I3cTimings::default(),
+            }) {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] Failed to initialize I3C1 for fatal recovery status: {}",
+                    caliptra_mcu_romtime::HexWord(err.into())
+                );
+            }
+            self.i3c1.set_recovery_fatal_error();
+        } else {
+            if let Err(err) = self.i3c.try_configure(crate::I3cConfig {
+                static_addr: straps.i3c_static_addr,
+                recovery_enabled: true,
+                timings: crate::I3cTimings::default(),
+            }) {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] Failed to initialize I3C for fatal recovery status: {}",
+                    caliptra_mcu_romtime::HexWord(err.into())
+                );
+            }
+            self.i3c.set_recovery_fatal_error();
         }
     }
 }

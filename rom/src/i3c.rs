@@ -12,6 +12,11 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use crate::fatal_error;
 
+const DEVICE_STATUS_BOOT_FAILURE: u32 = 0x0e;
+const DEVICE_STATUS_FATAL_ERROR: u32 = 0x0f;
+const RECOVERY_STATUS_FAILED: u32 = 0x0c;
+const RECOVERY_REASON_CORRUPTED_CRITICAL_DATA: u32 = 0x0004;
+
 /// I3C bus timing parameters, in clock units.
 ///
 /// Each value is written to the corresponding `soc_mgmt_if_t_*_reg` timing
@@ -89,6 +94,15 @@ impl I3c {
 
     /// Run the initialization steps for the primary and secondary controller.
     pub fn configure(&mut self, config: I3cConfig) {
+        if let Err(err) = self.try_configure(config) {
+            fatal_error(err);
+        }
+    }
+
+    /// Run I3C initialization and report errors to the caller instead of
+    /// fataling. This is used by fatal-error reporting paths that must not
+    /// recursively enter `fatal_error` if I3C is unavailable.
+    pub fn try_configure(&mut self, config: I3cConfig) -> Result<(), McuError> {
         let I3cConfig {
             static_addr: addr,
             recovery_enabled,
@@ -117,7 +131,7 @@ impl I3c {
             .read(RingHeadersSectionOffset::SectionOffset);
         if rhso != 0 {
             caliptra_mcu_romtime::println!("[mcu-rom-i3c] RING_HEADERS_SECTION_OFFSET is not 0");
-            fatal_error(McuError::ROM_I3C_CONFIG_RING_HEADER_ERROR);
+            return Err(McuError::ROM_I3C_CONFIG_RING_HEADER_ERROR);
         }
 
         // initialize timing registers
@@ -191,7 +205,7 @@ impl I3c {
             caliptra_mcu_romtime::println!(
                 "[mcu-rom-i3c] I3C target transaction support is not enabled"
             );
-            fatal_error(McuError::ROM_I3C_CONFIG_STDBY_CTRL_MODE_ERROR)
+            return Err(McuError::ROM_I3C_CONFIG_STDBY_CTRL_MODE_ERROR);
         }
 
         // program a static address
@@ -237,6 +251,39 @@ impl I3c {
         // enable the PHY connection to the bus
         regs.i3c_base_hc_control
             .modify(HcControl::ModeSelector::SET + HcControl::BusEnable::SET);
+        Ok(())
+    }
+
+    fn set_recovery_status(&self, status: u32) {
+        self.registers
+            .sec_fw_recovery_if_recovery_status
+            .write(RecoveryStatus::DevRecStatus.val(status));
+    }
+
+    fn set_device_status(&self, status: u32) {
+        self.registers
+            .sec_fw_recovery_if_device_status_0
+            .write(DeviceStatus0::DevStatus.val(status));
+    }
+
+    fn set_device_status_with_recovery_reason(&self, status: u32, recovery_reason: u32) {
+        self.registers.sec_fw_recovery_if_device_status_0.write(
+            DeviceStatus0::DevStatus.val(status)
+                + DeviceStatus0::RecReasonCode.val(recovery_reason),
+        );
+    }
+
+    pub fn set_recovery_boot_failure(&self) {
+        self.set_recovery_status(RECOVERY_STATUS_FAILED);
+        self.set_device_status_with_recovery_reason(
+            DEVICE_STATUS_BOOT_FAILURE,
+            RECOVERY_REASON_CORRUPTED_CRITICAL_DATA,
+        );
+    }
+
+    pub fn set_recovery_fatal_error(&self) {
+        self.set_recovery_status(RECOVERY_STATUS_FAILED);
+        self.set_device_status(DEVICE_STATUS_FATAL_ERROR);
     }
 
     pub fn disable_recovery(&mut self) {

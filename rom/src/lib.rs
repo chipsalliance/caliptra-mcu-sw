@@ -137,7 +137,9 @@ fn fatal_error_raw(code: u32) -> ! {
         handler.fatal_error(code);
     } else {
         // If no handler is set, just set the MCI fatal error code and loop forever
-        RomEnv::new().mci.set_fw_fatal_error(code);
+        let mut env = RomEnv::new();
+        env.report_i3c_recovery_fatal_error();
+        env.mci.set_fw_fatal_error(code);
         loop {}
     }
 }

@@ -46,6 +46,7 @@ const LMS_CALIPTRA_VALUE: u8 = 3;
 const OTP_DAI_IDLE_BIT_OFFSET: u32 = 22;
 const OTP_STATUS_REG_OFFSET: u32 = 0x10;
 const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x60;
+const SS_STRAP_GENERIC_3_WAIT_FOR_DEVICE_RESET_BEFORE_FATAL_ERROR: u32 = 1 << 1;
 
 pub const MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS: u32 = 8; // 32 kB / 4 kB chunks
 
@@ -188,6 +189,8 @@ impl Soc {
         mci: &caliptra_mcu_romtime::Mci,
         params: &RomParameters,
     ) -> usize {
+        let straps = unsafe { &MCU_STRAPS };
+
         // secret fuses are populated by a hardware state machine, so we can skip those
 
         // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
@@ -208,6 +211,16 @@ impl Soc {
         self.registers.ss_strap_generic[0]
             .set((OTP_DAI_IDLE_BIT_OFFSET << 16) | OTP_STATUS_REG_OFFSET);
         self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
+
+        // Mirror platform config into Caliptra ROM gate bit
+        // `SS_STRAP_GENERIC[3][1]` (wait for DEVICE_RESET before fatal error).
+        let mut ss_strap_generic_3 = self.registers.ss_strap_generic[3].get();
+        if straps.cptra_wait_for_device_reset_before_fatal_error != 0 {
+            ss_strap_generic_3 |= SS_STRAP_GENERIC_3_WAIT_FOR_DEVICE_RESET_BEFORE_FATAL_ERROR;
+        } else {
+            ss_strap_generic_3 &= !SS_STRAP_GENERIC_3_WAIT_FOR_DEVICE_RESET_BEFORE_FATAL_ERROR;
+        }
+        self.registers.ss_strap_generic[3].set(ss_strap_generic_3);
 
         // Select the vendor public key slot to use.
         let default_policy = DefaultVendorKeyPolicy::new(

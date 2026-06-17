@@ -246,8 +246,7 @@ impl crate::device_ownership_transfer::DotLockedRecoveryHandler for I3cDotLocked
             self.services,
             self.i3c_target_addr,
             Some(dot_ctx),
-        );
-        Ok(())
+        )
     }
 }
 
@@ -261,7 +260,7 @@ fn enter_i3c_services(
     services: I3cServicesModes,
     target_addr: u8,
     dot_ctx: Option<crate::DotContext<'_>>,
-) {
+) -> caliptra_mcu_error::McuResult<()> {
     // Extend the watchdog timeout for I3C services since the loop may run
     // for an extended period waiting for commands from the BMC.
     mci.configure_wdt(u32::MAX as u64, 1);
@@ -322,16 +321,25 @@ fn enter_i3c_services(
 
     let mut handler =
         I3cMailboxHandler::new(i3c_base, services, target_addr, dot_ctx, reassembly_buf);
-    match handler.run(|| {
+    let result = match handler.run(|| {
         mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesReady.into());
     }) {
         Ok(()) => {
             mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesComplete.into());
+            Ok(())
         }
         Err(err) => {
             caliptra_mcu_romtime::println!("[mcu-rom] I3C services error: {}", HexWord(err.into()));
+            let mut i3c = crate::i3c::I3c::new(i3c_base);
+            let _ = i3c.try_configure(crate::I3cConfig {
+                static_addr: target_addr,
+                recovery_enabled: true,
+                timings: crate::I3cTimings::default(),
+            });
+            i3c.set_recovery_boot_failure();
+            Err(err)
         }
-    }
+    };
 
     // Release mailbox lock if we acquired it
     if lock_acquired {
@@ -339,6 +347,8 @@ fn enter_i3c_services(
             .mcu_mbox0_csr_mbox_execute
             .write(MboxExecute::Execute::CLEAR);
     }
+
+    result
 }
 
 impl BootFlow for ColdBoot {
@@ -763,7 +773,7 @@ impl BootFlow for ColdBoot {
                         key_type,
                     }
                 });
-                enter_i3c_services(&env.mci, i3c_base, services, i3c_target_addr, dot_ctx);
+                let _ = enter_i3c_services(&env.mci, i3c_base, services, i3c_target_addr, dot_ctx);
             }
         }
 
