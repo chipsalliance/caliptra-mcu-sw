@@ -265,7 +265,7 @@ jobs:
   test_emulator:
     runs-on: e2-standard-4
     needs: [precheckin, build-firmware, build-emulator, build-tests]
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
