@@ -811,12 +811,12 @@ impl McuError {
         ),
         (
             ROM_COLD_BOOT_FIELD_ENTROPY_ZEROIZED,
-            0x1_003D,
+            0x1_0043,
             "Field entropy slot is zeroized"
         ),
         (
             ROM_COLD_BOOT_FIELD_ENTROPY_PARTIAL,
-            0x1_003E,
+            0x1_0044,
             "Field entropy slot is partially programmed"
         ),
         (
@@ -861,7 +861,7 @@ impl McuError {
         ),
         (
             ROM_CALIPTRA_RUNTIME_SVN_BURN_ERROR,
-            0x1_003f,
+            0x1_0045,
             "Caliptra runtime SVN fuse burn failed"
         ),
         (

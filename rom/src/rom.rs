@@ -293,7 +293,7 @@ impl Soc {
         self.registers.fuse_fmc_key_manifest_svn.set(svn);
 
         // Vendor PK Hash.
-        caliptra_mcu_romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
+
         let mut hash_buf = [0u8; 48];
         cfi_assert_eq(pk_hash_idx, pk_hash_idx_expected);
         otp.read_vendor_pk_hash(pk_hash_idx, &mut hash_buf)
@@ -309,10 +309,9 @@ impl Soc {
                     .try_into()
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR)),
             );
-            caliptra_mcu_romtime::print!("{}", HexWord(word));
+
             reg.set(word);
         }
-        caliptra_mcu_romtime::println!("");
 
         // Runtime SVN.
         for i in 0..self.registers.fuse_runtime_svn.len() {
@@ -462,7 +461,7 @@ impl Soc {
         // We use non secret production fuses to have caliptra tests pass some initial fuse values
         if cfg!(feature = "core_test") {
             // UDS Seed from fuses (split into low and high 256-bit halves)
-            caliptra_mcu_romtime::println!("[mcu-fuse-write] Writing UDS seed");
+
             let uds_seed_lo_offset = fuses::FPGA_TEST_UDS_SEED_LO.byte_offset;
             let uds_seed_hi_offset = fuses::FPGA_TEST_UDS_SEED_HI.byte_offset;
             for i in 0..8 {
@@ -479,7 +478,7 @@ impl Soc {
             }
 
             // Field Entropy from fuses
-            caliptra_mcu_romtime::println!("[mcu-fuse-write] Writing field entropy");
+
             let field_entropy_offset = fuses::FPGA_TEST_FIELD_ENTROPY.byte_offset;
             for i in 0..self.registers.fuse_field_entropy.len() {
                 let word = otp
@@ -519,7 +518,6 @@ impl Soc {
         config: &mut caliptra_mcu_romtime::ocp_lock::RomConfig,
     ) -> Result<caliptra_mcu_romtime::ocp_lock::HekState, caliptra_mcu_romtime::ocp_lock::Error>
     {
-        caliptra_mcu_romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
         // Key release is always 64 bytes currently
         self.registers.ss_key_release_size.set(config.mek_size);
 
@@ -599,7 +597,6 @@ impl Soc {
                 }
             }
         };
-        caliptra_mcu_romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
 
         Ok(caliptra_mcu_romtime::ocp_lock::HekState {
             active_slot: active_slot as u32,
