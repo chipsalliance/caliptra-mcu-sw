@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build_test_binaries:
-    runs-on: [e2-standard-8-big-disk]
+    runs-on: [staging-e2-standard-8-big-disk]
     timeout-minutes: 60
     env:
       SCCACHE_VERSION: 0.10.0
