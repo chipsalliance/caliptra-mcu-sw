@@ -85,8 +85,7 @@ pub enum CaliptraCompletionCode {
     CaliptraBufferTooSmall = 0xC1,
 }
 
-/// Device-operation result from a [`CaliptraVdmCommands`](super::CaliptraVdmCommands)
-/// PAL hook: bytes written on success, or a completion code on failure.
+/// Device-operation result: bytes written on success, or a completion code on failure.
 pub type CaliptraVdmResult<T> = Result<T, CaliptraCompletionCode>;
 
 /// Outcome of dispatching a single Caliptra VDM command.

@@ -12,10 +12,10 @@ mod caliptra_vdm;
 mod cert_store;
 mod device_measurements;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-mod emulated_tdisp;
+mod pci_sig_vdm;
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-use self::emulated_tdisp::EmulatedTdispDriver;
+use self::pci_sig_vdm::{emulated_ide_km::EmulatedIdeDriver, emulated_tdisp::EmulatedTdispDriver};
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -33,8 +33,8 @@ use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 use mcu_spdm_lite_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 use mcu_spdm_lite_vdm_handler::pci_sig::{
+    ide_km::PciSigIdeKmTdispVdm,
     tdisp::{TdispResponder, TdispVersion},
-    PciSigTdispVdm,
 };
 
 /// Bitmap allocator pool size per responder task.
@@ -152,7 +152,7 @@ async fn spdm_mctp_responder() {
     // exclusive to this task.
     let pal = unsafe { McuSpdmPal::new(transport, allocator, &CERT_STORE, measurement_provider()) };
     // MCTP hosts the IANA / Caliptra VDM backend (plaintext today). DOE uses
-    // the default NoVdmBackend unless the TDISP validator feature wires PCI-SIG.
+    // the default NoVdmBackend unless the TDISP/IDE validator feature wires PCI-SIG.
     static MCTP_VDM_HOOK: caliptra_vdm::CaliptraVdmHook = caliptra_vdm::CaliptraVdmHook;
     let vdm = CaliptraVdm::new(&MCTP_VDM_HOOK);
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
@@ -200,8 +200,9 @@ async fn spdm_doe_responder() {
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(
         pal,
-        PciSigTdispVdm::new(
+        PciSigIdeKmTdispVdm::new(
             TEST_PCI_SIG_VENDOR_ID,
+            EmulatedIdeDriver::default(),
             TdispResponder::new(SUPPORTED_TDISP_VERSIONS, EmulatedTdispDriver::new())
                 .expect("TDISP validator versions are non-empty"),
         ),

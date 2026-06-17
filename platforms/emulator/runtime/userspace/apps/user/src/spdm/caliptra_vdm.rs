@@ -16,7 +16,7 @@ use mcu_caliptra_api_lite::{
     cm_hmac, cm_import, fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, rng_generate,
     ApiAlloc, CmKeyUsage, McuErrorCode,
 };
-use mcu_spdm_lite_traits::{SpdmPalAlloc, SpdmPalIo};
+use mcu_spdm_lite_traits::SpdmPalAlloc;
 use mcu_spdm_lite_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdmCommands, CaliptraVdmLogResult, CaliptraVdmResult,
 };
@@ -41,11 +41,10 @@ static AUTH_CHALLENGE: Mutex<CriticalSectionRawMutex, Option<[u8; 32]>> = Mutex:
 pub struct CaliptraVdmHook;
 
 impl CaliptraVdmCommands for CaliptraVdmHook {
-    async fn get_log<A: SpdmPalAlloc, I: SpdmPalIo>(
+    async fn get_log<A: SpdmPalAlloc>(
         &self,
         log_type: u32,
         _scratch: &A,
-        _io: &I,
         out: &mut [u8],
     ) -> CaliptraVdmResult<CaliptraVdmLogResult> {
         let result = match log_type {
@@ -65,11 +64,10 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         })
     }
 
-    async fn clear_log<A: SpdmPalAlloc, I: SpdmPalIo>(
+    async fn clear_log<A: SpdmPalAlloc>(
         &self,
         log_type: u32,
         _scratch: &A,
-        _io: &I,
     ) -> CaliptraVdmResult<()> {
         match log_type {
             0 => crate::caliptra_cmd_handler::debug_log::clear()
@@ -80,13 +78,12 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         }
     }
 
-    async fn export_attested_csr<A: SpdmPalAlloc, I: SpdmPalIo>(
+    async fn export_attested_csr<A: SpdmPalAlloc>(
         &self,
         device_key_id: u32,
         algorithm: u32,
         nonce: &[u8; 32],
         _scratch: &A,
-        _io: &I,
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize> {
         let result = match algorithm {
@@ -97,10 +94,9 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         result.map_err(map_mcu_err)
     }
 
-    async fn get_auth_challenge<A: SpdmPalAlloc, I: SpdmPalIo>(
+    async fn get_auth_challenge<A: SpdmPalAlloc>(
         &self,
         scratch: &A,
-        _io: &I,
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize> {
         let mut challenge = [0u8; 32];
@@ -111,12 +107,11 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         copy_bytes(&challenge, out)
     }
 
-    async fn program_field_entropy<A: SpdmPalAlloc, I: SpdmPalIo>(
+    async fn program_field_entropy<A: SpdmPalAlloc>(
         &self,
         partition: u32,
         mac: &[u8; 48],
         scratch: &A,
-        _io: &I,
     ) -> CaliptraVdmResult<()> {
         verify_fe_prog_mac(scratch, partition, mac).await?;
         fe_prog(scratch, partition).await.map_err(map_mcu_err)

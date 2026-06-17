@@ -12,7 +12,10 @@ default = []
 [dependencies]
 mcu-spdm-lite-traits = { workspace = true }
 mcu-spdm-lite-codec = { workspace = true }
+mcu-spdm-lite-errors = { workspace = true }
 mcu-error = { workspace = true }
+zerocopy = { workspace = true }
 
 [dev-dependencies]
+futures = { workspace = true }
 mcu-caliptra-api-lite = { workspace = true }

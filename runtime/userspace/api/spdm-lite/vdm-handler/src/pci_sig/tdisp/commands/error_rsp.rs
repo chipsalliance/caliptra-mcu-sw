@@ -5,7 +5,7 @@
 use mcu_spdm_lite_codec::errors::SPDM_UNSPECIFIED;
 use mcu_spdm_lite_traits::{McuResult, VdmResponse};
 
-use crate::pci_sig::tdisp::protocol::{
+use mcu_spdm_lite_codec::vendor_defined::pci_sig::tdisp::{
     InterfaceId, TdispCommand, TdispErrorCode, TdispMessageHeader, ERROR_RSP_LEN, TDISP_HEADER_LEN,
 };
 

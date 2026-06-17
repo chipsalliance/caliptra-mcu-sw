@@ -4,7 +4,7 @@
 
 use core::cell::Cell;
 
-use mcu_spdm_lite_traits::{SpdmPalAlloc, SpdmPalIo};
+use mcu_spdm_lite_traits::SpdmPalAlloc;
 use mcu_spdm_lite_vdm_handler::pci_sig::tdisp::{
     FunctionId, TdiStatus, TdispDriver, TdispDriverResult, TdispLockInterfaceParam,
     TdispReqCapabilities, TdispRespCapabilities, START_INTERFACE_NONCE_SIZE,
@@ -39,15 +39,13 @@ impl Default for EmulatedTdispDriver {
 }
 
 impl TdispDriver for EmulatedTdispDriver {
-    async fn generate_start_interface_nonce<Alloc, Io>(
+    async fn generate_start_interface_nonce<Alloc>(
         &self,
         _scratch: &Alloc,
-        _io: &Io,
         out: &mut [u8; START_INTERFACE_NONCE_SIZE],
     ) -> TdispDriverResult<()>
     where
         Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo,
     {
         let start = self.nonce_counter.get().wrapping_add(1);
         self.nonce_counter.set(start);
@@ -57,31 +55,27 @@ impl TdispDriver for EmulatedTdispDriver {
         Ok(())
     }
 
-    async fn get_capabilities<Alloc, Io>(
+    async fn get_capabilities<Alloc>(
         &self,
         _req_caps: TdispReqCapabilities,
         _scratch: &Alloc,
-        _io: &Io,
         resp_caps: &mut TdispRespCapabilities,
     ) -> TdispDriverResult<u32>
     where
         Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo,
     {
         *resp_caps = TdispRespCapabilities::new(0, EMULATED_REQ_MSGS_SUPPORTED, 0x07, 48, 0, 0);
         Ok(0)
     }
 
-    async fn lock_interface<Alloc, Io>(
+    async fn lock_interface<Alloc>(
         &self,
         _function_id: FunctionId,
         _param: TdispLockInterfaceParam,
         _scratch: &Alloc,
-        _io: &Io,
     ) -> TdispDriverResult<u32>
     where
         Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo,
     {
         if self.state.get() != TdiStatus::ConfigUnlocked {
             return Ok(TDISP_ERROR_INVALID_INTERFACE_STATE);
@@ -90,16 +84,14 @@ impl TdispDriver for EmulatedTdispDriver {
         Ok(0)
     }
 
-    async fn get_device_interface_report_len<Alloc, Io>(
+    async fn get_device_interface_report_len<Alloc>(
         &self,
         _function_id: FunctionId,
         _scratch: &Alloc,
-        _io: &Io,
         intf_report_len: &mut u16,
     ) -> TdispDriverResult<u32>
     where
         Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo,
     {
         *intf_report_len = if self.state.get() == TdiStatus::ConfigUnlocked {
             0
@@ -109,18 +101,16 @@ impl TdispDriver for EmulatedTdispDriver {
         Ok(0)
     }
 
-    async fn get_device_interface_report<Alloc, Io>(
+    async fn get_device_interface_report<Alloc>(
         &self,
         _function_id: FunctionId,
         offset: u16,
         _scratch: &Alloc,
-        _io: &Io,
         report: &mut [u8],
         copied: &mut usize,
     ) -> TdispDriverResult<u32>
     where
         Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo,
     {
         let offset = offset as usize;
         if self.state.get() == TdiStatus::ConfigUnlocked
@@ -135,30 +125,26 @@ impl TdispDriver for EmulatedTdispDriver {
         Ok(0)
     }
 
-    async fn get_device_interface_state<Alloc, Io>(
+    async fn get_device_interface_state<Alloc>(
         &self,
         _function_id: FunctionId,
         _scratch: &Alloc,
-        _io: &Io,
         tdi_state: &mut TdiStatus,
     ) -> TdispDriverResult<u32>
     where
         Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo,
     {
         *tdi_state = self.state.get();
         Ok(0)
     }
 
-    async fn start_interface<Alloc, Io>(
+    async fn start_interface<Alloc>(
         &self,
         _function_id: FunctionId,
         _scratch: &Alloc,
-        _io: &Io,
     ) -> TdispDriverResult<u32>
     where
         Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo,
     {
         if self.state.get() != TdiStatus::ConfigLocked {
             return Ok(TDISP_ERROR_INVALID_INTERFACE_STATE);
@@ -167,15 +153,13 @@ impl TdispDriver for EmulatedTdispDriver {
         Ok(0)
     }
 
-    async fn stop_interface<Alloc, Io>(
+    async fn stop_interface<Alloc>(
         &self,
         _function_id: FunctionId,
         _scratch: &Alloc,
-        _io: &Io,
     ) -> TdispDriverResult<u32>
     where
         Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo,
     {
         if self.state.get() == TdiStatus::ConfigUnlocked {
             return Ok(TDISP_ERROR_INVALID_INTERFACE_STATE);

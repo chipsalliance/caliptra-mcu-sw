@@ -7,12 +7,12 @@
 //! `large` staging buffer's tail, then framed inline when the whole response
 //! fits one transport frame, otherwise as a chunked large response.
 
-use mcu_spdm_lite_traits::{SpdmPalAlloc, SpdmPalIo};
+use mcu_spdm_lite_traits::SpdmPalAlloc;
 
-use crate::iana::ocp::caliptra_vdm::protocol::{
+use crate::iana::ocp::caliptra_vdm::CaliptraVdmCommands;
+use mcu_spdm_lite_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult, CALIPTRA_VDM_COMMAND_VERSION,
 };
-use crate::iana::ocp::caliptra_vdm::CaliptraVdmCommands;
 
 /// Request payload: `device_key_id` (u32 LE) | `algorithm` (u32 LE) | `nonce` (32 bytes).
 const REQ_LEN: usize = 4 + 4 + 32;
@@ -36,19 +36,17 @@ const INLINE_PREFIX_LEN: usize = 1 + CSR_LEN_FIELD;
 /// copied back inline (if it fits one frame) or framed in place as a large
 /// response.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn handle<H, A, I>(
+pub(crate) async fn handle<H, A>(
     cmds: &H,
     req: &[u8],
     command_code: u8,
     inline_payload: &mut [u8],
     large: &mut [u8],
     scratch: &A,
-    io: &I,
 ) -> CaliptraVdmCmdResult
 where
     H: CaliptraVdmCommands,
     A: SpdmPalAlloc,
-    I: SpdmPalIo,
 {
     if req.len() != REQ_LEN {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
@@ -67,7 +65,6 @@ where
                 algorithm,
                 &nonce,
                 scratch,
-                io,
                 &mut large[CSR_PAYLOAD_HEADER_LEN..],
             )
             .await
@@ -103,7 +100,6 @@ where
                 algorithm,
                 &nonce,
                 scratch,
-                io,
                 &mut inline_payload[INLINE_PREFIX_LEN..],
             )
             .await

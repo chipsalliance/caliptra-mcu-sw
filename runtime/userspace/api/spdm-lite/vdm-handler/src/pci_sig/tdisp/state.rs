@@ -4,7 +4,9 @@
 
 use core::cell::Cell;
 
-use super::protocol::{InterfaceId, START_INTERFACE_NONCE_SIZE};
+use mcu_spdm_lite_codec::vendor_defined::pci_sig::tdisp::{
+    InterfaceId, START_INTERFACE_NONCE_SIZE,
+};
 
 /// Maximum number of TDISP interfaces tracked by the responder.
 pub const MAX_TDISP_INTERFACES: usize = 64;

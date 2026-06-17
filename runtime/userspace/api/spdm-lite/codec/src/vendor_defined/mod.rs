@@ -2,6 +2,13 @@
 
 //! VENDOR_DEFINED request / response wire types.
 
+pub mod iana {
+    pub mod ocp {
+        pub mod caliptra;
+    }
+}
+pub mod pci_sig;
+
 use zerocopy::{little_endian::U16, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::{ReqRespCode, ResponseBody, WireError, WireReader, WireWriter};

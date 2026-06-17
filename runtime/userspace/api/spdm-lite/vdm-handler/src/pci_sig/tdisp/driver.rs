@@ -2,9 +2,9 @@
 
 //! TDISP platform driver abstraction.
 
-use mcu_spdm_lite_traits::{SpdmPalAlloc, SpdmPalIo};
+use mcu_spdm_lite_traits::SpdmPalAlloc;
 
-use super::protocol::{
+use mcu_spdm_lite_codec::vendor_defined::pci_sig::tdisp::{
     FunctionId, TdiStatus, TdispLockInterfaceParam, TdispReqCapabilities, TdispRespCapabilities,
     START_INTERFACE_NONCE_SIZE,
 };
@@ -41,97 +41,81 @@ pub type TdispDriverResult<T> = Result<T, TdispDriverError>;
 #[allow(async_fn_in_trait)]
 pub trait TdispDriver {
     /// Fills `out` with a START_INTERFACE nonce.
-    async fn generate_start_interface_nonce<Alloc, Io>(
+    async fn generate_start_interface_nonce<Alloc>(
         &self,
         scratch: &Alloc,
-        io: &Io,
         out: &mut [u8; START_INTERFACE_NONCE_SIZE],
     ) -> TdispDriverResult<()>
     where
-        Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo;
+        Alloc: SpdmPalAlloc;
 
     /// Gets responder capabilities.
-    async fn get_capabilities<Alloc, Io>(
+    async fn get_capabilities<Alloc>(
         &self,
         req_caps: TdispReqCapabilities,
         scratch: &Alloc,
-        io: &Io,
         resp_caps: &mut TdispRespCapabilities,
     ) -> TdispDriverResult<u32>
     where
-        Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo;
+        Alloc: SpdmPalAlloc;
 
     /// Locks an interface.
-    async fn lock_interface<Alloc, Io>(
+    async fn lock_interface<Alloc>(
         &self,
         function_id: FunctionId,
         param: TdispLockInterfaceParam,
         scratch: &Alloc,
-        io: &Io,
     ) -> TdispDriverResult<u32>
     where
-        Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo;
+        Alloc: SpdmPalAlloc;
 
     /// Returns the total device interface report length.
-    async fn get_device_interface_report_len<Alloc, Io>(
+    async fn get_device_interface_report_len<Alloc>(
         &self,
         function_id: FunctionId,
         scratch: &Alloc,
-        io: &Io,
         intf_report_len: &mut u16,
     ) -> TdispDriverResult<u32>
     where
-        Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo;
+        Alloc: SpdmPalAlloc;
 
     /// Copies a device interface report portion.
-    async fn get_device_interface_report<Alloc, Io>(
+    async fn get_device_interface_report<Alloc>(
         &self,
         function_id: FunctionId,
         offset: u16,
         scratch: &Alloc,
-        io: &Io,
         report: &mut [u8],
         copied: &mut usize,
     ) -> TdispDriverResult<u32>
     where
-        Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo;
+        Alloc: SpdmPalAlloc;
 
     /// Gets the current device interface state.
-    async fn get_device_interface_state<Alloc, Io>(
+    async fn get_device_interface_state<Alloc>(
         &self,
         function_id: FunctionId,
         scratch: &Alloc,
-        io: &Io,
         tdi_state: &mut TdiStatus,
     ) -> TdispDriverResult<u32>
     where
-        Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo;
+        Alloc: SpdmPalAlloc;
 
     /// Starts an interface.
-    async fn start_interface<Alloc, Io>(
+    async fn start_interface<Alloc>(
         &self,
         function_id: FunctionId,
         scratch: &Alloc,
-        io: &Io,
     ) -> TdispDriverResult<u32>
     where
-        Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo;
+        Alloc: SpdmPalAlloc;
 
     /// Stops an interface.
-    async fn stop_interface<Alloc, Io>(
+    async fn stop_interface<Alloc>(
         &self,
         function_id: FunctionId,
         scratch: &Alloc,
-        io: &Io,
     ) -> TdispDriverResult<u32>
     where
-        Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo;
+        Alloc: SpdmPalAlloc;
 }

@@ -5,10 +5,10 @@
 use mcu_spdm_lite_codec::errors::SPDM_UNSPECIFIED;
 use mcu_spdm_lite_traits::McuResult;
 
-use crate::pci_sig::tdisp::protocol::{
+use crate::pci_sig::tdisp::{TdispHandlerResult, TdispResponder};
+use mcu_spdm_lite_codec::vendor_defined::pci_sig::tdisp::{
     TdispMessageHeader, TDISP_ERROR_INVALID_INTERFACE, TDISP_HEADER_LEN,
 };
-use crate::pci_sig::tdisp::{TdispHandlerResult, TdispResponder};
 
 pub(crate) fn handle<D>(
     tdisp: &TdispResponder<D>,
