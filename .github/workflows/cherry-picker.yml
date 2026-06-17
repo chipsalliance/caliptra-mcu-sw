@@ -157,9 +157,10 @@ jobs:
           7. Review the result and make any further branch-specific adaptations in a \
              separate commit"
 
-      - name: Gemini — Push and Create PR
+      - name: Push and Create PR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BACKPORT_BRANCH="${{ steps.cherry_pick.outputs.backport_branch }}"
           TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
@@ -172,18 +173,45 @@ jobs:
           PR_BODY="Backport of ${COMMIT_SHA} to \`${TARGET_BRANCH}\`."
 
           if [ "$STATUS" = "conflict" ]; then
-            PR_BODY="${PR_BODY}\n\n> [!WARNING]\n> The original cherry-pick had conflicts that were resolved by Gemini. Please review carefully."
+            PR_BODY=$(cat <<EOF
+          ${PR_BODY}
+
+          > [!WARNING]
+          > The original cherry-pick had conflicts that were resolved by Gemini. Please review carefully.
+          EOF
+          )
           else
-            PR_BODY="${PR_BODY}\n\n> [!NOTE]\n> The cherry-pick applied cleanly."
+            PR_BODY=$(cat <<EOF
+          ${PR_BODY}
+
+          > [!NOTE]
+          > The cherry-pick applied cleanly.
+          EOF
+          )
           fi
 
           if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            PR_BODY="${PR_BODY}\n\nOriginal PR: #${{ github.event.pull_request.number }}"
+            PR_BODY=$(cat <<EOF
+          ${PR_BODY}
+
+          Original PR: #${{ github.event.pull_request.number }}
+          EOF
+          )
           fi
 
-          /tmp/xtask vertex-prompt "Push the branch '${BACKPORT_BRANCH}' to origin. \
-          Then create a pull request to '${TARGET_BRANCH}' with the following details: \
-          Title: [Backport ${TARGET_BRANCH}] ${ORIGINAL_MSG} \
-          Body: ${PR_BODY} \
-          Labels: backport \
-          Assignee/Reviewer: ${PR_AUTHOR}"
+          # Push the backport branch to origin
+          git push origin "${BACKPORT_BRANCH}"
+
+          # Create PR using GitHub CLI
+          GH_OPTS=()
+          if [ -n "${PR_AUTHOR}" ]; then
+            GH_OPTS+=("--reviewer" "${PR_AUTHOR}" "--assignee" "${PR_AUTHOR}")
+          fi
+
+          gh pr create \
+            --title "[Backport ${TARGET_BRANCH}] ${ORIGINAL_MSG}" \
+            --body "${PR_BODY}" \
+            --base "${TARGET_BRANCH}" \
+            --head "${BACKPORT_BRANCH}" \
+            --label "backport" \
+            "${GH_OPTS[@]}"
