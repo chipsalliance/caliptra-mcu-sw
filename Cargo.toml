@@ -103,6 +103,7 @@ members = [
     "runtime/userspace/userlog",
     "tests/hello",
     "tests/integration",
+    "tools/pk-hash-checker",
     "xtask",
 ]
 resolver = "2"
