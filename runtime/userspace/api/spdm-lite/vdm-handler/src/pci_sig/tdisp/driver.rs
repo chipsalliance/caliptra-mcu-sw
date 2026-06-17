@@ -1,70 +1,43 @@
-# TDISP (TEE Device Interface Security Protocol) Support
+// Licensed under the Apache-2.0 license
 
-Caliptra Subsystem supports handling of TDISP messages by processing them as VENDOR_DEFINED_REQUEST/VENDOR_DEFINED_RESPONSE message payloads. These messages are transported and processed within the secure session established between the host and the TDISP device as specified by Secured CMA/SPDM.
+//! TDISP platform driver abstraction.
 
-To facilitate the TDISP protocol, devices provide a platform implementation of the `TdispDriver` trait from `mcu-spdm-lite-vdm-handler::pci_sig::tdisp`. The responder owns the TDISP wire-format handling, command dispatch, and protocol state; the driver supplies device-specific operations such as capabilities, interface state transitions, nonce generation, and interface report contents.
+use mcu_spdm_lite_traits::{SpdmPalAlloc, SpdmPalIo};
 
-The relevant public driver API is summarized below.
-
-```rust
+use super::protocol::{
+    FunctionId, TdiStatus, TdispLockInterfaceParam, TdispReqCapabilities, TdispRespCapabilities,
+    START_INTERFACE_NONCE_SIZE,
+};
+/// Error codes returned by TDISP driver
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TdispDriverError {
+    /// Input parameter is null or invalid.
     InvalidArgument = 0x01,
+    /// Memory allocation failed.
     NoMemory = 0x02,
+    /// The driver failed to get TDISP capabilities.
     GetTdispCapabilitiesFail = 0x03,
+    /// The driver failed to get the device interface state.
     GetDeviceInterfaceStateFail = 0x04,
+    /// The driver failed to lock the device interface.
     LockInterfaceReqFail = 0x05,
+    /// The driver failed to start the device interface.
     StartInterfaceReqFail = 0x06,
+    /// The driver failed to stop the device interface.
     StopInterfaceReqFail = 0x07,
+    /// The driver failed to get the device interface report.
     GetInterfaceReportFail = 0x08,
+    /// The driver failed to get the mmio ranges.
     GetMmioRangesFail = 0x09,
+    /// The driver function is not implemented.
     FunctionNotImplemented = 0x0A,
 }
 
+/// Result type returned by TDISP drivers.
 pub type TdispDriverResult<T> = Result<T, TdispDriverError>;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct FunctionId(pub u32);
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct TdispReqCapabilities {
-    pub tsm_caps: u32,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct TdispRespCapabilities {
-    pub dsm_capabilities: u32,
-    pub req_msgs_supported: [u8; 16],
-    pub lock_interface_flags_supported: u16,
-    pub dev_addr_width: u8,
-    pub num_req_this: u8,
-    pub num_req_all: u8,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct TdispLockInterfaceFlags(pub u16);
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct TdispLockInterfaceParam {
-    pub flags: TdispLockInterfaceFlags,
-    pub default_stream_id: u8,
-    pub reserved: u8,
-    pub mmio_reporting_offset: [u8; 8],
-    pub bind_p2p_addr_mask: [u8; 8],
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[repr(u8)]
-pub enum TdiStatus {
-    #[default]
-    ConfigUnlocked = 0,
-    ConfigLocked = 1,
-    Run = 2,
-    Error = 3,
-    Reserved = 0xff,
-}
-
+/// Platform abstraction used by the TDISP responder.
 #[allow(async_fn_in_trait)]
 pub trait TdispDriver {
     /// Fills `out` with a START_INTERFACE nonce.
@@ -162,4 +135,3 @@ pub trait TdispDriver {
         Alloc: SpdmPalAlloc,
         Io: SpdmPalIo;
 }
-```

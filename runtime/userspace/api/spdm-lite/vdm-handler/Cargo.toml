@@ -6,6 +6,9 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+
 [dependencies]
 mcu-spdm-lite-traits = { workspace = true }
 mcu-spdm-lite-codec = { workspace = true }
