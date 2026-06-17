@@ -214,6 +214,12 @@ pub mod test {
 
         hw.start_i3c_controller();
         let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
+        // Spawn the host-side emulated flash controller service. At boot, the MCU's
+        // logging capsule immediately attempts to read its log header from flash by
+        // sending a command over mbox0. If this host service is not running to process
+        // the read, the MCU will hold the mailbox lock forever, causing the integration
+        // test thread to time out waiting for the lock.
+        crate::test_fpga_flash_ctrl::test::run_imaginary_flash_controller_service(mci_ptr);
 
         caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();

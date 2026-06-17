@@ -55,7 +55,7 @@ fn run() -> ! {
             caliptra_mcu_romtime::println!("[otp-scramble-check] DESCRAMBLED_LO={:08X}", lo);
             caliptra_mcu_romtime::println!("[otp-scramble-check] DESCRAMBLED_HI={:08X}", hi);
         }
-        Err(_) => {
+        _ => {
             caliptra_mcu_romtime::println!("[otp-scramble-check] DAI read failed");
             fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR);
         }

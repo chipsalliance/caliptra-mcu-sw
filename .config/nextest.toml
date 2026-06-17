@@ -60,6 +60,11 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_rom_hooks_fire_in_order)) |
 (package(caliptra-mcu-tests-integration) and test(jtag::test_uds)) |
 (package(caliptra-mcu-tests-integration) and test(jtag::test_manuf_debug_unlock)) |
+(package(caliptra-mcu-tests-integration) and test(test_fw_manifest_dot_hitless_lock)) |
+(package(caliptra-mcu-tests-integration) and test(test_log_flash_usermode)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_periodic)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_self_test)) |
 (package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check))

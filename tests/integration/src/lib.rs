@@ -987,7 +987,13 @@ mod test {
         // includes the prefix so the SOC manifest digest covers both.
         let (mcu_runtime_for_builder, mcu_runtime_bytes) =
             if let Some(prefix) = &params.firmware_prefix {
-                let original = std::fs::read(&mcu_runtime_path).unwrap();
+                let original = if params.rom_only {
+                    // RISC-V "j ." (jump to self) instruction: 0x0000006f.
+                    // We provide it as a small byte array.
+                    vec![0x6f, 0x00, 0x00, 0x00, 0x6f, 0x00, 0x00, 0x00]
+                } else {
+                    std::fs::read(&mcu_runtime_path).unwrap()
+                };
                 let mut prefixed = prefix.to_vec();
                 prefixed.extend_from_slice(&original);
 

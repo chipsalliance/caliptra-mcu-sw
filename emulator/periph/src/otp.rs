@@ -600,7 +600,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
                 } else {
                     buf.copy_from_slice(&partitions[addr..addr + 4]);
                     self.direct_access_buffer = u32::from_le_bytes(buf);
-                    if addr + 8 <= TOTAL_SIZE {
+                    if use_64 && addr + 8 <= TOTAL_SIZE {
                         buf.copy_from_slice(&partitions[addr + 4..addr + 8]);
                         self.direct_access_buffer_hi = u32::from_le_bytes(buf);
                     } else {

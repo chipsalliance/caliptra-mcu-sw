@@ -696,7 +696,7 @@ impl McuHwModel for ModelFpgaRealtime {
             // ROM-only mode: wait for recovery to deliver firmware, but don't
             // assert FIRMWARE_BOOT_FLOW_COMPLETE since the ROM may stay in a
             // service loop instead of booting the runtime.
-            const ROM_ONLY_WAIT_CYCLES: u64 = 50_000_000;
+            const ROM_ONLY_WAIT_CYCLES: u64 = 800_000_000;
             let start_cycle = self.cycle_count();
             self.step_until(|hw| hw.cycle_count() - start_cycle >= ROM_ONLY_WAIT_CYCLES);
             println!(

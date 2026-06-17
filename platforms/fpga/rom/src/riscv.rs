@@ -420,6 +420,7 @@ pub extern "C" fn rom_entry() -> ! {
         otp_enable_consistency_check: !cfg!(feature = "test-i3c-services"),
         image_provider_manager: Some(manager),
         dot_flash: Some(dot_flash),
+        fw_manifest_dot_enabled: cfg!(feature = "test-fw-manifest-dot"),
         owner_pk_hash_policy: read_owner_pk_hash_policy(),
         cptra_mbox_axi_users: mbox_axi_users,
         cptra_fuse_axi_user: axi_user0,

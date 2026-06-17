@@ -15,7 +15,11 @@ fn main() {
         std::fs::create_dir_all(parent).unwrap();
     }
 
-    caliptra_mcu_fusegen::generate_fuse_values_file(&otp_mmap, &otp_values, &dest_path).unwrap();
+    if let Err(e) =
+        caliptra_mcu_fusegen::generate_fuse_values_file(&otp_mmap, &otp_values, &dest_path)
+    {
+        panic!("failed to generate fuse values: {:?}", e);
+    }
 
     println!("cargo:rerun-if-changed={}", otp_mmap.display());
     println!("cargo:rerun-if-changed={}", otp_values.display());
