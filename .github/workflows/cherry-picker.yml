@@ -2,6 +2,16 @@
 
 name: Backport Cherry-Pick with AI Assist
 
+# NOTE: We use 'pull_request_target' instead of 'pull_request' to ensure the workflow
+# has write permissions to push the backport branch and create the PR, even when
+# triggered by a PR originating from a fork (which are otherwise read-only).
+#
+# SECURITY: 'pull_request_target' runs with write access and secrets.
+# This is SAFE here because:
+# 1. The 'backport' job has a strict guard ('pull_request.merged == true') and only
+#    runs after a maintainer has reviewed and merged the PR.
+# 2. We checkout the trusted base branch (main) by default, not the untrusted PR branch.
+# 3. We only perform git cherry-pick operations and do not run untrusted code/tests.
 on:
   pull_request_target:
     types: [closed]
