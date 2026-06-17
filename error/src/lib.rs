@@ -180,12 +180,12 @@ impl McuError {
         ),
         (
             ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED,
-            0x1_001c,
+            0x1_003d,
             "INSTALL_OWNER_PK_HASH mailbox command failed"
         ),
         (
             ROM_DOT_FORCE_FUSE_OWNER_NOT_PROVISIONED,
-            0x1_001d,
+            0x1_003e,
             "Forced fuse owner requested but CPTRA_SS_OWNER_PK_HASH is not provisioned"
         ),
         (
@@ -821,7 +821,7 @@ impl McuError {
         ),
         (
             ROM_CALIPTRA_RUNTIME_SVN_BURN_ERROR,
-            0x1_001e,
+            0x1_003f,
             "Caliptra runtime SVN fuse burn failed"
         ),
         (
