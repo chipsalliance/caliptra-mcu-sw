@@ -158,6 +158,67 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
     }
 }
 
+/// Decodes a reassembled large VENDOR_DEFINED request and writes the complete
+/// SPDM VENDOR_DEFINED_RESPONSE into `out`.
+///
+/// This is used for `CHUNK_SEND`'s `ResponseToLargeRequest`. The persistent
+/// large-message buffer is still occupied by the reassembled request, so large
+/// VDM responses are intentionally disabled here; handlers get only the inline
+/// response area and must return [`VdmResponse::Inline`].
+pub(crate) async fn handle_large_vendor_defined_request<Pal: SpdmPal, V: SpdmVdmBackend>(
+    vdm: &V,
+    state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    spdm_msg: &[u8],
+    secure_session: bool,
+    out: &mut [u8],
+) -> SpdmResult<usize> {
+    let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let version = SpdmVersion::from_u8(hdr.version).unwrap_or(state.version);
+
+    let decoded = decode_vendor_defined_req(body).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let registry = VdmRegistry {
+        standard_id: decoded.standard_id,
+        vendor_id: decoded.vendor_id,
+        secure_session,
+    };
+    if !vdm.match_id(&registry) {
+        return Err(SPDM_UNSUPPORTED_REQUEST.with_data(ReqRespCode::VENDOR_DEFINED_REQUEST.0));
+    }
+
+    let envelope_len = SpdmMsgHdrPdu::SIZE + 2 + 2 + 1 + decoded.vendor_id.len() + 2;
+    if envelope_len > out.len() {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    let inline_cap = out.len() - envelope_len;
+    let mut empty_large = [];
+    let outcome = {
+        let rsp = VdmResponseBuffer {
+            inline: &mut out[envelope_len..envelope_len + inline_cap],
+            large: &mut empty_large,
+            alloc: pal,
+            io,
+        };
+        vdm.handle_request(decoded.payload, rsp).await?
+    };
+    let VdmResponse::Inline(payload_len) = outcome else {
+        return Err(SPDM_UNSPECIFIED);
+    };
+    if payload_len > inline_cap {
+        return Err(SPDM_UNSPECIFIED);
+    }
+
+    write_vendor_defined_envelope(
+        version,
+        decoded.standard_id,
+        decoded.vendor_id,
+        payload_len,
+        &mut out[..envelope_len],
+    )?;
+    Ok(envelope_len + payload_len)
+}
+
 /// Frames the VENDOR_DEFINED_RESPONSE envelope (SPDM header + param1/param2 +
 /// standard_id + vendor_id + resp_len) directly into `out` (which must be sized
 /// to the envelope). The backend's payload is expected to follow at the same

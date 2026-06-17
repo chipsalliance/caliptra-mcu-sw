@@ -53,6 +53,23 @@ pub trait CaliptraVdmCommands {
     async fn clear_log<A: SpdmPalAlloc>(&self, log_type: u32, scratch: &A)
         -> CaliptraVdmResult<()>;
 
+    /// Requests a production debug unlock challenge for `unlock_level`, writing
+    /// `[unique_device_identifier, challenge]` into `out`.
+    async fn request_debug_unlock<A: SpdmPalAlloc>(
+        &self,
+        unlock_level: u8,
+        scratch: &A,
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<usize>;
+
+    /// Submits a production debug unlock token. `token_data` is the remaining
+    /// command payload exactly as sent by the requester.
+    async fn authorize_debug_unlock_token<A: SpdmPalAlloc>(
+        &self,
+        token_data: &[u8],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
     /// Exports an attested CSR for `device_key_id` using `algorithm` and `nonce`,
     /// writing the raw CSR bytes into `out` and returning their length.
     async fn export_attested_csr<A: SpdmPalAlloc>(
@@ -169,6 +186,18 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
             Ok(CaliptraVdmCommand::ClearAttestationLog) => {
                 commands::clear_attestation_log::handle(self.cmds, cmd_req, scratch, payload).await
             }
+            Ok(CaliptraVdmCommand::RequestDebugUnlock) => {
+                commands::debug_unlock::handle_request_debug_unlock(
+                    self.cmds, cmd_req, scratch, payload,
+                )
+                .await
+            }
+            Ok(CaliptraVdmCommand::AuthorizeDebugUnlockToken) => {
+                commands::debug_unlock::handle_authorize_debug_unlock_token(
+                    self.cmds, cmd_req, scratch, payload,
+                )
+                .await
+            }
             Ok(CaliptraVdmCommand::ExportAttestedCsr) => {
                 commands::export_attested_csr::handle(
                     self.cmds,
@@ -204,6 +233,7 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
 mod tests {
     extern crate std;
 
+    use core::cell::RefCell;
     use core::future::Future;
     use core::marker::PhantomData;
     use core::ops::{Deref, DerefMut};
@@ -305,11 +335,22 @@ mod tests {
         }
     }
 
+    const DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE: usize = 32;
+    const DEBUG_UNLOCK_CHALLENGE_SIZE: usize = 48;
+
     struct TestCommands {
         csr_len: usize,
+        authorized_token: RefCell<Option<Vec<u8>>>,
     }
 
     impl TestCommands {
+        fn new(csr_len: usize) -> Self {
+            Self {
+                csr_len,
+                authorized_token: RefCell::new(None),
+            }
+        }
+
         fn write_csr(&self, out: &mut [u8]) -> CaliptraVdmResult<usize> {
             if out.len() < self.csr_len {
                 return Err(CaliptraCompletionCode::InsufficientResources);
@@ -337,6 +378,33 @@ mod tests {
             _scratch: &A,
         ) -> CaliptraVdmResult<()> {
             Err(CaliptraCompletionCode::UnsupportedOperation)
+        }
+
+        async fn request_debug_unlock<A: SpdmPalAlloc>(
+            &self,
+            unlock_level: u8,
+            _scratch: &A,
+            out: &mut [u8],
+        ) -> CaliptraVdmResult<usize> {
+            if unlock_level != 7 {
+                return Err(CaliptraCompletionCode::InvalidParameter);
+            }
+            let needed = DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE;
+            if out.len() < needed {
+                return Err(CaliptraCompletionCode::InsufficientResources);
+            }
+            out[..DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE].fill(0x11);
+            out[DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE..needed].fill(0x22);
+            Ok(needed)
+        }
+
+        async fn authorize_debug_unlock_token<A: SpdmPalAlloc>(
+            &self,
+            token_data: &[u8],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.authorized_token.replace(Some(token_data.to_vec()));
+            Ok(())
         }
 
         async fn export_attested_csr<A: SpdmPalAlloc>(
@@ -450,7 +518,7 @@ mod tests {
 
     #[test]
     fn bad_command_version_returns_vdm_completion() {
-        let cmds = TestCommands { csr_len: 0 };
+        let cmds = TestCommands::new(0);
         let (response, inline, _) =
             dispatch(&cmds, &[0x7F, CaliptraVdmCommand::GetDebugLog as u8], 32, 0);
 
@@ -467,7 +535,7 @@ mod tests {
 
     #[test]
     fn invalid_payload_length_returns_vdm_completion() {
-        let cmds = TestCommands { csr_len: 0 };
+        let cmds = TestCommands::new(0);
         let (response, inline, _) = dispatch(
             &cmds,
             &[
@@ -485,7 +553,7 @@ mod tests {
 
     #[test]
     fn unsupported_command_returns_vdm_completion() {
-        let cmds = TestCommands { csr_len: 0 };
+        let cmds = TestCommands::new(0);
         let (response, inline, _) = dispatch(
             &cmds,
             &[
@@ -509,7 +577,7 @@ mod tests {
 
     #[test]
     fn export_attested_csr_uses_inline_response_when_it_fits() {
-        let cmds = TestCommands { csr_len: 12 };
+        let cmds = TestCommands::new(12);
         let req = export_attested_csr_req();
         let (response, inline, _) = dispatch(&cmds, &req, 64, 64);
 
@@ -523,7 +591,7 @@ mod tests {
 
     #[test]
     fn export_attested_csr_uses_large_response_when_inline_is_too_small() {
-        let cmds = TestCommands { csr_len: 12 };
+        let cmds = TestCommands::new(12);
         let req = export_attested_csr_req();
         let (response, _inline, large) = dispatch(&cmds, &req, 10, 64);
 
@@ -533,5 +601,68 @@ mod tests {
         assert_eq!(large[2], CaliptraCompletionCode::Success as u8);
         assert_eq!(u32::from_le_bytes(large[3..7].try_into().unwrap()), 12);
         assert_eq!(&large[7..19], &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    }
+
+    #[test]
+    fn request_debug_unlock_returns_unique_device_id_and_challenge() {
+        let cmds = TestCommands::new(0);
+        let req = [
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::RequestDebugUnlock as u8,
+            7,
+        ];
+        let (response, inline, _) = dispatch(&cmds, &req, 128, 0);
+
+        assert_inline(
+            response,
+            2 + 1 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
+        );
+        assert_eq!(inline[0], CALIPTRA_VDM_COMMAND_VERSION);
+        assert_eq!(inline[1], CaliptraVdmCommand::RequestDebugUnlock as u8);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(
+            &inline[3..3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE],
+            &[0x11; DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE]
+        );
+        assert_eq!(
+            &inline[3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE
+                ..3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
+            &[0x22; DEBUG_UNLOCK_CHALLENGE_SIZE]
+        );
+    }
+
+    #[test]
+    fn request_debug_unlock_allows_trailing_payload_like_spdm_lib() {
+        let cmds = TestCommands::new(0);
+        let req = [
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::RequestDebugUnlock as u8,
+            7,
+            0xaa,
+            0xbb,
+        ];
+        let (response, inline, _) = dispatch(&cmds, &req, 128, 0);
+
+        assert_inline(
+            response,
+            2 + 1 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
+        );
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+    }
+
+    #[test]
+    fn authorize_debug_unlock_token_accepts_large_request_payload() {
+        let cmds = TestCommands::new(0);
+        let token = vec![0xA5; 1024];
+        let mut req = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8,
+        ];
+        req.extend_from_slice(&token);
+        let (response, inline, _) = dispatch(&cmds, &req, 32, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(cmds.authorized_token.take(), Some(token));
     }
 }

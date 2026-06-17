@@ -11,6 +11,7 @@ use mcu_spdm_lite_codec::vendor_defined::iana::ocp::caliptra::CaliptraCompletion
 pub(crate) mod authorized_command;
 pub(crate) mod clear_attestation_log;
 pub(crate) mod clear_debug_log;
+pub(crate) mod debug_unlock;
 pub(crate) mod export_attested_csr;
 pub(crate) mod get_attestation_log;
 pub(crate) mod get_debug_log;

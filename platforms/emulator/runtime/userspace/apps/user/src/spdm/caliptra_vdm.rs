@@ -7,8 +7,20 @@
 //! VDM commands. The protocol/dispatch/framing all live in the
 //! `mcu-spdm-lite-vdm-handler` lib; this hook only supplies the device ops.
 
+extern crate alloc;
+
+use alloc::boxed::Box;
+
 use arrayvec::ArrayVec;
-use caliptra_mcu_common_commands::{CaliptraCompletionCode as CommonCompletionCode, GetLogResult};
+use caliptra_mcu_common_commands::{
+    CaliptraCompletionCode as CommonCompletionCode, GetLogResult, DEBUG_UNLOCK_CHALLENGE_SIZE,
+    DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
+};
+use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
+use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
+use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use constant_time_eq::constant_time_eq;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -20,6 +32,7 @@ use mcu_spdm_lite_traits::SpdmPalAlloc;
 use mcu_spdm_lite_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdmCommands, CaliptraVdmLogResult, CaliptraVdmResult,
 };
+use zerocopy::{FromBytes, IntoBytes};
 
 /// AsymAlgo wire encoding (`EccP384 = 1`, `MlDsa87 = 2`), mirrored locally so
 /// the hook does not depend on caliptra-api.
@@ -78,6 +91,65 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         }
     }
 
+    async fn request_debug_unlock<A: SpdmPalAlloc>(
+        &self,
+        unlock_level: u8,
+        _scratch: &A,
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<usize> {
+        use caliptra_api::mailbox::{
+            CommandId, MailboxReqHeader, ProductionAuthDebugUnlockChallenge,
+            ProductionAuthDebugUnlockReq,
+        };
+
+        let needed = DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE;
+        if out.len() < needed {
+            return Err(CaliptraCompletionCode::InsufficientResources);
+        }
+
+        let mut req = ProductionAuthDebugUnlockReq {
+            hdr: MailboxReqHeader::default(),
+            length: 2,
+            unlock_level,
+            reserved: [0; 3],
+        };
+        let mut resp_buf = [0u8; core::mem::size_of::<ProductionAuthDebugUnlockChallenge>()];
+
+        execute_mailbox_cmd(
+            &Mailbox::new(),
+            CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ.0,
+            req.as_mut_bytes(),
+            &mut resp_buf,
+        )
+        .await
+        .map_err(map_caliptra_api_error)?;
+
+        let resp = ProductionAuthDebugUnlockChallenge::ref_from_bytes(&resp_buf)
+            .map_err(|_| CaliptraCompletionCode::GeneralError)?;
+        out[..DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE].copy_from_slice(&resp.unique_device_identifier);
+        out[DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE..needed].copy_from_slice(&resp.challenge);
+        Ok(needed)
+    }
+
+    async fn authorize_debug_unlock_token<A: SpdmPalAlloc>(
+        &self,
+        token_data: &[u8],
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        use caliptra_api::mailbox::{CommandId, MailboxRespHeader};
+
+        let cmd = CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.0;
+        let checksum = caliptra_api::calc_checksum(cmd, token_data).to_le_bytes();
+        let mut token_stream = SlicePayloadStream::new(token_data);
+        let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+
+        Mailbox::<DefaultSyscalls>::new()
+            .execute_with_payload_stream(cmd, Some(&checksum), &mut token_stream, &mut resp_buf)
+            .await
+            .map_err(map_mailbox_error)?;
+        Ok(())
+    }
+
     async fn export_attested_csr<A: SpdmPalAlloc>(
         &self,
         device_key_id: u32,
@@ -118,6 +190,35 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
     }
 }
 
+struct SlicePayloadStream<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> SlicePayloadStream<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data, offset: 0 }
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+impl PayloadStream for SlicePayloadStream<'_> {
+    fn size(&self) -> usize {
+        self.data.len()
+    }
+
+    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
+        let remaining = self.data.len().saturating_sub(self.offset);
+        if remaining == 0 {
+            return Ok(0);
+        }
+        let n = remaining.min(buffer.len());
+        buffer[..n].copy_from_slice(&self.data[self.offset..self.offset + n]);
+        self.offset += n;
+        Ok(n)
+    }
+}
+
 fn map_mcu_err(e: McuErrorCode) -> CaliptraCompletionCode {
     use mcu_error::codes;
     if e == codes::MAILBOX_BUSY {
@@ -128,6 +229,26 @@ fn map_mcu_err(e: McuErrorCode) -> CaliptraCompletionCode {
         CaliptraCompletionCode::InsufficientResources
     } else {
         CaliptraCompletionCode::GeneralError
+    }
+}
+
+fn map_caliptra_api_error(e: CaliptraApiError) -> CaliptraCompletionCode {
+    match e {
+        CaliptraApiError::MailboxBusy => CaliptraCompletionCode::CaliptraMailboxBusy,
+        CaliptraApiError::BufferTooSmall => CaliptraCompletionCode::CaliptraBufferTooSmall,
+        CaliptraApiError::InvalidResponse
+        | CaliptraApiError::Mailbox(_)
+        | CaliptraApiError::Syscall(_) => CaliptraCompletionCode::OperationFailed,
+        _ => CaliptraCompletionCode::GeneralError,
+    }
+}
+
+fn map_mailbox_error(e: MailboxError) -> CaliptraCompletionCode {
+    match e {
+        MailboxError::ErrorCode(ErrorCode::Busy) => CaliptraCompletionCode::CaliptraMailboxBusy,
+        MailboxError::ErrorCode(_) | MailboxError::MailboxError(_) => {
+            CaliptraCompletionCode::OperationFailed
+        }
     }
 }
 
