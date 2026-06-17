@@ -1472,6 +1472,7 @@ dependencies = [
  "caliptra-image-types",
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-coverage",
  "caliptra-mcu-emulator-bmc",

@@ -25,7 +25,7 @@ use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
 use caliptra_hw_model::Output;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
-use caliptra_mcu_config::McuMemoryMap;
+use caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
 use caliptra_mcu_emulator_bmc::Bmc;
 use caliptra_mcu_emulator_caliptra::start_caliptra;
 use caliptra_mcu_emulator_caliptra::BytesOrPath;
@@ -131,11 +131,10 @@ impl McuHwModel for ModelEmulated {
 
         let image_tag = hash_slice(params.mcu_rom);
 
-        let memory_map = McuMemoryMap::default();
         let offsets = McuRootBusOffsets {
-            rom_offset: memory_map.rom_offset,
-            ram_offset: memory_map.sram_offset,
-            ram_size: memory_map.sram_size,
+            rom_offset: EMULATOR_MEMORY_MAP.rom_offset,
+            ram_offset: EMULATOR_MEMORY_MAP.sram_offset,
+            ram_size: EMULATOR_MEMORY_MAP.sram_size,
             ..Default::default()
         };
 
@@ -402,13 +401,13 @@ impl McuHwModel for ModelEmulated {
             pic,
             CpuArgs {
                 org: CpuOrgArgs {
-                    rom: memory_map.rom_offset,
-                    rom_size: memory_map.rom_size,
-                    iccm: memory_map.sram_offset,
-                    iccm_size: memory_map.sram_size,
-                    dccm: memory_map.dccm_offset,
-                    dccm_size: memory_map.dccm_size,
-                    reset_vector: memory_map.rom_offset,
+                    rom: EMULATOR_MEMORY_MAP.rom_offset,
+                    rom_size: EMULATOR_MEMORY_MAP.rom_size,
+                    iccm: EMULATOR_MEMORY_MAP.sram_offset,
+                    iccm_size: EMULATOR_MEMORY_MAP.sram_size,
+                    dccm: EMULATOR_MEMORY_MAP.dccm_offset,
+                    dccm_size: EMULATOR_MEMORY_MAP.dccm_size,
+                    reset_vector: EMULATOR_MEMORY_MAP.rom_offset,
                 },
             },
             Rc::new(Cell::new(0)),
