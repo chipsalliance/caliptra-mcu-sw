@@ -508,6 +508,14 @@ impl McuHwModel for ModelFpgaRealtime {
                     otp_data.len()
                 );
             }
+            // Zero the overlay region first, then copy test data on top.
+            // The FPGA OTP backing RAM is NOT zero-initialized (it may
+            // contain a counting pattern or other residual data).  A plain
+            // OR would merge test bits with that residual data, producing
+            // wrong fuse values.
+            for dst in otp_data[..otp_memory.len()].iter_mut() {
+                *dst = 0;
+            }
             for (dst, src) in otp_data.iter_mut().zip(otp_memory.iter()) {
                 *dst |= *src;
             }
