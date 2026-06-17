@@ -443,6 +443,7 @@ tock-registers = { git = "https://github.com/tock/tock.git", rev = "release-2.2"
 inherits = "release"
 opt-level = 3
 lto = "thin"
+debug = 1
 
 [profile.release]
 # Shipping / minimal-size build profile.  `xtask runtime-build --profile

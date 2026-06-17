@@ -484,7 +484,8 @@ pub extern "C" fn rom_entry() -> ! {
             use caliptra_mcu_registers_generated::usbdev;
             use caliptra_mcu_usb_emulator::ExamplarUsbDriver;
 
-            caliptra_mcu_romtime::println!("[mcu-rom] USB OCP Recovery boot path");
+            // Commented to save codes space. Re-enable once budget allows.
+            // caliptra_mcu_romtime::println!("[mcu-rom] USB OCP Recovery boot path");
 
             let usb_regs = unsafe {
                 caliptra_mcu_romtime::StaticRef::new(

@@ -3,17 +3,36 @@
 //! This provides the OTP capsule that calls the underlying OTP driver
 
 use caliptra_mcu_error::McuError;
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_otp_digest::{caliptra_mcu_otp_digest, OTP_DIGEST_CONST, OTP_DIGEST_IV};
+#[cfg(feature = "ocp-lock")]
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::fuses::{
     OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
     OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID,
 };
 use caliptra_mcu_romtime::println;
+#[cfg(feature = "ocp-lock")]
+use core::cell::Cell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
+#[cfg(feature = "ocp-lock")]
+use kernel::processbuffer::ReadableProcessBuffer;
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
 
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_romtime::ocp_lock::PlatformRuntime;
 use caliptra_mcu_romtime::{fuse_lock_partition_dai, fuse_write_dai};
+
+#[cfg(feature = "ocp-lock")]
+mod ro_allow {
+    pub const SEED: usize = 0;
+    pub const COUNT: u8 = 1;
+}
+#[cfg(not(feature = "ocp-lock"))]
+mod ro_allow {
+    pub const COUNT: u8 = 0;
+}
 
 /// The driver number for Caliptra OTP commands.
 pub const DRIVER_NUM: usize = 0xD000_0000;
@@ -25,6 +44,8 @@ pub mod cmd {
     pub const OTP_READ_RAW: u32 = 4;
     pub const OTP_WRITE_RAW: u32 = 5;
     pub const OTP_LOCK_PARTITION: u32 = 6;
+    pub const OTP_GET_HEK_METADATA: u32 = 8; // Returns (total_slots, active_slot)
+    pub const OTP_ROTATE_HEK: u32 = 9;
 }
 
 pub mod reg {
@@ -61,7 +82,6 @@ pub mod reg {
     ];
 
     pub const CALIPTRA_FW_SVN: u32 = 9;
-
     pub const VENDOR_PK_HASH_0: u32 = 10;
     pub const VENDOR_PK_HASH_1: u32 = 11;
     pub const VENDOR_PK_HASH_2: u32 = 12;
@@ -114,22 +134,51 @@ pub struct App {
     pub reg_index: u32,
 }
 
+#[cfg(feature = "ocp-lock")]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct OcpLockState {
+    pub total_slots: u32,
+    pub active_slot: u32,
+}
+
+#[cfg(feature = "ocp-lock")]
+pub struct OcpLockContext {
+    pub state: OcpLockState,
+    pub platform: &'static dyn PlatformRuntime,
+    pub has_rotated: Cell<bool>,
+}
+
+#[cfg(feature = "ocp-lock")]
+impl OcpLockContext {
+    pub fn new(state: OcpLockState, platform: &'static dyn PlatformRuntime) -> Self {
+        Self {
+            state,
+            platform,
+            has_rotated: Cell::new(false),
+        }
+    }
+}
+
 pub struct Otp {
     driver: &'static caliptra_mcu_romtime::Otp,
-    total_heks: u32,
+    #[cfg(feature = "ocp-lock")]
+    ocp_lock_ctx: Option<OcpLockContext>,
+
     // Per-app state.
-    apps: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
+    apps: Grant<App, UpcallCount<0>, AllowRoCount<{ ro_allow::COUNT }>, AllowRwCount<0>>,
 }
 
 impl Otp {
     pub fn new(
         driver: &'static caliptra_mcu_romtime::Otp,
-        total_heks: u32,
-        grant: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
+        #[cfg(feature = "ocp-lock")] ocp_lock_ctx: Option<OcpLockContext>,
+        grant: Grant<App, UpcallCount<0>, AllowRoCount<{ ro_allow::COUNT }>, AllowRwCount<0>>,
     ) -> Otp {
         Otp {
             driver,
-            total_heks,
+            #[cfg(feature = "ocp-lock")]
+            ocp_lock_ctx,
+
             apps: grant,
         }
     }
@@ -138,22 +187,27 @@ impl Otp {
         match self.apps.enter(processid, |app, _| match app.reg_offset {
             // TODO: investigate using a cache instead of the actual fuses to reduce wear and
             // increase performance
-            reg::LOCK_TOTAL_HEKS => CommandReturn::success_u32(self.total_heks),
-            hek @ reg::LOCK_HEK_PROD_0
-            | hek @ reg::LOCK_HEK_PROD_1
-            | hek @ reg::LOCK_HEK_PROD_2
-            | hek @ reg::LOCK_HEK_PROD_3
-            | hek @ reg::LOCK_HEK_PROD_4
-            | hek @ reg::LOCK_HEK_PROD_5
-            | hek @ reg::LOCK_HEK_PROD_6
-            | hek @ reg::LOCK_HEK_PROD_7 => {
+            #[cfg(feature = "ocp-lock")]
+            reg::LOCK_TOTAL_HEKS => {
+                if let Some(ctrl) = self.ocp_lock_ctx.as_ref() {
+                    CommandReturn::success_u32(ctrl.state.total_slots)
+                } else {
+                    CommandReturn::failure(ErrorCode::NOSUPPORT)
+                }
+            }
+            #[cfg(feature = "ocp-lock")]
+            hek if self.is_hek_slot(hek) => {
+                let ocp = match self.ocp_lock_ctx.as_ref() {
+                    Some(ctrl) => ctrl.state,
+                    None => return CommandReturn::failure(ErrorCode::NOSUPPORT),
+                };
                 // TODO: investigate using a cache instead of the actual fuses to reduce wear and
                 // increase performance
                 let hek_num_words = fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE / 4;
                 if app.reg_index >= hek_num_words as u32 {
                     return CommandReturn::failure(ErrorCode::INVAL);
                 }
-                let offset = match self.hek_offset(hek) {
+                let offset = match self.hek_offset(ocp, hek) {
                     Ok(offset) => offset,
                     Err(e) => {
                         return CommandReturn::failure(e);
@@ -260,19 +314,17 @@ impl Otp {
 
     fn write_reg(&self, value: u32, processid: ProcessId) -> CommandReturn {
         match self.apps.enter(processid, |app, _| match app.reg_offset {
-            hek @ reg::LOCK_HEK_PROD_0
-            | hek @ reg::LOCK_HEK_PROD_1
-            | hek @ reg::LOCK_HEK_PROD_2
-            | hek @ reg::LOCK_HEK_PROD_3
-            | hek @ reg::LOCK_HEK_PROD_4
-            | hek @ reg::LOCK_HEK_PROD_5
-            | hek @ reg::LOCK_HEK_PROD_6
-            | hek @ reg::LOCK_HEK_PROD_7 => {
+            #[cfg(feature = "ocp-lock")]
+            hek if self.is_hek_slot(hek) => {
+                let ocp = match self.ocp_lock_ctx.as_ref() {
+                    Some(ctrl) => ctrl.state,
+                    None => return CommandReturn::failure(ErrorCode::NOSUPPORT),
+                };
                 let hek_num_words = fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE / 4;
                 if app.reg_index >= hek_num_words as u32 {
                     return CommandReturn::failure(ErrorCode::INVAL);
                 }
-                let offset = match self.hek_offset(hek) {
+                let offset = match self.hek_offset(ocp, hek) {
                     Ok(offset) => offset,
                     Err(e) => {
                         return CommandReturn::failure(e);
@@ -392,28 +444,6 @@ impl Otp {
         CommandReturn::success()
     }
 
-    fn valid_hek_slot(&self, slot: u32) -> bool {
-        let slots = &reg::LOCK_HEK_PROD_ALL[..self.total_heks as usize];
-        slots.contains(&slot)
-    }
-
-    fn hek_offset(&self, slot: u32) -> Result<usize, ErrorCode> {
-        if !self.valid_hek_slot(slot) {
-            return Err(ErrorCode::INVAL);
-        }
-
-        match slot {
-            reg::LOCK_HEK_PROD_0 => Ok(fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET),
-            reg::LOCK_HEK_PROD_1 => Ok(fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET),
-            reg::LOCK_HEK_PROD_2 => Ok(fuses::CPTRA_SS_LOCK_HEK_PROD_2_BYTE_OFFSET),
-            reg::LOCK_HEK_PROD_3 => Ok(fuses::CPTRA_SS_LOCK_HEK_PROD_3_BYTE_OFFSET),
-            reg::LOCK_HEK_PROD_4 => Ok(fuses::CPTRA_SS_LOCK_HEK_PROD_4_BYTE_OFFSET),
-            reg::LOCK_HEK_PROD_5 => Ok(fuses::CPTRA_SS_LOCK_HEK_PROD_5_BYTE_OFFSET),
-            reg::LOCK_HEK_PROD_6 => Ok(fuses::CPTRA_SS_LOCK_HEK_PROD_6_BYTE_OFFSET),
-            reg::LOCK_HEK_PROD_7 => Ok(fuses::CPTRA_SS_LOCK_HEK_PROD_7_BYTE_OFFSET),
-            _ => Err(ErrorCode::INVAL),
-        }
-    }
     fn read_otp_raw(&self, base_word_addr: usize, offset: usize) -> CommandReturn {
         match self.driver.read_word(base_word_addr + offset) {
             Ok(value) => CommandReturn::success_u32(value),
@@ -461,6 +491,44 @@ impl Otp {
     }
 }
 
+#[cfg(feature = "ocp-lock")]
+impl Otp {
+    fn get_hek_metadata(&self) -> CommandReturn {
+        match self.ocp_lock_ctx.as_ref() {
+            Some(ctrl) => {
+                CommandReturn::success_u32_u32(ctrl.state.total_slots, ctrl.state.active_slot)
+            }
+            None => CommandReturn::failure(ErrorCode::NOSUPPORT),
+        }
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    fn is_hek_slot(&self, slot: u32) -> bool {
+        match self.ocp_lock_ctx.as_ref() {
+            Some(ctrl) => self.valid_hek_slot(ctrl.state, slot),
+            None => false,
+        }
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    fn valid_hek_slot(&self, ocp: OcpLockState, slot: u32) -> bool {
+        slot >= 1 && slot <= ocp.total_slots
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    fn hek_offset(&self, ocp: OcpLockState, slot: u32) -> Result<usize, ErrorCode> {
+        if !self.valid_hek_slot(ocp, slot) {
+            return Err(ErrorCode::INVAL);
+        }
+        let ocp_lock_ctx = self.ocp_lock_ctx.as_ref().ok_or(ErrorCode::NOSUPPORT)?;
+        let slot_index = (slot - 1) as usize;
+        ocp_lock_ctx
+            .platform
+            .get_hek_slot_offset(slot_index)
+            .map_err(|_| ErrorCode::FAIL)
+    }
+}
+
 /// Provide an interface for userland.
 impl SyscallDriver for Otp {
     fn command(&self, cmd: usize, arg1: usize, arg2: usize, processid: ProcessId) -> CommandReturn {
@@ -471,11 +539,99 @@ impl SyscallDriver for Otp {
             cmd::OTP_READ_RAW => self.read_otp_raw(arg1, arg2),
             cmd::OTP_WRITE_RAW => self.write_otp_raw(arg1 as u32, arg2 as u32, processid),
             cmd::OTP_LOCK_PARTITION => self.lock_otp_partition(arg1 as u32),
+            #[cfg(feature = "ocp-lock")]
+            cmd::OTP_GET_HEK_METADATA => self.get_hek_metadata(),
+            #[cfg(feature = "ocp-lock")]
+            cmd::OTP_ROTATE_HEK => self.rotate_hek(arg1, processid),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }
 
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
         self.apps.enter(processid, |_, _| {})
+    }
+}
+
+#[cfg(feature = "ocp-lock")]
+impl Otp {
+    fn is_perma_hek_locked(&self) -> Result<bool, ErrorCode> {
+        let ocp_lock_ctx = self.ocp_lock_ctx.as_ref().ok_or(ErrorCode::NOSUPPORT)?;
+        ocp_lock_ctx
+            .platform
+            .is_perma_bit_set(self.driver)
+            .map_err(|_| ErrorCode::FAIL)
+    }
+
+    fn rotate_hek(&self, slot: usize, processid: ProcessId) -> CommandReturn {
+        let ocp_lock_ctx = match self.ocp_lock_ctx.as_ref() {
+            Some(ctrl) => ctrl,
+            None => return CommandReturn::failure(ErrorCode::NOSUPPORT),
+        };
+
+        let active_slot = ocp_lock_ctx.state.active_slot;
+        let total_slots = ocp_lock_ctx.state.total_slots;
+
+        if slot >= total_slots as usize {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+
+        if ocp_lock_ctx.has_rotated.get() {
+            return CommandReturn::failure(ErrorCode::ALREADY);
+        }
+
+        // NOP: Perma bit set.
+        if let Ok(true) = self.is_perma_hek_locked() {
+            return CommandReturn::success();
+        }
+
+        if active_slot >= total_slots {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+
+        let res = self.apps.enter(processid, |_, kernel_data| {
+            let seed_buf = kernel_data
+                .get_readonly_processbuffer(ro_allow::SEED)
+                .map_err(|_| ErrorCode::INVAL)?;
+
+            let mut seed = [0u8; 32];
+            let res = seed_buf.enter(|buf| {
+                if buf.len() != 32 {
+                    return Err(ErrorCode::INVAL);
+                }
+                buf.copy_to_slice(&mut seed);
+                Ok(())
+            });
+
+            match res {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => return Err(e),
+                Err(_) => return Err(ErrorCode::FAIL),
+            }
+
+            ocp_lock_ctx
+                .platform
+                .validate_hek_transition(active_slot as usize, slot, total_slots as usize)
+                .map_err(|_| ErrorCode::INVAL)?;
+
+            let digest = caliptra_mcu_otp_digest(&seed, OTP_DIGEST_IV, OTP_DIGEST_CONST);
+            ocp_lock_ctx
+                .platform
+                .sanitize_hek_slot(self.driver, active_slot as usize)
+                .map_err(|_| ErrorCode::FAIL)?;
+            ocp_lock_ctx.has_rotated.set(true);
+
+            ocp_lock_ctx
+                .platform
+                .program_hek_slot(self.driver, slot, &seed, digest)
+                .map_err(|_| ErrorCode::FAIL)?;
+
+            Ok(())
+        });
+
+        match res {
+            Ok(Ok(())) => CommandReturn::success(),
+            Ok(Err(e)) => CommandReturn::failure(e),
+            Err(e) => CommandReturn::failure(e.into()),
+        }
     }
 }

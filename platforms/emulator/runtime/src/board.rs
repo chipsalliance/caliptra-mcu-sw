@@ -338,8 +338,10 @@ pub unsafe fn main() {
         caliptra_mcu_romtime::println!("[mcu-runtime] HandOff marker: 0x{:08x}", ho.rom.fht_marker);
         #[cfg(feature = "ocp-lock")]
         caliptra_mcu_romtime::println!(
-            "[mcu-runtime] HEK state from handoff: {:?}",
-            ho.rom.hek_state.active_state
+            "[mcu-runtime] HEK state from handoff: active_state={:?}, active_slot={}, total_slots={}",
+            ho.rom.hek_state.active_state,
+            ho.rom.hek_state.active_slot,
+            ho.rom.hek_state.total_slots
         );
     } else {
         caliptra_mcu_romtime::println!("[mcu-runtime] Handoff is None");
@@ -584,11 +586,23 @@ pub unsafe fn main() {
     )
     .finalize(mbox_sram_component_static!(InternalTimers<'static>));
 
-    let total_heks = 8;
+    #[cfg(feature = "ocp-lock")]
+    let ocp_lock_ctx = handoff.as_ref().map(|ho| {
+        let state = caliptra_mcu_capsules_runtime::otp::OcpLockState {
+            total_slots: ho.rom.hek_state.total_slots,
+            active_slot: ho.rom.hek_state.active_slot,
+        };
+        caliptra_mcu_capsules_runtime::otp::OcpLockContext::new(
+            state,
+            &caliptra_mcu_platforms_common::ocp_lock_platform::RUNTIME_OCP_LOCK_PLATFORM,
+        )
+    });
+
     let otp = caliptra_mcu_components::otp::OtpComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::otp::DRIVER_NUM,
-        total_heks,
+        #[cfg(feature = "ocp-lock")]
+        ocp_lock_ctx,
         &peripherals.otp,
     )
     .finalize(kernel::static_buf!(caliptra_mcu_capsules_runtime::otp::Otp));

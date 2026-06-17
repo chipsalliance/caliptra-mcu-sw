@@ -32,6 +32,10 @@ pub const OTP_SCRAMBLE_KEYS: [u128; 7] = [
     0x0B7474D640F8A7F5D60822E1FAEC5C72,
 ];
 
+/// Standard OTP digest IV and CONST used for software digests (e.g. HEK).
+pub const OTP_DIGEST_IV: u64 = 0x90C7F21F6224F027;
+pub const OTP_DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266F;
+
 pub fn otp_scramble(data: u64, key: u128) -> u64 {
     Present::new_128(&key.to_le_bytes()).encrypt_block(data)
 }

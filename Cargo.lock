@@ -981,6 +981,7 @@ dependencies = [
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
  "caliptra-mcu-mbox-comm",
+ "caliptra-mcu-otp-digest",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
  "caliptra-ureg",
@@ -1882,6 +1883,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
  "caliptra-mcu-tock-veer",
  "kernel",

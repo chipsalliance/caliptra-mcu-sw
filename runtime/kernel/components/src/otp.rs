@@ -10,7 +10,8 @@ use kernel::create_capability;
 pub struct OtpComponent {
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
-    total_heks: u32,
+    #[cfg(feature = "ocp-lock")]
+    ocp_lock_ctx: Option<caliptra_mcu_capsules_runtime::otp::OcpLockContext>,
     driver: &'static caliptra_mcu_romtime::Otp,
 }
 
@@ -18,13 +19,16 @@ impl OtpComponent {
     pub fn new(
         board_kernel: &'static kernel::Kernel,
         driver_num: usize,
-        total_heks: u32,
+        #[cfg(feature = "ocp-lock")] ocp_lock_ctx: Option<
+            caliptra_mcu_capsules_runtime::otp::OcpLockContext,
+        >,
         driver: &'static caliptra_mcu_romtime::Otp,
     ) -> Self {
         Self {
             board_kernel,
             driver_num,
-            total_heks,
+            #[cfg(feature = "ocp-lock")]
+            ocp_lock_ctx,
             driver,
         }
     }
@@ -40,7 +44,8 @@ impl Component for OtpComponent {
         let otp: &caliptra_mcu_capsules_runtime::otp::Otp =
             static_buffer.write(caliptra_mcu_capsules_runtime::otp::Otp::new(
                 self.driver,
-                self.total_heks,
+                #[cfg(feature = "ocp-lock")]
+                self.ocp_lock_ctx,
                 self.board_kernel.create_grant(self.driver_num, &grant_cap),
             ));
         otp
