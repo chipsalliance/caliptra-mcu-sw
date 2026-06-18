@@ -46,6 +46,11 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
+      - name: Install GitHub CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install gh -y
+
       - name: Set up Rust
         run: |
           if ! command -v rustup &> /dev/null; then
