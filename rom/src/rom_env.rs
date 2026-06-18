@@ -84,8 +84,9 @@ impl RomEnv {
         }
     }
 
-    pub fn report_i3c_recovery_fatal_error(&mut self) {
+    pub fn report_i3c_recovery_fatal_error(&mut self, fatal_error_code: u32) {
         let straps = self.straps.deref();
+        let recovery_reason = crate::i3c::I3c::recovery_reason_for_fatal_error(fatal_error_code);
         if straps.active_i3c == 1 {
             if let Err(err) = self.i3c1.try_configure(crate::I3cConfig {
                 static_addr: straps.i3c1_static_addr,
@@ -97,7 +98,11 @@ impl RomEnv {
                     caliptra_mcu_romtime::HexWord(err.into())
                 );
             }
-            self.i3c1.set_recovery_fatal_error();
+            if let Some(reason) = recovery_reason {
+                self.i3c1.set_recovery_fatal_error_with_reason(reason);
+            } else {
+                self.i3c1.set_recovery_fatal_error();
+            }
         } else {
             if let Err(err) = self.i3c.try_configure(crate::I3cConfig {
                 static_addr: straps.i3c_static_addr,
@@ -109,7 +114,11 @@ impl RomEnv {
                     caliptra_mcu_romtime::HexWord(err.into())
                 );
             }
-            self.i3c.set_recovery_fatal_error();
+            if let Some(reason) = recovery_reason {
+                self.i3c.set_recovery_fatal_error_with_reason(reason);
+            } else {
+                self.i3c.set_recovery_fatal_error();
+            }
         }
     }
 }

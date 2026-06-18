@@ -16,6 +16,7 @@ const DEVICE_STATUS_BOOT_FAILURE: u32 = 0x0e;
 const DEVICE_STATUS_FATAL_ERROR: u32 = 0x0f;
 const RECOVERY_STATUS_FAILED: u32 = 0x0c;
 const RECOVERY_REASON_CORRUPTED_CRITICAL_DATA: u32 = 0x0004;
+const RECOVERY_REASON_DOT_BLOB_CORRUPT: u32 = 0x0084;
 
 /// I3C bus timing parameters, in clock units.
 ///
@@ -284,6 +285,19 @@ impl I3c {
     pub fn set_recovery_fatal_error(&self) {
         self.set_recovery_status(RECOVERY_STATUS_FAILED);
         self.set_device_status(DEVICE_STATUS_FATAL_ERROR);
+    }
+
+    pub fn set_recovery_fatal_error_with_reason(&self, recovery_reason: u32) {
+        self.set_recovery_status(RECOVERY_STATUS_FAILED);
+        self.set_device_status_with_recovery_reason(DEVICE_STATUS_FATAL_ERROR, recovery_reason);
+    }
+
+    pub fn recovery_reason_for_fatal_error(error_code: u32) -> Option<u32> {
+        if error_code == u32::from(caliptra_mcu_error::McuError::ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR) {
+            Some(RECOVERY_REASON_DOT_BLOB_CORRUPT)
+        } else {
+            None
+        }
     }
 
     pub fn disable_recovery(&mut self) {

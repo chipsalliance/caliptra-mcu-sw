@@ -32,7 +32,7 @@ impl FatalErrorHandler for FpgaFatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> ! {
         let _ = writeln!(FpgaWriter {}, "MCU fatal error: {}", HexWord(code));
         let mut env = RomEnv::new();
-        env.report_i3c_recovery_fatal_error();
+        env.report_i3c_recovery_fatal_error(code);
         env.mci.set_fw_fatal_error(code);
         exit_fpga(code);
     }
