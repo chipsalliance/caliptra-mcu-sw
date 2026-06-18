@@ -147,6 +147,14 @@ pub struct SessionInfo<K: Clone, S> {
     pub transcript: SessionTranscript<S>,
 }
 
+impl<K: Clone, S> Drop for SessionInfo<K, S> {
+    fn drop(&mut self) {
+        self.key_schedule.destroy_all();
+        // NOTE: The physical backing memory slot of this SessionInfo structure in the coordinator pool
+        // is guaranteed to be securely zeroized/wiped inside `McuSpdmBox::drop()` upon slot reclamation.
+    }
+}
+
 impl<K: Clone, S> SessionInfo<K, S> {
     /// Construct a new `SessionInfo` value. Caller is responsible for
     /// wrapping it in the appropriate box type via the PAL allocator.

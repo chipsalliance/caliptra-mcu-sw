@@ -49,7 +49,7 @@ impl<M: MeasurementProvider> SpdmPalHash for McuSpdmPal<M> {
         seed: &[u8],
     ) -> McuResult<Self::State> {
         let buf = self.allocator.alloc_bytes(SHA_CONTEXT_SIZE)?;
-        sha_init(self, buf, to_api_algo(algo), seed).await
+        sha_init(self.allocator, buf, to_api_algo(algo), seed).await
     }
 
     #[inline]
@@ -59,7 +59,7 @@ impl<M: MeasurementProvider> SpdmPalHash for McuSpdmPal<M> {
         state: &mut Self::State,
         data: &[u8],
     ) -> McuResult<()> {
-        sha_update(self, state, data).await
+        sha_update(self.allocator, state, data).await
     }
 
     #[inline]
@@ -75,7 +75,7 @@ impl<M: MeasurementProvider> SpdmPalHash for McuSpdmPal<M> {
         state: &mut Self::State,
         out: &mut [u8],
     ) -> McuResult<()> {
-        sha_finish(self, state, out).await
+        sha_finish(self.allocator, state, out).await
     }
 }
 

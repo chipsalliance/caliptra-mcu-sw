@@ -35,6 +35,20 @@ use crate::{
     key_exchange, measurements, vendor_defined, version,
 };
 
+/// Type alias for the SessionManager with full PAL type resolution.
+pub(crate) type Sessions<Pal, const N: usize> = SessionManager<
+    <Pal as SpdmPalSessionCrypto>::Key,
+    <Pal as SpdmPalHash>::State,
+    <Pal as SpdmPalAlloc>::PersistentBox<
+        SessionInfo<<Pal as SpdmPalSessionCrypto>::Key, <Pal as SpdmPalHash>::State>,
+    >,
+    N,
+>;
+
+/// Type alias for ConnectionState with full PAL type resolution.
+pub(crate) type ConnState<'a, Pal> =
+    ConnectionState<<Pal as SpdmPalHash>::State, <Pal as SpdmPalAlloc>::LargeBuf>;
+
 /// Connection phase tracked on the responder so the dispatcher can
 /// enforce the SPDM ordering
 /// `GET_VERSION → GET_CAPABILITIES → NEGOTIATE_ALGORITHMS`.
@@ -122,11 +136,8 @@ pub struct ConnectionState<S, L> {
     pub negotiated_base_hash_sel: HashAlgos,
     /// Transcript state (running VCA/M1/L1 hashes per SPDM).
     pub transcript: crate::transcript::Transcript<S>,
-    /// In-progress CHUNK_SEND large-request reassembly state.
-    pub(crate) chunk: chunk::ChunkState,
-    /// Pending large response served by CHUNK_GET.
-    pub(crate) large_response: chunk::LargeResponseState,
-    pub(crate) large_buf: Option<L>,
+    /// Consolidated context managing large-payload request reassembly and response chunking.
+    pub(crate) large_msg_ctx: chunk::LargeMessageCtx<L>,
 }
 
 impl<S, L> ConnectionState<S, L> {
@@ -183,30 +194,8 @@ impl<S, L> ConnectionState<S, L> {
             negotiated_base_asym_sel: AsymAlgos::EMPTY,
             negotiated_base_hash_sel: HashAlgos::EMPTY,
             transcript: crate::transcript::Transcript::new(),
-            chunk: chunk::ChunkState::default(),
-            large_response: chunk::LargeResponseState::default(),
-            large_buf: None,
+            large_msg_ctx: chunk::LargeMessageCtx::new(),
         }
-    }
-
-    /// Drops every connection-scoped negotiation result.
-    ///
-    /// Called by the dispatcher on every `GET_VERSION` per SPDM
-    /// Local-policy fields (the upper block) are not modified.
-    pub(crate) fn reset_negotiation(&mut self) {
-        self.phase = Phase::Start;
-        self.version = SpdmVersion::V12;
-        self.peer_data_transfer_size = 0;
-        self.peer_max_spdm_msg_size = 0;
-        self.advertised_cap_flags = CapFlags::EMPTY;
-        self.peer_cap_flags = CapFlags::EMPTY;
-        self.other_param_sel = OtherParamSupport::EMPTY;
-        self.negotiated_base_asym_sel = AsymAlgos::EMPTY;
-        self.negotiated_base_hash_sel = HashAlgos::EMPTY;
-        self.transcript.reset();
-        self.chunk.reset();
-        self.large_response.reset();
-        self.large_buf = None;
     }
 
     /// Returns true when both peers negotiated CHUNK support.
@@ -238,6 +227,35 @@ impl<S, L> ConnectionState<S, L> {
     pub(crate) fn asym_algo(&self) -> SpdmPalAsymAlgo {
         // TODO: add MLDSA-87 mapping once codec and DPE support it.
         SpdmPalAsymAlgo::EccP384
+    }
+}
+
+impl<S, L: core::ops::DerefMut<Target = [u8]>> ConnectionState<S, L> {
+    /// Resets the connection-level large message context, securely wiping any buffered bytes.
+    pub(crate) fn reset_negotiation(&mut self) {
+        self.phase = Phase::Start;
+        self.version = SpdmVersion::V12;
+        self.peer_data_transfer_size = 0;
+        self.peer_max_spdm_msg_size = 0;
+        self.advertised_cap_flags = CapFlags::EMPTY;
+        self.peer_cap_flags = CapFlags::EMPTY;
+        self.other_param_sel = OtherParamSupport::EMPTY;
+        self.negotiated_base_asym_sel = AsymAlgos::EMPTY;
+        self.negotiated_base_hash_sel = HashAlgos::EMPTY;
+        self.transcript.reset();
+        self.large_msg_ctx.reset();
+    }
+
+    /// Resets the incoming chunk reassembly state, securely wiping any buffered reassembly bytes.
+    #[allow(dead_code)]
+    pub(crate) fn reset_chunk_assembly(&mut self) {
+        self.large_msg_ctx.reset();
+    }
+
+    /// Resets the outgoing large response state, securely wiping any buffered response bytes.
+    #[allow(dead_code)]
+    pub(crate) fn reset_large_response(&mut self) {
+        self.large_msg_ctx.reset();
     }
 }
 
@@ -525,16 +543,6 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
     }
 }
 
-/// Type alias for the SessionManager with full PAL type resolution.
-type Sessions<Pal, const N: usize> = SessionManager<
-    <Pal as SpdmPalSessionCrypto>::Key,
-    <Pal as SpdmPalHash>::State,
-    <Pal as SpdmPalAlloc>::PersistentBox<
-        SessionInfo<<Pal as SpdmPalSessionCrypto>::Key, <Pal as SpdmPalHash>::State>,
-    >,
-    N,
->;
-
 /// Routes a decoded request code to the matching handler.
 ///
 /// Free-standing (rather than a method on [`SpdmStack`]) so the
@@ -568,15 +576,14 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
     code: ReqRespCode,
     vdm: &Vdm,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    if code != ReqRespCode::CHUNK_SEND && state.chunk.in_progress() {
-        state.chunk.reset();
+    if code != ReqRespCode::CHUNK_SEND && state.large_msg_ctx.request_in_progress() {
+        state.large_msg_ctx.reset();
     }
     if code != ReqRespCode::CHUNK_GET
         && code != ReqRespCode::CHUNK_SEND
-        && state.large_response.in_progress()
+        && state.large_msg_ctx.response_in_progress()
     {
-        state.large_response.reset();
-        state.large_buf = None;
+        state.large_msg_ctx.reset();
     }
     match code {
         ReqRespCode::GET_VERSION => {
@@ -593,8 +600,10 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         ReqRespCode::GET_DIGESTS => digests::handle_get_digests(state, pal, io).await,
         ReqRespCode::GET_CERTIFICATE => certificate::handle_get_certificate(state, pal, io).await,
         ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
-        ReqRespCode::CHUNK_SEND => chunk::handle_chunk_send(state, pal, io).await,
-        ReqRespCode::CHUNK_GET => chunk::handle_chunk_get(state, pal, io).await,
+        ReqRespCode::CHUNK_SEND => {
+            chunk::handle_chunk_send(state, pal, io, vdm, io.request(), false).await
+        }
+        ReqRespCode::CHUNK_GET => chunk::handle_chunk_get(state, pal, io, io.request()).await,
         #[cfg(feature = "set-certificate")]
         ReqRespCode::SET_CERTIFICATE => {
             crate::set_certificate::handle_set_certificate(state, pal, io).await
@@ -767,6 +776,18 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
     let session_state = sessions.find(session_id).ok_or(SPDM_UNSPECIFIED)?.state;
     let response_key_type = validate_message_allowed_phase(spdm_hdr.code, session_state)?;
 
+    // After decoding secure inner SPDM code, ensure stale large-message reassembly/response state is cleared.
+    let code = spdm_hdr.code;
+    if code != ReqRespCode::CHUNK_SEND && state.large_msg_ctx.request_in_progress() {
+        state.large_msg_ctx.reset();
+    }
+    if code != ReqRespCode::CHUNK_GET
+        && code != ReqRespCode::CHUNK_SEND
+        && state.large_msg_ctx.response_in_progress()
+    {
+        state.large_msg_ctx.reset();
+    }
+
     match spdm_hdr.code {
         ReqRespCode::FINISH => {
             let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
@@ -837,6 +858,39 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             )
             .await
         }
+        ReqRespCode::CHUNK_GET => {
+            let chunk_rsp = chunk::handle_chunk_get(state, pal, io, spdm_msg).await?;
+            let head = pal.header_size();
+            let spdm_rsp = &chunk_rsp[head..];
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+            encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                response_key_type,
+                spdm_rsp,
+            )
+            .await
+        }
+        ReqRespCode::CHUNK_SEND => {
+            let chunk_send_ack =
+                chunk::handle_chunk_send(state, pal, io, vdm, spdm_msg, true).await?;
+            let head = pal.header_size();
+            let spdm_rsp = &chunk_send_ack[head..];
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+            encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                response_key_type,
+                spdm_rsp,
+            )
+            .await
+        }
         _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(spdm_hdr.code.0)),
     }
 }
@@ -876,7 +930,9 @@ fn validate_message_allowed_phase(
                 Err(SPDM_UNEXPECTED_REQUEST)
             }
         }
-        ReqRespCode::VENDOR_DEFINED_REQUEST => current_key(),
+        ReqRespCode::VENDOR_DEFINED_REQUEST | ReqRespCode::CHUNK_GET | ReqRespCode::CHUNK_SEND => {
+            current_key()
+        }
         _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
     }
 }

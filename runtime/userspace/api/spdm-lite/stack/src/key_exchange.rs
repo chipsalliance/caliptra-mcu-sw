@@ -19,7 +19,6 @@ use mcu_spdm_lite_codec::{
     ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN, OPAQUE_VERSION_SELECTION_SIZE,
     SHA384_HASH_SIZE, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
-use mcu_spdm_lite_traits::SpdmPalAlloc;
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
 
@@ -28,8 +27,7 @@ use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
 };
 use crate::key_schedule::SessionKeyType;
-use crate::session::{SessionInfo, SessionManager};
-use crate::stack::{ConnectionState, Phase};
+use crate::stack::{ConnState, Phase, Sessions};
 
 const ECDH_P384_ENCRYPTED_CONTEXT_SIZE: usize = 76;
 const KEY_EXCHANGE_WORKSPACE_SIZE: usize = SHA384_HASH_SIZE
@@ -51,15 +49,8 @@ const KEY_EXCHANGE_SIGNING_PREFIX_V13: &[u8; KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_L
 const KEY_EXCHANGE_SIGNING_OP: &[u8; 34] = b"responder-key_exchange_rsp signing";
 
 pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
-    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
-    sessions: &mut SessionManager<
-        <Pal as SpdmPalSessionCrypto>::Key,
-        Pal::State,
-        <Pal as SpdmPalAlloc>::PersistentBox<
-            SessionInfo<<Pal as SpdmPalSessionCrypto>::Key, Pal::State>,
-        >,
-        N,
-    >,
+    state: &mut ConnState<'_, Pal>,
+    sessions: &mut Sessions<Pal, N>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
@@ -167,15 +158,8 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
 #[allow(clippy::too_many_arguments)]
 #[inline(never)]
 async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
-    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
-    sessions: &mut SessionManager<
-        <Pal as SpdmPalSessionCrypto>::Key,
-        Pal::State,
-        <Pal as SpdmPalAlloc>::PersistentBox<
-            SessionInfo<<Pal as SpdmPalSessionCrypto>::Key, Pal::State>,
-        >,
-        N,
-    >,
+    state: &mut ConnState<'_, Pal>,
+    sessions: &mut Sessions<Pal, N>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     req: &[u8],

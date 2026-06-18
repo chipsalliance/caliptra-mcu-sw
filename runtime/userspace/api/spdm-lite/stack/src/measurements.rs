@@ -245,18 +245,23 @@ async fn handle_large_measurements_response<'a, Pal: SpdmPal>(
     plan: &MeasurementsResponseCtx<'_>,
 ) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
     chunk::validate_buffered_large_response(state, pal, plan.large_resp_len)?;
-    let mut buf = pal.alloc_large_buf(plan.large_resp_len)?;
+
+    // We replace the local AutoWipeGuard struct definition with standard WipeOnDrop from chunk!
+    let mut guard = chunk::WipeOnDrop {
+        buf: Some(pal.alloc_large_buf(plan.large_resp_len)?),
+    };
+    let buf = guard.buf.as_mut().ok_or(SPDM_UNSPECIFIED)?;
 
     let mut offset = 0usize;
     let hdr = SpdmMsgHdrPdu::new(state.version, ReqRespCode::MEASUREMENTS);
-    offset = write_into_slice(&mut buf, offset, hdr.as_bytes())?;
+    offset = write_into_slice(buf, offset, hdr.as_bytes())?;
 
     let mut fixed = [0u8; MEASUREMENTS_FIXED_BODY_SIZE];
     fixed[0] = plan.total_number_of_measurement;
     fixed[1] = (plan.slot_id & 0x0F) | ((plan.content_changed & 0x03) << 4);
     fixed[2] = plan.number_of_blocks;
     fixed[3..6].copy_from_slice(&u24_le(plan.measurement_record_len)?);
-    offset = write_into_slice(&mut buf, offset, &fixed)?;
+    offset = write_into_slice(buf, offset, &fixed)?;
 
     let (next_offset, written_blocks) = write_measurement_record_into_slice(
         pal,
@@ -264,7 +269,7 @@ async fn handle_large_measurements_response<'a, Pal: SpdmPal>(
         plan.meas_info,
         plan.meas_op,
         plan.meas_nonce,
-        &mut buf,
+        buf,
         offset,
     )
     .await?;
@@ -273,10 +278,10 @@ async fn handle_large_measurements_response<'a, Pal: SpdmPal>(
     }
     offset = next_offset;
 
-    offset = write_into_slice(&mut buf, offset, plan.nonce)?;
-    offset = write_into_slice(&mut buf, offset, &0u16.to_le_bytes())?;
+    offset = write_into_slice(buf, offset, plan.nonce)?;
+    offset = write_into_slice(buf, offset, &0u16.to_le_bytes())?;
     if let Some(ctx) = plan.requester_context {
-        offset = write_into_slice(&mut buf, offset, ctx)?;
+        offset = write_into_slice(buf, offset, ctx)?;
     }
 
     let signature_offset = offset;
@@ -303,7 +308,7 @@ async fn handle_large_measurements_response<'a, Pal: SpdmPal>(
         if sig_len != ECC_P384_SIGNATURE_SIZE {
             return Err(SPDM_UNSPECIFIED);
         }
-        write_into_slice(&mut buf, signature_offset, &signature)?;
+        write_into_slice(buf, signature_offset, &signature)?;
         offset += ECC_P384_SIGNATURE_SIZE;
     }
 
@@ -311,9 +316,17 @@ async fn handle_large_measurements_response<'a, Pal: SpdmPal>(
         return Err(SPDM_UNSPECIFIED);
     }
 
-    state.large_buf = Some(buf);
-    let resp = chunk::start_buffered_large_response(state, pal, io, plan.large_resp_len)?;
-    Ok((resp, 0))
+    let final_buf = guard.buf.take().ok_or(SPDM_UNSPECIFIED)?;
+    state.large_msg_ctx.set_buffer(final_buf);
+    let (resp, spdm_len) =
+        match chunk::start_buffered_large_response(state, pal, io, plan.large_resp_len) {
+            Ok(res) => res,
+            Err(err) => {
+                state.large_msg_ctx.reset();
+                return Err(err);
+            }
+        };
+    Ok((resp, spdm_len))
 }
 
 fn measurement_record_shape(info: &[MeasurementInfo], meas_op: u8) -> SpdmResult<(usize, u8)> {

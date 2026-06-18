@@ -172,10 +172,8 @@ mod tests {
             = Vec<u8>
         where
             Self: 'a;
-        type LargeBuf<'a>
-            = Vec<u8>
-        where
-            Self: 'a;
+        type LargeBuf = Vec<u8>;
+        type PersistentBox<T: Sized + 'static> = Box<T>;
 
         fn alloc<T: Sized>(&self, _io: &impl SpdmPalIo, value: T) -> McuResult<Self::Box<'_, T>> {
             Ok(TestBox {
@@ -192,22 +190,15 @@ mod tests {
             0
         }
 
-        fn large_begin(&self, _len: usize) -> McuResult<()> {
-            Ok(())
-        }
-
-        fn large_write(&self, _offset: usize, _data: &[u8]) -> McuResult<()> {
-            Ok(())
-        }
-
-        fn large_read(&self, _offset: usize, _out: &mut [u8]) -> McuResult<()> {
-            Ok(())
-        }
-
-        fn large_end(&self) {}
-
-        fn large_take(&self, len: usize) -> McuResult<Self::LargeBuf<'_>> {
+        fn alloc_large_buf(&self, len: usize) -> McuResult<Self::LargeBuf> {
             Ok(vec![0; len])
+        }
+
+        fn alloc_persistent<T: Sized + 'static>(
+            &self,
+            value: T,
+        ) -> McuResult<Self::PersistentBox<T>> {
+            Ok(Box::new(value))
         }
     }
 

@@ -219,7 +219,7 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
             portion_len,
             remainder_len,
         );
-        let handle = state.large_response.next_handle();
+        let handle = state.large_msg_ctx.next_handle();
         let resp = build_error_response(
             pal,
             io,
@@ -230,10 +230,11 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
         )?;
 
         state.transcript.append_m1(pal, io, io.request()).await?;
-        state.large_response.start(
+        state.large_msg_ctx.start_response(
             LargeResponse::Certificate(cert_rsp),
             cert_rsp.response_size(),
-        );
+            None,
+        )?;
         state.phase = Phase::AfterCertificate;
         return Ok(resp);
     }

@@ -527,10 +527,18 @@ impl<T> McuSpdmBox<'_, T> {
 }
 
 impl<T> Drop for McuSpdmBox<'_, T> {
-    /// Drops the owned value in place, then releases the underlying
+    /// Drops the owned value in place, securely zero-wipes the memory slot, then releases the underlying
     /// slots back to the allocator's bitmap.
     fn drop(&mut self) {
         unsafe { core::ptr::drop_in_place(self.ptr().as_ptr()) };
+        // Securely zero-wipe the underlying memory slots to prevent information leaks of stateful data.
+        unsafe {
+            core::ptr::write_bytes(
+                self.ptr().as_ptr() as *mut u8,
+                0,
+                self.num_slots as usize * BITMAP_SLOT_SIZE,
+            );
+        }
         self.alloc
             .free_run(self.start_slot as usize, self.num_slots as usize);
     }

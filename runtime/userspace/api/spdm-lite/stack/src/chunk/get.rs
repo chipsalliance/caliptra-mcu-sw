@@ -6,7 +6,7 @@ use mcu_spdm_lite_codec::{
     ChunkGetReqBody, ChunkResponseBody, ReqRespCode, SpdmMsgHdrPdu, WireWriter,
     CHUNK_ATTR_LAST_CHUNK, CHUNK_RESPONSE_FIXED_BODY_SIZE, LARGE_RESPONSE_SIZE_FIELD_SIZE,
 };
-use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport};
+use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport};
 use zerocopy::{little_endian::U16, little_endian::U32, FromBytes};
 
 use crate::build::alloc_padded;
@@ -21,12 +21,12 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    req: &[u8],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     if (state.phase as u8) < (Phase::AfterCapabilities as u8) || !state.chunking_enabled() {
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
 
-    let req = io.request();
     if req.len() > pal.mtu() {
         return Err(SPDM_INVALID_REQUEST);
     }
@@ -42,7 +42,7 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    let Some(active_rsp) = state.large_response.response() else {
+    let Some(active_rsp) = state.large_msg_ctx.response() else {
         return Err(SPDM_UNEXPECTED_REQUEST);
     };
 
@@ -53,9 +53,6 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     }
 
     let large_response_size = active_rsp.response_size;
-    // Whether this large response is served from the pinned large buffer (vs a
-    // Certificate response, which regenerates each chunk and holds no pin).
-    let is_buffered = matches!(active_rsp.kind, LargeResponse::Buffered);
     let extra = if seq_num == 0 {
         LARGE_RESPONSE_SIZE_FIELD_SIZE
     } else {
@@ -102,19 +99,21 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
             }
             LargeResponse::Buffered => {
                 let large = state
-                    .large_buf
+                    .large_msg_ctx
+                    .buf
                     .as_deref()
                     .ok_or(crate::error::SPDM_UNSPECIFIED)?;
-                chunk.copy_from_slice(&large[bytes_sent..bytes_sent + chunk_size]);
+                let end = bytes_sent
+                    .checked_add(chunk_size)
+                    .ok_or(crate::error::SPDM_UNSPECIFIED)?;
+                let src = large
+                    .get(bytes_sent..end)
+                    .ok_or(crate::error::SPDM_UNSPECIFIED)?;
+                chunk.copy_from_slice(src);
             }
         }
     }
 
-    state.large_response.chunk_sent(chunk_size);
-    // Once the final chunk of a buffered response ships, release the pinned
-    // large buffer (RAII free + zero) back to the pool.
-    if last_chunk && is_buffered {
-        state.large_buf = None;
-    }
+    state.large_msg_ctx.chunk_sent(chunk_size);
     Ok(rsp)
 }
