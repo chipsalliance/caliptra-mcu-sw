@@ -332,26 +332,30 @@ impl Otp {
 /// OTP error codes matching the hardware definition.
 const OTP_ERR_MACRO_WRITE_BLANK: u32 = 4;
 
-/// Returns true if `byte_addr` falls within a 64-bit access granule region
-/// (digest field or secret partition data). Non-secret partition data uses
-/// 32-bit granularity.
+/// Returns true if `byte_addr` falls within a 64-bit access granule region.
+/// Secret partition data, digest fields, and trailing ZER markers use 64-bit
+/// granularity; ordinary non-secret partition data uses 32-bit granularity.
 fn is_64bit_granule(byte_addr: usize) -> bool {
     for p in fuses::OTP_PARTITIONS {
         if byte_addr < p.byte_offset || byte_addr >= p.byte_offset + p.byte_size {
             continue;
         }
-        // Digest fields always use 64-bit granule
+        // Secret (scrambled) partitions use 64-bit granules for all data.
+        if p.secret {
+            return true;
+        }
+        // Digest fields always use 64-bit granules.
         if let Some(digest_off) = p.digest_offset {
             if byte_addr >= digest_off && byte_addr < digest_off + 8 {
                 return true;
             }
         }
-        // Secret (scrambled) partitions use 64-bit granule for all data
-        if p.name.starts_with("secret_")
-            || p.name == "sw_test_unlock_partition"
-            || p.name == "vendor_secret_prod_partition"
-        {
-            return true;
+        // Zeroizable partitions have a trailing 64-bit ZER marker.
+        if p.zeroizable {
+            let zer_offset = p.byte_offset + p.byte_size - 8;
+            if byte_addr >= zer_offset && byte_addr < zer_offset + 8 {
+                return true;
+            }
         }
         return false;
     }
@@ -565,31 +569,28 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
             self.direct_access_buffer_hi = 0;
         } else if self.direct_access_cmd.reg.read(DirectAccessCmd::Rd) == 1 {
             self.direct_access_cmd.reg.set(0);
-            // clear bottom two bits
-            let addr = (self.direct_access_address & 0xffff_fffc) as usize;
+            let use_64 = is_64bit_granule(self.direct_access_address as usize);
+            // Align address to the access granule (mask low 2 or 3 bits).
+            let addr = if use_64 {
+                (self.direct_access_address & 0xffff_fff8) as usize
+            } else {
+                (self.direct_access_address & 0xffff_fffc) as usize
+            };
             if addr + 4 <= TOTAL_SIZE {
                 let mut buf = [0; 4];
                 let partitions = self.partitions.borrow();
                 if let Some(key) = scramble_key_for_addr(addr) {
-                    // Scrambled partitions use 8-byte granules. Align the
-                    // read to the 8-byte boundary so we unscramble the
-                    // correct block, then return the requested half.
-                    let aligned = addr & !7;
-                    buf.copy_from_slice(&partitions[aligned..aligned + 4]);
+                    // Scrambled partitions use 8-byte granules. Align the read
+                    // to the 8-byte boundary so the DAI read data registers hold
+                    // the whole granule, matching hardware behavior.
+                    buf.copy_from_slice(&partitions[addr..addr + 4]);
                     let lo = u32::from_le_bytes(buf);
-                    buf.copy_from_slice(&partitions[aligned + 4..aligned + 8]);
+                    buf.copy_from_slice(&partitions[addr + 4..addr + 8]);
                     let hi = u32::from_le_bytes(buf);
                     let scrambled = ((hi as u64) << 32) | lo as u64;
                     let plaintext = caliptra_mcu_otp_digest::otp_unscramble(scrambled, key);
-                    let plaintext_lo = plaintext as u32;
-                    let plaintext_hi = (plaintext >> 32) as u32;
-                    if addr & 4 != 0 {
-                        self.direct_access_buffer = plaintext_hi;
-                        self.direct_access_buffer_hi = plaintext_lo;
-                    } else {
-                        self.direct_access_buffer = plaintext_lo;
-                        self.direct_access_buffer_hi = plaintext_hi;
-                    }
+                    self.direct_access_buffer = plaintext as u32;
+                    self.direct_access_buffer_hi = (plaintext >> 32) as u32;
                 } else {
                     buf.copy_from_slice(&partitions[addr..addr + 4]);
                     self.direct_access_buffer = u32::from_le_bytes(buf);
@@ -645,6 +646,8 @@ mod test {
     use caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral;
     #[allow(unused_imports)]
     use tock_registers::interfaces::{Readable, Writeable};
+
+    const HEK_RATCHET_SEED_SIZE: usize = 32;
 
     #[test]
     fn test_bootup() {
@@ -876,8 +879,22 @@ mod test {
         }
     }
 
-    /// Helper: DAI read a 32-bit value from the given byte address.
-    fn dai_read(otp: &mut Otp, addr: u32) -> u32 {
+    /// Helper: DAI write both data registers at the given byte address.
+    fn dai_write_pair(otp: &mut Otp, addr: u32, lo: u32, hi: u32) {
+        otp.write_dai_wdata_rf_direct_access_wdata_0(lo);
+        otp.write_dai_wdata_rf_direct_access_wdata_1(hi);
+        otp.write_direct_access_address(addr.into());
+        otp.write_direct_access_cmd(2u32.into());
+        for _ in 0..100 {
+            otp.poll();
+            if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
+                break;
+            }
+        }
+    }
+
+    /// Helper: DAI read both data registers from the given byte address.
+    fn dai_read_pair(otp: &mut Otp, addr: u32) -> (u32, u32) {
         otp.write_direct_access_address(addr.into());
         otp.write_direct_access_cmd(1u32.into());
         for _ in 0..100 {
@@ -886,7 +903,104 @@ mod test {
                 break;
             }
         }
-        otp.read_dai_rdata_rf_direct_access_rdata_0()
+        (
+            otp.read_dai_rdata_rf_direct_access_rdata_0(),
+            otp.read_dai_rdata_rf_direct_access_rdata_1(),
+        )
+    }
+
+    /// Helper: DAI read a 32-bit value from the given byte address.
+    fn dai_read(otp: &mut Otp, addr: u32) -> u32 {
+        dai_read_pair(otp, addr).0
+    }
+
+    #[test]
+    fn test_hek_digest_and_zer_reads_use_64bit_granules() {
+        let clock = Clock::new();
+        let digest = 0x1122_3344_5566_7788u64;
+        let zer_marker = 0x99aa_bbcc_ddee_ff00u64;
+        let hek_partition_offset = fuses::CPTRA_SS_LOCK_HEK_PROD_0.byte_offset;
+        let digest_offset = hek_partition_offset + HEK_RATCHET_SEED_SIZE;
+        let zer_offset = digest_offset + 8;
+        let mut raw_memory = vec![0u8; fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE];
+        raw_memory[digest_offset..digest_offset + 8].copy_from_slice(&digest.to_le_bytes());
+        raw_memory[zer_offset..zer_offset + 8].copy_from_slice(&zer_marker.to_le_bytes());
+
+        let mut otp = Otp::new(
+            &clock,
+            OtpArgs {
+                raw_memory: Some(raw_memory),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let (digest_lo, digest_hi) = dai_read_pair(&mut otp, digest_offset as u32);
+        assert_eq!(digest_lo, digest as u32);
+        assert_eq!(digest_hi, (digest >> 32) as u32);
+        let digest_upper_word = dai_read(&mut otp, (digest_offset + 4) as u32);
+        assert_eq!(
+            digest_upper_word, digest_lo,
+            "word reads into the upper half of a HEK digest granule must align to the 64-bit granule"
+        );
+        assert_ne!(
+            digest_upper_word,
+            (digest >> 32) as u32,
+            "old 32-bit read_data-style reads must not reconstruct the HEK digest correctly"
+        );
+
+        let (zer_lo, zer_hi) = dai_read_pair(&mut otp, zer_offset as u32);
+        assert_eq!(zer_lo, zer_marker as u32);
+        assert_eq!(zer_hi, (zer_marker >> 32) as u32);
+        let zer_upper_word = dai_read(&mut otp, (zer_offset + 4) as u32);
+        assert_eq!(
+            zer_upper_word, zer_lo,
+            "word reads into the upper half of a HEK ZER granule must align to the 64-bit granule"
+        );
+        assert_ne!(
+            zer_upper_word,
+            (zer_marker >> 32) as u32,
+            "old 32-bit read_data-style reads must not reconstruct the HEK ZER marker correctly"
+        );
+    }
+
+    #[test]
+    fn test_hek_digest_and_zer_writes_use_64bit_granules() {
+        let clock = Clock::new();
+        let digest = 0x1122_3344_5566_7788u64;
+        let zer_marker = 0x99aa_bbcc_ddee_ff00u64;
+        let hek_partition_offset = fuses::CPTRA_SS_LOCK_HEK_PROD_0.byte_offset;
+        let seed_word_offset = hek_partition_offset + 4;
+        let digest_offset = hek_partition_offset + HEK_RATCHET_SEED_SIZE;
+        let zer_offset = digest_offset + 8;
+        let mut otp = Otp::new(&clock, OtpArgs::default()).unwrap();
+
+        dai_write(&mut otp, seed_word_offset as u32, 0xa5a5_5a5a);
+        assert_eq!(dai_read(&mut otp, seed_word_offset as u32), 0xa5a5_5a5a);
+
+        dai_write_pair(
+            &mut otp,
+            digest_offset as u32,
+            digest as u32,
+            (digest >> 32) as u32,
+        );
+        assert_eq!(otp.dai_err_code, 0);
+        assert_eq!(
+            dai_read_pair(&mut otp, digest_offset as u32),
+            (digest as u32, (digest >> 32) as u32)
+        );
+
+        dai_write_pair(
+            &mut otp,
+            zer_offset as u32,
+            zer_marker as u32,
+            (zer_marker >> 32) as u32,
+        );
+        assert_eq!(otp.dai_err_code, 0);
+        assert_eq!(
+            dai_read_pair(&mut otp, zer_offset as u32),
+            (zer_marker as u32, (zer_marker >> 32) as u32)
+        );
     }
 
     #[test]

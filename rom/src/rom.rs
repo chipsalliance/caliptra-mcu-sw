@@ -295,10 +295,19 @@ impl Soc {
         cfi_assert_eq(pk_hash_idx, pk_hash_idx_expected);
         otp.read_vendor_pk_hash(pk_hash_idx, &mut hash_buf)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        for (i, word_bytes) in hash_buf.chunks_exact(4).enumerate() {
-            let word = u32::from_le_bytes(word_bytes.try_into().unwrap());
+        for (reg, word_bytes) in self
+            .registers
+            .fuse_vendor_pk_hash
+            .iter()
+            .zip(hash_buf.chunks_exact(4))
+        {
+            let word = u32::from_le_bytes(
+                word_bytes
+                    .try_into()
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR)),
+            );
             caliptra_mcu_romtime::print!("{}", HexWord(word));
-            self.registers.fuse_vendor_pk_hash[i].set(word);
+            reg.set(word);
         }
         caliptra_mcu_romtime::println!("");
 

@@ -227,6 +227,8 @@ pub extern "C" fn rom_entry() -> ! {
                 caliptra_mcu_registers_generated::fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET
                     + slot * 48,
             byte_size: 40,
+            secret: false,
+            zeroizable: false,
             sw_digest: true,
             hw_digest: false,
             digest_offset: None,

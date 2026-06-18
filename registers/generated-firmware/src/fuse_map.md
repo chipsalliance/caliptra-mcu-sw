@@ -4,32 +4,32 @@
 
 ## Partitions
 
-| # | Name | Offset | Size | Secret | Digest |
-|---|------|--------|------|--------|--------|
-| 0 | sw_test_unlock_partition | 0x0000 | 72 | No | HW |
-| 1 | secret_manuf_partition | 0x0048 | 72 | Yes | HW |
-| 2 | secret_prod_partition_0 | 0x0090 | 16 | Yes | HW |
-| 3 | secret_prod_partition_1 | 0x00a0 | 16 | Yes | HW |
-| 4 | secret_prod_partition_2 | 0x00b0 | 16 | Yes | HW |
-| 5 | secret_prod_partition_3 | 0x00c0 | 16 | Yes | HW |
-| 6 | sw_manuf_partition | 0x00d0 | 520 | No | SW |
-| 7 | secret_lc_transition_partition | 0x02d8 | 184 | Yes | HW |
-| 8 | svn_partition | 0x0390 | 40 | No | — |
-| 9 | vendor_test_partition | 0x03b8 | 64 | No | SW |
-| 10 | vendor_hashes_manuf_partition | 0x03f8 | 64 | No | SW |
-| 11 | vendor_hashes_prod_partition | 0x0438 | 864 | No | SW |
-| 12 | vendor_revocations_prod_partition | 0x0798 | 216 | No | SW |
-| 13 | vendor_secret_prod_partition | 0x0870 | 520 | Yes | HW |
-| 14 | vendor_non_secret_prod_partition | 0x0a78 | 520 | No | SW |
-| 15 | cptra_ss_lock_hek_prod_0 | 0x0c80 | 40 | No | SW |
-| 16 | cptra_ss_lock_hek_prod_1 | 0x0ca8 | 40 | No | SW |
-| 17 | cptra_ss_lock_hek_prod_2 | 0x0cd0 | 40 | No | SW |
-| 18 | cptra_ss_lock_hek_prod_3 | 0x0cf8 | 40 | No | SW |
-| 19 | cptra_ss_lock_hek_prod_4 | 0x0d20 | 40 | No | SW |
-| 20 | cptra_ss_lock_hek_prod_5 | 0x0d48 | 40 | No | SW |
-| 21 | cptra_ss_lock_hek_prod_6 | 0x0d70 | 40 | No | SW |
-| 22 | cptra_ss_lock_hek_prod_7 | 0x0d98 | 40 | No | SW |
-| 23 | life_cycle | 0x0dc0 | 88 | No | — |
+| # | Name | Offset | Size | Secret | Zeroizable | Digest |
+|---|------|--------|------|--------|------------|--------|
+| 0 | sw_test_unlock_partition | 0x0000 | 72 | No | No | HW |
+| 1 | secret_manuf_partition | 0x0048 | 80 | Yes | Yes | HW |
+| 2 | secret_prod_partition_0 | 0x0098 | 24 | Yes | Yes | HW |
+| 3 | secret_prod_partition_1 | 0x00b0 | 24 | Yes | Yes | HW |
+| 4 | secret_prod_partition_2 | 0x00c8 | 24 | Yes | Yes | HW |
+| 5 | secret_prod_partition_3 | 0x00e0 | 24 | Yes | Yes | HW |
+| 6 | sw_manuf_partition | 0x00f8 | 520 | No | No | SW |
+| 7 | secret_lc_transition_partition | 0x0300 | 184 | Yes | No | HW |
+| 8 | svn_partition | 0x03b8 | 40 | No | No | — |
+| 9 | vendor_test_partition | 0x03e0 | 64 | No | No | SW |
+| 10 | vendor_hashes_manuf_partition | 0x0420 | 64 | No | No | SW |
+| 11 | vendor_hashes_prod_partition | 0x0460 | 864 | No | No | SW |
+| 12 | vendor_revocations_prod_partition | 0x07c0 | 216 | No | No | SW |
+| 13 | vendor_secret_prod_partition | 0x0898 | 528 | Yes | Yes | HW |
+| 14 | vendor_non_secret_prod_partition | 0x0aa8 | 520 | No | No | SW |
+| 15 | cptra_ss_lock_hek_prod_0 | 0x0cb0 | 48 | No | Yes | SW |
+| 16 | cptra_ss_lock_hek_prod_1 | 0x0ce0 | 48 | No | Yes | SW |
+| 17 | cptra_ss_lock_hek_prod_2 | 0x0d10 | 48 | No | Yes | SW |
+| 18 | cptra_ss_lock_hek_prod_3 | 0x0d40 | 48 | No | Yes | SW |
+| 19 | cptra_ss_lock_hek_prod_4 | 0x0d70 | 48 | No | Yes | SW |
+| 20 | cptra_ss_lock_hek_prod_5 | 0x0da0 | 48 | No | Yes | SW |
+| 21 | cptra_ss_lock_hek_prod_6 | 0x0dd0 | 48 | No | Yes | SW |
+| 22 | cptra_ss_lock_hek_prod_7 | 0x0e00 | 48 | No | Yes | SW |
+| 23 | life_cycle | 0x0e30 | 88 | No | No | — |
 
 ## Partition Items
 

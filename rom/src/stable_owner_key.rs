@@ -79,6 +79,8 @@ pub(crate) fn set_hek_fuses(registers: StaticRef<soc::regs::Soc>, otp: &Otp) {
             name: "cptra_ss_lock_hek_prod_seed",
             byte_offset,
             byte_size: HEK_ZER_MARKER_OFFSET,
+            secret: false,
+            zeroizable: false,
             sw_digest: true,
             hw_digest: false,
             digest_offset: Some(byte_offset + HEK_SEED_SIZE),

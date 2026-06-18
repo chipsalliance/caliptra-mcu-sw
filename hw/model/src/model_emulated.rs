@@ -883,7 +883,7 @@ mod test {
         })
         .unwrap();
         model.cpu_enabled.set(true);
-        for _ in 0..100_000 {
+        for _ in 0..200_000 {
             model.step();
         }
         use std::io::Write;
