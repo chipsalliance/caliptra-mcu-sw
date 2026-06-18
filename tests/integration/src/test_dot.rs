@@ -2021,9 +2021,9 @@ mod test {
         hw.start_mailbox_execute(CMD_DOT_OVERRIDE, &response_payload)
             .expect("Failed to send DOT_OVERRIDE");
 
-        // Step 5: Let the ROM verify signatures, burn fuse, write new blob, and complete.
-        let start = hw.cycle_count();
-        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() - start > 20_000_000);
+        // Step 5: Wait for ROM to acknowledge the DOT_OVERRIDE command.
+        hw.finish_mailbox_execute()
+            .expect("DOT_OVERRIDE should complete with CmdComplete status");
 
         // Verify a new DOT blob was written to flash (non-empty, HMAC'd for EVEN state)
         let dot_flash = hw.read_dot_flash();

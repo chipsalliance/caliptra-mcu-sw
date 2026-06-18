@@ -147,6 +147,12 @@ impl Mbox0Helpers {
             .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
     }
 
+    fn cmd_complete(&self) {
+        self.mci
+            .mcu_mbox0_csr_mbox_cmd_status
+            .write(mci::bits::MboxCmdStatus::Status::CmdComplete);
+    }
+
     fn dlen(&self) -> usize {
         self.mci.mcu_mbox0_csr_mbox_dlen.get() as usize
     }
@@ -265,5 +271,13 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
             mldsa_signature,
             mldsa_pub_key,
         })
+    }
+
+    fn notify_override_result(&self, success: bool) {
+        if success {
+            self.helpers.cmd_complete();
+        } else {
+            self.helpers.cmd_failure();
+        }
     }
 }
