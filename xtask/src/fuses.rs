@@ -113,6 +113,8 @@ fn build_partition_mmap(
         } else {
             0
         };
+        let zeroize_size = if partition.zeroizable { 8 } else { 0 };
+
         let calculated_size: usize = partition
             .items
             .iter()
@@ -120,9 +122,9 @@ fn build_partition_mmap(
             .sum();
 
         let calculated_size = if digest_size == 8 {
-            calculated_size.next_multiple_of(8) + digest_size
+            calculated_size.next_multiple_of(8) + digest_size + zeroize_size
         } else {
-            calculated_size.next_multiple_of(4)
+            calculated_size.next_multiple_of(4) + zeroize_size
         };
 
         let size = partition
@@ -178,6 +180,11 @@ fn generate_fuse_partitions_from_otp(otp: &OtpMmap) -> Result<String> {
     output += "    pub byte_offset: usize,\n";
     output += "    /// Total byte size of the partition (including the digest field if present).\n";
     output += "    pub byte_size: usize,\n";
+    output +=
+        "    /// Whether this partition is scrambled/secret and uses 64-bit DAI data granules.\n";
+    output += "    pub secret: bool,\n";
+    output += "    /// Whether this partition supports zeroization and has a trailing 8-byte ZER marker.\n";
+    output += "    pub zeroizable: bool,\n";
     output += "    /// Whether this partition supports a software-computed digest.\n";
     output += "    pub sw_digest: bool,\n";
     output += "    /// Whether this partition has a hardware-computed digest.\n";
@@ -194,6 +201,8 @@ fn generate_fuse_partitions_from_otp(otp: &OtpMmap) -> Result<String> {
         let name = snake_case(&partition.name);
         let has_digest = partition.hw_digest || partition.sw_digest;
         let digest_size: usize = if has_digest { 8 } else { 0 };
+        let zeroize_size = if partition.zeroizable { 8 } else { 0 };
+
         let calculated_size = partition
             .items
             .iter()
@@ -202,10 +211,10 @@ fn generate_fuse_partitions_from_otp(otp: &OtpMmap) -> Result<String> {
 
         let calculated_size = if digest_size == 8 {
             // digests need to be aligned to 8-byte boundary
-            calculated_size.next_multiple_of(8) + digest_size
+            calculated_size.next_multiple_of(8) + digest_size + zeroize_size
         } else {
             // partitions need to be aligned to 4-byte boundary
-            calculated_size.next_multiple_of(4)
+            calculated_size.next_multiple_of(4) + zeroize_size
         };
 
         let size = partition
@@ -218,16 +227,24 @@ fn generate_fuse_partitions_from_otp(otp: &OtpMmap) -> Result<String> {
             assert_eq!(calculated_size, size);
         }
 
-        // Digest is always the last 8 bytes of the partition
+        // RTL places the software/hardware digest before the trailing
+        // zeroization marker when a partition is zeroizable.
         let digest_offset = if has_digest {
-            format!("Some(0x{:x})", offset + size - 8)
+            format!("Some(0x{:x})", offset + size - zeroize_size - digest_size)
         } else {
             "None".to_string()
         };
 
         partition_entries.push(format!(
-            "OtpPartitionInfo {{ name: \"{}\", byte_offset: 0x{:x}, byte_size: 0x{:x}, sw_digest: {}, hw_digest: {}, digest_offset: {} }}",
-            name, offset, size, partition.sw_digest, partition.hw_digest, digest_offset
+            "OtpPartitionInfo {{ name: \"{}\", byte_offset: 0x{:x}, byte_size: 0x{:x}, secret: {}, zeroizable: {}, sw_digest: {}, hw_digest: {}, digest_offset: {} }}",
+            name,
+            offset,
+            size,
+            partition.secret,
+            partition.zeroizable,
+            partition.sw_digest,
+            partition.hw_digest,
+            digest_offset
         ));
 
         const_output += &format!(
@@ -280,8 +297,8 @@ fn generate_fuse_docs(
 
     // Partition summary table
     md.push_str("## Partitions\n\n");
-    md.push_str("| # | Name | Offset | Size | Secret | Digest |\n");
-    md.push_str("|---|------|--------|------|--------|--------|\n");
+    md.push_str("| # | Name | Offset | Size | Secret | Zeroizable | Digest |\n");
+    md.push_str("|---|------|--------|------|--------|------------|--------|\n");
 
     let mut offset: usize = 0;
     for (i, partition) in otp.partitions.iter().enumerate() {
@@ -292,10 +309,11 @@ fn generate_fuse_docs(
             .iter()
             .map(|item| item.size.parse::<usize>().unwrap_or(0))
             .sum();
+        let zeroize_size = if partition.zeroizable { 8 } else { 0 };
         let calculated_size = if digest_size == 8 {
-            calculated_size.next_multiple_of(8) + digest_size
+            calculated_size.next_multiple_of(8) + digest_size + zeroize_size
         } else {
-            calculated_size.next_multiple_of(4)
+            calculated_size.next_multiple_of(4) + zeroize_size
         };
         let size = partition
             .size
@@ -313,12 +331,13 @@ fn generate_fuse_docs(
 
         let _ = writeln!(
             &mut md,
-            "| {} | {} | 0x{:04x} | {} | {} | {} |",
+            "| {} | {} | 0x{:04x} | {} | {} | {} | {} |",
             i,
             snake_case(&partition.name),
             offset,
             size,
             if partition.secret { "Yes" } else { "No" },
+            if partition.zeroizable { "Yes" } else { "No" },
             digest_str,
         );
         offset += size;
