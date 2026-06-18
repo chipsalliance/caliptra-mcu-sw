@@ -2,7 +2,6 @@
 
 use anyhow::Result;
 use caliptra_builder::{elf_size, FwId};
-use caliptra_mcu_builder::firmware;
 use elf::endian::LittleEndian;
 use size_history::{
     ArtifactBuilder, Cache, FsCache, GitHubStepSummary, GithubActionCache, HtmlTableReport,
