@@ -121,10 +121,18 @@ fn main() {
     let owner_match = owner_hash == reference_hash;
     println!(
         "Vendor hash {} all-zero reference",
-        if vendor_match { "MATCHES" } else { "does NOT match" }
+        if vendor_match {
+            "MATCHES"
+        } else {
+            "does NOT match"
+        }
     );
     println!(
         "Owner  hash {} all-zero reference",
-        if owner_match { "MATCHES" } else { "does NOT match" }
+        if owner_match {
+            "MATCHES"
+        } else {
+            "does NOT match"
+        }
     );
 }

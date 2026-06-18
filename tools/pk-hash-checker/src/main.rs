@@ -186,16 +186,22 @@ impl Cli {
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--bundle" => {
-                    let value = args.next().ok_or_else(|| anyhow::anyhow!("--bundle requires a value"))?;
+                    let value = args
+                        .next()
+                        .ok_or_else(|| anyhow::anyhow!("--bundle requires a value"))?;
                     bundle = Some(PathBuf::from(value));
                 }
                 "--key-type" => {
-                    let value = args.next().ok_or_else(|| anyhow::anyhow!("--key-type requires a value"))?;
+                    let value = args
+                        .next()
+                        .ok_or_else(|| anyhow::anyhow!("--key-type requires a value"))?;
                     key_type = Some(match value.to_ascii_lowercase().as_str() {
                         "vendor" => KeyType::Vendor,
                         "owner" => KeyType::Owner,
                         "both" => KeyType::Both,
-                        other => bail!("invalid key type `{other}`; expected vendor, owner, or both"),
+                        other => {
+                            bail!("invalid key type `{other}`; expected vendor, owner, or both")
+                        }
                     });
                 }
                 "--expected-hash" => {
@@ -205,15 +211,21 @@ impl Cli {
                     );
                 }
                 "--key-file" => {
-                    let value = args.next().ok_or_else(|| anyhow::anyhow!("--key-file requires a value"))?;
+                    let value = args
+                        .next()
+                        .ok_or_else(|| anyhow::anyhow!("--key-file requires a value"))?;
                     key_file = Some(PathBuf::from(value));
                 }
                 "--reference-bundle" => {
-                    let value = args.next().ok_or_else(|| anyhow::anyhow!("--reference-bundle requires a value"))?;
+                    let value = args
+                        .next()
+                        .ok_or_else(|| anyhow::anyhow!("--reference-bundle requires a value"))?;
                     reference_bundle = Some(PathBuf::from(value));
                 }
                 "--dump-key-info" => {
-                    let value = args.next().ok_or_else(|| anyhow::anyhow!("--dump-key-info requires a value"))?;
+                    let value = args
+                        .next()
+                        .ok_or_else(|| anyhow::anyhow!("--dump-key-info requires a value"))?;
                     dump_key_info = Some(PathBuf::from(value));
                 }
                 "--verbose" | "-v" => verbose = true,
@@ -254,7 +266,9 @@ fn print_usage_and_exit(exit_code: i32) -> ! {
     println!("  --key-type <TYPE>          vendor, owner, or both");
     println!("  --expected-hash <HEX>      Compare against a 96-character hex string");
     println!("  --key-file <PATH>          Compare against a saved raw key-info blob");
-    println!("  --reference-bundle <PATH>  Compare against the same key-type hash in another bundle");
+    println!(
+        "  --reference-bundle <PATH>  Compare against the same key-type hash in another bundle"
+    );
     println!("  --dump-key-info <PATH>     Save the key-info blob for later reuse");
     println!("  -v, --verbose              Print additional manifest detail");
     println!("  -h, --help                 Show this help text");
@@ -361,8 +375,8 @@ fn load_key_file(path: &PathBuf, key_type: &KeyType) -> Result<Vec<u8>> {
         KeyType::Both => unreachable!("combined mode uses load_combined_key_file"),
     };
 
-    let bytes =
-        std::fs::read(path).with_context(|| format!("Failed to read key file `{}`", path.display()))?;
+    let bytes = std::fs::read(path)
+        .with_context(|| format!("Failed to read key file `{}`", path.display()))?;
 
     if bytes.len() != expected_size {
         bail!(
@@ -390,8 +404,8 @@ fn load_combined_key_file(path: &PathBuf) -> Result<(Vec<u8>, Vec<u8>)> {
     let owner_size = std::mem::size_of::<ImageOwnerPubKeys>();
     let expected_size = vendor_size + owner_size;
 
-    let bytes =
-        std::fs::read(path).with_context(|| format!("Failed to read key file `{}`", path.display()))?;
+    let bytes = std::fs::read(path)
+        .with_context(|| format!("Failed to read key file `{}`", path.display()))?;
 
     if bytes.len() != expected_size {
         bail!(
@@ -588,8 +602,13 @@ fn main() -> Result<()> {
     if let Some(ref expected_str) = cli.expected_hash {
         // -- 4a. Hex string comparison -----------------------------------
         let expected_bytes = parse_expected_hash(expected_str)?;
-        compare_and_exit(label, &computed_hash, &computed_hex, &expected_bytes, expected_str.trim());
-
+        compare_and_exit(
+            label,
+            &computed_hash,
+            &computed_hex,
+            &expected_bytes,
+            expected_str.trim(),
+        );
     } else if let Some(ref key_file_path) = cli.key_file {
         // -- 4b. Raw key-info blob comparison ----------------------------
         //
@@ -607,14 +626,16 @@ fn main() -> Result<()> {
             file_hex
         );
         compare_and_exit(label, &computed_hash, &computed_hex, &file_hash, &file_hex);
-
     } else if let Some(ref ref_path) = cli.reference_bundle {
         // -- 4c. Reference bundle comparison -----------------------------
         //
         // Extract the same key-type info from the reference bundle, hash it,
         // and compare against the primary bundle's hash.
         let ref_bytes = std::fs::read(ref_path).with_context(|| {
-            format!("Failed to read reference bundle from `{}`", ref_path.display())
+            format!(
+                "Failed to read reference bundle from `{}`",
+                ref_path.display()
+            )
         })?;
         let ref_manifest = parse_manifest(&ref_bytes).with_context(|| {
             format!(
