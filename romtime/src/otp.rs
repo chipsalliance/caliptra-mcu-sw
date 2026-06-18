@@ -774,9 +774,9 @@ impl Otp {
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
 
-        // Read two words at a time from OTP, yielding u64 blocks to the
-        // streaming digest. No large stack buffer required.
-        let base_word = partition.byte_offset / 4;
+        // Read one dword (64-bit) at a time from OTP, yielding u64 blocks to the
+        // streaming digest. Respects OTP 64-bit access granule for digest fields.
+        let base_dword = partition.byte_offset / 8;
         let num_u64_blocks = data_size / 8;
         let mut err: McuResult<()> = Ok(());
 
@@ -784,21 +784,13 @@ impl Otp {
             if err.is_err() {
                 return None;
             }
-            let w0 = match self.read_word(base_word + block_idx * 2) {
-                Ok(v) => v,
+            match self.read_dword(base_dword + block_idx) {
+                Ok(block) => Some(block),
                 Err(e) => {
                     err = Err(e);
-                    return None;
+                    None
                 }
-            };
-            let w1 = match self.read_word(base_word + block_idx * 2 + 1) {
-                Ok(v) => v,
-                Err(e) => {
-                    err = Err(e);
-                    return None;
-                }
-            };
-            Some(w0 as u64 | ((w1 as u64) << 32))
+            }
         });
 
         let digest = caliptra_mcu_otp_digest::otp_digest_iter(blocks, iv, cnst);
