@@ -11,9 +11,9 @@
 //! A Caliptra firmware bundle begins with an [`ImageManifest`] structure.  The
 //! manifest preamble embeds two sets of public keys:
 //!
-//! - **Vendor keys** (`preamble.vendor_pub_key_info`) â€“ keys controlled by the
+//! - **Vendor keys** (`preamble.vendor_pub_key_info`) - keys controlled by the
 //!   silicon vendor / firmware signer.
-//! - **Owner keys** (`preamble.owner_pub_keys`) â€“ keys injected by the platform
+//! - **Owner keys** (`preamble.owner_pub_keys`) - keys injected by the platform
 //!   owner at provisioning time.
 //!
 //! Caliptra's ROM authenticates firmware by comparing the SHA-384 hash of those
@@ -330,8 +330,8 @@ fn parse_expected_hash(hex_str: &str) -> Result<[u8; 48]> {
 
 /// Extract the raw key-info bytes for the selected key type from a manifest.
 ///
-/// - **vendor** â†’ bytes of `manifest.preamble.vendor_pub_key_info`
-/// - **owner**  â†’ bytes of `manifest.preamble.owner_pub_keys`
+/// - **vendor** -> bytes of `manifest.preamble.vendor_pub_key_info`
+/// - **owner**  -> bytes of `manifest.preamble.owner_pub_keys`
 ///
 /// These byte slices are what gets SHA-384 hashed to produce the PK hash that
 /// Caliptra's ROM compares against OTP fuses.
