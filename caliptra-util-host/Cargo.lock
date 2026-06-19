@@ -740,6 +740,7 @@ dependencies = [
  "caliptra-mcu-core-util-host-command-types",
  "caliptra-mcu-core-util-host-transport",
  "caliptra-mcu-debug-unlock-signer",
+ "caliptra-mcu-mbox-common",
  "caliptra-spdm-requester",
  "caliptra-util-host-commands",
  "caliptra-util-host-session",
