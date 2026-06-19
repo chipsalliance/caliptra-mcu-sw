@@ -24,6 +24,7 @@ caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-mcu-core-util-host-command-types.workspace = true
 caliptra-mcu-debug-unlock-signer.workspace = true
 caliptra-mcu-command-auth-challenge-signer.workspace = true
+caliptra-mcu-mbox-common.workspace = true
 caliptra-util-host-commands.workspace = true
 caliptra-util-host-session.workspace = true
 anyhow.workspace = true
