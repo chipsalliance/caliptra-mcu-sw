@@ -11,7 +11,11 @@ extern crate alloc;
 mod caliptra_vdm;
 mod cert_store;
 mod device_measurements;
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+mod emulated_tdisp;
 
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+use self::emulated_tdisp::EmulatedTdispDriver;
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -27,6 +31,11 @@ use mcu_spdm_lite_pal::{McuSpdmPal, BITMAP_SLOT_SIZE};
 use mcu_spdm_lite_stack::SpdmStack;
 use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 use mcu_spdm_lite_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+use mcu_spdm_lite_vdm_handler::pci_sig::{
+    tdisp::{TdispResponder, TdispVersion},
+    PciSigTdispVdm,
+};
 
 /// Bitmap allocator pool size per responder task.
 ///
@@ -39,6 +48,11 @@ const SPDM_LITE_SCRATCH_SIZE: usize = 8 * 1024;
 /// scratch pool so it survives the per-request allocator reset; its length caps
 /// `MaxSPDMmsgSize`.
 const SPDM_LITE_LARGE_MSG_SIZE: usize = 8 * 1024;
+
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+const SUPPORTED_TDISP_VERSIONS: &[TdispVersion] = &[TdispVersion::V10];
 
 /// Single cert store shared by all SPDM responder tasks.
 static CERT_STORE: SharedCertStore = SharedCertStore::new();
@@ -152,8 +166,8 @@ async fn spdm_mctp_responder() {
             measurement_provider(),
         )
     };
-    // MCTP hosts the IANA / Caliptra VDM backend (plaintext today). DOE hosts
-    // PCI-SIG and stays on the default NoVdmBackend.
+    // MCTP hosts the IANA / Caliptra VDM backend (plaintext today). DOE uses
+    // the default NoVdmBackend unless the TDISP validator feature wires PCI-SIG.
     static MCTP_VDM_HOOK: caliptra_vdm::CaliptraVdmHook = caliptra_vdm::CaliptraVdmHook;
     let vdm = CaliptraVdm::new(&MCTP_VDM_HOOK);
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
@@ -208,6 +222,16 @@ async fn spdm_doe_responder() {
             measurement_provider(),
         )
     };
+    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+    let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(
+        pal,
+        PciSigTdispVdm::new(
+            TEST_PCI_SIG_VENDOR_ID,
+            TdispResponder::new(SUPPORTED_TDISP_VERSIONS, EmulatedTdispDriver::new())
+                .expect("TDISP validator versions are non-empty"),
+        ),
+    );
+    #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
     let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
 
     crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lite DOE run loop");
