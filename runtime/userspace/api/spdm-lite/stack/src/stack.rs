@@ -833,6 +833,40 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             sessions.remove_and_destroy(session_id);
             Ok(rsp)
         }
+        ReqRespCode::GET_DIGESTS => {
+            let (digests_rsp, spdm_len) =
+                digests::handle_get_digests_req(state, pal, io, spdm_msg).await?;
+            let head = pal.header_size();
+            let spdm_rsp = &digests_rsp[head..head + spdm_len];
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+            encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                response_key_type,
+                spdm_rsp,
+            )
+            .await
+        }
+        ReqRespCode::GET_CERTIFICATE => {
+            let (certificate_rsp, spdm_len) =
+                certificate::handle_get_certificate_req(state, pal, io, spdm_msg).await?;
+            let head = pal.header_size();
+            let spdm_rsp = &certificate_rsp[head..head + spdm_len];
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+            encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                response_key_type,
+                spdm_rsp,
+            )
+            .await
+        }
         ReqRespCode::GET_MEASUREMENTS => {
             let (measurements_rsp, spdm_len) =
                 measurements::handle_get_measurements_req(state, pal, io, spdm_msg).await?;
