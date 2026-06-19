@@ -10,10 +10,6 @@ description = "Tool to verify vendor or owner public-key hashes embedded in a Ca
 name = "pk-hash-checker"
 path = "src/main.rs"
 
-[[example]]
-name = "check_bundle"
-path = "examples/check_bundle.rs"
-
 [dependencies]
 # Caliptra image-format types: provides ImageManifest, IMAGE_MANIFEST_BYTE_SIZE, etc.
 caliptra-image-types = { workspace = true, features = ["std"] }
