@@ -12,8 +12,6 @@ use caliptra_mcu_libsyscall_caliptra::{flash::SpiFlash, DefaultSyscalls};
 #[cfg(feature = "set-certificate")]
 use caliptra_mcu_libtock_platform::ErrorCode;
 use mcu_error::McuResult;
-#[cfg(feature = "set-certificate")]
-use mcu_spdm_lite_codec::errors::{SPDM_BUSY, SPDM_OPERATION_FAILED};
 use mcu_spdm_lite_traits::SpdmPalAsymAlgo;
 
 /// Number of cert slots managed by the PAL.
@@ -603,6 +601,8 @@ fn checksum(data: &[u8]) -> u32 {
 
 #[cfg(feature = "set-certificate")]
 fn map_flash_error(err: ErrorCode) -> mcu_error::McuErrorCode {
+    use mcu_spdm_lite_codec::errors::*;
+
     match err {
         ErrorCode::Busy => SPDM_BUSY,
         _ => SPDM_OPERATION_FAILED,
