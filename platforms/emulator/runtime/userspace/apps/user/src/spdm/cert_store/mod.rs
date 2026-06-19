@@ -109,12 +109,11 @@ async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
             .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
         // Panic-free word store: fixed-size array write lowers to a memcpy with
         // no bounds/length panic (loop guard guarantees 4 bytes of room).
-        if let Some(slot) = cert_buf
+        let slot = cert_buf
             .get_mut(offset as usize..)
             .and_then(|s| s.first_chunk_mut::<4>())
-        {
-            *slot = word.to_le_bytes();
-        }
+            .ok_or(mcu_error::codes::INVARIANT)?;
+        *slot = word.to_le_bytes();
         offset += 4;
     }
     // Handle remaining 3 bytes (547 % 4 == 3).

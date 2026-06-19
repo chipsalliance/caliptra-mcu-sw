@@ -43,12 +43,11 @@ async fn populate_idev_cert() -> CertStoreResult<()> {
             .await
             .map_err(|_| CertStoreError::CertReadError)?;
         // Panic-free word store: fixed-size array write -> memcpy, no panic.
-        if let Some(slot) = cert_buf
+        let slot = cert_buf
             .get_mut(offset as usize..)
             .and_then(|s| s.first_chunk_mut::<4>())
-        {
-            *slot = word.to_le_bytes();
-        }
+            .ok_or(CertStoreError::CertReadError)?;
+        *slot = word.to_le_bytes();
         offset += 4;
     }
     // Handle remaining 3 bytes (547 % 4 == 3).

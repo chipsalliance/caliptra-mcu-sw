@@ -38,24 +38,17 @@ pub async fn generate_claims(
         .ok_or(mcu_error::codes::INTERNAL_BUG)?;
     *claims_array = EAT_PAYLOAD_TEMPLATE;
 
-    // Splice nonce and PCR digest at compile-time-known offsets.
-    const _: () = assert!(NONCE_OFFSET + 32 <= EAT_PAYLOAD_LEN);
-    const _: () = assert!(MEASUREMENT_DIGEST_OFFSETS[0] + 48 <= EAT_PAYLOAD_LEN);
-    // SAFETY: the const asserts above prove both writes stay inside
-    // the `[u8; EAT_PAYLOAD_LEN]` `claims_array`. Source slices are
-    // 32 and 48 bytes respectively, matching the copy lengths.
-    unsafe {
-        core::ptr::copy_nonoverlapping(
-            nonce_buf.as_ptr(),
-            claims_array.as_mut_ptr().add(NONCE_OFFSET),
-            32,
-        );
-        core::ptr::copy_nonoverlapping(
-            pcr_value.as_ptr(),
-            claims_array.as_mut_ptr().add(MEASUREMENT_DIGEST_OFFSETS[0]),
-            48,
-        );
-    }
+    let nonce_slot = claims_array
+        .get_mut(NONCE_OFFSET..)
+        .and_then(|s| s.first_chunk_mut::<32>())
+        .ok_or(mcu_error::codes::INTERNAL_BUG)?;
+    *nonce_slot = nonce_buf;
+
+    let digest_slot = claims_array
+        .get_mut(MEASUREMENT_DIGEST_OFFSETS[0]..)
+        .and_then(|s| s.first_chunk_mut::<48>())
+        .ok_or(mcu_error::codes::INTERNAL_BUG)?;
+    *digest_slot = pcr_value;
 
     Ok(EAT_PAYLOAD_LEN)
 }
