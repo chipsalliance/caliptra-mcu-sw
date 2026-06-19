@@ -4,7 +4,7 @@
 
 use crate::dpe::{dpe_sign_ecc_p384, DPE_LABEL_LEN, DPE_P384_SIGNATURE_SIZE};
 use crate::eat::cbor_bstr_len;
-use crate::sha::{sha_finish, sha_init, sha_update, HashAlgo};
+use crate::sha::{sha_finish, sha_init, sha_update, HashAlgo, SHA_CONTEXT_SIZE};
 use crate::ApiAlloc;
 use mcu_error::codes::INVARIANT;
 use mcu_error::McuResult;
@@ -130,7 +130,8 @@ impl<'a> SignedEatLite<'a> {
         alloc: &A,
         payload: &[u8],
     ) -> McuResult<[u8; DPE_P384_SIGNATURE_SIZE]> {
-        let mut state = sha_init(alloc, HashAlgo::Sha384, &SIG_PREAMBLE).await?;
+        let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
+        let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &SIG_PREAMBLE).await?;
         let mut payload_header = [0u8; 9];
         let payload_header_len =
             write_cose_payload_bstr_len(&mut payload_header, payload.len()).ok_or(INVARIANT)?;

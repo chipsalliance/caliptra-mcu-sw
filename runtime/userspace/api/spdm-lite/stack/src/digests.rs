@@ -9,7 +9,8 @@
 
 use mcu_spdm_lite_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu};
 use mcu_spdm_lite_traits::{
-    PalBytes, SpdmPal, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
+    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo,
+    SpdmPalIoTransport, MAX_SLOTS,
 };
 use zerocopy::FromBytes;
 
@@ -22,7 +23,7 @@ use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 const CERT_CHUNK_SIZE: usize = 1024;
 
 pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {

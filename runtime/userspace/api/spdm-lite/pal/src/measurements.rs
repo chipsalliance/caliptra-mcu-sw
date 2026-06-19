@@ -67,11 +67,11 @@ impl<M: MeasurementProvider> SpdmPalMeasurements for McuSpdmPal<M> {
                 .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
             scratch.fill(0);
             self.meas_provider
-                .get_measurement_value(index, nonce, out, &mut scratch, &self.allocator)
+                .get_measurement_value(index, nonce, out, &mut scratch, self.allocator)
                 .await
         } else {
             self.meas_provider
-                .get_measurement_value(index, nonce, out, &mut [], &self.allocator)
+                .get_measurement_value(index, nonce, out, &mut [], self.allocator)
                 .await
         }
     }

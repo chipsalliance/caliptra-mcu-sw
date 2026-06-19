@@ -20,8 +20,7 @@ use super::*;
 extern crate alloc;
 
 use alloc::boxed::Box;
-use core::cell::{Cell, UnsafeCell};
-use core::ptr::NonNull;
+use core::cell::UnsafeCell;
 
 use super::cert::store::SharedCertStore;
 use super::measurements::MeasurementProvider;
@@ -35,61 +34,49 @@ use super::measurements::MeasurementProvider;
 /// [`UnsafeCell`] for interior mutability — the SPDM responder is
 /// strictly single-task, so we never observe concurrent access) plus a
 /// single [`BitmapAllocator`](super::alloc::BitmapAllocator) backed by
-/// a caller-supplied scratch region. The allocator is reset at the
-/// start of every `recv_request`, so allocations are scoped to a
-/// single SPDM exchange even though the allocator object itself lives
-/// on the PAL.
+/// a caller-supplied scratch region. The allocator serves both
+/// per-request scratch allocations and any large-message buffer
+/// retained on connection state across exchanges.
 pub struct McuSpdmPal<M: MeasurementProvider> {
     /// The wrapped byte-oriented PAL transport.
     pub(crate) transport: UnsafeCell<Box<dyn SpdmPalTransport>>,
 
-    /// Per-IO scratch allocator, reset by every `recv_request`.
-    pub(crate) allocator: BitmapAllocator,
+    /// Per-task scratch allocator. Lifted to `'static` so its lifetime is
+    /// independent of the PAL — long-lived allocations (the in-flight large
+    /// SPDM message owned by `LargeTransfer` state) can outlive any single
+    /// SPDM request cycle without needing a `'pal` lifetime parameter
+    /// threaded through the stack.
+    pub(crate) allocator: &'static BitmapAllocator,
 
     /// Shared cert store — same instance for all transports.
     pub(crate) cert_store: &'static SharedCertStore,
-
-    /// Persistent static buffer holding one in-flight large SPDM message
-    /// (`CHUNK_GET` response or `CHUNK_SEND` reassembly). Lent out for reads /
-    /// writes via [`Cell::take`]/[`Cell::set`] (the empty slice marks it
-    /// "checked out"), so a chunked transfer survives the per-request allocator
-    /// `reset`. No `unsafe` is needed to hand out the writable slice.
-    pub(crate) large_buf: Cell<Option<&'static mut [u8]>>,
 
     /// Measurement data provider (monomorphized).
     pub(crate) meas_provider: M,
 }
 
 impl<M: MeasurementProvider> McuSpdmPal<M> {
-    /// Creates a new `McuSpdmPal` with persistent chunk storage and a
-    /// measurement provider.
+    /// Creates a new `McuSpdmPal` with a measurement provider.
     ///
     /// # Safety
     ///
-    /// * `io_buf_ptr` must be aligned to
-    ///   [`BITMAP_SLOT_SIZE`](super::alloc::BITMAP_SLOT_SIZE) and point
-    ///   to `io_buf_capacity` bytes of writable memory exclusively
-    ///   owned by this `McuSpdmPal` for its entire lifetime.
-    /// * `large_buf` — When present, a dedicated static buffer holding one
-    ///   in-flight large SPDM message (`CHUNK_GET` response / `CHUNK_SEND`
-    ///   reassembly). Must be exclusively owned by this `McuSpdmPal` for its
-    ///   entire lifetime; its length caps `MaxSPDMmsgSize`.
+    /// * `allocator` — A `&'static BitmapAllocator` obtained from
+    ///   [`StaticBitmapAllocatorCell::init_once`]. Must be exclusively used
+    ///   by the task owning this `McuSpdmPal` (the underlying allocator is
+    ///   `!Sync`; using it from multiple tasks is undefined behavior).
     /// * The constructed `McuSpdmPal` must only be driven from a single
     ///   task; calling `recv_request` / `send_response` concurrently is
     ///   undefined behavior (interior mutability is not synchronized).
     pub unsafe fn new(
         transport: Box<dyn SpdmPalTransport>,
-        io_buf_ptr: NonNull<u8>,
-        io_buf_capacity: usize,
+        allocator: &'static BitmapAllocator,
         cert_store: &'static SharedCertStore,
-        large_buf: Option<&'static mut [u8]>,
         meas_provider: M,
     ) -> Self {
         Self {
             transport: UnsafeCell::new(transport),
-            allocator: BitmapAllocator::new(io_buf_ptr, io_buf_capacity),
+            allocator,
             cert_store,
-            large_buf: Cell::new(large_buf),
             meas_provider,
         }
     }

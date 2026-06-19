@@ -20,7 +20,7 @@ pub trait SpdmPalSessionCrypto {
     /// Opaque key handle (e.g. `Cmk` on Caliptra).
     ///
     /// `Clone` is required so containers can hold `Option<Key>`.
-    type Key: Clone;
+    type Key: Clone + 'static;
 
     /// Generate an ephemeral ECDH key pair.
     ///

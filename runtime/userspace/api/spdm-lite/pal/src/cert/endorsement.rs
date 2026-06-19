@@ -164,7 +164,7 @@ impl SlotEndorsement {
     pub fn is_writable(&self) -> bool {
         #[cfg(feature = "set-certificate")]
         {
-            return matches!(self, Self::Managed(_));
+            matches!(self, Self::Managed(_))
         }
         #[cfg(not(feature = "set-certificate"))]
         {
@@ -175,7 +175,7 @@ impl SlotEndorsement {
     pub fn stores_complete_chain(&self) -> bool {
         #[cfg(feature = "set-certificate")]
         {
-            return matches!(self, Self::Managed(_));
+            matches!(self, Self::Managed(_))
         }
         #[cfg(not(feature = "set-certificate"))]
         {

@@ -13,7 +13,7 @@ use mcu_spdm_lite_codec::{
     VendorDefinedRspBody,
 };
 use mcu_spdm_lite_traits::{
-    PalBytes, SpdmPal, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry, VdmResponse,
+    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry, VdmResponse,
     VdmResponseBuffer,
 };
 use zerocopy::{FromBytes, IntoBytes};
@@ -32,7 +32,7 @@ use crate::stack::ConnectionState;
 /// Returns the framed response buffer and its SPDM-payload length.
 pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBackend>(
     vdm: &V,
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     spdm_msg: &[u8],
@@ -78,21 +78,19 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
         0
     };
 
-    // Take the persistent large-message buffer directly (no scratch hop): the
-    // backend writes its payload at offsets [envelope..envelope+large_cap] in
-    // the same static slice that `CHUNK_GET` will later serve from. The envelope
-    // is written into [0..envelope] only after the backend reports `Large(n)`.
-    // The guard must be dropped before invoking any other `large_*` PAL method
-    // (e.g. `chunk::start_buffered_large_response` calls `large_capacity`).
+    // WipeOnDrop ensures that the allocated large buffer gets zero-wiped
+    // and freed under any exit path.
     let mut large_guard = if large_cap > 0 {
-        Some(pal.large_take(envelope + large_cap)?)
+        Some(chunk::WipeOnDrop {
+            buf: Some(pal.alloc_large_buf(envelope + large_cap)?),
+        })
     } else {
         None
     };
 
     let outcome = {
-        let large_slice: &mut [u8] = match large_guard.as_deref_mut() {
-            Some(buf) => &mut buf[envelope..envelope + large_cap],
+        let large_slice: &mut [u8] = match large_guard.as_mut() {
+            Some(guard) => &mut guard.buf.as_deref_mut().unwrap()[envelope..envelope + large_cap],
             None => &mut [],
         };
         let rsp = VdmResponseBuffer {
@@ -106,7 +104,7 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
 
     match outcome {
         VdmResponse::Inline(n) => {
-            // Drop the static-buffer guard early; not needed for inline.
+            // Drop large_guard here; its Drop impl auto-zeroizes!
             drop(large_guard);
             if n > inline_buf.len() {
                 return Err(SPDM_UNSPECIFIED);
@@ -127,6 +125,7 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
             if n > large_cap {
                 return Err(SPDM_UNSPECIFIED);
             }
+            let mut buf = guard.buf.take().ok_or(SPDM_UNSPECIFIED)?;
             // Backend has written its payload at static_buf[envelope..envelope+n].
             // Frame the VENDOR_DEFINED envelope in-place at offset 0.
             write_vendor_defined_envelope(
@@ -134,15 +133,19 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
                 decoded.standard_id,
                 decoded.vendor_id,
                 n,
-                &mut guard[..envelope],
+                &mut buf[..envelope],
             )?;
             let full_len = envelope + n;
-            // Release the static slice back to the PAL so the chunking layer's
-            // `large_capacity` / `large_read` calls observe it again.
-            drop(guard);
-            chunk::validate_buffered_large_response(state, pal, full_len)?;
-            let resp = chunk::start_buffered_large_response(state, pal, io, full_len)?;
-            Ok((resp, 0))
+            state.large_msg_ctx.set_buffer(buf);
+            let (resp, spdm_len) =
+                match chunk::start_buffered_large_response(state, pal, io, full_len) {
+                    Ok(res) => res,
+                    Err(err) => {
+                        state.large_msg_ctx.reset();
+                        return Err(err);
+                    }
+                };
+            Ok((resp, spdm_len))
         }
     }
 }

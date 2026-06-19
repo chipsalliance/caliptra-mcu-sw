@@ -61,7 +61,7 @@ impl SpdmPalHashAlgo {
 /// digest written by `finish` is observable externally.
 pub trait SpdmPalHash {
     /// Backend-defined running-hash state.
-    type State;
+    type State: 'static;
 
     /// Begins a new running hash and returns the initial state.
     ///

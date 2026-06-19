@@ -17,7 +17,7 @@
 use mcu_spdm_lite_codec::{
     CapFlags, CapabilitiesBody, CapabilitiesRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
 };
-use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalIo, SpdmPalIoTransport};
+use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
@@ -54,7 +54,7 @@ use crate::version::SUPPORTED_VERSIONS;
 /// * [`SPDM_VERSION_MISMATCH`] — requested version is not in
 ///   [`SUPPORTED_VERSIONS`].
 pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State>,
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
@@ -172,7 +172,10 @@ fn validate_capabilities_body(body: &CapabilitiesBody) -> SpdmResult<(u32, u32)>
 ///
 /// * [`SPDM_VERSION_MISMATCH`] — byte is not a recognised version or
 ///   not in [`SUPPORTED_VERSIONS`].
-fn select_version<S>(state: &mut ConnectionState<S>, requested: u8) -> SpdmResult<SpdmVersion> {
+fn select_version<S, L>(
+    state: &mut ConnectionState<S, L>,
+    requested: u8,
+) -> SpdmResult<SpdmVersion> {
     let v = SpdmVersion::from_u8(requested).ok_or(SPDM_VERSION_MISMATCH)?;
     if !SUPPORTED_VERSIONS.contains(&v) {
         return Err(SPDM_VERSION_MISMATCH);

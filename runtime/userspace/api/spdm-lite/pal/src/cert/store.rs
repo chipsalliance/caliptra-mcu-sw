@@ -8,7 +8,9 @@
 
 use core::cell::UnsafeCell;
 
-use mcu_caliptra_api_lite::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo};
+use mcu_caliptra_api_lite::{
+    sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CONTEXT_SIZE,
+};
 use mcu_error::McuResult;
 use mcu_spdm_lite_traits::MAX_SLOTS;
 
@@ -139,7 +141,8 @@ impl SharedCertStore {
             return Err(mcu_error::codes::INVARIANT);
         }
         let root_cert = chain[0];
-        let mut state = sha_init(alloc, HashAlgo::Sha384, &[]).await?;
+        let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
+        let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &[]).await?;
         sha_update(alloc, &mut state, root_cert).await?;
         let mut hash = [0u8; 48];
         sha_finish(alloc, &mut state, &mut hash).await?;

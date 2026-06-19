@@ -108,10 +108,10 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
     ) -> bool {
         #[cfg(feature = "set-certificate")]
         {
-            return slot_index(slot)
+            slot_index(slot)
                 .and_then(|idx| self.cert_store.cert_slots().get(idx))
                 .map(|slot| slot.is_writable())
-                .unwrap_or(false);
+                .unwrap_or(false)
         }
         #[cfg(not(feature = "set-certificate"))]
         {
