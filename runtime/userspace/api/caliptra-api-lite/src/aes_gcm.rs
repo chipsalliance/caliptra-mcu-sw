@@ -164,8 +164,8 @@ async fn spdm_init<'a, A: ApiAlloc>(
     // For SPDM secured messages the counter is always little-endian,
     // so flag bit 8 = 0.
     pfx.spdm_flags = U32::new(spdm_version as u32);
-    pfx.spdm_counter.copy_from_slice(seq_number);
-    pfx.cmk.copy_from_slice(&cmk.0);
+    pfx.spdm_counter = *seq_number;
+    pfx.cmk = cmk.0;
     pfx.aad_size = U32::new(aad.len() as u32);
     req[prefix_len..prefix_len + aad.len()].copy_from_slice(aad);
     populate_checksum(cmd, &mut req)?;
@@ -237,7 +237,7 @@ pub async fn spdm_aes_gcm_encrypt_update<'a, A: ApiAlloc>(
     req.fill(0);
     let pfx =
         EncryptDataReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
-    pfx.context.copy_from_slice(ctx);
+    pfx.context = *ctx.first_chunk::<AES_GCM_CTX_SIZE>().ok_or(INVARIANT)?;
     pfx.plaintext_size = U32::new(chunk.len() as u32);
     req[prefix_len..prefix_len + chunk.len()].copy_from_slice(chunk);
     populate_checksum(CMD_CM_AES_GCM_ENCRYPT_UPDATE, &mut req)?;
@@ -287,7 +287,7 @@ pub async fn spdm_aes_gcm_encrypt_final<A: ApiAlloc>(
     req.fill(0);
     let pfx =
         EncryptDataReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
-    pfx.context.copy_from_slice(ctx);
+    pfx.context = *ctx.first_chunk::<AES_GCM_CTX_SIZE>().ok_or(INVARIANT)?;
     pfx.plaintext_size = U32::new(chunk.len() as u32);
     req[prefix_len..prefix_len + chunk.len()].copy_from_slice(chunk);
     populate_checksum(CMD_CM_AES_GCM_ENCRYPT_FINAL, &mut req)?;
@@ -299,8 +299,10 @@ pub async fn spdm_aes_gcm_encrypt_final<A: ApiAlloc>(
     }
 
     // Parse tag at offset 8
-    let mut tag = [0u8; 16];
-    tag.copy_from_slice(&rsp[MBOX_RESP_HEADER_SIZE..MBOX_RESP_HEADER_SIZE + 16]);
+    let tag = *rsp
+        .get(MBOX_RESP_HEADER_SIZE..)
+        .and_then(|s| s.first_chunk::<16>())
+        .ok_or(INTERNAL_BUG)?;
 
     let ct_size_off = MBOX_RESP_HEADER_SIZE + 16;
     let ct_size = u32::from_le_bytes([
@@ -394,9 +396,9 @@ pub async fn spdm_aes_gcm_decrypt_final<A: ApiAlloc>(
     req.fill(0);
     let pfx =
         DecryptFinalReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
-    pfx.context.copy_from_slice(ctx);
+    pfx.context = *ctx.first_chunk::<AES_GCM_CTX_SIZE>().ok_or(INVARIANT)?;
     pfx.tag_len = U32::new(16);
-    pfx.tag.copy_from_slice(tag);
+    pfx.tag = *tag;
     pfx.ciphertext_size = U32::new(chunk.len() as u32);
     req[prefix_len..prefix_len + chunk.len()].copy_from_slice(chunk);
     populate_checksum(CMD_CM_AES_GCM_DECRYPT_FINAL, &mut req)?;

@@ -7,14 +7,14 @@
 //! array. Chunk buffers come from the per-IO bitmap pool — no
 //! stack-allocated `[u8; N]` arrays for cert content.
 
-use mcu_spdm_lite_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu};
+use mcu_spdm_lite_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu, SHA384_HASH_SIZE};
 use mcu_spdm_lite_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo,
     SpdmPalIoTransport, MAX_SLOTS,
 };
 use zerocopy::FromBytes;
 
-use crate::build::build_response;
+use crate::build::{build_response, write_fixed};
 use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 
@@ -62,9 +62,14 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
         if provisioned & (1 << slot) == 0 {
             continue;
         }
-        let dst = &mut tail[cursor..cursor + digest_size];
+        let dst = tail
+            .get_mut(cursor..cursor + digest_size)
+            .ok_or(SPDM_UNSPECIFIED)?;
         if let Some(cached) = pal.cached_chain_digest(slot, SpdmPalHashAlgo::Sha384) {
-            dst.copy_from_slice(&cached[..digest_size]);
+            let dst = dst
+                .first_chunk_mut::<SHA384_HASH_SIZE>()
+                .ok_or(SPDM_UNSPECIFIED)?;
+            *dst = cached;
         } else {
             cert_chain_hash(pal, io, slot, asym_algo, SpdmPalHashAlgo::Sha384, dst)
                 .await
@@ -111,8 +116,11 @@ fn fill_multi_key_conn_rsp_data<Pal: SpdmPal>(pal: &Pal, provisioned: u8, dst: &
         key_pair_ids[index] = pal.key_pair_id(slot).unwrap_or_default();
         cert_infos[index] = pal.cert_info(slot).unwrap_or_default() & 0x07;
         let usage = index * 2;
-        key_usage_masks[usage..usage + 2]
-            .copy_from_slice(&pal.key_usage_mask(slot).unwrap_or_default().to_le_bytes());
+        write_fixed(
+            key_usage_masks,
+            usage,
+            &pal.key_usage_mask(slot).unwrap_or_default().to_le_bytes(),
+        );
         index += 1;
     }
 }
@@ -140,7 +148,7 @@ pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
     // allocating 52 B on the stack is fine.
     let mut hdr = [0u8; 4 + 48];
     let total = (hdr.len() + der_len) as u16;
-    hdr[0..2].copy_from_slice(&total.to_le_bytes());
+    write_fixed(&mut hdr, 0, &total.to_le_bytes());
     // bytes 2..4 (Reserved) already zero
     pal.root_cert_hash(io, slot, asym_algo, algo, &mut hdr[4..4 + digest_size])
         .await?;

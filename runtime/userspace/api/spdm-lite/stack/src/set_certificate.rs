@@ -96,13 +96,13 @@ pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
         }
         pal.erase_cert_chain(io, slot_id, state.asym_algo()).await?;
     } else {
-        let (root_hash, der) = validate_spdm_cert_chain(pal, io, payload).await?;
+        let (root_hash, der) = validate_spdm_cert_chain(payload)?;
         pal.validate_set_certificate_chain(
             io,
             slot_id,
             req_body.key_pair_id,
             cert_model,
-            &root_hash,
+            root_hash,
             der,
         )
         .await
@@ -113,7 +113,7 @@ pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
             state.asym_algo(),
             req_body.key_pair_id,
             cert_model,
-            &root_hash,
+            root_hash,
             der,
         )
         .await?;
@@ -196,11 +196,7 @@ fn validate_negotiated_set_certificate_algorithms<S, L>(
     Ok(())
 }
 
-async fn validate_spdm_cert_chain<'payload, Pal: SpdmPal>(
-    pal: &Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-    payload: &'payload [u8],
-) -> SpdmResult<([u8; SHA384_DIGEST_SIZE], &'payload [u8])> {
+fn validate_spdm_cert_chain(payload: &[u8]) -> SpdmResult<(&[u8; SHA384_DIGEST_SIZE], &[u8])> {
     if payload.len() < SPDM_CERT_CHAIN_HDR_LEN {
         return Err(SPDM_INVALID_REQUEST);
     }
@@ -215,11 +211,14 @@ async fn validate_spdm_cert_chain<'payload, Pal: SpdmPal>(
     if der.is_empty() {
         return Err(SPDM_INVALID_REQUEST);
     }
+    // Validate DER framing of the chain; PAL re-walks and is responsible
+    // for verifying SHA-384(root cert) == root_hash.
+    let _root_cert_len = validate_der_chain(der)?;
 
-    let root_cert_len = validate_der_chain(der)?;
-    let mut root_hash = [0u8; SHA384_DIGEST_SIZE];
-    root_hash.copy_from_slice(&payload[4..SPDM_CERT_CHAIN_HDR_LEN]);
-    validate_root_hash(pal, io, &root_hash, &der[..root_cert_len]).await?;
+    let root_hash: &[u8; SHA384_DIGEST_SIZE] = payload
+        .get(4..SPDM_CERT_CHAIN_HDR_LEN)
+        .and_then(|s| s.try_into().ok())
+        .ok_or(SPDM_INVALID_REQUEST)?;
     Ok((root_hash, der))
 }
 
@@ -264,35 +263,10 @@ fn der_sequence_len(input: &[u8]) -> Option<usize> {
     (total_len <= input.len()).then_some(total_len)
 }
 
-async fn validate_root_hash<Pal: SpdmPal>(
-    pal: &Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-    expected: &[u8; SHA384_DIGEST_SIZE],
-    root_cert: &[u8],
-) -> SpdmResult<()> {
-    let mut actual = [0u8; SHA384_DIGEST_SIZE];
-    let mut hash = pal.hash_init(io, SpdmPalHashAlgo::Sha384, &[]).await?;
-    pal.hash_update(io, &mut hash, root_cert).await?;
-    pal.hash_finish(io, &mut hash, &mut actual).await?;
-    if constant_time_eq(expected, &actual) {
-        Ok(())
-    } else {
-        Err(SPDM_INVALID_REQUEST)
-    }
-}
-
 fn map_set_cert_validation_error(err: McuErrorCode) -> SpdmError {
     as_spdm_wire(err)
         .map(SpdmError::new)
         .unwrap_or(SPDM_INVALID_REQUEST)
-}
-
-fn constant_time_eq(a: &[u8; SHA384_DIGEST_SIZE], b: &[u8; SHA384_DIGEST_SIZE]) -> bool {
-    let mut diff = 0u8;
-    for i in 0..SHA384_DIGEST_SIZE {
-        diff |= a[i] ^ b[i];
-    }
-    diff == 0
 }
 
 #[cfg(test)]

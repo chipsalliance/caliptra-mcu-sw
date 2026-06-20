@@ -17,6 +17,20 @@ use mcu_spdm_lite_traits::{PalBytes, SpdmPal};
 
 use crate::error::SpdmResult;
 
+/// Copy a fixed-size array `src` into `buf` at `pos`, returning the advanced
+/// cursor.
+///
+/// Bounds are checked once via [`slice::first_chunk_mut`]; the const-`M` copy
+/// then carries no length check. An out-of-range write (unreachable for the
+/// fixed-layout signing-context builders) is a no-op rather than a panic, so
+/// this stays free of `panic_bounds_check` in the RoT codepath.
+pub(crate) fn write_fixed<const M: usize>(buf: &mut [u8], pos: usize, src: &[u8; M]) -> usize {
+    if let Some(slot) = buf.get_mut(pos..).and_then(|s| s.first_chunk_mut::<M>()) {
+        *slot = *src;
+    }
+    pos.saturating_add(M)
+}
+
 /// Allocate a buffer of `raw_len` bytes, rounded up to the transport's
 /// [`send_len_alignment`](SpdmPalIoTransport::send_len_alignment).
 /// Padding bytes are zeroed.

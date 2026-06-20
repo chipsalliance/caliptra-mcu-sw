@@ -55,10 +55,12 @@ impl SecuredMessageHeader {
 /// AAD = session_id(4, LE) || length(2, LE).
 /// Returns 6 (= `SECURED_MSG_HDR_SIZE`).
 pub fn encode_aad(session_id: u32, length: u16, out: &mut [u8]) -> Result<usize, WireError> {
-    if out.len() < SECURED_MSG_HDR_SIZE {
-        return Err(WireError);
-    }
-    out[0..4].copy_from_slice(&session_id.to_le_bytes());
-    out[4..6].copy_from_slice(&length.to_le_bytes());
+    let hdr = out
+        .first_chunk_mut::<SECURED_MSG_HDR_SIZE>()
+        .ok_or(WireError)?;
+    let (session, rest) = hdr.split_first_chunk_mut::<4>().ok_or(WireError)?;
+    *session = session_id.to_le_bytes();
+    let (len, _) = rest.split_first_chunk_mut::<2>().ok_or(WireError)?;
+    *len = length.to_le_bytes();
     Ok(SECURED_MSG_HDR_SIZE)
 }

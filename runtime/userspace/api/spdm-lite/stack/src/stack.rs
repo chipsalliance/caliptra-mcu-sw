@@ -955,8 +955,11 @@ async fn encrypt_secured_spdm_response<'a, Pal: SpdmPal>(
     }
 
     let mut rsp_plaintext = pal.alloc_bytes(io, rsp_pt_len)?;
-    rsp_plaintext[0..2].copy_from_slice(&(spdm_response.len() as u16).to_le_bytes());
-    rsp_plaintext[2..2 + spdm_response.len()].copy_from_slice(spdm_response);
+    let (len, body) = rsp_plaintext
+        .split_first_chunk_mut::<2>()
+        .ok_or(SPDM_UNSPECIFIED)?;
+    *len = (spdm_response.len() as u16).to_le_bytes();
+    copy_exact(body, spdm_response).map_err(|_| SPDM_UNSPECIFIED)?;
 
     let rsp_length = rsp_length_len as u16;
     let mut rsp_aad = pal.alloc_bytes(io, SECURED_MSG_HDR_SIZE)?;
@@ -996,13 +999,31 @@ fn build_secured_response_wire<'a, Pal: SpdmPal>(
     let raw_len = pal.header_size() + wire_body_len;
     let mut buf = alloc_padded(pal, io, raw_len).map_err(|_| SPDM_UNSPECIFIED)?;
     let hdr_off = pal.header_size();
-    buf[hdr_off..hdr_off + 4].copy_from_slice(&session_id.to_le_bytes());
-    buf[hdr_off + 4..hdr_off + 6].copy_from_slice(&rsp_length.to_le_bytes());
-    buf[hdr_off + 6..hdr_off + 6 + ciphertext.len()].copy_from_slice(ciphertext);
-    buf[hdr_off + 6 + ciphertext.len()..hdr_off + 6 + ciphertext.len() + AES_256_GCM_TAG_SIZE]
-        .copy_from_slice(tag);
+    let wire = buf.get_mut(hdr_off..raw_len).ok_or(SPDM_UNSPECIFIED)?;
+    let (hdr, body) = wire
+        .split_first_chunk_mut::<SECURED_MSG_HDR_SIZE>()
+        .ok_or(SPDM_UNSPECIFIED)?;
+    let (session, rest) = hdr.split_first_chunk_mut::<4>().ok_or(SPDM_UNSPECIFIED)?;
+    *session = session_id.to_le_bytes();
+    let (len, _) = rest.split_first_chunk_mut::<2>().ok_or(SPDM_UNSPECIFIED)?;
+    *len = rsp_length.to_le_bytes();
+    let (ct_out, tag_out) = body.split_at_mut(ciphertext.len());
+    copy_exact(ct_out, ciphertext).map_err(|_| SPDM_UNSPECIFIED)?;
+    *tag_out
+        .first_chunk_mut::<AES_256_GCM_TAG_SIZE>()
+        .ok_or(SPDM_UNSPECIFIED)? = *tag;
 
     Ok(buf)
+}
+
+fn copy_exact(dst: &mut [u8], src: &[u8]) -> Result<(), ()> {
+    if dst.len() != src.len() {
+        return Err(());
+    }
+    for (d, s) in dst.iter_mut().zip(src) {
+        *d = *s;
+    }
+    Ok(())
 }
 /// Decodes the SPDM common header from a raw request buffer.
 ///

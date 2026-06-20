@@ -168,7 +168,9 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
         let dest = rent_buf
             .get_mut(..initial_chunk.len())
             .ok_or(SPDM_INVALID_REQUEST)?;
-        dest.copy_from_slice(initial_chunk);
+        for (d, s) in dest.iter_mut().zip(initial_chunk) {
+            *d = *s;
+        }
         self.buf = Some(rent_buf);
         Ok(())
     }
@@ -194,7 +196,9 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
 
         let buf = self.buf.as_deref_mut().ok_or(SPDM_UNSPECIFIED)?;
         let destination = buf.get_mut(start..end).ok_or(SPDM_UNSPECIFIED)?;
-        destination.copy_from_slice(chunk);
+        for (d, s) in destination.iter_mut().zip(chunk) {
+            *d = *s;
+        }
 
         self.state.bytes_received = end as u32;
         self.state.seq_num = seq_num;

@@ -186,15 +186,13 @@ fn process_first_chunk<Pal: SpdmPal>(
     last_chunk: bool,
     rest: &[u8],
 ) -> Result<(), ChunkProcessError> {
-    let Some(size_bytes) = rest.get(..4) else {
+    let Some(size_bytes) = rest.first_chunk::<4>() else {
         return Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
         });
     };
-    let mut large_msg_size = [0u8; 4];
-    large_msg_size.copy_from_slice(size_bytes);
-    let large_msg_size = u32::from_le_bytes(large_msg_size) as usize;
+    let large_msg_size = u32::from_le_bytes(*size_bytes) as usize;
     let chunk_data = &rest[4..];
 
     // Require exact chunk body length match inside rest payload (no trailing junk bytes).

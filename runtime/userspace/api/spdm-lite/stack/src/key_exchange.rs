@@ -22,7 +22,7 @@ use mcu_spdm_lite_codec::{
 use mcu_spdm_lite_traits::*;
 use zerocopy::FromBytes;
 
-use crate::build::build_response;
+use crate::build::{build_response, write_fixed};
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
 };
@@ -220,7 +220,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     let asym_algo = state.asym_algo();
     let cert_chain_hash = &mut *hash_scratch;
     if let Some(cached) = pal.cached_chain_digest(slot_id, SpdmPalHashAlgo::Sha384) {
-        cert_chain_hash.copy_from_slice(&cached);
+        *cert_chain_hash = cached;
     } else {
         crate::digests::cert_chain_hash(
             pal,
@@ -240,17 +240,17 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
 
     // ── Feed TH: full KEY_EXCHANGE request ──────────────────────────
     // Use only the actual SPDM bytes (not transport padding).
+    let opaque_len_offset = SpdmMsgHdrPdu::SIZE + core::mem::size_of::<KeyExchangeReqBody>();
+    let opaque_len_bytes: &[u8; 2] = req
+        .get(opaque_len_offset..opaque_len_offset + 2)
+        .and_then(|s| s.try_into().ok())
+        .ok_or(SPDM_INVALID_REQUEST)?;
     let spdm_req_len = SpdmMsgHdrPdu::SIZE
         + core::mem::size_of::<KeyExchangeReqBody>()
         + 2 // opaque_len field
-        + u16::from_le_bytes([
-            req[SpdmMsgHdrPdu::SIZE + core::mem::size_of::<KeyExchangeReqBody>()],
-            req[SpdmMsgHdrPdu::SIZE + core::mem::size_of::<KeyExchangeReqBody>() + 1],
-        ]) as usize;
-    session
-        .transcript
-        .append(pal, io, &req[..spdm_req_len])
-        .await?;
+        + u16::from_le_bytes(*opaque_len_bytes) as usize;
+    let spdm_req = req.get(..spdm_req_len).ok_or(SPDM_INVALID_REQUEST)?;
+    session.transcript.append(pal, io, spdm_req).await?;
 
     // ── Generate random + summary hash ──────────────────────────────
     pal.generate_nonce(io, nonce)
@@ -285,10 +285,10 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     // Feed partial response (SPDM bytes only) to TH.
     let head = pal.header_size();
     let spdm_rsp_len = partial_body.encoded_size();
-    session
-        .transcript
-        .append(pal, io, &partial_resp[head..head + spdm_rsp_len])
-        .await?;
+    let partial_spdm = partial_resp
+        .get(head..head + spdm_rsp_len)
+        .ok_or(SPDM_UNSPECIFIED)?;
+    session.transcript.append(pal, io, partial_spdm).await?;
     drop(partial_resp);
 
     // ── TH1 = clone-and-finalize (for signing) ─────────────────────
@@ -370,13 +370,14 @@ fn build_signing_context(version: SpdmVersion, ctx: &mut [u8; SPDM_SIGNING_CONTE
         SpdmVersion::V12 => KEY_EXCHANGE_SIGNING_PREFIX_V12,
         SpdmVersion::V13 => KEY_EXCHANGE_SIGNING_PREFIX_V13,
     };
-    for dst in ctx[..SPDM_PREFIX_LEN].chunks_exact_mut(KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_LEN) {
-        dst.copy_from_slice(prefix);
+    let mut pos = 0;
+    for _ in 0..4 {
+        pos = write_fixed(ctx, pos, prefix);
     }
 
     ctx[SPDM_PREFIX_LEN] = 0;
     ctx[SPDM_PREFIX_LEN + 1] = 0;
-    ctx[SPDM_PREFIX_LEN + 2..].copy_from_slice(KEY_EXCHANGE_SIGNING_OP);
+    write_fixed(ctx, SPDM_PREFIX_LEN + 2, KEY_EXCHANGE_SIGNING_OP);
 }
 
 async fn compute_tbs_hash<Pal: SpdmPal>(

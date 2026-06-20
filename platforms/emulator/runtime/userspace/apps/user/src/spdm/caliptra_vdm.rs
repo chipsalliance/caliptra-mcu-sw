@@ -140,7 +140,9 @@ fn copy_bytes(src: &[u8], out: &mut [u8]) -> CaliptraVdmResult<usize> {
     if src.len() > out.len() {
         return Err(CaliptraCompletionCode::InsufficientResources);
     }
-    out[..src.len()].copy_from_slice(src);
+    for (d, s) in out.iter_mut().zip(src) {
+        *d = *s;
+    }
     Ok(src.len())
 }
 

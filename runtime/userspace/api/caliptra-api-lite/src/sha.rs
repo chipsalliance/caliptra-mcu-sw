@@ -239,7 +239,7 @@ async fn sha_call<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
     if is_init {
         let prefix =
             ShaInitPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
-        prefix.hash_algorithm = U32::new(algo.unwrap());
+        prefix.hash_algorithm = U32::new(algo.unwrap_or(0));
         prefix.input_size = U32::new(chunk_len as u32);
     } else {
         let prefix =

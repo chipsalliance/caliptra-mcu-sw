@@ -150,14 +150,17 @@ impl SpdmPalTransport for McuSpdmDoeTransport {
 
 /// Write DOE header into the first 8 bytes of `buf`.
 fn buf_write_doe_header(buf: &mut [u8], data_object_type: u8, length_dw: u32) {
+    let Some(hdr) = buf.first_chunk_mut::<8>() else {
+        return;
+    };
     // bytes 0..1: vendor_id (LE)
-    buf[0..2].copy_from_slice(&DOE_PCI_SIG_VENDOR_ID.to_le_bytes());
+    hdr[0..2].copy_from_slice(&DOE_PCI_SIG_VENDOR_ID.to_le_bytes());
     // byte 2: data_object_type
-    buf[2] = data_object_type;
+    hdr[2] = data_object_type;
     // byte 3: reserved
-    buf[3] = 0;
+    hdr[3] = 0;
     // bytes 4..7: length in DWORDs (18 bits, LE) + reserved (14 bits)
     // Low 18 bits = length_dw, upper 14 bits = 0
     let length_field = length_dw & 0x0003_FFFF;
-    buf[4..8].copy_from_slice(&length_field.to_le_bytes());
+    hdr[4..8].copy_from_slice(&length_field.to_le_bytes());
 }

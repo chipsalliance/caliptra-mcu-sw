@@ -107,7 +107,13 @@ async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
             .read(OTP_IDEVID_ECC_PARTITION, offset)
             .await
             .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
-        cert_buf[offset as usize..offset as usize + 4].copy_from_slice(&word.to_le_bytes());
+        // Panic-free word store: fixed-size array write lowers to a memcpy with
+        // no bounds/length panic (loop guard guarantees 4 bytes of room).
+        let slot = cert_buf
+            .get_mut(offset as usize..)
+            .and_then(|s| s.first_chunk_mut::<4>())
+            .ok_or(mcu_error::codes::INVARIANT)?;
+        *slot = word.to_le_bytes();
         offset += 4;
     }
     // Handle remaining 3 bytes (547 % 4 == 3).
@@ -119,8 +125,13 @@ async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
             .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
         let word_bytes = word.to_le_bytes();
         let skip = (offset - tail_offset) as usize;
-        for i in skip..4 {
-            cert_buf[tail_offset as usize + i] = word_bytes[i];
+        // Panic-free tail store: copy word_bytes[skip..] without indexing.
+        for (d, s) in cert_buf
+            .iter_mut()
+            .skip(tail_offset as usize + skip)
+            .zip(word_bytes.iter().skip(skip))
+        {
+            *d = *s;
         }
     }
 

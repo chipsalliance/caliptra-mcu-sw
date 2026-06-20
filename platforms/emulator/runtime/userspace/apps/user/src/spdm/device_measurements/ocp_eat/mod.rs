@@ -102,6 +102,8 @@ impl MeasurementProvider for OcpEatMeasurementProvider {
 /// Compute kid = SHA-384(pubkey_x || pubkey_y) from DPE certify_key.
 ///
 /// All mailbox buffers are allocated via `alloc` (BitmapAllocator).
+/// `pubkey_x`/`pubkey_y` are streamed directly into SHA, so no
+/// 96-byte concat buffer lives on the async stack.
 async fn compute_kid(
     key_label: &[u8; DPE_LABEL_LEN],
     alloc: &BitmapAllocator,

@@ -109,7 +109,9 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
                 let src = large
                     .get(bytes_sent..end)
                     .ok_or(crate::error::SPDM_UNSPECIFIED)?;
-                chunk.copy_from_slice(src);
+                for (d, s) in chunk.iter_mut().zip(src) {
+                    *d = *s;
+                }
             }
         }
     }

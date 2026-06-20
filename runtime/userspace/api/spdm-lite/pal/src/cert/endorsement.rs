@@ -211,8 +211,11 @@ impl ReadOnlyEndorsement {
     }
 
     fn root_cert_hash(&self, _algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()> {
-        let n = out.len().min(self.root_cert_hash.len());
-        out[..n].copy_from_slice(&self.root_cert_hash[..n]);
+        // Copies `min(out.len(), root_cert_hash.len())` bytes with no
+        // length-equality check, so no `copy_from_slice` panic path.
+        for (d, s) in out.iter_mut().zip(&self.root_cert_hash) {
+            *d = *s;
+        }
         Ok(())
     }
 
@@ -225,8 +228,18 @@ impl ReadOnlyEndorsement {
         let mut pos = 0;
         for cert in self.chain.iter() {
             if cert_offset < cert.len() {
-                let len = (cert.len() - cert_offset).min(buf.len() - pos);
-                buf[pos..pos + len].copy_from_slice(&cert[cert_offset..cert_offset + len]);
+                let len = cert
+                    .len()
+                    .saturating_sub(cert_offset)
+                    .min(buf.len().saturating_sub(pos));
+                if let (Some(dst), Some(src)) = (
+                    buf.get_mut(pos..pos + len),
+                    cert.get(cert_offset..cert_offset + len),
+                ) {
+                    for (d, s) in dst.iter_mut().zip(src) {
+                        *d = *s;
+                    }
+                }
                 pos += len;
                 cert_offset = 0;
                 if pos == buf.len() {
@@ -515,33 +528,69 @@ struct ManagedRecord {
 #[cfg(feature = "set-certificate")]
 impl ManagedRecord {
     fn encode(&self, out: &mut [u8; MANAGED_HEADER_SIZE]) {
-        out[0..4].copy_from_slice(&MANAGED_MAGIC);
-        out[4..6].copy_from_slice(&self.version.to_le_bytes());
-        out[6..8].copy_from_slice(&self.header_size.to_le_bytes());
-        out[8] = self.slot;
-        out[9] = self.algo;
-        out[10] = self.key_pair_id;
-        out[11] = self.cert_info;
-        out[12..14].copy_from_slice(&self.key_usage_mask.to_le_bytes());
-        out[16..20].copy_from_slice(&(self.cert_len as u32).to_le_bytes());
-        out[20..24].copy_from_slice(&self.data_checksum.to_le_bytes());
-        out[24..72].copy_from_slice(&self.root_hash);
+        // Layout (matches decode below):
+        //   [0..4]   magic
+        //   [4..6]   version (LE)
+        //   [6..8]   header_size (LE)
+        //   [8]      slot
+        //   [9]      algo
+        //   [10]     key_pair_id
+        //   [11]     cert_info
+        //   [12..14] key_usage_mask (LE)
+        //   [14..16] reserved (zero)
+        //   [16..20] cert_len (LE u32)
+        //   [20..24] data_checksum (LE)
+        //   [24..72] root_hash
+        //   [72..80] reserved (zero)
+        let (magic, rest) = out.split_first_chunk_mut::<4>().unwrap();
+        *magic = MANAGED_MAGIC;
+        let (version, rest) = rest.split_first_chunk_mut::<2>().unwrap();
+        *version = self.version.to_le_bytes();
+        let (hdr_size, rest) = rest.split_first_chunk_mut::<2>().unwrap();
+        *hdr_size = self.header_size.to_le_bytes();
+        rest[0] = self.slot;
+        rest[1] = self.algo;
+        rest[2] = self.key_pair_id;
+        rest[3] = self.cert_info;
+        let rest = &mut rest[4..];
+        let (kum, rest) = rest.split_first_chunk_mut::<2>().unwrap();
+        *kum = self.key_usage_mask.to_le_bytes();
+        // skip [14..16] reserved (already MANAGED_ERASED_BYTE-filled)
+        let rest = &mut rest[2..];
+        let (len, rest) = rest.split_first_chunk_mut::<4>().unwrap();
+        *len = (self.cert_len as u32).to_le_bytes();
+        let (chk, rest) = rest.split_first_chunk_mut::<4>().unwrap();
+        *chk = self.data_checksum.to_le_bytes();
+        let (rh, _) = rest.split_first_chunk_mut::<48>().unwrap();
+        *rh = self.root_hash;
     }
 
     fn decode(input: &[u8; MANAGED_HEADER_SIZE]) -> Option<Self> {
-        let mut root_hash = [0u8; 48];
-        root_hash.copy_from_slice(&input[24..72]);
+        let (magic, rest) = input.split_first_chunk::<4>()?;
+        let (version, rest) = rest.split_first_chunk::<2>()?;
+        let (header_size, rest) = rest.split_first_chunk::<2>()?;
+        let (slot, rest) = rest.split_first()?;
+        let (algo, rest) = rest.split_first()?;
+        let (key_pair_id, rest) = rest.split_first()?;
+        let (cert_info, rest) = rest.split_first()?;
+        let (kum, rest) = rest.split_first_chunk::<2>()?;
+        let (_reserved, rest) = rest.split_first_chunk::<2>()?;
+        let (cert_len, rest) = rest.split_first_chunk::<4>()?;
+        let (data_checksum, rest) = rest.split_first_chunk::<4>()?;
+        let (root_hash, _) = rest.split_first_chunk::<48>()?;
+        // magic is not parsed here; caller checks it before invoking decode.
+        let _ = magic;
         Some(Self {
-            version: u16::from_le_bytes(input[4..6].try_into().ok()?),
-            header_size: u16::from_le_bytes(input[6..8].try_into().ok()?),
-            slot: input[8],
-            algo: input[9],
-            key_pair_id: input[10],
-            cert_info: input[11],
-            key_usage_mask: u16::from_le_bytes(input[12..14].try_into().ok()?),
-            cert_len: u32::from_le_bytes(input[16..20].try_into().ok()?) as usize,
-            data_checksum: u32::from_le_bytes(input[20..24].try_into().ok()?),
-            root_hash,
+            version: u16::from_le_bytes(*version),
+            header_size: u16::from_le_bytes(*header_size),
+            slot: *slot,
+            algo: *algo,
+            key_pair_id: *key_pair_id,
+            cert_info: *cert_info,
+            key_usage_mask: u16::from_le_bytes(*kum),
+            cert_len: u32::from_le_bytes(*cert_len) as usize,
+            data_checksum: u32::from_le_bytes(*data_checksum),
+            root_hash: *root_hash,
         })
     }
 }

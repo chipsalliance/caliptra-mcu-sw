@@ -465,7 +465,8 @@ async fn hkdf_expand_bin_str<P: SpdmPalAlloc + SpdmPalSessionCrypto>(
         context,
         &mut info,
     )?;
-    pal.hkdf_expand(io, prk, SHA384_HASH_SIZE as u32, &info[..len])
+    let info = info.get(..len).ok_or(mcu_error::codes::INVARIANT)?;
+    pal.hkdf_expand(io, prk, SHA384_HASH_SIZE as u32, info)
         .await
 }
 
@@ -488,21 +489,28 @@ fn bin_concat(
         return Err(mcu_error::codes::INVARIANT);
     }
 
-    let len_bytes = length.to_le_bytes();
-    buf[pos..pos + 2].copy_from_slice(&len_bytes);
-    pos += 2;
+    write_bin_str_bytes(buf, &mut pos, &length.to_le_bytes())?;
 
-    buf[pos..pos + version_str.len()].copy_from_slice(version_str);
-    pos += version_str.len();
+    write_bin_str_bytes(buf, &mut pos, version_str)?;
 
     let label = bin_str.label();
-    buf[pos..pos + label.len()].copy_from_slice(label);
-    pos += label.len();
+    write_bin_str_bytes(buf, &mut pos, label)?;
 
     if let Some(ctx) = context {
-        buf[pos..pos + ctx.len()].copy_from_slice(ctx);
-        pos += ctx.len();
+        write_bin_str_bytes(buf, &mut pos, ctx)?;
     }
 
     Ok(pos)
+}
+
+fn write_bin_str_bytes(buf: &mut [u8], pos: &mut usize, src: &[u8]) -> McuResult<()> {
+    let end = pos
+        .checked_add(src.len())
+        .ok_or(mcu_error::codes::INVARIANT)?;
+    let dst = buf.get_mut(*pos..end).ok_or(mcu_error::codes::INVARIANT)?;
+    for (d, s) in dst.iter_mut().zip(src) {
+        *d = *s;
+    }
+    *pos = end;
+    Ok(())
 }

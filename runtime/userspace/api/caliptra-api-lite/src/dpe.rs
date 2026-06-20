@@ -211,7 +211,7 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
         cmd.size = U32::new(size);
     }
     let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
-    req[..4].copy_from_slice(&checksum.to_le_bytes());
+    *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
 
     // Allocate response: outer prefix + DPE response hdr + cert_size
     // + chain bytes (up to DPE_MAX_CHUNK_SIZE).
@@ -236,9 +236,11 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
         return Err(INTERNAL_BUG);
     }
 
-    let mut cert_size_buf = [0u8; 4];
-    cert_size_buf.copy_from_slice(&rsp[cert_size_off..cert_size_off + 4]);
-    let cert_size = u32::from_le_bytes(cert_size_buf) as usize;
+    let cert_size = u32::from_le_bytes(
+        *rsp.get(cert_size_off..)
+            .and_then(|s| s.first_chunk::<4>())
+            .ok_or(INTERNAL_BUG)?,
+    ) as usize;
     if cert_size > dst.len() || chain_off + cert_size > rsp_len {
         return Err(INTERNAL_BUG);
     }
@@ -286,8 +288,8 @@ pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
     pubkey_y: &mut [u8; 48],
 ) -> McuResult<()> {
     certify_key_response(alloc, label, |resp_prefix, _cert| {
-        pubkey_x.copy_from_slice(&resp_prefix.derived_pubkey_x);
-        pubkey_y.copy_from_slice(&resp_prefix.derived_pubkey_y);
+        *pubkey_x = resp_prefix.derived_pubkey_x;
+        *pubkey_y = resp_prefix.derived_pubkey_y;
         Ok(())
     })
     .await
@@ -362,10 +364,10 @@ fn build_certify_key_req<'a, A: ApiAlloc>(
                 .map_err(|_| INVARIANT)?;
         cmd.flags = U32::new(0);
         cmd.format = U32::new(DPE_CERTIFY_KEY_FORMAT_X509);
-        cmd.label.copy_from_slice(label);
+        cmd.label = *label;
     }
     let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
-    req[..4].copy_from_slice(&checksum.to_le_bytes());
+    *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
     Ok(req)
 }
 
@@ -441,12 +443,12 @@ pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
     {
         let cmd = SignP384Cmd::mut_from_bytes(&mut req[cur..cur + size_of::<SignP384Cmd>()])
             .map_err(|_| INVARIANT)?;
-        cmd.label.copy_from_slice(label);
+        cmd.label = *label;
         cmd.flags = U32::new(0);
-        cmd.digest.copy_from_slice(&digest[..DPE_LABEL_LEN]);
+        cmd.digest = *digest.first_chunk::<DPE_LABEL_LEN>().ok_or(INVARIANT)?;
     }
     let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
-    req[..4].copy_from_slice(&checksum.to_le_bytes());
+    *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
 
     let rsp_max = size_of::<InvokeDpeRespPrefix>() + size_of::<SignP384RespBody>();
     let mut rsp = alloc.alloc(rsp_max)?;
@@ -470,7 +472,9 @@ pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
         &rsp[resp_body_off..resp_body_off + size_of::<SignP384RespBody>()],
     )
     .map_err(|_| INTERNAL_BUG)?;
-    signature[..48].copy_from_slice(&sign_resp.sig_r);
-    signature[48..96].copy_from_slice(&sign_resp.sig_s);
+    let (sig_r, rest) = signature.split_first_chunk_mut::<48>().ok_or(INVARIANT)?;
+    *sig_r = sign_resp.sig_r;
+    let (sig_s, _) = rest.split_first_chunk_mut::<48>().ok_or(INVARIANT)?;
+    *sig_s = sign_resp.sig_s;
     Ok(DPE_P384_SIGNATURE_SIZE)
 }

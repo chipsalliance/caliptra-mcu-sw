@@ -124,7 +124,7 @@ impl McuSpdmMctpTransport {
         let expected_driver = match msg_type {
             MCTP_MSG_TYPE_SPDM => driver_num::MCTP_SPDM,
             MCTP_MSG_TYPE_SECURED_SPDM => driver_num::MCTP_SECURE,
-            _ => unreachable!(),
+            _ => return Err(error_code::UNEXPECTED_MESSAGE_TYPE),
         };
         if driver_num != expected_driver {
             return Err(error_code::UNEXPECTED_MESSAGE_TYPE);
@@ -210,7 +210,9 @@ impl SpdmPalTransport for McuSpdmMctpTransport {
             .take()
             .ok_or(error_code::NO_REQUEST_IN_FLIGHT)?;
 
-        msg[0] = self.msg_type & MCTP_MSG_TYPE_MASK;
+        if let Some(first) = msg.first_mut() {
+            *first = self.msg_type & MCTP_MSG_TYPE_MASK;
+        }
 
         self.mctp.send_response(msg, msg_info).await?;
         Ok(())

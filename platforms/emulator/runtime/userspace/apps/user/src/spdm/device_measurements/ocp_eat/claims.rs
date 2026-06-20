@@ -22,12 +22,33 @@ pub async fn generate_claims(
 ) -> McuResult<usize> {
     let pcr_value = get_pcr_value(alloc, PLATFORM_STATE_PCR_INDEX).await?;
 
-    if claims_buf.len() < EAT_PAYLOAD_LEN {
-        return Err(mcu_error::codes::INTERNAL_BUG);
+    // Nonce from SPDM is variable-length; pad/truncate to 32 bytes.
+    // `iter_mut().zip(...)` avoids the `copy_from_slice` length-check
+    // panic site (and its file/Location rodata cost).
+    let mut nonce_buf = [0u8; 32];
+    for (dst, src) in nonce_buf.iter_mut().zip(nonce.iter().take(32)) {
+        *dst = *src;
     }
-    claims_buf[..EAT_PAYLOAD_LEN].copy_from_slice(&EAT_PAYLOAD_TEMPLATE);
-    claims_buf[NONCE_OFFSET..NONCE_OFFSET + SPDM_NONCE_LEN].copy_from_slice(nonce);
-    claims_buf[MEASUREMENT_DIGEST_OFFSETS[0]..MEASUREMENT_DIGEST_OFFSETS[0] + 48]
-        .copy_from_slice(&pcr_value);
+
+    // Convert the output prefix to a fixed-size array reference once;
+    // this is the only panic site for the whole function (single
+    // `Location` shared by all writes below).
+    let claims_array: &mut [u8; EAT_PAYLOAD_LEN] = claims_buf
+        .first_chunk_mut::<EAT_PAYLOAD_LEN>()
+        .ok_or(mcu_error::codes::INTERNAL_BUG)?;
+    *claims_array = EAT_PAYLOAD_TEMPLATE;
+
+    let nonce_slot = claims_array
+        .get_mut(NONCE_OFFSET..)
+        .and_then(|s| s.first_chunk_mut::<32>())
+        .ok_or(mcu_error::codes::INTERNAL_BUG)?;
+    *nonce_slot = nonce_buf;
+
+    let digest_slot = claims_array
+        .get_mut(MEASUREMENT_DIGEST_OFFSETS[0]..)
+        .and_then(|s| s.first_chunk_mut::<48>())
+        .ok_or(mcu_error::codes::INTERNAL_BUG)?;
+    *digest_slot = pcr_value;
+
     Ok(EAT_PAYLOAD_LEN)
 }

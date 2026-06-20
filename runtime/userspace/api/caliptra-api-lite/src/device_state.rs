@@ -96,8 +96,9 @@ pub async fn get_pcr_value<A: ApiAlloc>(
     // Build request (zero nonce — we don't verify the quote signature).
     let mut req = alloc.alloc(REQ_SIZE)?;
     req.fill(0);
-    let checksum = calc_checksum(CMD_QUOTE_PCRS_ECC384, &req[4..]);
-    req[..4].copy_from_slice(&checksum.to_le_bytes());
+    let (cs_slot, body): (&mut [u8; 4], &mut [u8]) =
+        req.split_first_chunk_mut::<4>().ok_or(INVARIANT)?;
+    *cs_slot = calc_checksum(CMD_QUOTE_PCRS_ECC384, body).to_le_bytes();
 
     // Execute mailbox command.
     let mut rsp = alloc.alloc(RSP_SIZE)?;
@@ -107,9 +108,11 @@ pub async fn get_pcr_value<A: ApiAlloc>(
         return Err(INVARIANT);
     }
 
-    // Extract pcrs[pcr_index] from the response.
+    // Extract pcrs[pcr_index] from the response as a 48-byte chunk.
     let offset = MBOX_RESP_HEADER_SIZE + pcr_index * PCR_VALUE_SIZE;
-    let mut digest = [0u8; PCR_VALUE_SIZE];
-    digest.copy_from_slice(&rsp[offset..offset + PCR_VALUE_SIZE]);
-    Ok(digest)
+    let digest_slot: &[u8; PCR_VALUE_SIZE] = rsp
+        .get(offset..offset + PCR_VALUE_SIZE)
+        .and_then(|s| s.try_into().ok())
+        .ok_or(INVARIANT)?;
+    Ok(*digest_slot)
 }

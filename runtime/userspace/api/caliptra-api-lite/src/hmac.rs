@@ -128,7 +128,7 @@ pub async fn cm_hmac<A: ApiAlloc>(
     let mut req = alloc.alloc(wire_len)?;
     req.fill(0);
     let pfx = HmacReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
-    pfx.cmk.copy_from_slice(&cmk.0);
+    pfx.cmk = cmk.0;
     pfx.hash_algorithm = U32::new(CM_HASH_ALGO_SHA384);
     pfx.data_size = U32::new(data.len() as u32);
     req[prefix_len..prefix_len + data.len()].copy_from_slice(data);
@@ -171,8 +171,8 @@ pub async fn hkdf_extract<A: ApiAlloc>(alloc: &A, salt: HkdfSalt<'_>, ikm: &Cmk)
     req.fill(0);
     let r = HkdfExtractReq::mut_from_bytes(&mut req[..req_size]).map_err(|_| INVARIANT)?;
     r.hash_algorithm = U32::new(CM_HASH_ALGO_SHA384);
-    r.salt.copy_from_slice(&salt_cmk.0);
-    r.ikm.copy_from_slice(&ikm.0);
+    r.salt = salt_cmk.0;
+    r.ikm = ikm.0;
     populate_checksum(CMD_CM_HKDF_EXTRACT, &mut req)?;
 
     let mut rsp = alloc.alloc(HKDF_EXTRACT_RSP_SIZE)?;
@@ -182,9 +182,10 @@ pub async fn hkdf_extract<A: ApiAlloc>(alloc: &A, salt: HkdfSalt<'_>, ikm: &Cmk)
         return Err(INTERNAL_BUG);
     }
 
-    let mut prk = Cmk::default();
-    prk.0
-        .copy_from_slice(&rsp[MBOX_RESP_HEADER_SIZE..HKDF_EXTRACT_RSP_SIZE]);
+    let prk = Cmk(*rsp
+        .get(MBOX_RESP_HEADER_SIZE..)
+        .and_then(|s| s.first_chunk::<CMK_SIZE>())
+        .ok_or(INTERNAL_BUG)?);
     Ok(prk)
 }
 
@@ -206,7 +207,7 @@ pub async fn hkdf_expand<A: ApiAlloc>(
     let mut req = alloc.alloc(wire_len)?;
     req.fill(0);
     let pfx = HkdfExpandReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
-    pfx.prk.copy_from_slice(&prk.0);
+    pfx.prk = prk.0;
     pfx.hash_algorithm = U32::new(CM_HASH_ALGO_SHA384);
     pfx.key_usage = U32::new(key_usage as u32);
     pfx.key_size = U32::new(key_size);
@@ -220,8 +221,9 @@ pub async fn hkdf_expand<A: ApiAlloc>(
         return Err(INTERNAL_BUG);
     }
 
-    let mut okm = Cmk::default();
-    okm.0
-        .copy_from_slice(&rsp[MBOX_RESP_HEADER_SIZE..HKDF_EXPAND_RSP_SIZE]);
+    let okm = Cmk(*rsp
+        .get(MBOX_RESP_HEADER_SIZE..)
+        .and_then(|s| s.first_chunk::<CMK_SIZE>())
+        .ok_or(INTERNAL_BUG)?);
     Ok(okm)
 }
