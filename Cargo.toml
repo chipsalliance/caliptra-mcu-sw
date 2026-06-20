@@ -156,6 +156,8 @@ futures = "0.3.31"
 gdbstub = "0.6.3"
 gdbstub_arch = "0.2.4"
 getrandom = "0.2"
+google-cloud-aiplatform-v1 = "=1.8.0"
+google-cloud-auth = "=1.7.0"
 heapless = { version = "0.8", features = ["portable-atomic"] }
 hex = "0.4.3"
 hkdf = "0.12.4"
@@ -178,6 +180,7 @@ quote = "1.0"
 rand = "0.8.5"
 rayon = "1.10"
 random-port = "0.1.1"
+rustls = "0.23.40"
 same-file = "1"
 semver = "1.0.23"
 sec1 = { version = "0.7.3" }
@@ -197,6 +200,7 @@ syn = { version = "2", default-features = false, features = ["full", "parsing"] 
 tempfile = "3.14.0"
 thiserror = "2"
 toml = "0.8.19"
+tokio = "1.52.3"
 uio = "0.4.0"
 uuid = { version = "1.10.0", features = ["serde", "v4"]}
 walkdir = "2.5.0"
@@ -247,6 +251,8 @@ caliptra-mcu-debug-unlock-signer = { path = "common/debug-unlock-signer" }
 caliptra-mcu-config-emulator = { path = "platforms/emulator/config" }
 caliptra-mcu-config-fpga = { path = "platforms/fpga/config" }
 caliptra-mcu-error = { path = "error" }
+caliptra-mcu-runtime-userspace-error = { path = "runtime/userspace/error" }
+mcu-error = { path = "runtime/userspace/error", package = "caliptra-mcu-runtime-userspace-error" }
 caliptra-mcu-firmware-bundler = { path = "firmware-bundler" }
 caliptra-mcu-fuses-generator = { path = "registers/fuses" }
 caliptra-mcu-coverage = { path = "coverage" }
@@ -296,7 +302,6 @@ mcu-spdm-lite-transports = { path = "runtime/userspace/api/spdm-lite/transports"
 mcu-spdm-lite-pal = { path = "runtime/userspace/api/spdm-lite/pal" }
 mcu-spdm-lite-errors = { path = "runtime/userspace/api/spdm-lite/errors" }
 mcu-spdm-lite-vdm-handler = { path = "runtime/userspace/api/spdm-lite/vdm-handler" }
-mcu-error = { path = "runtime/userspace/error" }
 caliptra-mcu-libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 caliptra-mcu-userlog = { path = "runtime/userspace/userlog" }
 caliptra-mcu-libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }
@@ -345,6 +350,8 @@ caliptra-ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "f
 dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "a26db5b869f13f0d2c5762b75f8892b9fe2d8055", default-features = false, features =  ["p384", "arbitrary_max_handles"] }
 crypto = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "a26db5b869f13f0d2c5762b75f8892b9fe2d8055", default-features = false }
 platform = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "a26db5b869f13f0d2c5762b75f8892b9fe2d8055", default-features = false }
+
+size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", package = "caliptra-size-history", rev = "64e75e17e1a2eb07ff8dd6698932af82182da85e" }
 
 # local caliptra dependency; useful when developing
 # caliptra-api = { path = "../caliptra-sw/api" }

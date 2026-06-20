@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cmd_interface::generate_failure_response;
-use crate::error::MsgHandlerError;
+use crate::errors;
 use caliptra_mcu_pldm_common::codec::PldmCodec;
 use caliptra_mcu_pldm_common::error::PldmError;
 use caliptra_mcu_pldm_common::message::control::{
@@ -15,6 +15,7 @@ use caliptra_mcu_pldm_common::protocol::base::{
 };
 use caliptra_mcu_pldm_common::protocol::version::{PldmVersion, ProtocolVersionStr, Ver32};
 use core::sync::atomic::{AtomicUsize, Ordering};
+use mcu_error::McuResult;
 
 pub type Tid = u8;
 pub type CmdOpCode = u8;
@@ -158,34 +159,34 @@ impl<'a> ControlContext<'a> {
 /// Each method takes a mutable reference to a payload buffer and returns a `Result`
 /// containing the size of the response or a `MsgHandlerError` if an error occurs.
 pub trait CtrlCmdResponder {
-    fn get_tid_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError>;
-    fn set_tid_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError>;
-    fn get_pldm_types_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError>;
-    fn get_pldm_commands_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError>;
-    fn get_pldm_version_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError>;
+    fn get_tid_rsp(&self, payload: &mut [u8]) -> McuResult<usize>;
+    fn set_tid_rsp(&self, payload: &mut [u8]) -> McuResult<usize>;
+    fn get_pldm_types_rsp(&self, payload: &mut [u8]) -> McuResult<usize>;
+    fn get_pldm_commands_rsp(&self, payload: &mut [u8]) -> McuResult<usize>;
+    fn get_pldm_version_rsp(&self, payload: &mut [u8]) -> McuResult<usize>;
 }
 
 impl CtrlCmdResponder for ControlContext<'_> {
-    fn get_tid_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
-        let req = GetTidRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+    fn get_tid_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
+        let req = GetTidRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
         let resp = GetTidResponse::new(
             req.hdr.instance_id(),
             self.get_tid(),
             PldmBaseCompletionCode::Success as u8,
         );
-        resp.encode(payload).map_err(MsgHandlerError::Codec)
+        resp.encode(payload).map_err(|_| errors::CODEC_ERROR)
     }
 
-    fn set_tid_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
-        let req = SetTidRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+    fn set_tid_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
+        let req = SetTidRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
         self.set_tid(req.tid);
         let resp =
             SetTidResponse::new(req.hdr.instance_id(), PldmBaseCompletionCode::Success as u8);
-        resp.encode(payload).map_err(MsgHandlerError::Codec)
+        resp.encode(payload).map_err(|_| errors::CODEC_ERROR)
     }
 
-    fn get_pldm_types_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
-        let req = GetPldmTypeRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+    fn get_pldm_types_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
+        let req = GetPldmTypeRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
         let mut types = [0x0u8; 6];
         let num_types = self.get_supported_types(&mut types);
         let resp = GetPldmTypeResponse::new(
@@ -193,10 +194,10 @@ impl CtrlCmdResponder for ControlContext<'_> {
             PldmBaseCompletionCode::Success as u8,
             &types[..num_types],
         );
-        resp.encode(payload).map_err(MsgHandlerError::Codec)
+        resp.encode(payload).map_err(|_| errors::CODEC_ERROR)
     }
 
-    fn get_pldm_commands_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    fn get_pldm_commands_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         let req = match GetPldmCommandsRequest::decode(payload) {
             Ok(req) => req,
             Err(_) => {
@@ -250,7 +251,7 @@ impl CtrlCmdResponder for ControlContext<'_> {
         }
     }
 
-    fn get_pldm_version_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    fn get_pldm_version_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         let req = match GetPldmVersionRequest::decode(payload) {
             Ok(req) => req,
             Err(_) => {

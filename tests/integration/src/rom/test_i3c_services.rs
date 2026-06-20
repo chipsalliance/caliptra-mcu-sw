@@ -226,10 +226,6 @@ mod test {
     /// 5. Send DOT_OVERRIDE with public keys and signatures
     /// 6. Verify ROM logs success
     #[test]
-    #[cfg_attr(
-        feature = "fpga_realtime",
-        ignore = "FPGA does not support otp_memory provisioning for DOT fuses"
-    )]
     fn test_i3c_services_dot_override_full_flow() {
         use caliptra_mcu_rom_common::DOT_BLOB_SIZE;
         use ecdsa::signature::hazmat::PrehashSigner;
@@ -246,6 +242,13 @@ mod test {
 
         // Compute vendor PK hash for OTP fuses
         let vendor_pk_hash = compute_recovery_pk_hash(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
+        println!(
+            "[test] expected recovery PK hash: {}",
+            vendor_pk_hash
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<String>()
+        );
 
         let i3c_port = PortPicker::new().random(true).pick().unwrap();
         let dot_flash = vec![0u8; DOT_BLOB_SIZE];
@@ -309,10 +312,46 @@ mod test {
         );
 
         // Read the challenge response via private read from the I3C socket.
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let challenge_data = stream
-            .receive_private_read(target_addr)
-            .expect("Could not obtain challenge response via private read");
+        // The ROM queues the challenge via the TX descriptor path. For the
+        // FPGA model, the ROM does NOT send a separate IBI for the response;
+        // we must explicitly request a private read after the command has been
+        // processed. The model's handle_i3c() runs inside step(), so we must
+        // keep stepping to allow the private read to be processed and forwarded
+        // back over the socket.
+        // The challenge response is 50 bytes (1 status + 48 challenge + 1 PEC).
+        // We must NOT use receive_ibi() here because it auto-sends a 256-byte
+        // private read which blocks the I3C controller (target only has 50 bytes).
+        // Instead, drain any pending IBIs from the socket buffer and send a
+        // properly-sized private read request.
+        let mut challenge_data: Option<Vec<u8>> = None;
+        // Drain any pending IBIs from the buffer without triggering reads
+        stream.drain_ibis(target_addr);
+        // The challenge response is exactly 50 bytes:
+        // 1 (status) + 48 (challenge) + 1 (PEC).
+        // XI3C read(N) blocks until exactly N bytes arrive, so we must
+        // request exactly what the target has.
+        const CHALLENGE_RESP_LEN: u16 = 50;
+        for attempt in 0..60 {
+            // Send a private read request (only once, or retry every 5 attempts)
+            if attempt == 0 || attempt % 5 == 0 {
+                stream.send_private_read_request_with_len(target_addr, CHALLENGE_RESP_LEN);
+            }
+
+            // Step the model to let handle_i3c() process the private read
+            let step_target = hw.cycle_count() + 200_000;
+            hw.step_until(|m| m.cycle_count() >= step_target);
+
+            // Drain any new IBIs that arrived
+            stream.drain_ibis(target_addr);
+
+            // Try to read the response data from the socket buffer
+            if let Some(data) = stream.receive_private_read(target_addr) {
+                challenge_data = Some(data);
+                break;
+            }
+        }
+        let challenge_data =
+            challenge_data.expect("Could not obtain challenge response via private read");
         assert!(challenge_data.len() >= 49, "Response too short");
         assert_eq!(challenge_data[0], 0x00, "Expected SUCCESS status");
 
@@ -581,13 +620,12 @@ mod test {
     /// given SHA-384 vendor recovery PK hash burned in.
     ///
     /// `pk_hash` is the digest in natural (FIPS) byte order. The
-    /// `VENDOR_RECOVERY_PK_HASH` fuse uses the caliptra-sw fuse layout —
-    /// each 4-byte word is byte-reversed relative to the natural SHA-384
-    /// byte order, matching `cptra_ss_owner_pk_hash` and the debug-unlock
-    /// vendor PK hash. The bytes are reversed within each 4-byte word
-    /// here before being scrambled into OTP.
+    /// `VENDOR_RECOVERY_PK_HASH` fuse uses the caliptra-sw fuse layout — each
+    /// 4-byte word is byte-reversed relative to the natural SHA-384 byte
+    /// order, matching `cptra_ss_owner_pk_hash` and the debug-unlock vendor PK
+    /// hash. The fuse lives in the non-secret partition, so it is stored as
+    /// plaintext (no OTP scrambling).
     fn create_challenge_recovery_otp_memory(pk_hash: &[u8; 48]) -> Vec<u8> {
-        use caliptra_mcu_otp_digest::{otp_scramble, OTP_SCRAMBLE_KEYS};
         use caliptra_mcu_registers_generated::fuses;
 
         let required_size = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset
@@ -599,10 +637,6 @@ mod test {
         otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
         otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
 
-        // VENDOR_RECOVERY_PK_HASH lives in the vendor_secret_prod_partition
-        // (partition 13) which is scrambled with key index 5. Pre-scramble
-        // the hash so DAI reads return the correct plaintext.
-        let scramble_key = OTP_SCRAMBLE_KEYS[5];
         let hash_offset = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset;
         let mut hash_buf = [0u8; 48];
         for (i, chunk) in pk_hash.chunks_exact(4).enumerate() {
@@ -610,15 +644,7 @@ mod test {
             // the caliptra-sw fuse layout stored in OTP.
             hash_buf[i * 4..(i + 1) * 4].copy_from_slice(&[chunk[3], chunk[2], chunk[1], chunk[0]]);
         }
-        // Scramble in 8-byte chunks
-        for chunk in hash_buf.chunks_exact_mut(8) {
-            let plaintext = u64::from_le_bytes(chunk.try_into().unwrap());
-            let scrambled = otp_scramble(plaintext, scramble_key);
-            chunk.copy_from_slice(&scrambled.to_le_bytes());
-        }
-        otp[hash_offset..hash_offset + 32].copy_from_slice(&hash_buf[..32]);
-        let next_offset = hash_offset + fuses::VENDOR_RECOVERY_PK_HASH.byte_size;
-        otp[next_offset..next_offset + 16].copy_from_slice(&hash_buf[32..48]);
+        otp[hash_offset..hash_offset + 48].copy_from_slice(&hash_buf);
         otp
     }
 }

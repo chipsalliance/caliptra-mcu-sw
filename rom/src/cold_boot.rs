@@ -282,26 +282,28 @@ fn enter_i3c_services(
 
     mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesStarted.into());
 
-    // Acquire the MCI mailbox lock so we can use its SRAM as a word-aligned
+    // Acquire the MCI mbox0 lock so we can use its SRAM as a word-aligned
     // reassembly buffer for multi-packet I3C commands.
     //
-    // On HW the lock is forced to 1 on reset, so reading it will return
-    // 1 (locked). We release any stale lock by writing execute=0, then retry.
-    // See issue #1220.
-
-    // Reading the lock register atomically acquires it when it returns 0.
-    // Loop until acquired or give up after a bounded number of attempts.
-    // On the first failure we release a potentially stale lock.
+    // After reset the hardware holds the lock for the root AXI user and only
+    // clears it once the mailbox SRAM has been zeroized. Release the held lock
+    // by writing execute=0 (which starts zeroization), then poll mbox_lock:
+    // reading it returns 0 and atomically acquires the lock for us once the
+    // zeroization completes. The zeroization can span the full SRAM, so allow
+    // a generous polling bound rather than a few attempts. See issue #1220.
+    const MBOX_LOCK_MAX_ITERATIONS: u32 = 1_000_000;
     let mut lock_acquired = false;
-    let mut released_stale = false;
-    for _ in 0..100 {
+    let mut released = false;
+    for _ in 0..MBOX_LOCK_MAX_ITERATIONS {
         if mci.registers.mcu_mbox0_csr_mbox_lock.read(MboxLock::Lock) == 0 {
             lock_acquired = true;
             break;
         }
-        // First failed attempt: release a possibly stale lock from a prior run
-        if !released_stale {
-            released_stale = true;
+        // Release the lock held since reset (or a stale lock from a prior
+        // session) exactly once; the subsequent reads wait for the SRAM
+        // zeroization to finish and then acquire.
+        if !released {
+            released = true;
             mci.registers
                 .mcu_mbox0_csr_mbox_execute
                 .write(MboxExecute::Execute::CLEAR);

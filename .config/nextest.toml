@@ -53,7 +53,6 @@ default-filter = """
     - test(test_lc_dev_to_scrap)
     - test(test_lc_invalid_transition_error)) |
 (package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot)) |
-(package(caliptra-mcu-tests-integration) and test(test_rom_hooks_fire_in_order)) |
 (package(caliptra-mcu-tests-integration) and test(test_external_otp))
 """
 # Disabled because they hang the FPGA at boot (LifecycleControllerState::Dev):
@@ -66,6 +65,10 @@ default-filter = """
 #   test_mcu_mbox_fips_periodic, test_mcu_mbox_fips_self_test.
 # Disabled pre-existing for flakiness:
 #   test_firmware_update_streaming_fpga
+#   test_rom_hooks_fire_in_order — SIGABRTs from a caliptra-sw hw-model
+#     I3C SETDASA timeout (host cfg_initialize() times out, then a
+#     poisoned-lock cascade in Drop) when run after the lifecycle tests;
+#     tracked upstream. Still runs on the emulator profile.
 
 [profile.nightly-release]
 inherits = "nightly-emulator"

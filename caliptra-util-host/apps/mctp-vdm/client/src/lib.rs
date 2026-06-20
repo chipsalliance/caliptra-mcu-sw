@@ -11,7 +11,7 @@ mod network_driver;
 pub mod validator;
 
 pub use network_driver::MctpVdmSocketDriver;
-pub use validator::{ValidationResult, Validator};
+pub use validator::{DefmtRoundTripCheck, ValidationResult, Validator};
 
 // Re-export shared config.
 pub use caliptra_mcu_core_util_host_mctp_vdm_test_config::*;
@@ -86,6 +86,42 @@ impl<'a> VdmClient<'a> {
     }
 
     // ------------------------------------------------------------------
+    // Debug log commands
+    // ------------------------------------------------------------------
+
+    /// Retrieve a single page of the debug log (VDM command 0x05).
+    pub fn get_debug_log_page(&mut self) -> Result<DebugGetLogResponse> {
+        let req = DebugGetLogRequest {
+            log_type: LOG_TYPE_DEBUG,
+        };
+        self.send_command(CaliptraCommandId::DebugGetLog as u32, &req)
+    }
+
+    /// Drain the entire debug log, concatenating the raw frame bytes of every
+    /// page until the device reports no more data.
+    ///
+    /// The returned bytes form a defmt rzCOBS frame stream suitable for
+    /// [`decode_defmt_stream`].
+    pub fn drain_debug_log(&mut self) -> Result<Vec<u8>> {
+        const MAX_PAGES: usize = 4096;
+        let mut bytes = Vec::new();
+        for _ in 0..MAX_PAGES {
+            let resp = self.get_debug_log_page()?;
+            let data_len = (resp.data_len as usize).min(resp.data.len());
+            bytes.extend_from_slice(&resp.data[..data_len]);
+            if resp.more_data == 0 {
+                return Ok(bytes);
+            }
+            if data_len == 0 {
+                // No progress and device still claims more data; stop to avoid
+                // an unbounded loop.
+                return Ok(bytes);
+            }
+        }
+        anyhow::bail!("drain_debug_log exceeded {MAX_PAGES} pages without completing")
+    }
+
+    // ------------------------------------------------------------------
     // Generic send helper
     // ------------------------------------------------------------------
 
@@ -99,7 +135,7 @@ impl<'a> VdmClient<'a> {
             .send(command_id, payload)
             .map_err(|e| anyhow::anyhow!("VDM send failed: {e:?}"))?;
 
-        let mut buf = vec![0u8; 2048];
+        let mut buf = vec![0u8; core::mem::size_of::<Resp>().max(2048)];
         let n = self
             .transport
             .receive(&mut buf)
@@ -111,4 +147,28 @@ impl<'a> VdmClient<'a> {
         Resp::read_from_bytes(&buf[..n])
             .map_err(|_| anyhow::anyhow!("Failed to parse response ({n} bytes)"))
     }
+}
+
+/// Decode a defmt rzCOBS frame stream against a firmware ELF.
+///
+/// `elf` is the raw bytes of the user-app ELF that produced the frames (it must
+/// contain the `.defmt` table). `bytes` is the concatenated frame stream, e.g.
+/// from [`VdmClient::drain_debug_log`]. Returns one formatted string per frame.
+pub fn decode_defmt_stream(elf: &[u8], bytes: &[u8]) -> Result<Vec<String>> {
+    let table = defmt_decoder::Table::parse(elf)
+        .map_err(|e| anyhow::anyhow!("failed to parse .defmt table: {e:?}"))?
+        .ok_or_else(|| anyhow::anyhow!("ELF has no .defmt section"))?;
+
+    let mut decoder = table.new_stream_decoder();
+    decoder.received(bytes);
+
+    let mut messages = Vec::new();
+    loop {
+        match decoder.decode() {
+            Ok(frame) => messages.push(frame.display_message().to_string()),
+            Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
+            Err(e) => anyhow::bail!("defmt decode error: {e:?}; decoded so far: {messages:?}"),
+        }
+    }
+    Ok(messages)
 }

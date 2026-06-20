@@ -44,6 +44,7 @@ use tock_registers::interfaces::{Readable, Writeable};
 const MLDSA_CALIPTRA_VALUE: u8 = 1;
 const LMS_CALIPTRA_VALUE: u8 = 3;
 const OTP_DAI_IDLE_BIT_OFFSET: u32 = 22;
+const OTP_STATUS_REG_OFFSET: u32 = 0x10;
 const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x60;
 
 pub const MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS: u32 = 8; // 32 kB / 4 kB chunks
@@ -199,11 +200,13 @@ impl Soc {
         self.registers.ss_uds_seed_base_addr_h.set(0);
 
         caliptra_mcu_romtime::println!(
-            "[mcu-fuse-write] Setting UDS/FE DAI idle bit offset to {} and direct access cmd reg offset to {}",
+            "[mcu-fuse-write] Setting UDS/FE DAI idle bit offset to {}, OTP status reg offset to {}, and direct access cmd reg offset to {}",
             OTP_DAI_IDLE_BIT_OFFSET,
+            OTP_STATUS_REG_OFFSET,
             OTP_DIRECT_ACCESS_CMD_REG_OFFSET
         );
-        self.registers.ss_strap_generic[0].set(OTP_DAI_IDLE_BIT_OFFSET << 16);
+        self.registers.ss_strap_generic[0]
+            .set((OTP_DAI_IDLE_BIT_OFFSET << 16) | OTP_STATUS_REG_OFFSET);
         self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
 
         // Select the vendor public key slot to use.
@@ -735,6 +738,11 @@ pub struct RomParameters<'a> {
     /// advances the firmware entry offset past it. See `docs/src/svn.md`.
     /// Default: false (opt-in by platform integrators).
     pub svn_manifest_enabled: bool,
+    /// Platform mapping from SoC `component_id` to a `SOC_IMAGE_MIN_SVN[i]`
+    /// fuse slot, used to burn per-component SVN floors from the MCU
+    /// Component SVN Manifest entries. Empty (the default) disables
+    /// per-component burns. See `docs/src/svn.md`.
+    pub svn_fuse_map: &'a [crate::SvnFuseMapEntry],
     /// Recovery/override transport for DOT challenge/response protocol (e.g., MCI mbox0, I3C).
     pub dot_recovery_transport: Option<&'a dyn crate::RecoveryTransport>,
     /// DOT recovery/override watchdog timeout in clock cycles. If non-zero,

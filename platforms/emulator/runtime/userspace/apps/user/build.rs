@@ -26,16 +26,17 @@ fn main() {
     // With userspace logging the app links the userlog `#[global_logger]`, so the
     // device link needs defmt's linker script and `DEFMT_LOG` set to compile in
     // the call sites. Scoped to the riscv32 device link only. Production logging
-    // floors at `info`; the round-trip test needs every level, so it uses `trace`.
+    // floors at `info`; the round-trip tests need every level, so they use `trace`.
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_USERSPACE_LOG");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_TEST_DEFMT_LOGGING_MAILBOX");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_TEST_DEFMT_LOGGING_VDM");
     if env::var_os("CARGO_FEATURE_USERSPACE_LOG").is_some()
         && env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("riscv32")
     {
         println!("cargo:rustc-link-arg=-Tdefmt.x");
-        let level = if env::var_os("CARGO_FEATURE_TEST_DEFMT_LOGGING").is_some() {
-            "trace"
-        } else {
-            "info"
-        };
+        let test_defmt = env::var_os("CARGO_FEATURE_TEST_DEFMT_LOGGING_MAILBOX").is_some()
+            || env::var_os("CARGO_FEATURE_TEST_DEFMT_LOGGING_VDM").is_some();
+        let level = if test_defmt { "trace" } else { "info" };
         println!("cargo:rustc-env=DEFMT_LOG={level}");
     }
 

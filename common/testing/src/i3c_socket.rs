@@ -289,16 +289,10 @@ impl BufferedStream {
                 let packet = self.read_buffer.remove(i).unwrap();
                 let data = packet.data;
                 if data.is_empty() {
-                    println!("Received empty data packet");
                     return None;
                 }
                 let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);
                 if pec != data[data.len() - 1] {
-                    println!(
-                        "Received data with invalid CRC8: calclulated {:X} != received {:X}",
-                        pec,
-                        data[data.len() - 1]
-                    );
                     return None;
                 }
                 return Some(data[..data.len() - 1].to_vec());
@@ -306,6 +300,29 @@ impl BufferedStream {
             i += 1;
         }
         None
+    }
+
+    /// Send a private read request to the model without waiting for an IBI.
+    /// Used when the target has TX data queued but did not send an IBI
+    /// (e.g. ROM services response after a command).
+    pub fn send_private_read_request(&mut self, target_addr: u8) {
+        self.send_private_read_request_with_len(target_addr, 0);
+    }
+
+    /// Send a private read request with a specific data_length field.
+    /// If len is 0, the model uses DEFAULT_PRIVATE_READ_LEN.
+    pub fn send_private_read_request_with_len(&mut self, target_addr: u8, len: u16) {
+        let pvt_read_cmd = prepare_private_read_cmd_with_len(target_addr, len);
+        self.stream.set_nonblocking(false).unwrap();
+        self.stream.write_all(&pvt_read_cmd).unwrap();
+        self.stream.set_nonblocking(true).unwrap();
+    }
+
+    /// Drain any pending IBI packets from the buffer without triggering reads.
+    pub fn drain_ibis(&mut self, target_addr: u8) {
+        self.fill_buffer();
+        self.read_buffer
+            .retain(|pkt| !(pkt.header.from_addr == target_addr && pkt.header.ibi != 0));
     }
 
     pub fn set_nonblocking(&self, blocking: bool) -> std::io::Result<()> {
@@ -327,9 +344,13 @@ fn prepare_private_write_cmd(to_addr: u8, data_len: u16) -> [u8; 9] {
 }
 
 fn prepare_private_read_cmd(to_addr: u8) -> [u8; 9] {
+    prepare_private_read_cmd_with_len(to_addr, 0)
+}
+
+fn prepare_private_read_cmd_with_len(to_addr: u8, len: u16) -> [u8; 9] {
     let mut read_cmd = ReguDataTransferCommand::read_from_bytes(&[0; 8]).unwrap();
     read_cmd.set_rnw(1);
-    read_cmd.set_data_length(0);
+    read_cmd.set_data_length(len);
     let cmd_words: [u32; 2] = transmute!(read_cmd);
     let cmd_hdr = IncomingHeader {
         to_addr,

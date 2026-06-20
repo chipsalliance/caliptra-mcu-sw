@@ -17,7 +17,9 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::{
     ComponentResponseCode, Descriptor, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
 };
 use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
-use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
+use caliptra_mcu_pldm_lib::errors as pldm_errors;
+use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps};
+use mcu_error::McuResult;
 
 const ESTIMATED_ACTIVATION_TIME_SECS: u16 = 600; // 10 minutes estimated activation time including reset
 
@@ -29,10 +31,10 @@ impl UpdateFdOps {
         Self {}
     }
 
-    async fn copy_data_to_buffer(&self, _offset: usize, data: &[u8]) -> Result<(), FdOpsError> {
+    async fn copy_data_to_buffer(&self, _offset: usize, data: &[u8]) -> McuResult<()> {
         let state = PLDM_STATE.lock(|state| *state.borrow());
         if state != State::DownloadingImage {
-            return Err(FdOpsError::FwDownloadError);
+            return Err(pldm_errors::FW_DOWNLOAD_ERROR);
         }
         let write_offset = DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
@@ -44,18 +46,15 @@ impl UpdateFdOps {
             return staging_area
                 .write(write_offset, data)
                 .await
-                .map_err(|_| FdOpsError::FwDownloadError);
+                .map_err(|_| pldm_errors::FW_DOWNLOAD_ERROR);
         }
-        Err(FdOpsError::FwDownloadError)
+        Err(pldm_errors::FW_DOWNLOAD_ERROR)
     }
 }
 
 #[async_trait(?Send)]
 impl FdOps for UpdateFdOps {
-    fn get_device_identifiers(
-        &self,
-        device_identifiers: &mut [Descriptor],
-    ) -> Result<usize, FdOpsError> {
+    fn get_device_identifiers(&self, device_identifiers: &mut [Descriptor]) -> McuResult<usize> {
         let descriptors = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().descriptors);
         if let Some(descriptors) = descriptors {
             descriptors.iter().enumerate().for_each(|(i, descriptor)| {
@@ -65,25 +64,22 @@ impl FdOps for UpdateFdOps {
             });
             Ok(descriptors.len())
         } else {
-            Err(FdOpsError::DeviceIdentifiersError)
+            Err(pldm_errors::DEVICE_IDENTIFIERS_ERROR)
         }
     }
 
-    fn get_firmware_parms(
-        &self,
-        firmware_params: &mut FirmwareParameters,
-    ) -> Result<(), FdOpsError> {
+    fn get_firmware_parms(&self, firmware_params: &mut FirmwareParameters) -> McuResult<()> {
         let fw_params = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().fw_params);
         if let Some(fw_params) = fw_params {
             // Clone the firmware parameters to avoid borrowing issues
             *firmware_params = fw_params.clone();
             Ok(())
         } else {
-            Err(FdOpsError::FirmwareParametersError)
+            Err(pldm_errors::FIRMWARE_PARAMETERS_ERROR)
         }
     }
 
-    async fn get_xfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError> {
+    async fn get_xfer_size(&self, ua_transfer_size: usize) -> McuResult<usize> {
         Ok(ua_transfer_size.min(MAX_PLDM_TRANSFER_SIZE))
     }
 
@@ -92,7 +88,7 @@ impl FdOps for UpdateFdOps {
         component: &FirmwareComponent,
         fw_params: &FirmwareParameters,
         _op: ComponentOperation,
-    ) -> Result<ComponentResponseCode, FdOpsError> {
+    ) -> McuResult<ComponentResponseCode> {
         if let Some(size) = component.comp_image_size {
             if size
                 < (core::mem::size_of::<ImageHeader>() + core::mem::size_of::<FlashHeader>()) as u32
@@ -124,7 +120,7 @@ impl FdOps for UpdateFdOps {
     async fn query_download_offset_and_length(
         &self,
         _component: &FirmwareComponent,
-    ) -> Result<(usize, usize), FdOpsError> {
+    ) -> McuResult<(usize, usize)> {
         let (offset, request_length) = DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
 
@@ -147,7 +143,7 @@ impl FdOps for UpdateFdOps {
         offset: usize,
         data: &[u8],
         _component: &FirmwareComponent,
-    ) -> Result<TransferResult, FdOpsError> {
+    ) -> McuResult<TransferResult> {
         self.copy_data_to_buffer(offset, data).await?;
         // update self.download_ctx
         DOWNLOAD_CTX.lock(|ctx| {
@@ -175,7 +171,7 @@ impl FdOps for UpdateFdOps {
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<(), FdOpsError> {
+    ) -> McuResult<()> {
         *progress_percent = ProgressPercent::default();
         Ok(())
     }
@@ -184,7 +180,7 @@ impl FdOps for UpdateFdOps {
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<VerifyResult, FdOpsError> {
+    ) -> McuResult<VerifyResult> {
         // Transition to Verify state
         PLDM_STATE.lock(|state| {
             let mut state = state.borrow_mut();
@@ -205,7 +201,7 @@ impl FdOps for UpdateFdOps {
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<ApplyResult, FdOpsError> {
+    ) -> McuResult<ApplyResult> {
         // Transition to Verify state
         PLDM_STATE.lock(|state| {
             let mut state = state.borrow_mut();
@@ -222,16 +218,12 @@ impl FdOps for UpdateFdOps {
         Ok(apply_result)
     }
 
-    fn cancel_update_component(&self, _component: &FirmwareComponent) -> Result<(), FdOpsError> {
+    fn cancel_update_component(&self, _component: &FirmwareComponent) -> McuResult<()> {
         // TODO: Implement cancel update component logic if needed
         Ok(())
     }
 
-    fn activate(
-        &self,
-        _self_contained_activation: u8,
-        estimated_time: &mut u16,
-    ) -> Result<u8, FdOpsError> {
+    fn activate(&self, _self_contained_activation: u8, estimated_time: &mut u16) -> McuResult<u8> {
         *estimated_time = ESTIMATED_ACTIVATION_TIME_SECS;
         PLDM_STATE.lock(|state| {
             let mut state = state.borrow_mut();

@@ -2,11 +2,20 @@
 
 name: Backport Cherry-Pick with AI Assist
 
+# NOTE: We use 'pull_request_target' instead of 'pull_request' to ensure the workflow
+# has write permissions to push the backport branch and create the PR, even when
+# triggered by a PR originating from a fork (which are otherwise read-only).
+#
+# SECURITY: 'pull_request_target' runs with write access and secrets.
+# This is SAFE here because:
+# 1. The 'backport' job has a strict guard ('pull_request.merged == true') and only
+#    runs after a maintainer has reviewed and merged the PR.
+# 2. We checkout the trusted base branch (main) by default, not the untrusted PR branch.
+# 3. We only perform git cherry-pick operations and do not run untrusted code/tests.
 on:
-  # TODO(clundin): Enable after testing
-  # pull_request:
-  #   types: [closed]
-  #   branches: [main]
+  pull_request_target:
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       commit_sha:
@@ -36,6 +45,24 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
+
+      - name: Install GitHub CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install gh -y
+
+      - name: Set up Rust
+        run: |
+          if ! command -v rustup &> /dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          else
+            rustup toolchain install stable --profile minimal
+            rustup default stable
+          fi
+
+      - name: Prebuild xtask
+        run: cargo build -p xtask && cp target/debug/xtask /tmp/xtask
 
       - name: Determine cherry-pick parameters
         id: params
@@ -93,11 +120,6 @@ jobs:
             echo "::warning::Cherry-pick has conflicts — Gemini will attempt to resolve"
           fi
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-
-      - name: Install Gemini CLI
-        run: npm install -g google-gemini-cli
 
       - name: Gemini — Evaluate clean cherry-pick for adaptations
         if: steps.cherry_pick.outputs.status == 'clean'
@@ -112,7 +134,7 @@ jobs:
           COMMIT_SHA="${{ steps.params.outputs.commit_sha }}"
           TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
 
-          gemini --model gemini-3.0-pro "A commit (${COMMIT_SHA}) was just cherry-picked cleanly from 'main' \
+          /tmp/xtask vertex-prompt "A commit (${COMMIT_SHA}) was just cherry-picked cleanly from 'main' \
           onto the '${TARGET_BRANCH}' branch. \
 
           Review the cherry-picked changes ('git diff HEAD~1') and the surrounding code \
@@ -136,7 +158,7 @@ jobs:
           COMMIT_SHA="${{ steps.params.outputs.commit_sha }}"
           TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
 
-          gemini --model gemini-3.0-pro "A cherry-pick of commit ${COMMIT_SHA} from 'main' onto \
+          /tmp/xtask vertex-prompt "A cherry-pick of commit ${COMMIT_SHA} from 'main' onto \
           '${TARGET_BRANCH}' has merge conflicts. \
 
           Steps: \
@@ -150,9 +172,10 @@ jobs:
           7. Review the result and make any further branch-specific adaptations in a \
              separate commit"
 
-      - name: Gemini — Push and Create PR
+      - name: Push and Create PR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BACKPORT_BRANCH="${{ steps.cherry_pick.outputs.backport_branch }}"
           TARGET_BRANCH="${{ steps.params.outputs.target_branch }}"
@@ -165,18 +188,45 @@ jobs:
           PR_BODY="Backport of ${COMMIT_SHA} to \`${TARGET_BRANCH}\`."
 
           if [ "$STATUS" = "conflict" ]; then
-            PR_BODY="${PR_BODY}\n\n> [!WARNING]\n> The original cherry-pick had conflicts that were resolved by Gemini. Please review carefully."
+            PR_BODY=$(cat <<EOF
+          ${PR_BODY}
+
+          > [!WARNING]
+          > The original cherry-pick had conflicts that were resolved by Gemini. Please review carefully.
+          EOF
+          )
           else
-            PR_BODY="${PR_BODY}\n\n> [!NOTE]\n> The cherry-pick applied cleanly."
+            PR_BODY=$(cat <<EOF
+          ${PR_BODY}
+
+          > [!NOTE]
+          > The cherry-pick applied cleanly.
+          EOF
+          )
           fi
 
           if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            PR_BODY="${PR_BODY}\n\nOriginal PR: #${{ github.event.pull_request.number }}"
+            PR_BODY=$(cat <<EOF
+          ${PR_BODY}
+
+          Original PR: #${{ github.event.pull_request.number }}
+          EOF
+          )
           fi
 
-          gemini --model gemini-3.0-pro "Push the branch '${BACKPORT_BRANCH}' to origin. \
-          Then create a pull request to '${TARGET_BRANCH}' with the following details: \
-          Title: [Backport ${TARGET_BRANCH}] ${ORIGINAL_MSG} \
-          Body: ${PR_BODY} \
-          Labels: backport \
-          Assignee/Reviewer: ${PR_AUTHOR}"
+          # Push the backport branch to origin
+          git push origin "${BACKPORT_BRANCH}"
+
+          # Create PR using GitHub CLI
+          GH_OPTS=()
+          if [ -n "${PR_AUTHOR}" ]; then
+            GH_OPTS+=("--reviewer" "${PR_AUTHOR}" "--assignee" "${PR_AUTHOR}")
+          fi
+
+          gh pr create \
+            --title "[Backport ${TARGET_BRANCH}] ${ORIGINAL_MSG}" \
+            --body "${PR_BODY}" \
+            --base "${TARGET_BRANCH}" \
+            --head "${BACKPORT_BRANCH}" \
+            --label "backport" \
+            "${GH_OPTS[@]}"

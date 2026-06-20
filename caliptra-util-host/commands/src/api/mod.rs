@@ -18,6 +18,7 @@ pub mod crypto_hmac;
 pub mod crypto_import;
 pub mod debug_unlock;
 pub mod device_info;
+pub mod device_log;
 pub mod fuse;
 
 pub use caliptra_util_host_session::CommandSession;
@@ -30,6 +31,7 @@ pub use crypto_hmac::*;
 pub use crypto_import::*;
 pub use debug_unlock::*;
 pub use device_info::*;
+pub use device_log::*;
 pub use fuse::*;
 
 /// High-level result type for API functions

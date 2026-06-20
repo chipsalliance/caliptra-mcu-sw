@@ -20,9 +20,9 @@ pub mod crypto_delete;
 pub mod crypto_hash;
 pub mod crypto_hmac;
 pub mod crypto_import;
-pub mod debug;
 pub mod debug_unlock;
 pub mod device_info;
+pub mod device_log;
 pub mod error;
 pub mod fuse;
 
@@ -34,9 +34,9 @@ pub use crypto_delete::*;
 pub use crypto_hash::*;
 pub use crypto_hmac::*;
 pub use crypto_import::*;
-pub use debug::*;
 pub use debug_unlock::*;
 pub use device_info::*;
+pub use device_log::*;
 pub use error::*;
 pub use fuse::*;
 

@@ -58,6 +58,7 @@ clap = { version = "4.5.23", features = [
     "wrap_help",
 ] }
 ecdsa = { version = "0.16.9", features = ["pem"] }
+defmt-decoder = "1"
 fips204 = "0.4.6"
 hex = "0.4.3"
 hmac = "0.12"

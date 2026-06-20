@@ -138,6 +138,11 @@ pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_fpga::FPGA_MEMORY_
 #[used]
 pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_fpga::FPGA_MCU_STRAPS;
 
+#[cfg_attr(not(feature = "test-i3c-services"), allow(dead_code))]
+unsafe fn init_static<T>(s: *mut core::mem::MaybeUninit<T>, value: T) -> &'static mut T {
+    (*s).write(value)
+}
+
 pub extern "C" fn rom_entry() -> ! {
     print_to_console("FPGA MCU ROM\n");
     unsafe {
@@ -239,8 +244,16 @@ pub extern "C" fn rom_entry() -> ! {
         lifecycle_transition,
         burn_lifecycle_tokens,
         program_field_entropy: [program_field_entropy; 4],
-        otp_enable_integrity_check: true,
-        otp_enable_consistency_check: true,
+        // The DOT/recovery FPGA tests inject OTP fuses (DOT state + the
+        // vendor recovery PK hash in the scrambled VENDOR_SECRET_PROD
+        // partition) through the hw-model OTP backdoor. That backdoor image is
+        // not formatted for the OTP controller's background integrity/
+        // consistency checks, which then fault the controller on real
+        // hardware. Skip enabling those background checks for the test ROM so
+        // the DOT recovery flow can be exercised on FPGA. The emulator is
+        // lenient and runs the same tests with the checks enabled.
+        otp_enable_integrity_check: !cfg!(feature = "test-i3c-services"),
+        otp_enable_consistency_check: !cfg!(feature = "test-i3c-services"),
         flash_partition_driver: Some(&mut flash_partition),
         dot_flash: Some(dot_flash),
         owner_pk_hash_policy: read_owner_pk_hash_policy(),
@@ -260,6 +273,46 @@ pub extern "C" fn rom_entry() -> ! {
             Some(&hooks)
         } else {
             None
+        },
+        // When the device is DOT-locked but the DOT blob is empty/corrupt, the
+        // ROM attempts locked-state recovery via these handlers. The DOT
+        // recovery test relies on entering I3C services mode here to drive the
+        // DOT_UNLOCK_CHALLENGE / DOT_OVERRIDE flow, mirroring the emulator ROM.
+        dot_locked_recovery_handlers: if cfg!(feature = "test-i3c-services") {
+            let i3c_base = unsafe {
+                caliptra_mcu_romtime::StaticRef::new(
+                    MCU_MEMORY_MAP.i3c_offset
+                        as *const caliptra_mcu_registers_generated::i3c::regs::I3c,
+                )
+            };
+            static mut I3C_HANDLER: core::mem::MaybeUninit<
+                caliptra_mcu_rom_common::I3cDotLockedRecoveryHandler,
+            > = core::mem::MaybeUninit::uninit();
+            let handler = unsafe {
+                init_static(
+                    &raw mut I3C_HANDLER,
+                    caliptra_mcu_rom_common::I3cDotLockedRecoveryHandler {
+                        i3c_base,
+                        services: caliptra_mcu_rom_common::I3cServicesModes::DOT_RECOVERY,
+                        i3c_target_addr: MCU_STRAPS.i3c_static_addr,
+                    },
+                )
+            };
+            static mut HANDLER_ENTRIES: core::mem::MaybeUninit<
+                [caliptra_mcu_rom_common::DotLockedRecoveryEntry<'static>; 1],
+            > = core::mem::MaybeUninit::uninit();
+            unsafe {
+                init_static(
+                    &raw mut HANDLER_ENTRIES,
+                    [caliptra_mcu_rom_common::DotLockedRecoveryEntry {
+                        handler,
+                        policy: caliptra_mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
+                    }],
+                )
+                .as_slice()
+            }
+        } else {
+            &[]
         },
         ..Default::default()
     });

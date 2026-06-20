@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cmd_interface::generate_failure_response;
-use crate::error::MsgHandlerError;
+use crate::errors;
 use crate::firmware_device::fd_internal::{FdInternal, FdReqState};
 use crate::firmware_device::fd_ops::{ComponentOperation, FdOps};
 use caliptra_mcu_pldm_common::codec::PldmCodec;
@@ -31,8 +31,8 @@ use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::{
 use caliptra_mcu_pldm_common::message::firmware_update::update_component::{
     UpdateComponentRequest, UpdateComponentResponse,
 };
+use mcu_error::McuResult;
 
-use caliptra_mcu_pldm_common::codec::PldmCodecError;
 use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::{
     ApplyCompleteRequest, ApplyResult,
 };
@@ -79,9 +79,10 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
-    pub async fn query_devid_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    pub async fn query_devid_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         // Decode the request message
-        let req = QueryDeviceIdentifiersRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+        let req =
+            QueryDeviceIdentifiersRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
 
         let mut device_identifiers: [Descriptor; MAX_DESCRIPTORS_COUNT] =
             [Descriptor::default(); MAX_DESCRIPTORS_COUNT];
@@ -90,7 +91,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         let descriptor_cnt = self
             .ops
             .get_device_identifiers(&mut device_identifiers)
-            .map_err(MsgHandlerError::FdOps)?;
+            .map_err(|_| errors::FD_OPS_ERROR)?;
 
         // Create the response message
         let resp = QueryDeviceIdentifiersResponse::new(
@@ -99,7 +100,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             &device_identifiers[0],
             device_identifiers.get(1..descriptor_cnt),
         )
-        .map_err(MsgHandlerError::PldmCommon)?;
+        .map_err(|_| errors::PLDM_COMMON_ERROR)?;
 
         match resp.encode(payload) {
             Ok(bytes) => Ok(bytes),
@@ -109,17 +110,14 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
-    pub async fn get_firmware_parameters_rsp(
-        &self,
-        payload: &mut [u8],
-    ) -> Result<usize, MsgHandlerError> {
+    pub async fn get_firmware_parameters_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         // Decode the request message
-        let req = GetFirmwareParametersRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+        let req = GetFirmwareParametersRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
 
         let mut firmware_params = FirmwareParameters::default();
         self.ops
             .get_firmware_parms(&mut firmware_params)
-            .map_err(MsgHandlerError::FdOps)?;
+            .map_err(|_| errors::FD_OPS_ERROR)?;
 
         // Construct response
         let resp = GetFirmwareParametersResponse::new(
@@ -136,7 +134,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
-    pub async fn request_update_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    pub async fn request_update_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         // Check if FD is in idle state. Otherwise returns 'ALREADY_IN_UPDATE_MODE' completion code
         if self.internal.is_update_mode() {
             return generate_failure_response(
@@ -149,7 +147,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         self.set_fd_t1_ts().await;
 
         // Decode the request message
-        let req = RequestUpdateRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+        let req = RequestUpdateRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
         let ua_transfer_size = req.fixed.max_transfer_size as usize;
         if ua_transfer_size < PLDM_FWUP_BASELINE_TRANSFER_SIZE {
             return generate_failure_response(
@@ -163,7 +161,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             .ops
             .get_xfer_size(ua_transfer_size)
             .await
-            .map_err(MsgHandlerError::FdOps)?;
+            .map_err(|_| errors::FD_OPS_ERROR)?;
 
         // Set transfer size to the internal state
         self.internal.set_xfer_size(fd_transfer_size);
@@ -190,7 +188,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
-    pub async fn pass_component_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    pub async fn pass_component_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         // Check if FD is in 'LearnComponents' state. Otherwise returns 'INVALID_STATE' completion code
         if self.internal.get_fd_state() != FirmwareDeviceState::LearnComponents {
             return generate_failure_response(
@@ -203,7 +201,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         self.set_fd_t1_ts().await;
 
         // Decode the request message
-        let req = PassComponentTableRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+        let req = PassComponentTableRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
         let transfer_flag = match TransferRespFlag::try_from(req.fixed.transfer_flag) {
             Ok(flag) => flag,
             Err(_) => {
@@ -232,7 +230,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         let mut firmware_params = FirmwareParameters::default();
         self.ops
             .get_firmware_parms(&mut firmware_params)
-            .map_err(MsgHandlerError::FdOps)?;
+            .map_err(|_| errors::FD_OPS_ERROR)?;
 
         let comp_resp_code = self
             .ops
@@ -241,7 +239,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                 &firmware_params,
                 ComponentOperation::PassComponent,
             )
-            .map_err(MsgHandlerError::FdOps)?;
+            .map_err(|_| errors::FD_OPS_ERROR)?;
 
         // Construct response
         let resp = PassComponentTableResponse::new(
@@ -271,7 +269,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
-    pub async fn update_component_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    pub async fn update_component_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         // Check if FD is in 'ReadyTransfer' state. Otherwise returns 'INVALID_STATE' completion code
         if self.internal.get_fd_state() != FirmwareDeviceState::ReadyXfer {
             return generate_failure_response(
@@ -284,7 +282,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         self.set_fd_t1_ts().await;
 
         // Decode the request message
-        let req = UpdateComponentRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+        let req = UpdateComponentRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
 
         // Construct temporary storage for the component
         let update_comp = FirmwareComponent::new(
@@ -311,7 +309,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         let mut firmware_params = FirmwareParameters::default();
         self.ops
             .get_firmware_parms(&mut firmware_params)
-            .map_err(MsgHandlerError::FdOps)?;
+            .map_err(|_| errors::FD_OPS_ERROR)?;
 
         let comp_resp_code = self
             .ops
@@ -320,7 +318,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                 &firmware_params,
                 ComponentOperation::UpdateComponent, /* This indicates this is an update request */
             )
-            .map_err(MsgHandlerError::FdOps)?;
+            .map_err(|_| errors::FD_OPS_ERROR)?;
 
         // Construct response
         let resp = UpdateComponentResponse::new(
@@ -357,10 +355,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
-    pub async fn activate_firmware_rsp(
-        &self,
-        payload: &mut [u8],
-    ) -> Result<usize, MsgHandlerError> {
+    pub async fn activate_firmware_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         // Check if FD is in 'ReadyTransfer' state. Otherwise returns 'INVALID_STATE' completion code
         if self.internal.get_fd_state() != FirmwareDeviceState::ReadyXfer {
             return generate_failure_response(
@@ -370,7 +365,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
 
         // Decode the request message
-        let req = ActivateFirmwareRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+        let req = ActivateFirmwareRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
         let self_contained = req.self_contained_activation_req;
 
         // Validate self_contained value
@@ -388,7 +383,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         let completion_code = self
             .ops
             .activate(self_contained, &mut estimated_time)
-            .map_err(MsgHandlerError::FdOps)?;
+            .map_err(|_| errors::FD_OPS_ERROR)?;
 
         // Construct response
         let resp =
@@ -413,10 +408,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
-    pub async fn cancel_update_component_rsp(
-        &self,
-        payload: &mut [u8],
-    ) -> Result<usize, MsgHandlerError> {
+    pub async fn cancel_update_component_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         // If FD is not in update mode, return 'NOT_IN_UPDATE_MODE' completion code
         if !self.internal.is_update_mode() {
             return generate_failure_response(
@@ -446,11 +438,11 @@ impl<'a> FirmwareDeviceContext<'a> {
             self.cancellation_flag.cancel();
             self.ops
                 .cancel_update_component(&self.internal.get_component())
-                .map_err(MsgHandlerError::FdOps)?;
+                .map_err(|_| errors::FD_OPS_ERROR)?;
         }
 
         // Decode the request message
-        let req = CancelUpdateComponentRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+        let req = CancelUpdateComponentRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
         let completion_code = if should_cancel {
             PldmBaseCompletionCode::Success as u8
         } else {
@@ -472,7 +464,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
-    pub async fn cancel_update_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    pub async fn cancel_update_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         // If FD is not in update mode, return 'NOT_IN_UPDATE_MODE' completion code
         if !self.internal.is_update_mode() {
             return generate_failure_response(
@@ -500,11 +492,11 @@ impl<'a> FirmwareDeviceContext<'a> {
             self.cancellation_flag.cancel();
             self.ops
                 .cancel_update_component(&self.internal.get_component())
-                .map_err(MsgHandlerError::FdOps)?;
+                .map_err(|_| errors::FD_OPS_ERROR)?;
         }
 
         // Decode the request message
-        let req = CancelUpdateRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+        let req = CancelUpdateRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
         let completion_code = if should_cancel {
             PldmBaseCompletionCode::Success as u8
         } else {
@@ -515,7 +507,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             .ops
             .get_non_functional_component_info()
             .await
-            .map_err(MsgHandlerError::FdOps)?;
+            .map_err(|_| errors::FD_OPS_ERROR)?;
 
         let resp = CancelUpdateResponse::new(
             req.hdr.instance_id(),
@@ -538,8 +530,8 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
-    pub async fn get_status_rsp(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
-        let req = GetStatusRequest::decode(payload).map_err(MsgHandlerError::Codec)?;
+    pub async fn get_status_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
+        let req = GetStatusRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
 
         let cur_state = self.internal.get_fd_state();
         let prev_state = self.internal.get_fd_prev_state();
@@ -647,14 +639,14 @@ impl<'a> FirmwareDeviceContext<'a> {
         )
     }
 
-    pub async fn fd_progress(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    pub async fn fd_progress(&self, payload: &mut [u8]) -> McuResult<usize> {
         let fd_state = self.internal.get_fd_state();
 
         let result = match fd_state {
             FirmwareDeviceState::Download => self.fd_progress_download(payload).await,
             FirmwareDeviceState::Verify => self.pldm_fd_progress_verify(payload).await,
             FirmwareDeviceState::Apply => self.pldm_fd_progress_apply(payload).await,
-            _ => Err(MsgHandlerError::FdInitiatorModeError),
+            _ => Err(errors::FD_INITIATOR_MODE_ERROR),
         }?;
 
         // Refresh T1 timestamp after verify/apply operations which may block
@@ -675,7 +667,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         {
             self.ops
                 .cancel_update_component(&self.internal.get_component())
-                .map_err(MsgHandlerError::FdOps)?;
+                .map_err(|_| errors::FD_OPS_ERROR)?;
             self.internal.fd_idle_timeout();
             return Ok(0);
         }
@@ -683,9 +675,9 @@ impl<'a> FirmwareDeviceContext<'a> {
         Ok(result)
     }
 
-    pub async fn handle_response(&self, payload: &mut [u8]) -> Result<(), MsgHandlerError> {
+    pub async fn handle_response(&self, payload: &mut [u8]) -> McuResult<()> {
         let rsp_header =
-            PldmMsgHeader::<[u8; 3]>::decode(payload).map_err(MsgHandlerError::Codec)?;
+            PldmMsgHeader::<[u8; 3]>::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
         let (cmd_code, instance_id) = (rsp_header.cmd_code(), rsp_header.instance_id());
 
         let fd_req = self.internal.get_fd_req();
@@ -694,7 +686,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             || fd_req.command != Some(cmd_code)
         {
             // Unexpected response
-            return Err(MsgHandlerError::FdInitiatorModeError);
+            return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
         self.set_fd_t1_ts().await;
@@ -704,25 +696,25 @@ impl<'a> FirmwareDeviceContext<'a> {
             Ok(FwUpdateCmd::TransferComplete) => self.process_transfer_complete_rsp(payload).await,
             Ok(FwUpdateCmd::VerifyComplete) => self.process_verify_complete_rsp(payload).await,
             Ok(FwUpdateCmd::ApplyComplete) => self.process_apply_complete_rsp(payload).await,
-            _ => Err(MsgHandlerError::FdInitiatorModeError),
+            _ => Err(errors::FD_INITIATOR_MODE_ERROR),
         }
     }
 
-    async fn process_request_fw_data_rsp(&self, payload: &mut [u8]) -> Result<(), MsgHandlerError> {
+    async fn process_request_fw_data_rsp(&self, payload: &mut [u8]) -> McuResult<()> {
         let fd_state = self.internal.get_fd_state();
         if fd_state != FirmwareDeviceState::Download {
-            return Err(MsgHandlerError::FdInitiatorModeError);
+            return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
         let fd_req = self.internal.get_fd_req();
         if fd_req.complete {
             // Received data after completion
-            return Err(MsgHandlerError::FdInitiatorModeError);
+            return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
         // Decode the response message fixed
         let fw_data_rsp_fixed: RequestFirmwareDataResponseFixed =
-            RequestFirmwareDataResponseFixed::decode(payload).map_err(MsgHandlerError::Codec)?;
+            RequestFirmwareDataResponseFixed::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
 
         match fw_data_rsp_fixed.completion_code {
             code if code == PldmBaseCompletionCode::Success as u8 => {}
@@ -744,14 +736,14 @@ impl<'a> FirmwareDeviceContext<'a> {
 
         let fw_data = payload[core::mem::size_of::<RequestFirmwareDataResponseFixed>()..]
             .get(..length as usize)
-            .ok_or(MsgHandlerError::Codec(PldmCodecError::BufferTooShort))?;
+            .ok_or(errors::CODEC_ERROR)?;
 
         let fw_component = &self.internal.get_component();
         let res = self
             .ops
             .download_fw_data(offset as usize, fw_data, fw_component)
             .await
-            .map_err(MsgHandlerError::FdOps)?;
+            .map_err(|_| errors::FD_OPS_ERROR)?;
 
         if res == TransferResult::TransferSuccess {
             if self.ops.is_download_complete(fw_component) {
@@ -777,18 +769,15 @@ impl<'a> FirmwareDeviceContext<'a> {
         Ok(())
     }
 
-    async fn process_transfer_complete_rsp(
-        &self,
-        _payload: &mut [u8],
-    ) -> Result<(), MsgHandlerError> {
+    async fn process_transfer_complete_rsp(&self, _payload: &mut [u8]) -> McuResult<()> {
         let fd_state = self.internal.get_fd_state();
         if fd_state != FirmwareDeviceState::Download {
-            return Err(MsgHandlerError::FdInitiatorModeError);
+            return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
         let fd_req = self.internal.get_fd_req();
         if fd_req.state != FdReqState::Sent || !fd_req.complete {
-            return Err(MsgHandlerError::FdInitiatorModeError);
+            return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
         /* Next state depends whether the transfer succeeded */
@@ -808,18 +797,15 @@ impl<'a> FirmwareDeviceContext<'a> {
         Ok(())
     }
 
-    async fn process_verify_complete_rsp(
-        &self,
-        _payload: &mut [u8],
-    ) -> Result<(), MsgHandlerError> {
+    async fn process_verify_complete_rsp(&self, _payload: &mut [u8]) -> McuResult<()> {
         let fd_state = self.internal.get_fd_state();
         if fd_state != FirmwareDeviceState::Verify {
-            return Err(MsgHandlerError::FdInitiatorModeError);
+            return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
         let fd_req = self.internal.get_fd_req();
         if fd_req.state != FdReqState::Sent || !fd_req.complete {
-            return Err(MsgHandlerError::FdInitiatorModeError);
+            return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
         /* Next state depends whether the verify succeeded */
@@ -839,15 +825,15 @@ impl<'a> FirmwareDeviceContext<'a> {
         Ok(())
     }
 
-    async fn process_apply_complete_rsp(&self, _payload: &mut [u8]) -> Result<(), MsgHandlerError> {
+    async fn process_apply_complete_rsp(&self, _payload: &mut [u8]) -> McuResult<()> {
         let fd_state = self.internal.get_fd_state();
         if fd_state != FirmwareDeviceState::Apply {
-            return Err(MsgHandlerError::FdInitiatorModeError);
+            return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
         let fd_req = self.internal.get_fd_req();
         if fd_req.state != FdReqState::Sent || !fd_req.complete {
-            return Err(MsgHandlerError::FdInitiatorModeError);
+            return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
         if fd_req.result == Some(ApplyResult::ApplySuccess as u8) {
@@ -864,7 +850,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         Ok(())
     }
 
-    async fn fd_progress_download(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    async fn fd_progress_download(&self, payload: &mut [u8]) -> McuResult<usize> {
         // Get offset and length from ops first (this is async but outside the batch)
         // We need to do this before the batch because query_download_offset_and_length
         // needs the component, and getting it requires a lock.
@@ -874,17 +860,17 @@ impl<'a> FirmwareDeviceContext<'a> {
             .ops
             .query_download_offset_and_length(&component)
             .await
-            .map_err(MsgHandlerError::FdOps)?;
+            .map_err(|_| errors::FD_OPS_ERROR)?;
 
         // Use batch operation to prepare the download request
         let info = self
             .internal
             .prepare_download_request(requested_offset as u32, requested_length as u32)
-            .ok_or(MsgHandlerError::FdInitiatorModeError)?;
+            .ok_or(errors::FD_INITIATOR_MODE_ERROR)?;
 
         // If the request is complete, send TransferComplete
         if info.is_complete {
-            let result = info.result.ok_or(MsgHandlerError::FdInitiatorModeError)?;
+            let result = info.result.ok_or(errors::FD_INITIATOR_MODE_ERROR)?;
 
             let msg_len = TransferCompleteRequest::new(
                 info.instance_id,
@@ -892,7 +878,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                 TransferResult::try_from(result).unwrap(),
             )
             .encode(payload)
-            .map_err(MsgHandlerError::Codec)?;
+            .map_err(|_| errors::CODEC_ERROR)?;
 
             // Finalize request state in a single batch operation
             let req_sent_timestamp = self.ops.now();
@@ -908,9 +894,8 @@ impl<'a> FirmwareDeviceContext<'a> {
 
             Ok(msg_len)
         } else {
-            let (chunk_offset, chunk_length) = info
-                .chunk_info
-                .ok_or(MsgHandlerError::FdInitiatorModeError)?;
+            let (chunk_offset, chunk_length) =
+                info.chunk_info.ok_or(errors::FD_INITIATOR_MODE_ERROR)?;
 
             let msg_len = RequestFirmwareDataRequest::new(
                 info.instance_id,
@@ -919,7 +904,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                 chunk_length,
             )
             .encode(payload)
-            .map_err(MsgHandlerError::Codec)?;
+            .map_err(|_| errors::CODEC_ERROR)?;
 
             // Finalize download state and request state in a single batch operation
             let req_sent_timestamp = self.ops.now();
@@ -937,9 +922,9 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
-    async fn pldm_fd_progress_verify(&self, _payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    async fn pldm_fd_progress_verify(&self, _payload: &mut [u8]) -> McuResult<usize> {
         if !self.should_send_fd_request().await {
-            return Err(MsgHandlerError::FdInitiatorModeError);
+            return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
         let mut res = VerifyResult::default();
@@ -949,7 +934,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                 .ops
                 .verify(&self.internal.get_component(), &mut progress_percent)
                 .await
-                .map_err(MsgHandlerError::FdOps)?;
+                .map_err(|_| errors::FD_OPS_ERROR)?;
 
             // Set the progress percent to VerifyState
             self.internal
@@ -968,7 +953,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         // Encode the request message
         let msg_len = verify_complete_req
             .encode(_payload)
-            .map_err(MsgHandlerError::Codec)?;
+            .map_err(|_| errors::CODEC_ERROR)?;
 
         self.internal.set_fd_req(
             FdReqState::Sent,
@@ -982,9 +967,9 @@ impl<'a> FirmwareDeviceContext<'a> {
         Ok(msg_len)
     }
 
-    async fn pldm_fd_progress_apply(&self, _payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
+    async fn pldm_fd_progress_apply(&self, _payload: &mut [u8]) -> McuResult<usize> {
         if !self.should_send_fd_request().await {
-            return Err(MsgHandlerError::FdInitiatorModeError);
+            return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
         let mut res = ApplyResult::default();
@@ -994,7 +979,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                 .ops
                 .apply(&self.internal.get_component(), &mut progress_percent)
                 .await
-                .map_err(MsgHandlerError::FdOps)?;
+                .map_err(|_| errors::FD_OPS_ERROR)?;
 
             // Set the progress percent to ApplyState
             self.internal
@@ -1017,7 +1002,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         // Encode the request message
         let msg_len = apply_complete_req
             .encode(_payload)
-            .map_err(MsgHandlerError::Codec)?;
+            .map_err(|_| errors::CODEC_ERROR)?;
 
         self.internal.set_fd_req(
             FdReqState::Sent,

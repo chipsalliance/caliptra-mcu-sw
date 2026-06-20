@@ -20,7 +20,9 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::{
     ComponentResponseCode, Descriptor, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
 };
 use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
-use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
+use caliptra_mcu_pldm_lib::errors as pldm_errors;
+use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps};
+use mcu_error::McuResult;
 
 pub struct StreamingFdOps<'a, D: DMAMapping> {
     descriptors: &'a [Descriptor],
@@ -48,11 +50,11 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
         offset: usize,
         data: &[u8],
         dma_mapping: &impl DMAMapping,
-    ) -> Result<(), FdOpsError> {
+    ) -> McuResult<()> {
         let dma_syscall: DMASyscall = DMASyscall::new();
         let source_address = dma_mapping
             .mcu_sram_to_mcu_axi(data.as_ptr() as u32)
-            .map_err(|_| FdOpsError::FwDownloadError)?;
+            .map_err(|_| pldm_errors::FW_DOWNLOAD_ERROR)?;
 
         let transaction = DMATransaction {
             byte_count: data.len(),
@@ -64,7 +66,7 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
         Ok(())
     }
 
-    async fn copy_data_to_buffer(&self, _offset: usize, data: &[u8]) -> Result<(), FdOpsError> {
+    async fn copy_data_to_buffer(&self, _offset: usize, data: &[u8]) -> McuResult<()> {
         let state = PLDM_STATE.lock(|state| *state.borrow());
         let dma_params = DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
@@ -94,10 +96,7 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
 
 #[async_trait(?Send)]
 impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
-    fn get_device_identifiers(
-        &self,
-        device_identifiers: &mut [Descriptor],
-    ) -> Result<usize, FdOpsError> {
+    fn get_device_identifiers(&self, device_identifiers: &mut [Descriptor]) -> McuResult<usize> {
         self.descriptors
             .iter()
             .enumerate()
@@ -109,15 +108,12 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         Ok(self.descriptors.len())
     }
 
-    fn get_firmware_parms(
-        &self,
-        firmware_params: &mut FirmwareParameters,
-    ) -> Result<(), FdOpsError> {
+    fn get_firmware_parms(&self, firmware_params: &mut FirmwareParameters) -> McuResult<()> {
         *firmware_params = (*self.fw_params).clone();
         Ok(())
     }
 
-    async fn get_xfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError> {
+    async fn get_xfer_size(&self, ua_transfer_size: usize) -> McuResult<usize> {
         Ok(ua_transfer_size.min(MAX_PLDM_TRANSFER_SIZE))
     }
 
@@ -126,7 +122,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         component: &FirmwareComponent,
         fw_params: &FirmwareParameters,
         _op: ComponentOperation,
-    ) -> Result<ComponentResponseCode, FdOpsError> {
+    ) -> McuResult<ComponentResponseCode> {
         if let Some(size) = component.comp_image_size {
             if size
                 < (core::mem::size_of::<ImageHeader>() + core::mem::size_of::<FlashHeader>()) as u32
@@ -144,7 +140,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
     async fn query_download_offset_and_length(
         &self,
         _component: &FirmwareComponent,
-    ) -> Result<(usize, usize), FdOpsError> {
+    ) -> McuResult<(usize, usize)> {
         let should_yield = PLDM_STATE.lock(|state| {
             let mut state = state.borrow_mut();
             if *state == State::Initializing {
@@ -183,7 +179,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         offset: usize,
         data: &[u8],
         _component: &FirmwareComponent,
-    ) -> Result<TransferResult, FdOpsError> {
+    ) -> McuResult<TransferResult> {
         self.copy_data_to_buffer(offset, data).await?;
         // update self.download_ctx
         let should_yield = DOWNLOAD_CTX.lock(|ctx| {
@@ -225,7 +221,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<(), FdOpsError> {
+    ) -> McuResult<()> {
         *progress_percent = ProgressPercent::default();
         Ok(())
     }
@@ -234,7 +230,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<VerifyResult, FdOpsError> {
+    ) -> McuResult<VerifyResult> {
         // For streaming boot, the firmware images are verified during DOWNLOAD state.
         // This verify function is called when the device is in the VERIFY PLDM state (after DOWNLOAD state).
         // Therefore, since images have already been verified, at this stage, we return 100% progress.
@@ -247,22 +243,18 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
-    ) -> Result<ApplyResult, FdOpsError> {
+    ) -> McuResult<ApplyResult> {
         // For streaming boot, apply is not applicable, so we return 100% progress.
         *progress_percent = ProgressPercent::new(100).unwrap();
         Ok(ApplyResult::ApplySuccess)
     }
 
-    fn cancel_update_component(&self, _component: &FirmwareComponent) -> Result<(), FdOpsError> {
+    fn cancel_update_component(&self, _component: &FirmwareComponent) -> McuResult<()> {
         // TODO: Implement cancel update component logic if needed
         Ok(())
     }
 
-    fn activate(
-        &self,
-        _self_contained_activation: u8,
-        estimated_time: &mut u16,
-    ) -> Result<u8, FdOpsError> {
+    fn activate(&self, _self_contained_activation: u8, estimated_time: &mut u16) -> McuResult<u8> {
         *estimated_time = 0;
         // Activate is not applicable for streaming boot, so we return success.
         Ok(0) // PLDM completion code for success

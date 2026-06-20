@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::errors;
 use crate::transport::McuMboxTransport;
 use caliptra_api::mailbox::{populate_checksum, CommandId as CaliptraCommandId, MailboxReqHeader};
 use caliptra_mcu_common_commands::{
@@ -31,17 +32,8 @@ use caliptra_mcu_mbox_common::messages::{
 };
 use caliptra_mcu_romtime::{fuse_read_dai_params, PartitionId};
 use core::sync::atomic::{AtomicBool, Ordering};
+use mcu_error::McuResult;
 use zerocopy::{FromBytes, IntoBytes};
-
-#[derive(Debug)]
-pub enum MsgHandlerError {
-    Transport,
-    McuMboxCommon,
-    NotReady,
-    InvalidParams,
-    UnsupportedCommand,
-    UnauthorizedCommand,
-}
 
 /// Command interface for handling MCU mailbox commands.
 pub struct CmdInterface<'a> {
@@ -80,10 +72,10 @@ impl<'a> CmdInterface<'a> {
         &mut self,
         req_buf: &mut [u8],
         resp_buf: &mut [u8],
-    ) -> Result<(), MsgHandlerError> {
+    ) -> McuResult<()> {
         // Make sure at least the header can be written to the buffer.
         if resp_buf.len() < size_of::<MailboxRespHeader>() {
-            return Err(MsgHandlerError::InvalidParams);
+            return Err(errors::INVALID_PARAMS);
         }
 
         // Receive a request from the transport.
@@ -91,7 +83,7 @@ impl<'a> CmdInterface<'a> {
             Ok((c, slice)) => (c, slice.len()),
             Err(_) => {
                 let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
-                return Err(MsgHandlerError::Transport);
+                return Err(errors::TRANSPORT_ERROR);
             }
         };
 
@@ -104,7 +96,7 @@ impl<'a> CmdInterface<'a> {
                     // guarantee it is big enough to hold the header
                     if resp.len() < size_of::<MailboxRespHeader>() {
                         let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
-                        return Err(MsgHandlerError::McuMboxCommon);
+                        return Err(errors::MCU_MBOX_COMMON);
                     }
 
                     // Generate response checksum
@@ -112,7 +104,7 @@ impl<'a> CmdInterface<'a> {
 
                     self.transport.send_response(resp).await.map_err(|_| {
                         let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
-                        MsgHandlerError::Transport
+                        errors::TRANSPORT_ERROR
                     })?;
                 }
                 status
@@ -123,7 +115,7 @@ impl<'a> CmdInterface<'a> {
         // Finalize the response as the last step of handling the message.
         self.transport
             .finalize_response(status)
-            .map_err(|_| MsgHandlerError::Transport)?;
+            .map_err(|_| errors::TRANSPORT_ERROR)?;
 
         Ok(())
     }
@@ -134,9 +126,9 @@ impl<'a> CmdInterface<'a> {
         req_len: usize,
         cmd: u32,
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         if self.busy.load(Ordering::SeqCst) {
-            return Err(MsgHandlerError::NotReady);
+            return Err(errors::NOT_READY);
         }
 
         self.busy.store(true, Ordering::SeqCst);
@@ -146,9 +138,7 @@ impl<'a> CmdInterface<'a> {
             self.handle_crypto_passthrough(req_buf, req_len, caliptra_cmd, resp_buf)
                 .await
         } else {
-            let req = req_buf
-                .get(..req_len)
-                .ok_or(MsgHandlerError::InvalidParams)?;
+            let req = req_buf.get(..req_len).ok_or(errors::INVALID_PARAMS)?;
             match cmd_id {
                 CommandId::MC_FIRMWARE_VERSION => self.handle_fw_version(req, resp_buf).await,
                 CommandId::MC_DEVICE_CAPABILITIES => self.handle_device_caps(req, resp_buf).await,
@@ -180,7 +170,7 @@ impl<'a> CmdInterface<'a> {
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
-                _ => Err(MsgHandlerError::UnsupportedCommand),
+                _ => Err(errors::UNSUPPORTED_COMMAND),
             }
         };
 
@@ -192,10 +182,10 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         // Decode the request
         let req: &FirmwareVersionReq =
-            FirmwareVersionReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+            FirmwareVersionReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
         let index = req.index;
         let mut version = FirmwareVersion::default();
@@ -226,7 +216,7 @@ impl<'a> CmdInterface<'a> {
         // Encode the response and copy to resp_buf.
         let resp_bytes = resp
             .as_bytes_partial()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
@@ -237,9 +227,8 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        let _req =
-            DeviceCapsReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let _req = DeviceCapsReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
         // Prepare response
         let mut caps = DeviceCapabilities::default();
@@ -277,8 +266,8 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        let _req = DeviceIdReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let _req = DeviceIdReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
         // Prepare response
         let mut device_id = DeviceId::default();
@@ -313,9 +302,9 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         // Decode the request
-        let req = DeviceInfoReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+        let req = DeviceInfoReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
         // Prepare response
         let mut device_info = DeviceInfo::Uid(Default::default());
@@ -348,7 +337,7 @@ impl<'a> CmdInterface<'a> {
         // Encode the response and copy to resp_buf.
         let resp_bytes = resp
             .as_bytes_partial()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
@@ -368,8 +357,8 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        let req = GetLogReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = GetLogReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
         // Reserve the first 4 bytes of the variable-length payload for the
         // `more_data` flag; the rest is filled by the handler.
@@ -401,7 +390,7 @@ impl<'a> CmdInterface<'a> {
 
         let resp_bytes = resp
             .as_bytes_partial()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
     }
@@ -411,8 +400,8 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        let req = ClearLogReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = ClearLogReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
         let mbox_cmd_status = match self.non_crypto_cmds_handler.clear_log(req.log_type).await {
             Ok(()) => MbxCmdStatus::Complete,
@@ -429,9 +418,8 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        let req = ExportAttestedCsrReq::ref_from_bytes(req)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = ExportAttestedCsrReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
         let mut data = [0u8; MAX_RESP_DATA_SIZE];
         let ret = self
@@ -458,7 +446,7 @@ impl<'a> CmdInterface<'a> {
 
         let resp_bytes = resp
             .as_bytes_partial()
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
@@ -469,17 +457,17 @@ impl<'a> CmdInterface<'a> {
         &mut self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         // Decode the request
-        let _req = GetAuthCmdChallengeReq::ref_from_bytes(req)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        let _req =
+            GetAuthCmdChallengeReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let (resp, _) = GetAuthCmdChallengeResp::mut_from_prefix(resp_buf)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+            .map_err(|_| errors::INVALID_PARAMS)?;
         *resp = GetAuthCmdChallengeResp::default();
 
         Rng::generate_random_number(&mut resp.challenge)
             .await
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         self.cmd_authorizer.set_challenge(resp.challenge);
         let len = size_of_val(resp);
@@ -492,10 +480,8 @@ impl<'a> CmdInterface<'a> {
         req_len: usize,
         caliptra_cmd_code: u32,
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        let req = req_buf
-            .get_mut(..req_len)
-            .ok_or(MsgHandlerError::InvalidParams)?;
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = req_buf.get_mut(..req_len).ok_or(errors::INVALID_PARAMS)?;
 
         // Clear the header checksum field because it was computed for the MCU mailbox CmdID and payload.
         req[..core::mem::size_of::<MailboxReqHeader>()].fill(0);
@@ -514,12 +500,12 @@ impl<'a> CmdInterface<'a> {
         cmd_id: CommandId,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         let cmd = self
             .cmd_authorizer
             .is_authorized(cmd_id, req)
             .await
-            .map_err(|_| MsgHandlerError::UnauthorizedCommand)?;
+            .map_err(|_| errors::UNAUTHORIZED_COMMAND)?;
         match cmd_id {
             CommandId::MC_PROVISION_VENDOR_PK_HASH => {
                 self.handle_provision_vendor_pk_hash(cmd, resp_buf).await
@@ -539,7 +525,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_FUSE_LOCK_PARTITION => {
                 self.handle_fuse_lock_partition(cmd, resp_buf).await
             }
-            _ => Err(MsgHandlerError::UnsupportedCommand),
+            _ => Err(errors::UNSUPPORTED_COMMAND),
         }
     }
 
@@ -547,16 +533,16 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         // Decode the request
-        let req = FuseReadReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+        let req = FuseReadReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let (resp, _) =
-            FuseReadResp::mut_from_prefix(resp_buf).map_err(|_| MsgHandlerError::InvalidParams)?;
+            FuseReadResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
 
         *resp = FuseReadResp::default();
 
         let params = fuse_read_dai_params(req.partition, req.entry, MAX_FUSE_DATA_SIZE / 4)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+            .map_err(|_| errors::INVALID_PARAMS)?;
 
         let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
 
@@ -566,7 +552,7 @@ impl<'a> CmdInterface<'a> {
         for (i, word) in words.enumerate() {
             let data = otp
                 .read_raw(params.base_word_addr as u32, i as u32)
-                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+                .map_err(|_| errors::MCU_MBOX_COMMON)?;
             let bytes = data.to_ne_bytes();
             word.copy_from_slice(&bytes);
         }
@@ -580,19 +566,19 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         // Decode the request
-        let req = FuseWriteReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+        let req = FuseWriteReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let (resp, _) =
-            FuseWriteResp::mut_from_prefix(resp_buf).map_err(|_| MsgHandlerError::InvalidParams)?;
+            FuseWriteResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
 
         let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
 
         otp.write_raw(req.word_addr, req.data, req.mask)
             .map_err(|e| match e {
-                caliptra_mcu_libtock_platform::ErrorCode::Fail => MsgHandlerError::McuMboxCommon,
-                caliptra_mcu_libtock_platform::ErrorCode::Invalid => MsgHandlerError::InvalidParams,
-                _ => MsgHandlerError::McuMboxCommon,
+                caliptra_mcu_libtock_platform::ErrorCode::Fail => errors::MCU_MBOX_COMMON,
+                caliptra_mcu_libtock_platform::ErrorCode::Invalid => errors::INVALID_PARAMS,
+                _ => errors::MCU_MBOX_COMMON,
             })?;
 
         *resp = FuseWriteResp::default();
@@ -604,18 +590,17 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         // Decode the request
-        let req = FuseLockPartitionReq::ref_from_bytes(req)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
-        let (resp, _) = FuseLockPartitionResp::mut_from_prefix(resp_buf)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        let req = FuseLockPartitionReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) =
+            FuseLockPartitionResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
 
-        PartitionId::try_from(req.partition).map_err(|_| MsgHandlerError::InvalidParams)?;
+        PartitionId::try_from(req.partition).map_err(|_| errors::INVALID_PARAMS)?;
 
         let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
         otp.lock_partition(req.partition)
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         *resp = FuseLockPartitionResp::default();
         Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
@@ -625,9 +610,9 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        let req = ProvisionVendorPkHashReq::ref_from_bytes(req)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req =
+            ProvisionVendorPkHashReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let otp: Otp<DefaultSyscalls> = Otp::new();
         let res = match otp.provision_vendor_pk_hash(req.slot, &req.hash) {
             Ok(_) => MbxCmdStatus::Complete,
@@ -643,28 +628,28 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         if resp_buf.len() < core::mem::size_of::<FuseIncreaseCaliptraMinSvnResp>() {
-            return Err(MsgHandlerError::InvalidParams);
+            return Err(errors::INVALID_PARAMS);
         }
 
         // Decode the request
         let req = FuseIncreaseCaliptraMinSvnReq::ref_from_bytes(req)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+            .map_err(|_| errors::INVALID_PARAMS)?;
 
         // Check the request has a valid SVN value
         if req.svn == 0 {
-            return Err(MsgHandlerError::InvalidParams);
+            return Err(errors::INVALID_PARAMS);
         }
         if req.svn > 128 {
-            return Err(MsgHandlerError::InvalidParams);
+            return Err(errors::INVALID_PARAMS);
         }
 
         let caliptra_fw_info = self.get_caliptra_fw_info().await?;
 
         // Ensure the requested SVN will allow current Caliptra firmware to run
         if req.svn > caliptra_fw_info.fw_svn {
-            return Err(MsgHandlerError::InvalidParams);
+            return Err(errors::INVALID_PARAMS);
         }
 
         // Get the minimum SVN set in fuses
@@ -673,7 +658,7 @@ impl<'a> CmdInterface<'a> {
         for (i, fuse) in current_fuses.iter_mut().enumerate() {
             *fuse = otp
                 .read(otp::reg::CALIPTRA_FW_SVN, i as u32)
-                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+                .map_err(|_| errors::MCU_MBOX_COMMON)?;
         }
 
         // Convert the fuses to the SVN value
@@ -685,7 +670,7 @@ impl<'a> CmdInterface<'a> {
 
         // Ensure we are not trying to decrease the SVN
         if req.svn < fused_min_svn {
-            return Err(MsgHandlerError::InvalidParams);
+            return Err(errors::INVALID_PARAMS);
         }
 
         // We are done, if the fuses already match the requested SVN.
@@ -710,7 +695,7 @@ impl<'a> CmdInterface<'a> {
             let new_svn_word = u32::from_le_bytes(new_bytes.try_into().unwrap());
             if *current != new_svn_word {
                 otp.write(otp::reg::CALIPTRA_FW_SVN, i as u32, new_svn_word)
-                    .map_err(|_| MsgHandlerError::InvalidParams)?;
+                    .map_err(|_| errors::INVALID_PARAMS)?;
             }
         }
 
@@ -724,11 +709,11 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         // Decode the request
-        let req = McuFeProgReq::ref_from_bytes(req).map_err(|_| MsgHandlerError::InvalidParams)?;
+        let req = McuFeProgReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let (resp, _) =
-            FuseWriteResp::mut_from_prefix(resp_buf).map_err(|_| MsgHandlerError::InvalidParams)?;
+            FuseWriteResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
 
         // Prepare Caliptra request
         let mut caliptra_req = caliptra_api::mailbox::FeProgReq {
@@ -744,7 +729,7 @@ impl<'a> CmdInterface<'a> {
             resp.as_mut_bytes(),
         )
         .await
-        .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         *resp = FuseWriteResp::default();
         let resp_len = resp.as_bytes().len();
@@ -755,32 +740,32 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
-        let req = FuseRevokeVendorPubKeyReq::ref_from_bytes(req)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req =
+            FuseRevokeVendorPubKeyReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let (resp, _) = FuseRevokeVendorPubKeyResp::mut_from_prefix(resp_buf)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
-        let key_type = RevokeVendorPubKeyType::try_from(req.key_type)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        let key_type =
+            RevokeVendorPubKeyType::try_from(req.key_type).map_err(|_| errors::INVALID_PARAMS)?;
 
         // Check the given slot has a valid PK hash provisioned
         let otp = otp::Otp::<DefaultSyscalls>::new();
         if !otp.valid_vendor_pk_hash_slot(req.vendor_pk_hash_slot) {
-            Err(MsgHandlerError::InvalidParams)?;
+            Err(errors::INVALID_PARAMS)?;
         }
 
         let caliptra_info = self.get_caliptra_fw_info().await?;
 
         // Check if the key to be revoked was a key used to boot. If so, return an error as a form
         // of proof of possession for other keys.
-        let same_key_used_to_boot = || {
+        let same_key_used_to_boot = || -> McuResult<bool> {
             let caliptra_soc = caliptra::Caliptra::<DefaultSyscalls>::new();
             let booted_pk_hash = caliptra_soc
                 .read_vendor_pk_hash()
-                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+                .map_err(|_| errors::MCU_MBOX_COMMON)?;
             let pk_hash_from_slot = otp
                 .read_vendor_pk_hash(req.vendor_pk_hash_slot)
-                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+                .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
             // Check if the requested slot was the one used to boot
             if booted_pk_hash != pk_hash_from_slot {
@@ -805,11 +790,11 @@ impl<'a> CmdInterface<'a> {
         };
 
         if same_key_used_to_boot()? {
-            Err(MsgHandlerError::InvalidParams)?;
+            Err(errors::INVALID_PARAMS)?;
         }
 
         otp.revoke_vendor_pub_key(req.vendor_pk_hash_slot, key_type, req.key_index)
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         *resp = FuseRevokeVendorPubKeyResp::default();
         let len = size_of_val(resp);
@@ -820,45 +805,43 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         // Decode the request
-        let req = FuseRevokeVendorPkHashReq::ref_from_bytes(req)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        let req =
+            FuseRevokeVendorPkHashReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let (resp, _) = FuseRevokeVendorPkHashResp::mut_from_prefix(resp_buf)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+            .map_err(|_| errors::INVALID_PARAMS)?;
 
         let otp = otp::Otp::<DefaultSyscalls>::new();
 
         // Check if the PK hash to be revoked was used to boot. If so, return an error as a form
         // of proof of possession for other keys.
-        let same_key_used_to_boot = || {
+        let same_key_used_to_boot = || -> McuResult<bool> {
             let caliptra_soc = caliptra::Caliptra::<DefaultSyscalls>::new();
             let booted_pk_hash = caliptra_soc
                 .read_vendor_pk_hash()
-                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+                .map_err(|_| errors::MCU_MBOX_COMMON)?;
             let pk_hash_from_slot = otp
                 .read_vendor_pk_hash(req.vendor_pk_hash_slot)
-                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+                .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
             // Check if the requested slot was the one used to boot
             Ok(booted_pk_hash == pk_hash_from_slot)
         };
 
         if same_key_used_to_boot()? {
-            Err(MsgHandlerError::InvalidParams)?;
+            Err(errors::INVALID_PARAMS)?;
         }
 
         otp.revoke_vendor_pk_hash(req.vendor_pk_hash_slot)
-            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         *resp = FuseRevokeVendorPkHashResp::default();
         let resp_len = resp.as_bytes().len();
         Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
     }
 
-    async fn get_caliptra_fw_info(
-        &self,
-    ) -> Result<caliptra_api::mailbox::FwInfoResp, MsgHandlerError> {
+    async fn get_caliptra_fw_info(&self) -> McuResult<caliptra_api::mailbox::FwInfoResp> {
         let mut req = caliptra_api::mailbox::MailboxReqHeader::default();
         let mut caliptra_info = caliptra_api::mailbox::FwInfoResp {
             hdr: Default::default(),
@@ -890,10 +873,10 @@ impl<'a> CmdInterface<'a> {
             caliptra_info.as_mut_bytes(),
         )
         .await
-        .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         if len < size_of_val(&caliptra_info) {
-            return Err(MsgHandlerError::McuMboxCommon);
+            return Err(errors::MCU_MBOX_COMMON);
         }
         Ok(caliptra_info)
     }
@@ -903,12 +886,12 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         use crate::fips_periodic;
 
         // Parse the request
-        let req = McuFipsPeriodicEnableReq::ref_from_bytes(req)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        let req =
+            McuFipsPeriodicEnableReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
         // Enable or disable based on request
         fips_periodic::set_enabled(req.enable != 0);
@@ -928,12 +911,12 @@ impl<'a> CmdInterface<'a> {
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
-    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         use crate::fips_periodic;
 
         // Parse the request (just header, no additional data)
-        let _req = McuFipsPeriodicStatusReq::ref_from_bytes(req)
-            .map_err(|_| MsgHandlerError::InvalidParams)?;
+        let _req =
+            McuFipsPeriodicStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
         // Get status
         let (enabled, iterations, last_result) = fips_periodic::get_status();

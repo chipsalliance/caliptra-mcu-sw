@@ -14,9 +14,11 @@ Abstract:
 
 #![no_std]
 
-mod component_svn_manifest;
-pub use component_svn_manifest::{
-    McuComponentSvnEntry, McuComponentSvnManifest, SvnLimits, SvnManifestError,
+// SVN header types now live in `caliptra-mcu-romtime`; re-export them
+// here so existing `caliptra_mcu_rom_common::McuComponentSvn*` paths
+// keep working.
+pub use caliptra_mcu_romtime::{
+    McuComponentSvnEntry, McuComponentSvnManifest, SvnFuseMapEntry, SvnLimits, SvnManifestError,
     MCU_COMPONENT_SVN_MANIFEST_ENTRY_COUNT, MCU_COMPONENT_SVN_MANIFEST_MAGIC,
     MCU_COMPONENT_SVN_MANIFEST_SIZE, MCU_COMPONENT_SVN_MANIFEST_VERSION,
 };
@@ -44,6 +46,8 @@ mod mailbox;
 mod recovery;
 
 // Boot flow modules
+#[cfg(feature = "svn-manifest")]
+mod caliptra_svn;
 mod cold_boot;
 mod firmware_headers;
 mod fw_boot;

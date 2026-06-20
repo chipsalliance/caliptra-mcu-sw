@@ -133,6 +133,10 @@ pub mod domain {
     /// IDE-KM, OCP-VDM). Subdomains partition these areas.
     pub const SPDM: u8 = 0x03;
 
+    /// PLDM protocol (DMTF DSP0240) — covers PLDM base, firmware
+    /// update, transport, and firmware-device operations.
+    pub const PLDM: u8 = 0x04;
+
     /// MCU↔Caliptra mailbox protocol (`mcu-mbox-lib`).
     pub const MAILBOX: u8 = 0x06;
 

@@ -330,10 +330,7 @@ pub const PARTITIONS: &[Partition] = &[
         dot: false,
     },
 ];
-pub const SECRET_VENDOR_FUSES: &[Fuse] = &[Fuse {
-    name: "vendor_recovery_pk_hash",
-    size: Bytes(48),
-}];
+pub const SECRET_VENDOR_FUSES: &[Fuse] = &[];
 pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
     Fuse {
         name: "dot_initialized",
@@ -366,6 +363,10 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
     Fuse {
         name: "soc_image_min_svn_1",
         size: Bytes(4),
+    },
+    Fuse {
+        name: "vendor_recovery_pk_hash",
+        size: Bytes(48),
     },
 ];
 pub const FUSE_FIELDS: &[FuseField] = &[
@@ -713,9 +714,9 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         layout: FuseLayoutType::Single { bits: 32 },
     },
     FuseEntryInfo {
-        partition_num: 13,
-        entry_num: 0,
-        byte_offset: 0x870,
+        partition_num: 14,
+        entry_num: 8,
+        byte_offset: 0xb78,
         byte_size: 32,
         name: "vendor_recovery_pk_hash",
         layout: FuseLayoutType::Single { bits: 384 },
@@ -2865,14 +2866,14 @@ pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_15: &FuseEntryInfo = &FuseEntryInfo {
         duplication: 3,
     },
 };
-/// OTP item entry for `vendor_recovery_pk_hash`.
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 13,
     entry_num: 0,
     byte_offset: 0x870,
     byte_size: 32,
-    name: "vendor_recovery_pk_hash",
-    layout: FuseLayoutType::Single { bits: 384 },
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0",
+    layout: FuseLayoutType::Single { bits: 256 },
 };
 /// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_1`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_1: &FuseEntryInfo = &FuseEntryInfo {
@@ -3093,14 +3094,14 @@ pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7: &FuseEntryInfo = &Fuse
         duplication: 3,
     },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8`.
+/// OTP item entry for `vendor_recovery_pk_hash`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 8,
     byte_offset: 0xb78,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8",
-    layout: FuseLayoutType::Single { bits: 256 },
+    name: "vendor_recovery_pk_hash",
+    layout: FuseLayoutType::Single { bits: 384 },
 };
 /// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9: &FuseEntryInfo = &FuseEntryInfo {

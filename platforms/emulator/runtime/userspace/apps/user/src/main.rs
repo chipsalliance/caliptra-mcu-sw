@@ -18,7 +18,10 @@ use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 pub use caliptra_mcu_libsyscall_caliptra::console_writeln;
 
 mod caliptra_cmd_handler;
-#[cfg(feature = "test-defmt-logging")]
+#[cfg(any(
+    feature = "test-defmt-logging-mailbox",
+    feature = "test-defmt-logging-vdm"
+))]
 mod defmt_test;
 #[cfg(any(
     feature = "test-firmware-update-streaming",
@@ -119,7 +122,8 @@ pub(crate) async fn async_main() {
 
     #[cfg(any(
         feature = "test-mctp-vdm-cmds",
-        feature = "test-caliptra-util-host-mctp-vdm-validator"
+        feature = "test-caliptra-util-host-mctp-vdm-validator",
+        feature = "test-defmt-logging-vdm"
     ))]
     EXECUTOR.get().spawner().spawn(vdm::vdm_task()).unwrap();
 
@@ -132,7 +136,10 @@ pub(crate) async fn async_main() {
         .spawn(caliptra_mcu_userlog::drain_task())
         .unwrap();
 
-    #[cfg(feature = "test-defmt-logging")]
+    #[cfg(any(
+        feature = "test-defmt-logging-mailbox",
+        feature = "test-defmt-logging-vdm"
+    ))]
     defmt_test::emit_test_frames();
 
     loop {

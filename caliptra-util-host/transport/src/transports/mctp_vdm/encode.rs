@@ -261,6 +261,65 @@ pub fn handle_device_info(
 }
 
 // ---------------------------------------------------------------------------
+// GetDebugLog (command_id = 0x7005 / CaliptraCommandId::DebugGetLog)
+// ---------------------------------------------------------------------------
+
+pub fn handle_get_debug_log(
+    _payload: &[u8],
+    driver: &mut dyn super::transport::MctpVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    use alloc::vec;
+    use caliptra_mcu_core_util_host_command_types::device_log::{
+        DebugGetLogResponse, MAX_DEBUG_LOG_DATA_SIZE,
+    };
+    use caliptra_mcu_mctp_vdm_common::message::{
+        GetDebugLogRequest, GetDebugLogResponse, MAX_LOG_DATA_SIZE,
+    };
+
+    let vdm_req = GetDebugLogRequest::new();
+    let mut req_buf = [0u8; MAX_VDM_REQ_BUF];
+    let req_len = vdm_req
+        .encode(&mut req_buf)
+        .map_err(|_| TransportError::InvalidMessage)?;
+
+    let resp = driver
+        .send_request(&req_buf[..req_len])
+        .map_err(TransportError::from)?;
+
+    let resp_buf_size = core::mem::size_of::<GetDebugLogResponse>()
+        .max(VDM_MSG_HEADER_LEN + 16 + MAX_LOG_DATA_SIZE);
+    let mut resp_buf = vec![0u8; resp_buf_size];
+    let copy_len = resp.len().min(resp_buf.len());
+    resp_buf[..copy_len].copy_from_slice(&resp[..copy_len]);
+    let resp_bytes = &resp_buf[..copy_len];
+
+    validate_response_header(resp_bytes)?;
+
+    let vdm_resp =
+        GetDebugLogResponse::decode(resp_bytes).map_err(|_| TransportError::InvalidMessage)?;
+
+    let log = vdm_resp.data();
+    let data_len = log.len().min(MAX_DEBUG_LOG_DATA_SIZE);
+    let mut data = [0u8; MAX_DEBUG_LOG_DATA_SIZE];
+    data[..data_len].copy_from_slice(&log[..data_len]);
+
+    let internal_resp = DebugGetLogResponse {
+        common: CommonResponse {
+            fips_status: vdm_resp.header.completion_code,
+        },
+        more_data: if vdm_resp.more_data() { 1 } else { 0 },
+        data_len: data_len as u32,
+        data,
+    };
+
+    let resp_bytes = internal_resp.as_bytes();
+    let copy_len = resp_bytes.len().min(response_buffer.len());
+    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
+    Ok(copy_len)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
