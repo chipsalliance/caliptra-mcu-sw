@@ -11,9 +11,16 @@
 //! Handling is organized by SPDM Standards Body ID:
 //!
 //! * [`iana`] — IANA-registered vendors (OCP / Caliptra VDM).
-//! * [`pci_sig`] — PCI-SIG protocols (TDISP; IDE-KM reserved for future support).
+//! * [`pci_sig`] — PCI-SIG protocols (IDE-KM and TDISP).
 #![no_std]
 #![allow(async_fn_in_trait)]
 
 pub mod iana;
 pub mod pci_sig;
+
+/// Integrator-facing platform hook traits for supported VDM protocols.
+pub mod drivers {
+    pub use crate::iana::ocp::caliptra_vdm::CaliptraVdmCommands;
+    pub use crate::pci_sig::ide_km::{IdeDriver, IdeDriverError, IdeDriverResult};
+    pub use crate::pci_sig::tdisp::{TdispDriver, TdispDriverError, TdispDriverResult};
+}

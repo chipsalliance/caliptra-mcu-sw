@@ -6,7 +6,7 @@
 //! [`CaliptraVdmCommands`](super::CaliptraVdmCommands) PAL hook, and writes the
 //! VDM response payload `[completion_code, command_data..]`.
 
-use crate::iana::ocp::caliptra_vdm::protocol::CaliptraCompletionCode;
+use mcu_spdm_lite_codec::vendor_defined::iana::ocp::caliptra::CaliptraCompletionCode;
 
 pub(crate) mod authorized_command;
 pub(crate) mod clear_attestation_log;

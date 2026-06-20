@@ -2,38 +2,34 @@
 
 //! GET_DEBUG_LOG (0x05): drains debug-log bytes.
 
-use mcu_spdm_lite_traits::{SpdmPalAlloc, SpdmPalIo};
+use mcu_spdm_lite_traits::SpdmPalAlloc;
 
-use crate::iana::ocp::caliptra_vdm::protocol::CaliptraVdmCmdResult;
 use crate::iana::ocp::caliptra_vdm::CaliptraVdmCommands;
+use mcu_spdm_lite_codec::vendor_defined::iana::ocp::caliptra::CaliptraVdmCmdResult;
 
-pub(crate) async fn handle<H, A, I>(
+pub(crate) async fn handle<H, A>(
     cmds: &H,
     req: &[u8],
     scratch: &A,
-    io: &I,
     out: &mut [u8],
 ) -> CaliptraVdmCmdResult
 where
     H: CaliptraVdmCommands,
     A: SpdmPalAlloc,
-    I: SpdmPalIo,
 {
-    handle_log(cmds, super::LOG_TYPE_DEBUG, req, scratch, io, out).await
+    handle_log(cmds, super::LOG_TYPE_DEBUG, req, scratch, out).await
 }
 
-pub(crate) async fn handle_log<H, A, I>(
+pub(crate) async fn handle_log<H, A>(
     cmds: &H,
     log_type: u32,
     req: &[u8],
     scratch: &A,
-    io: &I,
     out: &mut [u8],
 ) -> CaliptraVdmCmdResult
 where
     H: CaliptraVdmCommands,
     A: SpdmPalAlloc,
-    I: SpdmPalIo,
 {
     use crate::iana::ocp::caliptra_vdm::CaliptraCompletionCode;
 
@@ -64,7 +60,7 @@ where
         }
     };
 
-    match cmds.get_log(log_type, scratch, io, log_buf).await {
+    match cmds.get_log(log_type, scratch, log_buf).await {
         Ok(result) => {
             if result.bytes_written > log_buf.len() {
                 return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);

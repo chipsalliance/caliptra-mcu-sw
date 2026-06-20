@@ -3,32 +3,30 @@
 //! GET_TDISP_CAPABILITIES command handler.
 
 use mcu_spdm_lite_codec::errors::SPDM_UNSPECIFIED;
-use mcu_spdm_lite_traits::{McuResult, SpdmPalAlloc, SpdmPalIo};
+use mcu_spdm_lite_traits::{McuResult, SpdmPalAlloc};
 
-use crate::pci_sig::tdisp::protocol::{
+use crate::pci_sig::tdisp::{TdispDriver, TdispHandlerResult, TdispResponder};
+use mcu_spdm_lite_codec::vendor_defined::pci_sig::tdisp::{
     tdisp_error_code, TdispMessageHeader, TdispReqCapabilities, TdispRespCapabilities,
     TDISP_CAPS_RSP_LEN, TDISP_ERROR_UNSPECIFIED, TDISP_HEADER_LEN,
 };
-use crate::pci_sig::tdisp::{TdispDriver, TdispHandlerResult, TdispResponder};
 
-pub(crate) async fn handle<D, Alloc, Io>(
+pub(crate) async fn handle<D, Alloc>(
     tdisp: &TdispResponder<D>,
     _req_hdr: TdispMessageHeader,
     req_payload: &[u8],
     scratch: &Alloc,
-    io: &Io,
     out: &mut [u8],
 ) -> McuResult<TdispHandlerResult>
 where
     D: TdispDriver,
     Alloc: SpdmPalAlloc,
-    Io: SpdmPalIo,
 {
     let req_caps = TdispReqCapabilities::decode(req_payload)?;
     let mut rsp_caps = TdispRespCapabilities::default();
     match tdisp
         .driver
-        .get_capabilities(req_caps, scratch, io, &mut rsp_caps)
+        .get_capabilities(req_caps, scratch, &mut rsp_caps)
         .await
     {
         Ok(0) => {

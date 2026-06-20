@@ -8,7 +8,9 @@
 //!
 //! * A [`SpdmStack`] — the main `run()` loop that receives an SPDM
 //!   request, dispatches it to a handler, and sends back either the
-//!   handler's response or a SPDM `ERROR` PDU.
+//!   handler's response or a SPDM `ERROR` PDU. A matched VDM backend may
+//!   request that a vendor-protocol failure be dropped without a response
+//!   when that is the source stack's wire behavior.
 //! * A [`ConnectionState`] — the per-connection negotiation state
 //!   (current phase, negotiated version, peer capabilities, …) plus
 //!   the responder's fixed local-policy advertisement.
