@@ -11,10 +11,7 @@ use zerocopy::{little_endian::U16, FromBytes};
 
 use super::WipeOnDrop;
 use crate::build::alloc_padded;
-use crate::error::{
-    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_LARGE_RESPONSE, SPDM_UNEXPECTED_REQUEST,
-    SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
-};
+use crate::error::*;
 #[cfg(feature = "set-certificate")]
 use crate::set_certificate;
 use crate::stack::{ConnectionState, Phase};
@@ -401,6 +398,9 @@ async fn dispatch_large_request<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     match code {
         #[cfg(feature = "set-certificate")]
         ReqRespCode::SET_CERTIFICATE => {
+            if secure_session {
+                return Err(SPDM_UNSUPPORTED_REQUEST);
+            }
             let slot_id =
                 set_certificate::handle_set_certificate_request(state, pal, io, &buf[..len])
                     .await?;

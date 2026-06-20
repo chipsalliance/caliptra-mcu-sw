@@ -920,9 +920,9 @@ fn validate_message_allowed_phase(
         | ReqRespCode::KEY_EXCHANGE => Err(SPDM_UNEXPECTED_REQUEST),
         ReqRespCode::GET_DIGESTS
         | ReqRespCode::GET_CERTIFICATE
-        | ReqRespCode::SET_CERTIFICATE
         | ReqRespCode::GET_MEASUREMENTS
         | ReqRespCode::END_SESSION => application_key(),
+        ReqRespCode::SET_CERTIFICATE => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
         ReqRespCode::FINISH => {
             if session_state == SessionState::HandshakeInProgress {
                 Ok(SessionKeyType::ResponseHandshakeKey)
@@ -1046,3 +1046,7 @@ fn decode_header(req: &[u8]) -> (ReqRespCode, SpdmVersion) {
         Err(_) => (ReqRespCode(0), SpdmVersion::V12),
     }
 }
+
+#[cfg(all(test, feature = "set-certificate"))]
+#[path = "tests/stack_set_certificate.rs"]
+mod tests;
