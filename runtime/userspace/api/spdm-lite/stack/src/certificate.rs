@@ -133,6 +133,16 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
+    let (resp, _) = handle_get_certificate_req(state, pal, io, io.request()).await?;
+    Ok(resp)
+}
+
+pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    spdm_msg: &[u8],
+) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
     // GET_CERTIFICATE is legal once algorithms are negotiated, and
     // any number of times after (pagination, re-requests).
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
@@ -140,8 +150,7 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
     }
 
     // Decode the 6-byte request body.
-    let req = io.request();
-    let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8() {
         return Err(crate::error::SPDM_VERSION_MISMATCH);
     }
@@ -229,14 +238,14 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
             &[handle],
         )?;
 
-        state.transcript.append_m1(pal, io, io.request()).await?;
+        state.transcript.append_m1(pal, io, spdm_msg).await?;
         state.large_msg_ctx.start_response(
             LargeResponse::Certificate(cert_rsp),
             cert_rsp.response_size(),
             None,
         )?;
         state.phase = Phase::AfterCertificate;
-        return Ok(resp);
+        return Ok((resp, SpdmMsgHdrPdu::SIZE + 2 + 1));
     }
 
     if portion_len == 0 {
@@ -253,12 +262,23 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
             },
         )?;
 
+        let spdm_len = CertificateRsp {
+            slot_id,
+            param2: cert_info,
+            portion_length: 0,
+            remainder_length: remainder_len,
+            chain_portion: &[],
+        }
+        .encoded_size();
         let head = pal.header_size();
-        state.transcript.append_m1(pal, io, io.request()).await?;
-        state.transcript.append_m1(pal, io, &resp[head..]).await?;
+        state.transcript.append_m1(pal, io, spdm_msg).await?;
+        state
+            .transcript
+            .append_m1(pal, io, &resp[head..head + spdm_len])
+            .await?;
 
         state.phase = Phase::AfterCertificate;
-        return Ok(resp);
+        return Ok((resp, spdm_len));
     }
 
     // Allocate the portion buffer from the per-IO pool. Bytes
@@ -279,14 +299,14 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
     let resp = build_response(pal, io, state.version, &cert_body)?;
 
     let head = pal.header_size();
-    state.transcript.append_m1(pal, io, io.request()).await?;
+    state.transcript.append_m1(pal, io, spdm_msg).await?;
     state
         .transcript
         .append_m1(pal, io, &resp[head..head + spdm_len])
         .await?;
 
     state.phase = Phase::AfterCertificate;
-    Ok(resp)
+    Ok((resp, spdm_len))
 }
 
 /// Splice the SPDM cert-chain header (first 52 bytes) with raw DER

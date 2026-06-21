@@ -64,16 +64,20 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
     let inline_cap = frame.saturating_sub(envelope);
     let mut inline_buf = pal.alloc_bytes(io, inline_cap)?;
 
-    // Large staging buffer: provisioned only when the backend can emit responses
-    // that overflow a single frame AND chunking is available. Sized so the full
-    // buffered message (envelope + payload) fits both the large-response store and
-    // the negotiated max SPDM message size; empty otherwise (forcing inline).
+    // Large staging buffer: provisioned only when chunking is available and the
+    // matched backend says this request can emit a response that overflows one
+    // frame. This keeps inline-only VDMs from consuming scarce scratch space.
     let large_cap = if V::USES_LARGE_RESPONSE && state.chunking_enabled() {
-        state
-            .effective_max_spdm_msg_size(pal)
-            .min(pal.large_capacity())
-            .saturating_sub(envelope)
-            .min(V::LARGE_RESPONSE_CAPACITY)
+        let requested = vdm.large_response_capacity(decoded.payload);
+        if requested > inline_cap {
+            state
+                .effective_max_spdm_msg_size(pal)
+                .min(pal.large_capacity())
+                .saturating_sub(envelope)
+                .min(requested)
+        } else {
+            0
+        }
     } else {
         0
     };

@@ -2,27 +2,25 @@
 
 //! CLEAR_DEBUG_LOG (0x06): clears the debug log.
 
-use mcu_spdm_lite_traits::{SpdmPalAlloc, SpdmPalIo};
+use mcu_spdm_lite_traits::SpdmPalAlloc;
 
-use crate::iana::ocp::caliptra_vdm::protocol::CaliptraVdmCmdResult;
 use crate::iana::ocp::caliptra_vdm::CaliptraVdmCommands;
+use mcu_spdm_lite_codec::vendor_defined::iana::ocp::caliptra::CaliptraVdmCmdResult;
 
-pub(crate) async fn handle<H, A, I>(
+pub(crate) async fn handle<H, A>(
     cmds: &H,
     req: &[u8],
     scratch: &A,
-    io: &I,
     out: &mut [u8],
 ) -> CaliptraVdmCmdResult
 where
     H: CaliptraVdmCommands,
     A: SpdmPalAlloc,
-    I: SpdmPalIo,
 {
     if let Err(code) = super::require_empty(req) {
         return CaliptraVdmCmdResult::Error(code);
     }
-    match cmds.clear_log(super::LOG_TYPE_DEBUG, scratch, io).await {
+    match cmds.clear_log(super::LOG_TYPE_DEBUG, scratch).await {
         Ok(()) => match super::write_success(out) {
             Ok(_) => CaliptraVdmCmdResult::Response(1),
             Err(code) => CaliptraVdmCmdResult::Error(code),

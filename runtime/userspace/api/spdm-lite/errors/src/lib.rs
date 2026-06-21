@@ -50,6 +50,23 @@ pub const SUBDOMAIN_MCTP: u8 = 0x10;
 /// PCIe DOE transport (used by SPDM) — reserved for future use.
 pub const SUBDOMAIN_DOE: u8 = 0x11;
 
+/// VDM handler control errors that affect responder framing rather than the
+/// vendor-defined wire payload.
+pub const SUBDOMAIN_VDM: u8 = 0x20;
+
+/// A matched VDM backend failed in the vendor protocol handler and the request
+/// should be dropped without generating an SPDM ERROR response.
+///
+/// Use this when a backend owns the VDM request but cannot form a valid
+/// vendor-defined response payload.
+pub const VDM_NO_RESPONSE: McuErrorCode = McuErrorCode::new(domain::SPDM, SUBDOMAIN_VDM, 0x0001);
+
+/// Returns true when `e` requests silent VDM failure handling.
+#[inline]
+pub const fn is_vdm_no_response(e: McuErrorCode) -> bool {
+    e.domain() == domain::SPDM && e.subdomain() == SUBDOMAIN_VDM && e.code() == 0x0001
+}
+
 // ----- Wire-byte convention --------------------------------------------------
 
 /// Builds an [`McuErrorCode`] from a DSP0274 §10.10.2 SPDM error byte.

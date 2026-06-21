@@ -3,27 +3,25 @@
 //! GET_DEVICE_INTERFACE_REPORT command handler.
 
 use mcu_spdm_lite_codec::errors::SPDM_UNSPECIFIED;
-use mcu_spdm_lite_traits::{McuResult, SpdmPalAlloc, SpdmPalIo};
+use mcu_spdm_lite_traits::{McuResult, SpdmPalAlloc};
 
-use crate::pci_sig::tdisp::protocol::{
+use crate::pci_sig::tdisp::{TdispDriver, TdispHandlerResult, TdispResponder};
+use mcu_spdm_lite_codec::vendor_defined::pci_sig::tdisp::{
     tdisp_error_code, DeviceInterfaceReportReq, TdispMessageHeader,
     DEVICE_INTERFACE_REPORT_RSP_HDR_LEN, TDISP_ERROR_INVALID_INTERFACE,
     TDISP_ERROR_INVALID_REQUEST, TDISP_ERROR_UNSPECIFIED, TDISP_HEADER_LEN,
 };
-use crate::pci_sig::tdisp::{TdispDriver, TdispHandlerResult, TdispResponder};
 
-pub(crate) async fn handle<D, Alloc, Io>(
+pub(crate) async fn handle<D, Alloc>(
     tdisp: &TdispResponder<D>,
     req_hdr: TdispMessageHeader,
     req_payload: &[u8],
     scratch: &Alloc,
-    io: &Io,
     out: &mut [u8],
 ) -> McuResult<TdispHandlerResult>
 where
     D: TdispDriver,
     Alloc: SpdmPalAlloc,
-    Io: SpdmPalIo,
 {
     if tdisp.state.interface_state(req_hdr.interface_id).is_none() {
         return Ok(TdispHandlerResult::Error(TDISP_ERROR_INVALID_INTERFACE, 0));
@@ -33,12 +31,7 @@ where
     let mut report_len = 0u16;
     match tdisp
         .driver
-        .get_device_interface_report_len(
-            req_hdr.interface_id.function_id,
-            scratch,
-            io,
-            &mut report_len,
-        )
+        .get_device_interface_report_len(req_hdr.interface_id.function_id, scratch, &mut report_len)
         .await
     {
         Ok(0) if req.offset as usize >= report_len as usize => {
@@ -75,7 +68,6 @@ where
             req_hdr.interface_id.function_id,
             req.offset,
             scratch,
-            io,
             report_portion,
             &mut copied,
         )

@@ -2,25 +2,23 @@
 
 //! START_INTERFACE command handler.
 
-use mcu_spdm_lite_traits::{McuResult, SpdmPalAlloc, SpdmPalIo};
+use mcu_spdm_lite_traits::{McuResult, SpdmPalAlloc};
 
-use crate::pci_sig::tdisp::protocol::{
+use crate::pci_sig::tdisp::{TdispDriver, TdispHandlerResult, TdispResponder};
+use mcu_spdm_lite_codec::vendor_defined::pci_sig::tdisp::{
     ct_eq, tdisp_error_code, TdispMessageHeader, TDISP_ERROR_INVALID_INTERFACE,
     TDISP_ERROR_INVALID_INTERFACE_STATE, TDISP_ERROR_UNSPECIFIED,
 };
-use crate::pci_sig::tdisp::{TdispDriver, TdispHandlerResult, TdispResponder};
 
-pub(crate) async fn handle<D, Alloc, Io>(
+pub(crate) async fn handle<D, Alloc>(
     tdisp: &TdispResponder<D>,
     req_hdr: TdispMessageHeader,
     req_payload: &[u8],
     scratch: &Alloc,
-    io: &Io,
 ) -> McuResult<TdispHandlerResult>
 where
     D: TdispDriver,
     Alloc: SpdmPalAlloc,
-    Io: SpdmPalIo,
 {
     let Some(interface_state) = tdisp.state.interface_state(req_hdr.interface_id) else {
         return Ok(TdispHandlerResult::Error(TDISP_ERROR_INVALID_INTERFACE, 0));
@@ -39,7 +37,7 @@ where
     }
     match tdisp
         .driver
-        .start_interface(req_hdr.interface_id.function_id, scratch, io)
+        .start_interface(req_hdr.interface_id.function_id, scratch)
         .await
     {
         Ok(0) => {

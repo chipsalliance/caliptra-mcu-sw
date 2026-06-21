@@ -27,14 +27,23 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    if state.phase != Phase::AfterAlgorithms && state.phase != Phase::AfterDigests {
+    let (resp, _) = handle_get_digests_req(state, pal, io, io.request()).await?;
+    Ok(resp)
+}
+
+pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    spdm_msg: &[u8],
+) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
+    if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
 
     // DSP0274 §10.5 Table 24: GET_DIGESTS header version shall match
     // the negotiated VCA version.
-    let req = io.request();
-    let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8() {
         return Err(crate::error::SPDM_VERSION_MISMATCH);
     }
@@ -92,14 +101,14 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
     let resp = build_response(pal, io, state.version, &digests_body)?;
 
     let head = pal.header_size();
-    state.transcript.append_m1(pal, io, io.request()).await?;
+    state.transcript.append_m1(pal, io, spdm_msg).await?;
     state
         .transcript
         .append_m1(pal, io, &resp[head..head + spdm_len])
         .await?;
 
     state.phase = Phase::AfterDigests;
-    Ok(resp)
+    Ok((resp, spdm_len))
 }
 
 fn fill_multi_key_conn_rsp_data<Pal: SpdmPal>(pal: &Pal, provisioned: u8, dst: &mut [u8]) {

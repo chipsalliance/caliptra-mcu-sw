@@ -38,6 +38,7 @@ mcu-error.workspace = true
 caliptra-mcu-romtime.workspace = true
 caliptra-mcu-spdm-lib.workspace = true
 mcu-caliptra-api-lite.workspace = true
+mcu-spdm-lite-codec.workspace = true
 mcu-spdm-lite-pal.workspace = true
 mcu-spdm-lite-stack = { workspace = true }
 mcu-spdm-lite-transports.workspace = true

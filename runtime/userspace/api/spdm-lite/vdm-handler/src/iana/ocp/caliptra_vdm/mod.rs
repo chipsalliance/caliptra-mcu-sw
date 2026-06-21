@@ -3,14 +3,13 @@
 //! Caliptra VENDOR_DEFINED Message (VDM) backend.
 //!
 //! Implements [`SpdmVdmBackend`] for the Caliptra VDM protocol (IANA standards
-//! body, vendor id [`protocol::CALIPTRA_VENDOR_ID`]). The backend decodes the
+//! body, vendor id [`CALIPTRA_VENDOR_ID`]). The backend decodes the
 //! Caliptra VDM message header, dispatches the command, and frames the response.
 //! Per-command device operations are provided by the platform through the
 //! [`CaliptraVdmCommands`] PAL hook — the protocol/dispatch stays in this lib,
 //! only the device work crosses to the platform.
 
 mod commands;
-pub mod protocol;
 
 use mcu_error::codes::INVARIANT;
 use mcu_spdm_lite_codec::StandardsBodyId;
@@ -18,7 +17,7 @@ use mcu_spdm_lite_traits::{
     McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
 };
 
-pub use protocol::{
+pub use mcu_spdm_lite_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult, CaliptraVdmCommand, CaliptraVdmResult,
     CALIPTRA_VDM_COMMAND_VERSION, CALIPTRA_VENDOR_ID,
 };
@@ -39,55 +38,45 @@ const MAX_LARGE_VDM_PAYLOAD_LEN: usize = VDM_HEADER_LEN + 1 + 4 + MAX_LARGE_COMM
 /// the number of bytes written, or a [`CaliptraCompletionCode`] on failure
 /// (surfaced as a VDM error completion, not an SPDM error).
 ///
-/// `scratch`/`io` give each device op the request-scoped scratch allocator (and
-/// the I/O handle that scopes it) so it can stage device interactions — e.g.
-/// building a Caliptra mailbox request and receiving its response — without
-/// owning persistent buffers.
+/// `scratch` gives each device op the request-scoped scratch allocator so it can
+/// stage device interactions without owning persistent buffers.
 pub trait CaliptraVdmCommands {
     /// Drains log bytes of `log_type` into `out`.
-    async fn get_log<A: SpdmPalAlloc, I: SpdmPalIo>(
+    async fn get_log<A: SpdmPalAlloc>(
         &self,
         log_type: u32,
         scratch: &A,
-        io: &I,
         out: &mut [u8],
     ) -> CaliptraVdmResult<CaliptraVdmLogResult>;
 
     /// Clears the log identified by `log_type`.
-    async fn clear_log<A: SpdmPalAlloc, I: SpdmPalIo>(
-        &self,
-        log_type: u32,
-        scratch: &A,
-        io: &I,
-    ) -> CaliptraVdmResult<()>;
+    async fn clear_log<A: SpdmPalAlloc>(&self, log_type: u32, scratch: &A)
+        -> CaliptraVdmResult<()>;
 
     /// Exports an attested CSR for `device_key_id` using `algorithm` and `nonce`,
     /// writing the raw CSR bytes into `out` and returning their length.
-    async fn export_attested_csr<A: SpdmPalAlloc, I: SpdmPalIo>(
+    async fn export_attested_csr<A: SpdmPalAlloc>(
         &self,
         device_key_id: u32,
         algorithm: u32,
         nonce: &[u8; 32],
         scratch: &A,
-        io: &I,
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize>;
 
     /// Generates an authorization challenge nonce into `out`.
-    async fn get_auth_challenge<A: SpdmPalAlloc, I: SpdmPalIo>(
+    async fn get_auth_challenge<A: SpdmPalAlloc>(
         &self,
         scratch: &A,
-        io: &I,
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize>;
 
     /// Verifies `mac` for FE_PROG and programs field entropy for `partition`.
-    async fn program_field_entropy<A: SpdmPalAlloc, I: SpdmPalIo>(
+    async fn program_field_entropy<A: SpdmPalAlloc>(
         &self,
         partition: u32,
         mac: &[u8; 48],
         scratch: &A,
-        io: &I,
     ) -> CaliptraVdmResult<()>;
 }
 
@@ -146,8 +135,9 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
             inline: out,
             large,
             alloc,
-            io,
+            io: _,
         } = rsp;
+        let scratch = alloc;
         // No room for even the response header + completion code → no
         // vendor-defined response can be formed; surfaced as an SPDM error by
         // the stack.
@@ -168,17 +158,16 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
 
         let result = match CaliptraVdmCommand::try_from(command_code) {
             Ok(CaliptraVdmCommand::GetDebugLog) => {
-                commands::get_debug_log::handle(self.cmds, cmd_req, alloc, io, payload).await
+                commands::get_debug_log::handle(self.cmds, cmd_req, scratch, payload).await
             }
             Ok(CaliptraVdmCommand::ClearDebugLog) => {
-                commands::clear_debug_log::handle(self.cmds, cmd_req, alloc, io, payload).await
+                commands::clear_debug_log::handle(self.cmds, cmd_req, scratch, payload).await
             }
             Ok(CaliptraVdmCommand::GetAttestationLog) => {
-                commands::get_attestation_log::handle(self.cmds, cmd_req, alloc, io, payload).await
+                commands::get_attestation_log::handle(self.cmds, cmd_req, scratch, payload).await
             }
             Ok(CaliptraVdmCommand::ClearAttestationLog) => {
-                commands::clear_attestation_log::handle(self.cmds, cmd_req, alloc, io, payload)
-                    .await
+                commands::clear_attestation_log::handle(self.cmds, cmd_req, scratch, payload).await
             }
             Ok(CaliptraVdmCommand::ExportAttestedCsr) => {
                 commands::export_attested_csr::handle(
@@ -187,13 +176,12 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
                     command_code,
                     payload,
                     large,
-                    alloc,
-                    io,
+                    scratch,
                 )
                 .await
             }
             Ok(CaliptraVdmCommand::AuthorizedCommand) => {
-                commands::authorized_command::handle(self.cmds, cmd_req, alloc, io, payload).await
+                commands::authorized_command::handle(self.cmds, cmd_req, scratch, payload).await
             }
             // Recognized-but-unimplemented and unknown command codes both map to
             // an UnsupportedOperation completion.
@@ -334,41 +322,37 @@ mod tests {
     }
 
     impl CaliptraVdmCommands for TestCommands {
-        async fn get_log<A: SpdmPalAlloc, I: SpdmPalIo>(
+        async fn get_log<A: SpdmPalAlloc>(
             &self,
             _log_type: u32,
             _scratch: &A,
-            _io: &I,
             _out: &mut [u8],
         ) -> CaliptraVdmResult<CaliptraVdmLogResult> {
             Err(CaliptraCompletionCode::UnsupportedOperation)
         }
 
-        async fn clear_log<A: SpdmPalAlloc, I: SpdmPalIo>(
+        async fn clear_log<A: SpdmPalAlloc>(
             &self,
             _log_type: u32,
             _scratch: &A,
-            _io: &I,
         ) -> CaliptraVdmResult<()> {
             Err(CaliptraCompletionCode::UnsupportedOperation)
         }
 
-        async fn export_attested_csr<A: SpdmPalAlloc, I: SpdmPalIo>(
+        async fn export_attested_csr<A: SpdmPalAlloc>(
             &self,
             _device_key_id: u32,
             _algorithm: u32,
             _nonce: &[u8; 32],
             _scratch: &A,
-            _io: &I,
             out: &mut [u8],
         ) -> CaliptraVdmResult<usize> {
             self.write_csr(out)
         }
 
-        async fn get_auth_challenge<A: SpdmPalAlloc, I: SpdmPalIo>(
+        async fn get_auth_challenge<A: SpdmPalAlloc>(
             &self,
             _scratch: &A,
-            _io: &I,
             out: &mut [u8],
         ) -> CaliptraVdmResult<usize> {
             if out.len() < 32 {
@@ -378,12 +362,11 @@ mod tests {
             Ok(32)
         }
 
-        async fn program_field_entropy<A: SpdmPalAlloc, I: SpdmPalIo>(
+        async fn program_field_entropy<A: SpdmPalAlloc>(
             &self,
             _partition: u32,
             _mac: &[u8; 48],
             _scratch: &A,
-            _io: &I,
         ) -> CaliptraVdmResult<()> {
             Ok(())
         }

@@ -369,8 +369,9 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
     /// Main responder run loop. On each iteration: receive one request, dispatch
     /// it to the matching handler (routing `VENDOR_DEFINED_REQUEST` to the
     /// registered VDM backend), and send back either the handler's response or a
-    /// SPDM `ERROR` PDU. Returns only on a fatal transport error (`recv_request`
-    /// / `send_response` failure).
+    /// SPDM `ERROR` PDU. A matched VDM backend can request no response for
+    /// vendor-protocol failures that should be dropped. Returns only on a fatal
+    /// transport error (`recv_request` / `send_response` failure).
     ///
     /// # Returns
     ///
@@ -426,6 +427,9 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
                                 .await?
                         }
                         Err(e) => {
+                            if e.is_no_response() {
+                                continue;
+                            }
                             #[cfg(feature = "debug-trace")]
                             {
                                 let _ = writeln!(
@@ -460,6 +464,9 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
                         }
                         Ok(None) => {}
                         Err(e) => {
+                            if e.is_no_response() {
+                                continue;
+                            }
                             #[cfg(feature = "debug-trace")]
                             {
                                 let _ = writeln!(
@@ -667,6 +674,9 @@ async fn handle_secured_request<
     match handle_secured_inner(state, sessions, pal, io, session_id, vdm).await {
         Ok(rsp) => Ok(Some(rsp)),
         Err(e) => {
+            if e.is_no_response() {
+                return Ok(None);
+            }
             let Some(session) = sessions.find_mut(session_id) else {
                 return Ok(None);
             };
@@ -822,6 +832,40 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             .await?;
             sessions.remove_and_destroy(session_id);
             Ok(rsp)
+        }
+        ReqRespCode::GET_DIGESTS => {
+            let (digests_rsp, spdm_len) =
+                digests::handle_get_digests_req(state, pal, io, spdm_msg).await?;
+            let head = pal.header_size();
+            let spdm_rsp = &digests_rsp[head..head + spdm_len];
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+            encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                response_key_type,
+                spdm_rsp,
+            )
+            .await
+        }
+        ReqRespCode::GET_CERTIFICATE => {
+            let (certificate_rsp, spdm_len) =
+                certificate::handle_get_certificate_req(state, pal, io, spdm_msg).await?;
+            let head = pal.header_size();
+            let spdm_rsp = &certificate_rsp[head..head + spdm_len];
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+            encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                response_key_type,
+                spdm_rsp,
+            )
+            .await
         }
         ReqRespCode::GET_MEASUREMENTS => {
             let (measurements_rsp, spdm_len) =

@@ -4569,9 +4569,12 @@ name = "mcu-spdm-lite-vdm-handler"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-runtime-userspace-error",
+ "futures",
  "mcu-caliptra-api-lite",
  "mcu-spdm-lite-codec",
+ "mcu-spdm-lite-errors",
  "mcu-spdm-lite-traits",
+ "zerocopy",
 ]
 
 [[package]]
@@ -6825,6 +6828,7 @@ dependencies = [
  "embassy-sync",
  "embedded-alloc",
  "mcu-caliptra-api-lite",
+ "mcu-spdm-lite-codec",
  "mcu-spdm-lite-pal",
  "mcu-spdm-lite-stack",
  "mcu-spdm-lite-traits",

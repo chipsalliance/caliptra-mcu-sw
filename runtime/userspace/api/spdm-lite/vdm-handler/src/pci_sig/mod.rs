@@ -3,9 +3,10 @@
 //! PCI-SIG VENDOR_DEFINED protocols (Standards Body ID `PciSig`, 0x03).
 //!
 //! PCI-SIG protocols such as IDE-KM and TDISP are carried as SPDM
-//! VENDOR_DEFINED messages and, for TDISP, are expected inside a secured
-//! session on DOE.
+//! VENDOR_DEFINED messages inside a secured session on DOE. The first byte of
+//! the PCI-SIG VDM payload selects the PCI-SIG protocol.
 
+pub mod ide_km;
 pub mod tdisp;
 
 use mcu_spdm_lite_codec::errors::{
@@ -16,16 +17,10 @@ use mcu_spdm_lite_traits::{
     McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
 };
 
-/// PCI-SIG protocol identifier for IDE-KM.
-pub const IDE_KM_PROTOCOL_ID: u8 = 0x00;
 /// PCI-SIG protocol identifier for TDISP.
 pub const TDISP_PROTOCOL_ID: u8 = 0x01;
 
 /// PCI-SIG VDM backend that dispatches protocol-id `0x01` to TDISP.
-///
-/// The first byte of the PCI-SIG VDM payload is the PCI-SIG protocol id. This
-/// backend preserves that top-level byte and delegates the remaining payload to
-/// the size-conscious TDISP responder.
 pub struct PciSigTdispVdm<D> {
     vendor_id: u16,
     tdisp: tdisp::TdispResponder<D>,
@@ -39,9 +34,7 @@ impl<D> PciSigTdispVdm<D> {
 
     #[inline]
     fn matches_envelope(&self, registry: &VdmRegistry<'_>) -> bool {
-        registry.standard_id == StandardsBodyId::PciSig.as_u16()
-            && registry.vendor_id == self.vendor_id.to_le_bytes()
-            && registry.secure_session
+        pci_sig_envelope_matches(registry, self.vendor_id)
     }
 }
 
@@ -62,29 +55,47 @@ where
         Alloc: SpdmPalAlloc,
         Io: SpdmPalIo,
     {
-        let VdmResponseBuffer {
-            inline, alloc, io, ..
-        } = rsp;
+        let VdmResponseBuffer { inline, alloc, .. } = rsp;
         let Some((&protocol_id, payload)) = req.split_first() else {
             return Err(SPDM_INVALID_REQUEST);
         };
         if protocol_id != TDISP_PROTOCOL_ID {
             return Err(SPDM_UNSUPPORTED_REQUEST);
         }
-        let Some(tdisp_inline) = inline.get_mut(1..) else {
-            return Err(SPDM_UNSPECIFIED);
-        };
-        let response = self
-            .tdisp
-            .handle_tdisp_payload(payload, alloc, io, tdisp_inline)
-            .await?;
-        match response {
-            VdmResponse::Inline(len) => {
-                inline[0] = protocol_id;
-                Ok(VdmResponse::Inline(len + 1))
-            }
-            VdmResponse::Large(_) => Err(SPDM_UNSPECIFIED),
+        handle_tdisp_protocol_payload(&self.tdisp, protocol_id, payload, inline, alloc).await
+    }
+}
+
+#[inline]
+fn pci_sig_envelope_matches(registry: &VdmRegistry<'_>, vendor_id: u16) -> bool {
+    registry.standard_id == StandardsBodyId::PciSig.as_u16()
+        && registry.vendor_id == vendor_id.to_le_bytes()
+        && registry.secure_session
+}
+
+async fn handle_tdisp_protocol_payload<D, Alloc>(
+    tdisp: &tdisp::TdispResponder<D>,
+    protocol_id: u8,
+    payload: &[u8],
+    inline: &mut [u8],
+    alloc: &Alloc,
+) -> McuResult<VdmResponse>
+where
+    D: tdisp::TdispDriver,
+    Alloc: SpdmPalAlloc,
+{
+    let Some(tdisp_inline) = inline.get_mut(1..) else {
+        return Err(SPDM_UNSPECIFIED);
+    };
+    let response = tdisp
+        .handle_tdisp_payload(payload, alloc, tdisp_inline)
+        .await?;
+    match response {
+        VdmResponse::Inline(len) => {
+            inline[0] = protocol_id;
+            Ok(VdmResponse::Inline(len + 1))
         }
+        VdmResponse::Large(_) => Err(SPDM_UNSPECIFIED),
     }
 }
 
@@ -99,7 +110,7 @@ mod tests {
     use core::pin::Pin;
     use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
-    use mcu_spdm_lite_codec::errors::SPDM_VERSION_MISMATCH;
+    use mcu_spdm_lite_codec::{errors::SPDM_VERSION_MISMATCH, IDE_KM_PROTOCOL_ID};
     use mcu_spdm_lite_traits::{SpdmPalIoKind, VdmResponse};
     use std::boxed::Box;
     use std::vec;
@@ -250,15 +261,13 @@ mod tests {
     }
 
     impl TdispDriver for TestTdispDriver {
-        async fn generate_start_interface_nonce<Alloc, Io>(
+        async fn generate_start_interface_nonce<Alloc>(
             &self,
             _scratch: &Alloc,
-            _io: &Io,
             out: &mut [u8; START_INTERFACE_NONCE_SIZE],
         ) -> TdispDriverResult<()>
         where
             Alloc: SpdmPalAlloc,
-            Io: SpdmPalIo,
         {
             let start = self.nonce_counter.get().wrapping_add(1);
             self.nonce_counter.set(start);
@@ -268,31 +277,27 @@ mod tests {
             Ok(())
         }
 
-        async fn get_capabilities<Alloc, Io>(
+        async fn get_capabilities<Alloc>(
             &self,
             _req_caps: TdispReqCapabilities,
             _scratch: &Alloc,
-            _io: &Io,
             resp_caps: &mut TdispRespCapabilities,
         ) -> TdispDriverResult<u32>
         where
             Alloc: SpdmPalAlloc,
-            Io: SpdmPalIo,
         {
             *resp_caps = TdispRespCapabilities::new(0, TEST_REQ_MSGS_SUPPORTED, 0x07, 48, 0, 0);
             Ok(0)
         }
 
-        async fn lock_interface<Alloc, Io>(
+        async fn lock_interface<Alloc>(
             &self,
             _function_id: FunctionId,
             _param: TdispLockInterfaceParam,
             _scratch: &Alloc,
-            _io: &Io,
         ) -> TdispDriverResult<u32>
         where
             Alloc: SpdmPalAlloc,
-            Io: SpdmPalIo,
         {
             if self.state.get() != TdiStatus::ConfigUnlocked {
                 return Ok(TDISP_ERROR_INVALID_INTERFACE_STATE);
@@ -301,16 +306,14 @@ mod tests {
             Ok(0)
         }
 
-        async fn get_device_interface_report_len<Alloc, Io>(
+        async fn get_device_interface_report_len<Alloc>(
             &self,
             _function_id: FunctionId,
             _scratch: &Alloc,
-            _io: &Io,
             intf_report_len: &mut u16,
         ) -> TdispDriverResult<u32>
         where
             Alloc: SpdmPalAlloc,
-            Io: SpdmPalIo,
         {
             *intf_report_len = if self.state.get() == TdiStatus::ConfigUnlocked {
                 0
@@ -320,18 +323,16 @@ mod tests {
             Ok(0)
         }
 
-        async fn get_device_interface_report<Alloc, Io>(
+        async fn get_device_interface_report<Alloc>(
             &self,
             _function_id: FunctionId,
             offset: u16,
             _scratch: &Alloc,
-            _io: &Io,
             report: &mut [u8],
             copied: &mut usize,
         ) -> TdispDriverResult<u32>
         where
             Alloc: SpdmPalAlloc,
-            Io: SpdmPalIo,
         {
             let offset = offset as usize;
             if self.state.get() == TdiStatus::ConfigUnlocked
@@ -346,30 +347,26 @@ mod tests {
             Ok(0)
         }
 
-        async fn get_device_interface_state<Alloc, Io>(
+        async fn get_device_interface_state<Alloc>(
             &self,
             _function_id: FunctionId,
             _scratch: &Alloc,
-            _io: &Io,
             tdi_state: &mut TdiStatus,
         ) -> TdispDriverResult<u32>
         where
             Alloc: SpdmPalAlloc,
-            Io: SpdmPalIo,
         {
             *tdi_state = self.state.get();
             Ok(0)
         }
 
-        async fn start_interface<Alloc, Io>(
+        async fn start_interface<Alloc>(
             &self,
             _function_id: FunctionId,
             _scratch: &Alloc,
-            _io: &Io,
         ) -> TdispDriverResult<u32>
         where
             Alloc: SpdmPalAlloc,
-            Io: SpdmPalIo,
         {
             if self.state.get() != TdiStatus::ConfigLocked {
                 return Ok(TDISP_ERROR_INVALID_INTERFACE_STATE);
@@ -378,15 +375,13 @@ mod tests {
             Ok(0)
         }
 
-        async fn stop_interface<Alloc, Io>(
+        async fn stop_interface<Alloc>(
             &self,
             _function_id: FunctionId,
             _scratch: &Alloc,
-            _io: &Io,
         ) -> TdispDriverResult<u32>
         where
             Alloc: SpdmPalAlloc,
-            Io: SpdmPalIo,
         {
             if self.state.get() == TdiStatus::ConfigUnlocked {
                 return Ok(TDISP_ERROR_INVALID_INTERFACE_STATE);
@@ -490,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn get_capabilities_matches_libspdm_sample_after_get_version() {
+    fn get_capabilities_matches_expected_sample_after_get_version() {
         let backend = backend();
         let get_version = request(TdispCommand::GetTdispVersion as u8, &[]);
         dispatch(&backend, &get_version, 64).expect("interface initialized");

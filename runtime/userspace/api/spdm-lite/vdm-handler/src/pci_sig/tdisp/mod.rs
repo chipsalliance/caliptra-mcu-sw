@@ -8,14 +8,14 @@
 
 mod commands;
 mod driver;
-mod protocol;
 mod state;
 
 use mcu_spdm_lite_codec::errors::{SPDM_INVALID_REQUEST, SPDM_VERSION_MISMATCH};
-use mcu_spdm_lite_traits::{McuResult, SpdmPalAlloc, SpdmPalIo, VdmResponse};
+use mcu_spdm_lite_codec::vendor_defined::pci_sig::tdisp::{TdispMessageHeader, TDISP_HEADER_LEN};
+use mcu_spdm_lite_traits::{McuResult, SpdmPalAlloc, VdmResponse};
 
 pub use driver::{TdispDriver, TdispDriverError, TdispDriverResult};
-pub use protocol::{
+pub use mcu_spdm_lite_codec::vendor_defined::pci_sig::tdisp::{
     FunctionId, InterfaceId, TdiStatus, TdispCommand, TdispErrorCode, TdispLockInterfaceFlags,
     TdispLockInterfaceParam, TdispReqCapabilities, TdispRespCapabilities, TdispVersion,
     START_INTERFACE_NONCE_SIZE, TDISP_ERROR_BUSY, TDISP_ERROR_INSUFFICIENT_ENTROPY,
@@ -26,7 +26,6 @@ pub use protocol::{
 };
 pub use state::MAX_TDISP_INTERFACES;
 
-use protocol::{TdispMessageHeader, TDISP_HEADER_LEN};
 use state::TdispState;
 
 /// TDISP responder with fixed-size state storage.
@@ -60,17 +59,16 @@ where
     D: TdispDriver,
 {
     /// Handles a TDISP payload excluding the PCI-SIG protocol id byte.
-    pub async fn handle_tdisp_payload<Alloc, Io>(
+    pub async fn handle_tdisp_payload<Alloc>(
         &self,
         payload: &[u8],
-        scratch: &Alloc,
-        io: &Io,
+        alloc: &Alloc,
         out: &mut [u8],
     ) -> McuResult<VdmResponse>
     where
         Alloc: SpdmPalAlloc,
-        Io: SpdmPalIo,
     {
+        let scratch = alloc;
         let (req_hdr, req_payload) = TdispMessageHeader::decode(payload)?;
 
         if TdispVersion::try_from(req_hdr.version).is_err() {
@@ -105,38 +103,24 @@ where
                 commands::get_tdisp_version::handle(self, req_hdr, out)
             }
             TdispCommand::GetTdispCapabilities => {
-                commands::get_tdisp_capabilities::handle(
-                    self,
-                    req_hdr,
-                    req_payload,
-                    scratch,
-                    io,
-                    out,
-                )
-                .await
+                commands::get_tdisp_capabilities::handle(self, req_hdr, req_payload, scratch, out)
+                    .await
             }
             TdispCommand::LockInterface => {
-                commands::lock_interface::handle(self, req_hdr, req_payload, scratch, io, out).await
+                commands::lock_interface::handle(self, req_hdr, req_payload, scratch, out).await
             }
             TdispCommand::GetDeviceInterfaceReport => {
-                commands::device_interface_report::handle(
-                    self,
-                    req_hdr,
-                    req_payload,
-                    scratch,
-                    io,
-                    out,
-                )
-                .await
+                commands::device_interface_report::handle(self, req_hdr, req_payload, scratch, out)
+                    .await
             }
             TdispCommand::GetDeviceInterfaceState => {
-                commands::device_interface_state::handle(self, req_hdr, scratch, io, out).await
+                commands::device_interface_state::handle(self, req_hdr, scratch, out).await
             }
             TdispCommand::StartInterfaceRequest => {
-                commands::start_interface::handle(self, req_hdr, req_payload, scratch, io).await
+                commands::start_interface::handle(self, req_hdr, req_payload, scratch).await
             }
             TdispCommand::StopInterfaceRequest => {
-                commands::stop_interface::handle(self, req_hdr, scratch, io).await
+                commands::stop_interface::handle(self, req_hdr, scratch).await
             }
             TdispCommand::BindP2PStreamRequest
             | TdispCommand::UnbindP2PStreamRequest

@@ -2,8 +2,9 @@
 
 //! Shared TDISP wire protocol types.
 
-use mcu_spdm_lite_codec::errors::{SPDM_INVALID_REQUEST, SPDM_UNSPECIFIED};
 use mcu_spdm_lite_traits::McuResult;
+
+use crate::errors::{SPDM_INVALID_REQUEST, SPDM_UNSPECIFIED};
 
 /// TDISP version 1.0 wire value.
 pub const TDISP_VERSION_1_0: u8 = 0x10;
@@ -125,7 +126,7 @@ pub enum TdispCommand {
 
 impl TdispCommand {
     /// Returns the matching response command for a request command.
-    pub(crate) const fn response(self) -> Option<Self> {
+    pub const fn response(self) -> Option<Self> {
         match self {
             Self::GetTdispVersion => Some(Self::TdispVersion),
             Self::GetTdispCapabilities => Some(Self::TdispCapabilities),
@@ -143,7 +144,7 @@ impl TdispCommand {
     }
 
     /// Returns the exact request payload length for this command.
-    pub(crate) const fn payload_len(self) -> usize {
+    pub const fn payload_len(self) -> usize {
         match self {
             Self::GetTdispVersion => 0,
             Self::GetTdispCapabilities => TDISP_CAPS_REQ_LEN,
@@ -247,7 +248,7 @@ impl TdispMessageHeader {
         }
     }
 
-    pub(crate) fn decode(input: &[u8]) -> McuResult<(Self, &[u8])> {
+    pub fn decode(input: &[u8]) -> McuResult<(Self, &[u8])> {
         let hdr = input.get(..TDISP_HEADER_LEN).ok_or(SPDM_INVALID_REQUEST)?;
         Ok((
             Self {
@@ -263,7 +264,7 @@ impl TdispMessageHeader {
         ))
     }
 
-    pub(crate) fn encode(self, out: &mut [u8]) -> McuResult<()> {
+    pub fn encode(self, out: &mut [u8]) -> McuResult<()> {
         let out = out.get_mut(..TDISP_HEADER_LEN).ok_or(SPDM_UNSPECIFIED)?;
         out[0] = self.version;
         out[1] = self.message_type;
@@ -282,7 +283,7 @@ pub struct TdispReqCapabilities {
 }
 
 impl TdispReqCapabilities {
-    pub(crate) fn decode(input: &[u8]) -> McuResult<Self> {
+    pub fn decode(input: &[u8]) -> McuResult<Self> {
         if input.len() != TDISP_CAPS_REQ_LEN {
             return Err(SPDM_INVALID_REQUEST);
         }
@@ -329,7 +330,7 @@ impl TdispRespCapabilities {
         }
     }
 
-    pub(crate) fn encode(self, out: &mut [u8]) -> McuResult<()> {
+    pub fn encode(self, out: &mut [u8]) -> McuResult<()> {
         let out = out.get_mut(..TDISP_CAPS_RSP_LEN).ok_or(SPDM_UNSPECIFIED)?;
         out[0..4].copy_from_slice(&self.dsm_capabilities.to_le_bytes());
         out[4..20].copy_from_slice(&self.req_msgs_supported);
@@ -362,7 +363,7 @@ pub struct TdispLockInterfaceParam {
 }
 
 impl TdispLockInterfaceParam {
-    pub(crate) fn decode(input: &[u8]) -> McuResult<Self> {
+    pub fn decode(input: &[u8]) -> McuResult<Self> {
         if input.len() != LOCK_INTERFACE_PARAM_LEN {
             return Err(SPDM_INVALID_REQUEST);
         }
@@ -382,13 +383,13 @@ impl TdispLockInterfaceParam {
 
 /// GET_DEVICE_INTERFACE_REPORT request payload.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct DeviceInterfaceReportReq {
-    pub(crate) offset: u16,
-    pub(crate) length: u16,
+pub struct DeviceInterfaceReportReq {
+    pub offset: u16,
+    pub length: u16,
 }
 
 impl DeviceInterfaceReportReq {
-    pub(crate) fn decode(input: &[u8]) -> McuResult<Self> {
+    pub fn decode(input: &[u8]) -> McuResult<Self> {
         if input.len() != DEVICE_INTERFACE_REPORT_REQ_LEN {
             return Err(SPDM_INVALID_REQUEST);
         }
@@ -434,7 +435,7 @@ fn read_u64(input: &[u8]) -> u64 {
     u64::from_le_bytes(bytes)
 }
 
-pub(crate) fn ct_eq(a: &[u8; START_INTERFACE_NONCE_SIZE], b: &[u8]) -> bool {
+pub fn ct_eq(a: &[u8; START_INTERFACE_NONCE_SIZE], b: &[u8]) -> bool {
     if b.len() != START_INTERFACE_NONCE_SIZE {
         return false;
     }

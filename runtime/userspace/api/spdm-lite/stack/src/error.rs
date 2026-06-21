@@ -15,7 +15,7 @@
 //! every layer boundary, no `.map_err(...)` ever needed.
 
 use mcu_error::{domain, McuErrorCode};
-use mcu_spdm_lite_errors::{as_spdm_wire, is_mctp_error};
+use mcu_spdm_lite_errors::{as_spdm_wire, is_mctp_error, is_vdm_no_response};
 
 /// SPDM-level error suitable for emission as an `ERROR` PDU.
 ///
@@ -31,6 +31,21 @@ pub struct SpdmError {
 pub type SpdmResult<T> = core::result::Result<T, SpdmError>;
 
 impl SpdmError {
+    /// Constructs a sentinel error that suppresses any SPDM response.
+    #[inline]
+    pub const fn no_response() -> Self {
+        Self {
+            spec_byte: 0,
+            error_data: 0,
+        }
+    }
+
+    /// Returns true when this error should be dropped instead of serialized.
+    #[inline]
+    pub const fn is_no_response(&self) -> bool {
+        self.spec_byte == 0
+    }
+
     /// Constructs an [`SpdmError`] from an SPDM `ERROR` spec byte.
     ///
     /// # Parameters
@@ -80,6 +95,9 @@ impl SpdmError {
 /// just use `?` and the conversion happens automatically.
 impl From<McuErrorCode> for SpdmError {
     fn from(e: McuErrorCode) -> Self {
+        if is_vdm_no_response(e) {
+            return Self::no_response();
+        }
         // Already a wire-encoded SPDM error: extract the byte.
         if let Some(byte) = as_spdm_wire(e) {
             return Self::new(byte);
