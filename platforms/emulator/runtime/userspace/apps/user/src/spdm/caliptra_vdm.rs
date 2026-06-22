@@ -7,6 +7,9 @@
 //! VDM commands. The protocol/dispatch/framing all live in the
 //! `mcu-spdm-lite-vdm-handler` lib; this hook only supplies the device ops.
 
+extern crate alloc;
+
+use alloc::boxed::Box;
 use arrayvec::ArrayVec;
 use caliptra_mcu_common_commands::{
     CaliptraCompletionCode as CommonCompletionCode, GetLogResult, DEBUG_UNLOCK_CHALLENGE_SIZE,
