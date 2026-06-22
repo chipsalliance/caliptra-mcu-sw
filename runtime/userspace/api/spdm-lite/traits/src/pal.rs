@@ -6,7 +6,7 @@
 //! abstraction that platform-specific implementations must satisfy. It
 //! composes the required transport capabilities (via [`SpdmIoTransport`])
 //! into a single trait bound, making it the primary integration point for
-//! porting the SPDM-Lite stack to a new platform or transport.
+//! platform or transport implementations.
 
 use super::*;
 

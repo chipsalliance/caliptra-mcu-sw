@@ -583,9 +583,7 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
     code: ReqRespCode,
     vdm: &Vdm,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    if code != ReqRespCode::CHUNK_SEND && state.large_msg_ctx.request_in_progress() {
-        state.large_msg_ctx.reset();
-    }
+    abort_chunk_reassembly_if_interrupted(state, code);
     if code != ReqRespCode::CHUNK_GET
         && code != ReqRespCode::CHUNK_SEND
         && state.large_msg_ctx.response_in_progress()
@@ -640,6 +638,15 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         ReqRespCode::FINISH | ReqRespCode::END_SESSION => Err(SPDM_SESSION_REQUIRED),
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
+    }
+}
+
+fn abort_chunk_reassembly_if_interrupted<S, L>(state: &mut ConnectionState<S, L>, code: ReqRespCode)
+where
+    L: core::ops::DerefMut<Target = [u8]>,
+{
+    if code != ReqRespCode::CHUNK_SEND && state.large_msg_ctx.request_in_progress() {
+        state.large_msg_ctx.reset();
     }
 }
 
@@ -783,14 +790,12 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
     // ── Dispatch on SPDM code ───────────────────────────────────────
     let (spdm_hdr, _) =
         SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
+    abort_chunk_reassembly_if_interrupted(state, spdm_hdr.code);
     let session_state = sessions.find(session_id).ok_or(SPDM_UNSPECIFIED)?.state;
     let response_key_type = validate_message_allowed_phase(spdm_hdr.code, session_state)?;
 
     // After decoding secure inner SPDM code, ensure stale large-message reassembly/response state is cleared.
     let code = spdm_hdr.code;
-    if code != ReqRespCode::CHUNK_SEND && state.large_msg_ctx.request_in_progress() {
-        state.large_msg_ctx.reset();
-    }
     if code != ReqRespCode::CHUNK_GET
         && code != ReqRespCode::CHUNK_SEND
         && state.large_msg_ctx.response_in_progress()

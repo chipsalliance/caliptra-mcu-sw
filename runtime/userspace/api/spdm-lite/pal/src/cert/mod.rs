@@ -24,9 +24,8 @@ use mcu_caliptra_api_lite::{
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_spdm_lite_traits::{SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo};
 
-/// 48-byte label fed to DPE `CertifyKey` for slot 0. Matches the
-/// constant spdm-lib uses so the leaf-cert key continuity matches
-/// what existing tooling expects.
+/// 48-byte label fed to DPE `CertifyKey` for slot 0. Keep this stable so
+/// slot-0 leaf-cert key continuity matches what existing tooling expects.
 pub const SLOT0_LEAF_LABEL: [u8; DPE_LABEL_LEN] = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
     0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
