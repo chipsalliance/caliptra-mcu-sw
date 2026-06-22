@@ -632,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    fn request_debug_unlock_allows_trailing_payload_like_spdm_lib() {
+    fn request_debug_unlock_allows_trailing_payload() {
         let cmds = TestCommands::new(0);
         let req = [
             CALIPTRA_VDM_COMMAND_VERSION,

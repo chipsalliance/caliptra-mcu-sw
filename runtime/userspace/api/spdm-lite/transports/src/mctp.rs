@@ -53,9 +53,8 @@
 //! [`McuMctpTransport`] objects bound to the corresponding driver
 //! numbers and route between them.
 //!
-//! This implementation mirrors the MCTP transport in
-//! `caliptra-mcu-spdm-lib` but operates on raw byte buffers (instead
-//! of `MessageBuf`) as required by the SPDM-Lite PAL trait.
+//! This implementation operates on raw byte buffers as required by the
+//! SPDM-Lite PAL trait.
 
 extern crate alloc;
 

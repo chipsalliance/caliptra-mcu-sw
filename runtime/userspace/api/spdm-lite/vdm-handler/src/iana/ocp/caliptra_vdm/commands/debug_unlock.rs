@@ -18,9 +18,8 @@ where
     H: CaliptraVdmCommands,
     A: SpdmPalAlloc,
 {
-    // spdm-lib decodes a single u8 and does not require the command-specific
-    // payload to be exhausted. Mirror that request parsing: missing byte is an
-    // invalid payload, extra bytes are ignored by the command handler.
+    // Decode only the required unlock-level byte. Missing data is an invalid
+    // payload; extra bytes are ignored by the command handler.
     let Some(&unlock_level) = req.first() else {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
     };

@@ -7,10 +7,6 @@
 //! VDM commands. The protocol/dispatch/framing all live in the
 //! `mcu-spdm-lite-vdm-handler` lib; this hook only supplies the device ops.
 
-extern crate alloc;
-
-use alloc::boxed::Box;
-
 use arrayvec::ArrayVec;
 use caliptra_mcu_common_commands::{
     CaliptraCompletionCode as CommonCompletionCode, GetLogResult, DEBUG_UNLOCK_CHALLENGE_SIZE,
@@ -139,12 +135,16 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         use caliptra_api::mailbox::{CommandId, MailboxRespHeader};
 
         let cmd = CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.0;
-        let checksum = caliptra_api::calc_checksum(cmd, token_data).to_le_bytes();
+        // The host sends the production debug-unlock token payload in Caliptra RT
+        // mailbox format, including the MailboxReqHeader/checksum, and large
+        // requests are streamed directly to the mailbox. Do not synthesize
+        // another checksum header here or the mailbox would receive
+        // `[new_checksum || host_checksum || token]`.
         let mut token_stream = SlicePayloadStream::new(token_data);
         let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
 
         Mailbox::<DefaultSyscalls>::new()
-            .execute_with_payload_stream(cmd, Some(&checksum), &mut token_stream, &mut resp_buf)
+            .execute_with_payload_stream(cmd, None, &mut token_stream, &mut resp_buf)
             .await
             .map_err(map_mailbox_error)?;
         Ok(())

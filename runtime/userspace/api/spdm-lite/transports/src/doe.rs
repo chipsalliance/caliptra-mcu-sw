@@ -84,9 +84,8 @@ impl SpdmPalTransport for McuSpdmDoeTransport {
 
     fn mtu(&self) -> usize {
         let max = self.doe.max_message_size().unwrap_or(0) as usize;
-        // Cap to the SPDM responder buffer size — same as spdm-lib's
-        // MAX_SPDM_RESPONDER_BUF_SIZE. The PAL allocates header+mtu
-        // from the BitmapAllocator per exchange.
+        // Cap to the SPDM responder buffer size. The PAL allocates
+        // header+mtu from the BitmapAllocator per exchange.
         const MAX_SPDM_MTU: usize = 1024;
         max.saturating_sub(DOE_HEADER_SIZE).min(MAX_SPDM_MTU)
     }

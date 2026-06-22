@@ -470,3 +470,178 @@ fn encode_error_pdu(version: SpdmVersion, err: SpdmError, out: &mut [u8; 4]) {
     out[2] = err.spec_byte();
     out[3] = err.error_data();
 }
+
+#[cfg(test)]
+#[path = "../tests/support.rs"]
+mod support;
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use core::cell::RefCell;
+
+    use futures::executor::block_on;
+    use mcu_error::McuResult;
+    use mcu_spdm_lite_codec::vendor_defined::iana::ocp::caliptra::{
+        CaliptraVdmCommand, CALIPTRA_VDM_COMMAND_VERSION, CALIPTRA_VENDOR_ID,
+    };
+    use mcu_spdm_lite_traits::{
+        SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
+    };
+    use std::vec;
+    use std::vec::Vec;
+
+    use super::*;
+
+    use super::support::{chunk_send_request, chunking_state, TestIo, TestPal};
+
+    const CALIPTRA_VENDOR_ID_BYTES: [u8; 4] = CALIPTRA_VENDOR_ID.to_le_bytes();
+
+    struct CaptureVdmBackend {
+        captured_token_payload: RefCell<Option<Vec<u8>>>,
+    }
+
+    impl CaptureVdmBackend {
+        fn new() -> Self {
+            Self {
+                captured_token_payload: RefCell::new(None),
+            }
+        }
+    }
+
+    impl SpdmVdmBackend for CaptureVdmBackend {
+        fn match_id(&self, registry: &VdmRegistry<'_>) -> bool {
+            registry.standard_id == 0x0004 && registry.vendor_id == CALIPTRA_VENDOR_ID_BYTES
+        }
+
+        async fn handle_request<Alloc, Io>(
+            &self,
+            req: &[u8],
+            rsp: VdmResponseBuffer<'_, Alloc, Io>,
+        ) -> McuResult<VdmResponse>
+        where
+            Alloc: SpdmPalAlloc,
+            Io: SpdmPalIo,
+        {
+            assert_eq!(req.first().copied(), Some(CALIPTRA_VDM_COMMAND_VERSION));
+            assert_eq!(
+                req.get(1).copied(),
+                Some(CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8)
+            );
+            self.captured_token_payload.replace(Some(req[2..].to_vec()));
+            rsp.inline[..3].copy_from_slice(&[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8,
+                0,
+            ]);
+            Ok(VdmResponse::Inline(3))
+        }
+    }
+
+    fn vendor_defined_authorize_debug_unlock_request(token_payload: &[u8]) -> Vec<u8> {
+        let vdm_payload_len = 2 + token_payload.len();
+        let mut req = vec![
+            SpdmVersion::V12.to_u8(),
+            ReqRespCode::VENDOR_DEFINED_REQUEST.0,
+            0,
+            0,
+            0x04,
+            0x00,
+            CALIPTRA_VENDOR_ID_BYTES.len() as u8,
+        ];
+        req.extend_from_slice(&CALIPTRA_VENDOR_ID_BYTES);
+        req.extend_from_slice(&(vdm_payload_len as u16).to_le_bytes());
+        req.push(CALIPTRA_VDM_COMMAND_VERSION);
+        req.push(CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8);
+        req.extend_from_slice(token_payload);
+        req
+    }
+
+    #[test]
+    fn chunked_vendor_defined_debug_unlock_token_preserves_host_mailbox_payload() {
+        let pal = TestPal::default();
+        let mut state = chunking_state();
+        let vdm = CaptureVdmBackend::new();
+
+        // Host SPDM-VDM transport sends AuthorizeDebugUnlockToken as Caliptra RT
+        // mailbox bytes: MailboxReqHeader/checksum followed by the token body.
+        // The stack/backend must not strip, rewrite, or prepend this payload.
+        let mut host_mailbox_payload = vec![0u8; 4 + 96];
+        host_mailbox_payload[..4].copy_from_slice(&0xAABB_CCDDu32.to_le_bytes());
+        for (i, b) in host_mailbox_payload[4..].iter_mut().enumerate() {
+            *b = i as u8;
+        }
+        let large_req = vendor_defined_authorize_debug_unlock_request(&host_mailbox_payload);
+        let (first, second) = large_req.split_at(64);
+        let first_chunk = chunk_send_request(9, 0, false, Some(large_req.len()), first);
+        let second_chunk = chunk_send_request(9, 1, true, None, second);
+
+        let first_io = TestIo::message(first_chunk.clone());
+        let rsp = block_on(handle_chunk_send(
+            &mut state,
+            &pal,
+            &first_io,
+            &vdm,
+            &first_chunk,
+            false,
+        ))
+        .unwrap();
+        assert_eq!(
+            &rsp[..],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                9,
+                0,
+                0,
+            ]
+        );
+        assert!(state.large_msg_ctx.request_in_progress());
+
+        let second_io = TestIo::message(second_chunk.clone());
+        let rsp = block_on(handle_chunk_send(
+            &mut state,
+            &pal,
+            &second_io,
+            &vdm,
+            &second_chunk,
+            false,
+        ))
+        .unwrap();
+        assert_eq!(
+            vdm.captured_token_payload.take(),
+            Some(host_mailbox_payload)
+        );
+        assert!(!state.large_msg_ctx.request_in_progress());
+
+        assert_eq!(
+            &rsp[..],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                9,
+                1,
+                0,
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::VENDOR_DEFINED_RESPONSE.0,
+                0,
+                0,
+                0x04,
+                0x00,
+                CALIPTRA_VENDOR_ID_BYTES.len() as u8,
+                CALIPTRA_VENDOR_ID_BYTES[0],
+                CALIPTRA_VENDOR_ID_BYTES[1],
+                CALIPTRA_VENDOR_ID_BYTES[2],
+                CALIPTRA_VENDOR_ID_BYTES[3],
+                3,
+                0,
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8,
+                0,
+            ]
+        );
+    }
+}

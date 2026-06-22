@@ -521,7 +521,7 @@ mod tests {
     }
 
     #[test]
-    fn commands_match_spdm_lib_interface_initialization_rules() {
+    fn commands_follow_interface_initialization_rules() {
         let backend = backend();
         let caps = request(TdispCommand::GetTdispCapabilities as u8, &[0; 4]);
         let (response, out) = dispatch(&backend, &caps, 64).expect("capabilities succeeds");
