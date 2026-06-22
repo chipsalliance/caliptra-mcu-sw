@@ -165,17 +165,13 @@ impl Otp {
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
 
-        for (i, chunk) in data[..len].chunks_exact_mut(4).enumerate() {
-            let byte_addr = addr + i * 4;
-            if is_64bit_granule(byte_addr) {
-                let dword = self.read_dword((byte_addr & !7) / 8)?.to_le_bytes();
-                let start = byte_addr & 4;
-                chunk.copy_from_slice(&dword[start..start + 4]);
-            } else {
-                chunk.copy_from_slice(&self.read_word(byte_addr / 4)?.to_le_bytes());
-            }
-        }
-        Ok(())
+        read_data_with(
+            addr,
+            len,
+            data,
+            |word_addr| self.read_word(word_addr),
+            |dword_addr| self.read_dword(dword_addr),
+        )
     }
 
     /// Reads a word from the OTP controller.
@@ -1048,7 +1044,6 @@ fn is_64bit_granule(byte_addr: usize) -> bool {
     )
 }
 
-#[cfg(test)]
 fn read_data_with(
     addr: usize,
     len: usize,
