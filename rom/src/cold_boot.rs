@@ -1015,7 +1015,7 @@ impl BootFlow for ColdBoot {
                  will execute zeroization after Caliptra boot"
             );
             mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationDetected.into());
-            mci.set_fips_zeroization_mask();
+            mci.set_fips_zeroization_mask(0xFFFF_FFFF);
             mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
         }
 
@@ -1225,6 +1225,12 @@ impl BootFlow for ColdBoot {
                 - 1,
         );
         mci.set_fw_sram_exec_region_size(size_value);
+
+        if let Some(mask) = params.fips_zeroization_mask {
+            caliptra_mcu_romtime::println!("[mcu-rom] Setting FIPS zeroization mask");
+            mci.set_fips_zeroization_mask(mask);
+            mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
+        }
 
         // Set SS_CONFIG_DONE_STICKY to lock MCI configuration registers
         caliptra_mcu_romtime::println!(

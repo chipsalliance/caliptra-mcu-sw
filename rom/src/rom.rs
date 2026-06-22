@@ -952,6 +952,11 @@ pub struct RomParameters<'a> {
     pub recovery_status_open: bool,
     /// Size of the executable SRAM region to pass into FW_SRAM_EXEC_REGION_SIZE
     pub mcu_fw_sram_exec_region_size: Option<u32>,
+    /// Bitmask to write to FC_FIPS_ZEROZATION before MCI configuration locks.
+    ///
+    /// Platform integrators should provide this when the FIPS PPD signal is
+    /// asserted. When `None`, the register is left at its hardware reset value.
+    pub fips_zeroization_mask: Option<u32>,
     /// Valid AXI users for Caliptra mailbox. 0 values are ignored.
     pub cptra_mbox_axi_users: [u32; 5],
     /// Valid AXI user for Caliptra fuse registers. 0 = don't configure.
