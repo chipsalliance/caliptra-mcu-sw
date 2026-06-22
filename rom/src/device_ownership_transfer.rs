@@ -647,6 +647,14 @@ pub trait RecoveryTransport {
 
     /// Receive the signed challenge response from the BMC.
     fn receive_override_response(&self) -> McuResult<OverrideChallengeResponse<'_>>;
+
+    /// Notify the BMC of the final override result.
+    ///
+    /// Must be called after `receive_override_response` returns `Ok` to
+    /// acknowledge the DOT_OVERRIDE command back to the sender.  Pass `true`
+    /// when the override completed successfully, or `false` if signature
+    /// verification or fuse/flash operations failed.
+    fn notify_override_result(&self, success: bool);
 }
 
 // ---------------------------------------------------------------------------
@@ -1164,6 +1172,7 @@ pub fn dot_override_challenge_flow(
     };
 
     verify_override_response(&mut env.soc_manager, recovery_pk_hash, &auth).inspect_err(|_e| {
+        transport.notify_override_result(false);
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
     })?;
@@ -1180,6 +1189,7 @@ pub fn dot_override_challenge_flow(
         stable_key_type,
     )
     .inspect_err(|_e| {
+        transport.notify_override_result(false);
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
     })?;
@@ -1187,6 +1197,7 @@ pub fn dot_override_challenge_flow(
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DotOverrideBlobWritten.into());
 
+    transport.notify_override_result(true);
     caliptra_mcu_romtime::println!("[mcu-rom-dot] DOT override complete");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DotOverrideComplete.into());
