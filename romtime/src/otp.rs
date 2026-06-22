@@ -165,17 +165,13 @@ impl Otp {
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
 
-        for (i, chunk) in data[..len].chunks_exact_mut(4).enumerate() {
-            let byte_addr = addr + i * 4;
-            if is_64bit_granule(byte_addr) {
-                let dword = self.read_dword((byte_addr & !7) / 8)?.to_le_bytes();
-                let start = byte_addr & 4;
-                chunk.copy_from_slice(&dword[start..start + 4]);
-            } else {
-                chunk.copy_from_slice(&self.read_word(byte_addr / 4)?.to_le_bytes());
-            }
-        }
-        Ok(())
+        read_data_with(
+            addr,
+            len,
+            data,
+            |word_addr| self.read_word(word_addr),
+            |dword_addr| self.read_dword(dword_addr),
+        )
     }
 
     /// Reads a word from the OTP controller.
@@ -1048,7 +1044,6 @@ fn is_64bit_granule(byte_addr: usize) -> bool {
     )
 }
 
-#[cfg(test)]
 fn read_data_with(
     addr: usize,
     len: usize,
@@ -1071,21 +1066,16 @@ fn read_data_with(
         if granule_size == 8 {
             granule = read_dword(granule_addr / 8)?.to_le_bytes();
         } else {
-            let word = read_word(granule_addr / 4)?.to_le_bytes();
-            granule[0] = word[0];
-            granule[1] = word[1];
-            granule[2] = word[2];
-            granule[3] = word[3];
+            granule[..4].copy_from_slice(&read_word(granule_addr / 4)?.to_le_bytes());
         }
 
-        for idx in 0..copy_len {
-            let dst = data
-                .get_mut(offset + idx)
-                .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
-            *dst = *granule
-                .get(granule_offset + idx)
-                .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
-        }
+        let dst = data
+            .get_mut(offset..offset + copy_len)
+            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+        let src = granule
+            .get(granule_offset..granule_offset + copy_len)
+            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+        dst.copy_from_slice(src);
         offset += copy_len;
     }
     Ok(())
