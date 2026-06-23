@@ -498,6 +498,15 @@ fn dot_determine_owner(
         } else {
             // Disabled state: ODD with no CAK means ownership is locked but no code
             // authentication is enforced. The owner retains control via LAK.
+            // A valid Disabled blob must always carry a LAK so the owner can issue
+            // DOT_UNLOCK. A blob with neither CAK nor LAK has no recovery path and
+            // must be treated as corrupt to avoid silently locking out the owner.
+            if blob.lak().is_none() {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom-dot] Corrupt blob: ODD state with neither CAK nor LAK"
+                );
+                return Err(McuError::ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR);
+            }
             caliptra_mcu_romtime::println!("[mcu-rom-dot] Device in Disabled state (ODD, no CAK)");
             Ok(None)
         }
