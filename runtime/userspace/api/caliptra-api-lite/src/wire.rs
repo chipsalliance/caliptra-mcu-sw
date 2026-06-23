@@ -73,6 +73,12 @@ pub(crate) const CMD_GET_ATTESTED_MLDSA87_CSR: u32 = 0x414D_4352; // "AMCR"
 /// `FE_PROG` (field-entropy program) command ID.
 pub(crate) const CMD_FE_PROG: u32 = 0x4645_5052; // "FEPR"
 
+/// `PRODUCTION_AUTH_DEBUG_UNLOCK_REQ` command ID.
+pub(crate) const CMD_PRODUCTION_AUTH_DEBUG_UNLOCK_REQ: u32 = 0x5044_5552; // "PDUR"
+
+/// `PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN` command ID.
+pub(crate) const CMD_PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN: u32 = 0x5044_5554; // "PDUT"
+
 /// Mailbox response header size: `chksum(4) + fips_status(4)`.
 pub(crate) const MBOX_RESP_HEADER_SIZE: usize = 8;
 

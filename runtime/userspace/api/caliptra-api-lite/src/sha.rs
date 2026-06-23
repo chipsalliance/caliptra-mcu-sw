@@ -10,7 +10,7 @@
 //! The 200-byte SHA running-context is held in a caller-supplied buffer
 //! (`B: DerefMut<Target = [u8]>`) so [`HashState`] stays pointer-sized
 //! in async futures. The buffer is typically allocated from a per-task
-//! bitmap pool (spdm-lite) or a heap `Vec` (test environments).
+//! bitmap pool (spdm-lib) or a heap `Vec` (test environments).
 
 use core::mem::size_of;
 use core::ops::{Deref, DerefMut};

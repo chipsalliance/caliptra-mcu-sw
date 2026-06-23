@@ -75,15 +75,14 @@ members = [
     "runtime/userspace/api/mcu-mbox-lib",
     "runtime/userspace/api/mctp-vdm-lib",
     "runtime/userspace/api/pldm-lib",
-    "runtime/userspace/api/spdm-lib",
-    "runtime/userspace/api/spdm-lite/traits",
-    "runtime/userspace/api/spdm-lite/stack",
-    "runtime/userspace/api/spdm-lite/codec",
+    "runtime/userspace/api/spdm-lib/traits",
+    "runtime/userspace/api/spdm-lib/stack",
+    "runtime/userspace/api/spdm-lib/codec",
     "runtime/userspace/api/caliptra-api-lite",
-    "runtime/userspace/api/spdm-lite/transports",
-    "runtime/userspace/api/spdm-lite/pal",
-    "runtime/userspace/api/spdm-lite/errors",
-    "runtime/userspace/api/spdm-lite/vdm-handler",
+    "runtime/userspace/api/spdm-lib/transports",
+    "runtime/userspace/api/spdm-lib/pal",
+    "runtime/userspace/api/spdm-lib/errors",
+    "runtime/userspace/api/spdm-lib/vdm-handler",
     "runtime/userspace/error",
     "runtime/userspace/libtock/apis/interface/console",
     "runtime/userspace/libtock/apis/kernel/low_level_debug",
@@ -293,15 +292,14 @@ caliptra-mcu-common-commands = { path = "runtime/userspace/api/caliptra-common-c
 caliptra-mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
 caliptra-mcu-mctp-vdm-lib = { path = "runtime/userspace/api/mctp-vdm-lib" }
 caliptra-mcu-pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
-caliptra-mcu-spdm-lib = { path = "runtime/userspace/api/spdm-lib", default-features = false }
-mcu-spdm-lite-traits = { path = "runtime/userspace/api/spdm-lite/traits" }
-mcu-spdm-lite-stack = { path = "runtime/userspace/api/spdm-lite/stack" }
-mcu-spdm-lite-codec = { path = "runtime/userspace/api/spdm-lite/codec" }
+caliptra-mcu-spdm-traits = { path = "runtime/userspace/api/spdm-lib/traits" }
+caliptra-mcu-spdm-stack = { path = "runtime/userspace/api/spdm-lib/stack" }
+caliptra-mcu-spdm-codec = { path = "runtime/userspace/api/spdm-lib/codec" }
 mcu-caliptra-api-lite = { path = "runtime/userspace/api/caliptra-api-lite" }
-mcu-spdm-lite-transports = { path = "runtime/userspace/api/spdm-lite/transports" }
-mcu-spdm-lite-pal = { path = "runtime/userspace/api/spdm-lite/pal" }
-mcu-spdm-lite-errors = { path = "runtime/userspace/api/spdm-lite/errors" }
-mcu-spdm-lite-vdm-handler = { path = "runtime/userspace/api/spdm-lite/vdm-handler" }
+caliptra-mcu-spdm-transports = { path = "runtime/userspace/api/spdm-lib/transports" }
+caliptra-mcu-spdm-pal = { path = "runtime/userspace/api/spdm-lib/pal" }
+caliptra-mcu-spdm-errors = { path = "runtime/userspace/api/spdm-lib/errors" }
+caliptra-mcu-spdm-vdm-handler = { path = "runtime/userspace/api/spdm-lib/vdm-handler" }
 caliptra-mcu-libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 caliptra-mcu-userlog = { path = "runtime/userspace/userlog" }
 caliptra-mcu-libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }

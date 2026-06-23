@@ -1,16 +1,16 @@
 // Licensed under the Apache-2.0 license
 
-//! PCR Quote measurement provider for spdm-lite test builds.
+//! PCR Quote measurement provider for spdm-lib test builds.
 //!
 //! This mirrors the non-lite PCR quote measurement form without depending on
 //! `caliptra-api`: the provider exposes one raw DMTF freeform manifest at
 //! index 0xFD and obtains the quote through `caliptra-api-lite`.
 
+use caliptra_mcu_spdm_pal::measurements::MeasurementProvider;
+use caliptra_mcu_spdm_pal::BitmapAllocator;
+use caliptra_mcu_spdm_traits::{MeasurementInfo, SPDM_NONCE_LEN};
 use mcu_caliptra_api_lite::{pcr_quote_ecc384, PCR_QUOTE_ECC384_LEN};
 use mcu_error::McuResult;
-use mcu_spdm_lite_pal::measurements::MeasurementProvider;
-use mcu_spdm_lite_pal::BitmapAllocator;
-use mcu_spdm_lite_traits::{MeasurementInfo, SPDM_NONCE_LEN};
 
 const PCR_QUOTE_MEAS_INFO: [MeasurementInfo; 1] = [MeasurementInfo {
     index: 0xFD,

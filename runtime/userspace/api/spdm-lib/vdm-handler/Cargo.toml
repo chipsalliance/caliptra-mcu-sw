@@ -1,0 +1,21 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-spdm-vdm-handler"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+caliptra-mcu-spdm-traits = { workspace = true }
+caliptra-mcu-spdm-codec = { workspace = true }
+caliptra-mcu-spdm-errors = { workspace = true }
+mcu-error = { workspace = true }
+zerocopy = { workspace = true }
+
+[dev-dependencies]
+futures = { workspace = true }
+mcu-caliptra-api-lite = { workspace = true }

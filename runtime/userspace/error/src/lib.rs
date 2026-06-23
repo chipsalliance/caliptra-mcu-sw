@@ -127,8 +127,8 @@ pub mod domain {
     /// Tock-syscall passthrough (`libtock_platform::ErrorCode`).
     pub const KERNEL: u8 = 0x01;
 
-    /// SPDM protocol (DMTF DSP0274) — covers spdm-lite-codec,
-    /// spdm-lite-stack, spdm-lite-pal, spdm-lite-transports (MCTP /
+    /// SPDM protocol (DMTF DSP0274) — covers caliptra-mcu-spdm-codec,
+    /// caliptra-mcu-spdm-stack, caliptra-mcu-spdm-pal, caliptra-mcu-spdm-transports (MCTP /
     /// DOE used by SPDM), and SPDM-carried vendor handlers (TDISP,
     /// IDE-KM, OCP-VDM). Subdomains partition these areas.
     pub const SPDM: u8 = 0x03;

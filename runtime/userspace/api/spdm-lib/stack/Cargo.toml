@@ -1,0 +1,30 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-spdm-stack"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+
+[dependencies]
+caliptra-mcu-spdm-traits = { workspace = true }
+caliptra-mcu-spdm-codec = { workspace = true }
+mcu-caliptra-api-lite = { workspace = true }
+caliptra-mcu-spdm-errors = { workspace = true }
+mcu-error = { workspace = true }
+bitfield-struct = { workspace = true }
+zerocopy = { workspace = true }
+caliptra-mcu-libtock_console = { workspace = true, optional = true }
+caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
+
+[dev-dependencies]
+futures.workspace = true
+
+[features]
+default = []
+set-certificate = []
+debug-trace = [
+  "caliptra-mcu-libtock_console",
+  "caliptra-mcu-libsyscall-caliptra",
+]

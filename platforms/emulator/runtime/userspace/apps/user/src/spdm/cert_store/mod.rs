@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Cert store initialization for the spdm-lite emulator platform.
+//! Cert store initialization for the spdm-lib emulator platform.
 //!
 //! Reads the IDevID ECC-384 certificate from OTP, installs it into
 //! Caliptra, and configures the cert slots:
@@ -8,22 +8,21 @@
 //!   - Slot 1 (Owner):  Managed endorsement (flash-backed, initially empty)
 //!   - Slot 2 (Tenant): Managed endorsement (flash-backed, initially empty)
 
-mod endorsement_certs;
+mod slot0_endorsements;
 
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 use caliptra_mcu_config_emulator::flash::CERT_STORE_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
 use mcu_caliptra_api_lite::{populate_idev_ecc384_cert, ApiAlloc};
 use mcu_error::McuResult;
-use mcu_spdm_lite_pal::cert::store::SharedCertStore;
 
 /// SPDM slot IDs for OCP PKI entities.
-#[allow(dead_code)]
-const VENDOR_SPDM_SLOT: u8 = 0;
-#[allow(dead_code)]
+const VENDOR_STORE_SLOT: usize = 0;
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
 const OWNER_SPDM_SLOT: u8 = 2;
-#[allow(dead_code)]
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
 const TENANT_SPDM_SLOT: u8 = 3;
 
 /// IDevID ECC cert size in OTP partition 1.
@@ -56,8 +55,8 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
         match store
             .set_endorsement_chain(
                 alloc,
-                0,
-                endorsement_certs::SLOT0_ECC_ROOT_CERT_CHAIN,
+                VENDOR_STORE_SLOT,
+                slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
                 0, // key_pair_id
             )
             .await

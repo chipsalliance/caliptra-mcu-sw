@@ -5,7 +5,7 @@
 //! [`CaliptraVdmHook`] is the emulator's [`CaliptraVdmCommands`] backend: it
 //! performs the actual device work (Caliptra mailbox calls) for the Caliptra
 //! VDM commands. The protocol/dispatch/framing all live in the
-//! `mcu-spdm-lite-vdm-handler` lib; this hook only supplies the device ops.
+//! `caliptra-mcu-spdm-vdm-handler` lib; this hook only supplies the device ops.
 
 extern crate alloc;
 
@@ -15,23 +15,21 @@ use caliptra_mcu_common_commands::{
     CaliptraCompletionCode as CommonCompletionCode, GetLogResult, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
-use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
-use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
+use caliptra_mcu_spdm_traits::SpdmPalAlloc;
+use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
+    CaliptraCompletionCode, CaliptraVdmCommands, CaliptraVdmLogResult, CaliptraVdmResult,
+};
 use constant_time_eq::constant_time_eq;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
-    cm_hmac, cm_import, fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, rng_generate,
-    ApiAlloc, CmKeyUsage, McuErrorCode,
+    cm_hmac, cm_import, fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87,
+    request_debug_unlock_challenge, rng_generate, ApiAlloc, CmKeyUsage, McuErrorCode,
+    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
-use mcu_spdm_lite_traits::SpdmPalAlloc;
-use mcu_spdm_lite_vdm_handler::iana::ocp::caliptra_vdm::{
-    CaliptraCompletionCode, CaliptraVdmCommands, CaliptraVdmLogResult, CaliptraVdmResult,
-};
-use zerocopy::{FromBytes, IntoBytes};
 
 /// AsymAlgo wire encoding (`EccP384 = 1`, `MlDsa87 = 2`), mirrored locally so
 /// the hook does not depend on caliptra-api.
@@ -93,58 +91,33 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
     async fn request_debug_unlock<A: SpdmPalAlloc>(
         &self,
         unlock_level: u8,
-        _scratch: &A,
+        scratch: &A,
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize> {
-        use caliptra_api::mailbox::{
-            CommandId, MailboxReqHeader, ProductionAuthDebugUnlockChallenge,
-            ProductionAuthDebugUnlockReq,
-        };
-
         let needed = DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE;
         if out.len() < needed {
             return Err(CaliptraCompletionCode::InsufficientResources);
         }
 
-        let mut req = ProductionAuthDebugUnlockReq {
-            hdr: MailboxReqHeader::default(),
-            length: 2,
-            unlock_level,
-            reserved: [0; 3],
-        };
-        let mut resp_buf = [0u8; core::mem::size_of::<ProductionAuthDebugUnlockChallenge>()];
-
-        execute_mailbox_cmd(
-            &Mailbox::new(),
-            CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ.0,
-            req.as_mut_bytes(),
-            &mut resp_buf,
-        )
-        .await
-        .map_err(map_caliptra_api_error)?;
-
-        let resp = ProductionAuthDebugUnlockChallenge::ref_from_bytes(&resp_buf)
-            .map_err(|_| CaliptraCompletionCode::GeneralError)?;
-        out[..DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE].copy_from_slice(&resp.unique_device_identifier);
-        out[DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE..needed].copy_from_slice(&resp.challenge);
-        Ok(needed)
+        request_debug_unlock_challenge(scratch, unlock_level, out)
+            .await
+            .map_err(map_mcu_err)
     }
 
     async fn authorize_debug_unlock_token<A: SpdmPalAlloc>(
         &self,
         token_data: &[u8],
-        _scratch: &A,
+        scratch: &A,
     ) -> CaliptraVdmResult<()> {
-        use caliptra_api::mailbox::{CommandId, MailboxRespHeader};
-
-        let cmd = CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.0;
+        let cmd = PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD;
         // The host sends the production debug-unlock token payload in Caliptra RT
         // mailbox format, including the MailboxReqHeader/checksum, and large
         // requests are streamed directly to the mailbox. Do not synthesize
         // another checksum header here or the mailbox would receive
         // `[new_checksum || host_checksum || token]`.
         let mut token_stream = SlicePayloadStream::new(token_data);
-        let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+        let mut resp_buf = ApiAlloc::alloc(scratch, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN)
+            .map_err(map_mcu_err)?;
 
         Mailbox::<DefaultSyscalls>::new()
             .execute_with_payload_stream(cmd, None, &mut token_stream, &mut resp_buf)
@@ -232,17 +205,6 @@ fn map_mcu_err(e: McuErrorCode) -> CaliptraCompletionCode {
         CaliptraCompletionCode::InsufficientResources
     } else {
         CaliptraCompletionCode::GeneralError
-    }
-}
-
-fn map_caliptra_api_error(e: CaliptraApiError) -> CaliptraCompletionCode {
-    match e {
-        CaliptraApiError::MailboxBusy => CaliptraCompletionCode::CaliptraMailboxBusy,
-        CaliptraApiError::BufferTooSmall => CaliptraCompletionCode::CaliptraBufferTooSmall,
-        CaliptraApiError::InvalidResponse
-        | CaliptraApiError::Mailbox(_)
-        | CaliptraApiError::Syscall(_) => CaliptraCompletionCode::OperationFailed,
-        _ => CaliptraCompletionCode::GeneralError,
     }
 }
 

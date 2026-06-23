@@ -4,8 +4,8 @@
 
 use core::cell::Cell;
 
-use mcu_spdm_lite_traits::SpdmPalAlloc;
-use mcu_spdm_lite_vdm_handler::pci_sig::tdisp::{
+use caliptra_mcu_spdm_traits::SpdmPalAlloc;
+use caliptra_mcu_spdm_vdm_handler::pci_sig::tdisp::{
     FunctionId, TdiStatus, TdispDriver, TdispDriverResult, TdispLockInterfaceParam,
     TdispReqCapabilities, TdispRespCapabilities, START_INTERFACE_NONCE_SIZE,
     TDISP_ERROR_INVALID_INTERFACE_STATE, TDISP_ERROR_INVALID_REQUEST,

@@ -209,7 +209,7 @@ jobs:
             -c $EVIDENCE_DIR/certificate_chain_slot_00.der
 
       # ---- Appraise evidence against reference values (OCP EAT Verifier Algorithm) -------------------------------
-      # TODO: Re-enable once ocptoken supports spdm-lite EAT format
+      # TODO: Re-enable once ocptoken supports spdm-lib EAT format
       # - name: Appraise evidence against reference values
       #   working-directory: ocp-eat-verifier
       #   env:

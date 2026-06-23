@@ -2,11 +2,11 @@
 
 //! OCP EAT claims generation — platform-state evidence via byte template.
 
+use caliptra_mcu_spdm_pal::BitmapAllocator;
+use caliptra_mcu_spdm_traits::SPDM_NONCE_LEN;
 use mcu_caliptra_api_lite::get_pcr_value;
 use mcu_caliptra_api_lite::signed_eat::cose_sign1_len;
 use mcu_error::McuResult;
-use mcu_spdm_lite_pal::BitmapAllocator;
-use mcu_spdm_lite_traits::SPDM_NONCE_LEN;
 
 include!(concat!(env!("OUT_DIR"), "/eat_claims_template.rs"));
 

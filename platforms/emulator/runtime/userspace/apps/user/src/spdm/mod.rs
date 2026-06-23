@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-//! User-app SPDM responder — runs spdm-lite over MCTP and DOE.
+//! User-app SPDM responder — runs spdm-lib over MCTP and DOE.
 //!
-//! spdm-lite implements version/capability/algorithm negotiation,
+//! spdm-lib implements version/capability/algorithm negotiation,
 //! digests, certificate retrieval, challenge authentication, and SPDM
 //! large-message chunking.
 
@@ -20,29 +20,31 @@ use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
+use caliptra_mcu_spdm_pal::{
+    BitmapAllocator, McuSpdmPal, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE,
+};
+use caliptra_mcu_spdm_stack::SpdmStack;
+use caliptra_mcu_spdm_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
+use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+use caliptra_mcu_spdm_vdm_handler::pci_sig::{
+    ide_km::PciSigIdeKmTdispVdm,
+    tdisp::{TdispResponder, TdispVersion},
+};
 use core::fmt::Write as _;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU8, Ordering};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
-use mcu_spdm_lite_pal::cert::store::SharedCertStore;
-use mcu_spdm_lite_pal::{BitmapAllocator, McuSpdmPal, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
-use mcu_spdm_lite_stack::SpdmStack;
-use mcu_spdm_lite_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
-use mcu_spdm_lite_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
-#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-use mcu_spdm_lite_vdm_handler::pci_sig::{
-    ide_km::PciSigIdeKmTdispVdm,
-    tdisp::{TdispResponder, TdispVersion},
-};
 
 /// Bitmap allocator pool size per responder task.
 ///
 /// Must hold `MEAS_RECORD_BUF_SIZE + MeasurementProvider::SCRATCH_SIZE`
 /// plus transient DPE/SHA mailbox buffers (peak ~2.4 KB during
 /// certify_key for kid computation).
-const SPDM_LITE_SCRATCH_SIZE: usize = 12 * 1024;
+const SPDM_SCRATCH_SIZE: usize = 12 * 1024;
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
@@ -66,7 +68,7 @@ fn measurement_provider() -> device_measurements::pcr_quote::PcrQuoteMeasurement
 #[cfg(not(feature = "test-mctp-spdm-attestation-pcr-quote"))]
 fn measurement_provider() -> device_measurements::ocp_eat::OcpEatMeasurementProvider {
     device_measurements::ocp_eat::OcpEatMeasurementProvider::new(
-        mcu_spdm_lite_pal::cert::SLOT0_LEAF_LABEL,
+        caliptra_mcu_spdm_pal::cert::SLOT0_LEAF_LABEL,
     )
 }
 
@@ -121,8 +123,8 @@ async fn spdm_mctp_responder() {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
     #[repr(C, align(64))]
-    struct ScratchBuf([u8; SPDM_LITE_SCRATCH_SIZE]);
-    static mut MCTP_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_LITE_SCRATCH_SIZE]);
+    struct ScratchBuf([u8; SPDM_SCRATCH_SIZE]);
+    static mut MCTP_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_SCRATCH_SIZE]);
     // SAFETY: this task is the sole owner of `MCTP_SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(MCTP_SCRATCH.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
@@ -131,7 +133,7 @@ async fn spdm_mctp_responder() {
     // MCTP responder task. Backing memory (`MCTP_SCRATCH`) is `'static`.
     static MCTP_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
     let allocator: &'static BitmapAllocator =
-        unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, SPDM_LITE_SCRATCH_SIZE) };
+        unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, SPDM_SCRATCH_SIZE) };
 
     {
         if let Err(e) = ensure_cert_store_init(allocator).await {
@@ -143,7 +145,7 @@ async fn spdm_mctp_responder() {
     let transport = alloc::boxed::Box::new(
         McuSpdmMctpTransport::new(
             mctp::driver_num::MCTP_SPDM,
-            mcu_spdm_lite_transports::mctp::MCTP_MSG_TYPE_SPDM,
+            caliptra_mcu_spdm_transports::mctp::MCTP_MSG_TYPE_SPDM,
         )
         .expect("MCTP_SPDM driver with MCTP_MSG_TYPE_SPDM is a valid pairing"),
     );
@@ -157,7 +159,7 @@ async fn spdm_mctp_responder() {
     let vdm = CaliptraVdm::new(&MCTP_VDM_HOOK);
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 
-    crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lite MCTP run loop");
+    crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lib MCTP run loop");
     if let Err(e) = stack.run().await {
         crate::console_writeln!(cw, "SPDM_MCTP: MCTP run loop exited: 0x{:08x}", e);
     }
@@ -174,8 +176,8 @@ async fn spdm_doe_responder() {
     }
 
     #[repr(C, align(64))]
-    struct ScratchBuf([u8; SPDM_LITE_SCRATCH_SIZE]);
-    static mut DOE_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_LITE_SCRATCH_SIZE]);
+    struct ScratchBuf([u8; SPDM_SCRATCH_SIZE]);
+    static mut DOE_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_SCRATCH_SIZE]);
     // SAFETY: this task is the sole owner of `DOE_SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(DOE_SCRATCH.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
@@ -184,7 +186,7 @@ async fn spdm_doe_responder() {
     // DOE responder task. Backing memory (`DOE_SCRATCH`) is `'static`.
     static DOE_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
     let allocator: &'static BitmapAllocator =
-        unsafe { DOE_ALLOC_CELL.init_once(scratch_ptr, SPDM_LITE_SCRATCH_SIZE) };
+        unsafe { DOE_ALLOC_CELL.init_once(scratch_ptr, SPDM_SCRATCH_SIZE) };
 
     {
         if let Err(e) = ensure_cert_store_init(allocator).await {
@@ -210,7 +212,7 @@ async fn spdm_doe_responder() {
     #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
     let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
 
-    crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lite DOE run loop");
+    crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lib DOE run loop");
     if let Err(e) = stack.run().await {
         crate::console_writeln!(cw, "SPDM_DOE: DOE run loop exited: 0x{:08x}", e);
     }
