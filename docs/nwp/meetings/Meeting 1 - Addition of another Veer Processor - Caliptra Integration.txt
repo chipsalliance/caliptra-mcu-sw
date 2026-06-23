@@ -1,0 +1,458 @@
+Addition of another Veer Processor - Caliptra Integration-20260410_170043UTC-Meeting Recording
+April 10, 2026, 5:00PM
+23m 6s
+
+Vishal Soni   1:21
+Yep, I think Bharat, I also asked Bharat to join, right, so he can also chat through how we want to integrate it.
+
+Zahra Lak   1:27
+Awesome, great. So let's give him another minute or so.
+Do you have any documentation so I can take a look?
+
+Marco Visaya   1:39
+We have some software.
+Design document, but yeah, I can just find it.
+
+Vishal Soni   3:01
+All right, so Bharat, this is like about the third VeeR core we wanted to do for network ROM integration, right, as widgets.
+
+Bharat Pillilli   3:08
+Yeah, yeah.
+
+Vishal Soni   3:09
+So, so Zahra is like, you know, wants like want to get started. So, like Marco will share some of the firmware documentation and the work we have done, but we should where I needed some help from you is how do you want to integrate it right? Does this go on exit bus right? How do you want to do it?
+
+Bharat Pillilli   3:15
+Yeah.
+
+Vishal Soni   3:29
+Right, I know you've done some thinking in the past, like whatever time you had, but how do you want to set this up, right? Like, so that's where I need.
+
+Bharat Pillilli   3:30
+What we should do is today we have a...
+MCU VR Core that is attached to Axi Fabric, and we have the MCU ROM, both of them, right? Like, as in they're called MCU ROM and MCU VR Core, right? We just take those two blocks, name them, instantiate them as network boot ROM,
+and network microcontroller.
+
+Vishal Soni   4:07
+Yep.
+
+Bharat Pillilli   4:08
+and just connect to the fabric. Literally, it's a replication of the existing blocks, put it onto the Axi bus and connect it. And once we do that connection, for now, we'll put it on the same reset. The next thing that we need to do is we just need to connect to a different reset to say that
+like MC ROM will bring it up when the spy boot or whatever boot fails is when we will make that and essentially lock it up by the MC ROM to make sure that nobody else brings it up later and does something with it. Because, or if that happens, what we can do is we can still bring the microcontroller out of it.
+and make sure it goes through like a reset one more time, and like update reset, and the reset pointer goes back to the RAM, and we put the microcontroller into a mode, the ROM into a mode that nobody can read from it.
+Because that's all you need to do. Like you can still make sure microcontroller operates. As long as nobody can read that ROM, you can't do the network function. So that's what we can do. So let me restate one more time. Take the existing MCU ROM and MCU via code that we currently have.
+replicate it, and connect to the Axi fabric. That's all that we need to do right now. And once that is functional, we essentially make sure that the ROM itself is not readable by this network controller. That's it.
+
+Zahra Lak   5:30
+Okay.
+We make sure the ROM is not readable.
+
+Bharat Pillilli   5:44
+Yes, that later, right? I mean, the goal of this particular feature is we want to have a network boot, but the network boot should only function when you are in a certain fallback mode. And once you exit that fallback mode, or if you boot normally, we don't want anybody to
+
+Zahra Lak   5:47
+Okay.
+
+Bharat Pillilli   6:05
+use that ROM and connect to the network and do something dirty. So for you to not do that, we don't have to put the microcontrol on reset. You just need to make sure that that particular code that is in the ROM cannot be accessed.
+
+Zahra Lak   6:19
+Gotcha, okay.
+
+Bharat Pillilli   6:21
+Right, and that's a secondary thing that we could do. The first thing is just once you instantiate, the other part is fairly straightforward.
+
+Zahra Lak   6:30
+OK, so...
+Both processors will have their own ROMs, right? And when we are in the fallback mode. How? What do we get from the net network?
+
+Vishal Soni   6:44
+So, the...
+
+Bharat Pillilli   6:45
+Go ahead, please.
+
+Vishal Soni   6:47
+The flow is something like this, right? Like, so think about it this way, right? Like, you know, you got multiple boot modes. You can boot from SPI, you can boot from I3C, or you can boot from network. When the MCU ROM decides that it wants to boot from network, it will get this network processor out of reset.
+
+Vishal Soni   7:06
+Right, and then you know it will start executing the ROM and then ROM.
+
+Zahra Lak   7:07
+Mhm.
+
+Vishal Soni   7:13
+will connect to the network and start downloading the packets. And then there is a mailbox interface between the MCU ROM and the network ROM where these packets are transferred. Like, you know, Marco will show you in the diagram. So that is the overall flow, right? And then once the MCU ROM gets it, it can inject the packets using our existing mechanisms.
+Uh, into the M. in the subsystem, so the subsystem can load and run.
+
+Zahra Lak   7:41
+Okay, so when we are out of this mode, um...
+Do we put the processor in reset again?
+
+Vishal Soni   7:49
+So, like, the MCU will tell the like will have a reset control, which, once it's done, it will put, it will like we control it to, we'll have some reset control logic right to put it in reset and get it out of reset.
+
+Bharat Pillilli   7:50
+Two.
+
+Zahra Lak   7:56
+Okay.
+
+Vishal Soni   8:06
+Right, so like, you know, eventually that's what we want the MCU to control. So think about this is a subordinate processor that the MCU ROM MCU controls for its activities.
+
+Zahra Lak   8:18
+Okay, okay.
+How about the, I know you and I talked about mailboxes, Vishal. Is there anything specific that we want to mention here?
+
+Vishal Soni   8:27
+Yep.
+So, yeah, so Bharat, right, like, so right now, like, you know, we either we have an IPC mechanism or a mailbox mechanism to talk between the two ports, right, like the network, like, say, like, you know, to pass around messages and buffers and stuff. So, what do you recommend, right? Do we just use the MCU mailbox that we have today?
+Or do we do we have some IPC mechanisms, right? How do we do that?
+
+Bharat Pillilli   8:57
+So, I would say if we want to...
+Because IPC we never enable per se, the easier path would be we have mailbox and everything that is already available. And that's the mailbox that is going to be that the other side would use it. Because that mailbox is always used by somebody else, like saying, hey, here is my data, do something with it. So
+
+Vishal Soni   9:06
+Yep.
+
+Bharat Pillilli   9:22
+this network processor can just dump its content into that.
+
+Vishal Soni   9:26
+Yeah, but how do we do the signaling to the other code that is loaded the packet? We need some signaling mechanism, right?
+
+Marco Visaya   9:27
+Is it?
+
+Bharat Pillilli   9:32
+Signaling mechanism from whom to whom?
+
+Vishal Soni   9:35
+The network, network, network, network boot, network processor to tell that I've downloaded the TFTB packet.
+
+Bharat Pillilli   9:42
+To MCU, you're saying, right? Yeah, so that's the mechanism that exists, right? Whenever mailbox is written, you get a, you essentially have, I mean, in this particular mode, whenever you're in this network boot mode, anyways, no interrupts are enabled, you're in a polling mode.
+
+Vishal Soni   9:46
+Yep, yep.
+Yep.
+
+Bharat Pillilli   10:02
+Right? So you are essentially polling the mailbox, like saying, hey, do you have a message for me, right, for me to process?
+
+Vishal Soni   10:11
+Uh...
+
+Bharat Pillilli   10:12
+Right, whatever we use, we have to use a polling mechanism. We, we that there's a buffer there, you just put the dump the buffer into that, and essentially a polling, once it's ready, you transfer, and the good part about that is the network processor can say how much data it wants to put into that.
+before it says, tells MCU to process it.
+
+Marco Visaya   10:39
+So are we going to have another mailbox just for network or?
+
+Bharat Pillilli   10:43
+We, we, no, we don't need another mailbox; we can just reuse the existing mailbox, right?
+
+Marco Visaya   10:48
+The MCU mailbox or the?
+
+Bharat Pillilli   10:50
+Yeah, yeah.
+Yeah, MC mailbox, right? It's just there.
+
+Marco Visaya   10:52
+Okay.
+
+Zahra Lak   10:59
+Okay.
+
+Marco Visaya   11:00
+I see.
+
+Zahra Lak   11:04
+So in terms of interfaces of this network or processor, can I just take a look at the spec that we have for MCU processor and basically replicate what we have there?
+
+Bharat Pillilli   11:15
+Yeah, you can take the spec and the code and replicate it. I mean, as I was saying, we do it in multiple phases, Sarah. First is replicate. Don't worry about the reset controls and everything. Once stuff, data movement happens, then we control the resets. Because once the data movements happen, now
+
+Zahra Lak   11:16
+Okay.
+
+Bharat Pillilli   11:34
+You know, if you mess up with any control, you would know what mistake you have done, right? First goal is to get the data moving.
+
+Zahra Lak   11:39
+Right. Okay, and the reset controller, do we have any documentation for it? Do I have to take care of it? How do we do that?
+
+Bharat Pillilli   11:50
+It's a simple thing. We add a logic into, you add a register, when you write a register, it is out of reset, right? And when you set reset, right, to a register one and a zero, that essentially controls the signal. If you want to make sure that nobody else has to bring something out of reset or whatever, the simplest thing we will do is
+
+Zahra Lak   11:51
+Right.
+
+Bharat Pillilli   12:11
+implement a lock bit on it. You write and lock it, nobody can change it until the next power cycle that happens.
+
+Zahra Lak   12:17
+Okay.
+
+Bharat Pillilli   12:18
+So again, what I was saying is, let's, the first, don't worry about the reset controls right now. I strongly suggest that we tackle the data flow by just replicating the things and then get to the controls of it, which is not that complex.
+
+Zahra Lak   12:25
+Okay, are there any existing test cases that I can use to make sure the data flow is right?
+
+Bharat Pillilli   12:42
+Same thing as MCU, right? Like, I mean, for example, MCU has the thing of, if it itself is functional, you have like a ROM test that MCU comes up and says, I'm able to talk. You can technically do the same thing, right? You need, I mean, the thing that you need to ensure is you have a separate address map for this, because it's a new.
+
+Zahra Lak   12:44
+Okay.
+
+Bharat Pillilli   13:01
+Block or blocks, right? So, you need to make sure it's a separate block, but that itself should be very straightforward, Zahra.
+
+Zahra Lak   13:04
+Mhm.
+Okay. Where can I find those test cases?
+
+Bharat Pillilli   13:15
+Everything is in the GitHub, right? Like literally, like there is zero thing that is private. Every aspect of subsystem, like the code to the test, everything is part of the subsystem GitHub.
+
+Zahra Lak   13:17
+Okay, I'll start looking at this and I'm sure I'll have a lot of questions. I know it looks simple from your perspective, but because it's all new to me, I will probably have a lot of questions.
+
+Bharat Pillilli   13:39
+I understand. I mean, it's giving you confidence that it won't be complex. That's all. But I understand first time when you're looking at it, it will be like daunting, but just assuring you that it won't be that difficult. That's all.
+
+Zahra Lak   13:44
+Awesome. I appreciate that.
+Right.
+Right.
+Awesome, awesome. I appreciate it. Is there anything that I need to know that I'm not asking?
+
+Marco Visaya   13:59
+How about the internet, Nick? Is it connected to the AXI or connected somehow? I don't know what's the interface between them.
+
+Bharat Pillilli   14:05
+That we have to check the FPGA, right? Like it depends upon that goes back into the FPGA where that network is, and you know, is it sitting? For that, you need to build a gasket. So if you look at FPGA today, how it is implemented, all these Caliptra subsystem blocks are connected to the Axi fabric of the FPGA.
+
+Bharat Pillilli   14:27
+
+Right, so when you have Ethernet controller, that Ethernet controller.
+it should be addressable from this network controller to that. And that essentially is when you take this logic that I'm talking about and you integrate into FPGA, you have to address map that particular one saying that this is where that address map is. One, you need to ensure that it's accessible. And 2,
+Once you know the address map, this MCU can go, if you have a simple test that says, I'll call this a network processor. If the network processor can access some registers on that PHY or within that FPGA fabric, now you know that you can access it.
+Do I make sense what I'm saying?
+
+Zahra Lak   15:20
+I didn't quite follow. I don't know about Marco.
+
+Marco Visaya   15:23
+Uh, kind of, I think the...
+
+Bharat Pillilli   15:24
+So.
+OK, let me let me let me say it again.
+FPGA has multiple IPs, right, that are native to FPGA.
+
+Zahra Lak   15:31
+Hmm.
+
+Bharat Pillilli   15:35
+Ethernet Phi is one such IP that would exist on that.
+
+Zahra Lak   15:39
+Correct.
+
+Bharat Pillilli   15:40
+In order to talk to it, you need to go access it. In order to access it, it has to be sitting on some fabric.
+
+Zahra Lak   15:49
+Mm-hmm.
+
+Bharat Pillilli   15:49
+And I'm saying that fabric on the FPGA side where the PHY is connected, I have no idea what it does.
+But you need, one thing we do know is our network process that we are talking about is connected to the AXI fabric because that's our definition, which means whatever transaction that goes on this AXI fabric has to be bridged or directed to the PHY.
+address map, however, that translation needs to happen within the FPGA, like either you had to build the fabric or it's naturally there, that transaction going to that file needs to be implemented. That's the second part of it. Once your data movement happens, now you, like, as I said,
+
+Zahra Lak   16:31
+Okay.
+
+Bharat Pillilli   16:34
+Once you instantiate the network processor, you are talking to the network ROM and other things because you've mapped the address, saying this is my address mapping. It's like SOC integration, right? When you do SOC integration, what do you do? You essentially make sure that all whatever addresses that you can access, they're accessible for you when you're building this.
+Right? Similarly, when you think of it as a PHY is being integrated, but the PHY itself already exists, all you need to know is how do I go access it? How do I know that, like, like in overlake context, for example, Zahra, just if you are building some block,
+
+Zahra Lak   17:09
+Right.
+
+Bharat Pillilli   17:13
+within overlake 3, and it needs to access a PCIe controller, you need to have a pathway, right? Like a fabric on which you go. I'm saying the same thing. So you need to find, you need to build that road and the address where that exists so that if you can access that address on the fabric that you have,
+
+Zahra Lak   17:19
+Yeah.
+
+Bharat Pillilli   17:33
+you have a path to that PHY.
+
+Zahra Lak   17:34
+Makes sense. Thank you for clarifying. Are you suggesting that we do this also in the second phase?
+
+Bharat Pillilli   17:43
+So the way I approach this problem is first is get the network processor built, network processor running. Once this is done, now you essentially figure out, hey, where is this PHY in the FPGA? How do I access that particular PHY and what that address map is? And then make sure that
+you can access that one. Exactly the same access, that's the second phase of it. So then you know that I can do both, as in you can do both of them. And the last phase would be all these reset controls. So because this gets you data flow working.
+
+Zahra Lak   18:06
+Okay. Thank you so much.
+
+Bharat Pillilli   18:25
+No worries.
+
+Marco Visaya   18:26
+I outside.
+
+Zahra Lak   18:27
+Marco, I understand you have done the emulator for this, right? Is there anything you want to add?
+
+Marco Visaya   18:30
+Ohh. Yeah, we also need UART for this one.
+
+Zahra Lak   18:37
+You are okay.
+
+Bharat Pillilli   18:38
+Yeah. The UART itself, I heard that Google guys are adding the UART because there is a UART already in the Caliptra Sub System. I mean, somebody could connect it, but I heard Google guys are trying to add that as a widget, just FY. But having said that, there should be just like
+
+Marco Visaya   18:38
+Yeah.
+
+Bharat Pillilli   18:56
+Once you figure out the five part, Zahra, FPGAs have enough number of UARTs. So you can pick up one UART and say, this is where I'll transmit the content.
+
+Zahra Lak   19:01
+Okay, makes sense. I think I have a 10,000 foot understanding at this point. I'll go take a look at the documentation and the code. Anything else, Marco, you wanted to add?
+
+Bharat Pillilli   19:13
+I.
+
+Marco Visaya   19:15
+Um...
+I think Vishal and Bryan mentioned that we should put some fuses for timeouts and delays configurations.
+
+Vishal Soni   19:31
+Yeah, yeah, but that will be all on MCU side, right?
+
+Marco Visaya   19:35
+Oh, the MCU will pass it to the network processor. Okay.
+
+Vishal Soni   19:37
+Yes, yes, yes, yes. You know, we can do it through MCU, right? Because Bharat has already got all the MCU, the fuse stuff integrated into MCU, right? So the MCU can load it into.
+
+Bharat Pillilli   19:38
+Yeah.
+
+Marco Visaya   19:42
+I see.
+Okay.
+
+Vishal Soni   19:47
+We some registers, right? We can get to that next, right? that is towards when we get to the final integration, right? So, MCU, like, as it as it loads, like, Caliptra code fuses into Caliptra code fuse registers, you know, we can have similar like network ROM fuse registers that MCU can load, like any settings we need.
+
+Bharat Pillilli   20:06
+And we can implement those registers into the MCI and make them accessible to the network ROM that will just come and read it. It's just registers.
+
+Marco Visaya   20:06
+Got it.
+Does the network processor become another AXI user or?
+
+Bharat Pillilli   20:21
+Yes, yes, it has to be right. It would be like a full-on axi thing that it can access anything, right? Otherwise, you would be isolated, you know.
+
+Marco Visaya   20:22
+Okay.
+Got it, okay.
+
+Bharat Pillilli   20:31
+Yeah.
+
+Marco Visaya   20:33
+And then the timers, it's already built in inside the vehicle, right? If we need timers and...
+
+Zahra Lak   20:33
+Yeah.
+
+Marco Visaya   20:42
+Like a timestamp itself.
+
+Bharat Pillilli   20:42
+Yeah, if you need timers and stuff, we will, as I said, we'll take the MCI watchdog timers and we just replicate them, right? Like we say, you know, like think of this as a configuration, right? When this configuration is enabled, there is a set of logic that gets lit up and that logic would be additional timers that sit within the MCI because MCI is like a spaghetti block that has registers and controls for multiple purposes. So we don't have to replicate it. We just add additional logic to it for a network processor.
+
+Marco Visaya   21:17
+And then for the network CPU, if it's all, if it's just running ROM, do we still need ICCM or could just run from ROM direct?
+
+Bharat Pillilli   21:28
+We should require DCCM for sure, right, for your data. Yeah, for sure DCCM. Yeah, yeah.
+
+Marco Visaya   21:31
+The ICCM, yeah, but ICCM.
+
+Vishal Soni   21:32
+Yeah, yeah, we need for stack, right? So, right, like, you know, Marco, he should tell, look at like how much stack usage you need and tell Zahra accordingly she can add a DCCM for you.
+
+Marco Visaya   21:41
+Mm.
+Okay, I'll let you know.
+
+Bharat Pillilli   21:45
+And the MCU already contains DCCM. This exact thing that we said is how MCU is already constructed there, right? So it's literally lift and shift.
+
+Zahra Lak   21:56
+Okay, what is what is that standing for? DCCM.
+
+Bharat Pillilli   21:59
+It's a data stack, right? A data memory.
+
+Marco Visaya   22:00
+Date that.
+
+Vishal Soni   22:02
+It's a closely coupled memory, right? Like, you know.
+
+Marco Visaya   22:07
+Data memory.
+
+Bharat Pillilli   22:07
+It's called a Harvard architecture where you separate instruction and data so that, you know, you will never have self-modifying instruction paths for security reasons. So it's just, that's why DCCM exists as a separate one.
+
+Zahra Lak   22:26
+Okay.
+Anything else I need to know?
+
+Vishal Soni   22:32
+No, I think this is good, right? So, Zahra, if you want to get started, like, you know, and start exploring, then obviously, like, you know, Bharat and I will help you along the way, whatever you need.
+
+Zahra Lak   22:35
+Yeah.
+Sure.
+Of course.
+Awesome. Awesome. Sounds great. Thank you so much, everyone. This was a very helpful session. Appreciate your time.
+
+Marco Visaya   22:49
+OK.
+
+Vishal Soni   22:49
+No, really appreciate you, like, you know, taking care of this because this is good. We need this.
+
+Zahra Lak   22:57
+Absolutely. Awesome. All right. Thanks. Bye.
+
+Vishal Soni   22:59
+Yeah, thank you.
+
+Bharat Pillilli   22:59
+See you guys. Bye-bye.
+
+Marco Visaya   23:01
+Okay, thank you. Thanks, Sarah. Thank you. Bye.
+
+Zahra Lak stopped transcription

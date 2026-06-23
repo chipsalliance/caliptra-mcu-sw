@@ -65,7 +65,7 @@ end_copy_data:
     # If main returns, exit the emulator
     la t0, EMU_CTRL_EXIT
     sw zero, 0(t0)
-    
+
     # Infinite loop (should never reach here)
 1:  j 1b
 
@@ -73,18 +73,16 @@ end_copy_data:
 .equ  EMU_CTRL_EXIT, 0x10002000
 
 .section .text.init
-.align 2
+.align 8
 _exception_handler:
     # Save the SP to mscratch
     csrw mscratch, sp
-    
-    # Use a simple exception stack (reuse main stack for simplicity)
-    la sp, STACK_TOP
-    addi sp, sp, -64
+
+    # Switch to the exception stack
+    la sp, ESTACK_START
 
     # Call the exception handler function
     jal exception_handler
 
-    # Restore SP and return (though we likely won't return)
-    csrr sp, mscratch
-    mret
+    # Infinite loop (exception_handler should not return)
+1:  j 1b

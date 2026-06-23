@@ -14,6 +14,7 @@ fpga_realtime = [
     "caliptra-hw-model/fpga_subsystem",
 ]
 itrng = []
+nwp = ["dep:caliptra-mcu-network-config", "caliptra-mcu-emulator-periph/nwp"]
 
 [dependencies]
 anyhow.workspace = true
@@ -48,7 +49,7 @@ caliptra-mcu-rom-common.workspace = true
 caliptra-mcu-testing-common.workspace = true
 caliptra-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
 caliptra-mcu-ocp.workspace = true
-caliptra-mcu-network-config.workspace = true
+caliptra-mcu-network-config = { workspace = true, optional = true }
 p384.workspace = true
 caliptra-mcu-poll-common.workspace = true
 rand.workspace = true

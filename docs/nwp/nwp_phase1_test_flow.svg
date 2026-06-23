@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 260" font-family="Consolas, 'Courier New', monospace" font-size="14">
+  <defs>
+    <style>
+      .stage { fill: #fafafa; stroke: #555; stroke-width: 1.5; rx: 6; }
+      .stage-new { fill: #e8f5e9; stroke: #2e7d32; stroke-width: 1.5; rx: 6; }
+      .arrow { stroke: #888; stroke-width: 1.5; fill: none; marker-end: url(#ah); }
+      .title { font-weight: bold; font-size: 16px; fill: #333; }
+      .label { font-size: 13px; fill: #333; }
+      .label-sm { font-size: 12px; fill: #666; }
+      .header { font-size: 13px; font-weight: bold; fill: #555; }
+    </style>
+    <marker id="ah" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#888"/></marker>
+  </defs>
+  <text class="header" x="100" y="30" text-anchor="middle">SOURCE</text>
+  <text class="header" x="320" y="30" text-anchor="middle">BUILD</text>
+  <text class="header" x="560" y="30" text-anchor="middle">RUN</text>
+  <text class="header" x="800" y="30" text-anchor="middle">VERIFY</text>
+  <rect class="stage-new" x="20" y="50" width="160" height="120"/>
+  <text class="title" x="100" y="72" text-anchor="middle">network/rom/</text>
+  <text class="label" x="100" y="92" text-anchor="middle">src/main.rs</text>
+  <text class="label" x="100" y="108" text-anchor="middle">src/tests/*.rs</text>
+  <text class="label-sm" x="100" y="130" text-anchor="middle">feature-gated</text>
+  <text class="label-sm" x="100" y="144" text-anchor="middle">test entry points</text>
+  <line class="arrow" x1="180" y1="110" x2="240" y2="110"/>
+  <rect class="stage-new" x="240" y="50" width="160" height="120"/>
+  <text class="title" x="320" y="72" text-anchor="middle">cargo build</text>
+  <text class="label" x="320" y="92" text-anchor="middle">-p caliptra-mcu-network-rom</text>
+  <text class="label" x="320" y="108" text-anchor="middle">--features X</text>
+  <text class="label-sm" x="320" y="132" text-anchor="middle">objcopy →</text>
+  <text class="label-sm" x="320" y="146" text-anchor="middle">nwp_*.hex</text>
+  <line class="arrow" x1="400" y1="110" x2="420" y2="110"/>
+  <rect class="stage" x="420" y="50" width="280" height="55"/>
+  <text class="title" x="560" y="72" text-anchor="middle">VCS</text>
+  <text class="label-sm" x="560" y="92" text-anchor="middle">testbench preloads nwp_*.hex at t=0</text>
+  <rect class="stage-new" x="420" y="115" width="280" height="55"/>
+  <text class="title" x="560" y="137" text-anchor="middle">Rust emulator</text>
+  <text class="label-sm" x="560" y="157" text-anchor="middle">network_cpu.step() loop</text>
+  <line class="arrow" x1="700" y1="78" x2="720" y2="100"/>
+  <line class="arrow" x1="700" y1="142" x2="720" y2="120"/>
+  <rect class="stage" x="720" y="80" width="160" height="60"/>
+  <text class="title" x="800" y="102" text-anchor="middle">grep UART</text>
+  <text class="label-sm" x="800" y="120" text-anchor="middle">expected substring</text>
+  <text class="label-sm" x="800" y="134" text-anchor="middle">→ PASS / FAIL</text>
+  <text class="label-sm" x="440" y="220" text-anchor="middle">VCS and emulator catch different bug classes — running both per commit gives near-orthogonal coverage</text>
+</svg>

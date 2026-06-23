@@ -1,0 +1,285 @@
+NWP Phase 1 Review; Phase 2 Plan-20260505_154113-Meeting Recording
+May 5, 2026, 10:41PM
+18m 37s
+
+Zahra Lak started transcription
+
+Bharat Pillilli   0:07
+when there is another processor that we added and memory that we added, making it only one-time use is a really hard thing for SOCs.
+
+Zahra Lak   0:11
+Why is that?
+
+Bharat Pillilli   0:27
+the network boot is coming from the ROM, right? Like there is a separate ROM from which the network boot is coming. So what we should do is, based upon MCU's information and declaration, we should Keep the network boot ROM under reset.
+
+Zahra Lak   0:51
+Mhm.
+
+Bharat Pillilli   0:52
+And allow MCU, the choice of bringing that processor out of reset if it wants to. And make sure that the reset vector of this network processor that we are talking about is either pointed towards ICCN or pointed towards.
+
+Bharat Pillilli   1:16
+Sorry, gathering my thoughts. Either pointed towards ICCM or pointed towards ROM. The reason I suddenly paused is if it's ICCM, how in the world that the firmware gets copied over there? I don't know yet, but something that we should think about.
+
+Zahra Lak   1:18
+Sure.
+We don't have ICCM enabled in MCU and therefore we don't have it enabled in NWP. So should we just point it to the ROM?
+
+Bharat Pillilli   1:45
+I see. So you're just saying that you have ROM, right? In that case, it should just be some memory, you know, like it's just a reset vector, a reset vector that can be determined by the SOC because they could have their own memory - how we implemented MCS trap - from which they can execute, right? So we should provide that choice in case some SOC wants to do. All I'm trying to say is we should have a separate reset for the ROM versus the processor itself and the ROM.
+
+Zahra Lak   2:08
+Mhm.
+
+Bharat Pillilli   2:24
+because ROM would be sitting on the axi bus, right? It would come out of reset only in this network processor boot port.
+
+Zahra Lak   2:31
+Right.
+
+Bharat Pillilli   2:33
+Yeah, from a threat model point of view, it is no different than what we have right now. Just because a processor is out of reset means nothing because the ROM is kept under reset.
+
+Zahra Lak   2:46
+Okay. So let me repeat that back just to make sure I understand it correctly. So we want to have separate resets for the processor itself.
+And then another reset for the ROM.
+And we want, does that mean we have two separate reset vectors for NWP?
+
+Bharat Pillilli   3:25
+Sorry, I was talking to myself. I was saying, think of it as a Mux Zahra, right?
+
+Zahra Lak   3:27
+Nause.
+Okay.
+
+Bharat Pillilli   3:31
+So you have, you either have a ROM reset vector or the other one, and the reset and the mux off, and the mux is controlled by, are you in recovery mode or not, right? Network, if you are in network boot mode, is when you bring this, you are bringing this microcontroller out of reset.
+Right, and that mux is basically controlled by the same signal if you are in network boot.
+
+Zahra Lak   3:51
+Right.
+
+Bharat Pillilli   3:56
+The reset vector is pointed towards the ROM.
+
+Zahra Lak   4:02
+Aren't those the same modes if you're in network recovery mode?
+
+Bharat Pillilli   4:09
+Right.
+
+Zahra Lak   4:10
+Mhm.
+
+Bharat Pillilli   4:11
+If you're not in network boot mode, then you are connected towards a different one. That's the point I'm trying to make.
+
+Bharat Pillilli   4:18
+That way you are allowing that processor, if somebody is spending that area, you are allowing them to use it for other use models, but you're still safeguarding that you can only do this ROM related thing in a single situation, you know.
+
+Zahra Lak   4:36
+Okay.
+
+Bharat Pillilli   4:38
+And we should also make sure that we have additional security in the sense that once this ROM is when you come out of boot, and if you did not bring this out of reset at a given point in ROM, we should lock it up. In other words, that register that is controlling this should not be overridable at runtime, right? Like whatever reset that you're using to tell if we should bring this ROM out of reset or not.
+
+Zahra Lak   5:01
+Mhm.
+OK, isn't it in the runtime that once we are in recovery mode, we enable or disable this reset and then?
+We want to put it back to non-reset, so would it not be in the runtime?
+
+Bharat Pillilli   5:26
+I believe it is during runtime, right? Marco, correct me. During MCU ROM stage, you determine that, oh, crap, that the spy flash is not good. I want to switch into this recovery mode.
+Right, Marco.
+
+Bharat Pillilli   5:43
+When do you enter network? When do you enter network boot? What is the condition?
+Sorry, one more time. When do you when do you enter network boot? What under what condition do you enter network boot?
+
+Marco Visaya   5:59
+Ah, okay. When...
+So theoretically, it will be a boot order sequence that will be determined by the user, but the main use case is if they cannot boot up from Flash.
+
+Bharat Pillilli   6:14
+Correct, and that is from a ROM, right? Marco, you did make the determine determination in the ROM.
+
+Marco Visaya   6:16
+Yes.
+Exactly, yes. Yeah.
+
+Bharat Pillilli   6:21
+Yeah, so Zahra, so that's the point I was trying to make. MCU ROM will make the determination if they should bring this out of reset. And what I'm trying to say is you should make sure that the MCU ROM would lock this up before it transitions to runtime.
+
+Zahra Lak   6:26
+Okay.
+Got you. Makes sense. Thank you for that clarification. So right now there are a few tests added, which is hello world, DCCM, and exception. And they all seem to be passing. I want to know what's our process for PRing and integrating it into.
+upstream.
+Do we have any pipelines for build and test? Do we have any regression test suite?
+
+Caleb Whitehead   7:23
+Yeah, there's a there's a promote pipeline that we use to validate merges into the subsystem. I can show you how to run that, but there's made some instructions in the OneNote. Let me check on that.
+
+Zahra Lak   7:40
+And then.
+
+Caleb Whitehead   7:41
+Is this something we want to have a parameter around to enable, or is it going to be like a permanent fixture in the subsystem moving forward by default?
+
+Zahra Lak   7:49
+I think.
+I think this will be a parameterizable permanent fixture, so it can be.
+You know, enabled or disabled, but...
+
+Bharat Pillilli   7:59
+Can I think of it as an optional confidence?
+Think of it as an optional configuration, Caleb, that somebody would say that, oh, you know what, I want to enable the subsystem by having this. Like in the same line of thought that we were talking about USB and I3C before, Caleb.
+
+Caleb Whitehead   8:18
+Sure, that makes sense. But like what we decided on USB and I3C was that they would both coexist and integrators would optionally enable them, right? So I'm curious if this is going to be.
+like a build macro that determines whether it exists or not.
+
+Bharat Pillilli   8:31
+It is.
+Exactly.
+
+Caleb Whitehead   8:38
+It will be a macro.
+
+Bharat Pillilli   8:40
+It will be it will be a build macro that determines if it would exist or not.
+
+Caleb Whitehead   8:45
+Okay.
+
+Bharat Pillilli   8:45
+Because this particular thing will only be there on BMCs, not on a CPU and other things because they don't have a network yet. So it's a very BMC-centric feature.
+
+Caleb Whitehead   8:56
+Rai.
+Okay, so in that case, before we PR it into the subsystem, I just want to make sure that's in place. Is that something you've already added, Zahra?
+
+Zahra Lak   9:06
+It's already added to my fork, so I'm pretty much ready to test it.
+
+Caleb Whitehead   9:12
+I mean, like the macro control, like is there already an FDF?
+
+Zahra Lak   9:15
+Oh, the macro, not yet, not yet. That's just, that was just mentioned yesterday. So I will add it. That's my very next step. And then once I add that, I'm ready to try the subsystem pipeline.
+
+Caleb Whitehead   9:20
+Okay.
+Okay, so generally the process is I push my branches directly to the subsystem repository. There's some requests to make everybody use a fork, but right now for the RTL repos, that doesn't work. So we just push directly to the GitHub repository, open a pull request from there, and then once that's open, you can go and run a pipeline from ADO.
+
+Zahra Lak   9:36
+OK.
+
+Caleb Whitehead   9:52
+which will validate the pull request, and then you can merge it.
+
+Zahra Lak   9:56
+Okay, okay, sounds good.
+Sounds good. Thank you, Caleb. What's the process for, I mean, I am adding new tests, but are there any extra integration tests? I'm just not sure if there's going to be any code review before. I understand in the PR process there will be code review, but internally.
+At Microsoft, do we want to do any code review or at least report review to make sure I'm not missing anything?
+
+Caleb Whitehead   10:31
+Usually the way we do that is just make the PR and people look at the PR to see what's changed. But go ahead, Bharat.
+
+Bharat Pillilli   10:33
+No.
+Exactly. No, no, I was about to say the same thing. We review every PR, Zahra. So if you, once you submit, you can submit a draft to your real PR, whatever it is, we will do the review and only then approve it. So it's a natural part of our process.
+
+Zahra Lak   10:55
+Okay, okay. So I guess next thing for me is to make...
+
+Bharat Pillilli   11:00
+By the way, folks are very nitpick, so you know, I'm sure you'll get used to it, but there will be a lot of nitpicks on how this thing happens, so just ahead of just letting you know ahead, you know.
+
+Zahra Lak   11:07
+Yeah.
+Okay, that's good to know. Thank you for the heads up. So I guess next thing that I will be adding is making this optional, then adding the reset behavior that you just described, Bharat. If there's anything else in the reset behavior that I should be aware of, please let me know because that's going to be the second item in my list to be added.
+And then from there, go ahead.
+
+Bharat Pillilli   11:38
+The main thing on this one that we need to be careful on is the security aspect offered because it's a network boot. It has different attack vectors associated with it. So from a hardware point of view,
+We ought to be really careful, like, for example, right? I just said that, you know, we need to make sure when we are exiting MCU ROM, it is locked that nobody can toggle, right? Ideally, we should not just think that the MCU ROM will come and do the right.
+We should have a detection and auto-lock it. What I'm trying to say is...
+We would know when the instruction fetch is happening out of MCU ROM because MCU SRAM carries the instruction.
+So in other words, when I get an instruction fetch from MCU SRAM, we would know that something wacky has happened, right? And we want to lock away this particular interface, right? So something that we should be actively doing it to prevent from glitch attacks and basically wrong glitch attacks to make sure that there is no way that somebody would be able to override this bit. And we should not just assume that the MCU ROM will come and write to that particular bit, Zahra. In other words,
+This is just one example, but we should look at it from the viewpoint of security hardening on and make sure that we have not just the functional implementation, but also the security aspect of it that it cannot be brought up in runtime by any means.
+
+Zahra Lak   13:34
+Okay, so what else should I consider for that?
+In addition to what you mentioned.
+
+Bharat Pillilli   13:46
+Um...
+So...
+Again, we have to analyze, right, Zahra? So, we have to go through the security analysis of this feature, and that's part of the, as you implement the feature, you would, you, we would have to see, hey, what else can go, what else?
+can happen, right? For example, you want to make sure you may have to check on AXI IDs with respect to who's, like today when you execute from this new network processor, obviously you want to make sure that that network processor is not executing from some other
+
+Zahra Lak   14:08
+I see, okay.
+
+Bharat Pillilli   14:29
+MCU ROM or something that is sitting on the bus, right? Because there may be other ROM, right? How do you ensure that that is not going to happen, right? Like, in other words, the reset vector should be unique and...
+
+Zahra Lak   14:32
+Great.
+Right.
+
+Bharat Pillilli   14:48
+and non-programmable that would that non-programmable from a when when you're in a network boot aspect of it, it should be it can only go to one location on one location only.
+
+Zahra Lak   15:02
+OK.
+
+Bharat Pillilli   15:04
+Right? So those aspects you need to make sure that you see what you need to do from a hardware-centric sense. And additionally, if there are certain aspects that you need to add into integration spec, saying that, hey, when this gets enabled, you need, these are the things that SoC needs to ensure from an integration point of view.
+
+Zahra Lak   15:04
+OK.
+
+Bharat Pillilli   15:25
+The most common thing that people talk about once AXI requests come through is like time of check, time of use attacks, that you can route something here versus there, right? Those are all the things that you should consider in your microarchitectural design.
+
+Zahra Lak   15:43
+Okay.
+
+Bharat Pillilli   15:44
+Yeah, I mean, obviously it goes in phases. The first thing is enable the basic operation, then you add these additional things to make sure that you are that you are in a good shape.
+
+Zahra Lak   15:45
+Okay.
+
+Caleb Whitehead   16:00
+Yeah, I mean, when we were talking about a lot of these workflow questions for the MCU and like how you enforce security, that's when we came up with the MCI, right? So are we talking about putting an entire control plane in place along with this NWP so that we can do things like initialize the straps for the user values and do like a...
+A hot reset type thing.
+
+Bharat Pillilli   16:24
+I don't want to have a complete MCI on this, right? We need to understand what are the things that are required and add that widget into MCI itself.
+
+Caleb Whitehead   16:28
+Right.
+Okay.
+
+Bharat Pillilli   16:37
+So that's where if there are any new registers that we need to add for this particular network processor, it has to go into MCI in like this macro sense that when it is there, these registers exist. When it's not there, these registers and hardware doesn't exist.
+
+Zahra Lak   17:00
+And then basically every control for network processor comes through MCI.
+
+Bharat Pillilli   17:06
+Yeah, I mean, it's MCI, for a lack of a better term, is just a spaghetti code where we add the subsystem controls, right, Zahra? Yeah.
+
+Zahra Lak   17:07
+Yeah.
+Makes sense. Yeah. so I'll be working on those in addition to those. There will be enabling Ethernet phy in the FPGA.
+enabling FPGA bring up.
+That's all I can think of. I'll look into disabling caching and adding this reset behavior. And I'll send another report. If you have any questions or feedback on this current report, it's just three pages. It's not really that long.
+please let me know. It will help me greatly in implementing it better, have a better understanding of, you know, what behavior I should put into the design and so on. So feedbacks are welcome. I will set up the next meeting for when I have something to discuss.
+Anything else I should know?
+
+Zahra Lak   18:33
+Awesome. Thanks, everyone. Bye.

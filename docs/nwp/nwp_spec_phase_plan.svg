@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 340" font-family="Consolas, monospace" font-size="15">
+  <defs>
+    <style>
+      .phase{fill:#fafafa;stroke:#555;stroke-width:1.5;rx:8}
+      .phase-2{fill:#e3f2fd;stroke:#1565c0;stroke-width:2;rx:8}
+      .phase-3{fill:#fff3e0;stroke:#e65100;stroke-width:2;rx:8}
+      .arrow{stroke:#888;stroke-width:1.6;fill:none;marker-end:url(#a)}
+      .title{font-weight:bold;font-size:18px;fill:#222}
+      .subtitle{font-weight:bold;font-size:15px;fill:#222}
+      .bullet{font-size:14px;fill:#333}
+      .header{font-weight:bold;font-size:15px;fill:#222}
+    </style>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8" fill="#888"/></marker>
+  </defs>
+  <text class="header" x="540" y="24" text-anchor="middle">Phase plan</text>
+
+  <rect class="phase" x="20" y="50" width="320" height="220"/>
+  <text class="title" x="180" y="80" text-anchor="middle">Phase 1</text>
+  <text class="subtitle" x="180" y="106" text-anchor="middle">Replicate &amp; data flow</text>
+  <text class="bullet" x="40" y="138">• NWP core + NWP ROM</text>
+  <text class="bullet" x="40" y="162">• DCCM + no ICCM</text>
+  <text class="bullet" x="40" y="186">• Mailbox reuse, polling</text>
+  <text class="bullet" x="40" y="210">• Self-tests pass</text>
+  <text class="bullet" x="40" y="234">• Enable parameter (gate from day 1)</text>
+
+  <line class="arrow" x1="340" y1="180" x2="375" y2="180"/>
+
+  <rect class="phase-2" x="375" y="50" width="320" height="220"/>
+  <text class="title" x="535" y="80" text-anchor="middle">Phase 2</text>
+  <text class="subtitle" x="535" y="106" text-anchor="middle">PHY + FPGA integration</text>
+  <text class="bullet" x="395" y="138">• Address map for PHY</text>
+  <text class="bullet" x="395" y="162">• AXI-to-PHY shim in fabric</text>
+  <text class="bullet" x="395" y="186">• NWP reads PHY registers</text>
+  <text class="bullet" x="395" y="210">• FPGA bring-up &amp; tests</text>
+
+  <line class="arrow" x1="695" y1="180" x2="730" y2="180"/>
+
+  <rect class="phase-3" x="730" y="50" width="320" height="220"/>
+  <text class="title" x="890" y="80" text-anchor="middle">Phase 3</text>
+  <text class="subtitle" x="890" y="106" text-anchor="middle">Reset control + security</text>
+  <text class="bullet" x="750" y="138">• Reset register + lock bit</text>
+  <text class="bullet" x="750" y="162">• Reset-vector source policy (O5)</text>
+  <text class="bullet" x="750" y="186">• HW auto-lock (anti-glitch)</text>
+  <text class="bullet" x="750" y="210">• AXI ID checks</text>
+  <text class="bullet" x="750" y="234">• TOCTOU consideration</text>
+</svg>

@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 620" font-family="Consolas, monospace" font-size="14">
+  <defs>
+    <style>
+      .step{fill:#fafafa;stroke:#555;stroke-width:1.5;rx:6}
+      .step-new{fill:#e8f5e9;stroke:#2e7d32;stroke-width:1.5;rx:6}
+      .lock{fill:#fff3e0;stroke:#e65100;stroke-width:1.5;rx:6}
+      .arrow{stroke:#888;stroke-width:1.6;fill:none;marker-end:url(#a)}
+      .title{font-weight:bold;font-size:16px;fill:#222}
+      .label{font-size:14px;fill:#333}
+      .legend{font-size:12px;fill:#555}
+    </style>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8" fill="#888"/></marker>
+  </defs>
+  <text class="title" x="460" y="24" text-anchor="middle">Network-boot data flow (target end-to-end; steps span Phase 1/2/3)</text>
+
+  <rect x="20" y="40" width="16" height="14" fill="#fafafa" stroke="#555"/><text class="legend" x="42" y="52">grey: existing / generic SoC step</text>
+  <rect x="280" y="40" width="16" height="14" fill="#e8f5e9" stroke="#2e7d32"/><text class="legend" x="302" y="52">green: NWP-new functional step</text>
+  <rect x="540" y="40" width="16" height="14" fill="#fff3e0" stroke="#e65100"/><text class="legend" x="562" y="52">orange: security / lock step</text>
+
+  <rect class="step" x="280" y="80" width="360" height="44"/>
+  <text class="label" x="460" y="107" text-anchor="middle">SoC reset → NWP and NWP ROM held in reset</text>
+  <line class="arrow" x1="460" y1="124" x2="460" y2="144"/>
+
+  <rect class="step" x="280" y="144" width="360" height="44"/>
+  <text class="label" x="460" y="171" text-anchor="middle">MCU ROM evaluates boot order</text>
+  <line class="arrow" x1="460" y1="188" x2="460" y2="208"/>
+
+  <rect class="step" x="280" y="208" width="360" height="44"/>
+  <text class="label" x="460" y="235" text-anchor="middle">SPI-flash boot fails → enter network-boot</text>
+  <line class="arrow" x1="460" y1="252" x2="460" y2="272"/>
+
+  <rect class="step-new" x="280" y="272" width="360" height="44"/>
+  <text class="label" x="460" y="299" text-anchor="middle">MCU writes NWP_RESET_CONTROL: hold_core=0, hold_rom=0</text>
+  <line class="arrow" x1="460" y1="316" x2="460" y2="336"/>
+
+  <rect class="step-new" x="280" y="336" width="360" height="44"/>
+  <text class="label" x="460" y="363" text-anchor="middle">NWP reset vector → NWP ROM (single source)</text>
+  <line class="arrow" x1="460" y1="380" x2="460" y2="400"/>
+
+  <rect class="step-new" x="280" y="400" width="360" height="44"/>
+  <text class="label" x="460" y="427" text-anchor="middle">NWP runs ROM → fetches packets from network</text>
+  <line class="arrow" x1="460" y1="444" x2="460" y2="464"/>
+
+  <rect class="step-new" x="280" y="464" width="360" height="44"/>
+  <text class="label" x="460" y="491" text-anchor="middle">NWP writes packets into MCU mailbox; MCU polls</text>
+  <line class="arrow" x1="460" y1="508" x2="460" y2="528"/>
+
+  <rect class="lock" x="280" y="528" width="360" height="40"/>
+  <text class="label" x="460" y="554" text-anchor="middle">MCU ROM writes lock=1 before runtime</text>
+  <line class="arrow" x1="460" y1="568" x2="460" y2="584"/>
+
+  <rect class="lock" x="280" y="584" width="360" height="32"/>
+  <text class="label" x="460" y="606" text-anchor="middle">HW auto-lock on MCU SRAM fetch</text>
+</svg>

@@ -29,6 +29,15 @@ fn generate_linker_script() -> String {
     let map = &DEFAULT_NETWORK_MEMORY_MAP;
     let mrac_value = map.compute_mrac();
 
+    let iccm_memory = if map.iccm_size > 0 {
+        format!(
+            "\n  ICCM (rwx) : ORIGIN = 0x{:08x}, LENGTH = 0x{:x}",
+            map.iccm_offset, map.iccm_size
+        )
+    } else {
+        String::new()
+    };
+
     format!(
         r#"
 /* Licensed under the Apache-2.0 license. */
@@ -40,8 +49,7 @@ OUTPUT_ARCH( "riscv" )
 MEMORY
 {{
   ROM   (rx) : ORIGIN = 0x{rom_offset:08x}, LENGTH = 0x{rom_size:x}
-  ICCM (rwx) : ORIGIN = 0x{iccm_offset:08x}, LENGTH = 0x{iccm_size:x}
-  DCCM (rw)  : ORIGIN = 0x{dccm_offset:08x}, LENGTH = 0x{dccm_size:x}
+  DCCM (rw)  : ORIGIN = 0x{dccm_offset:08x}, LENGTH = 0x{dccm_size:x}{iccm_memory}
 }}
 
 SECTIONS
@@ -84,6 +92,15 @@ SECTIONS
         PROVIDE(STACK_START = . );
     }} > DCCM
 
+    .estack (NOLOAD):
+    {{
+        . = ALIGN(4);
+        PROVIDE(ESTACK_END = . );
+        . = . + ESTACK_SIZE;
+        . = ALIGN(4);
+        PROVIDE(ESTACK_START = . );
+    }} > DCCM
+
     _end = . ;
 }}
 
@@ -93,6 +110,7 @@ DATA_START = ADDR(.data);
 DATA_END = DATA_START + SIZEOF(.data);
 ROM_DATA_START = LOADADDR(.data);
 STACK_SIZE = 0x{stack_size:x};
+ESTACK_SIZE = 0x{estack_size:x};
 STACK_TOP = ORIGIN(DCCM) + LENGTH(DCCM);
 STACK_ORIGIN = STACK_TOP - STACK_SIZE;
 
@@ -102,11 +120,11 @@ MRAC_VALUE = 0x{mrac_value:08x};
 "#,
         rom_offset = map.rom_offset,
         rom_size = map.rom_size,
-        iccm_offset = map.iccm_offset,
-        iccm_size = map.iccm_size,
         dccm_offset = map.dccm_offset,
         dccm_size = map.dccm_size,
+        iccm_memory = iccm_memory,
         stack_size = map.rom_stack_size,
+        estack_size = map.rom_estack_size,
         mrac_value = mrac_value,
     )
 }

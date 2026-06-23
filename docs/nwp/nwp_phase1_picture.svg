@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 600" font-family="Consolas, 'Courier New', monospace" font-size="14">
+  <defs>
+    <style>
+      .box { fill: #fafafa; stroke: #555; stroke-width: 1.5; rx: 6; }
+      .box-new { fill: #e8f5e9; stroke: #2e7d32; stroke-width: 2; rx: 6; }
+      .mci { fill: #fff3e0; stroke: #e65100; stroke-width: 1.5; rx: 6; }
+      .fabric { fill: #f5f5f5; stroke: #555; stroke-width: 1.5; rx: 4; }
+      .port { fill: #fafafa; stroke: #555; stroke-width: 1; rx: 2; }
+      .port-new { fill: #e8f5e9; stroke: #2e7d32; stroke-width: 1.2; rx: 2; }
+      .title { font-weight: bold; font-size: 16px; fill: #333; }
+      .label { font-size: 14px; fill: #333; }
+      .label-sm { font-size: 12px; fill: #666; }
+      .new-tag { font-size: 12px; font-weight: bold; fill: #2e7d32; }
+      .arrow { stroke: #888; stroke-width: 1.4; fill: none; marker-end: url(#ah); }
+      .arrow-new { stroke: #2e7d32; stroke-width: 1.4; fill: none; marker-end: url(#ah-g); }
+      .reset-wire { stroke: #e65100; stroke-width: 2; fill: none; }
+      .reset-arrow { stroke: #e65100; stroke-width: 2; fill: none; marker-end: url(#ah-r); }
+      .legend { font-size: 13px; fill: #555; }
+      .note { font-size: 12px; fill: #e65100; font-style: italic; font-weight: bold; }
+      .port-label { font-size: 11px; font-weight: bold; fill: #333; }
+      .port-label-new { font-size: 11px; font-weight: bold; fill: #2e7d32; }
+    </style>
+    <marker id="ah" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#888"/></marker>
+    <marker id="ah-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#2e7d32"/></marker>
+    <marker id="ah-r" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#e65100"/></marker>
+  </defs>
+
+  <rect x="20" y="18" width="14" height="14" fill="#fafafa" stroke="#555" stroke-width="1.5" rx="2"/>
+  <text class="legend" x="40" y="30">Pre-existing</text>
+  <rect x="140" y="18" width="14" height="14" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2" rx="2"/>
+  <text class="legend" x="160" y="30">Added in Phase 1</text>
+  <line x1="280" y1="25" x2="305" y2="25" stroke="#e65100" stroke-width="2"/>
+  <text class="legend" x="310" y="30">Reset (shared in Phase 1)</text>
+  <text class="label-sm" x="510" y="30">cptra_core, mcu_rom/nwp_rom, mci act as both master and slave.</text>
+
+  <rect class="mci" x="450" y="60" width="140" height="50"/>
+  <text class="title" x="520" y="84" text-anchor="middle">MCI</text>
+  <text class="label-sm" x="520" y="100" text-anchor="middle">drives mcu_rst_b</text>
+
+  <line class="reset-wire" x1="520" y1="110" x2="520" y2="135"/>
+  <line class="reset-wire" x1="345" y1="135" x2="695" y2="135"/>
+  <line class="reset-arrow" x1="345" y1="135" x2="345" y2="170"/>
+  <line class="reset-arrow" x1="695" y1="135" x2="695" y2="170"/>
+  <text class="note" x="600" y="128">shared reset (Phase 2 gates it)</text>
+
+  <rect class="box" x="40" y="170" width="160" height="110"/>
+  <text class="title" x="120" y="195" text-anchor="middle">cptra_core</text>
+  <text class="label-sm" x="120" y="213" text-anchor="middle">(master)</text>
+  <rect class="port" x="100" y="250" width="40" height="20"/><text class="port-label" x="120" y="264" text-anchor="middle">M</text>
+
+  <rect class="box" x="220" y="170" width="250" height="110"/>
+  <text class="title" x="345" y="195" text-anchor="middle">MCU (css_mcu0_ VeeR EL2)</text>
+  <text class="label-sm" x="345" y="213" text-anchor="middle">ROM @ 0x8000_0000  ·  DCCM 16 KB</text>
+  <rect class="port" x="240" y="250" width="50" height="20"/><text class="port-label" x="265" y="264" text-anchor="middle">M lsu</text>
+  <rect class="port" x="320" y="250" width="50" height="20"/><text class="port-label" x="345" y="264" text-anchor="middle">M ifu</text>
+  <rect class="port" x="400" y="250" width="50" height="20"/><text class="port-label" x="425" y="264" text-anchor="middle">M sb</text>
+
+  <rect class="box-new" x="490" y="170" width="250" height="110"/>
+  <text class="title" x="615" y="195" text-anchor="middle">NWP (css_nwp0_ VeeR EL2)</text>
+  <text class="new-tag" x="735" y="235" text-anchor="end">NEW</text>
+  <text class="label-sm" x="615" y="213" text-anchor="middle">ROM @ 0x9000_0000  ·  DCCM 64 KB</text>
+  <rect class="port-new" x="510" y="250" width="50" height="20"/><text class="port-label-new" x="535" y="264" text-anchor="middle">M lsu</text>
+  <rect class="port-new" x="590" y="250" width="50" height="20"/><text class="port-label-new" x="615" y="264" text-anchor="middle">M ifu</text>
+  <rect class="port-new" x="670" y="250" width="50" height="20"/><text class="port-label-new" x="695" y="264" text-anchor="middle">M sb</text>
+
+  <line class="arrow" x1="120" y1="270" x2="120" y2="320"/>
+  <line class="arrow" x1="265" y1="270" x2="265" y2="320"/>
+  <line class="arrow" x1="345" y1="270" x2="345" y2="320"/>
+  <line class="arrow" x1="425" y1="270" x2="425" y2="320"/>
+  <line class="arrow-new" x1="535" y1="270" x2="535" y2="320"/>
+  <line class="arrow-new" x1="615" y1="270" x2="615" y2="320"/>
+  <line class="arrow-new" x1="695" y1="270" x2="695" y2="320"/>
+
+  <rect class="fabric" x="40" y="320" width="850" height="40"/>
+  <text class="title" x="465" y="345" text-anchor="middle">AXI fabric  (Masters: 4 → 7,  Slaves: 6 → 7)</text>
+
+  <line class="arrow" x1="105" y1="360" x2="105" y2="410"/>
+  <line class="arrow" x1="225" y1="360" x2="225" y2="410"/>
+  <line class="arrow" x1="345" y1="360" x2="345" y2="410"/>
+  <line class="arrow" x1="465" y1="360" x2="465" y2="410"/>
+  <line class="arrow" x1="585" y1="360" x2="585" y2="410"/>
+  <line class="arrow" x1="705" y1="360" x2="705" y2="410"/>
+  <line class="arrow-new" x1="825" y1="360" x2="825" y2="410"/>
+
+  <rect class="box" x="50" y="410" width="110" height="60"/>
+  <text class="label" x="105" y="435" text-anchor="middle">cptra_core</text>
+  <text class="label-sm" x="105" y="452" text-anchor="middle">(slave)</text>
+
+  <rect class="box" x="170" y="410" width="110" height="60"/>
+  <text class="label" x="225" y="435" text-anchor="middle">i3c</text>
+  <text class="label-sm" x="225" y="452" text-anchor="middle">(slave)</text>
+
+  <rect class="box" x="290" y="410" width="110" height="60"/>
+  <text class="label" x="345" y="435" text-anchor="middle">mcu_rom</text>
+  <text class="label-sm" x="345" y="452" text-anchor="middle">256 KB (slave)</text>
+
+  <rect class="box" x="410" y="410" width="110" height="60"/>
+  <text class="label" x="465" y="435" text-anchor="middle">mci</text>
+  <text class="label-sm" x="465" y="452" text-anchor="middle">(slave)</text>
+
+  <rect class="box" x="530" y="410" width="110" height="60"/>
+  <text class="label" x="585" y="435" text-anchor="middle">lc_ctrl</text>
+  <text class="label-sm" x="585" y="452" text-anchor="middle">(slave)</text>
+
+  <rect class="box" x="650" y="410" width="110" height="60"/>
+  <text class="label" x="705" y="435" text-anchor="middle">otp_ctrl</text>
+  <text class="label-sm" x="705" y="452" text-anchor="middle">(slave)</text>
+
+  <rect class="box-new" x="770" y="410" width="110" height="60"/>
+  <text class="label" x="825" y="435" text-anchor="middle">nwp_rom</text>
+  <text class="new-tag" x="825" y="452" text-anchor="middle">NEW · 256 KB</text>
+
+  <text class="label-sm" x="520" y="500" text-anchor="middle">All cores reach all slaves through the AXI fabric (crossbar lives outside caliptra_ss_top).</text>
+  <text class="label-sm" x="520" y="518" text-anchor="middle" fill="#2e7d32">Phase 1 adds NWP (3 master ports) and nwp_rom (1 slave) and shares MCU's reset; Phase 2 will gate the reset.</text>
+</svg>

@@ -27,14 +27,17 @@ use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_emulator_bmc::Bmc;
 use caliptra_mcu_emulator_caliptra::BytesOrPath;
 use caliptra_mcu_emulator_caliptra::{start_caliptra, StartCaliptraArgs};
-use caliptra_mcu_emulator_consts::{DEFAULT_CPU_ARGS, NETWORK_CPU_ARGS, RAM_ORG, ROM_SIZE};
+use caliptra_mcu_emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
+#[cfg(feature = "nwp")]
+use caliptra_mcu_emulator_consts::NETWORK_CPU_ARGS;
 #[allow(unused_imports)]
 use caliptra_mcu_emulator_periph::MciMailboxRequester;
 use caliptra_mcu_emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
-    McuRootBus, McuRootBusArgs, McuRootBusOffsets, NetworkRootBus, NetworkRootBusArgs,
-    NetworkRootBusOffsets, Otp, OtpArgs,
+    McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp, OtpArgs,
 };
+#[cfg(feature = "nwp")]
+use caliptra_mcu_emulator_periph::{NetworkRootBus, NetworkRootBusArgs, NetworkRootBusOffsets};
 use caliptra_mcu_emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
 use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
@@ -150,6 +153,7 @@ pub struct EmulatorArgs {
 
     /// Optional ROM path for the Network Coprocessor CPU.
     /// When provided, enables the Network Coprocessor for network boot recovery.
+    #[cfg(feature = "nwp")]
     #[arg(long)]
     pub network_rom: Option<PathBuf>,
 
@@ -312,6 +316,7 @@ pub struct Emulator {
     pub caliptra_cpu: Cpu<CaliptraMainRootBus>,
     /// Optional Network Coprocessor CPU for network boot recovery.
     /// This CPU runs the Network ROM firmware which implements DHCP/TFTP clients.
+    #[cfg(feature = "nwp")]
     pub network_cpu: Option<Cpu<NetworkRootBus>>,
     pub bmc: Option<Bmc>,
     pub timer: Timer,
@@ -1006,6 +1011,7 @@ impl Emulator {
         cpu.register_events();
 
         // Create the Network Coprocessor CPU if network_rom is provided
+        #[cfg(feature = "nwp")]
         let network_cpu = if let Some(ref network_rom_path) = cli.network_rom {
             if !Path::new(network_rom_path).exists() {
                 println!("Network ROM File {:?} does not exist", network_rom_path);
@@ -1194,6 +1200,7 @@ impl Emulator {
         Ok(Self::new(
             cpu,
             caliptra_cpu,
+            #[cfg(feature = "nwp")]
             network_cpu,
             instr_trace,
             stdin_uart,
@@ -1217,7 +1224,7 @@ impl Emulator {
     pub fn new(
         mcu_cpu: Cpu<AutoRootBus>,
         caliptra_cpu: Cpu<CaliptraMainRootBus>,
-        network_cpu: Option<Cpu<NetworkRootBus>>,
+        #[cfg(feature = "nwp")] network_cpu: Option<Cpu<NetworkRootBus>>,
         trace_path: Option<PathBuf>,
         stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
         bmc: Option<Bmc>,
@@ -1253,6 +1260,7 @@ impl Emulator {
         Self {
             mcu_cpu,
             caliptra_cpu,
+            #[cfg(feature = "nwp")]
             network_cpu,
             bmc,
             timer,
@@ -1358,6 +1366,7 @@ impl Emulator {
         }
 
         // Step the Network Coprocessor CPU if present
+        #[cfg(feature = "nwp")]
         if let Some(ref mut network_cpu) = self.network_cpu {
             let network_action = if self.trace_file.is_some() {
                 let network_trace_fn: &mut dyn FnMut(u32, caliptra_emu_cpu::RvInstr) =

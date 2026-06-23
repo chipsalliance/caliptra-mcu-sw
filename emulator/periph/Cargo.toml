@@ -22,7 +22,7 @@ lazy_static.workspace = true
 caliptra-mcu-config.workspace = true
 caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-testing-common.workspace = true
-caliptra-mcu-network-config.workspace = true
+caliptra-mcu-network-config = { workspace = true, optional = true }
 num_enum.workspace = true
 caliptra-mcu-otp-digest.workspace = true
 caliptra-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
@@ -41,3 +41,4 @@ tempfile.workspace = true
 
 [features]
 default = []
+nwp = ["dep:caliptra-mcu-network-config"]

@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 480" font-family="Consolas, 'Courier New', monospace" font-size="14">
+  <defs>
+    <style>
+      .src { fill: #e8f5e9; stroke: #2e7d32; stroke-width: 2; rx: 6; }
+      .consumer { fill: #fafafa; stroke: #555; stroke-width: 1.2; rx: 4; }
+      .consumer-new { fill: #e8f5e9; stroke: #2e7d32; stroke-width: 1.5; rx: 4; }
+      .arrow { stroke: #888; stroke-width: 1.5; fill: none; marker-end: url(#ah); }
+      .arrow-new { stroke: #2e7d32; stroke-width: 1.5; fill: none; marker-end: url(#ah-g); }
+      .title { font-weight: bold; font-size: 14px; fill: #333; }
+      .label { font-size: 13px; fill: #333; }
+      .label-sm { font-size: 12px; fill: #666; }
+      .note { font-size: 13px; fill: #2e7d32; font-weight: bold; }
+      .mono { font-family: Consolas, monospace; font-size: 12px; fill: #1565c0; }
+    </style>
+    <marker id="ah" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#888"/></marker>
+    <marker id="ah-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#2e7d32"/></marker>
+  </defs>
+  <rect class="src" x="240" y="20" width="400" height="140"/>
+  <text class="title" x="440" y="42" text-anchor="middle">network/config/src/lib.rs</text>
+  <text class="note" x="440" y="60" text-anchor="middle">DEFAULT_NETWORK_MEMORY_MAP — source of truth</text>
+  <text class="mono" x="260" y="82">rom_offset:   0x9000_0000   rom_size: 64 KB</text>
+  <text class="mono" x="260" y="100">dccm_offset:  0x3000_0000   dccm_size: 64 KB</text>
+  <text class="mono" x="260" y="118">uart_offset:  0x1000_1000   pic_offset: 0xB000_0000</text>
+  <text class="mono" x="260" y="136">eth_offset:   0x1000_3000   …</text>
+  <line class="arrow-new" x1="320" y1="160" x2="120" y2="200"/>
+  <line class="arrow-new" x1="380" y1="160" x2="290" y2="200"/>
+  <line class="arrow-new" x1="440" y1="160" x2="440" y2="200"/>
+  <line class="arrow-new" x1="500" y1="160" x2="600" y2="200"/>
+  <line class="arrow-new" x1="560" y1="160" x2="770" y2="200"/>
+  <rect class="consumer" x="40" y="200" width="160" height="70"/>
+  <text class="title" x="120" y="222" text-anchor="middle">build.rs</text>
+  <text class="label-sm" x="120" y="240" text-anchor="middle">→ rom-layout.ld</text>
+  <text class="label-sm" x="120" y="254" text-anchor="middle">(linker script)</text>
+  <rect class="consumer" x="220" y="200" width="140" height="70"/>
+  <text class="title" x="290" y="222" text-anchor="middle">runtime consts</text>
+  <text class="label-sm" x="290" y="240" text-anchor="middle">peripheral pointers</text>
+  <text class="label-sm" x="290" y="254" text-anchor="middle">in NWP firmware</text>
+  <rect class="consumer" x="380" y="200" width="120" height="70"/>
+  <text class="title" x="440" y="222" text-anchor="middle">emulator</text>
+  <text class="label-sm" x="440" y="240" text-anchor="middle">memory model</text>
+  <text class="label-sm" x="440" y="254" text-anchor="middle">peripheral mux</text>
+  <rect class="consumer" x="520" y="200" width="160" height="70"/>
+  <text class="title" x="600" y="222" text-anchor="middle">MRAC compute</text>
+  <text class="label-sm" x="600" y="240" text-anchor="middle">VeeR region</text>
+  <text class="label-sm" x="600" y="254" text-anchor="middle">predication CSR</text>
+  <rect class="consumer" x="700" y="200" width="140" height="70"/>
+  <text class="title" x="770" y="222" text-anchor="middle">docs / humans</text>
+  <text class="label-sm" x="770" y="240" text-anchor="middle">address-map</text>
+  <text class="label-sm" x="770" y="254" text-anchor="middle">documentation</text>
+  <line class="arrow" x1="120" y1="270" x2="120" y2="310"/>
+  <rect class="consumer-new" x="40" y="310" width="220" height="60"/>
+  <text class="title" x="150" y="332" text-anchor="middle">caliptra-mcu-network-rom (ELF)</text>
+  <text class="label-sm" x="150" y="350" text-anchor="middle">cargo build -p caliptra-mcu-network-rom</text>
+  <line class="arrow" x1="260" y1="335" x2="370" y2="335"/>
+  <text class="label-sm" x="320" y="328" text-anchor="middle">objcopy</text>
+  <text class="label-sm" x="320" y="345" text-anchor="middle">(LMA rebase)</text>
+  <rect class="consumer-new" x="370" y="310" width="260" height="60"/>
+  <text class="title" x="500" y="332" text-anchor="middle">nwp_program.hex / nwp_dccm.hex</text>
+  <line class="arrow" x1="500" y1="370" x2="500" y2="410"/>
+  <text class="label-sm" x="510" y="385">backdoor preload at t=0</text>
+  <rect class="consumer" x="380" y="410" width="240" height="60"/>
+  <text class="title" x="500" y="432" text-anchor="middle">VCS testbench</text>
+  <text class="label-sm" x="500" y="450" text-anchor="middle">behavioral SRAM models</text>
+</svg>

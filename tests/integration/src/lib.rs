@@ -3,7 +3,7 @@
 mod i3c_socket;
 #[cfg(feature = "fpga_realtime")]
 mod jtag;
-#[cfg(test)]
+#[cfg(all(test, feature = "nwp"))]
 mod network;
 #[cfg(test)]
 mod rom;

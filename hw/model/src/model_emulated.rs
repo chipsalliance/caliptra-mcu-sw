@@ -33,6 +33,7 @@ use caliptra_mcu_emulator_caliptra::StartCaliptraArgs;
 use caliptra_mcu_emulator_periph::DummyFlashCtrl;
 use caliptra_mcu_emulator_periph::LcCtrl;
 use caliptra_mcu_emulator_periph::McuRootBusOffsets;
+#[cfg(feature = "nwp")]
 use caliptra_mcu_emulator_periph::NetworkRootBus;
 use caliptra_mcu_emulator_periph::{
     I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp, OtpArgs,
@@ -64,7 +65,9 @@ const BOOT_CYCLES: u64 = 100_000_000;
 pub struct ModelEmulated {
     cpu: Cpu<BusLogger<AutoRootBus>>,
     caliptra_cpu: Cpu<CaliptraMainRootBus>,
+    #[cfg(feature = "nwp")]
     network_cpu: Option<Cpu<NetworkRootBus>>,
+    #[cfg(feature = "nwp")]
     network_uart_output: Option<Rc<RefCell<Vec<u8>>>>,
     soc_to_caliptra_bus: SocToCaliptraBus,
     output: Output,
@@ -462,6 +465,7 @@ impl McuHwModel for ModelEmulated {
         let (events_to_caliptra, events_from_caliptra) = mpsc::channel();
 
         // Initialize network CPU if network_rom is provided
+        #[cfg(feature = "nwp")]
         let (network_cpu, network_uart_output) = if !params.network_rom.is_empty() {
             let network_clock = Rc::new(Clock::new());
             let network_pic = Rc::new(Pic::new());
@@ -495,7 +499,9 @@ impl McuHwModel for ModelEmulated {
 
         let mut m = ModelEmulated {
             caliptra_cpu,
+            #[cfg(feature = "nwp")]
             network_cpu,
+            #[cfg(feature = "nwp")]
             network_uart_output,
             soc_to_caliptra_bus,
             output,
@@ -583,6 +589,7 @@ impl McuHwModel for ModelEmulated {
                 bmc.step();
             }
             // Step network CPU if present
+            #[cfg(feature = "nwp")]
             if let Some(ref mut network_cpu) = self.network_cpu {
                 network_cpu.step(None);
             }
@@ -702,10 +709,12 @@ impl McuHwModel for ModelEmulated {
         self.i3c_address
     }
 
+    #[cfg(feature = "nwp")]
     fn has_network_cpu(&self) -> bool {
         self.network_cpu.is_some()
     }
 
+    #[cfg(feature = "nwp")]
     fn network_uart_output(&self) -> Option<String> {
         self.network_uart_output
             .as_ref()

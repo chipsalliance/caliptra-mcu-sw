@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 380" font-family="Consolas, monospace" font-size="14">
+  <defs>
+    <style>
+      .box{fill:#fafafa;stroke:#555;stroke-width:1.5;rx:6}
+      .box-new{fill:#e8f5e9;stroke:#2e7d32;stroke-width:2;rx:6}
+      .box-lock{fill:#fff3e0;stroke:#e65100;stroke-width:2;rx:6}
+      .arrow{stroke:#666;stroke-width:1.6;fill:none;marker-end:url(#a)}
+      .arrow-rst{stroke:#c62828;stroke-width:1.8;fill:none;marker-end:url(#ar);stroke-dasharray:5,3}
+      .title{font-weight:bold;font-size:16px;fill:#222}
+      .label{font-size:14px;fill:#333}
+      .label-sm{font-size:12px;fill:#666}
+      .label-vec{font-size:12px;fill:#1565c0;font-style:italic}
+      .cite{font-size:11px;fill:#888}
+      .rstmark{font-size:12px;font-weight:bold;fill:#c62828}
+      .legend{font-size:11px;fill:#555}
+      .note{font-size:12px;fill:#444}
+    </style>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8" fill="#666"/></marker>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8" fill="#c62828"/></marker>
+  </defs>
+
+  <text class="title" x="430" y="24" text-anchor="middle">Reset signal vs. reset vector</text>
+
+  <line x1="540" y1="40" x2="585" y2="40" class="arrow-rst"/><text class="legend" x="592" y="44">reset signal (runtime, MCI-driven)</text>
+
+  <rect class="box" x="30" y="70" width="200" height="80"/>
+  <text class="label" x="130" y="96" text-anchor="middle">MCU</text>
+  <text class="label-sm" x="130" y="116" text-anchor="middle">writes NWP_RESET_CONTROL</text>
+  <text class="label-sm" x="130" y="134" text-anchor="middle">{hold_core, hold_rom, lock}</text>
+
+  <rect class="box-lock" x="270" y="70" width="280" height="80"/>
+  <text class="label" x="410" y="96" text-anchor="middle">NWP_RESET_CONTROL (MCI)</text>
+  <text class="label-sm" x="410" y="116" text-anchor="middle">hold_core/hold_rom (RW, gated by lock)</text>
+  <text class="label-sm" x="410" y="134" text-anchor="middle">lock (W1S, sticky to mci_pwrgood)</text>
+
+  <line class="arrow" x1="230" y1="110" x2="270" y2="110"/>
+
+  <rect class="box-new" x="605" y="60" width="220" height="100"/>
+  <text class="label" x="715" y="84" text-anchor="middle">NWP core</text>
+  <text class="label-sm" x="715" y="104" text-anchor="middle">released / held by hold_core</text>
+  <text class="label-vec" x="715" y="128" text-anchor="middle">reset vector via recovery-mode mux</text>
+  <text class="label-vec" x="715" y="146" text-anchor="middle">in net-boot: pinned to NWP_ROM_BASE</text>
+
+  <rect class="box-new" x="605" y="190" width="220" height="70"/>
+  <text class="label" x="715" y="214" text-anchor="middle">NWP ROM</text>
+  <text class="label-sm" x="715" y="234" text-anchor="middle">released / held by hold_rom</text>
+  <text class="label-sm" x="715" y="250" text-anchor="middle">independent from core reset</text>
+
+  <line class="arrow-rst" x1="550" y1="100" x2="605" y2="90"/>
+  <line class="arrow-rst" x1="550" y1="130" x2="605" y2="220"/>
+  <text class="rstmark" x="555" y="186" text-anchor="middle">reset</text>
+
+  <rect x="30" y="285" width="800" height="75" fill="#f7f7f7" stroke="#bbb" stroke-dasharray="3,3" rx="6"/>
+  <text class="title" x="430" y="306" text-anchor="middle">Two independent mechanisms</text>
+  <text class="note" x="430" y="326" text-anchor="middle">• Reset signals — runtime wires from MCI; SW-toggleable via hold_core/hold_rom (until lock=1).</text>
+  <text class="note" x="430" y="344" text-anchor="middle">• Reset vector — recovery-mode mux per [M2]; net-boot input pinned to NWP_ROM_BASE, non-programmable in net-boot mode.</text>
+
+  <text class="cite" x="430" y="372" text-anchor="middle">Bharat [M2]: NWP core and ROM resets are independent (hold_core / hold_rom).</text>
+</svg>
