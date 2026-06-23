@@ -60,3 +60,19 @@ subsystem.pdi
 # CoRIM test signing keys (generated on-the-fly, never commit)
 fake_keys/
 attestation-artifacts/*
+
+# Vivado scratch / logs (local FPGA build outputs)
+**/.Xil/
+**/vivado.jou
+**/vivado.log
+**/vivado_*.backup.jou
+**/vivado_*.backup.log
+**/vivado_*.str
+
+# Local FPGA build directories + per-build console logs
+hw/fpga/caliptra_build*/
+hw/fpga/caliptra_build*_console.log
+hw/fpga/cdc_fix_output/
+
+# Simulation run dirs
+sim_run/
