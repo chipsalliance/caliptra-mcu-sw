@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes how Caliptra external commands are transported over SPDM Vendor Defined Messages (VDM) via MCTP. This is the **out-of-band (OOB)** path for accessing Caliptra device management commands from an external agent such as a BMC.
+This document describes how Caliptra common commands are transported over SPDM Vendor Defined Messages (VDM) via MCTP. This is the **out-of-band (OOB)** path for standard, vendor-neutral Caliptra device management commands from an external agent such as a BMC.
 
 For command definitions (categories, payloads, and completion codes), see [Caliptra Common Commands](caliptra_common_commands.md).
 
@@ -35,6 +35,7 @@ For the unified software architecture shared between OOB (SPDM VDM) and in-band 
 ## SPDM VDM Encapsulation
 
 Common Caliptra commands are carried within SPDM `VENDOR_DEFINED_REQUEST` and `VENDOR_DEFINED_RESPONSE` messages using the OCP-assigned Vendor ID (`42623`). The command range `0x01`–`0x20` is [reserved in the OCP registry](https://github.com/opencomputeproject/ocp-registry/blob/main/command-registry.md) and defined by the Caliptra Working Group.
+
 
 ### OCP VDM Header
 
@@ -76,19 +77,19 @@ The following table maps SPDM VDM command codes to Caliptra common commands. For
 |--------------|------------------------------|-----|-----------------------------------------------------|
 | `0x01`       | Firmware Version             | R   | Retrieve firmware version information.              |
 | `0x02`       | Device Capabilities          | R   | Retrieve device capabilities.                       |
-| `0x03`       | Device ID                    | R   | Retrieve device ID.                                 |
+| `0x03`       | Reserved                     | -   | Device ID is dropped from the Caliptra common command list. |
 | `0x04`       | Device Information           | R   | Retrieve device information.                        |
 | `0x05`       | Get Debug Log                | R   | Retrieve debug log.                                 |
 | `0x06`       | Clear Debug Log              | R   | Clear debug log.                                    |
-| `0x07`       | Get Attestation Log          | O   | Retrieve attestation measurement log.               |
-| `0x08`       | Clear Attestation Log        | O   | Clear attestation log (requires authorization).     |
+| `0x07`       | Reserved                     | -   | Get Attestation log is dropped from the Caliptra common command list. |
+| `0x08`       | Reserved                     | -   | Clear Attestation log is dropped from the Caliptra common command list. |
 | `0x09`       | Get Attestation              | O   | Retrieve attestation evidence.                      |
 | `0x0A`       | Request Debug Unlock         | O   | Request debug unlock in production environment.     |
 | `0x0B`       | Authorize Debug Unlock Token | O   | Send debug unlock token for authorization.          |
 | `0x0C`       | Export IDevID CSR            | R   | Export IDevID certificate signing request.          |
-| `0x0D`       | Set Slot 0 Cert             | R   | Set CA-signed IDevID certificate in slot 0.         |
+| `0x0D`       | Set Slot 0 Cert              | R   | Set CA-signed IDevID certificate in slot 0.         |
 | `0x0E`       | Get Slot 0 State            | O   | Check provisioning state of certificate slot 0.     |
 | `0x0F`       | Export Attested CSR          | O   | Export attested CSR for a device identity key.      |
-| `0x12`       | Authorized Command           | O   | Execute an authorized sub-command via challenge-response MAC. Sub-commands: Get Auth Challenge (`0x01`), Program Field Entropy (`0x02`). |
+| `0x12`       | Authorized Command           | O   | Execute an authorized sub-command. Authorized command flow and sub-command definitions are under review. |
 
 R = Required, O = Optional

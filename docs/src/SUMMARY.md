@@ -25,7 +25,7 @@
         - [SPDM VDM Commands](./caliptra_spdm_vdm_cmds.md)
         - [Unified Command Handling](./unified_caliptra_command_handling.md)
     - [External Mailbox Commands](./external_mailbox_cmds.md)
-    - [External MCTP VDM Commands](./external_mctp_vdm_cmds.md)
+    - [MCTP VDM Extension Framework](./mctp_vdm_extension.md)
     - [Logging](./logging.md)
     - [In-Field Fuse Programming](./fuses.md)
 - [Out of Tree Build](./firmware_bundler.md)
