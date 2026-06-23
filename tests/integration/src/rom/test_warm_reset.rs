@@ -1,25 +1,17 @@
 // Licensed under the Apache-2.0 license
-
+ 
 use anyhow::Result;
 use caliptra_image_types::FwVerificationPqcKeyType;
-use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
 use caliptra_mcu_hw_model::McuHwModel;
 use caliptra_mcu_hw_model::{new, Fuses, InitParams};
 use caliptra_mcu_romtime::McuBootMilestones;
-
+ 
 // TODO(zhalvorsen): Enable this test for emulator when it is supported
 #[cfg_attr(not(feature = "fpga_realtime"), ignore)]
 #[test]
 fn test_warm_reset_success() -> Result<()> {
     let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env()?;
-
-    // Build flash image from firmware binaries
-    let flash_image = build_flash_image_bytes(
-        Some(&binaries.caliptra_fw),
-        Some(&binaries.soc_manifest),
-        Some(&binaries.mcu_runtime),
-    );
-
+ 
     let mut hw = new(InitParams {
         fuses: Fuses {
             fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
@@ -41,30 +33,34 @@ fn test_warm_reset_success() -> Result<()> {
         },
         caliptra_rom: &binaries.caliptra_rom,
         mcu_rom: &binaries.mcu_rom,
+        caliptra_firmware: &binaries.caliptra_fw,
+        soc_manifest: &binaries.soc_manifest,
+        mcu_firmware: &binaries.mcu_runtime,
         vendor_pk_hash: binaries.vendor_pk_hash(),
         active_mode: true,
         vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
-        primary_flash_initial_contents: Some(flash_image),
+        check_booted_to_runtime: true,
         ..Default::default()
     })?;
-
+ 
     assert!(hw
         .mci_boot_milestones()
         .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE));
-
+ 
     println!("Starting warm reset flow");
-
+ 
     hw.warm_reset();
-
+ 
     println!("Waiting for warm reset flow to complete");
-
+ 
     hw.step_until(|hw| {
         hw.mci_boot_milestones()
             .contains(McuBootMilestones::WARM_RESET_FLOW_COMPLETE)
     });
-
+ 
     assert!(hw
         .mci_boot_milestones()
         .contains(McuBootMilestones::WARM_RESET_FLOW_COMPLETE));
     Ok(())
 }
+ 
