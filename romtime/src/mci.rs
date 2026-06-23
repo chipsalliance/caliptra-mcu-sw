@@ -204,6 +204,14 @@ impl Mci {
         self.registers.mci_reg_fw_sram_exec_region_size.set(size);
     }
 
+    /// Sets the FC_FIPS_ZEROZATION register mask.
+    ///
+    /// This must be called before `set_ss_config_done()` or
+    /// `set_ss_config_done_sticky()` because those calls lock the register.
+    pub fn set_fips_zeroization_mask(&self, mask: u32) {
+        self.registers.mci_reg_fc_fips_zerozation.set(mask);
+    }
+
     pub fn trigger_warm_reset(&self) {
         self.registers.mci_reg_reset_request.set(1);
     }
