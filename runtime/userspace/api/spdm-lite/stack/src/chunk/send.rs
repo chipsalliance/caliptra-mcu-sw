@@ -6,7 +6,9 @@ use mcu_spdm_lite_codec::{
     CapabilitiesBody, ChunkSendAckBody, ChunkSendReqBody, ReqRespCode, SpdmMsgHdrPdu, SpdmVersion,
     WireWriter, CHUNK_ACK_ATTR_EARLY_ERROR, CHUNK_ATTR_LAST_CHUNK,
 };
-use mcu_spdm_lite_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend};
+use mcu_spdm_lite_traits::{
+    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry,
+};
 use zerocopy::{little_endian::U16, FromBytes};
 
 use super::WipeOnDrop;
@@ -23,6 +25,27 @@ struct ChunkInfo {
     complete: bool,
 }
 
+#[derive(Copy, Clone)]
+struct ChunkMeta {
+    handle: u8,
+    chunk_seq_num: u16,
+    chunk_size: usize,
+    last_chunk: bool,
+}
+
+enum ChunkSendAction<'a> {
+    Buffered(ChunkInfo),
+    StreamBegin {
+        info: ChunkInfo,
+        stream_len: usize,
+        first_payload: &'a [u8],
+    },
+    StreamChunk {
+        info: ChunkInfo,
+        payload: &'a [u8],
+    },
+}
+
 pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
@@ -31,9 +54,68 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     req: &[u8],
     secure_session: bool,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    let result = process_chunk_send(state, pal, req);
+    let result = process_chunk_send(state, pal, vdm, req, secure_session);
     match result {
-        Ok(info) => {
+        Ok(ChunkSendAction::Buffered(info)) => {
+            if info.complete {
+                let rsp = build_final_chunk_send_ack(
+                    state,
+                    pal,
+                    io,
+                    vdm,
+                    secure_session,
+                    info.handle,
+                    info.chunk_seq_num,
+                )
+                .await;
+                if state.large_msg_ctx.request_in_progress() {
+                    state.reset_chunk_assembly();
+                }
+                rsp
+            } else {
+                build_chunk_send_ack(
+                    pal,
+                    io,
+                    state.version,
+                    false,
+                    info.handle,
+                    info.chunk_seq_num,
+                    &[],
+                )
+            }
+        }
+        Ok(ChunkSendAction::StreamBegin {
+            info,
+            stream_len,
+            first_payload,
+        }) => {
+            if vdm
+                .stream_large_request_begin(stream_len, first_payload, pal, io)
+                .await
+                .is_err()
+            {
+                state.reset_chunk_assembly();
+                return build_early_error_ack(state, pal, io, info.handle, info.chunk_seq_num);
+            }
+            build_chunk_send_ack(
+                pal,
+                io,
+                state.version,
+                false,
+                info.handle,
+                info.chunk_seq_num,
+                &[],
+            )
+        }
+        Ok(ChunkSendAction::StreamChunk { info, payload }) => {
+            if vdm
+                .stream_large_request_chunk(payload, pal, io)
+                .await
+                .is_err()
+            {
+                state.reset_chunk_assembly();
+                return build_early_error_ack(state, pal, io, info.handle, info.chunk_seq_num);
+            }
             if info.complete {
                 let rsp = build_final_chunk_send_ack(
                     state,
@@ -65,13 +147,21 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
-        }) => {
-            let mut error = [0u8; 4];
-            encode_error_pdu(state.version, SPDM_INVALID_REQUEST, &mut error);
-            state.reset_chunk_assembly();
-            build_chunk_send_ack(pal, io, state.version, true, handle, chunk_seq_num, &error)
-        }
+        }) => build_early_error_ack(state, pal, io, handle, chunk_seq_num),
     }
+}
+
+fn build_early_error_ack<'a, Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    handle: u8,
+    chunk_seq_num: u16,
+) -> SpdmResult<PalBytes<'a, Pal>> {
+    let mut error = [0u8; 4];
+    encode_error_pdu(state.version, SPDM_INVALID_REQUEST, &mut error);
+    state.reset_chunk_assembly();
+    build_chunk_send_ack(pal, io, state.version, true, handle, chunk_seq_num, &error)
 }
 
 fn build_chunk_send_ack<'a, Pal: SpdmPal>(
@@ -110,11 +200,13 @@ enum ChunkProcessError {
     Early { handle: u8, chunk_seq_num: u16 },
 }
 
-fn process_chunk_send<Pal: SpdmPal>(
+fn process_chunk_send<'req, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,
-    req: &[u8],
-) -> Result<ChunkInfo, ChunkProcessError> {
+    vdm: &Vdm,
+    req: &'req [u8],
+    secure_session: bool,
+) -> Result<ChunkSendAction<'req>, ChunkProcessError> {
     if state.large_msg_ctx.response_in_progress()
         || (state.phase as u8) < (Phase::AfterCapabilities as u8)
         || !state.chunking_enabled()
@@ -135,171 +227,351 @@ fn process_chunk_send<Pal: SpdmPal>(
 
     let (chunk_req, rest) = ChunkSendReqBody::ref_from_prefix(body)
         .map_err(|_| ChunkProcessError::Spdm(SPDM_INVALID_REQUEST))?;
-    let handle = chunk_req.handle;
-    let chunk_seq_num = chunk_req.chunk_seq_num.get();
-    let chunk_size = chunk_req.chunk_size.get() as usize;
-    let last_chunk = (chunk_req.chunk_sender_attr & CHUNK_ATTR_LAST_CHUNK) != 0;
+    let meta = ChunkMeta {
+        handle: chunk_req.handle,
+        chunk_seq_num: chunk_req.chunk_seq_num.get(),
+        chunk_size: chunk_req.chunk_size.get() as usize,
+        last_chunk: (chunk_req.chunk_sender_attr & CHUNK_ATTR_LAST_CHUNK) != 0,
+    };
     if chunk_req.reserved.get() != 0 || (chunk_req.chunk_sender_attr & !CHUNK_ATTR_LAST_CHUNK) != 0
     {
         return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
         });
     }
 
     if !state.large_msg_ctx.request_in_progress() {
-        process_first_chunk(
-            state,
-            pal,
-            handle,
-            chunk_seq_num,
-            chunk_size,
-            last_chunk,
-            rest,
-        )?;
+        if let Some(action) = process_first_chunk(state, pal, vdm, meta, rest, secure_session)? {
+            return Ok(action);
+        }
+    } else if state
+        .large_msg_ctx
+        .request()
+        .and_then(|request| request.vdm_stream_kind())
+        .is_some()
+    {
+        let payload = process_next_stream_chunk(state, meta, rest)?;
+        let info = chunk_info(state, meta);
+        return Ok(ChunkSendAction::StreamChunk { info, payload });
     } else {
-        process_next_chunk(
-            state,
-            pal,
-            handle,
-            chunk_seq_num,
-            chunk_size,
-            last_chunk,
-            rest,
-        )?;
+        process_next_chunk(state, pal, meta, rest)?;
     }
 
-    Ok(ChunkInfo {
-        handle,
-        chunk_seq_num,
-        complete: state.large_msg_ctx.request_in_progress()
-            && state.large_msg_ctx.state.bytes_received == state.large_msg_ctx.state.large_msg_size,
-    })
+    Ok(ChunkSendAction::Buffered(chunk_info(state, meta)))
 }
 
-fn process_first_chunk<Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
-    pal: &Pal,
-    handle: u8,
-    chunk_seq_num: u16,
-    chunk_size: usize,
-    last_chunk: bool,
-    rest: &[u8],
-) -> Result<(), ChunkProcessError> {
+fn chunk_info<S, L>(state: &ConnectionState<S, L>, meta: ChunkMeta) -> ChunkInfo
+where
+    L: core::ops::DerefMut<Target = [u8]>,
+{
+    ChunkInfo {
+        handle: meta.handle,
+        chunk_seq_num: meta.chunk_seq_num,
+        complete: state
+            .large_msg_ctx
+            .request()
+            .is_some_and(|request| request.bytes_received == request.request_size),
+    }
+}
+
+fn first_chunk(meta: ChunkMeta, rest: &[u8]) -> Result<(usize, &[u8]), ChunkProcessError> {
     let Some(size_bytes) = rest.first_chunk::<4>() else {
         return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
         });
     };
     let large_msg_size = u32::from_le_bytes(*size_bytes) as usize;
     let chunk_data = &rest[4..];
 
     // Require exact chunk body length match inside rest payload (no trailing junk bytes).
-    if chunk_data.len() != chunk_size {
+    if chunk_data.len() != meta.chunk_size {
         return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
         });
     }
-    let Some(chunk) = chunk_data.get(..chunk_size) else {
+    let Some(chunk) = chunk_data.get(..meta.chunk_size) else {
         return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
         });
     };
+    Ok((large_msg_size, chunk))
+}
+
+fn validate_first_chunk(
+    meta: ChunkMeta,
+    large_msg_size: usize,
+    allow_oversized_for_streaming: bool,
+    pal_large_capacity: usize,
+) -> Result<(), ChunkProcessError> {
     let min_chunk_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
         - SpdmMsgHdrPdu::SIZE
         - ChunkSendReqBody::SIZE
         - 4;
 
-    let invalid = chunk_seq_num != 0
-        || last_chunk
-        || chunk_size < min_chunk_size
-        || chunk_size >= large_msg_size
+    let invalid = meta.chunk_seq_num != 0
+        || meta.last_chunk
+        || meta.chunk_size < min_chunk_size
+        || meta.chunk_size >= large_msg_size
         || large_msg_size <= CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
-        || large_msg_size > pal.large_capacity();
+        || (!allow_oversized_for_streaming && large_msg_size > pal_large_capacity);
     if invalid {
         return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
-    }
-    let rent_buf = match pal.alloc_large_buf(large_msg_size) {
-        Ok(buf) => buf,
-        Err(_) => {
-            return Err(ChunkProcessError::Early {
-                handle,
-                chunk_seq_num,
-            })
-        }
-    };
-    if state
-        .large_msg_ctx
-        .init_request(handle, large_msg_size, chunk, rent_buf)
-        .is_err()
-    {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
         });
     }
     Ok(())
 }
 
-fn process_next_chunk<Pal: SpdmPal>(
+fn process_first_chunk<'req, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
-    _pal: &Pal,
-    handle: u8,
-    chunk_seq_num: u16,
-    chunk_size: usize,
-    last_chunk: bool,
-    rest: &[u8],
-) -> Result<(), ChunkProcessError> {
-    let bytes_received = state.large_msg_ctx.state.bytes_received as usize;
-    let large_msg_size = state.large_msg_ctx.state.large_msg_size as usize;
-    let end = bytes_received.saturating_add(chunk_size);
-
-    // Require exact chunk body length match inside rest payload (no trailing junk bytes).
-    if rest.len() != chunk_size {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
+    pal: &Pal,
+    vdm: &Vdm,
+    meta: ChunkMeta,
+    rest: &'req [u8],
+    secure_session: bool,
+) -> Result<Option<ChunkSendAction<'req>>, ChunkProcessError> {
+    let (large_msg_size, chunk) = first_chunk(meta, rest)?;
+    let stream = detect_vdm_stream(
+        state,
+        vdm,
+        large_msg_size,
+        chunk,
+        secure_session,
+        meta.handle,
+        meta.chunk_seq_num,
+    )?;
+    validate_first_chunk(meta, large_msg_size, stream.is_some(), pal.large_capacity())?;
+    if let Some(stream) = stream {
+        if state
+            .large_msg_ctx
+            .init_vdm_stream_request(meta.handle, large_msg_size, chunk.len(), stream.active)
+            .is_err()
+        {
+            return Err(ChunkProcessError::Early {
+                handle: meta.handle,
+                chunk_seq_num: meta.chunk_seq_num,
+            });
+        }
+        return Ok(Some(ChunkSendAction::StreamBegin {
+            info: chunk_info(state, meta),
+            stream_len: stream.stream_len,
+            first_payload: stream.first_payload,
+        }));
     }
-    let Some(chunk) = rest.get(..chunk_size) else {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
+    let rent_buf = match pal.alloc_large_buf(large_msg_size) {
+        Ok(buf) => buf,
+        Err(_) => {
+            return Err(ChunkProcessError::Early {
+                handle: meta.handle,
+                chunk_seq_num: meta.chunk_seq_num,
+            })
+        }
     };
-    let min_chunk_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
-        - SpdmMsgHdrPdu::SIZE
-        - ChunkSendReqBody::SIZE;
-    let invalid = chunk_seq_num == 0
-        || state.large_msg_ctx.state.handle != handle
-        || state.large_msg_ctx.state.seq_num.wrapping_add(1) != chunk_seq_num
-        || end > large_msg_size
-        || (last_chunk && end != large_msg_size)
-        || (!last_chunk && (end >= large_msg_size || chunk_size < min_chunk_size));
-    if invalid {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
-    }
     if state
         .large_msg_ctx
-        .append_request(handle, chunk_seq_num, chunk)
+        .init_request(meta.handle, large_msg_size, chunk, rent_buf)
         .is_err()
+    {
+        return Err(ChunkProcessError::Early {
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
+        });
+    }
+    Ok(None)
+}
+
+struct StreamStart<'a> {
+    active: super::ActiveVdmLargeRequestStream,
+    stream_len: usize,
+    first_payload: &'a [u8],
+}
+
+fn detect_vdm_stream<'a, Vdm: SpdmVdmBackend, S, L>(
+    state: &ConnectionState<S, L>,
+    vdm: &Vdm,
+    large_msg_size: usize,
+    chunk: &'a [u8],
+    secure_session: bool,
+    handle: u8,
+    chunk_seq_num: u16,
+) -> Result<Option<StreamStart<'a>>, ChunkProcessError> {
+    if !Vdm::USES_LARGE_REQUEST_STREAM {
+        return Ok(None);
+    }
+    let Ok((hdr, body)) = SpdmMsgHdrPdu::ref_from_prefix(chunk) else {
+        return Ok(None);
+    };
+    if hdr.version != state.version.to_u8() {
+        return Err(ChunkProcessError::Early {
+            handle,
+            chunk_seq_num,
+        });
+    }
+    if hdr.code != ReqRespCode::VENDOR_DEFINED_REQUEST {
+        return Ok(None);
+    }
+    if body.len() < 7 {
+        return Ok(None);
+    }
+    let standard_id = u16::from_le_bytes([body[2], body[3]]);
+    let vendor_id_len = body[4] as usize;
+    let vendor_id_start = 5;
+    let vendor_id_end = vendor_id_start + vendor_id_len;
+    let req_len_end = vendor_id_end + 2;
+    let Some(vendor_id) = body.get(vendor_id_start..vendor_id_end) else {
+        return Ok(None);
+    };
+    let Some(req_len_bytes) = body.get(vendor_id_end..req_len_end) else {
+        return Ok(None);
+    };
+    let req_payload_len = u16::from_le_bytes([req_len_bytes[0], req_len_bytes[1]]) as usize;
+    let payload_offset = SpdmMsgHdrPdu::SIZE + req_len_end;
+    if large_msg_size != payload_offset + req_payload_len {
+        return Err(ChunkProcessError::Early {
+            handle,
+            chunk_seq_num,
+        });
+    }
+    let registry = VdmRegistry {
+        standard_id,
+        vendor_id,
+        secure_session,
+    };
+    if !vdm.match_id(&registry) {
+        return Ok(None);
+    }
+    let payload_prefix = &body[req_len_end.min(body.len())..];
+    let Some(info) = vdm.large_request_stream_info(payload_prefix, req_payload_len) else {
+        return Ok(None);
+    };
+    if info.stream_offset > req_payload_len
+        || info.stream_offset > payload_prefix.len()
+        || info.stream_offset.saturating_add(info.stream_len) != req_payload_len
     {
         return Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
         });
     }
+    let active = super::ActiveVdmLargeRequestStream::new(standard_id, vendor_id).map_err(|_| {
+        ChunkProcessError::Early {
+            handle,
+            chunk_seq_num,
+        }
+    })?;
+    Ok(Some(StreamStart {
+        active,
+        stream_len: info.stream_len,
+        first_payload: &payload_prefix[info.stream_offset..],
+    }))
+}
+
+fn process_next_chunk<Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    _pal: &Pal,
+    meta: ChunkMeta,
+    rest: &[u8],
+) -> Result<(), ChunkProcessError> {
+    let active = state
+        .large_msg_ctx
+        .request()
+        .ok_or(ChunkProcessError::Early {
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
+        })?;
+    let bytes_received = active.bytes_received;
+    let large_msg_size = active.request_size;
+    let end = bytes_received.saturating_add(meta.chunk_size);
+
+    // Require exact chunk body length match inside rest payload (no trailing junk bytes).
+    if rest.len() != meta.chunk_size {
+        return Err(ChunkProcessError::Early {
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
+        });
+    }
+    let Some(chunk) = rest.get(..meta.chunk_size) else {
+        return Err(ChunkProcessError::Early {
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
+        });
+    };
+    let min_chunk_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
+        - SpdmMsgHdrPdu::SIZE
+        - ChunkSendReqBody::SIZE;
+    let invalid = meta.chunk_seq_num == 0
+        || active.handle != meta.handle
+        || active.next_seq_num != meta.chunk_seq_num
+        || end > large_msg_size
+        || (meta.last_chunk && end != large_msg_size)
+        || (!meta.last_chunk && (end >= large_msg_size || meta.chunk_size < min_chunk_size));
+    if invalid {
+        return Err(ChunkProcessError::Early {
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
+        });
+    }
+    if state
+        .large_msg_ctx
+        .append_request(meta.handle, meta.chunk_seq_num, chunk)
+        .is_err()
+    {
+        return Err(ChunkProcessError::Early {
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
+        });
+    }
 
     Ok(())
+}
+
+fn process_next_stream_chunk<'a, S, L>(
+    state: &mut ConnectionState<S, L>,
+    meta: ChunkMeta,
+    rest: &'a [u8],
+) -> Result<&'a [u8], ChunkProcessError>
+where
+    L: core::ops::DerefMut<Target = [u8]>,
+{
+    let active = state
+        .large_msg_ctx
+        .request()
+        .ok_or(ChunkProcessError::Early {
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
+        })?;
+    let bytes_received = active.bytes_received;
+    let large_msg_size = active.request_size;
+    let end = bytes_received.saturating_add(meta.chunk_size);
+    let min_chunk_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
+        - SpdmMsgHdrPdu::SIZE
+        - ChunkSendReqBody::SIZE;
+    let invalid = meta.chunk_seq_num == 0
+        || active.handle != meta.handle
+        || active.next_seq_num != meta.chunk_seq_num
+        || rest.len() != meta.chunk_size
+        || end > large_msg_size
+        || (meta.last_chunk && end != large_msg_size)
+        || (!meta.last_chunk && (end >= large_msg_size || meta.chunk_size < min_chunk_size));
+    if invalid {
+        return Err(ChunkProcessError::Early {
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
+        });
+    }
+    state
+        .large_msg_ctx
+        .append_stream_request(meta.handle, meta.chunk_seq_num, meta.chunk_size)
+        .map_err(|_| ChunkProcessError::Early {
+            handle: meta.handle,
+            chunk_seq_num: meta.chunk_seq_num,
+        })?;
+    Ok(rest)
 }
 
 struct LargeRequestError {
@@ -316,6 +588,12 @@ impl From<SpdmError> for LargeRequestError {
     }
 }
 
+impl From<mcu_error::McuErrorCode> for LargeRequestError {
+    fn from(err: mcu_error::McuErrorCode) -> Self {
+        SpdmError::from(err).into()
+    }
+}
+
 async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
@@ -325,9 +603,31 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     handle: u8,
     chunk_seq_num: u16,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    let len = state.large_msg_ctx.state.large_msg_size as usize;
+    let request = *state.large_msg_ctx.request().ok_or(SPDM_INVALID_REQUEST)?;
+    let len = request.request_size;
     let mut response_to_large_request = [0u8; LARGE_REQUEST_RESPONSE_BUF_SIZE];
-    let (mut response_len, early_error) = if len < SpdmMsgHdrPdu::SIZE {
+    let (mut response_len, early_error) = if let Some(stream) = request.vdm_stream_kind() {
+        match finish_streamed_vdm_large_request(
+            state,
+            pal,
+            io,
+            vdm,
+            stream,
+            &mut response_to_large_request,
+        )
+        .await
+        {
+            Ok(response_len) => (response_len, false),
+            Err(err) => (
+                write_error_response_to_large_request(
+                    &mut response_to_large_request,
+                    state.version,
+                    err.spdm,
+                ),
+                err.early_error,
+            ),
+        }
+    } else if len < SpdmMsgHdrPdu::SIZE {
         (
             write_error_response_to_large_request(
                 &mut response_to_large_request,
@@ -380,6 +680,34 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         chunk_seq_num,
         &response_to_large_request[..response_len],
     )
+}
+
+async fn finish_streamed_vdm_large_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
+    state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    vdm: &Vdm,
+    stream: super::ActiveVdmLargeRequestStream,
+    out: &mut [u8],
+) -> Result<usize, LargeRequestError> {
+    let envelope_len = SpdmMsgHdrPdu::SIZE + 2 + 2 + 1 + stream.vendor_id().len() + 2;
+    if envelope_len > out.len() {
+        return Err(SPDM_UNSPECIFIED.into());
+    }
+    let payload_len = vdm
+        .stream_large_request_finish(&mut out[envelope_len..], pal, io)
+        .await?;
+    if envelope_len + payload_len > out.len() {
+        return Err(SPDM_UNSPECIFIED.into());
+    }
+    vendor_defined::write_vendor_defined_envelope(
+        state.version,
+        stream.standard_id,
+        stream.vendor_id(),
+        payload_len,
+        &mut out[..envelope_len],
+    )?;
+    Ok(envelope_len + payload_len)
 }
 
 async fn dispatch_large_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(

@@ -131,8 +131,10 @@ impl<S: Syscalls> Mailbox<S> {
     /// **Concurrency:** The kernel enforces ordering via a state machine and
     /// verifies the calling process ID, so different processes cannot
     /// interleave chunked flows. Within a single process with multiple async
-    /// tasks, callers should either use [`execute_with_payload_stream`](Self::execute_with_payload_stream)
-    /// (which holds the global mailbox mutex) or acquire `MAILBOX_MUTEX`
+    /// tasks, callers should either use
+    /// [`execute_with_payload_slice`](Self::execute_with_payload_slice) /
+    /// [`execute_with_payload_stream`](Self::execute_with_payload_stream)
+    /// (which hold the global mailbox mutex) or acquire `MAILBOX_MUTEX`
     /// externally before calling this method.
     pub async fn start_chunked_request(
         &self,
@@ -216,6 +218,30 @@ impl<S: Syscalls> Mailbox<S> {
             }
             Err(err) => Err(MailboxError::ErrorCode(err)),
         }
+    }
+
+    pub async fn execute_with_payload_slice(
+        &self,
+        command: u32,
+        header: Option<&[u8]>,
+        payload: &[u8],
+        response_buffer: &mut [u8],
+    ) -> Result<usize, MailboxError> {
+        let mutex = MAILBOX_MUTEX.lock().await;
+
+        let request_len = payload.len() + header.map_or(0, |h| h.len());
+        self.start_chunked_request(command, request_len).await?;
+
+        if let Some(header) = header {
+            self.send_chunk(header).await?;
+        }
+        for chunk in payload.chunks(PAYLOAD_CHUNK_SIZE) {
+            self.send_chunk(chunk).await?;
+        }
+
+        let result = self.execute_chunked_request(command, response_buffer).await;
+        black_box(*mutex); // Ensure the mutex is not optimized away
+        result
     }
 
     pub async fn execute_with_payload_stream(

@@ -41,6 +41,16 @@ pub struct VdmResponseBuffer<'a, Alloc: SpdmPalAlloc, Io: SpdmPalIo> {
     pub io: &'a Io,
 }
 
+/// Streaming metadata for a large VENDOR_DEFINED request that should be
+/// consumed incrementally instead of reassembled in the SPDM large buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VdmLargeRequestStreamInfo {
+    /// Offset within the vendor-defined payload where streamed bytes begin.
+    pub stream_offset: usize,
+    /// Total streamed payload bytes expected across all CHUNK_SEND chunks.
+    pub stream_len: usize,
+}
+
 impl<'a, Alloc: SpdmPalAlloc, Io: SpdmPalIo> VdmResponseBuffer<'a, Alloc, Io> {
     /// Returns the request-scoped scratch allocator for platform hooks.
     pub fn scratch(&self) -> &'a Alloc {
@@ -66,6 +76,10 @@ pub trait SpdmVdmBackend {
     /// sets.
     const LARGE_RESPONSE_CAPACITY: usize = usize::MAX;
 
+    /// True when this backend can consume a large request incrementally from
+    /// CHUNK_SEND chunks.
+    const USES_LARGE_REQUEST_STREAM: bool = false;
+
     /// Returns the large-response capacity needed for this request.
     ///
     /// Backends that can cheaply identify only some large-capable requests should
@@ -77,6 +91,59 @@ pub trait SpdmVdmBackend {
         } else {
             0
         }
+    }
+
+    /// Returns streaming metadata when this request prefix identifies a
+    /// streamable large request owned by this backend.
+    fn large_request_stream_info(
+        &self,
+        _req_prefix: &[u8],
+        _req_payload_len: usize,
+    ) -> Option<VdmLargeRequestStreamInfo> {
+        None
+    }
+
+    /// Starts a streamed large request.
+    async fn stream_large_request_begin<Alloc, Io>(
+        &self,
+        _stream_len: usize,
+        _first_payload: &[u8],
+        _alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<()>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+
+    /// Consumes a subsequent streamed large-request chunk.
+    async fn stream_large_request_chunk<Alloc, Io>(
+        &self,
+        _payload: &[u8],
+        _alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<()>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+
+    /// Finalizes a streamed large request and writes the VDM response payload.
+    async fn stream_large_request_finish<Alloc, Io>(
+        &self,
+        _out: &mut [u8],
+        _alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<usize>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        Err(mcu_error::codes::NOT_IMPLEMENTED)
     }
 
     /// Returns true when this backend owns the decoded VDM registry ID.

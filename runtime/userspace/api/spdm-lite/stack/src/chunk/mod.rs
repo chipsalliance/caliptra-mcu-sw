@@ -57,36 +57,105 @@ impl ActiveLargeResponse {
 }
 
 #[derive(Copy, Clone, Default)]
-pub(crate) struct ChunkState {
-    pub(crate) in_use: bool,
-    pub(super) handle: u8,
-    pub(super) seq_num: u16,
-    pub(super) bytes_received: u32,
-    pub(super) large_msg_size: u32,
+pub(crate) struct ActiveLargeRequest {
+    pub(crate) handle: u8,
+    pub(crate) next_seq_num: u16,
+    pub(crate) bytes_received: usize,
+    pub(crate) request_size: usize,
+    pub(crate) kind: LargeRequestKind,
 }
 
-impl ChunkState {
+#[derive(Copy, Clone, Default)]
+pub(crate) enum LargeRequestKind {
+    #[default]
+    Buffered,
+    VdmStream(ActiveVdmLargeRequestStream),
+}
+
+const MAX_STREAM_VENDOR_ID_LEN: usize = 8;
+
+#[derive(Copy, Clone)]
+pub(crate) struct ActiveVdmLargeRequestStream {
+    pub(crate) standard_id: u16,
+    pub(crate) vendor_id: [u8; MAX_STREAM_VENDOR_ID_LEN],
+    pub(crate) vendor_id_len: u8,
+}
+
+impl ActiveVdmLargeRequestStream {
+    pub(crate) fn new(standard_id: u16, vendor_id: &[u8]) -> Result<Self, SpdmError> {
+        if vendor_id.len() > MAX_STREAM_VENDOR_ID_LEN {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+        let mut stored_vendor_id = [0u8; MAX_STREAM_VENDOR_ID_LEN];
+        stored_vendor_id[..vendor_id.len()].copy_from_slice(vendor_id);
+        Ok(Self {
+            standard_id,
+            vendor_id: stored_vendor_id,
+            vendor_id_len: vendor_id.len() as u8,
+        })
+    }
+
+    pub(crate) fn vendor_id(&self) -> &[u8] {
+        &self.vendor_id[..self.vendor_id_len as usize]
+    }
+}
+
+impl ActiveLargeRequest {
     #[inline]
-    pub(crate) fn reset(&mut self) {
-        *self = Self::default();
+    pub(crate) fn buffered(handle: u8, request_size: usize, bytes_received: usize) -> Self {
+        Self {
+            handle,
+            next_seq_num: 1,
+            bytes_received,
+            request_size,
+            kind: LargeRequestKind::Buffered,
+        }
     }
 
     #[inline]
-    #[allow(dead_code)]
-    pub(crate) fn in_progress(&self) -> bool {
-        self.in_use
+    pub(crate) fn vdm_stream(
+        handle: u8,
+        request_size: usize,
+        bytes_received: usize,
+        stream: ActiveVdmLargeRequestStream,
+    ) -> Self {
+        Self {
+            handle,
+            next_seq_num: 1,
+            bytes_received,
+            request_size,
+            kind: LargeRequestKind::VdmStream(stream),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn chunk_received(&mut self, n: usize) -> bool {
+        self.bytes_received += n;
+        self.next_seq_num = self.next_seq_num.wrapping_add(1);
+        self.bytes_received == self.request_size
+    }
+
+    #[inline]
+    pub(crate) fn is_buffered(&self) -> bool {
+        matches!(self.kind, LargeRequestKind::Buffered)
+    }
+
+    pub(crate) fn vdm_stream_kind(&self) -> Option<ActiveVdmLargeRequestStream> {
+        match self.kind {
+            LargeRequestKind::VdmStream(stream) => Some(stream),
+            LargeRequestKind::Buffered => None,
+        }
     }
 }
 
 #[derive(Copy, Clone)]
 pub(crate) enum LargeMessageMode {
     Idle,
-    Request,
+    Request(ActiveLargeRequest),
     Response(ActiveLargeResponse),
 }
 
 pub(crate) struct LargeMessageCtx<L> {
-    pub(crate) state: ChunkState,
     pub(crate) mode: LargeMessageMode,
     buf: Option<L>,
     pub(crate) next_handle: u8,
@@ -95,7 +164,6 @@ pub(crate) struct LargeMessageCtx<L> {
 impl<L> LargeMessageCtx<L> {
     pub fn new() -> Self {
         Self {
-            state: ChunkState::default(),
             mode: LargeMessageMode::Idle,
             buf: None,
             next_handle: 1,
@@ -105,7 +173,6 @@ impl<L> LargeMessageCtx<L> {
 
 impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
     pub fn reset(&mut self) {
-        self.state.reset();
         self.mode = LargeMessageMode::Idle;
         if let Some(mut backing) = self.buf.take() {
             backing.fill(0);
@@ -135,7 +202,21 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
     }
 
     pub fn request_in_progress(&self) -> bool {
-        matches!(self.mode, LargeMessageMode::Request) && self.state.in_use
+        matches!(self.mode, LargeMessageMode::Request(_))
+    }
+
+    pub fn request(&self) -> Option<&ActiveLargeRequest> {
+        match &self.mode {
+            LargeMessageMode::Request(active) => Some(active),
+            _ => None,
+        }
+    }
+
+    fn request_mut(&mut self) -> Option<&mut ActiveLargeRequest> {
+        match &mut self.mode {
+            LargeMessageMode::Request(active) => Some(active),
+            _ => None,
+        }
     }
 
     pub fn response_in_progress(&self) -> bool {
@@ -157,14 +238,11 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
             return Err(SPDM_UNEXPECTED_REQUEST);
         }
 
-        self.mode = LargeMessageMode::Request;
-        self.state = ChunkState {
-            in_use: true,
+        self.mode = LargeMessageMode::Request(ActiveLargeRequest::buffered(
             handle,
-            seq_num: 0,
-            bytes_received: initial_chunk.len() as u32,
-            large_msg_size: total_size as u32,
-        };
+            total_size,
+            initial_chunk.len(),
+        ));
         let dest = rent_buf
             .get_mut(..initial_chunk.len())
             .ok_or(SPDM_INVALID_REQUEST)?;
@@ -175,22 +253,41 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
         Ok(())
     }
 
+    pub fn init_vdm_stream_request(
+        &mut self,
+        handle: u8,
+        total_size: usize,
+        initial_chunk_len: usize,
+        stream: ActiveVdmLargeRequestStream,
+    ) -> Result<(), SpdmError> {
+        if !self.is_idle() || initial_chunk_len > total_size {
+            return Err(SPDM_UNEXPECTED_REQUEST);
+        }
+        self.mode = LargeMessageMode::Request(ActiveLargeRequest::vdm_stream(
+            handle,
+            total_size,
+            initial_chunk_len,
+            stream,
+        ));
+        Ok(())
+    }
+
     pub fn append_request(
         &mut self,
         handle: u8,
         seq_num: u16,
         chunk: &[u8],
     ) -> Result<(), SpdmError> {
-        if !self.request_in_progress()
-            || self.state.handle != handle
-            || self.state.seq_num.wrapping_add(1) != seq_num
-        {
+        let Some(active) = self.request() else {
+            return Err(SPDM_INVALID_REQUEST);
+        };
+        if !active.is_buffered() || active.handle != handle || active.next_seq_num != seq_num {
             return Err(SPDM_INVALID_REQUEST);
         }
-        let start = self.state.bytes_received as usize;
+        let start = active.bytes_received;
         let end = start.checked_add(chunk.len()).ok_or(SPDM_UNSPECIFIED)?;
 
-        if end > self.state.large_msg_size as usize {
+        if end > active.request_size {
             return Err(SPDM_INVALID_REQUEST);
         }
 
@@ -200,8 +297,37 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
             *d = *s;
         }
 
-        self.state.bytes_received = end as u32;
-        self.state.seq_num = seq_num;
+        self.request_mut()
+            .ok_or(SPDM_UNSPECIFIED)?
+            .chunk_received(chunk.len());
+        Ok(())
+    }
+
+    pub fn append_stream_request(
+        &mut self,
+        handle: u8,
+        seq_num: u16,
+        chunk_len: usize,
+    ) -> Result<(), SpdmError> {
+        let Some(active) = self.request() else {
+            return Err(SPDM_INVALID_REQUEST);
+        };
+        if active.vdm_stream_kind().is_none()
+            || active.handle != handle
+            || active.next_seq_num != seq_num
+        {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+        let end = active
+            .bytes_received
+            .checked_add(chunk_len)
+            .ok_or(SPDM_UNSPECIFIED)?;
+        if end > active.request_size {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+        self.request_mut()
+            .ok_or(SPDM_UNSPECIFIED)?
+            .chunk_received(chunk_len);
         Ok(())
     }
 
@@ -222,9 +348,10 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
     where
         F: FnOnce(&[u8]) -> Result<R, SpdmError>,
     {
-        if !self.state.in_use
-            || self.state.bytes_received as usize != self.state.large_msg_size as usize
-        {
+        let Some(active) = self.request() else {
+            return Err(SPDM_INVALID_REQUEST);
+        };
+        if active.bytes_received != active.request_size {
             return Err(SPDM_INVALID_REQUEST);
         }
 

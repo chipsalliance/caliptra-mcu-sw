@@ -7,9 +7,6 @@
 //! VDM commands. The protocol/dispatch/framing all live in the
 //! `mcu-spdm-lite-vdm-handler` lib; this hook only supplies the device ops.
 
-extern crate alloc;
-
-use alloc::boxed::Box;
 use arrayvec::ArrayVec;
 use caliptra_mcu_common_commands::{
     CaliptraCompletionCode as CommonCompletionCode, GetLogResult, DEBUG_UNLOCK_CHALLENGE_SIZE,
@@ -17,7 +14,7 @@ use caliptra_mcu_common_commands::{
 };
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
+use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use constant_time_eq::constant_time_eq;
@@ -114,7 +111,7 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         };
         let mut resp_buf = [0u8; core::mem::size_of::<ProductionAuthDebugUnlockChallenge>()];
 
-        execute_mailbox_cmd(
+        let resp_len = execute_mailbox_cmd(
             &Mailbox::new(),
             CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ.0,
             req.as_mut_bytes(),
@@ -122,6 +119,9 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         )
         .await
         .map_err(map_caliptra_api_error)?;
+        if resp_len != core::mem::size_of::<ProductionAuthDebugUnlockChallenge>() {
+            return Err(CaliptraCompletionCode::GeneralError);
+        }
 
         let resp = ProductionAuthDebugUnlockChallenge::ref_from_bytes(&resp_buf)
             .map_err(|_| CaliptraCompletionCode::GeneralError)?;
@@ -143,11 +143,57 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         // requests are streamed directly to the mailbox. Do not synthesize
         // another checksum header here or the mailbox would receive
         // `[new_checksum || host_checksum || token]`.
-        let mut token_stream = SlicePayloadStream::new(token_data);
         let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
 
         Mailbox::<DefaultSyscalls>::new()
-            .execute_with_payload_stream(cmd, None, &mut token_stream, &mut resp_buf)
+            .execute_with_payload_slice(cmd, None, token_data, &mut resp_buf)
+            .await
+            .map_err(map_mailbox_error)?;
+        Ok(())
+    }
+
+    async fn begin_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        total_payload_len: usize,
+        first_payload: &[u8],
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        use caliptra_api::mailbox::CommandId;
+
+        let cmd = CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.0;
+        let mailbox = Mailbox::<DefaultSyscalls>::new();
+        mailbox
+            .start_chunked_request(cmd, total_payload_len)
+            .await
+            .map_err(map_mailbox_error)?;
+        for chunk in first_payload.chunks(256) {
+            mailbox.send_chunk(chunk).await.map_err(map_mailbox_error)?;
+        }
+        Ok(())
+    }
+
+    async fn continue_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        payload: &[u8],
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        let mailbox = Mailbox::<DefaultSyscalls>::new();
+        for chunk in payload.chunks(256) {
+            mailbox.send_chunk(chunk).await.map_err(map_mailbox_error)?;
+        }
+        Ok(())
+    }
+
+    async fn finish_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        use caliptra_api::mailbox::{CommandId, MailboxRespHeader};
+
+        let cmd = CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.0;
+        let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+        Mailbox::<DefaultSyscalls>::new()
+            .execute_chunked_request(cmd, &mut resp_buf)
             .await
             .map_err(map_mailbox_error)?;
         Ok(())
@@ -190,35 +236,6 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
     ) -> CaliptraVdmResult<()> {
         verify_fe_prog_mac(scratch, partition, mac).await?;
         fe_prog(scratch, partition).await.map_err(map_mcu_err)
-    }
-}
-
-struct SlicePayloadStream<'a> {
-    data: &'a [u8],
-    offset: usize,
-}
-
-impl<'a> SlicePayloadStream<'a> {
-    fn new(data: &'a [u8]) -> Self {
-        Self { data, offset: 0 }
-    }
-}
-
-#[async_trait::async_trait(?Send)]
-impl PayloadStream for SlicePayloadStream<'_> {
-    fn size(&self) -> usize {
-        self.data.len()
-    }
-
-    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
-        let remaining = self.data.len().saturating_sub(self.offset);
-        if remaining == 0 {
-            return Ok(0);
-        }
-        let n = remaining.min(buffer.len());
-        buffer[..n].copy_from_slice(&self.data[self.offset..self.offset + n]);
-        self.offset += n;
-        Ok(n)
     }
 }
 

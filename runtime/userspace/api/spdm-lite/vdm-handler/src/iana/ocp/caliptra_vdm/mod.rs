@@ -14,7 +14,8 @@ mod commands;
 use mcu_error::codes::INVARIANT;
 use mcu_spdm_lite_codec::StandardsBodyId;
 use mcu_spdm_lite_traits::{
-    McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
+    McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmLargeRequestStreamInfo, VdmRegistry,
+    VdmResponse, VdmResponseBuffer,
 };
 
 pub use mcu_spdm_lite_codec::vendor_defined::iana::ocp::caliptra::{
@@ -70,6 +71,24 @@ pub trait CaliptraVdmCommands {
         scratch: &A,
     ) -> CaliptraVdmResult<()>;
 
+    async fn begin_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        total_payload_len: usize,
+        first_payload: &[u8],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
+    async fn continue_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        payload: &[u8],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
+    async fn finish_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
     /// Exports an attested CSR for `device_key_id` using `algorithm` and `nonce`,
     /// writing the raw CSR bytes into `out` and returning their length.
     async fn export_attested_csr<A: SpdmPalAlloc>(
@@ -122,10 +141,91 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
     // frame, so the stack provisions the buffered large-response path.
     const USES_LARGE_RESPONSE: bool = true;
     const LARGE_RESPONSE_CAPACITY: usize = MAX_LARGE_VDM_PAYLOAD_LEN;
+    const USES_LARGE_REQUEST_STREAM: bool = true;
 
     fn match_id(&self, registry: &VdmRegistry<'_>) -> bool {
         registry.standard_id == StandardsBodyId::Iana.as_u16()
             && registry.vendor_id == CALIPTRA_VENDOR_ID.to_le_bytes()
+    }
+
+    fn large_request_stream_info(
+        &self,
+        req_prefix: &[u8],
+        req_payload_len: usize,
+    ) -> Option<VdmLargeRequestStreamInfo> {
+        if req_payload_len < VDM_HEADER_LEN || req_prefix.len() < VDM_HEADER_LEN {
+            return None;
+        }
+        if req_prefix[0] != CALIPTRA_VDM_COMMAND_VERSION {
+            return None;
+        }
+        let command = CaliptraVdmCommand::try_from(req_prefix[1]).ok()?;
+        if command != CaliptraVdmCommand::AuthorizeDebugUnlockToken {
+            return None;
+        }
+        Some(VdmLargeRequestStreamInfo {
+            stream_offset: VDM_HEADER_LEN,
+            stream_len: req_payload_len - VDM_HEADER_LEN,
+        })
+    }
+
+    async fn stream_large_request_begin<Alloc, Io>(
+        &self,
+        stream_len: usize,
+        first_payload: &[u8],
+        alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<()>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        self.cmds
+            .begin_authorize_debug_unlock_token_stream(stream_len, first_payload, alloc)
+            .await
+            .map_err(|_| INVARIANT)
+    }
+
+    async fn stream_large_request_chunk<Alloc, Io>(
+        &self,
+        payload: &[u8],
+        alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<()>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        self.cmds
+            .continue_authorize_debug_unlock_token_stream(payload, alloc)
+            .await
+            .map_err(|_| INVARIANT)
+    }
+
+    async fn stream_large_request_finish<Alloc, Io>(
+        &self,
+        out: &mut [u8],
+        alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<usize>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        if out.len() < VDM_HEADER_LEN + 1 {
+            return Err(INVARIANT);
+        }
+        out[0] = CALIPTRA_VDM_COMMAND_VERSION;
+        out[1] = CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8;
+        out[2] = match self
+            .cmds
+            .finish_authorize_debug_unlock_token_stream(alloc)
+            .await
+        {
+            Ok(()) => CaliptraCompletionCode::Success as u8,
+            Err(code) => code as u8,
+        };
+        Ok(VDM_HEADER_LEN + 1)
     }
 
     async fn handle_request<Alloc, Io>(
@@ -404,6 +504,36 @@ mod tests {
             _scratch: &A,
         ) -> CaliptraVdmResult<()> {
             self.authorized_token.replace(Some(token_data.to_vec()));
+            Ok(())
+        }
+
+        async fn begin_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+            &self,
+            _total_payload_len: usize,
+            first_payload: &[u8],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.authorized_token.replace(Some(first_payload.to_vec()));
+            Ok(())
+        }
+
+        async fn continue_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+            &self,
+            payload: &[u8],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.authorized_token
+                .borrow_mut()
+                .as_mut()
+                .expect("stream should be initialized")
+                .extend_from_slice(payload);
+            Ok(())
+        }
+
+        async fn finish_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+            &self,
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
             Ok(())
         }
 
