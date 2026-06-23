@@ -39,27 +39,30 @@ jobs:
           cargo fetch
           popd
 
-      - name: Build libspdm
+      - name: Build libspdm from SPDM-Utils
         run: |
-          SPDM_UTILS_DIR=$(find ~/.cargo/git/checkouts -maxdepth 3 -name "Cargo.toml" -path "*spdm-utils*" -exec dirname {} \; | head -1)
-          if [ -z "${SPDM_UTILS_DIR}" ]; then echo "ERROR: SPDM-Utils checkout not found"; exit 1; fi
-          LIBSPDM_SRC="${SPDM_UTILS_DIR}/third-party/libspdm"
+          SPDM_UTILS_DIR=$(cargo metadata --manifest-path caliptra-util-host/Cargo.toml --format-version=1 | \
+            python3 -c 'import json, os, sys; data = json.load(sys.stdin); print(os.path.dirname(next(p["manifest_path"] for p in data["packages"] if p["name"] == "SPDM-Utils")))')
           BUILD_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-build"
           export LIBSPDM_LIB_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-lib"
-          mkdir -p "${BUILD_DIR}"
-          cd "${BUILD_DIR}"
-          cmake \
+          OPENSSL_LIB_DIR=$(pkg-config --variable=libdir openssl)
+          cmake -S "${SPDM_UTILS_DIR}/third-party/libspdm" -B "${BUILD_DIR}" \
             -DARCH=x64 \
             -DTOOLCHAIN=GCC \
             -DTARGET=Debug \
             -DCRYPTO=openssl \
             -DENABLE_BINARY_BUILD=1 \
-            -DCOMPILED_LIBCRYPTO_PATH=/usr/lib/ \
-            -DCOMPILED_LIBSSL_PATH=/usr/lib/ \
+            -DSTACK_USAGE=ON \
+            -DCOMPILED_LIBCRYPTO_PATH="${OPENSSL_LIB_DIR}" \
+            -DCOMPILED_LIBSSL_PATH="${OPENSSL_LIB_DIR}" \
             -DDISABLE_TESTS=1 \
-            -DCMAKE_C_FLAGS="-DLIBSPDM_ENABLE_CAPABILITY_EVENT_CAP=0 -DLIBSPDM_ENABLE_CAPABILITY_MEL_CAP=0 -DLIBSPDM_HAL_PASS_SPDM_CONTEXT=1 -DLIBSPDM_ENABLE_CAPABILITY_GET_KEY_PAIR_INFO_CAP=0 -DLIBSPDM_ENABLE_CAPABILITY_SET_KEY_PAIR_INFO_CAP=0" \
-            "${LIBSPDM_SRC}"
-          make -j$(nproc)
+            -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000 \
+              -DLIBSPDM_ENABLE_CAPABILITY_EVENT_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_MEL_CAP=0 \
+              -DLIBSPDM_HAL_PASS_SPDM_CONTEXT=1 \
+              -DLIBSPDM_ENABLE_CAPABILITY_GET_KEY_PAIR_INFO_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_SET_KEY_PAIR_INFO_CAP=0"
+          cmake --build "${BUILD_DIR}" --parallel "$(nproc)"
           mkdir -p "${LIBSPDM_LIB_DIR}"
           find "${BUILD_DIR}/lib" -name "*.a" -exec cp {} "${LIBSPDM_LIB_DIR}/" \;
           echo "LIBSPDM_LIB_DIR=${LIBSPDM_LIB_DIR}" >> $GITHUB_ENV
@@ -106,27 +109,30 @@ jobs:
           cargo fetch
           popd
 
-      - name: Build libspdm
+      - name: Build libspdm from SPDM-Utils
         run: |
-          SPDM_UTILS_DIR=$(find ~/.cargo/git/checkouts -maxdepth 3 -name "Cargo.toml" -path "*spdm-utils*" -exec dirname {} \; | head -1)
-          if [ -z "${SPDM_UTILS_DIR}" ]; then echo "ERROR: SPDM-Utils checkout not found"; exit 1; fi
-          LIBSPDM_SRC="${SPDM_UTILS_DIR}/third-party/libspdm"
+          SPDM_UTILS_DIR=$(cargo metadata --manifest-path caliptra-util-host/Cargo.toml --format-version=1 | \
+            python3 -c 'import json, os, sys; data = json.load(sys.stdin); print(os.path.dirname(next(p["manifest_path"] for p in data["packages"] if p["name"] == "SPDM-Utils")))')
           BUILD_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-build"
           export LIBSPDM_LIB_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-lib"
-          mkdir -p "${BUILD_DIR}"
-          cd "${BUILD_DIR}"
-          cmake \
+          OPENSSL_LIB_DIR=$(pkg-config --variable=libdir openssl)
+          cmake -S "${SPDM_UTILS_DIR}/third-party/libspdm" -B "${BUILD_DIR}" \
             -DARCH=x64 \
             -DTOOLCHAIN=GCC \
             -DTARGET=Debug \
             -DCRYPTO=openssl \
             -DENABLE_BINARY_BUILD=1 \
-            -DCOMPILED_LIBCRYPTO_PATH=/usr/lib/ \
-            -DCOMPILED_LIBSSL_PATH=/usr/lib/ \
+            -DSTACK_USAGE=ON \
+            -DCOMPILED_LIBCRYPTO_PATH="${OPENSSL_LIB_DIR}" \
+            -DCOMPILED_LIBSSL_PATH="${OPENSSL_LIB_DIR}" \
             -DDISABLE_TESTS=1 \
-            -DCMAKE_C_FLAGS="-DLIBSPDM_ENABLE_CAPABILITY_EVENT_CAP=0 -DLIBSPDM_ENABLE_CAPABILITY_MEL_CAP=0 -DLIBSPDM_HAL_PASS_SPDM_CONTEXT=1 -DLIBSPDM_ENABLE_CAPABILITY_GET_KEY_PAIR_INFO_CAP=0 -DLIBSPDM_ENABLE_CAPABILITY_SET_KEY_PAIR_INFO_CAP=0" \
-            "${LIBSPDM_SRC}"
-          make -j$(nproc)
+            -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000 \
+              -DLIBSPDM_ENABLE_CAPABILITY_EVENT_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_MEL_CAP=0 \
+              -DLIBSPDM_HAL_PASS_SPDM_CONTEXT=1 \
+              -DLIBSPDM_ENABLE_CAPABILITY_GET_KEY_PAIR_INFO_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_SET_KEY_PAIR_INFO_CAP=0"
+          cmake --build "${BUILD_DIR}" --parallel "$(nproc)"
           mkdir -p "${LIBSPDM_LIB_DIR}"
           find "${BUILD_DIR}/lib" -name "*.a" -exec cp {} "${LIBSPDM_LIB_DIR}/" \;
           echo "LIBSPDM_LIB_DIR=${LIBSPDM_LIB_DIR}" >> $GITHUB_ENV
@@ -166,6 +172,7 @@ jobs:
           cargo xtask build
           popd
           echo "SPDM_VALIDATOR_BIN=${GITHUB_WORKSPACE}/target/caliptra-util-host/debug/caliptra-spdm-validator" >> $GITHUB_ENV
+          echo "OCP_DEV_IDENTITY_PROVISION_TOOL_BIN=${GITHUB_WORKSPACE}/target/caliptra-util-host/debug/ocp_dev_identity_provision_tool" >> $GITHUB_ENV
 
       - name: Run Caliptra Util Host tests
         run: |
@@ -192,6 +199,14 @@ jobs:
       - name: Run Caliptra Util Host SPDM VDM validator tests (manufacturing mode)
         run: |
           cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator_mfg_mode --exact --nocapture --include-ignored
+          sccache --show-stats
+
+      - name: Run OCP Device Identity provisioning test
+        env:
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
+        run: |
+          cargo xtask all-build --separate-runtimes --runtime-features test-mctp-spdm-set-certificate
+          cargo test --package caliptra-mcu-tests-integration --lib -- test_ocp_dev_identity_provision_tool::test::test_mctp_spdm_set_certificate_with_ocp_provision_tool --exact --nocapture --include-ignored
           sccache --show-stats
 
       - name: Upload test results and logs

@@ -257,12 +257,15 @@ pub fn execute_spdm_tee_io_validator(transport: &'static str) {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             println!("spdm_tee_io_validator exited with status: {:?}", status);
+                            if !status.success() {
+                                std::process::exit(1);
+                            }
                             break;
                         }
                         Ok(None) => {}
                         Err(e) => {
                             println!("Error: {:?}", e);
-                            break;
+                            std::process::exit(1);
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -271,6 +274,7 @@ pub fn execute_spdm_tee_io_validator(transport: &'static str) {
             }
             Err(e) => {
                 println!("Error: {:?} Failed to spawn spdm_tee_io_validator!!", e);
+                std::process::exit(1);
             }
         }
     });
@@ -294,7 +298,7 @@ pub fn execute_spdm_attestation(transport: &'static str) {
                         Ok(None) => {}
                         Err(e) => {
                             println!("Error: {:?}", e);
-                            break;
+                            std::process::exit(1);
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -332,7 +336,7 @@ pub fn execute_spdm_responder_validator(transport: &'static str) {
                         Ok(None) => {}
                         Err(e) => {
                             println!("Error: {:?}", e);
-                            break;
+                            std::process::exit(1);
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(100));

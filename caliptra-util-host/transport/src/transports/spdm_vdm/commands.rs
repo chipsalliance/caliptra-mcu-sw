@@ -98,7 +98,7 @@ pub fn handle_firmware_version(
     response_buffer: &mut [u8],
 ) -> Result<usize, TransportError> {
     // Parse internal request (may be empty → default to index 0)
-    let _area_index = if payload.len() >= core::mem::size_of::<GetFirmwareVersionRequest>() {
+    let area_index = if payload.len() >= core::mem::size_of::<GetFirmwareVersionRequest>() {
         let req = GetFirmwareVersionRequest::from_bytes(payload)
             .map_err(|_| TransportError::InvalidMessage)?;
         req.index
@@ -106,11 +106,13 @@ pub fn handle_firmware_version(
         0
     };
 
-    // VDM payload for FirmwareVersion: empty (no additional data needed)
+    // VDM payload for FirmwareVersion: [area_index(4 LE)]. Older callers may
+    // send an empty internal request, which defaults to index 0 above.
+    let vdm_payload = area_index.to_le_bytes();
     let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
     let resp_len = send_vdm_request(
         CaliptraVdmCommand::FirmwareVersion,
-        &[],
+        &vdm_payload,
         driver,
         &mut resp_buf,
     )?;
@@ -338,10 +340,14 @@ pub fn handle_export_attested_csr(
             "ExportAttestedCsr data_len exceeds response",
         ));
     }
+    if csr_len > certificate::MAX_CSR_DATA_SIZE {
+        return Err(TransportError::BufferError(
+            "ExportAttestedCsr data_len exceeds maximum CSR size",
+        ));
+    }
 
     let mut csr_data = [0u8; certificate::MAX_CSR_DATA_SIZE];
-    let copy_csr_len = csr_len.min(certificate::MAX_CSR_DATA_SIZE);
-    csr_data[..copy_csr_len].copy_from_slice(&data[csr_start..csr_start + copy_csr_len]);
+    csr_data[..csr_len].copy_from_slice(&data[csr_start..csr_end]);
 
     let internal_resp = certificate::ExportAttestedCsrResponse {
         common: CommonResponse { fips_status: 0 },
@@ -391,10 +397,14 @@ pub fn handle_export_idevid_csr(
             "ExportIdevidCsr data_len exceeds response",
         ));
     }
+    if csr_len > certificate::MAX_CSR_DATA_SIZE {
+        return Err(TransportError::BufferError(
+            "ExportIdevidCsr data_len exceeds maximum CSR size",
+        ));
+    }
 
     let mut csr_data = [0u8; certificate::MAX_CSR_DATA_SIZE];
-    let copy_csr_len = csr_len.min(certificate::MAX_CSR_DATA_SIZE);
-    csr_data[..copy_csr_len].copy_from_slice(&data[csr_start..csr_start + copy_csr_len]);
+    csr_data[..csr_len].copy_from_slice(&data[csr_start..csr_end]);
 
     let internal_resp = certificate::ExportIdevidCsrResponse {
         common: CommonResponse { fips_status: 0 },
@@ -595,7 +605,7 @@ pub fn handle_prod_debug_unlock_token(
 // GetDebugLog (CaliptraCommandId::DebugGetLog)
 // ---------------------------------------------------------------------------
 
-/// Handle GetDebugLog — drain one page of the device debug log.
+/// Handle GetDebugLog - drain one page of the device debug log.
 ///
 /// VDM wire format request:  [version, 0x05 (GetDebugLog)]
 /// VDM wire format response: [version, 0x05, completion_code, more_data(1), bytes_written(4 LE), log bytes...]
@@ -644,4 +654,137 @@ pub fn handle_get_debug_log(
     let copy_len = resp_bytes.len().min(response_buffer.len());
     response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
     Ok(copy_len)
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use std::vec;
+    use std::vec::Vec;
+    use zerocopy::IntoBytes;
+
+    struct FakeDriver {
+        response: Vec<u8>,
+        last_request: Vec<u8>,
+    }
+
+    impl SpdmVdmDriver for FakeDriver {
+        fn send_receive_vdm(
+            &mut self,
+            request: &[u8],
+            response: &mut [u8],
+        ) -> Result<usize, SpdmVdmError> {
+            self.last_request.clear();
+            self.last_request.extend_from_slice(request);
+            response[..self.response.len()].copy_from_slice(&self.response);
+            Ok(self.response.len())
+        }
+
+        fn is_ready(&self) -> bool {
+            true
+        }
+
+        fn connect(&mut self) -> Result<(), SpdmVdmError> {
+            Ok(())
+        }
+
+        fn disconnect(&mut self) -> Result<(), SpdmVdmError> {
+            Ok(())
+        }
+    }
+
+    fn success_response(command: CaliptraVdmCommand, data: &[u8]) -> Vec<u8> {
+        let mut response = vec![CALIPTRA_VDM_COMMAND_VERSION, command as u8, 0];
+        response.extend_from_slice(data);
+        response
+    }
+
+    #[test]
+    fn firmware_version_sends_requested_area_index() {
+        let mut response = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::FirmwareVersion as u8,
+            0,
+        ];
+        response.extend_from_slice(b"2.0.0 abcdef");
+        let mut driver = FakeDriver {
+            response,
+            last_request: Vec::new(),
+        };
+        let req = GetFirmwareVersionRequest { index: 1 };
+        let mut response_buffer = [0u8; 128];
+
+        let len = handle_firmware_version(req.as_bytes(), &mut driver, &mut response_buffer)
+            .expect("firmware version request should succeed");
+
+        assert_eq!(
+            driver.last_request,
+            vec![
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::FirmwareVersion as u8,
+                1,
+                0,
+                0,
+                0,
+            ]
+        );
+        assert_eq!(len, core::mem::size_of::<GetFirmwareVersionResponse>());
+        assert_eq!(
+            u32::from_le_bytes(response_buffer[4..8].try_into().unwrap()),
+            2
+        );
+        assert_eq!(&response_buffer[20..26], b"abcdef");
+    }
+
+    #[test]
+    fn export_attested_csr_rejects_oversized_csr_len() {
+        let req = certificate::ExportAttestedCsrRequest {
+            device_key_id: 1,
+            algorithm: 1,
+            nonce: [0xAB; 32],
+        };
+        let oversized_len = (certificate::MAX_CSR_DATA_SIZE + 1) as u32;
+        let mut data = Vec::new();
+        data.extend_from_slice(&oversized_len.to_le_bytes());
+        data.resize(4 + certificate::MAX_CSR_DATA_SIZE + 1, 0xA5);
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::ExportAttestedCsr, &data),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer =
+            vec![0; core::mem::size_of::<certificate::ExportAttestedCsrResponse>()];
+
+        let err = handle_export_attested_csr(req.as_bytes(), &mut driver, &mut response_buffer)
+            .expect_err("oversized CSR response must be rejected");
+
+        match err {
+            TransportError::BufferError(msg) => assert!(msg.contains("maximum CSR size")),
+            other => panic!("unexpected error: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn export_idevid_csr_rejects_oversized_csr_len() {
+        let req = certificate::ExportIdevidCsrRequest { algorithm: 1 };
+        let oversized_len = (certificate::MAX_CSR_DATA_SIZE + 1) as u32;
+        let mut data = Vec::new();
+        data.extend_from_slice(&oversized_len.to_le_bytes());
+        data.resize(4 + certificate::MAX_CSR_DATA_SIZE + 1, 0xA5);
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::ExportIdevidCsr, &data),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer =
+            vec![0; core::mem::size_of::<certificate::ExportIdevidCsrResponse>()];
+
+        let err = handle_export_idevid_csr(req.as_bytes(), &mut driver, &mut response_buffer)
+            .expect_err("oversized CSR response must be rejected");
+
+        match err {
+            TransportError::BufferError(msg) => assert!(msg.contains("maximum CSR size")),
+            other => panic!("unexpected error: {:?}", other),
+        }
+    }
 }

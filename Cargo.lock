@@ -296,6 +296,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d7e60934ceec538daadb9d8432424ed043a904d8e0243f3c6446bce549a46ac"
 
 [[package]]
+name = "bitfield-struct"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ca6739863c590881f038d033a146c51ddae239186a4327014839fd864f44ed5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.109",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4983,6 +4994,199 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
+name = "mcu-caliptra-api-lite"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-runtime-userspace-error",
+ "zerocopy",
+]
+
+[[package]]
+name = "mcu-rom-emulator"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "caliptra-mcu-builder",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-error",
+ "caliptra-mcu-image-header",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "riscv-csr",
+ "rv32i",
+ "tock-registers",
+ "zerocopy",
+ "zeroize",
+]
+
+[[package]]
+name = "mcu-rom-fpga"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-builder",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-otp-lifecycle",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "riscv-csr",
+ "rv32i",
+ "tock-registers",
+ "zeroize",
+]
+
+[[package]]
+name = "mcu-runtime-emulator"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "caliptra-mcu-capsules-emulator",
+ "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-components",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-dma-driver",
+ "caliptra-mcu-doe-mbox-driver",
+ "caliptra-mcu-doe-transport",
+ "caliptra-mcu-external-otp-driver",
+ "caliptra-mcu-external-otp-emulator",
+ "caliptra-mcu-flash-ctrl-emulator",
+ "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-comm",
+ "caliptra-mcu-mbox-driver",
+ "caliptra-mcu-platforms-common",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-tock-veer",
+ "capsules-core",
+ "capsules-extra",
+ "capsules-system",
+ "components",
+ "kernel",
+ "riscv 0.2.2",
+ "riscv-csr",
+ "rv32i",
+ "tock-registers",
+]
+
+[[package]]
+name = "mcu-runtime-fpga"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "caliptra-mcu-capsules-emulator",
+ "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-components",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-dma-driver",
+ "caliptra-mcu-external-otp-driver",
+ "caliptra-mcu-external-otp-emulator",
+ "caliptra-mcu-flash-ctrl-fpga",
+ "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-driver",
+ "caliptra-mcu-platforms-common",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-tock-veer",
+ "capsules-core",
+ "capsules-extra",
+ "capsules-system",
+ "components",
+ "kernel",
+ "riscv 0.2.2",
+ "riscv-csr",
+ "rv32i",
+ "tock-registers",
+]
+
+[[package]]
+name = "mcu-spdm-lite-codec"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-runtime-userspace-error",
+ "mcu-spdm-lite-errors",
+ "mcu-spdm-lite-traits",
+ "zerocopy",
+]
+
+[[package]]
+name = "mcu-spdm-lite-errors"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-runtime-userspace-error",
+]
+
+[[package]]
+name = "mcu-spdm-lite-pal"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-runtime-userspace-error",
+ "mcu-caliptra-api-lite",
+ "mcu-spdm-lite-codec",
+ "mcu-spdm-lite-traits",
+ "zerocopy",
+]
+
+[[package]]
+name = "mcu-spdm-lite-stack"
+version = "0.1.0"
+dependencies = [
+ "bitfield-struct",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-runtime-userspace-error",
+ "futures",
+ "mcu-caliptra-api-lite",
+ "mcu-spdm-lite-codec",
+ "mcu-spdm-lite-errors",
+ "mcu-spdm-lite-traits",
+ "zerocopy",
+]
+
+[[package]]
+name = "mcu-spdm-lite-traits"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-runtime-userspace-error",
+ "mcu-caliptra-api-lite",
+]
+
+[[package]]
+name = "mcu-spdm-lite-transports"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-runtime-userspace-error",
+ "mcu-spdm-lite-errors",
+ "mcu-spdm-lite-traits",
+]
+
+[[package]]
+name = "mcu-spdm-lite-vdm-handler"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-runtime-userspace-error",
+ "futures",
+ "mcu-caliptra-api-lite",
+ "mcu-spdm-lite-codec",
+ "mcu-spdm-lite-errors",
+ "mcu-spdm-lite-traits",
+ "zerocopy",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7311,6 +7515,13 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
+ "mcu-caliptra-api-lite",
+ "mcu-spdm-lite-codec",
+ "mcu-spdm-lite-pal",
+ "mcu-spdm-lite-stack",
+ "mcu-spdm-lite-traits",
+ "mcu-spdm-lite-transports",
+ "mcu-spdm-lite-vdm-handler",
  "portable-atomic",
  "static_cell",
  "zerocopy",

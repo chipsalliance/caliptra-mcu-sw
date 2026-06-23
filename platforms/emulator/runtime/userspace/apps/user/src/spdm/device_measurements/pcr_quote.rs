@@ -1,60 +1,48 @@
 // Licensed under the Apache-2.0 license
 
-// TODO: should we remove this in favor of EAT?
-#![allow(unused)]
+//! PCR Quote measurement provider for spdm-lite test builds.
+//!
+//! This mirrors the non-lite PCR quote measurement form without depending on
+//! `caliptra-api`: the provider exposes one raw DMTF freeform manifest at
+//! index 0xFD and obtains the quote through `caliptra-api-lite`.
 
-extern crate alloc;
+use mcu_caliptra_api_lite::{pcr_quote_ecc384, PCR_QUOTE_ECC384_LEN};
+use mcu_error::McuResult;
+use mcu_spdm_lite_pal::measurements::MeasurementProvider;
+use mcu_spdm_lite_pal::BitmapAllocator;
+use mcu_spdm_lite_traits::{MeasurementInfo, SPDM_NONCE_LEN};
 
-use alloc::boxed::Box;
-use async_trait::async_trait;
-use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
-use caliptra_mcu_libapi_caliptra::evidence::pcr_quote::PcrQuote;
-use caliptra_mcu_spdm_lib::measurements::{
-    MeasurementValueInfo, MeasurementsError, MeasurementsResult, SpdmMeasurementValue,
-};
+const PCR_QUOTE_MEAS_INFO: [MeasurementInfo; 1] = [MeasurementInfo {
+    index: 0xFD,
+    value_size: PCR_QUOTE_ECC384_LEN as u16,
+    value_type: 4, // FreeformManifest
+    is_raw: true,
+    is_tcb: true,
+}];
 
-pub const NUM_PCR_QUOTE_MEASUREMENTS: usize = 1;
+pub struct PcrQuoteMeasurementProvider;
 
-pub fn create_manifest_with_pcr_quote() -> (
-    PcrQuoteManifest,
-    [MeasurementValueInfo; NUM_PCR_QUOTE_MEASUREMENTS],
-) {
-    let manifest = PcrQuoteManifest::new();
-
-    let meas_info = MeasurementValueInfo::freeform_manifest(
-        false, // raw_bit_stream
-        true,  // include_tcb_measurements
-    );
-
-    (manifest, [meas_info])
-}
-
-pub struct PcrQuoteManifest;
-
-impl PcrQuoteManifest {
-    pub fn new() -> Self {
-        PcrQuoteManifest {}
+impl PcrQuoteMeasurementProvider {
+    pub const fn new() -> Self {
+        Self
     }
 }
 
-#[async_trait]
-impl SpdmMeasurementValue for PcrQuoteManifest {
-    async fn get_measurement_value(
-        &mut self,
-        _index: u8,
-        nonce: &[u8],
-        asym_algo: AsymAlgo,
-        measurement: &mut [u8],
-    ) -> MeasurementsResult<usize> {
-        let with_pqc_sig = asym_algo != AsymAlgo::EccP384;
-        let measurement_value_size = PcrQuote::len(with_pqc_sig);
-        if measurement.len() < measurement_value_size {
-            return Err(MeasurementsError::BufferTooSmall);
-        }
-        let copied_len = PcrQuote::pcr_quote(Some(nonce), measurement, with_pqc_sig)
-            .await
-            .map_err(MeasurementsError::CaliptraApi)?;
+impl MeasurementProvider for PcrQuoteMeasurementProvider {
+    const SCRATCH_SIZE: usize = 0;
 
-        Ok(copied_len)
+    fn measurement_info(&self) -> &[MeasurementInfo] {
+        &PCR_QUOTE_MEAS_INFO
+    }
+
+    async fn get_measurement_value(
+        &self,
+        _index: u8,
+        nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+        out: &mut [u8],
+        _scratch: &mut [u8],
+        alloc: &BitmapAllocator,
+    ) -> McuResult<usize> {
+        pcr_quote_ecc384(alloc, nonce, out).await
     }
 }

@@ -1,0 +1,21 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-spdm-lite-vdm-handler"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+mcu-spdm-lite-traits = { workspace = true }
+mcu-spdm-lite-codec = { workspace = true }
+mcu-spdm-lite-errors = { workspace = true }
+mcu-error = { workspace = true }
+zerocopy = { workspace = true }
+
+[dev-dependencies]
+futures = { workspace = true }
+mcu-caliptra-api-lite = { workspace = true }
