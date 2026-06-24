@@ -91,9 +91,11 @@ use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
 use caliptra_image_types::{
     ImageManifest, ImageOwnerPubKeys, ImageVendorPubKeyInfo, IMAGE_MANIFEST_BYTE_SIZE,
+    MANIFEST_MARKER,
 };
+use clap::{Parser, ValueEnum};
 use hex::ToHex;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use zerocopy::{transmute, IntoBytes};
 
 // ---------------------------------------------------------------------------
@@ -105,19 +107,18 @@ use zerocopy::{transmute, IntoBytes};
 /// Reads the ImageManifest embedded at the start of the bundle, computes the
 /// SHA-384 digest of the selected key-info bytes, and compares it to the
 /// optional expected value.
-#[derive(Debug)]
+#[derive(Debug, Parser)]
+#[command(name = "pk-hash-checker", version, about)]
 struct Cli {
     /// Path to the Caliptra firmware bundle binary (e.g. caliptra-fw-bundle.bin).
     ///
     /// The file must start with a valid `ImageManifest` structure.  Additional
     /// FMC / runtime payload bytes after the manifest are ignored.
+    #[arg(long)]
     bundle: PathBuf,
 
     /// Which public-key set to hash: `vendor`, `owner`, or `both`.
-    ///
-    /// - `vendor` hashes `preamble.vendor_pub_key_info`
-    /// - `owner`  hashes `preamble.owner_pub_keys`
-    /// - `both`   hashes and compares both key blobs
+    #[arg(long, value_enum)]
     key_type: KeyType,
 
     /// Expected SHA-384 hash expressed as a 96-character lowercase hex string.
@@ -125,6 +126,7 @@ struct Cli {
     /// Mutually exclusive with `--key-file` and `--reference-bundle`.
     /// When supplied the tool exits with code 0 on match and 1 on mismatch.
     /// When omitted the tool prints the computed hash and exits with code 0.
+    #[arg(long, conflicts_with_all = ["key_file", "reference_bundle"])]
     expected_hash: Option<String>,
 
     /// Path to a saved raw key-info binary blob to compare against.
@@ -134,8 +136,7 @@ struct Cli {
     /// `both` mode, the file must contain the vendor blob immediately followed
     /// by the owner blob.
     /// Create one from a trusted bundle with `--dump-key-info`.
-    ///
-    /// Mutually exclusive with `--expected-hash` and `--reference-bundle`.
+    #[arg(long, conflicts_with_all = ["expected_hash", "reference_bundle"])]
     key_file: Option<PathBuf>,
 
     /// Path to a second firmware bundle to compare key info against.
@@ -143,22 +144,23 @@ struct Cli {
     /// Extracts the same key type from the reference bundle, computes its hash,
     /// and compares it to the hash from `--bundle`.  Useful for checking whether
     /// two bundles share the same vendor or owner keys.
-    ///
-    /// Mutually exclusive with `--expected-hash` and `--key-file`.
+    #[arg(long, conflicts_with_all = ["expected_hash", "key_file"])]
     reference_bundle: Option<PathBuf>,
 
     /// Extract the raw key-info blob from `--bundle` and write it to this path.
     ///
     /// The saved file can later be passed to `--key-file` on other bundles.
     /// Can be combined with any comparison flag; the dump happens first.
+    #[arg(long)]
     dump_key_info: Option<PathBuf>,
 
     /// Print additional detail about the manifest preamble (key counts, etc.).
+    #[arg(long, short)]
     verbose: bool,
 }
 
 /// The public-key set to inspect inside the firmware bundle.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ValueEnum)]
 enum KeyType {
     /// Hash the vendor public-key info block.
     Vendor,
@@ -166,114 +168,6 @@ enum KeyType {
     Owner,
     /// Both vendor and owner key types.
     Both,
-}
-
-impl Cli {
-    /// Parse command-line arguments in a small, explicit loop.
-    ///
-    /// The tool intentionally supports only the flags it needs, which keeps the
-    /// binary dependency-free beyond the Caliptra image types and hash helpers.
-    fn parse() -> Result<Self> {
-        let mut args = std::env::args().skip(1);
-        let mut bundle: Option<PathBuf> = None;
-        let mut key_type: Option<KeyType> = None;
-        let mut expected_hash: Option<String> = None;
-        let mut key_file: Option<PathBuf> = None;
-        let mut reference_bundle: Option<PathBuf> = None;
-        let mut dump_key_info: Option<PathBuf> = None;
-        let mut verbose = false;
-
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "--bundle" => {
-                    let value = args
-                        .next()
-                        .ok_or_else(|| anyhow::anyhow!("--bundle requires a value"))?;
-                    bundle = Some(PathBuf::from(value));
-                }
-                "--key-type" => {
-                    let value = args
-                        .next()
-                        .ok_or_else(|| anyhow::anyhow!("--key-type requires a value"))?;
-                    key_type = Some(match value.to_ascii_lowercase().as_str() {
-                        "vendor" => KeyType::Vendor,
-                        "owner" => KeyType::Owner,
-                        "both" => KeyType::Both,
-                        other => {
-                            bail!("invalid key type `{other}`; expected vendor, owner, or both")
-                        }
-                    });
-                }
-                "--expected-hash" => {
-                    expected_hash = Some(
-                        args.next()
-                            .ok_or_else(|| anyhow::anyhow!("--expected-hash requires a value"))?,
-                    );
-                }
-                "--key-file" => {
-                    let value = args
-                        .next()
-                        .ok_or_else(|| anyhow::anyhow!("--key-file requires a value"))?;
-                    key_file = Some(PathBuf::from(value));
-                }
-                "--reference-bundle" => {
-                    let value = args
-                        .next()
-                        .ok_or_else(|| anyhow::anyhow!("--reference-bundle requires a value"))?;
-                    reference_bundle = Some(PathBuf::from(value));
-                }
-                "--dump-key-info" => {
-                    let value = args
-                        .next()
-                        .ok_or_else(|| anyhow::anyhow!("--dump-key-info requires a value"))?;
-                    dump_key_info = Some(PathBuf::from(value));
-                }
-                "--verbose" | "-v" => verbose = true,
-                "--help" | "-h" => {
-                    print_usage_and_exit(0);
-                }
-                "--version" | "-V" => {
-                    println!("pk-hash-checker 0.1.0");
-                    std::process::exit(0);
-                }
-                other => bail!("unrecognized argument `{other}`"),
-            }
-        }
-
-        let bundle = bundle.ok_or_else(|| anyhow::anyhow!("--bundle is required"))?;
-        let key_type = key_type.ok_or_else(|| anyhow::anyhow!("--key-type is required"))?;
-
-        Ok(Self {
-            bundle,
-            key_type,
-            expected_hash,
-            key_file,
-            reference_bundle,
-            dump_key_info,
-            verbose,
-        })
-    }
-}
-
-/// Print a concise usage message and exit.
-fn print_usage_and_exit(exit_code: i32) -> ! {
-    println!("pk-hash-checker 0.1.0");
-    println!();
-    println!("Usage: pk-hash-checker --bundle <PATH> --key-type <vendor|owner|both> [options]");
-    println!();
-    println!("Options:");
-    println!("  --bundle <PATH>            Path to the Caliptra firmware bundle binary file");
-    println!("  --key-type <TYPE>          vendor, owner, or both");
-    println!("  --expected-hash <HEX>      Compare against a 96-character hex string");
-    println!("  --key-file <PATH>          Compare against a saved raw key-info blob");
-    println!(
-        "  --reference-bundle <PATH>  Compare against the same key-type hash in another bundle"
-    );
-    println!("  --dump-key-info <PATH>     Save the key-info blob for later reuse");
-    println!("  -v, --verbose              Print additional manifest detail");
-    println!("  -h, --help                 Show this help text");
-    println!("  -V, --version              Show version");
-    std::process::exit(exit_code);
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +195,25 @@ fn parse_manifest(bundle_bytes: &[u8]) -> Result<ImageManifest> {
         .try_into()
         .context("Failed to copy manifest bytes into fixed-size array")?;
 
-    Ok(transmute!(bytes))
+    let manifest: ImageManifest = transmute!(bytes);
+
+    if manifest.size != IMAGE_MANIFEST_BYTE_SIZE as u32 {
+        bail!(
+            "Invalid Manifest size: {}, expected {}",
+            manifest.size,
+            IMAGE_MANIFEST_BYTE_SIZE
+        );
+    }
+    
+    if manifest.marker != MANIFEST_MARKER {
+        bail!(
+            "Invalid Manifest marker: {:#010x}, expected {:#010x}",
+            manifest.marker,
+            MANIFEST_MARKER
+        );
+    }
+
+    Ok(manifest)
 }
 
 /// Validate a user-supplied expected-hash string.
@@ -362,7 +274,7 @@ fn combined_key_info_bytes(manifest: &ImageManifest) -> Vec<u8> {
 ///
 /// Returns an error if the file cannot be read or its size does not match the
 /// expected struct size for `key_type`.
-fn load_key_file(path: &PathBuf, key_type: &KeyType) -> Result<Vec<u8>> {
+fn load_key_file(path: &Path, key_type: &KeyType) -> Result<Vec<u8>> {
     let (expected_size, type_name) = match key_type {
         KeyType::Vendor => (
             std::mem::size_of::<ImageVendorPubKeyInfo>(),
@@ -399,7 +311,7 @@ fn load_key_file(path: &PathBuf, key_type: &KeyType) -> Result<Vec<u8>> {
 }
 
 /// Load a combined key file containing vendor bytes followed by owner bytes.
-fn load_combined_key_file(path: &PathBuf) -> Result<(Vec<u8>, Vec<u8>)> {
+fn load_combined_key_file(path: &Path) -> Result<(Vec<u8>, Vec<u8>)> {
     let vendor_size = std::mem::size_of::<ImageVendorPubKeyInfo>();
     let owner_size = std::mem::size_of::<ImageOwnerPubKeys>();
     let expected_size = vendor_size + owner_size;
@@ -462,7 +374,7 @@ fn print_verbose_info(manifest: &ImageManifest, key_type: &KeyType) {
 // ---------------------------------------------------------------------------
 
 fn main() -> Result<()> {
-    let cli = Cli::parse()?;
+    let cli = Cli::parse();
 
     let comparison_modes = [
         cli.expected_hash.is_some(),
@@ -539,18 +451,16 @@ fn main() -> Result<()> {
     };
     let vendor_hash = sha384_of(manifest.preamble.vendor_pub_key_info.as_bytes())?;
     let owner_hash = sha384_of(manifest.preamble.owner_pub_keys.as_bytes())?;
-    let computed_hash = match cli.key_type {
-        KeyType::Vendor => vendor_hash,
-        KeyType::Owner => owner_hash,
-        KeyType::Both => sha384_of(&combined_key_info_bytes(&manifest))?,
-    };
-    let computed_hex: String = computed_hash.encode_hex();
     match cli.key_type {
-        KeyType::Vendor | KeyType::Owner => println!("{label} PK hash: {computed_hex}"),
+        KeyType::Vendor => {
+            println!("vendor PK hash: {}", vendor_hash.encode_hex::<String>())
+        }
+        KeyType::Owner => {
+            println!("owner PK hash: {}", owner_hash.encode_hex::<String>())
+        }
         KeyType::Both => {
             println!("vendor PK hash: {}", vendor_hash.encode_hex::<String>());
             println!("owner PK hash: {}", owner_hash.encode_hex::<String>());
-            println!("combined PK hash: {computed_hex}");
         }
     }
 
@@ -558,7 +468,6 @@ fn main() -> Result<()> {
     // 4. Comparison (exactly one of: --expected-hash / --key-file /
     //    --reference-bundle).  If none supplied, just print and exit.
     // ------------------------------------------------------------------
-
     if matches!(cli.key_type, KeyType::Both) {
         if cli.expected_hash.is_some() || cli.reference_bundle.is_some() {
             bail!("--key-type both does not support --expected-hash or --reference-bundle");
@@ -580,24 +489,36 @@ fn main() -> Result<()> {
                 owner_file_hash.encode_hex::<String>()
             );
 
-            compare_and_exit(
+            let passed_vendor = compare(
                 "vendor",
                 &vendor_hash,
                 &vendor_hash.encode_hex::<String>(),
                 &vendor_file_hash,
                 &vendor_file_hash.encode_hex::<String>(),
             );
-            compare_and_exit(
+
+            let passed_owner = compare(
                 "owner",
                 &owner_hash,
                 &owner_hash.encode_hex::<String>(),
                 &owner_file_hash,
                 &owner_file_hash.encode_hex::<String>(),
             );
+
+            if !passed_owner || !passed_vendor {
+                std::process::exit(1);
+            }
         }
 
         return Ok(());
     }
+
+    let computed_hash = match cli.key_type {
+        KeyType::Vendor => vendor_hash,
+        KeyType::Owner => owner_hash,
+        KeyType::Both => [0u8; 48], // unreachable!("handled above")
+    };
+    let computed_hex: String = computed_hash.encode_hex();
 
     if let Some(ref expected_str) = cli.expected_hash {
         // -- 4a. Hex string comparison -----------------------------------
@@ -659,10 +580,28 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Compare `computed` against `expected`, print PASS/FAIL
+/// return true if they match, false if there is a mismatch.
+fn compare(
+    label: &str,
+    computed: &[u8; 48],
+    computed_hex: &str,
+    expected: &[u8; 48],
+    expected_display: &str,
+) -> bool {
+    if computed == expected {
+        println!("PASS: {label} PK hash matches.");
+        true
+    } else {
+        eprintln!(
+            "FAIL: {label} PK hash mismatch.\n  computed : {computed_hex}\n  expected : {expected_display}"
+        );
+        false
+    }
+}
+
 /// Compare `computed` against `expected`, print PASS/FAIL, and exit with code 1
 /// on mismatch.
-///
-/// Uses constant-time comparison to guard against timing side-channels in CI.
 fn compare_and_exit(
     label: &str,
     computed: &[u8; 48],
@@ -670,27 +609,9 @@ fn compare_and_exit(
     expected: &[u8; 48],
     expected_display: &str,
 ) {
-    if constant_time_compare(computed, expected) {
-        println!("PASS: {label} PK hash matches.");
-    } else {
-        eprintln!(
-            "FAIL: {label} PK hash mismatch.\n  computed : {computed_hex}\n  expected : {expected_display}"
-        );
+    if !compare(label, computed, computed_hex, expected, expected_display) {
         std::process::exit(1);
     }
-}
-
-/// Constant-time byte-slice equality to guard against timing side-channels.
-///
-/// Both slices must be exactly 48 bytes; the function returns `true` only when
-/// every corresponding byte pair is equal.
-fn constant_time_compare(a: &[u8; 48], b: &[u8; 48]) -> bool {
-    // XOR-fold all byte differences; a non-zero accumulator means mismatch.
-    let diff: u8 = a
-        .iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y));
-    diff == 0
 }
 
 // ---------------------------------------------------------------------------
@@ -700,23 +621,6 @@ fn constant_time_compare(a: &[u8; 48], b: &[u8; 48]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// `constant_time_compare` should return `true` for identical inputs.
-    #[test]
-    fn test_constant_time_compare_equal() {
-        let a = [0xABu8; 48];
-        let b = [0xABu8; 48];
-        assert!(constant_time_compare(&a, &b));
-    }
-
-    /// `constant_time_compare` should return `false` for any differing byte.
-    #[test]
-    fn test_constant_time_compare_not_equal() {
-        let a = [0u8; 48];
-        let mut b = [0u8; 48];
-        b[47] = 1;
-        assert!(!constant_time_compare(&a, &b));
-    }
 
     /// `parse_expected_hash` should reject strings that are too short.
     #[test]

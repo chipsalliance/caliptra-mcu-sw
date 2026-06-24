@@ -1669,6 +1669,7 @@ dependencies = [
  "caliptra-image-crypto",
  "caliptra-image-gen",
  "caliptra-image-types",
+ "clap 4.5.51",
  "hex",
  "zerocopy",
 ]

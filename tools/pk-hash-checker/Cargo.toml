@@ -23,3 +23,5 @@ anyhow.workspace = true
 hex.workspace = true
 # Zero-copy struct overlay used to interpret raw bundle bytes as an ImageManifest.
 zerocopy.workspace = true
+# CLI argument parsing.
+clap.workspace = true
