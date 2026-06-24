@@ -3,20 +3,18 @@
 
 use core::mem::offset_of;
 
-use zerocopy::{byteorder::U32, FromBytes, Immutable, IntoBytes, KnownLayout};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const CALIPTRA_FMC_RT_IDENTIFIER: u32 = 0x00000000;
 pub const SOC_MANIFEST_IDENTIFIER: u32 = 0x00000001;
 pub const MCU_RT_IDENTIFIER: u32 = 0x00000002;
 pub const SOC_IMAGES_BASE_IDENTIFIER: u32 = 0x00001000;
 
-pub const FLASH_IMAGE_MAGIC_NUMBER: u32 = u32::from_be_bytes(*b"FLSH");
-pub const HEADER_VERSION: u16 = 0x0001;
+pub const HEADER_VERSION: u16 = 0x0002;
 
 #[repr(C)]
 #[derive(Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct FlashHeader {
-    pub magic: U32<zerocopy::byteorder::BigEndian>,
     pub version: u16,
     pub image_count: u16,
     pub image_headers_offset: u32,
@@ -25,9 +23,6 @@ pub struct FlashHeader {
 
 impl FlashHeader {
     pub fn verify(&self) -> bool {
-        if self.magic.get() != FLASH_IMAGE_MAGIC_NUMBER {
-            return false;
-        }
         if self.version != HEADER_VERSION {
             return false;
         }
