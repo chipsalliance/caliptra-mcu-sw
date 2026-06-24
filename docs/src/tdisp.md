@@ -2,7 +2,7 @@
 
 Caliptra Subsystem supports handling of TDISP messages by processing them as VENDOR_DEFINED_REQUEST/VENDOR_DEFINED_RESPONSE message payloads. These messages are transported and processed within the secure session established between the host and the TDISP device as specified by Secured CMA/SPDM.
 
-To facilitate the TDISP protocol, devices provide a platform implementation of the `TdispDriver` trait from `mcu-spdm-lite-vdm-handler::pci_sig::tdisp`. The responder owns the TDISP wire-format handling, command dispatch, and protocol state; the driver supplies device-specific operations such as capabilities, interface state transitions, nonce generation, and interface report contents.
+To facilitate the TDISP protocol, devices provide a platform implementation of the `TdispDriver` trait from `caliptra-mcu-spdm-vdm-handler::pci_sig::tdisp`. The responder owns the TDISP wire-format handling, command dispatch, and protocol state; the driver supplies device-specific operations such as capabilities, interface state transitions, nonce generation, and interface report contents.
 
 The relevant public driver API is summarized below.
 

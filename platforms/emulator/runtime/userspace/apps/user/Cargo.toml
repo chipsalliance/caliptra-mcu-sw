@@ -36,14 +36,13 @@ caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-lib.workspace = true
 mcu-error.workspace = true
 caliptra-mcu-romtime.workspace = true
-caliptra-mcu-spdm-lib.workspace = true
 mcu-caliptra-api-lite.workspace = true
-mcu-spdm-lite-codec.workspace = true
-mcu-spdm-lite-pal.workspace = true
-mcu-spdm-lite-stack = { workspace = true }
-mcu-spdm-lite-transports.workspace = true
-mcu-spdm-lite-traits.workspace = true
-mcu-spdm-lite-vdm-handler.workspace = true
+caliptra-mcu-spdm-codec.workspace = true
+caliptra-mcu-spdm-pal.workspace = true
+caliptra-mcu-spdm-stack = { workspace = true }
+caliptra-mcu-spdm-transports.workspace = true
+caliptra-mcu-spdm-traits.workspace = true
+caliptra-mcu-spdm-vdm-handler.workspace = true
 static_cell.workspace = true
 zerocopy.workspace = true
 
@@ -135,8 +134,8 @@ test-mctp-spdm-responder-conformance = []
 # Test-only SPDM SET_CERTIFICATE path. Enables flash-backed certificate
 # installation without production authorization/key-binding.
 test-mctp-spdm-set-certificate = [
-  "mcu-spdm-lite-pal/set-certificate",
-  "mcu-spdm-lite-stack/set-certificate",
+  "caliptra-mcu-spdm-pal/set-certificate",
+  "caliptra-mcu-spdm-stack/set-certificate",
 ]
 test-doe-spdm-tdisp-ide-validator = []
 test-mcu-mbox-fips-periodic = ["caliptra-mcu-mbox-lib/periodic-fips-self-test"]

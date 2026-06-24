@@ -25,6 +25,7 @@
 mod aes_gcm;
 mod alloc;
 mod cert;
+mod debug_unlock;
 mod device_state;
 mod dpe;
 pub mod eat;
@@ -45,6 +46,10 @@ pub use aes_gcm::{
 };
 pub use alloc::ApiAlloc;
 pub use cert::{get_attested_csr_ecc384, get_attested_csr_mldsa87, populate_idev_ecc384_cert};
+pub use debug_unlock::{
+    request_debug_unlock_challenge, DEBUG_UNLOCK_CHALLENGE_LEN,
+    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
+};
 pub use device_state::{get_pcr_value, pcr_quote_ecc384, PCR_QUOTE_ECC384_LEN};
 pub use dpe::{
     dpe_certify_key, dpe_certify_key_pubkey, dpe_get_cert_chain_chunk, dpe_sign_ecc_p384,

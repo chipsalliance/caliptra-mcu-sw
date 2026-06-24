@@ -2,15 +2,15 @@
 
 //! Emulator IDE-KM driver used by the DOE/SPDM TDISP+IDE validator test.
 
-use mcu_spdm_lite_codec::{
+use caliptra_mcu_spdm_codec::{
     AddrAssociationRegBlock, IdeCapabilityReg, IdeControlReg, KeyInfo, LinkIdeStreamControlReg,
     LinkIdeStreamRegBlock, LinkIdeStreamStatusReg, PortConfig, SelectiveIdeRidAssociationReg1,
     SelectiveIdeRidAssociationReg2, SelectiveIdeStreamCapabilityReg, SelectiveIdeStreamControlReg,
     SelectiveIdeStreamRegBlock, SelectiveIdeStreamStatusReg, IDE_STREAM_IV_SIZE_DW,
     IDE_STREAM_KEY_SIZE_DW, MAX_SELECTIVE_IDE_ADDR_ASSOC_BLOCK_COUNT,
 };
-use mcu_spdm_lite_traits::SpdmPalAlloc;
-use mcu_spdm_lite_vdm_handler::pci_sig::ide_km::{IdeDriver, IdeDriverError, IdeDriverResult};
+use caliptra_mcu_spdm_traits::SpdmPalAlloc;
+use caliptra_mcu_spdm_vdm_handler::pci_sig::ide_km::{IdeDriver, IdeDriverError, IdeDriverResult};
 use zerocopy::little_endian::U32;
 
 /// Minimal emulator implementation for DOE/SPDM IDE-KM validation.
@@ -57,7 +57,7 @@ impl IdeDriver for EmulatedIdeDriver {
         &self,
         port_index: u8,
         _scratch: &Alloc,
-    ) -> IdeDriverResult<mcu_spdm_lite_codec::IdeRegBlock>
+    ) -> IdeDriverResult<caliptra_mcu_spdm_codec::IdeRegBlock>
     where
         Alloc: SpdmPalAlloc,
     {
@@ -71,7 +71,7 @@ impl IdeDriver for EmulatedIdeDriver {
 
         let mut ide_ctrl_reg = IdeControlReg::default();
         ide_ctrl_reg.set_flow_through_ide_stream_enabled(1);
-        Ok(mcu_spdm_lite_codec::IdeRegBlock {
+        Ok(caliptra_mcu_spdm_codec::IdeRegBlock {
             ide_cap_reg,
             ide_ctrl_reg,
         })

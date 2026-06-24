@@ -1,0 +1,23 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-spdm-pal"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+caliptra-mcu-spdm-traits = { workspace = true }
+caliptra-mcu-spdm-codec = { workspace = true }
+mcu-caliptra-api-lite = { workspace = true }
+mcu-error = { workspace = true }
+caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
+caliptra-mcu-libtock_platform = { workspace = true, optional = true }
+zerocopy = { workspace = true }
+
+[features]
+default = []
+set-certificate = [
+  "caliptra-mcu-libsyscall-caliptra",
+  "caliptra-mcu-libtock_platform",
+]

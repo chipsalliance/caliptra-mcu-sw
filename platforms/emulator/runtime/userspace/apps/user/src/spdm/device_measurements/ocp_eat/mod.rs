@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! OCP EAT measurement provider for spdm-lite.
+//! OCP EAT measurement provider for spdm-lib.
 //!
 //! Provides a single measurement at index 0xFD (StructuredManifest)
 //! containing a COSE_Sign1–signed EAT token with firmware evidence.
@@ -15,15 +15,15 @@
 
 pub mod claims;
 
+use caliptra_mcu_spdm_pal::measurements::MeasurementProvider;
+use caliptra_mcu_spdm_pal::BitmapAllocator;
+use caliptra_mcu_spdm_traits::{MeasurementInfo, SPDM_NONCE_LEN};
 use mcu_caliptra_api_lite::signed_eat::SignedEatLite;
 use mcu_caliptra_api_lite::{
     dpe_certify_key_pubkey, sha_finish, sha_init, sha_update, HashAlgo, DPE_LABEL_LEN,
     SHA_CONTEXT_SIZE,
 };
 use mcu_error::McuResult;
-use mcu_spdm_lite_pal::measurements::MeasurementProvider;
-use mcu_spdm_lite_pal::BitmapAllocator;
-use mcu_spdm_lite_traits::{MeasurementInfo, SPDM_NONCE_LEN};
 
 /// Single measurement entry: index 0xFD, StructuredManifest.
 const OCP_EAT_MEAS_INFO: [MeasurementInfo; 1] = [MeasurementInfo {

@@ -2155,21 +2155,81 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-mcu-spdm-lib"
+name = "caliptra-mcu-spdm-codec"
 version = "0.1.0"
 dependencies = [
- "arrayvec",
- "async-trait",
- "bitfield",
- "caliptra-api",
- "caliptra-mcu-common-commands",
- "caliptra-mcu-libapi-caliptra",
+ "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-spdm-errors",
+ "caliptra-mcu-spdm-traits",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-errors"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-runtime-userspace-error",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-pal"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-spdm-codec",
+ "caliptra-mcu-spdm-traits",
+ "mcu-caliptra-api-lite",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-stack"
+version = "0.1.0"
+dependencies = [
+ "bitfield-struct",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_console",
- "caliptra-mcu-libtock_platform",
- "constant_time_eq 0.4.2",
+ "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-spdm-codec",
+ "caliptra-mcu-spdm-errors",
+ "caliptra-mcu-spdm-traits",
  "futures",
- "rand 0.8.5",
+ "mcu-caliptra-api-lite",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-traits"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-runtime-userspace-error",
+ "mcu-caliptra-api-lite",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-transports"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-spdm-errors",
+ "caliptra-mcu-spdm-traits",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-vdm-handler"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-spdm-codec",
+ "caliptra-mcu-spdm-errors",
+ "caliptra-mcu-spdm-traits",
+ "futures",
+ "mcu-caliptra-api-lite",
  "zerocopy",
 ]
 
@@ -5108,85 +5168,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-spdm-lite-codec"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-runtime-userspace-error",
- "mcu-spdm-lite-errors",
- "mcu-spdm-lite-traits",
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-spdm-lite-errors"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-runtime-userspace-error",
-]
-
-[[package]]
-name = "mcu-spdm-lite-pal"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-libsyscall-caliptra",
- "caliptra-mcu-libtock_platform",
- "caliptra-mcu-runtime-userspace-error",
- "mcu-caliptra-api-lite",
- "mcu-spdm-lite-codec",
- "mcu-spdm-lite-traits",
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-spdm-lite-stack"
-version = "0.1.0"
-dependencies = [
- "bitfield-struct",
- "caliptra-mcu-libsyscall-caliptra",
- "caliptra-mcu-libtock_console",
- "caliptra-mcu-runtime-userspace-error",
- "futures",
- "mcu-caliptra-api-lite",
- "mcu-spdm-lite-codec",
- "mcu-spdm-lite-errors",
- "mcu-spdm-lite-traits",
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-spdm-lite-traits"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "caliptra-mcu-runtime-userspace-error",
- "mcu-caliptra-api-lite",
-]
-
-[[package]]
-name = "mcu-spdm-lite-transports"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "caliptra-mcu-libsyscall-caliptra",
- "caliptra-mcu-runtime-userspace-error",
- "mcu-spdm-lite-errors",
- "mcu-spdm-lite-traits",
-]
-
-[[package]]
-name = "mcu-spdm-lite-vdm-handler"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-runtime-userspace-error",
- "futures",
- "mcu-caliptra-api-lite",
- "mcu-spdm-lite-codec",
- "mcu-spdm-lite-errors",
- "mcu-spdm-lite-traits",
- "zerocopy",
-]
-
-[[package]]
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7506,7 +7487,12 @@ dependencies = [
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-romtime",
  "caliptra-mcu-runtime-userspace-error",
- "caliptra-mcu-spdm-lib",
+ "caliptra-mcu-spdm-codec",
+ "caliptra-mcu-spdm-pal",
+ "caliptra-mcu-spdm-stack",
+ "caliptra-mcu-spdm-traits",
+ "caliptra-mcu-spdm-transports",
+ "caliptra-mcu-spdm-vdm-handler",
  "caliptra-mcu-userlog",
  "caliptra-ocp-eat",
  "constant_time_eq 0.4.2",
@@ -7516,12 +7502,6 @@ dependencies = [
  "embassy-sync",
  "embedded-alloc",
  "mcu-caliptra-api-lite",
- "mcu-spdm-lite-codec",
- "mcu-spdm-lite-pal",
- "mcu-spdm-lite-stack",
- "mcu-spdm-lite-traits",
- "mcu-spdm-lite-transports",
- "mcu-spdm-lite-vdm-handler",
  "portable-atomic",
  "static_cell",
  "zerocopy",
