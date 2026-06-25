@@ -36,7 +36,6 @@ use caliptra_mcu_romtime::LifecycleToken;
 use caliptra_mcu_romtime::PqcKeyType;
 use caliptra_mcu_romtime::{HexWord, McuBootMilestones, StaticRef};
 use caliptra_mcu_romtime::{Mci, Otp, PROD_DEBUG_UNLOCK_PK_ENTRIES};
-use core::fmt::Write;
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
 

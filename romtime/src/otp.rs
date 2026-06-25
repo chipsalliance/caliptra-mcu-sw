@@ -7,7 +7,6 @@ use crate::{
 use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_registers_generated::fuses::{self, FuseEntryInfo, OtpPartitionInfo};
 use caliptra_mcu_registers_generated::otp_ctrl;
-use core::fmt::Write;
 use tock_registers::interfaces::{Readable, Writeable};
 
 // TODO: use the Lifecycle controller to read the Lifecycle state

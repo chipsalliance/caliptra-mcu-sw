@@ -5,8 +5,8 @@ use crate::mctp::mux::MuxMCTPDriver;
 use crate::mctp::transport_binding::MCTPTransportBinding;
 use caliptra_mcu_romtime::println;
 use core::cell::Cell;
-use core::fmt::Write;
 use kernel::collections::list::{ListLink, ListNode};
+
 use kernel::hil::time::Alarm;
 use kernel::utilities::cells::{MapCell, OptionalCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;

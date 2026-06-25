@@ -13,12 +13,7 @@ use crate::{RomEnv, RomParameters};
 #[cfg(feature = "svn-manifest")]
 use caliptra_mcu_error::McuError;
 #[cfg(any(feature = "fw-manifest-dot", feature = "svn-manifest"))]
-use caliptra_mcu_romtime::HexWord;
-#[cfg(any(feature = "fw-manifest-dot", feature = "svn-manifest"))]
-use caliptra_mcu_romtime::McuRomBootStatus;
-#[cfg(any(feature = "fw-manifest-dot", feature = "svn-manifest"))]
-use core::fmt::Write;
-
+use caliptra_mcu_romtime::{HexWord, McuRomBootStatus};
 /// Run all enabled firmware-header processors in order, returning the
 /// final offset (relative to `sram_offset`) at which the firmware entry
 /// point lives.

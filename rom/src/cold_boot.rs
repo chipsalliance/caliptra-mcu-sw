@@ -34,8 +34,8 @@ use caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg;
 use caliptra_mcu_registers_generated::mci::bits::SecurityState::DeviceLifecycle as MciDeviceLifecycle;
 use caliptra_mcu_registers_generated::mci::bits::{MboxExecute, MboxLock};
 use caliptra_mcu_romtime::{CaliptraSoC, HexBytes, HexWord, McuBootMilestones, McuRomBootStatus};
-use core::fmt::Write;
 use core::ops::Deref;
+
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::{transmute, IntoBytes};
 

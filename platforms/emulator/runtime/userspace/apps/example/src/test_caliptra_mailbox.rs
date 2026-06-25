@@ -4,7 +4,6 @@ use caliptra_api::mailbox::{MailboxReqHeader, QuotePcrsEcc384Req, QuotePcrsEcc38
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_romtime::{println, test_exit};
-use core::fmt::Write;
 use zerocopy::{FromBytes, IntoBytes};
 
 #[allow(unused)]

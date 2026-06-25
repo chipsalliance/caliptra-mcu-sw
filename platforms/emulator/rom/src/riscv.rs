@@ -15,7 +15,6 @@ Abstract:
 #![allow(unused_imports)]
 
 use crate::io::{EMULATOR_EXITER, EMULATOR_WRITER, FATAL_ERROR_HANDLER};
-use core::fmt::Write;
 
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));

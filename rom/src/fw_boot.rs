@@ -16,7 +16,6 @@ use crate::firmware_headers::process_firmware_headers;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_romtime::{McuBootMilestones, McuRomBootStatus};
-use core::fmt::Write;
 
 pub struct FwBoot {}
 
