@@ -46,3 +46,6 @@ rustflags = [
     "--remap-path-prefix=/root/.cargo/registry=registry",
     "--remap-path-prefix=/root/.cargo/git=git",
 ]
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
