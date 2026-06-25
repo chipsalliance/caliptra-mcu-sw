@@ -48,6 +48,12 @@ platforms/fpga/runtime/user-app-layout.ld
 
 cross-target/
 
+# Scripts virtualenv and generated env
+scripts/.venv/
+scripts/.env
+scripts/fpga-artifacts/
+scripts/fpga-test-results/
+
 # Test logs
 **/junit.xml
 

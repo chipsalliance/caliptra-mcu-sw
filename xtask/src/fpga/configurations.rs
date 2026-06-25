@@ -8,8 +8,8 @@ use super::{
     run_command, run_command_with_output,
     utils::{
         build_base_container_command, build_caliptra_firmware, caliptra_sw_workspace_root,
-        check_ssh_access, download_bitstream, load_bitstream, rsync_file, run_test_suite,
-        NextestArchiveCommand,
+        check_ssh_access, download_bitstream, load_bitstream, rsync_file,
+        run_local_nextest_archive, run_test_suite, NextestArchiveCommand,
     },
     ActionHandler, BootstrapArgs, BuildArgs, BuildTestArgs, TestArgs,
 };
@@ -241,16 +241,24 @@ impl<'a> ActionHandler<'a> for Subsystem {
     }
 
     fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
-        let cmd = NextestArchiveCommand::new("/work-dir")
-            .feature("fpga_realtime")
-            .package_filter(args.package_filter.as_deref())
-            .build();
-
-        let mut container = build_base_container_command()?;
-        container.arg(&cmd);
-        container
-            .status()
-            .context("failed to cross compile tests")?;
+        if args.no_container {
+            let project_root = PROJECT_ROOT.display().to_string();
+            let cmd = NextestArchiveCommand::new(&project_root)
+                .feature("fpga_realtime")
+                .package_filter(args.package_filter.as_deref())
+                .build_local();
+            run_local_nextest_archive(&cmd).context("failed to cross compile tests locally")?;
+        } else {
+            let cmd = NextestArchiveCommand::new("/work-dir")
+                .feature("fpga_realtime")
+                .package_filter(args.package_filter.as_deref())
+                .build();
+            let mut container = build_base_container_command()?;
+            container.arg(&cmd);
+            container
+                .status()
+                .context("failed to cross compile tests")?;
+        }
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
                 .context("failed to copy tests to fpga")?;
@@ -361,16 +369,24 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         let caliptra_sw = caliptra_sw_workspace_root();
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
 
-        let cmd = NextestArchiveCommand::new(&format!("/{base_name}"))
-            .features(&["fpga_subsystem", "itrng", "ocp-lock"])
-            .package_filter(args.package_filter.as_deref())
-            .build();
-
-        let mut container = build_base_container_command()?;
-        container.arg(&cmd);
-        container
-            .status()
-            .context("failed to cross compile tests")?;
+        if args.no_container {
+            let caliptra_path = caliptra_sw.canonicalize().unwrap();
+            let cmd = NextestArchiveCommand::new(&caliptra_path.display().to_string())
+                .features(&["fpga_subsystem", "itrng", "ocp-lock"])
+                .package_filter(args.package_filter.as_deref())
+                .build_local();
+            run_local_nextest_archive(&cmd).context("failed to cross compile tests locally")?;
+        } else {
+            let cmd = NextestArchiveCommand::new(&format!("/{base_name}"))
+                .features(&["fpga_subsystem", "itrng", "ocp-lock"])
+                .package_filter(args.package_filter.as_deref())
+                .build();
+            let mut container = build_base_container_command()?;
+            container.arg(&cmd);
+            container
+                .status()
+                .context("failed to cross compile tests")?;
+        }
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
                 .context("failed to copy tests to fpga")?;
@@ -470,16 +486,24 @@ impl<'a> ActionHandler<'a> for Core {
         let caliptra_sw = caliptra_sw_workspace_root();
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
 
-        let cmd = NextestArchiveCommand::new(&format!("/{base_name}"))
-            .features(&["fpga_realtime", "itrng"])
-            .package_filter(args.package_filter.as_deref())
-            .build();
-
-        let mut container = build_base_container_command()?;
-        container.arg(&cmd);
-        container
-            .status()
-            .context("failed to cross compile tests")?;
+        if args.no_container {
+            let caliptra_path = caliptra_sw.canonicalize().unwrap();
+            let cmd = NextestArchiveCommand::new(&caliptra_path.display().to_string())
+                .features(&["fpga_realtime", "itrng"])
+                .package_filter(args.package_filter.as_deref())
+                .build_local();
+            run_local_nextest_archive(&cmd).context("failed to cross compile tests locally")?;
+        } else {
+            let cmd = NextestArchiveCommand::new(&format!("/{base_name}"))
+                .features(&["fpga_realtime", "itrng"])
+                .package_filter(args.package_filter.as_deref())
+                .build();
+            let mut container = build_base_container_command()?;
+            container.arg(&cmd);
+            container
+                .status()
+                .context("failed to cross compile tests")?;
+        }
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
                 .context("failed to copy tests to fpga")?;

@@ -16,9 +16,7 @@ const BUILDER_IMAGE: &str = "ghcr.io/chipsalliance/caliptra-builder:latest";
 
 /// Check that host system has all the tools that the xtask FPGA flows depends on.
 pub fn check_host_dependencies() -> Result<()> {
-    if Container::try_new().is_err() {
-        bail!("Neither 'podman' nor 'docker' found on PATH. Please install one of them.");
-    }
+    // docker/podman is checked lazily when a container is actually needed
     let tools = [
         (
             "rsync --version",
@@ -234,6 +232,33 @@ impl NextestArchiveCommand {
 
         cmd
     }
+
+    /// Build the command string for local (non-container) execution.
+    /// Uses the project root path instead of /work-dir.
+    pub fn build_local(self) -> String {
+        let project_root = PROJECT_ROOT.display().to_string();
+        let mut cmd = format!("cd {} && ", self.work_dir);
+        cmd.push_str("CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc ");
+        cmd.push_str("cargo nextest archive ");
+
+        if !self.features.is_empty() {
+            cmd.push_str(&format!("--features={} ", self.features.join(",")));
+        }
+
+        if let Some(filter) = self.package_filter {
+            cmd.push_str(&format!("-E '{}' ", filter));
+        }
+
+        cmd.push_str("--target=aarch64-unknown-linux-gnu ");
+        cmd.push_str("--release ");
+        cmd.push_str(&format!(
+            "--archive-file={}/caliptra-test-binaries.tar.zst ",
+            project_root
+        ));
+        cmd.push_str("--target-dir cross-target/");
+
+        cmd
+    }
 }
 
 pub struct Container {
@@ -336,6 +361,11 @@ pub fn build_base_container_command() -> Result<Container> {
     let mut container = Container::try_new()?;
     container.setup_build_env()?;
     Ok(container)
+}
+
+/// Run a nextest archive command locally (no container).
+pub fn run_local_nextest_archive(cmd: &str) -> Result<()> {
+    run_command(None, cmd)
 }
 
 pub fn run_test_suite(
