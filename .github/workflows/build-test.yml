@@ -40,7 +40,7 @@ jobs:
         run: cargo xtask precheckin
 
   build-firmware:
-    runs-on: e2-standard-8
+    runs-on: e2-standard-16-big-disk
     timeout-minutes: 90
 
     env:
@@ -95,9 +95,7 @@ jobs:
         run: |
           # Build all test runtime features used by integration tests
           # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
-          # Note: parallel-build is disabled because it creates separate target dirs
-          # per build, which exhausts disk space on the e2-standard-8 runner.
-          cargo run -p caliptra-mcu-xtask -- all-build --platform emulator \
+          cargo run -p caliptra-mcu-xtask -- --features parallel-build all-build --platform emulator \
             --rom-features "hw-2-1" \
             --test-rom-features "ocp-lock,stable-owner-key" \
             --separate-runtimes
