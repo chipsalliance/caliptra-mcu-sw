@@ -184,7 +184,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 
         let mut resp_buf = [0u8; core::mem::size_of::<ProductionAuthDebugUnlockChallenge>()];
 
-        execute_mailbox_cmd(
+        let resp_len = execute_mailbox_cmd(
             &mailbox,
             CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ.0,
             req.as_mut_bytes(),
@@ -192,9 +192,12 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         )
         .await
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+        if resp_len != core::mem::size_of::<ProductionAuthDebugUnlockChallenge>() {
+            return Err(CaliptraCompletionCode::OperationFailed);
+        }
 
         let resp = ProductionAuthDebugUnlockChallenge::ref_from_bytes(&resp_buf)
-            .map_err(|_| CaliptraCompletionCode::GeneralError)?;
+            .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
         challenge
             .unique_device_identifier

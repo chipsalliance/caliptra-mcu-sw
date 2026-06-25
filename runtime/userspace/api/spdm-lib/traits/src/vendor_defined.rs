@@ -82,6 +82,62 @@ pub trait SpdmVdmBackend {
     /// Returns true when this backend owns the decoded VDM registry ID.
     fn match_id(&self, registry: &VdmRegistry<'_>) -> bool;
 
+    /// Attempts to start streaming a matched large VDM request.
+    ///
+    /// `req_len` is the total VDM payload length (excluding the SPDM
+    /// VENDOR_DEFINED envelope). `first` is the VDM payload bytes carried in the
+    /// first CHUNK_SEND fragment. Backends return `Ok(true)` only when they own
+    /// and have started streaming this request; `Ok(false)` lets the stack fall
+    /// back to buffered large-request handling.
+    async fn start_streaming_request<Alloc, Io>(
+        &self,
+        _req_len: usize,
+        _first: &[u8],
+        _alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<bool>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        Ok(false)
+    }
+
+    /// Streams additional VDM payload bytes for a request accepted by
+    /// [`start_streaming_request`](Self::start_streaming_request).
+    async fn continue_streaming_request<Alloc, Io>(
+        &self,
+        _chunk: &[u8],
+        _alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<()>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+
+    /// Finishes a streaming VDM request and writes the VDM response payload.
+    async fn finish_streaming_request<Alloc, Io>(
+        &self,
+        _rsp: VdmResponseBuffer<'_, Alloc, Io>,
+    ) -> McuResult<VdmResponse>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+
+    /// Aborts any in-progress streaming VDM request owned by this backend.
+    async fn abort_streaming_request<Alloc, Io>(&self, _alloc: &Alloc, _io: &Io)
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+    }
+
     /// Handles a matched VDM request and writes only the VDM response payload.
     ///
     /// Called only after [`SpdmVdmBackend::match_id`] has selected this backend, so it

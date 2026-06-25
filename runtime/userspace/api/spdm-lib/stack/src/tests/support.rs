@@ -106,6 +106,7 @@ pub struct TestPal {
     pub erase_error: Option<McuErrorCode>,
     pub cert_chain: &'static [u8],
     pub op: RefCell<Option<StoreOp>>,
+    pub stream_cert: RefCell<Vec<u8>>,
 }
 
 impl Default for TestPal {
@@ -119,6 +120,7 @@ impl Default for TestPal {
             erase_error: None,
             cert_chain: TEST_CERT_CHAIN,
             op: RefCell::new(None),
+            stream_cert: RefCell::new(Vec::new()),
         }
     }
 }
@@ -361,7 +363,74 @@ impl SpdmPalCertStore for TestPal {
         Ok(())
     }
 
-    #[cfg(feature = "set-certificate")]
+async fn begin_write_cert_chain_stream(
+        &self,
+        _io: &Self::Io<'_>,
+        slot: u8,
+        _algo: SpdmPalAsymAlgo,
+        key_pair_id: u8,
+        cert_model: u8,
+        root_hash: &[u8; SHA384_DIGEST_SIZE],
+        data_len: usize,
+    ) -> McuResult<()> {
+        if let Some(err) = self.write_error {
+            return Err(err);
+        }
+        let mut data = self.stream_cert.borrow_mut();
+        data.clear();
+        data.resize(data_len, 0);
+        let _ = (slot, key_pair_id, cert_model, root_hash);
+        Ok(())
+    }
+
+    async fn write_cert_chain_stream_chunk(
+        &self,
+        _io: &Self::Io<'_>,
+        _slot: u8,
+        _algo: SpdmPalAsymAlgo,
+        offset: usize,
+        data: &[u8],
+    ) -> McuResult<()> {
+        let mut cert = self.stream_cert.borrow_mut();
+        cert[offset..offset + data.len()].copy_from_slice(data);
+        Ok(())
+    }
+
+    async fn finish_write_cert_chain_stream(
+        &self,
+        _io: &Self::Io<'_>,
+        slot: u8,
+        _algo: SpdmPalAsymAlgo,
+        key_pair_id: u8,
+        cert_model: u8,
+        root_hash: &[u8; SHA384_DIGEST_SIZE],
+        _data_len: usize,
+        _data_checksum: u32,
+    ) -> McuResult<()> {
+        if let Some(err) = self.validate_error {
+            return Err(err);
+        }
+        let cert_chain = self.stream_cert.borrow().clone();
+        let first_len = cert_chain
+            .get(1)
+            .copied()
+            .map(|len| len as usize + 2)
+            .unwrap_or(0);
+        if first_len == 0
+            || first_len > cert_chain.len()
+            || test_digest(&cert_chain[..first_len]) != *root_hash
+        {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        self.op.replace(Some(StoreOp::Write {
+            slot,
+            key_pair_id,
+            cert_model,
+            root_hash: *root_hash,
+            cert_chain,
+        }));
+        Ok(())
+    }
     async fn erase_cert_chain(
         &self,
         _io: &Self::Io<'_>,

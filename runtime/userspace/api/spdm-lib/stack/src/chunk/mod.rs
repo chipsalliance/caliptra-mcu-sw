@@ -6,6 +6,7 @@ mod get;
 mod send;
 
 pub(crate) use get::handle_chunk_get;
+pub(crate) use send::abort_streaming_request_if_needed;
 pub(crate) use send::handle_chunk_send;
 
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport};
@@ -70,18 +71,41 @@ impl ChunkState {
     pub(crate) fn reset(&mut self) {
         *self = Self::default();
     }
+}
 
-    #[inline]
-    #[allow(dead_code)]
-    pub(crate) fn in_progress(&self) -> bool {
-        self.in_use
-    }
+#[derive(Copy, Clone)]
+pub(crate) struct VendorDefinedStreamState {
+    pub(crate) standard_id: u16,
+    pub(crate) vendor_id: [u8; 4],
+    pub(crate) vendor_id_len: u8,
+}
+
+#[cfg(feature = "set-certificate")]
+pub(crate) const STREAM_PREFIX_CAPACITY: usize = 96;
+
+#[cfg(feature = "set-certificate")]
+#[derive(Copy, Clone)]
+pub(crate) struct StreamPrefixState {
+    pub(crate) data: [u8; STREAM_PREFIX_CAPACITY],
+    pub(crate) len: usize,
+}
+
+#[derive(Copy, Clone)]
+pub(crate) enum ActiveLargeRequest {
+    Buffered,
+    #[cfg(feature = "set-certificate")]
+    Prefix(StreamPrefixState),
+    #[cfg(feature = "set-certificate")]
+    SetCertificate(crate::set_certificate::SetCertificateStreamState),
+    #[cfg(feature = "set-certificate")]
+    Unsupported(SpdmError),
+    VendorDefined(VendorDefinedStreamState),
 }
 
 #[derive(Copy, Clone)]
 pub(crate) enum LargeMessageMode {
     Idle,
-    Request,
+    Request(ActiveLargeRequest),
     Response(ActiveLargeResponse),
 }
 
@@ -128,14 +152,22 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
         self.buf.as_ref()
     }
 
-    /// Access the underlying buffer to mutably modify.
-    #[allow(dead_code)]
-    pub fn get_buffer_mut(&mut self) -> Option<&mut L> {
-        self.buf.as_mut()
+    pub fn request_in_progress(&self) -> bool {
+        matches!(self.mode, LargeMessageMode::Request(_)) && self.state.in_use
     }
 
-    pub fn request_in_progress(&self) -> bool {
-        matches!(self.mode, LargeMessageMode::Request) && self.state.in_use
+    pub(crate) fn active_request(&self) -> Option<&ActiveLargeRequest> {
+        match &self.mode {
+            LargeMessageMode::Request(active) if self.state.in_use => Some(active),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn active_request_mut(&mut self) -> Option<&mut ActiveLargeRequest> {
+        match &mut self.mode {
+            LargeMessageMode::Request(active) if self.state.in_use => Some(active),
+            _ => None,
+        }
     }
 
     pub fn response_in_progress(&self) -> bool {
@@ -157,7 +189,7 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
             return Err(SPDM_UNEXPECTED_REQUEST);
         }
 
-        self.mode = LargeMessageMode::Request;
+        self.mode = LargeMessageMode::Request(ActiveLargeRequest::Buffered);
         self.state = ChunkState {
             in_use: true,
             handle,
@@ -172,6 +204,62 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
             *d = *s;
         }
         self.buf = Some(rent_buf);
+        Ok(())
+    }
+
+    pub(crate) fn init_streaming_request(
+        &mut self,
+        handle: u8,
+        total_size: usize,
+        initial_chunk_len: usize,
+        active: ActiveLargeRequest,
+    ) -> Result<(), SpdmError> {
+        if !self.is_idle() {
+            return Err(SPDM_UNEXPECTED_REQUEST);
+        }
+        self.mode = LargeMessageMode::Request(active);
+        self.state = ChunkState {
+            in_use: true,
+            handle,
+            seq_num: 0,
+            bytes_received: initial_chunk_len as u32,
+            large_msg_size: total_size as u32,
+        };
+        Ok(())
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn replace_active_request(
+        &mut self,
+        active: ActiveLargeRequest,
+    ) -> Result<(), SpdmError> {
+        if !self.request_in_progress() {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+        self.mode = LargeMessageMode::Request(active);
+        Ok(())
+    }
+
+    pub(crate) fn append_streaming_request(
+        &mut self,
+        handle: u8,
+        seq_num: u16,
+        chunk_len: usize,
+    ) -> Result<(), SpdmError> {
+        if !self.request_in_progress()
+            || self.state.handle != handle
+            || self.state.seq_num.wrapping_add(1) != seq_num
+        {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+        let end = (self.state.bytes_received as usize)
+            .checked_add(chunk_len)
+            .ok_or(SPDM_UNSPECIFIED)?;
+        if end > self.state.large_msg_size as usize {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+        self.state.bytes_received = end as u32;
+        self.state.seq_num = seq_num;
         Ok(())
     }
 
@@ -203,40 +291,6 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
         self.state.bytes_received = end as u32;
         self.state.seq_num = seq_num;
         Ok(())
-    }
-
-    /// Securely processes the fully assembled request via a scoped loan closure hook,
-    /// guaranteeing zero-wipe and clean reset regardless of success or early error pathways.
-    ///
-    /// # Example (e.g., `SET_CERTIFICATE` reassembly dispatch):
-    /// ```ignore
-    /// state.large_msg_ctx.with_request_buf(len, |assembled_req| {
-    ///     set_certificate::handle_set_certificate_request(state, pal, io, assembled_req).await
-    /// })
-    /// ```
-    ///
-    /// Evaluates the reassembled payload bytes within the scoped closure. On exit (success or error),
-    /// the context unconditionally zero-fills the underlying memory and resets the chunk state.
-    #[allow(dead_code)]
-    pub fn with_request_buf<F, R>(&mut self, len: usize, op: F) -> Result<R, SpdmError>
-    where
-        F: FnOnce(&[u8]) -> Result<R, SpdmError>,
-    {
-        if !self.state.in_use
-            || self.state.bytes_received as usize != self.state.large_msg_size as usize
-        {
-            return Err(SPDM_INVALID_REQUEST);
-        }
-
-        let buf = self.buf.as_deref_mut().ok_or(SPDM_UNSPECIFIED)?;
-        let request_slice = buf.get(..len).ok_or(SPDM_INVALID_REQUEST)?;
-
-        let result = op(request_slice);
-
-        buf.fill(0);
-        self.reset();
-
-        result
     }
 
     pub(crate) fn next_handle(&self) -> u8 {

@@ -70,6 +70,36 @@ pub trait CaliptraVdmCommands {
         scratch: &A,
     ) -> CaliptraVdmResult<()>;
 
+    /// Starts streaming a production debug unlock token request.
+    async fn start_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        _token_len: usize,
+        _first: &[u8],
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Streams additional production debug unlock token bytes.
+    async fn continue_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        _chunk: &[u8],
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Finishes a streaming production debug unlock token request.
+    async fn finish_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Aborts a streaming production debug unlock token request.
+    async fn abort_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(&self, _scratch: &A) {}
+
     /// Exports an attested CSR for `device_key_id` using `algorithm` and `nonce`,
     /// writing the raw CSR bytes into `out` and returning their length.
     async fn export_attested_csr<A: SpdmPalAlloc>(
@@ -126,6 +156,92 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
     fn match_id(&self, registry: &VdmRegistry<'_>) -> bool {
         registry.standard_id == StandardsBodyId::Iana.as_u16()
             && registry.vendor_id == CALIPTRA_VENDOR_ID.to_le_bytes()
+    }
+
+    async fn start_streaming_request<Alloc, Io>(
+        &self,
+        req_len: usize,
+        first: &[u8],
+        alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<bool>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        if first.len() < VDM_HEADER_LEN || req_len < VDM_HEADER_LEN {
+            return Err(INVARIANT);
+        }
+        if first[0] != CALIPTRA_VDM_COMMAND_VERSION
+            || first[1] != CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8
+        {
+            return Ok(false);
+        }
+        match self
+            .cmds
+            .start_authorize_debug_unlock_token_stream(
+                req_len - VDM_HEADER_LEN,
+                &first[VDM_HEADER_LEN..],
+                alloc,
+            )
+            .await
+        {
+            Ok(()) => Ok(true),
+            Err(CaliptraCompletionCode::UnsupportedOperation) => Ok(false),
+            Err(_) => Err(INVARIANT),
+        }
+    }
+
+    async fn continue_streaming_request<Alloc, Io>(
+        &self,
+        chunk: &[u8],
+        alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<()>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        self.cmds
+            .continue_authorize_debug_unlock_token_stream(chunk, alloc)
+            .await
+            .map_err(|_| INVARIANT)
+    }
+
+    async fn finish_streaming_request<Alloc, Io>(
+        &self,
+        rsp: VdmResponseBuffer<'_, Alloc, Io>,
+    ) -> McuResult<VdmResponse>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        let out = rsp.inline;
+        if out.len() < VDM_HEADER_LEN + 1 {
+            return Err(INVARIANT);
+        }
+        let completion = match self
+            .cmds
+            .finish_authorize_debug_unlock_token_stream(rsp.alloc)
+            .await
+        {
+            Ok(()) => CaliptraCompletionCode::Success,
+            Err(code) => code,
+        };
+        out[0] = CALIPTRA_VDM_COMMAND_VERSION;
+        out[1] = CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8;
+        out[2] = completion as u8;
+        Ok(VdmResponse::Inline(VDM_HEADER_LEN + 1))
+    }
+
+    async fn abort_streaming_request<Alloc, Io>(&self, alloc: &Alloc, _io: &Io)
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        self.cmds
+            .abort_authorize_debug_unlock_token_stream(alloc)
+            .await;
     }
 
     async fn handle_request<Alloc, Io>(

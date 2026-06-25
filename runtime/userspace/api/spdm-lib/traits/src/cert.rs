@@ -165,6 +165,63 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
         data: &[u8],
     ) -> McuResult<()>;
 
+    /// Begins a non-atomic streaming SET_CERTIFICATE write transaction.
+    ///
+    /// Implementations may erase/overwrite target storage at begin time. A
+    /// request becomes valid only after [`finish_write_cert_chain_stream`](Self::finish_write_cert_chain_stream)
+    /// commits metadata; interrupted or invalid requests need not preserve the old chain.
+    #[allow(clippy::too_many_arguments)]
+    async fn begin_write_cert_chain_stream(
+        &self,
+        _io: &Self::Io<'_>,
+        _slot: u8,
+        _algo: SpdmPalAsymAlgo,
+        _key_pair_id: u8,
+        _cert_info: u8,
+        _root_hash: &[u8; 48],
+        _data_len: usize,
+    ) -> McuResult<()> {
+        Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+
+    /// Writes one DER chunk at `offset` within the streaming cert-chain data.
+    async fn write_cert_chain_stream_chunk(
+        &self,
+        _io: &Self::Io<'_>,
+        _slot: u8,
+        _algo: SpdmPalAsymAlgo,
+        _offset: usize,
+        _data: &[u8],
+    ) -> McuResult<()> {
+        Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+
+    /// Commits a streaming SET_CERTIFICATE write transaction.
+    #[allow(clippy::too_many_arguments)]
+    async fn finish_write_cert_chain_stream(
+        &self,
+        _io: &Self::Io<'_>,
+        _slot: u8,
+        _algo: SpdmPalAsymAlgo,
+        _key_pair_id: u8,
+        _cert_info: u8,
+        _root_hash: &[u8; 48],
+        _data_len: usize,
+        _data_checksum: u32,
+    ) -> McuResult<()> {
+        Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+
+    /// Aborts a streaming SET_CERTIFICATE write transaction.
+    async fn abort_write_cert_chain_stream(
+        &self,
+        _io: &Self::Io<'_>,
+        _slot: u8,
+        _algo: SpdmPalAsymAlgo,
+    ) -> McuResult<()> {
+        Ok(())
+    }
+
     /// Erase the cert chain in `slot` for the given algorithm.
     #[cfg(feature = "set-certificate")]
     async fn erase_cert_chain(

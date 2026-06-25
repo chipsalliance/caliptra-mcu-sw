@@ -47,7 +47,7 @@ pub async fn request_debug_unlock_challenge<A: ApiAlloc>(
 
     let mut rsp = alloc.alloc(RSP_LEN)?;
     let rsp_len = mbox_execute(CMD_PRODUCTION_AUTH_DEBUG_UNLOCK_REQ, &req, &mut rsp).await?;
-    if rsp_len < RSP_LEN {
+    if rsp_len != RSP_LEN {
         return Err(INTERNAL_BUG);
     }
 
