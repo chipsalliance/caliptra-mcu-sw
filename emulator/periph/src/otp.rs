@@ -181,6 +181,15 @@ impl Otp {
                 ..fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48]
                 .copy_from_slice(&vendor_pk_hash);
         }
+        if let Some(mut owner_pk_hash) = args.owner_pk_hash {
+            // Only write if non-zero to avoid clobbering test-provisioned data.
+            if owner_pk_hash.iter().any(|&b| b != 0) {
+                swap_endianness(&mut owner_pk_hash);
+                let offset = fuses::OTP_CPTRA_SS_OWNER_PK_HASH.byte_offset;
+                let size = fuses::OTP_CPTRA_SS_OWNER_PK_HASH.byte_size;
+                otp.partitions.borrow_mut()[offset..offset + size].copy_from_slice(&owner_pk_hash);
+            }
+        }
         // Encode as one-hot + duplication to match the fuse layout
         // (OneHotLinear{MajorityVote,Or}, bits: 2, duplication: 3):
         // MLDSA = thermometer value 1 (bit 0 set), duplicated 3x = 0b000111 = 0x07.

@@ -103,6 +103,7 @@ const GO_BIT: u32 = 1 << 0;
 
 fn run() -> ! {
     let env = RomEnv::new();
+    env.mci.caliptra_boot_go();
 
     // Wait for go-bit (FPGA OTP clearing preamble).
     while env.mci.registers.mci_reg_generic_input_wires[0].get() & GO_BIT == 0 {}

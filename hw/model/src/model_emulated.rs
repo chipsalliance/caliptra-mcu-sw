@@ -227,10 +227,19 @@ impl McuHwModel for ModelEmulated {
 
         let lc = LcCtrl::with_state(lc_state_index, lc_transition_cnt);
 
+        let owner_pk_hash = {
+            let mut bytes = [0u8; 48];
+            for (i, word) in params.fuses.owner_pk_hash.iter().enumerate() {
+                bytes[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
+            }
+            bytes
+        };
+
         let otp = Otp::new(
             &clock.clone(),
             OtpArgs {
                 raw_memory: Some(otp_mem),
+                owner_pk_hash: Some(owner_pk_hash),
                 vendor_pk_hash: params.vendor_pk_hash,
                 vendor_pqc_type: params.vendor_pqc_type,
                 vendor_test_partition: params.vendor_test_partition.clone(),

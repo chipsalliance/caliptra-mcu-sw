@@ -29,6 +29,7 @@ const DEFAULT_TOKEN: u128 = 0x05edb8c608fcc830de181732cfd65e57;
 
 fn run() -> ! {
     let env = RomEnv::new();
+    env.mci.caliptra_boot_go();
 
     // Set boot milestone so the host's warm_reset() can proceed.
     env.mci

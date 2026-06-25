@@ -244,16 +244,14 @@ impl Soc {
         self.registers.fuse_fmc_key_manifest_svn.set(svn);
 
         // Vendor PK Hash.
-        caliptra_mcu_romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
+
         let mut hash_buf = [0u8; 48];
         otp.read_vendor_pk_hash(pk_hash_idx, &mut hash_buf)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         for (i, word_bytes) in hash_buf.chunks_exact(4).enumerate() {
             let word = u32::from_le_bytes(word_bytes.try_into().unwrap());
-            caliptra_mcu_romtime::print!("{}", HexWord(word));
             self.registers.fuse_vendor_pk_hash[i].set(word);
         }
-        caliptra_mcu_romtime::println!("");
 
         // Runtime SVN.
         for i in 0..self.registers.fuse_runtime_svn.len() {
