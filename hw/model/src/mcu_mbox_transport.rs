@@ -1,7 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_registers_generated::mci;
-use caliptra_mcu_registers_generated::mci::bits::{MboxCmdStatus, MboxExecute, Notif0IntrTrigT};
+use caliptra_mcu_registers_generated::mci::bits::{
+    GlobalIntrEnT, MboxCmdStatus, MboxExecute, Notif0IntrEnT, Notif0IntrT, Notif0IntrTrigT,
+};
 use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
@@ -73,9 +75,10 @@ impl McuMailboxTransport {
             .set(MboxExecute::Execute::SET.value);
 
         // Manually trigger the interrupt (the HW model doesn't always generate it).
+        // Use .set() instead of .modify() to avoid read-modify-write on a trigger register.
         self.mci
             .intr_block_rf_notif0_intr_trig_r
-            .modify(Notif0IntrTrigT::NotifMbox0CmdAvailTrig::SET);
+            .set(Notif0IntrTrigT::NotifMbox0CmdAvailTrig::SET.value);
 
         Ok(())
     }

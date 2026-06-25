@@ -78,6 +78,12 @@ impl ImaginaryFlashController {
         if self.mci.mcu_mbox0_csr_mbox_execute.get() != MboxExecute::Execute::SET.value {
             return;
         }
+        // Only process if target_user_valid is set (flash_ctrl sets this;
+        // host mbox_transport does not). This prevents the flash responder
+        // from picking up MCU mbox commands intended for the firmware.
+        if self.mci.mcu_mbox0_csr_mbox_target_user_valid.get() == 0 {
+            return;
+        }
 
         self.busy.store(true, atomic::Ordering::SeqCst);
 
@@ -164,7 +170,6 @@ impl ImaginaryFlashController {
         let start = Instant::now();
         while self.mci.mcu_mbox0_csr_mbox_execute.get() != MboxExecute::Execute::CLEAR.value {
             if start.elapsed() > timeout {
-                println!("Timeout waiting for EXECUTE bit to clear");
                 break;
             }
         }

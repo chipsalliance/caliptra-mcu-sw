@@ -243,10 +243,8 @@ impl SyscallFilter for Filter {
     fn filter_syscall(
         &self,
         _process: &dyn process::Process,
-        _syscall: &syscall::Syscall,
+        syscall: &syscall::Syscall,
     ) -> Result<(), errorcode::ErrorCode> {
-        // Uncomment this to enable syscall logging
-        //caliptra_mcu_romtime::println!("Syscall: {:?}", syscall);
         Ok(())
     }
 }
@@ -996,8 +994,10 @@ pub unsafe fn main() {
     // Enable MCI Interrupts
     mci.intr_block_rf_global_intr_en_r
         .modify(mci::bits::GlobalIntrEnT::NotifEn::SET + mci::bits::GlobalIntrEnT::ErrorEn::SET);
-    mci.intr_block_rf_notif0_intr_en_r
-        .modify(mci::bits::Notif0IntrEnT::NotifCptraMcuResetReqEn::SET);
+    mci.intr_block_rf_notif0_intr_en_r.modify(
+        mci::bits::Notif0IntrEnT::NotifCptraMcuResetReqEn::SET
+            + mci::bits::Notif0IntrEnT::NotifMbox0CmdAvailEn::SET,
+    );
 
     mci_wdt.set_flow_milestone(McuBootMilestones::FIRMWARE_OS_INITIALIZED.into());
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);

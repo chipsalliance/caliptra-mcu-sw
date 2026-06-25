@@ -72,10 +72,10 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
     }
 
     fn reset_before_use(&self) {
-        let mbox_sram_size = (self.registers.mcu_mbox0_csr_mbox_sram.len() * 4) as u32;
-        // MCU acquires the lock to allow SRAM clearing.
-        self.registers.mcu_mbox0_csr_mbox_lock.get();
-        self.registers.mcu_mbox0_csr_mbox_dlen.set(mbox_sram_size);
+        // Note: Do NOT read mbox_lock here. On real hardware (FPGA), reading the
+        // lock register acquires it, and the MCU (target) cannot release it since
+        // only the requester can trigger mbox_release via execute. This would
+        // permanently lock out the host.
         self.registers.mcu_mbox0_csr_mbox_execute.set(0);
     }
 
@@ -95,6 +95,27 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
             self.handle_incoming_request();
         }
         self.enable_interrupts();
+    }
+
+    /// Poll the mailbox notification register for a pending command.
+    /// This is a fallback for platforms where the MCI hardware interrupt
+    /// does not reach the VeeR PIC (e.g., FPGA). Called from
+    /// service_interrupt on every interrupt to piggyback on timer/I3C interrupts.
+    pub fn poll_for_command(&self) {
+        if self.state.get() != McuMboxState::RxWait {
+            return;
+        }
+        let intr_status = self
+            .registers
+            .intr_block_rf_notif0_internal_intr_r
+            .extract();
+        if intr_status.is_set(Notif0IntrT::NotifMbox0CmdAvailSts) {
+            // Clear the status bit (W1C)
+            self.registers
+                .intr_block_rf_notif0_internal_intr_r
+                .set(Notif0IntrT::NotifMbox0CmdAvailSts::SET.value);
+            self.handle_incoming_request();
+        }
     }
 
     pub fn schedule_send_done(&self) {

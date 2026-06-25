@@ -6,6 +6,7 @@ pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use aes_gcm::{aead::AeadMutInPlace, Aes256Gcm, Key, KeyInit};
     use caliptra_api::mailbox::CmHashAlgorithm;
+    use caliptra_mcu_hw_model::flash_ctrl::ImaginaryFlashController;
     use caliptra_mcu_hw_model::mcu_mbox_transport::{
         McuMailboxError, McuMailboxResponse, McuMailboxTransport,
     };
@@ -214,6 +215,28 @@ pub mod test {
 
         hw.start_i3c_controller();
         let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
+
+        // Start flash IO responder thread - the MCU flash_ctrl driver uses mbox0
+        // to send flash commands to the SoC. Without this responder, flash ops
+        // hold the lock forever, blocking the MCU mbox test.
+        let flash_mci_ptr = mci_ptr;
+        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+            wait_for_runtime_start();
+            if !caliptra_mcu_testing_common::is_emulator_running() {
+                return;
+            }
+            let mci_base = unsafe {
+                caliptra_mcu_romtime::StaticRef::new(flash_mci_ptr as *const mci::regs::Mci)
+            };
+            let flash_controller = ImaginaryFlashController::new(mci_base, None, None);
+            loop {
+                if !caliptra_mcu_testing_common::is_emulator_running() {
+                    break;
+                }
+                flash_controller.process_flash_ios();
+                sleep_emulator_ticks(100);
+            }
+        });
 
         caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();

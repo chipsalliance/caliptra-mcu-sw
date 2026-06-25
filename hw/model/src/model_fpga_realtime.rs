@@ -10,8 +10,8 @@ use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap, OpenOcdJtagTap};
 use caliptra_hw_model::{
-    DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
-    SecurityState, SubsystemInitParams, XI3CWrapper,
+    DeviceLifecycle, ExitStatus, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem,
+    Output, SecurityState, SubsystemInitParams, XI3CWrapper,
 };
 use caliptra_mcu_romtime::LifecycleControllerState;
 use caliptra_mcu_romtime::McuBootMilestones;
@@ -395,15 +395,52 @@ impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
         self.handle_i3c();
-        update_ticks(self.cycle_count() / 100); // notify tests about current time, but reduce effective speed
+        let cc = self.cycle_count();
+        let ticks = cc / 100;
+        update_ticks(ticks); // notify tests about current time, but reduce effective speed
+    }
+
+    fn step_until_exit_success(&mut self) -> std::io::Result<()> {
+        let mut step_count: u64 = 0;
+        loop {
+            if !self.output().peek().is_empty() {
+                // discard output (Sink equivalent)
+                self.output().take(usize::MAX);
+            }
+            match self.output().exit_status().or(self.exit_status()) {
+                Some(ExitStatus::Passed) => {
+                    return Ok(());
+                }
+                Some(ExitStatus::Failed) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "firmware exited with failure",
+                    ));
+                }
+                None => {}
+            }
+            if let Some(fatal_error) = self.mci_fw_fatal_error() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("firmware fatal error: 0x{:08x}", fatal_error),
+                ));
+            }
+            self.step();
+            step_count += 1;
+            if step_count % 1_000_000 == 0 {
+                println!(
+                    "[fpga-diag] step_count={} cycle_count={}",
+                    step_count,
+                    self.cycle_count()
+                );
+            }
+        }
     }
 
     fn new_unbooted(params: InitParams) -> Result<Self>
     where
         Self: Sized,
     {
-        println!("ModelFpgaRealtime::new_unbooted");
-
         // Install per-instance emulator state on this thread BEFORE any
         // worker thread is spawned below (start_i3c_socket etc. spawn via
         // spawn_with_emulator_state and inherit from this thread). The

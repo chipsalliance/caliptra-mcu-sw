@@ -96,6 +96,10 @@ impl<'a> VeeRDefaultPeripherals<'a> {
 
 impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
     unsafe fn service_interrupt(&self, interrupt: u32) -> bool {
+        // On every interrupt, poll the MCU mailbox notification register.
+        // This is a workaround for FPGA where MCI_IRQ does not reach the PIC.
+        self.mcu_mbox0.poll_for_command();
+
         if self
             .additional_interrupt_handler
             .service_interrupt(interrupt)
@@ -194,13 +198,18 @@ impl<'a, I: InterruptService + 'a> kernel::platform::chip::Chip for VeeR<'a, I> 
     }
 
     fn has_pending_interrupts(&self) -> bool {
+        // Poll timer0 in case hardware interrupt didn't fire (FPGA workaround).
+        self.timers.poll_expired();
         self.pic.get_saved_interrupts().is_some()
             || self.timers.get_saved_interrupts() != TimerInterrupts::None
     }
 
     fn sleep(&self) {
+        // Poll timer0 - workaround for FPGA where BIT29 interrupt doesn't fire.
+        self.timers.poll_expired();
+        // Poll MCU mailbox - workaround for FPGA where MCI_IRQ doesn't reach PIC.
         unsafe {
-            rv32i::support::wfi();
+            self.peripherals.service_interrupt(0);
         }
     }
 

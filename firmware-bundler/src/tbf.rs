@@ -36,10 +36,14 @@ pub fn create_tbf_header(binary: &Binary) -> Result<TbfHeader> {
 
     // If the min ram size is not defined, set it to 0.  This is likely a sizing build, so the
     // minimum ram size is being determined.
-    let min_ram_size = binary
+    //
+    // Subtract one page (4096 bytes) from the declared minimum to account for Tock's per-process
+    // kernel memory overhead (grant pointers, process struct, callbacks). The process still
+    // receives all available memory; this value is only used as a validation check.
+    let min_ram_size: u32 = binary
         .data_mem
         .as_ref()
-        .map(|d| d.size)
+        .map(|d| d.size.saturating_sub(4096))
         .unwrap_or_default()
         .try_into()?;
 

@@ -81,9 +81,9 @@ impl<'a> EmulatedFlashCtrl<'a> {
     }
 
     fn reset_before_use(&self) {
-        let mbox_sram_size = (self.registers.mcu_mbox0_csr_mbox_sram.len() * 4) as u32;
-        self.registers.mcu_mbox0_csr_mbox_lock.get();
-        self.registers.mcu_mbox0_csr_mbox_dlen.set(mbox_sram_size);
+        // Note: Do NOT read mbox_lock here. On real hardware (FPGA), reading the
+        // lock register acquires it, and the MCU (target) cannot reliably release
+        // it via execute=0 alone — mbox_release depends on AXI user validation.
         self.registers.mcu_mbox0_csr_mbox_execute.set(0);
     }
 

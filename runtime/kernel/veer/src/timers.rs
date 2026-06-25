@@ -97,6 +97,22 @@ impl<'a> InternalTimers<'a> {
         self.disable_timer1();
     }
 
+    /// Check if timer0 has expired and simulate the interrupt if so.
+    /// Workaround for FPGA where the VeeR internal timer interrupt (BIT29)
+    /// does not fire.
+    pub fn poll_expired(&self) {
+        // Only check if timer0 is enabled
+        if self.mitctl0.read(mitctl0::enable) == 0 {
+            return;
+        }
+        let cnt = self.mitcnt0.get();
+        let bound = self.mitb0.get();
+        if bound != 0 && cnt >= bound {
+            // Timer expired - save the interrupt so service_interrupts() will fire
+            self.save_interrupt(0);
+        }
+    }
+
     pub fn enable_timer0(&self) {
         self.mitctl0
             .read_and_set_bits(mitctl0::enable.mask << mitctl0::enable.shift);
