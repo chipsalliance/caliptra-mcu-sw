@@ -67,6 +67,7 @@ pub trait FatalErrorHandler {
 }
 
 static mut FATAL_ERROR_HANDLER: Option<&'static mut dyn FatalErrorHandler> = None;
+static mut FATAL_ERROR_WAIT_FOR_RECOVERY_RESET_ENABLED: bool = false;
 
 /// Set the fatal error handler.
 ///
@@ -77,6 +78,33 @@ pub fn set_fatal_error_handler(handler: &'static mut dyn FatalErrorHandler) {
     unsafe {
         FATAL_ERROR_HANDLER = Some(handler);
     }
+}
+
+/// Enable or disable the fatal-handler wait for the recovery reset signal.
+pub(crate) fn set_fatal_error_wait_for_recovery_reset_enabled(enabled: bool) {
+    unsafe {
+        FATAL_ERROR_WAIT_FOR_RECOVERY_RESET_ENABLED = enabled;
+    }
+}
+
+/// Returns whether fatal error reporting must wait for BMC recovery reset acknowledgement.
+fn fatal_error_wait_for_recovery_reset_enabled() -> bool {
+    unsafe { FATAL_ERROR_WAIT_FOR_RECOVERY_RESET_ENABLED }
+}
+
+/// Waits for BMC to acknowledge the recovery status before reporting fatal error.
+fn wait_for_recovery_reset_before_fatal_error() {
+    if !fatal_error_wait_for_recovery_reset_enabled() {
+        return;
+    }
+
+    let env = RomEnv::new();
+    let i3c_base = if env.straps.active_i3c == 1 {
+        env.i3c1_base
+    } else {
+        env.i3c_base
+    };
+    crate::recovery::wait_for_device_reset_request(i3c_base);
 }
 
 /// A handler which outputs useful debug information if an exception is encountered during ROM
@@ -132,6 +160,8 @@ fn rom_panic(_: &core::panic::PanicInfo) -> ! {
 #[allow(dead_code)]
 #[allow(clippy::empty_loop)]
 fn fatal_error_raw(code: u32) -> ! {
+    wait_for_recovery_reset_before_fatal_error();
+
     #[allow(static_mut_refs)]
     if let Some(handler) = unsafe { FATAL_ERROR_HANDLER.as_mut() } {
         handler.fatal_error(code);

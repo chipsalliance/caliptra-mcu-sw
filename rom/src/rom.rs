@@ -755,6 +755,14 @@ pub struct RomParameters<'a> {
     /// triggers a warm reset. If empty, no locked-state recovery is attempted.
     pub dot_locked_recovery_handlers:
         &'a [crate::device_ownership_transfer::DotLockedRecoveryEntry<'a>],
+    /// Enables DOT-aware recovery reset handling. When enabled, DOT blob
+    /// authentication failures and Caliptra firmware authentication failures
+    /// after a DOT-sourced owner publish DEVICE_STATUS=0x94000E and arm the
+    /// common fatal handler to wait for DEVICE_RESET.RESET_CTRL=1 before
+    /// reporting `FW_ERROR_FATAL`. A subsequent cold boot with RESET_CTRL=0x10
+    /// forces the fused owner PK hash, while RESET_CTRL=0x11 continues the
+    /// regular DOT verification flow.
+    pub dot_recovery_reset_flow: bool,
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,
@@ -827,6 +835,7 @@ pub struct RomParameters<'a> {
 #[inline(always)]
 pub fn rom_start(params: RomParameters) {
     caliptra_mcu_romtime::println!("[mcu-rom] Hello from ROM");
+    crate::set_fatal_error_wait_for_recovery_reset_enabled(false);
 
     // Create ROM environment with all peripherals
     let mut env = RomEnv::new();

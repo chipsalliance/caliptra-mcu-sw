@@ -210,6 +210,7 @@ mod test {
     }
 
     fn compile_rom(feature: &str) -> PathBuf {
+        let requested_feature = feature;
         let feature = if TEST_HW_REVISION == "2.1.0" {
             if feature.is_empty() {
                 "hw-2-1".to_string()
@@ -227,7 +228,13 @@ mod test {
             })
             .expect("ROM build failed");
         assert!(output.exists());
-        output
+        if requested_feature.is_empty() {
+            let stable_output = target_binary(&format!("mcu_rom_default_{}.bin", platform()));
+            std::fs::copy(&output, &stable_output).expect("Failed to copy default MCU ROM");
+            stable_output
+        } else {
+            output
+        }
     }
 
     pub fn compile_runtime(feature: Option<&str>, example_app: bool) -> PathBuf {

@@ -152,12 +152,6 @@ pub(crate) fn install_owner_pk_hash(
     soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     owner_pk_hash: &OwnerPkHash,
 ) -> McuResult<()> {
-    caliptra_mcu_romtime::print!("[mcu-rom-dot] Installing owner PK hash: ");
-    for word in owner_pk_hash.0.iter() {
-        caliptra_mcu_romtime::print!("{}", HexWord(*word));
-    }
-    caliptra_mcu_romtime::println!("");
-
     let req = InstallOwnerPkHashReq {
         hdr: MailboxReqHeader::default(),
         digest: owner_pk_hash.0,
@@ -172,7 +166,7 @@ pub(crate) fn install_owner_pk_hash(
         &mut resp32,
     ) {
         let _ = err;
-        caliptra_mcu_romtime::println!("[mcu-rom-dot] INSTALL_OWNER_PK_HASH failed");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] owner install err");
         return Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED);
     }
     Ok(())
@@ -286,12 +280,6 @@ pub fn dot_flow(
     blob: &DotBlob,
     stable_key_type: CmStableKeyType,
 ) -> McuResult<Option<OwnerPkHash>> {
-    caliptra_mcu_romtime::println!("[mcu-rom-dot] Performing Device Ownership Transfer flow");
-    caliptra_mcu_romtime::println!(
-        "[mcu-rom-dot] DOT raw blob: {}",
-        caliptra_mcu_romtime::HexBytes(blob.as_bytes())
-    );
-    caliptra_mcu_romtime::println!("[mcu-rom-dot] {:x?}", blob);
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferStarted.into());
 
@@ -303,7 +291,6 @@ pub fn dot_flow(
 
     let dot_owner = dot_determine_owner(env, dot_fuses, blob)?;
 
-    caliptra_mcu_romtime::println!("[mcu-rom] Device Ownership Transfer complete");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferComplete.into());
 
@@ -330,11 +317,9 @@ pub fn derive_stable_key_flow(
     dot_fuses: &DotFuses,
     key_type: CmStableKeyType,
 ) -> McuResult<DotEffectiveKey> {
-    caliptra_mcu_romtime::println!("[mcu-rom] Deriving DOT stable key");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipDeriveStableKey.into());
     let dot_effective_key = cm_derive_stable_key(env, dot_fuses, key_type)?;
-    caliptra_mcu_romtime::println!("[mcu-rom] DOT stable key derived successfully");
     Ok(dot_effective_key)
 }
 
@@ -381,7 +366,7 @@ pub(crate) fn cm_derive_stable_key_impl(
         &mut resp,
     ) {
         let _ = err;
-        caliptra_mcu_romtime::println!("[mcu-rom] Error deriving DOT stable key");
+        caliptra_mcu_romtime::println!("[mcu-rom] DOT key err");
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
     let resp: CmDeriveStableKeyResp = transmute!(resp);
@@ -449,7 +434,7 @@ pub fn verify_dot_blob(
 ) -> McuResult<()> {
     let verify = cm_hmac(soc_manager, &key.0, &blob.fields)?;
     if !constant_time_eq::constant_time_eq(verify.as_bytes(), blob.hmac.as_bytes()) {
-        caliptra_mcu_romtime::println!("[mcu-rom] DOT blob HMAC did not match");
+        caliptra_mcu_romtime::println!("[mcu-rom] DOT hmac err");
         return Err(McuError::ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR);
     }
     Ok(())
@@ -480,12 +465,10 @@ fn dot_determine_owner(
     dot_fuses: &DotFuses,
     blob: &DotBlob,
 ) -> McuResult<Option<OwnerPkHash>> {
-    caliptra_mcu_romtime::println!("[mcu-rom-dot] Determining device owner");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipDetermineOwner.into());
 
     if !dot_fuses.enabled {
-        caliptra_mcu_romtime::println!("[mcu-rom-dot] DOT not enabled, no owner from DOT");
         return Ok(None);
     }
 
@@ -493,12 +476,10 @@ fn dot_determine_owner(
         // Device is in ODD state (Locked or Disabled)
         if let Some(cak) = blob.cak() {
             // Locked state: CAK present in DOT blob
-            caliptra_mcu_romtime::println!("[mcu-rom-dot] Device locked, using CAK from DOT blob");
             Ok(Some(cak.clone()))
         } else {
             // Disabled state: ODD with no CAK means ownership is locked but no code
             // authentication is enforced. The owner retains control via LAK.
-            caliptra_mcu_romtime::println!("[mcu-rom-dot] Device in Disabled state (ODD, no CAK)");
             Ok(None)
         }
     } else {
@@ -506,9 +487,6 @@ fn dot_determine_owner(
         // In EVEN state, ownership comes from Ownership_Storage (volatile), not from
         // DOT_BLOB. The DOT_BLOB in EVEN state is only used for verification/sealing
         // purposes during state transitions, not for determining the current owner.
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom-dot] Device in EVEN state, no persistent owner from DOT"
-        );
         Ok(None)
     }
 }
