@@ -11,8 +11,8 @@ use crate::mctp::send::MCTPTxState;
 use crate::mctp::transport_binding::{MCTPTransportBinding, TransportRxClient, TransportTxClient};
 use caliptra_mcu_romtime::println;
 use core::cell::Cell;
-use core::fmt::Write;
 use kernel::collections::list::List;
+
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::hil::time::{Alarm, Ticks};
 use kernel::utilities::cells::TakeCell;

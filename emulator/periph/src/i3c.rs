@@ -107,7 +107,12 @@ pub struct I3c {
 
 impl I3c {
     const HCI_VERSION: u32 = 0x120;
-    const HCI_TICKS: u64 = 1000;
+    /// Emulator poll interval for the I3C peripheral, in core clock ticks.
+    /// Larger values mean fewer polling events per emulated second, which
+    /// speeds up wall-clock execution of long-running tests at the cost of
+    /// coarser I3C interrupt-check granularity. 5000 ticks is enough for
+    /// MCTP / SPDM exchanges and roughly 5x faster than the previous value.
+    const HCI_TICKS: u64 = 5000;
 
     pub fn new(
         clock: &Clock,

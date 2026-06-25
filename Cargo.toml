@@ -87,7 +87,14 @@ members = [
     "runtime/userspace/api/mcu-mbox-lib",
     "runtime/userspace/api/mctp-vdm-lib",
     "runtime/userspace/api/pldm-lib",
-    "runtime/userspace/api/spdm-lib",
+    "runtime/userspace/api/spdm-lib/traits",
+    "runtime/userspace/api/spdm-lib/stack",
+    "runtime/userspace/api/spdm-lib/codec",
+    "runtime/userspace/api/caliptra-api-lite",
+    "runtime/userspace/api/spdm-lib/transports",
+    "runtime/userspace/api/spdm-lib/pal",
+    "runtime/userspace/api/spdm-lib/errors",
+    "runtime/userspace/api/spdm-lib/vdm-handler",
     "runtime/userspace/error",
     "runtime/userspace/libtock/apis/interface/console",
     "runtime/userspace/libtock/apis/kernel/low_level_debug",
@@ -127,6 +134,7 @@ bitfield = "0.14.0"
 bitflags = "2.4.0"
 bindgen = "0.69"
 bit-vec = "0.6.3"
+bitfield-struct = "0.13.0"
 cargo_metadata = "0.20.0"
 cbindgen = "0.24"
 cc = "1.0"
@@ -315,7 +323,14 @@ caliptra-mcu-common-commands = { path = "runtime/userspace/api/caliptra-common-c
 caliptra-mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
 caliptra-mcu-mctp-vdm-lib = { path = "runtime/userspace/api/mctp-vdm-lib" }
 caliptra-mcu-pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
-caliptra-mcu-spdm-lib = { path = "runtime/userspace/api/spdm-lib", default-features = false }
+caliptra-mcu-spdm-traits = { path = "runtime/userspace/api/spdm-lib/traits" }
+caliptra-mcu-spdm-stack = { path = "runtime/userspace/api/spdm-lib/stack" }
+caliptra-mcu-spdm-codec = { path = "runtime/userspace/api/spdm-lib/codec" }
+mcu-caliptra-api-lite = { path = "runtime/userspace/api/caliptra-api-lite" }
+caliptra-mcu-spdm-transports = { path = "runtime/userspace/api/spdm-lib/transports" }
+caliptra-mcu-spdm-pal = { path = "runtime/userspace/api/spdm-lib/pal" }
+caliptra-mcu-spdm-errors = { path = "runtime/userspace/api/spdm-lib/errors" }
+caliptra-mcu-spdm-vdm-handler = { path = "runtime/userspace/api/spdm-lib/vdm-handler" }
 caliptra-mcu-libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 caliptra-mcu-userlog = { path = "runtime/userspace/userlog" }
 caliptra-mcu-libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }

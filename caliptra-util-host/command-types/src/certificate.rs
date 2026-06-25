@@ -135,14 +135,14 @@ impl ExportAttestedCsrResponse {
 
     /// Validates the CSR payload, returning Ok with the byte length on success.
     pub fn validate_csr_payload(&self) -> Result<usize, AttestedCsrValidationError> {
-        let csr = self.csr_bytes();
-        if csr.is_empty() {
+        let len = self.data_len as usize;
+        if len == 0 {
             return Err(AttestedCsrValidationError::Empty);
         }
-        if csr.len() > MAX_CSR_DATA_SIZE {
-            return Err(AttestedCsrValidationError::TooLarge(csr.len()));
+        if len > MAX_CSR_DATA_SIZE {
+            return Err(AttestedCsrValidationError::TooLarge(len));
         }
-        Ok(csr.len())
+        Ok(len)
     }
 }
 
@@ -185,13 +185,13 @@ impl ExportIdevidCsrResponse {
 
     /// Validates the CSR payload, returning Ok with the byte length on success.
     pub fn validate_csr_payload(&self) -> Result<usize, AttestedCsrValidationError> {
-        let csr = self.csr_bytes();
-        if csr.is_empty() {
+        let len = self.data_len as usize;
+        if len == 0 {
             return Err(AttestedCsrValidationError::Empty);
         }
-        if csr.len() > MAX_CSR_DATA_SIZE {
-            return Err(AttestedCsrValidationError::TooLarge(csr.len()));
+        if len > MAX_CSR_DATA_SIZE {
+            return Err(AttestedCsrValidationError::TooLarge(len));
         }
-        Ok(csr.len())
+        Ok(len)
     }
 }

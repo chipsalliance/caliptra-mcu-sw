@@ -24,12 +24,12 @@ proc connect {target} {
             set _IDCODE 0x00000001
         } else {
             puts "Connecting to MCU"
-            set gpionum [expr {$gpionum + 31}]
+            set gpionum [expr {$gpionum + 36}]
             set _IDCODE 0x00000001
         }
     } elseif {$target == "lcc"} {
         puts "Connecting to LCC"
-        set gpionum [expr {$gpionum + 36}]
+        set gpionum [expr {$gpionum + 31}]
         set _CHIPNAME lcc
         set _TAPNAME tap
         set _IDCODE 0x00000001

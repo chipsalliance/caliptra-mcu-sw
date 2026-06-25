@@ -44,8 +44,8 @@ use caliptra_mcu_romtime::{
     CaliptraSoC, FieldEntropySlot, FieldEntropyState, HexBytes, HexWord, LifecycleControllerState,
     LifecycleToken, McuBootMilestones, McuRomBootStatus, Otp,
 };
-use core::fmt::Write;
 use core::ops::Deref;
+
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 

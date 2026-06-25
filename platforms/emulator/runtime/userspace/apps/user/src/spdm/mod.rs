@@ -1,324 +1,219 @@
 // Licensed under the Apache-2.0 license
 
-mod cert_store;
-mod device_cert_store;
-mod device_measurements;
-mod endorsement_certs;
-#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-mod integration_example;
-pub(crate) mod shared_large_msg_buf;
+//! User-app SPDM responder — runs spdm-lib over MCTP and DOE.
+//!
+//! spdm-lib implements version/capability/algorithm negotiation,
+//! digests, certificate retrieval, challenge authentication, and SPDM
+//! large-message chunking.
 
-#[cfg(not(feature = "pcr-quote-measurements"))]
-use crate::spdm::device_measurements::ocp_eat::init_target_env_claims;
+extern crate alloc;
+
+mod caliptra_vdm;
+mod cert_store;
+mod device_measurements;
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+mod pci_sig_vdm;
+
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+use self::pci_sig_vdm::{emulated_ide_km::EmulatedIdeDriver, emulated_tdisp::EmulatedTdispDriver};
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
-use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_mcu_spdm_lib::codec::MessageBuf;
-use caliptra_mcu_spdm_lib::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
-use caliptra_mcu_spdm_lib::error::SpdmError;
-use caliptra_mcu_spdm_lib::measurements::SpdmMeasurements;
-use caliptra_mcu_spdm_lib::protocol::*;
-use caliptra_mcu_spdm_lib::transport::common::SpdmTransport;
-use caliptra_mcu_spdm_lib::transport::common::TransportError;
-use caliptra_mcu_spdm_lib::transport::doe::DoeTransport;
-use caliptra_mcu_spdm_lib::transport::mctp::MctpTransport;
-use core::fmt::Write;
-use device_cert_store::{initialize_cert_store, SharedCertStore};
+use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
+use caliptra_mcu_spdm_pal::{
+    BitmapAllocator, McuSpdmPal, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE,
+};
+use caliptra_mcu_spdm_stack::SpdmStack;
+use caliptra_mcu_spdm_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
+use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+use caliptra_mcu_spdm_vdm_handler::pci_sig::{
+    ide_km::PciSigIdeKmTdispVdm,
+    tdisp::{TdispResponder, TdispVersion},
+};
+use core::fmt::Write as _;
+use core::ptr::NonNull;
+use core::sync::atomic::{AtomicU8, Ordering};
 use embassy_executor::Spawner;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 
-// Caliptra supported SPDM and Secure SPDM versions
-const SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12, SpdmVersion::V13];
-const SECURE_SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12];
+/// Bitmap allocator pool size per responder task.
+///
+/// Must hold `MEAS_RECORD_BUF_SIZE + MeasurementProvider::SCRATCH_SIZE`
+/// plus transient DPE/SHA mailbox buffers (peak ~2.4 KB during
+/// certify_key for kid computation).
+const SPDM_SCRATCH_SIZE: usize = 12 * 1024;
 
-// Caliptra Crypto timeout exponent (2^20 us)
-const CALIPTRA_SPDM_CT_EXPONENT: u8 = 20;
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
+#[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+const SUPPORTED_TDISP_VERSIONS: &[TdispVersion] = &[TdispVersion::V10];
 
-/// Maximum SPDM message size advertised in capabilities.
-/// Must be large enough for the largest supported large message (including
-/// streaming-eligible ones like debug unlock tokens with MLDSA signatures).
-/// Layout: VDM headers (15 bytes) + MailboxReqHeader (4 bytes) + ProductionAuthDebugUnlockToken (~7500 bytes)
-const ADVERTISED_MAX_SPDM_MSG_SIZE: usize = 8192;
+/// Single cert store shared by all SPDM responder tasks.
+static CERT_STORE: SharedCertStore = SharedCertStore::new();
 
-/// Logs an SPDM error in compact, `Debug`-free form. Always prints
-/// `<prefix>: <msg>: <category> 0x<error_code>`; appends ` ext=0x<ext>` only
-/// when the chain transitively wraps an external error (CaliptraApiError /
-/// EatError).
-fn log_spdm_err<W: Write>(w: &mut W, prefix: &str, msg: &str, e: &SpdmError) {
-    let path = e.error_code();
-    let ext = e.ext_code();
-    if ext != 0 {
-        crate::console_writeln!(
-            w,
-            "{}: {}: {} 0x{:08x} ext=0x{:08x}",
-            prefix,
-            msg,
-            e.category(),
-            path,
-            ext
-        );
-    } else {
-        crate::console_writeln!(w, "{}: {}: {} 0x{:08x}", prefix, msg, e.category(), path);
+/// Signal fired when cert store init completes.
+static CERT_STORE_DONE: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+
+/// Cert store init state: 0 = uninit, 1 = in progress, 2 = done.
+static CERT_STORE_STATE: AtomicU8 = AtomicU8::new(0);
+
+#[cfg(feature = "test-mctp-spdm-attestation-pcr-quote")]
+fn measurement_provider() -> device_measurements::pcr_quote::PcrQuoteMeasurementProvider {
+    device_measurements::pcr_quote::PcrQuoteMeasurementProvider::new()
+}
+
+#[cfg(not(feature = "test-mctp-spdm-attestation-pcr-quote"))]
+fn measurement_provider() -> device_measurements::ocp_eat::OcpEatMeasurementProvider {
+    device_measurements::ocp_eat::OcpEatMeasurementProvider::new(
+        caliptra_mcu_spdm_pal::cert::SLOT0_LEAF_LABEL,
+    )
+}
+
+/// Initialize the shared cert store. First caller does the work;
+/// concurrent callers wait on a Signal (no busy-loop).
+async fn ensure_cert_store_init<A: mcu_caliptra_api_lite::ApiAlloc>(
+    alloc: &A,
+) -> mcu_error::McuResult<()> {
+    // Single-core cooperative executor: no preemption between load and
+    // store, so load+store is equivalent to compare_exchange here.
+    // (riscv32imc lacks hardware CAS.)
+    let state = CERT_STORE_STATE.load(Ordering::Acquire);
+    match state {
+        0 => {
+            CERT_STORE_STATE.store(1, Ordering::Release);
+            if let Err(e) = cert_store::populate_idev(alloc).await {
+                CERT_STORE_STATE.store(0, Ordering::Release);
+                CERT_STORE_DONE.signal(false);
+                return Err(e);
+            }
+            let r = cert_store::setup_endorsements(&CERT_STORE, alloc).await;
+            CERT_STORE_STATE.store(if r.is_ok() { 2 } else { 0 }, Ordering::Release);
+            CERT_STORE_DONE.signal(r.is_ok());
+            r
+        }
+        1 => {
+            let ok = CERT_STORE_DONE.wait().await;
+            if ok {
+                Ok(())
+            } else {
+                Err(mcu_error::codes::INTERNAL_BUG)
+            }
+        }
+        _ => Ok(()),
     }
 }
 
-#[embassy_executor::task]
-pub(crate) async fn spdm_task(spawner: Spawner) {
-    let mut console_writer = Console::<DefaultSyscalls>::writer();
-    crate::console_writeln!(console_writer, "SPDM_TASK: Running SPDM-TASK...");
-
-    // Initialize the shared large message buffer (once, before spawning responders)
-    shared_large_msg_buf::init();
-
-    // Initialize the shared certificate store
-    if let Err(e) = initialize_cert_store().await {
-        crate::console_writeln!(
-            console_writer,
-            "SPDM_TASK: Failed to initialize certificate store: 0x{:08x}",
-            e.error_code()
-        );
-        return;
-    }
-
-    // initialize target environment for claims (OCP EAT only)
-    #[cfg(not(feature = "pcr-quote-measurements"))]
-    init_target_env_claims();
+/// Spawn SPDM responder tasks (MCTP + DOE) on the given executor.
+pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
+    let mut cw = Console::<DefaultSyscalls>::writer();
 
     if spawner.spawn(spdm_mctp_responder()).is_err() {
-        crate::console_writeln!(
-            console_writer,
-            "SPDM_TASK: Failed to spawn spdm_mctp_responder"
-        );
+        crate::console_writeln!(cw, "SPDM: Failed to spawn MCTP responder");
     }
-
-    #[cfg(feature = "doe")]
     if spawner.spawn(spdm_doe_responder()).is_err() {
-        crate::console_writeln!(
-            console_writer,
-            "SPDM_TASK: Failed to spawn spdm_doe_responder"
-        );
+        crate::console_writeln!(cw, "SPDM: Failed to spawn DOE responder");
     }
 }
 
 #[embassy_executor::task]
 async fn spdm_mctp_responder() {
-    let mut raw_buffer = [0; MAX_SPDM_RESPONDER_BUF_SIZE];
     let mut cw = Console::<DefaultSyscalls>::writer();
-    let mut mctp_spdm_transport: MctpTransport = MctpTransport::new(mctp::driver_num::MCTP_SPDM);
 
-    let max_mctp_spdm_msg_size =
-        (MAX_SPDM_RESPONDER_BUF_SIZE - mctp_spdm_transport.header_size()) as u32;
+    #[repr(C, align(64))]
+    struct ScratchBuf([u8; SPDM_SCRATCH_SIZE]);
+    static mut MCTP_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_SCRATCH_SIZE]);
+    // SAFETY: this task is the sole owner of `MCTP_SCRATCH`.
+    let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(MCTP_SCRATCH.0.as_mut_ptr()) };
+    debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
-    let local_capabilities = DeviceCapabilities {
-        ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
-        flags: CapabilityFlags::default(),
-        data_transfer_size: max_mctp_spdm_msg_size,
-        max_spdm_msg_size: ADVERTISED_MAX_SPDM_MSG_SIZE as u32,
-    };
+    // SAFETY: `init_once` is called once per task lifetime; this is the
+    // MCTP responder task. Backing memory (`MCTP_SCRATCH`) is `'static`.
+    static MCTP_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
+    let allocator: &'static BitmapAllocator =
+        unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, SPDM_SCRATCH_SIZE) };
 
-    let local_algorithms = LocalDeviceAlgorithms::default();
-
-    // Create a wrapper for the global certificate store
-    let shared_cert_store = SharedCertStore::new();
-
-    // Measurement format: OCP EAT by default, PCR Quote if feature-gated
-    #[cfg(not(feature = "pcr-quote-measurements"))]
-    let (mut device_manifest, meas_value_info) =
-        device_measurements::ocp_eat::create_manifest_with_ocp_eat();
-
-    #[cfg(feature = "pcr-quote-measurements")]
-    let (mut device_manifest, meas_value_info) =
-        device_measurements::pcr_quote::create_manifest_with_pcr_quote();
-
-    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_manifest);
-
-    // Caliptra VDM handler for SPDM over MCTP transport
-    let caliptra_cmd_handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
-    let mut cmd_authorizer = crate::mcu_mbox::cmd_auth_mock::MockCommandAuthorizer::default();
-    let mut caliptra_vdm_handler =
-        caliptra_mcu_spdm_lib::vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdmHandler::new(
-            &caliptra_cmd_handler,
-            &mut cmd_authorizer,
-        );
-    let mut handlers_array: [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler; 1] =
-        [&mut caliptra_vdm_handler as &mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler];
-    let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> =
-        Some(&mut handlers_array);
-
-    // VDM stream handler for streaming large VDM payloads directly to the
-    // Caliptra mailbox without buffering (e.g., debug unlock tokens ~7.5KB).
-    let vdm_stream_handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
-
-    // Large message buffer provider — shared across MCTP and DOE transports.
-    let large_msg_buf_provider = shared_large_msg_buf::SharedLargeMsgBuf::new();
-
-    let mut ctx = match SpdmContext::new(
-        SPDM_VERSIONS,
-        SECURE_SPDM_VERSIONS,
-        &mut mctp_spdm_transport,
-        local_capabilities,
-        local_algorithms,
-        &shared_cert_store,
-        device_measurements,
-        vdm_handlers,
-        &large_msg_buf_provider,
-    ) {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            log_spdm_err(
-                &mut cw,
-                "SPDM_MCTP_RESPONDER",
-                "Failed to create SPDM context",
-                &e,
-            );
+    {
+        if let Err(e) = ensure_cert_store_init(allocator).await {
+            crate::console_writeln!(cw, "SPDM_MCTP: cert store init failed: 0x{:08x}", e);
             return;
         }
-    };
+    }
 
-    // Register the VDM stream handler for large payload streaming
-    ctx.set_vdm_stream_handler(&vdm_stream_handler);
+    let transport = alloc::boxed::Box::new(
+        McuSpdmMctpTransport::new(
+            mctp::driver_num::MCTP_SPDM,
+            caliptra_mcu_spdm_transports::mctp::MCTP_MSG_TYPE_SPDM,
+        )
+        .expect("MCTP_SPDM driver with MCTP_MSG_TYPE_SPDM is a valid pairing"),
+    );
 
-    let mut msg_buffer = MessageBuf::new(&mut raw_buffer);
-    loop {
-        let result = ctx.process_message(&mut msg_buffer).await;
-        if let Err(e) = result {
-            log_spdm_err(&mut cw, "SPDM_MCTP_RESPONDER", "Process message failed", &e);
-        }
+    // SAFETY: `allocator` is the `&'static` handle obtained above and is
+    // exclusive to this task.
+    let pal = unsafe { McuSpdmPal::new(transport, allocator, &CERT_STORE, measurement_provider()) };
+    // MCTP hosts the IANA / Caliptra VDM backend (plaintext today). DOE uses
+    // the default NoVdmBackend unless the TDISP/IDE validator feature wires PCI-SIG.
+    static MCTP_VDM_HOOK: caliptra_vdm::CaliptraVdmHook = caliptra_vdm::CaliptraVdmHook;
+    let vdm = CaliptraVdm::new(&MCTP_VDM_HOOK);
+    let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
+
+    crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lib MCTP run loop");
+    if let Err(e) = stack.run().await {
+        crate::console_writeln!(cw, "SPDM_MCTP: MCTP run loop exited: 0x{:08x}", e);
     }
 }
 
 #[embassy_executor::task]
 async fn spdm_doe_responder() {
-    let mut raw_buffer = [0; MAX_SPDM_RESPONDER_BUF_SIZE];
     let mut cw = Console::<DefaultSyscalls>::writer();
-    let mut doe_spdm_transport: DoeTransport = DoeTransport::new(doe::driver_num::DOE_SPDM);
 
-    let max_doe_spdm_msg_size =
-        (MAX_SPDM_RESPONDER_BUF_SIZE - doe_spdm_transport.header_size()) as u32;
+    let doe_transport = McuSpdmDoeTransport::new(doe::driver_num::DOE_SPDM);
+    if !doe_transport.exists() {
+        crate::console_writeln!(cw, "SPDM_DOE: No DOE device, exiting");
+        return;
+    }
 
-    let mut doe_capability_flags = CapabilityFlags::default();
-    doe_capability_flags.set_key_ex_cap(1);
-    doe_capability_flags.set_mac_cap(1);
-    doe_capability_flags.set_encrypt_cap(1);
-    // Keep SET_CERT_CAP disabled until certificate-chain validation and signing by
-    // SPDM KeyPairID are wired into the platform certificate store.
+    #[repr(C, align(64))]
+    struct ScratchBuf([u8; SPDM_SCRATCH_SIZE]);
+    static mut DOE_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_SCRATCH_SIZE]);
+    // SAFETY: this task is the sole owner of `DOE_SCRATCH`.
+    let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(DOE_SCRATCH.0.as_mut_ptr()) };
+    debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
-    let local_capabilities = DeviceCapabilities {
-        ct_exponent: CALIPTRA_SPDM_CT_EXPONENT,
-        flags: doe_capability_flags,
-        data_transfer_size: max_doe_spdm_msg_size,
-        max_spdm_msg_size: shared_large_msg_buf::LARGE_MSG_BUF_SIZE as u32,
-    };
+    // SAFETY: `init_once` is called once per task lifetime; this is the
+    // DOE responder task. Backing memory (`DOE_SCRATCH`) is `'static`.
+    static DOE_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
+    let allocator: &'static BitmapAllocator =
+        unsafe { DOE_ALLOC_CELL.init_once(scratch_ptr, SPDM_SCRATCH_SIZE) };
 
-    let mut device_doe_algorithms = DeviceAlgorithms::default();
-    device_doe_algorithms.set_dhe_group();
-    device_doe_algorithms.set_aead_cipher_suite();
-    device_doe_algorithms.set_spdm_key_schedule();
-    device_doe_algorithms.set_other_param_support();
-
-    let local_algorithms = LocalDeviceAlgorithms::new(device_doe_algorithms);
-
-    // Create a wrapper for the global certificate store
-    let shared_cert_store = SharedCertStore::new();
-
-    // Measurement format: OCP EAT by default, PCR Quote if feature-gated
-    #[cfg(not(feature = "pcr-quote-measurements"))]
-    let (mut device_manifest, meas_value_info) =
-        device_measurements::ocp_eat::create_manifest_with_ocp_eat();
-
-    #[cfg(feature = "pcr-quote-measurements")]
-    let (mut device_manifest, meas_value_info) =
-        device_measurements::pcr_quote::create_manifest_with_pcr_quote();
-
-    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_manifest);
-
-    // Create test drivers and VDM handlers locally for integration testing
-    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let (mut tdisp_driver, mut ide_km_driver) =
-        integration_example::vdm_handlers::create_test_pci_sig_drivers();
-
-    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let mut tdisp_responder =
-        caliptra_mcu_spdm_lib::vdm_handler::pci_sig::tdisp::TdispResponder::new(
-            integration_example::vdm_handlers::tdisp_driver::SUPPORTED_TDISP_VERSIONS,
-            &mut tdisp_driver,
-        );
-
-    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let mut ide_km_responder =
-        caliptra_mcu_spdm_lib::vdm_handler::pci_sig::ide_km::IdeKmResponder::new(
-            &mut ide_km_driver,
-        );
-
-    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let protocol_handlers: [Option<
-        &mut (dyn caliptra_mcu_spdm_lib::vdm_handler::VdmProtocolHandler + Sync),
-    >; 2] = [
-        tdisp_responder
-            .as_mut()
-            .map(|r| r as &mut (dyn caliptra_mcu_spdm_lib::vdm_handler::VdmProtocolHandler + Sync)),
-        Some(
-            &mut ide_km_responder
-                as &mut (dyn caliptra_mcu_spdm_lib::vdm_handler::VdmProtocolHandler + Sync),
-        ),
-    ];
-
-    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let mut pci_sig_handler = caliptra_mcu_spdm_lib::vdm_handler::pci_sig::PciSigCmdHandler::new(
-        0x0001, // TEST_PCI_SIG_VENDOR_ID
-        protocol_handlers,
-    );
-
-    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let mut handlers_array: [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler; 1] =
-        [&mut pci_sig_handler as &mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler];
-
-    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> =
-        Some(&mut handlers_array);
-
-    #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
-    let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> = None;
-
-    // Large message buffer provider — shared across MCTP and DOE transports.
-    let large_msg_buf_provider = shared_large_msg_buf::SharedLargeMsgBuf::new();
-
-    let mut ctx = match SpdmContext::new(
-        SPDM_VERSIONS,
-        SECURE_SPDM_VERSIONS,
-        &mut doe_spdm_transport,
-        local_capabilities,
-        local_algorithms,
-        &shared_cert_store,
-        device_measurements,
-        vdm_handlers,
-        &large_msg_buf_provider,
-    ) {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            log_spdm_err(
-                &mut cw,
-                "SPDM_DOE_RESPONDER",
-                "Failed to create SPDM context",
-                &e,
-            );
+    {
+        if let Err(e) = ensure_cert_store_init(allocator).await {
+            crate::console_writeln!(cw, "SPDM_DOE: cert store init failed: 0x{:08x}", e);
             return;
         }
-    };
+    }
 
-    let mut msg_buffer = MessageBuf::new(&mut raw_buffer);
-    loop {
-        let result = ctx.process_message(&mut msg_buffer).await;
-        match result {
-            Ok(_) => {}
-            Err(SpdmError::Transport(TransportError::DriverError(ErrorCode::NoDevice))) => {
-                crate::console_writeln!(cw, "SPDM_DOE_RESPONDER: No DOE device, exiting task");
-                break;
-            }
-            Err(e) => {
-                log_spdm_err(&mut cw, "SPDM_DOE_RESPONDER", "Process message failed", &e);
-            }
-        }
+    let transport = alloc::boxed::Box::new(doe_transport);
+    // SAFETY: `allocator` is the `&'static` handle obtained above and is
+    // exclusive to this task.
+    let pal = unsafe { McuSpdmPal::new(transport, allocator, &CERT_STORE, measurement_provider()) };
+    #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
+    let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(
+        pal,
+        PciSigIdeKmTdispVdm::new(
+            TEST_PCI_SIG_VENDOR_ID,
+            EmulatedIdeDriver::default(),
+            TdispResponder::new(SUPPORTED_TDISP_VERSIONS, EmulatedTdispDriver::new())
+                .expect("TDISP validator versions are non-empty"),
+        ),
+    );
+    #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
+    let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
+
+    crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lib DOE run loop");
+    if let Err(e) = stack.run().await {
+        crate::console_writeln!(cw, "SPDM_DOE: DOE run loop exited: 0x{:08x}", e);
     }
 }

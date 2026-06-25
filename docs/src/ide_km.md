@@ -64,7 +64,6 @@ pub enum IdeDriverError {
 
 pub type IdeDriverResult<T> = Result<T, IdeDriverError>;
 
-
 /// KeyInfo structure contains information about the key set, direction, and sub-stream.
 bitfield! {
     #[derive(Clone, Copy, PartialEq, Eq)]
@@ -80,7 +79,7 @@ bitfield! {
 ///
 /// Provides an interface for Integrity and Data Encryption (IDE) key management operations.
 /// This trait abstracts hardware-specific implementations for different platforms.
-#[async_trait]
+#[allow(async_fn_in_trait)]
 pub trait IdeDriver {
     /// Get the port configuration for a given port index.
     ///
@@ -90,7 +89,13 @@ pub trait IdeDriver {
     /// # Returns
     /// A result containing the `PortConfig` for the specified port index, or an error
     /// if the port index is invalid or unsupported.
-    fn port_config(&self, port_index: u8) -> IdeDriverResult<PortConfig>;
+    fn port_config<Alloc>(
+        &self,
+        port_index: u8,
+        scratch: &Alloc,
+    ) -> IdeDriverResult<PortConfig>
+    where
+        Alloc: SpdmPalAlloc;
 
     /// Get the IDE register block.
     ///
@@ -99,7 +104,13 @@ pub trait IdeDriver {
     ///
     /// # Returns
     /// A result containing the `IdeRegBlock` for the specified port, or an error
-    fn ide_register_block(&self, port_index: u8) -> IdeDriverResult<IdeRegBlock>;
+    fn ide_reg_block<Alloc>(
+        &self,
+        port_index: u8,
+        scratch: &Alloc,
+    ) -> IdeDriverResult<IdeRegBlock>
+    where
+        Alloc: SpdmPalAlloc;
 
     /// Get the link IDE register block for a specific port and block index.
     ///
@@ -109,11 +120,14 @@ pub trait IdeDriver {
     ///
     /// # Returns
     /// A result containing the `LinkIdeStreamRegBlock` for the specified port and block
-    fn link_ide_reg_block(
+    fn link_ide_reg_block<Alloc>(
         &self,
         port_index: u8,
         block_index: u8,
-    ) -> IdeDriverResult<LinkIdeStreamRegBlock>;
+        scratch: &Alloc,
+    ) -> IdeDriverResult<LinkIdeStreamRegBlock>
+    where
+        Alloc: SpdmPalAlloc;
 
     /// Get the selective IDE register block for a specific port and block index.
     ///
@@ -123,11 +137,14 @@ pub trait IdeDriver {
     ///
     /// # Returns
     /// A result containing the `SelectiveIdeStreamRegBlock` for the specified port and block
-    fn selective_ide_reg_block(
+    fn selective_ide_reg_block<Alloc>(
         &self,
         port_index: u8,
         block_index: u8,
-    ) -> IdeDriverResult<SelectiveIdeStreamRegBlock>;
+        scratch: &Alloc,
+    ) -> IdeDriverResult<SelectiveIdeStreamRegBlock>
+    where
+        Alloc: SpdmPalAlloc;
 
     /// Key programming for a specific port and stream.
     ///
@@ -145,14 +162,17 @@ pub trait IdeDriver {
     /// - `02h`: Unsupported Port Index value
     /// - `03h`: Unsupported value in other fields
     /// - `04h`: Unspecified Failure
-    async fn key_prog(
+    async fn key_prog<Alloc>(
         &self,
         stream_id: u8,
         key_info: KeyInfo,
         port_index: u8,
-        key: &[u32; IDE_STREAM_KEY_SIZE_DW],
-        iv: &[u32; IDE_STREAM_IV_SIZE_DW],
-    ) -> IdeDriverResult<u8>;
+        key: &[U32; IDE_STREAM_KEY_SIZE_DW],
+        iv: &[U32; IDE_STREAM_IV_SIZE_DW],
+        scratch: &Alloc,
+    ) -> IdeDriverResult<u8>
+    where
+        Alloc: SpdmPalAlloc;
 
     /// Start using the key set for a specific port and stream.
     ///
@@ -162,14 +182,17 @@ pub trait IdeDriver {
     /// * `port_index` - Port to which the key set is to be started.
     ///
     /// # Returns
-    /// A result containing the updated `KeyInfo` after starting the key set, or an
-    /// error if the operation fails.
-    async fn key_set_go(
+    /// `Ok(())` when the operation succeeds, or an error if the operation fails.
+    /// The KEY_GO_STOP_ACK response echoes the request `KeyInfo`.
+    async fn key_set_go<Alloc>(
         &self,
         stream_id: u8,
         key_info: KeyInfo,
         port_index: u8,
-    ) -> IdeDriverResult<KeyInfo>;
+        scratch: &Alloc,
+    ) -> IdeDriverResult<()>
+    where
+        Alloc: SpdmPalAlloc;
 
     /// Stop the key set for a specific port and stream.
     ///
@@ -179,13 +202,16 @@ pub trait IdeDriver {
     /// * `port_index` - Port to which the key set is to be stopped
     ///
     /// # Returns
-    /// A result containing the updated `KeyInfo` after stopping the key set, or an error
-    /// if the operation fails.
-    async fn key_set_stop(
+    /// `Ok(())` when the operation succeeds, or an error if the operation fails.
+    /// The KEY_GO_STOP_ACK response echoes the request `KeyInfo`.
+    async fn key_set_stop<Alloc>(
         &self,
         stream_id: u8,
         key_info: KeyInfo,
         port_index: u8,
-    ) -> IdeDriverResult<KeyInfo>;
+        scratch: &Alloc,
+    ) -> IdeDriverResult<()>
+    where
+        Alloc: SpdmPalAlloc;
 }
 ```

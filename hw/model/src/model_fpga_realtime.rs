@@ -32,6 +32,7 @@ use std::time::Duration;
 use tock_registers::interfaces::{Readable, Writeable};
 
 const DEFAULT_AXI_PAUSER: u32 = 0x1;
+const MCU_BOOT_FSM_READY_FOR_FUSES: u32 = 7;
 
 /// MCTP-over-I3C Mandatory Data Byte value. Only IBIs with this MDB
 /// carry a pending-read length in bytes 1-2.
@@ -566,7 +567,30 @@ impl McuHwModel for ModelFpgaRealtime {
             params.lifecycle_controller_state,
             Some(LifecycleControllerState::Dev)
         ) {
-            base.soc_ifc().cptra_dbg_manuf_service_reg().write(|_| 1);
+            let val: u32 = params.dbg_manuf_service.into();
+            let start = std::time::Instant::now();
+            let mut timeout = true;
+            while start.elapsed() < std::time::Duration::from_secs(5) {
+                let hw_flow = u32::from(base.mmio.mci().unwrap().regs().hw_flow_status().read());
+                if hw_flow >= MCU_BOOT_FSM_READY_FOR_FUSES {
+                    let ready = base.soc_ifc().cptra_flow_status().read().ready_for_fuses();
+                    if ready {
+                        timeout = false;
+                        break;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            if timeout {
+                let hw_flow = u32::from(base.mmio.mci().unwrap().regs().hw_flow_status().read());
+                panic!(
+                    "Timeout waiting for ready_for_fuses status bit! Final HW_FLOW={:08X}",
+                    hw_flow
+                );
+            }
+            base.soc_ifc()
+                .cptra_dbg_manuf_service_reg()
+                .write(|_| val | 1);
         }
 
         let (i3c_rx, i3c_tx) = if let Some(i3c_port) = params.i3c_port {

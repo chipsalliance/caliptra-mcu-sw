@@ -4,7 +4,6 @@ use crate::{HexBytes, HexWord, StaticRef};
 use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_registers_generated::fuses::{self, FuseEntryInfo, OtpPartitionInfo};
 use caliptra_mcu_registers_generated::otp_ctrl;
-use core::fmt::Write;
 use tock_registers::interfaces::{Readable, Writeable};
 
 use crate::{FuseLayout, LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};

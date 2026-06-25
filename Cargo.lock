@@ -296,6 +296,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d7e60934ceec538daadb9d8432424ed043a904d8e0243f3c6446bce549a46ac"
 
 [[package]]
+name = "bitfield-struct"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ca6739863c590881f038d033a146c51ddae239186a4327014839fd864f44ed5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.109",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2144,21 +2155,81 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-mcu-spdm-lib"
+name = "caliptra-mcu-spdm-codec"
 version = "0.1.0"
 dependencies = [
- "arrayvec",
- "async-trait",
- "bitfield",
- "caliptra-api",
- "caliptra-mcu-common-commands",
- "caliptra-mcu-libapi-caliptra",
+ "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-spdm-errors",
+ "caliptra-mcu-spdm-traits",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-errors"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-runtime-userspace-error",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-pal"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-spdm-codec",
+ "caliptra-mcu-spdm-traits",
+ "mcu-caliptra-api-lite",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-stack"
+version = "0.1.0"
+dependencies = [
+ "bitfield-struct",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_console",
- "caliptra-mcu-libtock_platform",
- "constant_time_eq 0.4.2",
+ "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-spdm-codec",
+ "caliptra-mcu-spdm-errors",
+ "caliptra-mcu-spdm-traits",
  "futures",
- "rand 0.8.5",
+ "mcu-caliptra-api-lite",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-traits"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-runtime-userspace-error",
+ "mcu-caliptra-api-lite",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-transports"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-spdm-errors",
+ "caliptra-mcu-spdm-traits",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-vdm-handler"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-spdm-codec",
+ "caliptra-mcu-spdm-errors",
+ "caliptra-mcu-spdm-traits",
+ "futures",
+ "mcu-caliptra-api-lite",
  "zerocopy",
 ]
 
@@ -4983,6 +5054,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
+name = "mcu-caliptra-api-lite"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-runtime-userspace-error",
+ "zerocopy",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7302,7 +7383,12 @@ dependencies = [
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-romtime",
  "caliptra-mcu-runtime-userspace-error",
- "caliptra-mcu-spdm-lib",
+ "caliptra-mcu-spdm-codec",
+ "caliptra-mcu-spdm-pal",
+ "caliptra-mcu-spdm-stack",
+ "caliptra-mcu-spdm-traits",
+ "caliptra-mcu-spdm-transports",
+ "caliptra-mcu-spdm-vdm-handler",
  "caliptra-mcu-userlog",
  "caliptra-ocp-eat",
  "constant_time_eq 0.4.2",
@@ -7311,6 +7397,7 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
+ "mcu-caliptra-api-lite",
  "portable-atomic",
  "static_cell",
  "zerocopy",

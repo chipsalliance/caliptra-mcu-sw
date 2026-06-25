@@ -206,7 +206,18 @@ impl MctpUtil {
                         sleep_emulator_ticks(100_000);
                     } else {
                         retry -= 1;
-                        i3c_state = I3cControllerState::SendPrivateWrite;
+                        // Wait longer for the responder to wake up and post
+                        // its first IBI. Do NOT retransmit the request: the
+                        // firmware processes every private-write as a fresh
+                        // SPDM request, and any duplicate responses end up
+                        // stuck in the I3C queue and get consumed out-of-
+                        // order by subsequent receive_response calls,
+                        // creating a hard-to-debug request/response
+                        // mis-pairing across the whole conformance run.
+                        sleep_emulator_ticks(500_000);
+                        if retry % 10 == 0 {
+                            println!("MCTP_UTIL: IBI not received. Retrying {}...", retry);
+                        }
                     }
                 }
                 I3cControllerState::ReceivePrivateRead => {

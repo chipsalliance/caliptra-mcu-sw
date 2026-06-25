@@ -101,11 +101,7 @@ pub(crate) async fn async_main() {
         feature = "test-pldm-fw-update-e2e",
         feature = "test-mcu-mbox-fips-periodic",
     )))]
-    EXECUTOR
-        .get()
-        .spawner()
-        .spawn(spdm::spdm_task(EXECUTOR.get().spawner()))
-        .unwrap();
+    spdm::spawn_spdm_tasks(&EXECUTOR.get().spawner());
 
     EXECUTOR
         .get()

@@ -1,0 +1,13 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-spdm-codec"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+zerocopy = { workspace = true }
+caliptra-mcu-spdm-traits = { workspace = true }
+caliptra-mcu-spdm-errors = { workspace = true }
+mcu-error = { workspace = true }

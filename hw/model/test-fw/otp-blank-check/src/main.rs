@@ -18,6 +18,8 @@ use caliptra_mcu_rom_common::{fatal_error, RomEnv};
 
 fn run() -> ! {
     let env = RomEnv::new();
+    env.mci.caliptra_boot_go();
+    env.lc.init().unwrap();
     let otp = &env.otp;
 
     let partition = fuses::VENDOR_TEST_PARTITION;

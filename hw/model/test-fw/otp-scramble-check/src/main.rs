@@ -13,13 +13,29 @@
 
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_rom_common::{fatal_error, RomEnv};
-use tock_registers::interfaces::Readable;
+use tock_registers::interfaces::{Readable, Writeable};
 
 const GO_BIT: u32 = 1 << 0;
 
 fn run() -> ! {
     let env = RomEnv::new();
+
+    // Configure iTRNG in bypass mode via ss_strap_generic[2] to provide mock
+    // entropy and prevent the OTP controller from hanging during key
+    // calculation on the emulator. We perform a raw write to avoid accessing
+    // the TRNG configuration registers, which may not be implemented in the
+    // emulator's RTL and could hang the bus.
+    #[cfg(not(feature = "fpga_realtime"))]
+    unsafe {
+        let soc = &*(caliptra_mcu_rom_common::MCU_MEMORY_MAP.soc_offset
+            as *const caliptra_mcu_registers_generated::soc::regs::Soc);
+        soc.ss_strap_generic[2].set((1 << 31) | 100);
+    }
+
     let otp = &env.otp;
+
+    // Release Caliptra reset so host can access its registers without hanging.
+    env.mci.caliptra_boot_go();
 
     // Wait for go-bit (FPGA OTP clearing preamble).
     while env.mci.registers.mci_reg_generic_input_wires[0].get() & GO_BIT == 0 {}

@@ -98,6 +98,7 @@ fn verify_phase(env: &RomEnv) -> ! {
 
 fn run() -> ! {
     let env = RomEnv::new();
+    env.mci.caliptra_boot_go();
 
     // Check if the digest is already written to decide which phase.
     let partition = fuses::VENDOR_TEST_PARTITION;

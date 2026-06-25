@@ -2,187 +2,148 @@
 
 Caliptra Subsystem supports handling of TDISP messages by processing them as VENDOR_DEFINED_REQUEST/VENDOR_DEFINED_RESPONSE message payloads. These messages are transported and processed within the secure session established between the host and the TDISP device as specified by Secured CMA/SPDM.
 
-To facilitate the TDISP protocol, the devices must implement `TdispDriver` trait as defined below.
+To facilitate the TDISP protocol, devices provide a platform implementation of the `TdispDriver` trait from `caliptra-mcu-spdm-vdm-handler::pci_sig::tdisp`. The responder owns the TDISP wire-format handling, command dispatch, and protocol state; the driver supplies device-specific operations such as capabilities, interface state transitions, nonce generation, and interface report contents.
+
+The relevant public driver API is summarized below.
 
 ```rust
-/// Error codes returned by TDISP driver
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum TdispDriverError {
-    /// Input parameter is null or invalid.
-    InvalidArgument,
-    /// Memory allocation failed.
-    NoMemory,
-    /// The driver failed to get TDISP capabilities.
-    GetTdispCapabilitiesFail,
-    /// The driver failed to get the device interface state.
-    GetDeviceInterfaceStateFail,
-    /// The driver failed to lock the device interface.
-    LockInterfaceReqFail,
-    /// The driver failed to start the device interface.
-    StartInterfaceReqFail,
-    /// The driver failed to stop the device interface.
-    StopInterfaceReqFail,
-    /// The driver failed to get the device interface report.
-    GetInterfaceReportFail,
-    /// The driver failed to get the mmio ranges.
-    GetMmioRangesFail,
-    /// The driver function is not implemented.
-    FunctionNotImplemented,
+    InvalidArgument = 0x01,
+    NoMemory = 0x02,
+    GetTdispCapabilitiesFail = 0x03,
+    GetDeviceInterfaceStateFail = 0x04,
+    LockInterfaceReqFail = 0x05,
+    StartInterfaceReqFail = 0x06,
+    StopInterfaceReqFail = 0x07,
+    GetInterfaceReportFail = 0x08,
+    GetMmioRangesFail = 0x09,
+    FunctionNotImplemented = 0x0A,
 }
 
 pub type TdispDriverResult<T> = Result<T, TdispDriverError>;
 
-/// FunctionID of the device hosting the TDI.
-bitfield! {
-    #[derive(FromBytes, IntoBytes, Immutable, Default)]
-    #[repr(C)]
-    pub struct FunctionId(u32);
-    impl Debug;
-    u16;
-    pub requester_id, set_requester_id: 15, 0; // Bits 15:0 Requester ID
-    u8;
-    pub requester_segment, set_requester_segment: 23, 16; // Bits 23:16 Requester Segment
-    pub requester_segment_valid, set_requester_segment_valid: 24, 24; // Bit 24 Requester Segment Valid
-    reserved, _: 31, 25; // Bits 31:25 Reserved
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FunctionId(pub u32);
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TdispReqCapabilities {
+    pub tsm_caps: u32,
 }
 
-/// TDISP Responder Capabilities
-pub struct TdispResponderCapabilities {
-    dsm_capabilities: u32,
-    req_msgs_supported: [u8; 16],
-    lock_interface_flags_supported: u16,
-    reserved: [u8; 3],
-    dev_addr_width: u8,
-    num_req_this: u8,
-    num_req_all: u8,
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TdispRespCapabilities {
+    pub dsm_capabilities: u32,
+    pub req_msgs_supported: [u8; 16],
+    pub lock_interface_flags_supported: u16,
+    pub dev_addr_width: u8,
+    pub num_req_this: u8,
+    pub num_req_all: u8,
 }
 
-/// Parameters passed along with the LOCK_INTERFACE_REQUEST
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TdispLockInterfaceFlags(pub u16);
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TdispLockInterfaceParam {
-    flags: TdispLockInterfaceFlags,
-    default_stream_id: u8,
-    reserved: u8,
-    mmio_reporting_offset: [u8; 8],
-    bind_p2p_addr_mask: [u8; 8],
+    pub flags: TdispLockInterfaceFlags,
+    pub default_stream_id: u8,
+    pub reserved: u8,
+    pub mmio_reporting_offset: [u8; 8],
+    pub bind_p2p_addr_mask: [u8; 8],
 }
 
-/// TDISP Interface flags
-bitfield! {
-#[repr(C)]
-pub struct TdispLockInterfaceFlags(u16);
-impl Debug;
-u8;
-    pub no_fw_update, set_no_fw_update: 0, 0; // Bit 0 NO_FW_UPDATE
-    pub system_cache_line_size, set_system_cache_line_size: 1, 1; // Bits 1:1 SYSTEM_CACHE_LINE_SIZE
-    pub lock_msix, set_lock_msix: 2, 2; // Bit 2 LOCK_MSIX
-    pub bind_p2p, set_bind_p2p: 3, 3; // Bit 3 BIND_P2P
-    pub all_req_redirect, set_all_req_redirect: 4, 4; // Bit 4 ALL_REQUEST_REDIRECT
-    pub reserved, _: 15, 5; // Bits 15:5 Reserved
-}
-
-/// TDI Status
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
 pub enum TdiStatus {
+    #[default]
     ConfigUnlocked = 0,
     ConfigLocked = 1,
     Run = 2,
     Error = 3,
-    Reserved,
+    Reserved = 0xff,
 }
 
-/// TDISP Driver trait that defines the interface for TDISP operations.
-/// This trait is intended to be implemented by a TDISP driver
-/// that interacts with the TDISP device.
-#[async_trait]
-pub trait TdispDriver: Send + Sync {
-    /// Gets the TDISP device capabilities.
-    ///
-    /// # Arguments
-    /// * `req_caps` - Requester (TSM) capability flags
-    /// * `resp_caps` - Responder (DSM) capability flags
-    ///
-    /// # Returns
-    /// 0 on success or an error response code as per the TDISP specification on failure.
-    async fn get_capabilities(
+#[allow(async_fn_in_trait)]
+pub trait TdispDriver {
+    /// Fills `out` with a START_INTERFACE nonce.
+    async fn generate_start_interface_nonce<Alloc>(
+        &self,
+        scratch: &Alloc,
+        out: &mut [u8; START_INTERFACE_NONCE_SIZE],
+    ) -> TdispDriverResult<()>
+    where
+        Alloc: SpdmPalAlloc;
+
+    /// Gets responder capabilities.
+    async fn get_capabilities<Alloc>(
         &self,
         req_caps: TdispReqCapabilities,
+        scratch: &Alloc,
         resp_caps: &mut TdispRespCapabilities,
-    ) -> TdispDriverResult<u32>;
+    ) -> TdispDriverResult<u32>
+    where
+        Alloc: SpdmPalAlloc;
 
-    /// Lock Interface Request
-    ///
-    /// # Arguments
-    /// * `function_id` - Device Interface Function ID
-    /// * `param` - Lock Interface parameters from the request
-    ///
-    /// # Returns
-    /// 0 on success or an error response code as per the TDISP specification on failure.
-    async fn lock_interface(
-        &mut self,
-        function_id: FunctionId,
-        param: TdispLockInterfaceParam,
-    ) -> TdispDriverResult<u32>;
-
-    /// Get the length of the device interface report.
-    ///
-    /// # Arguments
-    /// * `function_id` - Device Interface Function ID
-    /// * `intf_report_len` - Total device interface report length(output)
-    ///
-    /// # Returns
-    /// Length of the device interface report on success or an error response code.
-    async fn get_device_interface_report_len(
+    /// Locks an interface.
+    async fn lock_interface<Alloc>(
         &self,
         function_id: FunctionId,
-        intf_report_len: &mut u16,
-    ) -> TdispDriverResult<u32>;
+        param: TdispLockInterfaceParam,
+        scratch: &Alloc,
+    ) -> TdispDriverResult<u32>
+    where
+        Alloc: SpdmPalAlloc;
 
-    /// Get the device interface report.
-    ///
-    /// # Arguments
-    /// * `function_id` - Device Interface Function ID
-    /// * `offset` - Offset from the start of the report requested
-    /// * `report` - report buffer slice to fill
-    /// * `copied` - Length of the TDI report copied
-    ///
-    ///
-    /// # Returns
-    /// 0 on success or an error response code as per the TDISP specification on failure.
-    async fn get_device_interface_report(
+    /// Returns the total device interface report length.
+    async fn get_device_interface_report_len<Alloc>(
+        &self,
+        function_id: FunctionId,
+        scratch: &Alloc,
+        intf_report_len: &mut u16,
+    ) -> TdispDriverResult<u32>
+    where
+        Alloc: SpdmPalAlloc;
+
+    /// Copies a device interface report portion.
+    async fn get_device_interface_report<Alloc>(
         &self,
         function_id: FunctionId,
         offset: u16,
+        scratch: &Alloc,
         report: &mut [u8],
         copied: &mut usize,
-    ) -> TdispDriverResult<u32>;
+    ) -> TdispDriverResult<u32>
+    where
+        Alloc: SpdmPalAlloc;
 
-    /// Get the device interface state.
-    ///
-    /// # Arguments
-    /// * `function_id` - Device Interface Function ID
-    /// * `tdi_state` - Device Interface State to fill
-    ///
-    /// # Returns
-    /// 0 on success or an error response code as per the TDISP specification on failure.
-    async fn get_device_interface_state(
+    /// Gets the current device interface state.
+    async fn get_device_interface_state<Alloc>(
         &self,
         function_id: FunctionId,
+        scratch: &Alloc,
         tdi_state: &mut TdiStatus,
-    ) -> TdispDriverResult<u32>;
+    ) -> TdispDriverResult<u32>
+    where
+        Alloc: SpdmPalAlloc;
 
-    /// Start the device interface.
-    ///
-    /// # Arguments
-    /// * `function_id` - Device Interface Function ID
-    ///
-    /// # Returns
-    /// 0 on success or an error response code as per the TDISP specification on failure.
-    async fn start_interface(&mut self, function_id: FunctionId) -> TdispDriverResult<u32>;
+    /// Starts an interface.
+    async fn start_interface<Alloc>(
+        &self,
+        function_id: FunctionId,
+        scratch: &Alloc,
+    ) -> TdispDriverResult<u32>
+    where
+        Alloc: SpdmPalAlloc;
 
-    /// Stop the device interface.
-    ///
-    /// # Arguments
-    /// * `function_id` - Device Interface Function ID
-    ///
-    /// # Returns
-    /// 0 on success or an error response code as per the TDISP specification on failure.
-    async fn stop_interface(&mut self, function_id: FunctionId) -> TdispDriverResult<u32>;
+    /// Stops an interface.
+    async fn stop_interface<Alloc>(
+        &self,
+        function_id: FunctionId,
+        scratch: &Alloc,
+    ) -> TdispDriverResult<u32>
+    where
+        Alloc: SpdmPalAlloc;
 }
+```
