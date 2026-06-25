@@ -60,7 +60,8 @@ default-filter = """
     - test(test_lc_dev_to_rma)
     - test(test_lc_dev_to_scrap)
     - test(test_lc_invalid_transition_error)) |
-(package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot))
+(package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot)) |
+(package(caliptra-mcu-tests-integration) and test(test-mctp-capsule-loopback))
 """
 # Disabled because they hang the FPGA at boot (LifecycleControllerState::Dev):
 #   test_manuf_debug_unlock, test_uds, test_sw_digest_lock,
@@ -68,7 +69,7 @@ default-filter = """
 #   and the Dev-starting subtests of test_lc_ctrl listed above.
 # Disabled because they fail on FPGA:
 #   test_fw_manifest_dot_hitless_lock, test_log_flash_usermode,
-#   test_mctp_capsule_loopback, test_mcu_mbox_cmds,
+#   test_mcu_mbox_cmds,
 #   test_mcu_mbox_fips_periodic, test_mcu_mbox_fips_self_test.
 # Disabled pre-existing for flakiness:
 #   test_firmware_update_streaming_fpga

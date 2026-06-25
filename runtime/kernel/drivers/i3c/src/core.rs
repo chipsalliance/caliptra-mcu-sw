@@ -259,6 +259,11 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             if ibi_status == 0 {
                 // schedule a callback to handle any pending private reads
                 self.set_alarm(Self::RETRY_WAIT_TICKS);
+                // Trigger TX completion now that IBI has been acknowledged.
+                // The deferred_call mechanism may not reliably fire on FPGA,
+                // so call deferred_done directly here where we know the IBI
+                // was successfully sent and the host has read the data.
+                self.deferred_done();
             } else {
                 // re-send IBI
                 self.send_ibi(mdb, len);

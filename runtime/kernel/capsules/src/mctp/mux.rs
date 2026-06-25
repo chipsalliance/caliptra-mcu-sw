@@ -75,6 +75,11 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
 
         if list_empty {
             self.deferred_call.set();
+            // Also attempt direct send to avoid reliance on deferred_call
+            // which may not fire reliably on FPGA hardware.
+            // The send_next_packet guard (tx_pkt_buffer.is_none() check)
+            // ensures this is safe even if the deferred_call also fires.
+            self.deferred_send();
         }
     }
 
@@ -279,6 +284,9 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
     }
 
     fn send_next_packet(&self, cur_sender: &'a MCTPTxState<'a, A, M>) {
+        if self.tx_pkt_buffer.is_none() {
+            return;
+        }
         let mut tx_pkt = SubSliceMut::new(self.tx_pkt_buffer.take().unwrap());
         let mctp_hdr_offset = self.mctp_hdr_offset();
         let pkt_end_offset = self.get_mtu();
@@ -381,7 +389,9 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportTxClient for MuxMCT
 
         let mut cur_sender = self.sender_list.head();
         if let Some(sender) = cur_sender {
-            if sender.is_eom() || result.is_err() {
+            let is_eom = sender.is_eom();
+            let is_err = result.is_err();
+            if is_eom || is_err {
                 sender.send_done(result);
                 self.sender_list.pop_head();
                 cur_sender = self.sender_list.head();
