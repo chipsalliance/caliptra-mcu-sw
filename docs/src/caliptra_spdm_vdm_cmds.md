@@ -4,7 +4,7 @@
 
 This document describes how Caliptra external commands are transported over SPDM Vendor Defined Messages (VDM) via MCTP. This is the **out-of-band (OOB)** path for accessing Caliptra device management commands from an external agent such as a BMC.
 
-For command definitions (categories, payloads, and completion codes), see [Caliptra Common Commands](caliptra_common_commands.md).
+For command definitions (categories, payloads, and completion codes), see [Caliptra Common Commands](caliptra_common_commands.md). SPDM VDM payloads generally use those command payload definitions directly and do not include Caliptra RT mailbox `MailboxReqHeader` or checksum bytes. `Authorize Debug Unlock Token` is the exception: its VDM payload is a host-prebuilt Caliptra RT mailbox request, including `MailboxReqHeader.checksum`, so the MCU can stream the request bytes unchanged into the Caliptra mailbox FIFO.
 
 For the unified software architecture shared between OOB (SPDM VDM) and in-band (MCI Mailbox) paths, see [Unified Caliptra Command Handling](unified_caliptra_command_handling.md).
 

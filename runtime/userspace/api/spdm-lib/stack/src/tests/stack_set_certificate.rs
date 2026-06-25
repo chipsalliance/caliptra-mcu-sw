@@ -71,6 +71,7 @@ fn plaintext_chunked_set_certificate_succeeds() {
         ]
     );
     assert!(state.large_msg_ctx.request_in_progress());
+    assert!(state.large_msg_ctx.get_buffer().is_none());
 
     let rsp = send_plaintext_chunk(&mut state, &mut sessions, &pal, &second_chunk);
     assert_eq!(
@@ -123,6 +124,7 @@ fn secured_chunked_set_certificate_is_unsupported() {
         ]
     );
     assert!(state.large_msg_ctx.request_in_progress());
+    assert!(state.large_msg_ctx.get_buffer().is_none());
 
     let rsp = send_secured_chunk(&mut state, &mut sessions, &pal, session_id, &second_chunk);
     assert_eq!(
@@ -137,6 +139,53 @@ fn secured_chunked_set_certificate_is_unsupported() {
             SpdmVersion::V12.to_u8(),
             ReqRespCode::ERROR.0,
             SPDM_UNSUPPORTED_REQUEST.spec_byte(),
+            0,
+        ]
+    );
+    assert!(!state.large_msg_ctx.request_in_progress());
+    assert_eq!(pal.op.take(), None);
+}
+
+#[test]
+fn plaintext_chunked_set_certificate_bad_root_hash_does_not_commit() {
+    let pal = TestPal::default();
+    let mut state = chunking_state();
+    let mut sessions = crate::session::SessionManager::new();
+    let mut large_req = set_certificate_request(&pal);
+    // SPDM header (4) + cert-chain length/reserved (4) = root hash starts at 8.
+    large_req[8] ^= 0x55;
+    let (first, second) = split_large_request(&large_req);
+    let first_chunk = chunk_send_request(8, 0, false, Some(large_req.len()), first);
+    let second_chunk = chunk_send_request(8, 1, true, None, second);
+
+    let rsp = send_plaintext_chunk(&mut state, &mut sessions, &pal, &first_chunk);
+    assert_eq!(
+        &rsp[..],
+        &[
+            SpdmVersion::V12.to_u8(),
+            ReqRespCode::CHUNK_SEND_ACK.0,
+            0,
+            8,
+            0,
+            0
+        ]
+    );
+    assert!(state.large_msg_ctx.request_in_progress());
+    assert!(state.large_msg_ctx.get_buffer().is_none());
+
+    let rsp = send_plaintext_chunk(&mut state, &mut sessions, &pal, &second_chunk);
+    assert_eq!(
+        &rsp[..],
+        &[
+            SpdmVersion::V12.to_u8(),
+            ReqRespCode::CHUNK_SEND_ACK.0,
+            0,
+            8,
+            1,
+            0,
+            SpdmVersion::V12.to_u8(),
+            ReqRespCode::ERROR.0,
+            SPDM_UNSPECIFIED.spec_byte(),
             0,
         ]
     );
