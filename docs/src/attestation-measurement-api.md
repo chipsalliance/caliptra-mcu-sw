@@ -10,7 +10,7 @@ The measurement API provides a single userspace interface for image loading, fir
 
 | Interface | Caller | Purpose |
 | --- | --- | --- |
-| `measurement_boot_init(boot_context)` | Main user-app startup | Initializes measurement state after reset. Cold boot clears stale state and creates the MCU Runtime root DPE record. MCU hitless update preserves and validates existing state. |
+| `measurement_boot_init(boot_context)` | Main user-app startup | Initializes measurement state after reset. Cold boot clears stale state and creates the MCU Runtime root DPE record. MCU hitless update preserves state and validates it against the authenticated attestation policy. |
 | `authorize_and_stash(fw_id, image_metadata)` | Image loading and firmware update | Authorizes a component, enforces anti-rollback policy, and stores its measurement through either the DPE Handle Storage capsule or the Software PCR Storage capsule. `image_metadata` includes the component metadata fields derived from `GET_IMAGE_INFO(fw_id)` and the current load/update operation. |
 | `encode_measurement_evidence(buffer)` | OCP EAT encoder | Iterates the configured component list and writes the CBOR-encoded concise evidence triple array into a caller-provided buffer. Returns the encoded length or a required-size error. The caller owns the outer OCP EAT and COSE structures. |
 | `read_measurement(fw_id)` | Tests / diagnostics / internal helper | Returns the component measurement claims for a configured `fw_id`, using DPE tagged-TCI for SoC TCB components or the Software PCR Storage capsule for SoC non-TCB components. |
@@ -36,20 +36,22 @@ The caller gets `fw_id` from the flow it owns:
 | Firmware update | Update package metadata or update flow state for the component being updated. The update flow uses this `fw_id` to call `GET_IMAGE_INFO(fw_id)` before authorizing the update. |
 | OCP EAT encoder | Does not need to know the `fw_id` list. It asks the Measurement API to encode configured measurement claims into the EAT payload buffer. SPDM is one transport path that can carry the resulting Evidence. |
 
-The `fw_id` values used by these flows must match the integrator static attestation configuration and the SoC component image metadata returned by `GET_IMAGE_INFO(fw_id)`. The Measurement API must fail unknown or unsupported `fw_id` values explicitly.
+The `fw_id` values used by these flows must match the integrator static attestation configuration and the SoC component image metadata returned by `GET_IMAGE_INFO(fw_id)`. A configured component is a component whose `fw_id` is explicitly listed in the integrator static attestation configuration. The Measurement API must fail unknown or unsupported `fw_id` values explicitly.
 
 ### Integrator static attestation configuration
 
-This is static configuration provided by the integrator in the MCU Runtime user app. The Measurement API uses it to decide whether a component is recorded through the DPE Handle Storage capsule or the Software PCR Storage capsule, which component is the attestation target, and which context is the confidential-compute fork point.
+This is static configuration provided by the integrator in the MCU Runtime image. The Measurement API uses it to decide whether each listed `fw_id` is recorded through the DPE Handle Storage capsule or the Software PCR Storage capsule, whether the component is reported as OCP EAT inventory evidence, and which DPE-backed component is the attestation target.
 
 | Field | Description |
 | --- | --- |
 | `fw_id` | Component firmware identifier used as the lookup key. |
 | `measurement_class` | Routes the component as `SoC TCB` or `SoC non-TCB`. |
 | `attestation_target` | Marks the SoC TCB component whose DPE record becomes the attestation target. |
-| `cc_fork_point` | Marks the confidential-compute fork point, if enabled by platform policy. |
+| `inventory_evidence` | Marks whether the component is emitted as OCP EAT inventory evidence. |
 
-The `measurement_class`, `attestation_target`, and `cc_fork_point` decisions come from this configuration. They are not supplied by callers and are not derived from `GET_IMAGE_INFO(fw_id)`.
+The `measurement_class`, `attestation_target`, and `inventory_evidence` decisions come from this configuration. They are not supplied by callers and are not derived from `GET_IMAGE_INFO(fw_id)`.
+
+`measurement_boot_init()` computes `attestation_policy_digest` over a canonical representation of this policy. Cold boot stores the digest in the DPE Handle Storage metadata header. On hitless update, the Measurement API recomputes the digest from the authenticated MCU Runtime image and compares it with the stored value before using preserved DPE/PCR state. A mismatch puts MCU Runtime in an attestation error state: normal attestation Evidence and component measurement-state updates are disabled until cold boot reinitializes measurement state.
 
 ### SoC component image metadata
 
@@ -72,7 +74,7 @@ The Measurement API does not need to issue `GET_IMAGE_INFO(fw_id)` again in the 
 | `measurement` | Component measurement digest. |
 | `journey_digest` | Journey or integrity-register digest. |
 | `svn` | Component SVN used for rollback checks and claims. |
-| `version` | Component version used for claims. |
+| `version` | Component version used for claims, encoded as `u32`. |
 | `flags` | Caller flags, such as skip-stash behavior. |
 
 ### DPE tagging
@@ -83,7 +85,7 @@ The tag gives the read path a stable way to retrieve TCI values for that compone
 
 ## Boot initialization
 
-On cold boot, persistent DPE/PCR state is treated as stale. `measurement_boot_init()` clears both stores, rotates the default DPE handle, tags the MCU Runtime context, and writes the MCU Runtime root DPE record.
+On cold boot, persistent DPE/PCR state is treated as stale. `measurement_boot_init()` computes `attestation_policy_digest`, initializes DPE Handle Storage with that digest, initializes Software PCR Storage, rotates the default DPE handle, tags the MCU Runtime context, and writes the MCU Runtime root DPE record.
 
 ```mermaid
 sequenceDiagram
@@ -101,8 +103,9 @@ sequenceDiagram
     Mci-->>UserMain: reset_reason
     UserMain->>UserMain: Classify ColdBoot or FW_HITLESS_UPD_RESET
     UserMain->>MApi: measurement_boot_init(boot_context)
-    MApi->>DpeStore: CLEAR_RECORDS
-    MApi->>PcrStore: CLEAR_MEASUREMENTS
+    MApi->>MApi: Compute attestation_policy_digest
+    MApi->>DpeStore: INITIALIZE_STORE(attestation_policy_digest)
+    MApi->>PcrStore: INITIALIZE_STORE
     MApi->>Mailbox: RotateContext(DEFAULT_HANDLE)
     Mailbox-->>MApi: rotated_mcu_context_handle
     MApi->>Mailbox: DPE_TAG_TCI(handle=rotated_mcu_context_handle, tag=MCU_RT_FW_ID)
@@ -119,7 +122,7 @@ The MCU Runtime root DPE record contains:
 | `tci_tag` | `MCU_RT_FW_ID` |
 | `attestation_target` | `true` by default |
 
-On `FW_HITLESS_UPD_RESET`, the reserved SRAM backing the stores must not be reset or reinitialized. `measurement_boot_init()` validates the preserved stores instead of clearing them. If the MCU Runtime DPE record or active DPE leaf is missing, the flow must fail closed and enter the platform recovery path rather than silently creating a new lineage.
+On `FW_HITLESS_UPD_RESET`, the reserved SRAM backing the stores must not be reset or reinitialized. `measurement_boot_init()` recomputes `attestation_policy_digest`, calls DPE Handle Storage `VALIDATE_STORE(attestation_policy_digest)`, and calls Software PCR Storage `VALIDATE_STORE` before using preserved state. It then validates preserved records against the static attestation policy instead of clearing them. If the policy digest mismatches, the MCU Runtime DPE record is missing, the active DPE leaf is missing, or Software PCR Storage validation fails, the flow must enter the attestation error state rather than silently creating a new lineage.
 
 ## Initial image loading
 
@@ -154,7 +157,7 @@ sequenceDiagram
         MApi->>DpeStore: WRITE_RECORD(parent_fw_id, rotated_parent_handle)
         MApi->>DpeStore: WRITE_RECORD(fw_id, child_handle)
     else SoC non-TCB component
-        MApi->>PcrStore: EXTEND_MEASUREMENT(fw_id, measurement_extend)
+        MApi->>PcrStore: CREATE_MEASUREMENT(fw_id, measurement_update)
     end
 
     MApi-->>Loader: Authorization/stash status
@@ -162,7 +165,7 @@ sequenceDiagram
 
 For a SoC TCB component, the previous active leaf is used as the parent. The parent record is updated with the rotated parent handle returned by `DeriveContext`, and the child record is appended with the child handle. The active DPE leaf is the last valid DPE record in load order.
 
-For a SoC non-TCB component, the measurement API extends the Software PCR current and journey values and leaves the DPE record log unchanged.
+For a SoC non-TCB component, the measurement API creates a Software PCR record and leaves the DPE record log unchanged. If the record already exists during initial load, the API fails rather than overwriting it.
 
 ## SoC component update
 
@@ -197,7 +200,7 @@ sequenceDiagram
         MApi->>DpeStore: WRITE_RECORD(parent_fw_id, new_parent_context_handle)
         MApi->>DpeStore: WRITE_RECORD(fw_id, new_context_handle)
     else SoC non-TCB component
-        MApi->>PcrStore: EXTEND_MEASUREMENT(fw_id, measurement_extend)
+        MApi->>PcrStore: UPDATE_MEASUREMENT(fw_id, measurement_update)
     end
 ```
 
