@@ -10,7 +10,7 @@ path = "/tmp/junit.xml"
 store-success-output = false
 store-failure-output = true
 
-[profile.nightly-emulator]
+[profile.emulator]
 store-success-output = false
 failure-output = "immediate-final"
 fail-fast = false
@@ -20,7 +20,7 @@ default-filter = """
 all()
 """
 
-[profile.nightly-emulator.junit]
+[profile.emulator.junit]
 path = "/tmp/junit.xml"
 store-success-output = false
 store-failure-output = true
@@ -81,7 +81,7 @@ default-filter = """
 #     tracked upstream. Still runs on the emulator profile.
 
 [profile.nightly-release]
-inherits = "nightly-emulator"
+inherits = "emulator"
 default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful))
 """
@@ -91,4 +91,21 @@ inherits = "nightly"
 default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_attestation)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_responder_conformance))
+"""
+
+[profile.pr-emulator]
+inherits = "emulator"
+# Run only short tests (less than 3 mins)
+default-filter = """
+not (
+    test(test_firmware_update_flash_successful) |
+    test(test_streaming_boot_flash_write_back) |
+    test(test_firmware_update_benchmark_64k) |
+    test(test_firmware_update_flash_successful_fast) |
+    test(test_firmware_update_flash_invalid_soc_image) |
+    test(test_firmware_update_flash_invalid_mcu_image) |
+    test(test_firmware_update_flash_invalid_manifest) |
+    test(test_header_burns_caliptra_runtime_svn) |
+    test(test_mctp_user_loopback)
+)
 """
