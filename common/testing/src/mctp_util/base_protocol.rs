@@ -14,7 +14,7 @@ pub enum MctpMsgType {
     Pldm = 0x1,
     Spdm = 0x5,
     SecureSpdm = 0x6,
-    Caliptra = 0x7E,
+    Caliptra = 0x7F,
 }
 
 bitfield! {

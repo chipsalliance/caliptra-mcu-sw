@@ -20,7 +20,15 @@ pub const MCTP_BROADCAST_EID: u8 = 0xFF;
 
 pub const MCTP_BASELINE_TRANSMISSION_UNIT: usize = 64;
 
+// Maximum number of message types this stack can advertise. The MCTP mux
+// filters this list based on the board's registered MCTP driver capsules.
 pub const MCTP_NUM_MSG_TYPES_SUPPORTED: usize = 5;
+pub const MCTP_DISCOVERABLE_MSG_TYPES: [MessageType; 4] = [
+    MessageType::Pldm,
+    MessageType::Spdm,
+    MessageType::SecureSpdm,
+    MessageType::Caliptra,
+];
 
 bitfield! {
     #[derive(Clone, Copy, Default)]
@@ -75,7 +83,7 @@ pub enum MessageType {
     Pldm = 1,
     Spdm = 5,
     SecureSpdm = 6,
-    Caliptra = 0x7E, // Vendor defined PCI message type
+    Caliptra = 0x7F, // Vendor defined IANA message type
     TestMsgType = MCTP_TEST_MSG_TYPE as isize,
     Invalid,
 }
@@ -87,23 +95,30 @@ impl From<u8> for MessageType {
             1 => MessageType::Pldm,
             5 => MessageType::Spdm,
             6 => MessageType::SecureSpdm,
-            0x7E => MessageType::Caliptra,
+            0x7F => MessageType::Caliptra,
             MCTP_TEST_MSG_TYPE => MessageType::TestMsgType,
             _ => MessageType::Invalid,
         }
     }
 }
 
-impl MessageType {
-    pub fn supported() -> [MessageType; MCTP_NUM_MSG_TYPES_SUPPORTED] {
-        [
-            MessageType::MctpControl,
-            MessageType::Pldm,
-            MessageType::Spdm,
-            MessageType::SecureSpdm,
-            MessageType::Caliptra,
-        ]
+pub fn supported_msg_types(
+    mut is_registered: impl FnMut(MessageType) -> bool,
+) -> ([MessageType; MCTP_NUM_MSG_TYPES_SUPPORTED], usize) {
+    let mut supported = [MessageType::Invalid; MCTP_NUM_MSG_TYPES_SUPPORTED];
+    let mut count = 0;
+
+    supported[count] = MessageType::MctpControl;
+    count += 1;
+
+    for msg_type in MCTP_DISCOVERABLE_MSG_TYPES {
+        if is_registered(msg_type) {
+            supported[count] = msg_type;
+            count += 1;
+        }
     }
+
+    (supported, count)
 }
 
 pub fn valid_eid(eid: u8) -> bool {

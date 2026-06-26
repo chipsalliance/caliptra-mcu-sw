@@ -1,11 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use crate::mctp::base_protocol::{
-    MCTPHeader, MessageType, MCTP_BASELINE_TRANSMISSION_UNIT, MCTP_HDR_SIZE,
+    supported_msg_types, MCTPHeader, MessageType, MCTP_BASELINE_TRANSMISSION_UNIT, MCTP_HDR_SIZE,
 };
-use crate::mctp::control_msg::{
-    CmdCompletionCode, MCTPCtrlCmd, MCTPCtrlMsgHdr, MCTP_CTRL_MSG_HEADER_LEN,
-};
+use crate::mctp::control_msg::process_mctp_control_msg;
 use crate::mctp::recv::MCTPRxState;
 use crate::mctp::send::MCTPTxState;
 use crate::mctp::transport_binding::{MCTPTransportBinding, TransportRxClient, TransportTxClient};
@@ -134,19 +132,6 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         (mctp_header, msg_type, MCTP_HDR_SIZE)
     }
 
-    fn fill_mctp_ctrl_hdr_resp(
-        &self,
-        mctp_ctrl_msg_hdr_resp: MCTPCtrlMsgHdr,
-        resp_buf: &mut [u8],
-    ) -> Result<(), ErrorCode> {
-        if resp_buf.len() < MCTP_CTRL_MSG_HEADER_LEN {
-            return Err(ErrorCode::INVAL);
-        }
-        resp_buf[0..MCTP_CTRL_MSG_HEADER_LEN]
-            .copy_from_slice(&mctp_ctrl_msg_hdr_resp.0.to_le_bytes()[..MCTP_CTRL_MSG_HEADER_LEN]);
-        Ok(())
-    }
-
     fn fill_mctp_hdr_resp(
         &self,
         mctp_hdr_resp: MCTPHeader,
@@ -164,19 +149,6 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         mctp_hdr: MCTPHeader,
         msg_buf: &[u8],
     ) -> Result<(), ErrorCode> {
-        if msg_buf.len() < MCTP_CTRL_MSG_HEADER_LEN {
-            return Err(ErrorCode::INVAL);
-        }
-
-        let mut hdr = [0; 4];
-        hdr[0..MCTP_CTRL_MSG_HEADER_LEN].copy_from_slice(&msg_buf[0..MCTP_CTRL_MSG_HEADER_LEN]);
-        let mctp_ctrl_msg_hdr = MCTPCtrlMsgHdr(u32::from_le_bytes(hdr));
-
-        if mctp_ctrl_msg_hdr.rq() != 1 || mctp_ctrl_msg_hdr.datagram() != 0 {
-            // Only Command/Request messages are handled
-            return Err(ErrorCode::INVAL);
-        }
-
         let mctp_hdr_resp = MCTPHeader::new(
             mctp_hdr.src_eid(),
             mctp_hdr.dest_eid(),
@@ -187,83 +159,44 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
             mctp_hdr.msg_tag(),
         );
 
-        let mut mctp_ctrl_msg_hdr_resp = MCTPCtrlMsgHdr::new();
-        mctp_ctrl_msg_hdr_resp.prepare_header(
-            0,
-            mctp_ctrl_msg_hdr.datagram(),
-            mctp_ctrl_msg_hdr.instance_id(),
-            mctp_ctrl_msg_hdr.cmd(),
-        );
-
         let mctp_hdr_start = self.mctp_hdr_offset();
         let mctp_ctrl_hdr_start = mctp_hdr_start + MCTP_HDR_SIZE;
-        let msg_payload_start = mctp_ctrl_hdr_start + MCTP_CTRL_MSG_HEADER_LEN;
-
-        let req_buf = &msg_buf[MCTP_CTRL_MSG_HEADER_LEN..];
-        let mctp_ctrl_cmd: MCTPCtrlCmd = mctp_ctrl_msg_hdr.cmd().into();
-        let resp_len = MCTP_CTRL_MSG_HEADER_LEN + MCTP_HDR_SIZE + mctp_ctrl_cmd.resp_data_len();
-
-        if req_buf.len() < mctp_ctrl_cmd.req_data_len() {
-            capsule_debug!(
-                "MCTP",
-                "Invalid buffer len Dropping packet. {} ctrl_cmd_len {}",
-                req_buf.len(),
-                mctp_ctrl_cmd.req_data_len()
-            );
-            Err(ErrorCode::INVAL)?;
-        }
+        let (advertised_msg_types, advertised_msg_types_count) =
+            supported_msg_types(|msg_type| self.is_msg_type_registered(msg_type));
+        let advertised_msg_types = &advertised_msg_types[..advertised_msg_types_count];
 
         self.tx_pkt_buffer
             .take()
             .map_or(Err(ErrorCode::NOMEM), |resp_buf| {
-                let result = match mctp_ctrl_cmd {
-                    MCTPCtrlCmd::SetEID => mctp_ctrl_cmd
-                        .process_set_endpoint_id(req_buf, &mut resp_buf[msg_payload_start..])
-                        .map(|eid| {
-                            if let Some(eid) = eid {
-                                self.set_local_eid(eid);
-                            }
-                        }),
-
-                    MCTPCtrlCmd::GetEID => mctp_ctrl_cmd.process_get_endpoint_id(
-                        self.get_local_eid(),
-                        &mut resp_buf[msg_payload_start..],
-                    ),
-
-                    MCTPCtrlCmd::GetVersionSupport => mctp_ctrl_cmd
-                        .process_get_version_support(req_buf, &mut resp_buf[msg_payload_start..]),
-
-                    MCTPCtrlCmd::GetMsgTypeSupport => mctp_ctrl_cmd
-                        .process_get_msg_type_support(req_buf, &mut resp_buf[msg_payload_start..]),
-                    MCTPCtrlCmd::Unsupported => {
-                        resp_buf[msg_payload_start] = CmdCompletionCode::ErrorNotSupportedCmd as u8;
-                        Ok(())
-                    }
-                };
+                let result = process_mctp_control_msg(
+                    msg_buf,
+                    self.get_local_eid(),
+                    advertised_msg_types,
+                    &mut resp_buf[mctp_ctrl_hdr_start..],
+                );
 
                 match result {
-                    Ok(_) => {
-                        let res = self
-                            .fill_mctp_ctrl_hdr_resp(
-                                mctp_ctrl_msg_hdr_resp,
-                                &mut resp_buf[mctp_ctrl_hdr_start
-                                    ..mctp_ctrl_hdr_start + MCTP_CTRL_MSG_HEADER_LEN],
-                            )
-                            .and_then(|_| {
-                                self.fill_mctp_hdr_resp(
-                                    mctp_hdr_resp,
-                                    &mut resp_buf[mctp_hdr_start..mctp_hdr_start + MCTP_HDR_SIZE],
-                                )
-                            });
+                    Ok(control_resp) => {
+                        if let Some(eid) = control_resp.assigned_eid {
+                            self.set_local_eid(eid);
+                        }
+
+                        let res = self.fill_mctp_hdr_resp(
+                            mctp_hdr_resp,
+                            &mut resp_buf[mctp_hdr_start..mctp_hdr_start + MCTP_HDR_SIZE],
+                        );
 
                         match res {
-                            Ok(_) => match self.mctp_device.transmit(resp_buf, resp_len) {
-                                Ok(_) => Ok(()),
-                                Err((err, tx_buf)) => {
-                                    self.tx_pkt_buffer.replace(tx_buf);
-                                    Err(err)
+                            Ok(_) => {
+                                let resp_len = MCTP_HDR_SIZE + control_resp.resp_len;
+                                match self.mctp_device.transmit(resp_buf, resp_len) {
+                                    Ok(_) => Ok(()),
+                                    Err((err, tx_buf)) => {
+                                        self.tx_pkt_buffer.replace(tx_buf);
+                                        Err(err)
+                                    }
                                 }
-                            },
+                            }
                             Err(e) => {
                                 self.tx_pkt_buffer.replace(resp_buf);
                                 Err(e)
@@ -372,6 +305,12 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
 
     fn mctp_hdr_offset(&self) -> usize {
         self.mctp_device.get_hdr_size()
+    }
+
+    fn is_msg_type_registered(&self, msg_type: MessageType) -> bool {
+        self.receiver_list
+            .iter()
+            .any(|rx_state| rx_state.msg_type() == msg_type)
     }
 }
 

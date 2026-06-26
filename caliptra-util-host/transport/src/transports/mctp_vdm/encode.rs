@@ -327,6 +327,7 @@ pub fn handle_get_debug_log(
 mod tests {
     use super::*;
     use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
+    use caliptra_mcu_mctp_vdm_common::protocol::CALIPTRA_IANA_ENTERPRISE_ID_BYTES;
 
     // Verify that request encoding produces valid VDM wire bytes
     #[test]
@@ -335,9 +336,7 @@ mod tests {
         let mut buf = [0u8; 64];
         let len = req.encode(&mut buf).unwrap();
         assert_eq!(len, VDM_MSG_HEADER_LEN + 4);
-        // First two bytes = vendor ID 0x1414 LE
-        assert_eq!(buf[0], 0x14);
-        assert_eq!(buf[1], 0x14);
+        assert_eq!(&buf[..4], &CALIPTRA_IANA_ENTERPRISE_ID_BYTES);
     }
 
     #[test]
