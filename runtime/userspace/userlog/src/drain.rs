@@ -20,7 +20,7 @@ pub(crate) static WAKE: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 /// present (e.g. host fake-kernel unit tests).
 #[embassy_executor::task]
 pub async fn drain_task() {
-    let log = LoggingSyscall::<DefaultSyscalls>::new();
+    let log = LoggingSyscall::<DefaultSyscalls>::default();
     if log.exists().is_err() {
         return;
     }
