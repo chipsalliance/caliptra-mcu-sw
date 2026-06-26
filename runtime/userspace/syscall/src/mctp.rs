@@ -238,7 +238,7 @@ impl<S: Syscalls> Mctp<S> {
             driver_num::MCTP_SPDM => Ok(5),
             driver_num::MCTP_SECURE => Ok(6),
             driver_num::MCTP_PLDM => Ok(1),
-            driver_num::MCTP_CALIPTRA => Ok(0x7E),
+            driver_num::MCTP_CALIPTRA => Ok(0x7F),
             _ => Err(ErrorCode::Invalid)?,
         }
     }
