@@ -23,6 +23,7 @@ use super::device_info::{
     GetDeviceCapabilitiesCmd, GetDeviceIdCmd, GetDeviceInfoCmd, GetFirmwareVersionCmd,
 };
 use super::device_log::DebugGetLogCmd;
+use super::dot::GetDotBackupBlobCmd;
 use super::fuse::{FeProgCmd, GetAuthCmdChallengeCmd};
 use super::hmac::{HmacCmd, HmacKdfCounterCmd};
 use super::import::ImportCmd;
@@ -89,6 +90,8 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         // Authorized / Fuse Commands (0x8010-0x8011)
         0x8010 => Some(process_command_with_metadata::<GetAuthCmdChallengeCmd>), // GetAuthCmdChallenge
         0x8011 => Some(process_command_with_metadata::<FeProgCmd>),              // FeProg
+        // Device Ownership Transfer Commands
+        0x9001 => Some(process_command_with_metadata::<GetDotBackupBlobCmd>), // GetDotBackupBlob
         _ => None,
     }
 }
@@ -147,6 +150,23 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         // Authorized / Fuse Commands
         0x8010 => Some(0x4D41_4343), // GetAuthCmdChallenge -> MC_GET_AUTH_CMD_CHALLENGE ("MACC")
         0x8011 => Some(0x4D43_4650), // FeProg -> MC_FE_PROG ("MCFP")
+        // Device Ownership Transfer Commands
+        0x9001 => Some(0x4D44_4F54), // GetDotBackupBlob -> MC_GET_DOT_BACKUP_BLOB ("MDOT")
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
+
+    #[test]
+    fn get_dot_backup_blob_dispatch_and_external_code_are_registered() {
+        assert!(get_command_handler(CaliptraCommandId::GetDotBackupBlob as u32).is_some());
+        assert_eq!(
+            get_external_cmd_code(CaliptraCommandId::GetDotBackupBlob as u32),
+            Some(0x4D44_4F54)
+        );
     }
 }

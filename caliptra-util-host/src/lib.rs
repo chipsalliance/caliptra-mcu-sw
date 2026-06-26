@@ -92,7 +92,8 @@
 pub use caliptra_mcu_core_util_host_command_types::{
     CaliptraCommandId, GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse,
     GetDeviceIdRequest, GetDeviceIdResponse, GetDeviceInfoRequest, GetDeviceInfoResponse,
-    GetFirmwareVersionRequest, GetFirmwareVersionResponse,
+    GetDotBackupBlobRequest, GetDotBackupBlobResponse, GetFirmwareVersionRequest,
+    GetFirmwareVersionResponse,
 };
 // Re-export SHA types
 pub use caliptra_mcu_core_util_host_command_types::crypto_hash::{
@@ -103,6 +104,7 @@ pub use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
     caliptra_cmd_get_firmware_version,
 };
+pub use caliptra_util_host_commands::api::dot::caliptra_cmd_get_dot_backup_blob;
 // Re-export SHA API functions
 pub use caliptra_mcu_core_util_host_transport::{Mailbox, Transport};
 pub use caliptra_util_host_commands::api::crypto_hash::{

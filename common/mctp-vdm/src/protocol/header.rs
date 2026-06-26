@@ -62,7 +62,7 @@ bitfield! {
     /// Bit 6: Crypt (1 = encrypted, 0 = not encrypted)
     /// Bits 5:0: Reserved (must be 0)
     #[repr(C)]
-    #[derive(Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq, Default)]
+    #[derive(Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq, Eq, Default)]
     pub struct VdmControlByte(u8);
     impl Debug;
     pub u8, request_type, set_request_type: 7, 7;
@@ -101,7 +101,7 @@ impl VdmControlByte {
 /// - Bytes 0:3 - IANA enterprise ID (MSB first, OCP 42623 for Caliptra VDM commands)
 /// - Byte 4    - Control byte (Request/Crypt/Reserved)
 /// - Byte 5    - Command Code
-#[derive(Debug, Clone, Copy, PartialEq, FromBytes, IntoBytes, Immutable, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromBytes, IntoBytes, Immutable, Default)]
 #[repr(C, packed)]
 pub struct VdmMsgHeader {
     /// IANA enterprise ID (MSB first).

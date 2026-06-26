@@ -31,6 +31,7 @@ pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 32;
 pub const MAX_UUID_SIZE: usize = 32;
+pub const DOT_BLOB_SIZE: usize = 168;
 pub const MAX_FUSE_DATA_BYTES: usize = 512;
 pub const MAX_FUSE_DATA_WORDS: usize = MAX_FUSE_DATA_BYTES / 4;
 
@@ -136,6 +137,9 @@ impl CommandId {
 
     // Certificate commands
     pub const MC_EXPORT_ATTESTED_CSR: Self = Self(0x4D45_4143); // "MEAC"
+
+    // Device Ownership Transfer commands
+    pub const MC_GET_DOT_BACKUP_BLOB: Self = Self(0x4D44_4F54); // "MDOT"
 }
 
 impl From<u32> for CommandId {
@@ -208,6 +212,8 @@ pub enum McuMailboxReq {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashReq),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
+    // Device Ownership Transfer commands
+    GetDotBackupBlob(GetDotBackupBlobReq),
 }
 
 impl McuMailboxReq {
@@ -265,6 +271,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
+            McuMailboxReq::GetDotBackupBlob(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -322,6 +329,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::GetDotBackupBlob(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -381,6 +389,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
+            McuMailboxReq::GetDotBackupBlob(_) => CommandId::MC_GET_DOT_BACKUP_BLOB,
         }
     }
 
@@ -462,6 +471,8 @@ pub enum McuMailboxResp {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
+    // Device Ownership Transfer commands
+    GetDotBackupBlob(GetDotBackupBlobResp),
 }
 
 /// A trait for responses with variable size data.
@@ -578,6 +589,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::GetDotBackupBlob(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -634,6 +646,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::GetDotBackupBlob(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -796,6 +809,34 @@ impl Request for ClearLogReq {
 #[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct ClearLogResp(MailboxRespHeader);
 impl Response for ClearLogResp {}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetDotBackupBlobReq {
+    pub hdr: MailboxReqHeader,
+}
+impl Request for GetDotBackupBlobReq {
+    const ID: CommandId = CommandId::MC_GET_DOT_BACKUP_BLOB;
+    type Resp = GetDotBackupBlobResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetDotBackupBlobResp {
+    pub hdr: MailboxRespHeader,
+    pub blob: [u8; DOT_BLOB_SIZE],
+}
+
+impl Default for GetDotBackupBlobResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            blob: [0u8; DOT_BLOB_SIZE],
+        }
+    }
+}
+
+impl Response for GetDotBackupBlobResp {}
 
 pub trait McuRequestVarSize: IntoBytes + FromBytes + Immutable + KnownLayout {
     fn as_bytes_partial(&self) -> McuMboxResult<&[u8]>;

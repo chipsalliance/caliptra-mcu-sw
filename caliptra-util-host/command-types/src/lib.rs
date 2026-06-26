@@ -23,6 +23,7 @@ pub mod crypto_import;
 pub mod debug_unlock;
 pub mod device_info;
 pub mod device_log;
+pub mod dot;
 pub mod error;
 pub mod fuse;
 
@@ -37,6 +38,7 @@ pub use crypto_import::*;
 pub use debug_unlock::*;
 pub use device_info::*;
 pub use device_log::*;
+pub use dot::*;
 pub use error::*;
 pub use fuse::*;
 
@@ -118,6 +120,9 @@ pub enum CaliptraCommandId {
     FuseGetInfo = 0x8004,
     FuseProvision = 0x8005,
     FuseGetManifest = 0x8006,
+
+    // Device Ownership Transfer Commands (0x9001-0x901F)
+    GetDotBackupBlob = 0x9001,
 
     // Authorized Commands (0x8010-0x801F)
     GetAuthCmdChallenge = 0x8010,

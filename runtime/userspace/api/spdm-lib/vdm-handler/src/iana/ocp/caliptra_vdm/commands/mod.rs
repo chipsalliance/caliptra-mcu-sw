@@ -13,6 +13,7 @@ pub(crate) mod clear_debug_log;
 pub(crate) mod debug_unlock;
 pub(crate) mod export_attested_csr;
 pub(crate) mod get_debug_log;
+pub(crate) mod get_dot_backup_blob;
 
 pub(crate) const LOG_TYPE_DEBUG: u32 = 0;
 

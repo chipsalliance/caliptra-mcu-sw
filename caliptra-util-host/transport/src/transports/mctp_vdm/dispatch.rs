@@ -25,6 +25,18 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         3 => Some(encode::handle_device_id),        // GetDeviceId
         4 => Some(encode::handle_device_info),      // GetDeviceInfo
         0x7005 => Some(encode::handle_get_debug_log), // DebugGetLog
+        0x9001 => Some(encode::handle_get_dot_backup_blob), // GetDotBackupBlob
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
+
+    #[test]
+    fn get_dot_backup_blob_dispatch_is_registered() {
+        assert!(get_command_handler(CaliptraCommandId::GetDotBackupBlob as u32).is_some());
     }
 }

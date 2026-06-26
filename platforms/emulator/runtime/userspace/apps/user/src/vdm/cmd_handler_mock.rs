@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, Uid,
+    DeviceCapabilities, DeviceId, DeviceInfo, DotBackupBlob, FirmwareVersion, GetLogResult, Uid,
     MAX_FW_VERSION_LEN, MAX_UID_LEN,
 };
 use caliptra_mcu_mbox_common::config;
@@ -135,5 +135,10 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
 
     async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
         CaliptraCmdBackend.program_field_entropy(partition).await
+    }
+
+    async fn get_dot_backup_blob(&self, blob: &mut DotBackupBlob) -> CaliptraCmdResult<()> {
+        blob.data.copy_from_slice(&config::TEST_DOT_BACKUP_BLOB);
+        Ok(())
     }
 }

@@ -8,13 +8,28 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, LogType,
+    DeviceCapabilities, DeviceId, DeviceInfo, DotBackupBlob, FirmwareVersion, GetLogResult,
+    LogType,
 };
 use caliptra_mcu_libapi_caliptra::certificate::{CertContext, IDEV_ECC_CSR_MAX_SIZE};
 use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_platform::ErrorCode;
 
 pub struct CaliptraCmdBackend;
+
+fn map_dot_flash_error(error: ErrorCode) -> CaliptraCompletionCode {
+    match error {
+        ErrorCode::NoSupport | ErrorCode::NoDevice | ErrorCode::Uninstalled => {
+            CaliptraCompletionCode::UnsupportedOperation
+        }
+        ErrorCode::NoMem | ErrorCode::Size => CaliptraCompletionCode::InsufficientResources,
+        ErrorCode::Invalid => CaliptraCompletionCode::InvalidParameter,
+        ErrorCode::Busy => CaliptraCompletionCode::ResourceUnavailable,
+        _ => CaliptraCompletionCode::OperationFailed,
+    }
+}
 
 #[async_trait]
 impl CaliptraCmdHandler for CaliptraCmdBackend {
@@ -134,6 +149,12 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             LogType::Debug => debug_log::clear().await,
             LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
         }
+    }
+
+    async fn get_dot_backup_blob(&self, blob: &mut DotBackupBlob) -> CaliptraCmdResult<()> {
+        caliptra_mcu_libsyscall_caliptra::dot_flash::DotFlash::<DefaultSyscalls>::new()
+            .read(0, &mut blob.data)
+            .map_err(map_dot_flash_error)
     }
 
     async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {

@@ -4,14 +4,14 @@ use crate::error::VdmLibError;
 use crate::transport::MctpVdmTransport;
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCompletionCode, DeviceCapabilities, DeviceId, DeviceInfo,
-    FirmwareVersion, GetLogResult, LogType, Uid, MAX_UID_LEN,
+    DotBackupBlob, FirmwareVersion, GetLogResult, LogType, Uid, MAX_UID_LEN,
 };
 use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 use caliptra_mcu_mctp_vdm_common::message::{
     ClearAttestationLogResponse, ClearDebugLogResponse, DeviceCapabilitiesResponse,
     DeviceIdResponse, DeviceInfoRequest, DeviceInfoResponse, FirmwareVersionRequest,
-    FirmwareVersionResponse, GetAttestationLogResponse, GetDebugLogResponse, DEVICE_CAPS_SIZE,
-    MAX_LOG_DATA_SIZE,
+    FirmwareVersionResponse, GetAttestationLogResponse, GetDebugLogResponse,
+    GetDotBackupBlobRequest, GetDotBackupBlobResponse, DEVICE_CAPS_SIZE, MAX_LOG_DATA_SIZE,
 };
 use caliptra_mcu_mctp_vdm_common::protocol::{
     VdmCommand, VdmCompletionCode, VdmFailureResponse, VdmMsgHeader, VDM_MSG_HEADER_LEN,
@@ -128,6 +128,9 @@ impl<'a> CmdInterface<'a> {
             }
             VdmCommand::ClearAttestationLog => {
                 self.handle_clear_log(msg_buf, LogType::Attestation).await
+            }
+            VdmCommand::GetDotBackupBlob => {
+                self.handle_get_dot_backup_blob(msg_buf, vdm_req_len).await
             }
             _ => self.send_error_response(
                 msg_buf,
@@ -402,6 +405,34 @@ impl<'a> CmdInterface<'a> {
                 self.send_error_response(msg_buf, cmd_code, cc)
             }
         }
+    }
+
+    /// Handle Get DOT Backup Blob command.
+    async fn handle_get_dot_backup_blob(
+        &self,
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<usize, VdmLibError> {
+        let vdm_msg = extract_vdm_msg(msg_buf).map_err(|_| VdmLibError::DecodingError)?;
+        if req_len != core::mem::size_of::<GetDotBackupBlobRequest>() {
+            return self.send_error_response(
+                msg_buf,
+                VdmCommand::GetDotBackupBlob as u8,
+                VdmCompletionCode::InvalidLength,
+            );
+        }
+        GetDotBackupBlobRequest::decode(&vdm_msg[..req_len])
+            .map_err(|_| VdmLibError::DecodingError)?;
+
+        let mut blob = DotBackupBlob::default();
+        let result = self.unified_handler.get_dot_backup_blob(&mut blob).await;
+
+        let resp = match result {
+            Ok(()) => GetDotBackupBlobResponse::new(VdmCompletionCode::Success as u32, &blob.data),
+            Err(err) => GetDotBackupBlobResponse::error(map_caliptra_to_vdm(err) as u32),
+        };
+
+        self.encode_response(msg_buf, &resp)
     }
 
     /// Encode a GetDebugLogResponse (variable length) into the MCTP payload buffer.
