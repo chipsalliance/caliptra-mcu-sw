@@ -18,11 +18,10 @@ pub mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_api::SocManager;
     use caliptra_mailbox_client::{
-        DebugUnlockKeys, HmacCommandAuthorizer, LocalDebugUnlockSigner, Validator,
+        AsymmetricCommandAuthorizer, DebugUnlockKeys, LocalDebugUnlockSigner, Validator,
     };
     use caliptra_mcu_hw_model::{McuHwModel, McuManager};
     use caliptra_mcu_romtime::McuBootMilestones;
-
     use random_port::PortPicker;
     use std::mem::size_of;
     use std::net::UdpSocket;
@@ -40,6 +39,16 @@ pub mod test {
     /// Crypto operations (ECDH, ECDSA, AES, etc.) are slow in the emulator
     /// and need significantly more than the default 40M cycles.
     const MAILBOX_TIMEOUT_CYCLES: u64 = 200_000_000;
+
+    // Hardcoded testing keys.
+    // These match the public keys hardcoded in the mock authorizer.
+    pub const TEST_ECC_PRIV_KEY: [u8; 48] = [
+        61, 169, 230, 128, 175, 245, 161, 206, 169, 106, 62, 137, 129, 2, 134, 251, 59, 48, 48,
+        169, 201, 36, 173, 47, 32, 49, 160, 125, 41, 64, 82, 169, 124, 175, 161, 252, 110, 167, 96,
+        164, 61, 183, 99, 202, 159, 47, 112, 54,
+    ];
+
+    pub const TEST_MLDSA_SEED: [u8; 32] = *b"caliptra-mcu-testing-mldsa-seed-";
 
     /// Execute a mailbox command with a larger timeout than the default.
     /// Uses `start_mailbox_execute` to send the command, then manually steps
@@ -202,9 +211,9 @@ pub mod test {
             .set_recv_timeout(Duration::from_secs(120))
             .set_verbose(true)
             .set_debug_unlock_signer(Box::new(debug_unlock_signer))
-            .set_command_authorizer(Box::new(HmacCommandAuthorizer::new(
-                crate::runtime::TEST_AUTH_CMD_HMAC_KEY.to_vec(),
-            )));
+            .set_command_authorizer(Box::new(
+                AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED).unwrap(),
+            ));
 
             println!("Running Mailbox validator in-process (port={})", udp_port);
 

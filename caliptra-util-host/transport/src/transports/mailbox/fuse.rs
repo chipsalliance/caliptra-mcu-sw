@@ -15,7 +15,7 @@ use super::command_traits::{
 use alloc::vec::Vec;
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgRequest, FeProgResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
-    AUTH_CMD_CHALLENGE_SIZE, AUTH_CMD_MAC_SIZE,
+    AUTH_CMD_CHALLENGE_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -90,21 +90,10 @@ impl VariableSizeBytes for ExtCmdGetAuthCmdChallengeResponse {}
 // ============================================================================
 
 #[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+#[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdFeProgRequest {
     pub chksum: u32,
-    pub partition: u32,
-    pub mac: [u8; AUTH_CMD_MAC_SIZE],
-}
-
-impl Default for ExtCmdFeProgRequest {
-    fn default() -> Self {
-        Self {
-            chksum: 0,
-            partition: 0,
-            mac: [0u8; AUTH_CMD_MAC_SIZE],
-        }
-    }
+    pub internal: FeProgRequest,
 }
 
 #[repr(C)]
@@ -116,17 +105,11 @@ pub struct ExtCmdFeProgResponse {
 
 impl FromInternalRequest<FeProgRequest> for ExtCmdFeProgRequest {
     fn from_internal(internal: &FeProgRequest, command_code: u32) -> Self {
-        let mut payload = Vec::new();
-        payload.extend_from_slice(&internal.partition.to_le_bytes());
-        // MAC is appended after the command body in the wire format
-        payload.extend_from_slice(&internal.mac);
-
-        let chksum = calc_checksum(command_code, &payload);
+        let chksum = calc_checksum(command_code, internal.as_bytes());
 
         Self {
             chksum,
-            partition: internal.partition,
-            mac: internal.mac,
+            internal: internal.clone(),
         }
     }
 }

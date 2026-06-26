@@ -28,6 +28,7 @@ algorithms = [1]
 
 [fe_prog]
 partition = 0
-# Hex-encoded HMAC-SHA384 key for FE_PROG authorization.
-# Must match AUTH_CMD_HMAC_KEY in the MCU firmware.
-auth_key = "72ec12027769b9dc04bdd0c086ca1b202f471eeef28c2da8c54c75c248a6800a11bfd5cd09ed570cb4c2a1376ba2cbcd"
+# Hex-encoded ECC private key (P-384) and ML-DSA seed (32 bytes) for FE_PROG authorization.
+# Must match keys in the MCU firmware.
+ecc_auth_key = "3da9e680aff5a1cea96a3e89810286fb3b3030a9c924ad2f2031a07d294052a97cafa1fc6ea760a43db763ca9f2f7036"
+mldsa_auth_key = "63616c69707472612d6d63752d74657374696e672d6d6c6473612d736565642d"
