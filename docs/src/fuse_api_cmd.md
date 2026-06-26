@@ -106,6 +106,34 @@ Command Code: `0x5056_504b` ("PVPK")
 Caveats:
 * Fails if the slot already contains data
 
+### MC_FUSE_REVOKE_VENDOR_PUB_KEY
+
+Revoke one vendor firmware verification key within a vendor PK hash slot.
+
+Command Code: `0x4D52_564B` ("MRVK")
+
+*Table: `MC_FUSE_REVOKE_VENDOR_PUB_KEY` input arguments*
+| **Name**             | **Type**       | **Description**                                      |
+| -------------------- | -------------- | ---------------------------------------------------- |
+| chksum               |  u32           |                                                      |
+| reserved             |  u32           | Reserved; must be zero                               |
+| vendor_pk_hash_slot  |  u32           | Vendor PK hash slot containing the key to revoke     |
+| key_type             |  u32           | `0` = ECDSA P-384, `1` = LMS, `2` = MLDSA-87         |
+| key_index            |  u32           | Key index within the selected key type's revocation field |
+
+*Table: `MC_FUSE_REVOKE_VENDOR_PUB_KEY` output arguments*
+| **Name**      | **Type**       | **Description**                         |
+| ------------- | -------------- | --------------------------------------- |
+| chksum        |  u32           |                                         |
+| fips_status   |  u32           | FIPS approved or an error               |
+
+Caveats:
+* This command must be authorized.
+* The selected PK hash slot must be provisioned and valid.
+* The command fails if it targets the key used to boot the currently running
+  firmware.
+* The last key index for a key type cannot be revoked.
+
 ### MC_FUSE_REVOKE_VENDOR_PK_HASH
 
 Revoke a vendor PK hash.
@@ -127,5 +155,8 @@ Command Code: `0x5256_4b48` ("RVKH")
 | fips_status   |  u32           | FIPS approved or an error               |
 
 Caveats:
+* This command must be authorized.
 * This command is **idempotent**, so that revoking a slot twice has no effect.
 * Trying to revoke an empty slot will result in an error
+* Trying to revoke the PK hash slot used to boot the currently running firmware
+  will result in an error
