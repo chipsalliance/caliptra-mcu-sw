@@ -5,15 +5,16 @@ use bitfield::bitfield;
 use core::convert::TryFrom;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-/// MCTP message type for Vendor Defined Messages.
-pub const MCTP_VDM_MSG_TYPE: u8 = 0x7E;
+/// MCTP message type for IANA Vendor Defined Messages.
+pub const MCTP_VDM_MSG_TYPE: u8 = 0x7F;
 
-/// PCI Vendor ID for Caliptra (Microsoft).
-pub const CALIPTRA_PCI_VENDOR_ID: u16 = 0x1414;
+/// OCP IANA enterprise number used for Caliptra VDM commands.
+pub const CALIPTRA_IANA_ENTERPRISE_ID: u32 = 42623;
+pub const CALIPTRA_IANA_ENTERPRISE_ID_BYTES: [u8; 4] = [0x00, 0x00, 0xA6, 0x7F];
 
 /// Length of the VDM message header in bytes.
-/// Header consists of: Vendor ID (2 bytes) + Request/Crypt byte (1 byte) + Command Code (1 byte)
-pub const VDM_MSG_HEADER_LEN: usize = 4;
+/// Header consists of: IANA enterprise ID (4 bytes) + Request/Crypt byte (1 byte) + Command Code (1 byte)
+pub const VDM_MSG_HEADER_LEN: usize = 6;
 
 /// VDM completion codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,17 +95,17 @@ impl VdmControlByte {
 }
 
 /// VDM Message Header structure.
-/// This is the header that follows the MCTP common header (msg type 0x7E).
+/// This is the header that follows the MCTP common header (msg type 0x7F).
 ///
 /// Layout:
-/// - Bytes 0:1 - PCI Vendor ID (little-endian, 0x1414 for Caliptra)
-/// - Byte 2    - Control byte (Request/Crypt/Reserved)
-/// - Byte 3    - Command Code
+/// - Bytes 0:3 - IANA enterprise ID (MSB first, OCP 42623 for Caliptra VDM commands)
+/// - Byte 4    - Control byte (Request/Crypt/Reserved)
+/// - Byte 5    - Command Code
 #[derive(Debug, Clone, Copy, PartialEq, FromBytes, IntoBytes, Immutable, Default)]
 #[repr(C, packed)]
 pub struct VdmMsgHeader {
-    /// PCI Vendor ID (little-endian).
-    pub vendor_id: u16,
+    /// IANA enterprise ID (MSB first).
+    pub enterprise_id: [u8; 4],
     /// Control byte containing request type and crypt flags.
     pub control: VdmControlByte,
     /// Command code.
@@ -115,7 +116,7 @@ impl VdmMsgHeader {
     /// Create a new VDM message header for a request.
     pub fn new_request(command_code: u8) -> Self {
         VdmMsgHeader {
-            vendor_id: CALIPTRA_PCI_VENDOR_ID,
+            enterprise_id: CALIPTRA_IANA_ENTERPRISE_ID_BYTES,
             control: VdmControlByte::new_request(),
             command_code,
         }
@@ -124,7 +125,7 @@ impl VdmMsgHeader {
     /// Create a new VDM message header for a response.
     pub fn new_response(command_code: u8) -> Self {
         VdmMsgHeader {
-            vendor_id: CALIPTRA_PCI_VENDOR_ID,
+            enterprise_id: CALIPTRA_IANA_ENTERPRISE_ID_BYTES,
             control: VdmControlByte::new_response(),
             command_code,
         }
@@ -133,15 +134,20 @@ impl VdmMsgHeader {
     /// Convert this header to a response header (keeping same command code).
     pub fn into_response(&self) -> Self {
         VdmMsgHeader {
-            vendor_id: self.vendor_id,
+            enterprise_id: self.enterprise_id,
             control: VdmControlByte::new_response(),
             command_code: self.command_code,
         }
     }
 
-    /// Check if the vendor ID is valid (Caliptra/Microsoft).
+    /// Return the IANA enterprise ID as an integer.
+    pub fn enterprise_id(&self) -> u32 {
+        u32::from_be_bytes(self.enterprise_id)
+    }
+
+    /// Check if the vendor ID is valid (OCP for Caliptra VDM commands).
     pub fn is_vendor_id_valid(&self) -> bool {
-        self.vendor_id == CALIPTRA_PCI_VENDOR_ID
+        self.enterprise_id == CALIPTRA_IANA_ENTERPRISE_ID_BYTES
     }
 
     /// Check if this is a request message.
@@ -196,9 +202,8 @@ mod tests {
     #[test]
     fn test_vdm_msg_header_request() {
         let hdr = VdmMsgHeader::new_request(0x01);
-        let vendor_id = hdr.vendor_id;
         let command_code = hdr.command_code;
-        assert_eq!(vendor_id, CALIPTRA_PCI_VENDOR_ID);
+        assert_eq!(hdr.enterprise_id(), CALIPTRA_IANA_ENTERPRISE_ID);
         assert!(hdr.is_request());
         assert!(hdr.is_vendor_id_valid());
         assert_eq!(command_code, 0x01);
@@ -207,9 +212,8 @@ mod tests {
     #[test]
     fn test_vdm_msg_header_response() {
         let hdr = VdmMsgHeader::new_response(0x02);
-        let vendor_id = hdr.vendor_id;
         let command_code = hdr.command_code;
-        assert_eq!(vendor_id, CALIPTRA_PCI_VENDOR_ID);
+        assert_eq!(hdr.enterprise_id(), CALIPTRA_IANA_ENTERPRISE_ID);
         assert!(hdr.is_response());
         assert!(hdr.is_vendor_id_valid());
         assert_eq!(command_code, 0x02);
@@ -220,10 +224,9 @@ mod tests {
         let req = VdmMsgHeader::new_request(0x03);
         let resp = req.into_response();
         let command_code = resp.command_code;
-        let vendor_id = resp.vendor_id;
         assert!(resp.is_response());
         assert_eq!(command_code, 0x03);
-        assert_eq!(vendor_id, CALIPTRA_PCI_VENDOR_ID);
+        assert_eq!(resp.enterprise_id(), CALIPTRA_IANA_ENTERPRISE_ID);
     }
 
     #[test]
@@ -247,9 +250,9 @@ mod tests {
             VdmCompletionCode::UnsupportedCommand as u32
         );
 
-        let mut buffer = [0u8; 8];
+        let mut buffer = [0u8; VDM_MSG_HEADER_LEN + 4];
         let size = resp.encode(&mut buffer).unwrap();
-        assert_eq!(size, 8);
+        assert_eq!(size, VDM_MSG_HEADER_LEN + 4);
 
         let decoded = VdmFailureResponse::decode(&buffer).unwrap();
         assert_eq!(resp, decoded);

@@ -3,11 +3,9 @@
 //! MCTP transport utilities for VDM messages.
 
 use crate::error::UtilError;
+pub use crate::protocol::MCTP_VDM_MSG_TYPE;
 use crate::protocol::VDM_MSG_HEADER_LEN;
 use bitfield::bitfield;
-
-/// MCTP message type for Vendor Defined Messages.
-pub const MCTP_VDM_MSG_TYPE: u8 = 0x7E;
 
 /// Offset of the MCTP common header in the payload.
 pub const MCTP_COMMON_HEADER_OFFSET: usize = 0;
@@ -18,7 +16,7 @@ pub const VDM_MSG_OFFSET: usize = 1;
 bitfield! {
     /// MCTP Common Header (first byte of MCTP message body).
     /// - Bit 7: IC (Integrity Check bit)
-    /// - Bits 6:0: Message Type (0x7E for VDM)
+    /// - Bits 6:0: Message Type (0x7F for IANA VDM)
     #[derive(Copy, Clone, PartialEq)]
     pub struct MctpCommonHeader(u8);
     impl Debug;
@@ -108,7 +106,7 @@ mod tests {
         assert_eq!(header.ic(), 0);
         assert_eq!(header.msg_type(), MCTP_VDM_MSG_TYPE);
         assert!(header.is_vdm());
-        assert_eq!(header.0, 0x7E);
+        assert_eq!(header.0, 0x7F);
     }
 
     #[test]
@@ -121,12 +119,12 @@ mod tests {
         );
 
         // Valid VDM message
-        mctp_payload[0] = 0x7E;
+        mctp_payload[0] = 0x7F;
         let vdm_msg = extract_vdm_msg(&mut mctp_payload).unwrap();
         assert_eq!(vdm_msg.len(), 15); // 16 - 1 (MCTP common header)
 
         // Buffer too short
-        let mut short_payload = [0x7E; 3];
+        let mut short_payload = [0x7F; 3];
         assert_eq!(
             extract_vdm_msg(&mut short_payload),
             Err(UtilError::InvalidMctpPayloadLength)
@@ -140,7 +138,7 @@ mod tests {
             let vdm_msg = construct_mctp_vdm_msg(&mut mctp_payload).unwrap();
             assert_eq!(vdm_msg.len(), 15);
         }
-        assert_eq!(mctp_payload[0], 0x7E);
+        assert_eq!(mctp_payload[0], 0x7F);
 
         // Buffer too short
         let mut short_payload = [0u8; 3];

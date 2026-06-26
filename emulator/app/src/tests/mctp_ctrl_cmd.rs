@@ -32,7 +32,10 @@ pub(crate) enum MCTPCtrlCmdTests {
     GetEID,
     GetMctpVersionSupportMctpBase,
     GetMctpVersionSupportMctpControlProtocol,
-    GetMctpVersionSupportUnspecified,
+    GetMctpVersionSupportPldm,
+    GetMctpVersionSupportSpdm,
+    GetMctpVersionSupportSecuredSpdmUnsupported,
+    GetMctpVersionSupportCaliptra,
     GetMctpVersionSupportUnsupported,
     GetMsgTypeSupport,
     UnsupportedCmd,
@@ -78,11 +81,20 @@ impl MCTPCtrlCmdTests {
             MCTPCtrlCmdTests::GetMctpVersionSupportMctpControlProtocol => {
                 vec![0x00]
             }
-            MCTPCtrlCmdTests::GetMctpVersionSupportUnspecified => {
-                vec![0x7E]
+            MCTPCtrlCmdTests::GetMctpVersionSupportPldm => {
+                vec![MctpMsgType::Pldm as u8]
+            }
+            MCTPCtrlCmdTests::GetMctpVersionSupportSpdm => {
+                vec![MctpMsgType::Spdm as u8]
+            }
+            MCTPCtrlCmdTests::GetMctpVersionSupportSecuredSpdmUnsupported => {
+                vec![MctpMsgType::SecureSpdm as u8]
+            }
+            MCTPCtrlCmdTests::GetMctpVersionSupportCaliptra => {
+                vec![MctpMsgType::Caliptra as u8]
             }
             MCTPCtrlCmdTests::GetMctpVersionSupportUnsupported => {
-                vec![0x01]
+                vec![0x04]
             }
             MCTPCtrlCmdTests::GetMsgTypeSupport => {
                 vec![]
@@ -140,20 +152,30 @@ impl MCTPCtrlCmdTests {
             }
             MCTPCtrlCmdTests::GetMctpVersionSupportMctpBase
             | MCTPCtrlCmdTests::GetMctpVersionSupportMctpControlProtocol => {
-                // 1.0.0 (major version 1, minor version 0, update 0 alpha 0)
-                let version1 = VersionEntry::from_u32(0xF1F0F000);
-                // 1.1.0 (major version 1, minor version 1, update 0 alpha 0)
-                let version2 = VersionEntry::from_u32(0xF1F1F000);
-                // 1.2.0 (major version 1, minor version 2, update 0 alpha 0)
-                let version3 = VersionEntry::from_u32(0xF1F2F000);
-                // 1.3.3 (major version 1, minor version 3, update 3 alpha 0)
+                // Backward compatibility with MCTP base/control protocol 1.0, 1.1, and 1.2.
+                let version1 = VersionEntry::from_u32(0xF1F0FF00);
+                let version2 = VersionEntry::from_u32(0xF1F1FF00);
+                let version3 = VersionEntry::from_u32(0xF1F2FF00);
+                // Current MCTP base/control protocol version 1.3.3.
                 let version4 = VersionEntry::from_u32(0xF1F3F300);
                 get_version_support_resp_bytes(
                     CmdCompletionCode::Success as u8,
                     Some(&[version1, version2, version3, version4]),
                 )
             }
-            MCTPCtrlCmdTests::GetMctpVersionSupportUnspecified
+            MCTPCtrlCmdTests::GetMctpVersionSupportPldm => get_version_support_resp_bytes(
+                CmdCompletionCode::Success as u8,
+                Some(&[VersionEntry::from_u32(0xF1F0F000)]),
+            ),
+            MCTPCtrlCmdTests::GetMctpVersionSupportSpdm => get_version_support_resp_bytes(
+                CmdCompletionCode::Success as u8,
+                Some(&[VersionEntry::from_u32(0xF1F0F200)]),
+            ),
+            MCTPCtrlCmdTests::GetMctpVersionSupportCaliptra => get_version_support_resp_bytes(
+                CmdCompletionCode::Success as u8,
+                Some(&[VersionEntry::from_u32(0xF1F0F000)]),
+            ),
+            MCTPCtrlCmdTests::GetMctpVersionSupportSecuredSpdmUnsupported
             | MCTPCtrlCmdTests::GetMctpVersionSupportUnsupported => {
                 get_version_support_resp_bytes(0x80, None)
             }
@@ -162,7 +184,6 @@ impl MCTPCtrlCmdTests {
                     MctpMsgType::Ctrl,
                     MctpMsgType::Pldm,
                     MctpMsgType::Spdm,
-                    MctpMsgType::SecureSpdm,
                     MctpMsgType::Caliptra,
                 ];
                 generate_msg_type_support_resp_bytes(CmdCompletionCode::Success as u8, &msg_types)
@@ -213,7 +234,10 @@ impl MCTPCtrlCmdTests {
             MCTPCtrlCmdTests::GetEID => MCTPCtrlCmd::GetEID as u8,
             MCTPCtrlCmdTests::GetMctpVersionSupportMctpBase
             | MCTPCtrlCmdTests::GetMctpVersionSupportMctpControlProtocol
-            | MCTPCtrlCmdTests::GetMctpVersionSupportUnspecified
+            | MCTPCtrlCmdTests::GetMctpVersionSupportPldm
+            | MCTPCtrlCmdTests::GetMctpVersionSupportSpdm
+            | MCTPCtrlCmdTests::GetMctpVersionSupportSecuredSpdmUnsupported
+            | MCTPCtrlCmdTests::GetMctpVersionSupportCaliptra
             | MCTPCtrlCmdTests::GetMctpVersionSupportUnsupported => {
                 MCTPCtrlCmd::GetMctpVersionSupport as u8
             }

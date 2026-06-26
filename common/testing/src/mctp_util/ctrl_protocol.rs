@@ -5,7 +5,6 @@ use bitfield::bitfield;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const MCTP_CTRL_MSG_HDR_SIZE: usize = 2;
-
 pub fn set_eid_req_bytes(op: SetEIDOp, eid: u8) -> Vec<u8> {
     let mut req_bytes: [u8; 2] = [0; 2];
     let cmd: &mut SetEIDReq<[u8; 2]> = SetEIDReq::mut_from_bytes(&mut req_bytes).unwrap();
@@ -38,12 +37,19 @@ pub fn get_eid_resp_bytes(cc: CmdCompletionCode, eid: u8) -> Vec<u8> {
 }
 
 pub fn get_version_support_resp_bytes(cc: u8, entries: Option<&[VersionEntry]>) -> Vec<u8> {
-    let mut resp_bytes = Vec::new();
-    resp_bytes.push(cc); // completion code
+    let entry_count = entries.map_or(0, |entries| entries.len());
+    let mut resp_bytes = vec![0; 2 + entry_count * 4];
+    resp_bytes[0] = cc; // completion code
+    resp_bytes[1] = entry_count as u8; // Number of version entries
     if let Some(entries) = entries {
-        resp_bytes.push(entries.len() as u8); // Number of version entries
-        for entry in entries {
-            resp_bytes.extend_from_slice(&entry.to_u32().to_le_bytes());
+        for (i, entry) in entries.iter().enumerate() {
+            let offset = 2 + i * 4;
+            resp_bytes[offset..offset + 4].copy_from_slice(&[
+                entry.major,
+                entry.minor,
+                entry.update,
+                entry.alpha,
+            ]);
         }
     }
     resp_bytes
@@ -250,8 +256,8 @@ impl From<u8> for EIDType {
 pub enum VersionSupportMessageType {
     MctpBase = 0xFF,
     MctpControlProtocol = 0x00,
-    VendorDefined = 0x7E,
-    Unspecified = 0x7F,
+    VendorDefinedPci = 0x7E,
+    VendorDefinedIana = 0x7F,
 }
 
 // For MCTP version entries, typically represented as:

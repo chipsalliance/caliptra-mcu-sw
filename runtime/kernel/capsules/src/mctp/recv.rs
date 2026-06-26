@@ -63,6 +63,10 @@ impl<'a> MCTPRxState<'a> {
         self.client.set(client);
     }
 
+    pub fn msg_type(&self) -> MessageType {
+        self.msg_type
+    }
+
     /// Checks if a message of the given type is expected to be received.
     ///
     /// # Arguments
