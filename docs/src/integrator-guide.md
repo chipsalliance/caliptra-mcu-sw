@@ -107,12 +107,26 @@ hardware strapping pin:
 
 ### Key Revocation
 
-Keys can be revoked permanently by burning fuses:
--   Setting the corresponding bit in `VENDOR_PK_HASH_VALID` to `1` invalidates
-    the entire slot.
--   Incrementing the revocation counters for ECC or PQC keys within a slot.
-    Once all bits are burned (e.g., reaching `0xF` for MLDSA or ECC), that key
-    type is fully revoked in that slot.
+Keys can be revoked permanently by burning fuses. MCU Runtime exposes
+authorized mailbox commands for the supported in-field flows:
+
+-   `MC_FUSE_REVOKE_VENDOR_PUB_KEY` revokes an individual firmware
+    verification key within a vendor PK hash slot. The command supports ECC
+    P-384, LMS, and MLDSA-87 key types and burns the corresponding bit in the
+    slot's revocation field.
+-   `MC_FUSE_REVOKE_VENDOR_PK_HASH` revokes an entire vendor PK hash slot by
+    setting the corresponding bit in `VENDOR_PK_HASH_VALID` to `1`.
+
+Both commands are routed through the authorized-command path. They reject
+requests that target the key or PK hash slot used to boot the currently running
+firmware. This prevents a requester from bricking the current boot by revoking
+its own active trust path; revocation is intended to happen after the device has
+successfully booted with a replacement key or replacement PK hash slot.
+
+For per-key revocation, once all usable bits for a key type are burned in a
+slot, that key type is fully revoked in that slot. The last key index for a
+given key type cannot be revoked, matching Caliptra's requirement that a slot
+retain at least one usable key of each required type.
 
 ### Key Revocation Flows
 
@@ -123,12 +137,14 @@ within the same PK hash slot or in a different slot.
 
 This flow is used when a specific sub-key within a PK hash slot needs to be
 revoked (e.g., moving to a new key version) but other keys within that PK hash
-remiain trusted.
+remain trusted.
 
 **Process**:
 1.  Push a new Runtime (RT) firmware signed with a new key.
-2.  The runtime, on startup, will identify that a key revocation is required and
-    perform the appropriate fuse burn
+2.  After the device boots with the replacement key, an authorized requester
+    sends `MC_FUSE_REVOKE_VENDOR_PUB_KEY` to MCU Runtime for the old key.
+3.  MCU Runtime validates that the target key was not used for the current boot
+    and burns the corresponding revocation bit.
 
 ```mermaid
 sequenceDiagram
@@ -138,10 +154,11 @@ sequenceDiagram
     participant Fuses as OTP Fuses
     
     Host->>MCU_ROM: Push new RT FW (signed with Key N+1)
-    MCU_ROM->>Fuses: Read revocation counter (current = N)
+    MCU_ROM->>Fuses: Read revocation bitmask
     MCU_ROM->>MCU_ROM: Verify signature with Key N+1
     MCU_ROM->>MCU_RT: Boot into new MCU RT
-    MCU_RT->>Fuses: Increment revocation counter to N+1
+    Host->>MCU_RT: MC_FUSE_REVOKE_VENDOR_PUB_KEY(slot, type, Key N)
+    MCU_RT->>Fuses: Burn revocation bit for Key N
 ```
 
 #### Case 2: Revocation Across Different PK Hash Slots
@@ -152,9 +169,10 @@ replaced, requiring a transition to a new PK hash slot.
 **Process**:
 1.  Push a new Runtime (RT) firmware signed with a key from a new PK hash slot.
 2.  Additionally assert the hardware strapping pin (Bit 1 of
-    `SS_STRAP_GENERIC[3]`) to enable rotation.
+    `mci_reg_generic_input_wires[1]`) to enable rotation.
 3.  On reboot, the MCU ROM will select the new PK hash slot.
-4.  The MCU Runtime will then burn the old PK hash slot as invalid.
+4.  An authorized requester sends `MC_FUSE_REVOKE_VENDOR_PK_HASH` to MCU
+    Runtime to burn the old PK hash slot as invalid.
 
 ```mermaid
 sequenceDiagram
@@ -171,11 +189,9 @@ sequenceDiagram
     MCU_ROM->>Fuses: Read valid slots & functional status
     MCU_ROM->>MCU_ROM: Skip PK Hash Slot N (first functional), Select PK Hash Slot N+1
     MCU_ROM->>MCU_RT: Boot into new MCU RT
+    Host->>MCU_RT: MC_FUSE_REVOKE_VENDOR_PK_HASH(slot N)
     MCU_RT->>Fuses: Mark PK Hash Slot N as invalid
 ```
-
-> Note: the development of the MCU Runtime mechanism to identify and perform the
-revocation is being tracked in [this Github issue](https://github.com/chipsalliance/caliptra-sw/issues/2441).
 
 ## ROM Milestone Hooks
 
