@@ -21,20 +21,20 @@ pub struct LoggingSyscall<S: Syscalls = DefaultSyscalls> {
 
 impl<S: Syscalls> Default for LoggingSyscall<S> {
     fn default() -> Self {
-        Self::new()
+        Self::new(driver_num::LOGGING_FLASH)
     }
 }
 
 /// Represents an asynchronous logging interface.
 impl<S: Syscalls> LoggingSyscall<S> {
-    /// Creates a new LoggingSyscall instance with the default driver number.
+    /// Creates a new LoggingSyscall instance with the given driver number.
     ///
     /// # Returns
     /// A new `LoggingSyscall` instance.
-    pub fn new() -> Self {
+    pub fn new(driver_num: u32) -> Self {
         Self {
             syscall: PhantomData,
-            driver_num: driver_num::LOGGING_FLASH,
+            driver_num,
         }
     }
 
@@ -228,6 +228,7 @@ impl Upcall<OneId<{ driver_num::LOGGING_FLASH }, { subscribe::APPEND_DONE }>>
 // -----------------------------------------------------------------------------
 
 pub mod driver_num {
+    /// Conventional driver number for instance 0; additional instances are platform-defined.
     pub const LOGGING_FLASH: u32 = 0x9001_0000;
 }
 

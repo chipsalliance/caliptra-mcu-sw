@@ -13,3 +13,4 @@ zerocopy.workspace = true
 [features]
 default = []
 active-i3c1 = []
+crash-log = []
