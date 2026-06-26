@@ -23,6 +23,7 @@ pub(crate) use caliptra_mcu_userlog::{Bytes, Dbg, Hex32};
 #[allow(unused_imports)]
 pub use caliptra_mcu_libsyscall_caliptra::console_writeln;
 
+pub(crate) mod auth_keys;
 mod caliptra_cmd_handler;
 #[cfg(any(
     feature = "test-defmt-logging-mailbox",

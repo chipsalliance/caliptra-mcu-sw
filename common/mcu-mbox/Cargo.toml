@@ -8,5 +8,6 @@ authors.workspace = true
 
 [dependencies]
 mcu-caliptra-api-lite.workspace = true
+caliptra-image-types.workspace = true
 zerocopy.workspace = true
 caliptra-mcu-registers-generated.workspace = true

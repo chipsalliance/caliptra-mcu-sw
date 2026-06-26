@@ -192,22 +192,22 @@ pub fn handle_get_auth_challenge(
 
 /// Handle ProgramFieldEntropy (FE_PROG) authorized sub-command.
 ///
-/// VDM wire format request:  [version, 0x12 (AuthorizedCommand), sub_cmd_id=0x4D43_4650 (4 LE), partition(4 LE), mac(48)]
+/// VDM wire format request:  [version, 0x12 (AuthorizedCommand), sub_cmd_id=0x4D43_4650 (4 LE), partition(4 LE), ecc_sig(96), mldsa_sig(4627), reserved(1)]
 /// VDM wire format response: [version, 0x12 (AuthorizedCommand), completion_code]
 pub fn handle_fe_prog(
     payload: &[u8],
     driver: &mut dyn SpdmVdmDriver,
     response_buffer: &mut [u8],
 ) -> Result<usize, TransportError> {
+    use alloc::vec::Vec;
     use caliptra_mcu_core_util_host_command_types::fuse::{FeProgRequest, FeProgResponse};
 
     let req = FeProgRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
 
-    // VDM payload: [sub_cmd_id=0x4D43_4650(4 LE), partition(4 LE), mac(48)]
-    let mut vdm_payload = [0u8; 4 + 4 + 48];
-    vdm_payload[0..4].copy_from_slice(&0x4D43_4650u32.to_le_bytes()); // sub_cmd_id = MC_FE_PROG
-    vdm_payload[4..8].copy_from_slice(&req.partition.to_le_bytes());
-    vdm_payload[8..].copy_from_slice(&req.mac);
+    // VDM payload: [sub_cmd_id=0x4D43_4650(4 LE), partition(4 LE), ecc_sig(96), mldsa_sig(4627), reserved(1)]
+    let mut vdm_payload = Vec::with_capacity(4 + size_of::<FeProgRequest>());
+    vdm_payload.extend_from_slice(&MC_FE_PROG_CANONICAL_CMD_ID.to_le_bytes());
+    vdm_payload.extend_from_slice(req.as_bytes());
 
     let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
     let _resp_len = send_vdm_request(

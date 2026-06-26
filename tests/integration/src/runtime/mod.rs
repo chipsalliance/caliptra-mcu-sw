@@ -1,22 +1,20 @@
 // Licensed under the Apache-2.0 license
 
+use crate::test_caliptra_util_host_mcu_mailbox_validator::test::{
+    TEST_ECC_PRIV_KEY, TEST_MLDSA_SEED,
+};
 use anyhow::{anyhow, bail, Result};
+use caliptra_mcu_command_auth_challenge_signer::{
+    AsymmetricCommandAuthorizer, CommandAuthChallengeSigner,
+};
 use caliptra_mcu_hw_model::McuHwModel;
 use caliptra_mcu_mbox_common::messages::{calc_checksum, GetAuthCmdChallengeReq, MailboxReqHeader};
 use core::mem::size_of;
-use hmac::{Hmac, Mac};
-use sha2::Sha384;
-use zerocopy::FromBytes;
+use zerocopy::{FromBytes, IntoBytes};
 
 mod test_increase_caliptra_svn;
 mod test_mcu_mailbox;
 mod test_revoke_vendor_pub_key;
-
-pub const TEST_AUTH_CMD_HMAC_KEY: [u8; 48] = [
-    0x72, 0xec, 0x12, 0x02, 0x77, 0x69, 0xb9, 0xdc, 0x04, 0xbd, 0xd0, 0xc0, 0x86, 0xca, 0x1b, 0x20,
-    0x2f, 0x47, 0x1e, 0xee, 0xf2, 0x8c, 0x2d, 0xa8, 0xc5, 0x4c, 0x75, 0xc2, 0x48, 0xa6, 0x80, 0x0a,
-    0x11, 0xbf, 0xd5, 0xcd, 0x09, 0xed, 0x57, 0x0c, 0xb4, 0xc2, 0xa1, 0x37, 0x6b, 0xa2, 0xcb, 0xcd,
-];
 
 pub fn get_auth_cmd_challenge(hw: &mut impl McuHwModel) -> Result<[u8; 32]> {
     let cmd = GetAuthCmdChallengeReq::default();
@@ -24,23 +22,18 @@ pub fn get_auth_cmd_challenge(hw: &mut impl McuHwModel) -> Result<[u8; 32]> {
     Ok(resp.challenge)
 }
 
-pub fn sign_auth_cmd_challenge(challenge: &[u8; 32], cmd_id: u32, cmd: &[u8]) -> Result<[u8; 48]> {
-    type HmacSha384 = Hmac<Sha384>;
-    let cmd_id_bytes = cmd_id.to_be_bytes();
+pub fn sign_auth_cmd_challenge(challenge: &[u8; 32], cmd_id: u32, cmd: &[u8]) -> Result<Vec<u8>> {
+    let authorizer = AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED)?;
     let cmd_body = &cmd[size_of::<MailboxReqHeader>()..];
-    let mut mac = HmacSha384::new_from_slice(&TEST_AUTH_CMD_HMAC_KEY)?;
-    mac.update(&cmd_id_bytes);
-    mac.update(cmd_body);
-    mac.update(challenge);
-    let result: [u8; 48] = mac.finalize().into_bytes().into();
-    Ok(result)
+    let sigs = authorizer.authorize(cmd_id, cmd_body, challenge)?;
+    Ok(sigs.as_bytes().to_vec())
 }
 
 pub fn authorize_cmd(hw: &mut impl McuHwModel, cmd_id: u32, cmd: &[u8]) -> Result<Vec<u8>> {
     let challenge = get_auth_cmd_challenge(hw)?;
-    let mac = sign_auth_cmd_challenge(&challenge, cmd_id, cmd)?;
+    let sigs = sign_auth_cmd_challenge(&challenge, cmd_id, cmd)?;
     let mut auth_cmd = cmd.to_vec();
-    auth_cmd.extend_from_slice(&mac);
+    auth_cmd.extend_from_slice(&sigs);
     Ok(auth_cmd)
 }
 

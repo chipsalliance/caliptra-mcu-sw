@@ -13,13 +13,11 @@
 //! 3. Send the command with the 48-byte MAC appended
 
 use crate::{CaliptraCommandId, CommandRequest, CommandResponse, CommonResponse};
+use caliptra_mcu_mbox_common::messages::HybridSignature;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 /// Size of the authorization challenge nonce in bytes
 pub const AUTH_CMD_CHALLENGE_SIZE: usize = 32;
-
-/// Size of the HMAC-SHA384 MAC in bytes
-pub const AUTH_CMD_MAC_SIZE: usize = 48;
 
 /// Canonical command identifier for the GET_AUTH_CMD_CHALLENGE command used in sub-command dispatch.
 ///
@@ -27,10 +25,10 @@ pub const AUTH_CMD_MAC_SIZE: usize = 48;
 /// Used as the `sub_cmd_id` in the SPDM VDM AuthorizedCommand (`0x12`) dispatch.
 pub const MC_GET_AUTH_CMD_CHALLENGE_CANONICAL_CMD_ID: u32 = 0x4D41_4343;
 
-/// Canonical command identifier for the FE_PROG command used in HMAC computation.
+/// Canonical command identifier for the FE_PROG command used in challenge signing.
 ///
 /// This is the MCU mailbox FOURCC for `MC_FE_PROG` (`0x4D43_4650` = "MCFP" in ASCII).
-/// It must be used as the `cmd_id` parameter in HMAC-SHA384 authorization across all
+/// It must be used as the `cmd_id` parameter in asymmetric challenge signing across all
 /// transports (SPDM VDM and MCU mailbox) to ensure interoperability.
 pub const MC_FE_PROG_CANONICAL_CMD_ID: u32 = 0x4D43_4650;
 
@@ -78,40 +76,21 @@ impl CommandResponse for GetAuthCmdChallengeResponse {}
 /// Request to program field entropy for a given OTP partition.
 ///
 /// This is an authorized command — the caller must first obtain a challenge
-/// via `GetAuthCmdChallenge`, compute HMAC-SHA384 over
+/// via `GetAuthCmdChallenge`, compute ECC and ML-DSA signatures over
 /// `cmd_id(BE) || partition(LE) || challenge`, and place the resulting
-/// 48-byte MAC in the `mac` field.
+/// signatures in the `sig` field.
 #[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+#[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct FeProgRequest {
     pub partition: u32,
-    /// HMAC-SHA384 authorization token (48 bytes).
-    /// Computed over `cmd_id(BE, 4) || partition(LE, 4) || challenge(32)`.
-    pub mac: [u8; AUTH_CMD_MAC_SIZE],
-}
-
-impl Default for FeProgRequest {
-    fn default() -> Self {
-        Self {
-            partition: 0,
-            mac: [0u8; AUTH_CMD_MAC_SIZE],
-        }
-    }
+    pub sig: HybridSignature,
 }
 
 /// Response for field entropy programming (header-only on success).
 #[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+#[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct FeProgResponse {
     pub common: CommonResponse,
-}
-
-impl Default for FeProgResponse {
-    fn default() -> Self {
-        Self {
-            common: CommonResponse { fips_status: 0 },
-        }
-    }
 }
 
 impl CommandRequest for FeProgRequest {

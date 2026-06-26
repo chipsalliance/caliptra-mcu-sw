@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE};
 use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0;
 use core::convert::From;
 use core::num::NonZeroU32;
@@ -1580,6 +1581,24 @@ pub struct ProvisionVendorPkHashResp {
     pub hdr: MailboxRespHeader,
 }
 impl Response for ProvisionVendorPkHashResp {}
+
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable)]
+pub struct HybridSignature {
+    pub ecc_sig_r: [u8; ECC384_SCALAR_BYTE_SIZE],
+    pub ecc_sig_s: [u8; ECC384_SCALAR_BYTE_SIZE],
+    pub mldsa_sig: [u8; MLDSA87_SIGNATURE_BYTE_SIZE],
+}
+
+impl Default for HybridSignature {
+    fn default() -> Self {
+        Self {
+            ecc_sig_r: [0u8; ECC384_SCALAR_BYTE_SIZE],
+            ecc_sig_s: [0u8; ECC384_SCALAR_BYTE_SIZE],
+            mldsa_sig: [0u8; MLDSA87_SIGNATURE_BYTE_SIZE],
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

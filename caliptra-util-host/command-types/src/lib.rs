@@ -125,7 +125,7 @@ pub enum CaliptraCommandId {
 
 /// Common response header for all commands
 #[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+#[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct CommonResponse {
     pub fips_status: u32, // FIPS compliance status
 }

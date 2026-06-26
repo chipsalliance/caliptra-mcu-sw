@@ -7,12 +7,14 @@
 //! VDM commands. The protocol/dispatch/framing all live in the
 //! `caliptra-mcu-spdm-vdm-handler` lib; this hook only supplies the device ops.
 
+use crate::auth_keys::{TEST_AUTH_ECC_PUB_KEY_X, TEST_AUTH_ECC_PUB_KEY_Y, TEST_AUTH_MLDSA_PUB_KEY};
 use caliptra_mcu_common_commands::{
     CaliptraCompletionCode as CommonCompletionCode, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_mbox_common::messages::HybridSignature;
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdmCommands, CaliptraVdmResult,
@@ -181,10 +183,10 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
     async fn program_field_entropy<A: SpdmPalAlloc>(
         &self,
         partition: u32,
-        mac: &[u8; 48],
+        sig: &HybridSignature,
         scratch: &A,
     ) -> CaliptraVdmResult<()> {
-        verify_fe_prog_mac(scratch, partition, mac).await?;
+        verify_fe_prog_signatures(partition, sig).await?;
         crate::caliptra_cmd_handler::device_ops::program_field_entropy(scratch, partition)
             .await
             .map_err(map_common_completion)
@@ -207,11 +209,7 @@ fn copy_bytes(src: &[u8], out: &mut [u8]) -> CaliptraVdmResult<usize> {
     Ok(src.len())
 }
 
-async fn verify_fe_prog_mac<A: mcu_caliptra_api_lite::ApiAlloc>(
-    scratch: &A,
-    partition: u32,
-    mac: &[u8; 48],
-) -> CaliptraVdmResult<()> {
+async fn verify_fe_prog_signatures(partition: u32, sig: &HybridSignature) -> CaliptraVdmResult<()> {
     let challenge = AUTH_CHALLENGE
         .lock()
         .await
@@ -219,13 +217,14 @@ async fn verify_fe_prog_mac<A: mcu_caliptra_api_lite::ApiAlloc>(
         .ok_or(CaliptraCompletionCode::AccessDenied)?;
     let partition_bytes = partition.to_le_bytes();
 
-    crate::caliptra_cmd_handler::device_ops::verify_authorized_mac(
-        scratch,
-        &crate::caliptra_cmd_handler::device_ops::TEST_AUTH_CMD_HMAC_KEY,
+    crate::caliptra_cmd_handler::device_ops::verify_authorized_signatures(
         FE_PROG_CMD_ID,
         &partition_bytes,
         &challenge,
-        mac,
+        TEST_AUTH_ECC_PUB_KEY_X,
+        TEST_AUTH_ECC_PUB_KEY_Y,
+        TEST_AUTH_MLDSA_PUB_KEY,
+        sig,
     )
     .await
     .map_err(map_common_completion)

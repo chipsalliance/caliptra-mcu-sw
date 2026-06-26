@@ -19,7 +19,7 @@ pub use caliptra_mcu_debug_unlock_signer::{
 
 // Re-export the command authorizer trait and types from the common crate
 pub use caliptra_mcu_command_auth_challenge_signer::{
-    CommandAuthChallengeSigner, HmacCommandAuthorizer,
+    AsymmetricCommandAuthorizer, CommandAuthChallengeSigner,
 };
 
 // Re-export config from the shared library

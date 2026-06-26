@@ -377,6 +377,22 @@ Like provisioning, these revocation commands are not exposed through the OOB
 SPDM VDM command set today. A BMC-originated field workflow therefore needs a
 SoC-side MCI mailbox agent or an explicit platform proxy.
 
+#### Command Authorization Mechanism
+
+Command authorization across both MCU mailbox and SPDM VDM transports uses an
+asymmetric challenge-response signature flow. To execute an authorized command
+(e.g., key revocation or field entropy programming), the requester must:
+
+1. Request a 32-byte challenge nonce from the device via `Get Auth Challenge`.
+2. Compute dual asymmetric signatures (ECC P-384 and ML-DSA-87) over
+   `cmd_id(BE) || payload(LE) || challenge(32)`.
+3. Submit the command payload accompanied by the resulting hybrid signature.
+
+Integrators configure the authorizer policy by implementing the platform
+authorizer trait (`CommandAuthorizer` for mailbox or `CaliptraVdmCommands` for
+SPDM VDM) and provisioning the corresponding verification public keys in OTP
+fuses, secure platform storage, or embedded in firmware directly.
+
 For per-key revocation, once all usable bits for a key type are burned in a
 slot, that key type is fully revoked in that slot. The last key index for a
 given key type cannot be revoked, matching Caliptra's requirement that a slot

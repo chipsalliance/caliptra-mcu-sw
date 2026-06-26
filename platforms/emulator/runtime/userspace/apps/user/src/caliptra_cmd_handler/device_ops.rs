@@ -1,31 +1,26 @@
 // Licensed under the Apache-2.0 license
 
+use arrayvec::ArrayVec;
+use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, MldsaVerifyReq};
 use caliptra_mcu_common_commands::{
     CaliptraCmdResult, CaliptraCompletionCode, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
+use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
-use constant_time_eq::constant_time_eq;
+use caliptra_mcu_mbox_common::messages::HybridSignature;
 use mcu_caliptra_api_lite::{
-    cm_hmac, cm_import, fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87,
-    request_debug_unlock_challenge, rng_generate, ApiAlloc, CmKeyUsage, McuErrorCode,
-    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
+    fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, request_debug_unlock_challenge,
+    rng_generate, ApiAlloc, McuErrorCode, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
+    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
+use zerocopy::IntoBytes;
 
 const ALGO_ECC_P384: u32 = 0x0001;
 const ALGO_MLDSA87: u32 = 0x0002;
-
-/// Symmetric test HMAC key used by emulator command-auth validator paths.
-///
-/// This is not a production secret source; production should provision or
-/// derive authorization material outside firmware.
-pub(crate) const TEST_AUTH_CMD_HMAC_KEY: [u8; 48] = [
-    0x72, 0xec, 0x12, 0x02, 0x77, 0x69, 0xb9, 0xdc, 0x04, 0xbd, 0xd0, 0xc0, 0x86, 0xca, 0x1b, 0x20,
-    0x2f, 0x47, 0x1e, 0xee, 0xf2, 0x8c, 0x2d, 0xa8, 0xc5, 0x4c, 0x75, 0xc2, 0x48, 0xa6, 0x80, 0x0a,
-    0x11, 0xbf, 0xd5, 0xcd, 0x09, 0xed, 0x57, 0x0c, 0xb4, 0xc2, 0xa1, 0x37, 0x6b, 0xa2, 0xcb, 0xcd,
-];
 
 pub async fn request_debug_unlock<A: ApiAlloc>(
     alloc: &A,
@@ -93,50 +88,83 @@ pub async fn generate_auth_challenge<A: ApiAlloc>(alloc: &A) -> CaliptraCmdResul
     Ok(challenge)
 }
 
-pub async fn verify_authorized_mac<A: ApiAlloc>(
-    alloc: &A,
-    key: &[u8],
+pub async fn verify_authorized_signatures(
     cmd_id: u32,
     payload: &[u8],
     challenge: &[u8; 32],
-    mac: &[u8; 48],
+    ecc_pub_x: [u8; 48],
+    ecc_pub_y: [u8; 48],
+    mldsa_pub: [u8; 2592],
+    sig: &HybridSignature,
 ) -> CaliptraCmdResult<()> {
-    let cmk = cm_import(alloc, CmKeyUsage::Hmac, key)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-
-    let input_len = core::mem::size_of::<u32>()
-        .checked_add(payload.len())
-        .and_then(|len| len.checked_add(challenge.len()))
-        .filter(|len| *len <= 256)
-        .ok_or(CaliptraCompletionCode::InsufficientResources)?;
-    // Keep the larger staging buffer in scratch so it does not inflate task state.
-    let mut hmac_input = alloc
-        .alloc(input_len)
+    let mut message = ArrayVec::<u8, 256>::new();
+    message
+        .try_extend_from_slice(&cmd_id.to_be_bytes())
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-    let (cmd_out, remainder) = hmac_input
-        .split_at_mut_checked(core::mem::size_of::<u32>())
-        .ok_or(CaliptraCompletionCode::InsufficientResources)?;
-    cmd_out.copy_from_slice(&cmd_id.to_be_bytes());
-    let (payload_out, challenge_out) = remainder
-        .split_at_mut_checked(payload.len())
-        .ok_or(CaliptraCompletionCode::InsufficientResources)?;
-    payload_out.copy_from_slice(payload);
-    challenge_out.copy_from_slice(challenge);
+    message
+        .try_extend_from_slice(payload)
+        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
+    message
+        .try_extend_from_slice(challenge)
+        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
 
-    let mut computed_mac = [0u8; 48];
-    let mac_len = cm_hmac(alloc, &cmk, &hmac_input, &mut computed_mac)
+    let mailbox = Mailbox::new();
+
+    // 1. Verify ECC P-384 Signature using Caliptra Mailbox
+    let mut hash = [0u8; 48];
+    HashContext::hash_all(HashAlgoType::SHA384, message.as_slice(), &mut hash)
         .await
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    if mac_len != 48 {
-        return Err(CaliptraCompletionCode::OperationFailed);
-    }
 
-    if constant_time_eq(&computed_mac, mac) {
-        Ok(())
-    } else {
-        Err(CaliptraCompletionCode::AccessDenied)
-    }
+    let mut ecc_req = EcdsaVerifyReq {
+        hdr: MailboxReqHeader::default(),
+        pub_key_x: ecc_pub_x,
+        pub_key_y: ecc_pub_y,
+        signature_r: sig.ecc_sig_r,
+        signature_s: sig.ecc_sig_s,
+        hash,
+    };
+
+    let mut ecc_resp = MailboxRespHeader::default();
+
+    let ecc_req_bytes = ecc_req.as_mut_bytes();
+    let ecc_resp_bytes = ecc_resp.as_mut_bytes();
+
+    let cmd_ecdsa_verify: u32 = caliptra_api::mailbox::CommandId::ECDSA384_SIGNATURE_VERIFY.into();
+
+    execute_mailbox_cmd(&mailbox, cmd_ecdsa_verify, ecc_req_bytes, ecc_resp_bytes)
+        .await
+        .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+
+    // 2. Verify ML-DSA-87 Signature using Caliptra Mailbox
+    let mut mldsa_req = MldsaVerifyReq {
+        hdr: MailboxReqHeader::default(),
+        pub_key: mldsa_pub,
+        signature: sig.mldsa_sig,
+        message_size: message.len() as u32,
+        message: [0u8; caliptra_api::mailbox::MAX_CMB_DATA_SIZE],
+    };
+    mldsa_req.message[..message.len()].copy_from_slice(message.as_slice());
+
+    let mut mldsa_resp = MailboxRespHeader::default();
+
+    let mldsa_req_bytes = mldsa_req
+        .as_bytes_partial_mut()
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    let mldsa_resp_bytes = mldsa_resp.as_mut_bytes();
+
+    let cmd_mldsa_verify: u32 = caliptra_api::mailbox::CommandId::MLDSA87_SIGNATURE_VERIFY.into();
+
+    execute_mailbox_cmd(
+        &mailbox,
+        cmd_mldsa_verify,
+        mldsa_req_bytes,
+        mldsa_resp_bytes,
+    )
+    .await
+    .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+
+    Ok(())
 }
 
 pub async fn program_field_entropy<A: ApiAlloc>(

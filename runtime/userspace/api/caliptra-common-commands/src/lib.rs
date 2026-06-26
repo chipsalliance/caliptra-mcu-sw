@@ -3,7 +3,7 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(async_fn_in_trait)]
 
-use caliptra_mcu_mbox_common::messages::CommandId;
+use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature};
 use mcu_caliptra_api_lite::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
@@ -256,7 +256,7 @@ pub trait CaliptraCmdHandler {
     /// Program field entropy for a given partition.
     ///
     /// Over both the MCU mailbox and VDM paths, the dispatch layer verifies
-    /// HMAC authorization via `CommandAuthorizer::verify_mac` before invoking
+    /// authorization via `CommandAuthorizer::verify_signatures` before invoking
     /// this transport-agnostic handler.
     ///
     /// # Arguments
@@ -281,7 +281,7 @@ pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 pub trait CommandAuthorizer {
     /// Validates if a message is authorized.
     ///
-    /// The request can contain authorization data (e.g. a HMAC).
+    /// The request can contain authorization data (e.g. a verification).
     /// This method is responsible for unpacking the contained
     /// request message and returning it as a slice.
     ///
@@ -298,24 +298,23 @@ pub trait CommandAuthorizer {
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError>;
 
-    /// Verify a MAC over a command using the stored challenge.
+    /// Verify signatures over a command using the stored challenge.
     ///
     /// This is transport-agnostic: the caller provides the raw command ID
     /// (which may differ between mailbox and SPDM VDM namespaces), the
-    /// command payload, and the received MAC.
+    /// command payload, and the received signature.
     ///
     /// Consumes the stored challenge (one-time use).
     ///
     /// # Arguments
-    /// * `cmd_id` - Raw command identifier (u32, serialized big-endian in HMAC)
+    /// * `cmd_id` - Raw command identifier (u32, serialized big-endian in verification)
     /// * `payload` - Command-specific payload bytes
-    /// * `mac` - The 48-byte MAC received from the host
-    async fn verify_mac<Alloc: ApiAlloc>(
+    /// * `sig` - The hybrid signature received from the host
+    async fn verify_signatures(
         &mut self,
-        alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
-        mac: &[u8],
+        sig: &HybridSignature,
     ) -> Result<(), AuthorizationError>;
 
     /// Get the challenge from the last call to `MC_GET_AUTH_CMD_CHALLENGE`.

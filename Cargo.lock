@@ -997,8 +997,14 @@ name = "caliptra-mcu-command-auth-challenge-signer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
+ "caliptra-image-types",
+ "caliptra-mcu-mbox-common",
+ "fips204",
  "hmac",
+ "p384",
  "sha2",
+ "zerocopy",
 ]
 
 [[package]]
@@ -1086,6 +1092,7 @@ dependencies = [
 name = "caliptra-mcu-core-util-host-command-types"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-mbox-common",
  "zerocopy",
 ]
 
@@ -1117,6 +1124,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-core-util-host-command-types",
  "caliptra-mcu-core-util-host-osal",
+ "caliptra-mcu-mbox-common",
  "caliptra-mcu-mctp-vdm-common",
  "zerocopy",
 ]
@@ -1668,6 +1676,7 @@ dependencies = [
 name = "caliptra-mcu-mbox-common"
 version = "0.1.0"
 dependencies = [
+ "caliptra-image-types",
  "caliptra-mcu-registers-generated",
  "mcu-caliptra-api-lite",
  "zerocopy",
@@ -2012,6 +2021,7 @@ dependencies = [
 name = "caliptra-mcu-spdm-vdm-handler"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-mbox-common",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-spdm-codec",
  "caliptra-mcu-spdm-errors",
@@ -2151,6 +2161,7 @@ dependencies = [
  "caliptra-image-types",
  "caliptra-mailbox-client",
  "caliptra-mcu-builder",
+ "caliptra-mcu-command-auth-challenge-signer",
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
@@ -6914,8 +6925,10 @@ dependencies = [
 name = "user-app"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "async-trait",
  "caliptra-api",
+ "caliptra-image-types",
  "caliptra-mcu-common-commands",
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",

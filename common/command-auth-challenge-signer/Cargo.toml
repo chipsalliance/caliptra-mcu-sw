@@ -8,5 +8,11 @@ description = "Command authorization trait and HMAC implementation for Caliptra 
 
 [dependencies]
 anyhow.workspace = true
+caliptra-image-types.workspace = true
+caliptra-mcu-mbox-common.workspace = true
 hmac.workspace = true
 sha2.workspace = true
+p384 = { workspace = true, features = ["ecdsa", "std"] }
+fips204 = { workspace = true, features = ["default-rng", "ml-dsa-87"] }
+base64.workspace = true
+zerocopy.workspace = true

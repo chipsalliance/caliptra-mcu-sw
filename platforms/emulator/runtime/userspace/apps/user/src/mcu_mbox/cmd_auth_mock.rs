@@ -1,11 +1,15 @@
 // Licensed under the Apache-2.0 license
-use caliptra_mcu_common_commands::{AuthorizationError, AuthorizationResult, CommandAuthorizer};
+use crate::auth_keys::{TEST_AUTH_ECC_PUB_KEY_X, TEST_AUTH_ECC_PUB_KEY_Y, TEST_AUTH_MLDSA_PUB_KEY};
+use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, FuseIncreaseCaliptraMinSvnReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
-    MailboxReqHeader, McuFeProgReq, ProvisionVendorPkHashReq,
+    HybridSignature, MailboxReqHeader, McuFeProgReq, ProvisionVendorPkHashReq,
 };
 use core::mem::size_of;
 use mcu_caliptra_api_lite::ApiAlloc;
+use zerocopy::FromBytes;
+
+extern crate alloc;
 
 #[derive(Default)]
 pub struct MockCommandAuthorizer {
@@ -15,10 +19,10 @@ pub struct MockCommandAuthorizer {
 impl CommandAuthorizer for MockCommandAuthorizer {
     async fn is_authorized<'a, Alloc: ApiAlloc>(
         &mut self,
-        alloc: &Alloc,
+        _alloc: &Alloc,
         cmd_id: CommandId,
         req: &'a [u8],
-    ) -> AuthorizationResult<&'a [u8]> {
+    ) -> Result<&'a [u8], AuthorizationError> {
         let cmd_len = match cmd_id {
             CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashReq>(),
             CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
@@ -30,38 +34,40 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             _ => Err(AuthorizationError)?,
         };
 
-        let received_mac = req.get(cmd_len..cmd_len + 48).ok_or(AuthorizationError)?;
+        let sigs_bytes = req
+            .get(cmd_len..cmd_len + size_of::<HybridSignature>())
+            .ok_or(AuthorizationError)?;
+        let sig = HybridSignature::ref_from_bytes(sigs_bytes).map_err(|_| AuthorizationError)?;
 
         let cmd_body = req
             .get(size_of::<MailboxReqHeader>()..cmd_len)
             .ok_or(AuthorizationError)?;
 
-        self.verify_mac(alloc, u32::from(cmd_id), cmd_body, received_mac)
+        self.verify_signatures(u32::from(cmd_id), cmd_body, sig)
             .await?;
 
         Ok(&req[..cmd_len])
     }
 
-    async fn verify_mac<Alloc: ApiAlloc>(
+    async fn verify_signatures(
         &mut self,
-        alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
-        mac: &[u8],
+        sig: &HybridSignature,
     ) -> Result<(), AuthorizationError> {
         let challenge = self.challenge.take().ok_or(AuthorizationError)?;
-        let mac: &[u8; 48] = mac.try_into().map_err(|_| AuthorizationError)?;
-        crate::caliptra_cmd_handler::device_ops::verify_authorized_mac(
-            alloc,
-            &crate::caliptra_cmd_handler::device_ops::TEST_AUTH_CMD_HMAC_KEY,
+
+        crate::caliptra_cmd_handler::device_ops::verify_authorized_signatures(
             cmd_id,
             payload,
             &challenge,
-            mac,
+            TEST_AUTH_ECC_PUB_KEY_X,
+            TEST_AUTH_ECC_PUB_KEY_Y,
+            TEST_AUTH_MLDSA_PUB_KEY,
+            sig,
         )
         .await
-        .map_err(|_| AuthorizationError)?;
-        Ok(())
+        .map_err(|_| AuthorizationError)
     }
 
     fn take_challenge(&mut self) -> Option<[u8; 32]> {

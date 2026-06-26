@@ -11,6 +11,7 @@
 
 mod commands;
 
+use caliptra_mcu_mbox_common::messages::HybridSignature;
 use caliptra_mcu_spdm_codec::StandardsBodyId;
 use caliptra_mcu_spdm_traits::{
     McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
@@ -106,11 +107,11 @@ pub trait CaliptraVdmCommands {
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize>;
 
-    /// Verifies `mac` for FE_PROG and programs field entropy for `partition`.
+    /// Verifies `sig` for FE_PROG and programs field entropy for `partition`.
     async fn program_field_entropy<A: SpdmPalAlloc>(
         &self,
         partition: u32,
-        mac: &[u8; 48],
+        sig: &HybridSignature,
         scratch: &A,
     ) -> CaliptraVdmResult<()>;
 }
@@ -500,7 +501,7 @@ mod tests {
         async fn program_field_entropy<A: SpdmPalAlloc>(
             &self,
             _partition: u32,
-            _mac: &[u8; 48],
+            _sig: &HybridSignature,
             _scratch: &A,
         ) -> CaliptraVdmResult<()> {
             Ok(())

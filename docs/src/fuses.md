@@ -83,8 +83,9 @@ Some example cryptographic mechanisms that could be used:
 
 * A certificate provided to MCU during boot, which will be used to validate signatures on each message.
 * An HMAC key imported into Caliptra's cryptographic mailbox during boot, which MCU can use to validate a request. (The key could itself be stored as fuses.)
+* Asymmetric verification public keys imported or accessed during boot, which MCU can use to validate a challenge-response signature on each request. (The public keys or hashes could themselves be stored in fuses or embedded in the firmware directly.)
 
-It will be integrator-defined how which authorization mechanism is required, but we will provide reference implementations with stubs for source-based and HMAC-based authorization.
+It will be integrator-defined which authorization mechanism is required, but we provide reference implementations with stubs for source-based and asymmetric signature-based authorization.
 
 These commands reference partition, fuse, and bit numbers that must use the same numbers generated from the [Fuse definition script](#fuse-definition-script).
 
