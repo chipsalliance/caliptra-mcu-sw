@@ -46,8 +46,6 @@ use core::mem::offset_of;
 
 use crate::crypto::hash::{HashAlgoType, HashContext};
 
-const MAX_DMA_TRANSFER_SIZE: usize = 128;
-
 pub struct FirmwareUpdater<'a, D: DMAMapping> {
     staging_memory: &'static dyn StagingMemory,
     mailbox: Mailbox,
@@ -588,6 +586,15 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         let mut payload_stream =
             MailboxPayloadStream::new(self.staging_memory, image_offset, image_len);
 
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] process_caliptra_fw: action={:?}, offset={}, len={}, cmd={:#x}",
+            action,
+            image_offset,
+            image_len,
+            cmd
+        );
+
         loop {
             let result = self
                 .mailbox
@@ -596,11 +603,12 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             match result {
                 Ok(_) => break,
                 Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-                Err(_) => {
+                Err(e) => {
                     console_writeln!(
                         Console::<DefaultSyscalls>::writer(),
-                        "[FW Upd] ERROR: mailbox cmd={} failed",
-                        cmd
+                        "[FW Upd] ERROR: mailbox cmd={:#x} failed: {:?}",
+                        cmd,
+                        e
                     );
                     return Err(ErrorCode::Fail);
                 }
@@ -718,33 +726,26 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         offset: usize,
         img_size: usize,
     ) -> Result<(), ErrorCode> {
-        let dma_syscall: DMASyscall = DMASyscall::new();
-        let mut remaining_size = img_size;
-        let mut current_offset = offset;
-        let mut current_address = mem_address;
-
-        while remaining_size > 0 {
-            let transfer_size = remaining_size.min(MAX_DMA_TRANSFER_SIZE);
-            let mut buffer = [0; MAX_DMA_TRANSFER_SIZE];
-            self.staging_memory
-                .read(current_offset, &mut buffer[..transfer_size])
-                .await?;
-
-            let source_address = self
-                .dma_mapping
-                .mcu_sram_to_mcu_axi(buffer.as_ptr() as u32)?;
-            let transaction = DMATransaction {
-                byte_count: transfer_size,
-                source: DMASource::Address(source_address),
-                dest_addr: current_address,
-            };
-            dma_syscall.xfer(&transaction).await?;
-            remaining_size -= transfer_size;
-            current_offset += transfer_size;
-            current_address += transfer_size as u64;
+        if let Some(hooks) = self.hooks {
+            hooks
+                .transfer_to_dma_staging(
+                    self.staging_memory,
+                    self.dma_mapping,
+                    mem_address,
+                    offset,
+                    img_size,
+                )
+                .await
+        } else {
+            default_copy_to_memory::<1024>(
+                self.staging_memory,
+                self.dma_mapping,
+                mem_address,
+                offset,
+                img_size,
+            )
+            .await
         }
-
-        Ok(())
     }
 
     async fn verify_mcu_or_soc_image(
@@ -808,6 +809,14 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         let staging_address = self
             .get_dma_image_staging_address(MCU_RT_IDENTIFIER)
             .await?;
+
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] MCU update: staging_address={:#x}, mcu_image_offset={}, mcu_image_len={}",
+            staging_address,
+            mcu_image_offset,
+            mcu_image_len
+        );
 
         // Copy the firmware image to the MCU DMA staging area
         self.copy_to_memory(staging_address, mcu_image_offset, mcu_image_len)
@@ -906,6 +915,65 @@ pub trait FirmwareUpdateHooks: Send + Sync {
     async fn pre_mcu_activation(&self) -> Result<(), ErrorCode> {
         Ok(())
     }
+
+    /// Copy firmware image from staging memory to the destination address via DMA.
+    /// Override this to control the transfer buffer size for your platform.
+    async fn transfer_to_dma_staging(
+        &self,
+        staging_memory: &dyn StagingMemory,
+        dma_mapping: &dyn DMAMapping,
+        mem_address: AXIAddr,
+        offset: usize,
+        img_size: usize,
+    ) -> Result<(), ErrorCode> {
+        default_copy_to_memory::<1024>(staging_memory, dma_mapping, mem_address, offset, img_size)
+            .await
+    }
+}
+
+/// Default copy_to_memory implementation using a 128-byte transfer buffer.
+pub async fn default_copy_to_memory<const TRANSFER_SIZE: usize>(
+    staging_memory: &dyn StagingMemory,
+    dma_mapping: &dyn DMAMapping,
+    mem_address: AXIAddr,
+    offset: usize,
+    img_size: usize,
+) -> Result<(), ErrorCode> {
+    let dma_syscall: DMASyscall = DMASyscall::new();
+    let mut remaining_size = img_size;
+    let mut current_offset = offset;
+    let mut current_address = mem_address;
+
+    while remaining_size > 0 {
+        let transfer_size = remaining_size.min(TRANSFER_SIZE);
+        let mut buffer = [0u8; TRANSFER_SIZE];
+        staging_memory
+            .read(current_offset, &mut buffer[..transfer_size])
+            .await?;
+
+        // Print progress every 10KB
+        if (current_offset - offset) % 10240 == 0 {
+            console_writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] copy_to_memory progress: {}/{} bytes",
+                current_offset - offset,
+                img_size
+            );
+        }
+
+        let source_address = dma_mapping.mcu_sram_to_mcu_axi(buffer.as_ptr() as u32)?;
+        let transaction = DMATransaction {
+            byte_count: transfer_size,
+            source: DMASource::Address(source_address),
+            dest_addr: current_address,
+        };
+        dma_syscall.xfer(&transaction).await?;
+        remaining_size -= transfer_size;
+        current_offset += transfer_size;
+        current_address += transfer_size as u64;
+    }
+
+    Ok(())
 }
 
 pub struct MailboxPayloadStream {
@@ -958,6 +1026,15 @@ impl PayloadStream for MailboxPayloadStream {
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
         if (self.cursor - self.offset) >= self.len {
             return Ok(0); // No more data to read
+        }
+
+        if (self.cursor - self.offset) % 10240 == 0 {
+            console_writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] MailboxPayloadStream: read progress: {}/{} bytes",
+                self.cursor - self.offset,
+                self.len
+            );
         }
 
         let bytes_to_read = (self.len - (self.cursor - self.offset)).min(buffer.len());

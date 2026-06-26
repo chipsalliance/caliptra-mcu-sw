@@ -300,11 +300,16 @@ impl CaliptraBuilder {
             self.mcu_image_cfg.clone().unwrap()
         } else if self.fpga {
             // Default MCU image configuration for FPGA
+            // Uses external staging SRAM for DMA-accessible staging area
+            let staging_memory_map: u64 = 0xB00C_0000;
+            let staging_memory_size: u64 = 0x0004_0000; // 256 KB staging area
+            let max_mcu_fw_size: u64 = 0x3EC00;
+            let staging_addr = staging_memory_map + staging_memory_size - max_mcu_fw_size;
             ImageCfg {
                 image_id: MCU_RT_IDENTIFIER,
                 component_id: MCU_RT_IDENTIFIER,
                 exec_bit: 2,
-                staging_addr: caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64,
+                staging_addr,
                 ..Default::default()
             }
         } else {
