@@ -5,6 +5,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+#[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
 use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature};
 use zerocopy::{Immutable, IntoBytes};
@@ -321,6 +322,7 @@ pub trait CaliptraCmdHandler: Send + Sync {
     }
 
     /// Retrieves the OCP Lock endorsement certificate.
+    #[cfg(feature = "ocp-lock")]
     async fn get_ocp_lock_endorsement_cert(
         &self,
         hpke_handle: &HpkeHandle,
@@ -331,6 +333,7 @@ pub trait CaliptraCmdHandler: Send + Sync {
     }
 
     /// Enumerates the OCP Lock HPKE handles.
+    #[cfg(feature = "ocp-lock")]
     async fn ocp_lock_enumerate_hpke_handles(
         &self,
         resp: &mut OcpLockEnumerateHpkeHandlesResp,

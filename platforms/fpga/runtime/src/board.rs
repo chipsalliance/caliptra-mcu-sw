@@ -375,9 +375,9 @@ pub unsafe fn main() {
         #[cfg(feature = "ocp-lock")]
         caliptra_mcu_romtime::println!(
             "[mcu-runtime] HEK state from handoff: active_state={:?}, active_slot={}, total_slots={}",
-            ho.rom.hek_state.active_state,
-            ho.rom.hek_state.active_slot,
-            ho.rom.hek_state.total_slots
+            ho.rom.ocp_lock.hek_state.active_state,
+            ho.rom.ocp_lock.hek_state.active_slot,
+            ho.rom.ocp_lock.hek_state.total_slots
         );
     } else {
         caliptra_mcu_romtime::println!("[mcu-runtime] Handoff is None");
@@ -780,8 +780,8 @@ pub unsafe fn main() {
     #[cfg(feature = "ocp-lock")]
     let ocp_lock_ctx = handoff.as_ref().map(|ho| {
         let state = caliptra_mcu_capsules_runtime::otp::OcpLockState {
-            total_slots: ho.rom.hek_state.total_slots,
-            active_slot: ho.rom.hek_state.active_slot,
+            total_slots: ho.rom.ocp_lock.hek_state.total_slots,
+            active_slot: ho.rom.ocp_lock.hek_state.active_slot,
         };
         caliptra_mcu_capsules_runtime::otp::OcpLockContext::new(
             state,
@@ -1023,9 +1023,9 @@ pub unsafe fn main() {
 
             let ho_addr = ho.addr() as u32;
             let expected_addr = 0x5000_3C00;
-            if ho.rom.hek_state.active_slot == 2
-                && ho.rom.hek_state.active_state == HekSeedState::Programmed
-                && ho.rom.hek_state.total_slots == 8
+            if ho.rom.ocp_lock.hek_state.active_slot == 2
+                && ho.rom.ocp_lock.hek_state.active_state == HekSeedState::Programmed
+                && ho.rom.ocp_lock.hek_state.total_slots == 8
                 && ho_addr == expected_addr
                 && ho.rom.fht_major_ver == caliptra_mcu_romtime::handoff::FHT_MAJOR_VERSION
                 && ho.rom.fht_minor_ver == caliptra_mcu_romtime::handoff::FHT_MINOR_VERSION
@@ -1038,7 +1038,7 @@ pub unsafe fn main() {
             } else {
                 caliptra_mcu_romtime::println!(
                     "[mcu-runtime] HandOff verification FAILED: state={:?}, addr=0x{:08x}, expected=0x{:08x}, ver={}.{}",
-                    ho.rom.hek_state,
+                    ho.rom.ocp_lock.hek_state,
                     ho_addr,
                     expected_addr,
                     ho.rom.fht_major_ver,

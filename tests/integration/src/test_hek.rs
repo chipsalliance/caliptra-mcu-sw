@@ -50,7 +50,7 @@ pub mod test {
         }
     }
 
-    fn set_hek_perma(otp: &mut [u8]) {
+    pub(crate) fn set_hek_perma(otp: &mut [u8]) {
         let offset = fuses::PERMA_HEK_EN.byte_offset;
         // For a 1-bit LinearMajorityVote with duplication 3, setting the bit to 1 means
         // setting all 3 physical bits to 1. Since the layout is word-sized, we write 0x1
