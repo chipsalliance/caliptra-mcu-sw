@@ -7,11 +7,24 @@ on:
     - cron: "0 0 * * *"
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to test"
+        required: true
+        default: "main-2.1"
+        type: choice
+        options:
+          - main
+          - main-2.1
 
 jobs:
   precheckin:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.branch) || '["main","main-2.1"]') }}
 
     env:
       CARGO_INCREMENTAL: 0
@@ -21,6 +34,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
+          ref: ${{ matrix.branch }}
           submodules: recursive
 
       - name: Test commit name
@@ -76,6 +90,10 @@ jobs:
   caliptra_util_host_validator_tests:
     runs-on: ubuntu-24.04
     needs: [precheckin]
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.branch) || '["main","main-2.1"]') }}
 
     env:
       CARGO_INCREMENTAL: 0
@@ -91,6 +109,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
+          ref: ${{ matrix.branch }}
           submodules: recursive
 
       - name: Test commit name
@@ -213,7 +232,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: caliptra-util-host-validator-test-results
+          name: caliptra-util-host-validator-test-results-${{ matrix.branch }}
           path: |
             target/*/debug/*.log
             target/*/debug/*.txt
