@@ -234,6 +234,11 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_external_otp::test_external_otp().await;
         System::exit(0);
     }
+    #[cfg(feature = "test-firmware-v2")]
+    {
+        writeln!(console_writer, "Running firmware v2").unwrap();
+        System::exit(0);
+    }
     #[cfg(feature = "test-warm-reset")]
     {
         test_mci::test_mci_fw_boot_reset().await;

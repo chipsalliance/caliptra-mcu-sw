@@ -67,6 +67,7 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-doe-transport-loopback",
     "test-doe-user-loopback",
     "test-external-otp",
+    "test-firmware-v2",
     "test-flash-usermode",
     "test-fpga-flash-ctrl",
     "test-get-device-state",

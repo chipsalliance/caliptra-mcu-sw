@@ -519,8 +519,17 @@ impl Bus for McuRootBus {
                 let len = len.min(ram_size - start);
                 let data = ram.data()[start..start + len].to_vec();
 
-                // Caliptra DMA processes the data in 4-byte chunks
-                let data: Vec<u8> = data.chunks(4).flat_map(|chunk| chunk.to_vec()).collect();
+                // Caliptra's incoming_event uses words_from_bytes_be_vec (big-endian)
+                // then write_word stores in little-endian. To preserve the original
+                // byte ordering, we reverse each 4-byte chunk before sending.
+                let data: Vec<u8> = data
+                    .chunks(4)
+                    .flat_map(|chunk| {
+                        let mut reversed = chunk.to_vec();
+                        reversed.reverse();
+                        reversed
+                    })
+                    .collect();
 
                 if let Some(event_sender) = self.event_sender.as_ref() {
                     event_sender

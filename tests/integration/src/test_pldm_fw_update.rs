@@ -55,6 +55,8 @@ pub mod test {
 
         let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
         run_imaginary_flash_controller_service(mci_ptr);
+        hw.output().set_search_term("Running firmware v2");
+        hw.step_until(|m| m.output().search_matched());
 
         let test = finish_runtime_hw_model(&mut hw);
 
