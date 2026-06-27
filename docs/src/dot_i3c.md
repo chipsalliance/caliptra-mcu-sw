@@ -155,7 +155,7 @@ The payload below is sent using the [packetized transport](rom_i3c_services.md#p
 
 ## DOT Recovery Reset Coordination
 
-The I3C command protocol above is an interactive in-ROM DOT repair path. A platform may instead use a higher-level DOT recovery reset flow to make the failure visible to BMC before MCU ROM or Caliptra Core ROM writes a fatal error register that may cause a SoC warm reset. This reset-coordination flow does not repair the DOT blob directly.
+The I3C command protocol above is an interactive in-ROM DOT repair path. A platform may instead use a higher-level DOT recovery reset flow to make the failure visible to BMC before MCU ROM writes a fatal error register that may cause a SoC warm reset. This reset-coordination flow does not repair the DOT blob directly.
 
 These are policy alternatives for a DOT failure. If the platform enables the DOT recovery reset flow, MCU ROM may report the failure and fatal out instead of entering the interactive `DOT_RECOVERY` / `DOT_OVERRIDE` command loop for that boot.
 
@@ -167,12 +167,11 @@ These are policy alternatives for a DOT failure. If the platform enables the DOT
 | `[15:8]` | `ProtError` | Protocol error. `0x00` means no protocol error. |
 | `[31:16]` | `RecReasonCode` | Recovery reason code. `0x80`-`0xFF` are vendor-unique boot failure codes. |
 
-The DOT recovery reset flow uses the following `DEVICE_STATUS_0` values:
+The DOT recovery reset flow uses the following `DEVICE_STATUS_0` value:
 
 | Value | `DevStatus` | `ProtError` | `RecReasonCode` | Meaning |
 |-------|-------------|-------------|-----------------|---------|
 | `0x94000E` | `0x0E` Boot Failure (Recover Reason Code populated) | `0x00` no protocol error | `0x0094` vendor-unique code | MCU ROM DOT blob empty/corrupt or HMAC validation failure. |
-| `0x84000E` | `0x0E` Boot Failure (Recover Reason Code populated) | `0x00` no protocol error | `0x0084` vendor-unique code | Caliptra Core ROM owner firmware authentication failure. |
 
 ### Boot Flow Context
 
@@ -186,26 +185,14 @@ The DOT recovery reset flow uses the following `DEVICE_STATUS_0` values:
 8. MCU ROM sends `RI_DOWNLOAD_FIRMWARE` to Caliptra Core.
 9. If non-streaming/SPI boot is used, Caliptra Core loads the firmware bundle through the AXI recovery/streaming boot path.
 10. If I3C streaming boot is used, Caliptra Core loads the firmware bundle through the I3C streaming boot path.
-11. Caliptra Core authenticates the firmware with the owner key when an owner PK hash is installed. If owner authentication fails, Caliptra Core ROM enters the Caliptra SS error handling flow.
-12. If firmware authentication succeeds, MCU ROM continues the boot flow and eventually jumps to MCU runtime.
+11. If firmware authentication succeeds, MCU ROM continues the boot flow and eventually jumps to MCU runtime.
 
 ### MCU ROM DOT Blob Corrupt or HMAC Failure
 
 1. MCU ROM detects an empty/corrupt DOT blob or DOT blob HMAC validation failure.
 2. MCU ROM sets I3C OCP recovery `I3CCSR.I3C_EC.SecFwRecoveryIf.DEVICE_STATUS_0 = 0x94000E`.
-3. MCU ROM waits for BMC to set `I3CCSR.I3C_EC.SecFwRecoveryIf.DEVICE_RESET.RESET_CTRL = 0x01`.
-4. BMC writes `0x01` to `soc.I3CCSR.I3C_EC.SecFwRecoveryIf.DEVICE_RESET.RESET_CTRL`.
-5. MCU Core writes `mci_top.mci_reg.FW_ERROR_FATAL`, which may result in SoC warm reset. Recommendation: SoCs should not automatically trigger a warm reset from this condition, since that can create a reset loop if BMC cannot observe the error.
-6. BMC cold resets the SoC or platform.
-
-### Caliptra Core ROM Owner Authentication Failure
-
-1. Caliptra Core ROM detects owner firmware authentication failure.
-2. Caliptra Core ROM sets I3C OCP recovery `I3CCSR.I3C_EC.SecFwRecoveryIf.DEVICE_STATUS_0 = 0x84000E`.
-3. Caliptra Core ROM waits for BMC to set `I3CCSR.I3C_EC.SecFwRecoveryIf.DEVICE_RESET.RESET_CTRL = 0x01`.
-4. BMC writes `0x01` to `soc.I3CCSR.I3C_EC.SecFwRecoveryIf.DEVICE_RESET.RESET_CTRL`.
-5. Caliptra Core writes `soc_ifc_reg.CPTRA_FW_ERROR_FATAL`, which may result in SoC warm reset. Recommendation: SoCs should not automatically trigger a warm reset from this condition, since that can create a reset loop if BMC cannot observe the error.
-6. BMC cold resets the SoC or platform.
+3. MCU ROM writes `mci_top.mci_reg.FW_ERROR_FATAL`, which may result in SoC warm reset. Recommendation: SoCs should not automatically trigger a warm reset from this condition before BMC can observe `DEVICE_STATUS_0 = 0x94000E`, since that can create a reset loop.
+4. BMC cold resets the SoC or platform.
 
 ### System Error Recovery Flow
 
@@ -217,7 +204,7 @@ The DOT recovery reset flow uses the following `DEVICE_STATUS_0` values:
     - DOT owner authentication failure.
 3. BMC configures the device-specific boot mode if needed, such as streaming boot or SPI boot. This may be done through GPIO or another platform-specific mechanism.
 4. BMC cold boots the SoC or the full platform.
-5. Before releasing the next cold boot, BMC sets `I3CCSR.I3C_EC.SecFwRecoveryIf.DEVICE_RESET.RESET_CTRL` to one of the DOT recovery encodings:
+5. On the next cold boot, BMC waits until the I3C recovery interface is reachable, then sets `I3CCSR.I3C_EC.SecFwRecoveryIf.DEVICE_RESET.RESET_CTRL` to one of the DOT recovery encodings:
     - `0x10`: previous DOT flow failed.
     - `0x11`: continue with regular boot.
 6. Caliptra MCU ROM waits for `I3CCSR.I3C_EC.SecFwRecoveryIf.DEVICE_RESET.RESET_CTRL` to be either `0x10` or `0x11` early in cold boot.

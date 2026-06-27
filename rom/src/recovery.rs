@@ -19,8 +19,6 @@ const ACTIVATE_RECOVERY_IMAGE_CMD: u32 = 0xF;
 
 /// DEVICE_STATUS_0 value used when MCU ROM reports DOT blob recovery failure.
 pub const DOT_RECOVERY_DEVICE_STATUS: u32 = 0x0094_000E;
-/// DEVICE_RESET.RESET_CTRL value BMC writes after observing recovery status.
-pub const DEVICE_RESET_CTRL_RESET_DEVICE: u32 = 0x01;
 /// DEVICE_RESET.RESET_CTRL value requesting fused-owner recovery on next boot.
 pub const DEVICE_RESET_CTRL_PREVIOUS_DOT_FAILED: u32 = 0x10;
 /// DEVICE_RESET.RESET_CTRL value requesting regular DOT verification on next boot.
@@ -50,11 +48,6 @@ pub fn set_dot_recovery_device_status(i3c_periph: StaticRef<i3c::regs::I3c>) {
     i3c_periph
         .sec_fw_recovery_if_device_status_0
         .set(DOT_RECOVERY_DEVICE_STATUS);
-}
-
-/// Waits until BMC requests device reset through DEVICE_RESET.RESET_CTRL.
-pub fn wait_for_device_reset_request(i3c_periph: StaticRef<i3c::regs::I3c>) {
-    while device_reset_ctrl(i3c_periph) != DEVICE_RESET_CTRL_RESET_DEVICE {}
 }
 
 statemachine! {
@@ -470,7 +463,6 @@ mod tests {
     #[test]
     fn dot_recovery_reset_ctrl_values_match_protocol() {
         assert_eq!(DOT_RECOVERY_DEVICE_STATUS, 0x0094_000E);
-        assert_eq!(DEVICE_RESET_CTRL_RESET_DEVICE, 0x01);
         assert_eq!(DEVICE_RESET_CTRL_PREVIOUS_DOT_FAILED, 0x10);
         assert_eq!(DEVICE_RESET_CTRL_PREVIOUS_DOT_SUCCEEDED, 0x11);
     }

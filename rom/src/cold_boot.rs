@@ -77,7 +77,6 @@ fn maybe_enter_dot_recovery_reset_failure_flow(
     }
     mci.set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
     crate::recovery::set_dot_recovery_device_status(i3c_base);
-    crate::set_fatal_error_wait_for_recovery_reset_enabled(true);
     fatal_error(err);
 }
 
@@ -738,8 +737,6 @@ impl BootFlow for ColdBoot {
 
             if dot_blob.iter().all(|&b| b == 0) || dot_blob.iter().all(|&b| b == 0xFF) {
                 if dot_fuses.enabled && dot_fuses.is_locked() {
-                    // Publish the DOT recovery status and wait for BMC to
-                    // acknowledge the failure before reporting FW_ERROR_FATAL.
                     maybe_enter_dot_recovery_reset_failure_flow(
                         &env.mci,
                         i3c_base,
