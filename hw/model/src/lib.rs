@@ -722,6 +722,24 @@ pub trait McuHwModel {
         Some(self.mcu_manager().mci().fw_error_fatal().read()).filter(|&e| e != 0)
     }
 
+    fn i3c_recovery_device_status_0(&mut self) -> u32 {
+        u32::from(
+            self.mcu_manager()
+                .i3c()
+                .sec_fw_recovery_if()
+                .device_status_0()
+                .read(),
+        )
+    }
+
+    fn set_i3c_recovery_device_reset_ctrl(&mut self, reset_ctrl: u32) {
+        self.mcu_manager()
+            .i3c()
+            .sec_fw_recovery_if()
+            .device_reset()
+            .write(|w| w.reset_ctrl(reset_ctrl));
+    }
+
     fn warm_reset(&mut self);
 
     /// Executes Caliptra`cmd` with request data `buf`. Returns `Ok(Some(_))` if

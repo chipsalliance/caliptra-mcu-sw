@@ -824,6 +824,61 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// Test that the DOT recovery reset coordination path publishes the OCP
+    /// recovery DEVICE_STATUS_0 code before reporting fatal error.
+    #[test]
+    fn test_dot_recovery_reset_flow_reports_device_status() {
+        const DEVICE_RESET_CTRL_PREVIOUS_DOT_SUCCEEDED: u32 = 0x11;
+        const DOT_RECOVERY_DEVICE_STATUS: u32 = 0x0094_000E;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let flash_contents = vec![0u8; DOT_BLOB_SIZE];
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            rom_feature: Some("test-dot-recovery-reset-flow"),
+            ..Default::default()
+        });
+
+        let i3c_initialized = u16::from(McuRomBootStatus::I3cInitialized);
+        hw.step_until(|m| {
+            m.mci_boot_checkpoint() >= i3c_initialized
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 50_000_000
+        });
+        assert!(
+            hw.mci_fw_fatal_error().is_none(),
+            "ROM failed before I3C initialization"
+        );
+        assert!(
+            hw.mci_boot_checkpoint() >= i3c_initialized,
+            "ROM did not reach I3C initialization"
+        );
+
+        // Let this boot continue through regular DOT verification so the
+        // empty locked DOT blob reaches the reset-flow failure path.
+        hw.set_i3c_recovery_device_reset_ctrl(DEVICE_RESET_CTRL_PREVIOUS_DOT_SUCCEEDED);
+
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 50_000_000);
+
+        assert_eq!(
+            hw.i3c_recovery_device_status_0(),
+            DOT_RECOVERY_DEVICE_STATUS,
+            "DOT recovery reset flow should publish OCP recovery DEVICE_STATUS_0"
+        );
+        assert_eq!(
+            hw.mci_fw_fatal_error().unwrap_or(0),
+            u32::from(McuError::ROM_COLD_BOOT_DOT_ERROR),
+            "Expected empty locked DOT blob fatal error"
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Test that a corrupt DOT blob in ODD state (locked) with no recovery handler fails
     /// with the BLOB_CORRUPT error.
     #[test]
