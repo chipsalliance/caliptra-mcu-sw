@@ -8,7 +8,7 @@
 use caliptra_mcu_capsules_runtime::logging::logging_flash as log;
 use caliptra_mcu_capsules_runtime::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
 use caliptra_mcu_tock_veer::timers::InternalTimers;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::ptr::addr_of_mut;
 use kernel::hil::flash;

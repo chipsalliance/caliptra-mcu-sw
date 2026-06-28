@@ -8,6 +8,7 @@ edition.workspace = true
 
 [dependencies]
 capsules-core.workspace = true
+caliptra-mcu-virtual-alarm.workspace = true
 capsules-extra.workspace = true
 caliptra-mcu-capsules-emulator.workspace = true
 caliptra-mcu-capsules-runtime.workspace = true

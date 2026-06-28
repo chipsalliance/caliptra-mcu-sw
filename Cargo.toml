@@ -303,6 +303,7 @@ caliptra-mcu-network-rom = { path = "network/rom" }
 caliptra-mcu-testing-common = { path = "common/testing" }
 caliptra-mcu-emulator-state = { path = "common/emulator-state" }
 caliptra-mcu-tock-veer = { path = "runtime/kernel/veer" }
+caliptra-mcu-virtual-alarm = { path = "runtime/kernel/virtual-alarm" }
 caliptra-mcu-mctp-vdm-common = { path = "common/mctp-vdm" }
 caliptra-mcu-otp-digest = { path = "common/otp-digest" }
 caliptra-mcu-pldm-common = { path = "common/pldm"}

@@ -14,7 +14,7 @@ use caliptra_mcu_config::McuMemoryMap;
 use caliptra_mcu_registers_generated::i3c::regs::I3c;
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_registers_generated::otp_ctrl;
-use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
+use caliptra_mcu_virtual_alarm::MuxAlarm;
 use core::fmt::Write;
 use core::ptr::addr_of;
 use kernel::platform::chip::{Chip, InterruptService};

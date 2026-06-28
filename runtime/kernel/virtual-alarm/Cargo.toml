@@ -1,0 +1,7 @@
+[package]
+name = "caliptra-mcu-virtual-alarm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kernel = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }

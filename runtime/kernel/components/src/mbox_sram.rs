@@ -4,7 +4,7 @@
 
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_romtime::StaticRef;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
@@ -14,7 +14,7 @@ use kernel::hil::time::Alarm;
 #[macro_export]
 macro_rules! mbox_sram_component_static {
     ($A:ty) => {{
-        use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
+        use caliptra_mcu_virtual_alarm::VirtualMuxAlarm;
         let alarm = kernel::static_buf!(VirtualMuxAlarm<'static, $A>);
         let mbox_sram = kernel::static_buf!(
             caliptra_mcu_capsules_runtime::mbox_sram::MboxSram<
