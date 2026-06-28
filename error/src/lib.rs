@@ -864,6 +864,7 @@ impl McuError {
             0x1_0045,
             "Caliptra runtime SVN fuse burn failed"
         ),
+        (ROM_COLD_BOOT_DOT_ERROR, 0x1_0046, "DOT cold boot error"),
         (
             GENERIC_EXCEPTION,
             0xF_0000,

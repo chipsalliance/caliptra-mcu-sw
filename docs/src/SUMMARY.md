@@ -4,6 +4,7 @@
 - [Reference ROM Specification](./rom.md)
     - [OCP LOCK Integrator Guide](./ocp_lock_integrator_guide.md)
     - [Device Ownership Transfer](./dot.md)
+        - [DOT I3C Recovery Protocol](./dot_i3c.md)
     - [ROM Fuses](./rom-fuses.md)
     - [SVN Anti-Rollback](./svn.md)
 - [Runtime Specification](./runtime.md)
