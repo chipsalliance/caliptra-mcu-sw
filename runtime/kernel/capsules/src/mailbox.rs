@@ -133,6 +133,8 @@ pub struct Mailbox<'a, A: Alarm<'a>> {
     current_cmd: Cell<u32>,
     // DMA peripheral for data transfers
     dma_driver: &'static dyn Dma,
+    // Diagnostic: count alarm polls in Executing state
+    poll_count: Cell<u32>,
 }
 
 impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
@@ -162,6 +164,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             current_request_offset: Cell::new(0),
             current_cmd: Cell::new(0),
             dma_driver,
+            poll_count: Cell::new(0),
         }
     }
 
@@ -282,6 +285,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
 
             match driver.execute_ext_mailbox_req(command, app_buffer.len(), staging_axi_addr) {
                 Ok(_) => {
+                    self.poll_count.set(0);
                     self.schedule_alarm();
                     Ok(())
                 }
@@ -308,6 +312,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                 }),
             ) {
                 Ok(_) => {
+                    self.poll_count.set(0);
                     self.schedule_alarm();
                     Ok(())
                 }
@@ -443,7 +448,9 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                         staging_axi_addr,
                     ) {
                         Ok(()) => {
+                            self.poll_count.set(0);
                             self.schedule_alarm();
+                            println!("[MBOX] EXEC staged");
                             Ok(())
                         }
                         Err(_) => {
@@ -458,7 +465,9 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             self.driver
                 .map(|driver| match driver.execute_command() {
                     Ok(()) => {
+                        self.poll_count.set(0);
                         self.schedule_alarm();
+                        println!("[MBOX] EXEC direct");
                         Ok(())
                     }
                     Err(_err) => {
@@ -543,9 +552,11 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     }
 
     fn schedule_alarm(&self) {
+        println!("[MBOX] SA-before");
         let now = self.alarm.now();
         let dt = A::Ticks::from(10000);
         self.alarm.set_alarm(now, dt);
+        println!("[MBOX] SA-after");
     }
 
     fn schedule_initiate_timeout(&self) {
@@ -572,17 +583,25 @@ impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
                 self.current_app.take();
             }
             MailboxState::Executing => {
+                let count = self.poll_count.get() + 1;
+                self.poll_count.set(count);
                 let reschedule = self
                     .driver
                     .map(|driver| {
                         if driver.is_mailbox_busy() {
+                            if count == 1 {
+                                println!("[MBOX] P1 busy");
+                            } else if count == 10000 {
+                                println!("[MBOX] P10000 still busy!");
+                            }
                             true
                         } else {
+                            println!("[MBOX] DN polls={}", count);
                             self.try_complete_request(driver);
                             false
                         }
                     })
-                    .unwrap_or_default();
+                    .unwrap_or(true);
 
                 if reschedule {
                     self.schedule_alarm();

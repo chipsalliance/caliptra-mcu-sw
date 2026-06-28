@@ -185,7 +185,7 @@ build_firmware() {
 
     cargo xtask-fpga fpga build \
         --configuration "${CONFIGURATION}" \
-        --rom-features "core_test" \
+        --rom-features "core_test,hw-2-1" \
         --mcu_cfg mcu,0x0,0xB00C0000,2,2,2,test-fpga-flash-ctrl \
         --separate-runtimes
 

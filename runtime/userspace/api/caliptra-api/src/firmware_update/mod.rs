@@ -102,6 +102,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
     }
 
     pub async fn start(&mut self) -> Result<(), ErrorCode> {
+/*
         // Download firmware image to staging memory
         pldm_client::initialize_pldm(
             self.spawner,
@@ -112,11 +113,11 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         .await?;
 
         pldm_client::pldm_wait(State::Verifying).await?;
-
+*/
         // Download is complete, verify the image
         let flash_header = self.verify().await;
         if flash_header.is_err() {
-            pldm_client::pldm_set_verification_result(VerifyResult::VerifyErrorVerificationFailure);
+//            pldm_client::pldm_set_verification_result(VerifyResult::VerifyErrorVerificationFailure);
             // Abort firmware update
             return Err(ErrorCode::Fail);
         }
@@ -129,19 +130,19 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
                 .await
                 .is_err()
         {
-            pldm_client::pldm_set_verification_result(VerifyResult::VerifyErrorVerificationFailure);
+//            pldm_client::pldm_set_verification_result(VerifyResult::VerifyErrorVerificationFailure);
             return Err(ErrorCode::Fail);
         }
 
-        pldm_client::pldm_set_verification_result(VerifyResult::VerifySuccess);
-        pldm_client::pldm_wait(State::Apply).await?;
+//        pldm_client::pldm_set_verification_result(VerifyResult::VerifySuccess);
+//        pldm_client::pldm_wait(State::Apply).await?;
 
         // Mark image as valid in staging memory
-        let img_len = pldm_total_component_size();
-        self.staging_memory.image_valid(img_len).await?;
+  //      let img_len = pldm_total_component_size();
+  //      self.staging_memory.image_valid(img_len).await?;
 
-        pldm_client::pldm_set_apply_result(ApplyResult::ApplySuccess);
-        pldm_client::pldm_wait(State::Activate).await?;
+//        pldm_client::pldm_set_apply_result(ApplyResult::ApplySuccess);
+//        pldm_client::pldm_wait(State::Activate).await?;
 
         if self.skip_activation {
             // Skip activation — image is persisted to flash but no reboot
@@ -315,6 +316,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             cptra_image_offset,
             cptra_image_len
         );
+/*
         let verify_result = self
             .process_caliptra_fw(
                 cptra_image_offset,
@@ -329,7 +331,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             );
             return Err(ErrorCode::Fail);
         }
-
+*/
         // Verify the new Auth Manifest
         console_writeln!(
             Console::<DefaultSyscalls>::writer(),

@@ -936,14 +936,9 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    // TODO(#694): fails with
-    //Timeout waiting for EXECUTE bit to clear
-    //1,410,219,676 UART: Error copying from mailbox: MailboxCmdFailed(720898)
-    //* TESTCASE FAILED
     //Emulator exited with error: firmware exited with failure
     /// FPGA-specific streaming firmware update test that uses cached PLDM_FW_PKG artifacts
     #[cfg(feature = "fpga_realtime")]
-    #[ignore]
     #[test]
     fn test_firmware_update_streaming_fpga() {
         if env::var("PLDM_FW_PKG").is_err() {

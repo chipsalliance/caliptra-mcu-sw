@@ -2,11 +2,13 @@
 
 //! # Mailbox Interface
 extern crate alloc;
-use crate::DefaultSyscalls;
+use crate::{DefaultSyscalls, console_writeln};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::MailboxReqHeader;
+use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
+use core::fmt::Write;
 use caliptra_mcu_libtockasync::TockSubscribe;
 use core::{hint::black_box, marker::PhantomData};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
@@ -225,11 +227,22 @@ impl<S: Syscalls> Mailbox<S> {
         payload: &mut dyn PayloadStream,
         response_buffer: &mut [u8],
     ) -> Result<usize, MailboxError> {
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[MBOX-USR] execute_with_payload_stream cmd={:#x}",
+            command
+        );
+
         let mutex = MAILBOX_MUTEX.lock().await;
 
         let request_len = payload.size() + header.map_or(0, |h| h.len());
 
         self.start_chunked_request(command, request_len).await?;
+
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[MBOX-USR] Chunked request started",
+        );        
 
         // Send the header if provided
         let mut buffer = [0u8; PAYLOAD_CHUNK_SIZE];
@@ -253,6 +266,10 @@ impl<S: Syscalls> Mailbox<S> {
         }
 
         let result = self.execute_chunked_request(command, response_buffer).await;
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[MBOX-USR] Chunked request completed",
+        );                
         black_box(*mutex); // Ensure the mutex is not optimized away
         result
     }

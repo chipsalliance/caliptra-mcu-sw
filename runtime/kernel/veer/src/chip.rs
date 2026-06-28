@@ -173,6 +173,17 @@ impl<'a, I: InterruptService + 'a> kernel::platform::chip::Chip for VeeR<'a, I> 
 
     fn service_pending_interrupts(&self) {
         loop {
+            // Poll hardware timer directly: when mstatus.MIE=0 (kernel mode),
+            // timer interrupts stay pending but the ISR never runs. Detect
+            // expiry here and manually save the interrupt for processing.
+            if self.timers.has_timer0_expired()
+                && self.timers.get_saved_interrupts() == TimerInterrupts::None
+            {
+                // Disable mie.BIT29 as the ISR would have done
+                CSR.mie.modify(mie::BIT29::CLEAR);
+                self.timers.save_interrupt(0);
+            }
+
             if self.pic.get_saved_interrupts().is_some() {
                 unsafe {
                     self.handle_pic_interrupts();
@@ -196,11 +207,26 @@ impl<'a, I: InterruptService + 'a> kernel::platform::chip::Chip for VeeR<'a, I> 
     fn has_pending_interrupts(&self) -> bool {
         self.pic.get_saved_interrupts().is_some()
             || self.timers.get_saved_interrupts() != TimerInterrupts::None
+            || self.timers.has_timer0_expired()
     }
 
     fn sleep(&self) {
         unsafe {
-            rv32i::support::wfi();
+            if self.timers.is_timer0_enabled() {
+                // Timer is armed but hasn't expired yet. Do NOT use wfi here
+                // because VeeR's wfi stalls the core clock, which also stops
+                // the internal timer counter (mitcnt0). Instead, briefly enable
+                // MIE to service any pending PIC interrupts, then return to let
+                // the kernel loop poll has_timer0_expired().
+                CSR.mstatus.read_and_set_bits(1 << 3); // MIE = 1
+                core::arch::asm!("nop"); // window for pending ISR
+                CSR.mstatus.read_and_clear_bits(1 << 3); // MIE = 0
+            } else {
+                // No timer armed. Use wfi to wait for PIC/external interrupt.
+                CSR.mstatus.read_and_set_bits(1 << 3); // MIE = 1
+                rv32i::support::wfi();
+                CSR.mstatus.read_and_clear_bits(1 << 3); // MIE = 0
+            }
         }
     }
 

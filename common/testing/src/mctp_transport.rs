@@ -45,6 +45,11 @@ struct MctpPldmSocketData {
 impl PldmSocket for MctpPldmSocket {
     fn send(&self, payload: &[u8]) -> Result<(), PldmTransportError> {
         let mut mctp_util = MctpUtil::new();
+        // The PLDM daemon already sleeps before starting discovery, so
+        // disable the additional boot delay that is meant for the emulator
+        // (where ticks advance faster than real time). On FPGA the default
+        // 50M ticks would translate to ~250s of wall-clock time.
+        mctp_util.set_boot_delay_ticks(0);
         let mut mctp_common_header = MctpCommonHeader(0);
         mctp_common_header.set_ic(0);
         mctp_common_header.set_msg_type(MCTP_PLDM_MSG_TYPE);
