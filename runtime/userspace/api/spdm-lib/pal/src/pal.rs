@@ -22,7 +22,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 
-use super::cert::store::SharedCertStore;
+use super::cert::store::{SharedCertStore, TaskCertStore};
 use super::measurements::MeasurementProvider;
 
 /// MCU implementation of the SPDM-Lite Platform Abstraction Layer.
@@ -48,8 +48,8 @@ pub struct McuSpdmPal<M: MeasurementProvider> {
     /// threaded through the stack.
     pub(crate) allocator: &'static BitmapAllocator,
 
-    /// Shared cert store — same instance for all transports.
-    pub(crate) cert_store: &'static SharedCertStore,
+    /// Per-task cert store and cache wrapper.
+    pub(crate) cert_store: TaskCertStore,
 
     /// Measurement data provider (monomorphized).
     pub(crate) meas_provider: M,
@@ -76,7 +76,7 @@ impl<M: MeasurementProvider> McuSpdmPal<M> {
         Self {
             transport: UnsafeCell::new(transport),
             allocator,
-            cert_store,
+            cert_store: TaskCertStore::new(cert_store),
             meas_provider,
         }
     }
