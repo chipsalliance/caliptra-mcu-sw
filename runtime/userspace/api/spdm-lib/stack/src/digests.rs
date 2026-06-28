@@ -150,6 +150,10 @@ pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
     algo: SpdmPalHashAlgo,
     out: &mut [u8],
 ) -> mcu_error::McuResult<()> {
+    if (pal.provisioned_slots() & (1 << slot)) == 0 {
+        return Err(mcu_error::codes::INVARIANT);
+    }
+
     let der_len = pal.cert_chain_len(io, slot, asym_algo).await?;
     let digest_size = algo.hash_size();
 
@@ -178,6 +182,10 @@ pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
         if n < buf.len() {
             break;
         }
+    }
+
+    if (pal.provisioned_slots() & (1 << slot)) == 0 {
+        return Err(mcu_error::codes::INVARIANT);
     }
 
     pal.hash_finish(io, &mut state, out).await

@@ -68,7 +68,7 @@ fn measurement_provider() -> device_measurements::pcr_quote::PcrQuoteMeasurement
 #[cfg(not(feature = "test-mctp-spdm-attestation-pcr-quote"))]
 fn measurement_provider() -> device_measurements::ocp_eat::OcpEatMeasurementProvider {
     device_measurements::ocp_eat::OcpEatMeasurementProvider::new(
-        caliptra_mcu_spdm_pal::cert::SLOT0_LEAF_LABEL,
+        caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL,
     )
 }
 

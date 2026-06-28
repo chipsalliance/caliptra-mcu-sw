@@ -7,7 +7,7 @@
 //! 2. DPE device chain (IDevID → RT alias, from Caliptra Core)
 //! 3. DPE leaf certificate (CertifyKey, fetched on demand)
 //!
-//! Managed slots store the complete DER chain installed by SET_CERTIFICATE.
+//! Managed slots store the endorsement/root portion installed by SET_CERTIFICATE.
 //! [`SlotEndorsement`] dispatches to `ReadOnlyEndorsement` (slot 0) or
 //! `ManagedEndorsement` (slots 1-2) without dynamic dispatch.
 
@@ -17,16 +17,17 @@ pub mod store;
 use super::measurements::MeasurementProvider;
 use super::*;
 use caliptra_mcu_spdm_traits::{SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo};
+use core::sync::atomic::Ordering;
 use endorsement::slot_index;
 use mcu_caliptra_api_lite::{
-    dpe_certify_key, dpe_get_cert_chain_chunk, dpe_sign_ecc_p384, walk_dpe_chain, ApiAlloc,
-    DpeChainSink, DPE_LABEL_LEN, DPE_MAX_LEAF_CERT_SIZE,
+    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_get_cert_chain_chunk,
+    dpe_sign_ecc_p384, walk_dpe_chain, DpeChainSink, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
 };
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 
-/// 48-byte label fed to DPE `CertifyKey` for slot 0. Keep this stable so
-/// slot-0 leaf-cert key continuity matches what existing tooling expects.
-pub const SLOT0_LEAF_LABEL: [u8; DPE_LABEL_LEN] = [
+/// 48-byte label fed to DPE `CertifyKey`. Keep this stable so DPE
+/// leaf-cert key continuity matches what existing tooling expects.
+pub const DPE_LEAF_LABEL: [u8; DPE_LABEL_LEN] = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
     0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
     0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
@@ -34,6 +35,10 @@ pub const SLOT0_LEAF_LABEL: [u8; DPE_LABEL_LEN] = [
 
 /// Default KeyUsageMask for all Caliptra slots.
 const DEFAULT_KEY_USAGE_MASK: u16 = 0x0003;
+
+/// SPDM CertModel AliasCert.
+#[cfg(feature = "set-certificate")]
+const CERT_MODEL_ALIAS_CERT: u8 = 2;
 
 // ---------------------------------------------------------------------------
 // Sinks for `walk_dpe_chain`
@@ -79,24 +84,34 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         _algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
+
+        // 1. PRE-CHECK: Ensure Slot is provisioned and not undergoing updates before starting
+        if self.cert_store.cert_slots()[idx]
+            .write_in_progress
+            .load(Ordering::Relaxed)
+        {
+            return Err(INVARIANT);
+        }
+
         let cert_slot = &self.cert_store.cert_slots()[idx];
         let capacity = cert_slot
             .endorsement
             .capacity(SpdmPalAsymAlgo::EccP384)
-            .await
             .map_err(|_| INVARIANT)?;
-        if cert_slot.stores_complete_chain() {
-            return Ok(capacity);
+
+        // 2. POST-CHECK: Verify Slot remained unlocked during the intermediate async .await points
+        if self.cert_store.cert_slots()[idx]
+            .write_in_progress
+            .load(Ordering::Relaxed)
+        {
+            return Err(INVARIANT);
         }
-        let dpe_len = walk_dpe_chain(self, &mut CountSink).await? as usize;
-        let leaf_len = probe_leaf_len(self).await?;
-        capacity
-            .checked_add(dpe_len)
-            .and_then(|n| n.checked_add(leaf_len))
-            .ok_or(INVARIANT)
+
+        Ok(capacity)
     }
 
     #[inline]
+    #[cfg(feature = "set-certificate")]
     fn set_certificate_authorized(
         &self,
         _io: &Self::Io<'_>,
@@ -105,37 +120,26 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         _cert_model: u8,
         _erase: bool,
     ) -> bool {
-        #[cfg(feature = "set-certificate")]
-        {
-            slot_index(slot)
-                .and_then(|idx| self.cert_store.cert_slots().get(idx))
-                .map(|slot| slot.is_writable())
-                .unwrap_or(false)
-        }
-        #[cfg(not(feature = "set-certificate"))]
-        {
-            let _ = slot;
-            false
-        }
+        slot_index(slot)
+            .and_then(|idx| self.cert_store.cert_slots().get(idx))
+            .map(|slot| slot.is_writable())
+            .unwrap_or(false)
     }
 
+    #[cfg(feature = "set-certificate")]
     async fn validate_set_certificate_chain(
         &self,
         _io: &Self::Io<'_>,
         _slot: u8,
         _key_pair_id: u8,
-        _cert_model: u8,
+        cert_model: u8,
         _root_hash: &[u8; 48],
         _cert_chain: &[u8],
     ) -> McuResult<()> {
-        #[cfg(feature = "set-certificate")]
-        {
-            Ok(())
+        if cert_model != CERT_MODEL_ALIAS_CERT {
+            return Err(INVARIANT);
         }
-        #[cfg(not(feature = "set-certificate"))]
-        {
-            Err(mcu_error::codes::NOT_IMPLEMENTED)
-        }
+        Ok(())
     }
 
     async fn cert_chain_len(
@@ -145,25 +149,43 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         _algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
-        if let Some(n) = self.cert_store.get_cached_chain_len(slot) {
+
+        // 1. PRE-CHECK: Ensure Slot is provisioned and not undergoing updates before starting
+        if self.cert_store.cert_slots()[idx]
+            .write_in_progress
+            .load(Ordering::Relaxed)
+        {
+            return Err(INVARIANT);
+        }
+
+        if let Some(n) = self.cert_store.cached_chain_len(slot) {
             return Ok(n as usize);
         }
+
+        // Cache miss: Invalidate stale leaf and digest caches before starting recomputation
+        self.cert_store.invalidate_cert_caches(slot);
+
         let cert_slot = &self.cert_store.cert_slots()[idx];
         let slot_chain_len = cert_slot
             .endorsement
             .size(SpdmPalAsymAlgo::EccP384)
-            .await
             .map_err(|_| INVARIANT)?;
-        let total = if cert_slot.stores_complete_chain() {
-            slot_chain_len
-        } else {
-            let dpe_len = walk_dpe_chain(self, &mut CountSink).await?;
-            let leaf_len = probe_leaf_len(self).await?;
-            (slot_chain_len as u32)
-                .checked_add(dpe_len)
-                .and_then(|n| n.checked_add(leaf_len as u32))
-                .ok_or(INVARIANT)? as usize
-        };
+        let dpe_len = walk_dpe_chain(self, &mut CountSink).await?;
+        let leaf_len = probe_leaf_len(self).await?;
+        self.cert_store.set_cached_leaf_len(slot, leaf_len as u32);
+        let total = (slot_chain_len as u32)
+            .checked_add(dpe_len)
+            .and_then(|n| n.checked_add(leaf_len as u32))
+            .ok_or(INVARIANT)? as usize;
+
+        // 2. POST-CHECK: Verify Slot remained unlocked during the intermediate async .await points
+        if self.cert_store.cert_slots()[idx]
+            .write_in_progress
+            .load(Ordering::Relaxed)
+        {
+            return Err(INVARIANT);
+        }
+
         self.cert_store.set_cached_chain_len(slot, total as u32);
         Ok(total)
     }
@@ -180,7 +202,6 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         self.cert_store.cert_slots()[idx]
             .endorsement
             .root_cert_hash(SpdmPalAsymAlgo::EccP384, out)
-            .await
     }
 
     async fn read_cert_chain(
@@ -195,7 +216,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         if dst.is_empty() {
             return Ok(0);
         }
-        let total = self.cert_store.cached_chain_len_or_zero(slot);
+        let total = self.cert_store.cached_chain_len(slot).unwrap_or(0) as usize;
         if total == 0 {
             return Err(INVARIANT);
         }
@@ -207,23 +228,19 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         let slot_chain_len = cert_slot
             .endorsement
             .size(SpdmPalAsymAlgo::EccP384)
-            .await
             .map_err(|_| INVARIANT)?;
         let want = (total - offset).min(dst.len());
-        if cert_slot.stores_complete_chain() {
-            let n = cert_slot
-                .endorsement
-                .read(SpdmPalAsymAlgo::EccP384, offset, &mut dst[..want])
-                .await
-                .map_err(|_| INVARIANT)?;
-            return if n == want { Ok(n) } else { Err(INVARIANT) };
-        }
-
-        // Read-only chain layout: [endorsement] [DPE chain] [leaf cert]
+        // Composed chain layout: [endorsement] [DPE chain] [leaf cert]
         let endorsement_len = slot_chain_len;
-        let leaf_len = probe_leaf_len(self).await? as usize;
+        let leaf_len = match self.cert_store.cached_leaf_len(slot) {
+            Some(n) => n as usize,
+            None => {
+                let n = probe_leaf_len(self).await?;
+                self.cert_store.set_cached_leaf_len(slot, n as u32);
+                n
+            }
+        };
         let dpe_len = total - endorsement_len - leaf_len;
-
         let mut written = 0usize;
         let mut cur_offset = offset;
 
@@ -245,9 +262,11 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         // 2. DPE-chain region
         let dpe_start = endorsement_len;
         let dpe_end = dpe_start + dpe_len;
-        if cur_offset < dpe_end && written < want {
+        while cur_offset < dpe_end && written < want {
             let dpe_off = cur_offset - dpe_start;
-            let dpe_take = (dpe_end - cur_offset).min(want - written);
+            let dpe_take = (dpe_end - cur_offset)
+                .min(want - written)
+                .min(DPE_MAX_CHUNK_SIZE);
             let got = dpe_get_cert_chain_chunk(
                 self,
                 dpe_off as u32,
@@ -257,22 +276,25 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             if got != dpe_take {
                 return Err(INTERNAL_BUG);
             }
-            written += dpe_take;
-            cur_offset += dpe_take;
+            written += got;
+            cur_offset += got;
         }
 
         // 3. Leaf-cert region
         if cur_offset >= dpe_end && written < want {
-            let mut leaf = ApiAlloc::alloc(self, leaf_len)?;
-            let got = dpe_certify_key(self, &SLOT0_LEAF_LABEL, &mut leaf[..]).await?;
-            if got != leaf_len {
+            let leaf_off = cur_offset - dpe_end;
+            let leaf_take = (leaf_len - leaf_off).min(want - written);
+            let got = dpe_certify_key_cert_slice(
+                self,
+                &DPE_LEAF_LABEL,
+                leaf_off as u32,
+                &mut dst[written..written + leaf_take],
+            )
+            .await?;
+            if got != leaf_take {
                 return Err(INTERNAL_BUG);
             }
-            let leaf_off = cur_offset - dpe_end;
-            let leaf_take = want - written;
-            dst[written..written + leaf_take]
-                .copy_from_slice(&leaf[leaf_off..leaf_off + leaf_take]);
-            written += leaf_take;
+            written += got;
         }
         Ok(written)
     }
@@ -286,9 +308,10 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         signature: &mut [u8],
     ) -> McuResult<usize> {
         let _idx = slot_index(slot).ok_or(INVARIANT)?;
-        dpe_sign_ecc_p384(self, &SLOT0_LEAF_LABEL, digest, signature).await
+        dpe_sign_ecc_p384(self, &DPE_LEAF_LABEL, digest, signature).await
     }
 
+    #[cfg(feature = "set-certificate")]
     async fn write_cert_chain(
         &self,
         _io: &Self::Io<'_>,
@@ -299,9 +322,12 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         root_hash: &[u8; 48],
         data: &[u8],
     ) -> McuResult<()> {
-        #[cfg(feature = "set-certificate")]
-        {
-            let idx = slot_index(slot).ok_or(INVARIANT)?;
+        let idx = slot_index(slot).ok_or(INVARIANT)?;
+        // Set write_in_progress to block transient readers during flash updates
+        self.cert_store.cert_slots()[idx]
+            .write_in_progress
+            .store(true, Ordering::Relaxed);
+        let result = async {
             let managed = match &self.cert_store.cert_slots()[idx].endorsement {
                 endorsement::SlotEndorsement::Managed(e) => *e,
                 endorsement::SlotEndorsement::ReadOnly(_) => {
@@ -316,25 +342,29 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
             cert_slot.key_pair_id = Some(key_pair_id);
             cert_slot.cert_info = Some(cert_info);
-            self.cert_store.invalidate_cache(slot);
             Ok(())
         }
-        #[cfg(not(feature = "set-certificate"))]
-        {
-            let _ = (slot, algo, key_pair_id, cert_info, root_hash, data);
-            Err(mcu_error::codes::NOT_IMPLEMENTED)
-        }
+        .await;
+        self.cert_store.cert_slots()[idx]
+            .write_in_progress
+            .store(false, Ordering::Relaxed);
+        result?;
+        self.cert_store.invalidate_cert_caches(slot);
+        Ok(())
     }
 
+    #[cfg(feature = "set-certificate")]
     async fn erase_cert_chain(
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {
-        #[cfg(feature = "set-certificate")]
-        {
-            let idx = slot_index(slot).ok_or(INVARIANT)?;
+        let idx = slot_index(slot).ok_or(INVARIANT)?;
+        self.cert_store.cert_slots()[idx]
+            .write_in_progress
+            .store(true, Ordering::Relaxed);
+        let result = async {
             let managed = match &self.cert_store.cert_slots()[idx].endorsement {
                 endorsement::SlotEndorsement::Managed(e) => *e,
                 endorsement::SlotEndorsement::ReadOnly(_) => {
@@ -346,14 +376,15 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
             cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
             cert_slot.clear_metadata();
-            self.cert_store.invalidate_cache(slot);
             Ok(())
         }
-        #[cfg(not(feature = "set-certificate"))]
-        {
-            let _ = (slot, algo);
-            Err(mcu_error::codes::NOT_IMPLEMENTED)
-        }
+        .await;
+        self.cert_store.cert_slots()[idx]
+            .write_in_progress
+            .store(false, Ordering::Relaxed);
+        result?;
+        self.cert_store.invalidate_cert_caches(slot);
+        Ok(())
     }
 
     fn key_pair_id(&self, slot: u8) -> Option<u8> {
@@ -408,12 +439,10 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 // ---------------------------------------------------------------------------
 
 /// Probe the DPE leaf-cert size by calling `CertifyKey` and
-/// discarding the cert bytes. Deterministic, so subsequent calls
-/// produce identical sizes.
+/// reading only its fixed response header. Deterministic, so
+/// subsequent calls produce identical sizes.
 async fn probe_leaf_len<M: MeasurementProvider>(pal: &McuSpdmPal<M>) -> McuResult<usize> {
-    let mut buf = ApiAlloc::alloc(pal, DPE_MAX_LEAF_CERT_SIZE)?;
-    let n = dpe_certify_key(pal, &SLOT0_LEAF_LABEL, &mut buf[..]).await?;
-    Ok(n)
+    dpe_certify_key_cert_size(pal, &DPE_LEAF_LABEL).await
 }
 
 /// Parse `len(TLV)` for the leading X.509 `SEQUENCE` in `buf` and

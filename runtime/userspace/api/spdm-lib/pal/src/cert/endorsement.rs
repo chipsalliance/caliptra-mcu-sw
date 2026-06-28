@@ -14,6 +14,8 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 use mcu_error::McuResult;
 
+use core::sync::atomic::{AtomicBool, Ordering};
+
 /// Number of cert slots managed by the PAL.
 pub const NUM_CERT_SLOTS: usize = 3;
 
@@ -56,9 +58,8 @@ pub const DEVICE_KEY_RT_ALIAS: u8 = 3;
 
 /// A single SPDM certificate slot.
 ///
-/// Read-only slots compose a full cert chain from a static endorsement plus
-/// the DPE device chain and leaf. Managed slots store the complete DER chain
-/// installed by SET_CERTIFICATE.
+/// Slots store the endorsement/root portion. The PAL composes the full
+/// SPDM cert chain by appending the DPE device chain and DPE leaf cert.
 pub struct CertSlot {
     /// Slot certificate-chain backing storage.
     pub endorsement: SlotEndorsement,
@@ -68,6 +69,8 @@ pub struct CertSlot {
     /// CertificateInfo/CertModel associated with this slot.
     /// `None` for unprovisioned slots.
     pub cert_info: Option<u8>,
+    /// State lock high when an active async write (flash erase/write) is in progress on this slot.
+    pub write_in_progress: AtomicBool,
 }
 
 impl CertSlot {
@@ -76,6 +79,7 @@ impl CertSlot {
             endorsement: SlotEndorsement::Empty,
             key_pair_id: None,
             cert_info: None,
+            write_in_progress: AtomicBool::new(false),
         }
     }
 
@@ -87,12 +91,8 @@ impl CertSlot {
         self.endorsement.is_writable()
     }
 
-    pub fn stores_complete_chain(&self) -> bool {
-        self.endorsement.stores_complete_chain()
-    }
-
     pub fn is_provisioned(&self) -> bool {
-        self.endorsement.is_provisioned()
+        !self.write_in_progress.load(Ordering::Relaxed) && self.endorsement.is_provisioned()
     }
 
     pub fn clear_metadata(&mut self) {
@@ -108,13 +108,13 @@ pub enum SlotEndorsement {
     Empty,
     /// Read-only endorsement backed by static root CA certs (slot 0).
     ReadOnly(ReadOnlyEndorsement),
-    /// Managed full certificate chain backed by flash (slots 1-2, SET_CERTIFICATE).
+    /// Managed endorsement/root chain backed by flash (slots 1-2, SET_CERTIFICATE).
     #[cfg(feature = "set-certificate")]
     Managed(ManagedEndorsement),
 }
 
 impl SlotEndorsement {
-    pub async fn root_cert_hash(&self, algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()> {
+    pub fn root_cert_hash(&self, algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()> {
         match self {
             Self::ReadOnly(e) => e.root_cert_hash(algo, out),
             #[cfg(feature = "set-certificate")]
@@ -123,7 +123,7 @@ impl SlotEndorsement {
         }
     }
 
-    pub async fn size(&self, algo: SpdmPalAsymAlgo) -> McuResult<usize> {
+    pub fn size(&self, algo: SpdmPalAsymAlgo) -> McuResult<usize> {
         match self {
             Self::ReadOnly(e) => e.size(algo),
             #[cfg(feature = "set-certificate")]
@@ -132,7 +132,7 @@ impl SlotEndorsement {
         }
     }
 
-    pub async fn capacity(&self, algo: SpdmPalAsymAlgo) -> McuResult<usize> {
+    pub fn capacity(&self, algo: SpdmPalAsymAlgo) -> McuResult<usize> {
         match self {
             Self::ReadOnly(e) => e.size(algo),
             #[cfg(feature = "set-certificate")]
@@ -160,17 +160,6 @@ impl SlotEndorsement {
     }
 
     pub fn is_writable(&self) -> bool {
-        #[cfg(feature = "set-certificate")]
-        {
-            matches!(self, Self::Managed(_))
-        }
-        #[cfg(not(feature = "set-certificate"))]
-        {
-            false
-        }
-    }
-
-    pub fn stores_complete_chain(&self) -> bool {
         #[cfg(feature = "set-certificate")]
         {
             matches!(self, Self::Managed(_))
@@ -269,7 +258,7 @@ const MANAGED_MAX_DER_LEN: usize = (u16::MAX as usize) - 52;
 #[cfg(feature = "set-certificate")]
 type CertStoreFlash = SpiFlash<DefaultSyscalls>;
 
-/// Managed flash-backed full cert chain installed by SET_CERTIFICATE.
+/// Managed flash-backed endorsement/root chain installed by SET_CERTIFICATE.
 #[cfg(feature = "set-certificate")]
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
