@@ -883,6 +883,7 @@ pub unsafe fn main() {
         }
     );
 
+    #[cfg(not(feature = "test-mctp-capsule-loopback"))]
     kernel::process::load_processes(
         board_kernel,
         chip,
