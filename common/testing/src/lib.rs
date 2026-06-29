@@ -8,8 +8,11 @@ pub mod i3c;
 pub mod i3c_socket;
 pub mod i3c_socket_server;
 pub mod logging_seed;
+pub mod mctp_ctrl_cmds;
 pub mod mctp_transport;
+pub mod mctp_user_loopback;
 pub mod mctp_vdm_transport;
+pub mod pldm_request_response;
 #[macro_use]
 pub mod mctp_util;
 pub mod spdm_responder_validator;
