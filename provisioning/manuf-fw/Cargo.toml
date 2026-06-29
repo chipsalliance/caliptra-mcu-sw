@@ -1,0 +1,28 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-provisioning-manuf-fw"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+caliptra-mcu-bare-metal-io.workspace = true
+caliptra-mcu-romtime.workspace = true
+caliptra-mcu-error.workspace = true
+caliptra-mcu-registers-generated.workspace = true
+caliptra-mcu-provisioning-fuses.workspace = true
+caliptra-mcu-provisioning-common.workspace = true
+caliptra-mcu-otp-digest.workspace = true
+tock-registers.workspace = true
+
+[features]
+# Turn off internal printing in romtime to not link in the format engine
+default = ["no-print"]
+no-print = [
+    "caliptra-mcu-romtime/no-print",
+]
+fpga = [
+    "caliptra-mcu-bare-metal-io/fpga",
+    "caliptra-mcu-provisioning-common/fpga",
+]

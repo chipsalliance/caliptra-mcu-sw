@@ -103,6 +103,7 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
 pub const BARE_METAL_BINARIES: &[&str] = &[
     "caliptra-mcu-bare-metal",
     "caliptra-mcu-provisioning-test-unlocked-fw",
+    "caliptra-mcu-provisioning-manuf-fw",
 ];
 
 /// A single ROM build target (platform + feature combo). Shared between

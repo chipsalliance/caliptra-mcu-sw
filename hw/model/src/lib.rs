@@ -8,6 +8,7 @@ use caliptra_api::{self as api, SocManager};
 use caliptra_api_types as api_types;
 use caliptra_emu_bus::Event;
 pub use caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
+pub use caliptra_hw_model::ProvisioningStage;
 use caliptra_hw_model::{ExitStatus, ModelCallback, ModelError, Output};
 use caliptra_hw_model_types::{
     EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
@@ -252,6 +253,9 @@ pub struct InitParams<'a> {
     /// When true, set secrets_valid so DOE reads UDS/FE from strap registers
     /// for deterministic IDevID on FPGA (needed for attestation tests).
     pub use_strap_secrets: bool,
+
+    /// Target provisioning stage. The harness will provision OTP up to (but not including) this stage.
+    pub target_provisioning_stage: ProvisioningStage,
 }
 
 impl InitParams<'_> {
@@ -333,6 +337,7 @@ impl Default for InitParams<'_> {
             active_i3c1: false,
             vendor_test_partition: None,
             use_strap_secrets: false,
+            target_provisioning_stage: Default::default(),
         }
     }
 }
