@@ -432,7 +432,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         Ok(())
     }
 
-async fn begin_write_cert_chain_stream(
+    async fn begin_write_cert_chain_stream(
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
@@ -568,6 +568,7 @@ async fn begin_write_cert_chain_stream(
             Err(mcu_error::codes::NOT_IMPLEMENTED)
         }
     }
+    #[cfg(feature = "set-certificate")]
     async fn erase_cert_chain(
         &self,
         _io: &Self::Io<'_>,

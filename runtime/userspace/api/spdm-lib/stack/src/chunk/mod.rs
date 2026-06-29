@@ -92,6 +92,7 @@ pub(crate) struct StreamPrefixState {
 
 #[derive(Copy, Clone)]
 pub(crate) enum ActiveLargeRequest {
+    #[cfg(any(test, feature = "generic-large-request"))]
     Buffered,
     #[cfg(feature = "set-certificate")]
     Prefix(StreamPrefixState),
@@ -178,6 +179,7 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
         matches!(self.mode, LargeMessageMode::Idle)
     }
 
+    #[cfg(any(test, feature = "generic-large-request"))]
     pub fn init_request(
         &mut self,
         handle: u8,
@@ -263,6 +265,7 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
         Ok(())
     }
 
+    #[cfg(any(test, feature = "generic-large-request"))]
     pub fn append_request(
         &mut self,
         handle: u8,

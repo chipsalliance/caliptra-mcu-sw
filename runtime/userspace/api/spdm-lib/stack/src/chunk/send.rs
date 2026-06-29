@@ -14,7 +14,9 @@ use zerocopy::{little_endian::U16, FromBytes};
 
 #[cfg(feature = "set-certificate")]
 use super::StreamPrefixState;
-use super::{ActiveLargeRequest, VendorDefinedStreamState, WipeOnDrop};
+#[cfg(any(test, feature = "generic-large-request"))]
+use super::WipeOnDrop;
+use super::{ActiveLargeRequest, VendorDefinedStreamState};
 use crate::build::alloc_padded;
 use crate::error::*;
 #[cfg(feature = "set-certificate")]
@@ -291,26 +293,36 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     })? {
         return Ok(());
     }
-    let rent_buf = match pal.alloc_large_buf(large_msg_size) {
-        Ok(buf) => buf,
-        Err(_) => {
+    #[cfg(any(test, feature = "generic-large-request"))]
+    {
+        let rent_buf = match pal.alloc_large_buf(large_msg_size) {
+            Ok(buf) => buf,
+            Err(_) => {
+                return Err(ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                })
+            }
+        };
+        if state
+            .large_msg_ctx
+            .init_request(handle, large_msg_size, chunk, rent_buf)
+            .is_err()
+        {
             return Err(ChunkProcessError::Early {
                 handle,
                 chunk_seq_num,
-            })
+            });
         }
-    };
-    if state
-        .large_msg_ctx
-        .init_request(handle, large_msg_size, chunk, rent_buf)
-        .is_err()
+        Ok(())
+    }
+    #[cfg(not(any(test, feature = "generic-large-request")))]
     {
-        return Err(ChunkProcessError::Early {
+        Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
-        });
+        })
     }
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -360,6 +372,7 @@ async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     #[cfg(feature = "set-certificate")]
     let algo = state.asym_algo();
     match state.large_msg_ctx.active_request_mut() {
+        #[cfg(any(test, feature = "generic-large-request"))]
         Some(ActiveLargeRequest::Buffered) => {
             if state
                 .large_msg_ctx
@@ -647,11 +660,13 @@ async fn try_start_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     }
 }
 
+#[cfg(any(test, feature = "generic-large-request"))]
 struct LargeRequestError {
     spdm: SpdmError,
     early_error: bool,
 }
 
+#[cfg(any(test, feature = "generic-large-request"))]
 impl From<SpdmError> for LargeRequestError {
     fn from(spdm: SpdmError) -> Self {
         Self {
@@ -666,7 +681,7 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
-    secure_session: bool,
+    _secure_session: bool,
     handle: u8,
     chunk_seq_num: u16,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
@@ -773,13 +788,14 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             ),
             false,
         ),
+        #[cfg(any(test, feature = "generic-large-request"))]
         _ => match dispatch_large_request(
             state,
             pal,
             io,
             vdm,
             len,
-            secure_session,
+            _secure_session,
             &mut response_to_large_request,
         )
         .await
@@ -794,6 +810,15 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 err.early_error,
             ),
         },
+        #[cfg(not(any(test, feature = "generic-large-request")))]
+        _ => (
+            write_error_response_to_large_request(
+                &mut response_to_large_request,
+                state.version,
+                SPDM_UNSUPPORTED_REQUEST,
+            ),
+            false,
+        ),
     };
 
     let max_response_len = state
@@ -818,6 +843,7 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     )
 }
 
+#[cfg(any(test, feature = "generic-large-request"))]
 async fn dispatch_large_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,

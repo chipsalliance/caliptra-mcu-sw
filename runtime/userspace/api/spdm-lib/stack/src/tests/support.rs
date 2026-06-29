@@ -363,7 +363,7 @@ impl SpdmPalCertStore for TestPal {
         Ok(())
     }
 
-async fn begin_write_cert_chain_stream(
+    async fn begin_write_cert_chain_stream(
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
