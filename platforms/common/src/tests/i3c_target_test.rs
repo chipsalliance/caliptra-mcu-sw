@@ -8,7 +8,6 @@ use caliptra_mcu_romtime::println;
 use caliptra_mcu_tock_veer::chip::{VeeR, VeeRDefaultPeripherals};
 use caliptra_mcu_tock_veer::timers::InternalTimers;
 use core::cell::Cell;
-use core::fmt::Write;
 use kernel::{
     debug_flush_queue,
     deferred_call::{DeferredCall, DeferredCallClient},
