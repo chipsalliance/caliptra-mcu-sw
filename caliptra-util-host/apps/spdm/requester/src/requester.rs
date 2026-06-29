@@ -26,6 +26,14 @@ unsafe extern "C" {
             ) -> bool,
         >,
     );
+    fn libspdm_challenge(
+        spdm_context: *mut c_void,
+        reserved: *mut c_void,
+        slot_id: u8,
+        measurement_hash_type: u8,
+        measurement_hash: *mut c_void,
+        slot_mask: *mut u8,
+    ) -> usize;
 }
 
 unsafe extern "C" fn accept_peer_cert_chain(
@@ -118,20 +126,61 @@ impl SpdmRequester {
     /// This performs VCA negotiation which is sufficient for sending
     /// vendor-defined messages. Does NOT do GET_DIGEST/GET_CERTIFICATE/CHALLENGE.
     pub fn connect(&mut self) -> anyhow::Result<()> {
+        self.connect_inner(false)
+    }
+
+    /// Establish SPDM connection and authenticate the configured responder certificate slot.
+    pub fn connect_authenticated(&mut self) -> anyhow::Result<()> {
+        self.connect()?;
+        self.challenge(self.config.slot_id)?;
+        Ok(())
+    }
+
+    fn connect_inner(&mut self, get_version_only: bool) -> anyhow::Result<()> {
         // Setup requester capabilities and algorithm preferences before VCA
         unsafe {
             self.setup_capabilities()?;
         }
 
-        // Only do VCA (not full authentication flow)
-        let ret = unsafe { libspdm_rs::libspdm_init_connection(self.context, false) };
+        let ret = unsafe { libspdm_rs::libspdm_init_connection(self.context, get_version_only) };
         if spdm::LibspdmReturnStatus::libspdm_status_is_error(ret) {
             return Err(anyhow::anyhow!("SPDM init_connection failed: {:#x}", ret));
         }
 
         self.connected = true;
-        log::info!("SPDM connection established (slot {})", self.config.slot_id);
+        log::info!(
+            "SPDM connection established (slot {}, authenticated={})",
+            self.config.slot_id,
+            get_version_only
+        );
         Ok(())
+    }
+
+    /// Send CHALLENGE for `slot_id` and let libspdm verify the CHALLENGE_AUTH signature.
+    pub fn challenge(&mut self, slot_id: u8) -> anyhow::Result<u8> {
+        if !self.connected {
+            return Err(anyhow::anyhow!("Not connected — call connect() first"));
+        }
+
+        let mut slot_mask = 0u8;
+        let ret = unsafe {
+            libspdm_challenge(
+                self.context,
+                ptr::null_mut(),
+                slot_id,
+                0,
+                ptr::null_mut(),
+                &mut slot_mask,
+            )
+        };
+        if spdm::LibspdmReturnStatus::libspdm_status_is_error(ret) {
+            return Err(anyhow::anyhow!(
+                "SPDM CHALLENGE failed for slot {}: {:#x}",
+                slot_id,
+                ret
+            ));
+        }
+        Ok(slot_mask)
     }
 
     /// Configure requester capabilities and algorithm preferences.
