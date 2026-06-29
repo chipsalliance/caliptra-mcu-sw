@@ -186,11 +186,12 @@ impl SpdmRequester {
                 &mut slot_mask,
             )
         };
-        if spdm::LibspdmReturnStatus::libspdm_status_is_error(ret) {
+        let ret_status = ret as u32;
+        if spdm::LibspdmReturnStatus::libspdm_status_is_error(ret_status) {
             return Err(anyhow::anyhow!(
                 "SPDM CHALLENGE failed for slot {}: {:#x}",
                 slot_id,
-                ret
+                ret_status
             ));
         }
         Ok(slot_mask)
