@@ -204,7 +204,7 @@ fn parse_manifest(bundle_bytes: &[u8]) -> Result<ImageManifest> {
             IMAGE_MANIFEST_BYTE_SIZE
         );
     }
-    
+
     if manifest.marker != MANIFEST_MARKER {
         bail!(
             "Invalid Manifest marker: {:#010x}, expected {:#010x}",
