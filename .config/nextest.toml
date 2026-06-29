@@ -69,7 +69,7 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_bootfsm_timeout)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check)) |
-(package(caliptra-mcu-tests-integration) and test(rom::test_warm_reset_success)) 
+(package(caliptra-mcu-tests-integration) and test(test_warm_reset::test_warm_reset_success)) 
 """
 # Disabled because they hang the FPGA at boot (LifecycleControllerState::Dev):
 #   test_sw_digest_lock,
