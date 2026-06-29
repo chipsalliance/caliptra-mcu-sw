@@ -142,6 +142,10 @@ impl Otp {
     }
 
     fn read_data(&self, addr: usize, len: usize, data: &mut [u8]) -> McuResult<()> {
+        if data.len() < len || addr % 4 != 0 || len % 4 != 0 {
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+
         read_data_with(
             addr,
             len,
@@ -707,25 +711,13 @@ impl Otp {
         if word_count > MAX_RAW_WORDS {
             return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
         }
-        let mut raw_bytes = [0u8; MAX_RAW_WORDS * 4];
-        self.read_data(
-            entry.byte_offset,
-            word_count * 4,
-            raw_bytes
-                .get_mut(..word_count * 4)
-                .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?,
-        )?;
-
         let mut raw = [0u32; MAX_RAW_WORDS];
-        for (idx, chunk) in raw_bytes[..word_count * 4].chunks_exact(4).enumerate() {
+        let base_word = entry.byte_offset / 4;
+        for idx in 0..word_count {
             let word = raw
                 .get_mut(idx)
                 .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
-            *word = u32::from_le_bytes(
-                chunk
-                    .try_into()
-                    .map_err(|_| McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?,
-            );
+            *word = self.read_word(base_word + idx)?;
         }
         crate::extract_fuse_value::<N>(
             layout,
@@ -945,30 +937,17 @@ fn sw_digest_data_size(partition: &OtpPartitionInfo) -> McuResult<usize> {
 }
 
 fn is_64bit_granule(byte_addr: usize) -> bool {
-    for partition in fuses::OTP_PARTITIONS {
-        if byte_addr < partition.byte_offset
-            || byte_addr >= partition.byte_offset + partition.byte_size
-        {
-            continue;
-        }
-
-        if partition.secret {
-            return true;
-        }
-        if let Some(digest_offset) = partition.digest_offset {
-            if byte_addr >= digest_offset && byte_addr < digest_offset + 8 {
-                return true;
-            }
-        }
-        if partition.zeroizable {
-            let zer_offset = partition.byte_offset + partition.byte_size - 8;
-            if byte_addr >= zer_offset && byte_addr < zer_offset + 8 {
-                return true;
-            }
-        }
-        return false;
-    }
-    false
+    matches!(
+        byte_addr,
+        // Secret partitions and digest fields require 64-bit DAI granules.
+        0x40..=0xcf
+            | 0x2d0..=0x38f
+            | 0x3f0..=0x3f7
+            | 0x430..=0x437
+            | 0x790..=0x797
+            | 0x868..=0xa77
+            | 0xc78..=0xc7f
+    )
 }
 
 fn read_data_with(
@@ -1148,52 +1127,41 @@ mod tests {
         assert_eq!(sw_digest_data_size(&partition).unwrap(), 0x20);
     }
 
-    fn read_word_from(bytes: &[u8], word_addr: usize) -> u32 {
-        let byte_addr = word_addr * 4;
-        u32::from_le_bytes(bytes[byte_addr..byte_addr + 4].try_into().unwrap())
-    }
-
-    fn read_dword_from(bytes: &[u8], dword_addr: usize) -> u64 {
-        let byte_addr = dword_addr * 8;
-        u64::from_le_bytes(bytes[byte_addr..byte_addr + 8].try_into().unwrap())
-    }
-
     #[test]
-    fn test_read_data_uses_dword_for_digest_granule() {
-        let digest = 0x1122_3344_5566_7788u64;
-        let digest_offset = fuses::VENDOR_TEST_PARTITION.digest_offset.unwrap();
-        let mut otp_bytes = vec![0u8; digest_offset + 8];
-        otp_bytes[digest_offset..digest_offset + 8].copy_from_slice(&digest.to_le_bytes());
-        let mut data = [0u8; 8];
-        let mut word_reads = 0;
-        let mut dword_reads = [usize::MAX; 1];
+    fn test_is_64bit_granule_matches_partition_metadata() {
+        let last_otp_byte = fuses::OTP_PARTITIONS
+            .iter()
+            .map(|partition| partition.byte_offset + partition.byte_size)
+            .max()
+            .unwrap();
 
-        read_data_with(
-            digest_offset,
-            data.len(),
-            &mut data,
-            |word_addr| {
-                word_reads += 1;
-                Ok(read_word_from(&otp_bytes, word_addr))
-            },
-            |dword_addr| {
-                dword_reads[0] = dword_addr;
-                Ok(read_dword_from(&otp_bytes, dword_addr))
-            },
-        )
-        .unwrap();
+        for byte_addr in 0..last_otp_byte {
+            let expected = fuses::OTP_PARTITIONS.iter().any(|partition| {
+                if byte_addr < partition.byte_offset
+                    || byte_addr >= partition.byte_offset + partition.byte_size
+                {
+                    return false;
+                }
 
-        assert_eq!(data, digest.to_le_bytes());
-        assert_eq!(word_reads, 0);
-        assert_eq!(dword_reads, [digest_offset / 8]);
+                partition.secret
+                    || partition
+                        .digest_offset
+                        .is_some_and(|offset| byte_addr >= offset && byte_addr < offset + 8)
+                    || partition.zeroizable
+                        && byte_addr >= partition.byte_offset + partition.byte_size - 8
+            });
+            assert_eq!(
+                is_64bit_granule(byte_addr),
+                expected,
+                "incorrect granule for OTP byte offset {byte_addr:#x}"
+            );
+        }
     }
 
     #[test]
     fn test_read_data_copies_upper_half_of_64bit_granule() {
         let value = 0x1122_3344_5566_7788u64;
         let addr = fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
-        let mut otp_bytes = vec![0u8; addr + 8];
-        otp_bytes[addr..addr + 8].copy_from_slice(&value.to_le_bytes());
         let mut data = [0u8; 4];
         let mut word_reads = 0;
         let mut dword_reads = [usize::MAX; 1];
@@ -1202,13 +1170,13 @@ mod tests {
             addr + 4,
             data.len(),
             &mut data,
-            |word_addr| {
+            |_word_addr| {
                 word_reads += 1;
-                Ok(read_word_from(&otp_bytes, word_addr))
+                Ok(0)
             },
             |dword_addr| {
                 dword_reads[0] = dword_addr;
-                Ok(read_dword_from(&otp_bytes, dword_addr))
+                Ok(value)
             },
         )
         .unwrap();
