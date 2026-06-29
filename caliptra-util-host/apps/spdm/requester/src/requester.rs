@@ -131,8 +131,21 @@ impl SpdmRequester {
 
     /// Establish SPDM connection and authenticate the configured responder certificate slot.
     pub fn connect_authenticated(&mut self) -> anyhow::Result<()> {
-        self.connect()?;
-        self.challenge(self.config.slot_id)?;
+        unsafe {
+            self.setup_capabilities()?;
+            spdm::initialise_connection(self.context, self.config.slot_id).map_err(|ret| {
+                anyhow::anyhow!(
+                    "SPDM authenticated connection failed for slot {}: {:#x}",
+                    self.config.slot_id,
+                    ret
+                )
+            })?;
+        }
+        self.connected = true;
+        log::info!(
+            "SPDM authenticated connection established (slot {})",
+            self.config.slot_id
+        );
         Ok(())
     }
 

@@ -34,6 +34,8 @@ pub struct ProvisionOptions {
     /// DER X.509 certificate chain to install.
     pub cert_chain: PathBuf,
     /// Verify the installed certificate with GET_CERTIFICATE after provisioning.
+    /// This is mandatory for the issue-1711 e2e flow; the field is retained for
+    /// source compatibility and must be true in production invocations.
     pub verify_get_certificate: bool,
     /// Export and validate an attested CSR before SET_CERTIFICATE.
     pub require_attested_csr: bool,
@@ -48,7 +50,7 @@ impl Default for ProvisionOptions {
             vendor_slot_id: DEFAULT_VENDOR_SLOT_ID,
             csr_algorithm: DEFAULT_CSR_ALGORITHM_ECC384,
             cert_chain: default_cert_chain_path(),
-            verify_get_certificate: false,
+            verify_get_certificate: true,
             require_attested_csr: true,
         }
     }
@@ -86,7 +88,7 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
     );
 
     if options.require_attested_csr {
-        let nonce = deterministic_nonce(options.key_pair_id, options.slot_id);
+        let nonce = random_nonce()?;
         let csr = export_attested_csr(
             &mut requester,
             options.key_pair_id as u32,
@@ -141,15 +143,18 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
         &cert_chain,
     )?;
 
-    if options.verify_get_certificate {
-        let provisioned = requester.get_certificate(None, options.slot_id)?;
-        verify_returned_owner_chain(options.slot_id, &cert_chain, &provisioned)?;
-
+    if !options.verify_get_certificate {
         println!(
-            "[ocp_dev_identity_provision_tool] Provisioning verified (GET_CERTIFICATE returned {} bytes)",
-            provisioned.len()
+            "[ocp_dev_identity_provision_tool] GET_CERTIFICATE verification is mandatory for this flow; overriding verify_get_certificate=false"
         );
     }
+    let provisioned = requester.get_certificate(None, options.slot_id)?;
+    verify_returned_owner_chain(options.slot_id, &cert_chain, &provisioned)?;
+
+    println!(
+        "[ocp_dev_identity_provision_tool] Provisioning verified (GET_CERTIFICATE returned {} bytes)",
+        provisioned.len()
+    );
 
     requester.challenge(options.slot_id)?;
     println!(
@@ -181,12 +186,10 @@ fn export_attested_csr(
     client.export_attested_csr(device_key_id, algorithm, nonce)
 }
 
-fn deterministic_nonce(key_pair_id: u8, slot_id: u8) -> [u8; 32] {
-    let mut nonce = [0xA5; 32];
-    nonce[0] = key_pair_id;
-    nonce[1] = slot_id;
-    nonce[2] = 0x5A;
-    nonce
+fn random_nonce() -> Result<[u8; 32]> {
+    let mut nonce = [0u8; 32];
+    getrandom::getrandom(&mut nonce).context("failed to generate CSR freshness nonce")?;
+    Ok(nonce)
 }
 
 fn validate_attested_csr(response: &ExportAttestedCsrResponse, nonce: &[u8; 32]) -> Result<()> {
@@ -222,13 +225,23 @@ fn verify_returned_owner_chain(
 
     let installed_count = split_der_certificates(installed_der)?.len();
     let returned_count = split_der_certificates(returned_der)?.len();
-    if returned_count < installed_count + 3 {
+    if returned_count != installed_count + 3 {
         bail!(
-            "GET_CERTIFICATE slot {} returned {} cert(s), expected installed owner chain plus FMC alias, RT alias, and DPE leaf (at least {} certs)",
+            "GET_CERTIFICATE slot {} returned {} cert(s), expected exactly installed owner chain plus FMC alias, RT alias, and DPE leaf ({} certs)",
             slot_id,
             returned_count,
             installed_count + 3
         );
+    }
+    let returned_certs = split_der_certificates(returned_der)?;
+    let installed_certs = split_der_certificates(installed_der)?;
+    for tail_cert in &returned_certs[installed_count..] {
+        if installed_certs.iter().any(|installed| installed == tail_cert) {
+            bail!(
+                "GET_CERTIFICATE slot {} alias/DPE tail duplicates an installed owner-chain certificate",
+                slot_id
+            );
+        }
     }
     Ok(())
 }
@@ -344,14 +357,28 @@ mod tests {
     #[test]
     fn test_verify_returned_owner_chain_accepts_owner_then_alias_leaf_chain() {
         let chain = fs::read(default_cert_chain_path()).unwrap();
-        let certs = split_der_certificates(&chain).unwrap();
         let mut returned_der = chain.clone();
-        returned_der.extend_from_slice(certs[0]);
-        returned_der.extend_from_slice(certs[0]);
-        returned_der.extend_from_slice(certs[0]);
+        returned_der.extend_from_slice(&[0x30, 0x01, 0xA1]);
+        returned_der.extend_from_slice(&[0x30, 0x01, 0xA2]);
+        returned_der.extend_from_slice(&[0x30, 0x01, 0xA3]);
 
         let returned = spdm_chain(&returned_der);
         verify_returned_owner_chain(DEFAULT_OWNER_SLOT_ID, &chain, &returned).unwrap();
+    }
+
+    #[test]
+    fn test_verify_returned_owner_chain_rejects_duplicate_tail_cert() {
+        let chain = fs::read(default_cert_chain_path()).unwrap();
+        let certs = split_der_certificates(&chain).unwrap();
+        let mut returned_der = chain.clone();
+        returned_der.extend_from_slice(certs[0]);
+        returned_der.extend_from_slice(&[0x30, 0x01, 0xA2]);
+        returned_der.extend_from_slice(&[0x30, 0x01, 0xA3]);
+
+        let returned = spdm_chain(&returned_der);
+        let err =
+            verify_returned_owner_chain(DEFAULT_OWNER_SLOT_ID, &chain, &returned).unwrap_err();
+        assert!(err.to_string().contains("duplicates"));
     }
 
     fn spdm_chain(der: &[u8]) -> Vec<u8> {

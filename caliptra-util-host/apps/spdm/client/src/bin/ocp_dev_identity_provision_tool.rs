@@ -2,10 +2,10 @@
 
 //! OCP device identity provisioning tool for SPDM SET_CERTIFICATE.
 //!
-//! This follows the mandatory requester-side provisioning flow from
-//! `docs/src/cert_slot_mgmt.md`: establish SPDM VCA and send SET_CERTIFICATE for
-//! the Owner slot. Optional discovery/verification steps from the sequence
-//! diagram are intentionally skipped by default.
+//! This follows the issue-1711 requester-side provisioning flow: authenticate
+//! with Vendor slot 0, export an attested CSR, install an Owner/LDevID chain via
+//! SET_CERTIFICATE AliasCert, verify GET_CERTIFICATE composition, and challenge
+//! the newly installed Owner slot.
 
 use std::path::PathBuf;
 
@@ -46,7 +46,8 @@ struct Args {
     #[arg(long, default_value_os_t = default_cert_chain_path())]
     cert_chain: PathBuf,
 
-    /// Verify the installed certificate with GET_CERTIFICATE after provisioning.
+    /// Deprecated compatibility flag. GET_CERTIFICATE verification is mandatory
+    /// for this flow and is always performed.
     #[arg(long)]
     verify_get_certificate: bool,
 

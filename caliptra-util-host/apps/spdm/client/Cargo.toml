@@ -28,6 +28,7 @@ caliptra-util-host-commands.workspace = true
 caliptra-util-host-session.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+getrandom.workspace = true
 hex.workspace = true
 log.workspace = true
 serde.workspace = true

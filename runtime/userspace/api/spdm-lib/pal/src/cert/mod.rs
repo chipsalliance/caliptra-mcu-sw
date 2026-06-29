@@ -7,7 +7,9 @@
 //! 2. DPE device chain (IDevID → RT alias, from Caliptra Core)
 //! 3. DPE leaf certificate (CertifyKey, fetched on demand)
 //!
-//! Managed slots store the complete DER chain installed by SET_CERTIFICATE.
+//! Managed `DeviceCert` slots store the complete DER chain installed by
+//! SET_CERTIFICATE. Managed `AliasCert` slots expose the installed owner chain
+//! followed by Caliptra FMC alias, Caliptra RT alias, and the DPE leaf cert.
 //! [`SlotEndorsement`] dispatches to `ReadOnlyEndorsement` (slot 0) or
 //! `ManagedEndorsement` (slots 1-2) without dynamic dispatch.
 
@@ -34,6 +36,8 @@ pub const SLOT0_LEAF_LABEL: [u8; DPE_LABEL_LEN] = [
 
 /// Default KeyUsageMask for all Caliptra slots.
 const DEFAULT_KEY_USAGE_MASK: u16 = 0x0003;
+const CERT_MODEL_ALIAS_CERT: u8 = 2;
+const DPE_ALIAS_CERT_COUNT: usize = 2;
 
 // ---------------------------------------------------------------------------
 // Sinks for `walk_dpe_chain`
@@ -86,6 +90,15 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .await
             .map_err(|_| INVARIANT)?;
         if cert_slot.stores_complete_chain() {
+            if managed_alias_cert(cert_slot) {
+                let dpe_len = walk_dpe_chain(self, &mut CountSink).await? as usize;
+                let leaf_len = probe_leaf_len(self).await?;
+                let alias_tail_len = dpe_alias_tail_len(self, dpe_len).await?;
+                return capacity
+                    .checked_add(alias_tail_len)
+                    .and_then(|n| n.checked_add(leaf_len))
+                    .ok_or(INVARIANT);
+            }
             return Ok(capacity);
         }
         let dpe_len = walk_dpe_chain(self, &mut CountSink).await? as usize;
@@ -155,7 +168,17 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .await
             .map_err(|_| INVARIANT)?;
         let total = if cert_slot.stores_complete_chain() {
-            slot_chain_len
+            if managed_alias_cert(cert_slot) {
+                let dpe_len = walk_dpe_chain(self, &mut CountSink).await? as usize;
+                let alias_tail_len = dpe_alias_tail_len(self, dpe_len).await?;
+                let leaf_len = probe_leaf_len(self).await?;
+                slot_chain_len
+                    .checked_add(alias_tail_len)
+                    .and_then(|n| n.checked_add(leaf_len))
+                    .ok_or(INVARIANT)?
+            } else {
+                slot_chain_len
+            }
         } else {
             let dpe_len = walk_dpe_chain(self, &mut CountSink).await?;
             let leaf_len = probe_leaf_len(self).await?;
@@ -210,13 +233,65 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .await
             .map_err(|_| INVARIANT)?;
         let want = (total - offset).min(dst.len());
-        if cert_slot.stores_complete_chain() {
+        if cert_slot.stores_complete_chain() && !managed_alias_cert(cert_slot) {
             let n = cert_slot
                 .endorsement
                 .read(SpdmPalAsymAlgo::EccP384, offset, &mut dst[..want])
                 .await
                 .map_err(|_| INVARIANT)?;
             return if n == want { Ok(n) } else { Err(INVARIANT) };
+        }
+
+        if cert_slot.stores_complete_chain() {
+            let leaf_len = probe_leaf_len(self).await? as usize;
+            let dpe_len = walk_dpe_chain(self, &mut CountSink).await? as usize;
+            let alias_tail = load_dpe_alias_tail(self, dpe_len).await?;
+            let alias_tail_len = alias_tail.len();
+            let alias_start = slot_chain_len;
+            let leaf_start = alias_start + alias_tail_len;
+
+            let mut written = 0usize;
+            let mut cur_offset = offset;
+
+            // 1. Installed owner chain region.
+            if cur_offset < slot_chain_len && written < want {
+                let n = cert_slot
+                    .endorsement
+                    .read(
+                        SpdmPalAsymAlgo::EccP384,
+                        cur_offset,
+                        &mut dst[written..want],
+                    )
+                    .await
+                    .map_err(|_| INVARIANT)?;
+                written += n;
+                cur_offset = offset + written;
+            }
+
+            // 2. Caliptra FMC alias + RT alias region.
+            if cur_offset < leaf_start && written < want {
+                let alias_off = cur_offset - alias_start;
+                let alias_take = (leaf_start - cur_offset).min(want - written);
+                dst[written..written + alias_take]
+                    .copy_from_slice(&alias_tail[alias_off..alias_off + alias_take]);
+                written += alias_take;
+                cur_offset += alias_take;
+            }
+
+            // 3. DPE leaf-cert region.
+            if cur_offset >= leaf_start && written < want {
+                let mut leaf = ApiAlloc::alloc(self, leaf_len)?;
+                let got = dpe_certify_key(self, &SLOT0_LEAF_LABEL, &mut leaf[..]).await?;
+                if got != leaf_len {
+                    return Err(INTERNAL_BUG);
+                }
+                let leaf_off = cur_offset - leaf_start;
+                let leaf_take = want - written;
+                dst[written..written + leaf_take]
+                    .copy_from_slice(&leaf[leaf_off..leaf_off + leaf_take]);
+                written += leaf_take;
+            }
+            return Ok(written);
         }
 
         // Read-only chain layout: [endorsement] [DPE chain] [leaf cert]
@@ -416,6 +491,53 @@ async fn probe_leaf_len<M: MeasurementProvider>(pal: &McuSpdmPal<M>) -> McuResul
     Ok(n)
 }
 
+fn managed_alias_cert(slot: &endorsement::CertSlot) -> bool {
+    slot.stores_complete_chain() && slot.cert_info == Some(CERT_MODEL_ALIAS_CERT)
+}
+
+async fn dpe_alias_tail_len<M: MeasurementProvider>(
+    pal: &McuSpdmPal<M>,
+    dpe_len: usize,
+) -> McuResult<usize> {
+    let tail = load_dpe_alias_tail(pal, dpe_len).await?;
+    Ok(tail.len())
+}
+
+async fn load_dpe_alias_tail<M: MeasurementProvider>(
+    pal: &McuSpdmPal<M>,
+    dpe_len: usize,
+) -> McuResult<<McuSpdmPal<M> as ApiAlloc>::Buf<'_>> {
+    let mut dpe = ApiAlloc::alloc(pal, dpe_len)?;
+    let got = dpe_get_cert_chain_chunk(pal, 0, &mut dpe[..]).await?;
+    if got != dpe_len {
+        return Err(INTERNAL_BUG);
+    }
+    let tail_offset = dpe_alias_tail_offset(&dpe[..], DPE_ALIAS_CERT_COUNT)?;
+    let tail_len = dpe_len - tail_offset;
+    let mut tail = ApiAlloc::alloc(pal, tail_len)?;
+    tail[..].copy_from_slice(&dpe[tail_offset..]);
+    Ok(tail)
+}
+
+fn dpe_alias_tail_offset(der_chain: &[u8], tail_cert_count: usize) -> McuResult<usize> {
+    let mut offsets = [0usize; 8];
+    let mut cert_count = 0usize;
+    let mut offset = 0usize;
+    while offset < der_chain.len() {
+        if cert_count >= offsets.len() {
+            return Err(INVARIANT);
+        }
+        offsets[cert_count] = offset;
+        let cert_len = der_first_seq_len(&der_chain[offset..]).ok_or(INVARIANT)?;
+        offset = offset.checked_add(cert_len).ok_or(INVARIANT)?;
+        cert_count += 1;
+    }
+    if offset != der_chain.len() || cert_count <= tail_cert_count {
+        return Err(INVARIANT);
+    }
+    Ok(offsets[cert_count - tail_cert_count])
+}
+
 /// Parse `len(TLV)` for the leading X.509 `SEQUENCE` in `buf` and
 /// return `tag_and_length_bytes + content_bytes` — i.e. the total
 /// DER encoding size of the first certificate in the chain. Returns
@@ -447,7 +569,7 @@ fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::der_first_seq_len;
+    use super::{der_first_seq_len, dpe_alias_tail_offset};
 
     #[test]
     fn der_short_form() {
@@ -472,5 +594,25 @@ mod tests {
         assert_eq!(der_first_seq_len(&[]), None);
         assert_eq!(der_first_seq_len(&[0x31, 0x01]), None); // wrong tag
         assert_eq!(der_first_seq_len(&[0x30]), None); // truncated
+    }
+
+    #[test]
+    fn dpe_alias_tail_offset_selects_last_two_certs() {
+        let chain = [
+            &[0x30, 0x01, 0x11][..],
+            &[0x30, 0x01, 0x22][..],
+            &[0x30, 0x01, 0x33][..],
+            &[0x30, 0x01, 0x44][..],
+        ]
+        .concat();
+
+        assert_eq!(dpe_alias_tail_offset(&chain, 2).unwrap(), 6);
+        assert_eq!(&chain[6..], &[0x30, 0x01, 0x33, 0x30, 0x01, 0x44]);
+    }
+
+    #[test]
+    fn dpe_alias_tail_offset_rejects_short_chain() {
+        let chain = [&[0x30, 0x01, 0x11][..], &[0x30, 0x01, 0x22][..]].concat();
+        assert!(dpe_alias_tail_offset(&chain, 2).is_err());
     }
 }

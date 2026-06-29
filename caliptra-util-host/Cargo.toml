@@ -61,6 +61,7 @@ ecdsa = { version = "0.16.9", features = ["pem"] }
 defmt-decoder = "1"
 fips204 = "0.4.6"
 hex = "0.4.3"
+getrandom = "0.2"
 hmac = "0.12"
 caliptra-mcu-mctp-vdm-common = { path = "../common/mctp-vdm" }
 caliptra-mcu-testing-common = { path = "../common/testing" }

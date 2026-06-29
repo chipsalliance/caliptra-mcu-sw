@@ -717,6 +717,7 @@ dependencies = [
  "caliptra-util-host-commands",
  "caliptra-util-host-session",
  "clap 4.6.1",
+ "getrandom 0.2.17",
  "hex",
  "log",
  "serde",
