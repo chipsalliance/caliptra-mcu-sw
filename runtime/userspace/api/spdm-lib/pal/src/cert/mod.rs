@@ -7,9 +7,8 @@
 //! 2. DPE device chain (IDevID → RT alias, from Caliptra Core)
 //! 3. DPE leaf certificate (CertifyKey, fetched on demand)
 //!
-//! Managed `DeviceCert` slots store the complete DER chain installed by
-//! SET_CERTIFICATE. Managed `AliasCert` slots expose the installed owner chain
-//! followed by Caliptra FMC alias, Caliptra RT alias, and the DPE leaf cert.
+//! Managed `DeviceCert` and `AliasCert` slots store and expose the complete DER
+//! chain installed by SET_CERTIFICATE.
 //! [`SlotEndorsement`] dispatches to `ReadOnlyEndorsement` (slot 0) or
 //! `ManagedEndorsement` (slots 1-2) without dynamic dispatch.
 
@@ -24,6 +23,8 @@ use mcu_caliptra_api_lite::{
     dpe_certify_key, dpe_get_cert_chain_chunk, dpe_sign_ecc_p384, walk_dpe_chain, ApiAlloc,
     DpeChainSink, DPE_LABEL_LEN, DPE_MAX_LEAF_CERT_SIZE,
 };
+#[cfg(feature = "set-certificate")]
+use mcu_caliptra_api_lite::{sha_finish, sha_init, sha_update, HashAlgo, SHA_CONTEXT_SIZE};
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 
 /// 48-byte label fed to DPE `CertifyKey` for slot 0. Keep this stable so
@@ -37,7 +38,6 @@ pub const SLOT0_LEAF_LABEL: [u8; DPE_LABEL_LEN] = [
 /// Default KeyUsageMask for all Caliptra slots.
 const DEFAULT_KEY_USAGE_MASK: u16 = 0x0003;
 const CERT_MODEL_ALIAS_CERT: u8 = 2;
-const DPE_ALIAS_CERT_COUNT: usize = 2;
 
 // ---------------------------------------------------------------------------
 // Sinks for `walk_dpe_chain`
@@ -90,15 +90,6 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .await
             .map_err(|_| INVARIANT)?;
         if cert_slot.stores_complete_chain() {
-            if managed_alias_cert(cert_slot) {
-                let dpe_len = walk_dpe_chain(self, &mut CountSink).await? as usize;
-                let leaf_len = probe_leaf_len(self).await?;
-                let alias_tail_len = dpe_alias_tail_len(self, dpe_len).await?;
-                return capacity
-                    .checked_add(alias_tail_len)
-                    .and_then(|n| n.checked_add(leaf_len))
-                    .ok_or(INVARIANT);
-            }
             return Ok(capacity);
         }
         let dpe_len = walk_dpe_chain(self, &mut CountSink).await? as usize;
@@ -135,18 +126,41 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
     async fn validate_set_certificate_chain(
         &self,
         _io: &Self::Io<'_>,
-        _slot: u8,
-        _key_pair_id: u8,
-        _cert_model: u8,
-        _root_hash: &[u8; 48],
-        _cert_chain: &[u8],
+        slot: u8,
+        key_pair_id: u8,
+        cert_model: u8,
+        root_hash: &[u8; 48],
+        cert_chain: &[u8],
     ) -> McuResult<()> {
         #[cfg(feature = "set-certificate")]
         {
+            let idx = slot_index(slot).ok_or(INVARIANT)?;
+            let cert_slot = &self.cert_store.cert_slots()[idx];
+            if !cert_slot.is_writable() || cert_chain.is_empty() {
+                return Err(INVARIANT);
+            }
+            if cert_model != CERT_MODEL_ALIAS_CERT {
+                return Err(INVARIANT);
+            }
+            if !matches!(key_pair_id, 1..=3) {
+                return Err(INVARIANT);
+            }
+            if cert_chain.len()
+                > cert_slot
+                    .endorsement
+                    .capacity(SpdmPalAsymAlgo::EccP384)
+                    .await
+                    .map_err(|_| INVARIANT)?
+            {
+                return Err(INVARIANT);
+            }
+            validate_der_cert_chain(cert_chain)?;
+            validate_set_certificate_root_hash(self, root_hash, cert_chain).await?;
             Ok(())
         }
         #[cfg(not(feature = "set-certificate"))]
         {
+            let _ = (slot, key_pair_id, cert_model, root_hash, cert_chain);
             Err(mcu_error::codes::NOT_IMPLEMENTED)
         }
     }
@@ -168,17 +182,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .await
             .map_err(|_| INVARIANT)?;
         let total = if cert_slot.stores_complete_chain() {
-            if managed_alias_cert(cert_slot) {
-                let dpe_len = walk_dpe_chain(self, &mut CountSink).await? as usize;
-                let alias_tail_len = dpe_alias_tail_len(self, dpe_len).await?;
-                let leaf_len = probe_leaf_len(self).await?;
-                slot_chain_len
-                    .checked_add(alias_tail_len)
-                    .and_then(|n| n.checked_add(leaf_len))
-                    .ok_or(INVARIANT)?
-            } else {
-                slot_chain_len
-            }
+            slot_chain_len
         } else {
             let dpe_len = walk_dpe_chain(self, &mut CountSink).await?;
             let leaf_len = probe_leaf_len(self).await?;
@@ -233,65 +237,13 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .await
             .map_err(|_| INVARIANT)?;
         let want = (total - offset).min(dst.len());
-        if cert_slot.stores_complete_chain() && !managed_alias_cert(cert_slot) {
+        if cert_slot.stores_complete_chain() {
             let n = cert_slot
                 .endorsement
                 .read(SpdmPalAsymAlgo::EccP384, offset, &mut dst[..want])
                 .await
                 .map_err(|_| INVARIANT)?;
             return if n == want { Ok(n) } else { Err(INVARIANT) };
-        }
-
-        if cert_slot.stores_complete_chain() {
-            let leaf_len = probe_leaf_len(self).await? as usize;
-            let dpe_len = walk_dpe_chain(self, &mut CountSink).await? as usize;
-            let alias_tail = load_dpe_alias_tail(self, dpe_len).await?;
-            let alias_tail_len = alias_tail.len();
-            let alias_start = slot_chain_len;
-            let leaf_start = alias_start + alias_tail_len;
-
-            let mut written = 0usize;
-            let mut cur_offset = offset;
-
-            // 1. Installed owner chain region.
-            if cur_offset < slot_chain_len && written < want {
-                let n = cert_slot
-                    .endorsement
-                    .read(
-                        SpdmPalAsymAlgo::EccP384,
-                        cur_offset,
-                        &mut dst[written..want],
-                    )
-                    .await
-                    .map_err(|_| INVARIANT)?;
-                written += n;
-                cur_offset = offset + written;
-            }
-
-            // 2. Caliptra FMC alias + RT alias region.
-            if cur_offset < leaf_start && written < want {
-                let alias_off = cur_offset - alias_start;
-                let alias_take = (leaf_start - cur_offset).min(want - written);
-                dst[written..written + alias_take]
-                    .copy_from_slice(&alias_tail[alias_off..alias_off + alias_take]);
-                written += alias_take;
-                cur_offset += alias_take;
-            }
-
-            // 3. DPE leaf-cert region.
-            if cur_offset >= leaf_start && written < want {
-                let mut leaf = ApiAlloc::alloc(self, leaf_len)?;
-                let got = dpe_certify_key(self, &SLOT0_LEAF_LABEL, &mut leaf[..]).await?;
-                if got != leaf_len {
-                    return Err(INTERNAL_BUG);
-                }
-                let leaf_off = cur_offset - leaf_start;
-                let leaf_take = want - written;
-                dst[written..written + leaf_take]
-                    .copy_from_slice(&leaf[leaf_off..leaf_off + leaf_take]);
-                written += leaf_take;
-            }
-            return Ok(written);
         }
 
         // Read-only chain layout: [endorsement] [DPE chain] [leaf cert]
@@ -360,8 +312,21 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         digest: &[u8],
         signature: &mut [u8],
     ) -> McuResult<usize> {
-        let _idx = slot_index(slot).ok_or(INVARIANT)?;
-        dpe_sign_ecc_p384(self, &SLOT0_LEAF_LABEL, digest, signature).await
+        let idx = slot_index(slot).ok_or(INVARIANT)?;
+        if slot == 0 {
+            return dpe_sign_ecc_p384(self, &SLOT0_LEAF_LABEL, digest, signature).await;
+        }
+
+        // Managed owner/tenant slots can be provisioned with a chain whose leaf
+        // corresponds to a Caliptra device KeyPairID (for example LDevID from
+        // GET_ATTESTED_ECC384_CSR). The PAL only has DPE-label signing today;
+        // do not sign with an unrelated DPE label because that produces an
+        // unverifiable CHALLENGE_AUTH. A future Caliptra key-id signing API can
+        // be wired here by matching `cert_slots()[idx].key_pair_id`.
+        let _key_pair_id = self.cert_store.cert_slots()[idx]
+            .key_pair_id
+            .ok_or(INVARIANT)?;
+        Err(INVARIANT)
     }
 
     async fn write_cert_chain(
@@ -491,34 +456,96 @@ async fn probe_leaf_len<M: MeasurementProvider>(pal: &McuSpdmPal<M>) -> McuResul
     Ok(n)
 }
 
-fn managed_alias_cert(slot: &endorsement::CertSlot) -> bool {
-    slot.stores_complete_chain() && slot.cert_info == Some(CERT_MODEL_ALIAS_CERT)
-}
-
-async fn dpe_alias_tail_len<M: MeasurementProvider>(
+#[cfg(feature = "set-certificate")]
+async fn validate_set_certificate_root_hash<M: MeasurementProvider>(
     pal: &McuSpdmPal<M>,
-    dpe_len: usize,
-) -> McuResult<usize> {
-    let tail = load_dpe_alias_tail(pal, dpe_len).await?;
-    Ok(tail.len())
-}
-
-async fn load_dpe_alias_tail<M: MeasurementProvider>(
-    pal: &McuSpdmPal<M>,
-    dpe_len: usize,
-) -> McuResult<<McuSpdmPal<M> as ApiAlloc>::Buf<'_>> {
-    let mut dpe = ApiAlloc::alloc(pal, dpe_len)?;
-    let got = dpe_get_cert_chain_chunk(pal, 0, &mut dpe[..]).await?;
-    if got != dpe_len {
-        return Err(INTERNAL_BUG);
+    root_hash: &[u8; 48],
+    cert_chain: &[u8],
+) -> McuResult<()> {
+    let root_len = der_first_seq_len(cert_chain).ok_or(INVARIANT)?;
+    let root_cert = cert_chain.get(..root_len).ok_or(INVARIANT)?;
+    let sha_buf = ApiAlloc::alloc(pal, SHA_CONTEXT_SIZE)?;
+    let mut state = sha_init(pal, sha_buf, HashAlgo::Sha384, &[]).await?;
+    sha_update(pal, &mut state, root_cert).await?;
+    let mut digest = [0u8; 48];
+    sha_finish(pal, &mut state, &mut digest).await?;
+    if &digest != root_hash {
+        return Err(INVARIANT);
     }
-    let tail_offset = dpe_alias_tail_offset(&dpe[..], DPE_ALIAS_CERT_COUNT)?;
-    let tail_len = dpe_len - tail_offset;
-    let mut tail = ApiAlloc::alloc(pal, tail_len)?;
-    tail[..].copy_from_slice(&dpe[tail_offset..]);
-    Ok(tail)
+    Ok(())
 }
 
+fn validate_der_cert_chain(mut der_chain: &[u8]) -> McuResult<()> {
+    let mut cert_count = 0usize;
+    while !der_chain.is_empty() {
+        let cert_len = der_first_seq_len(der_chain).ok_or(INVARIANT)?;
+        if cert_len == 0 || cert_len > der_chain.len() {
+            return Err(INVARIANT);
+        }
+        validate_der_x509_certificate(&der_chain[..cert_len])?;
+        der_chain = &der_chain[cert_len..];
+        cert_count = cert_count.checked_add(1).ok_or(INVARIANT)?;
+    }
+    if cert_count == 0 {
+        return Err(INVARIANT);
+    }
+    Ok(())
+}
+
+fn validate_der_x509_certificate(cert_der: &[u8]) -> McuResult<()> {
+    let (tag, content, consumed) = der_tlv(cert_der).ok_or(INVARIANT)?;
+    if tag != 0x30 || consumed != cert_der.len() {
+        return Err(INVARIANT);
+    }
+    let mut rest = content;
+    let (tag, _tbs, n) = der_tlv(rest).ok_or(INVARIANT)?;
+    if tag != 0x30 {
+        return Err(INVARIANT);
+    }
+    rest = rest.get(n..).ok_or(INVARIANT)?;
+    let (tag, _sig_alg, n) = der_tlv(rest).ok_or(INVARIANT)?;
+    if tag != 0x30 {
+        return Err(INVARIANT);
+    }
+    rest = rest.get(n..).ok_or(INVARIANT)?;
+    let (tag, sig_value, n) = der_tlv(rest).ok_or(INVARIANT)?;
+    if tag != 0x03 || sig_value.is_empty() {
+        return Err(INVARIANT);
+    }
+    rest = rest.get(n..).ok_or(INVARIANT)?;
+    if !rest.is_empty() {
+        return Err(INVARIANT);
+    }
+    Ok(())
+}
+
+fn der_tlv(buf: &[u8]) -> Option<(u8, &[u8], usize)> {
+    let tag = *buf.first()?;
+    let (len, len_len) = der_len(&buf[1..])?;
+    let content_start = 1usize.checked_add(len_len)?;
+    let consumed = content_start.checked_add(len)?;
+    let content = buf.get(content_start..consumed)?;
+    Some((tag, content, consumed))
+}
+
+fn der_len(buf: &[u8]) -> Option<(usize, usize)> {
+    let len_byte = *buf.first()?;
+    if len_byte & 0x80 == 0 {
+        return Some((len_byte as usize, 1));
+    }
+    let n = (len_byte & 0x7f) as usize;
+    if n == 0 || n > 4 || buf.len() < 1 + n {
+        return None;
+    }
+    let mut content = 0usize;
+    for &b in &buf[1..1 + n] {
+        content = content.checked_shl(8)?;
+        content = content.checked_add(b as usize)?;
+    }
+    Some((content, 1 + n))
+}
+
+#[cfg(test)]
 fn dpe_alias_tail_offset(der_chain: &[u8], tail_cert_count: usize) -> McuResult<usize> {
     let mut offsets = [0usize; 8];
     let mut cert_count = 0usize;
@@ -569,7 +596,7 @@ fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{der_first_seq_len, dpe_alias_tail_offset};
+    use super::{der_first_seq_len, dpe_alias_tail_offset, validate_der_cert_chain};
 
     #[test]
     fn der_short_form() {
@@ -594,6 +621,29 @@ mod tests {
         assert_eq!(der_first_seq_len(&[]), None);
         assert_eq!(der_first_seq_len(&[0x31, 0x01]), None); // wrong tag
         assert_eq!(der_first_seq_len(&[0x30]), None); // truncated
+    }
+
+    #[test]
+    fn validate_der_cert_chain_accepts_concatenated_sequences() {
+        let cert = minimal_x509_cert_der();
+        let chain = [&cert[..], &cert[..]].concat();
+
+        validate_der_cert_chain(&chain).unwrap();
+    }
+
+    #[test]
+    fn validate_der_cert_chain_rejects_empty_and_trailing_garbage() {
+        assert!(validate_der_cert_chain(&[]).is_err());
+        assert!(validate_der_cert_chain(&[0x30, 0x01, 0x11, 0xff]).is_err());
+    }
+
+    fn minimal_x509_cert_der() -> [u8; 9] {
+        // Certificate ::= SEQUENCE {
+        //   tbsCertificate      SEQUENCE {},
+        //   signatureAlgorithm  SEQUENCE {},
+        //   signatureValue      BIT STRING { unused-bits = 0 }
+        // }
+        [0x30, 0x07, 0x30, 0x00, 0x30, 0x00, 0x03, 0x01, 0x00]
     }
 
     #[test]

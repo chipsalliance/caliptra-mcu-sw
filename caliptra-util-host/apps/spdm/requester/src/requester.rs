@@ -5,12 +5,24 @@
 use core::ffi::c_void;
 use core::ptr;
 use std::alloc::{dealloc, Layout};
+use std::sync::Mutex;
 
 use libspdm::libspdm_rs;
 use libspdm::spdm::{self, LibspdmReturnStatus, TransportLayer};
+use sha2::{Digest, Sha384};
+use x509_parser::prelude::{FromDer, X509Certificate};
 
 use crate::transport::{self, SpdmDeviceIo};
-use crate::SpdmConfig;
+use crate::{PeerRootCert, SpdmConfig};
+
+const SPDM_CERT_CHAIN_HEADER_LEN: usize = 4;
+const SHA384_DIGEST_LEN: usize = 48;
+const SPDM_MAX_CERTIFICATE_CHAIN_SIZE: usize = 65_535;
+
+// libspdm's verifier registration is a C callback with no user-data pointer.
+// spdm-utils also assumes only one requester context is active per process, so
+// keep the configured peer roots in a process-global table for the callback.
+static TRUSTED_PEER_ROOTS: Mutex<Vec<PeerRootCert>> = Mutex::new(Vec::new());
 
 unsafe extern "C" {
     fn libspdm_register_verify_spdm_cert_chain_func(
@@ -45,6 +57,184 @@ unsafe extern "C" fn accept_peer_cert_chain(
     _trust_anchor_size: *mut usize,
 ) -> bool {
     true
+}
+
+unsafe extern "C" fn verify_peer_cert_chain_trust_anchor(
+    _spdm_context: *mut c_void,
+    slot_id: u8,
+    cert_chain_size: usize,
+    cert_chain: *const c_void,
+    _trust_anchor: *mut *const c_void,
+    _trust_anchor_size: *mut usize,
+) -> bool {
+    let Some(chain) = (unsafe { cert_chain.as_ref() }).map(|_| unsafe {
+        core::slice::from_raw_parts(cert_chain as *const u8, cert_chain_size)
+    }) else {
+        log::error!("SPDM cert-chain verifier received null chain for slot {slot_id}");
+        return false;
+    };
+
+    match verify_spdm_cert_chain_root(slot_id, chain) {
+        Ok(()) => true,
+        Err(err) => {
+            log::error!("SPDM cert-chain verification failed for slot {slot_id}: {err}");
+            false
+        }
+    }
+}
+
+fn verify_spdm_cert_chain_root(slot_id: u8, chain: &[u8]) -> anyhow::Result<()> {
+    let trusted_roots = TRUSTED_PEER_ROOTS
+        .lock()
+        .map_err(|_| anyhow::anyhow!("trusted root table lock poisoned"))?;
+    verify_spdm_cert_chain_root_against_roots(slot_id, chain, &trusted_roots)
+}
+
+fn verify_spdm_cert_chain_root_against_roots(
+    slot_id: u8,
+    chain: &[u8],
+    trusted_roots: &[PeerRootCert],
+) -> anyhow::Result<()> {
+    let mut last_err = None;
+    for candidate in spdm_cert_chain_payload_candidates(chain) {
+        match verify_spdm_cert_chain_payload_root(slot_id, candidate, trusted_roots) {
+            Ok(()) => return Ok(()),
+            Err(err) => last_err = Some(err),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("chain too short: {} bytes", chain.len())))
+}
+
+fn spdm_cert_chain_payload_candidates(chain: &[u8]) -> Vec<&[u8]> {
+    let mut candidates = Vec::with_capacity(2);
+    if chain.len() >= SPDM_CERT_CHAIN_HEADER_LEN + SHA384_DIGEST_LEN {
+        let declared_len = u16::from_le_bytes([chain[0], chain[1]]) as usize;
+        let reserved = u16::from_le_bytes([chain[2], chain[3]]);
+        if reserved == 0 && (declared_len == 0 || declared_len == chain.len()) {
+            candidates.push(&chain[SPDM_CERT_CHAIN_HEADER_LEN..]);
+        }
+    }
+    if chain.len() >= SHA384_DIGEST_LEN {
+        candidates.push(chain);
+    }
+    candidates
+}
+
+fn verify_spdm_cert_chain_payload_root(
+    slot_id: u8,
+    payload: &[u8],
+    trusted_roots: &[PeerRootCert],
+) -> anyhow::Result<()> {
+    if payload.len() < SHA384_DIGEST_LEN {
+        return Err(anyhow::anyhow!(
+            "certificate payload too short: {} bytes",
+            payload.len()
+        ));
+    }
+    let root_hash = &payload[..SHA384_DIGEST_LEN];
+    let der = &payload[SHA384_DIGEST_LEN..];
+    let certs = split_der_certificates(der)?;
+    let root_cert = certs
+        .first()
+        .copied()
+        .ok_or_else(|| anyhow::anyhow!("missing root certificate DER"))?;
+    let digest = Sha384::digest(root_cert);
+    if root_hash != &digest[..] {
+        return Err(anyhow::anyhow!("root hash does not match root certificate"));
+    }
+
+    if !trusted_roots
+        .iter()
+        .any(|trusted| trusted.slot_id == slot_id && trusted.cert_der == root_cert)
+    {
+        return Err(anyhow::anyhow!(
+            "root certificate does not match any configured trust anchor for slot {slot_id}"
+        ));
+    }
+    verify_x509_certificate_chain(&certs)?;
+    Ok(())
+}
+
+fn split_der_certificates(mut der: &[u8]) -> anyhow::Result<Vec<&[u8]>> {
+    let mut certs = Vec::new();
+    let mut offset = 0usize;
+    while !der.is_empty() {
+        let cert_len = der_first_seq_len(der).ok_or_else(|| {
+            anyhow::anyhow!("expected DER certificate SEQUENCE at offset {offset}")
+        })?;
+        if cert_len > der.len() {
+            return Err(anyhow::anyhow!(
+                "truncated DER certificate at offset {offset}: need {cert_len} bytes, have {}",
+                der.len()
+            ));
+        }
+        certs.push(&der[..cert_len]);
+        der = &der[cert_len..];
+        offset += cert_len;
+    }
+    Ok(certs)
+}
+
+fn verify_x509_certificate_chain(certs: &[&[u8]]) -> anyhow::Result<()> {
+    if certs.is_empty() {
+        return Err(anyhow::anyhow!("X.509 certificate chain is empty"));
+    }
+
+    let parsed = certs
+        .iter()
+        .enumerate()
+        .map(|(idx, cert)| {
+            let (remaining, parsed) = X509Certificate::from_der(cert)
+                .map_err(|e| anyhow::anyhow!("failed to parse X.509 cert {idx}: {e:?}"))?;
+            if !remaining.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "X.509 cert {idx} has {} trailing byte(s)",
+                    remaining.len()
+                ));
+            }
+            Ok(parsed)
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    parsed[0]
+        .verify_signature(None)
+        .map_err(|e| anyhow::anyhow!("root self-signature verification failed: {e:?}"))?;
+
+    for (idx, pair) in parsed.windows(2).enumerate() {
+        let parent = &pair[0];
+        let child = &pair[1];
+        if child.issuer() != parent.subject() {
+            return Err(anyhow::anyhow!(
+                "issuer/subject mismatch between X.509 cert {} and {}",
+                idx,
+                idx + 1
+            ));
+        }
+        child.verify_signature(Some(parent.public_key())).map_err(|e| {
+            anyhow::anyhow!("X.509 cert {} signature verification failed: {e:?}", idx + 1)
+        })?;
+    }
+    Ok(())
+}
+
+fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
+    if buf.len() < 2 || buf[0] != 0x30 {
+        return None;
+    }
+    let len_byte = buf[1];
+    if len_byte & 0x80 == 0 {
+        return Some(2 + len_byte as usize);
+    }
+    let n = (len_byte & 0x7f) as usize;
+    if n == 0 || n > core::mem::size_of::<usize>() || buf.len() < 2 + n {
+        return None;
+    }
+    let mut content = 0usize;
+    for &b in &buf[2..2 + n] {
+        content = content.checked_shl(8)?;
+        content = content.checked_add(b as usize)?;
+    }
+    Some(2 + n + content)
 }
 
 /// SPDM requester wrapping a libspdm context.
@@ -106,6 +296,39 @@ impl SpdmRequester {
             unsafe {
                 libspdm_register_verify_spdm_cert_chain_func(context, Some(accept_peer_cert_chain));
             }
+        } else if !config.peer_root_certs.is_empty() {
+            let mut trusted_roots = TRUSTED_PEER_ROOTS
+                .lock()
+                .map_err(|_| anyhow::anyhow!("trusted root table lock poisoned"))?;
+            trusted_roots.clear();
+            trusted_roots.extend(config.peer_root_certs.iter().cloned());
+            drop(trusted_roots);
+            unsafe {
+                libspdm_register_verify_spdm_cert_chain_func(
+                    context,
+                    Some(verify_peer_cert_chain_trust_anchor),
+                );
+            }
+        }
+
+        for peer_root in &config.peer_root_certs {
+            let parameter = libspdm_rs::libspdm_data_parameter_t::new_local(peer_root.slot_id);
+            let ret = unsafe {
+                libspdm_rs::libspdm_set_data(
+                    context,
+                    libspdm_rs::libspdm_data_type_t_LIBSPDM_DATA_PEER_PUBLIC_ROOT_CERT,
+                    &parameter,
+                    peer_root.cert_der.as_ptr() as *mut c_void,
+                    peer_root.cert_der.len(),
+                )
+            };
+            if LibspdmReturnStatus::libspdm_status_is_error(ret) {
+                return Err(anyhow::anyhow!(
+                    "failed to provision SPDM peer root certificate for slot {}: {:#x}",
+                    peer_root.slot_id,
+                    ret
+                ));
+            }
         }
 
         // Register device I/O callbacks
@@ -133,19 +356,65 @@ impl SpdmRequester {
     pub fn connect_authenticated(&mut self) -> anyhow::Result<()> {
         unsafe {
             self.setup_capabilities()?;
-            spdm::initialise_connection(self.context, self.config.slot_id).map_err(|ret| {
-                anyhow::anyhow!(
-                    "SPDM authenticated connection failed for slot {}: {:#x}",
-                    self.config.slot_id,
-                    ret
-                )
-            })?;
+            self.init_connection_authenticated(self.config.slot_id)?;
         }
         self.connected = true;
         log::info!(
             "SPDM authenticated connection established (slot {})",
             self.config.slot_id
         );
+        Ok(())
+    }
+
+    unsafe fn init_connection_authenticated(&self, slot_id: u8) -> anyhow::Result<()> {
+        let ret = unsafe { libspdm_rs::libspdm_init_connection(self.context, false) };
+        if LibspdmReturnStatus::libspdm_status_is_error(ret) {
+            return Err(anyhow::anyhow!(
+                "SPDM init_connection failed during authenticated connect: {:#x}",
+                ret
+            ));
+        }
+
+        let mut slot_mask = 0u8;
+        let mut total_digest_buffer =
+            [0u8; (libspdm_rs::LIBSPDM_MAX_HASH_SIZE * libspdm_rs::SPDM_MAX_SLOT_COUNT) as usize];
+        let ret = unsafe {
+            libspdm_rs::libspdm_get_digest(
+                self.context,
+                ptr::null_mut(),
+                &mut slot_mask,
+                total_digest_buffer.as_mut_ptr() as *mut c_void,
+            )
+        };
+        if LibspdmReturnStatus::libspdm_status_is_error(ret) {
+            return Err(anyhow::anyhow!(
+                "SPDM GET_DIGEST failed during authenticated connect: {:#x}",
+                ret
+            ));
+        }
+
+        self.get_certificate_large_buffer(None, slot_id)
+            .map_err(|err| anyhow::anyhow!("SPDM authenticated GET_CERTIFICATE failed for slot {slot_id}: {err}"))?;
+
+        let mut measurement_hash = [0u8; libspdm_rs::LIBSPDM_MAX_HASH_SIZE as usize];
+        let ret = unsafe {
+            libspdm_challenge(
+                self.context,
+                ptr::null_mut(),
+                slot_id,
+                libspdm_rs::SPDM_CHALLENGE_REQUEST_TCB_COMPONENT_MEASUREMENT_HASH as u8,
+                measurement_hash.as_mut_ptr() as *mut c_void,
+                ptr::null_mut(),
+            )
+        };
+        let ret_status = ret as u32;
+        if LibspdmReturnStatus::libspdm_status_is_error(ret_status) {
+            return Err(anyhow::anyhow!(
+                "SPDM CHALLENGE failed during authenticated connect for slot {}: {:#x}",
+                slot_id,
+                ret_status
+            ));
+        }
         Ok(())
     }
 
@@ -494,17 +763,8 @@ impl SpdmRequester {
             Some(id) => id as *const u32,
             None => ptr::null(),
         };
-        let mut cert_chain_size = libspdm_rs::LIBSPDM_MAX_CERT_CHAIN_SIZE as usize;
-        let mut cert_chain = vec![0u8; cert_chain_size];
-        let ret = unsafe {
-            libspdm_rs::libspdm_get_certificate(
-                self.context,
-                session_id_ptr,
-                slot_id,
-                &mut cert_chain_size,
-                cert_chain.as_mut_ptr() as *mut c_void,
-            )
-        };
+        let (ret, mut cert_chain, cert_chain_size) =
+            self.get_certificate_large_buffer_raw(session_id_ptr, slot_id);
         if LibspdmReturnStatus::libspdm_status_is_error(ret) {
             return Err(anyhow::anyhow!(
                 "GET_CERTIFICATE failed for slot {}: {:#x}",
@@ -514,6 +774,44 @@ impl SpdmRequester {
         }
         cert_chain.truncate(cert_chain_size);
         Ok(cert_chain)
+    }
+
+    fn get_certificate_large_buffer(
+        &self,
+        session_id: Option<u32>,
+        slot_id: u8,
+    ) -> anyhow::Result<Vec<u8>> {
+        let session_id_ptr = match &session_id {
+            Some(id) => id as *const u32,
+            None => ptr::null(),
+        };
+        let (ret, mut cert_chain, cert_chain_size) =
+            self.get_certificate_large_buffer_raw(session_id_ptr, slot_id);
+        if LibspdmReturnStatus::libspdm_status_is_error(ret) {
+            return Err(anyhow::anyhow!("{:#x}", ret));
+        }
+        cert_chain.truncate(cert_chain_size);
+        Ok(cert_chain)
+    }
+
+    fn get_certificate_large_buffer_raw(
+        &self,
+        session_id_ptr: *const u32,
+        slot_id: u8,
+    ) -> (u32, Vec<u8>, usize) {
+        let mut cert_chain_size = SPDM_MAX_CERTIFICATE_CHAIN_SIZE;
+        let mut cert_chain = vec![0u8; cert_chain_size];
+        let ret = unsafe {
+            libspdm_rs::libspdm_get_certificate_choose_length(
+                self.context,
+                session_id_ptr,
+                slot_id,
+                libspdm_rs::LIBSPDM_MAX_CERT_CHAIN_BLOCK_LEN as u16,
+                &mut cert_chain_size,
+                cert_chain.as_mut_ptr() as *mut c_void,
+            )
+        };
+        (ret, cert_chain, cert_chain_size)
     }
 
     /// Get the raw libspdm context pointer (for advanced usage).
@@ -533,5 +831,110 @@ impl Drop for SpdmRequester {
         // Note: libspdm context cleanup is handled by spdm-utils internals.
         // The context was allocated by initialise_spdm_context() and libspdm
         // manages its lifetime.
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn trusted_vendor_root() -> Vec<u8> {
+        include_bytes!("../../certs/test_vendor_root.der").to_vec()
+    }
+
+    fn peer_root(slot_id: u8, cert_der: Vec<u8>) -> PeerRootCert {
+        PeerRootCert { slot_id, cert_der }
+    }
+
+    fn owner_leaf_cert() -> Vec<u8> {
+        let certs = split_der_certificates(include_bytes!("../../certs/test_owner_certchain.der"))
+            .expect("test owner chain should split");
+        certs[1].to_vec()
+    }
+
+    fn root_hash_plus_der(root: &[u8]) -> Vec<u8> {
+        let mut chain = Vec::with_capacity(SHA384_DIGEST_LEN + root.len());
+        chain.extend_from_slice(&Sha384::digest(root));
+        chain.extend_from_slice(root);
+        chain
+    }
+
+    fn root_hash_plus_der_chain(root: &[u8], tail: &[u8]) -> Vec<u8> {
+        let mut chain = Vec::with_capacity(SHA384_DIGEST_LEN + root.len() + tail.len());
+        chain.extend_from_slice(&Sha384::digest(root));
+        chain.extend_from_slice(root);
+        chain.extend_from_slice(tail);
+        chain
+    }
+
+    fn header_root_hash_plus_der(root: &[u8]) -> Vec<u8> {
+        let payload = root_hash_plus_der(root);
+        let len = (SPDM_CERT_CHAIN_HEADER_LEN + payload.len()) as u16;
+        let mut chain = Vec::with_capacity(SPDM_CERT_CHAIN_HEADER_LEN + payload.len());
+        chain.extend_from_slice(&len.to_le_bytes());
+        chain.extend_from_slice(&0u16.to_le_bytes());
+        chain.extend_from_slice(&payload);
+        chain
+    }
+
+    #[test]
+    fn verifier_accepts_libspdm_root_hash_der_payload() {
+        let root = trusted_vendor_root();
+        let chain = root_hash_plus_der(&root);
+
+        verify_spdm_cert_chain_root_against_roots(0, &chain, &[peer_root(0, root)]).unwrap();
+    }
+
+    #[test]
+    fn verifier_accepts_header_root_hash_der_payload() {
+        let root = trusted_vendor_root();
+        let chain = header_root_hash_plus_der(&root);
+
+        verify_spdm_cert_chain_root_against_roots(0, &chain, &[peer_root(0, root)]).unwrap();
+    }
+
+    #[test]
+    fn verifier_rejects_bad_root_hash() {
+        let root = trusted_vendor_root();
+        let mut chain = root_hash_plus_der(&root);
+        chain[0] ^= 0x01;
+
+        let err = verify_spdm_cert_chain_root_against_roots(0, &chain, &[peer_root(0, root)])
+            .unwrap_err();
+        assert!(err.to_string().contains("root hash"));
+    }
+
+    #[test]
+    fn verifier_rejects_untrusted_root() {
+        let root = trusted_vendor_root();
+        let chain = root_hash_plus_der(&root);
+
+        let err = verify_spdm_cert_chain_root_against_roots(0, &chain, &[]).unwrap_err();
+        assert!(err.to_string().contains("trust anchor"));
+    }
+
+    #[test]
+    fn verifier_rejects_trusted_root_for_different_slot() {
+        let root = trusted_vendor_root();
+        let chain = root_hash_plus_der(&root);
+
+        let err = verify_spdm_cert_chain_root_against_roots(0, &chain, &[peer_root(2, root)])
+            .unwrap_err();
+        assert!(err.to_string().contains("slot 0"));
+    }
+
+    #[test]
+    fn verifier_rejects_unverified_child_under_trusted_root() {
+        let root = trusted_vendor_root();
+        let attacker_leaf = owner_leaf_cert();
+        let chain = root_hash_plus_der_chain(&root, &attacker_leaf);
+
+        let err = verify_spdm_cert_chain_root_against_roots(0, &chain, &[peer_root(0, root)])
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("issuer/subject")
+                || err.to_string().contains("signature verification"),
+            "unexpected error: {err}"
+        );
     }
 }

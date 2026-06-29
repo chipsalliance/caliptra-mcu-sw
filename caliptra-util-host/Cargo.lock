@@ -701,6 +701,8 @@ dependencies = [
  "anyhow",
  "caliptra-mcu-core-util-host-transport",
  "log",
+ "sha2",
+ "x509-parser",
  "zerocopy",
 ]
 
@@ -722,6 +724,7 @@ dependencies = [
  "log",
  "p384",
  "serde",
+ "sha2",
  "simple_logger",
  "toml 0.8.23",
  "x509-parser",

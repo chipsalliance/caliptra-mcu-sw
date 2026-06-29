@@ -122,9 +122,11 @@ pub trait CaliptraCmdHandler: Send + Sync {
         capabilities: &mut DeviceCapabilities,
     ) -> Result<(), CaliptraCompletionCode>;
 
-    /// Exports an attested CSR for the specified device key.
+    /// Exports an attested CSR payload for the specified device key.
     ///
-    /// Writes the CSR DER data directly into the provided buffer.
+    /// Writes the attested CSR payload directly into the provided buffer. Production
+    /// firmware returns a COSE_Sign1/CWT envelope containing signed nonce and CSR
+    /// claims; legacy/test paths may return raw DER PKCS#10 CSR bytes.
     /// Returns the number of bytes written on success.
     async fn export_attested_csr(
         &self,

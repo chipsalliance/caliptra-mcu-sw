@@ -4,8 +4,8 @@
 //!
 //! This follows the issue-1711 requester-side provisioning flow: authenticate
 //! with Vendor slot 0, export an attested CSR, install an Owner/LDevID chain via
-//! SET_CERTIFICATE AliasCert, verify GET_CERTIFICATE composition, and challenge
-//! the newly installed Owner slot.
+//! SET_CERTIFICATE AliasCert, and verify the installed Owner slot with
+//! GET_CERTIFICATE.
 
 use std::path::PathBuf;
 
@@ -46,6 +46,16 @@ struct Args {
     #[arg(long, default_value_os_t = default_cert_chain_path())]
     cert_chain: PathBuf,
 
+    /// DER X.509 root certificate used to authenticate the initial Vendor slot.
+    /// Required unless the hidden debug trust-anchor bypass is explicitly enabled.
+    #[arg(long)]
+    vendor_trust_anchor: Option<PathBuf>,
+
+    /// Debug-only escape hatch that bypasses libspdm peer certificate-chain
+    /// trust-anchor validation. Do not use for production provisioning.
+    #[arg(long, hide = true)]
+    accept_unverified_peer_cert_chain: bool,
+
     /// Deprecated compatibility flag. GET_CERTIFICATE verification is mandatory
     /// for this flow and is always performed.
     #[arg(long)]
@@ -71,6 +81,8 @@ fn main() -> Result<()> {
         vendor_slot_id: args.vendor_slot_id,
         csr_algorithm: args.csr_algorithm,
         cert_chain: args.cert_chain,
+        vendor_trust_anchor: args.vendor_trust_anchor,
+        accept_unverified_peer_cert_chain: args.accept_unverified_peer_cert_chain,
         verify_get_certificate: args.verify_get_certificate,
         require_attested_csr: !args.skip_attested_csr,
     })
