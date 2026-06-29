@@ -3,7 +3,6 @@
 name: FPGA SPDM Tests
 
 on:
-  pull_request:
   workflow_dispatch:
 
 concurrency:

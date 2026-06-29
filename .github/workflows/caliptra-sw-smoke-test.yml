@@ -3,7 +3,6 @@
 name: Caliptra SW Smoke Test
 
 on:
-  pull_request:
   workflow_dispatch:
 
 jobs:
