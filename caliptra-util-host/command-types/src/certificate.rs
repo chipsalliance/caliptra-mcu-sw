@@ -127,7 +127,7 @@ pub enum AttestedCsrValidationError {
 }
 
 impl ExportAttestedCsrResponse {
-    /// Returns the attested CSR payload as a byte slice (CoseSign1 structure).
+    /// Returns the attested CSR payload as a byte slice (DER-encoded PKCS#10 CSR).
     pub fn csr_bytes(&self) -> &[u8] {
         let len = (self.data_len as usize).min(MAX_CSR_DATA_SIZE);
         &self.csr_data[..len]

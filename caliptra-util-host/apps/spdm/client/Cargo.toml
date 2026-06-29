@@ -34,3 +34,7 @@ log.workspace = true
 serde.workspace = true
 simple_logger.workspace = true
 toml.workspace = true
+x509-parser.workspace = true
+
+[dev-dependencies]
+p384.workspace = true

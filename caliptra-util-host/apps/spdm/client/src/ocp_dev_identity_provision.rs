@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use anyhow::{anyhow, bail, Context, Result};
 use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
 use caliptra_spdm_requester::{SpdmConfig, SpdmRequester, SpdmSocketDeviceIo, SpdmVdmDriverImpl};
+use x509_parser::prelude::{FromDer, X509Certificate, X509CertificationRequest};
 
 use crate::SpdmVdmClient;
 
@@ -87,7 +88,7 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
         options.vendor_slot_id
     );
 
-    if options.require_attested_csr {
+    let attested_csr = if options.require_attested_csr {
         let nonce = random_nonce()?;
         let csr = export_attested_csr(
             &mut requester,
@@ -100,7 +101,10 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
             "[ocp_dev_identity_provision_tool] ExportAttestedCsr key_pair_id={} returned {} bytes",
             options.key_pair_id, csr.data_len
         );
-    }
+        Some(csr)
+    } else {
+        None
+    };
 
     let cert_chain = fs::read(&options.cert_chain).with_context(|| {
         format!(
@@ -125,6 +129,12 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
             "owner/LDevID certificate chain {} must contain at least Owner Root + Endorsed LDevID cert, found {} certificate(s)",
             options.cert_chain.display(),
             provisioned_certs.len()
+        );
+    }
+    if let Some(csr) = &attested_csr {
+        verify_csr_matches_owner_leaf(csr.csr_bytes(), &provisioned_certs)?;
+        println!(
+            "[ocp_dev_identity_provision_tool] Attested CSR public key matches owner/LDevID leaf certificate"
         );
     }
 
@@ -197,17 +207,63 @@ fn validate_attested_csr(response: &ExportAttestedCsrResponse, nonce: &[u8; 32])
         .validate_csr_payload()
         .map_err(|e| anyhow!("invalid attested CSR payload: {:?}", e))?;
     let csr = response.csr_bytes();
-    if !csr.windows(nonce.len()).any(|window| window == nonce) {
-        bail!("attested CSR does not contain the requested freshness nonce");
-    }
-    // ExportAttestedCsr is specified as a COSE_Sign1 attestation envelope. Full
-    // RT-alias signature validation requires extracting the RT-alias public key
-    // from the active alias chain; this structural check prevents accepting a raw
-    // CSR/static blob while keeping the tool dependency-light.
-    if csr.first().copied() != Some(0xD2) && csr.first().copied() != Some(0x84) {
-        bail!("attested CSR is not encoded as a COSE_Sign1 structure");
+    let parsed_csr = parse_csr(csr)?;
+    parsed_csr
+        .verify_signature()
+        .map_err(|e| anyhow!("attested CSR PKCS#10 signature verification failed: {e:?}"))?;
+    if !parsed_csr
+        .certification_request_info
+        .raw
+        .windows(nonce.len())
+        .any(|window| window == nonce)
+    {
+        bail!("attested CSR request info does not contain the requested freshness nonce");
     }
     Ok(())
+}
+
+fn verify_csr_matches_owner_leaf(csr_der: &[u8], owner_chain: &[&[u8]]) -> Result<()> {
+    let csr_spki = parse_csr_spki(csr_der)?;
+    let owner_leaf = owner_chain
+        .last()
+        .ok_or_else(|| anyhow!("owner/LDevID certificate chain is empty"))?;
+    let owner_leaf_spki = parse_certificate_spki(owner_leaf).context(
+        "failed to parse owner/LDevID leaf certificate public key from provisioned chain",
+    )?;
+
+    if csr_spki != owner_leaf_spki {
+        bail!("attested CSR public key does not match owner/LDevID leaf certificate public key");
+    }
+    Ok(())
+}
+
+fn parse_csr_spki(csr_der: &[u8]) -> Result<&[u8]> {
+    let csr = parse_csr(csr_der)?;
+    Ok(csr.certification_request_info.subject_pki.raw)
+}
+
+fn parse_csr(csr_der: &[u8]) -> Result<X509CertificationRequest<'_>> {
+    let (remaining, csr) = X509CertificationRequest::from_der(csr_der)
+        .map_err(|e| anyhow!("failed to parse attested CSR DER: {e:?}"))?;
+    if !remaining.is_empty() {
+        bail!(
+            "attested CSR DER has {} trailing byte(s) after PKCS#10 structure",
+            remaining.len()
+        );
+    }
+    Ok(csr)
+}
+
+fn parse_certificate_spki(cert_der: &[u8]) -> Result<&[u8]> {
+    let (remaining, cert) = X509Certificate::from_der(cert_der)
+        .map_err(|e| anyhow!("failed to parse X.509 certificate DER: {e:?}"))?;
+    if !remaining.is_empty() {
+        bail!(
+            "X.509 certificate DER has {} trailing byte(s) after certificate structure",
+            remaining.len()
+        );
+    }
+    Ok(cert.tbs_certificate.subject_pki.raw)
 }
 
 fn verify_returned_owner_chain(
@@ -307,6 +363,10 @@ fn der_len(bytes: &[u8]) -> Result<(usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliptra_mcu_core_util_host_command_types::certificate::MAX_CSR_DATA_SIZE;
+    use caliptra_mcu_core_util_host_command_types::CommonResponse;
+    use p384::ecdsa::signature::Signer;
+    use p384::ecdsa::{Signature, SigningKey};
 
     #[test]
     fn test_default_cert_chain_path_points_to_test_owner_certchain() {
@@ -337,6 +397,72 @@ mod tests {
             certs.iter().map(|cert| cert.len()).sum::<usize>(),
             chain.len()
         );
+    }
+
+    #[test]
+    fn test_verify_csr_matches_owner_leaf_accepts_matching_spki() {
+        let chain = fs::read(default_cert_chain_path()).unwrap();
+        let certs = split_der_certificates(&chain).unwrap();
+        let owner_leaf_spki = parse_certificate_spki(certs.last().unwrap()).unwrap();
+        let csr = synthetic_csr(owner_leaf_spki, None);
+
+        verify_csr_matches_owner_leaf(&csr, &certs).unwrap();
+    }
+
+    #[test]
+    fn test_verify_csr_matches_owner_leaf_rejects_mismatched_spki() {
+        let chain = fs::read(default_cert_chain_path()).unwrap();
+        let certs = split_der_certificates(&chain).unwrap();
+        let mut mismatched_spki = parse_certificate_spki(certs.last().unwrap()).unwrap().to_vec();
+        let last = mismatched_spki.last_mut().unwrap();
+        *last ^= 0x01;
+        let csr = synthetic_csr(&mismatched_spki, None);
+
+        let err = verify_csr_matches_owner_leaf(&csr, &certs).unwrap_err();
+        assert!(err.to_string().contains("does not match"));
+    }
+
+    #[test]
+    fn test_validate_attested_csr_accepts_der_csr_with_nonce() {
+        let nonce = [0x5Au8; 32];
+        let csr = signed_p384_csr(&nonce);
+        let response = csr_response(&csr);
+
+        validate_attested_csr(&response, &nonce).unwrap();
+    }
+
+    #[test]
+    fn test_validate_attested_csr_rejects_invalid_csr_signature() {
+        let nonce = [0x5Au8; 32];
+        let mut csr = signed_p384_csr(&nonce);
+        let last = csr.last_mut().unwrap();
+        *last ^= 0x01;
+        let response = csr_response(&csr);
+
+        let err = validate_attested_csr(&response, &nonce).unwrap_err();
+        assert!(err.to_string().contains("signature verification failed"));
+    }
+
+    #[test]
+    fn test_validate_attested_csr_rejects_missing_nonce() {
+        let csr = signed_p384_csr(&[0x5Au8; 32]);
+        let response = csr_response(&csr);
+
+        let err = validate_attested_csr(&response, &[0xA5u8; 32]).unwrap_err();
+        assert!(err.to_string().contains("freshness nonce"));
+    }
+
+    #[test]
+    fn test_validate_attested_csr_rejects_nonce_outside_request_info() {
+        let chain = fs::read(default_cert_chain_path()).unwrap();
+        let certs = split_der_certificates(&chain).unwrap();
+        let owner_leaf_spki = parse_certificate_spki(certs.last().unwrap()).unwrap();
+        let nonce = [0x5Au8; 32];
+        let csr = synthetic_csr_with_signature_payload(owner_leaf_spki, None, &nonce);
+        let response = csr_response(&csr);
+
+        let err = validate_attested_csr(&response, &nonce).unwrap_err();
+        assert!(!err.to_string().is_empty());
     }
 
     #[test]
@@ -389,5 +515,121 @@ mod tests {
         chain.extend_from_slice(&[0xA5; SHA384_DIGEST_LEN]);
         chain.extend_from_slice(der);
         chain
+    }
+
+    fn csr_response(csr: &[u8]) -> ExportAttestedCsrResponse {
+        assert!(csr.len() <= MAX_CSR_DATA_SIZE);
+        let mut csr_data = [0u8; MAX_CSR_DATA_SIZE];
+        csr_data[..csr.len()].copy_from_slice(csr);
+        ExportAttestedCsrResponse {
+            common: CommonResponse { fips_status: 0 },
+            data_len: csr.len() as u32,
+            csr_data,
+        }
+    }
+
+    fn synthetic_csr(subject_pki: &[u8], subject_common_name: Option<&[u8]>) -> Vec<u8> {
+        synthetic_csr_with_signature_payload(subject_pki, subject_common_name, &[0xA5])
+    }
+
+    fn synthetic_csr_with_signature_payload(
+        subject_pki: &[u8],
+        subject_common_name: Option<&[u8]>,
+        signature_payload: &[u8],
+    ) -> Vec<u8> {
+        // PKCS#10 CertificationRequest ::= SEQUENCE {
+        //   certificationRequestInfo SEQUENCE {
+        //     version INTEGER 0,
+        //     subject Name,
+        //     subjectPKInfo <from owner leaf cert>,
+        //     attributes [0] IMPLICIT SET OF Attribute (empty)
+        //   },
+        //   signatureAlgorithm ecdsa-with-SHA384,
+        //   signature BIT STRING
+        // }
+        let cri = der_sequence(&[
+            vec![0x02, 0x01, 0x00],
+            synthetic_subject_name(subject_common_name),
+            subject_pki.to_vec(),
+            vec![0xA0, 0x00],
+        ]);
+        let signature_algorithm = der_sequence(&[vec![
+            0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x03,
+        ]]);
+        let mut signature = vec![0x00]; // zero unused bits in BIT STRING
+        signature.extend_from_slice(signature_payload);
+        der_sequence(&[cri, signature_algorithm, der_tlv(0x03, &signature)])
+    }
+
+    fn signed_p384_csr(nonce: &[u8]) -> Vec<u8> {
+        let key_bytes = [0x07u8; 48];
+        let signing_key = SigningKey::from_bytes((&key_bytes).into()).unwrap();
+        let cri = der_sequence(&[
+            vec![0x02, 0x01, 0x00],
+            synthetic_subject_name(Some(nonce)),
+            p384_spki(&signing_key),
+            vec![0xA0, 0x00],
+        ]);
+        let signature_algorithm = der_sequence(&[vec![
+            0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x03,
+        ]]);
+        let signature: Signature = signing_key.sign(&cri);
+        let signature_der = signature.to_der();
+        let mut signature_bits = vec![0x00]; // zero unused bits in BIT STRING
+        signature_bits.extend_from_slice(signature_der.as_bytes());
+
+        der_sequence(&[
+            cri,
+            signature_algorithm,
+            der_tlv(0x03, &signature_bits),
+        ])
+    }
+
+    fn p384_spki(signing_key: &SigningKey) -> Vec<u8> {
+        let verifying_key = signing_key.verifying_key();
+        let encoded_point = verifying_key.to_encoded_point(false);
+        let algorithm = der_sequence(&[
+            vec![0x06, 0x07, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01],
+            vec![0x06, 0x05, 0x2B, 0x81, 0x04, 0x00, 0x22],
+        ]);
+        let mut public_key_bits = vec![0x00]; // zero unused bits in BIT STRING
+        public_key_bits.extend_from_slice(encoded_point.as_bytes());
+
+        der_sequence(&[algorithm, der_tlv(0x03, &public_key_bits)])
+    }
+
+    fn synthetic_subject_name(common_name: Option<&[u8]>) -> Vec<u8> {
+        let Some(common_name) = common_name else {
+            return der_sequence(&[]);
+        };
+        let cn_attr = der_sequence(&[
+            vec![0x06, 0x03, 0x55, 0x04, 0x03], // id-at-commonName
+            der_tlv(0x0C, common_name),          // UTF8String; tests pass ASCII nonce bytes
+        ]);
+        der_sequence(&[der_tlv(0x31, &cn_attr)])
+    }
+
+    fn der_sequence(elements: &[Vec<u8>]) -> Vec<u8> {
+        let content: Vec<u8> = elements.iter().flatten().copied().collect();
+        der_tlv(0x30, &content)
+    }
+
+    fn der_tlv(tag: u8, content: &[u8]) -> Vec<u8> {
+        let mut der = vec![tag];
+        der.extend_from_slice(&der_len_bytes(content.len()));
+        der.extend_from_slice(content);
+        der
+    }
+
+    fn der_len_bytes(len: usize) -> Vec<u8> {
+        if len < 0x80 {
+            return vec![len as u8];
+        }
+        let bytes = len.to_be_bytes();
+        let first_nonzero = bytes.iter().position(|b| *b != 0).unwrap();
+        let encoded = &bytes[first_nonzero..];
+        let mut out = vec![0x80 | encoded.len() as u8];
+        out.extend_from_slice(encoded);
+        out
     }
 }
