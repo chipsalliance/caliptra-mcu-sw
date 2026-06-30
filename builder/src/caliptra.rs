@@ -245,6 +245,7 @@ impl CaliptraBuilder {
                 self.auth_manifest_owner_config.as_ref(),
             )?;
             self.write_fw_components_config(&metadata)?;
+            self.write_attestation_manifest_config(self.soc_images.as_deref().unwrap_or(&[]))?;
             self.soc_manifest = Some(path);
         }
         Ok(self.soc_manifest.clone().unwrap())
@@ -423,6 +424,16 @@ impl CaliptraBuilder {
             relay_path.display()
         );
         Ok(())
+    }
+
+    pub fn write_attestation_manifest_config(&self, soc_images: &[ImageCfg]) -> Result<()> {
+        crate::attestation_manifest::write_config(
+            &self.vendor,
+            &self.model,
+            soc_images,
+            "CaliptraBuilder::write_attestation_manifest_config",
+            "Generated",
+        )
     }
 
     /// Explicit path-based writer; lets tests or tools put the file anywhere without relying on OUT_DIR.
@@ -832,6 +843,8 @@ pub struct ImageCfg {
     pub image_id: u32,
     pub exec_bit: u32,
     pub component_id: u32,
+    pub is_tcb: bool,
+    pub is_ak_target: bool,
     pub feature: String,
 }
 impl Default for ImageCfg {
@@ -844,6 +857,8 @@ impl Default for ImageCfg {
             // exec_bit must be >= 2 (bits 0 and 1 are reserved by Caliptra)
             exec_bit: 2,
             component_id: 0,
+            is_tcb: false,
+            is_ak_target: false,
             feature: String::new(),
         }
     }
@@ -854,9 +869,9 @@ impl FromStr for ImageCfg {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split(',').collect();
-        if parts.len() != 7 {
+        if !(7..=9).contains(&parts.len()) {
             return Err(
-                "Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>".into(),
+                "Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>]]".into(),
             );
         }
 
@@ -869,6 +884,16 @@ impl FromStr for ImageCfg {
         let exec_bit = parts[4].parse::<u32>().map_err(|e| e.to_string())?;
         let component_id = parts[5].parse::<u32>().map_err(|e| e.to_string())?;
         let feature = parts[6].to_string();
+        let is_tcb = if let Some(is_tcb) = parts.get(7) {
+            is_tcb.parse::<bool>().map_err(|e| e.to_string())?
+        } else {
+            false
+        };
+        let is_ak_target = if let Some(is_ak_target) = parts.get(8) {
+            is_ak_target.parse::<bool>().map_err(|e| e.to_string())?
+        } else {
+            false
+        };
 
         Ok(ImageCfg {
             path,
@@ -877,6 +902,8 @@ impl FromStr for ImageCfg {
             image_id,
             exec_bit,
             component_id,
+            is_tcb,
+            is_ak_target,
             feature,
         })
     }
