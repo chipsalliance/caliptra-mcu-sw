@@ -431,6 +431,7 @@ impl SpdmPalCertStore for TestPal {
         }));
         Ok(())
     }
+    #[cfg(feature = "set-certificate")]
     async fn erase_cert_chain(
         &self,
         _io: &Self::Io<'_>,
