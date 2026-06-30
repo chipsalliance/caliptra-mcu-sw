@@ -15,6 +15,8 @@ use tock_registers::interfaces::Readable;
 use tock_registers::registers::ReadOnly;
 
 pub const DRIVER_NUM: usize = 0x9000_4000;
+/// Size of the DOT_BLOB authenticated by the ROM DOT flow.
+const DOT_BLOB_SIZE: usize = 168;
 
 #[derive(Default)]
 pub struct App {}
@@ -47,7 +49,7 @@ impl DotFlash {
 
     fn read(&self, offset: usize, len: usize, processid: ProcessId) -> Result<(), ErrorCode> {
         let end = offset.checked_add(len).ok_or(ErrorCode::INVAL)?;
-        if end > self.storage.len() {
+        if end > DOT_BLOB_SIZE || end > self.storage.len() {
             return Err(ErrorCode::INVAL);
         }
 

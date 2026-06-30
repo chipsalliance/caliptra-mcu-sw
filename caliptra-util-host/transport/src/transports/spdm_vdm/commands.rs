@@ -637,9 +637,11 @@ pub fn handle_get_dot_backup_blob(
     };
 
     let resp_bytes = internal_resp.as_bytes();
-    let copy_len = resp_bytes.len().min(response_buffer.len());
-    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
-    Ok(copy_len)
+    if resp_bytes.len() > response_buffer.len() {
+        return Err(TransportError::BufferError("response buffer too small"));
+    }
+    response_buffer[..resp_bytes.len()].copy_from_slice(resp_bytes);
+    Ok(resp_bytes.len())
 }
 
 // ---------------------------------------------------------------------------
@@ -815,6 +817,24 @@ mod tests {
         let err = handle_get_dot_backup_blob(&[], &mut driver, &mut response_buffer)
             .expect_err("partial DOT_BLOB response must be rejected");
         assert!(matches!(err, TransportError::InvalidMessage));
+    }
+
+    #[test]
+    fn get_dot_backup_blob_rejects_short_response_buffer() {
+        let blob = [0x5Au8; dot::DOT_BLOB_SIZE];
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::GetDotBackupBlob, &blob),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer =
+            vec![0; core::mem::size_of::<dot::GetDotBackupBlobResponse>() - 1];
+
+        let err = handle_get_dot_backup_blob(&[], &mut driver, &mut response_buffer)
+            .expect_err("short internal response buffer must be rejected");
+        match err {
+            TransportError::BufferError(msg) => assert!(msg.contains("response buffer too small")),
+            other => panic!("unexpected error: {:?}", other),
+        }
     }
 
     #[test]
