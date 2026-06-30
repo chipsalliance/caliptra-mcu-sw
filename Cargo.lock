@@ -1392,6 +1392,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-hw-model-c-binding"
+version = "0.1.0"
+dependencies = [
+ "caliptra-cfi-lib",
+ "caliptra-mcu-hw-model",
+ "caliptra-ureg",
+ "cbindgen",
+]
+
+[[package]]
 name = "caliptra-mcu-i3c-driver"
 version = "0.1.0"
 dependencies = [
