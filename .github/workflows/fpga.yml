@@ -13,7 +13,10 @@ concurrency:
 jobs:
   build_test_binaries:
     runs-on: [e2-standard-8-big-disk]
-    timeout-minutes: 60
+    # Cross-compilation can consume almost the full hour on cache misses; leave
+    # enough headroom for packaging and artifact uploads so the downstream FPGA
+    # test job can run.
+    timeout-minutes: 90
     env:
       SCCACHE_VERSION: 0.10.0
       SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
