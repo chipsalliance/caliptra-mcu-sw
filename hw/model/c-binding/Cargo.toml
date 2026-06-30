@@ -6,6 +6,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+caliptra-cfi-lib.workspace = true
 caliptra-mcu-hw-model.workspace = true
 caliptra-ureg.workspace = true
 

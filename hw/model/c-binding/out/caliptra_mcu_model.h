@@ -100,6 +100,8 @@ typedef struct caliptra_mcu_model {
 extern "C" {
 #endif // __cplusplus
 
+void cfi_panic_handler(uint32_t code);
+
 /**
  * Create an unbooted MCU hardware model using default Rust InitParams values for
  * all fields not exposed in caliptra_mcu_model_init_params.
@@ -241,7 +243,8 @@ int caliptra_mcu_model_warm_reset(struct caliptra_mcu_model *model);
 
 /**
  * Return a borrowed copy of DOT flash contents. The data pointer is invalidated
- * by the next caliptra_mcu_model_read_dot_flash() call or destroy.
+ * by the next caliptra_mcu_model_read_dot_flash() or
+ * caliptra_mcu_model_read_otp_memory() call, or by destroy.
  *
  * # Safety
  * `model` must be a pointer returned by caliptra_mcu_model_init_default.
@@ -259,7 +262,8 @@ int caliptra_mcu_model_write_dot_flash(struct caliptra_mcu_model *model,
 
 /**
  * Return a borrowed copy of OTP memory contents. The data pointer is invalidated
- * by the next caliptra_mcu_model_read_otp_memory() call or destroy.
+ * by the next caliptra_mcu_model_read_otp_memory() or
+ * caliptra_mcu_model_read_dot_flash() call, or by destroy.
  *
  * # Safety
  * `model` must be a pointer returned by caliptra_mcu_model_init_default.
