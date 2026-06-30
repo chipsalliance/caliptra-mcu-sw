@@ -232,12 +232,14 @@ impl McuHwModel for ModelEmulated {
 
         let fips_zeroization_cmd = Rc::new(Cell::new(false));
 
-        let owner_pk_hash = {
+        let owner_pk_hash = if params.fuses.owner_pk_hash.iter().any(|&w| w != 0) {
             let mut bytes = [0u8; 48];
             for (i, word) in params.fuses.owner_pk_hash.iter().enumerate() {
                 bytes[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
             }
-            bytes
+            Some(bytes)
+        } else {
+            None
         };
 
         let otp = Otp::new(
@@ -245,7 +247,7 @@ impl McuHwModel for ModelEmulated {
             OtpArgs {
                 fips_zeroization_cmd: fips_zeroization_cmd.clone(),
                 raw_memory: Some(otp_mem),
-                owner_pk_hash: Some(owner_pk_hash),
+                owner_pk_hash,
                 vendor_pk_hash: params.vendor_pk_hash,
                 vendor_pqc_type: params.vendor_pqc_type,
                 vendor_test_partition: params.vendor_test_partition.clone(),
