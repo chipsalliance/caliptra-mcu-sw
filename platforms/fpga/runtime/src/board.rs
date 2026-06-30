@@ -11,9 +11,15 @@ use caliptra_mcu_components::mbox_sram_component_static;
 use caliptra_mcu_components::mctp_driver_component_static;
 use caliptra_mcu_components::mctp_mux_component_static;
 use caliptra_mcu_components::mcu_mbox_component_static;
-use caliptra_mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
-use caliptra_mcu_config_fpga::flash::{EMULATED_EXT_OTP_PARTITION, STAGING_PARTITION};
-use caliptra_mcu_config_fpga::flash_partition_list_imaginary_flash;
+use caliptra_mcu_components::{
+    flash_partition_component_static, instantiate_flash_partitions, instantiate_logging_flash,
+};
+#[cfg(feature = "crash-log")]
+use caliptra_mcu_config_fpga::flash::CRASH_LOG_PARTITION;
+use caliptra_mcu_config_fpga::flash::{
+    EMULATED_EXT_OTP_PARTITION, LOGGING_PARTITION, STAGING_PARTITION,
+};
+use caliptra_mcu_config_fpga::{flash_partition_list_imaginary_flash, logging_flash_list};
 use caliptra_mcu_platforms_common::handoff::HandOff;
 use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use caliptra_mcu_registers_generated::mci;
@@ -167,8 +173,9 @@ struct VeeR {
     external_otp: &'static caliptra_mcu_capsules_runtime::external_otp::ExternalOtpCapsule<'static>,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, FpgaExiter>,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
-    logging_flash:
+    logging_flash: [Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
+    >; caliptra_mcu_config_fpga::flash::LOGGING_FLASH_INSTANCE_COUNT],
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -229,8 +236,18 @@ impl SyscallDriverLookup for VeeR {
             }
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
             caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
-            caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
-                f(Some(self.logging_flash))
+            n if caliptra_mcu_config_fpga::flash::LOGGING_FLASH_DRIVER_NUMS
+                .iter()
+                .any(|d| *d as usize == n) =>
+            {
+                for instance in &self.logging_flash {
+                    if let Some(drv) = instance {
+                        if drv.get_driver_num() == driver_num {
+                            return f(Some(*drv));
+                        }
+                    }
+                }
+                f(None)
             }
             _ => f(None),
         }
@@ -709,26 +726,21 @@ pub unsafe fn main() {
     );
     caliptra_mcu_romtime::println!("[mcu-runtime] Flash partition component initialized");
 
-    // Flash user for the logging capsule, sharing the primary flash mux.
-    let logging_fl_user = components::flash::FlashUserComponent::new(mux_mcu_mbox_flash).finalize(
-        components::flash_user_component_static!(caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl),
-    );
+    // Logging flash capsules (array-based, supports crash-log second instance)
+    let mut logging_flash: [Option<
+        &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
+    >; caliptra_mcu_config_fpga::flash::LOGGING_FLASH_INSTANCE_COUNT] =
+        [None; caliptra_mcu_config_fpga::flash::LOGGING_FLASH_INSTANCE_COUNT];
 
-    // Logging flash capsule
-    let logging_flash = caliptra_mcu_components::logging::LoggingFlashComponent::new(
+    instantiate_logging_flash!(
+        logging_flash_list,
+        logging_flash,
         board_kernel,
-        caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM,
-        logging_fl_user,
-        caliptra_mcu_config_fpga::flash::LOGGING_PARTITION
-            .base_page(caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE),
-        caliptra_mcu_config_fpga::flash::LOGGING_PARTITION
-            .num_pages(caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE),
-        true,
-    )
-    .finalize(caliptra_mcu_components::logging_flash_component_static!(
-        virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl>,
-        caliptra_mcu_capsules_runtime::logging::driver::BUF_LEN
-    ));
+        mux_mcu_mbox_flash,
+        caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl,
+        caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE,
+        true
+    );
     caliptra_mcu_romtime::println!("[mcu-runtime] Logging flash component initialized");
 
     let total_heks = 8;
