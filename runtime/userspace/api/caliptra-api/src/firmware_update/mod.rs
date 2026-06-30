@@ -586,15 +586,6 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         let mut payload_stream =
             MailboxPayloadStream::new(self.staging_memory, image_offset, image_len);
 
-        console_writeln!(
-            Console::<DefaultSyscalls>::writer(),
-            "[FW Upd] process_caliptra_fw: action={:?}, offset={}, len={}, cmd={:#x}",
-            action,
-            image_offset,
-            image_len,
-            cmd
-        );
-
         loop {
             let result = self
                 .mailbox
@@ -737,7 +728,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
                 )
                 .await
         } else {
-            default_copy_to_memory::<128>(
+            default_copy_to_memory::<1024>(
                 self.staging_memory,
                 self.dma_mapping,
                 mem_address,
@@ -925,7 +916,7 @@ pub trait FirmwareUpdateHooks: Send + Sync {
         offset: usize,
         img_size: usize,
     ) -> Result<(), ErrorCode> {
-        default_copy_to_memory::<128>(staging_memory, dma_mapping, mem_address, offset, img_size)
+        default_copy_to_memory::<1024>(staging_memory, dma_mapping, mem_address, offset, img_size)
             .await
     }
 }
