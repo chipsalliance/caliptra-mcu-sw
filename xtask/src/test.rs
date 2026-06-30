@@ -60,7 +60,7 @@ fn cargo_test(
     nextest_profile: Option<&str>,
 ) -> Result<()> {
     // Run all tests with nextest for proper sequencing, excluding ROM packages that don't have tests
-    let profile = nextest_profile.unwrap_or("nightly-emulator");
+    let profile = nextest_profile.unwrap_or("emulator");
     let profile_arg = format!("--profile={}", profile);
     println!("Running: cargo nextest run (profile={})", profile);
     let mut args = vec!["nextest", "run", "--test-threads=1", &profile_arg];

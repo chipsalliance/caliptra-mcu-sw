@@ -44,7 +44,7 @@ pub(crate) fn coverage(analyze_only: bool) -> Result<()> {
             .arg("run")
             .arg("--workspace")
             .arg("--test-threads=1")
-            .arg("--profile=nightly-emulator");
+            .arg("--profile=emulator");
 
         // Exclude packages that don't have tests or are platform-specific
         for pkg in &[
