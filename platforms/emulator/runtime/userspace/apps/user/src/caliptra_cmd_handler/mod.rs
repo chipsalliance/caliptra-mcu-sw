@@ -137,10 +137,14 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     }
 
     async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
-        use caliptra_api::mailbox::{CommandId, FeProgReq};
+        use caliptra_api::mailbox::{CommandId, FeProgReq, MailboxRespHeader};
         use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
         use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
         use zerocopy::IntoBytes;
+
+        const CORE_FE_PROG_RESP_LEN: usize =
+            core::mem::size_of::<MailboxRespHeader>() + core::mem::size_of::<u32>();
+        const CORE_FE_PROG_RESP_MIN_LEN: usize = core::mem::size_of::<MailboxRespHeader>();
 
         let mailbox = Mailbox::new();
         let mut req = FeProgReq {
@@ -148,8 +152,8 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             ..Default::default()
         };
 
-        let mut resp_buf = [0u8; 8];
-        execute_mailbox_cmd(
+        let mut resp_buf = [0u8; CORE_FE_PROG_RESP_LEN];
+        let resp_len = execute_mailbox_cmd(
             &mailbox,
             CommandId::FE_PROG.0,
             req.as_mut_bytes(),
@@ -157,6 +161,17 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         )
         .await
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+
+        if resp_len > CORE_FE_PROG_RESP_MIN_LEN && resp_len < CORE_FE_PROG_RESP_LEN {
+            return Err(CaliptraCompletionCode::OperationFailed);
+        }
+        if resp_len >= CORE_FE_PROG_RESP_LEN {
+            let dpe_result =
+                u32::from_le_bytes([resp_buf[8], resp_buf[9], resp_buf[10], resp_buf[11]]);
+            if dpe_result != 0 {
+                return Err(CaliptraCompletionCode::OperationFailed);
+            }
+        }
 
         Ok(())
     }

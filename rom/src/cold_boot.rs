@@ -22,8 +22,8 @@ use crate::{
     I3cMailboxHandler, I3cServicesModes, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{
-    CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader, StashMeasurementReq,
-    StashMeasurementResp,
+    CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader, MailboxRespHeader,
+    StashMeasurementReq, StashMeasurementResp,
 };
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
@@ -80,6 +80,12 @@ fn maybe_enter_dot_recovery_reset_failure_flow(
     fatal_error(err);
 }
 
+const FE_PROG_CORE_RESP_WORDS: usize = (core::mem::size_of::<MailboxRespHeader>()
+    + core::mem::size_of::<u32>())
+    / core::mem::size_of::<u32>();
+const FE_PROG_CORE_RESP_MIN_BYTES: usize = core::mem::size_of::<MailboxRespHeader>();
+const FE_PROG_CORE_RESP_BYTES: usize = FE_PROG_CORE_RESP_WORDS * core::mem::size_of::<u32>();
+
 impl ColdBoot {
     fn program_field_entropy(
         program_field_entropy: &[bool; 4],
@@ -126,20 +132,71 @@ impl ColdBoot {
                 }
                 fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_START);
             }
-            if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
-                match err {
-                    CaliptraApiError::MailboxCmdFailed(code) => {
-                        caliptra_mcu_romtime::println!(
-                            "[mcu-rom] Error finishing mailbox command: {}",
-                            HexWord(code)
-                        );
+            match soc_manager
+                .finish_mailbox_resp(FE_PROG_CORE_RESP_MIN_BYTES, FE_PROG_CORE_RESP_BYTES)
+            {
+                Ok(Some(mut resp_iter)) => {
+                    let mut resp = [0u32; FE_PROG_CORE_RESP_WORDS];
+                    for (i, word) in resp_iter.by_ref().enumerate() {
+                        if i < resp.len() {
+                            resp[i] = word;
+                        }
                     }
-                    _ => {
-                        caliptra_mcu_romtime::println!("[mcu-rom] Error finishing mailbox command");
+                    if let Err(err) = resp_iter.verify_checksum() {
+                        match err {
+                            CaliptraApiError::MailboxCmdFailed(code) => {
+                                caliptra_mcu_romtime::println!(
+                                    "[mcu-rom] Error finishing mailbox command: {}",
+                                    HexWord(code)
+                                );
+                            }
+                            _ => {
+                                caliptra_mcu_romtime::println!(
+                                    "[mcu-rom] Error finishing mailbox command"
+                                );
+                            }
+                        }
+                        fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
+                    }
+
+                    // Core FE_PROG / ZEROIZE_UDS_FE response is MailboxRespHeader + dpe_result.
+                    // Older Core revisions may return only the header; treat exactly that legacy
+                    // shape as success, but reject malformed partial dpe_result responses.
+                    if resp_iter.len() > FE_PROG_CORE_RESP_MIN_BYTES
+                        && resp_iter.len() < FE_PROG_CORE_RESP_BYTES
+                    {
+                        caliptra_mcu_romtime::println!(
+                            "[mcu-rom] FE_PROG returned malformed response length={}",
+                            resp_iter.len()
+                        );
+                        fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
+                    }
+                    if resp_iter.len() >= FE_PROG_CORE_RESP_BYTES && resp[2] != 0 {
+                        caliptra_mcu_romtime::println!(
+                            "[mcu-rom] FE_PROG failed: dpe_result={}",
+                            resp[2]
+                        );
+                        fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
                     }
                 }
-                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
-            };
+                Ok(None) => {}
+                Err(err) => {
+                    match err {
+                        CaliptraApiError::MailboxCmdFailed(code) => {
+                            caliptra_mcu_romtime::println!(
+                                "[mcu-rom] Error finishing mailbox command: {}",
+                                HexWord(code)
+                            );
+                        }
+                        _ => {
+                            caliptra_mcu_romtime::println!(
+                                "[mcu-rom] Error finishing mailbox command"
+                            );
+                        }
+                    }
+                    fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
+                }
+            }
 
             // Set status for each partition completion
             let partition_status = match partition {
