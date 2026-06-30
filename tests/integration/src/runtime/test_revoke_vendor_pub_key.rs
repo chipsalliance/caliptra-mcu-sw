@@ -59,10 +59,12 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
         ..Default::default()
     });
 
+    println!("==============\n   Stepping until firmware mailbox ready\n==============");
     hw.step_until(|hw| {
         hw.mci_boot_milestones()
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
     });
+    println!("==============\n   Executing RevokeVendorPubKey requests\n==============");
 
     // Check revoking the boot ECC key fails
     let cmd = FuseRevokeVendorPubKeyReq {
@@ -73,6 +75,7 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
     };
     let result = execute_authorized_req(&mut hw, cmd);
     assert!(result.is_err());
+    println!("==============\n   Test to revoke Boot ECC key succeded (failed to revoke)\n==============");
 
     // Check revoking a non-existent slot fails
     let cmd = FuseRevokeVendorPubKeyReq {
@@ -83,6 +86,7 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
     };
     let result = execute_authorized_req(&mut hw, cmd);
     assert!(result.is_err());
+    println!("==============\n   Test to revoke non existent key succeded (failed to revoke)\n==============");
 
     // Check revoking an ECC key that wasn't used to boot succeeds
     let cmd = FuseRevokeVendorPubKeyReq {
@@ -92,6 +96,7 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
         ..Default::default()
     };
     let _resp = execute_authorized_req(&mut hw, cmd);
+    println!("==============\n   Commands executed.\n   Trying to boot firmware with revoked key...\n==============");
 
     // Read OTP memory so we can use the same config in later boots.
     let otp = hw.read_otp_memory();
@@ -118,6 +123,7 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
             .read()
             != 0
     });
+    println!("==============\n   Successful.\n   (Caliptra reportet fatal error.)\n==============");
 
     // Verify that the fatal error corresponds to the revoked key from the last boot
     assert_eq!(

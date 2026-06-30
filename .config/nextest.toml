@@ -26,35 +26,43 @@ inherits = "nightly"
 # state hang the FPGA at "Taking subsystem out of reset" (confirmed locally
 # with test_lc_dev_to_prod). Dev-init tests are disabled until that's
 # root-caused.
+# default-filter = """
+# (package(caliptra-mcu-hw-model)
+#     - test(model_emulated::test::test_new_unbooted)) |
+# (package(caliptra-mcu-tests-integration) and test(test_jtag_taps)) |
+# (package(caliptra-mcu-tests-integration) and test(test_lc_transitions)) |
+# (package(caliptra-mcu-tests-integration) and test(test_prod_debug_unlock)) |
+# (package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |
+# (package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
+# (package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
+# (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
+# (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
+# (package(caliptra-mcu-tests-integration) and test(test_i3c_constant_writes)) |
+# (package(caliptra-mcu-tests-integration) and test(test_i3c_simple)) |
+# (package(caliptra-mcu-tests-integration) and test(test_i3c_services_ping)) |
+# (package(caliptra-mcu-tests-integration) and test(test_i3c_services_unknown_cmd)) |
+# (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_status)) |
+# (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_recovery_invalid_payload)) |
+# (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_unlock_challenge)) |
+# (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_without_challenge)) |
+# (package(caliptra-mcu-tests-integration) and test(test_i3c_services_error_mid_packet_then_recover)) |
+# (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_error_then_continue)) |
+# (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_full_flow)) |
+# (package(caliptra-mcu-tests-integration) and test(test_lc_ctrl)
+#     - test(test_lc_dev_to_prod)
+#     - test(test_lc_dev_to_rma)
+#     - test(test_lc_dev_to_scrap)
+#     - test(test_lc_invalid_transition_error)) |
+# (package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot)) |
+# (package(caliptra-mcu-tests-integration) and test(test_external_otp))
+# """
 default-filter = """
-(package(caliptra-mcu-hw-model)
-    - test(model_emulated::test::test_new_unbooted)) |
-(package(caliptra-mcu-tests-integration) and test(test_jtag_taps)) |
-(package(caliptra-mcu-tests-integration) and test(test_lc_transitions)) |
-(package(caliptra-mcu-tests-integration) and test(test_prod_debug_unlock)) |
-(package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |
-(package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
-(package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
 (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_constant_writes)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_simple)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_ping)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_unknown_cmd)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_status)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_recovery_invalid_payload)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_unlock_challenge)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_without_challenge)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_error_mid_packet_then_recover)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_error_then_continue)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_full_flow)) |
-(package(caliptra-mcu-tests-integration) and test(test_lc_ctrl)
-    - test(test_lc_dev_to_prod)
-    - test(test_lc_dev_to_rma)
-    - test(test_lc_dev_to_scrap)
-    - test(test_lc_invalid_transition_error)) |
-(package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot)) |
-(package(caliptra-mcu-tests-integration) and test(test_external_otp))
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_self_test)) |
+(package(caliptra-mcu-tests-integration) and test(test_invalid_mailbox_cmd)) |
+(package(caliptra-mcu-tests-integration) and test(test_firmware_version_cmd)) |
+(package(caliptra-mcu-tests-integration) and test(test_get_auth_cmd_challenge_cmd))
 """
 # Disabled because they hang the FPGA at boot (LifecycleControllerState::Dev):
 #   test_manuf_debug_unlock, test_uds, test_sw_digest_lock,
