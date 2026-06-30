@@ -4,7 +4,8 @@
 //!
 //! The test boots MCU runtime firmware with the SPDM responder enabled, bridges
 //! `ocp_dev_identity_provision_tool` to the firmware over MCTP, sends
-//! SET_CERTIFICATE, and verifies the installed chain through GET_CERTIFICATE.
+//! SET_CERTIFICATE, verifies the full Owner slot chain through GET_CERTIFICATE,
+//! and performs Owner-slot CHALLENGE attestation.
 
 #[cfg(test)]
 mod test {

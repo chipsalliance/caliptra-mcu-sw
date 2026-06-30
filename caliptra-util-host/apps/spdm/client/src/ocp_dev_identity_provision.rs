@@ -32,6 +32,7 @@ const COSE_HEADER_ALG: i128 = 1;
 const COSE_HEADER_KID: i128 = 4;
 const EAT_CLAIM_NONCE: i128 = 10;
 const OCP_CLAIM_CSR: i128 = -70001;
+const OWNER_SLOT_DYNAMIC_TAIL_CERTS: usize = 3; // FMC alias + RT alias + DPE leaf
 
 /// Request parameters for provisioning an OCP device identity certificate slot.
 pub struct ProvisionOptions {
@@ -232,8 +233,12 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
         "[ocp_dev_identity_provision_tool] Owner slot {} certificate chain verified via GET_CERTIFICATE",
         options.slot_id
     );
+    requester
+        .challenge(options.slot_id)
+        .with_context(|| format!("Owner-slot CHALLENGE failed for slot {}", options.slot_id))?;
     println!(
-        "[ocp_dev_identity_provision_tool] Owner-slot CHALLENGE is skipped until runtime exposes Caliptra key-id signing for provisioned KeyPairIDs"
+        "[ocp_dev_identity_provision_tool] Owner-slot CHALLENGE passed for slot {}",
+        options.slot_id
     );
 
     println!("[ocp_dev_identity_provision_tool] Sending STOP to bridge");
@@ -284,7 +289,8 @@ fn validate_attested_csr(
 
     let cose = parse_cose_sign1(payload)
         .context("attested CSR payload is not a COSE_Sign1/CWT envelope")?;
-    let claims = verify_attested_csr_cose(&cose, attestation_certs)?;
+    let rt_alias_cert = rt_alias_signing_cert(attestation_certs)?;
+    let claims = verify_attested_csr_cose(&cose, rt_alias_cert)?;
     if claims.nonce != nonce {
         bail!("attested CSR COSE payload nonce does not match requested freshness nonce");
     }
@@ -367,7 +373,7 @@ fn parse_cose_sign1(data: &[u8]) -> Result<CoseSign1Envelope<'_>> {
 
 fn verify_attested_csr_cose<'a>(
     cose: &'a CoseSign1Envelope<'a>,
-    attestation_certs: &[&[u8]],
+    rt_alias_cert: &[u8],
 ) -> Result<AttestedCsrClaims<'a>> {
     let protected = parse_cose_protected_header(cose.protected)?;
     if protected.alg != COSE_ALG_ES384 && protected.alg != COSE_ALG_ESP384 {
@@ -381,9 +387,18 @@ fn verify_attested_csr_cose<'a>(
         cose.signature,
         &sig_structure,
         protected.kid,
-        attestation_certs,
+        &[rt_alias_cert],
     )?;
     parse_attested_csr_claims(cose.payload)
+}
+
+fn rt_alias_signing_cert<'a>(attestation_certs: &'a [&'a [u8]]) -> Result<&'a [u8]> {
+    if attestation_certs.len() < 2 {
+        bail!(
+            "attested CSR RT-alias signature validation requires Vendor chain with RT alias and DPE leaf"
+        );
+    }
+    Ok(attestation_certs[attestation_certs.len() - 2])
 }
 
 fn parse_cose_protected_header(protected: &[u8]) -> Result<CoseProtectedHeader<'_>> {
@@ -738,12 +753,13 @@ fn verify_returned_owner_chain(
     verify_spdm_root_hash(&returned.root_hash, returned_certs[0])?;
 
     let returned_count = returned_certs.len();
-    if returned_count != installed_count {
+    let expected_count = installed_count + OWNER_SLOT_DYNAMIC_TAIL_CERTS;
+    if returned_count != expected_count {
         bail!(
-            "GET_CERTIFICATE slot {} returned {} cert(s), expected exactly the installed owner chain ({} certs)",
+            "GET_CERTIFICATE slot {} returned {} cert(s), expected installed owner chain plus FMC alias + RT alias + DPE leaf ({} certs total)",
             slot_id,
             returned_count,
-            installed_count
+            expected_count
         );
     }
     verify_x509_certificate_chain(&returned_certs)
@@ -965,7 +981,11 @@ mod tests {
         let envelope = signed_cose_attested_csr(&signer_key, &nonce, &csr);
         let response = csr_response(&envelope);
 
-        let extracted = validate_attested_csr(&response, &nonce, &[&signer_cert]).unwrap();
+        let vendor_root = signer_cert.clone();
+        let dpe_leaf = signer_cert.clone();
+        let extracted =
+            validate_attested_csr(&response, &nonce, &[&vendor_root, &signer_cert, &dpe_leaf])
+                .unwrap();
         assert_eq!(extracted, csr);
     }
 
@@ -980,7 +1000,10 @@ mod tests {
         *envelope.last_mut().unwrap() ^= 0x01;
         let response = csr_response(&envelope);
 
-        let err = validate_attested_csr(&response, &nonce, &[&signer_cert]).unwrap_err();
+        let vendor_root = signer_cert.clone();
+        let dpe_leaf = signer_cert.clone();
+        let err = validate_attested_csr(&response, &nonce, &[&vendor_root, &signer_cert, &dpe_leaf])
+            .unwrap_err();
         assert!(err.to_string().contains("COSE signature"));
     }
 
@@ -1039,7 +1062,7 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_returned_owner_chain_rejects_extra_tail_cert() {
+    fn test_verify_returned_owner_chain_rejects_malformed_dynamic_tail() {
         let chain = fs::read(default_cert_chain_path()).unwrap();
         let certs = split_der_certificates(&chain).unwrap();
         let mut returned_der = chain.clone();
@@ -1050,7 +1073,7 @@ mod tests {
         let returned = spdm_chain(&returned_der);
         let err =
             verify_returned_owner_chain(DEFAULT_OWNER_SLOT_ID, &chain, &returned).unwrap_err();
-        assert!(err.to_string().contains("expected exactly the installed owner chain"));
+        assert!(err.to_string().contains("failed to parse X.509 cert"));
     }
 
     #[test]
