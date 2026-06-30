@@ -6800,6 +6800,7 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-flash-image",
  "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libapi-emulated-caliptra",
  "caliptra-mcu-libsyscall-caliptra",

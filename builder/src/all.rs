@@ -84,6 +84,7 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
 const FEATURES_REQUIRING_SOC_IMAGES: &[&str] = &[
     "test-flash-based-boot",
     "test-pldm-streaming-boot",
+    "test-firmware-activate",
     "test-firmware-update-flash",
     "test-firmware-update-streaming",
     "test-streaming-boot-flash-write-back",
@@ -966,7 +967,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             // This is used for the PLDM update package (the downloaded firmware)
             let is_firmware_update_feature = *feature == "test-firmware-update-flash"
                 || *feature == "test-firmware-update-streaming"
-                || *feature == "test-streaming-boot-flash-write-back";
+                || *feature == "test-streaming-boot-flash-write-back"
+                || *feature == "test-firmware-activate";
             let feature_update_flash_image = if is_firmware_update_feature {
                 Some(create_flash_image(
                     Some(caliptra_fw.clone()),

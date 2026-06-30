@@ -6,6 +6,7 @@ name = "fpga-example-app"
 tuple = "riscv32imc-unknown-none-elf"
 dynamic_sizing = true
 page_size = 256
+storage_size = 0x400
 
 [platform.rom]
 offset = 0xb004_0000

@@ -95,6 +95,7 @@ pub async fn image_loading_task() {
         }
         mbox_sram.release_lock().unwrap();
         #[cfg(not(any(
+            feature = "test-firmware-activate",
             feature = "test-firmware-update-streaming",
             feature = "test-firmware-update-flash",
             feature = "test-streaming-boot-flash-write-back",
@@ -102,7 +103,10 @@ pub async fn image_loading_task() {
         System::exit(0);
     }
     // After image loading, proceed to firmware update if enabled
-    #[cfg(feature = "test-firmware-update-streaming")]
+    #[cfg(any(
+        feature = "test-firmware-activate",
+        feature = "test-firmware-update-streaming"
+    ))]
     {
         if mbox_sram.acquire_lock().is_err() {
             mbox_sram.release_lock().unwrap();

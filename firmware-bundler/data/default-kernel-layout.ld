@@ -289,6 +289,17 @@ SECTIONS
 
     _eappmem = ORIGIN(app_ram) + LENGTH(app_ram);
 
+    /* Persistent storage region.
+     *
+     * Reserved at the end of SRAM for attestation and other persistent
+     * record storage.  Firmware can reference _sstorage / _estorage to
+     * locate this region at runtime.
+     */
+    .storage (NOLOAD) :
+    {
+        . = ALIGN(4);
+    } > storage
+
 
     /* Place attributes at the end of the kernel ROM region. These will be used
      * for host-side tools to learn about the installed kernel.
@@ -364,6 +375,8 @@ _sprog = ORIGIN(prog);
 _eprog = ORIGIN(prog) + LENGTH(prog);
 _ssram = ORIGIN(ram);
 _esram = ORIGIN(ram) + LENGTH(ram);
+_sstorage = ORIGIN(storage);
+_estorage = ORIGIN(storage) + LENGTH(storage);
 
 /* Reserve space for the PIC vector table */
 _pic_vector_table = ORIGIN(dccm) + LENGTH(dccm) - 1024;

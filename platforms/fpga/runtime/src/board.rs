@@ -67,6 +67,10 @@ extern "C" {
     static _ssram: u8;
     /// The end of the kernel / app RAM (Included only for kernel PMP)
     static _esram: u8;
+    /// The start of the persistent storage region at the end of SRAM
+    static _sstorage: u8;
+    /// The end of the persistent storage region at the end of SRAM
+    static _estorage: u8;
 
     pub(crate) static _pic_vector_table: u8;
 }
@@ -381,6 +385,21 @@ pub unsafe fn main() {
         write: true,
         execute: false,
     });
+
+    // Persistent storage region at the end of SRAM (_sstorage.._estorage).
+    // This is a kernel-only RW region, separate from the app RAM above so
+    // the PMP explicitly covers this range even when storage_size is large.
+    if addr_of!(_sstorage) as usize != addr_of!(_estorage) as usize {
+        platform_regions.push(PlatformRegion {
+            start_addr: addr_of!(_sstorage),
+            size: addr_of!(_estorage) as usize - addr_of!(_sstorage) as usize,
+            is_mmio: false,
+            user_accessible: false,
+            read: true,
+            write: true,
+            execute: false,
+        });
+    }
 
     platform_regions.push(PlatformRegion {
         start_addr: MCU_MEMORY_MAP.dccm_offset as *const u8,
@@ -913,6 +932,52 @@ pub unsafe fn main() {
     {
         caliptra_mcu_romtime::println!("Executing test-mctp-capsule-loopback");
         crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp);
+    }
+
+    #[cfg(feature = "test-firmware-activate")]
+    {
+        let storage_start = addr_of!(_sstorage) as *mut u32;
+        let storage_end = addr_of!(_estorage) as usize;
+        let storage_len = (storage_end - storage_start as usize) / core::mem::size_of::<u32>();
+        caliptra_mcu_romtime::println!(
+            "Writing test pattern to storage region at {:p}, len {} bytes",
+            storage_start,
+            storage_len * 4
+        );
+        for i in 0..storage_len {
+            unsafe { storage_start.add(i).write_volatile(i as u32) };
+        }
+    }
+
+    #[cfg(feature = "test-firmware-v2")]
+    {
+        let storage_start = addr_of!(_sstorage) as *const u32;
+        let storage_end = addr_of!(_estorage) as usize;
+        let storage_len = (storage_end - storage_start as usize) / core::mem::size_of::<u32>();
+        caliptra_mcu_romtime::println!(
+            "Verifying storage region at {:p}, len {} bytes",
+            storage_start,
+            storage_len * 4
+        );
+        let mut mismatches = 0u32;
+        for i in 0..storage_len {
+            let val = unsafe { storage_start.add(i).read_volatile() };
+            if val != i as u32 {
+                mismatches += 1;
+            }
+        }
+        if mismatches == 0 {
+            caliptra_mcu_romtime::println!(
+                "Storage verification PASSED: all {} words match",
+                storage_len
+            );
+        } else {
+            caliptra_mcu_romtime::println!(
+                "Storage verification FAILED: {} / {} mismatches",
+                mismatches,
+                storage_len
+            );
+        }
     }
 
     if let Some(exit) = exit {

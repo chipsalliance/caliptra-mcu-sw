@@ -10,6 +10,7 @@ use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
 
 #[cfg(any(
+    feature = "test-firmware-activate",
     feature = "test-firmware-update-streaming",
     feature = "test-firmware-update-flash",
     feature = "test-streaming-boot-flash-write-back",
@@ -17,6 +18,7 @@ use core::fmt::Write;
 use crate::EXECUTOR;
 
 #[cfg(any(
+    feature = "test-firmware-activate",
     feature = "test-firmware-update-streaming",
     feature = "test-firmware-update-flash",
     feature = "test-streaming-boot-flash-write-back",
@@ -131,6 +133,41 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         return Ok(());
     }
 
+    #[cfg(feature = "test-firmware-activate")]
+    {
+        use caliptra_mcu_flash_image::FlashHeader;
+        use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
+        use zerocopy::FromBytes;
+
+        let fw_params = PldmFirmwareDeviceParams {
+            descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
+            fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
+        };
+        let mut staging_memory = dummy_flash::ExternalFlash::new().await?;
+        let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
+        staging_memory
+            .read(0, &mut flash_header)
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+        let (flash_header, _) =
+            FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;
+        let staging_memory: &'static dummy_flash::ExternalFlash =
+            unsafe { core::mem::transmute(&mut staging_memory) };
+
+        flash_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
+
+        let mut updater = FirmwareUpdater::new(
+            staging_memory,
+            &fw_params,
+            dma_mapping,
+            EXECUTOR.get().spawner(),
+            None,
+        );
+
+        updater.update_mcu(&flash_header).await?;
+        return Ok(());
+    }
+
     // Trigger MCU warm reset to boot into new firmware
     crate::log_info!(console_writer, "[FW Upd] Triggering MCU reset");
     let mci = MciSyscall::<DefaultSyscalls>::new();
@@ -227,7 +264,10 @@ mod external_memory {
     }
 }
 
-#[cfg(feature = "test-firmware-update-streaming")]
+#[cfg(any(
+    feature = "test-firmware-update-streaming",
+    feature = "test-firmware-activate"
+))]
 mod dummy_flash {
     extern crate alloc;
     use alloc::boxed::Box;

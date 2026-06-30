@@ -282,3 +282,77 @@ cargo xtask rom-build --platform emulator --features test-rom-hooks
 The integration test `test_rom_hooks_fire_in_order` builds this ROM and
 asserts that each expected hook marker appears exactly once in the
 expected order.
+
+## MCU SRAM Partitioning
+
+The MCU's SRAM is divided into several regions by the firmware-bundler at
+build time.  One of those regions — at the **top** of SRAM — is the
+**persistent storage area**, reserved for attestation data that must
+survive across hitless firmware updates and warm resets.
+
+### Layout overview
+
+For a platform with `sram_size` total SRAM, the firmware-bundler splits
+the address space as follows:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Instruction region (ITCM)                                  │
+│  · Kernel .text                                             │
+│  · Application .text                                        │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│  Data region (DTCM)                                         │
+│  · Kernel .bss / .data / stack                              │
+│  · Application heap + grant space                           │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤  ← _sstorage
+│  Persistent storage  (storage_size)                         │
+│  · DPE Handle Store  (first DPE_STORE_SIZE bytes)           │
+│  · Software PCR Store (remainder)                           │
+└─────────────────────────────────────────────────────────────┘  ← _estorage
+```
+
+The linker symbols `_sstorage` and `_estorage` mark the boundaries of
+the persistent storage region and are generated automatically by the
+firmware-bundler.  The kernel reads them at boot to initialise the DPE
+Handle Store and Software PCR Store capsules.
+
+The ITCM / DTCM split point is calculated by the firmware-bundler
+(roughly half of total SRAM) and varies by build profile.
+
+### Configuring `storage_size` for your platform
+
+`storage_size` is set in the firmware-bundler manifest for your
+platform.  For the reference emulator builds the manifests are:
+
+| File | Profile | SRAM size |
+|------|---------|-----------|
+| `firmware-bundler/reference/emulator/user-app.toml` | release (shipping) | 512 KiB |
+| `firmware-bundler/reference/emulator/user-app-devel.toml` | devel / debug | 1 MiB |
+| `firmware-bundler/reference/fpga/user-app.toml` | FPGA | platform-specific |
+
+Open the manifest for your target and adjust `storage_size`:
+
+```toml
+[platform]
+# ...
+
+# storage_size: reserve space at the top of SRAM for persistent
+# attestation data (DPE Handle Store + Software PCR Store).
+# Must be a multiple of 4 KiB;
+```
+
+> **Note**: `storage_size` is rounded up to a 4 KiB boundary by the
+> firmware-bundler so that the value remains consistent with the VeeR
+> `mcu_fw_sram_exec_region_size` parameter, which is programmed in
+> 4 KiB units.
+
+### PMP protection
+
+The persistent storage region is mapped as a kernel-only read/write PMP
+region, separate from the application RAM region.  Userspace processes
+cannot access it directly; they interact with the stored data only
+through the kernel capsule syscall interfaces
+(`DpeHandleStore` driver `0x8000_0020` and `PcrStore` driver `0x8000_0021`).
+
