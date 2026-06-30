@@ -1877,6 +1877,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-pk-hash-checker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-image-crypto",
+ "caliptra-image-gen",
+ "caliptra-image-types",
+ "clap 4.5.51",
+ "hex",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-platforms-common"
 version = "0.1.0"
 dependencies = [
