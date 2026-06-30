@@ -35,6 +35,10 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use mcu_error::McuResult;
 use zerocopy::{FromBytes, IntoBytes};
 
+const CORE_FE_PROG_RESP_LEN: usize =
+    core::mem::size_of::<MailboxRespHeader>() + core::mem::size_of::<u32>();
+const CORE_FE_PROG_RESP_MIN_LEN: usize = core::mem::size_of::<MailboxRespHeader>();
+
 /// Command interface for handling MCU mailbox commands.
 pub struct CmdInterface<'a> {
     transport: &'a mut McuMboxTransport,
@@ -722,14 +726,32 @@ impl<'a> CmdInterface<'a> {
         };
 
         // Invoke Caliptra mailbox API (checksum is computed by execute_mailbox_cmd)
-        let _caliptra_resp_len = execute_mailbox_cmd(
+        let mut caliptra_resp = [0u8; CORE_FE_PROG_RESP_LEN];
+        let caliptra_resp_len = execute_mailbox_cmd(
             &self.caliptra_mbox,
             CaliptraCommandId::FE_PROG.into(),
             caliptra_req.as_mut_bytes(),
-            resp.as_mut_bytes(),
+            &mut caliptra_resp,
         )
         .await
         .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        if caliptra_resp_len > CORE_FE_PROG_RESP_MIN_LEN
+            && caliptra_resp_len < CORE_FE_PROG_RESP_LEN
+        {
+            return Err(errors::MCU_MBOX_COMMON);
+        }
+        if caliptra_resp_len >= CORE_FE_PROG_RESP_LEN {
+            let dpe_result = u32::from_le_bytes([
+                caliptra_resp[8],
+                caliptra_resp[9],
+                caliptra_resp[10],
+                caliptra_resp[11],
+            ]);
+            if dpe_result != 0 {
+                return Err(errors::MCU_MBOX_COMMON);
+            }
+        }
 
         *resp = FuseWriteResp::default();
         let resp_len = resp.as_bytes().len();
