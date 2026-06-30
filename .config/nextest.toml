@@ -40,6 +40,7 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_lc_transitions)) |
 (package(caliptra-mcu-tests-integration) and test(test_prod_debug_unlock)) |
 (package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |
+(package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
 (package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |

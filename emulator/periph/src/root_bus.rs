@@ -534,6 +534,7 @@ impl Bus for McuRootBus {
                 let ram_size = ram.len() as usize;
                 let len = len.min(ram_size - start);
                 let data = ram.data()[start..start + len].to_vec();
+
                 if let Some(event_sender) = self.event_sender.as_ref() {
                     event_sender
                         .send(Event {

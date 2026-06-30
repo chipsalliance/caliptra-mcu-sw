@@ -518,7 +518,7 @@ pub unsafe fn main() {
         caliptra_mcu_capsules_runtime::mailbox::DRIVER_NUM,
         mux_alarm,
         mbox_dma_driver,
-        Some(100_000),
+        Some(200_000_000), // 10 seconds timeout for mailbox commands, in ticks of the 20MHz timer
     )
     .finalize(caliptra_mcu_components::mailbox_component_static!(
         InternalTimers<'static>,

@@ -101,8 +101,19 @@ pub async fn image_loading_task() {
         System::exit(0);
     }
     // After image loading, proceed to firmware update if enabled
+    #[cfg(feature = "test-firmware-update-streaming")]
+    {
+        if mbox_sram.acquire_lock().is_err() {
+            mbox_sram.release_lock().unwrap();
+            mbox_sram.acquire_lock().unwrap();
+        }
+        match crate::firmware_update::firmware_update(&FPGA_DMA_MAPPING).await {
+            Ok(_) => System::exit(0),
+            Err(_) => System::exit(1),
+        }
+        // MBOX SRAM lock will be released after reboot
+    }
     #[cfg(any(
-        feature = "test-firmware-update-streaming",
         feature = "test-firmware-update-flash",
         feature = "test-streaming-boot-flash-write-back",
     ))]
@@ -287,12 +298,36 @@ impl DMAMapping for EmulatedDMAMap {
     }
 
     fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
-        Ok(addr as AXIAddr)
+        // Caliptra's External Test SRAM at 0x8000_0000 maps to
+        // the MCU's External SRAM at 0xB00C_0000 (same backing store via events).
+        const CPTRA_EXT_SRAM_BASE: u64 = 0x8000_0000;
+        const CPTRA_EXT_SRAM_SIZE: u64 = 0x0010_0000; // 1MB
+        const MCU_EXT_SRAM_BASE: u64 = 0xB00C_0000;
+        if (CPTRA_EXT_SRAM_BASE..CPTRA_EXT_SRAM_BASE + CPTRA_EXT_SRAM_SIZE).contains(&addr) {
+            Ok(MCU_EXT_SRAM_BASE + (addr - CPTRA_EXT_SRAM_BASE))
+        } else {
+            Ok(addr)
+        }
     }
 }
 
 #[allow(dead_code)]
 pub static EMULATED_DMA_MAPPING: EmulatedDMAMap = EmulatedDMAMap {};
+
+pub struct FpgaDMAMap {}
+impl DMAMapping for FpgaDMAMap {
+    fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
+        Ok(addr as AXIAddr)
+    }
+
+    fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
+        // FPGA: Caliptra and MCU share the same AXI address space
+        Ok(addr)
+    }
+}
+
+#[allow(dead_code)]
+pub static FPGA_DMA_MAPPING: FpgaDMAMap = FpgaDMAMap {};
 
 /// This is the size of the buffer used for DMA transfers.
 const MAX_DMA_TRANSFER_SIZE: usize = 128;

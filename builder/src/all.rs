@@ -67,6 +67,7 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-doe-transport-loopback",
     "test-doe-user-loopback",
     "test-external-otp",
+    "test-firmware-v2",
     "test-flash-usermode",
     "test-fpga-flash-ctrl",
     "test-get-device-state",
@@ -93,6 +94,14 @@ const FEATURES_REQUIRING_SOC_IMAGES: &[&str] = &[
 /// Features that require flash-based boot (partition table at offset 0)
 const FEATURES_REQUIRING_FLASH_BOOT: &[&str] =
     &["test-flash-based-boot", "test-firmware-update-flash"];
+
+/// Runtime features whose corresponding ROM feature enables `hw-2-1`.
+/// Keep the runtime in sync so large Caliptra mailbox commands use staging SRAM.
+const FEATURES_REQUIRING_HW_2_1_RUNTIME: &[&str] = &[
+    "test-flash-based-boot",
+    "test-firmware-update-flash",
+    "test-usb-ocp-recovery",
+];
 
 /// MCI base address for SoC image load addresses.
 /// Uses FPGA memory map since the emulator's AXI simulation uses FPGA-like addresses.
@@ -150,6 +159,9 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
 /// MCU MBOX SRAM1 offset from MCI base.
 /// Matches caliptra_mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET (0x80_0000).
 const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
+
+/// MCU SRAM offset from MCI base.
+const MCU_SRAM_OFFSET: u64 = 0xC0_0000;
 
 /// Creates default SoC images for tests that require them.
 /// Returns (soc_images_config, soc_images_paths).
@@ -888,9 +900,10 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
             let include_example_app = FEATURES_WITH_EXAMPLE_APP.contains(feature);
 
-            // When hw-2-1 is in rom_features, combine it with each separate
-            // runtime feature so the staging SRAM path is enabled.
-            let mut combined_features = if propagate_hw_2_1 && *feature != "hw-2-1" {
+            // When the matching ROM feature enables hw-2-1, combine it with
+            // the separate runtime feature so the staging SRAM path is enabled.
+            let needs_hw_2_1 = propagate_hw_2_1 || feature_requires_hw_2_1(feature);
+            let mut combined_features = if needs_hw_2_1 && *feature != "hw-2-1" {
                 format!("{},hw-2-1", feature)
             } else {
                 feature.to_string()
@@ -923,7 +936,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             let user_app_elf = std::fs::read(&user_app_elf_path).ok();
 
             let mcu_image_cfg =
-                get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature);
+                get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature).or_else(
+                    || default_mcu_image_cfg_for_feature(feature, feature_runtime_file.path()),
+                );
 
             // For features that require SoC images, create default ones if not provided
             let (feature_soc_images, feature_soc_images_paths) =
@@ -1227,6 +1242,26 @@ fn get_image_cfg_feature(image_cfg: &[ImageCfg], feature: &str) -> Option<ImageC
         }
     }
     None
+}
+
+fn feature_requires_hw_2_1(feature: &str) -> bool {
+    FEATURES_REQUIRING_HW_2_1_RUNTIME.contains(&feature)
+}
+
+fn default_mcu_image_cfg_for_feature(feature: &str, runtime_path: &Path) -> Option<ImageCfg> {
+    if feature != "test-firmware-update-flash" {
+        return None;
+    }
+
+    Some(ImageCfg {
+        path: runtime_path.to_path_buf(),
+        load_addr: MCI_BASE_AXI_ADDRESS + MCU_SRAM_OFFSET,
+        staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024),
+        image_id: MCU_RT_IDENTIFIER,
+        component_id: MCU_RT_IDENTIFIER,
+        exec_bit: 2,
+        feature: feature.to_string(),
+    })
 }
 
 fn add_to_zip(

@@ -949,10 +949,10 @@ mod test {
         if env::var("PLDM_FW_PKG").is_err() {
             if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
                 // If PLDM_FW_PKG is not specified, we will use the PLDM firmware package
-                // for test-fpga-flash-ctrl that was built during the FPGA build.
+                // for test-firmware-v2 that was built during the FPGA build.
                 // We choose this package since it is small enough to fit in the
                 // FPGA staging memory.
-                let test_pldm_pkg_data = binaries.test_pldm_fw_pkg("test-fpga-flash-ctrl").unwrap();
+                let test_pldm_pkg_data = binaries.test_pldm_fw_pkg("test-firmware-v2").unwrap();
                 let test_pldm_pkg_path = tempfile::NamedTempFile::new()
                     .expect("Failed to create temp file")
                     .path()

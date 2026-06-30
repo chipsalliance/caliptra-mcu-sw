@@ -298,26 +298,37 @@ impl CaliptraBuilder {
 
         let cfg = if self.mcu_image_cfg.is_some() {
             self.mcu_image_cfg.clone().unwrap()
-        } else if self.fpga {
-            // Default MCU image configuration for FPGA
-            ImageCfg {
-                image_id: MCU_RT_IDENTIFIER,
-                component_id: MCU_RT_IDENTIFIER,
-                exec_bit: 2,
-                staging_addr: caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64,
-                ..Default::default()
-            }
         } else {
-            // Default MCU image configuration for emulator
-            const MCI_BASE_AXI_ADDRESS: u64 = 0xA800_0000;
-            const MCU_SRAM_OFFSET: u64 = 0xc0_0000;
-            const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
+            // Default MCU image configuration with valid addresses and exec_bit
+            // exec_bit must be >= 2 (bits 0 and 1 are reserved by Caliptra)
+            let (staging_addr, load_addr) = if self.fpga {
+                // FPGA: use external staging SRAM
+                let staging_memory_map: u64 = 0xB00C_0000;
+                let staging_memory_size: u64 = 0x0004_0000; // 256 KB
+                let max_mcu_fw_size: u64 = 0x3EC00;
+                let staging = staging_memory_map + staging_memory_size - max_mcu_fw_size;
+                let load = caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64;
+                (staging, load)
+            } else {
+                // Emulator: staging uses Caliptra's External Test SRAM (0x8000_0000)
+                // which is shared with the MCU's External SRAM (0xB00C_0000) via events.
+                // The DMAMapping::cptra_axi_to_mcu_axi converts 0x8000_xxxx -> 0xB00C_xxxx
+                // so the MCU's AXI CDMA writes to the same backing store.
+                // Load address uses Caliptra's mcu_sram (SS_MCI_OFFSET + 0xC0_0000)
+                // which is only accessed by Caliptra's DMA.
+                const CPTRA_EXTERNAL_TEST_SRAM: u64 = 0x8000_0000;
+                const MCI_BASE_AXI_ADDRESS: u64 = 0xA800_0000;
+                const MCU_SRAM_OFFSET: u64 = 0xC0_0000;
+                let staging = CPTRA_EXTERNAL_TEST_SRAM;
+                let load = MCI_BASE_AXI_ADDRESS + MCU_SRAM_OFFSET; // 0xA8C0_0000
+                (staging, load)
+            };
             ImageCfg {
                 image_id: MCU_RT_IDENTIFIER,
                 component_id: MCU_RT_IDENTIFIER,
                 exec_bit: 2,
-                load_addr: MCI_BASE_AXI_ADDRESS + MCU_SRAM_OFFSET,
-                staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024),
+                staging_addr,
+                load_addr,
                 ..Default::default()
             }
         };
