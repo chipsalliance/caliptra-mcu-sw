@@ -41,8 +41,9 @@ struct Args {
     #[arg(long, default_value_t = DEFAULT_CSR_ALGORITHM_ECC384)]
     csr_algorithm: u32,
 
-    /// DER X.509 certificate chain to install. The tool wraps this in the SPDM
-    /// certificate-chain header before sending SET_CERTIFICATE.
+    /// DER X.509 certificate chain to install when --skip-attested-csr is used.
+    /// In the normal issue-1711 flow, the tool issues a test Owner/LDevID
+    /// chain from the attested CSR and this path is not used.
     #[arg(long, default_value_os_t = default_cert_chain_path())]
     cert_chain: PathBuf,
 

@@ -37,6 +37,7 @@ pub const SLOT0_LEAF_LABEL: [u8; DPE_LABEL_LEN] = [
 
 /// Default KeyUsageMask for all Caliptra slots.
 const DEFAULT_KEY_USAGE_MASK: u16 = 0x0003;
+#[cfg(feature = "set-certificate")]
 const CERT_MODEL_ALIAS_CERT: u8 = 2;
 const DPE_IDEVID_AND_LDEVID_CERT_COUNT: usize = 2;
 
@@ -595,6 +596,7 @@ async fn validate_set_certificate_root_hash<M: MeasurementProvider>(
     Ok(())
 }
 
+#[cfg(any(feature = "set-certificate", test))]
 fn validate_der_cert_chain(mut der_chain: &[u8]) -> McuResult<()> {
     let mut cert_count = 0usize;
     while !der_chain.is_empty() {
@@ -612,6 +614,7 @@ fn validate_der_cert_chain(mut der_chain: &[u8]) -> McuResult<()> {
     Ok(())
 }
 
+#[cfg(any(feature = "set-certificate", test))]
 fn validate_der_x509_certificate(cert_der: &[u8]) -> McuResult<()> {
     let (tag, content, consumed) = der_tlv(cert_der).ok_or(INVARIANT)?;
     if tag != 0x30 || consumed != cert_der.len() {
@@ -639,6 +642,7 @@ fn validate_der_x509_certificate(cert_der: &[u8]) -> McuResult<()> {
     Ok(())
 }
 
+#[cfg(any(feature = "set-certificate", test))]
 fn der_tlv(buf: &[u8]) -> Option<(u8, &[u8], usize)> {
     let tag = *buf.first()?;
     let (len, len_len) = der_len(&buf[1..])?;
@@ -648,6 +652,7 @@ fn der_tlv(buf: &[u8]) -> Option<(u8, &[u8], usize)> {
     Some((tag, content, consumed))
 }
 
+#[cfg(any(feature = "set-certificate", test))]
 fn der_len(buf: &[u8]) -> Option<(usize, usize)> {
     let len_byte = *buf.first()?;
     if len_byte & 0x80 == 0 {
