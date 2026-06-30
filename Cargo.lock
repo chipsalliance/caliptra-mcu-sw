@@ -1395,6 +1395,7 @@ dependencies = [
 name = "caliptra-mcu-hw-model-c-binding"
 version = "0.1.0"
 dependencies = [
+ "caliptra-cfi-lib",
  "caliptra-mcu-hw-model",
  "caliptra-ureg",
  "cbindgen",

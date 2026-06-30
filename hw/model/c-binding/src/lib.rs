@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_cfi_lib::CfiState;
 use caliptra_mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel, McuManager};
 use caliptra_ureg::{Mmio, MmioMut};
 use std::ffi::CString;
@@ -9,6 +10,23 @@ use std::ptr;
 use std::slice;
 
 const INVALID_MODEL_ERROR: &[u8] = b"invalid model\0";
+
+// These symbols are required by Caliptra CFI when this crate is linked as a
+// standalone C static library.
+#[no_mangle]
+pub extern "C" fn cfi_panic_handler(code: u32) -> ! {
+    std::process::exit(code as i32);
+}
+
+#[allow(unused)]
+#[no_mangle]
+static mut CFI_STATE_ORG: [u8; std::mem::size_of::<CfiState>()] =
+    [0; std::mem::size_of::<CfiState>()];
+
+fn ensure_cfi_symbols_linked() {
+    std::hint::black_box(cfi_panic_handler as extern "C" fn(u32) -> !);
+    std::hint::black_box(core::ptr::addr_of_mut!(CFI_STATE_ORG));
+}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -201,6 +219,8 @@ unsafe fn init_impl(
     if model.is_null() {
         return CALIPTRA_MCU_MODEL_STATUS_INVALID_ARGUMENT;
     }
+    ensure_cfi_symbols_linked();
+    *model = ptr::null_mut();
 
     let caliptra_rom = match slice_from_buffer(params.caliptra_rom) {
         Ok(data) => data,
@@ -256,8 +276,10 @@ unsafe fn init_impl(
 
     let i3c_port = if params.i3c_port == 0 {
         None
-    } else {
+    } else if params.i3c_port <= u16::MAX as c_uint {
         Some(params.i3c_port as u16)
+    } else {
+        return CALIPTRA_MCU_MODEL_STATUS_INVALID_ARGUMENT;
     };
 
     let result = caliptra_mcu_hw_model::new_unbooted(InitParams {
@@ -288,10 +310,7 @@ unsafe fn init_impl(
             *model = Box::into_raw(Box::new(ModelHandle::new(hw_model))) as *mut caliptra_mcu_model;
             CALIPTRA_MCU_MODEL_STATUS_OK
         }
-        Err(_) => {
-            *model = ptr::null_mut();
-            CALIPTRA_MCU_MODEL_STATUS_INIT_FAILED
-        }
+        Err(_) => CALIPTRA_MCU_MODEL_STATUS_INIT_FAILED,
     }
 }
 
@@ -505,6 +524,7 @@ pub unsafe extern "C" fn caliptra_mcu_model_mailbox_execute(
     response: *mut caliptra_mcu_buffer,
 ) -> c_int {
     catch_status(|| {
+        fill_buffer(response, &[]);
         let request = match slice_from_buffer(request) {
             Ok(data) => data,
             Err(status) => return status,
@@ -524,6 +544,8 @@ pub unsafe extern "C" fn caliptra_mcu_model_mailbox_execute(
                     CALIPTRA_MCU_MODEL_STATUS_OK
                 }
                 Err(err) => {
+                    handle.response.clear();
+                    fill_buffer(response, &[]);
                     handle.set_error(err);
                     CALIPTRA_MCU_MODEL_STATUS_OPERATION_FAILED
                 }
@@ -549,6 +571,7 @@ pub unsafe extern "C" fn caliptra_mcu_model_caliptra_mailbox_execute(
     response: *mut caliptra_mcu_buffer,
 ) -> c_int {
     catch_status(|| {
+        fill_buffer(response, &[]);
         let request = match slice_from_buffer(request) {
             Ok(data) => data,
             Err(status) => return status,
@@ -568,6 +591,8 @@ pub unsafe extern "C" fn caliptra_mcu_model_caliptra_mailbox_execute(
                     CALIPTRA_MCU_MODEL_STATUS_OK
                 }
                 Err(err) => {
+                    handle.response.clear();
+                    fill_buffer(response, &[]);
                     handle.set_error(format!("{err:?}"));
                     CALIPTRA_MCU_MODEL_STATUS_OPERATION_FAILED
                 }
@@ -618,7 +643,8 @@ pub unsafe extern "C" fn caliptra_mcu_model_warm_reset(model: *mut caliptra_mcu_
 }
 
 /// Return a borrowed copy of DOT flash contents. The data pointer is invalidated
-/// by the next caliptra_mcu_model_read_dot_flash() call or destroy.
+/// by the next caliptra_mcu_model_read_dot_flash() or
+/// caliptra_mcu_model_read_otp_memory() call, or by destroy.
 ///
 /// # Safety
 /// `model` must be a pointer returned by caliptra_mcu_model_init_default.
@@ -680,7 +706,8 @@ pub unsafe extern "C" fn caliptra_mcu_model_write_dot_flash(
 }
 
 /// Return a borrowed copy of OTP memory contents. The data pointer is invalidated
-/// by the next caliptra_mcu_model_read_otp_memory() call or destroy.
+/// by the next caliptra_mcu_model_read_otp_memory() or
+/// caliptra_mcu_model_read_dot_flash() call, or by destroy.
 ///
 /// # Safety
 /// `model` must be a pointer returned by caliptra_mcu_model_init_default.
