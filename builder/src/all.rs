@@ -283,8 +283,8 @@ pub struct FirmwareBinaries {
     /// Update flash images without partition table (for PLDM update packages)
     pub test_update_flash_images: Vec<(String, Vec<u8>)>,
     pub bare_metal_images: Vec<(String, Vec<u8>)>,
-    /// User-app ELFs per test feature. Carry the `.defmt` table that host-side
-    /// defmt decoders need to render frames retrieved from the device.
+    /// User-app ELFs. Carry the `.defmt` table that host-side defmt decoders
+    /// need to render frames retrieved from the device.
     pub test_user_app_elfs: Vec<(String, Vec<u8>)>,
 }
 
@@ -296,6 +296,7 @@ impl FirmwareBinaries {
     const CALIPTRA_FW_KEY2_NAME: &'static str = "caliptra_fw_key2.bin";
     const MCU_ROM_NAME: &'static str = "mcu_rom.bin";
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
+    const USER_APP_ELF_NAME: &'static str = "user_app_elf.bin";
     const SOC_MANIFEST_NAME: &'static str = "soc_manifest.bin";
     const FLASH_IMAGE_NAME: &'static str = "flash_image.bin";
     const PLDM_FW_PKG_NAME: &'static str = "pldm_fw_pkg.bin";
@@ -338,6 +339,9 @@ impl FirmwareBinaries {
                 Self::CALIPTRA_FW_KEY2_NAME => binaries.caliptra_fw_key2 = data,
                 Self::MCU_ROM_NAME => binaries.mcu_rom = data,
                 Self::MCU_RUNTIME_NAME => binaries.mcu_runtime = data,
+                Self::USER_APP_ELF_NAME => {
+                    binaries.test_user_app_elfs.push((name.to_string(), data));
+                }
                 Self::SOC_MANIFEST_NAME => binaries.soc_manifest = data,
                 name if name.contains("mcu-test-soc-manifest") => {
                     binaries.test_soc_manifests.push((name.to_string(), data));
@@ -406,6 +410,16 @@ impl FirmwareBinaries {
         } else {
             None
         }
+    }
+
+    /// Get the base user-app ELF archived with the firmware bundle, if present.
+    /// The ELF carries the `.defmt` table needed to decode release-profile
+    /// userspace log frames.
+    pub fn user_app_elf(&self) -> Option<&[u8]> {
+        self.test_user_app_elfs
+            .iter()
+            .find(|(name, _)| name.as_str() == Self::USER_APP_ELF_NAME)
+            .map(|(_, data)| data.as_slice())
     }
 
     pub fn test_rom(&self, fwid: &FwId) -> Result<Vec<u8>> {
@@ -764,6 +778,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         profile,
         ..Default::default()
     })?;
+    let user_app_profile = profile.unwrap_or("devel");
+    let user_app_elf_path = crate::target_dir()
+        .join(TARGET)
+        .join(user_app_profile)
+        .join("user-app");
+    let user_app_elf = std::fs::read(&user_app_elf_path)?;
 
     let mut bare_metal_paths = vec![];
     for package in crate::features::BARE_METAL_BINARIES {
@@ -1099,6 +1119,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     add_to_zip(
         &PathBuf::from(mcu_runtime),
         FirmwareBinaries::MCU_RUNTIME_NAME,
+        &mut zip,
+        options,
+    )?;
+    add_bytes_to_zip(
+        &user_app_elf,
+        FirmwareBinaries::USER_APP_ELF_NAME,
         &mut zip,
         options,
     )?;

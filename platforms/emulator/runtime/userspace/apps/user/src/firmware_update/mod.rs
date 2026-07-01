@@ -40,7 +40,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         // Device rebooted due to firmware update, skip firmware update
         return Ok(());
     }
-    crate::console_writeln!(console_writer, "[FW Upd] Start");
+    crate::log_info!(console_writer, "[FW Upd] Start");
     #[cfg(feature = "test-firmware-update-streaming")]
     {
         let fw_params = PldmFirmwareDeviceParams {
@@ -78,7 +78,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
 
             async fn pre_mcu_activation(&self) -> Result<(), ErrorCode> {
                 if !self.pre_caliptra_called.load(Ordering::SeqCst) {
-                    crate::console_writeln!(
+                    crate::log_error!(
                         Console::<DefaultSyscalls>::writer(),
                         "[FW Upd] ERROR: pre_caliptra_activation hook not called"
                     );
@@ -127,12 +127,12 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         updater.set_skip_activation(true);
         updater.set_verify_same_image(true);
         updater.start().await?;
-        crate::console_writeln!(console_writer, "[FW Upd] Flash write-back complete");
+        crate::log_info!(console_writer, "[FW Upd] Flash write-back complete");
         return Ok(());
     }
 
     // Trigger MCU warm reset to boot into new firmware
-    crate::console_writeln!(console_writer, "[FW Upd] Triggering MCU reset");
+    crate::log_info!(console_writer, "[FW Upd] Triggering MCU reset");
     let mci = MciSyscall::<DefaultSyscalls>::new();
     mci.trigger_warm_reset()?;
 
@@ -331,10 +331,10 @@ mod flash_memory {
                 .get_partition_from_id(inactive_partition_id)
                 .map_err(|_| ErrorCode::Fail)?;
 
-            crate::console_writeln!(
+            crate::log_info!(
                 Console::<DefaultSyscalls>::writer(),
-                "[FW Upd] Copying image from staging to inactive partition {:?} length {}",
-                inactive_partition_id,
+                "[FW Upd] Copying image from staging to inactive partition {} length {}",
+                crate::Dbg(inactive_partition_id),
                 img_sz
             );
             // Mark inactive partittion as invalid

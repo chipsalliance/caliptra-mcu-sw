@@ -11,6 +11,7 @@ use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
+#[allow(unused_imports)]
 use core::fmt::Write;
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -35,7 +36,7 @@ pub async fn vdm_task() {
 #[allow(unused_variables)]
 async fn start_vdm_service() -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
-    crate::console_writeln!(console_writer, "Starting MCTP VDM task...");
+    crate::log_info!(console_writer, "Starting MCTP VDM task...");
 
     #[cfg(any(
         feature = "test-mctp-vdm-cmds",
@@ -58,7 +59,7 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
 
         // Check if the transport driver exists
         if !transport.exists() {
-            crate::console_writeln!(
+            crate::log_warn!(
                 console_writer,
                 "USER_APP: MCTP VDM driver not found, skipping VDM service"
             );
@@ -72,7 +73,7 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
             transport, handler,
         ));
 
-        crate::console_writeln!(
+        crate::log_info!(
             console_writer,
             "Starting MCTP VDM service for integration tests..."
         );
@@ -81,10 +82,10 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
             crate::EXECUTOR.get().spawner(),
             cmd_interface,
         ) {
-            crate::console_writeln!(
+            crate::log_error!(
                 console_writer,
-                "USER_APP: Error starting MCTP VDM service: {:?}",
-                e
+                "USER_APP: Error starting MCTP VDM service: {}",
+                crate::Dbg(e)
             );
         }
         let suspend_signal: Signal<CriticalSectionRawMutex, ()> = Signal::new();

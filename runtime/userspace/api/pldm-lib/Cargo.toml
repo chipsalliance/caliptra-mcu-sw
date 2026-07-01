@@ -8,6 +8,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+defmt = { workspace = true, optional = true }
 embassy-executor.workspace = true
 embassy-sync.workspace = true
 mcu-error.workspace = true
@@ -18,6 +19,7 @@ caliptra-mcu-libtock_console.workspace = true
 caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtock_runtime.workspace = true
 caliptra-mcu-pldm-common.workspace = true
+caliptra-mcu-userlog.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 caliptra-mcu-libtock_unittest.workspace = true
@@ -25,3 +27,7 @@ caliptra-mcu-libtock_unittest.workspace = true
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
 embedded-alloc.workspace = true
+
+[features]
+default = []
+release = ["dep:defmt", "caliptra-mcu-userlog/defmt-transport"]

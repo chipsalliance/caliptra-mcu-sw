@@ -3,10 +3,11 @@
 use crate::cmd_interface::CmdInterface;
 use crate::transport::McuMboxTransport;
 use caliptra_mcu_common_commands::{CaliptraCmdHandler, CommandAuthorizer};
-use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_mbox_common::messages::{McuMailboxReq, McuMailboxResp};
+use caliptra_mcu_userlog::{log_error, Hex32};
+#[allow(unused_imports)]
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
@@ -90,11 +91,10 @@ pub async fn mcu_mbox_responder(
             .handle_responder_msg(&mut req_buf, &mut resp_buf)
             .await
         {
-            // Debug print on error
-            console_writeln!(
+            log_error!(
                 Console::<DefaultSyscalls>::writer(),
-                "mcu_mbox_responder error: {:?}",
-                e
+                "mcu_mbox_responder error={}",
+                Hex32(u32::from(e))
             );
         }
     }

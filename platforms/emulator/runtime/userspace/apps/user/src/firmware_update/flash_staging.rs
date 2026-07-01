@@ -87,14 +87,14 @@ impl StagingMemory for SpiFlashStagingMemory {
         }
 
         if images_match {
-            crate::console_writeln!(
+            crate::log_info!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] Staging matches Partition A, skipping copy"
             );
             return Ok(());
         }
 
-        crate::console_writeln!(
+        crate::log_info!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Copying image from staging to Partition A, length {}",
             img_sz

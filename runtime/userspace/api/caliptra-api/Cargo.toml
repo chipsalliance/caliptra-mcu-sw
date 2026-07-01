@@ -12,7 +12,9 @@ caliptra-api.workspace = true
 caliptra-auth-man-types.workspace = true
 caliptra-error.workspace = true
 caliptra-image-types = { workspace = true, default-features = false }
+caliptra-ocp-eat.workspace = true
 const-oid.workspace = true
+defmt = { workspace = true, optional = true }
 der.workspace = true
 dpe.workspace = true
 embassy-executor.workspace = true
@@ -26,13 +28,18 @@ caliptra-mcu-libtock_runtime.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-lib.workspace = true
 caliptra-mcu-romtime.workspace = true
+caliptra-mcu-userlog.workspace = true
 mcu-error.workspace = true
 spki.workspace = true
 zerocopy.workspace = true
-caliptra-ocp-eat.workspace = true
 
 [features]
 ocp-lock = ["caliptra-mcu-romtime/ocp-lock"]
+release = [
+	"dep:defmt",
+	"caliptra-mcu-pldm-lib/release",
+	"caliptra-mcu-userlog/defmt-transport",
+]
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 caliptra-mcu-libtock_unittest.workspace = true

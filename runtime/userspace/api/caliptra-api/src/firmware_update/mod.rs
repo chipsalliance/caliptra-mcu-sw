@@ -22,7 +22,6 @@ use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
 };
-use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
 use caliptra_mcu_libsyscall_caliptra::dma::{
     DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
@@ -36,11 +35,13 @@ use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareP
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
 use caliptra_mcu_pldm_lib::daemon::PldmService;
+use caliptra_mcu_userlog::{log_error, log_info, Dbg, Hex32};
 use embassy_executor::Spawner;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
+#[allow(unused_imports)]
 use core::fmt::Write;
 use core::mem::offset_of;
 
@@ -225,7 +226,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             .map_err(|_| ErrorCode::Fail)?;
         let (flash_header, _) =
             FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;
-        console_writeln!(
+        log_info!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Setting Manifest"
         );
@@ -288,7 +289,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         flash_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
 
         // Verify Caliptra bundle
-        console_writeln!(
+        log_info!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Verifying Caliptra Bundle (image_count={} headers_off={})",
             flash_header.image_count,
@@ -302,14 +303,14 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             )
             .await;
         if toc_result.is_err() {
-            console_writeln!(
+            log_error!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] ERROR: get_image_toc for Caliptra bundle failed"
             );
             return Err(ErrorCode::Fail);
         }
         let (cptra_image_offset, cptra_image_len) = toc_result.unwrap();
-        console_writeln!(
+        log_info!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Caliptra bundle at offset={} len={}",
             cptra_image_offset,
@@ -323,7 +324,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             )
             .await;
         if verify_result.is_err() {
-            console_writeln!(
+            log_error!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] ERROR: process_caliptra_fw(Verify) failed"
             );
@@ -331,7 +332,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         }
 
         // Verify the new Auth Manifest
-        console_writeln!(
+        log_info!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Verifying Manifest"
         );
@@ -391,7 +392,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         &mut self,
         flash_header: &FlashHeader,
     ) -> Result<(), ErrorCode> {
-        console_writeln!(
+        log_info!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Verifying image matches running firmware"
         );
@@ -435,7 +436,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
 
         // Compare FMC digests
         if manifest.fmc.digest != fw_info.fmc_sha384_digest {
-            console_writeln!(
+            log_error!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] FMC digest mismatch"
             );
@@ -444,7 +445,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
 
         // Compare RT digests
         if manifest.runtime.digest != fw_info.runtime_sha384_digest {
-            console_writeln!(
+            log_error!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] RT digest mismatch"
             );
@@ -507,16 +508,16 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
                 .get_image_metadata(manifest_offset, manifest_len, image_header.identifier)
                 .await?;
             if hash != metadata.digest {
-                console_writeln!(
+                log_error!(
                     Console::<DefaultSyscalls>::writer(),
-                    "[FW Upd] Image 0x{:x} digest mismatch with running firmware",
-                    image_header.identifier
+                    "[FW Upd] Image {} digest mismatch with running firmware",
+                    Hex32(image_header.identifier)
                 );
                 return Err(ErrorCode::Fail);
             }
         }
 
-        console_writeln!(
+        log_info!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Running image verification passed"
         );
@@ -595,11 +596,11 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
                 Ok(_) => break,
                 Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
                 Err(e) => {
-                    console_writeln!(
+                    log_error!(
                         Console::<DefaultSyscalls>::writer(),
-                        "[FW Upd] ERROR: mailbox cmd={:#x} failed: {:?}",
-                        cmd,
-                        e
+                        "[FW Upd] ERROR: mailbox cmd={} failed: {}",
+                        Hex32(cmd),
+                        Dbg(e)
                     );
                     return Err(ErrorCode::Fail);
                 }
@@ -609,7 +610,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             let resp =
                 FirmwareVerifyResp::ref_from_bytes(response_buffer).map_err(|_| ErrorCode::Fail)?;
             if resp.verify_result != FirmwareVerifyResult::Success as u32 {
-                console_writeln!(
+                log_error!(
                     Console::<DefaultSyscalls>::writer(),
                     "[FW Upd] ERROR: FIRMWARE_VERIFY result={} (expected {})",
                     resp.verify_result,
@@ -621,7 +622,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         Ok(())
     }
     async fn update_caliptra(&mut self, flash_header: &FlashHeader) -> Result<(), ErrorCode> {
-        console_writeln!(
+        log_info!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Updating Caliptra"
         );
@@ -783,7 +784,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
     }
 
     async fn update_mcu(&mut self, flash_header: &FlashHeader) -> Result<(), ErrorCode> {
-        console_writeln!(
+        log_info!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Updating MCU"
         );
@@ -801,9 +802,9 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             .get_dma_image_staging_address(MCU_RT_IDENTIFIER)
             .await?;
 
-        console_writeln!(
+        log_info!(
             Console::<DefaultSyscalls>::writer(),
-            "[FW Upd] MCU update: staging_address={:#x}, mcu_image_offset={}, mcu_image_len={}",
+            "[FW Upd] MCU update: staging_address={} mcu_image_offset={} mcu_image_len={}",
             staging_address,
             mcu_image_offset,
             mcu_image_len
@@ -944,7 +945,7 @@ pub async fn default_copy_to_memory<const TRANSFER_SIZE: usize>(
 
         // Print progress every 10KB
         if (current_offset - offset) % 10240 == 0 {
-            console_writeln!(
+            log_info!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] copy_to_memory progress: {}/{} bytes",
                 current_offset - offset,
@@ -1020,7 +1021,7 @@ impl PayloadStream for MailboxPayloadStream {
         }
 
         if (self.cursor - self.offset) % 10240 == 0 {
-            console_writeln!(
+            log_info!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] MailboxPayloadStream: read progress: {}/{} bytes",
                 self.cursor - self.offset,

@@ -38,6 +38,7 @@ use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
 #[allow(unused)]
 use caliptra_mcu_pldm_lib::daemon::PldmService;
+#[allow(unused_imports)]
 use core::fmt::Write;
 
 #[allow(unused)]
@@ -134,7 +135,7 @@ pub async fn image_loading_task() {
 #[allow(unused_variables)]
 async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
-    crate::console_writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
+    crate::log_info!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
     #[cfg(any(
         feature = "test-pldm-streaming-boot",
         feature = "test-streaming-boot-flash-write-back",
@@ -239,15 +240,15 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
     {
         let fdops = pldm_fdops_mock::FdOpsObject::new();
         let mut pldm_service = PldmService::init(&fdops, EXECUTOR.get().spawner());
-        crate::console_writeln!(
+        crate::log_info!(
             console_writer,
             "PLDM_APP: Starting PLDM service for testing..."
         );
         if let Err(e) = pldm_service.start().await {
-            crate::console_writeln!(
+            crate::log_error!(
                 console_writer,
-                "PLDM_APP: Error starting PLDM service: {:?}",
-                e
+                "PLDM_APP: Error starting PLDM service: {}",
+                crate::Dbg(e)
             );
         }
         pldm_fdops_mock::FdOpsObject::wait_for_pldm_done().await;

@@ -8,7 +8,6 @@ use crate::firmware_device::fd_ops::FdOps;
 use crate::firmware_device::transfer_session::TransferSession;
 use crate::timer::AsyncAlarm;
 use crate::transport::MctpTransport;
-use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::mctp::driver_num;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
@@ -22,6 +21,8 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::{FwUpdateCmd, FwUpdateC
 use caliptra_mcu_pldm_common::util::mctp_transport::{
     construct_mctp_pldm_msg, extract_pldm_msg, MAX_MCTP_PLDM_MSG_SIZE, MCTP_PLDM_MSG_HDR_LEN,
 };
+use caliptra_mcu_userlog::{log_error, Hex32};
+#[allow(unused_imports)]
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
@@ -185,10 +186,10 @@ pub async fn pldm_initiator(
                         }
                     }
                     Err(e) => {
-                        console_writeln!(
+                        log_error!(
                             console_writer,
-                            "PLDM_APP: Error in optimized download: {:?}",
-                            e
+                            "PLDM_APP: optimized download error={}",
+                            Hex32(u32::from(e))
                         );
                         // Sync and fall back to regular path
                         cmd_interface.sync_transfer_session(sess).await;
@@ -219,10 +220,10 @@ pub async fn pldm_initiator(
                         }
                     }
                     Err(e) => {
-                        console_writeln!(
+                        log_error!(
                             console_writer,
-                            "PLDM_APP: Error handling initiator msg: {:?}",
-                            e
+                            "PLDM_APP: initiator msg error={}",
+                            Hex32(u32::from(e))
                         );
                     }
                 }
@@ -252,10 +253,10 @@ pub async fn pldm_responder(
             Ok(crate::cmd_interface::ResponderAction::Complete) => break,
             Ok(crate::cmd_interface::ResponderAction::Continue) => {}
             Err(e) => {
-                console_writeln!(
+                log_error!(
                     console_writer,
-                    "PLDM_APP: Error handling responder msg: {:?}",
-                    e
+                    "PLDM_APP: responder msg error={}",
+                    Hex32(u32::from(e))
                 );
             }
         }

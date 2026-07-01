@@ -14,6 +14,7 @@ mod test_caliptra_runtime_svn_burn;
 mod test_caliptra_util_host_mcu_mailbox_validator;
 mod test_caliptra_util_host_spdm_vdm_validator;
 mod test_defmt_logging_mailbox;
+mod test_defmt_logging_release;
 mod test_defmt_logging_vdm;
 mod test_dot;
 mod test_exception_handler;
@@ -104,6 +105,8 @@ mod test {
         pub force_fuse_owner_pk_hash: bool,
         /// Optional custom MCU ROM bytes (overrides the default/compiled ROM).
         pub custom_mcu_rom: Option<Vec<u8>>,
+        /// Optional custom MCU runtime bytes (overrides the default/compiled runtime).
+        pub custom_mcu_runtime: Option<Vec<u8>>,
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
         pub firmware_prefix: Option<Vec<u8>>,
         pub fw_manifest_dot_hitless: bool,
@@ -122,6 +125,8 @@ mod test {
         pub seeded_log_entries: Option<&'static [&'static [u8]]>,
         /// If true, include the example app in the runtime build instead of the user app.
         pub example_app: bool,
+        /// Cargo profile to use for a from-source runtime build.
+        pub profile: Option<&'a str>,
         /// Override the Caliptra firmware SVN. Forces a from-source
         /// Caliptra FW + SoC manifest build (ignoring any prebuilt
         /// Caliptra FW) so the reported `FW_INFO.fw_svn` is known. Only
@@ -148,6 +153,7 @@ mod test {
                 ocp_lock_en: false,
                 force_fuse_owner_pk_hash: false,
                 custom_mcu_rom: None,
+                custom_mcu_runtime: None,
                 firmware_prefix: None,
                 fw_manifest_dot_hitless: false,
                 active_i3c1: false,
@@ -158,6 +164,7 @@ mod test {
                 use_strap_secrets: false,
                 seeded_log_entries: None,
                 example_app: false,
+                profile: None,
                 caliptra_svn: None,
             }
         }
@@ -267,6 +274,15 @@ mod test {
     }
 
     pub fn compile_runtime(feature: Option<&str>, example_app: bool) -> PathBuf {
+        let profile_env = std::env::var("MCU_TEST_PROFILE").ok();
+        compile_runtime_with_profile(feature, example_app, profile_env.as_deref())
+    }
+
+    pub fn compile_runtime_with_profile(
+        feature: Option<&str>,
+        example_app: bool,
+        profile: Option<&str>,
+    ) -> PathBuf {
         let mut features = vec![];
         if let Some(feature) = feature {
             features.push(feature);
@@ -274,7 +290,6 @@ mod test {
         if TEST_HW_REVISION == "2.1.0" {
             features.push("hw-2-1");
         }
-
         let platform = platform();
         let feature_name = match feature {
             Some(f) => format!("-{f}"),
@@ -290,8 +305,7 @@ mod test {
         // the `release` cargo feature so kernel `debug!()` macros,
         // `romtime::println!`, DebugWriter, Console, LowLevelDebug
         // and ProcessConsole are stripped.
-        let profile_env = std::env::var("MCU_TEST_PROFILE").ok();
-        if matches!(profile_env.as_deref(), Some("release")) {
+        if matches!(profile, Some("release")) {
             features.push("release");
         }
 
@@ -305,7 +319,7 @@ mod test {
             output_name: Some(name),
             example_app,
             platform: Some(platform),
-            profile: profile_env.as_deref(),
+            profile,
             ..Default::default()
         })
         .expect("Runtime failed to compile");
@@ -977,8 +991,16 @@ mod test {
     }
 
     pub fn build_test_binaries(params: &TestParams) -> TestBinaries {
-        // Get MCU runtime: prefer prebuilt for the requested feature, fall back to compilation
-        let mcu_runtime_path = if let Ok(binaries) = FirmwareBinaries::from_env() {
+        // Get MCU runtime: prefer an explicit override, then prebuilt for the
+        // requested feature, and fall back to compilation.
+        let mcu_runtime_path = if let Some(runtime_bytes) = params.custom_mcu_runtime.as_ref() {
+            let path = target_binary("mcu_runtime_custom_for_builder.bin");
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            std::fs::write(&path, runtime_bytes).expect("Failed to write custom runtime to file");
+            path
+        } else if let Ok(binaries) = FirmwareBinaries::from_env() {
             let runtime_bytes = if let Some(feature) = params.feature {
                 match binaries.test_runtime(feature) {
                     Ok(bytes) => Some(bytes.clone()),
@@ -1002,7 +1024,7 @@ mod test {
         } else if params.rom_only {
             compile_runtime(None, false)
         } else {
-            compile_runtime(params.feature, params.example_app)
+            compile_runtime_with_profile(params.feature, params.example_app, params.profile)
         };
 
         // When a firmware prefix is provided, create a modified binary that
@@ -1130,6 +1152,7 @@ mod test {
         } = match FirmwareBinaries::from_env() {
             Ok(binaries)
                 if params.firmware_prefix.is_none()
+                    && params.custom_mcu_runtime.is_none()
                     && (params.rom_feature.is_none()
                         || has_prebuilt_rom(params.rom_feature.unwrap()))
                     && (params.feature.is_none()

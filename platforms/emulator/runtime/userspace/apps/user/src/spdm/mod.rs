@@ -32,6 +32,7 @@ use caliptra_mcu_spdm_vdm_handler::pci_sig::{
     ide_km::PciSigIdeKmTdispVdm,
     tdisp::{TdispResponder, TdispVersion},
 };
+#[allow(unused_imports)]
 use core::fmt::Write as _;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU8, Ordering};
@@ -111,10 +112,10 @@ pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
     if spawner.spawn(spdm_mctp_responder()).is_err() {
-        crate::console_writeln!(cw, "SPDM: Failed to spawn MCTP responder");
+        crate::log_error!(cw, "SPDM: Failed to spawn MCTP responder");
     }
     if spawner.spawn(spdm_doe_responder()).is_err() {
-        crate::console_writeln!(cw, "SPDM: Failed to spawn DOE responder");
+        crate::log_error!(cw, "SPDM: Failed to spawn DOE responder");
     }
 }
 
@@ -137,7 +138,11 @@ async fn spdm_mctp_responder() {
 
     {
         if let Err(e) = ensure_cert_store_init(allocator).await {
-            crate::console_writeln!(cw, "SPDM_MCTP: cert store init failed: 0x{:08x}", e);
+            crate::log_error!(
+                cw,
+                "SPDM_MCTP: cert store init failed: 0x{}",
+                crate::Hex32(u32::from(e))
+            );
             return;
         }
     }
@@ -159,9 +164,13 @@ async fn spdm_mctp_responder() {
     let vdm = CaliptraVdm::new(&MCTP_VDM_HOOK);
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 
-    crate::console_writeln!(cw, "SPDM_MCTP: starting spdm-lib MCTP run loop");
+    crate::log_info!(cw, "SPDM_MCTP: starting spdm-lib MCTP run loop");
     if let Err(e) = stack.run().await {
-        crate::console_writeln!(cw, "SPDM_MCTP: MCTP run loop exited: 0x{:08x}", e);
+        crate::log_error!(
+            cw,
+            "SPDM_MCTP: MCTP run loop exited: 0x{}",
+            crate::Hex32(u32::from(e))
+        );
     }
 }
 
@@ -171,7 +180,7 @@ async fn spdm_doe_responder() {
 
     let doe_transport = McuSpdmDoeTransport::new(doe::driver_num::DOE_SPDM);
     if !doe_transport.exists() {
-        crate::console_writeln!(cw, "SPDM_DOE: No DOE device, exiting");
+        crate::log_info!(cw, "SPDM_DOE: No DOE device, exiting");
         return;
     }
 
@@ -190,7 +199,11 @@ async fn spdm_doe_responder() {
 
     {
         if let Err(e) = ensure_cert_store_init(allocator).await {
-            crate::console_writeln!(cw, "SPDM_DOE: cert store init failed: 0x{:08x}", e);
+            crate::log_error!(
+                cw,
+                "SPDM_DOE: cert store init failed: 0x{}",
+                crate::Hex32(u32::from(e))
+            );
             return;
         }
     }
@@ -212,8 +225,12 @@ async fn spdm_doe_responder() {
     #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
     let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
 
-    crate::console_writeln!(cw, "SPDM_DOE: starting spdm-lib DOE run loop");
+    crate::log_info!(cw, "SPDM_DOE: starting spdm-lib DOE run loop");
     if let Err(e) = stack.run().await {
-        crate::console_writeln!(cw, "SPDM_DOE: DOE run loop exited: 0x{:08x}", e);
+        crate::log_error!(
+            cw,
+            "SPDM_DOE: DOE run loop exited: 0x{}",
+            crate::Hex32(u32::from(e))
+        );
     }
 }

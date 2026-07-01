@@ -7,6 +7,7 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+defmt = { workspace = true, optional = true }
 embassy-executor.workspace = true
 embassy-sync.workspace = true
 mcu-error.workspace = true
@@ -21,8 +22,14 @@ caliptra-mcu-libtock_runtime.workspace = true
 caliptra-mcu-libtockasync.workspace = true
 caliptra-mcu-mbox-common.workspace = true
 caliptra-mcu-romtime.workspace = true
+caliptra-mcu-userlog.workspace = true
 zerocopy.workspace = true
 
 [features]
 default = []
 periodic-fips-self-test = []
+release = [
+	"dep:defmt",
+	"caliptra-mcu-libapi-caliptra/release",
+	"caliptra-mcu-userlog/defmt-transport",
+]

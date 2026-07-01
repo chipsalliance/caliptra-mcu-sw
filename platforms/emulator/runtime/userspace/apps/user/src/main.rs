@@ -12,14 +12,21 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 
-// Re-export the shared `console_writeln!` from libsyscall-caliptra so existing
-// `crate::console_writeln!(...)` call sites in this crate continue to resolve.
+// Re-export the unified logging macros from userlog so
+// `crate::log_*!(...)` call sites in this crate resolve. Dev builds write
+// console text; release builds emit defmt frames.
+#[allow(unused_imports)]
+pub use caliptra_mcu_userlog::{log_debug, log_error, log_info, log_trace, log_warn};
+#[allow(unused_imports)]
+pub(crate) use caliptra_mcu_userlog::{Bytes, Dbg, Hex32};
+
 #[allow(unused_imports)]
 pub use caliptra_mcu_libsyscall_caliptra::console_writeln;
 
 mod caliptra_cmd_handler;
 #[cfg(any(
     feature = "test-defmt-logging-mailbox",
+    feature = "test-defmt-logging-release",
     feature = "test-defmt-logging-vdm"
 ))]
 mod defmt_test;
@@ -140,6 +147,7 @@ pub(crate) async fn async_main() {
 
     #[cfg(any(
         feature = "test-defmt-logging-mailbox",
+        feature = "test-defmt-logging-release",
         feature = "test-defmt-logging-vdm"
     ))]
     defmt_test::emit_test_frames();
