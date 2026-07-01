@@ -28,6 +28,7 @@ mod rom;
 mod runtime;
 mod sizes;
 mod test;
+#[cfg(feature = "cherry-picker")]
 mod vertex_ai;
 
 #[cfg(feature = "fpga_realtime")]
@@ -413,6 +414,7 @@ enum Commands {
         #[command(subcommand)]
         cmd: network::NetworkCommands,
     },
+    #[cfg(feature = "cherry-picker")]
     /// Call Vertex AI Gemini API
     VertexPrompt {
         /// The prompt to send to the model
@@ -795,6 +797,7 @@ fn main() {
         },
         Commands::FirmwareBundler { cmd } => caliptra_mcu_firmware_bundler::execute(cmd.clone()),
         Commands::Network { cmd } => network::run(cmd.clone()),
+        #[cfg(feature = "cherry-picker")]
         Commands::VertexPrompt {
             prompt,
             model,

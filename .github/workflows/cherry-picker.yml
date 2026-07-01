@@ -47,7 +47,7 @@ jobs:
           fi
 
       - name: Prebuild xtask
-        run: cargo build -p xtask && cp target/debug/xtask /tmp/xtask
+        run: cargo build -p xtask --features cherry-picker && cp target/debug/xtask /tmp/xtask
 
       - name: Determine cherry-pick parameters
         id: params
