@@ -240,6 +240,14 @@ impl<S: Syscalls> Otp<S> {
             S::command(self.driver_num, cmd::OTP_ROTATE_HEK, slot, 0).to_result::<(), ErrorCode>()
         })
     }
+
+    pub fn is_hek_perma_set(&self) -> Result<bool, ErrorCode> {
+        self.read(reg::PERMA_HEK_EN, 0).map(|val| val != 0)
+    }
+
+    pub fn set_hek_perma(&self) -> Result<(), ErrorCode> {
+        self.write(reg::PERMA_HEK_EN, 0, 1)
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -344,4 +352,5 @@ pub mod reg {
     pub const FUSE_READ: u32 = 30;
     pub const FUSE_WRITE: u32 = 31;
     pub const FUSE_LOCK_PARTITION: u32 = 32;
+    pub const PERMA_HEK_EN: u32 = 33;
 }

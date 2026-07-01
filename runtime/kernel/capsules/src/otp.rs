@@ -126,6 +126,7 @@ pub mod reg {
     pub const VENDOR_ECC_REVOCATION: u32 = 27;
     pub const VENDOR_LMS_REVOCATION: u32 = 28;
     pub const VENDOR_MLDSA_REVOCATION: u32 = 29;
+    pub const PERMA_HEK_EN: u32 = 33;
 }
 
 #[derive(Default)]
@@ -305,6 +306,11 @@ impl Otp {
                     Err(_) => CommandReturn::failure(ErrorCode::INVAL),
                 }
             }
+            #[cfg(feature = "ocp-lock")]
+            reg::PERMA_HEK_EN => match self.driver.read_entry(fuses::PERMA_HEK_EN) {
+                Ok(value) => CommandReturn::success_u32(value),
+                Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+            },
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }) {
             Ok(ret) => ret,
@@ -423,6 +429,20 @@ impl Otp {
                     Err(_) => CommandReturn::failure(ErrorCode::INVAL),
                 }
             }
+            #[cfg(feature = "ocp-lock")]
+            reg::PERMA_HEK_EN => {
+                // Fuses can only be programmed 0 -> 1. Only allow writing 1.
+                if value != 1 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+                if !self.all_heks_zeroized() {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+                match self.driver.write_entry(fuses::PERMA_HEK_EN, value) {
+                    Ok(_) => CommandReturn::success(),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }) {
             Ok(ret) => ret,
@@ -526,6 +546,21 @@ impl Otp {
             .platform
             .get_hek_slot_offset(slot_index)
             .map_err(|_| ErrorCode::FAIL)
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    fn all_heks_zeroized(&self) -> bool {
+        let ocp_lock_ctx = match self.ocp_lock_ctx.as_ref() {
+            Some(ctrl) => ctrl,
+            None => return false,
+        };
+        (0..ocp_lock_ctx.state.total_slots as usize).all(|idx| {
+            if let Ok(true) = ocp_lock_ctx.platform.is_hek_slot_zeroized(self.driver, idx) {
+                true
+            } else {
+                false
+            }
+        })
     }
 }
 

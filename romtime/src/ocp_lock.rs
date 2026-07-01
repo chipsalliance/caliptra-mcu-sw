@@ -243,4 +243,7 @@ pub trait PlatformRuntime {
 
     /// Check if the HEK perma bit is set.
     fn is_perma_bit_set(&self, otp: &crate::otp::Otp) -> Result<bool, Error>;
+
+    /// Check if a HEK slot is zeroized.
+    fn is_hek_slot_zeroized(&self, otp: &crate::otp::Otp, slot: usize) -> Result<bool, Error>;
 }

@@ -22,8 +22,9 @@ use caliptra_mcu_mbox_common::messages::{
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
     GetAuthCmdChallengeResp, GetLogReq, GetLogResp, MailboxRespHeader, MailboxRespHeaderVarSize,
     McuFeProgReq, McuResponseVarSize, OcpLockRotateHekReq, OcpLockRotateHekResp,
-    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE,
-    MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    OcpLockSetPermaHekReq, OcpLockSetPermaHekResp, ProvisionVendorPkHashReq,
+    ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE,
+    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -169,12 +170,14 @@ impl<'a> CmdInterface<'a> {
                 | inner @ CommandId::MC_FUSE_WRITE
                 | inner @ CommandId::MC_FUSE_LOCK_PARTITION
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY
-                | inner @ CommandId::MC_OCP_LOCK_ROTATE_HEK => {
+                | inner @ CommandId::MC_OCP_LOCK_ROTATE_HEK
+                | inner @ CommandId::MC_OCP_LOCK_SET_PERMA_HEK => {
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
+
                 _ => Err(errors::UNSUPPORTED_COMMAND),
             }
         };
@@ -532,6 +535,9 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_OCP_LOCK_ROTATE_HEK => {
                 self.handle_ocp_lock_rotate_hek(cmd, resp_buf).await
+            }
+            CommandId::MC_OCP_LOCK_SET_PERMA_HEK => {
+                self.handle_ocp_lock_set_perma_hek(cmd, resp_buf).await
             }
             _ => Err(errors::UNSUPPORTED_COMMAND),
         }
@@ -924,6 +930,27 @@ impl<'a> CmdInterface<'a> {
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_ocp_lock_set_perma_hek<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        if req.len() > size_of::<OcpLockSetPermaHekReq>() {
+            return Err(errors::INVALID_PARAMS);
+        }
+
+        let status = if self.otp.set_hek_perma().is_err() {
+            MbxCmdStatus::Failure
+        } else {
+            MbxCmdStatus::Complete
+        };
+
+        let resp = OcpLockSetPermaHekResp::default();
+        let resp = resp.as_bytes();
+        resp_buf[..resp.len()].copy_from_slice(resp);
+        Ok((&mut resp_buf[..resp.len()], status))
     }
 
     async fn handle_ocp_lock_rotate_hek<'r>(

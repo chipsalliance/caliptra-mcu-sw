@@ -95,11 +95,17 @@ impl PlatformRuntime for RuntimeOcpLockPlatform {
     }
 
     fn is_perma_bit_set(&self, otp: &Otp) -> Result<bool, Error> {
-        let perma_hek_en_addr = (fuses::PERMA_HEK_EN.byte_offset / 4) as usize;
-        match otp.read_word(perma_hek_en_addr) {
+        match otp.read_entry(fuses::PERMA_HEK_EN) {
             Ok(val) => Ok(val != 0),
             Err(_) => Err(Error::ROM_INVALID_HEK_SLOT),
         }
+    }
+
+    fn is_hek_slot_zeroized(&self, otp: &Otp, slot: usize) -> Result<bool, Error> {
+        let mut seed = [0u8; caliptra_mcu_romtime::HEK_PARTITION_SIZE];
+        otp.read_hek_seed(slot, &mut seed)
+            .map_err(|_| Error::ROM_INVALID_HEK_SLOT)?;
+        Ok(seed.iter().all(|&b| b == 0xFF))
     }
 }
 
