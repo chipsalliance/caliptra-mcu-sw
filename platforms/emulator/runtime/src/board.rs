@@ -9,9 +9,10 @@ use caliptra_mcu_capsules_runtime::mctp::base_protocol::MessageType;
 use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
 use caliptra_mcu_components::mctp_mux_component_static;
 use caliptra_mcu_components::{
-    doe_component_static, external_otp_component_static, flash_partition_component_static,
-    instantiate_flash_partitions, instantiate_logging_flash, mailbox_component_static,
-    mbox_sram_component_static, mctp_driver_component_static, mcu_mbox_component_static,
+    doe_component_static, dpe_handle_store_component_static, external_otp_component_static,
+    flash_partition_component_static, instantiate_flash_partitions, instantiate_logging_flash,
+    mailbox_component_static, mbox_sram_component_static, mctp_driver_component_static,
+    mcu_mbox_component_static,
 };
 #[cfg(feature = "crash-log")]
 use caliptra_mcu_config_emulator::flash::CRASH_LOG_PARTITION;
@@ -164,6 +165,7 @@ struct VeeR {
     >,
     otp: &'static caliptra_mcu_capsules_runtime::otp::Otp,
     external_otp: &'static caliptra_mcu_capsules_runtime::external_otp::ExternalOtpCapsule<'static>,
+    dpe_handle_store: &'static caliptra_mcu_capsules_runtime::dpe_handle_store::DpeHandleStore,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>,
 }
 
@@ -233,6 +235,9 @@ impl SyscallDriverLookup for VeeR {
             caliptra_mcu_capsules_runtime::otp::DRIVER_NUM => f(Some(self.otp)),
             caliptra_mcu_capsules_runtime::external_otp::EXTERNAL_OTP_DRIVER_NUM => {
                 f(Some(self.external_otp))
+            }
+            caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM => {
+                f(Some(self.dpe_handle_store))
             }
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
 
@@ -364,10 +369,12 @@ pub unsafe fn main() {
         execute: false,
     });
 
-    // Data region (SRAM)
+    // Data region (SRAM) — extends to end of storage region so the kernel
+    // DPE handle store capsule (and any other kernel code) can write to
+    // the persistent storage area at the end of SRAM (_sstorage.._estorage).
     platform_regions.push(PlatformRegion {
         start_addr: addr_of!(_ssram),
-        size: (addr_of!(_esram) as usize + 0x80) - addr_of!(_ssram) as usize,
+        size: addr_of!(_estorage) as usize - addr_of!(_ssram) as usize,
         is_mmio: false,
         user_accessible: false,
         read: true,
@@ -844,6 +851,24 @@ pub unsafe fn main() {
     )
     .finalize(external_otp_component_static!());
 
+    // DPE Handle Store: backed by the persistent storage SRAM reservation
+    // (_sstorage .. _estorage) defined by the firmware-bundler linker script.
+    // Capacity = (region_len - 8) / 32 records (≥ 31 with the default 1 KB region).
+    // When built outside the firmware-bundler (e.g. cargo check), _sstorage ==
+    // _estorage == 0 so capacity is 0 and no records can be stored, which is safe.
+    let dpe_handle_store = {
+        let start = addr_of!(_sstorage) as *mut u8;
+        let end = addr_of!(_estorage) as usize;
+        let len = end.saturating_sub(start as usize);
+        let dpe_sram: &'static mut [u8] = core::slice::from_raw_parts_mut(start, len);
+        caliptra_mcu_components::dpe_handle_store::DpeHandleStoreComponent::new(
+            board_kernel,
+            caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM,
+            dpe_sram,
+        )
+        .finalize(dpe_handle_store_component_static!())
+    };
+
     // MCU mailbox0 capsule
     let mcu_mbox0 = caliptra_mcu_components::mcu_mbox::McuMboxComponent::new(
         board_kernel,
@@ -908,6 +933,7 @@ pub unsafe fn main() {
             mcu_mbox1_staging_sram,
             otp,
             external_otp,
+            dpe_handle_store,
             system,
         }
     );

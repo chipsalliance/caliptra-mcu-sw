@@ -16,6 +16,7 @@ mod test_defmt_logging_mailbox;
 mod test_defmt_logging_release;
 mod test_defmt_logging_vdm;
 mod test_dot;
+mod test_dpe_handle_store;
 mod test_exception_handler;
 mod test_external_otp;
 mod test_firmware_update;
