@@ -32,6 +32,7 @@ mod test_mctp_vdm_cmds;
 mod test_mctp_vdm_validator;
 mod test_mcu_mbox;
 mod test_ocp_dev_identity_provision_tool;
+mod test_pcr_store;
 mod test_pldm_fw_update;
 mod test_raw_lifecycle_boot;
 mod test_soc_boot;

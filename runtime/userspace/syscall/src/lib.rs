@@ -15,6 +15,7 @@ pub mod mci;
 pub mod mctp;
 pub mod mcu_mbox;
 pub mod otp;
+pub mod pcr_store;
 pub mod system;
 
 #[cfg(target_arch = "riscv32")]

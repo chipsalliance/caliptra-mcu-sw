@@ -16,4 +16,5 @@ pub mod mcu_mbox;
 pub mod mock_mctp;
 pub mod mux_mctp;
 pub mod otp;
+pub mod pcr_store;
 pub mod system;
