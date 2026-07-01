@@ -1,8 +1,14 @@
 # Licensed under the Apache-2.0 license
-
-[bitstream]
-name = "subsystem-2.0"
-url = "https://storage.googleapis.com/caliptra-github-ci-bitstreams/scratch/runtime_0b2d15c3.pdi"
-hash = "eeb0e43c927dacbb32c62dda12cd01ec6a3d6e9bd0fbfa9b4b233d013232b2f2"
+schema_version = "1"
+repository = "chipsalliance/caliptra-mcu-sw"
+hw_major_version = "2.0"
+target_branch = "main"
 caliptra_variant = "subsystem"
-caliptra_rtl_commit = "c9d45534ab46b447861eba2ac8be2cf435a16763"
+date = "2026-04-22T23:40:40.841685873+00:00"
+commit_hash = "7981acf795fd5287c8f10a2cfaa1a01d998f84bb"
+caliptra_ss_commit = "b5718a0f7fe7936b5082a8dfc23add896755af3a"
+job_id = "24785363089-build-bitstream"
+segmented = true
+github_pr = 1274
+xsa_hash = "e4e92adc268fc830867694ba126b6e4bea5680f5f865afe7e59bd2f5c9978748"
+pdi_hash = "62aecea0bc5bcb29fe87d59a033013a90a7f63bda6118b7769207655a3699882"

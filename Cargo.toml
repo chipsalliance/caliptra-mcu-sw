@@ -319,7 +319,7 @@ caliptra-mcu-libtock_small_panic = { path = "runtime/userspace/libtock/panic_han
 caliptra-mcu-libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
 caliptra-mcu-tbf-header = { path = "runtime/userspace/libtock/tbf-header" }
 
-caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-infra", rev = "3db904cf9cd704fcf890da32fd61dd30bfce8d11" }
+caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-infra", rev = "e061f229d5d284ce39387eb104f3022053c6c772" }
 
 # caliptra dependencies; keep git revs in sync
 caliptra-api = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5" }
