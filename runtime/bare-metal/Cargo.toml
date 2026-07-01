@@ -15,3 +15,8 @@ rv32i.workspace = true
 [features]
 default = []
 fpga = ["caliptra-mcu-bare-metal-io/fpga"]
+
+[[bin]]
+name = "caliptra-mcu-bare-metal"
+path = "src/main.rs"
+test = false

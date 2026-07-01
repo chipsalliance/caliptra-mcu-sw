@@ -4,37 +4,48 @@
 mod test {
     use caliptra_mcu_builder::FirmwareBinaries;
     use caliptra_mcu_config_fpga::FPGA_MEMORY_MAP;
-    use caliptra_mcu_hw_model::{jtag::sideload_binary, McuHwModel};
+    use caliptra_mcu_hw_model::jtag::sideload_binary;
+    use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
     use caliptra_mcu_romtime::LifecycleControllerState;
 
-    use crate::jtag::test::{connect_mcu_tap, ss_setup};
+    use crate::jtag::test::connect_mcu_tap;
     use crate::test::finish_runtime_hw_model;
 
     #[test]
-    fn test_bare_metal_jtag_sideload() {
-        let mut model = ss_setup(
-            Some(LifecycleControllerState::TestUnlocked0),
-            /*rma_or_scrap_ppd=*/ false,
-            /*debug_intent=*/ true,
-            /*bootfsm_break=*/ true,
-            /*enable_mcu_uart_log=*/ true,
-        );
+    fn test_provisioning_jtag_sideload() {
+        let firmware_bundle = FirmwareBinaries::from_env().expect("Firmware bundle not found");
+
+        let init_params = InitParams {
+            fuses: Fuses::default(),
+            caliptra_rom: &firmware_bundle.caliptra_rom,
+            mcu_rom: &firmware_bundle.mcu_rom,
+            lifecycle_controller_state: Some(LifecycleControllerState::TestUnlocked0),
+            rma_or_scrap_ppd: false,
+            debug_intent: true,
+            bootfsm_break: false,
+            enable_mcu_uart_log: true,
+            skip_otp_provisioning: true,
+            ..Default::default()
+        };
+
+        let mut model = DefaultHwModel::new_unbooted(init_params).unwrap();
+        // tell the ROM to boot by setting bits 30 and 31
+        model.set_mcu_generic_input_wires(&[0, 0xc000_0000]);
 
         let mut mcu_tap =
             connect_mcu_tap(&mut model).expect("Failed to connect to the Caliptra MCU JTAG TAP.");
         mcu_tap.halt().expect("Failed to halt hart");
 
-        // Pull bare-metal bytes from prebuilt bundle environment.
+        // Pull provisioning FW from bundle
         let binaries = FirmwareBinaries::from_env().expect("Firmware bundle not found");
         let bare_metal_bytes = binaries
-            .get_bare_metal("caliptra-mcu-bare-metal")
-            .expect("mcu_bare_metal binary not found");
+            .get_bare_metal("caliptra-mcu-provisioning-test-unlocked-fw")
+            .expect("caliptra-mcu-provisioning-test-unlocked-fw binary not found");
         assert!(
             !bare_metal_bytes.is_empty(),
-            "mcu_bare_metal binary is empty"
+            "caliptra-mcu-provisioning-test-unlocked-fw binary is empty"
         );
 
-        // Sideload and execute bare metal binary
         let sram_base = FPGA_MEMORY_MAP.sram_offset;
         sideload_binary(
             &mut mcu_tap,
@@ -52,11 +63,6 @@ mod test {
 
         // Resume MCU
         mcu_tap.resume().expect("Failed to resume hart");
-
-        // Verify that the sideloaded binary actually ran by checking UART
-        model
-            .step_until_output_contains("Hello from Bare Metal Runtime!")
-            .expect("Failed to find expected UART output from bare metal binary");
 
         // Let simulation advance and verify clean execution exit
         let status = finish_runtime_hw_model(&mut model);

@@ -9,6 +9,7 @@ edition = "2021"
 caliptra-mcu-tock-veer.workspace = true
 caliptra-mcu-config.workspace = true
 caliptra-mcu-romtime.workspace = true
+caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-i3c-driver.workspace = true
 kernel.workspace = true
 
@@ -17,3 +18,4 @@ rv32i.workspace = true
 
 [features]
 default = []
+ocp-lock = ["caliptra-mcu-romtime/ocp-lock"]

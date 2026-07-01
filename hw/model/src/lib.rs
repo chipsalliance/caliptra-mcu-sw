@@ -252,6 +252,9 @@ pub struct InitParams<'a> {
     /// When true, set secrets_valid so DOE reads UDS/FE from strap registers
     /// for deterministic IDevID on FPGA (needed for attestation tests).
     pub use_strap_secrets: bool,
+
+    /// When true, do not provision default LC tokens or other fuses.
+    pub skip_otp_provisioning: bool,
 }
 
 impl InitParams<'_> {
@@ -333,6 +336,7 @@ impl Default for InitParams<'_> {
             active_i3c1: false,
             vendor_test_partition: None,
             use_strap_secrets: false,
+            skip_otp_provisioning: false,
         }
     }
 }
@@ -743,6 +747,11 @@ pub trait McuHwModel {
         Some(self.mcu_manager().mci().fw_error_fatal().read()).filter(|&e| e != 0)
     }
 
+    fn clear_mci_fw_fatal_error(&mut self) {
+        self.mcu_manager()
+            .with_mci(|mci| mci.fw_error_fatal().write(|_| 0x0));
+    }
+
     /// Returns true if the network CPU is initialized.
     fn has_network_cpu(&self) -> bool {
         false
@@ -751,6 +760,24 @@ pub trait McuHwModel {
     /// Get the network CPU UART output, if available.
     fn network_uart_output(&self) -> Option<String> {
         None
+    }
+
+    fn i3c_recovery_device_status_0(&mut self) -> u32 {
+        u32::from(
+            self.mcu_manager()
+                .i3c()
+                .sec_fw_recovery_if()
+                .device_status_0()
+                .read(),
+        )
+    }
+
+    fn set_i3c_recovery_device_reset_ctrl(&mut self, reset_ctrl: u32) {
+        self.mcu_manager()
+            .i3c()
+            .sec_fw_recovery_if()
+            .device_reset()
+            .write(|w| w.reset_ctrl(reset_ctrl));
     }
 
     fn warm_reset(&mut self);

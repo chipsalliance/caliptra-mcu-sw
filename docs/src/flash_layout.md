@@ -43,7 +43,6 @@ The Header section contains the metadata for the images.
 
 | Field          | Size (bytes) | Description                                                                                                                                |
 | -------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Magic Number   | 4            | A unique identifier to mark the start of the header.<br />The value must be `0x464C5348` (`"FLSH"` in ASCII) for flash or `0x54465450` (`"TFTP"` in ASCII) for Network Boot                              |
 | Header Version | 2            | The header version format, allowing for backward compatibility if the package format changes over time.<br />(Current version is `0x0002`) |
 | Image Count    | 2            | The number of images contained in the `Payload`.<br />Each image will have its own image information section.                                      |
 | Payload Offset | 4            | Offset in bytes of the header to where the first byte of the Payload is located.  |

@@ -1,0 +1,19 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-provisioning-common"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+caliptra-mcu-bare-metal-io.workspace = true
+caliptra-mcu-romtime.workspace = true
+caliptra-mcu-error.workspace = true
+caliptra-mcu-registers-generated.workspace = true
+tock-registers.workspace = true
+caliptra-mcu-provisioning-fuses.workspace = true
+
+[features]
+no-print = ["caliptra-mcu-romtime/no-print"]
+fpga = ["caliptra-mcu-bare-metal-io/fpga"]

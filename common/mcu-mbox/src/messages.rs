@@ -136,6 +136,9 @@ impl CommandId {
 
     // Certificate commands
     pub const MC_EXPORT_ATTESTED_CSR: Self = Self(0x4D45_4143); // "MEAC"
+
+    // OCP Lock commands
+    pub const MC_OCP_LOCK_ROTATE_HEK: Self = Self(0x4F4C_5248); // "OLRH"
 }
 
 impl From<u32> for CommandId {
@@ -208,6 +211,8 @@ pub enum McuMailboxReq {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashReq),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
+    // OCP Lock
+    OcpLockRotateHek(OcpLockRotateHekReq),
 }
 
 impl McuMailboxReq {
@@ -265,6 +270,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
+            McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -322,6 +328,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -381,6 +388,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
+            McuMailboxReq::OcpLockRotateHek(_) => CommandId::MC_OCP_LOCK_ROTATE_HEK,
         }
     }
 
@@ -462,6 +470,8 @@ pub enum McuMailboxResp {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
+    // OCP Lock
+    OcpLockRotateHek(OcpLockRotateHekResp),
 }
 
 /// A trait for responses with variable size data.
@@ -578,6 +588,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -634,6 +645,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -1617,6 +1629,27 @@ pub struct ProvisionVendorPkHashResp {
 }
 impl Response for ProvisionVendorPkHashResp {}
 
+/// MC_OCP_LOCK_ROTATE_HEK request: Rotate the active HEK.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct OcpLockRotateHekReq {
+    pub hdr: MailboxReqHeader,
+    pub hek_slot: u32,
+}
+
+impl Request for OcpLockRotateHekReq {
+    const ID: CommandId = CommandId::MC_OCP_LOCK_ROTATE_HEK;
+    type Resp = OcpLockRotateHekResp;
+}
+
+/// MC_OCP_LOCK_ROTATE_HEK response: Indicates success or failure.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct OcpLockRotateHekResp {
+    pub hdr: MailboxRespHeader,
+}
+
+impl Response for OcpLockRotateHekResp {}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1627,6 +1660,11 @@ mod tests {
         assert_eq!(CommandId::MC_FUSE_READ.0, 0x4946_5052); // "IFPR"
         assert_eq!(CommandId::MC_FUSE_WRITE.0, 0x4946_5057); // "IFPW"
         assert_eq!(CommandId::MC_FUSE_LOCK_PARTITION.0, 0x4946_504B); // "IFPK"
+    }
+
+    #[test]
+    fn test_ocp_lock_command_ids() {
+        assert_eq!(CommandId::MC_OCP_LOCK_ROTATE_HEK.0, 0x4F4C_5248); // "OLRH"
     }
 
     #[test]

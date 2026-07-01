@@ -5,8 +5,8 @@ use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
 };
 use caliptra_mcu_flash_image::{
-    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, FLASH_IMAGE_MAGIC_NUMBER, HEADER_VERSION,
-    MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
+    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, HEADER_VERSION, MCU_RT_IDENTIFIER,
+    SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
 };
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error, ErrorKind, Read, Seek, Write};
@@ -43,7 +43,6 @@ impl<'a> FirmwareImage<'a> {
 impl<'a> FlashImage<'a> {
     pub fn new(images: &'a [FirmwareImage<'a>], image_info: &'a [ImageHeader]) -> Self {
         let mut header = FlashHeader {
-            magic: FLASH_IMAGE_MAGIC_NUMBER.into(),
             version: HEADER_VERSION,
             image_count: image_info.len() as u16,
             image_headers_offset: core::mem::size_of::<FlashHeader>() as u32,
@@ -119,9 +118,6 @@ impl<'a> FlashImage<'a> {
         }
         let header = FlashHeader::read_from_bytes(&image[..HEADER_SIZE])
             .map_err(|_| anyhow!("Failed to parse header: invalid format or size"))?;
-        if header.magic != FLASH_IMAGE_MAGIC_NUMBER {
-            bail!("Invalid header: incorrect magic number or header version.");
-        }
 
         if header.version != HEADER_VERSION {
             bail!("Unsupported header version");
@@ -468,7 +464,6 @@ mod tests {
         let header = FlashHeader::read_from_bytes(&data[..HEADER_SIZE])
             .expect("Failed to parse flash header");
 
-        assert_eq!(header.magic, FLASH_IMAGE_MAGIC_NUMBER);
         assert_eq!(header.version, HEADER_VERSION);
         assert_eq!(header.image_count, 5); // 3 main images + 2 SoC images
 

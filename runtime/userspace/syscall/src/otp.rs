@@ -3,7 +3,9 @@
 //! # OTP: An Interface for accessing the OTP fuses
 
 use crate::DefaultSyscalls;
-use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
+use caliptra_mcu_libtock_platform::allow_ro::AllowRo;
+use caliptra_mcu_libtock_platform::share;
+use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use caliptra_mcu_mbox_common::messages::RevokeVendorPubKeyType;
 use core::{iter::repeat, marker::PhantomData};
 
@@ -52,7 +54,6 @@ impl<S: Syscalls> Otp<S> {
 
         S::command(self.driver_num, cmd::OTP_WRITE, value, 0).to_result::<(), ErrorCode>()
     }
-
     /// Writes a word to an OTP word address.
     ///
     /// Only bits specified with `mask` are written.
@@ -226,6 +227,19 @@ impl<S: Syscalls> Otp<S> {
         S::command(self.driver_num, cmd::OTP_LOCK_PARTITION, partition, 0)
             .to_result::<(), ErrorCode>()
     }
+
+    pub fn get_hek_metadata(&self) -> Result<(u32, u32), ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_GET_HEK_METADATA, 0, 0)
+            .to_result::<(u32, u32), ErrorCode>()
+    }
+
+    pub fn rotate_hek(&self, slot: u32, seed: &[u8; 32]) -> Result<(), ErrorCode> {
+        share::scope::<AllowRo<S, OTP_DRIVER_NUM, { ro_allow::SEED }>, _, _>(|allow_ro| {
+            S::allow_ro::<DefaultConfig, OTP_DRIVER_NUM, { ro_allow::SEED }>(allow_ro, seed)?;
+
+            S::command(self.driver_num, cmd::OTP_ROTATE_HEK, slot, 0).to_result::<(), ErrorCode>()
+        })
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -242,6 +256,12 @@ pub mod cmd {
     pub const OTP_READ_RAW: u32 = 4;
     pub const OTP_WRITE_RAW: u32 = 5;
     pub const OTP_LOCK_PARTITION: u32 = 6;
+    pub const OTP_GET_HEK_METADATA: u32 = 8; // Returns (total_slots, active_slot)
+    pub const OTP_ROTATE_HEK: u32 = 9;
+}
+
+mod ro_allow {
+    pub const SEED: u32 = 0;
 }
 
 pub mod reg {
@@ -269,7 +289,6 @@ pub mod reg {
     ];
 
     pub const CALIPTRA_FW_SVN: u32 = 9;
-
     pub const VENDOR_PK_HASH_0: u32 = 10;
     pub const VENDOR_PK_HASH_1: u32 = 11;
     pub const VENDOR_PK_HASH_2: u32 = 12;

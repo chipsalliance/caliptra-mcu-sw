@@ -43,13 +43,13 @@ struct Row {
 fn rom_elf_path(variant: &RomVariant) -> PathBuf {
     let platform = variant.platform.unwrap_or("emulator");
     // The bundler/cargo build leaves the bare ELF (no `.bin`) at the
-    // canonical `mcu-rom-<platform>` name, regardless of the
+    // canonical `caliptra-mcu-rom-<platform>` name, regardless of the
     // feature-suffixed `.bin` output produced by `rom_build`.
     PROJECT_ROOT
         .join("target")
         .join(caliptra_mcu_builder::TARGET)
         .join("release")
-        .join(format!("mcu-rom-{platform}"))
+        .join(format!("caliptra-mcu-rom-{platform}"))
 }
 
 /// Extract the size of the `.text` section from a riscv32imc ELF.

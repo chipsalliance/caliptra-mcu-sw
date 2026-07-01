@@ -101,6 +101,12 @@ impl BootFlow for WarmBoot {
         );
         mci.set_fw_sram_exec_region_size(size_value);
 
+        if let Some(mask) = params.fips_zeroization_mask {
+            caliptra_mcu_romtime::println!("[mcu-rom] Setting FIPS zeroization mask");
+            mci.set_fips_zeroization_mask(mask);
+            mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
+        }
+
         // Set SS_CONFIG_DONE_STICKY to lock MCI configuration registers
         caliptra_mcu_romtime::println!(
             "[mcu-rom] Setting SS_CONFIG_DONE_STICKY to lock configuration"

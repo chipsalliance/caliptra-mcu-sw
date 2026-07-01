@@ -11,6 +11,9 @@ pub mod tests;
 #[cfg(target_arch = "riscv32")]
 pub mod handoff;
 
+#[cfg(all(target_arch = "riscv32", feature = "ocp-lock"))]
+pub mod ocp_lock_platform;
+
 #[macro_export]
 macro_rules! read_volatile_at {
     ($slice:expr, $index:expr) => {{

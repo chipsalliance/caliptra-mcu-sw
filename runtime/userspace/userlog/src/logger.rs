@@ -96,7 +96,7 @@ unsafe impl defmt::Logger for Logger {
             }
         }
 
-        let log = LoggingSyscall::<DefaultSyscalls>::new();
+        let log = LoggingSyscall::<DefaultSyscalls>::default();
         if log.exists().is_err() {
             return;
         }

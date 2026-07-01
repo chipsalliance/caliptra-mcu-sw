@@ -26,3 +26,6 @@ caliptra-mcu-tock-veer.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-romtime.workspace = true
 tock-registers.workspace = true
+
+[features]
+ocp-lock = ["caliptra-mcu-capsules-runtime/ocp-lock"]

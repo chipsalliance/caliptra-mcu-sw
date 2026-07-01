@@ -180,12 +180,12 @@ impl McuError {
         ),
         (
             ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED,
-            0x1_003d,
+            0x1_0043,
             "INSTALL_OWNER_PK_HASH mailbox command failed"
         ),
         (
             ROM_DOT_FORCE_FUSE_OWNER_NOT_PROVISIONED,
-            0x1_003e,
+            0x1_0044,
             "Forced fuse owner requested but CPTRA_SS_OWNER_PK_HASH is not provisioned"
         ),
         (
@@ -811,12 +811,12 @@ impl McuError {
         ),
         (
             ROM_COLD_BOOT_FIELD_ENTROPY_ZEROIZED,
-            0x1_0043,
+            0x1_003D,
             "Field entropy slot is zeroized"
         ),
         (
             ROM_COLD_BOOT_FIELD_ENTROPY_PARTIAL,
-            0x1_0044,
+            0x1_003E,
             "Field entropy slot is partially programmed"
         ),
         (
@@ -864,6 +864,7 @@ impl McuError {
             0x1_0045,
             "Caliptra runtime SVN fuse burn failed"
         ),
+        (ROM_COLD_BOOT_DOT_ERROR, 0x1_0046, "DOT cold boot error"),
         (
             GENERIC_EXCEPTION,
             0xF_0000,

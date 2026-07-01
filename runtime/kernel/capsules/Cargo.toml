@@ -17,6 +17,7 @@ caliptra-mcu-error.workspace = true
 caliptra-mcu-flash-driver.workspace = true
 caliptra-mcu-i3c-driver.workspace = true
 caliptra-mcu-mbox-comm.workspace = true
+caliptra-mcu-otp-digest = { workspace = true, optional = true }
 kernel.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-romtime.workspace = true
@@ -27,3 +28,4 @@ zerocopy.workspace = true
 [features]
 default = []
 debug-capsule-prints = []
+ocp-lock = ["dep:caliptra-mcu-otp-digest"]

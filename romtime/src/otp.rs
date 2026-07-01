@@ -726,6 +726,50 @@ impl Otp {
         Ok(())
     }
 
+    pub fn write_data(&self, addr: usize, len: usize, data: &[u8]) -> McuResult<()> {
+        if addr % 4 != 0 || len % 4 != 0 {
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+
+        let mut offset = 0;
+        while offset < len {
+            let byte_addr = addr + offset;
+            let granule_size = if is_64bit_granule(byte_addr) { 8 } else { 4 };
+            let granule_addr = byte_addr & !(granule_size - 1);
+            let granule_offset = byte_addr - granule_addr;
+            let copy_len = (granule_size - granule_offset).min(len - offset);
+
+            let mut granule = [0u8; 8];
+            let available = data.len().saturating_sub(offset).min(copy_len);
+            granule[granule_offset..granule_offset + available]
+                .copy_from_slice(&data[offset..offset + available]);
+
+            if granule_size == 8 {
+                let dword = u64::from_le_bytes(granule);
+                self.write_dword(granule_addr / 8, dword)?;
+            } else {
+                let mut word_bytes = [0u8; 4];
+                word_bytes.copy_from_slice(&granule[0..4]);
+                let word = u32::from_le_bytes(word_bytes);
+                self.write_word(granule_addr / 4, word)?;
+            }
+            offset += copy_len;
+        }
+        Ok(())
+    }
+
+    /// Write a fuse entry's raw bytes from a caller-provided buffer.
+    ///
+    /// Writes `entry.byte_size` bytes to OTP at `entry.byte_offset`.
+    /// Note that this will pad the length up to the next multiple of 4 bytes.
+    pub fn write_entry_raw(&self, entry: &FuseEntryInfo, buf: &[u8]) -> McuResult<()> {
+        if buf.len() < entry.byte_size {
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+        let write_len = entry.byte_size.next_multiple_of(4);
+        self.write_data(entry.byte_offset, write_len, buf)
+    }
+
     /// Check if the HEK partition at the given offset is zeroized.
     pub fn is_hek_sanitized(&self, partition_address: usize) -> McuResult<bool> {
         // A partition is considered zeroized/sanitized if ALL bytes are 0xFF.

@@ -112,6 +112,7 @@ impl Error {
     pub const RUNTIME_HPKE_UNSUPPORTED_ALGORITHM: Self = Self(0x0000_0000_1000_0002);
     pub const RUNTIME_HPKE_INVALID_CERT_FORMAT: Self = Self(0x0000_0000_1000_0003);
     pub const RUNTIME_HPKE_CERT_SIGNING_FAILURE: Self = Self(0x0000_0000_1000_0004);
+    pub const RUNTIME_INVALID_HEK_SLOT: Self = Self(0x0000_0000_1000_0005);
 }
 
 #[derive(
@@ -212,4 +213,34 @@ impl Default for RomConfig<'_> {
             platform: None,
         }
     }
+}
+
+/// Platform specific OCP LOCK behavior for runtime key rotation
+pub trait PlatformRuntime {
+    /// Sanitize a HEK slot
+    fn sanitize_hek_slot(&self, otp: &crate::otp::Otp, slot: usize) -> Result<(), Error>;
+
+    /// Program a HEK slot with seed and digest
+    fn program_hek_slot(
+        &self,
+        otp: &crate::otp::Otp,
+        slot: usize,
+        seed: &[u8; 32],
+        digest: u64,
+    ) -> Result<(), Error>;
+
+    /// Get the physical byte offset of a HEK slot
+    fn get_hek_slot_offset(&self, slot: usize) -> Result<usize, Error>;
+
+    /// Validate if a slot transition is allowed.
+    /// NOTE: The kernel code defers to this method for idempotency.
+    fn validate_hek_transition(
+        &self,
+        active_slot: usize,
+        target_slot: usize,
+        total_slots: usize,
+    ) -> Result<(), Error>;
+
+    /// Check if the HEK perma bit is set.
+    fn is_perma_bit_set(&self, otp: &crate::otp::Otp) -> Result<bool, Error>;
 }

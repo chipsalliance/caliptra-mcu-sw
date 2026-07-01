@@ -719,8 +719,9 @@ mod test {
         let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak());
         let flash_contents = blob.to_flash_contents();
 
-        // Provision a non-zero owner PK hash fuse so the forced fuse owner exists.
-        let otp = build_dot_otp_with_owner_pk_hash([0x11u8; 48]);
+        // Provision the actual firmware owner PK hash so Caliptra Core can
+        // authenticate the firmware after ROM bypasses the DOT blob.
+        let otp = build_dot_otp_with_owner_pk_hash(transmute!(get_owner_pk_hash()));
 
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents),
@@ -730,9 +731,10 @@ mod test {
             ..Default::default()
         });
 
-        // Run until the bypass is logged, a fatal error occurs, or we time out.
+        // Run until firmware boot completes, a fatal error occurs, or we time out.
         hw.step_until(|m| {
-            m.output().peek().contains("Forcing fused owner PK hash")
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
                 || m.mci_fw_fatal_error().is_some()
                 || m.cycle_count() > 50_000_000
         });
@@ -745,10 +747,6 @@ mod test {
         );
 
         let output = hw.output().peek().to_string();
-        assert!(
-            output.contains("Forcing fused owner PK hash"),
-            "Expected force-fuse bypass message in ROM output"
-        );
         // The DOT flow must be skipped entirely.
         assert!(
             !output.contains("Performing Device Ownership Transfer flow"),
@@ -823,6 +821,61 @@ mod test {
             error_code, expected_error,
             "Expected ROM_COLD_BOOT_DOT_NO_RECOVERY_HANDLERS (0x{:x}), got 0x{:x}",
             expected_error, error_code
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test that the DOT recovery reset coordination path publishes the OCP
+    /// recovery DEVICE_STATUS_0 code before reporting fatal error.
+    #[test]
+    fn test_dot_recovery_reset_flow_reports_device_status() {
+        const DEVICE_RESET_CTRL_PREVIOUS_DOT_SUCCEEDED: u32 = 0x11;
+        const DOT_RECOVERY_DEVICE_STATUS: u32 = 0x0094_000E;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let flash_contents = vec![0u8; DOT_BLOB_SIZE];
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            rom_feature: Some("test-dot-recovery-reset-flow"),
+            ..Default::default()
+        });
+
+        let i3c_initialized = u16::from(McuRomBootStatus::I3cInitialized);
+        hw.step_until(|m| {
+            m.mci_boot_checkpoint() >= i3c_initialized
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 50_000_000
+        });
+        assert!(
+            hw.mci_fw_fatal_error().is_none(),
+            "ROM failed before I3C initialization"
+        );
+        assert!(
+            hw.mci_boot_checkpoint() >= i3c_initialized,
+            "ROM did not reach I3C initialization"
+        );
+
+        // Let this boot continue through regular DOT verification so the
+        // empty locked DOT blob reaches the reset-flow failure path.
+        hw.set_i3c_recovery_device_reset_ctrl(DEVICE_RESET_CTRL_PREVIOUS_DOT_SUCCEEDED);
+
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 50_000_000);
+
+        assert_eq!(
+            hw.i3c_recovery_device_status_0(),
+            DOT_RECOVERY_DEVICE_STATUS,
+            "DOT recovery reset flow should publish OCP recovery DEVICE_STATUS_0"
+        );
+        assert_eq!(
+            hw.mci_fw_fatal_error().unwrap_or(0),
+            u32::from(McuError::ROM_COLD_BOOT_DOT_ERROR),
+            "Expected empty locked DOT blob fatal error"
         );
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -903,11 +956,26 @@ mod test {
             ..Default::default()
         });
 
-        // Run until a fatal error occurs. The recovery flow succeeds, triggers
-        // a warm reset, and the ROM restarts. In a ROM-only test the second boot
-        // will fail (GENERIC_EXCEPTION) because the test environment isn't set up
-        // for a full second boot — that's expected.
-        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 100_000_000);
+        // Stop as soon as recovery succeeds. Continuing past this point lets
+        // the ROM reboot, which is outside the scope of this recovery test.
+        let recovery_complete: u16 = McuRomBootStatus::DotRecoveryComplete.into();
+        let recovery_failed: u16 = McuRomBootStatus::DotRecoveryFailed.into();
+        hw.step_until(|m| {
+            let checkpoint = m.mci_boot_checkpoint();
+            checkpoint == recovery_complete
+                || checkpoint == recovery_failed
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let checkpoint = hw.mci_boot_checkpoint();
+        assert_eq!(
+            checkpoint,
+            recovery_complete,
+            "DOT recovery did not complete, checkpoint: {}, fatal_error: {:?}",
+            checkpoint,
+            hw.mci_fw_fatal_error()
+        );
 
         // Verify the recovery blob was written to DOT flash at offset 0
         let dot_flash = hw.read_dot_flash();

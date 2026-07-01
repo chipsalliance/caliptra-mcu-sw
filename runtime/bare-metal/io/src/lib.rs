@@ -16,6 +16,11 @@ mod fpga {
         }
     }
 
+    pub fn println(s: &str) {
+        print(s);
+        print("\n");
+    }
+
     pub fn exit(code: u32) -> ! {
         unsafe {
             let b = if code == 0 { 0xff } else { 0x01 };
@@ -38,6 +43,11 @@ mod emulator {
         }
     }
 
+    pub fn println(s: &str) {
+        print(s);
+        print("\n");
+    }
+
     pub fn exit(code: u32) -> ! {
         unsafe {
             core::ptr::write_volatile(EMU_CTRL_EXIT, code);
@@ -47,7 +57,15 @@ mod emulator {
 }
 
 #[cfg(feature = "fpga")]
-pub use fpga::{exit, print};
+pub use fpga::{exit, print, println};
+#[cfg(feature = "fpga")]
+pub const OTP_OFFSET: u32 = 0xa406_0000;
+#[cfg(feature = "fpga")]
+pub const LC_OFFSET: u32 = 0xa404_0000;
 
 #[cfg(not(feature = "fpga"))]
-pub use emulator::{exit, print};
+pub use emulator::{exit, print, println};
+#[cfg(not(feature = "fpga"))]
+pub const OTP_OFFSET: u32 = 0x7000_0000;
+#[cfg(not(feature = "fpga"))]
+pub const LC_OFFSET: u32 = 0x7000_0400;

@@ -14,6 +14,7 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
+use crate::fuses::OwnerPkHash;
 use crate::mailbox;
 use crate::{
     configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
@@ -37,6 +38,7 @@ use caliptra_cfi_lib::{
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg;
+use caliptra_mcu_registers_generated::mci::bits::SecurityState::DeviceLifecycle as MciDeviceLifecycle;
 use caliptra_mcu_registers_generated::mci::bits::{MboxExecute, MboxLock};
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_romtime::ocp_lock::HekState;
@@ -162,6 +164,45 @@ const MCU_TEST_IV: [u8; 12] = [
 const GCM_TAG_SIZE: usize = 16;
 
 pub struct ColdBoot {}
+
+type I3cRegs = caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::i3c::regs::I3c>;
+
+/// Returns true when the subsystem debug-intent strap is asserted.
+fn debug_intent_asserted(mci: &caliptra_mcu_romtime::Mci) -> bool {
+    mci.registers.mci_reg_ss_debug_intent.get() & 1 != 0
+}
+
+/// Returns true when the MCI security state is production-like for DOT gating.
+fn is_production_lifecycle(mci: &caliptra_mcu_romtime::Mci) -> bool {
+    matches!(
+        mci.device_lifecycle_state(),
+        MciDeviceLifecycle::Value::DeviceProduction
+    )
+}
+
+/// Loads the fused owner PK hash, failing if force-fuse recovery has no owner.
+fn load_required_fuse_owner(env: &RomEnv) -> Option<OwnerPkHash> {
+    let owner = device_ownership_transfer::load_owner_pkhash(&env.otp);
+    if owner.as_ref().is_none_or(|h| h.0.iter().all(|&w| w == 0)) {
+        fatal_error(McuError::ROM_DOT_FORCE_FUSE_OWNER_NOT_PROVISIONED);
+    }
+    owner
+}
+
+/// Enters DOT recovery reset handling when enabled; otherwise returns to the caller.
+fn maybe_enter_dot_recovery_reset_failure_flow(
+    mci: &caliptra_mcu_romtime::Mci,
+    i3c_base: I3cRegs,
+    dot_recovery_reset_flow: bool,
+    err: McuError,
+) {
+    if !dot_recovery_reset_flow {
+        return;
+    }
+    mci.set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
+    crate::recovery::set_dot_recovery_device_status(i3c_base);
+    fatal_error(err);
+}
 
 impl ColdBoot {
     fn program_field_entropy(
@@ -1015,7 +1056,7 @@ impl BootFlow for ColdBoot {
                  will execute zeroization after Caliptra boot"
             );
             mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationDetected.into());
-            mci.set_fips_zeroization_mask();
+            mci.set_fips_zeroization_mask(0xFFFF_FFFF);
             mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
         }
 
@@ -1226,6 +1267,12 @@ impl BootFlow for ColdBoot {
         );
         mci.set_fw_sram_exec_region_size(size_value);
 
+        if let Some(mask) = params.fips_zeroization_mask {
+            caliptra_mcu_romtime::println!("[mcu-rom] Setting FIPS zeroization mask");
+            mci.set_fips_zeroization_mask(mask);
+            mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
+        }
+
         // Set SS_CONFIG_DONE_STICKY to lock MCI configuration registers
         caliptra_mcu_romtime::println!(
             "[mcu-rom] Setting SS_CONFIG_DONE_STICKY to lock configuration"
@@ -1320,47 +1367,62 @@ impl BootFlow for ColdBoot {
         let dot_fuses = match device_ownership_transfer::DotFuses::load_from_otp(&env.otp) {
             Ok(dot_fuses) => dot_fuses,
             Err(_) => {
-                caliptra_mcu_romtime::println!("[mcu-rom] Error reading DOT fuses");
+                caliptra_mcu_romtime::println!("[mcu-rom] DOT fuse err");
                 fatal_error(McuError::ROM_OTP_READ_ERROR);
             }
         };
 
-        // Determine owner PK hash: forced from fuse, or from DOT flow with fuse fallback
-        let owner_pk_hash = if params.owner_pk_hash_policy
+        // BMC may leave a DOT recovery result in DEVICE_RESET.RESET_CTRL
+        // before releasing the next cold boot:
+        // - 0x10: previous DOT flow failed; force the fused owner PK hash.
+        // - 0x11: continue regular DOT verification.
+        let dot_recovery_reset_ctrl = if params.dot_recovery_reset_flow {
+            crate::recovery::wait_for_dot_recovery_reset_result(i3c_base)
+        } else {
+            0
+        };
+        // Only an explicit previous DOT failure asks ROM to bypass DOT and
+        // install the fused owner. A previous success falls through to the
+        // normal DOT blob verification path.
+        let force_fuse_owner = params.owner_pk_hash_policy
             == device_ownership_transfer::OwnerPkHashPolicy::ForceFuse
-        {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] Forcing fused owner PK hash, bypassing DOT blob"
-            );
-            let owner = device_ownership_transfer::load_owner_pkhash(&env.otp);
-            if owner.as_ref().is_none_or(|h| h.0.iter().all(|&w| w == 0)) {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] Forced fuse owner requested but CPTRA_SS_OWNER_PK_HASH is not provisioned"
-                );
-                fatal_error(McuError::ROM_DOT_FORCE_FUSE_OWNER_NOT_PROVISIONED);
-            }
-            owner
+            || dot_recovery_reset_ctrl == crate::recovery::DEVICE_RESET_CTRL_PREVIOUS_DOT_FAILED;
+        let debug_intent_zero_owner = debug_intent_asserted(&env.mci) && !force_fuse_owner;
+
+        // Determine owner PK hash: forced from fuse, debug-intent zero,
+        // DOT flow with fuse fallback, or direct fuse fallback.
+        let mut owner_pk_hash = if force_fuse_owner {
+            load_required_fuse_owner(env)
+        } else if !is_production_lifecycle(&env.mci) {
+            device_ownership_transfer::load_owner_pkhash(&env.otp)
         } else if let Some(dot_flash) = params.dot_flash {
-            caliptra_mcu_romtime::println!("[mcu-rom] Reading DOT blob");
+            caliptra_mcu_romtime::println!("[mcu-rom] DOT read");
             let mut dot_blob = [0u8; device_ownership_transfer::DOT_BLOB_SIZE];
-            if dot_flash.read(&mut dot_blob, 0).is_err() {
-                fatal_error(McuError::ROM_COLD_BOOT_DOT_FLASH_READ_FAILED);
+            if let Err(err) = dot_flash.read(&mut dot_blob, 0) {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] DOT read err: {}",
+                    HexWord(usize::from(err) as u32)
+                );
+                fatal_error(McuError::ROM_COLD_BOOT_DOT_ERROR);
             }
             mci.set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferFlashRead.into());
 
             if dot_blob.iter().all(|&b| b == 0) || dot_blob.iter().all(|&b| b == 0xFF) {
                 if dot_fuses.enabled && dot_fuses.is_locked() {
+                    maybe_enter_dot_recovery_reset_failure_flow(
+                        &env.mci,
+                        i3c_base,
+                        params.dot_recovery_reset_flow,
+                        McuError::ROM_COLD_BOOT_DOT_ERROR,
+                    );
                     let key_type = params
                         .dot_stable_key_type
                         .unwrap_or(CmStableKeyType::IDevId);
-                    caliptra_mcu_romtime::println!(
-                        "[mcu-rom] DOT fuses are initialized but DOT blob is empty/corrupt"
-                    );
                     let err =
                         attempt_dot_locked_recovery(env, &dot_fuses, &params, dot_flash, key_type);
                     fatal_error(err);
                 }
-                caliptra_mcu_romtime::println!("[mcu-rom] DOT blob is empty; skipping DOT flow");
+                caliptra_mcu_romtime::println!("[mcu-rom] DOT empty");
                 device_ownership_transfer::load_owner_pkhash(&env.otp)
             } else {
                 let dot_blob = DotBlob::read_from_bytes(&dot_blob).unwrap();
@@ -1375,6 +1437,12 @@ impl BootFlow for ColdBoot {
                     Ok(owner) => owner,
                     Err(err) => {
                         if dot_fuses.is_locked() {
+                            maybe_enter_dot_recovery_reset_failure_flow(
+                                &env.mci,
+                                i3c_base,
+                                params.dot_recovery_reset_flow,
+                                err,
+                            );
                             let key_type = params
                                 .dot_stable_key_type
                                 .unwrap_or(CmStableKeyType::IDevId);
@@ -1385,7 +1453,7 @@ impl BootFlow for ColdBoot {
                             );
                         }
                         caliptra_mcu_romtime::println!(
-                            "[mcu-rom] Fatal error performing Device Ownership Transfer: {}",
+                            "[mcu-rom] DOT err: {}",
                             HexWord(err.into())
                         );
                         fatal_error(err);
@@ -1397,6 +1465,12 @@ impl BootFlow for ColdBoot {
             device_ownership_transfer::load_owner_pkhash(&env.otp)
         };
 
+        // Debug intent leaves no owner PK hash installed, so Caliptra Core
+        // authenticates firmware without authenticating the owner public key.
+        if debug_intent_zero_owner {
+            owner_pk_hash = None;
+        }
+
         // Deliver the owner PK hash via mailbox; the cptra_owner_pk_hash register
         // is locked once fuse write done is set. An all-zero hash means no owner
         // is provisioned and must not be installed (it would make Caliptra reject
@@ -1406,10 +1480,7 @@ impl BootFlow for ColdBoot {
                 if let Err(err) =
                     device_ownership_transfer::install_owner_pk_hash(&mut env.soc_manager, owner)
                 {
-                    caliptra_mcu_romtime::println!(
-                        "[mcu-rom] Fatal error installing owner PK hash: {}",
-                        HexWord(err.into())
-                    );
+                    caliptra_mcu_romtime::println!("[mcu-rom] owner err: {}", HexWord(err.into()));
                     fatal_error(err);
                 }
             }

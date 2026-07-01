@@ -21,16 +21,18 @@ use caliptra_mcu_mbox_common::messages::{
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
     GetAuthCmdChallengeResp, GetLogReq, GetLogResp, MailboxRespHeader, MailboxRespHeaderVarSize,
-    McuFeProgReq, McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
-    RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    McuFeProgReq, McuResponseVarSize, OcpLockRotateHekReq, OcpLockRotateHekResp,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE,
+    MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
     McuFipsPeriodicStatusResp,
 };
+
 use caliptra_mcu_romtime::{fuse_read_dai_params, PartitionId};
+
 use core::sync::atomic::{AtomicBool, Ordering};
 use mcu_error::McuResult;
 use zerocopy::{FromBytes, IntoBytes};
@@ -41,6 +43,7 @@ pub struct CmdInterface<'a> {
     non_crypto_cmds_handler: &'a dyn CaliptraCmdHandler,
     cmd_authorizer: &'a mut dyn CommandAuthorizer,
     caliptra_mbox: caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
+    otp: caliptra_mcu_libsyscall_caliptra::otp::Otp,
     busy: AtomicBool,
 }
 
@@ -55,6 +58,7 @@ impl<'a> CmdInterface<'a> {
             non_crypto_cmds_handler,
             cmd_authorizer,
             caliptra_mbox: Mailbox::new(),
+            otp: Otp::new(),
             busy: AtomicBool::new(false),
         }
     }
@@ -164,7 +168,8 @@ impl<'a> CmdInterface<'a> {
                 | inner @ CommandId::MC_FUSE_READ
                 | inner @ CommandId::MC_FUSE_WRITE
                 | inner @ CommandId::MC_FUSE_LOCK_PARTITION
-                | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
+                | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY
+                | inner @ CommandId::MC_OCP_LOCK_ROTATE_HEK => {
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
@@ -524,6 +529,9 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_FUSE_WRITE => self.handle_fuse_write(cmd, resp_buf).await,
             CommandId::MC_FUSE_LOCK_PARTITION => {
                 self.handle_fuse_lock_partition(cmd, resp_buf).await
+            }
+            CommandId::MC_OCP_LOCK_ROTATE_HEK => {
+                self.handle_ocp_lock_rotate_hek(cmd, resp_buf).await
             }
             _ => Err(errors::UNSUPPORTED_COMMAND),
         }
@@ -916,6 +924,31 @@ impl<'a> CmdInterface<'a> {
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_ocp_lock_rotate_hek<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = OcpLockRotateHekReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+
+        let (resp, _) =
+            OcpLockRotateHekResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = OcpLockRotateHekResp::default();
+
+        let mut seed = [0u8; 32];
+        Rng::generate_random_number(&mut seed)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let status = if self.otp.rotate_hek(req.hek_slot, &seed).is_err() {
+            MbxCmdStatus::Failure
+        } else {
+            MbxCmdStatus::Complete
+        };
+
+        Ok((&mut resp_buf[..size_of::<OcpLockRotateHekResp>()], status))
     }
 }
 

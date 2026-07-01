@@ -940,6 +940,12 @@ pub struct RomParameters<'a> {
     /// triggers a warm reset. If empty, no locked-state recovery is attempted.
     pub dot_locked_recovery_handlers:
         &'a [crate::device_ownership_transfer::DotLockedRecoveryEntry<'a>],
+    /// Enables DOT-aware recovery reset handling. When enabled, DOT blob
+    /// authentication failures publish DEVICE_STATUS=0x94000E before reporting
+    /// `FW_ERROR_FATAL`. A subsequent cold boot with RESET_CTRL=0x10 forces the
+    /// fused owner PK hash, while RESET_CTRL=0x11 continues the regular DOT
+    /// verification flow.
+    pub dot_recovery_reset_flow: bool,
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,
@@ -952,6 +958,11 @@ pub struct RomParameters<'a> {
     pub recovery_status_open: bool,
     /// Size of the executable SRAM region to pass into FW_SRAM_EXEC_REGION_SIZE
     pub mcu_fw_sram_exec_region_size: Option<u32>,
+    /// Bitmask to write to FC_FIPS_ZEROZATION before MCI configuration locks.
+    ///
+    /// Platform integrators should provide this when the FIPS PPD signal is
+    /// asserted. When `None`, the register is left at its hardware reset value.
+    pub fips_zeroization_mask: Option<u32>,
     /// Valid AXI users for Caliptra mailbox. 0 values are ignored.
     pub cptra_mbox_axi_users: [u32; 5],
     /// Valid AXI user for Caliptra fuse registers. 0 = don't configure.

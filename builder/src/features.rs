@@ -87,12 +87,16 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-fw-manifest-dot",
     "test-fw-manifest-dot-hitless",
     "test-i3c-services",
+    "test-dot-recovery-reset-flow",
     "test-rom-hooks",
     "test-svn-manifest",
     "test-usb-ocp-recovery",
 ];
 
-pub const BARE_METAL_BINARIES: &[&str] = &["caliptra-mcu-bare-metal"];
+pub const BARE_METAL_BINARIES: &[&str] = &[
+    "caliptra-mcu-bare-metal",
+    "caliptra-mcu-provisioning-test-unlocked-fw",
+];
 
 /// A single ROM build target (platform + feature combo). Shared between
 /// `cargo xtask sizes` (size reporting), `test_panic_missing` (panic-free
@@ -136,7 +140,9 @@ pub const ROM_VARIANTS: &[RomVariant] = &[
     RomVariant::new(None, Some("test-fw-manifest-dot")),
     RomVariant::new(None, Some("test-fw-manifest-dot-hitless")),
     RomVariant::new(None, Some("test-dot-recovery")),
+    RomVariant::new(None, Some("test-dot-recovery-reset-flow")),
     RomVariant::new(None, Some("test-rom-hooks")),
+    RomVariant::new(None, Some("test-usb-ocp-recovery")),
     // Explicit-feature ROMs tested by precheckin / all-build.
     RomVariant::new(None, Some("test-flash-based-boot")),
     // === fpga ===

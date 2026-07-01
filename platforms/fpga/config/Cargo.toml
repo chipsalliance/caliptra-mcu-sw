@@ -8,3 +8,6 @@ edition.workspace = true
 
 [dependencies]
 caliptra-mcu-config.workspace = true
+
+[features]
+crash-log = []

@@ -433,6 +433,7 @@ pub extern "C" fn rom_entry() -> ! {
             None
         },
         force_i3c_services: cfg!(feature = "test-i3c-services"),
+        dot_recovery_reset_flow: cfg!(feature = "test-dot-recovery-reset-flow"),
         hooks: if cfg!(feature = "test-rom-hooks") {
             Some(&hooks)
         } else {

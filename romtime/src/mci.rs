@@ -204,6 +204,14 @@ impl Mci {
         self.registers.mci_reg_fw_sram_exec_region_size.set(size);
     }
 
+    /// Sets the FC_FIPS_ZEROZATION register mask.
+    ///
+    /// This must be called before `set_ss_config_done()` or
+    /// `set_ss_config_done_sticky()` because those calls lock the register.
+    pub fn set_fips_zeroization_mask(&self, mask: u32) {
+        self.registers.mci_reg_fc_fips_zerozation.set(mask);
+    }
+
     pub fn trigger_warm_reset(&self) {
         self.registers.mci_reg_reset_request.set(1);
     }
@@ -337,16 +345,6 @@ impl Mci {
         self.registers
             .mci_reg_fc_fips_zerozation_sts
             .is_set(mci::bits::FcFipsZerozationSts::Status)
-    }
-
-    /// Set the MCU ROM zeroization mask to authorize fuse controller zeroization.
-    ///
-    /// Writes `0xFFFF_FFFF` to the `FC_FIPS_ZEROZATION` mask register. This
-    /// must be set by MCU ROM when `fips_zeroization_requested()` returns true;
-    /// if not set, the fuse controller will abort the zeroization request.
-    /// The register is locked once `SS_CONFIG_DONE` is set.
-    pub fn set_fips_zeroization_mask(&self) {
-        self.registers.mci_reg_fc_fips_zerozation.set(0xFFFF_FFFF);
     }
 
     /// Write a word to the production debug unlock PK hash register at the given index.
