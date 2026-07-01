@@ -26,6 +26,22 @@ const KERNEL_OBJCOPY_FLAGS: &str =
 const APP_OBJCOPY_FLAGS: &str = "--strip-sections --strip-all";
 const RUNTIME_OBJCOPY_FLAGS: &str = "--strip-sections --strip-all";
 
+fn user_app_defmt_log_level(features: &Option<String>) -> Option<&'static str> {
+    let features = features.as_deref()?;
+    let has_feature = |name: &str| features.split(',').any(|feature| feature == name);
+
+    if has_feature("test-defmt-logging-mailbox") || has_feature("test-defmt-logging-vdm") {
+        Some("trace")
+    } else if has_feature("release")
+        || has_feature("userspace-log")
+        || has_feature("test-defmt-logging-release")
+    {
+        Some("info")
+    } else {
+        None
+    }
+}
+
 /// A pairing of application name to the linker script it should be built with.
 #[derive(Debug, Clone)]
 pub struct BuiltBinary {
@@ -247,6 +263,12 @@ impl<'a> BuildPass<'a> {
 
         if let Some(f) = features {
             cmd.arg("--features").arg(f);
+        }
+
+        if app.name == "user-app" {
+            if let Some(level) = user_app_defmt_log_level(features) {
+                cmd.env("DEFMT_LOG", level);
+            }
         }
 
         cmd.arg("--").args(linker_args.split(' '));

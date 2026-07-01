@@ -13,6 +13,8 @@ use caliptra_mcu_libtock_alarm::{Convert, Hz, Milliseconds};
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::Syscalls;
 use caliptra_mcu_libtockasync::TockSubscribe;
+use caliptra_mcu_userlog::{log_error, log_info};
+#[allow(unused_imports)]
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -111,11 +113,10 @@ async fn run_fips_self_test(caliptra_mbox: &Mailbox) -> bool {
     .await;
 
     if start_result.is_err() {
-        writeln!(
+        log_error!(
             Console::<DefaultSyscalls>::writer(),
             "Periodic FIPS: SELF_TEST_START failed"
-        )
-        .ok();
+        );
         return false;
     }
 
@@ -146,11 +147,10 @@ async fn run_fips_self_test(caliptra_mbox: &Mailbox) -> bool {
         }
     }
 
-    writeln!(
+    log_error!(
         Console::<DefaultSyscalls>::writer(),
         "Periodic FIPS: self-test timeout"
-    )
-    .ok();
+    );
     false
 }
 
@@ -162,11 +162,10 @@ async fn run_fips_self_test(caliptra_mbox: &Mailbox) -> bool {
 pub async fn fips_periodic_task() {
     let caliptra_mbox = Mailbox::new();
 
-    writeln!(
+    log_info!(
         Console::<DefaultSyscalls>::writer(),
         "Periodic FIPS self-test task started"
-    )
-    .ok();
+    );
 
     loop {
         if is_enabled() {
@@ -182,13 +181,12 @@ pub async fn fips_periodic_task() {
             );
 
             let iterations = get_iterations();
-            writeln!(
+            log_info!(
                 Console::<DefaultSyscalls>::writer(),
                 "Periodic FIPS: iteration {} result: {}",
                 iterations,
                 if result { "PASS" } else { "FAIL" }
-            )
-            .ok();
+            );
 
             // Wait for the interval before next test
             sleep_ms(FIPS_PERIODIC_INTERVAL_MS).await;

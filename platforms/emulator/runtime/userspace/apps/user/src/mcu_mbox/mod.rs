@@ -6,7 +6,8 @@ pub(crate) mod cmd_auth_mock;
     feature = "test-mcu-mbox-fips-self-test",
     feature = "test-mcu-mbox-fips-periodic",
     feature = "test-caliptra-util-host-validator",
-    feature = "test-defmt-logging-mailbox"
+    feature = "test-defmt-logging-mailbox",
+    feature = "test-defmt-logging-release"
 ))]
 mod cmd_handler_mock;
 
@@ -14,6 +15,7 @@ use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
+#[allow(unused_imports)]
 use core::fmt::Write;
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -32,14 +34,15 @@ pub async fn mcu_mbox_task() {
 #[allow(unused_variables)]
 async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
-    crate::console_writeln!(console_writer, "Starting MCU_MBOX task...");
+    crate::log_info!(console_writer, "Starting MCU_MBOX task...");
 
     #[cfg(any(
         feature = "test-mcu-mbox-cmds",
         feature = "test-mcu-mbox-fips-self-test",
         feature = "test-mcu-mbox-fips-periodic",
         feature = "test-caliptra-util-host-validator",
-        feature = "test-defmt-logging-mailbox"
+        feature = "test-defmt-logging-mailbox",
+        feature = "test-defmt-logging-release"
     ))]
     {
         let handler = cmd_handler_mock::NonCryptoCmdHandlerMock::default();
@@ -53,16 +56,16 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
             &mut transport,
             crate::EXECUTOR.get().spawner(),
         );
-        crate::console_writeln!(
+        crate::log_info!(
             console_writer,
             "Starting MCU_MBOX service for integration tests..."
         );
 
         if let Err(e) = mcu_mbox_service.start().await {
-            crate::console_writeln!(
+            crate::log_error!(
                 console_writer,
-                "USER_APP: Error starting MCU_MBOX service: {:?}",
-                e
+                "USER_APP: Error starting MCU_MBOX service: {}",
+                crate::Dbg(e)
             );
         }
         let suspend_signal: Signal<CriticalSectionRawMutex, ()> = Signal::new();

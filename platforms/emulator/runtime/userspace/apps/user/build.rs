@@ -27,6 +27,7 @@ fn main() {
     // device link needs defmt's linker script and `DEFMT_LOG` set to compile in
     // the call sites. Scoped to the riscv32 device link only. Production logging
     // floors at `info`; the round-trip tests need every level, so they use `trace`.
+    println!("cargo:rerun-if-env-changed=DEFMT_LOG");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_USERSPACE_LOG");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_TEST_DEFMT_LOGGING_MAILBOX");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_TEST_DEFMT_LOGGING_VDM");

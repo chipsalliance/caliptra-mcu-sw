@@ -1,5 +1,10 @@
 // Licensed under the Apache-2.0 license
 
+#[cfg(any(
+    feature = "test-defmt-logging-mailbox",
+    feature = "test-defmt-logging-release",
+    feature = "test-defmt-logging-vdm"
+))]
 pub(crate) fn emit_test_frames() {
     #[cfg(target_arch = "riscv32")]
     {

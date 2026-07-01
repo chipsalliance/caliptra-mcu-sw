@@ -13,6 +13,7 @@ caliptra-auth-man-types.workspace = true
 caliptra-error.workspace = true
 caliptra-image-types = { workspace = true, default-features = false }
 caliptra-ocp-eat.workspace = true
+defmt = { workspace = true, optional = true }
 dpe.workspace = true
 embassy-executor.workspace = true
 embassy-sync.workspace = true
@@ -24,6 +25,7 @@ caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtock_runtime.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-lib.workspace = true
+caliptra-mcu-userlog.workspace = true
 mcu-error.workspace = true
 zerocopy.workspace = true
 
@@ -39,3 +41,11 @@ embedded-alloc.workspace = true
 [dev-dependencies]
 caliptra-mcu-libtock_unittest.workspace = true
 futures.workspace = true
+
+[features]
+default = []
+release = [
+	"dep:defmt",
+	"caliptra-mcu-pldm-lib/release",
+	"caliptra-mcu-userlog/defmt-transport",
+]
