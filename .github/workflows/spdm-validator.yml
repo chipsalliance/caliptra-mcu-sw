@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -46,7 +46,7 @@ jobs:
           echo "/opt/cmake/bin" >> $GITHUB_PATH
 
       - name: Restore sccache binary
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v6
         id: sccache_bin_restore
         with:
           path: ~/.cargo/bin/sccache
@@ -61,14 +61,14 @@ jobs:
       # Save the sccache binary immediately so we can reuse it in future runs
       # even if the rest of the current run fails.
       - name: Save sccache binary
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v6
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         with:
           path: ~/.cargo/bin/sccache
           key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
 
       - name: Configure sccache
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           script: |
             core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
@@ -76,7 +76,7 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Checkout spdm-emu repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: chipsalliance/caliptra-spdm-emu
           ref: caliptra-main
@@ -111,7 +111,7 @@ jobs:
 
       - name: Upload logs and traces for MCTP transport
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
@@ -153,7 +153,7 @@ jobs:
 
       - name: Upload logs and traces for DOE transport
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
@@ -179,7 +179,7 @@ jobs:
           fi
 
       - name: Checkout CCC spdm-rs repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: chipsalliance/caliptra-spdm-rs
           ref: caliptra-0.5.2
@@ -216,7 +216,7 @@ jobs:
 
       - name: Upload CCC spdm-requester-emu test results for TDISP+IDE
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
         with:
