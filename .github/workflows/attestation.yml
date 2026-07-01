@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -38,7 +38,7 @@ jobs:
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
       - name: Restore sccache binary
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v6
         id: sccache_bin_restore
         with:
           path: ~/.cargo/bin/sccache
@@ -51,14 +51,14 @@ jobs:
           cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
 
       - name: Save sccache binary
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v6
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         with:
           path: ~/.cargo/bin/sccache
           key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
 
       - name: Configure sccache
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           script: |
             core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
@@ -79,7 +79,7 @@ jobs:
           echo "/opt/cmake/bin" >> $GITHUB_PATH
 
       - name: Checkout spdm-emu repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: chipsalliance/caliptra-spdm-emu
           ref: caliptra-main
@@ -122,7 +122,7 @@ jobs:
       # ---- Upload Reference CoRIM artifacts -------------------------------
       - name: Upload Reference CoRIM artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: attestation-artifacts
           path: |
@@ -142,7 +142,7 @@ jobs:
 
       - name: Upload attestation logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:

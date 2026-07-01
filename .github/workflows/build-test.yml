@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -54,7 +54,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -65,7 +65,7 @@ jobs:
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
       - name: Restore sccache binary
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v6
         id: sccache_bin_restore
         with:
           path: ~/.cargo/bin/sccache
@@ -77,14 +77,14 @@ jobs:
           cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
 
       - name: Save sccache binary
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v6
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         with:
           path: ~/.cargo/bin/sccache
           key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
 
       - name: Configure sccache
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           script: |
             core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
@@ -105,14 +105,14 @@ jobs:
           sccache --show-stats
 
       - name: Upload firmware bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-bundle
           path: target/all-fw.zip
           retention-days: 1
 
       - name: Upload release firmware bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-firmware-bundle
           path: target/all-fw-release.zip
@@ -133,7 +133,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -144,7 +144,7 @@ jobs:
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
       - name: Restore sccache binary
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v6
         id: sccache_bin_restore
         with:
           path: ~/.cargo/bin/sccache
@@ -156,14 +156,14 @@ jobs:
           cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
 
       - name: Save sccache binary
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v6
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         with:
           path: ~/.cargo/bin/sccache
           key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
 
       - name: Configure sccache
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           script: |
             core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
@@ -177,7 +177,7 @@ jobs:
           sccache --show-stats
 
       - name: Upload emulator bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: emulator-bundle
           path: target/emulators.zip
@@ -198,7 +198,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -217,7 +217,7 @@ jobs:
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
 
       - name: Restore sccache binary
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v6
         id: sccache_bin_restore
         with:
           path: ~/.cargo/bin/sccache
@@ -229,14 +229,14 @@ jobs:
           cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
 
       - name: Save sccache binary
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v6
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         with:
           path: ~/.cargo/bin/sccache
           key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
 
       - name: Configure sccache
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           script: |
             core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
@@ -250,7 +250,7 @@ jobs:
           sccache --show-stats
 
       - name: Upload test archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nextest-archive
           path: /tmp/nextest-archive.tar.zst
@@ -271,7 +271,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -286,25 +286,25 @@ jobs:
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
 
       - name: Download firmware bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: firmware-bundle
           path: target/
 
       - name: Download release firmware bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-firmware-bundle
           path: target/
 
       - name: Download emulator bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: emulator-bundle
           path: target/
 
       - name: Download test archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nextest-archive
           path: /tmp/
@@ -344,7 +344,7 @@ jobs:
           sudo mv /tmp/junit.xml /tmp/junit-release.xml
 
       - name: 'Upload test results'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: success() || failure()
         with:
           name: caliptra-test-results-${{ matrix.shard }}
@@ -359,12 +359,12 @@ jobs:
     if: always()
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: 'Download test results'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: caliptra-test-results-*
           merge-multiple: true
@@ -390,7 +390,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -405,19 +405,19 @@ jobs:
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
 
       - name: Download firmware bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: firmware-bundle
           path: target/
 
       - name: Download emulator bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: emulator-bundle
           path: target/
 
       - name: Download test archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nextest-archive
           path: /tmp/
