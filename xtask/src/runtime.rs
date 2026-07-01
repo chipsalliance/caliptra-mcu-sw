@@ -40,7 +40,15 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     // NOTE: interactive `xtask runtime` runs default-feature builds (without the `release` cargo feature),
     // so DebugWriter / Console / LowLevelDebug / ProcessConsole / kernel
     // `debug!()` / romtime `println!` are all available for live debugging.
-    let rom_binary = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs::default())?;
+    let ocp_lock_enabled = features.contains(&"test-ocp-lock");
+    let rom_binary = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
+        features: if ocp_lock_enabled {
+            Some("ocp-lock")
+        } else {
+            None
+        },
+        ..Default::default()
+    })?;
     let features_str = features.join(",");
     let tock_binary = runtime_build_with_apps(&CaliptraBuildArgs {
         features: if features.is_empty() {
@@ -48,6 +56,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         } else {
             Some(&features_str)
         },
+        example_app: ocp_lock_enabled,
         ..Default::default()
     })?;
     let mut caliptra_builder = CaliptraBuilder::new(&CaliptraBuildArgs {
@@ -57,6 +66,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         vendor_pk_hash,
         mcu_firmware: Some(tock_binary.clone()),
         soc_images,
+        ocp_lock: ocp_lock_enabled,
         ..Default::default()
     });
 
@@ -215,6 +225,9 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
             "--primary-flash-image",
             flash_image.as_ref().unwrap().to_str().unwrap(),
         ]);
+    }
+    if ocp_lock_enabled {
+        cargo_run_args.push("--ocp-lock");
     }
     Command::new("cargo")
         .args(cargo_run_args)
