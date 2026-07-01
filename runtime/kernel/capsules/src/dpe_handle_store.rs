@@ -7,47 +7,54 @@
 //! covers the DPE Handle Storage subregion of the measurement-store SRAM
 //! reservation.  All operations are **synchronous**; no upcalls are used.
 //!
-//! ## Driver number
-//!
-//! `0x8000_0020`
+//! ## Driver number: `0x8000_0020`
 //!
 //! ## SRAM layout
 //!
+//! ### Header (72 bytes)
+//!
 //! ```text
-//! offset 0 : record_count           u16 LE
-//! offset 2 : _pad                   u16
-//! offset 4 : attestation_target_fw_id  u32 LE  (0xFFFF_FFFF = none)
-//! offset 8 : records[0..capacity]   DPE_HANDLE_RECORD_SIZE bytes each
+//! offset  0 : magic                     u32 LE  (0xD9E4_C7A1)
+//! offset  4 : version                   u8      (1)
+//! offset  5 : _pad                      u8
+//! offset  6 : header_size               u16 LE  (72)
+//! offset  8 : record_size               u16 LE  (DPE_HANDLE_RECORD_SIZE = 32)
+//! offset 10 : record_capacity           u16 LE
+//! offset 12 : record_count              u32 LE
+//! offset 16 : attestation_target_fw_id  u32 LE  (0xFFFF_FFFF = none)
+//! offset 20 : _pad                      [u8; 4]
+//! offset 24 : attestation_policy_digest [u8; 48]
+//! offset 72 : records[0..capacity]      DPE_HANDLE_RECORD_SIZE bytes each
 //! ```
 //!
-//! ## Record layout (`DPE_HANDLE_RECORD_SIZE` = 32 bytes)
+//! Records at indices 0..(record_count-1) are all valid.  The `flags` byte
+//! within each record (offset 28) is **reserved** — the capsule does not
+//! interpret it for validity.  Record validity is determined solely by
+//! position relative to `record_count`.
+//!
+//! ### Record layout (`DPE_HANDLE_RECORD_SIZE` = 32 bytes)
 //!
 //! ```text
 //! offset  0 : fw_id            u32 LE
 //! offset  4 : parent_fw_id     u32 LE  (0xFFFF_FFFF = None)
 //! offset  8 : context_handle   [u8; 16]
 //! offset 24 : tci_tag          u32 LE
-//! offset 28 : flags            u8  (bit 0 = valid, bit 1 = attestation_target)
+//! offset 28 : flags            u8  (reserved)
 //! offset 29 : _pad             [u8; 3]
 //! ```
 //!
-//! ## Syscalls (all synchronous)
+//! ## Syscalls
 //!
-//! | Command | Name                    | Arg1   | Arg2     | Allow           |
-//! |---------|-------------------------|--------|----------|-----------------|
-//! | 0       | EXISTS                  | —      | —        | —               |
-//! | 1       | READ_RECORD             | fw_id  | reserved | RW 0 (output)   |
-//! | 2       | WRITE_RECORD            | fw_id  | reserved | RO 0 (input)    |
-//! | 3       | CLEAR_RECORDS           | —      | —        | —               |
-//! | 4       | READ_LEAF_RECORD        | —      | —        | RW 0 (output)   |
-//! | 5       | MARK_ATTESTATION_TARGET | fw_id  | reserved | —               |
-//! | 6       | READ_ATTESTATION_TARGET | —      | —        | RW 0 (output)   |
-//!
-//! **Read-Write Allow 0** — output buffer for READ_RECORD / READ_LEAF_RECORD /
-//! READ_ATTESTATION_TARGET; must be at least `DPE_HANDLE_RECORD_SIZE` bytes.
-//!
-//! **Read-Only Allow 0** — input buffer for WRITE_RECORD; must be at least
-//! `DPE_HANDLE_RECORD_SIZE` bytes.
+//! | Cmd | Name                    | Arg1  | Allow         |
+//! |-----|-------------------------|-------|---------------|
+//! | 0   | EXISTS                  | —     | —             |
+//! | 1   | READ_RECORD             | fw_id | RW 0 (output) |
+//! | 2   | WRITE_RECORD            | fw_id | RO 0 (input)  |
+//! | 3   | INITIALIZE_STORE        | —     | RO 0 (digest) |
+//! | 4   | READ_LEAF_RECORD        | —     | RW 0 (output) |
+//! | 5   | MARK_ATTESTATION_TARGET | fw_id | —             |
+//! | 6   | READ_ATTESTATION_TARGET | —     | RW 0 (output) |
+//! | 7   | VALIDATE_STORE          | —     | RO 0 (digest) |
 
 use core::cell::RefCell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
@@ -57,69 +64,42 @@ use kernel::processbuffer::{
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
 
-/// Proposed driver number for the DPE Handle Storage capsule.
+pub const DPE_STORE_SIZE: usize = 0x400;
 pub const DRIVER_NUM: usize = 0x8000_0020;
-
-/// Serialized size of one `DpeHandleRecord` in SRAM and in allow buffers.
 pub const DPE_HANDLE_RECORD_SIZE: usize = 32;
+pub const POLICY_DIGEST_SIZE: usize = 48;
 
-/// Sentinel used for `parent_fw_id` = None and "no attestation target".
+const HEADER_MAGIC: u32 = 0xD9E4_C7A1;
+const HEADER_VERSION: u8 = 1;
 const SENTINEL_NONE: u32 = 0xFFFF_FFFF;
 
-// ---------------------------------------------------------------------------
-// Metadata offsets within the SRAM region
-// ---------------------------------------------------------------------------
-
-/// Byte offset of `record_count` (u16 LE).
-const META_RECORD_COUNT: usize = 0;
-/// Byte offset of `attestation_target_fw_id` (u32 LE).
-const META_ATTEST_TARGET: usize = 4;
-/// Total size of the metadata header that precedes the record array.
-const META_SIZE: usize = 8;
-
-// ---------------------------------------------------------------------------
-// Per-record field offsets within a DPE_HANDLE_RECORD_SIZE-byte slot
-// ---------------------------------------------------------------------------
+const META_MAGIC: usize = 0;
+const META_VERSION: usize = 4;
+const META_HEADER_SIZE: usize = 6;
+const META_RECORD_SIZE: usize = 8;
+const META_RECORD_CAPACITY: usize = 10;
+const META_RECORD_COUNT: usize = 12;
+const META_ATTEST_TARGET: usize = 16;
+const META_POLICY_DIGEST: usize = 24;
+const META_SIZE: usize = 72;
 
 const REC_FW_ID: usize = 0;
-const _REC_PARENT_FW_ID: usize = 4;
-const _REC_CONTEXT_HANDLE: usize = 8; // 16 bytes
-const _REC_TCI_TAG: usize = 24;
-const REC_FLAGS: usize = 28;
-// [29..32] _pad
-
-const FLAG_VALID: u8 = 1 << 0;
-// const FLAG_ATTESTATION_TARGET: u8 = 1 << 1;  // stored in record but not
-// used for lookup; attestation target tracked via metadata field
-
-// ---------------------------------------------------------------------------
-// Allow buffer numbering
-// ---------------------------------------------------------------------------
 
 mod ro_allow {
-    /// Input buffer for WRITE_RECORD (one serialized `DpeHandleRecord`).
     pub const INPUT: usize = 0;
     pub const COUNT: u8 = 1;
 }
 
 mod rw_allow {
-    /// Output buffer for READ_RECORD / READ_LEAF_RECORD / READ_ATTESTATION_TARGET.
     pub const OUTPUT: usize = 0;
     pub const COUNT: u8 = 1;
 }
 
-// ---------------------------------------------------------------------------
-// Capsule
-// ---------------------------------------------------------------------------
-
-/// Per-process grant state (empty; no per-process data needed).
 #[derive(Default)]
 pub struct App {}
 
-/// DPE Handle Storage capsule.
 pub struct DpeHandleStore {
     driver_num: usize,
-    /// Reserved SRAM subregion owned by this capsule.
     mem: RefCell<&'static mut [u8]>,
     apps: Grant<
         App,
@@ -147,10 +127,6 @@ impl DpeHandleStore {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Metadata helpers
-    // -----------------------------------------------------------------------
-
     fn record_capacity(&self) -> usize {
         let len = self.mem.borrow().len();
         if len > META_SIZE {
@@ -162,12 +138,12 @@ impl DpeHandleStore {
 
     fn record_count(&self) -> usize {
         let mem = self.mem.borrow();
-        read_u16_le(&mem, META_RECORD_COUNT) as usize
+        read_u32_le(&mem, META_RECORD_COUNT) as usize
     }
 
-    fn set_record_count(&self, count: u16) {
+    fn set_record_count(&self, count: u32) {
         let mut mem = self.mem.borrow_mut();
-        write_u16_le(&mut mem, META_RECORD_COUNT, count);
+        write_u32_le(&mut mem, META_RECORD_COUNT, count);
     }
 
     fn attestation_target_fw_id(&self) -> u32 {
@@ -180,31 +156,24 @@ impl DpeHandleStore {
         write_u32_le(&mut mem, META_ATTEST_TARGET, fw_id);
     }
 
-    // -----------------------------------------------------------------------
-    // Record helpers
-    // -----------------------------------------------------------------------
-
     fn record_offset(index: usize) -> usize {
         META_SIZE + index * DPE_HANDLE_RECORD_SIZE
     }
 
-    /// Search the valid record array for `fw_id`.  Returns the slot index, or
-    /// `None` if not found.
+    /// Search records[0..record_count) for `fw_id`.
+    /// All records below record_count are valid by definition.
     fn find_record_index(&self, fw_id: u32) -> Option<usize> {
         let count = self.record_count();
         let mem = self.mem.borrow();
         for i in 0..count {
             let off = Self::record_offset(i);
-            if mem[off + REC_FLAGS] & FLAG_VALID != 0 && read_u32_le(&mem, off + REC_FW_ID) == fw_id
-            {
+            if read_u32_le(&mem, off + REC_FW_ID) == fw_id {
                 return Some(i);
             }
         }
         None
     }
 
-    /// Copy the 32-byte serialized record at `index` into the process output
-    /// buffer `slice`.
     fn copy_record_to_slice(
         &self,
         index: usize,
@@ -222,10 +191,6 @@ impl DpeHandleStore {
         Ok(())
     }
 
-    // -----------------------------------------------------------------------
-    // Command implementations
-    // -----------------------------------------------------------------------
-
     fn do_read_record(&self, fw_id: u32, slice: &WriteableProcessSlice) -> Result<(), ErrorCode> {
         let index = self.find_record_index(fw_id).ok_or(ErrorCode::FAIL)?;
         self.copy_record_to_slice(index, slice)
@@ -235,8 +200,6 @@ impl DpeHandleStore {
         if slice.len() < DPE_HANDLE_RECORD_SIZE {
             return Err(ErrorCode::SIZE);
         }
-
-        // If a record for this fw_id already exists, overwrite it in-place.
         if let Some(index) = self.find_record_index(fw_id) {
             let mut mem = self.mem.borrow_mut();
             let off = Self::record_offset(index);
@@ -244,78 +207,113 @@ impl DpeHandleStore {
                 .get(0..DPE_HANDLE_RECORD_SIZE)
                 .ok_or(ErrorCode::SIZE)?
                 .copy_to_slice(&mut mem[off..off + DPE_HANDLE_RECORD_SIZE]);
-            // Stamp fw_id and ensure the valid flag is set.
             write_u32_le(&mut mem, off + REC_FW_ID, fw_id);
-            mem[off + REC_FLAGS] |= FLAG_VALID;
             return Ok(());
         }
-
-        // Otherwise append a new record.
         let count = self.record_count();
         let capacity = self.record_capacity();
         if count >= capacity {
             return Err(ErrorCode::NOMEM);
         }
-
-        let mut mem = self.mem.borrow_mut();
-        let off = Self::record_offset(count);
-        slice
-            .get(0..DPE_HANDLE_RECORD_SIZE)
-            .ok_or(ErrorCode::SIZE)?
-            .copy_to_slice(&mut mem[off..off + DPE_HANDLE_RECORD_SIZE]);
-        write_u32_le(&mut mem, off + REC_FW_ID, fw_id);
-        mem[off + REC_FLAGS] |= FLAG_VALID;
-        drop(mem);
-
-        self.set_record_count(count as u16 + 1);
+        {
+            let mut mem = self.mem.borrow_mut();
+            let off = Self::record_offset(count);
+            slice
+                .get(0..DPE_HANDLE_RECORD_SIZE)
+                .ok_or(ErrorCode::SIZE)?
+                .copy_to_slice(&mut mem[off..off + DPE_HANDLE_RECORD_SIZE]);
+            write_u32_le(&mut mem, off + REC_FW_ID, fw_id);
+        }
+        self.set_record_count(count as u32 + 1);
         Ok(())
     }
 
-    fn do_clear_records(&self) {
+    fn do_initialize_store(&self, digest_slice: &ReadableProcessSlice) -> Result<(), ErrorCode> {
+        if digest_slice.len() < POLICY_DIGEST_SIZE {
+            return Err(ErrorCode::SIZE);
+        }
+        let capacity = self.record_capacity();
         let mut mem = self.mem.borrow_mut();
-
-        // Zero the metadata header.
-        for b in mem[..META_SIZE].iter_mut() {
+        write_u32_le(&mut mem, META_MAGIC, HEADER_MAGIC);
+        mem[META_VERSION] = HEADER_VERSION;
+        mem[5] = 0;
+        write_u16_le(&mut mem, META_HEADER_SIZE, META_SIZE as u16);
+        write_u16_le(&mut mem, META_RECORD_SIZE, DPE_HANDLE_RECORD_SIZE as u16);
+        write_u16_le(&mut mem, META_RECORD_CAPACITY, capacity as u16);
+        write_u32_le(&mut mem, META_RECORD_COUNT, 0);
+        write_u32_le(&mut mem, META_ATTEST_TARGET, SENTINEL_NONE);
+        for b in mem[20..24].iter_mut() {
             *b = 0;
         }
-        // Write the sentinel for "no attestation target".
-        write_u32_le(&mut mem, META_ATTEST_TARGET, SENTINEL_NONE);
+        digest_slice
+            .get(0..POLICY_DIGEST_SIZE)
+            .ok_or(ErrorCode::SIZE)?
+            .copy_to_slice(&mut mem[META_POLICY_DIGEST..META_POLICY_DIGEST + POLICY_DIGEST_SIZE]);
+        let slots_end = (META_SIZE + capacity * DPE_HANDLE_RECORD_SIZE).min(mem.len());
+        for b in mem[META_SIZE..slots_end].iter_mut() {
+            *b = 0;
+        }
+        Ok(())
+    }
 
-        // Zero all record slots.
-        let capacity = if mem.len() > META_SIZE {
+    fn do_validate_store(&self, digest_slice: &ReadableProcessSlice) -> Result<(), ErrorCode> {
+        if digest_slice.len() < POLICY_DIGEST_SIZE {
+            return Err(ErrorCode::SIZE);
+        }
+        let mem = self.mem.borrow();
+        if read_u32_le(&mem, META_MAGIC) != HEADER_MAGIC {
+            return Err(ErrorCode::FAIL);
+        }
+        if mem[META_VERSION] != HEADER_VERSION {
+            return Err(ErrorCode::FAIL);
+        }
+        if read_u16_le(&mem, META_HEADER_SIZE) != META_SIZE as u16 {
+            return Err(ErrorCode::FAIL);
+        }
+        if read_u16_le(&mem, META_RECORD_SIZE) != DPE_HANDLE_RECORD_SIZE as u16 {
+            return Err(ErrorCode::FAIL);
+        }
+        let stored_capacity = read_u16_le(&mem, META_RECORD_CAPACITY) as usize;
+        let computed_capacity = if mem.len() > META_SIZE {
             (mem.len() - META_SIZE) / DPE_HANDLE_RECORD_SIZE
         } else {
             0
         };
-        for i in 0..capacity {
-            let off = META_SIZE + i * DPE_HANDLE_RECORD_SIZE;
-            for b in mem[off..off + DPE_HANDLE_RECORD_SIZE].iter_mut() {
-                *b = 0;
+        if stored_capacity != computed_capacity {
+            return Err(ErrorCode::FAIL);
+        }
+        let record_count = read_u32_le(&mem, META_RECORD_COUNT) as usize;
+        if record_count > stored_capacity {
+            return Err(ErrorCode::FAIL);
+        }
+        let stored = &mem[META_POLICY_DIGEST..META_POLICY_DIGEST + POLICY_DIGEST_SIZE];
+        let mut provided = [0u8; POLICY_DIGEST_SIZE];
+        digest_slice
+            .get(0..POLICY_DIGEST_SIZE)
+            .ok_or(ErrorCode::FAIL)?
+            .copy_to_slice(&mut provided);
+        if stored != &provided[..] {
+            return Err(ErrorCode::FAIL);
+        }
+        let attest_target = read_u32_le(&mem, META_ATTEST_TARGET);
+        if attest_target != SENTINEL_NONE {
+            let found = (0..record_count).any(|i| {
+                let off = META_SIZE + i * DPE_HANDLE_RECORD_SIZE;
+                read_u32_le(&mem, off + REC_FW_ID) == attest_target
+            });
+            if !found {
+                return Err(ErrorCode::FAIL);
             }
         }
+        Ok(())
     }
 
     fn do_read_leaf_record(&self, slice: &WriteableProcessSlice) -> Result<(), ErrorCode> {
-        if slice.len() < DPE_HANDLE_RECORD_SIZE {
-            return Err(ErrorCode::SIZE);
-        }
         let count = self.record_count();
         if count == 0 {
             return Err(ErrorCode::FAIL);
         }
-        // The leaf is the last valid record (highest index).
-        let mem = self.mem.borrow();
-        for i in (0..count).rev() {
-            let off = Self::record_offset(i);
-            if mem[off + REC_FLAGS] & FLAG_VALID != 0 {
-                slice
-                    .get(0..DPE_HANDLE_RECORD_SIZE)
-                    .ok_or(ErrorCode::SIZE)?
-                    .copy_from_slice(&mem[off..off + DPE_HANDLE_RECORD_SIZE]);
-                return Ok(());
-            }
-        }
-        Err(ErrorCode::FAIL)
+        self.copy_record_to_slice(count - 1, slice)
     }
 
     fn do_mark_attestation_target(&self, fw_id: u32) -> Result<(), ErrorCode> {
@@ -327,9 +325,6 @@ impl DpeHandleStore {
     }
 
     fn do_read_attestation_target(&self, slice: &WriteableProcessSlice) -> Result<(), ErrorCode> {
-        if slice.len() < DPE_HANDLE_RECORD_SIZE {
-            return Err(ErrorCode::SIZE);
-        }
         let attest_fw_id = self.attestation_target_fw_id();
         if attest_fw_id == SENTINEL_NONE {
             return Err(ErrorCode::FAIL);
@@ -340,10 +335,6 @@ impl DpeHandleStore {
         self.copy_record_to_slice(index, slice)
     }
 }
-
-// ---------------------------------------------------------------------------
-// SyscallDriver impl
-// ---------------------------------------------------------------------------
 
 impl SyscallDriver for DpeHandleStore {
     fn command(
@@ -390,9 +381,20 @@ impl SyscallDriver for DpeHandleStore {
                 }
             }
 
-            cmd::CLEAR_RECORDS => {
-                self.do_clear_records();
-                CommandReturn::success()
+            cmd::INITIALIZE_STORE => {
+                match self.apps.enter(processid, |_app, kernel_data| {
+                    kernel_data
+                        .get_readonly_processbuffer(ro_allow::INPUT)
+                        .map_err(|_| ErrorCode::INVAL)
+                        .and_then(|buf| {
+                            buf.enter(|slice| self.do_initialize_store(slice))
+                                .map_err(|_| ErrorCode::FAIL)?
+                        })
+                }) {
+                    Ok(Ok(())) => CommandReturn::success(),
+                    Ok(Err(e)) => CommandReturn::failure(e),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
             }
 
             cmd::READ_LEAF_RECORD => {
@@ -435,6 +437,22 @@ impl SyscallDriver for DpeHandleStore {
                 }
             }
 
+            cmd::VALIDATE_STORE => {
+                match self.apps.enter(processid, |_app, kernel_data| {
+                    kernel_data
+                        .get_readonly_processbuffer(ro_allow::INPUT)
+                        .map_err(|_| ErrorCode::INVAL)
+                        .and_then(|buf| {
+                            buf.enter(|slice| self.do_validate_store(slice))
+                                .map_err(|_| ErrorCode::FAIL)?
+                        })
+                }) {
+                    Ok(Ok(())) => CommandReturn::success(),
+                    Ok(Err(e)) => CommandReturn::failure(e),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }
@@ -443,10 +461,6 @@ impl SyscallDriver for DpeHandleStore {
         self.apps.enter(processid, |_, _| {})
     }
 }
-
-// ---------------------------------------------------------------------------
-// Byte helpers
-// ---------------------------------------------------------------------------
 
 #[inline]
 fn read_u16_le(mem: &[u8], offset: usize) -> u16 {
@@ -479,23 +493,16 @@ fn write_u32_le(mem: &mut [u8], offset: usize, val: u32) {
     mem[offset + 3] = b[3];
 }
 
-// ---------------------------------------------------------------------------
-// Command numbers
-// ---------------------------------------------------------------------------
-
 mod cmd {
     pub const EXISTS: u32 = 0;
     pub const READ_RECORD: u32 = 1;
     pub const WRITE_RECORD: u32 = 2;
-    pub const CLEAR_RECORDS: u32 = 3;
+    pub const INITIALIZE_STORE: u32 = 3;
     pub const READ_LEAF_RECORD: u32 = 4;
     pub const MARK_ATTESTATION_TARGET: u32 = 5;
     pub const READ_ATTESTATION_TARGET: u32 = 6;
+    pub const VALIDATE_STORE: u32 = 7;
 }
-
-// ---------------------------------------------------------------------------
-// Driver number accessor (for board lookup table)
-// ---------------------------------------------------------------------------
 
 impl DpeHandleStore {
     pub fn get_driver_num(&self) -> usize {
