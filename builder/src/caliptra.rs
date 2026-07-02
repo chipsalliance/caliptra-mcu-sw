@@ -4,7 +4,7 @@
 //! the ROM, firwmare, and SoC manifest.
 
 use crate::target_dir;
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
 };
@@ -24,7 +24,12 @@ use caliptra_image_types::{
 use caliptra_mcu_flash_image::MCU_RT_IDENTIFIER;
 use cargo_metadata::MetadataCommand;
 use hex::ToHex;
-use std::{num::ParseIntError, path::PathBuf, str::FromStr};
+use std::{
+    num::ParseIntError,
+    path::{Path, PathBuf},
+    process::Command,
+    str::FromStr,
+};
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
 /// A wrapper for raw firmware bytes that implements ImageGeneratorExecutable.
@@ -417,6 +422,10 @@ impl CaliptraBuilder {
     }
 
     fn compile_caliptra_rom_cached(fpga: bool) -> Result<PathBuf> {
+        if let Ok(rom_ref) = std::env::var("CALIPTRA_ROM_REF") {
+            return Self::compile_caliptra_rom_ref_cached(&rom_ref, fpga);
+        }
+
         let platform = if fpga { "fpga" } else { "emulator" };
         if let Some(version) = Self::caliptra_version() {
             let path = target_dir().join(format!("caliptra-rom-{}-{}.bin", version, platform));
@@ -428,24 +437,127 @@ impl CaliptraBuilder {
                 "Caliptra version {} not found in cache, compiling ROM...",
                 version
             );
-            let compiled_rom = Self::compile_caliptra_rom_uncached(fpga)?;
+            let compiled_rom = Self::compile_caliptra_rom_current_uncached(fpga)?;
             std::fs::copy(compiled_rom, &path)?;
             Ok(path)
         } else {
             println!("Caliptra version not found so cannot use cached ROM");
-            Self::compile_caliptra_rom_uncached(fpga)
+            Self::compile_caliptra_rom_current_uncached(fpga)
         }
     }
 
-    fn compile_caliptra_rom_uncached(fpga: bool) -> Result<PathBuf> {
+    fn compile_caliptra_rom_current_uncached(fpga: bool) -> Result<PathBuf> {
+        let path = target_dir().join("caliptra-rom.bin");
         let rom_bytes = if fpga {
             caliptra_builder::build_firmware_rom(&caliptra_builder::firmware::ROM_FPGA_WITH_UART)?
         } else {
             caliptra_builder::rom_for_fw_integration_tests()?.to_vec()
         };
-        let path = target_dir().join("caliptra-rom.bin");
         std::fs::write(&path, rom_bytes)?;
         Ok(path)
+    }
+
+    fn compile_caliptra_rom_ref_cached(rom_ref: &str, fpga: bool) -> Result<PathBuf> {
+        let platform = if fpga { "fpga" } else { "emulator" };
+        let cache_key = rom_ref.replace(
+            |c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_',
+            "_",
+        );
+        let path = target_dir().join(format!("caliptra-rom-{}-{}.bin", cache_key, platform));
+        if path.exists() {
+            println!("Using cached Caliptra ROM at {:?}", path);
+            return Ok(path);
+        }
+
+        println!("Compiling Caliptra ROM from {}...", rom_ref);
+        Self::compile_caliptra_rom_uncached(rom_ref, fpga, &path)?;
+        Ok(path)
+    }
+
+    fn compile_caliptra_rom_uncached(rom_ref: &str, fpga: bool, path: &Path) -> Result<()> {
+        let cache_key = rom_ref.replace(
+            |c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_',
+            "_",
+        );
+        let build_dir = target_dir()
+            .join("caliptra-rom-build")
+            .join(cache_key)
+            .join(if fpga { "fpga" } else { "emulator" });
+        let src_dir = build_dir.join("src");
+        std::fs::create_dir_all(&src_dir)?;
+        std::fs::write(
+            build_dir.join("Cargo.toml"),
+            format!(
+                r#"[package]
+name = "caliptra-rom-build"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+caliptra-builder = {{ git = "https://github.com/chipsalliance/caliptra-sw", {ref_key} = "{rom_ref}" }}
+
+# Required, not a nicety: caliptra-image-crypto in these ROM releases uses the
+# ML-DSA bindings (openssl::pkey_ml_dsa / signature / *_message_init) that only
+# exist in this fork. Released openssl (0.10.81) lacks them and fails to build.
+# Drop this patch once ML-DSA support lands upstream.
+[patch.crates-io]
+openssl = {{ git = "https://github.com/clundin25/rust-openssl.git", rev = "4ada1c1d7c264e052e7bb71ecddbd196a5c2a0c7" }}
+"#,
+                ref_key = if rom_ref.len() == 40 && rom_ref.chars().all(|c| c.is_ascii_hexdigit()) {
+                    "rev"
+                } else {
+                    "tag"
+                }
+            ),
+        )?;
+        std::fs::write(
+            src_dir.join("main.rs"),
+            r#"use anyhow::Result;
+
+fn main() -> Result<()> {
+    let path = std::env::args().nth(1).expect("missing output path");
+    let fpga = std::env::args().nth(2).as_deref() == Some("fpga");
+    let rom = if fpga {
+        caliptra_builder::build_firmware_rom(&caliptra_builder::firmware::ROM_FPGA_WITH_UART)?
+    } else {
+        caliptra_builder::rom_for_fw_integration_tests()?.to_vec()
+    };
+    std::fs::write(path, rom)?;
+    Ok(())
+}
+"#,
+        )?;
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // The nix devshell exports RUSTFLAGS (-L native=.../openssl/lib) so the
+        // host build finds OpenSSL. Cargo encodes that into
+        // CARGO_ENCODED_RUSTFLAGS for build scripts, and old ROM releases that
+        // build vendored OpenSSL leak it to cc as a bogus -D flag. Strip both
+        // here so the helper build starts from a clean flag environment.
+        let status = Command::new("cargo")
+            .args([
+                "run",
+                "--quiet",
+                "--manifest-path",
+                build_dir.join("Cargo.toml").to_str().unwrap(),
+                "--",
+                path.to_str().unwrap(),
+                if fpga { "fpga" } else { "emulator" },
+            ])
+            .env_remove("CARGO_ENCODED_RUSTFLAGS")
+            .env_remove("RUSTFLAGS")
+            .status()
+            .context("Failed to run Caliptra ROM helper build")?;
+        if !status.success() {
+            bail!("Caliptra ROM helper build failed");
+        }
+        Ok(())
     }
 
     fn compile_caliptra_fw_cached(

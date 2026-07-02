@@ -8,6 +8,11 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
+env:
+  # Pin the Caliptra core ROM to a release tag; image/update crates continue
+  # to use the Cargo.toml caliptra-sw rev. main-2.1 pins rom-2.1.2 instead.
+  CALIPTRA_ROM_REF: rom-2.0.3-1
+
 jobs:
   attestation_e2e:
     runs-on: ubuntu-24.04

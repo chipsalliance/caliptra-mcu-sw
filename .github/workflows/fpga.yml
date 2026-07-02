@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  # Pin the Caliptra core ROM to a release tag; image/update crates continue
+  # to use the Cargo.toml caliptra-sw rev. main-2.1 pins rom-2.1.2 instead.
+  CALIPTRA_ROM_REF: rom-2.0.3-1
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
