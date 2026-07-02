@@ -23,3 +23,11 @@ riscv.workspace = true
 caliptra-mcu-romtime.workspace = true
 rv32i.workspace = true
 tock-registers.workspace = true
+
+# Host-only deps so the `pmp` module (and its accounting unit tests) can be
+# compiled and run on the host via `cargo test`/`nextest`. These are not used
+# by firmware (riscv32) builds, which pull these crates from the target deps
+# above.
+[dev-dependencies]
+kernel.workspace = true
+rv32i.workspace = true
