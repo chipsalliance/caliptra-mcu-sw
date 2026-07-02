@@ -69,7 +69,7 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-external-otp",
     "test-firmware-v2",
     "test-dpe-handle-store",
-    "test-pcr-store",
+    "test-sw-pcr-store",
     "test-flash-usermode",
     "test-fpga-flash-ctrl",
     "test-get-device-state",
