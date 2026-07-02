@@ -43,6 +43,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mbox-sram",
     "test-external-otp",
     "test-dpe-handle-store",
+    "test-sw-pcr-store",
     "test-warm-reset",
     "test-exit-immediately",
     "test-mcu-rom-flash-access",

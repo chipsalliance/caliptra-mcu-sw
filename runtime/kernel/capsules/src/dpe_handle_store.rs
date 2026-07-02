@@ -64,7 +64,6 @@ use kernel::processbuffer::{
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
 
-pub const DPE_STORE_SIZE: usize = 0x400;
 pub const DRIVER_NUM: usize = 0x8000_0020;
 pub const DPE_HANDLE_RECORD_SIZE: usize = 32;
 pub const POLICY_DIGEST_SIZE: usize = 48;
