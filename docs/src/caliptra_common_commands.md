@@ -269,6 +269,35 @@ Authorizes the debug unlock token.
 |---------|-----------------|------|----------------------------|
 | 0:3     | completion_code | u32  | Command completion status  |
 
+#### SPDM VDM Flow
+
+Over SPDM VDM, production debug unlock uses the same two-step semantic flow as the MCU mailbox path, but the transport command IDs are `0x0A` and `0x0B`:
+
+1. The requester sends `Request Debug Unlock` (`0x0A`) with the requested `unlock_level`.
+2. The device returns `unique_device_identifier` and a 48-byte `challenge`.
+3. The requester builds the message `unique_device_identifier || unlock_level || reserved || challenge`.
+4. The requester signs that message twice:
+   - ECDSA P-384 over the SHA-384 digest
+   - ML-DSA over the SHA-512 digest
+5. The requester sends `Authorize Debug Unlock Token` (`0x0B`) with the original challenge data, both public keys, and both signatures.
+6. The device verifies the token and enables the requested debug level if validation succeeds.
+
+```mermaid
+sequenceDiagram
+    participant Requester
+    participant Device
+
+    Requester->>Device: SPDM VDM 0x0A Request Debug Unlock(unlock_level)
+    Device-->>Requester: completion_code + UDI + challenge
+    Note over Requester: Build message = UDI || unlock_level || reserved || challenge
+    Note over Requester: Sign with ECDSA P-384 and ML-DSA
+    Requester->>Device: SPDM VDM 0x0B Authorize Debug Unlock Token(token)
+    Note over Device: Verify challenge, UDI, public keys, and signatures
+    Device-->>Requester: completion_code
+```
+
+The token payload is transport-agnostic: the fields and signing inputs are the same as the MCU mailbox path. Only the framing changes between SPDM VDM and mailbox.
+
 ### Export Attested CSR
 
 Exports an attested Certificate Signing Request (CSR) for a specified device key.
