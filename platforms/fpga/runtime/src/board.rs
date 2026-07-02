@@ -30,7 +30,7 @@ use caliptra_mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use caliptra_mcu_tock_veer::pic::Pic;
 use caliptra_mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
