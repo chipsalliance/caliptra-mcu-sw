@@ -24,6 +24,15 @@ pub use requester::{KeyPairInfo, SpdmRequester};
 pub use transport::{SpdmDeviceIo, SpdmSocketDeviceIo, TcpSpdmDeviceIo};
 pub use vdm::SpdmVdmDriverImpl;
 
+/// Peer trust anchor for libspdm certificate-chain validation.
+#[derive(Debug, Clone)]
+pub struct PeerRootCert {
+    /// SPDM certificate slot this root is allowed to authenticate.
+    pub slot_id: u8,
+    /// DER-encoded root certificate.
+    pub cert_der: Vec<u8>,
+}
+
 /// SPDM requester configuration.
 #[derive(Debug, Clone)]
 pub struct SpdmConfig {
@@ -34,6 +43,10 @@ pub struct SpdmConfig {
     /// Accept peer certificate chains returned by GET_CERTIFICATE without
     /// libspdm's built-in X.509 responder-identity validation.
     pub accept_unverified_peer_cert_chain: bool,
+    /// Slot-scoped DER trust anchors used when validating peer certificate
+    /// chains. libspdm stores raw pointers to these buffers, so the requester
+    /// keeps this config alive for the lifetime of the SPDM context.
+    pub peer_root_certs: Vec<PeerRootCert>,
 }
 
 impl Default for SpdmConfig {
@@ -42,6 +55,7 @@ impl Default for SpdmConfig {
             slot_id: 0,
             max_spdm_msg_size: libspdm::spdm::LIBSPDM_MAX_SPDM_MSG_SIZE,
             accept_unverified_peer_cert_chain: false,
+            peer_root_certs: Vec::new(),
         }
     }
 }

@@ -41,7 +41,7 @@ These commands support a wide range of functionalities, including querying devic
 | MC_DEVICE_INFO                    | 0x4D44_494E ("MDIN") | Retrieves information about the target device.                                                     |
 | MC_EXPORT_IDEV_CSR                | 0x4D49_4352 ("MICR") | Exports the IDEVID Self-Signed Certificate Signing Request.                                        |
 | MC_IMPORT_IDEV_CERT               | 0x4D49_4943 ("MIIC") | Allows SoC to import DER-encoded IDevId certificate on every boot.                                 |
-| MC_EXPORT_ATTESTED_CSR            | 0x4D45_4143 ("MEAC") | Exports an attested CSR for a specified device key, wrapped in a CoseSign1 structure.              |
+| MC_EXPORT_ATTESTED_CSR            | 0x4D45_4143 ("MEAC") | Exports an attested CSR payload for a specified device key.                                        |
 | MC_GET_LOG                        | 0x4D47_4C47 ("MGLG") | Retrieves the internal log for the RoT.                                                            |
 | MC_CLEAR_LOG                      | 0x4D43_4C47 ("MCLG") | Clears the log in the RoT subsystem.                                                               |
 | MC_FIPS_SELF_TEST_START           | 0x4D46_5354 ("MFST") | Starts the FIPS self-test to exercise the crypto engine.                                           |
@@ -220,7 +220,7 @@ Command Code: `0x4D49_4943` ("MIIC")
 
 ### MC_EXPORT_ATTESTED_CSR
 
-Exports an attested Certificate Signing Request (CSR) for a specified device key. The CSR is wrapped in a CoseSign1 structure for attestation integrity. A 32-byte nonce is included for freshness.
+Exports an attested Certificate Signing Request (CSR) payload for a specified device key. Firmware returns a COSE_Sign1/CWT envelope whose signed claims include the 32-byte requester nonce and the DER-encoded PKCS#10 CSR. Legacy/test transports may return a raw DER PKCS#10 CSR directly, but production provisioning should verify the COSE signature, nonce claim, and CSR claim before using the CSR.
 
 Command Code: `0x4D45_4143` ("MEAC")
 
@@ -243,7 +243,7 @@ Command Code: `0x4D45_4143` ("MEAC")
 | chksum      | u32            |                                                           |
 | fips_status | u32            | FIPS approved or an error.                                |
 | data_len    | u32            | Length in bytes of the valid data in the data field.       |
-| csr_data    | u8[data_len]   | Attested CSR payload (CoseSign1 structure).               |
+| csr_data    | u8[data_len]   | Attested CSR payload. Production firmware returns a COSE_Sign1/CWT envelope containing signed nonce and CSR claims; legacy/test paths may return raw DER PKCS#10 CSR bytes. |
 
 ### MC_GET_LOG
 

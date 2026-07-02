@@ -67,7 +67,7 @@ const ATTESTED_CSR_REQ_LEN: usize = 40;
 /// `MailboxRespHeader(8) | data_size(4)` = 12 B.
 const ATTESTED_CSR_RSP_PREFIX_LEN: usize = MBOX_RESP_HEADER_SIZE + 4;
 
-/// Issue `GET_ATTESTED_ECC384_CSR` and write the returned CSR DER bytes into
+/// Issue `GET_ATTESTED_ECC384_CSR` and write the returned attested CSR payload into
 /// `csr_out`, returning the number of bytes written.
 ///
 /// `csr_out` is also used as the mailbox response buffer for the duration of
@@ -83,7 +83,7 @@ pub async fn get_attested_csr_ecc384(
     get_attested_csr_inner(CMD_GET_ATTESTED_ECC384_CSR, key_id, nonce, csr_out).await
 }
 
-/// Issue `GET_ATTESTED_MLDSA87_CSR` and write the returned CSR DER bytes into
+/// Issue `GET_ATTESTED_MLDSA87_CSR` and write the returned attested CSR payload into
 /// `csr_out`. See [`get_attested_csr_ecc384`] for buffer semantics.
 #[inline(never)]
 pub async fn get_attested_csr_mldsa87(

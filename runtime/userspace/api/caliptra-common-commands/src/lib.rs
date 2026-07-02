@@ -208,13 +208,17 @@ pub trait CaliptraCmdHandler: Send + Sync {
         capabilities: &mut DeviceCapabilities,
     ) -> CaliptraCmdResult<()>;
 
-    /// Exports an attested CSR for the specified device key.
+    /// Exports an attested CSR payload for the specified device key.
+    ///
+    /// Production firmware returns a COSE_Sign1/CWT envelope containing signed
+    /// nonce and DER PKCS#10 CSR claims. Legacy/test paths may return raw DER
+    /// PKCS#10 CSR bytes.
     ///
     /// # Arguments
     /// * `device_key_id` - The device key identifier (0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias).
     /// * `algorithm` - The asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87).
     /// * `nonce` - A 32-byte nonce provided by the requester for freshness.
-    /// * `csr_buf` - Mutable buffer to write the CSR DER data into directly.
+    /// * `csr_buf` - Mutable buffer to write the attested CSR payload into directly.
     ///
     /// # Returns
     /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
@@ -230,7 +234,7 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Arguments
     /// * `algorithm` - The asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87).
-    /// * `csr_buf` - Mutable buffer to write the CSR DER data into directly.
+    /// * `csr_buf` - Mutable buffer to write the IDevID CSR DER data into directly.
     ///
     /// # Returns
     /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.

@@ -28,8 +28,14 @@ caliptra-util-host-commands.workspace = true
 caliptra-util-host-session.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+getrandom.workspace = true
 hex.workspace = true
 log.workspace = true
 serde.workspace = true
+sha2.workspace = true
 simple_logger.workspace = true
 toml.workspace = true
+x509-parser.workspace = true
+p384.workspace = true
+
+[dev-dependencies]

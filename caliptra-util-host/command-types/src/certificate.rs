@@ -104,9 +104,9 @@ pub struct ExportAttestedCsrRequest {
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExportAttestedCsrResponse {
     pub common: CommonResponse,
-    /// Length of CSR data
+    /// Length of attested CSR payload data
     pub data_len: u32,
-    /// CSR data (variable length, up to MAX_CSR_DATA_SIZE)
+    /// Attested CSR payload data (COSE_Sign1/CWT envelope or raw DER CSR, up to MAX_CSR_DATA_SIZE)
     pub csr_data: [u8; MAX_CSR_DATA_SIZE],
 }
 
@@ -127,13 +127,17 @@ pub enum AttestedCsrValidationError {
 }
 
 impl ExportAttestedCsrResponse {
-    /// Returns the attested CSR payload as a byte slice (CoseSign1 structure).
+    /// Returns the attested CSR payload as a byte slice.
+    ///
+    /// Production firmware returns a COSE_Sign1/CWT envelope whose signed
+    /// claims contain the requester nonce and DER PKCS#10 CSR. Some legacy or
+    /// unit-test paths may return the raw DER PKCS#10 CSR directly.
     pub fn csr_bytes(&self) -> &[u8] {
         let len = (self.data_len as usize).min(MAX_CSR_DATA_SIZE);
         &self.csr_data[..len]
     }
 
-    /// Validates the CSR payload, returning Ok with the byte length on success.
+    /// Validates the attested CSR payload length, returning Ok with the byte length on success.
     pub fn validate_csr_payload(&self) -> Result<usize, AttestedCsrValidationError> {
         let len = self.data_len as usize;
         if len == 0 {
