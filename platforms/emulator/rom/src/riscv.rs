@@ -817,6 +817,11 @@ pub extern "C" fn rom_entry() -> ! {
             },
             #[cfg(feature = "ocp-lock")]
             ocp_lock_config,
+            mcu_fw_sram_exec_region_size: Some(
+                (MCU_MEMORY_MAP.sram_size - MCU_MEMORY_MAP.storage_size) / 4096
+                    - caliptra_mcu_rom_common::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS
+                    - 1,
+            ),
             ..Default::default()
         });
     }

@@ -31,6 +31,7 @@ mod caliptra_cmd_handler;
 ))]
 mod defmt_test;
 #[cfg(any(
+    feature = "test-firmware-activate",
     feature = "test-firmware-update-streaming",
     feature = "test-firmware-update-flash",
     feature = "test-streaming-boot-flash-write-back",
@@ -103,6 +104,7 @@ pub(crate) async fn async_main() {
     // TODO: Debug spawning the SPDM task causes a hardfault in FPGA when firmware update is enabled
     // for now, disable the SPDM task if either FW update test is enabled
     #[cfg(not(any(
+        feature = "test-firmware-activate",
         feature = "test-firmware-update-streaming",
         feature = "test-firmware-update-flash",
         feature = "test-streaming-boot-flash-write-back",

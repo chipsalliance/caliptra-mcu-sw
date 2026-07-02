@@ -58,6 +58,7 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-fpga-flash-ctrl",
     "test-pldm-fw-update-e2e",
     "test-firmware-update-streaming",
+    "test-firmware-activate",
     "test-firmware-v2",
     "test-mcu-mbox-usermode",
     "test-mcu-mbox-cmds",

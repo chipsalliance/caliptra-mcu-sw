@@ -515,6 +515,7 @@ MEMORY
     prog (rx) : ORIGIN = $APPS_START, LENGTH = $APPS_LENGTH
     ram (rwx) : ORIGIN = $DATA_RAM_START, LENGTH = $DATA_RAM_LENGTH
     app_ram(rwx) : ORIGIN = $APP_RAM_START, LENGTH = $APP_RAM_LENGTH
+    storage (rw) : ORIGIN = $STORAGE_START, LENGTH = $STORAGE_LENGTH
     dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_LENGTH
     flash (r) : ORIGIN = $FLASH_OFFSET, LENGTH = $FLASH_LENGTH
     HANDOFF (rw) : ORIGIN = $HANDOFF_ADDR, LENGTH = $HANDOFF_SIZE
@@ -553,13 +554,34 @@ SECTIONS
         sub_map.insert("APPS_START", format!("{apps_start:#x}",));
         sub_map.insert("APPS_LENGTH", format!("{apps_length:#x}",));
 
+        let storage_size = self.manifest.platform.storage_size();
+        // Round storage_size up to a 4 KiB boundary so the value stays consistent with
+        // the VeeR mcu_fw_sram_exec_region_size parameter (programmed in 4 KiB units).
+        const PAGE_4K: u64 = 0x1000;
+        let storage_size = (storage_size + PAGE_4K - 1) & !(PAGE_4K - 1);
+        // Validate that the storage region fits within the DTCM.
+        if storage_size > 0 && storage_size >= dtcm.size {
+            anyhow::bail!(
+                "storage_size ({:#x}) must be smaller than the DTCM size ({:#x})",
+                storage_size,
+                dtcm.size
+            );
+        }
+
         sub_map.insert("DATA_RAM_START", format!("{:#x}", kernel_data.offset));
-        sub_map.insert("DATA_RAM_LENGTH", format!("{:#x}", dtcm.size));
+        sub_map.insert(
+            "DATA_RAM_LENGTH",
+            format!("{:#x}", dtcm.size - storage_size),
+        );
 
         let app_offset = kernel_data.offset + kernel_data.size;
-        let app_length = dtcm.size - kernel_data.size;
+        let app_length = dtcm.size.saturating_sub(kernel_data.size + storage_size);
         sub_map.insert("APP_RAM_START", format!("{:#x}", app_offset));
         sub_map.insert("APP_RAM_LENGTH", format!("{:#x}", app_length));
+
+        let storage_start = kernel_data.offset + dtcm.size - storage_size;
+        sub_map.insert("STORAGE_START", format!("{:#x}", storage_start));
+        sub_map.insert("STORAGE_LENGTH", format!("{:#x}", storage_size));
 
         let dccm = self.manifest.platform.dccm();
         sub_map.insert("DCCM_OFFSET", format!("{:#x}", dccm.offset));
@@ -714,6 +736,7 @@ mod tests {
             }),
             flash: None,
             handoff: None,
+            storage_size: None,
         }
     }
 

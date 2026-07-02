@@ -73,6 +73,10 @@ extern "C" {
     static _ssram: u8;
     /// The end of the kernel / app RAM (Included only for kernel PMP)
     static _esram: u8;
+    /// The start of the persistent storage region at the end of SRAM
+    static _sstorage: u8;
+    /// The end of the persistent storage region at the end of SRAM
+    static _estorage: u8;
 
     pub(crate) static _pic_vector_table: u8;
 }
@@ -352,7 +356,7 @@ pub unsafe fn main() {
     // protection.
 
     // Define platform-specific memory regions
-    let mut platform_regions = ArrayVec::<PlatformRegion, 9>::new();
+    let mut platform_regions = ArrayVec::<PlatformRegion, 10>::new();
 
     // Kernel text region (read + execute)
     platform_regions.push(PlatformRegion {
@@ -386,6 +390,21 @@ pub unsafe fn main() {
         write: true,
         execute: false,
     });
+
+    // Persistent storage region at the end of SRAM (_sstorage.._estorage).
+    // This is a kernel-only RW region, separate from the app RAM above so
+    // the PMP explicitly covers this range even when storage_size > 0x80.
+    if addr_of!(_sstorage) as usize != addr_of!(_estorage) as usize {
+        platform_regions.push(PlatformRegion {
+            start_addr: addr_of!(_sstorage),
+            size: addr_of!(_estorage) as usize - addr_of!(_sstorage) as usize,
+            is_mmio: false,
+            user_accessible: false,
+            read: true,
+            write: true,
+            execute: false,
+        });
+    }
 
     // Add DCCM region if not being used for stack
     // Check if DCCM is available and not used for stack
