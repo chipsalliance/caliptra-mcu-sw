@@ -23,6 +23,8 @@ use mcu_caliptra_api_lite::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_get_cert_chain_chunk,
     dpe_sign_ecc_p384, walk_dpe_chain, DpeChainSink, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
 };
+#[cfg(feature = "set-certificate")]
+use mcu_caliptra_api_lite::{sha_finish, sha_init, sha_update, HashAlgo, SHA_CONTEXT_SIZE};
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 
 /// 48-byte label fed to DPE `CertifyKey`. Keep this stable so DPE
@@ -50,6 +52,24 @@ impl DpeChainSink for CountSink {
     async fn on_chunk(&mut self, _: &[u8]) -> McuResult<()> {
         Ok(())
     }
+}
+
+#[cfg(feature = "set-certificate")]
+async fn validate_root_hash<M: MeasurementProvider>(
+    pal: &McuSpdmPal<M>,
+    root_hash: &[u8; 48],
+    cert_chain: &[u8],
+) -> McuResult<()> {
+    let root_cert_len = der_first_seq_len(cert_chain).ok_or(INVARIANT)?;
+    let sha_buf = pal.allocator.alloc_bytes(SHA_CONTEXT_SIZE)?;
+    let mut state = sha_init(pal.allocator, sha_buf, HashAlgo::Sha384, &[]).await?;
+    sha_update(pal.allocator, &mut state, &cert_chain[..root_cert_len]).await?;
+    let mut digest = [0u8; 48];
+    sha_finish(pal.allocator, &mut state, &mut digest).await?;
+    if &digest != root_hash {
+        return Err(INVARIANT);
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -133,12 +153,13 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         _slot: u8,
         _key_pair_id: u8,
         cert_model: u8,
-        _root_hash: &[u8; 48],
-        _cert_chain: &[u8],
+        root_hash: &[u8; 48],
+        cert_chain: &[u8],
     ) -> McuResult<()> {
         if cert_model != CERT_MODEL_ALIAS_CERT {
             return Err(INVARIANT);
         }
+        validate_root_hash(self, root_hash, cert_chain).await?;
         Ok(())
     }
 
@@ -456,9 +477,13 @@ fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
         return None;
     }
     let len_byte = buf[1];
-    if len_byte & 0x80 == 0 {
+    let total = if len_byte & 0x80 == 0 {
         // Short form: length fits in 7 bits.
-        Some(2 + len_byte as usize)
+        let content = len_byte as usize;
+        if content == 0 {
+            return None;
+        }
+        2usize.checked_add(content)?
     } else {
         // Long form: low 7 bits = number of length bytes.
         let n = (len_byte & 0x7f) as usize;
@@ -470,8 +495,12 @@ fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
             content = content.checked_shl(8)?;
             content = content.checked_add(b as usize)?;
         }
-        Some(2 + n + content)
-    }
+        if content == 0 {
+            return None;
+        }
+        2usize.checked_add(n)?.checked_add(content)?
+    };
+    (total <= buf.len()).then_some(total)
 }
 
 #[cfg(test)]
