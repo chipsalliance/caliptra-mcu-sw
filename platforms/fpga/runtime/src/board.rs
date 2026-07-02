@@ -11,7 +11,11 @@ use caliptra_mcu_components::mbox_sram_component_static;
 use caliptra_mcu_components::mctp_driver_component_static;
 use caliptra_mcu_components::mctp_mux_component_static;
 use caliptra_mcu_components::mcu_mbox_component_static;
-use caliptra_mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
+use caliptra_mcu_components::soft_pcr_store_component_static;
+use caliptra_mcu_components::{
+    dpe_handle_store_component_static, flash_partition_component_static,
+    instantiate_flash_partitions,
+};
 use caliptra_mcu_config_fpga::flash::{EMULATED_EXT_OTP_PARTITION, STAGING_PARTITION};
 use caliptra_mcu_config_fpga::flash_partition_list_imaginary_flash;
 use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
@@ -172,6 +176,8 @@ struct VeeR {
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
     logging_flash:
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
+    dpe_handle_store: &'static caliptra_mcu_capsules_runtime::dpe_handle_store::DpeHandleStore,
+    pcr_store: &'static caliptra_mcu_capsules_runtime::soft_pcr_store::SoftPcrStore,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -235,6 +241,10 @@ impl SyscallDriverLookup for VeeR {
             caliptra_mcu_capsules_runtime::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
                 f(Some(self.logging_flash))
             }
+            caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM => {
+                f(Some(self.dpe_handle_store))
+            }
+            caliptra_mcu_capsules_runtime::soft_pcr_store::DRIVER_NUM => f(Some(self.pcr_store)),
             _ => f(None),
         }
     }
@@ -811,6 +821,38 @@ pub unsafe fn main() {
     )
     .finalize(external_otp_component_static!());
 
+    // DPE Handle Store + Software PCR Store: backed by the persistent storage
+    // SRAM reservation (_sstorage.._estorage).  The region is split as:
+    //   [_sstorage .. _sstorage + DPE_STORE_SIZE)  → DPE Handle Store
+    //   [_sstorage + DPE_STORE_SIZE .. _estorage)   → Software PCR Store
+    // When built outside the firmware-bundler (e.g. cargo check), _sstorage ==
+    // _estorage == 0 so both slices are empty, which is safe.
+    const DPE_STORE_SIZE: usize = 0x400; // 1 KiB → DPE Handle Store
+    const PCR_STORE_SIZE: usize = 0xC00; // 3 KiB → Software PCR Store
+    let (dpe_handle_store, pcr_store) = {
+        let start = addr_of!(_sstorage) as *mut u8;
+        let end = addr_of!(_estorage) as usize;
+        let total_len = end.saturating_sub(start as usize);
+        let dpe_len = DPE_STORE_SIZE.min(total_len);
+        let pcr_len = PCR_STORE_SIZE.min(total_len.saturating_sub(dpe_len));
+        let full: &'static mut [u8] = core::slice::from_raw_parts_mut(start, total_len);
+        let (dpe_sram, rest) = full.split_at_mut(dpe_len);
+        let pcr_sram = &mut rest[..pcr_len];
+        let dpe = caliptra_mcu_components::dpe_handle_store::DpeHandleStoreComponent::new(
+            board_kernel,
+            caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM,
+            dpe_sram,
+        )
+        .finalize(dpe_handle_store_component_static!());
+        let pcr = caliptra_mcu_components::soft_pcr_store::SoftPcrStoreComponent::new(
+            board_kernel,
+            caliptra_mcu_capsules_runtime::soft_pcr_store::DRIVER_NUM,
+            pcr_sram,
+        )
+        .finalize(soft_pcr_store_component_static!());
+        (dpe, pcr)
+    };
+
     let mcu_mbox0 = caliptra_mcu_components::mcu_mbox::McuMboxComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
@@ -872,6 +914,8 @@ pub unsafe fn main() {
             system,
             dma,
             logging_flash,
+            dpe_handle_store,
+            pcr_store,
         }
     );
 
