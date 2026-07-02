@@ -248,6 +248,7 @@ mod test {
             component_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
             feature: feature.to_string(),
+            ..Default::default()
         };
 
         let mut update_builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
@@ -671,6 +672,7 @@ mod test {
             component_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
             feature: feature.to_string(),
+            ..Default::default()
         };
 
         // Build the Caliptra builder with prebuilt paths
@@ -786,6 +788,7 @@ mod test {
             component_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
             feature: feature.to_string(),
+            ..Default::default()
         };
 
         // Build the Runtime image

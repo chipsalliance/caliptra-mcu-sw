@@ -16,6 +16,7 @@ embassy-executor.workspace = true
 embassy-sync.workspace = true
 caliptra-mcu-common-commands.workspace = true
 caliptra-mcu-flash-image.workspace = true
+caliptra-mcu-measurement-api.workspace = true
 caliptra-mcu-libapi-caliptra.workspace = true
 caliptra-mcu-libapi-emulated-caliptra.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true
@@ -58,7 +59,10 @@ portable-atomic = { workspace = true, features = ["critical-section"] }
 defmt = { workspace = true, optional = true }
 
 [build-dependencies]
+caliptra-mcu-measurement-api.workspace = true
 caliptra-ocp-eat.workspace = true
+serde.workspace = true
+toml.workspace = true
 
 [features]
 default = []
