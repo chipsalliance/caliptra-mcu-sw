@@ -1,0 +1,220 @@
+# Licensed under the Apache-2.0 license
+
+name: Caliptra Util Host Validator Tests
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  precheckin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      CARGO_INCREMENTAL: 0
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Test commit name
+        run: |
+          echo "Lint: release_ref=$(git rev-parse HEAD)"
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential cmake clang libclang-dev openssl libssl-dev libudev-dev libpci-dev pkg-config curl git && \
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Fetch cargo git dependencies
+        run: |
+          pushd caliptra-util-host
+          cargo fetch
+          popd
+
+      - name: Build libspdm from SPDM-Utils
+        run: |
+          SPDM_UTILS_DIR=$(cargo metadata --manifest-path caliptra-util-host/Cargo.toml --format-version=1 | \
+            python3 -c 'import json, os, sys; data = json.load(sys.stdin); print(os.path.dirname(next(p["manifest_path"] for p in data["packages"] if p["name"] == "SPDM-Utils")))')
+          BUILD_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-build"
+          export LIBSPDM_LIB_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-lib"
+          OPENSSL_LIB_DIR=$(pkg-config --variable=libdir openssl)
+          cmake -S "${SPDM_UTILS_DIR}/third-party/libspdm" -B "${BUILD_DIR}" \
+            -DARCH=x64 \
+            -DTOOLCHAIN=GCC \
+            -DTARGET=Debug \
+            -DCRYPTO=openssl \
+            -DENABLE_BINARY_BUILD=1 \
+            -DSTACK_USAGE=ON \
+            -DCOMPILED_LIBCRYPTO_PATH="${OPENSSL_LIB_DIR}" \
+            -DCOMPILED_LIBSSL_PATH="${OPENSSL_LIB_DIR}" \
+            -DDISABLE_TESTS=1 \
+            -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000 \
+              -DLIBSPDM_ENABLE_CAPABILITY_EVENT_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_MEL_CAP=0 \
+              -DLIBSPDM_HAL_PASS_SPDM_CONTEXT=1 \
+              -DLIBSPDM_ENABLE_CAPABILITY_GET_KEY_PAIR_INFO_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_SET_KEY_PAIR_INFO_CAP=0"
+          cmake --build "${BUILD_DIR}" --parallel "$(nproc)"
+          mkdir -p "${LIBSPDM_LIB_DIR}"
+          find "${BUILD_DIR}/lib" -name "*.a" -exec cp {} "${LIBSPDM_LIB_DIR}/" \;
+          echo "LIBSPDM_LIB_DIR=${LIBSPDM_LIB_DIR}" >> $GITHUB_ENV
+
+      - name: Run caliptra-util-host precheckin
+        run: |
+          pushd caliptra-util-host
+          cargo xtask precheckin
+          popd
+
+  caliptra_util_host_validator_tests:
+    runs-on: ubuntu-24.04
+    needs: [precheckin]
+
+    env:
+      CARGO_INCREMENTAL: 0
+      SCCACHE_VERSION: 0.8.2
+      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
+      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
+      # CPTRA_COVERAGE_PATH: /tmp
+
+      # Change this to a new random value if you suspect the cache is corrupted
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b42a6e70ec4
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Test commit name
+        run: |
+          echo "Build-Test: release_ref=$(git rev-parse HEAD)"
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential cmake clang libclang-dev openssl libssl-dev libudev-dev libpci-dev pkg-config curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Fetch cargo git dependencies
+        run: |
+          pushd caliptra-util-host
+          cargo fetch
+          popd
+
+      - name: Build libspdm from SPDM-Utils
+        run: |
+          SPDM_UTILS_DIR=$(cargo metadata --manifest-path caliptra-util-host/Cargo.toml --format-version=1 | \
+            python3 -c 'import json, os, sys; data = json.load(sys.stdin); print(os.path.dirname(next(p["manifest_path"] for p in data["packages"] if p["name"] == "SPDM-Utils")))')
+          BUILD_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-build"
+          export LIBSPDM_LIB_DIR="${GITHUB_WORKSPACE}/caliptra-util-host/target/libspdm-lib"
+          OPENSSL_LIB_DIR=$(pkg-config --variable=libdir openssl)
+          cmake -S "${SPDM_UTILS_DIR}/third-party/libspdm" -B "${BUILD_DIR}" \
+            -DARCH=x64 \
+            -DTOOLCHAIN=GCC \
+            -DTARGET=Debug \
+            -DCRYPTO=openssl \
+            -DENABLE_BINARY_BUILD=1 \
+            -DSTACK_USAGE=ON \
+            -DCOMPILED_LIBCRYPTO_PATH="${OPENSSL_LIB_DIR}" \
+            -DCOMPILED_LIBSSL_PATH="${OPENSSL_LIB_DIR}" \
+            -DDISABLE_TESTS=1 \
+            -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000 \
+              -DLIBSPDM_ENABLE_CAPABILITY_EVENT_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_MEL_CAP=0 \
+              -DLIBSPDM_HAL_PASS_SPDM_CONTEXT=1 \
+              -DLIBSPDM_ENABLE_CAPABILITY_GET_KEY_PAIR_INFO_CAP=0 \
+              -DLIBSPDM_ENABLE_CAPABILITY_SET_KEY_PAIR_INFO_CAP=0"
+          cmake --build "${BUILD_DIR}" --parallel "$(nproc)"
+          mkdir -p "${LIBSPDM_LIB_DIR}"
+          find "${BUILD_DIR}/lib" -name "*.a" -exec cp {} "${LIBSPDM_LIB_DIR}/" \;
+          echo "LIBSPDM_LIB_DIR=${LIBSPDM_LIB_DIR}" >> $GITHUB_ENV
+
+      - name: Restore sccache binary
+        uses: actions/cache/restore@v3
+        id: sccache_bin_restore
+        with:
+          path: ~/.cargo/bin/sccache
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+
+      - name: Install sccache
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        run: |
+          cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
+
+      # Save the sccache binary immediately so we can reuse it in future runs
+      # even if the rest of the current run fails.
+      - name: Save sccache binary
+        uses: actions/cache/save@v3
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cargo/bin/sccache
+          key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
+
+      - name: Configure sccache
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Build caliptra-util-host
+        run: |
+          pushd caliptra-util-host
+          cargo xtask build
+          popd
+          echo "SPDM_VALIDATOR_BIN=${GITHUB_WORKSPACE}/target/caliptra-util-host/debug/caliptra-spdm-validator" >> $GITHUB_ENV
+          echo "OCP_DEV_IDENTITY_PROVISION_TOOL_BIN=${GITHUB_WORKSPACE}/target/caliptra-util-host/debug/ocp_dev_identity_provision_tool" >> $GITHUB_ENV
+
+      - name: Run Caliptra Util Host tests
+        run: |
+          pushd caliptra-util-host
+          cargo xtask test
+          popd
+
+      - name: Run Caliptra Util Host validator tests
+        run: |
+          cargo xtask all-build
+          cargo test --package caliptra-mcu-tests-integration --lib -- test::test_caliptra_util_host_validator --nocapture --include-ignored
+          sccache --show-stats
+
+      - name: Run Caliptra Util Host MCTP VDM validator tests
+        run: |
+          cargo test --package caliptra-mcu-tests-integration --lib -- test_mctp_vdm_validator::test::test_caliptra_util_host_mctp_vdm_validator --nocapture --include-ignored
+          sccache --show-stats
+
+      - name: Run Caliptra Util Host SPDM VDM validator tests (production mode)
+        run: |
+          cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator --exact --nocapture --include-ignored
+          sccache --show-stats
+
+      - name: Run Caliptra Util Host SPDM VDM validator tests (manufacturing mode)
+        run: |
+          cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator_mfg_mode --exact --nocapture --include-ignored
+          sccache --show-stats
+
+      - name: Run OCP Device Identity provisioning test
+        env:
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
+        run: |
+          cargo xtask all-build --separate-runtimes --runtime-features test-mctp-spdm-set-certificate
+          cargo test --package caliptra-mcu-tests-integration --lib -- test_ocp_dev_identity_provision_tool::test::test_mctp_spdm_set_certificate_with_ocp_provision_tool --exact --nocapture --include-ignored
+          sccache --show-stats
+
+      - name: Upload test results and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caliptra-util-host-validator-test-results
+          path: |
+            target/*/debug/*.log
+            target/*/debug/*.txt
+            target/*/debug/*.pcap
