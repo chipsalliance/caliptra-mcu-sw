@@ -247,9 +247,18 @@ impl Soc {
         let mut hash_buf = [0u8; 48];
         otp.read_vendor_pk_hash(pk_hash_idx, &mut hash_buf)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        for (i, word_bytes) in hash_buf.chunks_exact(4).enumerate() {
-            let word = u32::from_le_bytes(word_bytes.try_into().unwrap());
-            self.registers.fuse_vendor_pk_hash[i].set(word);
+        for (reg, word_bytes) in self
+            .registers
+            .fuse_vendor_pk_hash
+            .iter()
+            .zip(hash_buf.chunks_exact(4))
+        {
+            let word = u32::from_le_bytes(
+                word_bytes
+                    .try_into()
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR)),
+            );
+            reg.set(word);
         }
 
         // Runtime SVN.

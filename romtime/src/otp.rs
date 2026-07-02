@@ -37,6 +37,8 @@ pub const PROD_DEBUG_UNLOCK_PK_ENTRIES: [&FuseEntryInfo; 8] = [
     fuses::OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_7,
 ];
 
+const DIGEST_SIZE: usize = 8;
+
 #[derive(Clone, Copy)]
 pub enum PqcKeyType {
     MLDSA = 1,
@@ -140,18 +142,17 @@ impl Otp {
     }
 
     fn read_data(&self, addr: usize, len: usize, data: &mut [u8]) -> McuResult<()> {
-        if len % 4 != 0 {
+        if data.len() < len || addr % 4 != 0 || len % 4 != 0 {
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
-        let data = data
-            .get_mut(..len)
-            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
-        for (i, chunk) in data.chunks_exact_mut(4).enumerate() {
-            let word = self.read_word(addr / 4 + i)?;
-            let word_bytes = word.to_le_bytes();
-            chunk.copy_from_slice(&word_bytes[..chunk.len()]);
-        }
-        Ok(())
+
+        read_data_with(
+            addr,
+            len,
+            data,
+            |word_addr| self.read_word(word_addr),
+            |dword_addr| self.read_dword(dword_addr),
+        )
     }
 
     /// Reads a word from the OTP controller.
@@ -367,7 +368,9 @@ impl Otp {
 
     /// Reads a u32 from OTP at the given byte offset.
     pub fn read_u32_at(&self, byte_offset: usize) -> McuResult<u32> {
-        self.read_word(byte_offset / 4)
+        let mut data = [0u8; 4];
+        self.read_data(byte_offset, data.len(), &mut data)?;
+        Ok(u32::from_le_bytes(data))
     }
 
     /// Reads multiple u32 words from OTP starting at byte_offset directly into a register array.
@@ -381,7 +384,7 @@ impl Otp {
         F: FnMut(usize, u32),
     {
         for i in 0..count {
-            let word = self.read_word(byte_offset / 4 + i)?;
+            let word = self.read_u32_at(byte_offset + i * 4)?;
             write_fn(i, word);
         }
         Ok(())
@@ -663,7 +666,7 @@ impl Otp {
     pub fn read_entry(&self, entry: &FuseEntryInfo) -> McuResult<u32> {
         let layout = FuseLayout::from_generated(&entry.layout)
             .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;
-        let raw = self.read_word(entry.byte_offset / 4)?;
+        let raw = self.read_u32_at(entry.byte_offset)?;
         crate::extract_single_fuse_value(layout, raw)
     }
 
@@ -710,9 +713,11 @@ impl Otp {
         }
         let mut raw = [0u32; MAX_RAW_WORDS];
         let base_word = entry.byte_offset / 4;
-        for i in 0..word_count {
-            let w = raw.get_mut(i).ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
-            *w = self.read_word(base_word + i)?;
+        for idx in 0..word_count {
+            let word = raw
+                .get_mut(idx)
+                .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+            *word = self.read_word(base_word + idx)?;
         }
         crate::extract_fuse_value::<N>(
             layout,
@@ -756,22 +761,7 @@ impl Otp {
         iv: u64,
         cnst: u128,
     ) -> McuResult<u64> {
-        const DIGEST_SIZE: usize = 8;
-
-        if !partition.sw_digest {
-            crate::println!("[mcu-rom-otp] Partition does not support sw_digest");
-            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
-        }
-        if partition.byte_size <= DIGEST_SIZE {
-            crate::println!("[mcu-rom-otp] Partition too small for digest");
-            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
-        }
-
-        let data_size = partition.byte_size - DIGEST_SIZE;
-        if data_size % 8 != 0 {
-            crate::println!("[mcu-rom-otp] Partition data not 8-byte aligned for digest");
-            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
-        }
+        let data_size = sw_digest_data_size(partition)?;
 
         // Read two words at a time from OTP, yielding u64 blocks to the
         // streaming digest. No large stack buffer required.
@@ -917,6 +907,91 @@ impl Otp {
     }
 }
 
+fn sw_digest_data_size(partition: &OtpPartitionInfo) -> McuResult<usize> {
+    if !partition.sw_digest {
+        crate::println!("[mcu-rom-otp] Partition does not support sw_digest");
+        return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+    }
+
+    let partition_end = partition.byte_offset + partition.byte_size;
+    let data_size = if let Some(digest_offset) = partition.digest_offset {
+        if digest_offset < partition.byte_offset || digest_offset + DIGEST_SIZE > partition_end {
+            crate::println!("[mcu-rom-otp] Partition too small for digest");
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+        digest_offset - partition.byte_offset
+    } else {
+        if partition.byte_size <= DIGEST_SIZE {
+            crate::println!("[mcu-rom-otp] Partition too small for digest");
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+        partition.byte_size - DIGEST_SIZE
+    };
+
+    if data_size % 8 != 0 {
+        crate::println!("[mcu-rom-otp] Partition data not 8-byte aligned for digest");
+        return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+    }
+
+    Ok(data_size)
+}
+
+fn is_64bit_granule(byte_addr: usize) -> bool {
+    matches!(
+        byte_addr,
+        // Secret partitions and digest fields require 64-bit DAI granules.
+        0x40..=0xcf
+            | 0x2d0..=0x38f
+            | 0x3f0..=0x3f7
+            | 0x430..=0x437
+            | 0x790..=0x797
+            | 0x868..=0xa77
+            | 0xc78..=0xc7f
+    )
+}
+
+fn read_data_with(
+    addr: usize,
+    len: usize,
+    data: &mut [u8],
+    mut read_word: impl FnMut(usize) -> McuResult<u32>,
+    mut read_dword: impl FnMut(usize) -> McuResult<u64>,
+) -> McuResult<()> {
+    let data = data
+        .get_mut(..len)
+        .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+    let mut offset = 0;
+    while offset < len {
+        let byte_addr = addr + offset;
+        let granule_size = if is_64bit_granule(byte_addr) { 8 } else { 4 };
+        let granule_addr = byte_addr & !(granule_size - 1);
+        let granule_offset = byte_addr - granule_addr;
+        let copy_len = (granule_size - granule_offset).min(len - offset);
+        let mut granule = [0u8; 8];
+
+        if granule_size == 8 {
+            granule = read_dword(granule_addr / 8)?.to_le_bytes();
+        } else {
+            let word = read_word(granule_addr / 4)?.to_le_bytes();
+            granule[0] = word[0];
+            granule[1] = word[1];
+            granule[2] = word[2];
+            granule[3] = word[3];
+        }
+
+        for idx in 0..copy_len {
+            let dst = data
+                .get_mut(offset + idx)
+                .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+            *dst = *granule
+                .get(granule_offset + idx)
+                .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+        }
+        offset += copy_len;
+    }
+    Ok(())
+}
+
 /// Returns the FuseEntryInfo for the given vendor PK hash slot.
 pub fn vendor_pk_hash_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
     match index {
@@ -1029,5 +1104,85 @@ pub fn vendor_mldsa_revocation_entry(index: usize) -> McuResult<&'static FuseEnt
         14 => Ok(fuses::VENDOR_MLDSA_REVOCATION_14),
         15 => Ok(fuses::VENDOR_MLDSA_REVOCATION_15),
         _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sw_digest_data_size_uses_digest_offset_before_zer() {
+        let partition = OtpPartitionInfo {
+            name: "test_zeroizable_sw_digest",
+            byte_offset: 0x100,
+            byte_size: 0x30,
+            secret: false,
+            zeroizable: true,
+            sw_digest: true,
+            hw_digest: false,
+            digest_offset: Some(0x120),
+        };
+
+        assert_eq!(sw_digest_data_size(&partition).unwrap(), 0x20);
+    }
+
+    #[test]
+    fn test_is_64bit_granule_matches_partition_metadata() {
+        let last_otp_byte = fuses::OTP_PARTITIONS
+            .iter()
+            .map(|partition| partition.byte_offset + partition.byte_size)
+            .max()
+            .unwrap();
+
+        for byte_addr in 0..last_otp_byte {
+            let expected = fuses::OTP_PARTITIONS.iter().any(|partition| {
+                if byte_addr < partition.byte_offset
+                    || byte_addr >= partition.byte_offset + partition.byte_size
+                {
+                    return false;
+                }
+
+                partition.secret
+                    || partition
+                        .digest_offset
+                        .is_some_and(|offset| byte_addr >= offset && byte_addr < offset + 8)
+                    || partition.zeroizable
+                        && byte_addr >= partition.byte_offset + partition.byte_size - 8
+            });
+            assert_eq!(
+                is_64bit_granule(byte_addr),
+                expected,
+                "incorrect granule for OTP byte offset {byte_addr:#x}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_read_data_copies_upper_half_of_64bit_granule() {
+        let value = 0x1122_3344_5566_7788u64;
+        let addr = fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
+        let mut data = [0u8; 4];
+        let mut word_reads = 0;
+        let mut dword_reads = [usize::MAX; 1];
+
+        read_data_with(
+            addr + 4,
+            data.len(),
+            &mut data,
+            |_word_addr| {
+                word_reads += 1;
+                Ok(0)
+            },
+            |dword_addr| {
+                dword_reads[0] = dword_addr;
+                Ok(value)
+            },
+        )
+        .unwrap();
+
+        assert_eq!(data, ((value >> 32) as u32).to_le_bytes());
+        assert_eq!(word_reads, 0);
+        assert_eq!(dword_reads, [addr / 8]);
     }
 }

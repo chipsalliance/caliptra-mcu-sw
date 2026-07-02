@@ -837,9 +837,13 @@ mod test {
         })
         .unwrap();
         model.cpu_enabled.set(true);
-        for _ in 0..100_000 {
-            model.step();
-        }
+        let start_cycle = model.cycle_count();
+        model.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::CPTRA_FUSES_WRITTEN)
+                || model.cycle_count() - start_cycle >= 200_000
+        });
         use std::io::Write;
         let mut w = std::io::Sink::default();
         if !model.output().peek().is_empty() {
