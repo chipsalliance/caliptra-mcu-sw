@@ -164,6 +164,22 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         verify_fe_prog_mac(scratch, partition, mac).await?;
         fe_prog(scratch, partition).await.map_err(map_mcu_err)
     }
+
+    async fn get_dot_backup_blob<A: SpdmPalAlloc>(
+        &self,
+        _scratch: &A,
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<usize> {
+        let dot_blob_size = caliptra_mcu_common_commands::DOT_BLOB_SIZE;
+        if out.len() < dot_blob_size {
+            return Err(CaliptraCompletionCode::InsufficientResources);
+        }
+
+        caliptra_mcu_libsyscall_caliptra::dot_flash::DotFlash::<DefaultSyscalls>::new()
+            .read(0, &mut out[..dot_blob_size])
+            .map_err(map_dot_flash_error)?;
+        Ok(dot_blob_size)
+    }
 }
 
 struct SlicePayloadStream<'a> {
@@ -214,6 +230,18 @@ fn map_mailbox_error(e: MailboxError) -> CaliptraCompletionCode {
         MailboxError::ErrorCode(_) | MailboxError::MailboxError(_) => {
             CaliptraCompletionCode::OperationFailed
         }
+    }
+}
+
+fn map_dot_flash_error(e: ErrorCode) -> CaliptraCompletionCode {
+    match e {
+        ErrorCode::NoSupport | ErrorCode::NoDevice | ErrorCode::Uninstalled => {
+            CaliptraCompletionCode::UnsupportedOperation
+        }
+        ErrorCode::NoMem | ErrorCode::Size => CaliptraCompletionCode::InsufficientResources,
+        ErrorCode::Invalid => CaliptraCompletionCode::InvalidParameter,
+        ErrorCode::Busy => CaliptraCompletionCode::ResourceUnavailable,
+        _ => CaliptraCompletionCode::OperationFailed,
     }
 }
 

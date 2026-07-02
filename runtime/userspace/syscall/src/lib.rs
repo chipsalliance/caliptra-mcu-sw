@@ -5,6 +5,7 @@
 pub mod caliptra;
 pub mod dma;
 pub mod doe;
+pub mod dot_flash;
 pub mod external_otp;
 pub mod flash;
 pub mod logging;

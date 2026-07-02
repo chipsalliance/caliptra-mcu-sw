@@ -4,7 +4,7 @@ use crate::errors;
 use crate::transport::McuMboxTransport;
 use caliptra_api::mailbox::{populate_checksum, CommandId as CaliptraCommandId, MailboxReqHeader};
 use caliptra_mcu_common_commands::{
-    CaliptraCmdHandler, CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo,
+    CaliptraCmdHandler, CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo, DotBackupBlob,
     FirmwareVersion, GetLogResult, MAX_UID_LEN,
 };
 use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
@@ -20,10 +20,10 @@ use caliptra_mcu_mbox_common::messages::{
     FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetLogReq, GetLogResp, MailboxRespHeader, MailboxRespHeaderVarSize,
-    McuFeProgReq, McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
-    RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    GetAuthCmdChallengeResp, GetDotBackupBlobReq, GetDotBackupBlobResp, GetLogReq, GetLogResp,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuResponseVarSize,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE,
+    MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -169,6 +169,9 @@ impl<'a> CmdInterface<'a> {
                 }
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
+                }
+                CommandId::MC_GET_DOT_BACKUP_BLOB => {
+                    self.handle_get_dot_backup_blob(req, resp_buf).await
                 }
                 _ => Err(errors::UNSUPPORTED_COMMAND),
             }
@@ -409,6 +412,39 @@ impl<'a> CmdInterface<'a> {
         };
 
         let resp = ClearLogResp::default();
+        let resp_bytes = resp.as_bytes();
+        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+        Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+    }
+
+    async fn handle_get_dot_backup_blob<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let _req = GetDotBackupBlobReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+
+        let mut blob = DotBackupBlob::default();
+        let ret = self
+            .non_crypto_cmds_handler
+            .get_dot_backup_blob(&mut blob)
+            .await;
+
+        let mbox_cmd_status = if ret.is_ok() {
+            MbxCmdStatus::Complete
+        } else {
+            MbxCmdStatus::Failure
+        };
+
+        let resp = if mbox_cmd_status == MbxCmdStatus::Complete {
+            GetDotBackupBlobResp {
+                hdr: MailboxRespHeader::default(),
+                blob: blob.data,
+            }
+        } else {
+            GetDotBackupBlobResp::default()
+        };
+
         let resp_bytes = resp.as_bytes();
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))

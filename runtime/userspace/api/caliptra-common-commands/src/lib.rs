@@ -12,6 +12,8 @@ use zerocopy::{Immutable, IntoBytes};
 pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_CSR_DATA_LEN;
 pub const MAX_FW_VERSION_LEN: usize = 32;
 pub const MAX_UID_LEN: usize = 32;
+/// Size of the DOT_BLOB authenticated by the ROM DOT flow.
+pub const DOT_BLOB_SIZE: usize = 168;
 
 /// Size of the unique device identifier in bytes.
 pub const DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE: usize = 32;
@@ -62,6 +64,20 @@ impl Default for AttestedCsrData {
         Self {
             len: 0,
             data: [0u8; MAX_ATTESTED_CSR_DATA_LEN],
+        }
+    }
+}
+
+/// Authenticated DOT_BLOB bytes returned for platform/BMC backup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DotBackupBlob {
+    pub data: [u8; DOT_BLOB_SIZE],
+}
+
+impl Default for DotBackupBlob {
+    fn default() -> Self {
+        Self {
+            data: [0u8; DOT_BLOB_SIZE],
         }
     }
 }
@@ -317,6 +333,17 @@ pub trait CaliptraCmdHandler: Send + Sync {
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
     async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
         let _ = partition;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Retrieves a backup copy of the current authenticated DOT_BLOB.
+    ///
+    /// This command is intended for platforms that keep an out-of-band backup
+    /// copy for DOT_RECOVERY. Implementors should return only authenticated blob
+    /// bytes that correspond to the current DOT fuse-array state; platforms
+    /// without such a trusted source should return `UnsupportedOperation`.
+    async fn get_dot_backup_blob(&self, blob: &mut DotBackupBlob) -> CaliptraCmdResult<()> {
+        let _ = blob;
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }

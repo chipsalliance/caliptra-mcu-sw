@@ -86,6 +86,16 @@ impl<'a> VdmClient<'a> {
     }
 
     // ------------------------------------------------------------------
+    // Device Ownership Transfer commands
+    // ------------------------------------------------------------------
+
+    /// Retrieve the current DOT_BLOB for platform/BMC backup (VDM command 0x13).
+    pub fn get_dot_backup_blob(&mut self) -> Result<GetDotBackupBlobResponse> {
+        let req = GetDotBackupBlobRequest {};
+        self.send_command(CaliptraCommandId::GetDotBackupBlob as u32, &req)
+    }
+
+    // ------------------------------------------------------------------
     // Debug log commands
     // ------------------------------------------------------------------
 

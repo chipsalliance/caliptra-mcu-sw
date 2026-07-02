@@ -19,6 +19,7 @@
 //! - RequestDebugUnlock (0x0A)
 //! - AuthorizeDebugUnlockToken (0x0B)
 //! - ExportAttestedCsr (0x0F)
+//! - GetDotBackupBlob (0x13)
 
 use super::protocol::{
     CaliptraVdmCommand, CaliptraVdmCompletionCode, CALIPTRA_VDM_COMMAND_VERSION,
@@ -602,6 +603,48 @@ pub fn handle_prod_debug_unlock_token(
 }
 
 // ---------------------------------------------------------------------------
+// GetDotBackupBlob (CaliptraCommandId::GetDotBackupBlob)
+// ---------------------------------------------------------------------------
+
+pub fn handle_get_dot_backup_blob(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    use caliptra_mcu_core_util_host_command_types::dot::{GetDotBackupBlobResponse, DOT_BLOB_SIZE};
+
+    if !payload.is_empty() {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(
+        CaliptraVdmCommand::GetDotBackupBlob,
+        &[],
+        driver,
+        &mut resp_buf,
+    )?;
+    let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
+    if data.len() != DOT_BLOB_SIZE {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let mut blob = [0u8; DOT_BLOB_SIZE];
+    blob.copy_from_slice(data);
+    let internal_resp = GetDotBackupBlobResponse {
+        common: CommonResponse { fips_status: 0 },
+        blob,
+    };
+
+    let resp_bytes = internal_resp.as_bytes();
+    if resp_bytes.len() > response_buffer.len() {
+        return Err(TransportError::BufferError("response buffer too small"));
+    }
+    response_buffer[..resp_bytes.len()].copy_from_slice(resp_bytes);
+    Ok(resp_bytes.len())
+}
+
+// ---------------------------------------------------------------------------
 // GetDebugLog (CaliptraCommandId::DebugGetLog)
 // ---------------------------------------------------------------------------
 
@@ -661,6 +704,7 @@ mod tests {
     extern crate std;
 
     use super::*;
+    use caliptra_mcu_core_util_host_command_types::dot;
     use std::vec;
     use std::vec::Vec;
     use zerocopy::IntoBytes;
@@ -736,6 +780,77 @@ mod tests {
             2
         );
         assert_eq!(&response_buffer[20..26], b"abcdef");
+    }
+
+    #[test]
+    fn get_dot_backup_blob_sends_command_0x13_and_decodes_fixed_blob() {
+        let blob = [0x5Au8; dot::DOT_BLOB_SIZE];
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::GetDotBackupBlob, &blob),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer = vec![0; core::mem::size_of::<dot::GetDotBackupBlobResponse>()];
+
+        let len = handle_get_dot_backup_blob(&[], &mut driver, &mut response_buffer)
+            .expect("DOT backup blob request should succeed");
+
+        assert_eq!(
+            driver.last_request,
+            vec![
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::GetDotBackupBlob as u8,
+            ]
+        );
+        assert_eq!(len, core::mem::size_of::<dot::GetDotBackupBlobResponse>());
+        assert_eq!(&response_buffer[4..4 + dot::DOT_BLOB_SIZE], &blob);
+    }
+
+    #[test]
+    fn get_dot_backup_blob_rejects_partial_blob_response() {
+        let blob = [0x5Au8; dot::DOT_BLOB_SIZE - 1];
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::GetDotBackupBlob, &blob),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer = vec![0; core::mem::size_of::<dot::GetDotBackupBlobResponse>()];
+
+        let err = handle_get_dot_backup_blob(&[], &mut driver, &mut response_buffer)
+            .expect_err("partial DOT_BLOB response must be rejected");
+        assert!(matches!(err, TransportError::InvalidMessage));
+    }
+
+    #[test]
+    fn get_dot_backup_blob_rejects_short_response_buffer() {
+        let blob = [0x5Au8; dot::DOT_BLOB_SIZE];
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::GetDotBackupBlob, &blob),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer =
+            vec![0; core::mem::size_of::<dot::GetDotBackupBlobResponse>() - 1];
+
+        let err = handle_get_dot_backup_blob(&[], &mut driver, &mut response_buffer)
+            .expect_err("short internal response buffer must be rejected");
+        match err {
+            TransportError::BufferError(msg) => assert!(msg.contains("response buffer too small")),
+            other => panic!("unexpected error: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn get_dot_backup_blob_rejects_non_empty_payload() {
+        let mut driver = FakeDriver {
+            response: success_response(
+                CaliptraVdmCommand::GetDotBackupBlob,
+                &[0x5A; dot::DOT_BLOB_SIZE],
+            ),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer = vec![0; core::mem::size_of::<dot::GetDotBackupBlobResponse>()];
+
+        let err = handle_get_dot_backup_blob(&[0], &mut driver, &mut response_buffer)
+            .expect_err("GetDotBackupBlob request payload must be empty");
+        assert!(matches!(err, TransportError::InvalidMessage));
     }
 
     #[test]

@@ -95,6 +95,19 @@ pub trait CaliptraVdmCommands {
         mac: &[u8; 48],
         scratch: &A,
     ) -> CaliptraVdmResult<()>;
+
+    /// Writes the current DOT_BLOB bytes into `out` so the requester can keep
+    /// an out-of-band backup for DOT_RECOVERY.
+    ///
+    /// Platforms without a supported source for the authenticated/current
+    /// DOT_BLOB should use this default `UnsupportedOperation` behavior.
+    async fn get_dot_backup_blob<A: SpdmPalAlloc>(
+        &self,
+        _scratch: &A,
+        _out: &mut [u8],
+    ) -> CaliptraVdmResult<usize> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 }
 
 /// Result metadata for log-drain commands.
@@ -205,6 +218,9 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
             }
             Ok(CaliptraVdmCommand::AuthorizedCommand) => {
                 commands::authorized_command::handle(self.cmds, cmd_req, scratch, payload).await
+            }
+            Ok(CaliptraVdmCommand::GetDotBackupBlob) => {
+                commands::get_dot_backup_blob::handle(self.cmds, cmd_req, scratch, payload).await
             }
             // Recognized-but-unimplemented and unknown command codes both map to
             // an UnsupportedOperation completion.
@@ -334,6 +350,7 @@ mod tests {
 
     struct TestCommands {
         csr_len: usize,
+        dot_len: usize,
         authorized_token: RefCell<Option<Vec<u8>>>,
     }
 
@@ -341,8 +358,14 @@ mod tests {
         fn new(csr_len: usize) -> Self {
             Self {
                 csr_len,
+                dot_len: commands::get_dot_backup_blob::DOT_BLOB_SIZE,
                 authorized_token: RefCell::new(None),
             }
+        }
+
+        fn with_dot_len(mut self, dot_len: usize) -> Self {
+            self.dot_len = dot_len;
+            self
         }
 
         fn write_csr(&self, out: &mut [u8]) -> CaliptraVdmResult<usize> {
@@ -431,6 +454,18 @@ mod tests {
             _scratch: &A,
         ) -> CaliptraVdmResult<()> {
             Ok(())
+        }
+
+        async fn get_dot_backup_blob<A: SpdmPalAlloc>(
+            &self,
+            _scratch: &A,
+            out: &mut [u8],
+        ) -> CaliptraVdmResult<usize> {
+            if out.len() < self.dot_len {
+                return Err(CaliptraCompletionCode::InsufficientResources);
+            }
+            out[..self.dot_len].fill(0x5A);
+            Ok(self.dot_len)
         }
     }
 
@@ -658,5 +693,53 @@ mod tests {
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
         assert_eq!(cmds.authorized_token.take(), Some(token));
+    }
+
+    #[test]
+    fn get_dot_backup_blob_returns_blob_inline() {
+        const DOT_BLOB_SIZE: usize = commands::get_dot_backup_blob::DOT_BLOB_SIZE;
+        let cmds = TestCommands::new(0);
+        let req = [
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::GetDotBackupBlob as u8,
+        ];
+        let (response, inline, _) = dispatch(&cmds, &req, 2 + 1 + DOT_BLOB_SIZE, 0);
+
+        assert_inline(response, 2 + 1 + DOT_BLOB_SIZE);
+        assert_eq!(inline[0], CALIPTRA_VDM_COMMAND_VERSION);
+        assert_eq!(inline[1], CaliptraVdmCommand::GetDotBackupBlob as u8);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(&inline[3..3 + DOT_BLOB_SIZE], &[0x5A; DOT_BLOB_SIZE]);
+    }
+
+    #[test]
+    fn get_dot_backup_blob_rejects_short_inline_buffer() {
+        const DOT_BLOB_SIZE: usize = commands::get_dot_backup_blob::DOT_BLOB_SIZE;
+        let cmds = TestCommands::new(0);
+        let req = [
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::GetDotBackupBlob as u8,
+        ];
+        let (response, inline, _) = dispatch(&cmds, &req, 2 + 1 + DOT_BLOB_SIZE - 1, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(
+            inline[2],
+            CaliptraCompletionCode::InsufficientResources as u8
+        );
+    }
+
+    #[test]
+    fn get_dot_backup_blob_rejects_partial_backend_write() {
+        const DOT_BLOB_SIZE: usize = commands::get_dot_backup_blob::DOT_BLOB_SIZE;
+        let cmds = TestCommands::new(0).with_dot_len(DOT_BLOB_SIZE - 1);
+        let req = [
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::GetDotBackupBlob as u8,
+        ];
+        let (response, inline, _) = dispatch(&cmds, &req, 2 + 1 + DOT_BLOB_SIZE, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidLength as u8);
     }
 }

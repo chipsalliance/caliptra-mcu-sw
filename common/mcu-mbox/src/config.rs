@@ -30,6 +30,9 @@ pub static TEST_UID: [u8; 16] = [
     0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF,
 ];
 
+/// Deterministic DOT_BLOB fixture used to seed DOT flash in integration tests.
+pub static TEST_DOT_BACKUP_BLOB: [u8; 168] = [0x5A; 168];
+
 #[repr(C)]
 #[derive(Debug, Default, Clone, PartialEq, Eq, FromBytes, IntoBytes, Immutable)]
 pub struct TestDeviceCapabilities {

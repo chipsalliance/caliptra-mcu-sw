@@ -49,6 +49,7 @@ pub enum CaliptraVdmCommand {
     DeviceOwnershipTransfer = 0x11,
     /// Single entry point for all authorized sub-commands (GetAuthChallenge, ProgramFieldEntropy).
     AuthorizedCommand = 0x12,
+    GetDotBackupBlob = 0x13,
 }
 
 impl TryFrom<u8> for CaliptraVdmCommand {
@@ -73,6 +74,7 @@ impl TryFrom<u8> for CaliptraVdmCommand {
             0x0F => Ok(Self::ExportAttestedCsr),
             0x11 => Ok(Self::DeviceOwnershipTransfer),
             0x12 => Ok(Self::AuthorizedCommand),
+            0x13 => Ok(Self::GetDotBackupBlob),
             _ => Err(SpdmVdmProtocolError::UnknownCommand(value)),
         }
     }
@@ -169,6 +171,9 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(CaliptraVdmCommand::AuthorizedCommand)
         }
+        x if x == CaliptraCommandId::GetDotBackupBlob as u32 => {
+            Some(CaliptraVdmCommand::GetDotBackupBlob)
+        }
         _ => None,
     }
 }
@@ -183,7 +188,7 @@ mod tests {
         // it is dispatched as sub-command 0x02 of AuthorizedCommand (0x12).
         let valid_codes: &[u8] = &[
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
-            0x0F, 0x11, 0x12,
+            0x0F, 0x11, 0x12, 0x13,
         ];
         for &code in valid_codes {
             let cmd = CaliptraVdmCommand::try_from(code).unwrap();
@@ -191,7 +196,6 @@ mod tests {
         }
         assert!(CaliptraVdmCommand::try_from(0x00).is_err());
         assert!(CaliptraVdmCommand::try_from(0x10).is_err());
-        assert!(CaliptraVdmCommand::try_from(0x13).is_err());
         assert!(CaliptraVdmCommand::try_from(0xFF).is_err());
     }
 
@@ -222,6 +226,10 @@ mod tests {
         assert_eq!(
             command_id_to_vdm(CaliptraCommandId::ExportAttestedCsr as u32),
             Some(CaliptraVdmCommand::ExportAttestedCsr)
+        );
+        assert_eq!(
+            command_id_to_vdm(CaliptraCommandId::GetDotBackupBlob as u32),
+            Some(CaliptraVdmCommand::GetDotBackupBlob)
         );
         // Unsupported command
         assert_eq!(command_id_to_vdm(CaliptraCommandId::HashInit as u32), None);

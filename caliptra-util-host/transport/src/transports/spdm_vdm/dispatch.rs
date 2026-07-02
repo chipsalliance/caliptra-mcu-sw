@@ -45,6 +45,20 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(commands::handle_get_auth_challenge)
         }
+        x if x == CaliptraCommandId::GetDotBackupBlob as u32 => {
+            Some(commands::handle_get_dot_backup_blob)
+        }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
+
+    #[test]
+    fn get_dot_backup_blob_dispatch_is_registered() {
+        assert!(get_command_handler(CaliptraCommandId::GetDotBackupBlob as u32).is_some());
     }
 }

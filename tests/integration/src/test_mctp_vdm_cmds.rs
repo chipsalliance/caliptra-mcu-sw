@@ -22,6 +22,9 @@ pub mod test {
     use caliptra_mcu_mctp_vdm_common::message::device_info::{
         DeviceInfoRequest, DeviceInfoResponse,
     };
+    use caliptra_mcu_mctp_vdm_common::message::dot_backup_blob::{
+        GetDotBackupBlobRequest, GetDotBackupBlobResponse,
+    };
     use caliptra_mcu_mctp_vdm_common::message::firmware_version::{
         FirmwareVersionRequest, FirmwareVersionResponse,
     };
@@ -238,6 +241,22 @@ pub mod test {
             Ok(())
         }
 
+        /// Test Get DOT Backup Blob command.
+        fn test_get_dot_backup_blob(&mut self) -> Result<(), VdmTransportError> {
+            info!("Testing Get DOT Backup Blob command...");
+
+            let request = GetDotBackupBlobRequest::new();
+            let response: GetDotBackupBlobResponse = self.send_request_expect_success(&request)?;
+            Self::assert_eq(
+                &response.blob.as_slice(),
+                &config::TEST_DOT_BACKUP_BLOB.as_slice(),
+                "DOT backup blob",
+            )?;
+            info!("  DOT backup blob matches expected fixture");
+
+            Ok(())
+        }
+
         /// Test unsupported command.
         fn test_unsupported_command(&mut self) -> Result<(), VdmTransportError> {
             info!("Testing unsupported command handling...");
@@ -366,6 +385,7 @@ pub mod test {
             self.test_get_device_id()?;
             self.test_get_device_info()?;
             self.test_get_device_capabilities()?;
+            self.test_get_dot_backup_blob()?;
             // Log tests must run before any other test that might mutate the
             // mock's debug-log cursor (none today, but order matters once
             // production logging lands).
@@ -444,6 +464,15 @@ pub mod test {
             // Let the executor schedule the responder and subscribe.
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
+
+        #[cfg(not(feature = "fpga_realtime"))]
+        hw.step_until(|hw| {
+            hw.output()
+                .peek()
+                .contains("Starting MCTP VDM service for integration tests")
+        });
+        hw.write_dot_flash(&config::TEST_DOT_BACKUP_BLOB)
+            .expect("failed to seed DOT flash");
 
         let vdm_transport =
             MctpVdmTransport::new(hw.i3c_port().unwrap(), hw.i3c_address().unwrap().into());

@@ -153,6 +153,7 @@ struct VeeR {
     logging_flash: [Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
     >; caliptra_mcu_config_emulator::flash::LOGGING_FLASH_INSTANCE_COUNT],
+    dot_flash: &'static caliptra_mcu_capsules_runtime::dot_flash::DotFlash,
     mci: &'static caliptra_mcu_capsules_runtime::mci::Mci,
     mcu_mbox0: &'static caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver<
         'static,
@@ -224,6 +225,7 @@ impl SyscallDriverLookup for VeeR {
                 }
                 f(None)
             }
+            caliptra_mcu_capsules_runtime::dot_flash::DRIVER_NUM => f(Some(self.dot_flash)),
             caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => {
                 f(Some(self.mcu_mbox0))
             }
@@ -447,6 +449,18 @@ pub unsafe fn main() {
         user_accessible: false,
         read: true,
         write: true,
+        execute: false,
+    });
+
+    // Emulator DOT flash window. Keep it machine-only: userspace reads the
+    // current DOT_BLOB through the narrow read-only dot_flash capsule.
+    platform_regions.push(PlatformRegion {
+        start_addr: 0x8100_0000 as *const u8,
+        size: 4 * 1024,
+        is_mmio: true,
+        user_accessible: false,
+        read: true,
+        write: false,
         execute: false,
     });
 
@@ -771,6 +785,22 @@ pub unsafe fn main() {
         true
     );
 
+    const EMULATOR_DOT_FLASH_ADDR: *const tock_registers::registers::ReadOnly<u8> =
+        0x8100_0000 as *const tock_registers::registers::ReadOnly<u8>;
+    const EMULATOR_DOT_FLASH_SIZE: usize = 4 * 1024;
+    let dot_flash_storage =
+        unsafe { core::slice::from_raw_parts(EMULATOR_DOT_FLASH_ADDR, EMULATOR_DOT_FLASH_SIZE) };
+    let dot_flash = static_init!(
+        caliptra_mcu_capsules_runtime::dot_flash::DotFlash,
+        caliptra_mcu_capsules_runtime::dot_flash::DotFlash::new(
+            dot_flash_storage,
+            board_kernel.create_grant(
+                caliptra_mcu_capsules_runtime::dot_flash::DRIVER_NUM,
+                &memory_allocation_cap
+            )
+        )
+    );
+
     let dma = caliptra_mcu_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,
         board_kernel,
@@ -903,6 +933,7 @@ pub unsafe fn main() {
             caliptra,
             dma,
             logging_flash,
+            dot_flash,
             mci,
             mcu_mbox0,
             mcu_mbox1_staging_sram,

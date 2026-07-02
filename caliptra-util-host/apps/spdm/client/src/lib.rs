@@ -46,7 +46,7 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
 };
 use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
-    GetFirmwareVersionResponse,
+    GetDotBackupBlobResponse, GetFirmwareVersionResponse,
 };
 use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmTransport,
@@ -62,6 +62,7 @@ use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
     caliptra_cmd_get_firmware_version,
 };
+use caliptra_util_host_commands::api::dot::caliptra_cmd_get_dot_backup_blob;
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
 };
@@ -122,6 +123,13 @@ impl<'a> SpdmVdmClient<'a> {
         let mut session = self.create_session()?;
         caliptra_cmd_get_device_info(&mut session, info_index)
             .map_err(|e| anyhow::anyhow!("GetDeviceInfo failed: {:?}", e))
+    }
+
+    /// Execute the GetDotBackupBlob command.
+    pub fn get_dot_backup_blob(&mut self) -> Result<GetDotBackupBlobResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_get_dot_backup_blob(&mut session)
+            .map_err(|e| anyhow::anyhow!("GetDotBackupBlob failed: {:?}", e))
     }
 
     /// Execute the ExportAttestedCsr command.

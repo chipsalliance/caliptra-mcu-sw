@@ -11,6 +11,7 @@
 //! - DeviceCapabilities (0x02)
 //! - DeviceId (0x03)
 //! - DeviceInfo (0x04)
+//! - GetDotBackupBlob (0x13)
 
 use super::transport::MctpVdmError;
 use crate::TransportError;
@@ -19,7 +20,8 @@ use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 use caliptra_mcu_mctp_vdm_common::message::{
     DeviceCapabilitiesRequest, DeviceCapabilitiesResponse, DeviceIdRequest, DeviceIdResponse,
     DeviceInfoRequest, DeviceInfoResponse, FirmwareVersionRequest, FirmwareVersionResponse,
-    MAX_FW_VERSION_LEN,
+    GetDotBackupBlobRequest as MctpGetDotBackupBlobRequest,
+    GetDotBackupBlobResponse as MctpGetDotBackupBlobResponse, MAX_FW_VERSION_LEN,
 };
 use caliptra_mcu_mctp_vdm_common::protocol::{VdmCompletionCode, VdmMsgHeader, VDM_MSG_HEADER_LEN};
 
@@ -261,6 +263,46 @@ pub fn handle_device_info(
 }
 
 // ---------------------------------------------------------------------------
+// GetDotBackupBlob (command_id = 0x9001 / CaliptraCommandId::GetDotBackupBlob)
+// ---------------------------------------------------------------------------
+
+pub fn handle_get_dot_backup_blob(
+    payload: &[u8],
+    driver: &mut dyn super::transport::MctpVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    use caliptra_mcu_core_util_host_command_types::dot::{GetDotBackupBlobResponse, DOT_BLOB_SIZE};
+
+    if !payload.is_empty() {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let vdm_req = MctpGetDotBackupBlobRequest::new();
+    let mut resp_buf = [0u8; MAX_VDM_RESP_BUF];
+    let resp_len = send_vdm(&vdm_req, driver, &mut resp_buf)?;
+    let resp_bytes = &resp_buf[..resp_len];
+    validate_response_header(resp_bytes)?;
+
+    let vdm_resp = MctpGetDotBackupBlobResponse::decode(resp_bytes)
+        .map_err(|_| TransportError::InvalidMessage)?;
+
+    let internal_resp = GetDotBackupBlobResponse {
+        common: CommonResponse {
+            fips_status: vdm_resp.header.completion_code,
+        },
+        blob: vdm_resp.blob,
+    };
+
+    let resp_bytes = internal_resp.as_bytes();
+    if resp_bytes.len() > response_buffer.len() {
+        return Err(TransportError::BufferError("response buffer too small"));
+    }
+    response_buffer[..resp_bytes.len()].copy_from_slice(resp_bytes);
+    debug_assert_eq!(resp_bytes.len(), 4 + DOT_BLOB_SIZE);
+    Ok(resp_bytes.len())
+}
+
+// ---------------------------------------------------------------------------
 // GetDebugLog (command_id = 0x7005 / CaliptraCommandId::DebugGetLog)
 // ---------------------------------------------------------------------------
 
@@ -325,9 +367,41 @@ pub fn handle_get_debug_log(
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::*;
     use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
     use caliptra_mcu_mctp_vdm_common::protocol::CALIPTRA_IANA_ENTERPRISE_ID_BYTES;
+
+    use std::vec::Vec;
+
+    struct FakeDriver {
+        response: Vec<u8>,
+        last_request: Vec<u8>,
+    }
+
+    impl super::super::transport::MctpVdmDriver for FakeDriver {
+        fn send_request(
+            &mut self,
+            vdm_request: &[u8],
+        ) -> Result<&[u8], super::super::transport::MctpVdmError> {
+            self.last_request.clear();
+            self.last_request.extend_from_slice(vdm_request);
+            Ok(&self.response)
+        }
+
+        fn is_ready(&self) -> bool {
+            true
+        }
+
+        fn connect(&mut self) -> Result<(), super::super::transport::MctpVdmError> {
+            Ok(())
+        }
+
+        fn disconnect(&mut self) -> Result<(), super::super::transport::MctpVdmError> {
+            Ok(())
+        }
+    }
 
     // Verify that request encoding produces valid VDM wire bytes
     #[test]
@@ -361,5 +435,39 @@ mod tests {
         let mut buf = [0u8; 64];
         let len = req.encode(&mut buf).unwrap();
         assert_eq!(len, VDM_MSG_HEADER_LEN + 4);
+    }
+
+    #[test]
+    fn get_dot_backup_blob_encodes_request_and_decodes_fixed_blob() {
+        let blob = [0x5Au8; DOT_BLOB_SIZE];
+        let mut response = [0u8; 256];
+        let resp_len = MctpGetDotBackupBlobResponse::new(VdmCompletionCode::Success as u32, &blob)
+            .encode(&mut response)
+            .unwrap();
+        let mut driver = FakeDriver {
+            response: response[..resp_len].to_vec(),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer = [0u8; 256];
+
+        let len = handle_get_dot_backup_blob(&[], &mut driver, &mut response_buffer)
+            .expect("DOT backup blob should decode");
+
+        assert_eq!(driver.last_request.len(), VDM_MSG_HEADER_LEN);
+        assert_eq!(len, core::mem::size_of::<GetDotBackupBlobResponse>());
+        assert_eq!(&response_buffer[4..4 + DOT_BLOB_SIZE], &blob);
+    }
+
+    #[test]
+    fn get_dot_backup_blob_rejects_non_empty_payload() {
+        let mut driver = FakeDriver {
+            response: Vec::new(),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer = [0u8; 256];
+
+        let err = handle_get_dot_backup_blob(&[0], &mut driver, &mut response_buffer)
+            .expect_err("GetDotBackupBlob has no request payload");
+        assert!(matches!(err, TransportError::InvalidMessage));
     }
 }
