@@ -2,7 +2,7 @@
 
 use crate::io::SemihostUart;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
-use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
+use caliptra_mcu_virtual_alarm::MuxAlarm;
 use kernel::platform::chip::InterruptService;
 
 pub const UART_IRQ: u8 = 0x10;

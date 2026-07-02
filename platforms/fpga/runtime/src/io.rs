@@ -12,7 +12,7 @@ use crate::PROCESSES;
 #[cfg(not(feature = "release"))]
 use crate::PROCESS_PRINTER;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::fmt::Write;
 use core::panic::PanicInfo;
