@@ -345,25 +345,6 @@ pub trait CommandAuthorizer {
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError>;
 
-    /// Verify a MAC over a command using the stored challenge.
-    ///
-    /// This is transport-agnostic: the caller provides the raw command ID
-    /// (which may differ between mailbox and SPDM VDM namespaces), the
-    /// command payload, and the received MAC.
-    ///
-    /// Consumes the stored challenge (one-time use).
-    ///
-    /// # Arguments
-    /// * `cmd_id` - Raw command identifier (u32, serialized big-endian in HMAC)
-    /// * `payload` - Command-specific payload bytes
-    /// * `mac` - The 48-byte MAC received from the host
-    async fn verify_mac(
-        &mut self,
-        cmd_id: u32,
-        payload: &[u8],
-        mac: &[u8],
-    ) -> Result<(), AuthorizationError>;
-
     /// Get the challenge from the last call to `MC_GET_AUTH_CMD_CHALLENGE`.
     ///
     /// This consumes the challenge so it can only be used once.

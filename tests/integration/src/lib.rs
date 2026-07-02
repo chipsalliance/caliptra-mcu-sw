@@ -60,7 +60,7 @@ mod test {
     use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
     use caliptra_mcu_testing_common::DeviceLifecycle;
     use random_port::PortPicker;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::AtomicU32;
     use std::sync::{Arc, Mutex};
     use std::{
         path::{Path, PathBuf},

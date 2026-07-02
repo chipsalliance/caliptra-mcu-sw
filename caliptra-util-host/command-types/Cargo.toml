@@ -7,4 +7,5 @@ edition.workspace = true
 description = "Shared command types and definitions for Caliptra Utility Host Library"
 
 [dependencies]
+caliptra-mcu-mbox-common.workspace = true
 zerocopy.workspace = true
