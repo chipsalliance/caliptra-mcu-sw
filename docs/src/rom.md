@@ -91,7 +91,7 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
       1. MCU issues the ACTIVATE_FIRMWARE command to Caliptra to activate the MCU firmware.
    1. Caliptra sets the MCI [`FW_EXEC_CTRL[2]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_GENERIC_FW_EXEC_CTRL%5B0%5D) bit to indicate that MCU firmware is ready
 1. Wait for Caliptra to indicate MCU firmware is ready by polling the firmware ready status.
-1. Stash the MCU ROM and other security-sensitive measurements to Caliptra. (In 2.1 subsystem mode, this should happen after Caliptra runtime is available using CM_SHA_{INIT,UPDATE,FINAL}. In 2.0 or 2.1 core mode, this could potentially happen earlier using the CM_SHA ROM command.)
+1. Stash the MCU ROM digest and other security-sensitive measurements to Caliptra via the `STASH_MEASUREMENT` mailbox command. This must occur after Caliptra runtime is ready. See [Security Measurements](#security-measurements) for the full list of measurements that should be stashed.
 1. MCU ROM triggers a reset by writing `0x1` to the MCI `RESET_REQUEST` register. This generates a hardware reset of the MCU core while maintaining power. The MCI hardware automatically sets `RESET_REASON` to `FirmwareBootReset`, causing the MCU to restart and enter the Firmware Boot Reset flow, which will jump to the loaded firmware.
 
 ```mermaid
@@ -316,6 +316,37 @@ The locking behavior is gated by bit 0 of the MCI generic input wires (`mci_reg_
 
 > **Note:** In the current version, the lock register remains mutable past the ROM; therefore, the runtime firmware must be trusted to not overwrite the lock and corrupt the hashes.
 
+
+### Security Measurements
+
+MCU ROM is responsible for stashing security-sensitive measurements into Caliptra's DPE (Device Policy Engine) via the `STASH_MEASUREMENT` mailbox command. These measurements are incorporated into the DICE certificate chain and are available to attestation verifiers via SPDM.
+
+Stashing must occur **after Caliptra runtime is ready** (i.e., after `ready_for_runtime()` returns true). The measurement hash is computed using the Caliptra cryptographic mailbox:
+- In 2.1 subsystem mode: use the `CM_SHA_INIT` / `CM_SHA_UPDATE` / `CM_SHA_FINAL` mailbox commands.
+- In 2.0 or 2.1 core mode: the `CM_SHA` ROM command can be used earlier in the boot flow.
+
+The following measurements should be stashed during cold boot:
+
+#### MCU ROM Digest (Required)
+
+The SHA-384 hash of the MCU ROM code. This is the foundational measurement that proves the ROM code is authentic and has not been tampered with. It is the first measurement in the MCU attestation chain. Enabled via the `stash_rom_digest` field of `RomParameters`.
+
+#### Security State (Recommended)
+
+The device security state at boot time encodes the trust posture under which the rest of the boot proceeded, so a remote verifier can confirm whether the device was in a fully locked, production configuration. The following fields should be captured:
+
+- **`debug_locked`**: Whether the device was debug-locked (from the MCI `security_state` register).
+- **`device_lifecycle`**: The device lifecycle state at boot (Unprovisioned, Manufacturing, or Production).
+
+A suggested encoding is a little-endian 4-byte structure `{debug_locked: u8, device_lifecycle: u8, reserved: [u8; 2]}`, hashed with SHA-384 and passed to `STASH_MEASUREMENT` with a metadata tag identifying it as a security-state measurement.
+
+#### FIPS Zeroization Configuration \[2.1+\] (Recommended)
+
+The value written to [`FC_FIPS_ZEROZATION`](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) controls whether secret assets (UDS, Field Entropy, key vault entries) are zeroized when the device transitions out of certain lifecycle states. Stashing this value allows auditors and remote verifiers to confirm that the correct FIPS zeroization policy was applied during cold boot.
+
+#### MCU SRAM Execution Region Size (Optional)
+
+The value written to `FW_SRAM_EXEC_REGION_SIZE` defines the boundary between the executable firmware region and the Protected Data Region (PDR) in MCU SRAM. Stashing this measurement allows a verifier to confirm the exact SRAM security layout that was in effect when firmware was loaded.
 
 ### Warm Reset Considerations
 

@@ -282,3 +282,76 @@ cargo xtask rom-build --platform emulator --features test-rom-hooks
 The integration test `test_rom_hooks_fire_in_order` builds this ROM and
 asserts that each expected hook marker appears exactly once in the
 expected order.
+
+## Security Measurements to Stash
+
+During cold boot, the MCU ROM must stash security-sensitive measurements into
+Caliptra's DPE (Device Policy Engine) via the `STASH_MEASUREMENT` mailbox
+command. These measurements are incorporated into the DICE certificate chain
+and are available to remote attestation verifiers via SPDM.
+
+Stashing must happen **after Caliptra runtime is ready** (after the
+`ready_for_runtime()` poll succeeds). The full reference is in
+[Security Measurements](./rom.md#security-measurements) in the ROM
+specification; the summary of what platform integrators should stash is:
+
+| Measurement | Priority | Description |
+|---|---|---|
+| MCU ROM digest | Required | SHA-384 hash of the MCU ROM code. Enabled by setting `stash_rom_digest: Some(true)` in `RomParameters`. |
+| Security state | Recommended | Hash of `{debug_locked: u8, device_lifecycle: u8}` at boot time (from MCI `security_state`). |
+| FIPS zeroization config \[2.1+\] | Recommended | Hash of the value written to `FC_FIPS_ZEROZATION`. |
+| SRAM execution region size | Optional | Hash of the `FW_SRAM_EXEC_REGION_SIZE` value, confirming the SRAM security boundary. |
+
+Integrators that implement custom ROM code (or augment the reference ROM via
+`RomHooks`) are responsible for ensuring these measurements are stashed before
+triggering the warm reset that jumps to runtime firmware. Measurements not
+stashed by ROM cannot be added to the DPE chain later without re-booting.
+
+### Enabling ROM Digest Stashing
+
+The reference ROM provides built-in support for stashing the MCU ROM digest.
+Enable it by setting `stash_rom_digest: Some(true)` in `RomParameters`:
+
+```rust
+caliptra_mcu_rom_common::rom_start(RomParameters {
+    stash_rom_digest: Some(true),
+    ..Default::default()
+});
+```
+
+When enabled, the ROM computes the SHA-384 hash of the entire ROM image
+(excluding the trailing expected-digest word appended by the build toolchain),
+verifies it against the stored digest, and then issues `STASH_MEASUREMENT` to
+Caliptra.
+
+### Stashing Additional Measurements
+
+For the remaining measurements (security state, FIPS zeroization, etc.),
+integrators must issue `STASH_MEASUREMENT` commands directly. This must
+happen **after Caliptra runtime is ready** (`ready_for_runtime()` returns
+true), which occurs between firmware-load validation and the warm reset to
+`FirmwareBootReset`.
+
+The recommended approach for reference-ROM-based integrations is to perform
+the additional stashing in a `RomHooks::post_cold_boot` callback. This hook
+fires after the ROM digest has already been stashed and immediately before the
+ROM triggers the warm reset:
+
+```rust
+use caliptra_mcu_rom_common::{RomHooks, RomParameters};
+
+struct SecurityMeasurementHooks;
+
+impl RomHooks for SecurityMeasurementHooks {
+    fn post_cold_boot(&self) {
+        // Stash security state (debug_locked + lifecycle)
+        // Issue STASH_MEASUREMENT via the Caliptra mailbox here.
+        // See rom.md#security-measurements for encoding details.
+    }
+}
+```
+
+> **Note:** `post_cold_boot` is a best-effort hook; if a fatal error occurs
+> earlier in the cold-boot flow it will not be reached. Integrators that
+> require a strict guarantee should implement a fully custom ROM that stashes
+> measurements unconditionally before triggering the warm reset.
