@@ -369,12 +369,11 @@ pub unsafe fn main() {
         execute: false,
     });
 
-    // Data region (SRAM) — extends to end of storage region so the kernel
-    // DPE handle store capsule (and any other kernel code) can write to
-    // the persistent storage area at the end of SRAM (_sstorage.._estorage).
+    // Data region (SRAM): kernel and app RAM, not including the persistent
+    // storage area at the end of SRAM (covered separately below).
     platform_regions.push(PlatformRegion {
         start_addr: addr_of!(_ssram),
-        size: addr_of!(_estorage) as usize - addr_of!(_ssram) as usize,
+        size: addr_of!(_esram) as usize - addr_of!(_ssram) as usize,
         is_mmio: false,
         user_accessible: false,
         read: true,
