@@ -951,6 +951,7 @@ dependencies = [
  "serde",
  "subst",
  "tempfile",
+ "toml 0.8.23",
  "uuid",
  "walkdir",
  "zerocopy",
@@ -1826,6 +1827,10 @@ dependencies = [
  "embedded-alloc",
  "zerocopy",
 ]
+
+[[package]]
+name = "caliptra-mcu-measurement-api"
+version = "0.1.0"
 
 [[package]]
 name = "caliptra-mcu-network-app-rom-test"
@@ -7412,6 +7417,7 @@ dependencies = [
  "caliptra-mcu-mbox-lib",
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-mctp-vdm-lib",
+ "caliptra-mcu-measurement-api",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-romtime",
@@ -7432,7 +7438,9 @@ dependencies = [
  "embedded-alloc",
  "mcu-caliptra-api-lite",
  "portable-atomic",
+ "serde",
  "static_cell",
+ "toml 0.8.23",
  "zerocopy",
 ]
 

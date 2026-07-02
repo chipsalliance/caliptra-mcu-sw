@@ -264,6 +264,22 @@ fn pre_generate_soc_env_config(
     Ok(())
 }
 
+/// Pre-generate `target/generated/attestation_manifest.toml` so the runtime build can embed
+/// the integrator-owned static attestation configuration.
+fn pre_generate_attestation_manifest_config(
+    vendor: &str,
+    model: &str,
+    soc_images: &[ImageCfg],
+) -> Result<()> {
+    crate::attestation_manifest::write_config(
+        vendor,
+        model,
+        soc_images,
+        "pre_generate_attestation_manifest_config",
+        "Pre-generated",
+    )
+}
+
 #[derive(Default)]
 pub struct FirmwareBinaries {
     pub caliptra_rom: Vec<u8>,
@@ -754,6 +770,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         effective_vendor,
         effective_model,
         MCU_RT_IDENTIFIER,
+        effective_soc_images.as_deref().unwrap_or(&[]),
+    )?;
+    pre_generate_attestation_manifest_config(
+        effective_vendor,
+        effective_model,
         effective_soc_images.as_deref().unwrap_or(&[]),
     )?;
 

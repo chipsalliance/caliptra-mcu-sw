@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 mod all;
+mod attestation_manifest;
 mod caliptra;
 pub mod features;
 pub mod firmware;

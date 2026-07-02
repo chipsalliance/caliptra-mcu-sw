@@ -12,6 +12,7 @@
     - [Flash Layout](./flash_layout.md)
     - [Flash Controller](./flash_controller.md)
     - [Image Loading](./image_loading.md)
+    - [Attestation Manifest](./attestation_manifest.md)
     - [MCTP](./mctp.md)
     - [SPDM](./spdm.md)
         - [PCI DOE](./doe.md)
