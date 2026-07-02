@@ -3,15 +3,40 @@
 This guide provides recommendations for platform integrators building on
 Caliptra MCU.
 
-## DOT Fuse Recommendations
+## DOT Integration Recommendations
+
+For the full DOT protocol, state machine, and I3C recovery command details, see
+[Device Ownership Transfer](./dot.md) and
+[DOT I3C Recovery Protocol](./dot_i3c.md). This section calls out the platform
+choices that must be made by an integrator.
+
+### DOT mode and storage planning
+
+DOT can be deployed in two broad modes:
+
+| Mode | Persistent ownership | Fuse use | Required platform storage |
+|---|---|---|---|
+| Volatile DOT | No. Ownership is lost on power cycle. | None beyond optional DOT enablement. | Ownership storage that is retained across the reset level needed by the DOT flow. |
+| Mutable locking DOT | Yes. Ownership is sealed to the device across power cycles. | `dot_fuse_array` bits consumed by lock/unlock/disable/override and rotation transitions. | DOT blob flash storage plus ownership storage handoff between ROM and runtime. |
+
+If mutable locking DOT is enabled, the platform must provide non-volatile DOT
+blob storage through `RomParameters::dot_flash`. The DOT blob is not secret, but
+it must be available and authenticated on every ODD-state boot. If the blob is
+missing, erased, corrupt, or HMAC-invalid while the part is in ODD state, ROM
+enters the configured locked-state recovery path or reports a fatal DOT error.
+
+Integrators should treat the DOT blob flash layout as a platform-owned recovery
+asset. Keep enough space for the active blob and any backup blob policy your
+platform needs, and make sure recovery agents know which copy is authoritative
+for the current fuse count.
 
 ### DOT fuse array sizing
 
 The `dot_fuse_array` field in the vendor non-secret OTP partition tracks Device
-Ownership Transfer (DOT) state transitions. Each state change (lock, unlock,
-disable) burns one bit, using a `OneHot` encoding. The total number of bits
-determines the maximum number of ownership state transitions over the lifetime
-of the part.
+Ownership Transfer (DOT) state transitions. Lock, unlock, disable, and override
+each burn one bit; key rotation burns two bits to preserve lock/unlock parity.
+The array uses a `OneHot` encoding, and the total number of bits determines the
+maximum number of ownership state transitions over the lifetime of the part.
 
 A full ownership transfer cycle (install → lock → unlock) consumes **2 fuse
 bits**: one for the lock transition (EVEN → ODD) and one for the unlock
@@ -24,9 +49,34 @@ transition (ODD → EVEN). Therefore:
 
 The right size depends on how many ownership transfers the part is expected to
 undergo in its lifetime. There is no way to reclaim burned fuse bits — once the
-array is exhausted, mutable locking DOT transitions are no longer possible and
-the device can only operate in Volatile DOT mode (ownership lost on power
-cycle).
+array is exhausted, no further mutable DOT transition can be committed. Any
+operation that requires burning the next DOT bit will fail, so reserve margin for
+service events such as unlock, override, and key-rotation flows rather than
+sizing only for the happy-path number of ownership transfers.
+
+The reference implementation burns the next sequential bit and reports a fatal
+DOT error if no bit remains. Platforms that need stronger wear budgeting or
+product-specific lifetime policy should size the field accordingly or provide a
+custom DOT state policy in their platform integration.
+
+### DOT blob and transition power-loss policy
+
+The DOT fuse and DOT blob must advance together. A state transition that burns a
+fuse without leaving a matching HMAC-sealed blob can strand the device in a
+state that requires recovery on the next boot.
+
+The ROM-owned firmware manifest DOT section provides an owner-signed,
+idempotent way to request DOT state changes during boot. It is the preferred
+path for field-driven DOT lock, unlock, rotate, and disable operations when the
+platform wants immutable ROM code to perform the fuse burn. See
+[Firmware Manifest DOT Section](./firmware_format.md#firmware-manifest-dot-section)
+for the exact header format and power-loss windows.
+
+For platforms that expose runtime DOT commands directly, the runtime must follow
+the same ordering rules: write the DOT blob expected by the post-transition fuse
+state, verify it can be recovered if power is lost, and only then ask ROM or the
+trusted fuse-burning path to advance the fuse. Maintaining redundant active and
+backup DOT blobs is strongly recommended for mutable locking deployments.
 
 ### Vendor recovery PK hash
 
@@ -36,9 +86,31 @@ command that force-unlocks the DOT state when no backup DOT blob is available
 (e.g., RMA scenarios). This fuse is **optional**: if your deployment does not
 require vendor-level catastrophic recovery, it can be left unprovisioned.
 
-If provisioned, the hash is stored in the `VENDOR_SECRET_PROD_PARTITION` and
-occupies **48 bytes** (384 bits). Because it is write-once and ECC-protected,
-no redundant encoding is needed.
+If provisioned, the hash is stored in the `VENDOR_NON_SECRET_PROD_PARTITION` and
+occupies **48 bytes** (384 bits). It uses a `Single` layout because the value is
+a write-once hash, not a monotonic counter. The on-OTP byte layout matches the
+`CPTRA_SS_OWNER_PK_HASH` and debug-unlock vendor PK hash convention: each
+4-byte word is stored byte-reversed relative to the natural SHA-384 byte order.
+
+Provision this fuse only if the product intentionally supports vendor override.
+Leaving it zero permanently disables `DOT_OVERRIDE` for that part; recovery must
+then rely on a valid backup DOT blob or a platform-specific recovery mechanism.
+If provisioned, protect the corresponding VendorKey private keys as catastrophic
+recovery credentials.
+
+### DOT locked-state recovery policy
+
+When ROM detects an ODD-state DOT failure, the platform decides which recovery
+policy is compiled into `RomParameters::dot_locked_recovery_handlers`:
+
+| Recovery option | Required platform support | Result |
+|---|---|---|
+| Backup blob recovery | A recovery handler that can read a backup DOT blob sealed for the current fuse count. | Restores the DOT blob and resets without changing DOT fuse state. |
+| I3C DOT recovery services | `I3cServicesModes::DOT_RECOVERY` plus an external recovery agent over I3C. | Allows `DOT_STATUS`, `DOT_RECOVERY`, and `DOT_OVERRIDE` commands over ROM I3C services. |
+
+The I3C service path is a ROM recovery protocol and is separate from the runtime
+SPDM/MCTP OOB management path. All DOT I3C service commands are available only
+when the platform explicitly enables the corresponding ROM service mode.
 
 ### Fuse storage cost summary
 
@@ -46,7 +118,7 @@ no redundant encoding is needed.
 |---|---|:---:|---|---|
 | `dot_initialized` | `VENDOR_NON_SECRET_PROD_PARTITION` | 1 bit (3 bytes with 3× OR duplication) | `LinearOr` | Gates the DOT flow. |
 | `dot_fuse_array` | `VENDOR_NON_SECRET_PROD_PARTITION` | 256 bits (32 bytes) | `OneHot` | State counter. Scales linearly with desired lock/unlock cycles. |
-| `vendor_recovery_pk_hash` | `VENDOR_SECRET_PROD_PARTITION` | 384 bits (48 bytes) | `Single` | Optional. For `DOT_OVERRIDE` catastrophic recovery. |
+| `vendor_recovery_pk_hash` | `VENDOR_NON_SECRET_PROD_PARTITION` | 384 bits (48 bytes) | `Single` | Optional. For `DOT_OVERRIDE` catastrophic recovery. |
 
 If OTP space is constrained, the `dot_fuse_array` can be made smaller — the
 minimum useful size is 2 bits, but this only allows a single lock/unlock cycle
@@ -65,6 +137,140 @@ the integration-specific fuse map.
 - If you are **not** using DOT, then `CPTRA_SS_OWNER_PK_HASH` is the sole
   source of the owner PK hash and must be provisioned or another integrator-
   specific mechanism must be used.
+- Reference platform ROMs also support a force-fuse-owner recovery policy:
+    asserting `mci_reg_generic_input_wires[1]` bit 28 sets
+    `OwnerPkHashPolicy::ForceFuse`, bypasses the DOT blob, and requires
+    `CPTRA_SS_OWNER_PK_HASH` to be provisioned. If the forced fuse owner path is
+    requested while the fuse is empty, ROM reports a fatal error.
+
+## SVN Anti-Rollback Integration
+
+For the full SVN format and flow details, see
+[SVN Anti-Rollback](./svn.md). The integrator guide calls out the platform
+decisions that must be made before enabling the feature.
+
+### SVN ownership model
+
+MCU Runtime does not define a separate runtime SVN. Its running SVN is the SoC
+manifest SVN that Caliptra Core authenticates and binds into the MCU Runtime DPE
+context. The fuse-backed floor for this value is
+`CPTRA_CORE_SOC_MANIFEST_SVN`; Caliptra Core enforces it, but MCU ROM performs
+the OTP burn because Caliptra Core cannot write its own fuses.
+
+The optional MCU Component SVN Manifest is a 1024-byte authenticated header in
+the MCU runtime image. When present and enabled by ROM configuration, it can
+request floors for:
+
+| Requested floor | Fuse advanced by MCU ROM | Purpose |
+|---|---|---|
+| `min_svn` | `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | Anti-rollback for the manifest header itself. |
+| `caliptra_runtime_min_svn` | `CPTRA_CORE_RUNTIME_SVN` | Caliptra Runtime floor. ROM checks this against `FW_INFO.fw_svn` before burning. |
+| `soc_manifest_min_svn` | `CPTRA_CORE_SOC_MANIFEST_SVN` | SoC manifest / MCU Runtime floor. |
+| Per-entry `min_svn` | `SOC_IMAGE_MIN_SVN[i]` | Optional per-component SoC image floor. |
+
+ROM validates every rollback check and range limit before burning any SVN fuse,
+so a rejected boot cannot partially advance the device's rollback floors. All
+SVN burns are skipped when `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` is set.
+
+SVN manifest processing is opt-in. The ROM must be built with the
+`svn-manifest` feature and `RomParameters::svn_manifest_enabled` must be set;
+otherwise the header format may exist in the image, but ROM will not process it.
+
+### SVN fuse planning
+
+Integrators must allocate any MCU-owned SVN fuses in OTP storage that supports
+monotonic in-field updates. These fuses are not static provisioning values:
+MCU ROM may burn additional one-hot bits over the lifetime of the device. Do
+not place them in a partition that is finalized by ECC, hardware digest, or
+software digest in a way that prevents later `0 -> 1` burns or invalidates the
+partition integrity check after an update.
+
+In the reference fuse map these fields are described as vendor non-secret
+fields, but production integrations must verify the physical partition policy.
+If the generated `VENDOR_NON_SECRET_PROD_PARTITION` is digest protected or
+locked after provisioning, either configure a vendor partition that is intended
+for repeated monotonic updates, or add a separate vendor partition for MCU SVN
+state.
+
+| Fuse | Recommended layout | Notes |
+|---|---|---|
+| `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | `OneHotLinearOr` with 3x duplication | Required if the MCU Component SVN Manifest is enabled. |
+| `SOC_IMAGE_MIN_SVN[i]` | `OneHotLinearOr` with 3x duplication | Optional per-component floors. Allocate as many slots as the platform needs. |
+
+The reference fuse map allocates 10 logical SVN bits for each of these fields,
+stored as 30 raw bits and rounded to a 4-byte field. Platforms may choose a
+larger logical range, but the encoding must remain one-hot so increments only
+burn additional OTP bits.
+
+For per-component enforcement, the platform must compile an `SVN_FUSE_MAP` into
+ROM (and keep the corresponding runtime configuration in sync). The map binds
+Caliptra SoC manifest `component_id` values to `SOC_IMAGE_MIN_SVN[i]` fuse
+slots. Multiple component IDs may share one slot if those components always move
+together and use the same floor policy.
+
+### Adding SVN fuse storage
+
+The Caliptra SS fuse controller generator controls the physical OTP partition
+map. See the Caliptra SS
+[Generate `fuse_ctrl` Partitions](https://github.com/chipsalliance/caliptra-ss/blob/main/tools/scripts/fuse_ctrl_script/gen_fuse_ctrl_partitions.md)
+documentation for the generator flow, including how
+`gen_fuse_ctrl_partitions.yml` and the Mako templates produce
+`otp_ctrl_mmap.hjson`, RTL, RDL, and documentation.
+
+When adding storage for MCU component SVN fuses, integrators should:
+
+1. Size or add a vendor non-secret in-field partition in the Caliptra SS fuse
+    controller configuration. The generator documentation explains the mechanics
+    for vendor-specific partition sizing; field names and MCU-specific layouts
+    are defined in this repository's `hw/fuses.hjson`.
+2. Ensure the selected partition's protection policy is compatible with
+    repeated one-hot burns. SVN, DOT counters, and revocation bitmasks should not
+    be finalized by ECC/digest protection before the last expected field update.
+3. Map each MCU-visible field in `hw/fuses.hjson` to the generated OTP item and
+    use a one-hot layout (`OneHot` or `OneHotLinearOr`) so increments require
+    only additional `0 -> 1` burns.
+4. Update `RomParameters::svn_fuse_map` for every SoC `component_id` that needs
+    a per-component floor. Leave entries unmapped only when the component is
+    intentionally not enforced by MCU-owned SVN fuses.
+5. Validate update and power-loss behavior: ROM intentionally checks all fatal
+    rollback/range conditions before burning any SVN fuse, but the platform must
+    still ensure OTP write, digest, and partition-lock policy are compatible with
+    the planned field workflow.
+
+### Field update workflow
+
+The preferred field workflow for SoC manifest / MCU Runtime SVN increments is a
+signed firmware update containing an authenticated MCU Component SVN Manifest
+with the desired `soc_manifest_min_svn`. MCU ROM burns the requested floor in
+the firmware-boot reset path, or in the hitless-update reset path, after
+Caliptra Core has loaded the runtime image into MCU SRAM.
+
+There is also an authorized runtime mailbox command,
+`MC_FUSE_INCREASE_CALIPTRA_MIN_SVN`, that advances the Caliptra firmware minimum
+SVN directly in the `CALIPTRA_FW_SVN` fuse. It is available through the MCI
+mailbox path only, requires the authorized-command challenge/MAC flow, and
+rejects requests that are zero, above 128, lower than the current fuse floor, or
+higher than the currently running Caliptra firmware SVN reported by `FW_INFO`.
+
+## Management Command Transport Expectations
+
+The runtime command set has two different management paths that should not be
+treated as interchangeable:
+
+| Path | Who can use it | Privileged commands in that path |
+|---|---|---|
+| MCI mailbox runtime interface | A SoC-side agent with MCI mailbox access, or an explicit platform proxy to that agent | Runtime handlers exist for `MC_PROVISION_VENDOR_PK_HASH`, `MC_FUSE_REVOKE_VENDOR_PUB_KEY`, `MC_FUSE_REVOKE_VENDOR_PK_HASH`, `MC_FUSE_INCREASE_CALIPTRA_MIN_SVN`, `MC_FE_PROG`, and generic fuse read/write/lock commands. |
+| OOB SPDM VDM over MCTP/I3C | External BMC/OOB requester speaking the Caliptra SPDM VDM protocol | `Get Auth Challenge` and `Program Field Entropy` under the SPDM `Authorized Command` code. |
+
+The `caliptra-util-host` mailbox transport is a software abstraction that
+formats supported MCU mailbox commands through a platform-provided
+`MailboxDriver`; it does not give an external BMC native access to the MCI
+mailbox, and not every runtime MCI command is wrapped by the current host
+utility dispatch tables. If an OOB BMC must initiate MCI-only operations such
+as PK provisioning, PK revocation, or direct Caliptra SVN increment, the
+platform must provide a trusted SoC-side service or bridge that owns the MCI
+access, exposes the intended command wrappers, and enforces the deployment
+policy.
 
 ## Vendor Public Key Selection and Rotation
 Caliptra MCU supports a vendor public key selection and rotation scheme
@@ -105,10 +311,30 @@ hardware strapping pin:
   functional key is provisioned in the fuses. This enables rolling back to the
   previous known-good firmware image should the new one have a fatal issue.
 
+If the rotation strap is asserted but only one functional slot exists, the
+default policy falls back to that one slot. Platforms that need arbitrary slot
+selection or more complex rollout policy should provide a custom
+`VendorKeyPolicy` in `RomParameters` instead of relying only on the reference
+strap behavior.
+
+### Vendor PK Hash Provisioning
+
+New vendor PK hash slots can be provisioned in the field through
+`MC_PROVISION_VENDOR_PK_HASH`. The command writes a 48-byte SHA-384 vendor PK
+hash into the requested slot. It is idempotent if the slot already contains the
+same hash, and fails if the slot is invalid or contains a different nonzero
+hash. It is an authorized MCU Runtime mailbox command, so the requester must
+first obtain an authorization challenge and append a valid MAC to the command
+payload.
+
+This command is not exposed through the OOB SPDM VDM command set today. If the
+BMC owns the operational workflow, it must call a trusted SoC-side agent or
+platform proxy that has MCI mailbox access.
+
 ### Key Revocation
 
 Keys can be revoked permanently by burning fuses. MCU Runtime exposes
-authorized mailbox commands for the supported in-field flows:
+authorized MCI mailbox commands for the supported in-field flows:
 
 -   `MC_FUSE_REVOKE_VENDOR_PUB_KEY` revokes an individual firmware
     verification key within a vendor PK hash slot. The command supports ECC
@@ -117,11 +343,16 @@ authorized mailbox commands for the supported in-field flows:
 -   `MC_FUSE_REVOKE_VENDOR_PK_HASH` revokes an entire vendor PK hash slot by
     setting the corresponding bit in `VENDOR_PK_HASH_VALID` to `1`.
 
-Both commands are routed through the authorized-command path. They reject
-requests that target the key or PK hash slot used to boot the currently running
-firmware. This prevents a requester from bricking the current boot by revoking
-its own active trust path; revocation is intended to happen after the device has
-successfully booted with a replacement key or replacement PK hash slot.
+Both commands are routed through the authorized-command path and require the
+challenge/MAC flow. They reject requests that target the key or PK hash slot
+used to boot the currently running firmware. This prevents a requester from
+bricking the current boot by revoking its own active trust path; revocation is
+intended to happen after the device has successfully booted with a replacement
+key or replacement PK hash slot.
+
+Like provisioning, these revocation commands are not exposed through the OOB
+SPDM VDM command set today. A BMC-originated field workflow therefore needs a
+SoC-side MCI mailbox agent or an explicit platform proxy.
 
 For per-key revocation, once all usable bits for a key type are burned in a
 slot, that key type is fully revoked in that slot. The last key index for a
@@ -148,16 +379,16 @@ remain trusted.
 
 ```mermaid
 sequenceDiagram
-    participant Host
+    participant Requester
     participant MCU_ROM as MCU ROM
     participant MCU_RT as MCU RT
     participant Fuses as OTP Fuses
     
-    Host->>MCU_ROM: Push new RT FW (signed with Key N+1)
+    Requester->>MCU_ROM: Push new RT FW (signed with Key N+1)
     MCU_ROM->>Fuses: Read revocation bitmask
     MCU_ROM->>MCU_ROM: Verify signature with Key N+1
     MCU_ROM->>MCU_RT: Boot into new MCU RT
-    Host->>MCU_RT: MC_FUSE_REVOKE_VENDOR_PUB_KEY(slot, type, Key N)
+    Requester->>MCU_RT: MC_FUSE_REVOKE_VENDOR_PUB_KEY(slot, type, Key N)
     MCU_RT->>Fuses: Burn revocation bit for Key N
 ```
 
@@ -167,29 +398,33 @@ This flow is used when the entire PK hash slot is compromised or needs to be
 replaced, requiring a transition to a new PK hash slot.
 
 **Process**:
-1.  Push a new Runtime (RT) firmware signed with a key from a new PK hash slot.
-2.  Additionally assert the hardware strapping pin (Bit 1 of
+1.  Provision the new vendor PK hash into an empty inactive slot if it was not
+    provisioned during manufacturing.
+2.  Push a new Runtime (RT) firmware signed with a key from the new PK hash slot.
+3.  Additionally assert the hardware strapping pin (bit 1 of
     `mci_reg_generic_input_wires[1]`) to enable rotation.
-3.  On reboot, the MCU ROM will select the new PK hash slot.
-4.  An authorized requester sends `MC_FUSE_REVOKE_VENDOR_PK_HASH` to MCU
+4.  On reboot, the MCU ROM will select the new PK hash slot.
+5.  An authorized requester sends `MC_FUSE_REVOKE_VENDOR_PK_HASH` to MCU
     Runtime to burn the old PK hash slot as invalid.
 
 ```mermaid
 sequenceDiagram
-    participant Host
+    participant Requester
     participant Strapping as Strapping Pin
     participant MCU_ROM as MCU ROM
     participant MCU_RT as MCU RT
     participant Fuses as OTP Fuses
     
-    Host->>MCU_ROM: Push new RT FW (signed with Key in Slot M+1)
-    Host->>Strapping: Assert Rotation Strap
-    Host->>MCU_ROM: Trigger Reboot
+    Requester->>MCU_RT: MC_PROVISION_VENDOR_PK_HASH(slot M+1)
+    MCU_RT->>Fuses: Provision PK hash in slot M+1
+    Requester->>MCU_ROM: Push new RT FW (signed with Key in Slot M+1)
+    Requester->>Strapping: Assert Rotation Strap
+    Requester->>MCU_ROM: Trigger Reboot
     MCU_ROM->>Strapping: Read Strap (Rotation Enabled)
     MCU_ROM->>Fuses: Read valid slots & functional status
     MCU_ROM->>MCU_ROM: Skip PK Hash Slot N (first functional), Select PK Hash Slot N+1
     MCU_ROM->>MCU_RT: Boot into new MCU RT
-    Host->>MCU_RT: MC_FUSE_REVOKE_VENDOR_PK_HASH(slot N)
+    Requester->>MCU_RT: MC_FUSE_REVOKE_VENDOR_PK_HASH(slot N)
     MCU_RT->>Fuses: Mark PK Hash Slot N as invalid
 ```
 
