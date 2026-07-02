@@ -8,9 +8,9 @@ mod test {
     use random_port::PortPicker;
 
     #[test]
-    fn test_pcr_store() {
+    fn test_sw_pcr_store() {
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some("test-pcr-store"),
+            feature: Some("test-sw-pcr-store"),
             example_app: true,
             i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
             ..Default::default()

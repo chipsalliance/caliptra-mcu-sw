@@ -12,7 +12,7 @@ use caliptra_mcu_components::{
     doe_component_static, dpe_handle_store_component_static, external_otp_component_static,
     flash_partition_component_static, instantiate_flash_partitions, instantiate_logging_flash,
     mailbox_component_static, mbox_sram_component_static, mctp_driver_component_static,
-    mcu_mbox_component_static, pcr_store_component_static,
+    mcu_mbox_component_static, soft_pcr_store_component_static,
 };
 #[cfg(feature = "crash-log")]
 use caliptra_mcu_config_emulator::flash::CRASH_LOG_PARTITION;
@@ -166,7 +166,7 @@ struct VeeR {
     otp: &'static caliptra_mcu_capsules_runtime::otp::Otp,
     external_otp: &'static caliptra_mcu_capsules_runtime::external_otp::ExternalOtpCapsule<'static>,
     dpe_handle_store: &'static caliptra_mcu_capsules_runtime::dpe_handle_store::DpeHandleStore,
-    pcr_store: &'static caliptra_mcu_capsules_runtime::pcr_store::PcrStore,
+    pcr_store: &'static caliptra_mcu_capsules_runtime::soft_pcr_store::SoftPcrStore,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>,
 }
 
@@ -240,7 +240,7 @@ impl SyscallDriverLookup for VeeR {
             caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM => {
                 f(Some(self.dpe_handle_store))
             }
-            caliptra_mcu_capsules_runtime::pcr_store::DRIVER_NUM => f(Some(self.pcr_store)),
+            caliptra_mcu_capsules_runtime::soft_pcr_store::DRIVER_NUM => f(Some(self.pcr_store)),
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
 
             _ => f(None),
@@ -858,9 +858,11 @@ pub unsafe fn main() {
     //   [_sstorage + DPE_STORE_SIZE .. _estorage)   → Software PCR Store
     // When built outside the firmware-bundler (e.g. cargo check), _sstorage ==
     // _estorage == 0 so both slices are empty, which is safe.
+    // Storage layout constants: board owns the split, capsules derive capacity
+    // from the slice length they receive.
+    const DPE_STORE_SIZE: usize = 0x400; // 1 KiB → DPE Handle Store
+    const PCR_STORE_SIZE: usize = 0xC00; // 3 KiB → Software PCR Store
     let (dpe_handle_store, pcr_store) = {
-        use caliptra_mcu_capsules_runtime::dpe_handle_store::DPE_STORE_SIZE;
-        use caliptra_mcu_capsules_runtime::pcr_store::PCR_STORE_SIZE;
         let start = addr_of!(_sstorage) as *mut u8;
         let end = addr_of!(_estorage) as usize;
         let total_len = end.saturating_sub(start as usize);
@@ -875,12 +877,12 @@ pub unsafe fn main() {
             dpe_sram,
         )
         .finalize(dpe_handle_store_component_static!());
-        let pcr = caliptra_mcu_components::pcr_store::PcrStoreComponent::new(
+        let pcr = caliptra_mcu_components::soft_pcr_store::SoftPcrStoreComponent::new(
             board_kernel,
-            caliptra_mcu_capsules_runtime::pcr_store::DRIVER_NUM,
+            caliptra_mcu_capsules_runtime::soft_pcr_store::DRIVER_NUM,
             pcr_sram,
         )
-        .finalize(pcr_store_component_static!());
+        .finalize(soft_pcr_store_component_static!());
         (dpe, pcr)
     };
 
