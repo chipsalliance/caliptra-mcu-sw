@@ -25,6 +25,7 @@ pub mod test;
 pub mod caliptra;
 pub mod dma;
 pub mod doe;
+pub mod dpe_handle_store;
 pub mod external_otp;
 pub mod flash_partition;
 pub mod logging;
