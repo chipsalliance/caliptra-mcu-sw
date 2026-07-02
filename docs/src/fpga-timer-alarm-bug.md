@@ -382,6 +382,44 @@ The same bug exists in Tock's current `master` branch (verified June 2026). It a
 
 **A: We can't modify Tock's git checkout reliably.** Cargo caches git dependencies by revision hash and doesn't detect in-place file modifications. Instead, we created `caliptra-mcu-virtual-alarm` — a ~200-line drop-in replacement crate that implements the same `MuxAlarm`/`VirtualMuxAlarm` API without the broken optimization. All capsules use it via a simple import change. This keeps the fix version-controlled in our repo.
 
+### Q: Does this mean two alarms can never work together in Tock?
+
+**A: No — two alarms work fine when the state is fresh.** The optimization is *correct* when the previous alarm hasn't expired yet:
+
+```
+WORKS: MCU_MBOX alarm still pending when Mailbox calls set_alarm
+  T=1069M: MCU_MBOX set_alarm(1069M, 1000) → expires at 1069.001M
+  T=1069.0005M: Mailbox set_alarm(now, 10000)
+    Guard 2: next_tick_vals=(1069M, 1000), window=[1069M, 1069.001M)
+             now=1069.0005M → IS within window → PASSES ✓
+    → Hardware reprogrammed ✓
+
+BROKEN: MCU_MBOX alarm already expired when Mailbox calls set_alarm
+  T=1069M: MCU_MBOX set_alarm(1069M, 1000) → expires at 1069.001M
+  T=1070M: Mailbox set_alarm(now, 10000)    ← 999,000 ticks after expiry
+    Guard 2: next_tick_vals=(1069M, 1000), window=[1069M, 1069.001M)
+             now=1070M → NOT within window → FAILS ❌
+    → Hardware NOT reprogrammed 🐛
+```
+
+Guard 2 works correctly when the previous alarm is **still active** — `now` is within its `[ref, ref+dt)` window, meaning the hardware will fire soon and `MuxAlarm::alarm()` will rescan and catch ours. It breaks when the previous alarm **already expired but the kernel hasn't processed it yet** — `now` is past the window, and Guard 2 incorrectly concludes "don't reprogram."
+
+### Q: Why does the kernel not process an expired timer?
+
+**A: Because `armed` and `enabled` are software state that only update when `MuxAlarm::alarm()` runs — not when the hardware timer expires.** The chain is:
+
+```
+1. Hardware: mitcnt0 reaches mitb0       → timer "expired" in hardware
+2. ISR: saves interrupt flag             → requires mstatus.MIE=1
+3. Kernel: service_pending_interrupts()  → reads saved flag
+4. Kernel: MuxAlarm::alarm()             → scans VirtualMuxAlarms
+5. MuxAlarm: MCU_MBOX expired            → armed=false, enabled--
+```
+
+If step 2 never happens (because VeeR `wfi` stalls the core clock and `MIE=0` in kernel mode), steps 3–5 never happen. MCU_MBOX stays `armed=true`, `enabled` stays at 1, and `next_tick_vals` stays stale. When Mailbox later calls `set_alarm`, it sees `enabled=1` and enters the guard checks instead of the "first alarm" fast path.
+
+On platforms where `wfi` doesn't stall the timer (ARM, most RISC-V), step 2 happens quickly and the stale window is very brief — the bug is theoretically possible but practically very rare. On VeeR FPGA, `wfi` freezes everything, making the stale state permanent.
+
 ---
 
 ## Appendix: Step-by-Step State Walkthrough
