@@ -284,6 +284,7 @@ mod test {
                 example_app,
                 platform: Some(platform),
                 profile,
+                no_default_features: true,
                 ..Default::default()
             },
         )

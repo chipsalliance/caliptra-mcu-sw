@@ -39,6 +39,12 @@ rv32i.workspace = true
 
 [features]
 default = []
+# No-op production feature aliases: the FPGA kernel always includes SPDM and
+# MCU-mbox support at the hardware/driver level; these aliases exist solely so
+# that `--features spdm` (passed by the firmware bundler to every package in
+# the manifest) does not cause a "feature not found" error.
+spdm = []
+mcu-mbox-service = []
 # See `mcu-runtime-emulator`'s `release` feature for rationale.
 release = ["kernel/no_debug_panics", "caliptra-mcu-romtime/no-print"]
 test-caliptra-certs = []
