@@ -4,14 +4,19 @@
 
 use caliptra_mcu_spdm_codec::{
     CapabilitiesBody, ChunkSendAckBody, ChunkSendReqBody, ReqRespCode, SpdmMsgHdrPdu, SpdmVersion,
-    WireWriter, CHUNK_ACK_ATTR_EARLY_ERROR, CHUNK_ATTR_LAST_CHUNK,
+    VendorDefinedReqPdu, WireWriter, CHUNK_ACK_ATTR_EARLY_ERROR, CHUNK_ATTR_LAST_CHUNK,
 };
 use caliptra_mcu_spdm_traits::{
-    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend,
+    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry, VdmResponse,
+    VdmResponseBuffer,
 };
 use zerocopy::{little_endian::U16, FromBytes};
 
+#[cfg(feature = "set-certificate")]
+use super::StreamPrefixState;
+#[cfg(any(test, feature = "generic-large-request"))]
 use super::WipeOnDrop;
+use super::{ActiveLargeRequest, VendorDefinedStreamState};
 use crate::build::alloc_padded;
 use crate::error::*;
 #[cfg(feature = "set-certificate")]
@@ -33,7 +38,7 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     req: &[u8],
     secure_session: bool,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    let result = process_chunk_send(state, pal, req);
+    let result = process_chunk_send(state, pal, io, vdm, req, secure_session).await;
     match result {
         Ok(info) => {
             if info.complete {
@@ -68,6 +73,7 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             handle,
             chunk_seq_num,
         }) => {
+            abort_streaming_request_if_needed(state, pal, io, vdm).await;
             let mut error = [0u8; 4];
             encode_error_pdu(state.version, SPDM_INVALID_REQUEST, &mut error);
             state.reset_chunk_assembly();
@@ -112,10 +118,13 @@ enum ChunkProcessError {
     Early { handle: u8, chunk_seq_num: u16 },
 }
 
-fn process_chunk_send<Pal: SpdmPal>(
+async fn process_chunk_send<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    vdm: &Vdm,
     req: &[u8],
+    secure_session: bool,
 ) -> Result<ChunkInfo, ChunkProcessError> {
     if state.large_msg_ctx.response_in_progress()
         || (state.phase as u8) < (Phase::AfterCapabilities as u8)
@@ -153,22 +162,29 @@ fn process_chunk_send<Pal: SpdmPal>(
         process_first_chunk(
             state,
             pal,
+            io,
+            vdm,
             handle,
             chunk_seq_num,
             chunk_size,
             last_chunk,
             rest,
-        )?;
+            secure_session,
+        )
+        .await?;
     } else {
         process_next_chunk(
             state,
             pal,
+            io,
+            vdm,
             handle,
             chunk_seq_num,
             chunk_size,
             last_chunk,
             rest,
-        )?;
+        )
+        .await?;
     }
 
     Ok(ChunkInfo {
@@ -179,14 +195,18 @@ fn process_chunk_send<Pal: SpdmPal>(
     })
 }
 
-fn process_first_chunk<Pal: SpdmPal>(
+#[allow(clippy::too_many_arguments)]
+async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    vdm: &Vdm,
     handle: u8,
     chunk_seq_num: u16,
     chunk_size: usize,
     last_chunk: bool,
     rest: &[u8],
+    secure_session: bool,
 ) -> Result<(), ChunkProcessError> {
     let Some(size_bytes) = rest.first_chunk::<4>() else {
         return Err(ChunkProcessError::Early {
@@ -227,31 +247,90 @@ fn process_first_chunk<Pal: SpdmPal>(
             chunk_seq_num,
         });
     }
-    let rent_buf = match pal.alloc_large_buf(large_msg_size) {
-        Ok(buf) => buf,
-        Err(_) => {
+    #[cfg(feature = "set-certificate")]
+    {
+        if let Some(required_len) = required_stream_prefix_len(chunk, secure_session) {
+            let mut prefix = StreamPrefixState {
+                data: [0; super::STREAM_PREFIX_CAPACITY],
+                len: chunk.len(),
+            };
+            prefix.data[..chunk.len()].copy_from_slice(chunk);
+            if required_len > prefix.data.len() {
+                return Err(ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                });
+            }
+            state
+                .large_msg_ctx
+                .init_streaming_request(
+                    handle,
+                    large_msg_size,
+                    chunk.len(),
+                    ActiveLargeRequest::Prefix(prefix),
+                )
+                .map_err(|_| ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                })?;
+            return Ok(());
+        }
+    }
+    if try_start_streaming_request(
+        state,
+        pal,
+        io,
+        vdm,
+        handle,
+        large_msg_size,
+        chunk,
+        secure_session,
+    )
+    .await
+    .map_err(|_| ChunkProcessError::Early {
+        handle,
+        chunk_seq_num,
+    })? {
+        return Ok(());
+    }
+    #[cfg(any(test, feature = "generic-large-request"))]
+    {
+        let rent_buf = match pal.alloc_large_buf(large_msg_size) {
+            Ok(buf) => buf,
+            Err(_) => {
+                return Err(ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                })
+            }
+        };
+        if state
+            .large_msg_ctx
+            .init_request(handle, large_msg_size, chunk, rent_buf)
+            .is_err()
+        {
             return Err(ChunkProcessError::Early {
                 handle,
                 chunk_seq_num,
-            })
+            });
         }
-    };
-    if state
-        .large_msg_ctx
-        .init_request(handle, large_msg_size, chunk, rent_buf)
-        .is_err()
+        Ok(())
+    }
+    #[cfg(not(any(test, feature = "generic-large-request")))]
     {
-        return Err(ChunkProcessError::Early {
+        Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
-        });
+        })
     }
-    Ok(())
 }
 
-fn process_next_chunk<Pal: SpdmPal>(
+#[allow(clippy::too_many_arguments)]
+async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
-    _pal: &Pal,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    vdm: &Vdm,
     handle: u8,
     chunk_seq_num: u16,
     chunk_size: usize,
@@ -290,25 +369,304 @@ fn process_next_chunk<Pal: SpdmPal>(
             chunk_seq_num,
         });
     }
-    if state
-        .large_msg_ctx
-        .append_request(handle, chunk_seq_num, chunk)
-        .is_err()
-    {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
+    #[cfg(feature = "set-certificate")]
+    let algo = state.asym_algo();
+    match state.large_msg_ctx.active_request_mut() {
+        #[cfg(any(test, feature = "generic-large-request"))]
+        Some(ActiveLargeRequest::Buffered) => {
+            if state
+                .large_msg_ctx
+                .append_request(handle, chunk_seq_num, chunk)
+                .is_err()
+            {
+                return Err(ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                });
+            }
+        }
+        #[cfg(feature = "set-certificate")]
+        Some(ActiveLargeRequest::Prefix(_)) => {
+            let consumed = continue_setcert_prefix(state, pal, io, handle, chunk)
+                .await
+                .map_err(|_| ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                })?;
+            let remaining = &chunk[consumed..];
+            if !remaining.is_empty() {
+                let active =
+                    state
+                        .large_msg_ctx
+                        .active_request_mut()
+                        .ok_or(ChunkProcessError::Early {
+                            handle,
+                            chunk_seq_num,
+                        })?;
+                match active {
+                    #[cfg(feature = "set-certificate")]
+                    ActiveLargeRequest::SetCertificate(stream) => {
+                        set_certificate::continue_set_certificate_stream(
+                            pal, io, algo, stream, remaining,
+                        )
+                        .await
+                        .map_err(|_| ChunkProcessError::Early {
+                            handle,
+                            chunk_seq_num,
+                        })?;
+                    }
+                    _ => {
+                        return Err(ChunkProcessError::Early {
+                            handle,
+                            chunk_seq_num,
+                        })
+                    }
+                }
+            }
+            state
+                .large_msg_ctx
+                .append_streaming_request(handle, chunk_seq_num, chunk.len())
+                .map_err(|_| ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                })?;
+        }
+        #[cfg(feature = "set-certificate")]
+        Some(ActiveLargeRequest::SetCertificate(stream)) => {
+            set_certificate::continue_set_certificate_stream(pal, io, algo, stream, chunk)
+                .await
+                .map_err(|_| ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                })?;
+            state
+                .large_msg_ctx
+                .append_streaming_request(handle, chunk_seq_num, chunk.len())
+                .map_err(|_| ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                })?;
+        }
+        #[cfg(feature = "set-certificate")]
+        Some(ActiveLargeRequest::Unsupported(_)) => {
+            state
+                .large_msg_ctx
+                .append_streaming_request(handle, chunk_seq_num, chunk.len())
+                .map_err(|_| ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                })?;
+        }
+        Some(ActiveLargeRequest::VendorDefined(_)) => {
+            vdm.continue_streaming_request(chunk, pal, io)
+                .await
+                .map_err(|_| ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                })?;
+            state
+                .large_msg_ctx
+                .append_streaming_request(handle, chunk_seq_num, chunk.len())
+                .map_err(|_| ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                })?;
+        }
+        None => {
+            return Err(ChunkProcessError::Early {
+                handle,
+                chunk_seq_num,
+            })
+        }
     }
 
     Ok(())
 }
 
+#[cfg(feature = "set-certificate")]
+const SET_CERT_STREAM_PREFIX_LEN: usize =
+    SpdmMsgHdrPdu::SIZE + caliptra_mcu_spdm_codec::SetCertificateReqBody::SIZE + 4 + 48;
+
+#[cfg(feature = "set-certificate")]
+fn required_stream_prefix_len(first: &[u8], secure_session: bool) -> Option<usize> {
+    if secure_session || first.len() >= SET_CERT_STREAM_PREFIX_LEN {
+        return None;
+    }
+    let (hdr, _) = SpdmMsgHdrPdu::ref_from_prefix(first).ok()?;
+    (hdr.code == ReqRespCode::SET_CERTIFICATE).then_some(SET_CERT_STREAM_PREFIX_LEN)
+}
+
+#[cfg(feature = "set-certificate")]
+async fn continue_setcert_prefix<Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    _handle: u8,
+    chunk: &[u8],
+) -> SpdmResult<usize> {
+    let large_msg_size = state.large_msg_ctx.state.large_msg_size as usize;
+    let mut prefix_data = [0u8; super::STREAM_PREFIX_CAPACITY];
+    let (prefix_len, consumed, complete) = {
+        let Some(ActiveLargeRequest::Prefix(prefix)) = state.large_msg_ctx.active_request_mut()
+        else {
+            return Err(SPDM_INVALID_REQUEST);
+        };
+        let needed = SET_CERT_STREAM_PREFIX_LEN
+            .checked_sub(prefix.len)
+            .ok_or(SPDM_INVALID_REQUEST)?;
+        let consumed = needed.min(chunk.len());
+        if prefix.len + consumed > prefix.data.len() {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+        prefix.data[prefix.len..prefix.len + consumed].copy_from_slice(&chunk[..consumed]);
+        prefix.len += consumed;
+        prefix_data[..prefix.len].copy_from_slice(&prefix.data[..prefix.len]);
+        (
+            prefix.len,
+            consumed,
+            prefix.len >= SET_CERT_STREAM_PREFIX_LEN,
+        )
+    };
+    if complete {
+        let stream = set_certificate::start_set_certificate_stream(
+            state,
+            pal,
+            io,
+            large_msg_size,
+            &prefix_data[..prefix_len],
+        )
+        .await?;
+        state
+            .large_msg_ctx
+            .replace_active_request(ActiveLargeRequest::SetCertificate(stream))?;
+    }
+    Ok(consumed)
+}
+
+pub(crate) async fn abort_streaming_request_if_needed<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
+    state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    vdm: &Vdm,
+) {
+    match state.large_msg_ctx.active_request() {
+        #[cfg(feature = "set-certificate")]
+        Some(ActiveLargeRequest::SetCertificate(stream)) => {
+            set_certificate::abort_set_certificate_stream(state, pal, io, stream).await;
+        }
+        Some(ActiveLargeRequest::VendorDefined(_)) => {
+            vdm.abort_streaming_request(pal, io).await;
+        }
+        _ => {}
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn try_start_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    vdm: &Vdm,
+    handle: u8,
+    large_msg_size: usize,
+    first: &[u8],
+    secure_session: bool,
+) -> SpdmResult<bool> {
+    let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(first).map_err(|_| SPDM_INVALID_REQUEST)?;
+    if hdr.version != state.version.to_u8() {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    match hdr.code {
+        #[cfg(feature = "set-certificate")]
+        ReqRespCode::SET_CERTIFICATE => {
+            if secure_session {
+                state.large_msg_ctx.init_streaming_request(
+                    handle,
+                    large_msg_size,
+                    first.len(),
+                    ActiveLargeRequest::Unsupported(SPDM_UNSUPPORTED_REQUEST),
+                )?;
+                return Ok(true);
+            }
+            let stream = set_certificate::start_set_certificate_stream(
+                state,
+                pal,
+                io,
+                large_msg_size,
+                first,
+            )
+            .await?;
+            state.large_msg_ctx.init_streaming_request(
+                handle,
+                large_msg_size,
+                first.len(),
+                ActiveLargeRequest::SetCertificate(stream),
+            )?;
+            Ok(true)
+        }
+        ReqRespCode::VENDOR_DEFINED_REQUEST => {
+            let (vdm_hdr, rest) =
+                VendorDefinedReqPdu::ref_from_prefix(body).map_err(|_| SPDM_INVALID_REQUEST)?;
+            let vendor_id_len = vdm_hdr.vendor_id_len as usize;
+            if vendor_id_len > 4 {
+                return Ok(false);
+            }
+            let vendor_id = rest.get(..vendor_id_len).ok_or(SPDM_INVALID_REQUEST)?;
+            let req_len_offset = vendor_id_len;
+            let req_len_bytes = rest
+                .get(req_len_offset..req_len_offset + 2)
+                .ok_or(SPDM_INVALID_REQUEST)?;
+            let req_len = u16::from_le_bytes([req_len_bytes[0], req_len_bytes[1]]) as usize;
+            let payload_start = req_len_offset + 2;
+            let payload = rest.get(payload_start..).ok_or(SPDM_INVALID_REQUEST)?;
+            let expected = SpdmMsgHdrPdu::SIZE
+                .checked_add(VendorDefinedReqPdu::SIZE)
+                .and_then(|n| n.checked_add(vendor_id_len))
+                .and_then(|n| n.checked_add(2))
+                .and_then(|n| n.checked_add(req_len))
+                .ok_or(SPDM_INVALID_REQUEST)?;
+            if expected != large_msg_size || payload.len() > req_len {
+                return Err(SPDM_INVALID_REQUEST);
+            }
+            let registry = VdmRegistry {
+                standard_id: vdm_hdr.standard_id.get(),
+                vendor_id,
+                secure_session,
+            };
+            if !vdm.match_id(&registry) {
+                return Ok(false);
+            }
+            if !vdm
+                .start_streaming_request(req_len, payload, pal, io)
+                .await?
+            {
+                return Ok(false);
+            }
+            let mut vendor_id_buf = [0u8; 4];
+            vendor_id_buf[..vendor_id_len].copy_from_slice(vendor_id);
+            state.large_msg_ctx.init_streaming_request(
+                handle,
+                large_msg_size,
+                first.len(),
+                ActiveLargeRequest::VendorDefined(VendorDefinedStreamState {
+                    standard_id: vdm_hdr.standard_id.get(),
+                    vendor_id: vendor_id_buf,
+                    vendor_id_len: vdm_hdr.vendor_id_len,
+                }),
+            )?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+#[cfg(any(test, feature = "generic-large-request"))]
 struct LargeRequestError {
     spdm: SpdmError,
     early_error: bool,
 }
 
+#[cfg(any(test, feature = "generic-large-request"))]
 impl From<SpdmError> for LargeRequestError {
     fn from(spdm: SpdmError) -> Self {
         Self {
@@ -323,29 +681,121 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
-    secure_session: bool,
+    _secure_session: bool,
     handle: u8,
     chunk_seq_num: u16,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let len = state.large_msg_ctx.state.large_msg_size as usize;
     let mut response_to_large_request = [0u8; LARGE_REQUEST_RESPONSE_BUF_SIZE];
-    let (mut response_len, early_error) = if len < SpdmMsgHdrPdu::SIZE {
-        (
+    let active = state.large_msg_ctx.active_request().copied();
+    let (mut response_len, early_error) = match active {
+        #[cfg(feature = "set-certificate")]
+        Some(ActiveLargeRequest::SetCertificate(stream)) => {
+            match set_certificate::finish_set_certificate_stream(state, pal, io, &stream).await {
+                Ok(slot_id) => {
+                    let bytes = [
+                        state.version.to_u8(),
+                        ReqRespCode::SET_CERTIFICATE_RSP.0,
+                        slot_id,
+                        0,
+                    ];
+                    response_to_large_request[..bytes.len()].copy_from_slice(&bytes);
+                    (bytes.len(), false)
+                }
+                Err(spdm) => (
+                    write_error_response_to_large_request(
+                        &mut response_to_large_request,
+                        state.version,
+                        spdm,
+                    ),
+                    false,
+                ),
+            }
+        }
+        #[cfg(feature = "set-certificate")]
+        Some(ActiveLargeRequest::Unsupported(spdm)) => (
+            write_error_response_to_large_request(
+                &mut response_to_large_request,
+                state.version,
+                spdm,
+            ),
+            false,
+        ),
+        Some(ActiveLargeRequest::VendorDefined(stream)) => {
+            let vendor_id_len = stream.vendor_id_len as usize;
+            let vendor_id = &stream.vendor_id[..vendor_id_len];
+            let envelope_len = SpdmMsgHdrPdu::SIZE + 2 + 2 + 1 + vendor_id_len + 2;
+            if envelope_len > response_to_large_request.len() {
+                (
+                    write_error_response_to_large_request(
+                        &mut response_to_large_request,
+                        state.version,
+                        SPDM_UNSPECIFIED,
+                    ),
+                    false,
+                )
+            } else {
+                let mut empty_large = [];
+                let outcome = vdm
+                    .finish_streaming_request(VdmResponseBuffer {
+                        inline: &mut response_to_large_request[envelope_len..],
+                        large: &mut empty_large,
+                        alloc: pal,
+                        io,
+                    })
+                    .await;
+                match outcome {
+                    Ok(VdmResponse::Inline(payload_len)) => {
+                        let invalid_response = envelope_len + payload_len
+                            > response_to_large_request.len()
+                            || vendor_defined::write_vendor_defined_envelope(
+                                state.version,
+                                stream.standard_id,
+                                vendor_id,
+                                payload_len,
+                                &mut response_to_large_request[..envelope_len],
+                            )
+                            .is_err();
+                        if invalid_response {
+                            (
+                                write_error_response_to_large_request(
+                                    &mut response_to_large_request,
+                                    state.version,
+                                    SPDM_UNSPECIFIED,
+                                ),
+                                false,
+                            )
+                        } else {
+                            (envelope_len + payload_len, false)
+                        }
+                    }
+                    _ => (
+                        write_error_response_to_large_request(
+                            &mut response_to_large_request,
+                            state.version,
+                            SPDM_UNSPECIFIED,
+                        ),
+                        false,
+                    ),
+                }
+            }
+        }
+        _ if len < SpdmMsgHdrPdu::SIZE => (
             write_error_response_to_large_request(
                 &mut response_to_large_request,
                 state.version,
                 SPDM_INVALID_REQUEST,
             ),
             false,
-        )
-    } else {
-        match dispatch_large_request(
+        ),
+        #[cfg(any(test, feature = "generic-large-request"))]
+        _ => match dispatch_large_request(
             state,
             pal,
             io,
             vdm,
             len,
-            secure_session,
+            _secure_session,
             &mut response_to_large_request,
         )
         .await
@@ -359,7 +809,16 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 ),
                 err.early_error,
             ),
-        }
+        },
+        #[cfg(not(any(test, feature = "generic-large-request")))]
+        _ => (
+            write_error_response_to_large_request(
+                &mut response_to_large_request,
+                state.version,
+                SPDM_UNSUPPORTED_REQUEST,
+            ),
+            false,
+        ),
     };
 
     let max_response_len = state
@@ -384,6 +843,7 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     )
 }
 
+#[cfg(any(test, feature = "generic-large-request"))]
 async fn dispatch_large_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,
@@ -517,6 +977,116 @@ mod tests {
             registry.standard_id == 0x0004 && registry.vendor_id == CALIPTRA_VENDOR_ID_BYTES
         }
 
+        async fn start_streaming_request<Alloc, Io>(
+            &self,
+            _req_len: usize,
+            first: &[u8],
+            _alloc: &Alloc,
+            _io: &Io,
+        ) -> McuResult<bool>
+        where
+            Alloc: SpdmPalAlloc,
+            Io: SpdmPalIo,
+        {
+            assert_eq!(first.first().copied(), Some(CALIPTRA_VDM_COMMAND_VERSION));
+            assert_eq!(
+                first.get(1).copied(),
+                Some(CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8)
+            );
+            self.captured_token_payload
+                .replace(Some(first[2..].to_vec()));
+            Ok(true)
+        }
+
+        async fn continue_streaming_request<Alloc, Io>(
+            &self,
+            chunk: &[u8],
+            _alloc: &Alloc,
+            _io: &Io,
+        ) -> McuResult<()>
+        where
+            Alloc: SpdmPalAlloc,
+            Io: SpdmPalIo,
+        {
+            self.captured_token_payload
+                .borrow_mut()
+                .as_mut()
+                .expect("streaming request started")
+                .extend_from_slice(chunk);
+            Ok(())
+        }
+
+        async fn finish_streaming_request<Alloc, Io>(
+            &self,
+            rsp: VdmResponseBuffer<'_, Alloc, Io>,
+        ) -> McuResult<VdmResponse>
+        where
+            Alloc: SpdmPalAlloc,
+            Io: SpdmPalIo,
+        {
+            rsp.inline[..3].copy_from_slice(&[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8,
+                0,
+            ]);
+            Ok(VdmResponse::Inline(3))
+        }
+
+        async fn handle_request<Alloc, Io>(
+            &self,
+            req: &[u8],
+            rsp: VdmResponseBuffer<'_, Alloc, Io>,
+        ) -> McuResult<VdmResponse>
+        where
+            Alloc: SpdmPalAlloc,
+            Io: SpdmPalIo,
+        {
+            assert_eq!(req.first().copied(), Some(CALIPTRA_VDM_COMMAND_VERSION));
+            assert_eq!(
+                req.get(1).copied(),
+                Some(CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8)
+            );
+            self.captured_token_payload.replace(Some(req[2..].to_vec()));
+            rsp.inline[..3].copy_from_slice(&[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8,
+                0,
+            ]);
+            Ok(VdmResponse::Inline(3))
+        }
+    }
+
+    struct BufferedOnlyVdmBackend {
+        captured_token_payload: RefCell<Option<Vec<u8>>>,
+    }
+
+    impl BufferedOnlyVdmBackend {
+        fn new() -> Self {
+            Self {
+                captured_token_payload: RefCell::new(None),
+            }
+        }
+    }
+
+    impl SpdmVdmBackend for BufferedOnlyVdmBackend {
+        fn match_id(&self, registry: &VdmRegistry<'_>) -> bool {
+            registry.standard_id == 0x0004 && registry.vendor_id == CALIPTRA_VENDOR_ID_BYTES
+        }
+
+        async fn start_streaming_request<Alloc, Io>(
+            &self,
+            _req_len: usize,
+            _first: &[u8],
+            _alloc: &Alloc,
+            _io: &Io,
+        ) -> McuResult<bool>
+        where
+            Alloc: SpdmPalAlloc,
+            Io: SpdmPalIo,
+        {
+            Ok(false)
+        }
+
         async fn handle_request<Alloc, Io>(
             &self,
             req: &[u8],
@@ -601,6 +1171,7 @@ mod tests {
             ]
         );
         assert!(state.large_msg_ctx.request_in_progress());
+        assert!(state.large_msg_ctx.get_buffer().is_none());
 
         let second_io = TestIo::message(second_chunk.clone());
         let rsp = block_on(handle_chunk_send(
@@ -645,5 +1216,59 @@ mod tests {
                 0,
             ]
         );
+    }
+
+    #[test]
+    fn chunked_vendor_defined_debug_unlock_falls_back_when_streaming_declines() {
+        let pal = TestPal::default();
+        let mut state = chunking_state();
+        let vdm = BufferedOnlyVdmBackend::new();
+
+        let host_mailbox_payload = vec![0x5au8; 4 + 96];
+        let large_req = vendor_defined_authorize_debug_unlock_request(&host_mailbox_payload);
+        let (first, second) = large_req.split_at(64);
+        let first_chunk = chunk_send_request(10, 0, false, Some(large_req.len()), first);
+        let second_chunk = chunk_send_request(10, 1, true, None, second);
+
+        let first_io = TestIo::message(first_chunk.clone());
+        let rsp = block_on(handle_chunk_send(
+            &mut state,
+            &pal,
+            &first_io,
+            &vdm,
+            &first_chunk,
+            false,
+        ))
+        .unwrap();
+        assert_eq!(
+            &rsp[..],
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::CHUNK_SEND_ACK.0,
+                0,
+                10,
+                0,
+                0,
+            ]
+        );
+        assert!(state.large_msg_ctx.request_in_progress());
+        assert!(state.large_msg_ctx.get_buffer().is_some());
+
+        let second_io = TestIo::message(second_chunk.clone());
+        let rsp = block_on(handle_chunk_send(
+            &mut state,
+            &pal,
+            &second_io,
+            &vdm,
+            &second_chunk,
+            false,
+        ))
+        .unwrap();
+        assert_eq!(
+            vdm.captured_token_payload.take(),
+            Some(host_mailbox_payload)
+        );
+        assert!(!state.large_msg_ctx.request_in_progress());
+        assert_eq!(rsp[1], ReqRespCode::CHUNK_SEND_ACK.0);
     }
 }

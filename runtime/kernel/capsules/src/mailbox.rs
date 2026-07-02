@@ -317,6 +317,24 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         Ok(())
     }
 
+    fn abort_initiated_request(&self, processid: ProcessId) -> Result<(), ErrorCode> {
+        // Only allowed after initiate_request (command 2).
+        if self.state.get() != MailboxState::Initiated {
+            return Err(ErrorCode::INVAL);
+        }
+        // Verify that the caller is the app that initiated the request.
+        if self.current_app.get() != Some(processid) {
+            return Err(ErrorCode::INVAL);
+        }
+        let _ = self.alarm.disarm();
+        self.driver.map(|driver| {
+            driver.abort_request();
+        });
+        self.state.set(MailboxState::Idle);
+        self.current_app.take();
+        Ok(())
+    }
+
     fn execute(&self, processid: ProcessId) -> Result<(), ErrorCode> {
         // Only allowed after initiate_request (command 2).
         if self.state.get() != MailboxState::Initiated {
@@ -532,6 +550,15 @@ impl<'a, A: Alarm<'a>> SyscallDriver for Mailbox<'a, A> {
             4 => {
                 // Execute the command
                 let res = self.execute(processid);
+                match res {
+                    Ok(()) => CommandReturn::success(),
+                    Err(e) => CommandReturn::failure(e),
+                }
+            }
+
+            5 => {
+                // Abort an initiated chunked command
+                let res = self.abort_initiated_request(processid);
                 match res {
                     Ok(()) => CommandReturn::success(),
                     Err(e) => CommandReturn::failure(e),
