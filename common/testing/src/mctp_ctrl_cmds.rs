@@ -1,11 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_mcu_testing_common::i3c_socket::{BufferedStream, MctpTestState, MctpTransportTest};
-use caliptra_mcu_testing_common::mctp_util::base_protocol::{
-    MCTPMsgHdr, MctpMsgType, MCTP_MSG_HDR_SIZE,
-};
-use caliptra_mcu_testing_common::mctp_util::common::MctpUtil;
-use caliptra_mcu_testing_common::mctp_util::ctrl_protocol::*;
+use crate::i3c_socket::{BufferedStream, MctpTestState, MctpTransportTest};
+use crate::mctp_util::base_protocol::{MCTPMsgHdr, MctpMsgType, MCTP_MSG_HDR_SIZE};
+use crate::mctp_util::common::MctpUtil;
+use crate::mctp_util::ctrl_protocol::*;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use zerocopy::IntoBytes;
@@ -23,7 +21,7 @@ const MCTP_CTRL_MSG_HDR_OFFSET: usize = MCTP_MSG_HDR_OFFSET + MCTP_MSG_HDR_SIZE;
 const MCTP_CTRL_PAYLOAD_OFFSET: usize = MCTP_CTRL_MSG_HDR_OFFSET + MCTP_CTRL_MSG_HDR_SIZE;
 
 #[derive(EnumIter, Debug)]
-pub(crate) enum MCTPCtrlCmdTests {
+pub enum MCTPCtrlCmdTests {
     SetEID,
     SetEIDForce,
     SetEIDNullFail,
@@ -294,7 +292,7 @@ impl MctpTransportTest for Test {
 
     fn run_test(&mut self, stream: &mut BufferedStream, target_addr: u8) {
         stream.set_nonblocking(true).unwrap();
-        while caliptra_mcu_testing_common::is_emulator_running() {
+        while crate::is_emulator_running() {
             match self.test_state {
                 MctpTestState::Start => {
                     println!("Starting test: {}", self.name);
