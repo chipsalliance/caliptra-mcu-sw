@@ -12,7 +12,7 @@ use caliptra_mcu_components::{
     doe_component_static, dpe_handle_store_component_static, external_otp_component_static,
     flash_partition_component_static, instantiate_flash_partitions, instantiate_logging_flash,
     mailbox_component_static, mbox_sram_component_static, mctp_driver_component_static,
-    mcu_mbox_component_static,
+    mcu_mbox_component_static, soft_pcr_store_component_static,
 };
 #[cfg(feature = "crash-log")]
 use caliptra_mcu_config_emulator::flash::CRASH_LOG_PARTITION;
@@ -167,6 +167,7 @@ struct VeeR {
     otp: &'static caliptra_mcu_capsules_runtime::otp::Otp,
     external_otp: &'static caliptra_mcu_capsules_runtime::external_otp::ExternalOtpCapsule<'static>,
     dpe_handle_store: &'static caliptra_mcu_capsules_runtime::dpe_handle_store::DpeHandleStore,
+    pcr_store: &'static caliptra_mcu_capsules_runtime::soft_pcr_store::SoftPcrStore,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>,
 }
 
@@ -240,6 +241,7 @@ impl SyscallDriverLookup for VeeR {
             caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM => {
                 f(Some(self.dpe_handle_store))
             }
+            caliptra_mcu_capsules_runtime::soft_pcr_store::DRIVER_NUM => f(Some(self.pcr_store)),
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
 
             _ => f(None),
@@ -893,22 +895,38 @@ pub unsafe fn main() {
     )
     .finalize(external_otp_component_static!());
 
-    // DPE Handle Store: backed by the persistent storage SRAM reservation
-    // (_sstorage .. _estorage) defined by the firmware-bundler linker script.
-    // Capacity = (region_len - 8) / 32 records (≥ 31 with the default 1 KB region).
+    // DPE Handle Store + Software PCR Store: both backed by the persistent storage
+    // SRAM reservation (_sstorage.._estorage).  The region is split as:
+    //   [_sstorage .. _sstorage + DPE_STORE_SIZE)  → DPE Handle Store
+    //   [_sstorage + DPE_STORE_SIZE .. _estorage)   → Software PCR Store
     // When built outside the firmware-bundler (e.g. cargo check), _sstorage ==
-    // _estorage == 0 so capacity is 0 and no records can be stored, which is safe.
-    let dpe_handle_store = {
+    // _estorage == 0 so both slices are empty, which is safe.
+    // Storage layout constants: board owns the split, capsules derive capacity
+    // from the slice length they receive.
+    const DPE_STORE_SIZE: usize = 0x400; // 1 KiB → DPE Handle Store
+    const PCR_STORE_SIZE: usize = 0xC00; // 3 KiB → Software PCR Store
+    let (dpe_handle_store, pcr_store) = {
         let start = addr_of!(_sstorage) as *mut u8;
         let end = addr_of!(_estorage) as usize;
-        let len = end.saturating_sub(start as usize);
-        let dpe_sram: &'static mut [u8] = core::slice::from_raw_parts_mut(start, len);
-        caliptra_mcu_components::dpe_handle_store::DpeHandleStoreComponent::new(
+        let total_len = end.saturating_sub(start as usize);
+        let dpe_len = DPE_STORE_SIZE.min(total_len);
+        let pcr_len = PCR_STORE_SIZE.min(total_len.saturating_sub(dpe_len));
+        let full: &'static mut [u8] = core::slice::from_raw_parts_mut(start, total_len);
+        let (dpe_sram, rest) = full.split_at_mut(dpe_len);
+        let pcr_sram = &mut rest[..pcr_len];
+        let dpe = caliptra_mcu_components::dpe_handle_store::DpeHandleStoreComponent::new(
             board_kernel,
             caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM,
             dpe_sram,
         )
-        .finalize(dpe_handle_store_component_static!())
+        .finalize(dpe_handle_store_component_static!());
+        let pcr = caliptra_mcu_components::soft_pcr_store::SoftPcrStoreComponent::new(
+            board_kernel,
+            caliptra_mcu_capsules_runtime::soft_pcr_store::DRIVER_NUM,
+            pcr_sram,
+        )
+        .finalize(soft_pcr_store_component_static!());
+        (dpe, pcr)
     };
 
     // MCU mailbox0 capsule
@@ -976,6 +994,7 @@ pub unsafe fn main() {
             otp,
             external_otp,
             dpe_handle_store,
+            pcr_store,
             system,
         }
     );

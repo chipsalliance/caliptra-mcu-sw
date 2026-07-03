@@ -13,7 +13,7 @@ page_size = 256
 # storage_size: platform-dependent; size this based on the number of configured
 # SoC TCB / non-TCB components and the DPE Handle Storage + Software PCR Storage
 # record sizes.  The firmware-bundler rounds the value up to 4 KiB automatically.
-storage_size = 0x400
+storage_size = 0x1000
 
 [platform.rom]
 offset = 0x8000_0000
