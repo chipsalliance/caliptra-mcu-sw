@@ -40,7 +40,6 @@ mod mcu_mbox;
 mod measurement;
 #[cfg(target_arch = "riscv32")]
 mod panic;
-mod soc_env;
 #[cfg(feature = "spdm")]
 mod spdm;
 #[cfg(feature = "mctp-vdm-service")]

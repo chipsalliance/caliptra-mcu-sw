@@ -67,12 +67,36 @@ fn main() {
         println!("cargo:rustc-env=DEFMT_LOG={level}");
     }
 
-    let generated_dir = write_fw_components_config();
-    write_attestation_manifest(&generated_dir);
+    let config = write_attestation_manifest();
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    write_eat_claims_template(&out_dir, &config.vendor, &config.model);
 }
 
-fn write_attestation_manifest(generated_dir: &Path) {
-    let config_file = generated_dir.join("attestation_manifest.toml");
+fn attestation_manifest_config_path() -> PathBuf {
+    println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
+    if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+        return PathBuf::from(target_dir).join("generated/attestation_manifest.toml");
+    }
+
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let workspace_root = find_workspace_root(&manifest_dir)
+        .expect("Unable to determine workspace root from user-app path");
+    workspace_root.join("target/generated/attestation_manifest.toml")
+}
+
+fn find_workspace_root(start: &Path) -> Option<PathBuf> {
+    start
+        .ancestors()
+        .find(|path| {
+            fs::read_to_string(path.join("Cargo.toml"))
+                .map(|contents| contents.lines().any(|line| line.trim() == "[workspace]"))
+                .unwrap_or(false)
+        })
+        .map(Path::to_path_buf)
+}
+
+fn write_attestation_manifest() -> AttestationManifestConfig {
+    let config_file = attestation_manifest_config_path();
     println!("cargo:rerun-if-changed={}", config_file.display());
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -100,6 +124,7 @@ fn write_attestation_manifest(generated_dir: &Path) {
 
     fs::write(out_dir.join("attestation_manifest.rs"), out)
         .expect("Failed to write generated attestation_manifest.rs");
+    config
 }
 
 fn read_attestation_manifest_config(path: &Path) -> AttestationManifestConfig {
@@ -253,63 +278,6 @@ fn push_fixed_platform_info(out: &mut Vec<u8>, value: &[u8]) {
     debug_assert!(value.len() <= ATTESTATION_MANIFEST_PLATFORM_INFO_MAX_LEN);
     out.extend_from_slice(value);
     out.extend(std::iter::repeat(0).take(ATTESTATION_MANIFEST_PLATFORM_INFO_MAX_LEN - value.len()));
-}
-
-/// Copy the generated `soc_env_config.rs` into `OUT_DIR` or emit a stub if it is missing.
-/// In strict mode (`FW_COMPONENTS_STRICT` set) absence of the source file causes a panic.
-fn write_fw_components_config() -> PathBuf {
-    // Locate workspace root by walking up the directory tree.
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    // Ancestors: user -> apps -> userspace -> runtime -> emulator -> platforms -> <root>
-    let workspace_root = manifest_dir
-        .ancestors()
-        .nth(6)
-        .expect("Unable to determine workspace root from user-app path");
-
-    let src_file = workspace_root.join("target/generated/soc_env_config.rs");
-    println!("cargo:rerun-if-changed={}", src_file.display());
-
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    fs::create_dir_all(&out_dir).unwrap();
-    let dest = out_dir.join("soc_env_config.rs");
-
-    let (vendor, model) = if !src_file.exists() {
-        let strict = env::var("FW_COMPONENTS_STRICT").is_ok();
-        if strict {
-            panic!(
-                "Required generated file '{}' not found (strict mode). Run generation first or unset FW_COMPONENTS_STRICT.",
-                src_file.display()
-            );
-        }
-        let stub = r#"// Stub generated because real soc_env_config.rs not found.
-pub const VENDOR: &str = "UNKNOWN";
-pub const MODEL: &str = "UNKNOWN";
-pub const NUM_FW_COMPONENTS: usize = 0;
-pub const FW_IDS: [u32; 0] = [];
-pub const FW_ID_STRS: [&str; 0] = [];
-"#;
-        fs::write(&dest, stub).expect("Failed to write stub soc_env_config.rs");
-        println!("cargo:warning=soc_env_config.rs missing at {}; emitted stub (set FW_COMPONENTS_STRICT=1 to make this a build error)", src_file.display());
-        ("UNKNOWN".to_string(), "UNKNOWN".to_string())
-    } else {
-        fs::copy(&src_file, &dest).expect("Failed to copy soc_env_config.rs into OUT_DIR");
-        let cfg = fs::read_to_string(&src_file).expect("Failed to read soc_env_config.rs");
-        (
-            parse_str_const(&cfg, "VENDOR").unwrap_or_else(|| "UNKNOWN".to_string()),
-            parse_str_const(&cfg, "MODEL").unwrap_or_else(|| "UNKNOWN".to_string()),
-        )
-    };
-
-    write_eat_claims_template(&out_dir, &vendor, &model);
-    workspace_root.join("target/generated")
-}
-
-fn parse_str_const(src: &str, name: &str) -> Option<String> {
-    let prefix = format!("pub const {}: &str = \"", name);
-    let line = src.lines().find(|line| line.starts_with(&prefix))?;
-    let rest = &line[prefix.len()..];
-    let end = rest.find('"')?;
-    Some(rest[..end].to_string())
 }
 
 fn write_eat_claims_template(out_dir: &std::path::Path, vendor: &str, model: &str) {
