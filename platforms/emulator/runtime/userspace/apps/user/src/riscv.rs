@@ -17,6 +17,7 @@ set_main! {main}
 
 fn main() {
     if cfg!(feature = "test-do-nothing") {
+        #[allow(clippy::empty_loop)]
         loop {}
     }
     // setup the global allocator for futures

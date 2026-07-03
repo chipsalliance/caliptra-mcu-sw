@@ -31,10 +31,8 @@ mod caliptra_cmd_handler;
 ))]
 mod defmt_test;
 #[cfg(any(
-    feature = "test-firmware-activate",
-    feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash",
-    feature = "test-streaming-boot-flash-write-back",
+    feature = "firmware-update",
+    feature = "test-firmware-update-streaming"
 ))]
 mod firmware_update;
 mod image_loader;
@@ -42,7 +40,9 @@ mod mcu_mbox;
 mod measurement;
 #[cfg(target_arch = "riscv32")]
 mod panic;
+#[cfg(feature = "spdm")]
 mod spdm;
+#[cfg(feature = "mctp-vdm-service")]
 mod vdm;
 
 #[cfg(target_arch = "riscv32")]
@@ -100,16 +100,7 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
-    // TODO: Debug spawning the SPDM task causes a hardfault in FPGA when firmware update is enabled
-    // for now, disable the SPDM task if either FW update test is enabled
-    #[cfg(not(any(
-        feature = "test-firmware-activate",
-        feature = "test-firmware-update-streaming",
-        feature = "test-firmware-update-flash",
-        feature = "test-streaming-boot-flash-write-back",
-        feature = "test-pldm-fw-update-e2e",
-        feature = "test-mcu-mbox-fips-periodic",
-    )))]
+    #[cfg(feature = "spdm")]
     spdm::spawn_spdm_tasks(&EXECUTOR.get().spawner());
 
     EXECUTOR
@@ -131,11 +122,7 @@ pub(crate) async fn async_main() {
         .spawn(caliptra_mcu_mbox_lib::fips_periodic::fips_periodic_task())
         .unwrap();
 
-    #[cfg(any(
-        feature = "test-mctp-vdm-cmds",
-        feature = "test-caliptra-util-host-mctp-vdm-validator",
-        feature = "test-defmt-logging-vdm"
-    ))]
+    #[cfg(feature = "mctp-vdm-service")]
     EXECUTOR.get().spawner().spawn(vdm::vdm_task()).unwrap();
 
     // Production userspace defmt logging: drain staged frames to the flash log

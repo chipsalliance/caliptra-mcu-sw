@@ -350,7 +350,7 @@ pub extern "C" fn rom_entry() -> ! {
         ..Default::default()
     };
 
-    if cfg!(feature = "test-flash-based-boot") {
+    if cfg!(feature = "use-flash-partition-table") {
         // Initialize the flash controller for testing purposes
 
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
@@ -604,16 +604,8 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
-    } else if cfg!(feature = "hw-2-1")
-        && !cfg!(any(
-            feature = "test-dot-recovery",
-            feature = "test-i3c-services",
-            feature = "test-rom-hooks",
-            feature = "test-svn-manifest",
-            feature = "test-usb-ocp-recovery",
-        ))
-    {
-        // Simple flash-based boot for hw-2-1 without partition tables.
+    } else if cfg!(feature = "flash-boot") {
+        // Simple flash-based boot without partition tables.
         // Uses flash image starting at offset 0.
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
 

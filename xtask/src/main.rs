@@ -651,12 +651,20 @@ fn main() {
                     features.push("release");
                 }
                 let features_str = features.join(",");
+                // When building with the `release` profile, suppress the crate's
+                // default features (currently `all-features`) so only the
+                // explicitly requested features (plus the auto-added `release`
+                // feature above) are compiled in.  Without this, `all-features`
+                // pulls in every service (SPDM, streaming-boot, …) and the binary
+                // overflows the constrained 512 KB FPGA SRAM budget.
+                let no_default_features = profile == "release";
                 caliptra_mcu_builder::runtime_build_with_apps(
                     &caliptra_mcu_builder::CaliptraBuildArgs {
                         features: Some(&features_str),
                         output_name: output.clone(),
                         platform: platform.as_deref(),
                         profile: Some(profile.as_str()),
+                        no_default_features,
                         ..Default::default()
                     },
                 )

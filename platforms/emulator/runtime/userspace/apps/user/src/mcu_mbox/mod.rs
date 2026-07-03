@@ -1,14 +1,8 @@
 // Licensed under the Apache-2.0 license
 
+#[cfg(feature = "mcu-mbox-service")]
 pub(crate) mod cmd_auth_mock;
-#[cfg(any(
-    feature = "test-mcu-mbox-cmds",
-    feature = "test-mcu-mbox-fips-self-test",
-    feature = "test-mcu-mbox-fips-periodic",
-    feature = "test-caliptra-util-host-validator",
-    feature = "test-defmt-logging-mailbox",
-    feature = "test-defmt-logging-release"
-))]
+#[cfg(feature = "mcu-mbox-service")]
 mod cmd_handler_mock;
 
 use caliptra_mcu_libsyscall_caliptra::system::System;
@@ -36,16 +30,9 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     crate::log_info!(console_writer, "Starting MCU_MBOX task...");
 
-    #[cfg(any(
-        feature = "test-mcu-mbox-cmds",
-        feature = "test-mcu-mbox-fips-self-test",
-        feature = "test-mcu-mbox-fips-periodic",
-        feature = "test-caliptra-util-host-validator",
-        feature = "test-defmt-logging-mailbox",
-        feature = "test-defmt-logging-release"
-    ))]
+    #[cfg(feature = "mcu-mbox-service")]
     {
-        let handler = cmd_handler_mock::NonCryptoCmdHandlerMock::default();
+        let handler = cmd_handler_mock::NonCryptoCmdHandlerMock;
         let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer::default();
         let mut transport = caliptra_mcu_mbox_lib::transport::McuMboxTransport::new(
             caliptra_mcu_libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,

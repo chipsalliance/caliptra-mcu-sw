@@ -741,12 +741,28 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         Some(base_runtime_features.join(","))
     };
 
+    // For FPGA devel builds with no explicit base-runtime features (i.e.
+    // separate-runtimes mode where every test gets its own runtime), suppress
+    // the crate's `default = ["all-features"]` because that would include
+    // streaming-boot, flash-boot, firmware-update, etc. and overflow the
+    // FPGA's 512 KB SRAM. Tests that need services such as SPDM should use an
+    // explicit test feature so the corresponding separate runtime enables it.
+    // Release builds (any platform) also suppress defaults: `all-features`
+    // pulls in SPDM, streaming-boot, firmware-update, etc. on top of `release`
+    // and overflows both the 512 KB FPGA and emulator release SRAM budgets.
+    // Feature-specific release test runtimes below use `--no-default-features`
+    // too, so `release` must not pull in unrelated services such as
+    // firmware-update.
+    let base_no_default = is_release || (platform == "fpga" && base_runtime_features.is_empty());
+    let effective_features = base_runtime_features_str.as_deref();
+
     let mcu_runtime = &crate::runtime_build_with_apps(&CaliptraBuildArgs {
-        features: base_runtime_features_str.as_deref(),
+        features: effective_features,
         output_name: Some(base_runtime_path.to_string()),
         example_app: false,
         platform: Some(platform),
         profile,
+        no_default_features: base_no_default,
         ..Default::default()
     })?;
     let user_app_profile = profile.unwrap_or("devel");
@@ -911,6 +927,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 platform: Some(platform),
                 profile,
                 target_dir: target_dir.clone(),
+                no_default_features: true,
                 ..Default::default()
             })?;
 

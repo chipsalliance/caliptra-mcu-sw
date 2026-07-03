@@ -322,6 +322,7 @@ mod test {
             example_app,
             platform: Some(platform),
             profile,
+            no_default_features: true,
             ..Default::default()
         })
         .expect("Runtime failed to compile");

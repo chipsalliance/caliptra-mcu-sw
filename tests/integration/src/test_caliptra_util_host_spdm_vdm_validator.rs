@@ -256,6 +256,7 @@ mod test {
 
         // --- Start hw_model with keys provisioned in fuses ---
         let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-caliptra-util-host-spdm-vdm-validator"),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             use_strap_secrets: true,
             debug_intent: true,
@@ -305,6 +306,7 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-caliptra-util-host-spdm-vdm-validator"),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             use_strap_secrets: true,
             lifecycle_controller_state: Some(caliptra_mcu_hw_model::LifecycleControllerState::Dev),
