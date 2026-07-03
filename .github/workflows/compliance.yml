@@ -12,21 +12,21 @@ jobs:
   compliance:
     runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Checkout riscv-isa-sim repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         repository: riscv-software-src/riscv-isa-sim
         ref: 3f79e3b7ded80d9ef0e722126b3765207e010711
         path: riscv-isa-sim
     - name: Checkout sail-riscv repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         repository: riscv/sail-riscv
         ref: 6a10cb76264d1eafccb61e22397bea4f2eced19b
         path: sail-riscv
     - name: Checkout RISC-V tests
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         repository: riscv-non-isa/riscv-arch-test
         ref: 752c0fb721b9ab264682d491283d98813f95e45b
