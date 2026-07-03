@@ -64,6 +64,7 @@ test-log-flash-usermode = ["crash-log"]
 test-mbox-sram = []
 test-external-otp = []
 test-mci = []
+test-sw-pcr-store = []
 # Kernel only test
 test-exit-immediately = []
 test-caliptra-util-host-validator = []

@@ -47,6 +47,9 @@ mod test_mbox_sram;
 #[cfg(feature = "test-dpe-handle-store")]
 mod test_dpe_handle_store;
 
+#[cfg(feature = "test-sw-pcr-store")]
+mod test_sw_pcr_store;
+
 #[cfg(feature = "test-external-otp")]
 mod test_external_otp;
 
@@ -237,6 +240,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
     {
         writeln!(console_writer, "Running DPE handle store test").unwrap();
         test_dpe_handle_store::test_dpe_handle_store();
+        System::exit(0);
+    }
+    #[cfg(feature = "test-sw-pcr-store")]
+    {
+        writeln!(console_writer, "Running Software PCR store test").unwrap();
+        test_sw_pcr_store::test_sw_pcr_store();
         System::exit(0);
     }
     #[cfg(feature = "test-external-otp")]
