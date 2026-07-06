@@ -34,5 +34,6 @@
 - [Network Boot Recovery](./network_boot.md)
 - [Integrator's Guide](./integrator-guide.md)
     - [SPDM Integration Guide](./spdm-integrator-guide.md)
+    - [OCP Recovery Integration Guide](./ocp_recovery_integrator_guide.md)
 - [Testing](./testing.md)
     - [I3C Testing over TCP](./testing-i3c.md)
