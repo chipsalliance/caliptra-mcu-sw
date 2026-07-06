@@ -100,6 +100,7 @@ const FEATURES_REQUIRING_FLASH_BOOT: &[&str] =
 /// Keep the runtime in sync so large Caliptra mailbox commands use staging SRAM.
 const FEATURES_REQUIRING_HW_2_1_RUNTIME: &[&str] = &[
     "test-flash-based-boot",
+    "test-firmware-activate",
     "test-firmware-update-flash",
     "test-usb-ocp-recovery",
 ];
@@ -1310,6 +1311,7 @@ fn default_mcu_image_cfg_for_feature(feature: &str, runtime_path: &Path) -> Opti
         component_id: MCU_RT_IDENTIFIER,
         exec_bit: 2,
         feature: feature.to_string(),
+        ..Default::default()
     })
 }
 

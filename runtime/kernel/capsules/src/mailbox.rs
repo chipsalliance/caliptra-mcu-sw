@@ -69,6 +69,7 @@ fn log_caliptra_error(err: &CaliptraApiError) {
 
 /// The driver number for Caliptra mailbox commands.
 pub const DRIVER_NUM: usize = 0x8000_0009;
+const CALIPTRA_SUBSYSTEM_MAILBOX_SIZE: usize = 16 * 1024;
 
 /// IDs for subscribed upcalls.
 mod upcall {
@@ -130,6 +131,7 @@ pub struct Mailbox<'a, A: Alarm<'a>> {
     /// AXI address of the staging SRAM
     staging_sram_axi_addr: Option<u64>,
     current_request_offset: Cell<usize>,
+    use_external_mailbox: Cell<bool>,
     current_cmd: Cell<u32>,
     // DMA peripheral for data transfers
     dma_driver: &'static dyn Dma,
@@ -160,9 +162,15 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             resp_size: Cell::new(0),
             staging_sram_axi_addr,
             current_request_offset: Cell::new(0),
+            use_external_mailbox: Cell::new(false),
             current_cmd: Cell::new(0),
             dma_driver,
         }
+    }
+
+    fn staging_addr_for_request(&self, request_len: usize) -> Option<u64> {
+        self.staging_sram_axi_addr
+            .filter(|_| request_len > CALIPTRA_SUBSYSTEM_MAILBOX_SIZE)
     }
 
     // Check if any command is pending. If not, this command is executed.
@@ -276,7 +284,10 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         self.current_app.set(processid);
         self.state.set(MailboxState::Executing);
 
-        if let Some(staging_axi_addr) = self.staging_sram_axi_addr {
+        self.use_external_mailbox
+            .set(self.staging_addr_for_request(app_buffer.len()).is_some());
+
+        if let Some(staging_axi_addr) = self.staging_addr_for_request(app_buffer.len()) {
             // Copy payload to staging SRAM
             self.copy_app_buffer_to_staging_sram(app_buffer, 0)?;
 
@@ -289,6 +300,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                     log_caliptra_error(&err);
                     self.state.set(MailboxState::Idle);
                     self.current_app.take();
+                    self.use_external_mailbox.set(false);
                     Err(ErrorCode::FAIL)
                 }
             }
@@ -315,6 +327,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                     log_caliptra_error(&err);
                     self.state.set(MailboxState::Idle);
                     self.current_app.take();
+                    self.use_external_mailbox.set(false);
                     Err(ErrorCode::FAIL)
                 }
             }
@@ -334,7 +347,11 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         self.current_app.set(processid);
         self.current_cmd.set(command);
         self.state.set(MailboxState::Initiated);
-        if self.staging_sram_axi_addr.is_none() {
+        self.current_request_offset.set(0);
+        self.use_external_mailbox
+            .set(self.staging_addr_for_request(payload_size).is_some());
+
+        if !self.use_external_mailbox.get() {
             // If not using staging SRAM, then the mailbox command can be initiated directly.
             self.driver
                 .map(
@@ -346,6 +363,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                         Err(_) => {
                             self.state.set(MailboxState::Idle);
                             self.current_app.take();
+                            self.use_external_mailbox.set(false);
                             Err(ErrorCode::FAIL)
                         }
                     },
@@ -394,7 +412,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     }
 
     fn write_chunk(&self, app_buffer: &ReadableProcessSlice) -> Result<(), ErrorCode> {
-        if self.staging_sram_axi_addr.is_none() {
+        if !self.use_external_mailbox.get() {
             // Copy payload directly to mailbox
             // The mailbox FIFO is 32-bit wide and the payload length is delimited
             // by `dlen`, so a trailing partial word is zero-padded into a u32
@@ -433,7 +451,10 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             return Err(ErrorCode::INVAL);
         }
         self.state.set(MailboxState::Executing);
-        if let Some(staging_axi_addr) = self.staging_sram_axi_addr {
+        if let Some(staging_axi_addr) = self
+            .staging_sram_axi_addr
+            .filter(|_| self.use_external_mailbox.get())
+        {
             // If using staging SRAM, execute the command with staging address
             self.driver
                 .map(|driver| {
@@ -449,6 +470,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                         Err(_) => {
                             self.state.set(MailboxState::Idle);
                             self.current_app.take();
+                            self.use_external_mailbox.set(false);
                             Err(ErrorCode::FAIL)
                         }
                     }
@@ -464,6 +486,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                     Err(_err) => {
                         self.state.set(MailboxState::Idle);
                         self.current_app.take();
+                        self.use_external_mailbox.set(false);
                         Err(ErrorCode::FAIL)
                     }
                 })
@@ -570,6 +593,8 @@ impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
                 });
                 self.state.set(MailboxState::Idle);
                 self.current_app.take();
+                self.current_request_offset.set(0);
+                self.use_external_mailbox.set(false);
             }
             MailboxState::Executing => {
                 let reschedule = self
@@ -590,10 +615,14 @@ impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
                     let _ = self.alarm.disarm();
                     self.state.set(MailboxState::Idle);
                     self.current_app.take();
+                    self.current_request_offset.set(0);
+                    self.use_external_mailbox.set(false);
                 }
             }
             MailboxState::Idle => {
                 let _ = self.alarm.disarm();
+                self.current_request_offset.set(0);
+                self.use_external_mailbox.set(false);
             }
         }
     }

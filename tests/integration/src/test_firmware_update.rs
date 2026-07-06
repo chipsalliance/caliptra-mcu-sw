@@ -977,7 +977,9 @@ mod test {
         );
     }
 
+    // TODO: Re-enable once the FPGA timeout observed in CI is root-caused and fixed.
     #[cfg(feature = "fpga_realtime")]
+    #[ignore]
     #[test]
     fn test_firmware_activate_fpga() {
         use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams};

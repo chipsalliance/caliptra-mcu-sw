@@ -358,4 +358,3 @@ region, separate from the application RAM region.  Userspace processes
 cannot access it directly; they interact with the stored data only
 through the kernel capsule syscall interfaces
 (`DpeHandleStore` driver `0x8000_0020` and `PcrStore` driver `0x8000_0021`).
-

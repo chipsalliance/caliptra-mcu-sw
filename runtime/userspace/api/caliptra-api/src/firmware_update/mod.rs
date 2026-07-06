@@ -217,6 +217,14 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         Ok(image_header)
     }
 
+    pub async fn update_mcu_with_auth_manifest(
+        &mut self,
+        flash_header: &FlashHeader,
+    ) -> Result<(), ErrorCode> {
+        self.set_auth_manifest().await?;
+        self.update_mcu(flash_header).await
+    }
+
     async fn set_auth_manifest(&mut self) -> Result<(), ErrorCode> {
         let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
         self.staging_memory

@@ -164,7 +164,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
             None,
         );
 
-        updater.update_mcu(&flash_header).await?;
+        updater.update_mcu_with_auth_manifest(&flash_header).await?;
         return Ok(());
     }
 
