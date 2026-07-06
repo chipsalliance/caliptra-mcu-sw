@@ -11,6 +11,9 @@ pub struct FuseConfig {
     pub secret_vendor: Vec<HashMap<String, u32>>,
     /// Vendor-specific non-secret fuses
     pub non_secret_vendor: Vec<HashMap<String, u32>>,
+    /// Vendor-specific test partition fuses
+    #[serde(default)]
+    pub vendor_test_partition: Vec<HashMap<String, u32>>,
     /// Additional fuses outside of the standard areas
     /// TODO: define this
     pub other_fuses: Option<HashMap<String, String>>,
@@ -93,6 +96,14 @@ impl FuseConfig {
             .sum()
     }
 
+    /// Get the total size of vendor test partition fuses in bytes
+    pub fn vendor_test_partition_total_size(&self) -> u32 {
+        self.vendor_test_partition
+            .iter()
+            .flat_map(|map| map.values())
+            .sum()
+    }
+
     /// Find a field definition by name
     pub fn find_field(&self, name: &str) -> Option<&FieldDefinition> {
         self.fields.iter().find(|field| field.name == name)
@@ -110,6 +121,15 @@ impl FuseConfig {
     /// Get all non-secret vendor fuse names and sizes
     pub fn non_secret_vendor_fuses(&self) -> Vec<(&str, u32)> {
         self.non_secret_vendor
+            .iter()
+            .flat_map(|map| map.iter())
+            .map(|(name, size)| (name.as_str(), *size))
+            .collect()
+    }
+
+    /// Get all vendor test partition fuse names and sizes
+    pub fn vendor_test_partition_fuses(&self) -> Vec<(&str, u32)> {
+        self.vendor_test_partition
             .iter()
             .flat_map(|map| map.iter())
             .map(|(name, size)| (name.as_str(), *size))

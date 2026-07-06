@@ -185,6 +185,18 @@ pub fn generate_fuses(
     }
     output.push_str("];");
 
+    // Vendor test partition fuses
+    output.push_str("pub const VENDOR_TEST_PARTITION_FUSES: &[Fuse] = &[");
+    for fuse in &spec.vendor_test_partition {
+        for (name, size) in fuse {
+            output.push_str(&format!(
+                "Fuse {{ name: \"{}\", size: Bytes({}) }},",
+                name, size
+            ));
+        }
+    }
+    output.push_str("];");
+
     // Fuse fields
     output.push_str("pub const FUSE_FIELDS: &[FuseField] = &[");
     for field in &spec.fields {
@@ -194,6 +206,17 @@ pub fn generate_fuses(
         ));
     }
     output.push_str("];");
+
+    let mut vendor_test_offsets = HashMap::new();
+    let mut vendor_test_sizes = HashMap::new();
+    let mut vendor_test_offset = 0;
+    for fuse in &spec.vendor_test_partition {
+        for (name, size) in fuse {
+            vendor_test_offsets.insert(name.clone(), vendor_test_offset);
+            vendor_test_sizes.insert(name.clone(), *size as usize);
+            vendor_test_offset += *size as usize;
+        }
+    }
 
     // Fuse entry lookup table — entries with partition info
     output.push_str(
@@ -214,30 +237,47 @@ pub fn generate_fuses(
             // Look up from OTP mmap info if available
             let mmap_info = partition_mmap.and_then(|m| m.get(partition_name));
 
-            let (part_idx, byte_offset, byte_size, entry_num) = if let Some(mmap) = mmap_info {
-                // Try otp_item first, then fall back to field name
-                let lookup_name = field.otp_item.as_deref().unwrap_or(&field.name);
-                let item = mmap
-                    .items
-                    .iter()
-                    .find(|i| i.name.eq_ignore_ascii_case(lookup_name));
-                if let Some(item) = item {
+            let (part_idx, byte_offset, byte_size, entry_num) =
+                if partition_name == "VENDOR_TEST_PARTITION" {
+                    let part_offset = mmap_info.map(|m| m.byte_offset).unwrap_or(0);
+                    let local_offset = vendor_test_offsets.get(&field.name).cloned().unwrap_or(0);
+                    let byte_size = vendor_test_sizes
+                        .get(&field.name)
+                        .cloned()
+                        .unwrap_or_else(|| field.bits.div_ceil(8) as usize);
+                    let entry_num = mmap_info
+                        .and_then(|m| m.items.first().map(|i| i.entry_num))
+                        .unwrap_or(0);
                     (
-                        mmap.partition_index,
-                        item.byte_offset,
-                        item.byte_size,
-                        item.entry_num,
+                        mmap_info.map(|m| m.partition_index).unwrap_or(0),
+                        part_offset + local_offset,
+                        byte_size,
+                        entry_num,
                     )
+                } else if let Some(mmap) = mmap_info {
+                    // Try otp_item first, then fall back to field name
+                    let lookup_name = field.otp_item.as_deref().unwrap_or(&field.name);
+                    let item = mmap
+                        .items
+                        .iter()
+                        .find(|i| i.name.eq_ignore_ascii_case(lookup_name));
+                    if let Some(item) = item {
+                        (
+                            mmap.partition_index,
+                            item.byte_offset,
+                            item.byte_size,
+                            item.entry_num,
+                        )
+                    } else {
+                        // Field not found in OTP mmap items — use partition-level info
+                        let byte_size = field.bits.div_ceil(8) as usize;
+                        (mmap.partition_index, mmap.byte_offset, byte_size, 0)
+                    }
                 } else {
-                    // Field not found in OTP mmap items — use partition-level info
+                    // No mmap info — use partition_num from fuses.hjson
                     let byte_size = field.bits.div_ceil(8) as usize;
-                    (mmap.partition_index, mmap.byte_offset, byte_size, 0)
-                }
-            } else {
-                // No mmap info — use partition_num from fuses.hjson
-                let byte_size = field.bits.div_ceil(8) as usize;
-                (partition_num.unwrap_or(0), 0, byte_size, 0)
-            };
+                    (partition_num.unwrap_or(0), 0, byte_size, 0)
+                };
 
             let layout_str = layout_to_codegen(&field.layout, field.bits);
             output.push_str(&format!(
@@ -266,10 +306,30 @@ pub fn generate_fuses(
     // the default layout.
     if let Some(mmap) = partition_mmap {
         // Collect fuses.hjson overrides keyed by OTP item name (case-insensitive)
+        let mut otp_item_counts = HashMap::new();
+        for f in &spec.fields {
+            if f.partition.is_some() {
+                let key = f
+                    .otp_item
+                    .as_deref()
+                    .unwrap_or(&f.name)
+                    .to_ascii_uppercase();
+                *otp_item_counts.entry(key).or_insert(0) += 1;
+            }
+        }
+
         let field_overrides: HashMap<String, &crate::schema::FieldDefinition> = spec
             .fields
             .iter()
             .filter(|f| f.partition.is_some())
+            .filter(|f| {
+                let key = f
+                    .otp_item
+                    .as_deref()
+                    .unwrap_or(&f.name)
+                    .to_ascii_uppercase();
+                otp_item_counts.get(&key).copied().unwrap_or(0) == 1
+            })
             .map(|f| {
                 let key = f
                     .otp_item

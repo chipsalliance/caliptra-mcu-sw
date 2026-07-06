@@ -6,8 +6,7 @@ mod test {
     use caliptra_mcu_error::McuError;
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_registers_generated::fuses::{
-        FuseEntryInfo, OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5, SOC_IMAGE_MIN_SVN_0,
-        SOC_IMAGE_MIN_SVN_1,
+        FuseEntryInfo, MCU_COMPONENT_SVN_MANIFEST_MIN_SVN, SOC_IMAGE_MIN_SVN_0, SOC_IMAGE_MIN_SVN_1,
     };
     use caliptra_mcu_rom_common::{
         McuComponentSvnEntry, McuComponentSvnManifest, MCU_COMPONENT_SVN_MANIFEST_MAGIC,
@@ -16,7 +15,7 @@ mod test {
     use caliptra_mcu_romtime::{McuBootMilestones, McuRomBootStatus};
     use zerocopy::IntoBytes;
 
-    const MANIFEST_MIN_SVN_FUSE: &FuseEntryInfo = OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5;
+    const MANIFEST_MIN_SVN_FUSE: &FuseEntryInfo = MCU_COMPONENT_SVN_MANIFEST_MIN_SVN;
 
     fn manifest_bytes(
         current_svn: u8,

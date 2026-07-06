@@ -231,7 +231,7 @@ It is the responsibility of the product integrator to ensure the appropriate req
 
 ### Lifecycle State Constraints for Provisioning Fuses
 
-The fuse partition below corresponds to the Caliptra Subsystem 2.1.1 [reference fuse map](https://github.com/chipsalliance/caliptra-ss/blob/css-v2.1.1/src/fuse_ctrl/doc/otp_ctrl_mmap.md).
+The fuse partition below corresponds to the Caliptra Subsystem 2.1.1 [reference fuse map](https://github.com/chipsalliance/caliptra-ss/blob/css-v2.1.1/src/fuse_ctrl/doc/otp_ctrl_mmap.md). Note that for MCU firmware reference mapping, monotonic bit-count counters (such as `dot_fuse_array` and SVN anti-rollback counters) are mapped to `VENDOR_TEST_PARTITION` (`VENDOR_TEST`) rather than `VENDOR_NON_SECRET_PROD_PARTITION`. Because `VENDOR_NON_SECRET_PROD_PARTITION` is ECC-protected, it cannot be written more than once; monotonic counters require a non-ECC protected partition to support sequential incremental bit-burn operations.
 
 |           **Partition**           |                  **Item**                   | **Size [B]** | **Lifecycle State** |
 | :-------------------------------: | :-----------------------------------------: | :----------: | ------------------- |

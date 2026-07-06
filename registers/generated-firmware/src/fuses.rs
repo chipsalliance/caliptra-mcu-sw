@@ -373,10 +373,6 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
         size: Bytes(1),
     },
     Fuse {
-        name: "dot_fuse_array",
-        size: Bytes(32),
-    },
-    Fuse {
         name: "trng_health_test_window_size",
         size: Bytes(2),
     },
@@ -389,6 +385,16 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
         size: Bytes(4),
     },
     Fuse {
+        name: "vendor_recovery_pk_hash",
+        size: Bytes(48),
+    },
+];
+pub const VENDOR_TEST_PARTITION_FUSES: &[Fuse] = &[
+    Fuse {
+        name: "dot_fuse_array",
+        size: Bytes(32),
+    },
+    Fuse {
         name: "mcu_component_svn_manifest_min_svn",
         size: Bytes(4),
     },
@@ -399,10 +405,6 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
     Fuse {
         name: "soc_image_min_svn_1",
         size: Bytes(4),
-    },
-    Fuse {
-        name: "vendor_recovery_pk_hash",
-        size: Bytes(48),
     },
 ];
 pub const FUSE_FIELDS: &[FuseField] = &[
@@ -718,9 +720,9 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         },
     },
     FuseEntryInfo {
-        partition_num: 14,
-        entry_num: 1,
-        byte_offset: 0xa98,
+        partition_num: 9,
+        entry_num: 0,
+        byte_offset: 0x3b8,
         byte_size: 32,
         name: "dot_fuse_array",
         layout: FuseLayoutType::OneHot { bits: 256 },
@@ -758,10 +760,10 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         layout: FuseLayoutType::Single { bits: 384 },
     },
     FuseEntryInfo {
-        partition_num: 14,
-        entry_num: 5,
-        byte_offset: 0xb18,
-        byte_size: 32,
+        partition_num: 9,
+        entry_num: 0,
+        byte_offset: 0x3d8,
+        byte_size: 4,
         name: "mcu_component_svn_manifest_min_svn",
         layout: FuseLayoutType::OneHotLinearOr {
             bits: 10,
@@ -769,10 +771,10 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         },
     },
     FuseEntryInfo {
-        partition_num: 14,
-        entry_num: 6,
-        byte_offset: 0xb38,
-        byte_size: 32,
+        partition_num: 9,
+        entry_num: 0,
+        byte_offset: 0x3dc,
+        byte_size: 4,
         name: "soc_image_min_svn_0",
         layout: FuseLayoutType::OneHotLinearOr {
             bits: 10,
@@ -780,10 +782,10 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         },
     },
     FuseEntryInfo {
-        partition_num: 14,
-        entry_num: 7,
-        byte_offset: 0xb58,
-        byte_size: 32,
+        partition_num: 9,
+        entry_num: 0,
+        byte_offset: 0x3e0,
+        byte_size: 4,
         name: "soc_image_min_svn_1",
         layout: FuseLayoutType::OneHotLinearOr {
             bits: 10,
@@ -3058,14 +3060,14 @@ pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_0: &FuseEntryInfo = &Fuse
         duplication: 3,
     },
 };
-/// OTP item entry for `dot_fuse_array`.
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 1,
     byte_offset: 0xa98,
     byte_size: 32,
-    name: "dot_fuse_array",
-    layout: FuseLayoutType::OneHot { bits: 256 },
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1",
+    layout: FuseLayoutType::Single { bits: 256 },
 };
 /// OTP item entry for `cptra_itrng_health_test_window_size`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2: &FuseEntryInfo = &FuseEntryInfo {
@@ -3094,41 +3096,32 @@ pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4: &FuseEntryInfo = &Fuse
     name: "cptra_itrng_entropy_config_1",
     layout: FuseLayoutType::Single { bits: 32 },
 };
-/// OTP item entry for `mcu_component_svn_manifest_min_svn`.
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 5,
     byte_offset: 0xb18,
     byte_size: 32,
-    name: "mcu_component_svn_manifest_min_svn",
-    layout: FuseLayoutType::OneHotLinearOr {
-        bits: 10,
-        duplication: 3,
-    },
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5",
+    layout: FuseLayoutType::Single { bits: 256 },
 };
-/// OTP item entry for `soc_image_min_svn_0`.
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 6,
     byte_offset: 0xb38,
     byte_size: 32,
-    name: "soc_image_min_svn_0",
-    layout: FuseLayoutType::OneHotLinearOr {
-        bits: 10,
-        duplication: 3,
-    },
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6",
+    layout: FuseLayoutType::Single { bits: 256 },
 };
-/// OTP item entry for `soc_image_min_svn_1`.
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 7,
     byte_offset: 0xb58,
     byte_size: 32,
-    name: "soc_image_min_svn_1",
-    layout: FuseLayoutType::OneHotLinearOr {
-        bits: 10,
-        duplication: 3,
-    },
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7",
+    layout: FuseLayoutType::Single { bits: 256 },
 };
 /// OTP item entry for `vendor_recovery_pk_hash`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8: &FuseEntryInfo = &FuseEntryInfo {
