@@ -9,10 +9,7 @@ use caliptra_api::mailbox::MailboxReqHeader;
 use caliptra_mcu_libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use caliptra_mcu_libtockasync::TockSubscribe;
 use core::{hint::black_box, marker::PhantomData};
-use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
-    mutex::{Mutex, MutexGuard},
-};
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
 // Global mutex to ensure that multiple tasks do not overwrite each other's upcall pointers.
 static MAILBOX_MUTEX: Mutex<CriticalSectionRawMutex, u32> = Mutex::new(0);
@@ -43,51 +40,6 @@ pub fn populate_checksum(cmd: u32, data: &mut [u8]) -> Result<(), ErrorCode> {
     }
     data[..size_of::<MailboxReqHeader>()].copy_from_slice(&checksum.to_le_bytes());
     Ok(())
-}
-
-/// Guarded chunked mailbox request that holds the process-local mailbox mutex
-/// for the whole start → chunk* → execute/abort sequence.
-pub struct ChunkedMailboxRequest<S: Syscalls = DefaultSyscalls> {
-    mailbox: Mailbox<S>,
-    _mutex: MutexGuard<'static, CriticalSectionRawMutex, u32>,
-    active: bool,
-}
-
-impl<S: Syscalls> ChunkedMailboxRequest<S> {
-    /// Sends a caller-owned chunk into this active mailbox request.
-    pub async fn send_chunk(&self, buffer: &[u8]) -> Result<(u32, u32, u32), MailboxError> {
-        self.mailbox.send_chunk(buffer).await
-    }
-
-    /// Executes this active mailbox request and releases the transaction.
-    pub async fn execute(
-        mut self,
-        command: u32,
-        response_buffer: &mut [u8],
-    ) -> Result<usize, MailboxError> {
-        let result = self
-            .mailbox
-            .execute_chunked_request(command, response_buffer)
-            .await;
-        self.active = false;
-        result
-    }
-
-    /// Aborts this active mailbox request and releases the transaction.
-    pub async fn abort(mut self) -> Result<(), MailboxError> {
-        let result = self.mailbox.abort_chunked_request().await;
-        self.active = false;
-        result
-    }
-}
-
-impl<S: Syscalls> Drop for ChunkedMailboxRequest<S> {
-    fn drop(&mut self) {
-        // Dropping releases the process-local mutex. Callers should use
-        // `abort()` on malformed streams so the kernel/HW mailbox state is also
-        // cleared; Drop cannot perform an async abort syscall.
-        self.active = false;
-    }
 }
 
 impl<S: Syscalls> Mailbox<S> {
@@ -171,27 +123,6 @@ impl<S: Syscalls> Mailbox<S> {
         }
     }
 
-    /// Initiates a guarded chunked mailbox request.
-    ///
-    /// The returned request holds the process-local mailbox mutex until it is
-    /// executed, aborted, or dropped.
-    pub async fn start_guarded_chunked_request(
-        &self,
-        command: u32,
-        request_len: usize,
-    ) -> Result<ChunkedMailboxRequest<S>, MailboxError> {
-        let mutex = MAILBOX_MUTEX.lock().await;
-        self.start_chunked_request(command, request_len).await?;
-        Ok(ChunkedMailboxRequest {
-            mailbox: Mailbox {
-                _syscall: PhantomData,
-                driver_num: self.driver_num,
-            },
-            _mutex: mutex,
-            active: true,
-        })
-    }
-
     /// Initiates a chunked mailbox request.
     ///
     /// Call this first, then send data with [`send_chunk`](Self::send_chunk),
@@ -201,8 +132,8 @@ impl<S: Syscalls> Mailbox<S> {
     /// verifies the calling process ID, so different processes cannot
     /// interleave chunked flows. Within a single process with multiple async
     /// tasks, callers should either use [`execute_with_payload_stream`](Self::execute_with_payload_stream)
-    /// (which holds the global mailbox mutex) or acquire `MAILBOX_MUTEX`
-    /// externally before calling this method.
+    /// (which holds the global mailbox mutex) or serialize their own chunked
+    /// sequence.
     pub async fn start_chunked_request(
         &self,
         command: u32,

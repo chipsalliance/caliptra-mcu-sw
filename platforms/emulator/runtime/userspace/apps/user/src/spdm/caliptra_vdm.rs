@@ -14,7 +14,7 @@ use caliptra_mcu_common_commands::{
     CaliptraCompletionCode as CommonCompletionCode, GetLogResult, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
-use caliptra_mcu_libsyscall_caliptra::mailbox::{ChunkedMailboxRequest, Mailbox, MailboxError};
+use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
@@ -45,10 +45,7 @@ const TEST_AUTH_CMD_HMAC_KEY: [u8; 48] = [
 ];
 
 static AUTH_CHALLENGE: Mutex<CriticalSectionRawMutex, Option<[u8; 32]>> = Mutex::new(None);
-static DEBUG_UNLOCK_TOKEN_STREAM: Mutex<
-    CriticalSectionRawMutex,
-    Option<ChunkedMailboxRequest<DefaultSyscalls>>,
-> = Mutex::new(None);
+static DEBUG_UNLOCK_TOKEN_STREAM: Mutex<CriticalSectionRawMutex, bool> = Mutex::new(false);
 
 /// Emulator Caliptra VDM device-operations backend.
 pub struct CaliptraVdmHook;
@@ -132,22 +129,25 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         first: &[u8],
         _scratch: &A,
     ) -> CaliptraVdmResult<()> {
-        let mut stream_slot = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
-        if let Some(stream) = stream_slot.take() {
-            let _ = stream.abort().await;
+        let mut active = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
+        let mailbox = Mailbox::<DefaultSyscalls>::new();
+        if *active {
+            let _ = mailbox.abort_chunked_request().await;
+            *active = false;
         }
 
-        let stream = Mailbox::<DefaultSyscalls>::new()
-            .start_guarded_chunked_request(PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, token_len)
+        mailbox
+            .start_chunked_request(PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, token_len)
             .await
             .map_err(map_mailbox_error)?;
+        *active = true;
         if !first.is_empty() {
-            if let Err(err) = stream.send_chunk(first).await {
-                let _ = stream.abort().await;
+            if let Err(err) = mailbox.send_chunk(first).await {
+                let _ = mailbox.abort_chunked_request().await;
+                *active = false;
                 return Err(map_mailbox_error(err));
             }
         }
-        *stream_slot = Some(stream);
         Ok(())
     }
 
@@ -159,14 +159,14 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         if chunk.is_empty() {
             return Ok(());
         }
-        let mut stream_slot = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
-        let Some(stream) = stream_slot.as_ref() else {
+        let mut active = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
+        if !*active {
             return Err(CaliptraCompletionCode::InvalidState);
-        };
-        if let Err(err) = stream.send_chunk(chunk).await {
-            if let Some(stream) = stream_slot.take() {
-                let _ = stream.abort().await;
-            }
+        }
+        let mailbox = Mailbox::<DefaultSyscalls>::new();
+        if let Err(err) = mailbox.send_chunk(chunk).await {
+            let _ = mailbox.abort_chunked_request().await;
+            *active = false;
             return Err(map_mailbox_error(err));
         }
         Ok(())
@@ -176,29 +176,36 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         &self,
         scratch: &A,
     ) -> CaliptraVdmResult<()> {
-        let mut stream_slot = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
-        let Some(stream) = stream_slot.take() else {
+        let mut active = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
+        if !*active {
             return Err(CaliptraCompletionCode::InvalidState);
-        };
+        }
+        let mailbox = Mailbox::<DefaultSyscalls>::new();
         let mut resp_buf =
             match ApiAlloc::alloc(scratch, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN) {
                 Ok(buf) => buf,
                 Err(err) => {
-                    let _ = stream.abort().await;
+                    let _ = mailbox.abort_chunked_request().await;
+                    *active = false;
                     return Err(map_mcu_err(err));
                 }
             };
-        stream
-            .execute(PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, &mut resp_buf)
+        let result = mailbox
+            .execute_chunked_request(PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, &mut resp_buf)
             .await
-            .map_err(map_mailbox_error)?;
+            .map_err(map_mailbox_error);
+        *active = false;
+        result?;
         Ok(())
     }
 
     async fn abort_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(&self, _scratch: &A) {
-        let mut stream_slot = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
-        if let Some(stream) = stream_slot.take() {
-            let _ = stream.abort().await;
+        let mut active = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
+        if *active {
+            let _ = Mailbox::<DefaultSyscalls>::new()
+                .abort_chunked_request()
+                .await;
+            *active = false;
         }
     }
 
