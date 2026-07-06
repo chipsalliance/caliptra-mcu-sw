@@ -190,7 +190,7 @@ impl Otp {
                 otp.partitions.borrow_mut()[offset..offset + size].copy_from_slice(&owner_pk_hash);
             }
         }
-        // Encode as one-hot + duplication to match the fuse layout
+        // Encode as bit-count + duplication to match the fuse layout
         // (OneHotLinear{MajorityVote,Or}, bits: 2, duplication: 3):
         // MLDSA = thermometer value 1 (bit 0 set), duplicated 3x = 0b000111 = 0x07.
         // LMS   = thermometer value 2 (bits 0-1 set), duplicated 3x = 0b111111 = 0x3F.

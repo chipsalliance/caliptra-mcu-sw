@@ -97,7 +97,7 @@ impl DotFuses {
         // dot_initialized: LinearOr(1 bit, 3x) → logical 0 or 1
         let enabled = otp.read_entry(fuses::DOT_INITIALIZED)? != 0;
 
-        // dot_fuse_array: OneHot(256 bits) → count of burned bits
+        // dot_fuse_array: OneHot layout name, bit-count counter semantics
         // This is a multi-word field; read raw and count ones
         let mut raw = [0u8; 32];
         otp.read_entry_raw(fuses::DOT_FUSE_ARRAY, &mut raw)?;
