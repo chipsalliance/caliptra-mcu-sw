@@ -34,18 +34,18 @@ pub struct FusePartitionInfo {
 pub enum FuseLayoutPolicy {
     /// Values stored literally
     Single,
-    /// Current layout name for a monotonic bit-count / thermometer-style counter.
-    /// The logical value is the count of bits set, not true one-hot.
+    /// Current layout name for a monotonic bit-count counter; the logical
+    /// value is the count of bits set, not true one-hot encoding.
     OneHot,
     /// Each bit duplicated with majority vote
     LinearMajorityVote { duplication: u32 },
-    /// `OneHot` bit-count counter with linear majority vote
+    /// Bit-count counter with linear majority vote
     OneHotLinearMajorityVote { duplication: u32 },
     /// Words duplicated with per-bit majority vote
     WordMajorityVote { duplication: u32 },
     /// Each bit duplicated with OR reduction (any copy set → result is 1)
     LinearOr { duplication: u32 },
-    /// `OneHot` bit-count counter with linear OR reduction
+    /// Bit-count counter with linear OR reduction
     OneHotLinearOr { duplication: u32 },
     /// Words duplicated with per-bit OR reduction
     WordOr { duplication: u32 },
