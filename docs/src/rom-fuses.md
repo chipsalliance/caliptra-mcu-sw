@@ -190,7 +190,8 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   0 or 1, used as the DOT flow gate.
 
 - **`dot_fuse_array`** — MCU internal
-  use only, not written to any register. `OneHot{bits:256}` (current layout name for bit-count encoding) → count of burned bits, used to track
+  use only, not written to any register. `OneHot{bits:256}` is the current
+  layout name for bit-count encoding: count burned bits to track
   the DOT state counter. Also written (next bit burned) during DOT state transitions.
 
 - **`perma_hek_en`** (2.1+) — MCU internal use only, not written to any register.
@@ -449,15 +450,15 @@ MCU ROM decode, and the final Caliptra `FUSE_PQC_KEY_TYPE` register value.
 | Partition | `VENDOR_HASHES_MANUF_PARTITION` (partition 10) |
 | OTP byte offset | `0x428` |
 | Size | 4 bytes (only 6 bits are used) |
-| Layout | `OneHotLinearMajorityVote { bits: 2, duplication: 3 }` |
+| Layout | `OneHotLinearOr { bits: 2, duplication: 3 }` |
 
-Unlike the PK hash, this field uses the `OneHotLinearMajorityVote` layout for
-fault tolerance. Despite the historical name, this is a bit-count encoding, not
-true one-hot encoding. The `OneHotLinearMajorityVote { bits: 2, duplication: 3 }`
-layout encodes a logical integer using two stages:
+Unlike the PK hash, this field uses the `OneHotLinearOr` layout for
+fault tolerance. The `OneHotLinearOr { bits: 2, duplication: 3 }`
+layout name means bit-count encoding with OR redundancy, not true one-hot
+encoding. It encodes a logical integer using two stages:
 
-1. **Bit-count pattern**: the logical value `n` is encoded as `n` consecutive 1-bits: `bits = (1 << n) - 1`
-2. **LinearMajorityVote**: each bit of that pattern is replicated `duplication` (3) times in
+1. **Bit-count**: the logical value `n` is encoded as `n` consecutive 1-bits: `bits = (1 << n) - 1`
+2. **LinearOr**: each bit of the bit-count value is replicated `duplication` (3) times in
    consecutive bit positions. The 2 logical bits × 3 replications = 6 physical bits, packed into
    the low 6 bits of the 4-byte field.
 
@@ -473,7 +474,9 @@ If that is the case, then the duplication and majority vote in this example can 
 
 ### Example: CPTRA_CORE_PQC_KEY_TYPE_0 (LMS)
 
-We trace `vendor_pqc_key_type_0` provisioned for LMS, i.e., the bit-count encoded value `0b11` (logical value 2), expected by Caliptra core ROM for LMS.
+We trace `vendor_pqc_key_type_0` provisioned for LMS, i.e., the bit-count
+pattern `0b11` (logical value 2, raw encoded value 3), expected by Caliptra
+core ROM for LMS.
 
 #### Layer 1: OTP Raw Bytes
 

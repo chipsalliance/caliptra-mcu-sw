@@ -34,7 +34,7 @@
     {"dot_fuse_array": 32},  // 256 bits = 128 complete lock/unlock cycles
     // SVN anti-rollback fuses (see docs/src/svn.md).
     // Sizes here are informational and refer to the raw OTP storage actually
-    // used by the OneHotLinearOr encoding (bits * duplication / 8). The
+    // used by the OneHotLinearOr bit-count encoding (bits * duplication / 8). The
     // underlying OTP slots (VENDOR_SPECIFIC_NON_SECRET_FUSE_5..7) are 32 bytes
     // each; the remaining bits in each slot stay 0.
     {"mcu_component_svn_manifest_min_svn": 4},
@@ -112,7 +112,7 @@
     },
     // SVN anti-rollback fuses (see docs/src/svn.md).
     //
-    // OneHotLinearOr with 3x duplication: each effective bit is stored as
+    // OneHotLinearOr bit-count encoding with 3x duplication: each effective bit is stored as
     // three OR-tied raw bits, so the maximum representable min_svn equals
     // `bits`. The MCU runtime SVN floor lives in CPTRA_CORE_SOC_MANIFEST_SVN
     // (Caliptra-owned) and is not duplicated here.
