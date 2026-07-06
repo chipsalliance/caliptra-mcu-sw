@@ -9,9 +9,9 @@ Caliptra MCU.
 
 The `dot_fuse_array` field in the vendor non-secret OTP partition tracks Device
 Ownership Transfer (DOT) state transitions. Each state change (lock, unlock,
-disable) burns one bit, using a `OneHot` encoding. The total number of bits
-determines the maximum number of ownership state transitions over the lifetime
-of the part.
+disable) burns one bit, using the current MCU `OneHot` layout name for a
+monotonic bit-count counter. The total number of bits determines the maximum
+number of ownership state transitions over the lifetime of the part.
 
 A full ownership transfer cycle (install → lock → unlock) consumes **2 fuse
 bits**: one for the lock transition (EVEN → ODD) and one for the unlock
@@ -45,12 +45,12 @@ no redundant encoding is needed.
 | Fuse field | Partition | Size | Encoding | Notes |
 |---|---|:---:|---|---|
 | `dot_initialized` | `VENDOR_NON_SECRET_PROD_PARTITION` | 1 bit (3 bytes with 3× majority vote) | `LinearMajorityVote` | Gates the DOT flow. |
-| `dot_fuse_array` | `VENDOR_NON_SECRET_PROD_PARTITION` | 256 bits (32 bytes) | `OneHot` | State counter. Scales linearly with desired lock/unlock cycles. |
+| `dot_fuse_array` | `VENDOR_NON_SECRET_PROD_PARTITION` | 256 bits (32 bytes) | `OneHot` (bit-count counter) | State counter. Scales linearly with desired lock/unlock cycles. |
 | `vendor_recovery_pk_hash` | `VENDOR_SECRET_PROD_PARTITION` | 384 bits (48 bytes) | `Single` | Optional. For `DOT_OVERRIDE` catastrophic recovery. |
 
 If OTP space is constrained, the `dot_fuse_array` can be made smaller — the
 minimum useful size is 2 bits, but this only allows a single lock/unlock cycle
-with no margin. If redundant encoding (`OneHotLinearMajorityVote`) is used,
+with no margin. If redundant bit-count encoding (`OneHotLinearMajorityVote`) is used,
 multiply the raw bit count by the duplication factor (e.g., 3×).
 
 A different partition can also be used if there is one specifically allocated in

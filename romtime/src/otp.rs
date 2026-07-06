@@ -946,7 +946,7 @@ impl Otp {
     ///
     /// Reads `entry.byte_size` bytes from OTP and applies the entry's layout
     /// to produce N decoded u32 words. Use this for entries larger than a
-    /// single u32 (e.g., hash values with WordMajorityVote, large OneHot
+    /// single u32 (e.g., hash values with WordMajorityVote, large bit-count
     /// counters, etc.).
     pub fn read_entry_multi<const N: usize>(&self, entry: &FuseEntryInfo) -> McuResult<[u32; N]> {
         let layout = FuseLayout::from_generated(&entry.layout)

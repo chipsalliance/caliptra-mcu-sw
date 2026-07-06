@@ -96,7 +96,7 @@ pub enum SvnManifestError {
         min_svn: u32,
         current_svn: u32,
     },
-    /// A header SVN does not fit within its target fuse's one-hot range.
+    /// A header SVN does not fit within its target fuse's bit-count range.
     HeaderSvnExceedsFuseRange {
         value: u32,
         max: u32,
@@ -108,7 +108,7 @@ pub enum SvnManifestError {
     },
 }
 
-/// One-hot range limits the caller must supply to [`McuComponentSvnManifest::validate`].
+/// Bit-count range limits the caller must supply to [`McuComponentSvnManifest::validate`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SvnLimits {
     /// Max representable value for `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`.
@@ -177,7 +177,7 @@ impl McuComponentSvnManifest {
                     current_svn: entry.current_svn,
                 });
             }
-            // Per-entry one-hot-range checks against SOC_IMAGE_MIN_SVN[i]
+            // Per-entry bit-count range checks against SOC_IMAGE_MIN_SVN[i]
             // are deferred to the fuse-burn step, where SVN_FUSE_MAP
             // supplies the per-slot maximum.
         }
