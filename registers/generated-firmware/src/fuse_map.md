@@ -329,9 +329,9 @@
 | cptra_itrng_entropy_config_1 | 32 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5 | Single | Entropy config 1: Repetition count (bits 15:0), Alert threshold (bits 31:16). See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers) for details. |
 | stable_owner_key_personalization_seed | 256 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6 | Single | Personalization seed for stable owner key derivation. |
 | vendor_recovery_pk_hash | 384 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8 | Single | Vendor recovery key for DOT_OVERRIDE catastrophic recovery operations |
-| mcu_component_svn_manifest_min_svn | 10 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5 | OneHotLinearOr(3x) | MCU Component SVN Manifest min SVN (one-hot, used by MCU ROM for manifest-format anti-rollback). |
-| soc_image_min_svn_0 | 10 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6 | OneHotLinearOr(3x) | SoC component min SVN for fuse slot 0 (one-hot, optional per-component rollback floor mapped via SVN_FUSE_MAP). |
-| soc_image_min_svn_1 | 10 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7 | OneHotLinearOr(3x) | SoC component min SVN for fuse slot 1 (one-hot, optional per-component rollback floor mapped via SVN_FUSE_MAP). |
+| mcu_component_svn_manifest_min_svn | 10 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5 | OneHotLinearOr(3x) | MCU Component SVN Manifest min SVN (bit-count counter, used by MCU ROM for manifest-format anti-rollback). |
+| soc_image_min_svn_0 | 10 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6 | OneHotLinearOr(3x) | SoC component min SVN for fuse slot 0 (bit-count counter, optional per-component rollback floor mapped via SVN_FUSE_MAP). |
+| soc_image_min_svn_1 | 10 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7 | OneHotLinearOr(3x) | SoC component min SVN for fuse slot 1 (bit-count counter, optional per-component rollback floor mapped via SVN_FUSE_MAP). |
 | vendor_pk_hash_valid | 16 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_VENDOR_PK_HASH_VALID | LinearOr(3x) | Bitmask indicating vendor PK hash validity. Unburnt bits (0) are valid; burnt bits (1) are revoked/invalid. |
 | vendor_ecc_revocation_0 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_0 | LinearOr(3x) | Revocation bits for ECC keys in slot 0. |
 | vendor_mldsa_revocation_0 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_0 | LinearOr(3x) | Revocation bits for MLDSA keys in slot 0. |
@@ -381,22 +381,22 @@
 | vendor_ecc_revocation_15 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_15 | LinearOr(3x) | Revocation bits for ECC keys in slot 15. |
 | vendor_mldsa_revocation_15 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_15 | LinearOr(3x) | Revocation bits for MLDSA keys in slot 15. |
 | vendor_lms_revocation_15 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_15 | LinearOr(2x) | Revocation bits for LMS keys in slot 15. |
-| vendor_pqc_key_type_0 | 2 | VENDOR_HASHES_MANUF_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_0 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 0 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_1 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_1 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 1 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_2 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_2 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 2 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_3 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_3 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 3 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_4 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_4 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 4 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_5 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_5 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 5 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_6 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_6 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 6 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_7 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_7 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 7 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_8 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_8 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 8 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_9 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_9 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 9 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_10 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_10 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 10 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_11 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_11 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 11 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_12 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_12 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 12 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_13 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_13 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 13 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_14 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_14 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 14 (1: MLDSA, 2: LMS). |
-| vendor_pqc_key_type_15 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_15 | OneHotLinearOr(3x) | One-hot encoded PQC key type for slot 15 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_0 | 2 | VENDOR_HASHES_MANUF_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_0 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 0 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_1 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_1 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 1 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_2 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_2 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 2 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_3 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_3 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 3 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_4 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_4 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 4 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_5 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_5 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 5 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_6 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_6 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 6 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_7 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_7 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 7 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_8 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_8 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 8 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_9 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_9 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 9 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_10 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_10 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 10 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_11 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_11 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 11 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_12 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_12 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 12 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_13 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_13 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 13 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_14 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_14 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 14 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_15 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_15 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 15 (1: MLDSA, 2: LMS). |
 | field_entropy_state | 384 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7 | Single | Status of field entropy slots. 32 bits per flag (word 3N: started, word 3N+1: finished, word 3N+2: zeroized for slot N). |
 | fpga_test_uds_seed_lo | 256 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8 | Single | UDS Seed low 256 bits (for FPGA test harness handoff only) |
 | fpga_test_uds_seed_hi | 256 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9 | Single | UDS Seed high 256 bits (for FPGA test harness handoff only) |

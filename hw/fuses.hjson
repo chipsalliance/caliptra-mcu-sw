@@ -115,7 +115,7 @@
     {
       name: "mcu_component_svn_manifest_min_svn",
       bits: 10,
-      description: "MCU Component SVN Manifest min SVN (one-hot, used by MCU ROM for manifest-format anti-rollback).",
+      description: "MCU Component SVN Manifest min SVN (bit-count counter, used by MCU ROM for manifest-format anti-rollback).",
       partition: "VENDOR_NON_SECRET_PROD_PARTITION",
       otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5",
       layout: {type: "OneHotLinearOr", duplication: 3},
@@ -123,7 +123,7 @@
     {
       name: "soc_image_min_svn_0",
       bits: 10,
-      description: "SoC component min SVN for fuse slot 0 (one-hot, optional per-component rollback floor mapped via SVN_FUSE_MAP).",
+      description: "SoC component min SVN for fuse slot 0 (bit-count counter, optional per-component rollback floor mapped via SVN_FUSE_MAP).",
       partition: "VENDOR_NON_SECRET_PROD_PARTITION",
       otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6",
       layout: {type: "OneHotLinearOr", duplication: 3},
@@ -131,7 +131,7 @@
     {
       name: "soc_image_min_svn_1",
       bits: 10,
-      description: "SoC component min SVN for fuse slot 1 (one-hot, optional per-component rollback floor mapped via SVN_FUSE_MAP).",
+      description: "SoC component min SVN for fuse slot 1 (bit-count counter, optional per-component rollback floor mapped via SVN_FUSE_MAP).",
       partition: "VENDOR_NON_SECRET_PROD_PARTITION",
       otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7",
       layout: {type: "OneHotLinearOr", duplication: 3},
@@ -531,7 +531,7 @@
     {
         name: "vendor_pqc_key_type_0",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 0 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 0 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_MANUF_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_0",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -539,7 +539,7 @@
     {
         name: "vendor_pqc_key_type_1",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 1 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 1 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_1",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -547,7 +547,7 @@
     {
         name: "vendor_pqc_key_type_2",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 2 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 2 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_2",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -555,7 +555,7 @@
     {
         name: "vendor_pqc_key_type_3",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 3 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 3 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_3",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -563,7 +563,7 @@
     {
         name: "vendor_pqc_key_type_4",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 4 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 4 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_4",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -571,7 +571,7 @@
     {
         name: "vendor_pqc_key_type_5",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 5 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 5 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_5",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -579,7 +579,7 @@
     {
         name: "vendor_pqc_key_type_6",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 6 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 6 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_6",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -587,7 +587,7 @@
     {
         name: "vendor_pqc_key_type_7",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 7 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 7 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_7",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -595,7 +595,7 @@
     {
         name: "vendor_pqc_key_type_8",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 8 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 8 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_8",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -603,7 +603,7 @@
     {
         name: "vendor_pqc_key_type_9",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 9 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 9 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_9",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -611,7 +611,7 @@
     {
         name: "vendor_pqc_key_type_10",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 10 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 10 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_10",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -619,7 +619,7 @@
     {
         name: "vendor_pqc_key_type_11",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 11 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 11 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_11",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -627,7 +627,7 @@
     {
         name: "vendor_pqc_key_type_12",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 12 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 12 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_12",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -635,7 +635,7 @@
     {
         name: "vendor_pqc_key_type_13",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 13 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 13 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_13",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -643,7 +643,7 @@
     {
         name: "vendor_pqc_key_type_14",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 14 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 14 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_14",
         layout: {type: "OneHotLinearOr", duplication: 3},
@@ -651,7 +651,7 @@
     {
         name: "vendor_pqc_key_type_15",
         bits: 2,
-        description: "One-hot encoded PQC key type for slot 15 (1: MLDSA, 2: LMS).",
+        description: "Bit-count encoded PQC key type for slot 15 (1: MLDSA, 2: LMS).",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_PQC_KEY_TYPE_15",
         layout: {type: "OneHotLinearOr", duplication: 3},

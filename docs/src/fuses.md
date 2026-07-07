@@ -158,6 +158,16 @@ The firmware uses a `FuseLayout` enum to define how fuse values are stored and i
 
 Note that u32s (dwords) are always packed in little-endian byte order and big-endian bit order.
 
+Terminology note: the current `OneHot` layout names are existing schema/API
+names. In this codebase, `OneHot` does **not** mean true one-hot encoding where
+exactly one bit is set and the bit position is the value. It means a monotonic
+bit-count, or thermometer-style, counter where the logical value is the number
+of set bits.
+For example, logical value 3 is encoded as `0b0111`, not `0b1000`. This style is
+useful for OTP counters because incrementing only requires burning one more bit.
+Revocation fields and validity masks are separate bitmasks, where each bit has
+an independent meaning.
+
 ### Layout Types
 
 #### Single
@@ -168,14 +178,18 @@ Values stored this way in fuses should be protected with ECC.
 
 **Example:** A 4-bit value `0b1101` is stored as `0b1101`
 
-#### OneHot
+#### Bit-count counter (`OneHot` layout name)
 
-The logical value is the count of bits set to 1 in the fuse field. This is commonly used for version numbers and counters where incrementing requires only burning one additional fuse.
+The logical value is the count of bits set to 1 in the fuse field. Writers encode
+logical value `n` as `(1 << n) - 1`. This is commonly used for version numbers
+and counters where incrementing requires only burning one additional fuse.
 
 The values can span multiple u32 words but the result is always a single u32 count value.
 
 **Example:**
 - `0b0000` → 0
+- `0b0001` → 1
+- `0b0011` → 2
 - `0b0111` → 3
 
 Caution: This method of storing fuses is dangerous, since generally ECC cannot be used if the value can be incremented after the initial value is written.
@@ -194,9 +208,11 @@ Generally this method is used for values that do not have ECC protection but are
 
 #### OneHotLinearMajorityVote
 
-Combines `LinearMajorityVote` with `OneHot` encoding. First applies majority voting to each duplicated bit, then counts the number of bits set.
+Combines `LinearMajorityVote` with the `OneHot` bit-count counter layout. First applies majority voting to each duplicated bit, then counts the number of bits set.
 
-This is the recommended way to
+This stores an incrementable counter with majority-vote redundancy, but OR-based
+redundancy is generally preferred for OTP counters because OTP write failures are
+more likely to leave a bit stuck at 0 than to create a spontaneous 1.
 
 **Example:** With 3 logical bits and 3x duplication:
 - Raw fuses: `0b100_110_111` (bit 0 has votes `111`, bit 1 has votes `110`, bit 2 has votes `100`)
@@ -230,7 +246,7 @@ With majority vote the same raw value would yield `0b01` (bit 1 fails the ≥2 t
 
 #### OneHotLinearOr
 
-Combines `LinearOr` with `OneHot` encoding. First applies OR reduction to each duplicated bit, then counts the number of bits set.
+Combines `LinearOr` with the `OneHot` bit-count counter layout. First applies OR reduction to each duplicated bit, then counts the number of bits set.
 
 **Example:** With 3 logical bits and 3x duplication:
 - Raw fuses: `0b001_010_111` (bit 0 has copies `111`, bit 1 has copies `010`, bit 2 has copies `001`)
@@ -260,8 +276,8 @@ Entire u32 words are duplicated. Each bit position across the duplicated words i
 
 The default `McuFuseLayoutPolicy` uses:
 - `Single`: For certificate data, identifiers, and validity flags that are assumed to be protected by ECC
-- `OneHotLinearOr` (3x): For SVN fields and counters
-- `LinearOr` (3x): for single revocation fields and flags
-- `WordMajorityVote` (3x): for revocation bitmasks
+- `OneHotLinearOr` (3x): for monotonic bit-count counters such as SVN fields
+- `LinearOr` (3x): for single flags and small bitmasks
+- `WordMajorityVote` (3x): for large bitmasks
 
 This provides a balance between redundancy for critical security fields and storage efficiency for larger data structures.

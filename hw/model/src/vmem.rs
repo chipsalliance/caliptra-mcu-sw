@@ -257,8 +257,8 @@ mod tests {
     #[test]
     fn test_pqc_key_type_doc_example() {
         // For OneHotLinearMajorityVote { bits: 2, duplication: 3 }:
-        //   MLDSA logical value = 1 → onehot = 0b01 → raw = 0x00000007
-        //   LMS   logical value = 2 → onehot = 0b11 → raw = 0x0000003F
+        //   MLDSA logical value = 1 → bit-count pattern = 0b01 → raw = 0x00000007
+        //   LMS   logical value = 2 → bit-count pattern = 0b11 → raw = 0x0000003F
         let cases: &[(&str, u32, u16)] =
             &[("MLDSA", 0x00000007, 0x0007), ("LMS", 0x0000003F, 0x003f)];
 

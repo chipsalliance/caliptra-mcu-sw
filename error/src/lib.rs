@@ -285,7 +285,7 @@ impl McuError {
         (
             ROM_FUSE_LAYOUT_ONE_HOT_RESULT_SHOULD_BE_SINGLE_U32,
             0x3_0009,
-            "One-hot encoded output should be single u32"
+            "Bit-count encoded output should be single u32"
         ),
         (
             ROM_FUSE_VALUE_TOO_LARGE,
