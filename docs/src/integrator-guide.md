@@ -3,6 +3,10 @@
 This guide provides recommendations for platform integrators building on
 Caliptra MCU.
 
+Identifier convention: this guide uses `lower_snake_case` for integrator-defined
+OTP field names from `hw/fuses.hjson`, and `UPPER_SNAKE_CASE` for generated
+Rust constants, command IDs, Caliptra registers, and partition names.
+
 ## DOT Integration Recommendations
 
 For the full DOT protocol, state machine, and I3C recovery command details, see
@@ -108,9 +112,14 @@ policy is compiled into `RomParameters::dot_locked_recovery_handlers`:
 | Backup blob recovery | A recovery handler that can read a backup DOT blob sealed for the current fuse count. | Restores the DOT blob and resets without changing DOT fuse state. |
 | I3C DOT recovery services | `I3cServicesModes::DOT_RECOVERY` plus an external recovery agent over I3C. | Allows `DOT_STATUS`, `DOT_RECOVERY`, and `DOT_OVERRIDE` commands over ROM I3C services. |
 
-The I3C service path is a ROM recovery protocol and is separate from the runtime
-SPDM/MCTP OOB management path. All DOT I3C service commands are available only
-when the platform explicitly enables the corresponding ROM service mode.
+Integrators may configure more than one locked-state recovery handler; ROM tries
+the configured handlers in order and stops at the first one that succeeds. The
+I3C service path is a ROM recovery protocol and is separate from runtime
+management paths. Runtime-originated recovery or field-management workflows
+should be described by transport: in-band through a SoC-side MCI mailbox agent,
+or out-of-band through SPDM VDM over MCTP/I3C. All DOT I3C service commands are
+available only when the platform explicitly enables the corresponding ROM
+service mode.
 
 ### Fuse storage cost summary
 
@@ -168,9 +177,10 @@ request floors for:
 | `soc_manifest_min_svn` | `CPTRA_CORE_SOC_MANIFEST_SVN` | SoC manifest / MCU Runtime floor. |
 | Per-entry `min_svn` | `SOC_IMAGE_MIN_SVN[i]` | Optional per-component SoC image floor. |
 
-ROM validates every rollback check and range limit before burning any SVN fuse,
-so a rejected boot cannot partially advance the device's rollback floors. All
-SVN burns are skipped when `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` is set.
+ROM performs all anti-rollback and range checks described in the SVN
+Anti-Rollback flow before burning any SVN fuse. If one of those validation
+checks fails, ROM halts before any SVN floor is advanced. All SVN burns are
+skipped when `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` is set.
 
 SVN manifest processing is opt-in. The ROM must be built with the
 `svn-manifest` feature and `RomParameters::svn_manifest_enabled` must be set;
@@ -189,8 +199,8 @@ In the reference fuse map these fields are described as vendor non-secret
 fields, but production integrations must verify the physical partition policy.
 If the generated `VENDOR_NON_SECRET_PROD_PARTITION` is digest protected or
 locked after provisioning, either configure a vendor partition that is intended
-for repeated monotonic updates, or add a separate vendor partition for MCU SVN
-state.
+for repeated monotonic updates, or add a separate vendor partition for MCU-owned
+SVN fuses.
 
 | Fuse | Recommended layout | Notes |
 |---|---|---|
@@ -217,7 +227,7 @@ documentation for the generator flow, including how
 `gen_fuse_ctrl_partitions.yml` and the Mako templates produce
 `otp_ctrl_mmap.hjson`, RTL, RDL, and documentation.
 
-When adding storage for MCU component SVN fuses, integrators should:
+When adding storage for MCU-owned SVN fuses, integrators should:
 
 1. Size or add a vendor non-secret in-field partition in the Caliptra SS fuse
     controller configuration. The generator documentation explains the mechanics
@@ -232,10 +242,10 @@ When adding storage for MCU component SVN fuses, integrators should:
 4. Update `RomParameters::svn_fuse_map` for every SoC `component_id` that needs
     a per-component floor. Leave entries unmapped only when the component is
     intentionally not enforced by MCU-owned SVN fuses.
-5. Validate update and power-loss behavior: ROM intentionally checks all fatal
-    rollback/range conditions before burning any SVN fuse, but the platform must
-    still ensure OTP write, digest, and partition-lock policy are compatible with
-    the planned field workflow.
+5. Validate update and power-loss behavior: ROM intentionally performs the SVN
+    Anti-Rollback flow's anti-rollback and range checks before burning any SVN
+    fuse, but the platform must still ensure OTP write, digest, and
+    partition-lock policy are compatible with the planned field workflow.
 
 ### Field update workflow
 
@@ -247,10 +257,13 @@ Caliptra Core has loaded the runtime image into MCU SRAM.
 
 There is also an authorized runtime mailbox command,
 `MC_FUSE_INCREASE_CALIPTRA_MIN_SVN`, that advances the Caliptra firmware minimum
-SVN directly in the `CALIPTRA_FW_SVN` fuse. It is available through the MCI
-mailbox path only, requires the authorized-command challenge/MAC flow, and
-rejects requests that are zero, above 128, lower than the current fuse floor, or
-higher than the currently running Caliptra firmware SVN reported by `FW_INFO`.
+SVN directly in the `CALIPTRA_FW_SVN` fuse. The reference runtime exposes this
+command through the in-band MCI mailbox path today and requires the runtime
+authorization flow. It rejects requests that are zero, above 128, lower than the
+current fuse floor, or higher than the currently running Caliptra firmware SVN
+reported by `FW_INFO`. Platforms that need BMC-originated workflows can route
+the command through a trusted SoC-side agent today, or through an OOB SPDM VDM
+path when that platform support is added.
 
 ## Management Command Transport Expectations
 
@@ -260,7 +273,7 @@ treated as interchangeable:
 | Path | Who can use it | Privileged commands in that path |
 |---|---|---|
 | MCI mailbox runtime interface | A SoC-side agent with MCI mailbox access, or an explicit platform proxy to that agent | Runtime handlers exist for `MC_PROVISION_VENDOR_PK_HASH`, `MC_FUSE_REVOKE_VENDOR_PUB_KEY`, `MC_FUSE_REVOKE_VENDOR_PK_HASH`, `MC_FUSE_INCREASE_CALIPTRA_MIN_SVN`, `MC_FE_PROG`, and generic fuse read/write/lock commands. |
-| OOB SPDM VDM over MCTP/I3C | External BMC/OOB requester speaking the Caliptra SPDM VDM protocol | `Get Auth Challenge` and `Program Field Entropy` under the SPDM `Authorized Command` code. |
+| OOB SPDM VDM over MCTP/I3C | External BMC/OOB requester speaking the Caliptra SPDM VDM protocol | `Get Auth Challenge` and `Program Field Entropy` under the SPDM `Authorized Command` code today; platforms may add OOB wrappers for additional authorized commands as support lands. |
 
 The `caliptra-util-host` mailbox transport is a software abstraction that
 formats supported MCU mailbox commands through a platform-provided
@@ -324,8 +337,7 @@ New vendor PK hash slots can be provisioned in the field through
 hash into the requested slot. It is idempotent if the slot already contains the
 same hash, and fails if the slot is invalid or contains a different nonzero
 hash. It is an authorized MCU Runtime mailbox command, so the requester must
-first obtain an authorization challenge and append a valid MAC to the command
-payload.
+complete the runtime authorization flow before invoking it.
 
 This command is not exposed through the OOB SPDM VDM command set today. If the
 BMC owns the operational workflow, it must call a trusted SoC-side agent or
@@ -343,12 +355,11 @@ authorized MCI mailbox commands for the supported in-field flows:
 -   `MC_FUSE_REVOKE_VENDOR_PK_HASH` revokes an entire vendor PK hash slot by
     setting the corresponding bit in `VENDOR_PK_HASH_VALID` to `1`.
 
-Both commands are routed through the authorized-command path and require the
-challenge/MAC flow. They reject requests that target the key or PK hash slot
-used to boot the currently running firmware. This prevents a requester from
-bricking the current boot by revoking its own active trust path; revocation is
-intended to happen after the device has successfully booted with a replacement
-key or replacement PK hash slot.
+Both commands use the runtime authorization flow. They reject requests that
+target the key or PK hash slot used to boot the currently running firmware. This
+prevents a requester from bricking the current boot by revoking its own active
+trust path; revocation is intended to happen after the device has successfully
+booted with a replacement key or replacement PK hash slot.
 
 Like provisioning, these revocation commands are not exposed through the OOB
 SPDM VDM command set today. A BMC-originated field workflow therefore needs a
