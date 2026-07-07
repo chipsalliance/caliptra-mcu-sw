@@ -63,10 +63,14 @@ mod test {
         assert!(start.elapsed().as_secs() <= 30, "Boot 1 timed out");
         assert_eq!(hw.mci_fw_fatal_error(), None, "Boot 1 fatal error");
 
-        // Boot 2: verify digest. Pass OTP from boot 1 so emulator sees the
-        // written data. On FPGA, OTP SRAM persists automatically, so just reset
+        // Boot 2: verify digest. Pass OTP from boot 1 so the next boot sees the
+        // written data.
         #[cfg(feature = "fpga_realtime")]
-        hw.base.cold_reset();
+        {
+            let otp_after_boot1 = hw.read_otp_memory();
+            hw.base.set_otp_init(otp_after_boot1);
+            hw.base.cold_reset();
+        }
 
         #[cfg(not(feature = "fpga_realtime"))]
         {

@@ -48,6 +48,11 @@ mod test {
         println!("Post transition LC state: {}", lc_state);
 
         // Reset and read the LC state again.
+        model
+            .base
+            .set_saved_lc_state(Some(caliptra_hw_model::LifecycleControllerState::from(
+                u8::from(LifecycleControllerState::TestUnlocked0),
+            )));
         model.base.cold_reset();
         lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
         println!("LC state after reset: {}", lc_state);
@@ -119,6 +124,11 @@ mod test {
             println!("Post transition LC state: {}", lc_state);
 
             // Reset and read the LC state again.
+            model
+                .base
+                .set_saved_lc_state(Some(caliptra_hw_model::LifecycleControllerState::from(
+                    u8::from(lc_states[i + 1]),
+                )));
             model.base.cold_reset();
             lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
             println!("LC state after reset: {}", lc_state);
@@ -161,6 +171,11 @@ mod test {
         println!("Post transition LC state: {}", lc_state);
 
         // Reset and read the LC state again.
+        model
+            .base
+            .set_saved_lc_state(Some(caliptra_hw_model::LifecycleControllerState::from(
+                u8::from(LifecycleControllerState::Rma),
+            )));
         model.base.cold_reset();
         lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
         println!("LC state after reset: {}", lc_state);
