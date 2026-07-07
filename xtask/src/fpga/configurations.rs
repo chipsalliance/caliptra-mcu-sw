@@ -222,6 +222,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
                 exec_bit: 2,
                 component_id: 2,
                 feature: "test-fpga-flash-ctrl".to_string(),
+                ..Default::default()
             }])
         });
         let args = AllBuildArgs {

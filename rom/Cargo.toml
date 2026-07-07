@@ -35,6 +35,8 @@ hw-2-1 = []
 core_test = ["caliptra-mcu-romtime/core_test"]
 # Test-only: enables extra diagnostics in the I3C services / DOT recovery path.
 test-i3c-services = []
+# Test-only: enables DOT recovery reset coordination for ROM integration tests.
+test-dot-recovery-reset-flow = []
 fw-manifest-dot = []
 svn-manifest = []
 # Test-only: at the end of cold boot, rewrite the reset-reason register to

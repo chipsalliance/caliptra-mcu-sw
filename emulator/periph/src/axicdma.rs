@@ -257,9 +257,11 @@ impl AxiCDMA {
 
             ram.data_mut()[dest_addr..dest_addr + xfer_size].copy_from_slice(&source_data);
         } else {
-            let source_ram = self.get_axi_ram(source_ram.unwrap()).unwrap();
+            let source_periph = source_ram.unwrap();
+            let dest_periph = dest_ram.unwrap();
+            let source_ram = self.get_axi_ram(source_periph).unwrap();
             let source_ram = source_ram.borrow_mut();
-            let dest_ram = self.get_axi_ram(dest_ram.unwrap()).unwrap();
+            let dest_ram = self.get_axi_ram(dest_periph).unwrap();
             let mut dest_ram = dest_ram.borrow_mut();
 
             let source_data = &source_ram.data()[source_addr..source_addr + xfer_size];

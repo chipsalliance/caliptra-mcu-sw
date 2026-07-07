@@ -19,6 +19,9 @@ pub struct McuMemoryMap {
     pub sram_size: u32,
     pub sram_properties: MemoryRegionType,
 
+    /// Size in bytes of the persistent storage region reserved at the end of SRAM.
+    pub storage_size: u32,
+
     pub pic_offset: u32,
     pub pic_properties: MemoryRegionType,
 
@@ -69,8 +72,10 @@ impl Default for McuMemoryMap {
             dccm_properties: MemoryRegionType::MEMORY,
 
             sram_offset: 0x4000_0000,
-            sram_size: 512 * 1024,
+            sram_size: 1024 * 1024,
             sram_properties: MemoryRegionType::MEMORY,
+
+            storage_size: 0,
 
             pic_offset: 0x6000_0000,
             pic_properties: MemoryRegionType::MMIO,

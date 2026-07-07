@@ -37,12 +37,38 @@ use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
 #[allow(unused)]
+#[cfg(any(
+    feature = "streaming-boot",
+    feature = "test-pldm-discovery",
+    feature = "test-pldm-fw-update",
+    feature = "test-pldm-fw-update-e2e",
+    feature = "test-pldm-streaming-boot"
+))]
 use caliptra_mcu_pldm_lib::daemon::PldmService;
+#[allow(unused_imports)]
 use core::fmt::Write;
 
 #[allow(unused)]
 use crate::EXECUTOR;
 #[allow(unused)]
+#[cfg(not(any(
+    feature = "streaming-boot",
+    feature = "test-pldm-discovery",
+    feature = "test-pldm-fw-update",
+    feature = "test-pldm-fw-update-e2e",
+    feature = "test-pldm-streaming-boot"
+)))]
+use caliptra_mcu_libapi_caliptra::image_loading::{
+    dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader,
+};
+#[allow(unused)]
+#[cfg(any(
+    feature = "streaming-boot",
+    feature = "test-pldm-discovery",
+    feature = "test-pldm-fw-update",
+    feature = "test-pldm-fw-update-e2e",
+    feature = "test-pldm-streaming-boot"
+))]
 use caliptra_mcu_libapi_caliptra::image_loading::{
     dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams,
     PldmImageLoader,
@@ -74,8 +100,8 @@ pub async fn image_loading_task() {
         mbox_sram.release_lock().unwrap();
     }
     #[cfg(any(
-        feature = "test-pldm-streaming-boot",
-        feature = "test-flash-based-boot",
+        feature = "streaming-boot",
+        all(feature = "flash-boot", not(feature = "firmware-update")),
         feature = "test-pldm-discovery",
         feature = "test-pldm-fw-update",
         feature = "test-pldm-fw-update-e2e",
@@ -93,18 +119,28 @@ pub async fn image_loading_task() {
             Err(_) => System::exit(1),
         }
         mbox_sram.release_lock().unwrap();
-        #[cfg(not(any(
-            feature = "test-firmware-update-streaming",
-            feature = "test-firmware-update-flash",
-            feature = "test-streaming-boot-flash-write-back",
-        )))]
+        #[cfg(not(feature = "firmware-update"))]
         System::exit(0);
     }
     // After image loading, proceed to firmware update if enabled
     #[cfg(any(
-        feature = "test-firmware-update-streaming",
-        feature = "test-firmware-update-flash",
-        feature = "test-streaming-boot-flash-write-back",
+        feature = "test-firmware-activate",
+        feature = "test-firmware-update-streaming"
+    ))]
+    {
+        if mbox_sram.acquire_lock().is_err() {
+            mbox_sram.release_lock().unwrap();
+            mbox_sram.acquire_lock().unwrap();
+        }
+        match crate::firmware_update::firmware_update(&FPGA_DMA_MAPPING).await {
+            Ok(_) => System::exit(0),
+            Err(_) => System::exit(1),
+        }
+        // MBOX SRAM lock will be released after reboot
+    }
+    #[cfg(all(
+        feature = "firmware-update",
+        not(feature = "test-firmware-update-streaming")
     ))]
     {
         if mbox_sram.acquire_lock().is_err() {
@@ -123,11 +159,8 @@ pub async fn image_loading_task() {
 #[allow(unused_variables)]
 async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
-    crate::console_writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
-    #[cfg(any(
-        feature = "test-pldm-streaming-boot",
-        feature = "test-streaming-boot-flash-write-back",
-    ))]
+    crate::log_info!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
+    #[cfg(feature = "streaming-boot")]
     {
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
@@ -152,10 +185,7 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
         ])
         .await?;
     }
-    #[cfg(any(
-        feature = "test-flash-based-boot",
-        feature = "test-firmware-update-flash",
-    ))]
+    #[cfg(feature = "flash-boot")]
     {
         let mut boot_config = FlashBootConfig::new();
         let active_partition_id = boot_config
@@ -228,15 +258,15 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
     {
         let fdops = pldm_fdops_mock::FdOpsObject::new();
         let mut pldm_service = PldmService::init(&fdops, EXECUTOR.get().spawner());
-        crate::console_writeln!(
+        crate::log_info!(
             console_writer,
             "PLDM_APP: Starting PLDM service for testing..."
         );
         if let Err(e) = pldm_service.start().await {
-            crate::console_writeln!(
+            crate::log_error!(
                 console_writer,
-                "PLDM_APP: Error starting PLDM service: {:?}",
-                e
+                "PLDM_APP: Error starting PLDM service: {}",
+                crate::Dbg(e)
             );
         }
         pldm_fdops_mock::FdOpsObject::wait_for_pldm_done().await;
@@ -286,12 +316,36 @@ impl DMAMapping for EmulatedDMAMap {
     }
 
     fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
-        Ok(addr as AXIAddr)
+        // Caliptra's External Test SRAM at 0x8000_0000 maps to
+        // the MCU's External SRAM at 0xB00C_0000 (same backing store via events).
+        const CPTRA_EXT_SRAM_BASE: u64 = 0x8000_0000;
+        const CPTRA_EXT_SRAM_SIZE: u64 = 0x0010_0000; // 1MB
+        const MCU_EXT_SRAM_BASE: u64 = 0xB00C_0000;
+        if (CPTRA_EXT_SRAM_BASE..CPTRA_EXT_SRAM_BASE + CPTRA_EXT_SRAM_SIZE).contains(&addr) {
+            Ok(MCU_EXT_SRAM_BASE + (addr - CPTRA_EXT_SRAM_BASE))
+        } else {
+            Ok(addr)
+        }
     }
 }
 
 #[allow(dead_code)]
 pub static EMULATED_DMA_MAPPING: EmulatedDMAMap = EmulatedDMAMap {};
+
+pub struct FpgaDMAMap {}
+impl DMAMapping for FpgaDMAMap {
+    fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
+        Ok(addr as AXIAddr)
+    }
+
+    fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
+        // FPGA: Caliptra and MCU share the same AXI address space
+        Ok(addr)
+    }
+}
+
+#[allow(dead_code)]
+pub static FPGA_DMA_MAPPING: FpgaDMAMap = FpgaDMAMap {};
 
 /// This is the size of the buffer used for DMA transfers.
 const MAX_DMA_TRANSFER_SIZE: usize = 128;

@@ -12,29 +12,37 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 
-// Re-export the shared `console_writeln!` from libsyscall-caliptra so existing
-// `crate::console_writeln!(...)` call sites in this crate continue to resolve.
+// Re-export the unified logging macros from userlog so
+// `crate::log_*!(...)` call sites in this crate resolve. Dev builds write
+// console text; release builds emit defmt frames.
+#[allow(unused_imports)]
+pub use caliptra_mcu_userlog::{log_debug, log_error, log_info, log_trace, log_warn};
+#[allow(unused_imports)]
+pub(crate) use caliptra_mcu_userlog::{Bytes, Dbg, Hex32};
+
 #[allow(unused_imports)]
 pub use caliptra_mcu_libsyscall_caliptra::console_writeln;
 
 mod caliptra_cmd_handler;
 #[cfg(any(
     feature = "test-defmt-logging-mailbox",
+    feature = "test-defmt-logging-release",
     feature = "test-defmt-logging-vdm"
 ))]
 mod defmt_test;
 #[cfg(any(
-    feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash",
-    feature = "test-streaming-boot-flash-write-back",
+    feature = "firmware-update",
+    feature = "test-firmware-update-streaming"
 ))]
 mod firmware_update;
 mod image_loader;
 mod mcu_mbox;
+mod measurement;
 #[cfg(target_arch = "riscv32")]
 mod panic;
-mod soc_env;
+#[cfg(feature = "spdm")]
 mod spdm;
+#[cfg(feature = "mctp-vdm-service")]
 mod vdm;
 
 #[cfg(target_arch = "riscv32")]
@@ -92,13 +100,7 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
-    // TODO: Debug spawning the SPDM task causes a hardfault in FPGA when firmware update is enabled
-    // for now, disable the SPDM task if either FW update test is enabled
-    #[cfg(not(any(
-        feature = "test-firmware-update-streaming",
-        feature = "test-firmware-update-flash",
-        feature = "test-streaming-boot-flash-write-back",
-    )))]
+    #[cfg(feature = "spdm")]
     spdm::spawn_spdm_tasks(&EXECUTOR.get().spawner());
 
     EXECUTOR
@@ -120,11 +122,7 @@ pub(crate) async fn async_main() {
         .spawn(caliptra_mcu_mbox_lib::fips_periodic::fips_periodic_task())
         .unwrap();
 
-    #[cfg(any(
-        feature = "test-mctp-vdm-cmds",
-        feature = "test-caliptra-util-host-mctp-vdm-validator",
-        feature = "test-defmt-logging-vdm"
-    ))]
+    #[cfg(feature = "mctp-vdm-service")]
     EXECUTOR.get().spawner().spawn(vdm::vdm_task()).unwrap();
 
     // Production userspace defmt logging: drain staged frames to the flash log
@@ -138,6 +136,7 @@ pub(crate) async fn async_main() {
 
     #[cfg(any(
         feature = "test-defmt-logging-mailbox",
+        feature = "test-defmt-logging-release",
         feature = "test-defmt-logging-vdm"
     ))]
     defmt_test::emit_test_frames();

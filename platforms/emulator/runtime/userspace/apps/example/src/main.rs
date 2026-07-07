@@ -44,6 +44,12 @@ mod test_mcu_mbox_usermode;
 #[cfg(feature = "test-mbox-sram")]
 mod test_mbox_sram;
 
+#[cfg(feature = "test-dpe-handle-store")]
+mod test_dpe_handle_store;
+
+#[cfg(feature = "test-sw-pcr-store")]
+mod test_sw_pcr_store;
+
 #[cfg(feature = "test-external-otp")]
 mod test_external_otp;
 
@@ -230,10 +236,27 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_mbox_sram::test_mem_reg_read_write().await;
         System::exit(0);
     }
+    #[cfg(feature = "test-dpe-handle-store")]
+    {
+        writeln!(console_writer, "Running DPE handle store test").unwrap();
+        test_dpe_handle_store::test_dpe_handle_store();
+        System::exit(0);
+    }
+    #[cfg(feature = "test-sw-pcr-store")]
+    {
+        writeln!(console_writer, "Running Software PCR store test").unwrap();
+        test_sw_pcr_store::test_sw_pcr_store();
+        System::exit(0);
+    }
     #[cfg(feature = "test-external-otp")]
     {
         writeln!(console_writer, "Running ExternalOTP read/write test").unwrap();
         test_external_otp::test_external_otp().await;
+        System::exit(0);
+    }
+    #[cfg(feature = "test-firmware-v2")]
+    {
+        writeln!(console_writer, "Running firmware v2").unwrap();
         System::exit(0);
     }
     #[cfg(feature = "test-warm-reset")]

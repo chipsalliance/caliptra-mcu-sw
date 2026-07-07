@@ -44,6 +44,7 @@ macro_rules! print {
     ($($arg:tt)*) => {
         unsafe {
             if let Some(writer) = $crate::WRITER.as_mut() {
+                use ::core::fmt::Write as _;
                 let _ = write!(writer, $($arg)*);
             }
         }
@@ -67,6 +68,7 @@ macro_rules! print {
 macro_rules! println {
     ($($arg:tt)*) => {
         if let Some(writer) = unsafe { $crate::WRITER.as_mut() } {
+            use ::core::fmt::Write as _;
             let _ = writeln!(writer, $($arg)*);
         }
     };

@@ -36,7 +36,6 @@ use caliptra_mcu_romtime::LifecycleToken;
 use caliptra_mcu_romtime::PqcKeyType;
 use caliptra_mcu_romtime::{HexWord, McuBootMilestones, StaticRef};
 use caliptra_mcu_romtime::{Mci, Otp, PROD_DEBUG_UNLOCK_PK_ENTRIES};
-use core::fmt::Write;
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -244,16 +243,23 @@ impl Soc {
         self.registers.fuse_fmc_key_manifest_svn.set(svn);
 
         // Vendor PK Hash.
-        caliptra_mcu_romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
+
         let mut hash_buf = [0u8; 48];
         otp.read_vendor_pk_hash(pk_hash_idx, &mut hash_buf)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        for (i, word_bytes) in hash_buf.chunks_exact(4).enumerate() {
-            let word = u32::from_le_bytes(word_bytes.try_into().unwrap());
-            caliptra_mcu_romtime::print!("{}", HexWord(word));
-            self.registers.fuse_vendor_pk_hash[i].set(word);
+        for (reg, word_bytes) in self
+            .registers
+            .fuse_vendor_pk_hash
+            .iter()
+            .zip(hash_buf.chunks_exact(4))
+        {
+            let word = u32::from_le_bytes(
+                word_bytes
+                    .try_into()
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR)),
+            );
+            reg.set(word);
         }
-        caliptra_mcu_romtime::println!("");
 
         // Runtime SVN.
         for i in 0..self.registers.fuse_runtime_svn.len() {
@@ -755,6 +761,12 @@ pub struct RomParameters<'a> {
     /// triggers a warm reset. If empty, no locked-state recovery is attempted.
     pub dot_locked_recovery_handlers:
         &'a [crate::device_ownership_transfer::DotLockedRecoveryEntry<'a>],
+    /// Enables DOT-aware recovery reset handling. When enabled, DOT blob
+    /// authentication failures publish DEVICE_STATUS=0x94000E before reporting
+    /// `FW_ERROR_FATAL`. A subsequent cold boot with RESET_CTRL=0x10 forces the
+    /// fused owner PK hash, while RESET_CTRL=0x11 continues the regular DOT
+    /// verification flow.
+    pub dot_recovery_reset_flow: bool,
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,

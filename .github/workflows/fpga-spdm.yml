@@ -13,7 +13,8 @@ concurrency:
 jobs:
   build_test_binaries:
     runs-on: [ e2-standard-8-big-disk ]
-    timeout-minutes: 60
+    # Cross-compilation plus spdm-emu can consume almost the full hour on cache misses.
+    timeout-minutes: 90
     env:
       SCCACHE_VERSION: 0.10.0
       SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
@@ -23,7 +24,7 @@ jobs:
       CACHE_BUSTER: 9ff0ac869868
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           submodules: "true"
 
@@ -35,7 +36,7 @@ jobs:
           rustup target add aarch64-unknown-linux-gnu
 
       - name: Restore sccache binary
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v6
         id: sccache_bin_restore
         with:
           path: ~/.cargo/bin/sccache
@@ -51,14 +52,14 @@ jobs:
       # Save the sccache binary immediately so we can reuse it in future runs
       # even if the rest of the current run fails.
       - name: Save sccache binary
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v6
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         with:
           path: ~/.cargo/bin/sccache
           key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
 
       - name: Configure sccache
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
@@ -67,7 +68,7 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_SERVICE_V2', 'on');
 
       - name: Restore openssl from cache
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v6
         id: restore_openssl_cache
         with:
           path: /tmp/openssl.tar
@@ -119,7 +120,7 @@ jobs:
 
       - name: Save openssl to cache
         if: "!steps.restore_openssl_cache.outputs.cache-hit"
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v6
         with:
           path: /tmp/openssl.tar
           key: openssl-${{ env.CACHE_BUSTER }}
@@ -186,28 +187,28 @@ jobs:
           cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der /tmp/spdm-emu-binaries/ecp384/ca.cert.der
 
       - name: "Upload bitstream"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: caliptra-bitstream${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-bitstream.pdi
           retention-days: 1
 
       - name: "Upload test binaries artifact"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: caliptra-test-binaries${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-test-binaries.sqsh
           retention-days: 1
 
       - name: "Upload test firmware artifact"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: caliptra-test-firmware${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-binaries
           retention-days: 1
 
       - name: "Upload spdm-emu binaries artifact"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: spdm-emu-binaries${{ inputs.artifact-suffix }}
           path: /tmp/spdm-emu-binaries
@@ -220,30 +221,30 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           submodules: "recursive"
 
       - name: "Download Test Binaries Artifact"
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: caliptra-test-binaries${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-test-binaries.sqsh
 
       - name: "Download Test Firmware Artifact"
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: caliptra-test-firmware${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-binaries
 
       - name: "Download Bitstream"
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: caliptra-bitstream${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-bitstream
 
       - name: "Download spdm-emu binaries"
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: spdm-emu-binaries${{ inputs.artifact-suffix }}
           path: /tmp/spdm-emu-binaries
@@ -310,7 +311,7 @@ jobs:
           fi
 
       - name: "Upload SPDM test results"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: success() || failure()
         with:
           name: caliptra-spdm-test-results${{ inputs.artifact-suffix }}

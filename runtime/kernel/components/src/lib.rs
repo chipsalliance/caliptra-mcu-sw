@@ -4,6 +4,7 @@
 
 pub mod dma;
 pub mod doe;
+pub mod dpe_handle_store;
 pub mod external_otp;
 pub mod flash_partition;
 pub mod logging;
@@ -15,4 +16,5 @@ pub mod mcu_mbox;
 pub mod mock_mctp;
 pub mod mux_mctp;
 pub mod otp;
+pub mod soft_pcr_store;
 pub mod system;

@@ -7,19 +7,28 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-defmt.workspace = true
-critical-section.workspace = true
-heapless.workspace = true
-embassy-executor.workspace = true
-embassy-sync.workspace = true
-caliptra-mcu-libsyscall-caliptra.workspace = true
-caliptra-mcu-libtockasync.workspace = true
-caliptra-mcu-libtock_platform.workspace = true
-portable-atomic.workspace = true
+caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
+caliptra-mcu-libtock_platform = { workspace = true, optional = true }
+critical-section = { workspace = true, optional = true }
+defmt = { workspace = true, optional = true }
+embassy-executor = { workspace = true, optional = true }
+embassy-sync = { workspace = true, optional = true }
+heapless = { workspace = true, optional = true }
+portable-atomic = { workspace = true, optional = true }
 
-[target.'cfg(not(target_arch = "riscv32"))'.dependencies]
-caliptra-mcu-libtock_unittest.workspace = true
+[features]
+default = []
+defmt-transport = [
+	"dep:caliptra-mcu-libsyscall-caliptra",
+	"dep:caliptra-mcu-libtock_platform",
+	"dep:critical-section",
+	"dep:defmt",
+	"dep:embassy-executor",
+	"dep:embassy-sync",
+	"dep:heapless",
+	"dep:portable-atomic",
+]
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
-embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
-portable-atomic = { workspace = true, features = ["critical-section"] }
+embassy-executor = { version = "0.9.1", features = ["arch-riscv32"], optional = true }
+portable-atomic = { workspace = true, features = ["critical-section"], optional = true }

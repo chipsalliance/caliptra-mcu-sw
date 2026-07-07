@@ -29,8 +29,6 @@ use caliptra_mcu_error::McuError;
 use caliptra_mcu_romtime::HexWord;
 #[cfg(target_arch = "riscv32")]
 use caliptra_mcu_romtime::McuBootMilestones;
-#[cfg(not(feature = "test-force-hitless-update"))]
-use core::fmt::Write;
 
 pub struct FwHitlessUpdate {}
 

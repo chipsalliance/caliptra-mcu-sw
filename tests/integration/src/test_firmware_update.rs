@@ -248,6 +248,7 @@ mod test {
             component_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
             feature: feature.to_string(),
+            ..Default::default()
         };
 
         let mut update_builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
@@ -671,6 +672,7 @@ mod test {
             component_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
             feature: feature.to_string(),
+            ..Default::default()
         };
 
         // Build the Caliptra builder with prebuilt paths
@@ -786,6 +788,7 @@ mod test {
             component_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
             feature: feature.to_string(),
+            ..Default::default()
         };
 
         // Build the Runtime image
@@ -938,10 +941,10 @@ mod test {
         if env::var("PLDM_FW_PKG").is_err() {
             if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
                 // If PLDM_FW_PKG is not specified, we will use the PLDM firmware package
-                // for test-fpga-flash-ctrl that was built during the FPGA build.
+                // for test-firmware-v2 that was built during the FPGA build.
                 // We choose this package since it is small enough to fit in the
                 // FPGA staging memory.
-                let test_pldm_pkg_data = binaries.test_pldm_fw_pkg("test-fpga-flash-ctrl").unwrap();
+                let test_pldm_pkg_data = binaries.test_pldm_fw_pkg("test-firmware-v2").unwrap();
                 let test_pldm_pkg_path = tempfile::NamedTempFile::new()
                     .expect("Failed to create temp file")
                     .path()
@@ -961,5 +964,48 @@ mod test {
             "test_firmware_update_streaming",
             log::LevelFilter::Info,
         );
+    }
+
+    #[cfg(feature = "fpga_realtime")]
+    #[test]
+    fn test_firmware_activate_fpga() {
+        use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams};
+        use crate::test_fpga_flash_ctrl::test::{
+            run_imaginary_flash_controller_service,
+            run_imaginary_flash_controller_service_with_init,
+        };
+        use caliptra_mcu_hw_model::McuHwModel;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env()
+            .expect("CPTRA_FIRMWARE_BUNDLE not set");
+
+        let update_flash_image = binaries
+            .test_flash_image("test-firmware-v2")
+            .expect("Prebuilt flash image not found");
+
+        let feature = "test-firmware-activate";
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some(feature),
+            i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
+            ..Default::default()
+        });
+
+        hw.start_i3c_controller();
+
+        let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
+        run_imaginary_flash_controller_service_with_init(mci_ptr, Some(update_flash_image));
+        hw.output().set_search_term("Running firmware v2");
+        hw.step_until(|m| m.output().search_matched());
+
+        let test = finish_runtime_hw_model(&mut hw);
+
+        assert_eq!(0, test);
+        caliptra_mcu_testing_common::stop_emulator();
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }

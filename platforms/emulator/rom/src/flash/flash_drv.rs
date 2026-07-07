@@ -9,8 +9,8 @@ use caliptra_mcu_registers_generated::primary_flash_ctrl::{
 };
 use caliptra_mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
 use caliptra_mcu_romtime::StaticRef;
-use core::fmt::Write;
 use core::ops::{Index, IndexMut};
+
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 #[allow(dead_code)]

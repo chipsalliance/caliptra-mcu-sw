@@ -17,15 +17,15 @@ pub struct Duplication(pub NonZero<usize>);
 pub enum FuseLayout {
     /// Values are stored literally
     Single(Bits),
-    /// Value is the number of bits set,
-    /// e.g., 0b110111 -> 5
+    /// Current layout name for a monotonic bit-count counter. The logical
+    /// value is the number of bits set, e.g., 0b110111 -> 5.
     OneHot(Bits),
     /// Each bit is duplicated within a single u32 (or across adjacent u32s) and the majority vote
     /// is used to compute the final value,
     /// e.g., 0b110111 -> 0b11
     LinearMajorityVote(Bits, Duplication),
-    /// Same as LinearMajorityVote, but the end result is to simply the count of the bits,
-    /// e.g., 0b110111 -> 2
+    /// Same as LinearMajorityVote, but with bit-count counter semantics,
+    /// e.g., 0b110111 -> 2.
     OneHotLinearMajorityVote(Bits, Duplication),
     /// u32s are duplicated, with bits are duplicated across multiple u32s. The result takes
     /// the majority vote of each bit,
@@ -34,8 +34,8 @@ pub enum FuseLayout {
     /// Each bit is duplicated and the result is the OR of all copies (any copy set → 1),
     /// e.g., with 3x duplication: 0b001_000_101 -> 0b11 (bit 0 has any set, bit 2 has any set)
     LinearOr(Bits, Duplication),
-    /// Same as LinearOr, but the end result is the count of the bits set,
-    /// e.g., with 3x duplication: 0b001_000_111 -> 2 (bit 0 OR'd to 1, bit 1 OR'd to 0, bit 2... wait)
+    /// Same as LinearOr, but with bit-count counter semantics,
+    /// e.g., with 3x duplication: 0b001_000_111 -> 2.
     OneHotLinearOr(Bits, Duplication),
     /// u32s are duplicated, with bits OR'd across multiple u32s,
     /// e.g., [0b100, 0b010, 0b001] -> [0b111]

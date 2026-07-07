@@ -192,6 +192,21 @@ pub struct Platform {
     /// Data memory, outside of the RAM used by the application.  This is used for the
     /// _pic_vector_table on VeeR chips.  Defaults to a size and offset of 0 if not defined.
     pub dccm: Option<Memory>,
+
+    /// Size in bytes of the persistent storage region reserved at the end of SRAM.
+    /// Used for attestation records and other data that must survive across firmware updates.
+    /// Defaults to 0 (no storage reserved) if not specified.
+    ///
+    /// **Platform-dependent**: integrators must choose this value based on the number
+    /// of configured SoC TCB and non-TCB components and the record sizes used by
+    /// the DPE Handle Storage and Software PCR Storage capsules.  The exact sizing
+    /// formula is defined alongside the capsule integration; this field is not a
+    /// universal default and should be explicitly set for each platform.
+    ///
+    /// The value is rounded up to a 4 KiB boundary by the firmware-bundler so that
+    /// the layout stays consistent with the VeeR `mcu_fw_sram_exec_region_size`
+    /// parameter, which is programmed in 4 KiB units.
+    pub storage_size: Option<u64>,
 }
 
 impl Platform {
@@ -209,6 +224,11 @@ impl Platform {
     /// Retrieve the dccm memory layout.  If not specified it is empty.
     pub fn dccm(&self) -> Memory {
         self.dccm.clone().unwrap_or(Memory { offset: 0, size: 0 })
+    }
+
+    /// Retrieve the storage size.  Defaults to 0 if not specified.
+    pub fn storage_size(&self) -> u64 {
+        self.storage_size.unwrap_or(0)
     }
 }
 
@@ -647,6 +667,7 @@ mod tests {
                 offset: 0x30000,
                 size: dccm_size,
             }),
+            storage_size: None,
         }
     }
 

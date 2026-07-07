@@ -24,6 +24,7 @@ pub mod test;
 
 pub mod caliptra;
 pub mod doe;
+pub mod dpe_handle_store;
 pub mod external_otp;
 pub mod flash_partition;
 pub mod logging;
@@ -33,4 +34,5 @@ pub mod mci;
 pub mod mctp;
 pub mod mcu_mbox;
 pub mod otp;
+pub mod soft_pcr_store;
 pub mod system;

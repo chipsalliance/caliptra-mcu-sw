@@ -1,9 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cmd_interface::CmdInterface;
-use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_userlog::{log_error, Dbg};
+#[allow(unused_imports)]
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
@@ -86,11 +87,10 @@ pub async fn vdm_responder(
     let mut msg_buffer = [0u8; MAX_VDM_MSG_SIZE];
     while running.load(Ordering::SeqCst) {
         if let Err(e) = cmd_interface.handle_responder_msg(&mut msg_buffer).await {
-            // Debug print on error
-            console_writeln!(
+            log_error!(
                 Console::<DefaultSyscalls>::writer(),
-                "vdm_responder error: {:?}",
-                e
+                "vdm_responder error={}",
+                Dbg(e)
             );
         }
     }

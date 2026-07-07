@@ -92,7 +92,7 @@ Added in a vendor partition (e.g., `VENDOR_NON_SECRET_PROD_PARTITION`):
 | `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | 4 B | `OneHotLinearOr{bits:N, dupe:3}` | Min SVN for the MCU Component SVN Manifest itself |
 | `SOC_IMAGE_MIN_SVN[0..M]` | 4 B each | `OneHotLinearOr{bits:N, dupe:3}` | Per-slot SoC image min SVN (optional) |
 
-The number of `SOC_IMAGE_MIN_SVN` slots (`M`) and the number of one-hot bits
+The number of `SOC_IMAGE_MIN_SVN` slots (`M`) and the number of bit-count bits
 per slot are integrator-defined. `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` exists
 even when the integrator does not provision any `SOC_IMAGE_MIN_SVN` slots,
 because the manifest's own anti-rollback applies regardless of how many
@@ -100,17 +100,20 @@ component slots are mapped.
 
 #### Encoding
 
-SVN fuses **must** use a one-hot encoding so that incrementing requires only
-burning an additional bit (any other encoding would either need 1→0 transitions
-or provide no rollback protection). The recommended layout is `OneHotLinearOr`
-with 3× duplication: OR semantics tolerate single-bit read errors without ECC,
-which is incompatible with fields written more than once. OR is preferred over
-majority vote because OTP bits are far more likely to fail stuck-at-0 than to
-spontaneously flip to 1.
+SVN fuses **must** use monotonic bit-count encoding so that incrementing
+requires only burning an additional bit (any other counter encoding would either
+need 1→0 transitions or provide no rollback protection). The current MCU
+layout names call this `OneHot`, but it is not true one-hot encoding; the
+decoded logical value is the number of set bits. The recommended layout is
+`OneHotLinearOr` with 3× duplication: OR semantics tolerate single-bit read
+errors without ECC, which is incompatible with fields written more than once.
+OR is preferred over majority vote because OTP bits are far more likely to fail
+stuck-at-0 than to spontaneously flip to 1.
 
-Integrators with hardware-level fuse redundancy can use a plain `OneHot{bits:N}`
-layout. Other one-hot variants (e.g., `OneHotLinearMajorityVote`) are also
-acceptable. Non-one-hot encodings (e.g., `Single`) cannot be used.
+Integrators with hardware-level fuse redundancy can use a plain
+`OneHot{bits:N}` layout. Other bit-count variants using the current layout
+names (e.g., `OneHotLinearMajorityVote`) are also acceptable. Non-bit-count
+encodings (e.g., `Single`) cannot be used.
 
 See [Fuse Layout Options](fuses.md#fuse-layout-options) for encoding details.
 
@@ -163,14 +166,14 @@ Header constraints (validated; header is rejected on violation):
 
 - `min_svn ≤ current_svn` (manifest-self).
 - Each requested floor (`min_svn`, `caliptra_runtime_min_svn`,
-  `soc_manifest_min_svn`) must fit within its target fuse's one-hot range
+   `soc_manifest_min_svn`) must fit within its target fuse's bit-count range
   (`MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `CPTRA_CORE_RUNTIME_SVN`,
   `CPTRA_CORE_SOC_MANIFEST_SVN` respectively).
 
 Per-entry constraints (validated; entry is rejected on violation):
 
 - `min_svn ≤ current_svn`
-- Both values must fit within the corresponding fuse slot's one-hot range.
+- Both values must fit within the corresponding fuse slot's bit-count range.
 
 ### Caliptra runtime and SoC manifest SVN floors
 
@@ -309,7 +312,7 @@ Note: Caliptra fuse registers are latched at cold-boot fuse-write time
 and cannot be re-written during a warm/update reset. Any OTP burn that
 MCU ROM performs after a hitless update therefore only gates Caliptra
 authentication on the *next* cold boot — power-fail safe via the OTP
-one-hot encoding.
+bit-count encoding.
 
 ### Cold Boot and Hitless Update — MCU Component SVN Manifest burn
 
@@ -328,7 +331,7 @@ for those whose `component_id` is in `SVN_FUSE_MAP`, advances the mapped
    with a logged warning (lets new components ship without a dedicated
    fuse slot).
 2. Reject the boot if `entry.current_svn` or `entry.min_svn` exceeds the
-   slot's one-hot range, or if `entry.current_svn < fuse_min_svn`
+   slot's bit-count range, or if `entry.current_svn < fuse_min_svn`
    (rollback).
 3. If `entry.min_svn > fuse_min_svn` and anti-rollback is not disabled,
    burn the slot to `entry.min_svn` and read back to verify.
@@ -368,8 +371,8 @@ For each component in the bundle:
    - Verify the trait-extracted SVN matches the MCU Component SVN Manifest's
      `current_svn` for that component. A mismatch means the manifest and
      image disagree — reject the bundle.
-   - Reject if `current_svn < fuse_min_svn`, or if either `current_svn` or
-     `min_svn` exceeds the slot's one-hot range.
+    - Reject if `current_svn < fuse_min_svn`, or if either `current_svn` or
+       `min_svn` exceeds the slot's bit-count range.
 
 Components without a `SocComponentSvn` implementation skip the
 manifest-vs-image cross-check (a logged warning) but still get the
@@ -449,7 +452,7 @@ committing *any* burn. This guarantees a rejected boot never leaves the
 device with partially-advanced floors; once the burn phase starts, only
 a genuine OTP write/readback hardware error can halt it.
 
-The burn is power-fail safe: one-hot encoding plus OR semantics mean a partial
+The burn is power-fail safe: bit-count encoding plus OR semantics mean a partial
 burn can never decrease the fuse value, and any incomplete burn will be
 re-attempted (and complete) on the next boot.
 
@@ -544,7 +547,7 @@ disable polarity (burning removes a security property) for compatibility with
 the existing Caliptra fuse. Provisioning flows must never set this fuse on
 production devices; ROM should add lifecycle-state checks to enforce this.
 
-**SVN exhaustion.** With one-hot encoding, the maximum `min_svn` equals the
+**SVN exhaustion.** With bit-count encoding, the maximum `min_svn` equals the
 number of allocated bits (e.g., 32 bits → max SVN of 32). Since `current_svn`
 can advance without `min_svn`, exhaustion is rare in practice. At exhaustion,
 no further `min_svn` updates are possible but the device continues to enforce

@@ -227,10 +227,19 @@ impl McuHwModel for ModelEmulated {
 
         let lc = LcCtrl::with_state(lc_state_index, lc_transition_cnt);
 
+        let owner_pk_hash = {
+            let mut bytes = [0u8; 48];
+            for (i, word) in params.fuses.owner_pk_hash.iter().enumerate() {
+                bytes[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
+            }
+            bytes
+        };
+
         let otp = Otp::new(
             &clock.clone(),
             OtpArgs {
                 raw_memory: Some(otp_mem),
+                owner_pk_hash: Some(owner_pk_hash),
                 vendor_pk_hash: params.vendor_pk_hash,
                 vendor_pqc_type: params.vendor_pqc_type,
                 vendor_test_partition: params.vendor_test_partition.clone(),
@@ -828,9 +837,13 @@ mod test {
         })
         .unwrap();
         model.cpu_enabled.set(true);
-        for _ in 0..100_000 {
-            model.step();
-        }
+        let start_cycle = model.cycle_count();
+        model.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::CPTRA_FUSES_WRITTEN)
+                || model.cycle_count() - start_cycle >= 200_000
+        });
         use std::io::Write;
         let mut w = std::io::Sink::default();
         if !model.output().peek().is_empty() {

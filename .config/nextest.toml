@@ -14,6 +14,7 @@ store-failure-output = true
 failure-output = "immediate-final"
 fail-fast = false
 slow-timeout = { period = "30s", terminate-after = 30 }
+default-filter = "not test(test_defmt_logging_release)"
 
 [profile.nightly-emulator.junit]
 path = "/tmp/junit.xml"
@@ -33,6 +34,7 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_lc_transitions)) |
 (package(caliptra-mcu-tests-integration) and test(test_prod_debug_unlock)) |
 (package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |
+(package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
 (package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
@@ -47,18 +49,20 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_error_mid_packet_then_recover)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_error_then_continue)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_full_flow)) |
-(package(caliptra-mcu-tests-integration) and test(test_lc_ctrl)
-    - test(test_lc_dev_to_prod)
-    - test(test_lc_dev_to_rma)
-    - test(test_lc_dev_to_scrap)
-    - test(test_lc_invalid_transition_error)) |
+(package(caliptra-mcu-tests-integration) and test(test_lc_ctrl)) |
 (package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot)) |
-(package(caliptra-mcu-tests-integration) and test(test_external_otp))
+(package(caliptra-mcu-tests-integration) and test(test_external_otp)) |
+(package(caliptra-mcu-tests-integration) and test(test_rom_hooks_fire_in_order)) |
+(package(caliptra-mcu-tests-integration) and test(jtag::test_uds)) |
+(package(caliptra-mcu-tests-integration) and test(jtag::test_manuf_debug_unlock)) |
+(package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
+(package(caliptra-mcu-tests-integration) and test(test_bootfsm_timeout)) |
+(package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
+(package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check)) |
+(package(caliptra-mcu-tests-integration) and test(test_firmware_activate_fpga))
 """
 # Disabled because they hang the FPGA at boot (LifecycleControllerState::Dev):
-#   test_manuf_debug_unlock, test_uds, test_sw_digest_lock,
-#   test_otp_blank_check, test_otp_scramble_check, test_bootfsm_timeout,
-#   and the Dev-starting subtests of test_lc_ctrl listed above.
+#   test_bootfsm_timeout.
 # Disabled because they fail on FPGA:
 #   test_fw_manifest_dot_hitless_lock, test_log_flash_usermode,
 #   test_mctp_capsule_loopback, test_mcu_mbox_cmds,
@@ -73,7 +77,8 @@ default-filter = """
 [profile.nightly-release]
 inherits = "nightly-emulator"
 default-filter = """
-(package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful))
+(package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful)) |
+(package(caliptra-mcu-tests-integration) and test(test_defmt_logging_release))
 """
 
 [profile.nightly-ci-spdm]

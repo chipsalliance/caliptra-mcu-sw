@@ -42,6 +42,8 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-mbox-cmds",
     "test-mbox-sram",
     "test-external-otp",
+    "test-dpe-handle-store",
+    "test-sw-pcr-store",
     "test-warm-reset",
     "test-exit-immediately",
     "test-mcu-rom-flash-access",
@@ -56,6 +58,8 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-fpga-flash-ctrl",
     "test-pldm-fw-update-e2e",
     "test-firmware-update-streaming",
+    "test-firmware-activate",
+    "test-firmware-v2",
     "test-mcu-mbox-usermode",
     "test-mcu-mbox-cmds",
     "test-mctp-vdm-cmds",
@@ -70,9 +74,10 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
 ];
 
 /// Release-profile runtime test features (emulator).
-/// These are the subset of tests we run against the release (512 KB SRAM,
-/// no debug logs) firmware to verify it boots and works correctly.
-pub const RELEASE_RUNTIME_TEST_FEATURES: &[&str] = &["test-flash-based-boot"];
+/// These are the subset of tests we run against the release (512 KB SRAM)
+/// firmware to verify it boots and keeps release userspace defmt logs working.
+pub const RELEASE_RUNTIME_TEST_FEATURES: &[&str] =
+    &["test-flash-based-boot", "test-defmt-logging-release"];
 
 /// ROM-only test features that need a prebuilt ROM but no custom runtime.
 /// These features exist in both the emulator and FPGA ROM crates; the
@@ -83,6 +88,7 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-fw-manifest-dot-hitless",
     "test-svn-manifest",
     "test-dot-recovery",
+    "test-dot-recovery-reset-flow",
     "test-rom-hooks",
 ];
 
@@ -128,6 +134,7 @@ pub const ROM_VARIANTS: &[RomVariant] = &[
     RomVariant::new(None, Some("test-fw-manifest-dot")),
     RomVariant::new(None, Some("test-fw-manifest-dot-hitless")),
     RomVariant::new(None, Some("test-dot-recovery")),
+    RomVariant::new(None, Some("test-dot-recovery-reset-flow")),
     RomVariant::new(None, Some("test-rom-hooks")),
     // Explicit-feature ROMs tested by precheckin / all-build.
     RomVariant::new(None, Some("test-flash-based-boot")),

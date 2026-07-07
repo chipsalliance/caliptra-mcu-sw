@@ -868,6 +868,7 @@ dependencies = [
  "serde",
  "subst",
  "tempfile",
+ "toml 0.8.23",
  "uuid",
  "walkdir",
  "zerocopy",
@@ -1429,7 +1430,9 @@ dependencies = [
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-userlog",
  "caliptra-ocp-eat",
+ "defmt",
  "dpe",
  "embassy-executor",
  "embassy-sync",
@@ -1466,6 +1469,7 @@ dependencies = [
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-registers-generated",
  "embassy-sync",
+ "zerocopy",
 ]
 
 [[package]]
@@ -1616,6 +1620,8 @@ dependencies = [
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-romtime",
  "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-userlog",
+ "defmt",
  "embassy-executor",
  "embassy-sync",
  "zerocopy",
@@ -1644,11 +1650,17 @@ dependencies = [
  "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-userlog",
+ "defmt",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
  "zerocopy",
 ]
+
+[[package]]
+name = "caliptra-mcu-measurement-api"
+version = "0.1.0"
 
 [[package]]
 name = "caliptra-mcu-otp-digest"
@@ -1659,6 +1671,19 @@ name = "caliptra-mcu-otp-lifecycle"
 version = "0.1.0"
 dependencies = [
  "sha3",
+]
+
+[[package]]
+name = "caliptra-mcu-pk-hash-checker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-image-crypto",
+ "caliptra-image-gen",
+ "caliptra-image-types",
+ "clap 4.5.51",
+ "hex",
+ "zerocopy",
 ]
 
 [[package]]
@@ -1710,6 +1735,8 @@ dependencies = [
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-userlog",
+ "defmt",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
@@ -2110,8 +2137,6 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_platform",
- "caliptra-mcu-libtock_unittest",
- "caliptra-mcu-libtockasync",
  "critical-section",
  "defmt",
  "embassy-executor",
@@ -6781,6 +6806,7 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-flash-image",
  "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libapi-emulated-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
@@ -6795,6 +6821,7 @@ dependencies = [
  "caliptra-mcu-mbox-lib",
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-mctp-vdm-lib",
+ "caliptra-mcu-measurement-api",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-romtime",
@@ -6815,7 +6842,9 @@ dependencies = [
  "embedded-alloc",
  "mcu-caliptra-api-lite",
  "portable-atomic",
+ "serde",
  "static_cell",
+ "toml 0.8.23",
  "zerocopy",
 ]
 

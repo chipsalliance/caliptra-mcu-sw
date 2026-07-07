@@ -15,9 +15,12 @@ critical-section.workspace = true
 embassy-executor.workspace = true
 embassy-sync.workspace = true
 caliptra-mcu-common-commands.workspace = true
+caliptra-mcu-flash-image.workspace = true
+caliptra-mcu-measurement-api.workspace = true
 caliptra-mcu-libapi-caliptra.workspace = true
 caliptra-mcu-libapi-emulated-caliptra.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true
+caliptra-mcu-userlog.workspace = true
 caliptra-mcu-libtock_console.workspace = true
 caliptra-mcu-libtock_low_level_debug.workspace = true
 caliptra-mcu-libtock_platform.workspace = true
@@ -54,16 +57,34 @@ embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
 embedded-alloc.workspace = true
 portable-atomic = { workspace = true, features = ["critical-section"] }
 defmt = { workspace = true, optional = true }
-caliptra-mcu-userlog = { workspace = true, optional = true }
 
 [build-dependencies]
+caliptra-mcu-measurement-api.workspace = true
 caliptra-ocp-eat.workspace = true
+serde.workspace = true
+toml.workspace = true
 
 [features]
-default = []
+default = ["all-features"]
+# Caliptra MCU features
+all-features = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe", "userspace-log"]
+spdm = ["mcu-mbox-service"]
+streaming-boot = []
+flash-boot = []
+firmware-update = []
+mcu-mbox-service = []
+mctp-vdm-service = []
+debug = []
 hw-2-1 = []
 doe = []
-userspace-log = ["dep:defmt", "dep:caliptra-mcu-userlog"]
+userspace-log = [
+  "dep:defmt",
+  "caliptra-mcu-libapi-caliptra/release",
+  "caliptra-mcu-mbox-lib/release",
+  "caliptra-mcu-mctp-vdm-lib/release",
+  "caliptra-mcu-pldm-lib/release",
+  "caliptra-mcu-userlog/defmt-transport",
+]
 # Production / minimal-size build for user-app.  Activated automatically by
 # `xtask runtime-build --profile release` (via `--features release` forwarded
 # through the bundler).  Gates `console_writeln!` to a no-op so all of
@@ -72,68 +93,78 @@ userspace-log = ["dep:defmt", "dep:caliptra-mcu-userlog"]
 # so the romtime `print!`/`println!` macros become no-ops inside user-app's
 # private dependency build of `caliptra-mcu-romtime`.
 release = [
+  "userspace-log",
     "caliptra-mcu-romtime/no-print",
     "caliptra-mcu-libsyscall-caliptra/release",
 ]
+# --- Test features: example-app ---
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []
-test-caliptra-util-host-validator = []
-test-defmt-logging-mailbox = ["userspace-log"]
-test-defmt-logging-vdm = ["userspace-log"]
-test-doe-transport-loopback = []
-test-doe-discovery = []
 test-doe-user-loopback = []
-test-doe-spdm-responder-conformance = []
-test-do-nothing = []
-test-exit-immediately = []
 test-external-otp = []
+test-flash-usermode = []
+test-fpga-flash-ctrl = []
 test-get-device-state = []
+test-log-flash-usermode = []
+test-mbox-sram = []
+test-mci = []
+test-mcu-mbox-usermode = []
+test-mcu-svn-gt-fuse = []
+test-mcu-svn-lt-fuse = []
+test-mctp-user-loopback = []
+test-pldm-request-response = []
+# --- Test features: kernel-only ---
+test-exit-immediately = []
 test-i3c-simple = []
 test-i3c-constant-writes = []
-test-flash-based-boot = []
 test-flash-ctrl-init = []
 test-flash-ctrl-read-write-page = []
 test-flash-ctrl-erase-page = []
 test-flash-storage-read-write = []
 test-flash-storage-erase = []
-test-flash-usermode = []
+test-doe-transport-loopback = []
 test-log-flash-circular = []
 test-log-flash-linear = []
-test-log-flash-usermode = []
-test-firmware-update-flash = []
-test-firmware-update-streaming = []
-test-fpga-flash-ctrl = []
-test-mbox-sram = []
-test-mci = []
-test-mctp-ctrl-cmds = []
-test-mctp-capsule-loopback = []
-test-mctp-user-loopback = []
-test-mctp-vdm-cmds = []
-test-caliptra-util-host-mctp-vdm-validator = []
 test-mcu-mbox-driver = []
 test-mcu-mbox-soc-requester-loopback = []
-test-mcu-mbox-usermode = []
-test-mcu-mbox-cmds = []
-test-mcu-mbox-fips-self-test = []
 test-mcu-rom-flash-access = []
-test-mcu-svn-gt-fuse = []
-test-mcu-svn-lt-fuse = []
-test-pldm-request-response = []
+test-mctp-capsule-loopback = []
+# --- Test features: user-app ---
+test-do-nothing = []
+test-defmt-logging-mailbox = ["userspace-log", "mcu-mbox-service"]
+test-defmt-logging-release = ["userspace-log", "mcu-mbox-service"]
+test-defmt-logging-vdm = ["userspace-log", "mcu-mbox-service", "mctp-vdm-service"]
+test-flash-based-boot = ["flash-boot"]
+test-firmware-activate = ["firmware-update"]
+test-firmware-update-flash = ["flash-boot", "firmware-update"]
+test-firmware-update-streaming = []
+test-firmware-v2 = []
+test-streaming-boot-flash-write-back = ["streaming-boot", "firmware-update"]
+test-mcu-mbox-fips-periodic = ["mcu-mbox-service", "caliptra-mcu-mbox-lib/periodic-fips-self-test"]
+test-mctp-vdm-cmds = ["mctp-vdm-service"]
+test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
+test-caliptra-util-host-validator = ["mcu-mbox-service"]
+test-mcu-mbox-cmds = ["mcu-mbox-service"]
+test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
 test-pldm-discovery = []
 test-pldm-fw-update = []
 test-pldm-fw-update-e2e = []
-test-pldm-streaming-boot = []
-test-streaming-boot-flash-write-back = []
-test-mctp-spdm-attestation = []
-test-mctp-spdm-attestation-pcr-quote = []
-test-mctp-spdm-responder-conformance = []
+test-pldm-streaming-boot = ["streaming-boot"]
+test-caliptra-util-host-spdm-vdm-validator = ["spdm"]
+test-mctp-spdm-attestation = ["spdm"]
+test-mctp-spdm-attestation-pcr-quote = ["spdm"]
+test-mctp-spdm-responder-conformance = ["spdm"]
 # Test-only SPDM SET_CERTIFICATE path. Enables flash-backed certificate
 # installation without production authorization/key-binding.
 test-mctp-spdm-set-certificate = [
+  "spdm",
   "caliptra-mcu-spdm-pal/set-certificate",
   "caliptra-mcu-spdm-stack/set-certificate",
 ]
-test-doe-spdm-tdisp-ide-validator = []
-test-mcu-mbox-fips-periodic = ["caliptra-mcu-mbox-lib/periodic-fips-self-test"]
+test-doe-spdm-responder-conformance = ["spdm", "doe"]
+test-doe-spdm-tdisp-ide-validator = ["spdm", "doe"]
+# --- Test features: pass-through (no cfg in source, host-side only) ---
+test-doe-discovery = []
+test-mctp-ctrl-cmds = []
 active-i3c1 = []

@@ -5,7 +5,7 @@ use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
 use caliptra_mcu_romtime::println;
 use core::cell::Cell;
-use core::fmt::Write;
+
 use kernel::utilities::cells::{MapCell, OptionalCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;

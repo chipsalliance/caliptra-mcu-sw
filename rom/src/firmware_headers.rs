@@ -13,12 +13,7 @@ use crate::{RomEnv, RomParameters};
 #[cfg(feature = "svn-manifest")]
 use caliptra_mcu_error::McuError;
 #[cfg(any(feature = "fw-manifest-dot", feature = "svn-manifest"))]
-use caliptra_mcu_romtime::HexWord;
-#[cfg(any(feature = "fw-manifest-dot", feature = "svn-manifest"))]
-use caliptra_mcu_romtime::McuRomBootStatus;
-#[cfg(any(feature = "fw-manifest-dot", feature = "svn-manifest"))]
-use core::fmt::Write;
-
+use caliptra_mcu_romtime::{HexWord, McuRomBootStatus};
 /// Run all enabled firmware-header processors in order, returning the
 /// final offset (relative to `sram_offset`) at which the firmware entry
 /// point lives.
@@ -139,7 +134,7 @@ fn process_svn_manifest(env: &mut RomEnv, params: &RomParameters, offset: u32) -
         .set_flow_checkpoint(McuRomBootStatus::ComponentSvnManifestProcessingStarted.into());
 
     let limits = SvnLimits {
-        manifest_min_svn_max: one_hot_bits(MCU_COMPONENT_SVN_MANIFEST_MIN_SVN),
+        manifest_min_svn_max: bit_count_bits(MCU_COMPONENT_SVN_MANIFEST_MIN_SVN),
         caliptra_runtime_min_svn_max: crate::caliptra_svn::CALIPTRA_SVN_BITS,
         soc_manifest_min_svn_max: crate::caliptra_svn::CALIPTRA_SVN_BITS,
     };
@@ -215,7 +210,7 @@ fn burn_manifest_min_svn(
 }
 
 /// Validate each mapped per-component entry against its
-/// `SOC_IMAGE_MIN_SVN[i]` slot (one-hot range and rollback). Entries
+/// `SOC_IMAGE_MIN_SVN[i]` slot (bit-count range and rollback). Entries
 /// with an unmapped `component_id` are skipped with a logged warning
 /// (spec'd behaviour). No OTP writes.
 #[cfg(feature = "svn-manifest")]
@@ -234,7 +229,7 @@ fn check_per_component_min_svn(
             continue;
         };
 
-        let slot_max = one_hot_bits(fuse_entry);
+        let slot_max = bit_count_bits(fuse_entry);
         if u32::from(entry.current_svn) > slot_max || u32::from(entry.min_svn) > slot_max {
             caliptra_mcu_romtime::println!("[mcu-rom] SVN entry {} out of range", idx);
             fatal_error(McuError::ROM_COMPONENT_SVN_MANIFEST_ERROR);
@@ -269,7 +264,7 @@ fn burn_per_component_min_svn(
     }
 }
 
-/// Read a one-hot-encoded SVN fuse via the OTP entry's layout. Halts
+/// Read a bit-count encoded SVN fuse via the OTP entry's layout. Halts
 /// the boot on any OTP error.
 #[cfg(feature = "svn-manifest")]
 fn read_fuse(
@@ -316,10 +311,10 @@ fn anti_rollback_enabled(otp: &caliptra_mcu_romtime::Otp) -> Result<bool, McuErr
     Ok(raw.iter().all(|b| *b == 0))
 }
 
-/// Number of effective (one-hot) bits in `entry`'s layout, i.e. the max
-/// representable logical value. Returns 0 for non-one-hot layouts.
+/// Number of effective bit-count bits in `entry`'s layout, i.e. the max
+/// representable logical value. Returns 0 for layouts without bit-count semantics.
 #[cfg(feature = "svn-manifest")]
-fn one_hot_bits(entry: &caliptra_mcu_registers_generated::fuses::FuseEntryInfo) -> u32 {
+fn bit_count_bits(entry: &caliptra_mcu_registers_generated::fuses::FuseEntryInfo) -> u32 {
     use caliptra_mcu_registers_generated::fuses::FuseLayoutType;
     match entry.layout {
         FuseLayoutType::OneHot { bits }

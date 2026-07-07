@@ -25,6 +25,8 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     sram_size: 1024 * 1024,
     sram_properties: MemoryRegionType::MEMORY,
 
+    storage_size: 0x400,
+
     pic_offset: 0x6000_0000,
     pic_properties: MemoryRegionType::MMIO,
 

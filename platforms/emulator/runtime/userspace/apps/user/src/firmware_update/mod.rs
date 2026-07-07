@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 mod config;
+#[cfg(feature = "test-streaming-boot-flash-write-back")]
 pub mod flash_staging;
 
 extern crate alloc;
@@ -7,23 +8,16 @@ use caliptra_mcu_libsyscall_caliptra::dma::DMAMapping;
 use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
+#[allow(unused_imports)]
 use core::fmt::Write;
 
-#[cfg(any(
-    feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash",
-    feature = "test-streaming-boot-flash-write-back",
-))]
+#[cfg(feature = "firmware-update")]
 use crate::EXECUTOR;
 
-#[cfg(any(
-    feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash",
-    feature = "test-streaming-boot-flash-write-back",
-))]
+#[cfg(feature = "firmware-update")]
 use caliptra_mcu_libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 
-#[cfg(feature = "test-firmware-update-flash")]
+#[cfg(feature = "flash-boot")]
 use caliptra_mcu_libapi_caliptra::firmware_update::FirmwareUpdateHooks;
 
 use caliptra_mcu_libtock_platform::ErrorCode;
@@ -40,9 +34,13 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         // Device rebooted due to firmware update, skip firmware update
         return Ok(());
     }
-    crate::console_writeln!(console_writer, "[FW Upd] Start");
+    crate::log_info!(console_writer, "[FW Upd] Start");
     #[cfg(feature = "test-firmware-update-streaming")]
     {
+        use crate::EXECUTOR;
+        use caliptra_mcu_libapi_caliptra::firmware_update::{
+            FirmwareUpdater, PldmFirmwareDeviceParams,
+        };
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
             fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
@@ -60,7 +58,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         updater.start().await?;
     }
 
-    #[cfg(feature = "test-firmware-update-flash")]
+    #[cfg(feature = "flash-boot")]
     {
         use alloc::boxed::Box;
         use core::sync::atomic::{AtomicBool, Ordering};
@@ -78,7 +76,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
 
             async fn pre_mcu_activation(&self) -> Result<(), ErrorCode> {
                 if !self.pre_caliptra_called.load(Ordering::SeqCst) {
-                    crate::console_writeln!(
+                    crate::log_error!(
                         Console::<DefaultSyscalls>::writer(),
                         "[FW Upd] ERROR: pre_caliptra_activation hook not called"
                     );
@@ -127,12 +125,47 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         updater.set_skip_activation(true);
         updater.set_verify_same_image(true);
         updater.start().await?;
-        crate::console_writeln!(console_writer, "[FW Upd] Flash write-back complete");
+        crate::log_info!(console_writer, "[FW Upd] Flash write-back complete");
+        return Ok(());
+    }
+
+    #[cfg(feature = "test-firmware-activate")]
+    {
+        use caliptra_mcu_flash_image::FlashHeader;
+        use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
+        use zerocopy::FromBytes;
+
+        let fw_params = PldmFirmwareDeviceParams {
+            descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
+            fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
+        };
+        let mut staging_memory = dummy_flash::ExternalFlash::new().await?;
+        let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
+        staging_memory
+            .read(0, &mut flash_header)
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+        let (flash_header, _) =
+            FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;
+        let staging_memory: &'static dummy_flash::ExternalFlash =
+            unsafe { core::mem::transmute(&mut staging_memory) };
+
+        flash_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
+
+        let mut updater = FirmwareUpdater::new(
+            staging_memory,
+            &fw_params,
+            dma_mapping,
+            EXECUTOR.get().spawner(),
+            None,
+        );
+
+        updater.update_mcu(&flash_header).await?;
         return Ok(());
     }
 
     // Trigger MCU warm reset to boot into new firmware
-    crate::console_writeln!(console_writer, "[FW Upd] Triggering MCU reset");
+    crate::log_info!(console_writer, "[FW Upd] Triggering MCU reset");
     let mci = MciSyscall::<DefaultSyscalls>::new();
     mci.trigger_warm_reset()?;
 
@@ -145,7 +178,8 @@ fn get_reset_reason() -> Result<u32, ErrorCode> {
     Ok(reason)
 }
 
-#[cfg(feature = "test-firmware-update-streaming")]
+#[cfg(feature = "streaming-boot")]
+#[allow(dead_code)]
 mod external_memory {
     extern crate alloc;
     use alloc::boxed::Box;
@@ -210,7 +244,7 @@ mod external_memory {
             self.dma_syscall.xfer(&transaction).await
         }
 
-        async fn image_valid(&self, img_sz: usize) -> Result<(), ErrorCode> {
+        async fn image_valid(&self, _img_sz: usize) -> Result<(), ErrorCode> {
             Ok(())
         }
 
@@ -227,7 +261,10 @@ mod external_memory {
     }
 }
 
-#[cfg(feature = "test-firmware-update-streaming")]
+#[cfg(any(
+    feature = "test-firmware-update-streaming",
+    feature = "test-firmware-activate"
+))]
 mod dummy_flash {
     extern crate alloc;
     use alloc::boxed::Box;
@@ -279,12 +316,12 @@ mod dummy_flash {
     }
 }
 
-#[cfg(feature = "test-firmware-update-flash")]
+#[cfg(feature = "flash-boot")]
 mod flash_memory {
     extern crate alloc;
     use alloc::boxed::Box;
     use async_trait::async_trait;
-    use caliptra_mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
+    use caliptra_mcu_config::boot::{BootConfigAsync, PartitionStatus};
     use caliptra_mcu_config_emulator::flash::STAGING_PARTITION;
     use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
     use caliptra_mcu_libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
@@ -296,6 +333,7 @@ mod flash_memory {
     use core::fmt::Debug;
 
     use caliptra_mcu_libtock_console::Console;
+    #[allow(unused_imports)]
     use core::fmt::Write;
 
     pub struct ExternalFlash {
@@ -331,10 +369,10 @@ mod flash_memory {
                 .get_partition_from_id(inactive_partition_id)
                 .map_err(|_| ErrorCode::Fail)?;
 
-            crate::console_writeln!(
+            crate::log_info!(
                 Console::<DefaultSyscalls>::writer(),
-                "[FW Upd] Copying image from staging to inactive partition {:?} length {}",
-                inactive_partition_id,
+                "[FW Upd] Copying image from staging to inactive partition {} length {}",
+                crate::Dbg(inactive_partition_id),
                 img_sz
             );
             // Mark inactive partittion as invalid

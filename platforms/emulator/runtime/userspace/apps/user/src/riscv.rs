@@ -5,6 +5,7 @@
 extern crate alloc;
 use caliptra_mcu_libtock::console::Console;
 use caliptra_mcu_libtock::runtime::set_main;
+#[allow(unused_imports)]
 use core::fmt::Write;
 use core::mem::MaybeUninit;
 use embedded_alloc::Heap;
@@ -16,6 +17,7 @@ set_main! {main}
 
 fn main() {
     if cfg!(feature = "test-do-nothing") {
+        #[allow(clippy::empty_loop)]
         loop {}
     }
     // setup the global allocator for futures
@@ -24,7 +26,7 @@ fn main() {
     unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
 
     let mut console_writer = Console::writer();
-    crate::console_writeln!(console_writer, "Hello world! from SPDM main");
+    crate::log_info!(console_writer, "Hello world! from SPDM main");
 
     caliptra_mcu_libtockasync::start_async(crate::start());
 }

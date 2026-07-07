@@ -14,7 +14,6 @@ Abstract:
 
 use crate::flash::flash_drv::{FpgaFlashCtrl, PRIMARY_FLASH_CTRL_BASE, SECONDARY_FLASH_CTRL_BASE};
 use crate::io::{print_to_console, EXITER, FATAL_ERROR_HANDLER, FPGA_WRITER};
-use core::fmt::Write;
 
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));
@@ -269,6 +268,7 @@ pub extern "C" fn rom_entry() -> ! {
             None
         },
         force_i3c_services: cfg!(feature = "test-i3c-services"),
+        dot_recovery_reset_flow: cfg!(feature = "test-dot-recovery-reset-flow"),
         hooks: if cfg!(feature = "test-rom-hooks") {
             Some(&hooks)
         } else {
@@ -314,6 +314,11 @@ pub extern "C" fn rom_entry() -> ! {
         } else {
             &[]
         },
+        mcu_fw_sram_exec_region_size: Some(
+            (MCU_MEMORY_MAP.sram_size - MCU_MEMORY_MAP.storage_size) / 4096
+                - caliptra_mcu_rom_common::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS
+                - 1,
+        ),
         ..Default::default()
     });
 

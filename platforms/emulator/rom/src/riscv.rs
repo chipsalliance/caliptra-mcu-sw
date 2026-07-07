@@ -15,7 +15,6 @@ Abstract:
 #![allow(unused_imports)]
 
 use crate::io::{EMULATOR_EXITER, EMULATOR_WRITER, FATAL_ERROR_HANDLER};
-use core::fmt::Write;
 
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));
@@ -205,7 +204,7 @@ pub extern "C" fn rom_entry() -> ! {
     let axi_user1 = 0xdddd_ddddu32;
     let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
 
-    if cfg!(feature = "test-flash-based-boot") {
+    if cfg!(feature = "use-flash-partition-table") {
         // Initialize the flash controller for testing purposes
 
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
@@ -341,8 +340,8 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
-    } else if cfg!(feature = "hw-2-1") {
-        // Simple flash-based boot for hw-2-1 without partition tables.
+    } else if cfg!(feature = "flash-boot") {
+        // Simple flash-based boot without partition tables.
         // Uses flash image starting at offset 0.
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
 
@@ -443,6 +442,7 @@ pub extern "C" fn rom_entry() -> ! {
                 None
             },
             force_i3c_services: cfg!(feature = "test-i3c-services"),
+            dot_recovery_reset_flow: cfg!(feature = "test-dot-recovery-reset-flow"),
             hooks: if cfg!(feature = "test-rom-hooks") {
                 Some(&hooks)
             } else {
@@ -529,6 +529,11 @@ pub extern "C" fn rom_entry() -> ! {
             } else {
                 &[]
             },
+            mcu_fw_sram_exec_region_size: Some(
+                (MCU_MEMORY_MAP.sram_size - MCU_MEMORY_MAP.storage_size) / 4096
+                    - caliptra_mcu_rom_common::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS
+                    - 1,
+            ),
             ..Default::default()
         });
     }

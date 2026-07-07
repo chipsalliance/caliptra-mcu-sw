@@ -83,7 +83,7 @@ can be reclaimed.
 | Fuse | Logical size | Feature | Notes |
 |---|---|---|---|
 | `dot_initialized` | 1 bit | DOT | Gate flag indicating DOT flow is active for this part |
-| `dot_fuse_array` | 256 bits | DOT | One-hot DOT state counter; supports 128 lock/unlock cycles; more or less can be allocated depending on use cases |
+| `dot_fuse_array` | 256 bits | DOT | Monotonic bit-count DOT state counter; supports 128 lock/unlock cycles; more or less can be allocated depending on use cases |
 | `vendor_recovery_pk_hash` | 384 bits | DOT | Vendor master key for `DOT_OVERRIDE` catastrophic recovery (lives in `VENDOR_SECRET_PROD_PARTITION`). One slot today; integrators that need rotation should add `vendor_recovery_pk_hash_{0..N}` + a `vendor_recovery_pk_hash_valid` bitmask and/or revocation bits |
 | `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | 32 bits (recommended) | MCU SVN anti-rollback | Min SVN for the MCU Component SVN Manifest itself |
 | `SOC_IMAGE_MIN_SVN[0..M]` | 32 bits each (recommended) | MCU SVN anti-rollback | Per-slot SoC image min SVN; `M` is integrator-defined |
@@ -91,7 +91,7 @@ can be reclaimed.
 | `CPTRA_SS_LOCK_HEK_PROD_{0..7}` | 256 bits each | OCP LOCK (2.1+) | 8 HEK seed slots (`CPTRA_SS_LOCK_HEK_PROD_N_RATCHET_SEED`, 32 B each); one active at a time |
 
 The MCU SVN fuse sizes above are the recommended logical widths from
-[`docs/src/svn.md`](svn.md); integrators choose the actual one-hot width and
+[`docs/src/svn.md`](svn.md); integrators choose the actual bit-count width and
 number of `SOC_IMAGE_MIN_SVN` slots based on their release cadence and
 component count.
 
@@ -190,7 +190,8 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   0 or 1, used as the DOT flow gate.
 
 - **`dot_fuse_array`** — MCU internal
-  use only, not written to any register. `OneHot{bits:256}` → count of burned bits, used to track
+  use only, not written to any register. `OneHot{bits:256}` is the current
+  layout name for bit-count encoding: count burned bits to track
   the DOT state counter. Also written (next bit burned) during DOT state transitions.
 
 - **`perma_hek_en`** (2.1+) — MCU internal use only, not written to any register.
@@ -447,14 +448,15 @@ MCU ROM decode, and the final Caliptra `FUSE_PQC_KEY_TYPE` register value.
 
 Unlike the PK hash, this field uses the `OneHotLinearOr` layout for
 fault tolerance. The `OneHotLinearOr { bits: 2, duplication: 3 }`
-layout encodes a logical integer using two stages:
+layout name means bit-count encoding with OR redundancy, not true one-hot
+encoding. It encodes a logical integer using two stages:
 
-1. **OneHot**: the logical value `n` is encoded as `n` consecutive 1-bits: `onehot = (1 << n) - 1`
-2. **LinearOr**: each bit of the OneHot value is replicated `duplication` (3) times in
+1. **Bit-count**: the logical value `n` is encoded as `n` consecutive 1-bits: `bits = (1 << n) - 1`
+2. **LinearOr**: each bit of the bit-count value is replicated `duplication` (3) times in
    consecutive bit positions. The 2 logical bits × 3 replications = 6 physical bits, packed into
    the low 6 bits of the 4-byte field.
 
-| Key type | Logical value | OneHot bits | OTP raw u32 | OTP bytes @ `0x428` |
+| Key type | Logical value | Bit-count pattern | OTP raw u32 | OTP bytes @ `0x428` |
 |---|:---:|:---:|:---:|:---:|
 | MLDSA | 1 | `0b01` | `0x00000007` | `07 00 00 00` |
 | LMS | 2 | `0b11` | `0x0000003F` | `3f 00 00 00` |
@@ -466,7 +468,9 @@ If that is the case, then the duplication and OR reduction in this example can b
 
 ### Example: CPTRA_CORE_PQC_KEY_TYPE_0 (LMS)
 
-We trace `vendor_pqc_key_type_0` provisioned for LMS, i.e., the one-hot encoded value of 0b11 (logical value 2, one-hot encoded as 3), expected by Caliptra core ROM for LMS.
+We trace `vendor_pqc_key_type_0` provisioned for LMS, i.e., the bit-count
+pattern `0b11` (logical value 2, raw encoded value 3), expected by Caliptra
+core ROM for LMS.
 
 #### Layer 1: OTP Raw Bytes
 

@@ -5,6 +5,7 @@
 pub mod caliptra;
 pub mod dma;
 pub mod doe;
+pub mod dpe_handle_store;
 pub mod external_otp;
 pub mod flash;
 pub mod logging;
@@ -14,6 +15,7 @@ pub mod mci;
 pub mod mctp;
 pub mod mcu_mbox;
 pub mod otp;
+pub mod soft_pcr_store;
 pub mod system;
 
 #[cfg(target_arch = "riscv32")]

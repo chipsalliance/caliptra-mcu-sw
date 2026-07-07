@@ -9,9 +9,10 @@ use caliptra_mcu_capsules_runtime::mctp::base_protocol::MessageType;
 use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
 use caliptra_mcu_components::mctp_mux_component_static;
 use caliptra_mcu_components::{
-    doe_component_static, external_otp_component_static, flash_partition_component_static,
-    instantiate_flash_partitions, instantiate_logging_flash, mailbox_component_static,
-    mbox_sram_component_static, mctp_driver_component_static, mcu_mbox_component_static,
+    doe_component_static, dpe_handle_store_component_static, external_otp_component_static,
+    flash_partition_component_static, instantiate_flash_partitions, instantiate_logging_flash,
+    mailbox_component_static, mbox_sram_component_static, mctp_driver_component_static,
+    mcu_mbox_component_static, soft_pcr_store_component_static,
 };
 #[cfg(feature = "crash-log")]
 use caliptra_mcu_config_emulator::flash::CRASH_LOG_PARTITION;
@@ -72,6 +73,10 @@ extern "C" {
     static _ssram: u8;
     /// The end of the kernel / app RAM (Included only for kernel PMP)
     static _esram: u8;
+    /// The start of the persistent storage region at the end of SRAM
+    static _sstorage: u8;
+    /// The end of the persistent storage region at the end of SRAM
+    static _estorage: u8;
 
     pub(crate) static _pic_vector_table: u8;
 }
@@ -160,6 +165,8 @@ struct VeeR {
     >,
     otp: &'static caliptra_mcu_capsules_runtime::otp::Otp,
     external_otp: &'static caliptra_mcu_capsules_runtime::external_otp::ExternalOtpCapsule<'static>,
+    dpe_handle_store: &'static caliptra_mcu_capsules_runtime::dpe_handle_store::DpeHandleStore,
+    pcr_store: &'static caliptra_mcu_capsules_runtime::soft_pcr_store::SoftPcrStore,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>,
 }
 
@@ -230,6 +237,10 @@ impl SyscallDriverLookup for VeeR {
             caliptra_mcu_capsules_runtime::external_otp::EXTERNAL_OTP_DRIVER_NUM => {
                 f(Some(self.external_otp))
             }
+            caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM => {
+                f(Some(self.dpe_handle_store))
+            }
+            caliptra_mcu_capsules_runtime::soft_pcr_store::DRIVER_NUM => f(Some(self.pcr_store)),
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
 
             _ => f(None),
@@ -336,7 +347,7 @@ pub unsafe fn main() {
     // protection.
 
     // Define platform-specific memory regions
-    let mut platform_regions = ArrayVec::<PlatformRegion, 9>::new();
+    let mut platform_regions = ArrayVec::<PlatformRegion, 10>::new();
 
     // Kernel text region (read + execute)
     platform_regions.push(PlatformRegion {
@@ -360,16 +371,32 @@ pub unsafe fn main() {
         execute: false,
     });
 
-    // Data region (SRAM)
+    // Data region (SRAM): kernel and app RAM, not including the persistent
+    // storage area at the end of SRAM (covered separately below).
     platform_regions.push(PlatformRegion {
         start_addr: addr_of!(_ssram),
-        size: (addr_of!(_esram) as usize + 0x80) - addr_of!(_ssram) as usize,
+        size: addr_of!(_esram) as usize - addr_of!(_ssram) as usize,
         is_mmio: false,
         user_accessible: false,
         read: true,
         write: true,
         execute: false,
     });
+
+    // Persistent storage region at the end of SRAM (_sstorage.._estorage).
+    // This is a kernel-only RW region, separate from the app RAM above so
+    // the PMP explicitly covers this range even when storage_size > 0x80.
+    if addr_of!(_sstorage) as usize != addr_of!(_estorage) as usize {
+        platform_regions.push(PlatformRegion {
+            start_addr: addr_of!(_sstorage),
+            size: addr_of!(_estorage) as usize - addr_of!(_sstorage) as usize,
+            is_mmio: false,
+            user_accessible: false,
+            read: true,
+            write: true,
+            execute: false,
+        });
+    }
 
     // Add DCCM region if not being used for stack
     // Check if DCCM is available and not used for stack
@@ -825,6 +852,40 @@ pub unsafe fn main() {
     )
     .finalize(external_otp_component_static!());
 
+    // DPE Handle Store + Software PCR Store: both backed by the persistent storage
+    // SRAM reservation (_sstorage.._estorage).  The region is split as:
+    //   [_sstorage .. _sstorage + DPE_STORE_SIZE)  → DPE Handle Store
+    //   [_sstorage + DPE_STORE_SIZE .. _estorage)   → Software PCR Store
+    // When built outside the firmware-bundler (e.g. cargo check), _sstorage ==
+    // _estorage == 0 so both slices are empty, which is safe.
+    // Storage layout constants: board owns the split, capsules derive capacity
+    // from the slice length they receive.
+    const DPE_STORE_SIZE: usize = 0x400; // 1 KiB → DPE Handle Store
+    const PCR_STORE_SIZE: usize = 0xC00; // 3 KiB → Software PCR Store
+    let (dpe_handle_store, pcr_store) = {
+        let start = addr_of!(_sstorage) as *mut u8;
+        let end = addr_of!(_estorage) as usize;
+        let total_len = end.saturating_sub(start as usize);
+        let dpe_len = DPE_STORE_SIZE.min(total_len);
+        let pcr_len = PCR_STORE_SIZE.min(total_len.saturating_sub(dpe_len));
+        let full: &'static mut [u8] = core::slice::from_raw_parts_mut(start, total_len);
+        let (dpe_sram, rest) = full.split_at_mut(dpe_len);
+        let pcr_sram = &mut rest[..pcr_len];
+        let dpe = caliptra_mcu_components::dpe_handle_store::DpeHandleStoreComponent::new(
+            board_kernel,
+            caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM,
+            dpe_sram,
+        )
+        .finalize(dpe_handle_store_component_static!());
+        let pcr = caliptra_mcu_components::soft_pcr_store::SoftPcrStoreComponent::new(
+            board_kernel,
+            caliptra_mcu_capsules_runtime::soft_pcr_store::DRIVER_NUM,
+            pcr_sram,
+        )
+        .finalize(soft_pcr_store_component_static!());
+        (dpe, pcr)
+    };
+
     // MCU mailbox0 capsule
     let mcu_mbox0 = caliptra_mcu_components::mcu_mbox::McuMboxComponent::new(
         board_kernel,
@@ -889,6 +950,8 @@ pub unsafe fn main() {
             mcu_mbox1_staging_sram,
             otp,
             external_otp,
+            dpe_handle_store,
+            pcr_store,
             system,
         }
     );

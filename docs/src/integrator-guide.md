@@ -39,8 +39,10 @@ for the current fuse count.
 The `dot_fuse_array` field in the vendor non-secret OTP partition tracks Device
 Ownership Transfer (DOT) state transitions. Lock, unlock, disable, and override
 each burn one bit; key rotation burns two bits to preserve lock/unlock parity.
-The array uses a `OneHot` encoding, and the total number of bits determines the
-maximum number of ownership state transitions over the lifetime of the part.
+The array uses the current MCU `OneHot` layout name for a monotonic bit-count
+counter. The layout name does not mean true one-hot encoding. The total number of bits
+determines the maximum number of ownership state transitions over the lifetime
+of the part.
 
 A full ownership transfer cycle (install → lock → unlock) consumes **2 fuse
 bits**: one for the lock transition (EVEN → ODD) and one for the unlock
@@ -126,12 +128,12 @@ service mode.
 | Fuse field | Partition | Size | Encoding | Notes |
 |---|---|:---:|---|---|
 | `dot_initialized` | `VENDOR_NON_SECRET_PROD_PARTITION` | 1 bit (3 bytes with 3× OR duplication) | `LinearOr` | Gates the DOT flow. |
-| `dot_fuse_array` | `VENDOR_NON_SECRET_PROD_PARTITION` | 256 bits (32 bytes) | `OneHot` | State counter. Scales linearly with desired lock/unlock cycles. |
+| `dot_fuse_array` | `VENDOR_NON_SECRET_PROD_PARTITION` | 256 bits (32 bytes) | `OneHot` (bit-count counter) | State counter. Scales linearly with desired lock/unlock cycles. |
 | `vendor_recovery_pk_hash` | `VENDOR_NON_SECRET_PROD_PARTITION` | 384 bits (48 bytes) | `Single` | Optional. For `DOT_OVERRIDE` catastrophic recovery. |
 
 If OTP space is constrained, the `dot_fuse_array` can be made smaller — the
 minimum useful size is 2 bits, but this only allows a single lock/unlock cycle
-with no margin. If redundant encoding (`OneHotLinearOr`) is used,
+with no margin. If redundant bit-count encoding (`OneHotLinearOr`) is used,
 multiply the raw bit count by the duplication factor (e.g., 3×).
 
 A different partition can also be used if there is one specifically allocated in
@@ -528,3 +530,77 @@ cargo xtask rom-build --platform emulator --features test-rom-hooks
 The integration test `test_rom_hooks_fire_in_order` builds this ROM and
 asserts that each expected hook marker appears exactly once in the
 expected order.
+
+## MCU SRAM Partitioning
+
+The MCU's SRAM is divided into several regions by the firmware-bundler at
+build time.  One of those regions — at the **top** of SRAM — is the
+**persistent storage area**, reserved for attestation data that must
+survive across hitless firmware updates and warm resets.
+
+### Layout overview
+
+For a platform with `sram_size` total SRAM, the firmware-bundler splits
+the address space as follows:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Instruction region (ITCM)                                  │
+│  · Kernel .text                                             │
+│  · Application .text                                        │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│  Data region (DTCM)                                         │
+│  · Kernel .bss / .data / stack                              │
+│  · Application heap + grant space                           │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤  ← _sstorage
+│  Persistent storage  (storage_size)                         │
+│  · DPE Handle Store  (first DPE_STORE_SIZE bytes)           │
+│  · Software PCR Store (remainder)                           │
+└─────────────────────────────────────────────────────────────┘  ← _estorage
+```
+
+The linker symbols `_sstorage` and `_estorage` mark the boundaries of
+the persistent storage region and are generated automatically by the
+firmware-bundler.  The kernel reads them at boot to initialise the DPE
+Handle Store and Software PCR Store capsules.
+
+The ITCM / DTCM split point is calculated by the firmware-bundler
+(roughly half of total SRAM) and varies by build profile.
+
+### Configuring `storage_size` for your platform
+
+`storage_size` is set in the firmware-bundler manifest for your
+platform.  For the reference emulator builds the manifests are:
+
+| File | Profile | SRAM size |
+|------|---------|-----------|
+| `firmware-bundler/reference/emulator/user-app.toml` | release (shipping) | 512 KiB |
+| `firmware-bundler/reference/emulator/user-app-devel.toml` | devel / debug | 1 MiB |
+| `firmware-bundler/reference/fpga/user-app.toml` | FPGA | platform-specific |
+
+Open the manifest for your target and adjust `storage_size`:
+
+```toml
+[platform]
+# ...
+
+# storage_size: reserve space at the top of SRAM for persistent
+# attestation data (DPE Handle Store + Software PCR Store).
+# Must be a multiple of 4 KiB;
+```
+
+> **Note**: `storage_size` is rounded up to a 4 KiB boundary by the
+> firmware-bundler so that the value remains consistent with the VeeR
+> `mcu_fw_sram_exec_region_size` parameter, which is programmed in
+> 4 KiB units.
+
+### PMP protection
+
+The persistent storage region is mapped as a kernel-only read/write PMP
+region, separate from the application RAM region.  Userspace processes
+cannot access it directly; they interact with the stored data only
+through the kernel capsule syscall interfaces
+(`DpeHandleStore` driver `0x8000_0020` and `PcrStore` driver `0x8000_0021`).
+

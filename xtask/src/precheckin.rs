@@ -20,6 +20,7 @@ pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
     )?;
     caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
         platform: Some("fpga"),
+        no_default_features: true,
         ..Default::default()
     })?;
 
@@ -31,6 +32,7 @@ pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
     caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
         features: Some("release"),
         profile: Some("release"),
+        no_default_features: true,
         ..Default::default()
     })?;
     // FPGA does not have a `*-devel.toml` manifest variant (HW-fixed SRAM);
@@ -41,6 +43,7 @@ pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
         platform: Some("fpga"),
         features: Some("release"),
         profile: Some("release"),
+        no_default_features: true,
         ..Default::default()
     })?;
 

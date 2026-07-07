@@ -21,7 +21,7 @@ use crate::{
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_romtime::{McuBootMilestones, McuRomBootStatus};
-use core::{fmt::Write, ops::Deref};
+use core::ops::Deref;
 
 pub struct WarmBoot {}
 
