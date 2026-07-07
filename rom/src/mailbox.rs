@@ -73,11 +73,15 @@ fn u32_byte_sum(data: &[u32]) -> u32 {
         .fold(0u32, |acc, &w| acc.wrapping_add(word_byte_sum(w)))
 }
 
-/// Interpret a `[u8; CMB_SHA_CONTEXT_SIZE]` as `&[u32; CTX_DWORDS]`.
-fn ctx_as_u32(ctx: &[u8; CMB_SHA_CONTEXT_SIZE]) -> &[u32; CTX_DWORDS] {
-    // Safety: CMB_SHA_CONTEXT_SIZE is a multiple of 4 and the array is
-    // stack-allocated with natural alignment.
-    unsafe { &*(ctx.as_ptr() as *const [u32; CTX_DWORDS]) }
+/// Convert a `[u8; CMB_SHA_CONTEXT_SIZE]` to `[u32; CTX_DWORDS]`.
+fn ctx_as_u32(ctx: &[u8; CMB_SHA_CONTEXT_SIZE]) -> [u32; CTX_DWORDS] {
+    let mut ctx_u32 = [0u32; CTX_DWORDS];
+
+    for (dst, chunk) in ctx_u32.iter_mut().zip(ctx.chunks_exact(4)) {
+        *dst = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+    }
+
+    ctx_u32
 }
 
 /// Compute SHA-384 of `data` (a u32 slice representing the ROM) using
@@ -166,7 +170,7 @@ fn cm_sha_update(
     let ctx = ctx_as_u32(sha_context);
 
     let mut sum = word_byte_sum(cmd);
-    sum = sum.wrapping_add(u32_byte_sum(ctx));
+    sum = sum.wrapping_add(u32_byte_sum(&ctx));
     sum = sum.wrapping_add(word_byte_sum(input_size));
     sum = sum.wrapping_add(u32_byte_sum(chunk));
     let checksum = 0u32.wrapping_sub(sum);
@@ -215,7 +219,7 @@ fn cm_sha_final(
     let ctx = ctx_as_u32(&sha_context);
 
     let mut sum = word_byte_sum(cmd);
-    sum = sum.wrapping_add(u32_byte_sum(ctx));
+    sum = sum.wrapping_add(u32_byte_sum(&ctx));
     sum = sum.wrapping_add(word_byte_sum(input_size));
     sum = sum.wrapping_add(u32_byte_sum(remaining));
     let checksum = 0u32.wrapping_sub(sum);
