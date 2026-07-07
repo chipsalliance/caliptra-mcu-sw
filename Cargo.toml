@@ -34,6 +34,7 @@ members = [
     "hw/model/test-fw/lc-ctrl",
     "hw/model/test-fw/otp-scramble-check",
     "coverage",
+    "hw/model/c-binding",
     "hw/model/test-fw/sw-digest-lock",
     "platforms/common",
     "platforms/emulator/config",
@@ -258,6 +259,7 @@ caliptra-mcu-firmware-bundler = { path = "firmware-bundler" }
 caliptra-mcu-fuses-generator = { path = "registers/fuses" }
 caliptra-mcu-coverage = { path = "coverage" }
 caliptra-mcu-hw-model = { path = "hw/model" }
+caliptra-mcu-hw-model-c-binding = { path = "hw/model/c-binding" }
 caliptra-mcu-test-fw-exception-handler = { path = "hw/model/test-fw/exception-handler" }
 caliptra-mcu-test-fw-hitless-update-flow = { path = "hw/model/test-fw/hitless-update-flow" }
 caliptra-mcu-test-fw-mailbox-responder = { path = "hw/model/test-fw/mailbox-responder" }
@@ -336,6 +338,7 @@ caliptra-emu-derive = { git = "https://github.com/chipsalliance/caliptra-sw", re
 caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5" }
 caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5" }
 caliptra-error = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5", default-features = false }
+caliptra-cfi-lib = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5" }
 caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5" }
 caliptra-hw-model-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5" }
 caliptra-image-crypto = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "fb13ba3a86a5eca0b26e134e64c5197bdfe7d0c5", default-features = false, features = ["rustcrypto"] }
@@ -368,6 +371,7 @@ size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", pa
 # caliptra-emu-periph = { path = "../caliptra-sw/sw-emulator/lib/periph" }
 # caliptra-emu-types = { path = "../caliptra-sw/sw-emulator/lib/types" }
 # caliptra-error = { path = "../caliptra-sw/error", default-features = false }
+# caliptra-cfi-lib = { path = "../caliptra-sw/cfi/lib" }
 # caliptra-hw-model = { path = "../caliptra-sw/hw-model" }
 # caliptra-hw-model-types = { path = "../caliptra-sw/hw-model/types" }
 # caliptra-image-crypto = { path = "../caliptra-sw/image/crypto", default-features = false, features = ["rustcrypto"] }
