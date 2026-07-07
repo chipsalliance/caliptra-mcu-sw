@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-//! DPE primitives over Caliptra's `INVOKE_DPE` mailbox command.
+//! DPE primitives over Caliptra's `INVOKE_DPE` mailbox command, plus
+//! the dedicated top-level `DPE_TAG_TCI` tagging command.
 //!
 //! Mirrors the on-wire layouts from
 //! `caliptra-dpe/dpe::commands` (request) and
@@ -15,8 +16,9 @@ use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::wire::{
-    calc_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_INVOKE_DPE, DPE_CMD_GET_CERTIFICATE_CHAIN,
-    DPE_CMD_SIGN, DPE_COMMAND_MAGIC, DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC,
+    calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_TAG_TCI,
+    CMD_INVOKE_DPE, DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN,
+    DPE_COMMAND_MAGIC, DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
 };
 use crate::ApiAlloc;
 
@@ -121,6 +123,36 @@ struct DpeResponseHdr {
     profile: U32,
 }
 
+/// `dpe::commands::RotateCtxCmd`.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct RotateCtxCmd {
+    handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    flags: U32,
+}
+
+/// `dpe::response::NewHandleResp` — the rotated context handle follows
+/// the response header.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct NewHandleRespBody {
+    _resp_hdr: [u8; 12],
+    handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+}
+
+/// Caliptra `TagTciReq`: `chksum(4) + handle(16) + tag(4)`. The
+/// `DPE_TAG_TCI` response carries no command-specific output.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct TagTciReq {
+    chksum: U32,
+    handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    tag: U32,
+}
+
+const TAG_TCI_REQ_LEN: usize = size_of::<TagTciReq>();
+const _: () = assert!(TAG_TCI_REQ_LEN == 4 + DPE_CONTEXT_HANDLE_SIZE + 4);
+
 const GET_CERT_CHAIN_REQ_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<GetCertChainCmd>();
 const GET_CERT_CHAIN_DPE_PAYLOAD_LEN: u32 =
@@ -147,6 +179,11 @@ const CERTIFY_KEY_CHUNKS_REQ_FORMAT_OFF: usize =
 const CERTIFY_KEY_CHUNKS_REQ_LABEL_OFF: usize = CERTIFY_KEY_CHUNKS_REQ_FORMAT_OFF + 4;
 const CERTIFY_KEY_CHUNKS_RESP_CHUNK_LEN_OFF: usize = 4 + 4 + DPE_CONTEXT_HANDLE_SIZE;
 
+const ROTATE_CTX_REQ_LEN: usize =
+    size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<RotateCtxCmd>();
+const ROTATE_CTX_DPE_PAYLOAD_LEN: u32 =
+    (size_of::<DpeCommandHdr>() + size_of::<RotateCtxCmd>()) as u32;
+
 const _: () = assert!(size_of::<InvokeDpeReqPrefix>() == 8);
 const _: () = assert!(size_of::<DpeCommandHdr>() == 12);
 const _: () = assert!(size_of::<GetCertChainCmd>() == 8);
@@ -161,6 +198,9 @@ const _: () =
 const _: () = assert!(CERTIFY_KEY_P384_RESP_PREFIX_LEN == 128);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_REQ_LEN == 92);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_RESP_INFO_LEN == 32);
+const _: () = assert!(size_of::<RotateCtxCmd>() == DPE_CONTEXT_HANDLE_SIZE + 4);
+const _: () = assert!(size_of::<NewHandleRespBody>() == 12 + DPE_CONTEXT_HANDLE_SIZE);
+const _: () = assert!(ROTATE_CTX_REQ_LEN == 8 + 12 + 20);
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -217,7 +257,7 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     let rsp_max =
         size_of::<InvokeDpeRespPrefix>() + size_of::<DpeResponseHdr>() + 4 + DPE_MAX_CHUNK_SIZE;
     let mut rsp = alloc.alloc(rsp_max)?;
-    let rsp_len = crate::wire::mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
+    let rsp_len = mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
 
     let outer_prefix_len = size_of::<InvokeDpeRespPrefix>();
     let dpe_hdr_off = outer_prefix_len;
@@ -564,7 +604,7 @@ pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
 
     let rsp_max = size_of::<InvokeDpeRespPrefix>() + size_of::<SignP384RespBody>();
     let mut rsp = alloc.alloc(rsp_max)?;
-    let rsp_len = crate::wire::mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
+    let rsp_len = mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
 
     let outer_prefix_len = size_of::<InvokeDpeRespPrefix>();
     let resp_body_off = outer_prefix_len;
@@ -589,4 +629,116 @@ pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
     let (sig_s, _) = rest.split_first_chunk_mut::<48>().ok_or(INVARIANT)?;
     *sig_s = sign_resp.sig_s;
     Ok(DPE_P384_SIGNATURE_SIZE)
+}
+
+/// Invoke DPE `RotateContextHandle` for the default context handle,
+/// returning the new (rotated) 16-byte context handle.
+///
+/// The request targets the default (all-zero) DPE context handle with
+/// empty flags, which asks DPE to rotate that context to a freshly
+/// generated, non-default handle and return it. MCU Runtime boot
+/// initialization uses this to obtain a stable MCU-held handle for the
+/// MCU Runtime context.
+#[inline(never)]
+pub async fn dpe_rotate_context_default<A: ApiAlloc>(
+    alloc: &A,
+) -> McuResult<[u8; DPE_CONTEXT_HANDLE_SIZE]> {
+    // Build request: prefix + DPE command header + RotateCtx body.
+    let mut req = alloc.alloc(ROTATE_CTX_REQ_LEN)?;
+    req.fill(0);
+    {
+        let prefix =
+            InvokeDpeReqPrefix::mut_from_bytes(&mut req[..size_of::<InvokeDpeReqPrefix>()])
+                .map_err(|_| INVARIANT)?;
+        prefix.data_size = U32::new(ROTATE_CTX_DPE_PAYLOAD_LEN);
+    }
+    let mut cur = size_of::<InvokeDpeReqPrefix>();
+    {
+        let hdr = DpeCommandHdr::mut_from_bytes(&mut req[cur..cur + size_of::<DpeCommandHdr>()])
+            .map_err(|_| INVARIANT)?;
+        hdr.magic = U32::new(DPE_COMMAND_MAGIC);
+        hdr.cmd_id = U32::new(DPE_CMD_ROTATE_CONTEXT_HANDLE);
+        hdr.profile = U32::new(DPE_PROFILE_P384_SHA384);
+    }
+    cur += size_of::<DpeCommandHdr>();
+    {
+        // `handle` stays the default (all-zero) context handle from the zeroed
+        // request buffer; empty `flags` request a freshly generated handle.
+        let cmd = RotateCtxCmd::mut_from_bytes(&mut req[cur..cur + size_of::<RotateCtxCmd>()])
+            .map_err(|_| INVARIANT)?;
+        cmd.flags = U32::new(0);
+    }
+    let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
+    *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
+
+    let rsp_max = size_of::<InvokeDpeRespPrefix>() + size_of::<NewHandleRespBody>();
+    let mut rsp = alloc.alloc(rsp_max)?;
+    let rsp_len = mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
+
+    let resp_body_off = size_of::<InvokeDpeRespPrefix>();
+    if rsp_len < resp_body_off + size_of::<NewHandleRespBody>() {
+        return Err(INTERNAL_BUG);
+    }
+    let dpe_hdr = DpeResponseHdr::ref_from_bytes(
+        &rsp[resp_body_off..resp_body_off + size_of::<DpeResponseHdr>()],
+    )
+    .map_err(|_| INTERNAL_BUG)?;
+    if dpe_hdr.magic.get() != DPE_RESPONSE_MAGIC || dpe_hdr.status.get() != 0 {
+        return Err(INTERNAL_BUG);
+    }
+    let body = NewHandleRespBody::ref_from_bytes(
+        &rsp[resp_body_off..resp_body_off + size_of::<NewHandleRespBody>()],
+    )
+    .map_err(|_| INTERNAL_BUG)?;
+    Ok(body.handle)
+}
+
+/// Tag the DPE context identified by `handle` with `tag` via the
+/// top-level Caliptra `DPE_TAG_TCI` mailbox command.
+///
+/// Unlike the other DPE helpers here, `DPE_TAG_TCI` is a dedicated
+/// Caliptra mailbox command rather than an `INVOKE_DPE` sub-command.
+/// MCU Runtime boot initialization tags the rotated MCU Runtime
+/// context so its TCI can later be read back by tag.
+#[inline(never)]
+pub async fn dpe_tag_tci<A: ApiAlloc>(
+    alloc: &A,
+    handle: &[u8; DPE_CONTEXT_HANDLE_SIZE],
+    tag: u32,
+) -> McuResult<()> {
+    let mut req = alloc.alloc(TAG_TCI_REQ_LEN)?;
+    req.fill(0);
+    {
+        let cmd = TagTciReq::mut_from_bytes(&mut req[..TAG_TCI_REQ_LEN]).map_err(|_| INVARIANT)?;
+        cmd.handle = *handle;
+        cmd.tag = U32::new(tag);
+    }
+    populate_checksum(CMD_DPE_TAG_TCI, &mut req)?;
+
+    let mut rsp = alloc.alloc(MBOX_RESP_HEADER_SIZE)?;
+    let rsp_len = mbox_execute(CMD_DPE_TAG_TCI, &req, &mut rsp).await?;
+    if rsp_len < MBOX_RESP_HEADER_SIZE {
+        return Err(INTERNAL_BUG);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rotate_ctx_wire_layout() {
+        assert_eq!(DPE_CMD_ROTATE_CONTEXT_HANDLE, 0x0e);
+        assert_eq!(size_of::<RotateCtxCmd>(), DPE_CONTEXT_HANDLE_SIZE + 4);
+        assert_eq!(size_of::<NewHandleRespBody>(), 12 + DPE_CONTEXT_HANDLE_SIZE);
+        assert_eq!(ROTATE_CTX_REQ_LEN, 8 + 12 + 20);
+        assert_eq!(ROTATE_CTX_DPE_PAYLOAD_LEN, (12 + 20) as u32);
+    }
+
+    #[test]
+    fn tag_tci_wire_layout() {
+        assert_eq!(CMD_DPE_TAG_TCI, 0x5451_4754);
+        assert_eq!(TAG_TCI_REQ_LEN, 4 + DPE_CONTEXT_HANDLE_SIZE + 4);
+    }
 }

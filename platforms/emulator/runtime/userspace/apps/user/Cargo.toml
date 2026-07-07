@@ -73,6 +73,11 @@ streaming-boot = []
 flash-boot = []
 firmware-update = []
 mcu-mbox-service = []
+# Measurement boot init (off by default). Runs DPE Handle Storage / Software PCR
+# Storage cold-boot and hitless-update initialization. Cold boot rotates MCU-RT
+# off the default DPE handle, so keep this off until the SPDM evidence path is
+# rewired to track the rotated handle.
+measurement-boot-init = []
 mctp-vdm-service = []
 debug = []
 hw-2-1 = []

@@ -1744,6 +1744,13 @@ dependencies = [
 [[package]]
 name = "caliptra-mcu-measurement-api"
 version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-runtime-userspace-error",
+ "mcu-caliptra-api-lite",
+ "sha2",
+]
 
 [[package]]
 name = "caliptra-mcu-otp-digest"

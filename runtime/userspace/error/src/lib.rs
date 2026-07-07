@@ -140,6 +140,9 @@ pub mod domain {
     /// MCU↔Caliptra mailbox protocol (`mcu-mbox-lib`).
     pub const MAILBOX: u8 = 0x06;
 
+    /// Attestation / measurement API (`caliptra-mcu-measurement-api`).
+    pub const ATTESTATION: u8 = 0x07;
+
     /// Memory / allocator failures (singleton — any allocator may
     /// produce these, but the meaning never varies).
     pub const MEMORY: u8 = 0x10;

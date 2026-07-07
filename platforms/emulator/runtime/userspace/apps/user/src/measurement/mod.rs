@@ -2,6 +2,15 @@
 
 mod integrator_manifest;
 
+// Boot initialization is gated behind `measurement-boot-init` (off by default)
+// until the SPDM evidence path is rewired to track the rotated MCU DPE handle;
+// see [`boot`] for the rationale.
+#[cfg(feature = "measurement-boot-init")]
+mod boot;
+
+#[cfg(feature = "measurement-boot-init")]
+pub(crate) use boot::boot_init;
+
 #[allow(dead_code)]
 pub(crate) fn attestation_manifest_bytes() -> &'static [u8] {
     integrator_manifest::ATTESTATION_MANIFEST_BYTES

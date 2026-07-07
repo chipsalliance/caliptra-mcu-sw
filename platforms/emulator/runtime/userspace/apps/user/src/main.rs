@@ -100,6 +100,13 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
+    // Initialize measurement state before spawning any task that could consume
+    // it (image loading, firmware update, SPDM/evidence, MCU mailbox). Gated
+    // behind `measurement-boot-init` (off by default) until the SPDM evidence
+    // path is rewired to track the rotated MCU DPE handle; see `measurement::boot`.
+    #[cfg(feature = "measurement-boot-init")]
+    measurement::boot_init().await;
+
     #[cfg(feature = "spdm")]
     spdm::spawn_spdm_tasks(&EXECUTOR.get().spawner());
 
