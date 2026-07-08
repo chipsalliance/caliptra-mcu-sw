@@ -4,6 +4,14 @@ This document describes the MCU Runtime measurement API used to collect, store, 
 
 The measurement API provides a single userspace interface for image loading, firmware update, and OCP EAT Evidence generation. Callers do not need to know whether a component's claims are represented by Caliptra DPE state or by the Software PCR Storage capsule.
 
+This API is internal to MCU Runtime tasks. Requester-facing signed-Evidence retrieval is provided through transport-specific interfaces. The requester boundary differs by transport:
+
+* BMC/pRoT style requesters use SPDM over MCTP.
+* PCIe DOE requesters, such as confidential-compute PCIe devices, use SPDM over DOE.
+* SoC-local requesters, such as an AP OS or TEE, can use the MCU mailbox path once defined.
+
+Those requester-facing transport APIs are outside the scope of this document.
+
 ![Measurement API surface](images/attestation_measurement_api.svg)
 
 ## API entry points
@@ -24,9 +32,9 @@ The Tock capsule syscall drivers and reserved SRAM layout used by these APIs are
 
 The Measurement API uses three inputs: integrator configuration for component classification and target selection, SoC component image metadata for authorization/loading, and caller-provided image metadata for initial image load or component update.
 
-### Firmware identifier source
+### Firmware id source
 
-`GET_IMAGE_INFO(fw_id)` is a lookup by firmware identifier; it does not enumerate which images should be loaded.
+`GET_IMAGE_INFO(fw_id)` looks up the SoC Manifest Image Metadata Entry for the firmware id of the image. It does not enumerate which images should be loaded.
 
 The caller gets `fw_id` from the flow it owns:
 
@@ -37,6 +45,8 @@ The caller gets `fw_id` from the flow it owns:
 | OCP EAT encoder | Does not need to know the `fw_id` list. It asks the Measurement API to encode configured measurement claims into the EAT payload buffer. SPDM is one transport path that can carry the resulting Evidence. |
 
 The `fw_id` values used by these flows must match the integrator static attestation configuration and the SoC component image metadata returned by `GET_IMAGE_INFO(fw_id)`. A configured component is a component whose `fw_id` is explicitly listed in the integrator static attestation configuration. The Measurement API must fail unknown or unsupported `fw_id` values explicitly.
+
+In this document, `fw_id` represents the `fw_id` field in the SoC Manifest image metadata.
 
 ### Integrator static attestation configuration
 
@@ -50,6 +60,8 @@ This is static configuration provided by the integrator in the MCU Runtime image
 | `inventory_evidence` | Marks whether the component is emitted as OCP EAT inventory evidence. |
 
 The `measurement_class`, `attestation_target`, and `inventory_evidence` decisions come from this configuration. They are not supplied by callers and are not derived from `GET_IMAGE_INFO(fw_id)`.
+
+The SoC Manifest image metadata has unique `fw_id` values. The Attestation Manifest entries under the MCU node must also have unique `fw_id` values and match the SoC Manifest image entries, excluding MCU RT itself. MCU Runtime must fail attestation policy validation if duplicate entries are present or if the expected `fw_id` set does not match.
 
 `measurement_boot_init()` computes `attestation_policy_digest` over a canonical representation of this policy. Cold boot stores the digest in the DPE Handle Storage metadata header. On hitless update, the Measurement API recomputes the digest from the authenticated MCU Runtime image and compares it with the stored value before using preserved DPE/PCR state. A mismatch puts MCU Runtime in an attestation error state: normal attestation Evidence and component measurement-state updates are disabled until cold boot reinitializes measurement state.
 
@@ -215,6 +227,8 @@ For inventory Evidence generation, the OCP EAT encoder provides a buffer and cal
 | Measurement API | Encodes the concise evidence triple array for configured SoC measurements. |
 | OCP EAT encoder | Embeds the encoded concise evidence into the OCP EAT claims payload and owns EAT-level fields such as nonce, issuer, profile, debug status, and `cti`. |
 | COSE signing path | Wraps the OCP EAT payload in `COSE_Sign1` and asks Caliptra Core to sign the corresponding bytes using the configured AK. |
+
+EAT target-environment claims can carry component SVN and version values recorded by the Measurement API. The exact policy for which SVN value is reported, such as current SVN, minimum SVN since cold boot, or fuse-backed minimum SVN, is still to be finalized.
 
 The API must fail cleanly on insufficient buffer space, unknown configuration, or missing measurement state. It must not emit truncated Evidence or silently substitute zero digests.
 
