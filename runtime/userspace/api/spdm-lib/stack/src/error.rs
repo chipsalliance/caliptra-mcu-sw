@@ -14,7 +14,7 @@
 //! via [`From<McuErrorCode> for SpdmError`] — `?` does the lifting at
 //! every layer boundary, no `.map_err(...)` ever needed.
 
-use caliptra_mcu_spdm_errors::{as_spdm_wire, is_mctp_error, is_vdm_no_response};
+use caliptra_mcu_spdm_errors::{as_spdm_wire, is_mctp_error, is_pal_error, is_vdm_no_response};
 use mcu_error::{domain, McuErrorCode};
 
 /// SPDM-level error suitable for emission as an `ERROR` PDU.
@@ -105,6 +105,12 @@ impl From<McuErrorCode> for SpdmError {
         // Transport framing failure → caller sent us something malformed.
         if is_mctp_error(e) {
             return Self::new(SPDM_INVALID_REQUEST.spec_byte);
+        }
+        if is_pal_error(e) {
+            return match e.code() {
+                0x0001 => SPDM_REQUEST_RESYNCH,
+                _ => SPDM_UNSPECIFIED,
+            };
         }
         // Map remaining domains to closest spec bucket.
         match e.domain() {

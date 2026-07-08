@@ -14,7 +14,7 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 use mcu_error::McuResult;
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 /// Number of cert slots managed by the PAL.
 pub const NUM_CERT_SLOTS: usize = 3;
@@ -71,6 +71,8 @@ pub struct CertSlot {
     pub cert_info: Option<u8>,
     /// State lock high when an active async write (flash erase/write) is in progress on this slot.
     pub write_in_progress: AtomicBool,
+    /// Bumped when this slot's endorsement/provisioning state changes.
+    pub provisioning_state_version: AtomicU32,
 }
 
 impl CertSlot {
@@ -80,6 +82,7 @@ impl CertSlot {
             key_pair_id: None,
             cert_info: None,
             write_in_progress: AtomicBool::new(false),
+            provisioning_state_version: AtomicU32::new(0),
         }
     }
 
@@ -93,6 +96,16 @@ impl CertSlot {
 
     pub fn is_provisioned(&self) -> bool {
         !self.write_in_progress.load(Ordering::Relaxed) && self.endorsement.is_provisioned()
+    }
+
+    pub fn provisioning_state_version(&self) -> u32 {
+        self.provisioning_state_version.load(Ordering::Relaxed)
+    }
+
+    pub fn bump_provisioning_state_version(&self) {
+        let version = self.provisioning_state_version();
+        self.provisioning_state_version
+            .store(version.wrapping_add(1), Ordering::Relaxed);
     }
 
     pub fn clear_metadata(&mut self) {

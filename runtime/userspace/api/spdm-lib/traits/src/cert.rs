@@ -14,6 +14,33 @@ use mcu_error::McuResult;
 /// DSP0274 §10.5 caps this at 8 (`SlotMask` is one byte).
 pub const MAX_SLOTS: u8 = 8;
 
+/// Opaque snapshot of a cert slot's provisioning state.
+///
+/// Stack code carries this token across signed-object construction, but only
+/// the PAL interprets the version value.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct CertSlotSnapshot {
+    slot: u8,
+    provisioning_state_version: u32,
+}
+
+impl CertSlotSnapshot {
+    pub const fn new(slot: u8, provisioning_state_version: u32) -> Self {
+        Self {
+            slot,
+            provisioning_state_version,
+        }
+    }
+
+    pub const fn slot(self) -> u8 {
+        self.slot
+    }
+
+    pub const fn provisioning_state_version(self) -> u32 {
+        self.provisioning_state_version
+    }
+}
+
 /// Asymmetric algorithm selector.
 ///
 /// Passed to cert-store and endorsement methods so the
@@ -186,11 +213,25 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// Returns `None` for unprovisioned slots.
     fn key_usage_mask(&self, slot: u8) -> Option<u16>;
 
+    /// Snapshot endorsement/provisioning state of a provisioned slot.
+    fn cert_slot_snapshot(&self, _slot: u8) -> Option<CertSlotSnapshot> {
+        None
+    }
+
+    /// Return true if the slot still matches a previously captured snapshot.
+    fn cert_slot_matches_snapshot(&self, _snapshot: CertSlotSnapshot) -> bool {
+        false
+    }
+
     /// Optional cache hook: return a previously stored full
-    /// SPDM-cert-chain digest for `(slot, algo)`, or `None` to
+    /// SPDM-cert-chain digest for `(snapshot, algo)`, or `None` to
     /// force recomputation. Default impl never caches.
     #[inline]
-    fn cached_chain_digest(&self, _slot: u8, _algo: SpdmPalHashAlgo) -> Option<[u8; 48]> {
+    fn cached_chain_digest(
+        &self,
+        _snapshot: CertSlotSnapshot,
+        _algo: SpdmPalHashAlgo,
+    ) -> Option<[u8; 48]> {
         None
     }
 
@@ -199,7 +240,13 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// [`cached_chain_digest`](Self::cached_chain_digest) lookups.
     /// Default impl is a no-op.
     #[inline]
-    fn cache_chain_digest(&self, _slot: u8, _algo: SpdmPalHashAlgo, _digest: &[u8]) {}
+    fn cache_chain_digest(
+        &self,
+        _snapshot: CertSlotSnapshot,
+        _algo: SpdmPalHashAlgo,
+        _digest: &[u8],
+    ) {
+    }
 
     /// Fill `out` with random bytes from the platform RNG.
     async fn generate_nonce(&self, io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()>;

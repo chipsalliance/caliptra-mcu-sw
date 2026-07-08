@@ -118,11 +118,17 @@ impl SharedCertStore {
     }
 }
 
+#[derive(Copy, Clone)]
+struct CacheEntry<T: Copy> {
+    provisioning_state_version: u32,
+    value: T,
+}
+
 #[derive(Copy, Clone, Default)]
 struct SlotCache {
-    chain_len: Option<u32>,
-    leaf_len: Option<u32>,
-    chain_digest: Option<[u8; 48]>,
+    chain_len: Option<CacheEntry<u32>>,
+    leaf_len: Option<CacheEntry<u32>>,
+    chain_digest: Option<CacheEntry<[u8; 48]>>,
 }
 
 /// Per-task cert store wrapper.
@@ -164,38 +170,92 @@ impl TaskCertStore {
         self.shared.cert_slot_mut(idx)
     }
 
-    pub(crate) fn cached_chain_len(&self, slot: u8) -> Option<u32> {
+    pub(crate) fn cached_chain_len(
+        &self,
+        slot: u8,
+        provisioning_state_version: u32,
+    ) -> Option<u32> {
         let idx = slot_index(slot)?;
-        unsafe { (*self.caches.get())[idx].chain_len }
+        unsafe {
+            (*self.caches.get())[idx]
+                .chain_len
+                .and_then(|cache| {
+                    (cache.provisioning_state_version == provisioning_state_version)
+                        .then_some(cache.value)
+                })
+        }
     }
 
-    pub(crate) fn set_cached_chain_len(&self, slot: u8, len: u32) {
+    pub(crate) fn set_cached_chain_len(
+        &self,
+        slot: u8,
+        provisioning_state_version: u32,
+        len: u32,
+    ) {
         if let Some(idx) = slot_index(slot) {
             unsafe {
-                (*self.caches.get())[idx].chain_len = Some(len);
+                (*self.caches.get())[idx].chain_len = Some(CacheEntry {
+                    provisioning_state_version,
+                    value: len,
+                });
             }
         }
     }
 
-    pub(crate) fn cached_leaf_len(&self, slot: u8) -> Option<u32> {
+    pub(crate) fn cached_leaf_len(
+        &self,
+        slot: u8,
+        provisioning_state_version: u32,
+    ) -> Option<u32> {
         let idx = slot_index(slot)?;
-        unsafe { (*self.caches.get())[idx].leaf_len }
+        unsafe {
+            (*self.caches.get())[idx]
+                .leaf_len
+                .and_then(|cache| {
+                    (cache.provisioning_state_version == provisioning_state_version)
+                        .then_some(cache.value)
+                })
+        }
     }
 
-    pub(crate) fn set_cached_leaf_len(&self, slot: u8, len: u32) {
+    pub(crate) fn set_cached_leaf_len(
+        &self,
+        slot: u8,
+        provisioning_state_version: u32,
+        len: u32,
+    ) {
         if let Some(idx) = slot_index(slot) {
             unsafe {
-                (*self.caches.get())[idx].leaf_len = Some(len);
+                (*self.caches.get())[idx].leaf_len = Some(CacheEntry {
+                    provisioning_state_version,
+                    value: len,
+                });
             }
         }
     }
 
-    pub(crate) fn cached_chain_digest(&self, slot: u8) -> Option<[u8; 48]> {
+    pub(crate) fn cached_chain_digest(
+        &self,
+        slot: u8,
+        provisioning_state_version: u32,
+    ) -> Option<[u8; 48]> {
         let idx = slot_index(slot)?;
-        unsafe { (*self.caches.get())[idx].chain_digest }
+        unsafe {
+            (*self.caches.get())[idx]
+                .chain_digest
+                .and_then(|cache| {
+                    (cache.provisioning_state_version == provisioning_state_version)
+                        .then_some(cache.value)
+                })
+        }
     }
 
-    pub(crate) fn cache_chain_digest(&self, slot: u8, digest: &[u8]) {
+    pub(crate) fn cache_chain_digest(
+        &self,
+        slot: u8,
+        provisioning_state_version: u32,
+        digest: &[u8],
+    ) {
         if let Some(idx) = slot_index(slot) {
             if digest.len() > 48 {
                 return;
@@ -205,7 +265,10 @@ impl TaskCertStore {
                 *d = *s;
             }
             unsafe {
-                (*self.caches.get())[idx].chain_digest = Some(entry);
+                (*self.caches.get())[idx].chain_digest = Some(CacheEntry {
+                    provisioning_state_version,
+                    value: entry,
+                });
             }
         }
     }

@@ -16,7 +16,9 @@ pub mod store;
 
 use super::measurements::MeasurementProvider;
 use super::*;
-use caliptra_mcu_spdm_traits::{SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo};
+use caliptra_mcu_spdm_traits::{
+    CertSlotSnapshot, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo,
+};
 use core::sync::atomic::Ordering;
 use endorsement::slot_index;
 use mcu_caliptra_api_lite::{
@@ -170,44 +172,46 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         _algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
+        let cert_slot = &self.cert_store.cert_slots()[idx];
 
         // 1. PRE-CHECK: Ensure Slot is provisioned and not undergoing updates before starting
-        if self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .load(Ordering::Relaxed)
-        {
+        if !cert_slot.is_provisioned() {
             return Err(INVARIANT);
         }
+        let provisioning_state_version = cert_slot.provisioning_state_version();
 
-        if let Some(n) = self.cert_store.cached_chain_len(slot) {
+        if let Some(n) = self
+            .cert_store
+            .cached_chain_len(slot, provisioning_state_version)
+        {
             return Ok(n as usize);
         }
 
         // Cache miss: Invalidate stale leaf and digest caches before starting recomputation
         self.cert_store.invalidate_cert_caches(slot);
 
-        let cert_slot = &self.cert_store.cert_slots()[idx];
         let slot_chain_len = cert_slot
             .endorsement
             .size(SpdmPalAsymAlgo::EccP384)
             .map_err(|_| INVARIANT)?;
         let dpe_len = walk_dpe_chain(self, &mut CountSink).await?;
         let leaf_len = probe_leaf_len(self).await?;
-        self.cert_store.set_cached_leaf_len(slot, leaf_len as u32);
+        self.cert_store
+            .set_cached_leaf_len(slot, provisioning_state_version, leaf_len as u32);
         let total = (slot_chain_len as u32)
             .checked_add(dpe_len)
             .and_then(|n| n.checked_add(leaf_len as u32))
             .ok_or(INVARIANT)? as usize;
 
         // 2. POST-CHECK: Verify Slot remained unlocked during the intermediate async .await points
-        if self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .load(Ordering::Relaxed)
+        if !cert_slot.is_provisioned()
+            || cert_slot.provisioning_state_version() != provisioning_state_version
         {
-            return Err(INVARIANT);
+            return Err(crate::errors::CERT_SLOT_STATE_CHANGED);
         }
 
-        self.cert_store.set_cached_chain_len(slot, total as u32);
+        self.cert_store
+            .set_cached_chain_len(slot, provisioning_state_version, total as u32);
         Ok(total)
     }
 
@@ -237,15 +241,21 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         if dst.is_empty() {
             return Ok(0);
         }
-        let total = self.cert_store.cached_chain_len(slot).unwrap_or(0) as usize;
+        let cert_slot = &self.cert_store.cert_slots()[idx];
+        if !cert_slot.is_provisioned() {
+            return Err(INVARIANT);
+        }
+        let provisioning_state_version = cert_slot.provisioning_state_version();
+        let total = self
+            .cert_store
+            .cached_chain_len(slot, provisioning_state_version)
+            .unwrap_or(0) as usize;
         if total == 0 {
             return Err(INVARIANT);
         }
         if offset >= total {
             return Ok(0);
         }
-
-        let cert_slot = &self.cert_store.cert_slots()[idx];
         let slot_chain_len = cert_slot
             .endorsement
             .size(SpdmPalAsymAlgo::EccP384)
@@ -253,11 +263,15 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         let want = (total - offset).min(dst.len());
         // Composed chain layout: [endorsement] [DPE chain] [leaf cert]
         let endorsement_len = slot_chain_len;
-        let leaf_len = match self.cert_store.cached_leaf_len(slot) {
+        let leaf_len = match self
+            .cert_store
+            .cached_leaf_len(slot, provisioning_state_version)
+        {
             Some(n) => n as usize,
             None => {
                 let n = probe_leaf_len(self).await?;
-                self.cert_store.set_cached_leaf_len(slot, n as u32);
+                self.cert_store
+                    .set_cached_leaf_len(slot, provisioning_state_version, n as u32);
                 n
             }
         };
@@ -317,6 +331,11 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             }
             written += got;
         }
+        if !cert_slot.is_provisioned()
+            || cert_slot.provisioning_state_version() != provisioning_state_version
+        {
+            return Err(crate::errors::CERT_SLOT_STATE_CHANGED);
+        }
         Ok(written)
     }
 
@@ -328,8 +347,19 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         digest: &[u8],
         signature: &mut [u8],
     ) -> McuResult<usize> {
-        let _idx = slot_index(slot).ok_or(INVARIANT)?;
-        dpe_sign_ecc_p384(self, &DPE_LEAF_LABEL, digest, signature).await
+        let idx = slot_index(slot).ok_or(INVARIANT)?;
+        let cert_slot = &self.cert_store.cert_slots()[idx];
+        if !cert_slot.is_provisioned() {
+            return Err(INVARIANT);
+        }
+        let provisioning_state_version = cert_slot.provisioning_state_version();
+        let sig_len = dpe_sign_ecc_p384(self, &DPE_LEAF_LABEL, digest, signature).await?;
+        if !cert_slot.is_provisioned()
+            || cert_slot.provisioning_state_version() != provisioning_state_version
+        {
+            return Err(crate::errors::CERT_SLOT_STATE_CHANGED);
+        }
+        Ok(sig_len)
     }
 
     #[cfg(feature = "set-certificate")]
@@ -363,6 +393,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
             cert_slot.key_pair_id = Some(key_pair_id);
             cert_slot.cert_info = Some(cert_info);
+            cert_slot.bump_provisioning_state_version();
             Ok(())
         }
         .await;
@@ -397,6 +428,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
             cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
             cert_slot.clear_metadata();
+            cert_slot.bump_provisioning_state_version();
             Ok(())
         }
         .await;
@@ -440,14 +472,50 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         }
     }
 
-    #[inline]
-    fn cached_chain_digest(&self, slot: u8, _algo: SpdmPalHashAlgo) -> Option<[u8; 48]> {
-        self.cert_store.cached_chain_digest(slot)
+    fn cert_slot_snapshot(&self, slot: u8) -> Option<CertSlotSnapshot> {
+        let idx = slot_index(slot)?;
+        let cert_slot = &self.cert_store.cert_slots()[idx];
+        cert_slot
+            .is_provisioned()
+            .then_some(CertSlotSnapshot::new(
+                slot,
+                cert_slot.provisioning_state_version(),
+            ))
+    }
+
+    fn cert_slot_matches_snapshot(&self, snapshot: CertSlotSnapshot) -> bool {
+        let Some(idx) = slot_index(snapshot.slot()) else {
+            return false;
+        };
+        let cert_slot = &self.cert_store.cert_slots()[idx];
+        cert_slot.is_provisioned()
+            && cert_slot.provisioning_state_version() == snapshot.provisioning_state_version()
     }
 
     #[inline]
-    fn cache_chain_digest(&self, slot: u8, _algo: SpdmPalHashAlgo, digest: &[u8]) {
-        self.cert_store.cache_chain_digest(slot, digest);
+    fn cached_chain_digest(
+        &self,
+        snapshot: CertSlotSnapshot,
+        _algo: SpdmPalHashAlgo,
+    ) -> Option<[u8; 48]> {
+        self.cert_store.cached_chain_digest(
+            snapshot.slot(),
+            snapshot.provisioning_state_version(),
+        )
+    }
+
+    #[inline]
+    fn cache_chain_digest(
+        &self,
+        snapshot: CertSlotSnapshot,
+        _algo: SpdmPalHashAlgo,
+        digest: &[u8],
+    ) {
+        self.cert_store.cache_chain_digest(
+            snapshot.slot(),
+            snapshot.provisioning_state_version(),
+            digest,
+        );
     }
 
     async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {

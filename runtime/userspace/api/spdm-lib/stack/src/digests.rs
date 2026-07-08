@@ -7,10 +7,10 @@
 //! array. Chunk buffers come from the per-IO bitmap pool — no
 //! stack-allocated `[u8; N]` arrays for cert content.
 
-use caliptra_mcu_spdm_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu, SHA384_HASH_SIZE};
+use caliptra_mcu_spdm_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu};
 use caliptra_mcu_spdm_traits::{
-    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo,
-    SpdmPalIoTransport, MAX_SLOTS,
+    CertSlotSnapshot, PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo,
+    SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
 };
 use zerocopy::FromBytes;
 
@@ -74,17 +74,7 @@ pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
         let dst = tail
             .get_mut(cursor..cursor + digest_size)
             .ok_or(SPDM_UNSPECIFIED)?;
-        if let Some(cached) = pal.cached_chain_digest(slot, SpdmPalHashAlgo::Sha384) {
-            let dst = dst
-                .first_chunk_mut::<SHA384_HASH_SIZE>()
-                .ok_or(SPDM_UNSPECIFIED)?;
-            *dst = cached;
-        } else {
-            cert_chain_hash(pal, io, slot, asym_algo, SpdmPalHashAlgo::Sha384, dst)
-                .await
-                .map_err(|_| SPDM_UNSPECIFIED)?;
-            pal.cache_chain_digest(slot, SpdmPalHashAlgo::Sha384, dst);
-        }
+        cert_chain_hash(pal, io, slot, asym_algo, SpdmPalHashAlgo::Sha384, dst).await?;
         cursor += digest_size;
     }
     if multi_key {
@@ -153,6 +143,28 @@ pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
     if (pal.provisioned_slots() & (1 << slot)) == 0 {
         return Err(mcu_error::codes::INVARIANT);
     }
+    let snapshot = pal
+        .cert_slot_snapshot(slot)
+        .ok_or(mcu_error::codes::INVARIANT)?;
+    cert_chain_hash_with_snapshot(pal, io, snapshot, asym_algo, algo, out).await
+}
+
+pub(crate) async fn cert_chain_hash_with_snapshot<Pal: SpdmPal>(
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    snapshot: CertSlotSnapshot,
+    asym_algo: SpdmPalAsymAlgo,
+    algo: SpdmPalHashAlgo,
+    out: &mut [u8],
+) -> mcu_error::McuResult<()> {
+    let slot = snapshot.slot();
+    if let Some(digest) = pal.cached_chain_digest(snapshot, algo) {
+        if out.len() < digest.len() {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        out[..digest.len()].copy_from_slice(&digest);
+        return Ok(());
+    }
 
     let der_len = pal.cert_chain_len(io, slot, asym_algo).await?;
     let digest_size = algo.hash_size();
@@ -187,6 +199,14 @@ pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
     if (pal.provisioned_slots() & (1 << slot)) == 0 {
         return Err(mcu_error::codes::INVARIANT);
     }
+    if !pal.cert_slot_matches_snapshot(snapshot) {
+        return Err(caliptra_mcu_spdm_codec::errors::SPDM_REQUEST_RESYNCH);
+    }
 
-    pal.hash_finish(io, &mut state, out).await
+    pal.hash_finish(io, &mut state, out).await?;
+    if !pal.cert_slot_matches_snapshot(snapshot) {
+        return Err(caliptra_mcu_spdm_codec::errors::SPDM_REQUEST_RESYNCH);
+    }
+    pal.cache_chain_digest(snapshot, algo, out);
+    Ok(())
 }

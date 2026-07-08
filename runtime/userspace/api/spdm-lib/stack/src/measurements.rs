@@ -13,7 +13,10 @@ use zerocopy::{FromBytes, IntoBytes};
 
 use crate::build::alloc_padded;
 use crate::chunk;
-use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
+use crate::error::{
+    SpdmResult, SPDM_INVALID_REQUEST, SPDM_REQUEST_RESYNCH, SPDM_UNEXPECTED_REQUEST,
+    SPDM_UNSPECIFIED,
+};
 use crate::stack::{ConnectionState, Phase};
 
 const MEASUREMENTS_FIXED_BODY_SIZE: usize = 1 + 1 + 1 + 3;
@@ -26,6 +29,7 @@ struct MeasurementsResponseCtx<'a> {
     meas_nonce: Option<&'a [u8; SPDM_NONCE_LEN]>,
     signature_requested: bool,
     slot_id: u8,
+    cert_slot_snapshot: Option<CertSlotSnapshot>,
     total_number_of_measurement: u8,
     content_changed: u8,
     number_of_blocks: u8,
@@ -65,6 +69,7 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
     // If signature requested, parse Nonce + SlotID.
     let mut requester_nonce = None;
     let mut slot_id: u8 = 0;
+    let mut cert_slot_snapshot = None;
     let mut after_sig_fields = after;
     let requester_context_len = if state.version >= SpdmVersion::V13 {
         REQUESTER_CONTEXT_LEN
@@ -89,6 +94,7 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
         if slot_id >= MAX_SLOTS || (pal.provisioned_slots() & (1 << slot_id)) == 0 {
             return Err(SPDM_INVALID_REQUEST);
         }
+        cert_slot_snapshot = Some(pal.cert_slot_snapshot(slot_id).ok_or(SPDM_INVALID_REQUEST)?);
     }
 
     // Parse RequesterContext for V1.3+.
@@ -155,6 +161,7 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
             meas_nonce: requester_nonce,
             signature_requested,
             slot_id,
+            cert_slot_snapshot,
             total_number_of_measurement,
             content_changed,
             number_of_blocks,
@@ -232,10 +239,14 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
         .ok_or(SPDM_UNSPECIFIED)?;
     let sig_len = pal
         .sign_hash(io, slot_id, asym_algo, &hash, sig_slot)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
+        .await?;
     if sig_len != ECC_P384_SIGNATURE_SIZE {
         return Err(SPDM_UNSPECIFIED);
+    }
+    if let Some(snapshot) = cert_slot_snapshot {
+        if !pal.cert_slot_matches_snapshot(snapshot) {
+            return Err(SPDM_REQUEST_RESYNCH);
+        }
     }
 
     Ok((resp, spdm_len))
@@ -306,10 +317,14 @@ async fn handle_large_measurements_response<'a, Pal: SpdmPal>(
         let mut signature = [0u8; ECC_P384_SIGNATURE_SIZE];
         let sig_len = pal
             .sign_hash(io, plan.slot_id, asym_algo, &hash, &mut signature)
-            .await
-            .map_err(|_| SPDM_UNSPECIFIED)?;
+            .await?;
         if sig_len != ECC_P384_SIGNATURE_SIZE {
             return Err(SPDM_UNSPECIFIED);
+        }
+        if let Some(snapshot) = plan.cert_slot_snapshot {
+            if !pal.cert_slot_matches_snapshot(snapshot) {
+                return Err(SPDM_REQUEST_RESYNCH);
+            }
         }
         write_into_slice(buf, signature_offset, &signature)?;
         offset += ECC_P384_SIGNATURE_SIZE;

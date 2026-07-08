@@ -12,7 +12,10 @@ use caliptra_mcu_spdm_traits::*;
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
-use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
+use crate::error::{
+    SpdmResult, SPDM_INVALID_REQUEST, SPDM_REQUEST_RESYNCH, SPDM_UNEXPECTED_REQUEST,
+    SPDM_UNSPECIFIED,
+};
 use crate::stack::{ConnectionState, Phase};
 
 pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
@@ -66,24 +69,21 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
     state.transcript.append_m1(pal, io, req).await?;
 
     let asym_algo = state.asym_algo();
+    let cert_slot_snapshot = pal
+        .cert_slot_snapshot(slot_id)
+        .ok_or(SPDM_INVALID_REQUEST)?;
 
-    // Get cert chain hash — use cache if available, else compute.
+    // Get cert chain hash.
     let mut cert_chain_hash = [0u8; SHA384_HASH_SIZE];
-    if let Some(cached) = pal.cached_chain_digest(slot_id, SpdmPalHashAlgo::Sha384) {
-        cert_chain_hash = cached;
-    } else {
-        crate::digests::cert_chain_hash(
-            pal,
-            io,
-            slot_id,
-            asym_algo,
-            SpdmPalHashAlgo::Sha384,
-            &mut cert_chain_hash,
-        )
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
-        pal.cache_chain_digest(slot_id, SpdmPalHashAlgo::Sha384, &cert_chain_hash);
-    }
+    crate::digests::cert_chain_hash_with_snapshot(
+        pal,
+        io,
+        cert_slot_snapshot,
+        asym_algo,
+        SpdmPalHashAlgo::Sha384,
+        &mut cert_chain_hash,
+    )
+    .await?;
 
     // Generate nonce via PAL RNG.
     let mut nonce = [0u8; SPDM_NONCE_LEN];
@@ -153,10 +153,12 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         .ok_or(SPDM_UNSPECIFIED)?;
     let sig_len = pal
         .sign_hash(io, slot_id, asym_algo, &tbs_hash, sig_slot)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
+        .await?;
     if sig_len != ECC_P384_SIGNATURE_SIZE {
         return Err(SPDM_UNSPECIFIED);
+    }
+    if !pal.cert_slot_matches_snapshot(cert_slot_snapshot) {
+        return Err(SPDM_REQUEST_RESYNCH);
     }
 
     // Transition to authenticated.
