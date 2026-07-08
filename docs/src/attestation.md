@@ -15,6 +15,12 @@ Caliptra Core remains the hardware root of trust. It owns the DICE/DPE context c
 
 ## Relationship to SPDM
 
-SPDM is one protocol path used to retrieve Evidence from MCU Runtime. The Evidence describes device identity and inventory claims for downstream SoC components. The attestation design is broader than SPDM transport: it covers measurement collection, persistent measurement state, DPE context handle management, Software PCR-style storage, integrator static attestation configuration, and OCP EAT claim assembly.
+SPDM is a requester-facing path used to retrieve Evidence from MCU Runtime. The requester boundary differs by transport:
 
-The SPDM responder consumes the measurement API and packages the resulting claims as Evidence. SPDM transport details are described in [SPDM](./spdm.md).
+* BMC/pRoT style requesters use SPDM over MCTP.
+* PCIe DOE requesters, such as confidential-compute PCIe devices, use SPDM over DOE.
+* SoC-local requesters, such as an AP OS or TEE, can use the MCU mailbox path.
+
+The Evidence describes device identity and inventory claims for downstream SoC components.
+
+The attestation design is broader than any one transport: it covers measurement collection, persistent measurement state, DPE context handle management, Software PCR-style storage, integrator static attestation configuration, and OCP EAT claim assembly. Transport-facing APIs consume the measurement API output and package the resulting claims as signed Evidence. SPDM transport details are described in [SPDM](./spdm.md).
