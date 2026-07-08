@@ -52,8 +52,9 @@ pub use debug_unlock::{
 };
 pub use device_state::{get_pcr_value, pcr_quote_ecc384, PCR_QUOTE_ECC384_LEN};
 pub use dpe::{
-    dpe_certify_key, dpe_certify_key_pubkey, dpe_get_cert_chain_chunk, dpe_sign_ecc_p384,
-    walk_dpe_chain, DpeChainSink, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE,
+    dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
+    dpe_get_cert_chain_chunk, dpe_sign_ecc_p384, walk_dpe_chain, DpeChainSink, DpeContextHandle,
+    DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE,
     DPE_P384_SIGNATURE_SIZE,
 };
 pub use ecdh::{

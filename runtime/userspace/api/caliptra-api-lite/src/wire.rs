@@ -41,6 +41,10 @@ pub(crate) const CMD_CM_RANDOM_GENERATE: u32 = 0x434D_5247; // "CMRG"
 /// Mirrored from `caliptra-api::CommandId::INVOKE_DPE`.
 pub(crate) const CMD_INVOKE_DPE: u32 = 0x4450_4543; // "DPEC"
 
+/// Caliptra mailbox command ID for `CERTIFY_KEY_CHUNKS`.
+/// Mirrored from `caliptra-api::CommandId::CERTIFY_KEY_CHUNKS`.
+pub(crate) const CMD_CERTIFY_KEY_CHUNKS: u32 = 0x434B_4348; // "CKCH"
+
 /// DPE per-command-header magic (`CommandHdr::DPE_COMMAND_MAGIC`).
 pub(crate) const DPE_COMMAND_MAGIC: u32 = 0x4450_4543; // "DPEC"
 
@@ -54,9 +58,6 @@ pub(crate) const DPE_PROFILE_P384_SHA384: u32 = 4;
 /// DPE `GetCertificateChain` command ID
 /// (`dpe::commands::Command::GET_CERTIFICATE_CHAIN`).
 pub(crate) const DPE_CMD_GET_CERTIFICATE_CHAIN: u32 = 0x10;
-
-/// DPE `CertifyKey` command ID (`dpe::commands::Command::CERTIFY_KEY`).
-pub(crate) const DPE_CMD_CERTIFY_KEY: u32 = 0x09;
 
 /// DPE `Sign` command ID (`dpe::commands::Command::SIGN`).
 pub(crate) const DPE_CMD_SIGN: u32 = 0x0A;
