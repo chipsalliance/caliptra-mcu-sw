@@ -6,7 +6,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/bitstream-build.yml"
-      - "hw/fpga/**"
+      - "hw/fpga/**/*.tcl"
+      - "hw/fpga/src/**"
       - "hw/caliptra-ss/**"
       - "hw/*.rdl"
 
