@@ -109,16 +109,16 @@ mod test {
         // Check that FIELD_ENTROPY_STATE has all slots marked as ZEROIZED.
         let otp_mem = hw.read_otp_memory();
         let field_entropy_offset = FIELD_ENTROPY_STATE.byte_offset;
+        let field_entropy_word = u32::from_le_bytes(
+            otp_mem[field_entropy_offset..field_entropy_offset + 4]
+                .try_into()
+                .unwrap(),
+        );
         for slot in 0..4 {
-            let zeroized_word_offset = field_entropy_offset + (slot * 3 + 2) * 4;
-            let zeroized_word = u32::from_le_bytes(
-                otp_mem[zeroized_word_offset..zeroized_word_offset + 4]
-                    .try_into()
-                    .unwrap(),
-            );
-            assert_eq!(
-                zeroized_word,
-                FieldEntropySlot::ZEROIZED_MAGIC,
+            let bit = slot * 3 + FieldEntropySlot::ZEROIZED_BIT_OFFSET;
+            assert_ne!(
+                field_entropy_word & (1 << bit),
+                0,
                 "FIELD_ENTROPY_STATE for slot {slot} should be marked as ZEROIZED"
             );
         }

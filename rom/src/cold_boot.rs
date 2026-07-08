@@ -445,11 +445,11 @@ impl ColdBoot {
 
     /// Measure the field_entropy_state fuses and stash it to DPE.
     fn report_field_entropy_state(soc_manager: &mut CaliptraSoC, otp: &Otp) {
-        let Ok(words) = otp.read_entry_multi::<12>(fuses::FIELD_ENTROPY_STATE) else {
+        let Ok(word) = otp.read_entry(fuses::FIELD_ENTROPY_STATE) else {
             fatal_error(McuError::ROM_COLD_BOOT_READ_FIELD_ENTROPY_STATE_ERROR);
         };
 
-        let measurement = mailbox::cm_sha384(soc_manager, &words);
+        let measurement = mailbox::cm_sha384(soc_manager, &[word]);
 
         Self::stash_measurement(soc_manager, &measurement);
     }

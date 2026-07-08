@@ -991,51 +991,27 @@ impl Otp {
         Ok(())
     }
 
-    /// Check if a field entropy slot is started in OTP memory.
-    pub fn is_field_entropy_started(&self, slot: FieldEntropySlot) -> McuResult<bool> {
-        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
-        let word_index = (slot as usize) * 3;
-        let val = self.read_word(base_word + word_index)?;
-        Ok(val == FieldEntropySlot::STARTED_MAGIC)
-    }
-
-    /// Check if a field entropy slot is finished in OTP memory.
-    pub fn is_field_entropy_finished(&self, slot: FieldEntropySlot) -> McuResult<bool> {
-        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
-        let word_index = (slot as usize) * 3 + 1;
-        let val = self.read_word(base_word + word_index)?;
-        Ok(val == FieldEntropySlot::FINISHED_MAGIC)
-    }
-
-    /// Check if a field entropy slot is zeroized in OTP memory.
-    pub fn is_field_entropy_zeroized(&self, slot: FieldEntropySlot) -> McuResult<bool> {
-        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
-        let word_index = (slot as usize) * 3 + 2;
-        let val = self.read_word(base_word + word_index)?;
-        Ok(val == FieldEntropySlot::ZEROIZED_MAGIC)
-    }
-
     /// Mark a field entropy slot as started in OTP memory.
     pub fn mark_field_entropy_started(&self, slot: FieldEntropySlot) -> McuResult<()> {
-        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
-        let word_index = (slot as usize) * 3;
-        self.write_word(base_word + word_index, FieldEntropySlot::STARTED_MAGIC)?;
+        let bit = (slot as usize) * 3 + FieldEntropySlot::STARTED_BIT_OFFSET;
+        let val = self.read_entry(fuses::FIELD_ENTROPY_STATE)?;
+        self.write_entry(fuses::FIELD_ENTROPY_STATE, val | (1 << bit))?;
         Ok(())
     }
 
     /// Mark a field entropy slot as finished in OTP memory.
     pub fn mark_field_entropy_finished(&self, slot: FieldEntropySlot) -> McuResult<()> {
-        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
-        let word_index = (slot as usize) * 3 + 1;
-        self.write_word(base_word + word_index, FieldEntropySlot::FINISHED_MAGIC)?;
+        let bit = (slot as usize) * 3 + FieldEntropySlot::FINISHED_BIT_OFFSET;
+        let val = self.read_entry(fuses::FIELD_ENTROPY_STATE)?;
+        self.write_entry(fuses::FIELD_ENTROPY_STATE, val | (1 << bit))?;
         Ok(())
     }
 
     /// Mark a field entropy slot as zeroized in OTP memory.
     pub fn mark_field_entropy_zeroized(&self, slot: FieldEntropySlot) -> McuResult<()> {
-        let base_word = fuses::FIELD_ENTROPY_STATE.byte_offset / 4;
-        let word_index = (slot as usize) * 3 + 2;
-        self.write_word(base_word + word_index, FieldEntropySlot::ZEROIZED_MAGIC)?;
+        let bit = (slot as usize) * 3 + FieldEntropySlot::ZEROIZED_BIT_OFFSET;
+        let val = self.read_entry(fuses::FIELD_ENTROPY_STATE)?;
+        self.write_entry(fuses::FIELD_ENTROPY_STATE, val | (1 << bit))?;
         Ok(())
     }
 }
@@ -1266,9 +1242,9 @@ impl TryFrom<usize> for FieldEntropySlot {
 }
 
 impl FieldEntropySlot {
-    pub const STARTED_MAGIC: u32 = 0x5354_5254; // "STRT"
-    pub const FINISHED_MAGIC: u32 = 0x4649_4E53; // "FINS"
-    pub const ZEROIZED_MAGIC: u32 = 0x5A45_524F; // "ZERO"
+    pub const STARTED_BIT_OFFSET: usize = 0;
+    pub const FINISHED_BIT_OFFSET: usize = 1;
+    pub const ZEROIZED_BIT_OFFSET: usize = 2;
 }
 
 pub enum FieldEntropyState {
@@ -1280,9 +1256,11 @@ pub enum FieldEntropyState {
 
 impl FieldEntropyState {
     pub fn read(otp: &Otp, slot: FieldEntropySlot) -> McuResult<FieldEntropyState> {
-        let started = otp.is_field_entropy_started(slot)?;
-        let finished = otp.is_field_entropy_finished(slot)?;
-        let zeroized = otp.is_field_entropy_zeroized(slot)?;
+        let val = otp.read_entry(fuses::FIELD_ENTROPY_STATE)?;
+        let base_bit = (slot as usize) * 3;
+        let started = (val & (1 << (base_bit + FieldEntropySlot::STARTED_BIT_OFFSET))) != 0;
+        let finished = (val & (1 << (base_bit + FieldEntropySlot::FINISHED_BIT_OFFSET))) != 0;
+        let zeroized = (val & (1 << (base_bit + FieldEntropySlot::ZEROIZED_BIT_OFFSET))) != 0;
         if zeroized {
             Ok(FieldEntropyState::Zeroized)
         } else if started && !finished {

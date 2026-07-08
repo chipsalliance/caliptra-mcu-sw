@@ -397,7 +397,7 @@
 | vendor_pqc_key_type_13 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_13 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 13 (1: MLDSA, 2: LMS). |
 | vendor_pqc_key_type_14 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_14 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 14 (1: MLDSA, 2: LMS). |
 | vendor_pqc_key_type_15 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_15 | OneHotLinearOr(3x) | Bit-count encoded PQC key type for slot 15 (1: MLDSA, 2: LMS). |
-| field_entropy_state | 384 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7 | Single | Status of field entropy slots. 32 bits per flag (word 3N: started, word 3N+1: finished, word 3N+2: zeroized for slot N). |
+| field_entropy_state | 12 | VENDOR_TEST_PARTITION | VENDOR_TEST | Single | Status of field entropy slots. 1 bit per flag (bit 3N: started, bit 3N+1: finished, bit 3N+2: zeroized for slot N). |
 | fpga_test_uds_seed_lo | 256 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8 | Single | UDS Seed low 256 bits (for FPGA test harness handoff only) |
 | fpga_test_uds_seed_hi | 256 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9 | Single | UDS Seed high 256 bits (for FPGA test harness handoff only) |
 | fpga_test_field_entropy | 256 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_10 | Single | Field Entropy (for FPGA test harness handoff only) |

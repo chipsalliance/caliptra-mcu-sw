@@ -16,7 +16,6 @@
     {"cptra_itrng_entropy_config_0": 4},
     {"cptra_itrng_entropy_config_1": 4},
     {"stable_owner_key_personalization_seed": 32}, // 256-bit seed for stable owner key derivation
-    {"field_entropy_state": 48},
     {"fpga_test_uds_seed_lo": 32},
     {"fpga_test_uds_seed_hi": 32},
     {"fpga_test_field_entropy": 32},
@@ -41,6 +40,7 @@
     {"mcu_component_svn_manifest_min_svn": 4},
     {"soc_image_min_svn_0": 4},
     {"soc_image_min_svn_1": 4},
+    {"field_entropy_state": 4},
   ],
 
   // Field definitions specify bit-level details within fuse bytes
@@ -662,10 +662,10 @@
     },
     {
         name: "field_entropy_state",
-        bits: 384,
-        description: "Status of field entropy slots. 32 bits per flag (word 3N: started, word 3N+1: finished, word 3N+2: zeroized for slot N).",
-        partition: "VENDOR_NON_SECRET_PROD_PARTITION",
-        otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7",
+        bits: 12,
+        description: "Status of field entropy slots. 1 bit per flag (bit 3N: started, bit 3N+1: finished, bit 3N+2: zeroized for slot N).",
+        partition: "VENDOR_TEST_PARTITION",
+        otp_item: "VENDOR_TEST",
         layout: {type: "Single"},
     },
     {

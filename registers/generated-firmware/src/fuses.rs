@@ -537,10 +537,6 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
         size: Bytes(32),
     },
     Fuse {
-        name: "field_entropy_state",
-        size: Bytes(48),
-    },
-    Fuse {
         name: "fpga_test_uds_seed_lo",
         size: Bytes(32),
     },
@@ -572,6 +568,10 @@ pub const VENDOR_TEST_PARTITION_FUSES: &[Fuse] = &[
     },
     Fuse {
         name: "soc_image_min_svn_1",
+        size: Bytes(4),
+    },
+    Fuse {
+        name: "field_entropy_state",
         size: Bytes(4),
     },
 ];
@@ -882,7 +882,7 @@ pub const FUSE_FIELDS: &[FuseField] = &[
     },
     FuseField {
         name: "field_entropy_state",
-        bits: Bits(384),
+        bits: Bits(12),
     },
     FuseField {
         name: "fpga_test_uds_seed_lo",
@@ -1793,12 +1793,12 @@ pub const VENDOR_PQC_KEY_TYPE_15: &FuseEntryInfo = &FuseEntryInfo {
 };
 /// Fuse entry for `field_entropy_state`.
 pub const FIELD_ENTROPY_STATE: &FuseEntryInfo = &FuseEntryInfo {
-    partition_num: 14,
-    entry_num: 7,
-    byte_offset: 0xb88,
-    byte_size: 32,
+    partition_num: 9,
+    entry_num: 0,
+    byte_offset: 0x40c,
+    byte_size: 4,
     name: "field_entropy_state",
-    layout: FuseLayoutType::Single { bits: 384 },
+    layout: FuseLayoutType::Single { bits: 12 },
 };
 /// Fuse entry for `fpga_test_uds_seed_lo`.
 pub const FPGA_TEST_UDS_SEED_LO: &FuseEntryInfo = &FuseEntryInfo {
@@ -3288,14 +3288,14 @@ pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6: &FuseEntryInfo = &Fuse
     name: "stable_owner_key_personalization_seed",
     layout: FuseLayoutType::Single { bits: 256 },
 };
-/// OTP item entry for `field_entropy_state`.
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 7,
     byte_offset: 0xb88,
     byte_size: 32,
-    name: "field_entropy_state",
-    layout: FuseLayoutType::Single { bits: 384 },
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7",
+    layout: FuseLayoutType::Single { bits: 256 },
 };
 /// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8: &FuseEntryInfo = &FuseEntryInfo {
