@@ -252,6 +252,7 @@ impl SpdmPalCertStore for TestPal {
         self.supported_slots
     }
 
+    #[cfg(feature = "set-certificate")]
     fn set_certificate_authorized(
         &self,
         _io: &Self::Io<'_>,
@@ -263,6 +264,7 @@ impl SpdmPalCertStore for TestPal {
         self.authorized
     }
 
+    #[cfg(feature = "set-certificate")]
     async fn validate_set_certificate_chain(
         &self,
         _io: &Self::Io<'_>,
@@ -280,6 +282,15 @@ impl SpdmPalCertStore for TestPal {
     }
 
     async fn cert_chain_len(
+        &self,
+        _io: &Self::Io<'_>,
+        _slot: u8,
+        _algo: SpdmPalAsymAlgo,
+    ) -> McuResult<usize> {
+        Ok(self.cert_chain.len())
+    }
+
+    async fn cert_chain_slot_size(
         &self,
         _io: &Self::Io<'_>,
         _slot: u8,
@@ -326,6 +337,7 @@ impl SpdmPalCertStore for TestPal {
         Ok(signature.len())
     }
 
+    #[cfg(feature = "set-certificate")]
     async fn write_cert_chain(
         &self,
         _io: &Self::Io<'_>,
@@ -349,6 +361,7 @@ impl SpdmPalCertStore for TestPal {
         Ok(())
     }
 
+    #[cfg(feature = "set-certificate")]
     async fn erase_cert_chain(
         &self,
         _io: &Self::Io<'_>,
