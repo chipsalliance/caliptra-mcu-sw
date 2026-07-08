@@ -42,7 +42,10 @@ each burn one bit; key rotation burns two bits to preserve lock/unlock parity.
 The array uses the current MCU `OneHot` layout name for a monotonic bit-count
 counter. The layout name does not mean true one-hot encoding. The total number
 of bits determines the maximum number of ownership state transitions over the
-lifetime of the part.
+lifetime of the part. It must reside in a non-ECC protected partition (such as the
+`VENDOR_TEST_PARTITION` in the reference map) because ECC calculation across a
+partition forbids writing to it more than once, whereas monotonic bit-count
+counters must be incremented sequentially over time.
 
 A full ownership transfer cycle (install → lock → unlock) consumes **2 fuse
 bits**: one for the lock transition (EVEN → ODD) and one for the unlock
@@ -129,7 +132,7 @@ service mode.
 | Fuse field | Partition | Size | Encoding | Notes |
 |---|---|:---:|---|---|
 | `dot_initialized` | `VENDOR_NON_SECRET_PROD_PARTITION` | 1 bit (3 bytes with 3x OR duplication) | `LinearOr` | Gates the DOT flow. |
-| `dot_fuse_array` | `VENDOR_NON_SECRET_PROD_PARTITION` | 256 bits (32 bytes) | `OneHot` (bit-count counter) | State counter. Scales linearly with desired lock/unlock cycles. |
+| `dot_fuse_array` | `VENDOR_TEST_PARTITION` | 256 bits (32 bytes) | `OneHot` (bit-count counter) | State counter. Must be in a non-ECC partition. Scales linearly with desired lock/unlock cycles. |
 | `vendor_recovery_pk_hash` | `VENDOR_NON_SECRET_PROD_PARTITION` | 384 bits (48 bytes) | `Single` | Optional. For `DOT_OVERRIDE` catastrophic recovery. |
 
 If OTP space is constrained, the `dot_fuse_array` can be made smaller — the
@@ -137,8 +140,15 @@ minimum useful size is 2 bits, but this only allows a single lock/unlock cycle
 with no margin. If redundant bit-count encoding (`OneHotLinearOr`) is used,
 multiply the raw bit count by the duplication factor (e.g., 3×).
 
-A different partition can also be used if there is one specifically allocated in
-the integration-specific fuse map.
+### Non-ECC Partition Requirement for Incremental Counters
+
+Monotonic bit-count counters such as `dot_fuse_array`, `mcu_component_svn_manifest_min_svn`, and SoC image SVN counters (`soc_image_min_svn_*`) are written incrementally over multiple boot cycles or state transitions. They **must not** be placed in ECC-protected partitions (like `VENDOR_NON_SECRET_PROD_PARTITION`), because ECC calculation over a partition prevents subsequent write operations once programmed.
+
+In the reference map, these fields are placed in `VENDOR_TEST_PARTITION` (specifically `VENDOR_TEST`). If the test partition is needed for other testing or integration purposes in your deployment, a new vendor fuse partition that is **not ECC-protected** should be added to accommodate these incremental fuse values.
+
+### SoC Image SVN Counters
+
+In the reference schema and map, `soc_image_min_svn_0` and `soc_image_min_svn_1` are provided as baseline examples. More (or fewer) SoC image SVN values should be added or removed depending on the component architecture and anti-rollback requirements for the integration.
 
 ## Owner Public Key Hash Provisioning
 
@@ -339,7 +349,7 @@ available slots):
     Each bit corresponds to a slot. If a bit is set to `1`, the slot is
     considered invalid and skipped.
 2.  **Revocation Check**: For each valid slot, the ROM checks the revocation
-    status of the keys in the `CPTRA_CORE_ECC_REVOCATION_X`,  
+    status of the keys in the `CPTRA_CORE_ECC_REVOCATION_X`,
     `CPTRA_CORE_MLDSA_REVOCATION_X`, and `CPTRA_CORE_LMS_REVOCATION_X` fields:
     -   **ECC Keys**: Checked against the ECC revocation fuses (4 bits per
         slot).
@@ -435,7 +445,7 @@ sequenceDiagram
     participant MCU_ROM as MCU ROM
     participant MCU_RT as MCU RT
     participant Fuses as OTP Fuses
-    
+
     Requester->>MCU_ROM: Push new RT FW (signed with Key N+1)
     MCU_ROM->>Fuses: Read revocation bitmask
     MCU_ROM->>MCU_ROM: Verify signature with Key N+1
@@ -466,7 +476,7 @@ sequenceDiagram
     participant MCU_ROM as MCU ROM
     participant MCU_RT as MCU RT
     participant Fuses as OTP Fuses
-    
+
     Requester->>MCU_RT: MC_PROVISION_VENDOR_PK_HASH(slot M+1)
     MCU_RT->>Fuses: Provision PK hash in slot M+1
     Requester->>MCU_ROM: Push new RT FW (signed with Key in Slot M+1)

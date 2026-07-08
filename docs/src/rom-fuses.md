@@ -83,17 +83,17 @@ can be reclaimed.
 | Fuse | Logical size | Feature | Notes |
 |---|---|---|---|
 | `dot_initialized` | 1 bit | DOT | Gate flag indicating DOT flow is active for this part |
-| `dot_fuse_array` | 256 bits | DOT | Monotonic bit-count DOT state counter; supports 128 lock/unlock cycles; more or less can be allocated depending on use cases |
+| `dot_fuse_array` | 256 bits | DOT | Monotonic bit-count DOT state counter; must reside in a non-ECC protected partition; supports 128 lock/unlock cycles; more or less can be allocated depending on use cases |
 | `vendor_recovery_pk_hash` | 384 bits | DOT | Vendor master key for `DOT_OVERRIDE` catastrophic recovery (lives in `VENDOR_SECRET_PROD_PARTITION`). One slot today; integrators that need rotation should add `vendor_recovery_pk_hash_{0..N}` + a `vendor_recovery_pk_hash_valid` bitmask and/or revocation bits |
-| `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | 32 bits (recommended) | MCU SVN anti-rollback | Min SVN for the MCU Component SVN Manifest itself |
-| `SOC_IMAGE_MIN_SVN[0..M]` | 32 bits each (recommended) | MCU SVN anti-rollback | Per-slot SoC image min SVN; `M` is integrator-defined |
+| `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | 32 bits (recommended) | MCU SVN anti-rollback | Min SVN for the MCU Component SVN Manifest itself; must reside in a non-ECC protected partition |
+| `SOC_IMAGE_MIN_SVN[0..M]` | 32 bits each (recommended) | MCU SVN anti-rollback | Per-slot SoC image min SVN; must reside in a non-ECC protected partition; M is integrator-defined (reference map examples like slots 0 and 1 should be scaled per platform needs) |
 | `perma_hek_en` | 1 bit | OCP LOCK (2.1+) | Permanent HEK enable flag |
 | `CPTRA_SS_LOCK_HEK_PROD_{0..7}` | 256 bits each | OCP LOCK (2.1+) | 8 HEK seed slots (`CPTRA_SS_LOCK_HEK_PROD_N_RATCHET_SEED`, 32 B each); one active at a time |
 
 The MCU SVN fuse sizes above are the recommended logical widths from
 [`docs/src/svn.md`](svn.md); integrators choose the actual bit-count width and
 number of `SOC_IMAGE_MIN_SVN` slots based on their release cadence and
-component count.
+component count (reference schema examples like slots 0 and 1 should be added or removed per integration requirements). Monotonic bit-count counters must be placed in non-ECC protected partitions (such as `VENDOR_TEST_PARTITION`) to allow multiple sequential bit-burn operations.
 
 ## Fuse Field Reference
 
@@ -231,14 +231,17 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 
 - **`MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`** — MCU internal use only, not written
   to any Caliptra register. Recommended `OneHotLinearOr{bits:N, dupe:3}`
-  (logical width up to 32 bits). MCU ROM compares this against the MCU
-  Component SVN Manifest header to enforce its own anti-rollback floor.
+  (logical width up to 32 bits). Must reside in a non-ECC protected partition.
+  MCU ROM compares this against the MCU Component SVN Manifest header to enforce
+  its own anti-rollback floor.
 
 - **`SOC_IMAGE_MIN_SVN[0..M]`** — MCU internal use only, not written to any
   Caliptra register. Recommended `OneHotLinearOr{bits:N, dupe:3}` per slot
-  (logical width up to 32 bits). Optional per-SoC-component min SVN floor;
-  the number of slots `M` and the `component_id → slot` mapping are
-  integrator-defined.
+  (logical width up to 32 bits). Must reside in a non-ECC protected partition.
+  Optional per-SoC-component min SVN floor; the number of slots `M` and the
+  `component_id → slot` mapping are integrator-defined (reference map examples
+  like `soc_image_min_svn_0` and `soc_image_min_svn_1` should be added or
+  removed depending on integration requirements).
 
 ### OTP Encoding Recommendations
 
@@ -280,6 +283,8 @@ fault tolerance without causing ECC integrity issues.
 | `fw_encryption_key` | ✅ | `Single{bits:256}` (or 128/192 to match the chosen AES key length) |
 | `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) |
 | `SOC_IMAGE_MIN_SVN_{0..M}` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) each |
+
+*Note: Fields with `OneHot` or `OneHotLinearOr` monotonic bit-count layouts (`dot_fuse_array`, `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `SOC_IMAGE_MIN_SVN_{0..M}`) must reside in a non-ECC protected partition (e.g., `VENDOR_TEST_PARTITION` in the reference map) because ECC calculation forbids subsequent write operations once a partition has been programmed.*
 
 TODO: there are only 32 LMS revocation bits specificed in the reference fuse map, but with redundant encoding, we would get 16 or fewer bits, unless  they are backed with HW redundancy.
 

@@ -19,7 +19,7 @@ DOT I3C recovery is entered when **any** of the following conditions are met:
 The BMC has two recovery paths available over I3C:
 
 - **DOT_RECOVERY** — Supply a backup DOT blob (HMAC'd with the current DOT effective key). This restores the blob without changing fuse state.
-- **DOT_OVERRIDE** — Challenge/response authentication with the VendorKey. This burns a fuse (ODD→EVEN transition) and writes a new empty DOT blob, effectively factory-resetting device ownership.
+- **DOT_OVERRIDE** — Challenge/response authentication with the VendorKey. This burns a fuse in `DOT_FUSE_ARRAY` (ODD→EVEN transition; requires `DOT_FUSE_ARRAY` to be in a non-ECC protected partition to allow sequential 1-bit writes) and writes a new empty DOT blob, effectively factory-resetting device ownership.
 
 ### `DOT_RECOVERY` Flow
 

@@ -116,7 +116,7 @@
 
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
-| 0 | VENDOR_TEST | 0x03e0 | 32 | Single |
+| 0 | VENDOR_TEST | 0x03e0 | 32 | OneHot |
 
 ### vendor_hashes_manuf_partition (partition 10)
 
@@ -246,13 +246,13 @@
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
 | 0 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_0 | 0x0aa8 | 32 | LinearOr(3x) |
-| 1 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1 | 0x0ac8 | 32 | OneHot |
+| 1 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1 | 0x0ac8 | 32 | Single |
 | 2 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2 | 0x0ae8 | 32 | LinearMajorityVote(3x) |
 | 3 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3 | 0x0b08 | 32 | Single |
 | 4 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4 | 0x0b28 | 32 | Single |
 | 5 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5 | 0x0b48 | 32 | Single |
 | 6 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6 | 0x0b68 | 32 | Single |
-| 7 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7 | 0x0b88 | 32 | OneHotLinearOr(3x) |
+| 7 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7 | 0x0b88 | 32 | Single |
 | 8 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8 | 0x0ba8 | 32 | Single |
 | 9 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9 | 0x0bc8 | 32 | Single |
 | 10 | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_10 | 0x0be8 | 32 | Single |
@@ -322,16 +322,16 @@
 | Name | Bits | Partition | OTP Item | Layout | Description |
 |------|------|-----------|----------|--------|-------------|
 | dot_initialized | 1 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_0 | LinearOr(3x) | DOT is enabled and initialized for this part. |
-| dot_fuse_array | 256 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1 | OneHot | One-time programmable state counter for DOT transitions. Each bit represents one state change. Increments from 0 to 255. |
+| dot_fuse_array | 256 | VENDOR_TEST_PARTITION | VENDOR_TEST | OneHot | One-time programmable state counter for DOT transitions. Each bit represents one state change. Increments from 0 to 255. |
 | perma_hek_en | 1 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2 | LinearMajorityVote(3x) | Sets the PERMANENT HEK bit. Once set MCU will always provision a sanitized HEK to Caliptra. |
 | cptra_itrng_health_test_window_size | 16 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3 | Single | Health test window size for FIPS mode. See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers) for details. |
 | cptra_itrng_entropy_config_0 | 32 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4 | Single | Entropy config 0: Low threshold (bits 15:0), High threshold (bits 31:16) |
 | cptra_itrng_entropy_config_1 | 32 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5 | Single | Entropy config 1: Repetition count (bits 15:0), Alert threshold (bits 31:16). See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers) for details. |
 | stable_owner_key_personalization_seed | 256 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6 | Single | Personalization seed for stable owner key derivation. |
 | vendor_recovery_pk_hash | 384 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8 | Single | Vendor recovery key for DOT_OVERRIDE catastrophic recovery operations |
-| mcu_component_svn_manifest_min_svn | 10 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5 | OneHotLinearOr(3x) | MCU Component SVN Manifest min SVN (bit-count counter, used by MCU ROM for manifest-format anti-rollback). |
-| soc_image_min_svn_0 | 10 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6 | OneHotLinearOr(3x) | SoC component min SVN for fuse slot 0 (bit-count counter, optional per-component rollback floor mapped via SVN_FUSE_MAP). |
-| soc_image_min_svn_1 | 10 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7 | OneHotLinearOr(3x) | SoC component min SVN for fuse slot 1 (bit-count counter, optional per-component rollback floor mapped via SVN_FUSE_MAP). |
+| mcu_component_svn_manifest_min_svn | 10 | VENDOR_TEST_PARTITION | VENDOR_TEST | OneHotLinearOr(3x) | MCU Component SVN Manifest min SVN (bit-count counter, used by MCU ROM for manifest-format anti-rollback). |
+| soc_image_min_svn_0 | 10 | VENDOR_TEST_PARTITION | VENDOR_TEST | OneHotLinearOr(3x) | SoC component min SVN for fuse slot 0 (bit-count counter, optional per-component rollback floor mapped via SVN_FUSE_MAP). |
+| soc_image_min_svn_1 | 10 | VENDOR_TEST_PARTITION | VENDOR_TEST | OneHotLinearOr(3x) | SoC component min SVN for fuse slot 1 (bit-count counter, optional per-component rollback floor mapped via SVN_FUSE_MAP). |
 | vendor_pk_hash_valid | 16 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_VENDOR_PK_HASH_VALID | LinearOr(3x) | Bitmask indicating vendor PK hash validity. Unburnt bits (0) are valid; burnt bits (1) are revoked/invalid. |
 | vendor_ecc_revocation_0 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_0 | LinearOr(3x) | Revocation bits for ECC keys in slot 0. |
 | vendor_mldsa_revocation_0 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_0 | LinearOr(3x) | Revocation bits for MLDSA keys in slot 0. |

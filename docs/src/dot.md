@@ -53,7 +53,7 @@ Reference: [OCP Device Ownership Transfer specification](https://opencomputeproj
 
 **DOT_EFFECTIVE_KEY**: A key derived from DOT_ROOT_KEY and the DOT_FUSE_ARRAY value, used to authenticate DOT_BLOBs via HMAC. The derivation varies based on EVEN/ODD state.
 
-**DOT_FUSE_ARRAY**: A minimal fuse array using 1 bit per state change to track DOT state transitions. The fuse value acts as a counter that increments with each state change (one-time programmable).
+**DOT_FUSE_ARRAY**: A minimal fuse array using 1 bit per state change to track DOT state transitions. The fuse value acts as a counter that increments with each state change (one-time programmable). Must reside in a non-ECC protected fuse partition (e.g., `VENDOR_TEST_PARTITION` in the reference map) so that individual bits can be burned sequentially over time without invalidating partition ECC protections.
 
 **DOT_ROOT_KEY**: A hardware-derived secret key unique to the silicon, used as the basis for deriving DOT_EFFECTIVE_KEY. Provides silicon binding.
 
@@ -192,6 +192,7 @@ The DOT_BLOB is authenticated on every boot in ODD state to ensure the CAK and L
 ### DOT_FUSE_ARRAY
 - Hardware fuse array
 - Stores state counter (increments from 0 to maximum)
+- Must be located in a non-ECC protected partition (e.g., `VENDOR_TEST_PARTITION`) to allow multiple sequential 1-bit writes
 - Read during initialization
 - Written during state transitions
 - One-time programmable (OTP) per bit

@@ -85,7 +85,9 @@ manufacturing devices.
 
 ### New MCU SVN Fuses
 
-Added in a vendor partition (e.g., `VENDOR_NON_SECRET_PROD_PARTITION`):
+Added in a non-ECC protected vendor partition (e.g., `VENDOR_TEST_PARTITION` in
+the reference map, or a dedicated non-ECC vendor partition, since ECC protection
+prevents multi-write incremental bit-count advancements):
 
 | Fuse | Size | Recommended Encoding | Purpose |
 |---|---|---|---|
@@ -96,7 +98,10 @@ The number of `SOC_IMAGE_MIN_SVN` slots (`M`) and the number of bit-count bits
 per slot are integrator-defined. `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` exists
 even when the integrator does not provision any `SOC_IMAGE_MIN_SVN` slots,
 because the manifest's own anti-rollback applies regardless of how many
-component slots are mapped.
+component slots are mapped. In reference schemas and mapping examples,
+`soc_image_min_svn_0` and `soc_image_min_svn_1` are shown as baseline examples.
+Integrators should add or remove SoC image SVN fields depending on the number of
+firmware components and anti-rollback requirements of their integration.
 
 #### Encoding
 
@@ -468,15 +473,15 @@ re-attempted (and complete) on the next boot.
 
 ### Fuse Definition
 
-In `vendor_fuses.hjson`:
+In `vendor_fuses.hjson` (must target a non-ECC protected partition):
 
 ```js
 {
-  non_secret_vendor: [
+  vendor_test: [
     {"mcu_component_svn_manifest_min_svn": 4},
     {"soc_image_min_svn_0": 4},
     {"soc_image_min_svn_1": 4},
-    // ... additional slots as needed
+    // ... additional slots as needed (soc_image_min_svn_0 and _1 are examples)
   ],
   fields: [
     {name: "mcu_component_svn_manifest_min_svn", bits: 8},
@@ -499,6 +504,7 @@ pub struct SvnFuseMapEntry {
     pub fuse_entry: &'static FuseEntryInfo,
 }
 
+// Note: OTP_SOC_IMAGE_MIN_SVN_0 and OTP_SOC_IMAGE_MIN_SVN_1 are examples; add or remove slots depending on your integration.
 pub static SVN_FUSE_MAP: &[SvnFuseMapEntry] = &[
     SvnFuseMapEntry { component_id: 0x0000_1000, fuse_entry: &OTP_SOC_IMAGE_MIN_SVN_0 },
     SvnFuseMapEntry { component_id: 0x0000_1001, fuse_entry: &OTP_SOC_IMAGE_MIN_SVN_0 }, // shares slot 0
