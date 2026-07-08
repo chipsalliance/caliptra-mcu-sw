@@ -24,7 +24,8 @@ use zerocopy::FromBytes;
 
 use crate::build::{build_response, write_fixed};
 use crate::error::{
-    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
+    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_REQUEST_RESYNCH, SPDM_UNEXPECTED_REQUEST,
+    SPDM_UNSPECIFIED,
 };
 use crate::key_schedule::SessionKeyType;
 use crate::stack::{ConnState, Phase, Sessions};
@@ -218,22 +219,19 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
 
     // ── Cert chain hash ─────────────────────────────────────────────
     let asym_algo = state.asym_algo();
+    let cert_slot_snapshot = pal
+        .cert_slot_snapshot(slot_id)
+        .ok_or(SPDM_INVALID_REQUEST)?;
     let cert_chain_hash = &mut *hash_scratch;
-    if let Some(cached) = pal.cached_chain_digest(slot_id, SpdmPalHashAlgo::Sha384) {
-        *cert_chain_hash = cached;
-    } else {
-        crate::digests::cert_chain_hash(
-            pal,
-            io,
-            slot_id,
-            asym_algo,
-            SpdmPalHashAlgo::Sha384,
-            cert_chain_hash,
-        )
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
-        pal.cache_chain_digest(slot_id, SpdmPalHashAlgo::Sha384, cert_chain_hash);
-    }
+    crate::digests::cert_chain_hash_with_snapshot(
+        pal,
+        io,
+        cert_slot_snapshot,
+        asym_algo,
+        SpdmPalHashAlgo::Sha384,
+        cert_chain_hash,
+    )
+    .await?;
 
     // ── Feed TH: cert_chain_hash ────────────────────────────────────
     session.transcript.append(pal, io, cert_chain_hash).await?;
@@ -304,10 +302,12 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
 
     let sig_len = pal
         .sign_hash(io, slot_id, asym_algo, tbs_hash, signature)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
+        .await?;
     if sig_len != ECC_P384_SIGNATURE_SIZE {
         return Err(SPDM_UNSPECIFIED);
+    }
+    if !pal.cert_slot_matches_snapshot(cert_slot_snapshot) {
+        return Err(SPDM_REQUEST_RESYNCH);
     }
 
     // ── Feed signature to TH ────────────────────────────────────────

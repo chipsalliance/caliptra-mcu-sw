@@ -50,6 +50,12 @@ pub const SUBDOMAIN_MCTP: u8 = 0x10;
 /// PCIe DOE transport (used by SPDM) — reserved for future use.
 pub const SUBDOMAIN_DOE: u8 = 0x11;
 
+/// MCU platform abstraction layer errors.
+///
+/// Used by `caliptra-mcu-spdm-pal` for platform-state failures that the stack
+/// maps to SPDM wire errors.
+pub const SUBDOMAIN_PAL: u8 = 0x12;
+
 /// VDM handler control errors that affect responder framing rather than the
 /// vendor-defined wire payload.
 pub const SUBDOMAIN_VDM: u8 = 0x20;
@@ -107,4 +113,10 @@ pub const fn is_spdm_wire(e: McuErrorCode) -> bool {
 #[inline]
 pub const fn is_mctp_error(e: McuErrorCode) -> bool {
     e.domain() == domain::SPDM && e.subdomain() == SUBDOMAIN_MCTP
+}
+
+/// `true` if `e` was produced by the MCU SPDM PAL.
+#[inline]
+pub const fn is_pal_error(e: McuErrorCode) -> bool {
+    e.domain() == domain::SPDM && e.subdomain() == SUBDOMAIN_PAL
 }

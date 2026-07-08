@@ -7,6 +7,7 @@
 //! [`caliptra_mcu_spdm_errors`]; this module owns the concrete error
 //! constants the codec emits.
 
+pub use caliptra_mcu_spdm_errors::SUBDOMAIN_PAL;
 use caliptra_mcu_spdm_errors::{spdm_wire, SUBDOMAIN_LOCAL};
 use mcu_error::{domain, McuErrorCode};
 

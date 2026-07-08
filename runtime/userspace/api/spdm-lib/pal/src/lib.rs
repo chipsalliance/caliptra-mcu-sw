@@ -35,6 +35,7 @@
 
 mod alloc;
 pub mod cert;
+pub mod errors;
 mod hash;
 mod io;
 pub mod measurements;

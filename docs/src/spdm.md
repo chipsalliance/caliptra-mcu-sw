@@ -9,6 +9,11 @@ The Security Protocol and Data Model (SPDM) is a protocol designed to ensure sec
 | SPDM over MCTP Binding Specification          | [DSP0275](https://www.dmtf.org/sites/default/files/standards/documents/DSP0275_1.0.2.pdf) |
 | Secured Messages using SPDM over MCTP Binding | [DSP0276](https://www.dmtf.org/sites/default/files/standards/documents/DSP0276_1.2.0.pdf) |
 
+## Certificate Store
+The Caliptra MCU SPDM responder exposes certificate slots through the PAL certificate store. For slot mapping, chain composition, task-local caching, and `SET_CERTIFICATE` storage behavior, see [SPDM Certificate Store Design](./cert_store_design.md).
+
+For in-field certificate-slot provisioning workflows and requester-visible slot management, see [In-field SPDM CertSlot Provisioning](./cert_slot_mgmt.md).
+
 ## SPDM Protocol Sequence
 ```mermaid
 sequenceDiagram
@@ -54,24 +59,84 @@ sequenceDiagram
 
 ```mermaid
 classDiagram
-    direction RL
-    MCTP Transport <|--|> SPDMResponder: processRequest() / sendResponse()
-    SecureSessionMgr <|-- SPDMResponder: processSecureMessage()
-    TranscriptMgr <|-- SPDMResponder
-    TranscriptMgr <|-- SecureSessionMgr
-    class SPDMResponder{
-      - transcriptMgr
-      - sessionMgr
-      + processRequest()
-      + sendResponse()
+    direction LR
+
+    class MctpSpdmTask {
+        MCTP transport
+        task-local PAL
     }
-    class SecureSessionMgr {
-      -transcriptMgr
-      +TraitMethods
+
+    class DoeSpdmTask {
+        DOE transport
+        task-local PAL
     }
-    class TranscriptMgr{
-      +TraitMethods
+
+    class SpdmStack {
+        dispatch request
+        send response
+        error handling
     }
+
+    class ConnectionState {
+        negotiated version
+        negotiated algorithms
+        phase
+        transcript
+        large message context
+    }
+
+    class SessionManager {
+        secure sessions
+        key schedules
+    }
+
+    class McuSpdmPal {
+        transport
+        allocator
+        cert_store: TaskCertStore
+        measurement provider
+    }
+
+    class TaskCertStore {
+        shared: SharedCertStore
+        caches: SlotCache[NUM_CERT_SLOTS]
+    }
+
+    class SharedCertStore {
+        cert_slots: CertSlot[NUM_CERT_SLOTS]
+    }
+
+    class CertSlot {
+        endorsement backing
+        key metadata
+        write_in_progress
+        provisioning state version
+    }
+
+    class SlotCache {
+        chain length
+        leaf length
+        chain digest
+        provisioning state version
+    }
+
+    class SlotEndorsement {
+        ReadOnly
+        Managed
+    }
+
+    MctpSpdmTask --> SpdmStack
+    DoeSpdmTask --> SpdmStack
+    MctpSpdmTask --> McuSpdmPal
+    DoeSpdmTask --> McuSpdmPal
+    SpdmStack --> ConnectionState
+    SpdmStack --> SessionManager
+    SpdmStack --> McuSpdmPal
+    McuSpdmPal --> TaskCertStore
+    TaskCertStore --> SlotCache
+    TaskCertStore --> SharedCertStore
+    SharedCertStore --> CertSlot
+    CertSlot --> SlotEndorsement
 ```
 
 ## SPDM Responder
