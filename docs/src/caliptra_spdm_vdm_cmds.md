@@ -92,3 +92,19 @@ The following table maps SPDM VDM command codes to Caliptra common commands. For
 | `0x12`       | Authorized Command           | O   | Execute an authorized sub-command via challenge-response MAC. Sub-commands: Get Auth Challenge (`0x01`), Program Field Entropy (`0x02`). |
 
 R = Required, O = Optional
+
+## Debug Unlock Payloads
+
+`Request Debug Unlock (0x0A)` uses a VDM-specific compact payload, not the
+MCI mailbox layout:
+
+- Request: `unlock_level` (`u8`).
+- Response: completion code (`u8`), unique device identifier (`u8[32]`),
+  then challenge (`u8[48]`).
+
+`Authorize Debug Unlock Token (0x0B)` carries a complete Caliptra RT mailbox
+request as its VDM payload. The first word is `MailboxReqHeader.checksum`,
+followed by the token request body described in
+[Caliptra Common Commands](caliptra_common_commands.md#authorize-debug-unlock-token).
+The MCU preserves these payload bytes exactly and forwards them to the Caliptra
+mailbox; the response is only the VDM completion code.

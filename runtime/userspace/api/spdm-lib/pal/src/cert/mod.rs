@@ -64,7 +64,8 @@ async fn validate_streamed_root_hash<M: MeasurementProvider>(
     data_len: usize,
 ) -> McuResult<()> {
     let first_cert_len = streamed_first_der_len(managed, data_len).await?;
-    let sha_buf = ApiAlloc::alloc(pal, mcu_caliptra_api_lite::SHA_CONTEXT_SIZE)?;
+    let sha_buf =
+        mcu_caliptra_api_lite::ApiAlloc::alloc(pal, mcu_caliptra_api_lite::SHA_CONTEXT_SIZE)?;
     let mut state =
         mcu_caliptra_api_lite::sha_init(pal, sha_buf, mcu_caliptra_api_lite::HashAlgo::Sha384, &[])
             .await?;
@@ -438,12 +439,15 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         slot: u8,
         algo: SpdmPalAsymAlgo,
         _key_pair_id: u8,
-        _cert_info: u8,
+        cert_info: u8,
         _root_hash: &[u8; 48],
         data_len: usize,
     ) -> McuResult<()> {
         #[cfg(feature = "set-certificate")]
         {
+            if cert_info != CERT_MODEL_ALIAS_CERT {
+                return Err(INVARIANT);
+            }
             let idx = slot_index(slot).ok_or(INVARIANT)?;
             self.cert_store.cert_slots()[idx]
                 .write_in_progress
@@ -472,7 +476,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         }
         #[cfg(not(feature = "set-certificate"))]
         {
-            let _ = (slot, algo, data_len);
+            let _ = (slot, algo, cert_info, data_len);
             Err(mcu_error::codes::NOT_IMPLEMENTED)
         }
     }
@@ -568,6 +572,29 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             Err(mcu_error::codes::NOT_IMPLEMENTED)
         }
     }
+
+    async fn abort_write_cert_chain_stream(
+        &self,
+        _io: &Self::Io<'_>,
+        slot: u8,
+        _algo: SpdmPalAsymAlgo,
+    ) -> McuResult<()> {
+        #[cfg(feature = "set-certificate")]
+        {
+            let idx = slot_index(slot).ok_or(INVARIANT)?;
+            self.cert_store.cert_slots()[idx]
+                .write_in_progress
+                .store(false, Ordering::Relaxed);
+            self.cert_store.invalidate_cert_caches(slot);
+            Ok(())
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            let _ = slot;
+            Ok(())
+        }
+    }
+
     #[cfg(feature = "set-certificate")]
     async fn erase_cert_chain(
         &self,

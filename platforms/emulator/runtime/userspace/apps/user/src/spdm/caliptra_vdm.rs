@@ -45,6 +45,8 @@ const TEST_AUTH_CMD_HMAC_KEY: [u8; 48] = [
 ];
 
 static AUTH_CHALLENGE: Mutex<CriticalSectionRawMutex, Option<[u8; 32]>> = Mutex::new(None);
+// Kernel chunked-mailbox state rejects other processes; this flag serializes this
+// app's DebugUnlock stream and lets abort clean up the in-flight mailbox request.
 static DEBUG_UNLOCK_TOKEN_STREAM: Mutex<CriticalSectionRawMutex, bool> = Mutex::new(false);
 
 /// Emulator Caliptra VDM device-operations backend.
