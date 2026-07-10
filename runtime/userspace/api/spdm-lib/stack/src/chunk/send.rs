@@ -37,8 +37,18 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     vdm: &Vdm,
     req: &[u8],
     secure_session: bool,
+    set_certificate_allowed: bool,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    let result = process_chunk_send(state, pal, io, vdm, req, secure_session).await;
+    let result = process_chunk_send(
+        state,
+        pal,
+        io,
+        vdm,
+        req,
+        secure_session,
+        set_certificate_allowed,
+    )
+    .await;
     match result {
         Ok(info) => {
             if info.complete {
@@ -73,7 +83,7 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             handle,
             chunk_seq_num,
         }) => {
-            abort_streaming_request_if_needed(state, pal, io, vdm).await;
+            abort_active_streaming_request(state, pal, io, vdm).await;
             let mut error = [0u8; 4];
             encode_error_pdu(state.version, SPDM_INVALID_REQUEST, &mut error);
             state.reset_chunk_assembly();
@@ -125,6 +135,7 @@ async fn process_chunk_send<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     vdm: &Vdm,
     req: &[u8],
     secure_session: bool,
+    set_certificate_allowed: bool,
 ) -> Result<ChunkInfo, ChunkProcessError> {
     if state.large_msg_ctx.response_in_progress()
         || (state.phase as u8) < (Phase::AfterCapabilities as u8)
@@ -170,6 +181,7 @@ async fn process_chunk_send<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             last_chunk,
             rest,
             secure_session,
+            set_certificate_allowed,
         )
         .await?;
     } else {
@@ -207,6 +219,7 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     last_chunk: bool,
     rest: &[u8],
     secure_session: bool,
+    set_certificate_allowed: bool,
 ) -> Result<(), ChunkProcessError> {
     let Some(size_bytes) = rest.first_chunk::<4>() else {
         return Err(ChunkProcessError::Early {
@@ -249,7 +262,13 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     }
     #[cfg(feature = "set-certificate")]
     {
-        if let Some(required_len) = required_stream_prefix_len(chunk, secure_session) {
+        if let Some(required_len) = required_stream_prefix_len(chunk) {
+            if !set_certificate_allowed {
+                return Err(ChunkProcessError::Early {
+                    handle,
+                    chunk_seq_num,
+                });
+            }
             let mut prefix = StreamPrefixState {
                 data: [0; super::STREAM_PREFIX_CAPACITY],
                 len: chunk.len(),
@@ -285,6 +304,7 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         large_msg_size,
         chunk,
         secure_session,
+        set_certificate_allowed,
     )
     .await
     .map_err(|_| ChunkProcessError::Early {
@@ -447,16 +467,6 @@ async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                     chunk_seq_num,
                 })?;
         }
-        #[cfg(feature = "set-certificate")]
-        Some(ActiveLargeRequest::Unsupported(_)) => {
-            state
-                .large_msg_ctx
-                .append_streaming_request(handle, chunk_seq_num, chunk.len())
-                .map_err(|_| ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                })?;
-        }
         Some(ActiveLargeRequest::VendorDefined(_)) => {
             vdm.continue_streaming_request(chunk, pal, io)
                 .await
@@ -488,8 +498,8 @@ const SET_CERT_STREAM_PREFIX_LEN: usize =
     SpdmMsgHdrPdu::SIZE + caliptra_mcu_spdm_codec::SetCertificateReqBody::SIZE + 4 + 48;
 
 #[cfg(feature = "set-certificate")]
-fn required_stream_prefix_len(first: &[u8], secure_session: bool) -> Option<usize> {
-    if secure_session || first.len() >= SET_CERT_STREAM_PREFIX_LEN {
+fn required_stream_prefix_len(first: &[u8]) -> Option<usize> {
+    if first.len() >= SET_CERT_STREAM_PREFIX_LEN {
         return None;
     }
     let (hdr, _) = SpdmMsgHdrPdu::ref_from_prefix(first).ok()?;
@@ -543,7 +553,7 @@ async fn continue_setcert_prefix<Pal: SpdmPal>(
     Ok(consumed)
 }
 
-pub(crate) async fn abort_streaming_request_if_needed<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
+pub(crate) async fn abort_active_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
@@ -571,6 +581,7 @@ async fn try_start_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     large_msg_size: usize,
     first: &[u8],
     secure_session: bool,
+    _set_certificate_allowed: bool,
 ) -> SpdmResult<bool> {
     let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(first).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8() {
@@ -579,14 +590,8 @@ async fn try_start_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     match hdr.code {
         #[cfg(feature = "set-certificate")]
         ReqRespCode::SET_CERTIFICATE => {
-            if secure_session {
-                state.large_msg_ctx.init_streaming_request(
-                    handle,
-                    large_msg_size,
-                    first.len(),
-                    ActiveLargeRequest::Unsupported(SPDM_UNSUPPORTED_REQUEST),
-                )?;
-                return Ok(true);
+            if !_set_certificate_allowed {
+                return Err(SPDM_UNEXPECTED_REQUEST);
             }
             let stream = set_certificate::start_set_certificate_stream(
                 state,
@@ -712,15 +717,6 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 ),
             }
         }
-        #[cfg(feature = "set-certificate")]
-        Some(ActiveLargeRequest::Unsupported(spdm)) => (
-            write_error_response_to_large_request(
-                &mut response_to_large_request,
-                state.version,
-                spdm,
-            ),
-            false,
-        ),
         Some(ActiveLargeRequest::VendorDefined(stream)) => {
             let vendor_id_len = stream.vendor_id_len as usize;
             let vendor_id = &stream.vendor_id[..vendor_id_len];
@@ -874,9 +870,6 @@ async fn dispatch_large_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     match hdr.code {
         #[cfg(feature = "set-certificate")]
         ReqRespCode::SET_CERTIFICATE => {
-            if secure_session {
-                return Err(SPDM_UNSUPPORTED_REQUEST.into());
-            }
             let slot_id =
                 set_certificate::handle_set_certificate_request(state, pal, io, large_req).await?;
             let bytes = [
@@ -1157,6 +1150,7 @@ mod tests {
             &vdm,
             &first_chunk,
             false,
+            true,
         ))
         .unwrap();
         assert_eq!(
@@ -1181,6 +1175,7 @@ mod tests {
             &vdm,
             &second_chunk,
             false,
+            true,
         ))
         .unwrap();
         assert_eq!(
@@ -1238,6 +1233,7 @@ mod tests {
             &vdm,
             &first_chunk,
             false,
+            true,
         ))
         .unwrap();
         assert_eq!(
@@ -1262,6 +1258,7 @@ mod tests {
             &vdm,
             &second_chunk,
             false,
+            true,
         ))
         .unwrap();
         assert_eq!(

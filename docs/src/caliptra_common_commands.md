@@ -248,6 +248,8 @@ Requests debug unlock in production environment.
 ### Authorize Debug Unlock Token
 
 Authorizes the debug unlock token.
+The request body is identical for MCI mailbox and SPDM VDM transports; the
+leading `checksum` is part of the common command body, not transport framing.
 
 **Request Payload**:
 

@@ -326,10 +326,10 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         if self.current_app.get() != Some(processid) {
             return Err(ErrorCode::INVAL);
         }
+        self.driver
+            .map(|driver| driver.abort_request())
+            .ok_or(ErrorCode::FAIL)?;
         let _ = self.alarm.disarm();
-        self.driver.map(|driver| {
-            driver.abort_request();
-        });
         self.state.set(MailboxState::Idle);
         self.current_app.take();
         Ok(())

@@ -438,11 +438,11 @@ impl ManagedEndorsement {
         cert_info: u8,
         root_hash: &[u8; 48],
         data_len: usize,
-        data_checksum: u32,
     ) -> McuResult<Self> {
         if algo != SpdmPalAsymAlgo::EccP384 || data_len > self.der_capacity() {
             return Err(mcu_error::codes::INVARIANT);
         }
+        let data_checksum = self.stored_checksum(data_len).await?;
         let record = ManagedRecord {
             version: MANAGED_FORMAT_VERSION,
             header_size: MANAGED_HEADER_SIZE as u16,

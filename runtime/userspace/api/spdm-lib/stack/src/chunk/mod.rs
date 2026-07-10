@@ -6,7 +6,7 @@ mod get;
 mod send;
 
 pub(crate) use get::handle_chunk_get;
-pub(crate) use send::abort_streaming_request_if_needed;
+pub(crate) use send::abort_active_streaming_request;
 pub(crate) use send::handle_chunk_send;
 
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport};
@@ -98,8 +98,6 @@ pub(crate) enum ActiveLargeRequest {
     Prefix(StreamPrefixState),
     #[cfg(feature = "set-certificate")]
     SetCertificate(crate::set_certificate::SetCertificateStreamState),
-    #[cfg(feature = "set-certificate")]
-    Unsupported(SpdmError),
     VendorDefined(VendorDefinedStreamState),
 }
 

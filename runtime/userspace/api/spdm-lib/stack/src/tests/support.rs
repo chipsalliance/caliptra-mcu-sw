@@ -405,7 +405,6 @@ impl SpdmPalCertStore for TestPal {
         cert_model: u8,
         root_hash: &[u8; SHA384_DIGEST_SIZE],
         _data_len: usize,
-        _data_checksum: u32,
     ) -> McuResult<()> {
         if let Some(err) = self.validate_error {
             return Err(err);

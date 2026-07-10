@@ -207,7 +207,6 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
         _cert_info: u8,
         _root_hash: &[u8; 48],
         _data_len: usize,
-        _data_checksum: u32,
     ) -> McuResult<()> {
         Err(mcu_error::codes::NOT_IMPLEMENTED)
     }

@@ -52,6 +52,27 @@ impl DpeChainSink for CountSink {
     }
 }
 
+#[cfg(feature = "set-certificate")]
+async fn validate_root_hash<M: MeasurementProvider>(
+    pal: &McuSpdmPal<M>,
+    root_hash: &[u8; 48],
+    cert_chain: &[u8],
+) -> McuResult<()> {
+    let root_cert_len = der_first_seq_len(cert_chain).ok_or(INVARIANT)?;
+    let sha_buf =
+        mcu_caliptra_api_lite::ApiAlloc::alloc(pal, mcu_caliptra_api_lite::SHA_CONTEXT_SIZE)?;
+    let mut state =
+        mcu_caliptra_api_lite::sha_init(pal, sha_buf, mcu_caliptra_api_lite::HashAlgo::Sha384, &[])
+            .await?;
+    mcu_caliptra_api_lite::sha_update(pal, &mut state, &cert_chain[..root_cert_len]).await?;
+    let mut digest = [0u8; 48];
+    mcu_caliptra_api_lite::sha_finish(pal, &mut state, &mut digest).await?;
+    if &digest != root_hash {
+        return Err(INVARIANT);
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Streaming SET_CERTIFICATE validation helpers
 // ---------------------------------------------------------------------------
@@ -213,12 +234,13 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         _slot: u8,
         _key_pair_id: u8,
         cert_model: u8,
-        _root_hash: &[u8; 48],
-        _cert_chain: &[u8],
+        root_hash: &[u8; 48],
+        cert_chain: &[u8],
     ) -> McuResult<()> {
         if cert_model != CERT_MODEL_ALIAS_CERT {
             return Err(INVARIANT);
         }
+        validate_root_hash(self, root_hash, cert_chain).await?;
         Ok(())
     }
 
@@ -520,7 +542,6 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         cert_info: u8,
         root_hash: &[u8; 48],
         data_len: usize,
-        data_checksum: u32,
     ) -> McuResult<()> {
         #[cfg(feature = "set-certificate")]
         {
@@ -535,14 +556,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 };
                 validate_streamed_root_hash(self, &managed, root_hash, data_len).await?;
                 let managed = managed
-                    .finish_stream_update(
-                        algo,
-                        key_pair_id,
-                        cert_info,
-                        root_hash,
-                        data_len,
-                        data_checksum,
-                    )
+                    .finish_stream_update(algo, key_pair_id, cert_info, root_hash, data_len)
                     .await?;
                 let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
                 cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
@@ -560,15 +574,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         }
         #[cfg(not(feature = "set-certificate"))]
         {
-            let _ = (
-                slot,
-                algo,
-                key_pair_id,
-                cert_info,
-                root_hash,
-                data_len,
-                data_checksum,
-            );
+            let _ = (slot, algo, key_pair_id, cert_info, root_hash, data_len);
             Err(mcu_error::codes::NOT_IMPLEMENTED)
         }
     }
@@ -685,4 +691,53 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 /// subsequent calls produce identical sizes.
 async fn probe_leaf_len<M: MeasurementProvider>(pal: &McuSpdmPal<M>) -> McuResult<usize> {
     dpe_certify_key_cert_size(pal, &DPE_LEAF_LABEL).await
+}
+
+/// Return the total encoded length of the first DER SEQUENCE in `buf`.
+#[cfg(any(test, feature = "set-certificate"))]
+fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
+    if buf.len() < 2 || buf[0] != 0x30 {
+        return None;
+    }
+    let len_byte = buf[1];
+    let total = if len_byte & 0x80 == 0 {
+        let content = len_byte as usize;
+        if content == 0 {
+            return None;
+        }
+        2usize.checked_add(content)?
+    } else {
+        let n = (len_byte & 0x7f) as usize;
+        if n == 0 || n > 4 || buf.len() < 2 + n {
+            return None;
+        }
+        let mut content = 0usize;
+        for &byte in &buf[2..2 + n] {
+            content = content.checked_shl(8)?;
+            content = content.checked_add(byte as usize)?;
+        }
+        if content == 0 {
+            return None;
+        }
+        2usize.checked_add(n)?.checked_add(content)?
+    };
+    (total <= buf.len()).then_some(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::der_first_seq_len;
+
+    #[test]
+    fn der_first_sequence_length() {
+        assert_eq!(der_first_seq_len(&[0x30, 0x01, 0x05]), Some(3));
+
+        let mut long = [0u8; 262];
+        long[..4].copy_from_slice(&[0x30, 0x82, 0x01, 0x02]);
+        assert_eq!(der_first_seq_len(&long), Some(262));
+
+        assert_eq!(der_first_seq_len(&[]), None);
+        assert_eq!(der_first_seq_len(&[0x31, 0x01]), None);
+        assert_eq!(der_first_seq_len(&[0x30]), None);
+    }
 }

@@ -599,7 +599,7 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         ReqRespCode::GET_CERTIFICATE => certificate::handle_get_certificate(state, pal, io).await,
         ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
         ReqRespCode::CHUNK_SEND => {
-            chunk::handle_chunk_send(state, pal, io, vdm, io.request(), false).await
+            chunk::handle_chunk_send(state, pal, io, vdm, io.request(), false, true).await
         }
         ReqRespCode::CHUNK_GET => chunk::handle_chunk_get(state, pal, io, io.request()).await,
         #[cfg(feature = "set-certificate")]
@@ -642,7 +642,7 @@ async fn abort_chunk_reassembly_if_interrupted<Pal: SpdmPal, Vdm: SpdmVdmBackend
     code: ReqRespCode,
 ) {
     if code != ReqRespCode::CHUNK_SEND && state.large_msg_ctx.request_in_progress() {
-        chunk::abort_streaming_request_if_needed(state, pal, io, vdm).await;
+        chunk::abort_active_streaming_request(state, pal, io, vdm).await;
         state.large_msg_ctx.reset();
     }
 }
@@ -921,8 +921,16 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             .await
         }
         ReqRespCode::CHUNK_SEND => {
-            let chunk_send_ack =
-                chunk::handle_chunk_send(state, pal, io, vdm, spdm_msg, true).await?;
+            let chunk_send_ack = chunk::handle_chunk_send(
+                state,
+                pal,
+                io,
+                vdm,
+                spdm_msg,
+                true,
+                session_state == SessionState::Established,
+            )
+            .await?;
             let head = pal.header_size();
             let spdm_rsp = &chunk_send_ack[head..];
             let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;

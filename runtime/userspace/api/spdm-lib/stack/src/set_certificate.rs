@@ -130,7 +130,6 @@ pub(crate) struct SetCertificateStreamState {
     root_hash: [u8; SHA384_DIGEST_SIZE],
     der_len: usize,
     der_received: usize,
-    data_checksum: u32,
     cert_remaining: usize,
     header: [u8; 6],
     header_len: usize,
@@ -218,7 +217,6 @@ pub(crate) async fn start_set_certificate_stream<Pal: SpdmPal>(
         root_hash,
         der_len,
         der_received: 0,
-        data_checksum: 0,
         cert_remaining: 0,
         header: [0; 6],
         header_len: 0,
@@ -254,10 +252,6 @@ pub(crate) async fn continue_set_certificate_stream<Pal: SpdmPal>(
     validate_der_stream_chunk(stream, der)?;
     pal.write_cert_chain_stream_chunk(io, stream.slot_id, algo, stream.der_received, der)
         .await?;
-    stream.data_checksum = stream.data_checksum.wrapping_add(
-        der.iter()
-            .fold(0u32, |acc, &byte| acc.wrapping_add(byte as u32)),
-    );
     stream.der_received = end;
     Ok(())
 }
@@ -283,7 +277,6 @@ pub(crate) async fn finish_set_certificate_stream<Pal: SpdmPal>(
         stream.cert_model,
         &stream.root_hash,
         stream.der_len,
-        stream.data_checksum,
     )
     .await?;
     Ok(stream.slot_id)
