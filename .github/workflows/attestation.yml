@@ -105,7 +105,7 @@ jobs:
       # ---- Build firmware with test features enabled -------------------------------
       - name: Build firmware with test SPDM responder features
         run: |
-          cargo xtask all-build --runtime-features test-mctp-spdm-attestation \
+          cargo xtask all-build --separate-runtimes --runtime-features test-mctp-spdm-attestation \
             --vendor "$ATTESTATION_VENDOR" --model "$ATTESTATION_MODEL"
 
       # ---- Generate reference CoRIM values -------------------------------
