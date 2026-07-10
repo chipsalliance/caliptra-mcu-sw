@@ -158,7 +158,7 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
             && registry.vendor_id == CALIPTRA_VENDOR_ID.to_le_bytes()
     }
 
-    async fn start_streaming_request<Alloc, Io>(
+    async fn start_authorize_debug_unlock_token_stream<Alloc, Io>(
         &self,
         req_len: usize,
         first: &[u8],
@@ -192,7 +192,7 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
         }
     }
 
-    async fn continue_streaming_request<Alloc, Io>(
+    async fn continue_authorize_debug_unlock_token_stream<Alloc, Io>(
         &self,
         chunk: &[u8],
         alloc: &Alloc,
@@ -208,7 +208,7 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
             .map_err(|_| INVARIANT)
     }
 
-    async fn finish_streaming_request<Alloc, Io>(
+    async fn finish_authorize_debug_unlock_token_stream<Alloc, Io>(
         &self,
         rsp: VdmResponseBuffer<'_, Alloc, Io>,
     ) -> McuResult<VdmResponse>
@@ -234,7 +234,7 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
         Ok(VdmResponse::Inline(VDM_HEADER_LEN + 1))
     }
 
-    async fn abort_streaming_request<Alloc, Io>(&self, alloc: &Alloc, _io: &Io)
+    async fn abort_authorize_debug_unlock_token_stream<Alloc, Io>(&self, alloc: &Alloc, _io: &Io)
     where
         Alloc: SpdmPalAlloc,
         Io: SpdmPalIo,

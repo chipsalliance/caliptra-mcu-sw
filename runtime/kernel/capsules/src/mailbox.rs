@@ -121,6 +121,9 @@ pub struct Mailbox<'a, A: Alarm<'a>> {
     current_app: OptionalCell<ProcessId>,
     // Current state of the mailbox state machine.
     state: Cell<MailboxState>,
+    // Trailing request bytes not yet forming a complete FIFO word.
+    pending_bytes: Cell<u8>,
+    pending_word: Cell<u32>,
     // Timeout ticks for the initiated state before auto-resetting to idle.
     // If None, no timeout is enforced.
     timeout_ticks: Option<u32>,
@@ -146,6 +149,8 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             apps: grant,
             current_app: OptionalCell::empty(),
             state: Cell::new(MailboxState::Idle),
+            pending_bytes: Cell::new(0),
+            pending_word: Cell::new(0),
             timeout_ticks,
             resp_min_size: Cell::new(0),
             resp_size: Cell::new(0),
@@ -197,7 +202,6 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         app_buffer: &ReadableProcessSlice,
     ) -> Result<(), ErrorCode> {
         self.current_app.set(processid);
-        self.state.set(MailboxState::Executing);
 
         // App buffer contains the full payload. The mailbox is 32-bit wide and
         // payload length is delimited by `dlen` (= `app_buffer.len()`), so the
@@ -214,13 +218,14 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             }),
         ) {
             Ok(_) => {
+                self.clear_pending();
+                self.state.set(MailboxState::Executing);
                 self.schedule_alarm();
                 Ok(())
             }
             Err(err) => {
                 log_caliptra_error(&err);
-                self.state.set(MailboxState::Idle);
-                self.current_app.take();
+                self.reset_to_idle();
                 Err(ErrorCode::FAIL)
             }
         }
@@ -236,22 +241,22 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         if self.state.get() != MailboxState::Idle {
             return Err(ErrorCode::BUSY);
         }
-        self.current_app.set(processid);
-        self.state.set(MailboxState::Initiated);
         self.driver
-            .map(
-                |driver| match driver.initiate_request(command, payload_size) {
+            .map(|driver| {
+                self.current_app.set(processid);
+                self.state.set(MailboxState::Initiated);
+                match driver.initiate_request(command, payload_size) {
                     Ok(()) => {
+                        self.clear_pending();
                         self.schedule_initiate_timeout();
                         Ok(())
                     }
                     Err(_) => {
-                        self.state.set(MailboxState::Idle);
-                        self.current_app.take();
+                        self.reset_to_idle();
                         Err(ErrorCode::FAIL)
                     }
-                },
-            )
+                }
+            })
             .ok_or(ErrorCode::RESERVE)?
     }
 
@@ -304,17 +309,42 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         driver: &mut CaliptraSoC,
         app_buffer: &ReadableProcessSlice,
     ) -> Result<(), ErrorCode> {
-        // The mailbox FIFO is 32-bit wide and the payload length is delimited
-        // by `dlen`, so a trailing partial word is zero-padded into a u32
-        // (matching the policy in `start_request`).
-        for chunk in app_buffer.chunks(4) {
-            let mut buf = [0u8; 4];
-            let n = chunk.len();
-            chunk.copy_to_slice(&mut buf[..n]);
-            let data = u32::from_le_bytes(buf);
-            driver.write_data(data).map_err(|_| ErrorCode::FAIL)?;
+        let mut pending_bytes = self.pending_bytes.get() as usize;
+        let mut pending_word = self.pending_word.get();
+
+        for i in 0..app_buffer.len() {
+            pending_word |= u32::from(app_buffer[i].get()) << (pending_bytes * 8);
+            pending_bytes += 1;
+            if pending_bytes == 4 {
+                if driver.write_data(pending_word).is_err() {
+                    self.abort_and_reset(driver);
+                    return Err(ErrorCode::FAIL);
+                }
+                pending_bytes = 0;
+                pending_word = 0;
+            }
         }
+
+        self.pending_bytes.set(pending_bytes as u8);
+        self.pending_word.set(pending_word);
         Ok(())
+    }
+
+    fn clear_pending(&self) {
+        self.pending_bytes.set(0);
+        self.pending_word.set(0);
+    }
+
+    fn reset_to_idle(&self) {
+        let _ = self.alarm.disarm();
+        self.clear_pending();
+        self.state.set(MailboxState::Idle);
+        self.current_app.take();
+    }
+
+    fn abort_and_reset(&self, driver: &mut CaliptraSoC) {
+        driver.abort_request();
+        self.reset_to_idle();
     }
 
     fn abort_initiated_request(&self, processid: ProcessId) -> Result<(), ErrorCode> {
@@ -327,12 +357,8 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             return Err(ErrorCode::INVAL);
         }
         self.driver
-            .map(|driver| driver.abort_request())
-            .ok_or(ErrorCode::FAIL)?;
-        let _ = self.alarm.disarm();
-        self.state.set(MailboxState::Idle);
-        self.current_app.take();
-        Ok(())
+            .map(|driver| self.abort_and_reset(driver))
+            .ok_or(ErrorCode::FAIL)
     }
 
     fn execute(&self, processid: ProcessId) -> Result<(), ErrorCode> {
@@ -344,18 +370,22 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         if self.current_app.get() != Some(processid) {
             return Err(ErrorCode::INVAL);
         }
-        self.state.set(MailboxState::Executing);
         self.driver
-            .map(|driver| match driver.execute_command() {
-                Ok(()) => {
-                    self.schedule_alarm();
-                    Ok(())
+            .map(|driver| {
+                if self.pending_bytes.get() != 0
+                    && driver.write_data(self.pending_word.get()).is_err()
+                {
+                    self.abort_and_reset(driver);
+                    return Err(ErrorCode::FAIL);
                 }
-                Err(_err) => {
-                    self.state.set(MailboxState::Idle);
-                    self.current_app.take();
-                    Err(ErrorCode::FAIL)
+                if driver.execute_command().is_err() {
+                    self.abort_and_reset(driver);
+                    return Err(ErrorCode::FAIL);
                 }
+                self.clear_pending();
+                self.state.set(MailboxState::Executing);
+                self.schedule_alarm();
+                Ok(())
             })
             .unwrap_or(Err(ErrorCode::FAIL))
     }
@@ -463,13 +493,11 @@ impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
             MailboxState::Initiated => {
                 // Timeout: user didn't complete the chunked send in time.
                 capsule_debug!("MBOX", "Mailbox initiate timeout: resetting to idle");
-                let _ = self.alarm.disarm();
                 // Release the HW mailbox lock by clearing the execute bit.
                 self.driver.map(|driver| {
                     driver.abort_request();
                 });
-                self.state.set(MailboxState::Idle);
-                self.current_app.take();
+                self.reset_to_idle();
             }
             MailboxState::Executing => {
                 let reschedule = self
@@ -487,9 +515,7 @@ impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
                 if reschedule {
                     self.schedule_alarm();
                 } else {
-                    let _ = self.alarm.disarm();
-                    self.state.set(MailboxState::Idle);
-                    self.current_app.take();
+                    self.reset_to_idle();
                 }
             }
             MailboxState::Idle => {

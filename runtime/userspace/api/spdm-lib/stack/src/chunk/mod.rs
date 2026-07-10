@@ -64,6 +64,7 @@ pub(crate) struct ChunkState {
     pub(super) seq_num: u16,
     pub(super) bytes_received: u32,
     pub(super) large_msg_size: u32,
+    pub(super) session_id: Option<u32>,
 }
 
 impl ChunkState {
@@ -73,15 +74,8 @@ impl ChunkState {
     }
 }
 
-#[derive(Copy, Clone)]
-pub(crate) struct VendorDefinedStreamState {
-    pub(crate) standard_id: u16,
-    pub(crate) vendor_id: [u8; 4],
-    pub(crate) vendor_id_len: u8,
-}
-
 #[cfg(feature = "set-certificate")]
-pub(crate) const STREAM_PREFIX_CAPACITY: usize = 96;
+pub(crate) const STREAM_PREFIX_CAPACITY: usize = 56;
 
 #[cfg(feature = "set-certificate")]
 #[derive(Copy, Clone)]
@@ -98,7 +92,7 @@ pub(crate) enum ActiveLargeRequest {
     Prefix(StreamPrefixState),
     #[cfg(feature = "set-certificate")]
     SetCertificate(crate::set_certificate::SetCertificateStreamState),
-    VendorDefined(VendorDefinedStreamState),
+    AuthorizeDebugUnlockToken,
 }
 
 #[derive(Copy, Clone)]
@@ -184,6 +178,7 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
         total_size: usize,
         initial_chunk: &[u8],
         mut rent_buf: L,
+        session_id: Option<u32>,
     ) -> Result<(), SpdmError> {
         if !self.is_idle() {
             return Err(SPDM_UNEXPECTED_REQUEST);
@@ -196,6 +191,7 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
             seq_num: 0,
             bytes_received: initial_chunk.len() as u32,
             large_msg_size: total_size as u32,
+            session_id,
         };
         let dest = rent_buf
             .get_mut(..initial_chunk.len())
@@ -213,6 +209,7 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
         total_size: usize,
         initial_chunk_len: usize,
         active: ActiveLargeRequest,
+        session_id: Option<u32>,
     ) -> Result<(), SpdmError> {
         if !self.is_idle() {
             return Err(SPDM_UNEXPECTED_REQUEST);
@@ -224,6 +221,7 @@ impl<L: core::ops::DerefMut<Target = [u8]>> LargeMessageCtx<L> {
             seq_num: 0,
             bytes_received: initial_chunk_len as u32,
             large_msg_size: total_size as u32,
+            session_id,
         };
         Ok(())
     }

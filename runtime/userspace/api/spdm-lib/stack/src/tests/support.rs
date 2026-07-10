@@ -18,7 +18,7 @@ use core::ops::{Deref, DerefMut};
 use futures::executor::block_on;
 use mcu_error::{McuErrorCode, McuResult};
 use std::boxed::Box;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::vec;
 use std::vec::Vec;
 
@@ -107,6 +107,7 @@ pub struct TestPal {
     pub cert_chain: &'static [u8],
     pub op: RefCell<Option<StoreOp>>,
     pub stream_cert: RefCell<Vec<u8>>,
+    pub stream_aborts: Cell<usize>,
 }
 
 impl Default for TestPal {
@@ -121,6 +122,7 @@ impl Default for TestPal {
             cert_chain: TEST_CERT_CHAIN,
             op: RefCell::new(None),
             stream_cert: RefCell::new(Vec::new()),
+            stream_aborts: Cell::new(0),
         }
     }
 }
@@ -430,6 +432,18 @@ impl SpdmPalCertStore for TestPal {
         }));
         Ok(())
     }
+
+    async fn abort_write_cert_chain_stream(
+        &self,
+        _io: &Self::Io<'_>,
+        _slot: u8,
+        _algo: SpdmPalAsymAlgo,
+    ) -> McuResult<()> {
+        self.stream_aborts.set(self.stream_aborts.get() + 1);
+        self.stream_cert.borrow_mut().clear();
+        Ok(())
+    }
+
     #[cfg(feature = "set-certificate")]
     async fn erase_cert_chain(
         &self,

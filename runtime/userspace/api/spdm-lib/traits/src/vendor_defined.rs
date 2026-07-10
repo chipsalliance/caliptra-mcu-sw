@@ -82,14 +82,14 @@ pub trait SpdmVdmBackend {
     /// Returns true when this backend owns the decoded VDM registry ID.
     fn match_id(&self, registry: &VdmRegistry<'_>) -> bool;
 
-    /// Attempts to start streaming a matched large VDM request.
+    /// Attempts to start streaming an AuthorizeDebugUnlockToken request.
     ///
     /// `req_len` is the total VDM payload length (excluding the SPDM
     /// VENDOR_DEFINED envelope). `first` is the VDM payload bytes carried in the
     /// first CHUNK_SEND fragment. Backends return `Ok(true)` only when they own
     /// and have started streaming this request; `Ok(false)` lets the stack fall
     /// back to buffered large-request handling.
-    async fn start_streaming_request<Alloc, Io>(
+    async fn start_authorize_debug_unlock_token_stream<Alloc, Io>(
         &self,
         _req_len: usize,
         _first: &[u8],
@@ -103,9 +103,8 @@ pub trait SpdmVdmBackend {
         Ok(false)
     }
 
-    /// Streams additional VDM payload bytes for a request accepted by
-    /// [`start_streaming_request`](Self::start_streaming_request).
-    async fn continue_streaming_request<Alloc, Io>(
+    /// Streams additional AuthorizeDebugUnlockToken payload bytes.
+    async fn continue_authorize_debug_unlock_token_stream<Alloc, Io>(
         &self,
         _chunk: &[u8],
         _alloc: &Alloc,
@@ -118,8 +117,8 @@ pub trait SpdmVdmBackend {
         Err(mcu_error::codes::NOT_IMPLEMENTED)
     }
 
-    /// Finishes a streaming VDM request and writes the VDM response payload.
-    async fn finish_streaming_request<Alloc, Io>(
+    /// Finishes a streaming AuthorizeDebugUnlockToken request.
+    async fn finish_authorize_debug_unlock_token_stream<Alloc, Io>(
         &self,
         _rsp: VdmResponseBuffer<'_, Alloc, Io>,
     ) -> McuResult<VdmResponse>
@@ -130,8 +129,8 @@ pub trait SpdmVdmBackend {
         Err(mcu_error::codes::NOT_IMPLEMENTED)
     }
 
-    /// Aborts any in-progress streaming VDM request owned by this backend.
-    async fn abort_streaming_request<Alloc, Io>(&self, _alloc: &Alloc, _io: &Io)
+    /// Aborts an in-progress AuthorizeDebugUnlockToken request.
+    async fn abort_authorize_debug_unlock_token_stream<Alloc, Io>(&self, _alloc: &Alloc, _io: &Io)
     where
         Alloc: SpdmPalAlloc,
         Io: SpdmPalIo,

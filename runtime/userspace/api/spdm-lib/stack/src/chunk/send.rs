@@ -12,11 +12,11 @@ use caliptra_mcu_spdm_traits::{
 };
 use zerocopy::{little_endian::U16, FromBytes};
 
+use super::ActiveLargeRequest;
 #[cfg(feature = "set-certificate")]
 use super::StreamPrefixState;
 #[cfg(any(test, feature = "generic-large-request"))]
 use super::WipeOnDrop;
-use super::{ActiveLargeRequest, VendorDefinedStreamState};
 use crate::build::alloc_padded;
 use crate::error::*;
 #[cfg(feature = "set-certificate")]
@@ -36,7 +36,7 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
     req: &[u8],
-    secure_session: bool,
+    session_id: Option<u32>,
     set_certificate_allowed: bool,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let result = process_chunk_send(
@@ -45,7 +45,7 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         io,
         vdm,
         req,
-        secure_session,
+        session_id,
         set_certificate_allowed,
     )
     .await;
@@ -57,7 +57,6 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                     pal,
                     io,
                     vdm,
-                    secure_session,
                     info.handle,
                     info.chunk_seq_num,
                 )
@@ -122,6 +121,9 @@ fn build_chunk_send_ack<'a, Pal: SpdmPal>(
 
 /// Maximum bytes carried as `ResponseToLargeRequest` inside CHUNK_SEND_ACK.
 const LARGE_REQUEST_RESPONSE_BUF_SIZE: usize = 512;
+const DEBUG_UNLOCK_STANDARD_ID: u16 = 0x0004;
+const DEBUG_UNLOCK_VENDOR_ID: [u8; 4] =
+    caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::CALIPTRA_VENDOR_ID.to_le_bytes();
 
 enum ChunkProcessError {
     Spdm(SpdmError),
@@ -134,12 +136,18 @@ async fn process_chunk_send<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
     req: &[u8],
-    secure_session: bool,
+    session_id: Option<u32>,
     set_certificate_allowed: bool,
 ) -> Result<ChunkInfo, ChunkProcessError> {
     if state.large_msg_ctx.response_in_progress()
         || (state.phase as u8) < (Phase::AfterCapabilities as u8)
         || !state.chunking_enabled()
+    {
+        return Err(ChunkProcessError::Spdm(SPDM_UNEXPECTED_REQUEST));
+    }
+
+    if state.large_msg_ctx.request_in_progress()
+        && state.large_msg_ctx.state.session_id != session_id
     {
         return Err(ChunkProcessError::Spdm(SPDM_UNEXPECTED_REQUEST));
     }
@@ -180,7 +188,7 @@ async fn process_chunk_send<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             chunk_size,
             last_chunk,
             rest,
-            secure_session,
+            session_id,
             set_certificate_allowed,
         )
         .await?;
@@ -218,7 +226,7 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     chunk_size: usize,
     last_chunk: bool,
     rest: &[u8],
-    secure_session: bool,
+    session_id: Option<u32>,
     set_certificate_allowed: bool,
 ) -> Result<(), ChunkProcessError> {
     let Some(size_bytes) = rest.first_chunk::<4>() else {
@@ -287,6 +295,7 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                     large_msg_size,
                     chunk.len(),
                     ActiveLargeRequest::Prefix(prefix),
+                    session_id,
                 )
                 .map_err(|_| ChunkProcessError::Early {
                     handle,
@@ -303,7 +312,7 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         handle,
         large_msg_size,
         chunk,
-        secure_session,
+        session_id,
         set_certificate_allowed,
     )
     .await
@@ -326,7 +335,7 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         };
         if state
             .large_msg_ctx
-            .init_request(handle, large_msg_size, chunk, rent_buf)
+            .init_request(handle, large_msg_size, chunk, rent_buf, session_id)
             .is_err()
         {
             return Err(ChunkProcessError::Early {
@@ -467,8 +476,8 @@ async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                     chunk_seq_num,
                 })?;
         }
-        Some(ActiveLargeRequest::VendorDefined(_)) => {
-            vdm.continue_streaming_request(chunk, pal, io)
+        Some(ActiveLargeRequest::AuthorizeDebugUnlockToken) => {
+            vdm.continue_authorize_debug_unlock_token_stream(chunk, pal, io)
                 .await
                 .map_err(|_| ChunkProcessError::Early {
                     handle,
@@ -564,8 +573,8 @@ pub(crate) async fn abort_active_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBac
         Some(ActiveLargeRequest::SetCertificate(stream)) => {
             set_certificate::abort_set_certificate_stream(state, pal, io, stream).await;
         }
-        Some(ActiveLargeRequest::VendorDefined(_)) => {
-            vdm.abort_streaming_request(pal, io).await;
+        Some(ActiveLargeRequest::AuthorizeDebugUnlockToken) => {
+            vdm.abort_authorize_debug_unlock_token_stream(pal, io).await;
         }
         _ => {}
     }
@@ -580,7 +589,7 @@ async fn try_start_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     handle: u8,
     large_msg_size: usize,
     first: &[u8],
-    secure_session: bool,
+    session_id: Option<u32>,
     _set_certificate_allowed: bool,
 ) -> SpdmResult<bool> {
     let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(first).map_err(|_| SPDM_INVALID_REQUEST)?;
@@ -606,6 +615,7 @@ async fn try_start_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 large_msg_size,
                 first.len(),
                 ActiveLargeRequest::SetCertificate(stream),
+                session_id,
             )?;
             Ok(true)
         }
@@ -636,28 +646,23 @@ async fn try_start_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             let registry = VdmRegistry {
                 standard_id: vdm_hdr.standard_id.get(),
                 vendor_id,
-                secure_session,
+                secure_session: session_id.is_some(),
             };
             if !vdm.match_id(&registry) {
                 return Ok(false);
             }
             if !vdm
-                .start_streaming_request(req_len, payload, pal, io)
+                .start_authorize_debug_unlock_token_stream(req_len, payload, pal, io)
                 .await?
             {
                 return Ok(false);
             }
-            let mut vendor_id_buf = [0u8; 4];
-            vendor_id_buf[..vendor_id_len].copy_from_slice(vendor_id);
             state.large_msg_ctx.init_streaming_request(
                 handle,
                 large_msg_size,
                 first.len(),
-                ActiveLargeRequest::VendorDefined(VendorDefinedStreamState {
-                    standard_id: vdm_hdr.standard_id.get(),
-                    vendor_id: vendor_id_buf,
-                    vendor_id_len: vdm_hdr.vendor_id_len,
-                }),
+                ActiveLargeRequest::AuthorizeDebugUnlockToken,
+                session_id,
             )?;
             Ok(true)
         }
@@ -686,7 +691,6 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
-    _secure_session: bool,
     handle: u8,
     chunk_seq_num: u16,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
@@ -707,20 +711,22 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                     response_to_large_request[..bytes.len()].copy_from_slice(&bytes);
                     (bytes.len(), false)
                 }
-                Err(spdm) => (
-                    write_error_response_to_large_request(
-                        &mut response_to_large_request,
-                        state.version,
-                        spdm,
-                    ),
-                    false,
-                ),
+                Err(spdm) => {
+                    set_certificate::abort_set_certificate_stream(state, pal, io, &stream).await;
+                    (
+                        write_error_response_to_large_request(
+                            &mut response_to_large_request,
+                            state.version,
+                            spdm,
+                        ),
+                        false,
+                    )
+                }
             }
         }
-        Some(ActiveLargeRequest::VendorDefined(stream)) => {
-            let vendor_id_len = stream.vendor_id_len as usize;
-            let vendor_id = &stream.vendor_id[..vendor_id_len];
-            let envelope_len = SpdmMsgHdrPdu::SIZE + 2 + 2 + 1 + vendor_id_len + 2;
+        Some(ActiveLargeRequest::AuthorizeDebugUnlockToken) => {
+            let vendor_id = &DEBUG_UNLOCK_VENDOR_ID;
+            let envelope_len = SpdmMsgHdrPdu::SIZE + 2 + 2 + 1 + vendor_id.len() + 2;
             if envelope_len > response_to_large_request.len() {
                 (
                     write_error_response_to_large_request(
@@ -733,7 +739,7 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             } else {
                 let mut empty_large = [];
                 let outcome = vdm
-                    .finish_streaming_request(VdmResponseBuffer {
+                    .finish_authorize_debug_unlock_token_stream(VdmResponseBuffer {
                         inline: &mut response_to_large_request[envelope_len..],
                         large: &mut empty_large,
                         alloc: pal,
@@ -746,7 +752,7 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                             > response_to_large_request.len()
                             || vendor_defined::write_vendor_defined_envelope(
                                 state.version,
-                                stream.standard_id,
+                                DEBUG_UNLOCK_STANDARD_ID,
                                 vendor_id,
                                 payload_len,
                                 &mut response_to_large_request[..envelope_len],
@@ -791,7 +797,7 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             io,
             vdm,
             len,
-            _secure_session,
+            state.large_msg_ctx.state.session_id.is_some(),
             &mut response_to_large_request,
         )
         .await
@@ -970,7 +976,7 @@ mod tests {
             registry.standard_id == 0x0004 && registry.vendor_id == CALIPTRA_VENDOR_ID_BYTES
         }
 
-        async fn start_streaming_request<Alloc, Io>(
+        async fn start_authorize_debug_unlock_token_stream<Alloc, Io>(
             &self,
             _req_len: usize,
             first: &[u8],
@@ -991,7 +997,7 @@ mod tests {
             Ok(true)
         }
 
-        async fn continue_streaming_request<Alloc, Io>(
+        async fn continue_authorize_debug_unlock_token_stream<Alloc, Io>(
             &self,
             chunk: &[u8],
             _alloc: &Alloc,
@@ -1009,7 +1015,7 @@ mod tests {
             Ok(())
         }
 
-        async fn finish_streaming_request<Alloc, Io>(
+        async fn finish_authorize_debug_unlock_token_stream<Alloc, Io>(
             &self,
             rsp: VdmResponseBuffer<'_, Alloc, Io>,
         ) -> McuResult<VdmResponse>
@@ -1066,7 +1072,7 @@ mod tests {
             registry.standard_id == 0x0004 && registry.vendor_id == CALIPTRA_VENDOR_ID_BYTES
         }
 
-        async fn start_streaming_request<Alloc, Io>(
+        async fn start_authorize_debug_unlock_token_stream<Alloc, Io>(
             &self,
             _req_len: usize,
             _first: &[u8],
@@ -1149,7 +1155,7 @@ mod tests {
             &first_io,
             &vdm,
             &first_chunk,
-            false,
+            None,
             true,
         ))
         .unwrap();
@@ -1174,7 +1180,7 @@ mod tests {
             &second_io,
             &vdm,
             &second_chunk,
-            false,
+            None,
             true,
         ))
         .unwrap();
@@ -1232,7 +1238,7 @@ mod tests {
             &first_io,
             &vdm,
             &first_chunk,
-            false,
+            None,
             true,
         ))
         .unwrap();
@@ -1257,7 +1263,7 @@ mod tests {
             &second_io,
             &vdm,
             &second_chunk,
-            false,
+            None,
             true,
         ))
         .unwrap();

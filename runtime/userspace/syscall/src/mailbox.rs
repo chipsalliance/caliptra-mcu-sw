@@ -296,10 +296,13 @@ impl<S: Syscalls> Mailbox<S> {
         // Send the payload in chunks
         loop {
             // Read a chunk of data from the payload stream
-            let sz = payload
-                .read(&mut buffer)
-                .await
-                .map_err(MailboxError::ErrorCode)?;
+            let sz = match payload.read(&mut buffer).await {
+                Ok(sz) => sz,
+                Err(err) => {
+                    let _ = self.abort_chunked_request().await;
+                    return Err(MailboxError::ErrorCode(err));
+                }
+            };
             if sz == 0 {
                 break; // No more data to read
             }

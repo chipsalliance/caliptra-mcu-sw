@@ -278,7 +278,8 @@ pub(crate) async fn finish_set_certificate_stream<Pal: SpdmPal>(
         &stream.root_hash,
         stream.der_len,
     )
-    .await?;
+    .await
+    .map_err(map_set_cert_validation_error)?;
     Ok(stream.slot_id)
 }
 

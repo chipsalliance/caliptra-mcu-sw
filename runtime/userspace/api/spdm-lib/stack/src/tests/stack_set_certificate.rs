@@ -104,6 +104,44 @@ fn plaintext_chunked_set_certificate_succeeds() {
 }
 
 #[test]
+fn chunked_set_certificate_rejects_context_switch_without_resetting() {
+    let pal = TestPal::default();
+    let (mut state, mut sessions, session_id) = handshake_session(&pal);
+    let large_req = set_certificate_request(&pal);
+    let (first, second) = split_large_request(&large_req);
+    let first_chunk = chunk_send_request(7, 0, false, Some(large_req.len()), first);
+    let second_chunk = chunk_send_request(7, 1, true, None, second);
+
+    send_plaintext_chunk(&mut state, &mut sessions, &pal, &first_chunk);
+    let rsp = send_secured_chunk(&mut state, &mut sessions, &pal, session_id, &second_chunk);
+    assert_eq!(
+        secured_spdm_response(&rsp),
+        &[
+            SpdmVersion::V12.to_u8(),
+            ReqRespCode::ERROR.0,
+            SPDM_UNEXPECTED_REQUEST.spec_byte(),
+            0,
+        ]
+    );
+    assert!(state.large_msg_ctx.request_in_progress());
+    assert_eq!(pal.stream_aborts.get(), 0);
+    assert_eq!(pal.op.take(), None);
+
+    let rsp = send_plaintext_chunk(&mut state, &mut sessions, &pal, &second_chunk);
+    assert_eq!(
+        &rsp[6..],
+        &[
+            SpdmVersion::V12.to_u8(),
+            ReqRespCode::SET_CERTIFICATE_RSP.0,
+            1,
+            0,
+        ]
+    );
+    assert!(!state.large_msg_ctx.request_in_progress());
+    assert!(pal.op.take().is_some());
+}
+
+#[test]
 fn secured_chunked_set_certificate_succeeds() {
     let pal = TestPal::default();
     let (mut state, mut sessions, session_id) = established_session(&pal);
@@ -223,10 +261,42 @@ fn plaintext_chunked_set_certificate_bad_root_hash_does_not_commit() {
             0,
             SpdmVersion::V12.to_u8(),
             ReqRespCode::ERROR.0,
-            SPDM_UNSPECIFIED.spec_byte(),
+            SPDM_INVALID_REQUEST.spec_byte(),
             0,
         ]
     );
     assert!(!state.large_msg_ctx.request_in_progress());
+    assert_eq!(pal.stream_aborts.get(), 1);
+    assert!(pal.stream_cert.borrow().is_empty());
+    assert_eq!(pal.op.take(), None);
+}
+
+#[test]
+fn plaintext_chunked_set_certificate_truncated_final_der_aborts() {
+    let pal = TestPal::default();
+    let mut state = chunking_state();
+    let mut sessions = crate::session::SessionManager::new();
+    let mut large_req = set_certificate_request(&pal);
+    // The final DER sequence declares two content bytes but supplies one.
+    let final_der_len = large_req.len() - 2;
+    large_req[final_der_len] = 2;
+    let (first, second) = split_large_request(&large_req);
+    let first_chunk = chunk_send_request(9, 0, false, Some(large_req.len()), first);
+    let second_chunk = chunk_send_request(9, 1, true, None, second);
+
+    send_plaintext_chunk(&mut state, &mut sessions, &pal, &first_chunk);
+    let rsp = send_plaintext_chunk(&mut state, &mut sessions, &pal, &second_chunk);
+    assert_eq!(
+        &rsp[6..],
+        &[
+            SpdmVersion::V12.to_u8(),
+            ReqRespCode::ERROR.0,
+            SPDM_INVALID_REQUEST.spec_byte(),
+            0,
+        ]
+    );
+    assert!(!state.large_msg_ctx.request_in_progress());
+    assert_eq!(pal.stream_aborts.get(), 1);
+    assert!(pal.stream_cert.borrow().is_empty());
     assert_eq!(pal.op.take(), None);
 }
