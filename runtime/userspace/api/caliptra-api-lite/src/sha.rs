@@ -18,6 +18,7 @@ use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
+use crate::slice::{checked_slice, checked_slice_mut, copy_bytes};
 use crate::wire::{
     pad4, populate_checksum, CMB_SHA_CONTEXT_SIZE, CMD_CM_SHA_FINAL, CMD_CM_SHA_INIT,
     CMD_CM_SHA_UPDATE, CM_HASH_ALGO_SHA384, MAX_CMB_DATA_SIZE,
@@ -65,18 +66,23 @@ impl<B: Deref<Target = [u8]> + DerefMut> HashState<B> {
 
     /// Deep-copy this running hash state into a new buffer.
     pub fn clone_into<B2: Deref<Target = [u8]> + DerefMut>(&self, mut buf: B2) -> HashState<B2> {
-        buf[..CMB_SHA_CONTEXT_SIZE].copy_from_slice(&self.inner[..CMB_SHA_CONTEXT_SIZE]);
+        if let (Some(dst), Some(src)) = (
+            buf.get_mut(..CMB_SHA_CONTEXT_SIZE),
+            self.inner.get(..CMB_SHA_CONTEXT_SIZE),
+        ) {
+            copy_bytes(dst, src);
+        }
         HashState { inner: buf }
     }
 
     #[inline]
-    fn ctx(&self) -> &[u8] {
-        &self.inner[..CMB_SHA_CONTEXT_SIZE]
+    fn ctx(&self) -> McuResult<&[u8]> {
+        checked_slice(&self.inner, 0, CMB_SHA_CONTEXT_SIZE)
     }
 
     #[inline]
-    fn ctx_mut(&mut self) -> &mut [u8] {
-        &mut self.inner[..CMB_SHA_CONTEXT_SIZE]
+    fn ctx_mut(&mut self) -> McuResult<&mut [u8]> {
+        checked_slice_mut(&mut self.inner, 0, CMB_SHA_CONTEXT_SIZE)
     }
 }
 
@@ -163,10 +169,11 @@ pub async fn sha_init<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
     seed: &[u8],
 ) -> McuResult<HashState<B>> {
     // Zero the context region before first use.
-    buf[..CMB_SHA_CONTEXT_SIZE].fill(0);
+    checked_slice_mut(&mut buf, 0, CMB_SHA_CONTEXT_SIZE)?.fill(0);
     let mut state = HashState::from_buf(buf);
     let first_len = seed.len().min(SHA_CHUNK_SIZE);
-    let (first, rest) = seed.split_at(first_len);
+    let first = checked_slice(seed, 0, first_len)?;
+    let rest = checked_slice(seed, first_len, seed.len() - first_len)?;
     sha_call(
         alloc,
         CMD_CM_SHA_INIT,
@@ -237,17 +244,17 @@ async fn sha_call<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
     let mut req = alloc.alloc(wire_len)?;
     req.fill(0);
     if is_init {
-        let prefix =
-            ShaInitPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
+        let prefix = ShaInitPrefix::mut_from_bytes(checked_slice_mut(&mut req, 0, prefix_len)?)
+            .map_err(|_| INVARIANT)?;
         prefix.hash_algorithm = U32::new(algo.unwrap_or(0));
         prefix.input_size = U32::new(chunk_len as u32);
     } else {
-        let prefix =
-            ShaUpdatePrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
-        prefix.context.copy_from_slice(state.ctx());
+        let prefix = ShaUpdatePrefix::mut_from_bytes(checked_slice_mut(&mut req, 0, prefix_len)?)
+            .map_err(|_| INVARIANT)?;
+        copy_bytes(&mut prefix.context, state.ctx()?);
         prefix.input_size = U32::new(chunk_len as u32);
     }
-    req[prefix_len..prefix_len + chunk_len].copy_from_slice(data);
+    copy_bytes(checked_slice_mut(&mut req, prefix_len, chunk_len)?, data);
     populate_checksum(cmd, &mut req)?;
 
     let rsp_alloc_len = if is_final {
@@ -263,18 +270,20 @@ async fn sha_call<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
         if rsp_len < prefix_len {
             return Err(INTERNAL_BUG);
         }
-        let prefix =
-            ShaFinalRespPrefix::ref_from_bytes(&rsp[..prefix_len]).map_err(|_| INTERNAL_BUG)?;
+        let prefix = ShaFinalRespPrefix::ref_from_bytes(checked_slice(&rsp, 0, prefix_len)?)
+            .map_err(|_| INTERNAL_BUG)?;
         let data_len = prefix.data_len.get() as usize;
-        let hash_end = prefix_len + data_len;
+        let hash_end = prefix_len.checked_add(data_len).ok_or(INVARIANT)?;
         if hash_end > rsp_len || data_len > out.len() {
             return Err(INVARIANT);
         }
-        out[..data_len].copy_from_slice(&rsp[prefix_len..hash_end]);
+        let digest = checked_slice(&rsp, prefix_len, data_len)?;
+        let out = checked_slice_mut(out, 0, data_len)?;
+        copy_bytes(out, digest);
     } else {
-        let parsed = ShaCtxResp::ref_from_bytes(&rsp[..size_of::<ShaCtxResp>()])
+        let parsed = ShaCtxResp::ref_from_bytes(checked_slice(&rsp, 0, size_of::<ShaCtxResp>())?)
             .map_err(|_| INTERNAL_BUG)?;
-        state.ctx_mut().copy_from_slice(&parsed.context);
+        copy_bytes(state.ctx_mut()?, &parsed.context);
     }
     Ok(())
 }

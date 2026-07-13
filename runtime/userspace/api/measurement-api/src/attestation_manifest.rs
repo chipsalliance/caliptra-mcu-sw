@@ -193,14 +193,38 @@ pub fn parse_and_validate(
         return Err(AttestationManifestError::HeaderSizeMismatch);
     }
 
-    let vendor_bytes = &bytes[HEADER_VENDOR_OFFSET..HEADER_MODEL_OFFSET];
-    let model_bytes = &bytes[HEADER_MODEL_OFFSET..header_size];
-    let vendor = str::from_utf8(&vendor_bytes[..vendor_len])
-        .map_err(|_| AttestationManifestError::InvalidPlatformInfoUtf8)?;
-    let model = str::from_utf8(&model_bytes[..model_len])
-        .map_err(|_| AttestationManifestError::InvalidPlatformInfoUtf8)?;
-    if vendor_bytes[vendor_len..].iter().any(|byte| *byte != 0)
-        || model_bytes[model_len..].iter().any(|byte| *byte != 0)
+    let vendor_bytes = checked_slice(
+        bytes,
+        HEADER_VENDOR_OFFSET,
+        ATTESTATION_MANIFEST_PLATFORM_INFO_MAX_LEN,
+    )?;
+    let model_bytes = checked_slice(
+        bytes,
+        HEADER_MODEL_OFFSET,
+        ATTESTATION_MANIFEST_PLATFORM_INFO_MAX_LEN,
+    )?;
+    let vendor = str::from_utf8(
+        vendor_bytes
+            .get(..vendor_len)
+            .ok_or(AttestationManifestError::PlatformInfoTooLong)?,
+    )
+    .map_err(|_| AttestationManifestError::InvalidPlatformInfoUtf8)?;
+    let model = str::from_utf8(
+        model_bytes
+            .get(..model_len)
+            .ok_or(AttestationManifestError::PlatformInfoTooLong)?,
+    )
+    .map_err(|_| AttestationManifestError::InvalidPlatformInfoUtf8)?;
+    if vendor_bytes
+        .get(vendor_len..)
+        .ok_or(AttestationManifestError::PlatformInfoTooLong)?
+        .iter()
+        .any(|byte| *byte != 0)
+        || model_bytes
+            .get(model_len..)
+            .ok_or(AttestationManifestError::PlatformInfoTooLong)?
+            .iter()
+            .any(|byte| *byte != 0)
     {
         return Err(AttestationManifestError::NonZeroPlatformInfoUnusedBytes);
     }
@@ -217,7 +241,7 @@ pub fn parse_and_validate(
         return Err(AttestationManifestError::SizeMismatch);
     }
 
-    let entries = &bytes[header_size..expected_size];
+    let entries = checked_slice(bytes, header_size, entries_len)?;
     let (_, ak_target_fw_id) = validate_entries(entries, header)?;
 
     Ok(AttestationManifest {
@@ -360,23 +384,40 @@ fn read_entry(
 }
 
 fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, AttestationManifestError> {
-    let end = offset
-        .checked_add(core::mem::size_of::<u32>())
-        .ok_or(AttestationManifestError::BufferTooSmall)?;
-    let bytes = bytes
-        .get(offset..end)
-        .ok_or(AttestationManifestError::BufferTooSmall)?;
-    Ok(u32::from_le_bytes(bytes.try_into().unwrap()))
+    let mut out = [0u8; core::mem::size_of::<u32>()];
+    copy_bytes(
+        &mut out,
+        checked_slice(bytes, offset, core::mem::size_of::<u32>())?,
+    );
+    Ok(u32::from_le_bytes(out))
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> Result<u16, AttestationManifestError> {
+    let mut out = [0u8; core::mem::size_of::<u16>()];
+    copy_bytes(
+        &mut out,
+        checked_slice(bytes, offset, core::mem::size_of::<u16>())?,
+    );
+    Ok(u16::from_le_bytes(out))
+}
+
+fn checked_slice(
+    bytes: &[u8],
+    offset: usize,
+    len: usize,
+) -> Result<&[u8], AttestationManifestError> {
     let end = offset
-        .checked_add(core::mem::size_of::<u16>())
+        .checked_add(len)
         .ok_or(AttestationManifestError::BufferTooSmall)?;
-    let bytes = bytes
+    bytes
         .get(offset..end)
-        .ok_or(AttestationManifestError::BufferTooSmall)?;
-    Ok(u16::from_le_bytes(bytes.try_into().unwrap()))
+        .ok_or(AttestationManifestError::BufferTooSmall)
+}
+
+fn copy_bytes(dst: &mut [u8], src: &[u8]) {
+    for (dst_byte, src_byte) in dst.iter_mut().zip(src.iter()) {
+        *dst_byte = *src_byte;
+    }
 }
 
 #[cfg(test)]

@@ -38,6 +38,7 @@ pub mod raw;
 mod rng;
 mod sha;
 pub mod signed_eat;
+mod slice;
 mod types;
 mod wire;
 

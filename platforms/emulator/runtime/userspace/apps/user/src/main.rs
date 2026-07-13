@@ -67,6 +67,11 @@ fn print_to_console(buf: &str) {
     }
 }
 
+fn log_spawn_error() {
+    #[cfg(target_arch = "riscv32")]
+    print_to_console("[spawn error]\n");
+}
+
 pub static EXECUTOR: LazyLock<TockExecutor> = LazyLock::new(TockExecutor::new);
 
 #[cfg(not(target_arch = "riscv32"))]
@@ -101,10 +106,7 @@ async fn start() {
 
 pub(crate) async fn async_main() {
     // Initialize measurement state before spawning any task that could consume
-    // it (image loading, firmware update, SPDM/evidence, MCU mailbox). Gated
-    // behind `measurement-boot-init` (off by default) until the SPDM evidence
-    // path is rewired to track the rotated MCU DPE handle; see `measurement::boot`.
-    #[cfg(feature = "measurement-boot-init")]
+    // it (image loading, firmware update, SPDM/evidence, MCU mailbox).
     measurement::boot_init().await;
 
     #[cfg(feature = "spdm")]
@@ -114,23 +116,31 @@ pub(crate) async fn async_main() {
         .get()
         .spawner()
         .spawn(image_loader::image_loading_task())
-        .unwrap();
+        .map_err(|_| log_spawn_error())
+        .ok();
 
     EXECUTOR
         .get()
         .spawner()
         .spawn(mcu_mbox::mcu_mbox_task())
-        .unwrap();
+        .map_err(|_| log_spawn_error())
+        .ok();
 
     #[cfg(feature = "test-mcu-mbox-fips-periodic")]
     EXECUTOR
         .get()
         .spawner()
         .spawn(caliptra_mcu_mbox_lib::fips_periodic::fips_periodic_task())
-        .unwrap();
+        .map_err(|_| log_spawn_error())
+        .ok();
 
     #[cfg(feature = "mctp-vdm-service")]
-    EXECUTOR.get().spawner().spawn(vdm::vdm_task()).unwrap();
+    EXECUTOR
+        .get()
+        .spawner()
+        .spawn(vdm::vdm_task())
+        .map_err(|_| log_spawn_error())
+        .ok();
 
     // Production userspace defmt logging: drain staged frames to the flash log
     // capsule for host-side decoding. Device-only (defmt's linker section).
@@ -139,7 +149,8 @@ pub(crate) async fn async_main() {
         .get()
         .spawner()
         .spawn(caliptra_mcu_userlog::drain_task())
-        .unwrap();
+        .map_err(|_| log_spawn_error())
+        .ok();
 
     #[cfg(any(
         feature = "test-defmt-logging-mailbox",
