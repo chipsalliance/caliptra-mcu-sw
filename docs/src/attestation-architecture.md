@@ -111,11 +111,20 @@ MCU Runtime uses integrator-provided static configuration to identify the SoC co
 
 A component contributes to the AK and DICE/DPE certificate chain only if it is on the selected AK context's ancestry path; DPE-backed TCB components outside that path can still be reported as OCP EAT inventory claims.
 
-In this design, the policy is static build-time policy embedded in the MCU Runtime image and authenticated implicitly as part of MCU Runtime image verification.
+In this design, the policy and MCU-managed initial-load topology are static build-time configuration embedded in the MCU Runtime image and authenticated implicitly as part of MCU Runtime image verification.
 
-Because hitless update preserves DPE Handle Storage and Software PCR Storage, the attestation policy must remain unchanged across a hitless update. MCU Runtime enforces this by comparing the digest of the policy embedded in the authenticated MCU Runtime image with the `attestation_policy_digest` stored in the DPE Handle Storage metadata header. On mismatch, MCU Runtime enters an attestation error state. MCU Runtime can remain running to report the condition, but normal attestation Evidence and component measurement-state updates are disabled until cold boot reinitializes measurement state.
+Because hitless update preserves DPE Handle Storage and Software PCR Storage, the attestation policy and ordered MCU-managed initial-load topology must remain unchanged across a hitless update. MCU Runtime enforces this by comparing the `measurement_policy_digest` stored in preserved measurement metadata with the digest recomputed from the authenticated MCU Runtime image:
 
-This check prevents preserved measurement state from being reused under a different policy. For example, it prevents an update from changing TCB/non-TCB routing, AK target selection, or inventory reporting scope while reusing DPE handles and Software PCR records created under the previous policy.
+```text
+measurement_policy_digest = SHA384(
+    canonical_attestation_manifest_bytes ||
+    canonical_ordered_soc_image_load_list_bytes
+)
+```
+
+On mismatch, MCU Runtime enters an attestation error state. MCU Runtime can remain running to report the condition, but normal attestation Evidence and component measurement-state updates are disabled until cold boot reinitializes measurement state.
+
+This check prevents preserved measurement state from being reused under a different policy or topology. For example, it prevents an update from changing TCB/non-TCB routing, AK target selection, inventory reporting scope, or MCU-managed DPE derivation order while reusing DPE handles and Software PCR records created under the previous policy/topology.
 
 `GET_IMAGE_INFO(fw_id)` remains the source for image metadata used by authorization and loading. The integrator static attestation configuration is the source for attestation routing policy.
 
