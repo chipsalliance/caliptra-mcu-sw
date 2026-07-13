@@ -10,6 +10,7 @@ Caliptra Core remains the hardware root of trust. It owns the DICE/DPE context c
 | --- | --- |
 | [Architecture](./attestation-architecture.md) | Defines the Caliptra Subsystem attestation model, evidence sources, DPE topology, and OCP EAT evidence flow. |
 | [Measurement API](./attestation-measurement-api.md) | Defines the MCU Runtime measurement API used by image loading, firmware update, and SPDM evidence generation. |
+| [Static Integrator Configuration](./static_integrator_configuration.md) | Defines the integrator-owned static configuration artifacts used by image loading and attestation, including the SoC/Auth Manifest metadata, Attestation Manifest, and SoC image load list. |
 | [Tock Capsules](./attestation-tock-capsules.md) | Defines the reserved SRAM partitioning, syscall drivers, and record formats used to store downstream SoC component attestation records in DPE Handle Storage and Software PCR Storage. |
 | [Attestation Integration Guide](./attestation-integrator-guide.md) | Describes platform integration requirements, including integrator static attestation configuration, reserved SRAM sizing, dummy SoC images, and SPDM/OCP EAT integration. |
 
