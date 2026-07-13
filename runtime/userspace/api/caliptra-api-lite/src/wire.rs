@@ -45,6 +45,10 @@ pub(crate) const CMD_INVOKE_DPE: u32 = 0x4450_4543; // "DPEC"
 /// Mirrored from `caliptra-api::CommandId::CERTIFY_KEY_CHUNKS`.
 pub(crate) const CMD_CERTIFY_KEY_CHUNKS: u32 = 0x434B_4348; // "CKCH"
 
+/// Caliptra mailbox command ID for the top-level `DPE_TAG_TCI` command.
+/// Mirrored from `caliptra-api::CommandId::DPE_TAG_TCI`.
+pub(crate) const CMD_DPE_TAG_TCI: u32 = 0x5451_4754; // "TGQT"
+
 /// DPE per-command-header magic (`CommandHdr::DPE_COMMAND_MAGIC`).
 pub(crate) const DPE_COMMAND_MAGIC: u32 = 0x4450_4543; // "DPEC"
 
@@ -61,6 +65,10 @@ pub(crate) const DPE_CMD_GET_CERTIFICATE_CHAIN: u32 = 0x10;
 
 /// DPE `Sign` command ID (`dpe::commands::Command::SIGN`).
 pub(crate) const DPE_CMD_SIGN: u32 = 0x0A;
+
+/// DPE `RotateContextHandle` command ID
+/// (`dpe::commands::Command::ROTATE_CONTEXT_HANDLE`).
+pub(crate) const DPE_CMD_ROTATE_CONTEXT_HANDLE: u32 = 0x0e;
 
 /// `QUOTE_PCRS_ECC384` command ID.
 pub(crate) const CMD_QUOTE_PCRS_ECC384: u32 = 0x5043_5251; // "PCRQ"
