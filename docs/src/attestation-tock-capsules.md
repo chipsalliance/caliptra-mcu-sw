@@ -68,7 +68,7 @@ pub struct DpeHandleStoreHeader {
     record_capacity: u16,
     record_count: u16,
     attestation_target_fw_id: u32,
-    attestation_policy_digest: [u8; 48],
+    measurement_policy_digest: [u8; 48],
 }
 
 pub struct DpeHandleRecord {
@@ -86,9 +86,16 @@ The attestation target is tracked by `attestation_target_fw_id` in the store hea
 
 `parent_fw_id` is stored instead of duplicating the parent context handle. DPE commands can rotate parent handles, so the current parent handle must be read from the parent record when needed.
 
-The DPE Handle Storage capsule creates the header when `measurement_boot_init()` calls `INITIALIZE_STORE` on cold boot. The capsule fills the structural fields from its assigned SRAM subregion: `magic`, `version`, `header_size`, `record_size`, `record_capacity`, `record_count = 0`, and an invalid `attestation_target_fw_id`. `measurement_boot_init()` supplies `attestation_policy_digest`, the SHA-384 digest of the integrator static attestation configuration embedded in the authenticated MCU Runtime image.
+The DPE Handle Storage capsule creates the header when `measurement_boot_init()` calls `INITIALIZE_STORE` on cold boot. The capsule fills the structural fields from its assigned SRAM subregion: `magic`, `version`, `header_size`, `record_size`, `record_capacity`, `record_count = 0`, and an invalid `attestation_target_fw_id`. `measurement_boot_init()` supplies `measurement_policy_digest`, the SHA-384 digest of the canonical Attestation Manifest and ordered SoC image load list embedded in the authenticated MCU Runtime image:
 
-On hitless update, `measurement_boot_init()` calls `VALIDATE_STORE(attestation_policy_digest)`. The capsule validates the header structural fields, capacity against the assigned SRAM slice, `record_count` bounds, stored digest equality, and the attestation target record if one is set before preserved DPE Handle Storage or Software PCR Storage is used.
+```text
+measurement_policy_digest = SHA384(
+    canonical_attestation_manifest_bytes ||
+    canonical_ordered_soc_image_load_list_bytes
+)
+```
+
+On hitless update, `measurement_boot_init()` calls `VALIDATE_STORE(measurement_policy_digest)`. The capsule validates the header structural fields, capacity against the assigned SRAM slice, `record_count` bounds, stored digest equality, and the attestation target record if one is set before preserved DPE Handle Storage or Software PCR Storage is used.
 
 ### Userspace syscall API
 
@@ -101,8 +108,8 @@ pub struct DpeHandleStore<S: Syscalls> {
 impl<S: Syscalls> DpeHandleStore<S> {
     pub fn new(driver_num: u32) -> Self;
     pub fn exists(&self) -> Result<(), ErrorCode>;
-    pub fn initialize(&self, attestation_policy_digest: &[u8; 48]) -> Result<(), ErrorCode>;
-    pub fn validate(&self, attestation_policy_digest: &[u8; 48]) -> Result<(), ErrorCode>;
+    pub fn initialize(&self, measurement_policy_digest: &[u8; 48]) -> Result<(), ErrorCode>;
+    pub fn validate(&self, measurement_policy_digest: &[u8; 48]) -> Result<(), ErrorCode>;
     pub fn read_record(&self, fw_id: u32, out: &mut DpeHandleRecord) -> Result<(), ErrorCode>;
     pub fn write_record(&self, fw_id: u32, record: &DpeHandleRecord) -> Result<(), ErrorCode>;
     pub fn read_leaf_record(&self, out: &mut DpeHandleRecord) -> Result<(), ErrorCode>;
@@ -123,7 +130,7 @@ The DPE Handle Storage capsule implements the `SyscallDriver` trait.
 2. Read-Only Allow
     - Allow number: 0
         - Description: Input buffer used by `INITIALIZE_STORE`, `VALIDATE_STORE`, and `WRITE_RECORD`.
-        - Argument: Serialized attestation policy digest for `INITIALIZE_STORE` / `VALIDATE_STORE`, or serialized `DpeHandleRecord` for `WRITE_RECORD`.
+        - Argument: Serialized measurement policy/topology digest for `INITIALIZE_STORE` / `VALIDATE_STORE`, or serialized `DpeHandleRecord` for `WRITE_RECORD`.
 
 3. Subscribe
     - Not used. DPE Handle Storage operations are synchronous.
@@ -145,7 +152,7 @@ The DPE Handle Storage capsule implements the `SyscallDriver` trait.
         - Description: `INITIALIZE_STORE`
         - Argument 1: Reserved, must be zero.
         - Argument 2: Reserved, must be zero.
-        - Input: Reads a 48-byte `attestation_policy_digest` from the Read-Only Allow buffer.
+        - Input: Reads a 48-byte `measurement_policy_digest` from the Read-Only Allow buffer.
         - Behavior: Writes a fresh `DpeHandleStoreHeader`, zeroizes all record slots, resets `record_count`, and clears the attestation target marker.
     - Command number 4:
         - Description: `READ_LEAF_RECORD`
@@ -165,7 +172,7 @@ The DPE Handle Storage capsule implements the `SyscallDriver` trait.
         - Description: `VALIDATE_STORE`
         - Argument 1: Reserved, must be zero.
         - Argument 2: Reserved, must be zero.
-        - Input: Reads a 48-byte expected `attestation_policy_digest` from the Read-Only Allow buffer.
+        - Input: Reads a 48-byte expected `measurement_policy_digest` from the Read-Only Allow buffer.
         - Behavior: Validates header magic/version/sizes, capacity against the assigned SRAM slice, `record_count <= record_capacity`, stored digest equality, and that `attestation_target_fw_id` is unset or points to an existing record.
 
 ### DPE record write sequence
@@ -387,21 +394,21 @@ sequenceDiagram
 
     Main->>MApi: measurement_boot_init(boot_context)
     alt Cold boot
-        MApi->>MApi: Compute attestation_policy_digest
-        MApi->>Dpe: INITIALIZE_STORE(attestation_policy_digest)
+        MApi->>MApi: Compute measurement_policy_digest
+        MApi->>Dpe: INITIALIZE_STORE(measurement_policy_digest)
         MApi->>Pcr: INITIALIZE_STORE
         MApi->>Dpe: WRITE_RECORD(MCU_RT root)
     else FW_HITLESS_UPD_RESET
-        MApi->>MApi: Recompute attestation_policy_digest
-        MApi->>Dpe: VALIDATE_STORE(attestation_policy_digest)
+        MApi->>MApi: Recompute measurement_policy_digest
+        MApi->>Dpe: VALIDATE_STORE(measurement_policy_digest)
         MApi->>Pcr: VALIDATE_STORE
         MApi->>Dpe: READ_LEAF_RECORD
         MApi->>Pcr: validate preserved records as needed
     end
 ```
 
-On cold boot, `measurement_boot_init()` initializes DPE Handle Storage through `INITIALIZE_STORE(attestation_policy_digest)` and Software PCR Storage through `INITIALIZE_STORE`.
+On cold boot, `measurement_boot_init()` initializes DPE Handle Storage through `INITIALIZE_STORE(measurement_policy_digest)` and Software PCR Storage through `INITIALIZE_STORE`.
 
 On `FW_HITLESS_UPD_RESET`, startup code must preserve the full measurement SRAM reservation. The capsules validate and expose the preserved records but do not decide whether a reset is cold or hitless.
 
-If preserved state is missing, invalid, or tied to a different `attestation_policy_digest` during hitless update, the Measurement API enters the attestation error state rather than silently creating a new lineage.
+If preserved state is missing, invalid, or tied to a different `measurement_policy_digest` during hitless update, the Measurement API enters the attestation error state rather than silently creating a new lineage.
