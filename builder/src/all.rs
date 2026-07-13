@@ -7,6 +7,7 @@ use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
 use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION,
 };
+use caliptra_mcu_flash_image::MCU_RT_IDENTIFIER;
 use caliptra_mcu_pldm_fw_pkg::{
     manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
