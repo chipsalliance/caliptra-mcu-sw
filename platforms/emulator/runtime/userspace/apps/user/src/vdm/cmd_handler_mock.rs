@@ -31,6 +31,7 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
             0 => config::TEST_FIRMWARE_VERSIONS[0],
             1 => config::TEST_FIRMWARE_VERSIONS[1],
             2 => config::TEST_FIRMWARE_VERSIONS[2],
+            3 => config::TEST_FIRMWARE_VERSIONS[3],
             _ => return Err(CaliptraCompletionCode::InvalidParameter),
         };
 

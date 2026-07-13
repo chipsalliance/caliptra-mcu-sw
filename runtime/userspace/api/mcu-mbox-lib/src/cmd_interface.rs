@@ -23,7 +23,7 @@ use caliptra_mcu_mbox_common::messages::{
     GetAuthCmdChallengeResp, GetLogReq, GetLogResp, MailboxRespHeader, MailboxRespHeaderVarSize,
     McuFeProgReq, McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
     RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    MAX_RESP_DATA_SIZE, MCU_ROM_VERSION_STR,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -190,10 +190,19 @@ impl<'a> CmdInterface<'a> {
         let index = req.index;
         let mut version = FirmwareVersion::default();
 
-        let ret = self
-            .non_crypto_cmds_handler
-            .get_firmware_version(index, &mut version)
-            .await;
+        let ret = match index {
+            3 => {
+                let bytes = MCU_ROM_VERSION_STR.as_bytes();
+                version.ver_str[..bytes.len()].copy_from_slice(bytes);
+                version.len = bytes.len();
+                Ok(())
+            }
+            _ => {
+                self.non_crypto_cmds_handler
+                    .get_firmware_version(index, &mut version)
+                    .await
+            }
+        };
 
         let mbox_cmd_status = if ret.is_ok() && version.len <= MAX_FW_VERSION_STR_LEN {
             MbxCmdStatus::Complete

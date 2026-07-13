@@ -3,10 +3,11 @@
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 // Dummy firmware version strings for testing purposes.
-pub static TEST_FIRMWARE_VERSIONS: [&str; 3] = [
+pub static TEST_FIRMWARE_VERSIONS: [&str; 4] = [
     "Caliptra_Core_v2.0.0", // index 0
     "MCU_RT_v2.0.0",        // index 1
     "SoC_v1.0.1",           // index 2
+    "MCU_ROM_v2.1.0",       // Index 3
 ];
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

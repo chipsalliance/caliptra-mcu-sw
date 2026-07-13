@@ -425,11 +425,12 @@ pub mod test {
 
         fn add_basic_cmds_tests(&mut self) {
             // Add firmware version test messages
-            for idx in 0..=2 {
+            for idx in 0..=3 {
                 let version_str = match idx {
                     0 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[0],
                     1 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[1],
                     2 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[2],
+                    3 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[3],
                     _ => unreachable!(),
                 };
 

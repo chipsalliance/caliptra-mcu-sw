@@ -102,6 +102,7 @@ Command Code: `0x4D46_5756` ("MFWV")
 | index      |  u32           | - `00h` = Caliptra core firmware       |
 |            |                | - `01h` = MCU runtime firmware         |
 |            |                | - `02h` = SoC firmware                 |
+|            |                | - `03h` = MCU ROM                      |
 |            |                |Additional indexes are firmware-specific |
 
 *Table: `MC_FIRMWARE_VERSION` output arguments*
