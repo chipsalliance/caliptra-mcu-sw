@@ -157,8 +157,8 @@ pub(crate) async fn test_caliptra_mailbox_chunked() {
         test_exit(1);
     }
 
-    // Step 2: Send data in 4-byte chunks
-    for chunk in req_data.chunks(4) {
+    // Step 2: Send data in 3-byte chunks
+    for chunk in req_data.chunks(3) {
         if let Err(err) = mailbox.send_chunk(chunk).await {
             println!("send_chunk failed with err {:?}", err);
             test_exit(1);

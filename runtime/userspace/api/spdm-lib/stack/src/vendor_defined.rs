@@ -165,6 +165,7 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
 /// large-message buffer is still occupied by the reassembled request, so large
 /// VDM responses are intentionally disabled here; handlers get only the inline
 /// response area and must return [`VdmResponse::Inline`].
+#[cfg(any(test, feature = "generic-large-request"))]
 pub(crate) async fn handle_large_vendor_defined_request<Pal: SpdmPal, V: SpdmVdmBackend>(
     vdm: &V,
     state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
@@ -223,7 +224,7 @@ pub(crate) async fn handle_large_vendor_defined_request<Pal: SpdmPal, V: SpdmVdm
 /// standard_id + vendor_id + resp_len) directly into `out` (which must be sized
 /// to the envelope). The backend's payload is expected to follow at the same
 /// buffer's offset `out.len()`.
-fn write_vendor_defined_envelope(
+pub(crate) fn write_vendor_defined_envelope(
     version: SpdmVersion,
     standard_id: u16,
     vendor_id: &[u8],
