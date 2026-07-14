@@ -29,7 +29,7 @@ pub const PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN: usize = MBOX_RESP_HEADER_S
 /// `out` and returns [`DEBUG_UNLOCK_CHALLENGE_LEN`].
 #[inline(never)]
 pub async fn request_debug_unlock_challenge<A: ApiAlloc>(
-    alloc: &A,
+    _alloc: &A,
     unlock_level: u8,
     out: &mut [u8],
 ) -> McuResult<usize> {
@@ -37,15 +37,16 @@ pub async fn request_debug_unlock_challenge<A: ApiAlloc>(
         return Err(OUT_OF_MEMORY);
     }
 
+    // Fixed small buffers stay inline; scratch allocation costs more code here.
     // Request layout: `chksum(4) | length_dwords(4) | unlock_level(1) | reserved(3)`.
-    let mut req = alloc.alloc(REQ_LEN)?;
+    let mut req = [0u8; REQ_LEN];
     req.fill(0);
     req[4..8].copy_from_slice(&2u32.to_le_bytes());
     req[8] = unlock_level;
     let checksum = calc_checksum(CMD_PRODUCTION_AUTH_DEBUG_UNLOCK_REQ, &req[4..]);
     req[..4].copy_from_slice(&checksum.to_le_bytes());
 
-    let mut rsp = alloc.alloc(RSP_LEN)?;
+    let mut rsp = [0u8; RSP_LEN];
     let rsp_len = mbox_execute(CMD_PRODUCTION_AUTH_DEBUG_UNLOCK_REQ, &req, &mut rsp).await?;
     if rsp_len != RSP_LEN {
         return Err(INTERNAL_BUG);

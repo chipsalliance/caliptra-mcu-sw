@@ -719,45 +719,56 @@ mod tests {
         let req = [
             CALIPTRA_VDM_COMMAND_VERSION,
             CaliptraVdmCommand::RequestDebugUnlock as u8,
+            2,
+            0,
+            0,
+            0,
             7,
+            0,
+            0,
+            0,
         ];
         let (response, inline, _) = dispatch(&cmds, &req, 128, 0);
 
         assert_inline(
             response,
-            2 + 1 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
+            2 + 1 + 4 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
         );
         assert_eq!(inline[0], CALIPTRA_VDM_COMMAND_VERSION);
         assert_eq!(inline[1], CaliptraVdmCommand::RequestDebugUnlock as u8);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(u32::from_le_bytes(inline[3..7].try_into().unwrap()), 21);
         assert_eq!(
-            &inline[3..3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE],
+            &inline[7..7 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE],
             &[0x11; DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE]
         );
         assert_eq!(
-            &inline[3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE
-                ..3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
+            &inline[7 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE
+                ..7 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
             &[0x22; DEBUG_UNLOCK_CHALLENGE_SIZE]
         );
     }
 
     #[test]
-    fn request_debug_unlock_allows_trailing_payload() {
+    fn request_debug_unlock_rejects_trailing_payload() {
         let cmds = TestCommands::new(0);
         let req = [
             CALIPTRA_VDM_COMMAND_VERSION,
             CaliptraVdmCommand::RequestDebugUnlock as u8,
+            2,
+            0,
+            0,
+            0,
             7,
+            0,
+            0,
+            0,
             0xaa,
-            0xbb,
         ];
         let (response, inline, _) = dispatch(&cmds, &req, 128, 0);
 
-        assert_inline(
-            response,
-            2 + 1 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
-        );
-        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
     }
 
     #[test]

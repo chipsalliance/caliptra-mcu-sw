@@ -28,6 +28,9 @@ pub const ECC_SIGNATURE_WORD_SIZE: usize = 24;
 /// ML-DSA signature size in u32 words
 pub const MLDSA_SIGNATURE_WORD_SIZE: usize = 1157;
 
+/// Caliptra RT mailbox command ID for PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.
+const CALIPTRA_RT_CMD_PROD_DEBUG_UNLOCK_TOKEN: u32 = 0x5044_5554; // "PDUT"
+
 // ---- Production Debug Unlock Request (Challenge) ----
 
 #[repr(C)]
@@ -80,6 +83,7 @@ impl CommandResponse for ProdDebugUnlockReqResponse {}
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ProdDebugUnlockTokenRequest {
+    pub checksum: u32,
     pub length: u32,
     pub unique_device_identifier: [u8; UNIQUE_DEVICE_ID_SIZE],
     pub unlock_level: u8,
@@ -94,6 +98,7 @@ pub struct ProdDebugUnlockTokenRequest {
 impl Default for ProdDebugUnlockTokenRequest {
     fn default() -> Self {
         Self {
+            checksum: 0,
             length: 0,
             unique_device_identifier: [0u8; UNIQUE_DEVICE_ID_SIZE],
             unlock_level: 0,
@@ -104,6 +109,20 @@ impl Default for ProdDebugUnlockTokenRequest {
             ecc_signature: [0u32; ECC_SIGNATURE_WORD_SIZE],
             mldsa_signature: [0u32; MLDSA_SIGNATURE_WORD_SIZE],
         }
+    }
+}
+
+impl ProdDebugUnlockTokenRequest {
+    /// Populate the Caliptra request checksum carried as the first command word.
+    pub fn populate_checksum(&mut self) {
+        let bytes = self.as_bytes();
+        let checksum = CALIPTRA_RT_CMD_PROD_DEBUG_UNLOCK_TOKEN
+            .to_le_bytes()
+            .iter()
+            .chain(bytes.iter().skip(core::mem::size_of::<u32>()))
+            .fold(0u32, |sum, byte| sum.wrapping_add(*byte as u32))
+            .wrapping_neg();
+        self.checksum = checksum;
     }
 }
 
@@ -127,3 +146,21 @@ impl CommandRequest for ProdDebugUnlockTokenRequest {
 }
 
 impl CommandResponse for ProdDebugUnlockTokenResponse {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_checksum_covers_caliptra_command_and_body() {
+        let mut request = ProdDebugUnlockTokenRequest {
+            length: 1,
+            unlock_level: 2,
+            ..Default::default()
+        };
+
+        request.populate_checksum();
+
+        assert_eq!(request.checksum, 0xffff_fec0);
+    }
+}

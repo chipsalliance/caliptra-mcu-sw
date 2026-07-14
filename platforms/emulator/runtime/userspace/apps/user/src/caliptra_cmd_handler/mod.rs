@@ -1,22 +1,16 @@
 // Licensed under the Apache-2.0 license
 
-extern crate alloc;
-
 pub(crate) mod debug_log;
+pub(crate) mod device_ops;
 
-use alloc::boxed::Box;
-use async_trait::async_trait;
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
     DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, LogType,
 };
-use caliptra_mcu_libapi_caliptra::certificate::{CertContext, IDEV_ECC_CSR_MAX_SIZE};
-use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
-use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
+use mcu_caliptra_api_lite::ApiAlloc;
 
 pub struct CaliptraCmdBackend;
 
-#[async_trait]
 impl CaliptraCmdHandler for CaliptraCmdBackend {
     async fn get_firmware_version(
         &self,
@@ -41,75 +35,15 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
-    async fn export_attested_csr(
+    async fn export_attested_csr<Alloc: ApiAlloc>(
         &self,
+        _alloc: &Alloc,
         device_key_id: u32,
         algorithm: u32,
         nonce: &[u8; 32],
         csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
-        let algo =
-            AsymAlgo::try_from_u32(algorithm).ok_or(CaliptraCompletionCode::InvalidParameter)?;
-
-        let mut cert_ctx = CertContext::new();
-
-        let len = cert_ctx
-            .get_attested_csr(algo, device_key_id, nonce, csr_buf)
-            .await
-            .map_err(|e| match e {
-                CaliptraApiError::MailboxBusy => CaliptraCompletionCode::CaliptraMailboxBusy,
-                CaliptraApiError::BufferTooSmall => CaliptraCompletionCode::CaliptraBufferTooSmall,
-                CaliptraApiError::InvalidResponse
-                | CaliptraApiError::Mailbox(_)
-                | CaliptraApiError::Syscall(_) => CaliptraCompletionCode::OperationFailed,
-                // Any other variant is not produced by get_attested_csr's call
-                // chain today. Reaching here means a deeper call started
-                // returning an unanticipated variant — surface it loudly.
-                _ => CaliptraCompletionCode::GeneralError,
-            })?;
-
-        Ok(len)
-    }
-
-    async fn export_idevid_csr(
-        &self,
-        algorithm: u32,
-        csr_buf: &mut [u8],
-    ) -> CaliptraCmdResult<usize> {
-        let algo =
-            AsymAlgo::try_from_u32(algorithm).ok_or(CaliptraCompletionCode::InvalidParameter)?;
-
-        let mut cert_ctx = CertContext::new();
-
-        match algo {
-            AsymAlgo::EccP384 => {
-                let mut csr_der = [0u8; IDEV_ECC_CSR_MAX_SIZE];
-                let len = cert_ctx
-                    .get_idev_csr(&mut csr_der)
-                    .await
-                    .map_err(|e| match e {
-                        CaliptraApiError::MailboxBusy => {
-                            CaliptraCompletionCode::CaliptraMailboxBusy
-                        }
-                        CaliptraApiError::UnprovisionedCsr => CaliptraCompletionCode::InvalidState,
-                        CaliptraApiError::InvalidResponse
-                        | CaliptraApiError::Mailbox(_)
-                        | CaliptraApiError::Syscall(_) => CaliptraCompletionCode::OperationFailed,
-                        // Any other variant is not produced by get_idev_csr's
-                        // call chain today; surface it as GeneralError.
-                        _ => CaliptraCompletionCode::GeneralError,
-                    })?;
-                if len > csr_buf.len() {
-                    return Err(CaliptraCompletionCode::CaliptraBufferTooSmall);
-                }
-                csr_buf[..len].copy_from_slice(&csr_der[..len]);
-                Ok(len)
-            }
-            AsymAlgo::MlDsa87 => {
-                // MLDSA IDevID CSR not yet supported at the mailbox level
-                Err(CaliptraCompletionCode::UnsupportedOperation)
-            }
-        }
+        device_ops::export_attested_csr(device_key_id, algorithm, nonce, csr_buf).await
     }
 
     /// Drain entries of `log_type` from the backing store.
@@ -136,98 +70,42 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         }
     }
 
-    async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
-        use caliptra_api::mailbox::{CommandId, FeProgReq};
-        use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-        use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
-        use zerocopy::IntoBytes;
-
-        let mailbox = Mailbox::new();
-        let mut req = FeProgReq {
-            partition,
-            ..Default::default()
-        };
-
-        let mut resp_buf = [0u8; 8];
-        execute_mailbox_cmd(
-            &mailbox,
-            CommandId::FE_PROG.0,
-            req.as_mut_bytes(),
-            &mut resp_buf,
-        )
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-
-        Ok(())
+    async fn program_field_entropy<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        partition: u32,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::program_field_entropy(alloc, partition).await
     }
 
-    async fn request_debug_unlock(
+    async fn request_debug_unlock<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         unlock_level: u8,
         challenge: &mut DebugUnlockChallenge,
     ) -> CaliptraCmdResult<()> {
-        use caliptra_api::mailbox::{
-            CommandId, MailboxReqHeader, ProductionAuthDebugUnlockChallenge,
-            ProductionAuthDebugUnlockReq,
-        };
-        use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-        use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
-        use zerocopy::{FromBytes, IntoBytes};
-
-        let mailbox = Mailbox::new();
-        let mut req = ProductionAuthDebugUnlockReq {
-            hdr: MailboxReqHeader::default(),
-            length: 2,
-            unlock_level,
-            reserved: [0; 3],
-        };
-
-        let mut resp_buf = [0u8; core::mem::size_of::<ProductionAuthDebugUnlockChallenge>()];
-
-        execute_mailbox_cmd(
-            &mailbox,
-            CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ.0,
-            req.as_mut_bytes(),
-            &mut resp_buf,
-        )
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-
-        let resp = ProductionAuthDebugUnlockChallenge::ref_from_bytes(&resp_buf)
-            .map_err(|_| CaliptraCompletionCode::GeneralError)?;
-
-        challenge
-            .unique_device_identifier
-            .copy_from_slice(&resp.unique_device_identifier);
-        challenge.challenge.copy_from_slice(&resp.challenge);
-
+        let mut out = [0u8; caliptra_mcu_common_commands::DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE
+            + caliptra_mcu_common_commands::DEBUG_UNLOCK_CHALLENGE_SIZE];
+        let len = device_ops::request_debug_unlock(alloc, unlock_level, &mut out).await?;
+        if len != out.len() {
+            return Err(CaliptraCompletionCode::OperationFailed);
+        }
+        challenge.unique_device_identifier.copy_from_slice(
+            &out[..caliptra_mcu_common_commands::DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE],
+        );
+        challenge.challenge.copy_from_slice(
+            &out[caliptra_mcu_common_commands::DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE..],
+        );
         Ok(())
     }
 
-    async fn authorize_debug_unlock_token(&self, token_data: &[u8]) -> CaliptraCmdResult<()> {
-        use alloc::vec;
-        use caliptra_api::mailbox::{CommandId, MailboxReqHeader, MailboxRespHeader};
-        use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-        use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
-
-        let mailbox = Mailbox::new();
-
-        // Build full request: MailboxReqHeader (zeroed, checksum computed by execute_mailbox_cmd) + token_data
-        let hdr_len = core::mem::size_of::<MailboxReqHeader>();
-        let mut req = vec![0u8; hdr_len + token_data.len()];
-        req[hdr_len..].copy_from_slice(token_data);
-
-        let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
-
-        execute_mailbox_cmd(
-            &mailbox,
-            CommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.0,
-            &mut req,
-            &mut resp_buf,
-        )
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-
-        Ok(())
+    async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        token_request: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        // Pass-through: the requester sends a complete Caliptra request
+        // (including the mailbox checksum header), identical to the VDM path.
+        device_ops::authorize_debug_unlock_token(alloc, token_request).await
     }
 }

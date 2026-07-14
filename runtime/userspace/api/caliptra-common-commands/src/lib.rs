@@ -1,15 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
+#![allow(async_fn_in_trait)]
 
-extern crate alloc;
-
-use alloc::boxed::Box;
-use async_trait::async_trait;
 use caliptra_mcu_mbox_common::messages::CommandId;
+use mcu_caliptra_api_lite::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
-pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_CSR_DATA_LEN;
+pub const MAX_ATTESTED_CSR_DATA_LEN: usize = 12_800;
 pub const MAX_FW_VERSION_LEN: usize = 32;
 pub const MAX_UID_LEN: usize = 32;
 
@@ -161,8 +159,7 @@ impl Default for DebugUnlockChallenge {
 ///
 /// Each function represents a transport-agnostic command handler. Implementors should provide
 /// the specific logic for each command as required by their application.
-#[async_trait]
-pub trait CaliptraCmdHandler: Send + Sync {
+pub trait CaliptraCmdHandler {
     /// Retrieves the firmware version for the given index.
     ///
     /// # Arguments
@@ -218,25 +215,12 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
-    async fn export_attested_csr(
+    async fn export_attested_csr<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         device_key_id: u32,
         algorithm: u32,
         nonce: &[u8; 32],
-        csr_buf: &mut [u8],
-    ) -> CaliptraCmdResult<usize>;
-
-    /// Exports an IDevID CSR (manufacturing mode only).
-    ///
-    /// # Arguments
-    /// * `algorithm` - The asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87).
-    /// * `csr_buf` - Mutable buffer to write the CSR DER data into directly.
-    ///
-    /// # Returns
-    /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
-    async fn export_idevid_csr(
-        &self,
-        algorithm: u32,
         csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize>;
 
@@ -248,23 +232,29 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn request_debug_unlock(
+    async fn request_debug_unlock<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         unlock_level: u8,
         challenge: &mut DebugUnlockChallenge,
     ) -> CaliptraCmdResult<()>;
 
     /// Submits a signed debug unlock token.
     ///
-    /// The token payload is streamed in chunks via the chunked mailbox API
-    /// because it can be very large (~7.5KB due to MLDSA keys/signatures).
+    /// The request includes the requester-computed Caliptra mailbox checksum.
+    /// This permits transports such as SPDM VDM to relay the request in chunks
+    /// without buffering the complete token to compute its checksum.
     ///
     /// # Arguments
-    /// * `token_data` - The complete token payload bytes (excluding checksum header).
+    /// * `token_request` - The complete Caliptra request, including its checksum header.
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn authorize_debug_unlock_token(&self, token_data: &[u8]) -> CaliptraCmdResult<()>;
+    async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        token_request: &[u8],
+    ) -> CaliptraCmdResult<()>;
 
     /// Drain log entries of `log_type` into `data`.
     ///
@@ -315,8 +305,12 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
-        let _ = partition;
+    async fn program_field_entropy<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        partition: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, partition);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }
@@ -325,7 +319,6 @@ pub struct AuthorizationError;
 
 pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 
-#[async_trait]
 pub trait CommandAuthorizer {
     /// Validates if a message is authorized.
     ///
@@ -339,8 +332,9 @@ pub trait CommandAuthorizer {
     ///
     /// # Returns
     /// * `Result<&[u8], CommandError>` - Unpacked command or Error
-    async fn is_authorized<'a>(
+    async fn is_authorized<'a, Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: CommandId,
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError>;
@@ -357,8 +351,9 @@ pub trait CommandAuthorizer {
     /// * `cmd_id` - Raw command identifier (u32, serialized big-endian in HMAC)
     /// * `payload` - Command-specific payload bytes
     /// * `mac` - The 48-byte MAC received from the host
-    async fn verify_mac(
+    async fn verify_mac<Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
         mac: &[u8],

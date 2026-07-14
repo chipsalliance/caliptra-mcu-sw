@@ -7,7 +7,6 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-async-trait.workspace = true
 defmt = { workspace = true, optional = true }
 embassy-executor.workspace = true
 embassy-sync.workspace = true

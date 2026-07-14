@@ -1,37 +1,21 @@
 // Licensed under the Apache-2.0 license
-use async_trait::async_trait;
 use caliptra_mcu_common_commands::{AuthorizationError, AuthorizationResult, CommandAuthorizer};
-use caliptra_mcu_libapi_caliptra::crypto::hmac::Hmac;
-use caliptra_mcu_libapi_caliptra::crypto::import::{CmKeyUsage, Import};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, FuseIncreaseCaliptraMinSvnReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
     MailboxReqHeader, McuFeProgReq, ProvisionVendorPkHashReq,
 };
-use constant_time_eq::constant_time_eq;
 use core::mem::size_of;
-use zerocopy::IntoBytes;
-extern crate alloc;
-use alloc::boxed::Box;
-
-/// NOTE: because this is a symmetric secret, this should come from a provisioned secret from OTP
-/// instead of embedded into firmware. To keep the implementation generic, this does not add OTP
-/// syscalls to get this value, in case a platform chooses another verification method like
-/// asymmetric key verification.
-const TEST_AUTH_CMD_HMAC_KEY: [u8; 48] = [
-    0x72, 0xec, 0x12, 0x02, 0x77, 0x69, 0xb9, 0xdc, 0x04, 0xbd, 0xd0, 0xc0, 0x86, 0xca, 0x1b, 0x20,
-    0x2f, 0x47, 0x1e, 0xee, 0xf2, 0x8c, 0x2d, 0xa8, 0xc5, 0x4c, 0x75, 0xc2, 0x48, 0xa6, 0x80, 0x0a,
-    0x11, 0xbf, 0xd5, 0xcd, 0x09, 0xed, 0x57, 0x0c, 0xb4, 0xc2, 0xa1, 0x37, 0x6b, 0xa2, 0xcb, 0xcd,
-];
+use mcu_caliptra_api_lite::ApiAlloc;
 
 #[derive(Default)]
 pub struct MockCommandAuthorizer {
     challenge: Option<[u8; 32]>,
 }
 
-#[async_trait]
 impl CommandAuthorizer for MockCommandAuthorizer {
-    async fn is_authorized<'a>(
+    async fn is_authorized<'a, Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: CommandId,
         req: &'a [u8],
     ) -> AuthorizationResult<&'a [u8]> {
@@ -52,41 +36,31 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             .get(size_of::<MailboxReqHeader>()..cmd_len)
             .ok_or(AuthorizationError)?;
 
-        self.verify_mac(u32::from(cmd_id), cmd_body, received_mac)
+        self.verify_mac(alloc, u32::from(cmd_id), cmd_body, received_mac)
             .await?;
 
         Ok(&req[..cmd_len])
     }
 
-    async fn verify_mac(
+    async fn verify_mac<Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
         mac: &[u8],
     ) -> Result<(), AuthorizationError> {
         let challenge = self.challenge.take().ok_or(AuthorizationError)?;
-
-        // Import the key using Caliptra API
-        let import_resp = Import::import(CmKeyUsage::Hmac, &TEST_AUTH_CMD_HMAC_KEY)
-            .await
-            .map_err(|_| AuthorizationError)?;
-
-        // Reconstruct the buffer to hash: cmd_id(BE,4) + payload + challenge(32)
-        let mut buf = arrayvec::ArrayVec::<u8, 256>::new();
-        buf.extend(cmd_id.to_be_bytes());
-        buf.extend(payload.iter().copied());
-        buf.extend(challenge.iter().copied());
-
-        // Compute HMAC using Caliptra API
-        let hmac_resp = Hmac::hmac(&import_resp.cmk, buf.as_slice())
-            .await
-            .map_err(|_| AuthorizationError)?;
-
-        let computed_mac = &hmac_resp.mac.as_bytes()[..48];
-
-        if !constant_time_eq(computed_mac, mac) {
-            Err(AuthorizationError)?;
-        }
+        let mac: &[u8; 48] = mac.try_into().map_err(|_| AuthorizationError)?;
+        crate::caliptra_cmd_handler::device_ops::verify_authorized_mac(
+            alloc,
+            &crate::caliptra_cmd_handler::device_ops::TEST_AUTH_CMD_HMAC_KEY,
+            cmd_id,
+            payload,
+            &challenge,
+            mac,
+        )
+        .await
+        .map_err(|_| AuthorizationError)?;
         Ok(())
     }
 

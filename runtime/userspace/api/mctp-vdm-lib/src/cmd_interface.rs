@@ -23,17 +23,14 @@ use core::convert::TryFrom;
 use zerocopy::IntoBytes;
 
 /// Command interface for handling VDM commands.
-pub struct CmdInterface<'a> {
+pub struct CmdInterface<'a, H: CaliptraCmdHandler> {
     transport: &'a mut MctpVdmTransport,
-    unified_handler: &'a dyn CaliptraCmdHandler,
+    unified_handler: &'a H,
 }
 
-impl<'a> CmdInterface<'a> {
+impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
     /// Create a new command interface.
-    pub fn new(
-        transport: &'a mut MctpVdmTransport,
-        unified_handler: &'a dyn CaliptraCmdHandler,
-    ) -> Self {
+    pub fn new(transport: &'a mut MctpVdmTransport, unified_handler: &'a H) -> Self {
         Self {
             transport,
             unified_handler,

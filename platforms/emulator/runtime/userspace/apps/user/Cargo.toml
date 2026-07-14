@@ -7,7 +7,6 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-arrayvec.workspace = true
 async-trait.workspace = true
 caliptra-api.workspace = true
 constant_time_eq.workspace = true
@@ -73,6 +72,13 @@ streaming-boot = []
 flash-boot = []
 firmware-update = []
 mcu-mbox-service = []
+# Test-only mock command HANDLER: device-identity queries (firmware version,
+# device ID, UID, capabilities) return hardcoded `config::TEST_*` values for
+# integration tests. Off by default — production wires the real
+# `CaliptraCmdBackend`, whose unimplemented info queries return
+# `UnsupportedOperation`. (The command *authorizer* is separate and stays wired
+# in production; only the handler is gated here.)
+mcu-mbox-test-handlers = ["mcu-mbox-service"]
 # Measurement boot init (off by default). Runs DPE Handle Storage / Software PCR
 # Storage cold-boot and hitless-update initialization. Cold boot rotates MCU-RT
 # off the default DPE handle, so keep this off until the SPDM evidence path is
@@ -137,21 +143,21 @@ test-mcu-rom-flash-access = []
 test-mctp-capsule-loopback = []
 # --- Test features: user-app ---
 test-do-nothing = []
-test-defmt-logging-mailbox = ["userspace-log", "mcu-mbox-service"]
-test-defmt-logging-release = ["userspace-log", "mcu-mbox-service"]
-test-defmt-logging-vdm = ["userspace-log", "mcu-mbox-service", "mctp-vdm-service"]
+test-defmt-logging-mailbox = ["userspace-log", "mcu-mbox-test-handlers"]
+test-defmt-logging-release = ["userspace-log", "mcu-mbox-test-handlers"]
+test-defmt-logging-vdm = ["userspace-log", "mcu-mbox-test-handlers", "mctp-vdm-service"]
 test-flash-based-boot = ["flash-boot"]
 test-firmware-activate = ["firmware-update"]
 test-firmware-update-flash = ["flash-boot", "firmware-update"]
 test-firmware-update-streaming = []
 test-firmware-v2 = []
 test-streaming-boot-flash-write-back = ["streaming-boot", "firmware-update"]
-test-mcu-mbox-fips-periodic = ["mcu-mbox-service", "caliptra-mcu-mbox-lib/periodic-fips-self-test"]
+test-mcu-mbox-fips-periodic = ["mcu-mbox-test-handlers", "caliptra-mcu-mbox-lib/periodic-fips-self-test"]
 test-mctp-vdm-cmds = ["mctp-vdm-service"]
 test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
-test-caliptra-util-host-validator = ["mcu-mbox-service"]
-test-mcu-mbox-cmds = ["mcu-mbox-service"]
-test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
+test-caliptra-util-host-validator = ["mcu-mbox-test-handlers"]
+test-mcu-mbox-cmds = ["mcu-mbox-test-handlers"]
+test-mcu-mbox-fips-self-test = ["mcu-mbox-test-handlers"]
 test-pldm-discovery = []
 test-pldm-fw-update = []
 test-pldm-fw-update-e2e = []

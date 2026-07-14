@@ -7,42 +7,24 @@
 //! VDM commands. The protocol/dispatch/framing all live in the
 //! `caliptra-mcu-spdm-vdm-handler` lib; this hook only supplies the device ops.
 
-extern crate alloc;
-
-use arrayvec::ArrayVec;
 use caliptra_mcu_common_commands::{
     CaliptraCompletionCode as CommonCompletionCode, GetLogResult, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdmCommands, CaliptraVdmLogResult, CaliptraVdmResult,
 };
-use constant_time_eq::constant_time_eq;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
-    cm_hmac, cm_import, fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87,
-    request_debug_unlock_challenge, rng_generate, ApiAlloc, CmKeyUsage, McuErrorCode,
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
 
-/// AsymAlgo wire encoding (`EccP384 = 1`, `MlDsa87 = 2`), mirrored locally so
-/// the hook does not depend on caliptra-api.
-const ALGO_ECC_P384: u32 = 0x0001;
-const ALGO_MLDSA87: u32 = 0x0002;
-
 /// HMAC command ID used by the host for the FE_PROG authorized sub-command.
 const FE_PROG_CMD_ID: u32 = 0x4D43_4650;
-/// Symmetric test HMAC key used by the emulator validator path.
-const TEST_AUTH_CMD_HMAC_KEY: [u8; 48] = [
-    0x72, 0xec, 0x12, 0x02, 0x77, 0x69, 0xb9, 0xdc, 0x04, 0xbd, 0xd0, 0xc0, 0x86, 0xca, 0x1b, 0x20,
-    0x2f, 0x47, 0x1e, 0xee, 0xf2, 0x8c, 0x2d, 0xa8, 0xc5, 0x4c, 0x75, 0xc2, 0x48, 0xa6, 0x80, 0x0a,
-    0x11, 0xbf, 0xd5, 0xcd, 0x09, 0xed, 0x57, 0x0c, 0xb4, 0xc2, 0xa1, 0x37, 0x6b, 0xa2, 0xcb, 0xcd,
-];
 
 static AUTH_CHALLENGE: Mutex<CriticalSectionRawMutex, Option<[u8; 32]>> = Mutex::new(None);
 // Kernel chunked-mailbox state rejects other processes; this flag serializes this
@@ -101,9 +83,9 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
             return Err(CaliptraCompletionCode::InsufficientResources);
         }
 
-        request_debug_unlock_challenge(scratch, unlock_level, out)
+        crate::caliptra_cmd_handler::device_ops::request_debug_unlock(scratch, unlock_level, out)
             .await
-            .map_err(map_mcu_err)
+            .map_err(map_common_completion)
     }
 
     async fn authorize_debug_unlock_token<A: SpdmPalAlloc>(
@@ -111,18 +93,12 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         token_data: &[u8],
         scratch: &A,
     ) -> CaliptraVdmResult<()> {
-        let cmd = PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD;
         // The host sends AuthorizeDebugUnlockToken as a complete Caliptra RT
         // mailbox request, including MailboxReqHeader.checksum. Preserve those
         // payload bytes exactly; do not synthesize another mailbox header here.
-        let mut resp_buf = ApiAlloc::alloc(scratch, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN)
-            .map_err(map_mcu_err)?;
-
-        Mailbox::<DefaultSyscalls>::new()
-            .execute_with_payload_slice(cmd, None, token_data, &mut resp_buf)
+        crate::caliptra_cmd_handler::device_ops::authorize_debug_unlock_token(scratch, token_data)
             .await
-            .map_err(map_mailbox_error)?;
-        Ok(())
+            .map_err(map_common_completion)
     }
 
     async fn start_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
@@ -176,26 +152,24 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
 
     async fn finish_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
         &self,
-        scratch: &A,
+        _scratch: &A,
     ) -> CaliptraVdmResult<()> {
         let mut active = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
         if !*active {
             return Err(CaliptraCompletionCode::InvalidState);
         }
         let mailbox = Mailbox::<DefaultSyscalls>::new();
-        let mut resp_buf =
-            match ApiAlloc::alloc(scratch, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN) {
-                Ok(buf) => buf,
-                Err(err) => {
-                    let _ = mailbox.abort_chunked_request().await;
-                    *active = false;
-                    return Err(map_mcu_err(err));
-                }
-            };
+        // 8-byte response header is a write-only throwaway; a stack buffer avoids
+        // the scratch alloc and its failure/cleanup path for a fixed tiny size.
+        let mut resp_buf = [0u8; PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN];
         let result = mailbox
             .execute_chunked_request(PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, &mut resp_buf)
             .await
-            .map_err(map_mailbox_error);
+            .map_err(|e| {
+                map_common_completion(crate::caliptra_cmd_handler::device_ops::map_mailbox_error(
+                    e,
+                ))
+            });
         *active = false;
         result?;
         Ok(())
@@ -219,12 +193,14 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         _scratch: &A,
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize> {
-        let result = match algorithm {
-            ALGO_ECC_P384 => get_attested_csr_ecc384(device_key_id, nonce, out).await,
-            ALGO_MLDSA87 => get_attested_csr_mldsa87(device_key_id, nonce, out).await,
-            _ => return Err(CaliptraCompletionCode::InvalidParameter),
-        };
-        result.map_err(map_mcu_err)
+        crate::caliptra_cmd_handler::device_ops::export_attested_csr(
+            device_key_id,
+            algorithm,
+            nonce,
+            out,
+        )
+        .await
+        .map_err(map_common_completion)
     }
 
     async fn get_auth_challenge<A: SpdmPalAlloc>(
@@ -232,10 +208,9 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         scratch: &A,
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize> {
-        let mut challenge = [0u8; 32];
-        rng_generate(scratch, &mut challenge)
+        let challenge = crate::caliptra_cmd_handler::device_ops::generate_auth_challenge(scratch)
             .await
-            .map_err(map_mcu_err)?;
+            .map_err(map_common_completion)?;
         *AUTH_CHALLENGE.lock().await = Some(challenge);
         copy_bytes(&challenge, out)
     }
@@ -247,30 +222,16 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         scratch: &A,
     ) -> CaliptraVdmResult<()> {
         verify_fe_prog_mac(scratch, partition, mac).await?;
-        fe_prog(scratch, partition).await.map_err(map_mcu_err)
-    }
-}
-
-fn map_mcu_err(e: McuErrorCode) -> CaliptraCompletionCode {
-    use mcu_error::codes;
-    if e == codes::MAILBOX_BUSY {
-        CaliptraCompletionCode::CaliptraMailboxBusy
-    } else if e == codes::INVARIANT || e == codes::INTERNAL_BUG {
-        CaliptraCompletionCode::OperationFailed
-    } else if e.domain() == mcu_error::domain::MEMORY {
-        CaliptraCompletionCode::InsufficientResources
-    } else {
-        CaliptraCompletionCode::GeneralError
+        crate::caliptra_cmd_handler::device_ops::program_field_entropy(scratch, partition)
+            .await
+            .map_err(map_common_completion)
     }
 }
 
 fn map_mailbox_error(e: MailboxError) -> CaliptraCompletionCode {
-    match e {
-        MailboxError::ErrorCode(ErrorCode::Busy) => CaliptraCompletionCode::CaliptraMailboxBusy,
-        MailboxError::ErrorCode(_) | MailboxError::MailboxError(_) => {
-            CaliptraCompletionCode::OperationFailed
-        }
-    }
+    map_common_completion(crate::caliptra_cmd_handler::device_ops::map_mailbox_error(
+        e,
+    ))
 }
 
 fn copy_bytes(src: &[u8], out: &mut [u8]) -> CaliptraVdmResult<usize> {
@@ -283,7 +244,7 @@ fn copy_bytes(src: &[u8], out: &mut [u8]) -> CaliptraVdmResult<usize> {
     Ok(src.len())
 }
 
-async fn verify_fe_prog_mac<A: ApiAlloc>(
+async fn verify_fe_prog_mac<A: mcu_caliptra_api_lite::ApiAlloc>(
     scratch: &A,
     partition: u32,
     mac: &[u8; 48],
@@ -293,34 +254,18 @@ async fn verify_fe_prog_mac<A: ApiAlloc>(
         .await
         .take()
         .ok_or(CaliptraCompletionCode::AccessDenied)?;
+    let partition_bytes = partition.to_le_bytes();
 
-    let cmk = cm_import(scratch, CmKeyUsage::Hmac, &TEST_AUTH_CMD_HMAC_KEY)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-
-    let mut hmac_input = ArrayVec::<u8, 256>::new();
-    hmac_input
-        .try_extend_from_slice(&FE_PROG_CMD_ID.to_be_bytes())
-        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-    hmac_input
-        .try_extend_from_slice(&partition.to_le_bytes())
-        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-    hmac_input
-        .try_extend_from_slice(&challenge)
-        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-
-    let mut computed_mac = [0u8; 48];
-    let mac_len = cm_hmac(scratch, &cmk, hmac_input.as_slice(), &mut computed_mac)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    if mac_len != 48 {
-        return Err(CaliptraCompletionCode::OperationFailed);
-    }
-    if constant_time_eq(&computed_mac, mac) {
-        Ok(())
-    } else {
-        Err(CaliptraCompletionCode::AccessDenied)
-    }
+    crate::caliptra_cmd_handler::device_ops::verify_authorized_mac(
+        scratch,
+        &crate::caliptra_cmd_handler::device_ops::TEST_AUTH_CMD_HMAC_KEY,
+        FE_PROG_CMD_ID,
+        &partition_bytes,
+        &challenge,
+        mac,
+    )
+    .await
+    .map_err(map_common_completion)
 }
 
 fn map_common_completion(code: CommonCompletionCode) -> CaliptraCompletionCode {
