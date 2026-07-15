@@ -8,6 +8,8 @@
 //! rather than stored. Boot initialization is performed by
 //! `measurement_boot_init`.
 
+mod initial_load;
+
 use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
     DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, POLICY_DIGEST_SIZE,
 };
@@ -25,7 +27,7 @@ use mcu_caliptra_api_lite::{
 
 use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
-use crate::{AttestationState, BootKind};
+use crate::{AttestationState, BootKind, ImageMetadata};
 
 /// Owns the attestation configuration and attestation boot/error state.
 ///
@@ -34,7 +36,7 @@ use crate::{AttestationState, BootKind};
 /// consumer runs. All later access to the static attestation configuration
 /// goes through this instance. The store clients are cheap syscall handles
 /// created on demand inside each operation.
-pub struct MeasurementApi<'a, S: Syscalls = DefaultSyscalls> {
+pub(crate) struct MeasurementApi<'a, S: Syscalls = DefaultSyscalls> {
     manifest: AttestationManifest<'a>,
     state: AttestationState,
     _syscalls: PhantomData<S>,
@@ -46,8 +48,12 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     ///
     /// A malformed manifest is reported as
     /// [`MeasurementApiError::InvalidManifest`].
-    pub fn new(manifest_bytes: &'a [u8]) -> MeasurementApiResult<Self> {
+    pub fn new(
+        manifest_bytes: &'a [u8],
+        soc_image_load_fw_ids: &'a [u32],
+    ) -> MeasurementApiResult<Self> {
         let manifest = parse_and_validate(manifest_bytes)?;
+        validate_soc_image_load_fw_ids(&manifest, soc_image_load_fw_ids)?;
         Ok(Self {
             manifest,
             state: AttestationState::Uninitialized,
@@ -197,6 +203,23 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         Ok(())
     }
 
+    /// Authorize one MCU-managed initial-load component through Caliptra.
+    ///
+    /// Validates Measurement API state and Attestation Manifest membership,
+    /// then uses public `AUTHORIZE_AND_STASH` with `SKIP_STASH=true` for
+    /// authorization only. After authorization succeeds, TCB entries derive
+    /// explicit DPE state, non-TCB entries create Software PCR records, and
+    /// PCR31 is extended as the final common step.
+    pub async fn authorize_and_stash<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        fw_id: u32,
+        metadata: ImageMetadata,
+    ) -> MeasurementApiResult {
+        // TODO: extend this for the update case.
+        initial_load::authorize_and_stash(self, alloc, fw_id, metadata).await
+    }
+
     /// Return the DPE leaf certificate length for the configured attestation
     /// target and persist the rotated target handle returned by DPE.
     pub async fn leaf_cert_size<A: ApiAlloc>(
@@ -306,11 +329,12 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     }
 
     /// Current attestation availability state.
+    #[cfg(test)]
     pub fn attestation_state(&self) -> AttestationState {
         self.state
     }
 
-    fn ensure_active(&self) -> MeasurementApiResult {
+    fn attestation_state_active(&self) -> MeasurementApiResult {
         if self.state == AttestationState::Active {
             Ok(())
         } else {
@@ -319,7 +343,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     }
 
     fn read_attestation_target_record(&self) -> MeasurementApiResult<DpeHandleRecord> {
-        self.ensure_active()?;
+        self.attestation_state_active()?;
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         let mut target = DpeHandleRecord::default();
         dpe_store
@@ -340,6 +364,11 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             MeasurementApiError::StoreFailed
         })
     }
+
+    fn enter_error_state(&mut self, error: MeasurementApiError) -> MeasurementApiError {
+        self.state = AttestationState::Error;
+        error
+    }
 }
 
 /// True if `record` has MCU Runtime root DPE record semantics: the
@@ -352,6 +381,30 @@ fn is_mcu_root_record(record: &DpeHandleRecord) -> bool {
         && record.context_handle != [0u8; 16]
 }
 
+fn validate_soc_image_load_fw_ids(
+    manifest: &AttestationManifest<'_>,
+    soc_image_load_fw_ids: &[u32],
+) -> MeasurementApiResult {
+    if soc_image_load_fw_ids.len() != manifest.entries().count() {
+        return Err(MeasurementApiError::InvalidSocImageLoadList);
+    }
+
+    for (index, fw_id) in soc_image_load_fw_ids.iter().copied().enumerate() {
+        if soc_image_load_fw_ids
+            .iter()
+            .take(index)
+            .any(|existing| *existing == fw_id)
+        {
+            return Err(MeasurementApiError::InvalidSocImageLoadList);
+        }
+        manifest
+            .lookup(fw_id)
+            .map_err(|_| MeasurementApiError::InvalidSocImageLoadList)?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -360,6 +413,7 @@ mod tests {
 
     use super::*;
     use crate::attestation_manifest::{
+        ATTESTATION_FLAG_SOC_TCB_DPE, ATTESTATION_MANIFEST_ENTRY_SIZE,
         ATTESTATION_MANIFEST_FIXED_HEADER_SIZE, ATTESTATION_MANIFEST_MARKER,
         ATTESTATION_MANIFEST_VERSION, MCU_RT_FW_ID,
     };
@@ -381,10 +435,34 @@ mod tests {
         out
     }
 
+    fn valid_manifest_with_entries(entries: &[(u32, u32)]) -> Vec<u8> {
+        let header_size = ATTESTATION_MANIFEST_FIXED_HEADER_SIZE;
+        let size = header_size + entries.len() * ATTESTATION_MANIFEST_ENTRY_SIZE;
+        let tcb_entry_count = entries
+            .iter()
+            .filter(|(_, flags)| flags & ATTESTATION_FLAG_SOC_TCB_DPE != 0)
+            .count();
+        let mut out = Vec::new();
+        out.extend_from_slice(&ATTESTATION_MANIFEST_MARKER.to_le_bytes());
+        out.extend_from_slice(&(size as u32).to_le_bytes());
+        out.extend_from_slice(&ATTESTATION_MANIFEST_VERSION.to_le_bytes());
+        out.extend_from_slice(&(header_size as u32).to_le_bytes());
+        out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(tcb_entry_count as u32).to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.resize(header_size, 0);
+        for (fw_id, flags) in entries {
+            out.extend_from_slice(&fw_id.to_le_bytes());
+            out.extend_from_slice(&flags.to_le_bytes());
+        }
+        out
+    }
+
     #[test]
     fn new_accepts_valid_manifest_and_starts_uninitialized() {
         let bytes = valid_empty_manifest();
-        let api = MeasurementApi::<DefaultSyscalls>::new(&bytes).unwrap();
+        let api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[]).unwrap();
         assert_eq!(api.attestation_state(), AttestationState::Uninitialized);
         assert_eq!(api.manifest.attestation_target_fw_id(), MCU_RT_FW_ID);
     }
@@ -392,8 +470,48 @@ mod tests {
     #[test]
     fn new_rejects_malformed_manifest() {
         assert!(matches!(
-            MeasurementApi::<DefaultSyscalls>::new(&[0u8; 4]),
+            MeasurementApi::<DefaultSyscalls>::new(&[0u8; 4], &[]),
             Err(MeasurementApiError::InvalidManifest)
+        ));
+    }
+
+    #[test]
+    fn new_accepts_load_list_in_different_order_than_manifest() {
+        let bytes =
+            valid_manifest_with_entries(&[(0x1000, ATTESTATION_FLAG_SOC_TCB_DPE), (0x2000, 0)]);
+
+        let api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[0x2000, 0x1000]).unwrap();
+
+        assert_eq!(api.attestation_state(), AttestationState::Uninitialized);
+    }
+
+    #[test]
+    fn new_rejects_duplicate_load_fw_id() {
+        let bytes = valid_manifest_with_entries(&[(0x1000, 0), (0x2000, 0)]);
+
+        assert!(matches!(
+            MeasurementApi::<DefaultSyscalls>::new(&bytes, &[0x1000, 0x1000]),
+            Err(MeasurementApiError::InvalidSocImageLoadList)
+        ));
+    }
+
+    #[test]
+    fn new_rejects_load_fw_id_missing_from_manifest() {
+        let bytes = valid_manifest_with_entries(&[(0x1000, 0), (0x2000, 0)]);
+
+        assert!(matches!(
+            MeasurementApi::<DefaultSyscalls>::new(&bytes, &[0x1000, 0x3000]),
+            Err(MeasurementApiError::InvalidSocImageLoadList)
+        ));
+    }
+
+    #[test]
+    fn new_rejects_load_list_len_mismatch() {
+        let bytes = valid_manifest_with_entries(&[(0x1000, 0), (0x2000, 0)]);
+
+        assert!(matches!(
+            MeasurementApi::<DefaultSyscalls>::new(&bytes, &[0x1000]),
+            Err(MeasurementApiError::InvalidSocImageLoadList)
         ));
     }
 
@@ -402,7 +520,7 @@ mod tests {
         use sha2::{Digest, Sha384};
 
         let bytes = valid_empty_manifest();
-        let api = MeasurementApi::<DefaultSyscalls>::new(&bytes).unwrap();
+        let api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[]).unwrap();
 
         // The digest is computed over the exact canonical manifest bytes.
         assert_eq!(api.manifest.bytes(), &bytes[..]);

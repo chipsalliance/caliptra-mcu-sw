@@ -37,6 +37,10 @@ pub(crate) const CMD_CM_SHA_UPDATE: u32 = 0x434D_5355; // "CMSU"
 pub(crate) const CMD_CM_SHA_FINAL: u32 = 0x434D_5346; // "CMSF"
 pub(crate) const CMD_CM_RANDOM_GENERATE: u32 = 0x434D_5247; // "CMRG"
 
+/// Caliptra mailbox command ID for `AUTHORIZE_AND_STASH`.
+/// Mirrored from `caliptra-api::CommandId::AUTHORIZE_AND_STASH`.
+pub(crate) const CMD_AUTHORIZE_AND_STASH: u32 = 0x4154_5348; // "ATSH"
+
 // ---- DPE (Caliptra `InvokeDpeCommand`) ------------------------------------
 
 /// Caliptra mailbox command ID for `INVOKE_DPE`.
@@ -61,6 +65,9 @@ pub(crate) const DPE_RESPONSE_MAGIC: u32 = 0x4450_4552; // "DPER"
 /// Mirrored from `caliptra-api::DPE_PROFILE` (`DpeProfile::P384Sha384 = 4`).
 pub(crate) const DPE_PROFILE_P384_SHA384: u32 = 4;
 
+/// DPE `DeriveContext` command ID (`dpe::commands::Command::DERIVE_CONTEXT`).
+pub(crate) const DPE_CMD_DERIVE_CONTEXT: u32 = 0x08;
+
 /// DPE `GetCertificateChain` command ID
 /// (`dpe::commands::Command::GET_CERTIFICATE_CHAIN`).
 pub(crate) const DPE_CMD_GET_CERTIFICATE_CHAIN: u32 = 0x10;
@@ -74,6 +81,9 @@ pub(crate) const DPE_CMD_ROTATE_CONTEXT_HANDLE: u32 = 0x0e;
 
 /// `QUOTE_PCRS_ECC384` command ID.
 pub(crate) const CMD_QUOTE_PCRS_ECC384: u32 = 0x5043_5251; // "PCRQ"
+
+/// `EXTEND_PCR` command ID.
+pub(crate) const CMD_EXTEND_PCR: u32 = 0x5043_5245; // "PCRE"
 
 /// `GET_ATTESTED_ECC384_CSR` command ID.
 pub(crate) const CMD_GET_ATTESTED_ECC384_CSR: u32 = 0x4145_4352; // "AECR"

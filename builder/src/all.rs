@@ -207,14 +207,29 @@ fn create_attestation_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
     (soc_images, vec![soc_image_path])
 }
 
-/// Pre-generate `target/generated/attestation_manifest.toml` so the runtime build can embed
-/// the integrator-owned static attestation configuration.
+/// Pre-generate the target-dir `generated/` configs so the runtime build can
+/// embed the integrator-owned static attestation configuration.
 fn pre_generate_attestation_manifest_config(
     vendor: &str,
     model: &str,
     soc_images: &[ImageCfg],
 ) -> Result<()> {
-    crate::attestation_manifest::write_config(
+    pre_generate_attestation_manifest_config_to_target_dir(
+        &crate::target_dir(),
+        vendor,
+        model,
+        soc_images,
+    )
+}
+
+fn pre_generate_attestation_manifest_config_to_target_dir(
+    target_dir: &Path,
+    vendor: &str,
+    model: &str,
+    soc_images: &[ImageCfg],
+) -> Result<()> {
+    crate::attestation_manifest::write_config_to_target_dir(
+        target_dir,
         vendor,
         model,
         soc_images,
@@ -866,6 +881,38 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
             let include_example_app = FEATURES_WITH_EXAMPLE_APP.contains(feature);
 
+            // Generate the descriptor files before compiling this runtime so
+            // user-app build.rs embeds the same SoC image IDs that will be put
+            // in the feature-specific SoC manifest below.
+            let (feature_soc_images, feature_soc_images_paths) =
+                if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) && soc_images.is_none() {
+                    let (images, paths) = if *feature == "test-mctp-spdm-attestation"
+                        || *feature == "test-mctp-spdm-attestation-pcr-quote"
+                    {
+                        create_attestation_soc_images()
+                    } else {
+                        create_default_soc_images()
+                    };
+                    (Some(images), paths)
+                } else {
+                    (
+                        soc_images.clone(),
+                        soc_images
+                            .clone()
+                            .unwrap_or_default()
+                            .iter()
+                            .map(|img| img.path.clone())
+                            .collect(),
+                    )
+                };
+            let generated_target_dir = target_dir.clone().unwrap_or_else(crate::target_dir);
+            pre_generate_attestation_manifest_config_to_target_dir(
+                &generated_target_dir,
+                effective_vendor,
+                effective_model,
+                feature_soc_images.as_deref().unwrap_or(&[]),
+            )?;
+
             let feature_str = if is_release && !feature.contains("release") {
                 format!("{},release", feature)
             } else {
@@ -896,29 +943,6 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 
             let mcu_image_cfg =
                 get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature);
-
-            // For features that require SoC images, create default ones if not provided
-            let (feature_soc_images, feature_soc_images_paths) =
-                if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) && soc_images.is_none() {
-                    let (images, paths) = if *feature == "test-mctp-spdm-attestation"
-                        || *feature == "test-mctp-spdm-attestation-pcr-quote"
-                    {
-                        create_attestation_soc_images()
-                    } else {
-                        create_default_soc_images()
-                    };
-                    (Some(images), paths)
-                } else {
-                    (
-                        soc_images.clone(),
-                        soc_images
-                            .clone()
-                            .unwrap_or_default()
-                            .iter()
-                            .map(|img| img.path.clone())
-                            .collect(),
-                    )
-                };
 
             let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
                 fpga: platform == "fpga",

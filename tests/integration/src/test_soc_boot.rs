@@ -1052,6 +1052,14 @@ mod test {
     }
 
     #[test]
+    fn test_measurement_api_initial_load_smoke() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        test_successful_boot(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
     fn test_flash_soc_boot_secondary_flash() {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_soc_boot_options(true);
