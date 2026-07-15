@@ -22,8 +22,12 @@ pub(crate) fn checked_slice_mut(src: &mut [u8], offset: usize, len: usize) -> Mc
 }
 
 #[inline]
-pub(crate) fn copy_bytes(dst: &mut [u8], src: &[u8]) {
+pub(crate) fn copy_bytes(dst: &mut [u8], src: &[u8]) -> McuResult<()> {
+    if dst.len() != src.len() {
+        return Err(INVARIANT);
+    }
     for (dst_byte, src_byte) in dst.iter_mut().zip(src.iter()) {
         *dst_byte = *src_byte;
     }
+    Ok(())
 }

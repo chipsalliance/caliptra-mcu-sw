@@ -121,7 +121,7 @@ impl SignedEatLite {
         let pl_hdr_len = write_cose_payload_bstr_len(rest, payload.len()).ok_or(INVARIANT)?;
         let rest = rest.get_mut(pl_hdr_len..).ok_or(INVARIANT)?;
         let (payload_slot, rest) = rest.split_at_mut_checked(payload.len()).ok_or(INVARIANT)?;
-        copy_bytes(payload_slot, payload);
+        copy_bytes(payload_slot, payload)?;
         let (sig_hdr_slot, rest) = rest
             .split_first_chunk_mut::<{ SIGNATURE_BSTR_HEADER.len() }>()
             .ok_or(INVARIANT)?;
@@ -167,15 +167,15 @@ fn write_type_header(out: &mut [u8], major: u8, value: u64) -> Option<usize> {
         Some(2)
     } else if value <= u16::MAX as u64 {
         *out.get_mut(0)? = (major << 5) | 25;
-        copy_bytes(out.get_mut(1..3)?, &(value as u16).to_be_bytes());
+        copy_bytes(out.get_mut(1..3)?, &(value as u16).to_be_bytes()).ok()?;
         Some(3)
     } else if value <= u32::MAX as u64 {
         *out.get_mut(0)? = (major << 5) | 26;
-        copy_bytes(out.get_mut(1..5)?, &(value as u32).to_be_bytes());
+        copy_bytes(out.get_mut(1..5)?, &(value as u32).to_be_bytes()).ok()?;
         Some(5)
     } else {
         *out.get_mut(0)? = (major << 5) | 27;
-        copy_bytes(out.get_mut(1..9)?, &value.to_be_bytes());
+        copy_bytes(out.get_mut(1..9)?, &value.to_be_bytes()).ok()?;
         Some(9)
     }
 }

@@ -65,14 +65,14 @@ impl<B: Deref<Target = [u8]> + DerefMut> HashState<B> {
     }
 
     /// Deep-copy this running hash state into a new buffer.
-    pub fn clone_into<B2: Deref<Target = [u8]> + DerefMut>(&self, mut buf: B2) -> HashState<B2> {
-        if let (Some(dst), Some(src)) = (
-            buf.get_mut(..CMB_SHA_CONTEXT_SIZE),
-            self.inner.get(..CMB_SHA_CONTEXT_SIZE),
-        ) {
-            copy_bytes(dst, src);
-        }
-        HashState { inner: buf }
+    pub fn clone_into<B2: Deref<Target = [u8]> + DerefMut>(
+        &self,
+        mut buf: B2,
+    ) -> McuResult<HashState<B2>> {
+        let src = checked_slice(&self.inner, 0, CMB_SHA_CONTEXT_SIZE)?;
+        let dst = checked_slice_mut(&mut buf, 0, CMB_SHA_CONTEXT_SIZE)?;
+        copy_bytes(dst, src)?;
+        Ok(HashState { inner: buf })
     }
 
     #[inline]
@@ -251,10 +251,10 @@ async fn sha_call<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
     } else {
         let prefix = ShaUpdatePrefix::mut_from_bytes(checked_slice_mut(&mut req, 0, prefix_len)?)
             .map_err(|_| INVARIANT)?;
-        copy_bytes(&mut prefix.context, state.ctx()?);
+        copy_bytes(&mut prefix.context, state.ctx()?)?;
         prefix.input_size = U32::new(chunk_len as u32);
     }
-    copy_bytes(checked_slice_mut(&mut req, prefix_len, chunk_len)?, data);
+    copy_bytes(checked_slice_mut(&mut req, prefix_len, chunk_len)?, data)?;
     populate_checksum(cmd, &mut req)?;
 
     let rsp_alloc_len = if is_final {
@@ -279,11 +279,11 @@ async fn sha_call<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
         }
         let digest = checked_slice(&rsp, prefix_len, data_len)?;
         let out = checked_slice_mut(out, 0, data_len)?;
-        copy_bytes(out, digest);
+        copy_bytes(out, digest)?;
     } else {
         let parsed = ShaCtxResp::ref_from_bytes(checked_slice(&rsp, 0, size_of::<ShaCtxResp>())?)
             .map_err(|_| INTERNAL_BUG)?;
-        copy_bytes(state.ctx_mut()?, &parsed.context);
+        copy_bytes(state.ctx_mut()?, &parsed.context)?;
     }
     Ok(())
 }

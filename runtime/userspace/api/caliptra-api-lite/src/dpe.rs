@@ -301,7 +301,7 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     }
     let out = dst.get_mut(..cert_size).ok_or(INTERNAL_BUG)?;
     let cert = internal_slice(&rsp, chain_off, cert_size)?;
-    copy_bytes(out, cert);
+    copy_bytes(out, cert)?;
     Ok(cert_size)
 }
 
@@ -340,7 +340,7 @@ pub async fn dpe_certify_key<A: ApiAlloc>(
         return Err(INVARIANT);
     }
     let out = dst.get_mut(..cert_size).ok_or(INTERNAL_BUG)?;
-    copy_bytes(out, cert);
+    copy_bytes(out, cert)?;
 
     if cert_size > dst.len() {
         return Err(INTERNAL_BUG);
@@ -405,7 +405,7 @@ pub async fn dpe_certify_key_cert_slice<A: ApiAlloc>(
         return Err(INTERNAL_BUG);
     }
     let out = dst.get_mut(..response.len()).ok_or(INTERNAL_BUG)?;
-    copy_bytes(out, response);
+    copy_bytes(out, response)?;
     Ok((chunk.next_handle, response.len()))
 }
 
@@ -435,8 +435,8 @@ pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
     validate_certify_key_prefix(response)?;
     let pubkey_x_bytes = internal_slice(response, CERTIFY_KEY_RESP_PUBKEY_X_OFF, 48)?;
     let pubkey_y_bytes = internal_slice(response, CERTIFY_KEY_RESP_PUBKEY_Y_OFF, 48)?;
-    copy_bytes(pubkey_x, pubkey_x_bytes);
-    copy_bytes(pubkey_y, pubkey_y_bytes);
+    copy_bytes(pubkey_x, pubkey_x_bytes)?;
+    copy_bytes(pubkey_y, pubkey_y_bytes)?;
     Ok(chunk.next_handle)
 }
 
@@ -522,8 +522,7 @@ fn build_certify_key_chunks_req<'a, A: ApiAlloc>(
 fn write_fixed(dst: &mut [u8], offset: usize, src: &[u8]) -> McuResult<()> {
     let end = offset.checked_add(src.len()).ok_or(INVARIANT)?;
     let dst = dst.get_mut(offset..end).ok_or(INVARIANT)?;
-    copy_bytes(dst, src);
-    Ok(())
+    copy_bytes(dst, src)
 }
 
 #[inline]
@@ -539,7 +538,7 @@ fn read_le_u32(src: &[u8], offset: usize) -> McuResult<u32> {
 fn read_context_handle(src: &[u8], offset: usize) -> McuResult<DpeContextHandle> {
     let bytes = internal_slice(src, offset, DPE_CONTEXT_HANDLE_SIZE)?;
     let mut handle = [0u8; DPE_CONTEXT_HANDLE_SIZE];
-    copy_bytes(&mut handle, bytes);
+    copy_bytes(&mut handle, bytes)?;
     Ok(handle)
 }
 

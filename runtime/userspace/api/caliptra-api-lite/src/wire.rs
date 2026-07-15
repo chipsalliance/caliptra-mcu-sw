@@ -179,7 +179,7 @@ pub(crate) fn populate_checksum(cmd: u32, data: &mut [u8]) -> mcu_error::McuResu
     let Some(dst) = data.get_mut(..4) else {
         return Err(mcu_error::codes::INVARIANT);
     };
-    copy_bytes(dst, &checksum.to_le_bytes());
+    copy_bytes(dst, &checksum.to_le_bytes())?;
     Ok(())
 }
 
