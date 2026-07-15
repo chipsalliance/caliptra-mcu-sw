@@ -80,7 +80,7 @@ Retrieves the version of the target firmware.
 
 | Byte(s) | Name        | Type | Description                                                                 |
 |---------|-------------|------|-----------------------------------------------------------------------------|
-| 0:4     | area_index  | u32  | Area Index: <br>- `00h` = Caliptra core firmware <br>- `01h` = MCU runtime firmware <br>- `02h` = SoC firmware <br>- `03h` = MCU Rom firmware <br>Additional indexes are firmware-specific |
+| 0:3     | area_index  | u32  | Area Index: <br>- `00h` = Caliptra core firmware <br>- `01h` = MCU runtime firmware <br>- `02h` = SoC firmware <br>Additional indexes are firmware-specific |
 
 **Response Payload**:
 
