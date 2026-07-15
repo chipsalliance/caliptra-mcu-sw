@@ -135,7 +135,6 @@ mod test {
 
         let mut req = McuMailboxReq::GetLog(GetLogReq {
             hdr: MailboxReqHeader::default(),
-            log_type: 0,
         });
         req.populate_chksum().expect("populate_chksum");
         let cmd = req.cmd_code().0;

@@ -2753,7 +2753,6 @@ pub mod test {
             // ---------- 1) Drain debug log (one round-trip suffices) ----------
             let mut req = McuMailboxReq::GetLog(GetLogReq {
                 hdr: MailboxReqHeader::default(),
-                log_type: 0, // Debug
             });
             let cmd = req.cmd_code();
             req.populate_chksum().unwrap();
@@ -2795,7 +2794,6 @@ pub mod test {
             // ---------- 2) Second drain returns 0 bytes (cursor at end) ----------
             let mut req = McuMailboxReq::GetLog(GetLogReq {
                 hdr: MailboxReqHeader::default(),
-                log_type: 0,
             });
             req.populate_chksum().unwrap();
 
@@ -2815,7 +2813,6 @@ pub mod test {
             // ---------- 3) ClearLog(Debug) succeeds ----------
             let mut req = McuMailboxReq::ClearLog(ClearLogReq {
                 hdr: MailboxReqHeader::default(),
-                log_type: 0,
             });
             let clear_cmd = req.cmd_code();
             req.populate_chksum().unwrap();
@@ -2835,7 +2832,6 @@ pub mod test {
             // ---------- 4) Post-clear GetLog(Debug) is empty ----------
             let mut req = McuMailboxReq::GetLog(GetLogReq {
                 hdr: MailboxReqHeader::default(),
-                log_type: 0,
             });
             req.populate_chksum().unwrap();
             let resp = self
@@ -2850,80 +2846,6 @@ pub mod test {
                 "Post-clear GetLog should be empty"
             );
             println!("  Post-clear GetLog(Debug): 0 bytes (expected)");
-
-            // ---------- 5) Attestation log still unsupported on both platforms ----------
-            // Attestation log: not yet wired anywhere → Failure on both platforms.
-            let mut req = McuMailboxReq::GetLog(GetLogReq {
-                hdr: MailboxReqHeader::default(),
-                log_type: 1, // Attestation
-            });
-            req.populate_chksum().unwrap();
-            let resp = self
-                .process_message(cmd.0, req.as_bytes().unwrap())
-                .map_err(|e| {
-                    println!("    GetLog(Attestation) transport error: {:?}", e);
-                })?;
-            assert_eq!(
-                resp.status_code,
-                MbxCmdStatus::Failure as u32,
-                "GetLog(Attestation) should report Failure until the production \
-                 attestation-log backend lands"
-            );
-            println!("  GetLog(Attestation): Failure (expected — unsupported)");
-
-            // ClearLog(Attestation) — also unsupported on both platforms.
-            // (Reuse `cmd` as the GetLog cmd code; we need ClearLog cmd code now.)
-            let mut req = McuMailboxReq::ClearLog(ClearLogReq {
-                hdr: MailboxReqHeader::default(),
-                log_type: 1,
-            });
-            let clear_cmd = req.cmd_code();
-            req.populate_chksum().unwrap();
-            let resp = self
-                .process_message(clear_cmd.0, req.as_bytes().unwrap())
-                .map_err(|e| {
-                    println!("    ClearLog(Attestation) transport error: {:?}", e);
-                })?;
-            assert_eq!(
-                resp.status_code,
-                MbxCmdStatus::Failure as u32,
-                "ClearLog(Attestation) should report Failure until production backend lands"
-            );
-            println!("  ClearLog(Attestation): Failure (expected — unsupported)");
-
-            // ---------- 6) Invalid log_type rejected ----------
-            let mut req = McuMailboxReq::GetLog(GetLogReq {
-                hdr: MailboxReqHeader::default(),
-                log_type: 0xFF,
-            });
-            req.populate_chksum().unwrap();
-            let resp = self
-                .process_message(cmd.0, req.as_bytes().unwrap())
-                .map_err(|e| {
-                    println!("    GetLog(invalid) transport error: {:?}", e);
-                })?;
-            assert_eq!(
-                resp.status_code,
-                MbxCmdStatus::Failure as u32,
-                "GetLog with unknown log_type should report Failure"
-            );
-
-            let mut req = McuMailboxReq::ClearLog(ClearLogReq {
-                hdr: MailboxReqHeader::default(),
-                log_type: 0xFF,
-            });
-            req.populate_chksum().unwrap();
-            let resp = self
-                .process_message(clear_cmd.0, req.as_bytes().unwrap())
-                .map_err(|e| {
-                    println!("    ClearLog(invalid) transport error: {:?}", e);
-                })?;
-            assert_eq!(
-                resp.status_code,
-                MbxCmdStatus::Failure as u32,
-                "ClearLog with unknown log_type should report Failure"
-            );
-            println!("  Invalid log_type rejected for both GetLog and ClearLog");
 
             println!("MC_GET_LOG / MC_CLEAR_LOG tests passed");
             Ok(())

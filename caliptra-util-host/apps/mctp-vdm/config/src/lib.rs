@@ -9,7 +9,6 @@ use std::path::Path;
 /// Top-level test configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestConfig {
-    pub device: DeviceConfig,
     pub network: NetworkConfig,
     pub validation: ValidationConfig,
     pub server: ServerConfig,
@@ -17,17 +16,6 @@ pub struct TestConfig {
     pub device_capabilities: Option<DeviceCapabilitiesConfig>,
     #[serde(default)]
     pub firmware_version: Option<FirmwareVersionConfig>,
-    #[serde(default)]
-    pub device_info: Option<DeviceInfoConfig>,
-}
-
-/// Device identification values returned by the emulated device.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceConfig {
-    pub device_id: u16,
-    pub vendor_id: u16,
-    pub subsystem_vendor_id: u16,
-    pub subsystem_id: u16,
 }
 
 /// Network configuration (TCP socket to I3C controller).
@@ -76,16 +64,6 @@ pub struct FirmwareVersionConfig {
     pub fips_status: u32,
     pub rom_firmware_id: u32,
     pub runtime_firmware_id: u32,
-}
-
-/// Expected device information.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceInfoConfig {
-    pub info_index: u32,
-    pub expected_info: String,
-    pub min_info_length: u32,
-    pub max_info_length: u32,
-    pub fips_status: u32,
 }
 
 impl TestConfig {
@@ -140,12 +118,6 @@ impl TestConfig {
 impl Default for TestConfig {
     fn default() -> Self {
         Self {
-            device: DeviceConfig {
-                device_id: 0x0010,
-                vendor_id: 0x1414,
-                subsystem_vendor_id: 0x0001,
-                subsystem_id: 0x0002,
-            },
             network: NetworkConfig {
                 default_server_address: "127.0.0.1:63333".to_string(),
                 target_i3c_address: 0x08,
@@ -172,13 +144,6 @@ impl Default for TestConfig {
                 fips_status: 0x00000001,
                 rom_firmware_id: 0,
                 runtime_firmware_id: 1,
-            }),
-            device_info: Some(DeviceInfoConfig {
-                info_index: 0,
-                expected_info: "Caliptra VDM Test Device v1.0".to_string(),
-                min_info_length: 16,
-                max_info_length: 64,
-                fips_status: 0,
             }),
         }
     }

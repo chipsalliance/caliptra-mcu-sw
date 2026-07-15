@@ -31,22 +31,10 @@ pub const MAX_VDM_RESPONSE_SIZE: usize = 16384;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CaliptraVdmCommand {
-    FirmwareVersion = 0x01,
-    DeviceCapabilities = 0x02,
-    DeviceId = 0x03,
-    DeviceInfo = 0x04,
-    GetDebugLog = 0x05,
-    ClearDebugLog = 0x06,
-    GetAttestationLog = 0x07,
-    ClearAttestationLog = 0x08,
-    GetAttestation = 0x09,
-    RequestDebugUnlock = 0x0A,
-    AuthorizeDebugUnlockToken = 0x0B,
-    ExportIdevidCsr = 0x0C,
-    SetSlot0Cert = 0x0D,
-    GetSlot0State = 0x0E,
-    ExportAttestedCsr = 0x0F,
-    DeviceOwnershipTransfer = 0x11,
+    GetAttestation = 0x05,
+    RequestDebugUnlock = 0x06,
+    AuthorizeDebugUnlockToken = 0x07,
+    ExportAttestedCsr = 0x08,
     /// Single entry point for all authorized sub-commands (GetAuthChallenge, ProgramFieldEntropy).
     AuthorizedCommand = 0x12,
 }
@@ -56,22 +44,10 @@ impl TryFrom<u8> for CaliptraVdmCommand {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0x01 => Ok(Self::FirmwareVersion),
-            0x02 => Ok(Self::DeviceCapabilities),
-            0x03 => Ok(Self::DeviceId),
-            0x04 => Ok(Self::DeviceInfo),
-            0x05 => Ok(Self::GetDebugLog),
-            0x06 => Ok(Self::ClearDebugLog),
-            0x07 => Ok(Self::GetAttestationLog),
-            0x08 => Ok(Self::ClearAttestationLog),
-            0x09 => Ok(Self::GetAttestation),
-            0x0A => Ok(Self::RequestDebugUnlock),
-            0x0B => Ok(Self::AuthorizeDebugUnlockToken),
-            0x0C => Ok(Self::ExportIdevidCsr),
-            0x0D => Ok(Self::SetSlot0Cert),
-            0x0E => Ok(Self::GetSlot0State),
-            0x0F => Ok(Self::ExportAttestedCsr),
-            0x11 => Ok(Self::DeviceOwnershipTransfer),
+            0x05 => Ok(Self::GetAttestation),
+            0x06 => Ok(Self::RequestDebugUnlock),
+            0x07 => Ok(Self::AuthorizeDebugUnlockToken),
+            0x08 => Ok(Self::ExportAttestedCsr),
             0x12 => Ok(Self::AuthorizedCommand),
             _ => Err(SpdmVdmProtocolError::UnknownCommand(value)),
         }
@@ -145,19 +121,8 @@ pub enum SpdmVdmProtocolError {
 pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
     use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
     match command_id {
-        x if x == CaliptraCommandId::GetFirmwareVersion as u32 => {
-            Some(CaliptraVdmCommand::FirmwareVersion)
-        }
-        x if x == CaliptraCommandId::GetDeviceCapabilities as u32 => {
-            Some(CaliptraVdmCommand::DeviceCapabilities)
-        }
-        x if x == CaliptraCommandId::GetDeviceId as u32 => Some(CaliptraVdmCommand::DeviceId),
-        x if x == CaliptraCommandId::GetDeviceInfo as u32 => Some(CaliptraVdmCommand::DeviceInfo),
         x if x == CaliptraCommandId::ExportAttestedCsr as u32 => {
             Some(CaliptraVdmCommand::ExportAttestedCsr)
-        }
-        x if x == CaliptraCommandId::ExportIdevidCsr as u32 => {
-            Some(CaliptraVdmCommand::ExportIdevidCsr)
         }
         x if x == CaliptraCommandId::ProdDebugUnlockReq as u32 => {
             Some(CaliptraVdmCommand::RequestDebugUnlock)
@@ -179,17 +144,13 @@ mod tests {
 
     #[test]
     fn test_command_roundtrip() {
-        // 0x10 (ProgramFieldEntropy) is no longer a top-level VDM command;
-        // it is dispatched as sub-command 0x02 of AuthorizedCommand (0x12).
-        let valid_codes: &[u8] = &[
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
-            0x0F, 0x11, 0x12,
-        ];
+        let valid_codes: &[u8] = &[0x05, 0x06, 0x07, 0x08, 0x12];
         for &code in valid_codes {
             let cmd = CaliptraVdmCommand::try_from(code).unwrap();
             assert_eq!(cmd as u8, code);
         }
         assert!(CaliptraVdmCommand::try_from(0x00).is_err());
+        assert!(CaliptraVdmCommand::try_from(0x01).is_err());
         assert!(CaliptraVdmCommand::try_from(0x10).is_err());
         assert!(CaliptraVdmCommand::try_from(0x13).is_err());
         assert!(CaliptraVdmCommand::try_from(0xFF).is_err());
@@ -217,11 +178,15 @@ mod tests {
         use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
         assert_eq!(
             command_id_to_vdm(CaliptraCommandId::GetDeviceId as u32),
-            Some(CaliptraVdmCommand::DeviceId)
+            None
         );
         assert_eq!(
             command_id_to_vdm(CaliptraCommandId::ExportAttestedCsr as u32),
             Some(CaliptraVdmCommand::ExportAttestedCsr)
+        );
+        assert_eq!(
+            command_id_to_vdm(CaliptraCommandId::ProdDebugUnlockReq as u32),
+            Some(CaliptraVdmCommand::RequestDebugUnlock)
         );
         // Unsupported command
         assert_eq!(command_id_to_vdm(CaliptraCommandId::HashInit as u32), None);

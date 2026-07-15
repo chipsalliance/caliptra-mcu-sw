@@ -9,12 +9,8 @@
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::CaliptraCompletionCode;
 
 pub(crate) mod authorized_command;
-pub(crate) mod clear_debug_log;
 pub(crate) mod debug_unlock;
 pub(crate) mod export_attested_csr;
-pub(crate) mod get_debug_log;
-
-pub(crate) const LOG_TYPE_DEBUG: u32 = 0;
 
 pub(crate) fn require_empty(req: &[u8]) -> Result<(), CaliptraCompletionCode> {
     if req.is_empty() {

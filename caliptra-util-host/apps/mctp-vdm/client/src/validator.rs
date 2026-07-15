@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Validator for MCTP VDM client — runs the 4 supported device-info commands
+//! Validator for MCTP VDM client — runs the supported direct MCTP VDM commands
 //! against a VDM server and reports pass/fail. Optionally also runs a defmt
 //! debug-log round-trip check that exercises `VdmClient::drain_debug_log` +
 //! `decode_defmt_stream` against the device's user-app ELF.
@@ -67,7 +67,6 @@ pub struct Validator {
     port: u16,
     target_addr: DynamicI3cAddress,
     verbose: bool,
-    config: Option<TestConfig>,
     defmt_check: Option<DefmtRoundTripCheck>,
 }
 
@@ -79,7 +78,6 @@ impl Validator {
             port: addr.port(),
             target_addr: DynamicI3cAddress::from(config.network.target_i3c_address),
             verbose: config.validation.verbose_output,
-            config: Some(config.clone()),
             defmt_check: None,
         })
     }
@@ -106,15 +104,15 @@ impl Validator {
         client.connect()?;
 
         let mut results = vec![
-            self.validate_get_device_id(&mut client),
             self.validate_get_device_capabilities(&mut client),
             self.validate_get_firmware_version(&mut client),
-            self.validate_get_device_info(&mut client),
         ];
 
         if let Some(check) = &self.defmt_check {
             results.push(self.validate_defmt_round_trip(&mut client, check));
         }
+
+        results.push(self.validate_clear_debug_log(&mut client));
 
         client.disconnect().ok();
 
@@ -125,43 +123,6 @@ impl Validator {
     // ------------------------------------------------------------------
     // Individual validators
     // ------------------------------------------------------------------
-
-    fn validate_get_device_id(&self, client: &mut VdmClient) -> ValidationResult {
-        let test_name = "GetDeviceId".to_string();
-        match client.get_device_id() {
-            Ok(resp) => {
-                if self.verbose {
-                    println!(
-                        "  DeviceId: vendor=0x{:04X} device=0x{:04X} sub_vendor=0x{:04X} sub=0x{:04X}",
-                        resp.vendor_id, resp.device_id,
-                        resp.subsystem_vendor_id, resp.subsystem_id,
-                    );
-                }
-                // If config has expected values, compare them.
-                if let Some(cfg) = &self.config {
-                    if resp.vendor_id != cfg.device.vendor_id
-                        || resp.device_id != cfg.device.device_id
-                    {
-                        return ValidationResult {
-                            test_name,
-                            passed: false,
-                            error_message: Some("Device ID mismatch".into()),
-                        };
-                    }
-                }
-                ValidationResult {
-                    test_name,
-                    passed: true,
-                    error_message: None,
-                }
-            }
-            Err(e) => ValidationResult {
-                test_name,
-                passed: false,
-                error_message: Some(format!("{e:#}")),
-            },
-        }
-    }
 
     fn validate_get_device_capabilities(&self, client: &mut VdmClient) -> ValidationResult {
         let test_name = "GetDeviceCapabilities".to_string();
@@ -211,19 +172,14 @@ impl Validator {
         }
     }
 
-    fn validate_get_device_info(&self, client: &mut VdmClient) -> ValidationResult {
-        let test_name = "GetDeviceInfo".to_string();
-        match client.get_device_info() {
-            Ok(resp) => {
-                if self.verbose {
-                    println!("  DeviceInfo: {} bytes", resp.info_length);
-                }
-                ValidationResult {
-                    test_name,
-                    passed: true,
-                    error_message: None,
-                }
-            }
+    fn validate_clear_debug_log(&self, client: &mut VdmClient) -> ValidationResult {
+        let test_name = "ClearDebugLog".to_string();
+        match client.clear_debug_log() {
+            Ok(_) => ValidationResult {
+                test_name,
+                passed: true,
+                error_message: None,
+            },
             Err(e) => ValidationResult {
                 test_name,
                 passed: false,

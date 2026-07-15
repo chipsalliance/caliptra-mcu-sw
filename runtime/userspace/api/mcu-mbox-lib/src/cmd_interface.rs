@@ -17,8 +17,8 @@ use caliptra_mcu_mbox_common::messages::{
     FuseLockPartitionResp, FuseReadReq, FuseReadResp, FuseRevokeVendorPkHashReq,
     FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp,
     FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetLogReq,
-    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq,
-    McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
+    LogType, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq,
+    McuMailboxReq, McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
     McuProdDebugUnlockTokenReq, McuResponseVarSize, ProvisionVendorPkHashReq,
     ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
     MAX_RESP_DATA_SIZE,
@@ -412,7 +412,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        let req = GetLogReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let _req = GetLogReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
         // Reserve the first 4 bytes of the variable-length payload for the
         // `more_data` flag; the rest is filled by the handler.
@@ -425,7 +425,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .ok_or(errors::INVALID_PARAMS)?;
         let result = self
             .non_crypto_cmds_handler
-            .get_log(req.log_type, &mut data[MORE_DATA_FIELD_LEN..])
+            .get_log(LogType::DebugLog as u32, &mut data[MORE_DATA_FIELD_LEN..])
             .await;
 
         let (mbox_cmd_status, resp_len) = match result {
@@ -461,9 +461,13 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        let req = ClearLogReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let _req = ClearLogReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
-        let mbox_cmd_status = match self.non_crypto_cmds_handler.clear_log(req.log_type).await {
+        let mbox_cmd_status = match self
+            .non_crypto_cmds_handler
+            .clear_log(LogType::DebugLog as u32)
+            .await
+        {
             Ok(()) => MbxCmdStatus::Complete,
             Err(_) => MbxCmdStatus::Failure,
         };

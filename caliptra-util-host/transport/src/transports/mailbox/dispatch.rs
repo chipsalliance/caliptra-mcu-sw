@@ -22,7 +22,7 @@ use super::delete::DeleteCmd;
 use super::device_info::{
     GetDeviceCapabilitiesCmd, GetDeviceIdCmd, GetDeviceInfoCmd, GetFirmwareVersionCmd,
 };
-use super::device_log::DebugGetLogCmd;
+use super::device_log::{DebugClearLogCmd, DebugGetLogCmd};
 use super::fuse::{FeProgCmd, GetAuthCmdChallengeCmd};
 use super::hmac::{HmacCmd, HmacKdfCounterCmd};
 use super::import::ImportCmd;
@@ -79,8 +79,9 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x4003 => Some(process_command_with_metadata::<EcdhGenerateCmd>), // EcdhGenerate
         0x4004 => Some(process_command_with_metadata::<EcdsaPublicKeyCmd>), // EcdsaPublicKey
         0x4005 => Some(process_command_with_metadata::<EcdhFinishCmd>), // EcdhFinish
-        // Debug Commands (0x7005)
+        // Debug Commands (0x7005, 0x7008)
         0x7005 => Some(process_command_with_metadata::<DebugGetLogCmd>), // DebugGetLog
+        0x7008 => Some(process_command_with_metadata::<DebugClearLogCmd>), // DebugClearLog
         // Debug Unlock Commands (0x7010-0x7011)
         0x7010 => Some(process_command_with_metadata::<ProdDebugUnlockReqCmd>), // ProdDebugUnlockReq
         0x7011 => Some(process_command_with_metadata::<ProdDebugUnlockTokenCmd>), // ProdDebugUnlockToken
@@ -139,6 +140,7 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x4005 => Some(0x4D43_4546), // EcdhFinish -> MC_ECDH_FINISH ("MCEF")
         // Debug Commands
         0x7005 => Some(0x4D47_4C47), // DebugGetLog -> MC_GET_LOG ("MGLG")
+        0x7008 => Some(0x4D43_4C47), // DebugClearLog -> MC_CLEAR_LOG ("MCLG")
         // Debug Unlock Commands
         0x7010 => Some(0x4D50_5552), // ProdDebugUnlockReq -> MC_PROD_DEBUG_UNLOCK_REQ ("MPUR")
         0x7011 => Some(0x4D50_5554), // ProdDebugUnlockToken -> MC_PROD_DEBUG_UNLOCK_TOKEN ("MPUT")

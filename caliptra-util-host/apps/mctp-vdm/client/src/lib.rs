@@ -57,16 +57,6 @@ impl<'a> VdmClient<'a> {
             .map_err(|e| anyhow::anyhow!("VDM disconnect failed: {e:?}"))
     }
 
-    // ------------------------------------------------------------------
-    // Device Information commands
-    // ------------------------------------------------------------------
-
-    /// Retrieve the device ID (VDM command 0x03).
-    pub fn get_device_id(&mut self) -> Result<GetDeviceIdResponse> {
-        let req = GetDeviceIdRequest {};
-        self.send_command(CaliptraCommandId::GetDeviceId as u32, &req)
-    }
-
     /// Retrieve device capabilities (VDM command 0x02).
     pub fn get_device_capabilities(&mut self) -> Result<GetDeviceCapabilitiesResponse> {
         let req = GetDeviceCapabilitiesRequest {};
@@ -79,22 +69,20 @@ impl<'a> VdmClient<'a> {
         self.send_command(CaliptraCommandId::GetFirmwareVersion as u32, &req)
     }
 
-    /// Retrieve device info for the given index (VDM command 0x04).
-    pub fn get_device_info(&mut self) -> Result<GetDeviceInfoResponse> {
-        let req = GetDeviceInfoRequest { info_type: 0 };
-        self.send_command(CaliptraCommandId::GetDeviceInfo as u32, &req)
-    }
-
     // ------------------------------------------------------------------
     // Debug log commands
     // ------------------------------------------------------------------
 
-    /// Retrieve a single page of the debug log (VDM command 0x05).
+    /// Retrieve a single page of the debug log (VDM command 0x03).
     pub fn get_debug_log_page(&mut self) -> Result<DebugGetLogResponse> {
-        let req = DebugGetLogRequest {
-            log_type: LOG_TYPE_DEBUG,
-        };
+        let req = DebugGetLogRequest {};
         self.send_command(CaliptraCommandId::DebugGetLog as u32, &req)
+    }
+
+    /// Clear the debug log (VDM command 0x04).
+    pub fn clear_debug_log(&mut self) -> Result<DebugClearLogResponse> {
+        let req = DebugClearLogRequest {};
+        self.send_command(CaliptraCommandId::DebugClearLog as u32, &req)
     }
 
     /// Drain the entire debug log, concatenating the raw frame bytes of every
