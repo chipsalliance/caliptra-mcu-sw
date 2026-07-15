@@ -106,6 +106,7 @@ pub enum CaliptraCommandId {
     DebugGetLog = 0x7005,
     DebugSetConfig = 0x7006,
     DebugReset = 0x7007,
+    DebugClearLog = 0x7008,
 
     // Debug Unlock Commands (0x7010-0x7011)
     ProdDebugUnlockReq = 0x7010,

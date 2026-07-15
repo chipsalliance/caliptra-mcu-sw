@@ -758,7 +758,6 @@ pub enum LogType {
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct GetLogReq {
     pub hdr: MailboxReqHeader,
-    pub log_type: u32,
 }
 impl Request for GetLogReq {
     const ID: CommandId = CommandId::MC_GET_LOG;
@@ -786,7 +785,6 @@ impl Default for GetLogResp {
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct ClearLogReq {
     pub hdr: MailboxReqHeader,
-    pub log_type: u32,
 }
 impl Request for ClearLogReq {
     const ID: CommandId = CommandId::MC_CLEAR_LOG;

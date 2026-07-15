@@ -22,10 +22,6 @@ key_ids = [1, 2, 3]
 # ECC384 = 1, MlDsa87 = 2
 algorithm = 1
 
-[export_idevid_csr]
-# ECC384 = 1, MlDsa87 = 2
-algorithms = [1]
-
 [fe_prog]
 partition = 0
 # Hex-encoded HMAC-SHA384 key for FE_PROG authorization.

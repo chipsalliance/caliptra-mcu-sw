@@ -43,10 +43,6 @@ struct Args {
     /// Algorithm ID for ExportAttestedCsr (1=EccP384, 2=MlDsa87)
     #[arg(long)]
     algorithm: Option<u32>,
-    /// Algorithm IDs for ExportIdevidCsr (comma-separated)
-    #[arg(long)]
-    idevid_algorithms: Option<String>,
-
     /// Path to a binary file containing debug unlock keys (written by DebugUnlockKeys::save_to_file)
     #[arg(long)]
     debug_unlock_keys_file: Option<String>,
@@ -84,11 +80,11 @@ impl Args {
         if let Some(algorithm) = self.algorithm {
             config.export_attested_csr.algorithm = algorithm;
         }
-        if let Some(algorithms) = &self.idevid_algorithms {
-            config.export_idevid_csr.algorithms = parse_key_ids(algorithms)?;
-        }
         if let Some(unlock_level) = self.unlock_level {
             config.debug_unlock.unlock_level = unlock_level;
+        }
+        if config.mode == DeviceMode::Manufacturing {
+            config.debug_unlock.enabled = false;
         }
 
         Ok(config)

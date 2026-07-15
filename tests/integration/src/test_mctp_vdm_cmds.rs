@@ -11,21 +11,15 @@ pub mod test {
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_mbox_common::config;
     use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
-    use caliptra_mcu_mctp_vdm_common::message::clear_attestation_log::ClearAttestationLogRequest;
     use caliptra_mcu_mctp_vdm_common::message::clear_debug_log::{
         ClearDebugLogRequest, ClearDebugLogResponse,
     };
     use caliptra_mcu_mctp_vdm_common::message::device_capabilities::{
         DeviceCapabilitiesRequest, DeviceCapabilitiesResponse,
     };
-    use caliptra_mcu_mctp_vdm_common::message::device_id::{DeviceIdRequest, DeviceIdResponse};
-    use caliptra_mcu_mctp_vdm_common::message::device_info::{
-        DeviceInfoRequest, DeviceInfoResponse,
-    };
     use caliptra_mcu_mctp_vdm_common::message::firmware_version::{
         FirmwareVersionRequest, FirmwareVersionResponse,
     };
-    use caliptra_mcu_mctp_vdm_common::message::get_attestation_log::GetAttestationLogRequest;
     use caliptra_mcu_mctp_vdm_common::message::get_debug_log::{
         GetDebugLogRequest, GetDebugLogResponse,
     };
@@ -161,62 +155,6 @@ pub mod test {
             Ok(())
         }
 
-        /// Test Get Device ID command.
-        fn test_get_device_id(&mut self) -> Result<(), VdmTransportError> {
-            info!("Testing Get Device ID command...");
-
-            let request = DeviceIdRequest::new();
-            let response: DeviceIdResponse = self.send_request_expect_success(&request)?;
-
-            // Copy fields from packed struct to avoid alignment issues
-            let vendor_id = response.vendor_id;
-            let device_id = response.device_id;
-            let subsystem_vendor_id = response.subsystem_vendor_id;
-            let subsystem_id = response.subsystem_id;
-
-            let expected = &config::TEST_DEVICE_ID;
-            Self::assert_eq(&vendor_id, &expected.vendor_id, "vendor_id")?;
-            Self::assert_eq(&device_id, &expected.device_id, "device_id")?;
-            Self::assert_eq(
-                &subsystem_vendor_id,
-                &expected.subsystem_vendor_id,
-                "subsystem_vendor_id",
-            )?;
-            Self::assert_eq(&subsystem_id, &expected.subsystem_id, "subsystem_id")?;
-
-            info!(
-                "  Device ID: vendor=0x{:04x}, device=0x{:04x}, subsystem_vendor=0x{:04x}, subsystem=0x{:04x}",
-                vendor_id,
-                device_id,
-                subsystem_vendor_id,
-                subsystem_id
-            );
-
-            Ok(())
-        }
-
-        /// Test Get Device Info command.
-        fn test_get_device_info(&mut self) -> Result<(), VdmTransportError> {
-            info!("Testing Get Device Info command...");
-
-            // Test index 0 (UID)
-            let request = DeviceInfoRequest::new(0);
-            let response: DeviceInfoResponse = self.send_request_expect_success(&request)?;
-
-            let expected_uid = &config::TEST_UID;
-            let data_size = response.header.data_size as usize;
-            let response_uid = &response.data[..data_size];
-            Self::assert_eq(&response_uid, &expected_uid.as_slice(), "UID")?;
-            info!("  UID: {:?} (matches expected)", response_uid);
-
-            // Test invalid index
-            let request = DeviceInfoRequest::new(99);
-            self.send_request_expect_error(&request, VdmCompletionCode::InvalidData)?;
-            info!("  Invalid index correctly returns InvalidData");
-
-            Ok(())
-        }
-
         /// Test Get Device Capabilities command.
         fn test_get_device_capabilities(&mut self) -> Result<(), VdmTransportError> {
             info!("Testing Get Device Capabilities command...");
@@ -346,32 +284,15 @@ pub mod test {
             Ok(())
         }
 
-        fn test_attestation_log_unsupported(&mut self) -> Result<(), VdmTransportError> {
-            info!("Testing GetAttestationLog/ClearAttestationLog (unsupported)...");
-
-            let get_req = GetAttestationLogRequest::new();
-            self.send_request_expect_error(&get_req, VdmCompletionCode::UnsupportedCommand)?;
-            info!("  GetAttestationLog → UnsupportedCommand (expected)");
-
-            let clear_req = ClearAttestationLogRequest::new();
-            self.send_request_expect_error(&clear_req, VdmCompletionCode::UnsupportedCommand)?;
-            info!("  ClearAttestationLog → UnsupportedCommand (expected)");
-
-            Ok(())
-        }
-
         /// Run all VDM command tests.
         pub fn run_all_tests(&mut self) -> Result<(), VdmTransportError> {
             self.test_get_firmware_version()?;
-            self.test_get_device_id()?;
-            self.test_get_device_info()?;
             self.test_get_device_capabilities()?;
             // Log tests must run before any other test that might mutate the
             // mock's debug-log cursor (none today, but order matters once
             // production logging lands).
             self.test_get_debug_log_drain()?;
             self.test_clear_debug_log()?;
-            self.test_attestation_log_unsupported()?;
             self.test_unsupported_command()?;
             Ok(())
         }

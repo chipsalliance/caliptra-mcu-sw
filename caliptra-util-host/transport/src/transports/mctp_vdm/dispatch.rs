@@ -22,9 +22,8 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         // Device Info Commands (matching CaliptraCommandId values)
         1 => Some(encode::handle_firmware_version), // GetFirmwareVersion
         2 => Some(encode::handle_device_capabilities), // GetDeviceCapabilities
-        3 => Some(encode::handle_device_id),        // GetDeviceId
-        4 => Some(encode::handle_device_info),      // GetDeviceInfo
         0x7005 => Some(encode::handle_get_debug_log), // DebugGetLog
+        0x7008 => Some(encode::handle_clear_debug_log), // DebugClearLog
         _ => None,
     }
 }

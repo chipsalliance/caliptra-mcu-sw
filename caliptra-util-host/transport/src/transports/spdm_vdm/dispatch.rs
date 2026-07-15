@@ -20,20 +20,8 @@ pub type VdmCommandHandlerFn = fn(
 pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
     use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
     match command_id {
-        x if x == CaliptraCommandId::GetFirmwareVersion as u32 => {
-            Some(commands::handle_firmware_version)
-        }
-        x if x == CaliptraCommandId::GetDeviceCapabilities as u32 => {
-            Some(commands::handle_device_capabilities)
-        }
-        x if x == CaliptraCommandId::GetDeviceId as u32 => Some(commands::handle_device_id),
-        x if x == CaliptraCommandId::GetDeviceInfo as u32 => Some(commands::handle_device_info),
-        x if x == CaliptraCommandId::DebugGetLog as u32 => Some(commands::handle_get_debug_log),
         x if x == CaliptraCommandId::ExportAttestedCsr as u32 => {
             Some(commands::handle_export_attested_csr)
-        }
-        x if x == CaliptraCommandId::ExportIdevidCsr as u32 => {
-            Some(commands::handle_export_idevid_csr)
         }
         x if x == CaliptraCommandId::ProdDebugUnlockReq as u32 => {
             Some(commands::handle_prod_debug_unlock_req)

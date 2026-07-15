@@ -35,32 +35,20 @@ pub use caliptra_mcu_debug_unlock_signer::{
 };
 
 use anyhow::Result;
-use caliptra_mcu_core_util_host_command_types::certificate::{
-    ExportAttestedCsrResponse, ExportIdevidCsrResponse,
-};
+use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgResponse, GetAuthCmdChallengeResponse,
 };
-use caliptra_mcu_core_util_host_command_types::{
-    GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
-    GetFirmwareVersionResponse,
-};
 use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmTransport,
 };
 use caliptra_mcu_core_util_host_transport::Transport;
-use caliptra_util_host_commands::api::certificate::{
-    caliptra_cmd_export_attested_csr, caliptra_cmd_export_idevid_csr,
-};
+use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
-};
-use caliptra_util_host_commands::api::device_info::{
-    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
-    caliptra_cmd_get_firmware_version,
 };
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
@@ -96,34 +84,6 @@ impl<'a> SpdmVdmClient<'a> {
             .map_err(|e| anyhow::anyhow!("Failed to disconnect SPDM VDM transport: {:?}", e))
     }
 
-    /// Execute the GetDeviceId command.
-    pub fn get_device_id(&mut self) -> Result<GetDeviceIdResponse> {
-        let mut session = self.create_session()?;
-        caliptra_cmd_get_device_id(&mut session)
-            .map_err(|e| anyhow::anyhow!("GetDeviceId failed: {:?}", e))
-    }
-
-    /// Execute the GetFirmwareVersion command.
-    pub fn get_firmware_version(&mut self, fw_id: u32) -> Result<GetFirmwareVersionResponse> {
-        let mut session = self.create_session()?;
-        caliptra_cmd_get_firmware_version(&mut session, fw_id)
-            .map_err(|e| anyhow::anyhow!("GetFirmwareVersion failed: {:?}", e))
-    }
-
-    /// Execute the GetDeviceCapabilities command.
-    pub fn get_device_capabilities(&mut self) -> Result<GetDeviceCapabilitiesResponse> {
-        let mut session = self.create_session()?;
-        caliptra_cmd_get_device_capabilities(&mut session)
-            .map_err(|e| anyhow::anyhow!("GetDeviceCapabilities failed: {:?}", e))
-    }
-
-    /// Execute the GetDeviceInfo command.
-    pub fn get_device_info(&mut self, info_index: u32) -> Result<GetDeviceInfoResponse> {
-        let mut session = self.create_session()?;
-        caliptra_cmd_get_device_info(&mut session, info_index)
-            .map_err(|e| anyhow::anyhow!("GetDeviceInfo failed: {:?}", e))
-    }
-
     /// Execute the ExportAttestedCsr command.
     ///
     /// # Parameters
@@ -139,16 +99,6 @@ impl<'a> SpdmVdmClient<'a> {
         let mut session = self.create_session()?;
         caliptra_cmd_export_attested_csr(&mut session, device_key_id, algorithm, nonce)
             .map_err(|e| anyhow::anyhow!("ExportAttestedCsr failed: {:?}", e))
-    }
-
-    /// Execute the ExportIdevidCsr command (manufacturing mode only).
-    ///
-    /// # Parameters
-    /// - `algorithm`: Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
-    pub fn export_idevid_csr(&mut self, algorithm: u32) -> Result<ExportIdevidCsrResponse> {
-        let mut session = self.create_session()?;
-        caliptra_cmd_export_idevid_csr(&mut session, algorithm)
-            .map_err(|e| anyhow::anyhow!("ExportIdevidCsr failed: {:?}", e))
     }
 
     /// Request a production debug unlock challenge.

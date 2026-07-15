@@ -9,16 +9,16 @@
 //! Currently supported commands:
 //! - FirmwareVersion  (0x01)
 //! - DeviceCapabilities (0x02)
-//! - DeviceId (0x03)
-//! - DeviceInfo (0x04)
+//! - GetDebugLog (0x03)
+//! - ClearDebugLog (0x04)
 
 use super::transport::MctpVdmError;
 use crate::TransportError;
 use caliptra_mcu_core_util_host_command_types::*;
 use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 use caliptra_mcu_mctp_vdm_common::message::{
-    DeviceCapabilitiesRequest, DeviceCapabilitiesResponse, DeviceIdRequest, DeviceIdResponse,
-    DeviceInfoRequest, DeviceInfoResponse, FirmwareVersionRequest, FirmwareVersionResponse,
+    ClearDebugLogRequest, ClearDebugLogResponse, DeviceCapabilitiesRequest,
+    DeviceCapabilitiesResponse, FirmwareVersionRequest, FirmwareVersionResponse,
     MAX_FW_VERSION_LEN,
 };
 use caliptra_mcu_mctp_vdm_common::protocol::{VdmCompletionCode, VdmMsgHeader, VDM_MSG_HEADER_LEN};
@@ -185,82 +185,6 @@ pub fn handle_device_capabilities(
 }
 
 // ---------------------------------------------------------------------------
-// DeviceId (command_id = 3 / CaliptraCommandId::GetDeviceId)
-// ---------------------------------------------------------------------------
-
-pub fn handle_device_id(
-    _payload: &[u8],
-    driver: &mut dyn super::transport::MctpVdmDriver,
-    response_buffer: &mut [u8],
-) -> Result<usize, TransportError> {
-    let vdm_req = DeviceIdRequest::new();
-    let mut resp_buf = [0u8; MAX_VDM_RESP_BUF];
-    let resp_len = send_vdm(&vdm_req, driver, &mut resp_buf)?;
-    let resp_bytes = &resp_buf[..resp_len];
-    validate_response_header(resp_bytes)?;
-
-    let vdm_resp =
-        DeviceIdResponse::decode(resp_bytes).map_err(|_| TransportError::InvalidMessage)?;
-
-    let internal_resp = GetDeviceIdResponse {
-        vendor_id: vdm_resp.vendor_id,
-        device_id: vdm_resp.device_id,
-        subsystem_vendor_id: vdm_resp.subsystem_vendor_id,
-        subsystem_id: vdm_resp.subsystem_id,
-    };
-
-    let resp_bytes = internal_resp.as_bytes();
-    let copy_len = resp_bytes.len().min(response_buffer.len());
-    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
-    Ok(copy_len)
-}
-
-// ---------------------------------------------------------------------------
-// DeviceInfo (command_id = 4 / CaliptraCommandId::GetDeviceInfo)
-// ---------------------------------------------------------------------------
-
-pub fn handle_device_info(
-    payload: &[u8],
-    driver: &mut dyn super::transport::MctpVdmDriver,
-    response_buffer: &mut [u8],
-) -> Result<usize, TransportError> {
-    let info_index = if payload.len() >= core::mem::size_of::<GetDeviceInfoRequest>() {
-        let req = GetDeviceInfoRequest::from_bytes(payload)
-            .map_err(|_| TransportError::InvalidMessage)?;
-        req.info_type
-    } else {
-        0
-    };
-
-    let vdm_req = DeviceInfoRequest::new(info_index);
-    let mut resp_buf = [0u8; MAX_VDM_RESP_BUF];
-    let resp_len = send_vdm(&vdm_req, driver, &mut resp_buf)?;
-    let resp_bytes = &resp_buf[..resp_len];
-    validate_response_header(resp_bytes)?;
-
-    let vdm_resp =
-        DeviceInfoResponse::decode(resp_bytes).map_err(|_| TransportError::InvalidMessage)?;
-
-    let data = vdm_resp.data();
-    let mut info_data = [0u8; 64];
-    let data_len = data.len().min(64);
-    info_data[..data_len].copy_from_slice(&data[..data_len]);
-
-    let internal_resp = GetDeviceInfoResponse {
-        common: CommonResponse {
-            fips_status: vdm_resp.header.completion_code,
-        },
-        info_length: data_len as u32,
-        info_data,
-    };
-
-    let resp_bytes = internal_resp.as_bytes();
-    let copy_len = resp_bytes.len().min(response_buffer.len());
-    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
-    Ok(copy_len)
-}
-
-// ---------------------------------------------------------------------------
 // GetDebugLog (command_id = 0x7005 / CaliptraCommandId::DebugGetLog)
 // ---------------------------------------------------------------------------
 
@@ -320,6 +244,38 @@ pub fn handle_get_debug_log(
 }
 
 // ---------------------------------------------------------------------------
+// ClearDebugLog (command_id = 0x7008 / CaliptraCommandId::DebugClearLog)
+// ---------------------------------------------------------------------------
+
+pub fn handle_clear_debug_log(
+    _payload: &[u8],
+    driver: &mut dyn super::transport::MctpVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    use caliptra_mcu_core_util_host_command_types::device_log::DebugClearLogResponse;
+
+    let vdm_req = ClearDebugLogRequest::new();
+    let mut resp_buf = [0u8; MAX_VDM_RESP_BUF];
+    let resp_len = send_vdm(&vdm_req, driver, &mut resp_buf)?;
+    let resp_bytes = &resp_buf[..resp_len];
+    validate_response_header(resp_bytes)?;
+
+    let vdm_resp =
+        ClearDebugLogResponse::decode(resp_bytes).map_err(|_| TransportError::InvalidMessage)?;
+
+    let internal_resp = DebugClearLogResponse {
+        common: CommonResponse {
+            fips_status: vdm_resp.completion_code,
+        },
+    };
+
+    let resp_bytes = internal_resp.as_bytes();
+    let copy_len = resp_bytes.len().min(response_buffer.len());
+    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
+    Ok(copy_len)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -340,26 +296,10 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_device_id_request() {
-        let req = DeviceIdRequest::new();
-        let mut buf = [0u8; 64];
-        let len = req.encode(&mut buf).unwrap();
-        assert_eq!(len, VDM_MSG_HEADER_LEN);
-    }
-
-    #[test]
     fn test_encode_device_capabilities_request() {
         let req = DeviceCapabilitiesRequest::new();
         let mut buf = [0u8; 64];
         let len = req.encode(&mut buf).unwrap();
         assert_eq!(len, VDM_MSG_HEADER_LEN);
-    }
-
-    #[test]
-    fn test_encode_device_info_request() {
-        let req = DeviceInfoRequest::new(0);
-        let mut buf = [0u8; 64];
-        let len = req.encode(&mut buf).unwrap();
-        assert_eq!(len, VDM_MSG_HEADER_LEN + 4);
     }
 }
