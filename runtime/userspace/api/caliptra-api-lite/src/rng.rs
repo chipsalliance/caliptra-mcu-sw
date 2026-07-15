@@ -28,12 +28,13 @@ const RSP_HEADER_SIZE: usize = MBOX_RESP_HEADER_SIZE + 4; // +data_len field
 
 /// Generate `out.len()` random bytes from Caliptra RNG.
 #[inline(never)]
-pub async fn rng_generate<A: ApiAlloc>(alloc: &A, out: &mut [u8]) -> McuResult<()> {
+pub async fn rng_generate<A: ApiAlloc>(_alloc: &A, out: &mut [u8]) -> McuResult<()> {
     if out.is_empty() || out.len() > MAX_RANDOM_SIZE {
         return Err(INVARIANT);
     }
 
-    let mut req = alloc.alloc(REQ_SIZE)?;
+    // The fixed request and bounded 60-byte response are cheaper inline.
+    let mut req = [0u8; REQ_SIZE];
     req.fill(0);
     {
         let r = RandomGenReq::mut_from_bytes(&mut req[..REQ_SIZE]).map_err(|_| INVARIANT)?;
@@ -42,8 +43,7 @@ pub async fn rng_generate<A: ApiAlloc>(alloc: &A, out: &mut [u8]) -> McuResult<(
     let checksum = calc_checksum(CMD_CM_RANDOM_GENERATE, &req);
     *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
 
-    let rsp_max = RSP_HEADER_SIZE + MAX_RANDOM_SIZE;
-    let mut rsp = alloc.alloc(rsp_max)?;
+    let mut rsp = [0u8; RSP_HEADER_SIZE + MAX_RANDOM_SIZE];
     let rsp_len = crate::wire::mbox_execute(CMD_CM_RANDOM_GENERATE, &req, &mut rsp).await?;
 
     // Parse data_len from response.
