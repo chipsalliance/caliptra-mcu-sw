@@ -37,7 +37,7 @@ The following table describes the Caliptra direct MCTP VDM message body layout. 
 | +1:+4                  | 31:0   | **MCTP IANA Enterprise ID** | IANA enterprise ID for the vendor. Caliptra messages use the OCP Vendor ID `42623` (`0x0000A67F`), encoded most-significant byte first.                                      |
 | +5                     | 7      | **Request Type**            | Set to `1` for requests and `0` for responses.                                                                                                                               |
 | +5                     | 6:0    | **Reserved**                | Reserved and set to `0`.                                                                                                                                                     |
-| +6                     | 7:0    | **Command Code**            | Caliptra direct MCTP VDM command code.                                                                                                                                       |
+| +6                     | 7:0    | **Caliptra Command Code**   | Caliptra command code assigned from the Caliptra range reserved in the OCP command registry.                                                                                 |
 | +7:N                   | N/A    | **Message Payload**         | Command-specific request or response payload.                                                                                                                                |
 | Last bytes, if present | N/A    | **Msg Integrity Check**     | Optional MCTP message integrity check. If present, as indicated by the MCTP IC bit, the Message Integrity Check field is carried in the last bytes of the MCTP message body. |
 
@@ -46,6 +46,8 @@ The protocol header fields are to be included only in the first packet of a mult
 ## Command List and Definitions
 
 This transport carries Caliptra common commands that do not require SPDM authorization, SPDM-defined semantics, or SPDM streaming/chunking. Command payload definitions are shared with the transport-agnostic [Caliptra Common Commands](caliptra_common_commands.md) specification.
+
+The command codes below use the Caliptra range reserved in the [OCP command registry](https://github.com/opencomputeproject/ocp-registry/blob/main/command-registry.md).
 
 | Command Code | Command Name       | Description                            |
 | ------------ | ------------------ | -------------------------------------- |

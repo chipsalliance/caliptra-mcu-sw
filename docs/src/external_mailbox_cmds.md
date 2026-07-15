@@ -31,59 +31,61 @@ These commands support common Caliptra management functions, including querying 
 
 ## Mailbox Commands List
 
-| **Name**                         | **Command Code**     | **Description**                                                                       |
-| -------------------------------- | -------------------- | ------------------------------------------------------------------------------------- |
-| MC_FIRMWARE_VERSION              | 0x4D46_5756 ("MFWV") | Retrieves the version of the target firmware.                                         |
-| MC_DEVICE_CAPABILITIES           | 0x4D43_4150 ("MCAP") | Retrieve the device capabilities.                                                     |
-| MC_EXPORT_ATTESTED_CSR           | 0x4D45_4143 ("MEAC") | Exports an attested CSR for a specified device key, wrapped in a CoseSign1 structure. |
-| MC_GET_LOG                       | 0x4D47_4C47 ("MGLG") | Retrieves the debug log                                                               |
-| MC_CLEAR_LOG                     | 0x4D43_4C47 ("MCLG") | Clears the debug log                                                                  |
-| MC_FIPS_SELF_TEST_START          | 0x4D46_5354 ("MFST") | Starts the FIPS self-test to exercise the crypto engine.                              |
-| MC_FIPS_SELF_TEST_GET_RESULTS    | 0x4D46_4752 ("MFGR") | Retrieves the results of the FIPS self-test.                                          |
-| MC_FIPS_PERIODIC_ENABLE          | 0x4D46_5045 ("MFPE") | Enables or disables periodic FIPS self-test.                                          |
-| MC_FIPS_PERIODIC_STATUS          | 0x4D46_5053 ("MFPS") | Retrieves the status of periodic FIPS self-test.                                      |
-| MC_SHA_INIT                      | 0x4D43_5349 ("MCSI") | Starts the computation of a SHA hash of data.                                         |
-| MC_SHA_UPDATE                    | 0x4D43_5355 ("MCSU") | Continues a SHA computation started by `MC_SHA_INIT` or another `MC_SHA_UPDATE`.      |
-| MC_SHA_FINAL                     | 0x4D43_5346 ("MCSF") | Finalizes the computation of a SHA and produces the hash of all the data.             |
-| MC_HMAC                          | 0x4D43_484D ("MCHM") | Computes an HMAC according to RFC 2104.                                               |
-| MC_HMAC_KDF_COUNTER              | 0x4D43_4B43 ("MCKC") | Computes HMAC KDF in Counter Mode as specified in NIST SP800-108.                     |
-| MC_HKDF_EXTRACT                  | 0x4D43_4B54 ("MCKT") | Implements HKDF-Extract as specified in RFC 5869.                                     |
-| MC_HKDF_EXPAND                   | 0x4D43_4B50 ("MCKP") | Implements HKDF-Expand as specified in RFC 5869.                                      |
-| MC_AES_ENCRYPT_INIT              | 0x4D43_4349 ("MCCI") | Starts an AES encryption operation.                                                   |
-| MC_AES_ENCRYPT_UPDATE            | 0x4D43_4355 ("MCCU") | Continues an AES encryption operation started by `MC_AES_ENCRYPT_INIT`.               |
-| MC_AES_DECRYPT_INIT              | 0x4D43_414A ("MCAJ") | Starts an AES-256 decryption operation.                                               |
-| MC_AES_DECRYPT_UPDATE            | 0x4D43_4155 ("MCAU") | Continues an AES decryption operation started by `MC_AES_DECRYPT_INIT`.               |
-| MC_AES_GCM_ENCRYPT_INIT          | 0x4D43_4749 ("MCGI") | Starts an AES-256-GCM encryption operation.                                           |
-| MC_AES_GCM_ENCRYPT_UPDATE        | 0x4D43_4755 ("MCGU") | Continues an AES-GCM encryption operation started by `MC_AES_GCM_ENCRYPT_INIT`.       |
-| MC_AES_GCM_ENCRYPT_FINAL         | 0x4D43_4746 ("MCGF") | Finalizes the AES-GCM encryption operation and produces the final ciphertext and tag. |
-| MC_AES_GCM_DECRYPT_INIT          | 0x4D43_4449 ("MCDI") | Starts an AES-256-GCM decryption operation.                                           |
-| MC_AES_GCM_DECRYPT_UPDATE        | 0x4D43_4455 ("MCDU") | Continues an AES-GCM decryption operation started by `MC_AES_GCM_DECRYPT_INIT`.       |
-| MC_AES_GCM_DECRYPT_FINAL         | 0x4D43_4446 ("MCDF") | Finalizes the AES-GCM decryption operation and verifies the tag.                      |
-| MC_ECDH_GENERATE                 | 0x4D43_4547 ("MCEG") | Computes the first half of an Elliptic Curve Diffie-Hellman exchange.                 |
-| MC_ECDH_FINISH                   | 0x4D43_4546 ("MCEF") | Computes the second half of an Elliptic Curve Diffie-Hellman exchange.                |
-| MC_ECDSA_CMK_PUBLIC_KEY          | 0x4D43_4550 ("MCEP") | Generates an ECDSA public key from a CMK.                                             |
-| MC_ECDSA_CMK_SIGN                | 0x4D43_4553 ("MCES") | Creates an ECDSA signature using a CMK.                                               |
-| MC_ECDSA_CMK_VERIFY              | 0x4D43_4556 ("MCEV") | Validates an ECDSA signature using a CMK.                                             |
-| MC_RANDOM_STIR                   | 0x4D43_5253 ("MCRS") | Adds additional entropy to the internal deterministic random bit generator.           |
-| MC_RANDOM_GENERATE               | 0x4D43_5247 ("MCRG") | Generates random bytes from the internal RNG.                                         |
-| MC_IMPORT                        | 0x4D43_494D ("MCIM") | Imports a specified key and returns a CMK for it.                                     |
-| MC_DELETE                        | 0x4D43_444C ("MCDL") | Deletes the object stored with the given mailbox ID.                                  |
-| MC_ECDSA384_SIG_VERIFY           | 0x4D45_4356 ("MECV") | Verifies an ECDSA P-384 signature.                                                    |
-| MC_LMS_SIG_VERIFY                | 0x4D4C_4D56 ("MLMV") | Verifies an LMS signature.                                                            |
-| MC_ECDSA384_SIGN                 | 0x4D45_4353 ("MECS") | Requests to sign a SHA-384 digest with the DPE leaf certificate.                      |
-| MC_MLDSA_SIGN                    | 0x4D4C_4D53 ("MLMS") | Requests to sign a SHA-384 digest with the DPE leaf certificate using MLDSA.          |
-| MC_PRODUCTION_DEBUG_UNLOCK_REQ   | 0x4D44_5552 ("MDUR") | Requests debug unlock in a production environment.                                    |
-| MC_PRODUCTION_DEBUG_UNLOCK_TOKEN | 0x4D44_5554 ("MDUT") | Sends the debug unlock token.                                                         |
-| MC_GET_AUTH_CMD_CHALLENGE        | 0x4D41_4343 ("MACC") | Requests a challenge for security-sensitive commands.                                 |
-| MC_FUSE_READ                     | 0x4946_5052 ("IFPR") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_WRITE                    | 0x4946_5057 ("IFPW") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_LOCK_PARTITION           | 0x4946_504B ("IFPK") | See [fuses spec](fuses.md) for details                                                |
-| MC_PROVISION_VENDOR_PK_HASH      | 0x5056_504b ("PVPK") | See [fuses spec](fuses.md) for details                                                |
-| MC_FE_PROG                       | 0x4D43_4650 ("MCFP") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_REVOKE_VENDOR_PUB_KEY    | 0x4D52_564B ("MRVK") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_REVOKE_VENDOR_PK_HASH    | 0x5256_4b48 ("RVKH") | See [fuses spec](fuses.md) for details                                                |
+| **Name**                      | **Command Code**     | **Description**                                                                       |
+| ----------------------------- | -------------------- | ------------------------------------------------------------------------------------- |
+| MC_FIRMWARE_VERSION           | 0x4D46_5756 ("MFWV") | Retrieves the version of the target firmware.                                         |
+| MC_DEVICE_CAPABILITIES        | 0x4D43_4150 ("MCAP") | Retrieve the device capabilities.                                                     |
+| MC_EXPORT_ATTESTED_CSR        | 0x4D45_4143 ("MEAC") | Exports an attested CSR for a specified device key, wrapped in a CoseSign1 structure. |
+| MC_GET_LOG                    | 0x4D47_4C47 ("MGLG") | Retrieves the debug log                                                               |
+| MC_CLEAR_LOG                  | 0x4D43_4C47 ("MCLG") | Clears the debug log                                                                  |
+| MC_FIPS_SELF_TEST_START       | 0x4D46_5354 ("MFST") | Starts the FIPS self-test to exercise the crypto engine.                              |
+| MC_FIPS_SELF_TEST_GET_RESULTS | 0x4D46_4752 ("MFGR") | Retrieves the results of the FIPS self-test.                                          |
+| MC_FIPS_PERIODIC_ENABLE       | 0x4D46_5045 ("MFPE") | Enables or disables periodic FIPS self-test.                                          |
+| MC_FIPS_PERIODIC_STATUS       | 0x4D46_5053 ("MFPS") | Retrieves the status of periodic FIPS self-test.                                      |
+| MC_SHA_INIT                   | 0x4D43_5349 ("MCSI") | Starts the computation of a SHA hash of data.                                         |
+| MC_SHA_UPDATE                 | 0x4D43_5355 ("MCSU") | Continues a SHA computation started by `MC_SHA_INIT` or another `MC_SHA_UPDATE`.      |
+| MC_SHA_FINAL                  | 0x4D43_5346 ("MCSF") | Finalizes the computation of a SHA and produces the hash of all the data.             |
+| MC_HMAC                       | 0x4D43_484D ("MCHM") | Computes an HMAC according to RFC 2104.                                               |
+| MC_HMAC_KDF_COUNTER           | 0x4D43_4B43 ("MCKC") | Computes HMAC KDF in Counter Mode as specified in NIST SP800-108.                     |
+| MC_HKDF_EXTRACT               | 0x4D43_4B54 ("MCKT") | Implements HKDF-Extract as specified in RFC 5869.                                     |
+| MC_HKDF_EXPAND                | 0x4D43_4B50 ("MCKP") | Implements HKDF-Expand as specified in RFC 5869.                                      |
+| MC_AES_ENCRYPT_INIT           | 0x4D43_4349 ("MCCI") | Starts an AES encryption operation.                                                   |
+| MC_AES_ENCRYPT_UPDATE         | 0x4D43_4355 ("MCCU") | Continues an AES encryption operation started by `MC_AES_ENCRYPT_INIT`.               |
+| MC_AES_DECRYPT_INIT           | 0x4D43_414A ("MCAJ") | Starts an AES-256 decryption operation.                                               |
+| MC_AES_DECRYPT_UPDATE         | 0x4D43_4155 ("MCAU") | Continues an AES decryption operation started by `MC_AES_DECRYPT_INIT`.               |
+| MC_AES_GCM_ENCRYPT_INIT       | 0x4D43_4749 ("MCGI") | Starts an AES-256-GCM encryption operation.                                           |
+| MC_AES_GCM_ENCRYPT_UPDATE     | 0x4D43_4755 ("MCGU") | Continues an AES-GCM encryption operation started by `MC_AES_GCM_ENCRYPT_INIT`.       |
+| MC_AES_GCM_ENCRYPT_FINAL      | 0x4D43_4746 ("MCGF") | Finalizes the AES-GCM encryption operation and produces the final ciphertext and tag. |
+| MC_AES_GCM_DECRYPT_INIT       | 0x4D43_4449 ("MCDI") | Starts an AES-256-GCM decryption operation.                                           |
+| MC_AES_GCM_DECRYPT_UPDATE     | 0x4D43_4455 ("MCDU") | Continues an AES-GCM decryption operation started by `MC_AES_GCM_DECRYPT_INIT`.       |
+| MC_AES_GCM_DECRYPT_FINAL      | 0x4D43_4446 ("MCDF") | Finalizes the AES-GCM decryption operation and verifies the tag.                      |
+| MC_ECDH_GENERATE              | 0x4D43_4547 ("MCEG") | Computes the first half of an Elliptic Curve Diffie-Hellman exchange.                 |
+| MC_ECDH_FINISH                | 0x4D43_4546 ("MCEF") | Computes the second half of an Elliptic Curve Diffie-Hellman exchange.                |
+| MC_ECDSA_CMK_PUBLIC_KEY       | 0x4D43_4550 ("MCEP") | Generates an ECDSA public key from a CMK.                                             |
+| MC_ECDSA_CMK_SIGN             | 0x4D43_4553 ("MCES") | Creates an ECDSA signature using a CMK.                                               |
+| MC_ECDSA_CMK_VERIFY           | 0x4D43_4556 ("MCEV") | Validates an ECDSA signature using a CMK.                                             |
+| MC_RANDOM_STIR                | 0x4D43_5253 ("MCRS") | Adds additional entropy to the internal deterministic random bit generator.           |
+| MC_RANDOM_GENERATE            | 0x4D43_5247 ("MCRG") | Generates random bytes from the internal RNG.                                         |
+| MC_IMPORT                     | 0x4D43_494D ("MCIM") | Imports a specified key and returns a CMK for it.                                     |
+| MC_DELETE                     | 0x4D43_444C ("MCDL") | Deletes the object stored with the given mailbox ID.                                  |
+| MC_ECDSA384_SIG_VERIFY        | 0x4D45_4356 ("MECV") | Verifies an ECDSA P-384 signature.                                                    |
+| MC_LMS_SIG_VERIFY             | 0x4D4C_4D56 ("MLMV") | Verifies an LMS signature.                                                            |
+| MC_ECDSA384_SIGN              | 0x4D45_4353 ("MECS") | Requests to sign a SHA-384 digest with the DPE leaf certificate.                      |
+| MC_MLDSA_SIGN                 | 0x4D4C_4D53 ("MLMS") | Requests to sign a SHA-384 digest with the DPE leaf certificate using MLDSA.          |
+| MC_PROD_DEBUG_UNLOCK_REQ      | 0x4D50_5552 ("MPUR") | Requests debug unlock in a production environment.                                    |
+| MC_PROD_DEBUG_UNLOCK_TOKEN    | 0x4D50_5554 ("MPUT") | Sends the debug unlock token.                                                         |
+| MC_GET_AUTH_CMD_CHALLENGE     | 0x4D41_4343 ("MACC") | Requests a challenge for security-sensitive commands.                                 |
+| MC_FUSE_READ                  | 0x4946_5052 ("IFPR") | See [fuses spec](fuses.md) for details                                                |
+| MC_FUSE_WRITE                 | 0x4946_5057 ("IFPW") | See [fuses spec](fuses.md) for details                                                |
+| MC_FUSE_LOCK_PARTITION        | 0x4946_504B ("IFPK") | See [fuses spec](fuses.md) for details                                                |
+| MC_PROVISION_VENDOR_PK_HASH   | 0x5056_504b ("PVPK") | See [fuses spec](fuses.md) for details                                                |
+| MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | See [fuses spec](fuses.md) for details                                                |
+| MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | See [fuses spec](fuses.md) for details                                                |
+| MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | See [fuses spec](fuses.md) for details                                                |
 
 ## Command Format
+
+Common command payloads are defined in [Caliptra Common Commands](caliptra_common_commands.md#command-definitions). This section lists the MCI mailbox command code for each common command and keeps mailbox-only command definitions in this document. MCI mailbox checksum and status fields are transport-specific framing and are not repeated in each common command section below.
 
 ### MC_FIRMWARE_VERSION
 
@@ -91,19 +93,7 @@ Retrieves the version of the target firmware.
 
 Command Code: `0x4D46_5756` ("MFWV")
 
-*Table: `MC_FIRMWARE_VERSION` input arguments*
-| **Name**   | **Type** | **Description**                  |
-| ---------- | -------- | -------------------------------- |
-| chksum     | u32      |                                  |
-| area_index | u32      | - `00h` = Caliptra core firmware |
-|            |          | - `01h` = MCU runtime firmware   |
-|            |          | Additional indexes are reserved  |
-
-*Table: `MC_FIRMWARE_VERSION` output arguments*
-| **Name** | **Type** | **Description**                         |
-| -------- | -------- | --------------------------------------- |
-| chksum   | u32      |                                         |
-| version  | u8[32]   | Firmware Version Number in ASCII format |
+Payload semantics are defined by [Firmware Version](caliptra_common_commands.md#firmware-version).
 
 ### MC_DEVICE_CAPABILITIES
 
@@ -111,49 +101,15 @@ Retrieve the device capabilites.
 
 Command Code: `0x4D43_4150` ("MCAP")
 
-*Table: `MC_DEVICE_CAPABILITIES` input arguments*
-| **Name** | **Type** | **Description** |
-| -------- | -------- | --------------- |
-| chksum   | u32      |                 |
-
-*Table: `MC_DEVICE_CAPABILITIES` output arguments*
-| **Name**    | **Type** | **Description**                            |
-| ----------- | -------- | ------------------------------------------ |
-| chksum      | u32      |                                            |
-| fips_status | u32      | FIPS approved or an error                  |
-| caps        | u8[32]   | - Bytes [0:7]: Reserved for Caliptra RT    |
-|             |          | - Bytes [8:11]: Reserved for Caliptra FMC  |
-|             |          | - Bytes [12:15]: Reserved for Caliptra ROM |
-|             |          | - Bytes [16:23]: Reserved for MCU RT       |
-|             |          | - Bytes [24:27]: Reserved for MCU ROM      |
-|             |          | - Bytes [28:31]: Reserved                  |
+Payload semantics are defined by [Device Capabilities](caliptra_common_commands.md#device-capabilities).
 
 ### MC_EXPORT_ATTESTED_CSR
 
-Exports an attested Certificate Signing Request (CSR) for a specified device key. The CSR is wrapped in a CoseSign1 structure for attestation integrity. A 32-byte nonce is included for freshness.
+Exports an attested Certificate Signing Request (CSR) for a specified device key.
 
 Command Code: `0x4D45_4143` ("MEAC")
 
-*Table: `MC_EXPORT_ATTESTED_CSR` input arguments*
-| **Name**      | **Type** | **Description**              |
-| ------------- | -------- | ---------------------------- |
-| chksum        | u32      |                              |
-| device_key_id | u32      | Device key identifier:       |
-|               |          | - `0x0001` = LDevID          |
-|               |          | - `0x0002` = FMC Alias       |
-|               |          | - `0x0003` = RT Alias        |
-| algorithm     | u32      | Asymmetric algorithm:        |
-|               |          | - `0x0001` = ECC384          |
-|               |          | - `0x0002` = MLDSA87         |
-| nonce         | u8[32]   | 32-byte nonce for freshness. |
-
-*Table: `MC_EXPORT_ATTESTED_CSR` output arguments*
-| **Name**    | **Type**     | **Description**                                      |
-| ----------- | ------------ | ---------------------------------------------------- |
-| chksum      | u32          |                                                      |
-| fips_status | u32          | FIPS approved or an error.                           |
-| data_len    | u32          | Length in bytes of the valid data in the data field. |
-| csr_data    | u8[data_len] | Attested CSR payload (CoseSign1 structure).          |
+Payload semantics are defined by [Export Attested CSR](caliptra_common_commands.md#export-attested-csr).
 
 ### MC_GET_LOG
 
@@ -161,25 +117,7 @@ Retrieves the debug log for the MCU Runtime.
 
 Command Code: `0x4D47_4C47` ("MGLG")
 
-*Table: `MC_GET_LOG` input arguments*
-| **Name** | **Type** | **Description**          |
-| -------- | -------- | ------------------------ |
-| chksum   | u32      | Checksum over input data |
-
-*Table: `MC_GET_LOG` output arguments*
-| **Name**    | **Type**      | **Description**                     |
-| ----------- | ------------- | ----------------------------------- |
-| chksum      | u32           |                                     |
-| fips_status | u32           | FIPS approved or an error.          |
-| more_data   | u32           | `1` if more log data remains        |
-| data_size   | u32           | Size of the valid log data in bytes |
-| data        | u8[data_size] | Debug log contents                  |
-
-**Debug Log Format**:
-
-The debug log payload is an opaque byte stream. For the MCU Runtime debug log, the current implementation uses the [defmt](https://crates.io/crates/defmt) crate. Each `defmt` log macro emits one complete rzCOBS-encoded frame, and the MCU runtime logging backend appends that complete frame as one flash log entry. `MC_GET_LOG` returns the concatenated raw frame bytes.
-
-The device does not store human-readable log strings in the debug log. A host tool decodes the returned byte stream with `defmt-decoder` or `defmt-print` using the exact app's ELF that produced the log; the ELF `.defmt` section contains the interned format strings and metadata required to render readable messages.
+Payload semantics and debug log format are defined by [Get Debug Log](caliptra_common_commands.md#get-debug-log).
 
 ### MC_CLEAR_LOG
 
@@ -187,16 +125,7 @@ Clears the debug log in the MCU Runtime.
 
 Command Code: `0x4D43_4C47` ("MCLG")
 
-*Table: `MC_CLEAR_LOG` input arguments*
-| **Name** | **Type** | **Description**          |
-| -------- | -------- | ------------------------ |
-| chksum   | u32      | Checksum over input data |
-
-*Table: `MC_CLEAR_LOG` output arguments*
-| **Name**    | **Type** | **Description**            |
-| ----------- | -------- | -------------------------- |
-| chksum      | u32      |                            |
-| fips_status | u32      | FIPS approved or an error. |
+Payload semantics are defined by [Clear Debug Log](caliptra_common_commands.md#clear-debug-log).
 
 ### MC_FIPS_PERIODIC_ENABLE
 
@@ -332,55 +261,21 @@ Command Code: `0x4D4C_4D53` ("MMLS")
 | signature_ots       | u8[1252] | LM-OTS signature.                         |
 | signature_tree_path | u8[360]  | Path through the Merkle tree to the root. |
 
-### MC_PRODUCTION_DEBUG_UNLOCK_REQ
+### MC_PROD_DEBUG_UNLOCK_REQ
 
 Requests debug unlock in production environment.
 
-Command Code: `0x4D44_5552` ("MDUR")
+Command Code: `0x4D50_5552` ("MPUR")
 
-*Table: `MC_PRODUCTION_DEBUG_UNLOCK_REQ` input arguments*
-| **Name**     | **Type** | **Description**                 |
-| ------------ | -------- | ------------------------------- |
-| chksum       | u32      |                                 |
-| length       | u32      | Length of the message in DWORDs |
-| unlock_level | u8       | Debug unlock Level (Number 1-8) |
-| reserved     | u8[3]    | Reserved field                  |
+Payload semantics are defined by [Request Debug Unlock](caliptra_common_commands.md#request-debug-unlock).
 
-*Table: `MC_PRODUCTION_DEBUG_UNLOCK_REQ` output arguments*
-| **Name**                 | **Type** | **Description**                           |
-| ------------------------ | -------- | ----------------------------------------- |
-| chksum                   | u32      | Checksum over other output arguments.     |
-| fips_status              | u32      | FIPS approved or an error                 |
-| length                   | u32      | Length of the message in DWORDs.          |
-| unique_device_identifier | u8[32]   | Device identifier of the Caliptra device. |
-| challenge                | u8[48]   | Random number challenge.                  |
-
-### MC_PRODUCTION_DEBUG_UNLOCK_TOKEN
+### MC_PROD_DEBUG_UNLOCK_TOKEN
 
 Sends the debug unlock token.
 
-Command Code: `0x4D44_5554` ("MDUT")
+Command Code: `0x4D50_5554` ("MPUT")
 
-*Table: `MC_PRODUCTION_DEBUG_UNLOCK_TOKEN` input arguments*
-| **Name**                 | **Type**  | **Description**                                                                      |
-| ------------------------ | --------- | ------------------------------------------------------------------------------------ |
-| chksum                   | u32       | Checksum over other input arguments.                                                 |
-| fips_status              | u32       | FIPS approved or an error                                                            |
-| length                   | u32       | Length of the message in DWORDs.                                                     |
-| unique_device_identifier | u8[32]    | Device identifier of the Caliptra device.                                            |
-| unlock_level             | u8        | Debug unlock level (1-8).                                                            |
-| reserved                 | u8[3]     | Reserved field.                                                                      |
-| challenge                | u8[48]    | Random number challenge.                                                             |
-| ecc_public_key           | u32[24]   | ECC public key in hardware format (little endian).                                   |
-| mldsa_public_key         | u32[648]  | MLDSA public key in hardware format (little endian).                                 |
-| ecc_signature            | u32[24]   | ECC P-384 signature of the message hashed using SHA2-384 (R and S coordinates).      |
-| mldsa_signature          | u32[1157] | MLDSA signature of the message hashed using SHA2-512 (4627 bytes + 1 reserved byte). |
-
-*Table: `MC_PRODUCTION_DEBUG_UNLOCK_TOKEN` output arguments*
-| **Name**    | **Type** | **Description**           |
-| ----------- | -------- | ------------------------- |
-| chksum      | u32      |                           |
-| fips_status | u32      | FIPS approved or an error |
+Payload semantics are defined by [Authorize Debug Unlock Token](caliptra_common_commands.md#authorize-debug-unlock-token).
 
 {{#include fuse_api_cmd.md}}
 

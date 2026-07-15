@@ -73,6 +73,8 @@ See [Completion Codes](caliptra_common_commands.md#completion-codes) for the ful
 
 The following table maps SPDM VDM command codes to Caliptra common commands. For command payload definitions, see [Caliptra Common Commands](caliptra_common_commands.md#command-definitions).
 
+These command codes are assigned from the Caliptra range reserved in the [OCP command registry](https://github.com/opencomputeproject/ocp-registry/blob/main/command-registry.md).
+
 | Command Code | Command Name              | R/O | Description                                                                |
 | ------------ | ------------------------- | --- | -------------------------------------------------------------------------- |
 | `0x05`       | GetAttestation            | O   | Retrieve attestation evidence.                                             |

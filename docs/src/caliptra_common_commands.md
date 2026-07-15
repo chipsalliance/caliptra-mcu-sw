@@ -20,17 +20,17 @@ Commands are assigned to MCTP VDM IANA when they do not require SPDM authorizati
 
 The following table describes the commands defined under this specification. There are two categories: (1) Required commands (R) that are mandatory for all implementations, (2) Optional commands (O) that may be utilized if the specific implementation requires it.
 
-| Message Name                    | R/O | Transport(s)               | Description                                                                               |
-| ------------------------------- | --- | -------------------------- | ----------------------------------------------------------------------------------------- |
-| Firmware Version                | R   | MCTP VDM, MCI Mailbox      | Retrieve firmware version information.                                                    |
-| Device Capabilities             | R   | MCTP VDM, MCI Mailbox      | Retrieve device capabilities.                                                             |
-| Get Debug Log                   | R   | MCTP VDM, MCI Mailbox      | Retrieve debug log.                                                                       |
-| Clear Debug Log                 | R   | MCTP VDM, MCI Mailbox      | Clear debug log.                                                                          |
-| Get Attestation                 | O   | SPDM VDM, MCI Mailbox      | Retrieve attestation evidence.                                                           |
-| Request Debug Unlock            | O   | SPDM VDM, MCI Mailbox      | Request debug unlock in production environment.                                           |
-| Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox      | Send debug unlock token to device for authorization.                                      |
-| Export Attested CSR             | O   | SPDM VDM, MCI Mailbox      | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias).  |
-| Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox      | Security-sensitive provisioning and fuse subcommands. The SPDM authorization flow is TBD. |
+| Message Name                    | R/O | Transport(s)          | Description                                                                                                                          |
+| ------------------------------- | --- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Firmware Version                | R   | MCTP VDM, MCI Mailbox | Retrieve firmware version information.                                                                                               |
+| Device Capabilities             | R   | MCTP VDM, MCI Mailbox | Retrieve device capabilities.                                                                                                        |
+| Get Debug Log                   | R   | MCTP VDM, MCI Mailbox | Retrieve debug log.                                                                                                                  |
+| Clear Debug Log                 | R   | MCTP VDM, MCI Mailbox | Clear debug log.                                                                                                                     |
+| Get Attestation                 | O   | SPDM VDM, MCI Mailbox | Retrieve attestation evidence.                                                                                                       |
+| Request Debug Unlock            | O   | SPDM VDM, MCI Mailbox | Request debug unlock in production environment.                                                                                      |
+| Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
+| Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias).                                             |
+| Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands. Authorization requirements and transport-specific authorization flows are TBD. |
 
 ### Authorization-Gated Subcommands
 
@@ -57,9 +57,9 @@ Retrieves the version of the target firmware.
 
 **Request Payload**:
 
-| Byte(s) | Name       | Type | Description                                                                                                          |
-| ------- | ---------- | ---- | -------------------------------------------------------------------------------------------------------------------- |
-| 0:3     | area_index | u32  | Area Index: <br>- `00h` = Caliptra core firmware <br>- `01h` = MCU runtime firmware; Additional indexes are reserved |
+| Byte(s) | Name       | Type | Description                                                                                                                                                 |
+| ------- | ---------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0:3     | area_index | u32  | Area Index: <br>- `00h` = Caliptra core firmware <br>- `01h` = MCU runtime firmware <br>- `02h` = SoC firmware <br>Additional indexes are firmware-specific |
 
 **Response Payload**:
 
@@ -145,24 +145,22 @@ Requests debug unlock in production environment.
 
 ### Authorize Debug Unlock Token
 
-Authorizes the debug unlock token.
-The request body is identical for MCI mailbox and SPDM VDM transports; the
-leading `checksum` is part of the common command body, not transport framing.
+Authorizes the debug unlock token. The request body is identical for MCI mailbox and SPDM VDM transports. The requester computes the leading `checksum` field as the Caliptra RT mailbox request checksum so the unified command handler can relay the complete request unchanged.
 
 **Request Payload**:
 
-| Byte(s)   | Name                     | Type         | Description                                                                 |
-|-----------|--------------------------|--------------|-----------------------------------------------------------------------------|
-| 0:3       | checksum                 | u32          | Caliptra RT mailbox request checksum (`MailboxReqHeader.checksum`)          |
-| 4:7       | length                   | u32          | Length of the message in DWORDs                                             |
-| 8:39      | unique_device_identifier | u8[32]       | Device identifier of the Caliptra device                                    |
-| 40        | unlock_level             | u8           | Debug unlock level (1-8)                                                    |
-| 41:43     | reserved                 | u8[3]        | Reserved field                                                              |
-| 44:91     | challenge                | u8[48]       | Random number challenge                                                     |
-| 92:187    | ecc_public_key           | u32[24]      | ECC public key in hardware format (little endian)                           |
-| 188:2639  | mldsa_public_key         | u32[648]     | MLDSA public key in hardware format (little endian)                         |
-| 2640:2735 | ecc_signature            | u32[24]      | ECC P-384 signature of the message hashed using SHA2-384 (R and S coordinates) |
-| 2736:6199 | mldsa_signature          | u32[1157]    | MLDSA signature of the message hashed using SHA2-512 (4627 bytes + 1 reserved byte) |
+| Byte(s)   | Name                     | Type      | Description                                                                           |
+| --------- | ------------------------ | --------- | ------------------------------------------------------------------------------------- |
+| 0:3       | checksum                 | u32       | Requester-computed Caliptra RT mailbox request checksum (`MailboxReqHeader.checksum`) |
+| 4:7       | length                   | u32       | Length of the message in DWORDs                                                       |
+| 8:39      | unique_device_identifier | u8[32]    | Device identifier of the Caliptra device                                              |
+| 40        | unlock_level             | u8        | Debug unlock level (1-8)                                                              |
+| 41:43     | reserved                 | u8[3]     | Reserved field                                                                        |
+| 44:91     | challenge                | u8[48]    | Random number challenge                                                               |
+| 92:187    | ecc_public_key           | u32[24]   | ECC public key in hardware format (little endian)                                     |
+| 188:2639  | mldsa_public_key         | u32[648]  | MLDSA public key in hardware format (little endian)                                   |
+| 2640:2735 | ecc_signature            | u32[24]   | ECC P-384 signature of the message hashed using SHA2-384 (R and S coordinates)        |
+| 2736:6199 | mldsa_signature          | u32[1157] | MLDSA signature of the message hashed using SHA2-512 (4627 bytes + 1 reserved byte)   |
 
 **Response Payload**:
 
@@ -176,10 +174,11 @@ Exports an attested Certificate Signing Request (CSR) for a specified device key
 
 **Request Payload**:
 
-| Byte(s) | Name          | Type | Description                                                                                         |
-| ------- | ------------- | ---- | --------------------------------------------------------------------------------------------------- |
-| 0:3     | device_key_id | u32  | Device Key Identifier: <br>- `0x0001` = LDevID <br>- `0x0002` = FMC Alias <br>- `0x0003` = RT Alias |
-| 4:7     | algorithm     | u32  | Asymmetric Algorithm: <br>- `0x0000` = ECC P-384 <br>- `0x0001` = ML-DSA-87                         |
+| Byte(s) | Name          | Type   | Description                                                                                         |
+| ------- | ------------- | ------ | --------------------------------------------------------------------------------------------------- |
+| 0:3     | device_key_id | u32    | Device Key Identifier: <br>- `0x0001` = LDevID <br>- `0x0002` = FMC Alias <br>- `0x0003` = RT Alias |
+| 4:7     | algorithm     | u32    | Asymmetric Algorithm: <br>- `0x0001` = ECC P-384 <br>- `0x0002` = ML-DSA-87                         |
+| 8:39    | nonce         | u8[32] | 32-byte nonce for freshness                                                                         |
 
 **Response Payload**:
 
@@ -191,7 +190,7 @@ Exports an attested Certificate Signing Request (CSR) for a specified device key
 
 ### Authorization-Gated Subcommand Wrapper
 
-Security-sensitive provisioning and fuse subcommands are assigned to the SPDM VDM IANA authorization-gated path and the MCI mailbox path. The SPDM authorization mechanism and message flow are TBD. The SPDM VDM transport uses an `Authorized Command` wrapper to carry subcommands, but the wrapper does not define the authorization mechanism by itself.
+Security-sensitive provisioning and fuse subcommands are assigned to the SPDM VDM IANA authorization-gated path and the MCI mailbox path. Authorization requirements and transport-specific authorization flows are TBD. The SPDM VDM transport uses an `Authorized Command` wrapper to carry subcommands, but the wrapper does not define the authorization mechanism by itself.
 
 #### Request Payload
 
@@ -210,6 +209,62 @@ Security-sensitive provisioning and fuse subcommands are assigned to the SPDM VD
 The subcommands covered by this wrapper are listed in [Authorization-Gated Subcommands](#authorization-gated-subcommands).
 
 Subcommand-specific payloads are defined by the corresponding command specifications. Any additional SPDM authorization wrapper fields are TBD.
+
+### Get Auth Challenge
+
+Requests a challenge for authorization-gated commands.
+
+**Request Payload**: TBD
+
+**Response Payload**: TBD
+
+### Provision Vendor PK Hash
+
+Provisions the vendor public key hash.
+
+**Request Payload**: TBD
+
+**Response Payload**: TBD
+
+### Fuse Increase Caliptra Min SVN
+
+Increases the Caliptra minimum SVN.
+
+**Request Payload**: TBD
+
+**Response Payload**: TBD
+
+### Program Field Entropy
+
+Programs field entropy.
+
+**Request Payload**: TBD
+
+**Response Payload**: TBD
+
+### Fuse Revoke Vendor Public Key
+
+Revokes a vendor public key.
+
+**Request Payload**: TBD
+
+**Response Payload**: TBD
+
+### Fuse Revoke Vendor PK Hash
+
+Revokes a vendor public key hash.
+
+**Request Payload**: TBD
+
+**Response Payload**: TBD
+
+### Fuse Lock Partition
+
+Locks a fuse partition.
+
+**Request Payload**: TBD
+
+**Response Payload**: TBD
 
 ## Completion Codes
 
