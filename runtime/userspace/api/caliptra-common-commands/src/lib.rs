@@ -1,13 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
-extern crate alloc;
+#![allow(async_fn_in_trait)]
 
-use alloc::boxed::Box;
-use async_trait::async_trait;
 #[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
 use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature};
+use mcu_caliptra_api_lite::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
 pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_CSR_DATA_LEN;
@@ -140,8 +139,7 @@ impl Default for DebugUnlockChallenge {
 ///
 /// Each function represents a transport-agnostic command handler. Implementors should provide
 /// the specific logic for each command as required by their application.
-#[async_trait]
-pub trait CaliptraCmdHandler: Send + Sync {
+pub trait CaliptraCmdHandler {
     /// Retrieves the firmware version for the given index.
     ///
     /// # Arguments
@@ -178,8 +176,9 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
-    async fn export_attested_csr(
+    async fn export_attested_csr<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         device_key_id: u32,
         algorithm: u32,
         nonce: &[u8; 32],
@@ -208,8 +207,9 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn request_debug_unlock(
+    async fn request_debug_unlock<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         unlock_level: u8,
         challenge: &mut DebugUnlockChallenge,
     ) -> CaliptraCmdResult<()>;
@@ -224,7 +224,11 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn authorize_debug_unlock_token(&self, token_data: &[u8]) -> CaliptraCmdResult<()>;
+    async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        token_data: &[u8],
+    ) -> CaliptraCmdResult<()>;
 
     /// Drain log entries of `log_type` into `data`.
     ///
@@ -275,8 +279,12 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
-        let _ = partition;
+    async fn program_field_entropy<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        partition: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, partition);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
@@ -306,7 +314,6 @@ pub struct AuthorizationError;
 
 pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 
-#[async_trait]
 pub trait CommandAuthorizer {
     /// Validates if a message is authorized.
     ///
@@ -320,8 +327,9 @@ pub trait CommandAuthorizer {
     ///
     /// # Returns
     /// * `Result<&[u8], CommandError>` - Unpacked command or Error
-    async fn is_authorized<'a>(
+    async fn is_authorized<'a, Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: CommandId,
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError>;

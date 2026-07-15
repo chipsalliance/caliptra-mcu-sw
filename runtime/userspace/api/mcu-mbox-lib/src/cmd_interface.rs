@@ -2,26 +2,26 @@
 
 use crate::errors;
 use crate::transport::McuMboxTransport;
-use caliptra_api::mailbox::{populate_checksum, CommandId as CaliptraCommandId, MailboxReqHeader};
 use caliptra_mcu_common_commands::{
-    CaliptraCmdHandler, CommandAuthorizer, DeviceCapabilities, FirmwareVersion, GetLogResult,
+    CaliptraCmdHandler, CommandAuthorizer, DebugUnlockChallenge, DeviceCapabilities,
+    FirmwareVersion, GetLogResult,
 };
-use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
-use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_libsyscall_caliptra::otp::Otp;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
-use caliptra_mcu_libsyscall_caliptra::{mailbox::Mailbox, DefaultSyscalls};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, ExportAttestedCsrReq,
-    ExportAttestedCsrResp, FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
+    FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
     FuseIncreaseCaliptraMinSvnResp, FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq,
     FuseReadResp, FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetLogReq, GetLogResp, LogType, MailboxRespHeader,
-    MailboxRespHeaderVarSize, McuFeProgReq, McuResponseVarSize, ProvisionVendorPkHashReq,
-    ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE,
-    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader, MailboxRespHeader,
+    MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
+    McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
+    RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
 };
 
 #[cfg(feature = "ocp-lock")]
@@ -34,36 +34,39 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
     McuFipsPeriodicStatusResp,
 };
-
 use caliptra_mcu_romtime::{fuse_read_dai_params, PartitionId};
-
 use core::sync::atomic::{AtomicBool, Ordering};
+use mcu_caliptra_api_lite::{raw, ApiAlloc, FwInfo};
 use mcu_error::McuResult;
 use zerocopy::{FromBytes, IntoBytes};
 
+pub trait McuMboxScratch: ApiAlloc {
+    fn shrink(buf: &mut Self::Buf<'_>, new_len: usize) -> McuResult<()>;
+}
+
 /// Command interface for handling MCU mailbox commands.
-pub struct CmdInterface<'a> {
+pub struct CmdInterface<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch> {
     transport: &'a mut McuMboxTransport,
-    non_crypto_cmds_handler: &'a dyn CaliptraCmdHandler,
-    cmd_authorizer: &'a mut dyn CommandAuthorizer,
-    caliptra_mbox: caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
-    #[allow(dead_code)]
-    otp: caliptra_mcu_libsyscall_caliptra::otp::Otp,
+    non_crypto_cmds_handler: &'a H,
+    cmd_authorizer: &'a mut A,
+    scratch: &'a Alloc,
     busy: AtomicBool,
 }
 
-impl<'a> CmdInterface<'a> {
+impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
+    CmdInterface<'a, H, A, Alloc>
+{
     pub fn new(
         transport: &'a mut McuMboxTransport,
-        non_crypto_cmds_handler: &'a dyn CaliptraCmdHandler,
-        cmd_authorizer: &'a mut dyn CommandAuthorizer,
+        non_crypto_cmds_handler: &'a H,
+        cmd_authorizer: &'a mut A,
+        scratch: &'a Alloc,
     ) -> Self {
         Self {
             transport,
             non_crypto_cmds_handler,
             cmd_authorizer,
-            caliptra_mbox: Mailbox::new(),
-            otp: Otp::new(),
+            scratch,
             busy: AtomicBool::new(false),
         }
     }
@@ -109,7 +112,7 @@ impl<'a> CmdInterface<'a> {
                     }
 
                     // Generate response checksum
-                    populate_checksum(resp);
+                    populate_response_checksum(resp)?;
 
                     self.transport.send_response(resp).await.map_err(|_| {
                         let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
@@ -122,6 +125,48 @@ impl<'a> CmdInterface<'a> {
         };
 
         // Finalize the response as the last step of handling the message.
+        self.transport
+            .finalize_response(status)
+            .map_err(|_| errors::TRANSPORT_ERROR)?;
+
+        Ok(())
+    }
+
+    pub async fn handle_responder_msg_from_scratch(&mut self) -> McuResult<()> {
+        let mut req_buf = self.scratch.alloc(size_of::<McuMailboxReq>())?;
+        let (cmd_id, req_len) = match self.transport.receive_request(&mut req_buf).await {
+            Ok((c, slice)) => (c, slice.len()),
+            Err(_) => {
+                let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                return Err(errors::TRANSPORT_ERROR);
+            }
+        };
+        Alloc::shrink(&mut req_buf, req_len)?;
+
+        let mut resp_buf = self.scratch.alloc(response_buffer_size(cmd_id))?;
+        let status = match self
+            .process_request(&mut req_buf, req_len, cmd_id, &mut resp_buf)
+            .await
+        {
+            Ok((resp, status)) => {
+                if status == MbxCmdStatus::Complete {
+                    if resp.len() < size_of::<MailboxRespHeader>() {
+                        let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                        return Err(errors::MCU_MBOX_COMMON);
+                    }
+
+                    populate_response_checksum(resp)?;
+
+                    self.transport.send_response(resp).await.map_err(|_| {
+                        let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                        errors::TRANSPORT_ERROR
+                    })?;
+                }
+                status
+            }
+            Err(_) => MbxCmdStatus::Failure,
+        };
+
         self.transport
             .finalize_response(status)
             .map_err(|_| errors::TRANSPORT_ERROR)?;
@@ -174,23 +219,14 @@ impl<'a> CmdInterface<'a> {
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
-                #[cfg(feature = "ocp-lock")]
-                inner @ CommandId::MC_OCP_LOCK_ROTATE_HEK
-                | inner @ CommandId::MC_OCP_LOCK_SET_PERMA_HEK => {
-                    self.handle_authorized_command(inner, req, resp_buf).await
-                }
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
-                #[cfg(feature = "ocp-lock")]
-                CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT => {
-                    self.handle_get_ocp_lock_endorsement_cert(req, resp_buf)
-                        .await
+                CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
+                    self.handle_prod_debug_unlock_req(req, resp_buf).await
                 }
-                #[cfg(feature = "ocp-lock")]
-                CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES => {
-                    self.handle_ocp_lock_enumerate_hpke_handles(req, resp_buf)
-                        .await
+                CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
+                    self.handle_prod_debug_unlock_token(req, resp_buf).await
                 }
                 _ => Err(errors::UNSUPPORTED_COMMAND),
             }
@@ -303,39 +339,42 @@ impl<'a> CmdInterface<'a> {
         // Reserve the first 4 bytes of the variable-length payload for the
         // `more_data` flag; the rest is filled by the handler.
         const MORE_DATA_FIELD_LEN: usize = core::mem::size_of::<u32>();
-        let mut resp = GetLogResp::default();
+        let (hdr_bytes, data) = resp_buf
+            .split_at_mut_checked(size_of::<MailboxRespHeaderVarSize>())
+            .ok_or(errors::INVALID_PARAMS)?;
+        let data = data
+            .get_mut(..MAX_RESP_DATA_SIZE)
+            .ok_or(errors::INVALID_PARAMS)?;
         let result = self
             .non_crypto_cmds_handler
-            .get_log(
-                LogType::DebugLog as u32,
-                &mut resp.data[MORE_DATA_FIELD_LEN..],
-            )
+            .get_log(LogType::DebugLog as u32, &mut data[MORE_DATA_FIELD_LEN..])
             .await;
 
-        let mbox_cmd_status = match result {
+        let (mbox_cmd_status, resp_len) = match result {
             Ok(GetLogResult {
                 bytes_written,
                 more_data,
             }) => {
                 let more_data_bytes: u32 = if more_data { 1 } else { 0 };
-                resp.data[..MORE_DATA_FIELD_LEN].copy_from_slice(&more_data_bytes.to_le_bytes());
-                resp.hdr = MailboxRespHeaderVarSize {
+                data[..MORE_DATA_FIELD_LEN].copy_from_slice(&more_data_bytes.to_le_bytes());
+                let hdr = MailboxRespHeaderVarSize {
                     data_len: (MORE_DATA_FIELD_LEN + bytes_written) as u32,
                     ..Default::default()
                 };
-                MbxCmdStatus::Complete
+                hdr_bytes.copy_from_slice(hdr.as_bytes());
+                (
+                    MbxCmdStatus::Complete,
+                    size_of::<MailboxRespHeaderVarSize>() + MORE_DATA_FIELD_LEN + bytes_written,
+                )
             }
             Err(_) => {
-                resp = GetLogResp::default();
-                MbxCmdStatus::Failure
+                let hdr = MailboxRespHeaderVarSize::default();
+                hdr_bytes.copy_from_slice(hdr.as_bytes());
+                (MbxCmdStatus::Failure, size_of::<MailboxRespHeaderVarSize>())
             }
         };
 
-        let resp_bytes = resp
-            .as_bytes_partial()
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
-        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-        Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+        Ok((&mut resp_buf[..resp_len], mbox_cmd_status))
     }
 
     /// Handle `MC_CLEAR_LOG` (0x4D43_4C47).
@@ -368,10 +407,21 @@ impl<'a> CmdInterface<'a> {
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         let req = ExportAttestedCsrReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
 
-        let mut data = [0u8; MAX_RESP_DATA_SIZE];
+        let (hdr_bytes, data) = resp_buf
+            .split_at_mut_checked(size_of::<MailboxRespHeaderVarSize>())
+            .ok_or(errors::INVALID_PARAMS)?;
+        let data = data
+            .get_mut(..MAX_RESP_DATA_SIZE)
+            .ok_or(errors::INVALID_PARAMS)?;
         let ret = self
             .non_crypto_cmds_handler
-            .export_attested_csr(req.device_key_id, req.algorithm, &req.nonce, &mut data)
+            .export_attested_csr(
+                self.scratch,
+                req.device_key_id,
+                req.algorithm,
+                &req.nonce,
+                data,
+            )
             .await;
 
         let (mbox_cmd_status, data_len) = match ret {
@@ -379,98 +429,82 @@ impl<'a> CmdInterface<'a> {
             Err(_) => (MbxCmdStatus::Failure, 0),
         };
 
-        let resp = if mbox_cmd_status == MbxCmdStatus::Complete {
-            ExportAttestedCsrResp {
-                hdr: MailboxRespHeaderVarSize {
-                    data_len: data_len as u32,
-                    ..Default::default()
-                },
-                data,
-            }
+        let resp_len = if mbox_cmd_status == MbxCmdStatus::Complete {
+            let hdr = MailboxRespHeaderVarSize {
+                data_len: data_len as u32,
+                ..Default::default()
+            };
+            hdr_bytes.copy_from_slice(hdr.as_bytes());
+            size_of::<MailboxRespHeaderVarSize>() + data_len
         } else {
-            ExportAttestedCsrResp::default()
+            let hdr = MailboxRespHeaderVarSize::default();
+            hdr_bytes.copy_from_slice(hdr.as_bytes());
+            size_of::<MailboxRespHeaderVarSize>()
         };
 
-        let resp_bytes = resp
-            .as_bytes_partial()
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
-
-        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-
-        Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+        Ok((&mut resp_buf[..resp_len], mbox_cmd_status))
     }
 
-    #[cfg(feature = "ocp-lock")]
-    async fn handle_get_ocp_lock_endorsement_cert<'r>(
+    async fn handle_prod_debug_unlock_token<'r>(
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        let req = GetOcpLockEndorsementCertReq::ref_from_bytes(req)
-            .map_err(|_| errors::INVALID_PARAMS)?;
+        let req =
+            McuProdDebugUnlockTokenReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) =
+            MailboxRespHeader::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
 
-        let (resp, _) = GetOcpLockEndorsementCertResp::mut_from_prefix(resp_buf)
-            .map_err(|_| errors::INVALID_PARAMS)?;
-
-        *resp = GetOcpLockEndorsementCertResp::default();
-
-        let ret = self
+        let status = match self
             .non_crypto_cmds_handler
-            .get_ocp_lock_endorsement_cert(&req.hpke_handle, &mut resp.data)
-            .await;
-
-        let (mbox_cmd_status, data_len) = match ret {
-            Ok(len) => (MbxCmdStatus::Complete, len.min(MAX_RESP_DATA_SIZE)),
-            Err(_) => (MbxCmdStatus::Failure, 0),
+            .authorize_debug_unlock_token(self.scratch, req.token.as_bytes())
+            .await
+        {
+            Ok(()) => MbxCmdStatus::Complete,
+            Err(_) => MbxCmdStatus::Failure,
         };
 
-        if mbox_cmd_status == MbxCmdStatus::Complete {
-            resp.hdr = MailboxRespHeaderVarSize {
-                data_len: data_len as u32,
-                ..Default::default()
-            };
-        } else {
-            *resp = GetOcpLockEndorsementCertResp::default();
-        }
-
-        let partial_len = resp.partial_len().map_err(|_| errors::MCU_MBOX_COMMON)?;
-
-        Ok((&mut resp_buf[..partial_len], mbox_cmd_status))
+        *resp = MailboxRespHeader::default();
+        let resp_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..resp_len], status))
     }
 
-    #[cfg(feature = "ocp-lock")]
-    async fn handle_ocp_lock_enumerate_hpke_handles<'r>(
+    async fn handle_prod_debug_unlock_req<'r>(
         &self,
-        _req: &[u8],
+        req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        let resp_size = core::mem::size_of::<OcpLockEnumerateHpkeHandlesResp>();
-        if resp_buf.len() < resp_size {
+        const REQUEST_LENGTH_DWORDS: u32 = 2;
+        const RESPONSE_LENGTH_DWORDS: u32 = 21;
+
+        let req =
+            McuProdDebugUnlockReqReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.0.length != REQUEST_LENGTH_DWORDS {
             return Err(errors::INVALID_PARAMS);
         }
-        resp_buf[..resp_size].fill(0);
 
-        let (resp, _) = match OcpLockEnumerateHpkeHandlesResp::mut_from_prefix(resp_buf) {
-            Ok(r) => r,
-            Err(_) => {
-                return Err(errors::INVALID_PARAMS);
-            }
-        };
-
-        let ret = self
+        let (resp, _) = McuProdDebugUnlockReqResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        let mut challenge = DebugUnlockChallenge::default();
+        let status = match self
             .non_crypto_cmds_handler
-            .ocp_lock_enumerate_hpke_handles(resp)
-            .await;
-
-        let mbox_cmd_status = match ret {
-            Ok(_) => MbxCmdStatus::Complete,
-            Err(_) => {
-                resp_buf[..resp_size].fill(0);
-                MbxCmdStatus::Failure
+            .request_debug_unlock(self.scratch, req.0.unlock_level, &mut challenge)
+            .await
+        {
+            Ok(()) => {
+                resp.0 = Default::default();
+                resp.0.length = RESPONSE_LENGTH_DWORDS;
+                resp.0
+                    .unique_device_identifier
+                    .copy_from_slice(&challenge.unique_device_identifier);
+                resp.0.challenge.copy_from_slice(&challenge.challenge);
+                MbxCmdStatus::Complete
             }
+            Err(_) => MbxCmdStatus::Failure,
         };
 
-        Ok((&mut resp_buf[..resp_size], mbox_cmd_status))
+        let resp_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..resp_len], status))
     }
 
     async fn handle_get_auth_cmd_challenge<'r>(
@@ -485,7 +519,7 @@ impl<'a> CmdInterface<'a> {
             .map_err(|_| errors::INVALID_PARAMS)?;
         *resp = GetAuthCmdChallengeResp::default();
 
-        Rng::generate_random_number(&mut resp.challenge)
+        mcu_caliptra_api_lite::rng_generate(self.scratch, &mut resp.challenge)
             .await
             .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
@@ -506,8 +540,7 @@ impl<'a> CmdInterface<'a> {
         // Clear the header checksum field because it was computed for the MCU mailbox CmdID and payload.
         req[..core::mem::size_of::<MailboxReqHeader>()].fill(0);
 
-        let status =
-            execute_mailbox_cmd(&self.caliptra_mbox, caliptra_cmd_code, req, resp_buf).await;
+        let status = raw::raw_mailbox_execute(caliptra_cmd_code, req, resp_buf).await;
 
         match status {
             Ok(resp_len) => Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete)),
@@ -523,7 +556,7 @@ impl<'a> CmdInterface<'a> {
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         let cmd = self
             .cmd_authorizer
-            .is_authorized(cmd_id, req)
+            .is_authorized(self.scratch, cmd_id, req)
             .await
             .map_err(|_| errors::UNAUTHORIZED_COMMAND)?;
         match cmd_id {
@@ -544,14 +577,6 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_FUSE_WRITE => self.handle_fuse_write(cmd, resp_buf).await,
             CommandId::MC_FUSE_LOCK_PARTITION => {
                 self.handle_fuse_lock_partition(cmd, resp_buf).await
-            }
-            #[cfg(feature = "ocp-lock")]
-            CommandId::MC_OCP_LOCK_ROTATE_HEK => {
-                self.handle_ocp_lock_rotate_hek(cmd, resp_buf).await
-            }
-            #[cfg(feature = "ocp-lock")]
-            CommandId::MC_OCP_LOCK_SET_PERMA_HEK => {
-                self.handle_ocp_lock_set_perma_hek(cmd, resp_buf).await
             }
             _ => Err(errors::UNSUPPORTED_COMMAND),
         }
@@ -743,21 +768,10 @@ impl<'a> CmdInterface<'a> {
         let (resp, _) =
             FuseWriteResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
 
-        // Prepare Caliptra request
-        let mut caliptra_req = caliptra_api::mailbox::FeProgReq {
-            partition: req.partition,
-            ..Default::default()
-        };
-
-        // Invoke Caliptra mailbox API (checksum is computed by execute_mailbox_cmd)
-        let _caliptra_resp_len = execute_mailbox_cmd(
-            &self.caliptra_mbox,
-            CaliptraCommandId::FE_PROG.into(),
-            caliptra_req.as_mut_bytes(),
-            resp.as_mut_bytes(),
-        )
-        .await
-        .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        self.non_crypto_cmds_handler
+            .program_field_entropy(self.scratch, req.partition)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         *resp = FuseWriteResp::default();
         let resp_len = resp.as_bytes().len();
@@ -869,25 +883,10 @@ impl<'a> CmdInterface<'a> {
         Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
     }
 
-    async fn get_caliptra_fw_info(&self) -> McuResult<caliptra_api::mailbox::FwInfoResp> {
-        let mut req = caliptra_api::mailbox::MailboxReqHeader::default();
-        use zerocopy::FromZeros;
-        let mut caliptra_info = caliptra_api::mailbox::FwInfoResp::new_zeroed();
-
-        // Invoke Caliptra mailbox API
-        let len = execute_mailbox_cmd(
-            &self.caliptra_mbox,
-            caliptra_api::mailbox::CommandId::FW_INFO.into(),
-            req.as_mut_bytes(),
-            caliptra_info.as_mut_bytes(),
-        )
-        .await
-        .map_err(|_| errors::MCU_MBOX_COMMON)?;
-
-        if len < size_of_val(&caliptra_info) {
-            return Err(errors::MCU_MBOX_COMMON);
-        }
-        Ok(caliptra_info)
+    async fn get_caliptra_fw_info(&self) -> McuResult<FwInfo> {
+        mcu_caliptra_api_lite::fw_info(self.scratch)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)
     }
 
     #[cfg(feature = "periodic-fips-self-test")]
@@ -945,97 +944,63 @@ impl<'a> CmdInterface<'a> {
 
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
     }
-
-    #[cfg(feature = "ocp-lock")]
-    async fn handle_ocp_lock_set_perma_hek<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        if req.len() > size_of::<OcpLockSetPermaHekReq>() {
-            return Err(errors::INVALID_PARAMS);
-        }
-
-        let status = if self.otp.set_hek_perma().is_err() {
-            MbxCmdStatus::Failure
-        } else {
-            MbxCmdStatus::Complete
-        };
-
-        let resp = OcpLockSetPermaHekResp::default();
-        let resp = resp.as_bytes();
-        resp_buf[..resp.len()].copy_from_slice(resp);
-        Ok((&mut resp_buf[..resp.len()], status))
-    }
-
-    #[cfg(feature = "ocp-lock")]
-    async fn handle_ocp_lock_rotate_hek<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        let req = OcpLockRotateHekReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-
-        let (resp, _) =
-            OcpLockRotateHekResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
-        *resp = OcpLockRotateHekResp::default();
-
-        let mut seed = [0u8; 32];
-        Rng::generate_random_number(&mut seed)
-            .await
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
-
-        let status = if self.otp.rotate_hek(req.hek_slot, &seed).is_err() {
-            MbxCmdStatus::Failure
-        } else {
-            MbxCmdStatus::Complete
-        };
-
-        Ok((&mut resp_buf[..size_of::<OcpLockRotateHekResp>()], status))
-    }
 }
 
 /// Map an MCU mailbox `CommandId` to the Caliptra mailbox command code for
 /// pure passthrough commands. Returns `None` for commands handled locally.
 fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
     let code = match cmd {
-        CommandId::MC_FIPS_SELF_TEST_START => CaliptraCommandId::SELF_TEST_START,
-        CommandId::MC_FIPS_SELF_TEST_GET_RESULTS => CaliptraCommandId::SELF_TEST_GET_RESULTS,
-        CommandId::MC_SHA_INIT => CaliptraCommandId::CM_SHA_INIT,
-        CommandId::MC_SHA_UPDATE => CaliptraCommandId::CM_SHA_UPDATE,
-        CommandId::MC_SHA_FINAL => CaliptraCommandId::CM_SHA_FINAL,
-        CommandId::MC_HMAC => CaliptraCommandId::CM_HMAC,
-        CommandId::MC_HMAC_KDF_COUNTER => CaliptraCommandId::CM_HMAC_KDF_COUNTER,
-        CommandId::MC_HKDF_EXTRACT => CaliptraCommandId::CM_HKDF_EXTRACT,
-        CommandId::MC_HKDF_EXPAND => CaliptraCommandId::CM_HKDF_EXPAND,
-        CommandId::MC_IMPORT => CaliptraCommandId::CM_IMPORT,
-        CommandId::MC_DELETE => CaliptraCommandId::CM_DELETE,
-        CommandId::MC_CM_STATUS => CaliptraCommandId::CM_STATUS,
-        CommandId::MC_RANDOM_GENERATE => CaliptraCommandId::CM_RANDOM_GENERATE,
-        CommandId::MC_RANDOM_STIR => CaliptraCommandId::CM_RANDOM_STIR,
-        CommandId::MC_AES_ENCRYPT_INIT => CaliptraCommandId::CM_AES_ENCRYPT_INIT,
-        CommandId::MC_AES_ENCRYPT_UPDATE => CaliptraCommandId::CM_AES_ENCRYPT_UPDATE,
-        CommandId::MC_AES_DECRYPT_INIT => CaliptraCommandId::CM_AES_DECRYPT_INIT,
-        CommandId::MC_AES_DECRYPT_UPDATE => CaliptraCommandId::CM_AES_DECRYPT_UPDATE,
-        CommandId::MC_AES_GCM_ENCRYPT_INIT => CaliptraCommandId::CM_AES_GCM_ENCRYPT_INIT,
-        CommandId::MC_AES_GCM_ENCRYPT_UPDATE => CaliptraCommandId::CM_AES_GCM_ENCRYPT_UPDATE,
-        CommandId::MC_AES_GCM_ENCRYPT_FINAL => CaliptraCommandId::CM_AES_GCM_ENCRYPT_FINAL,
-        CommandId::MC_AES_GCM_DECRYPT_INIT => CaliptraCommandId::CM_AES_GCM_DECRYPT_INIT,
-        CommandId::MC_AES_GCM_DECRYPT_UPDATE => CaliptraCommandId::CM_AES_GCM_DECRYPT_UPDATE,
-        CommandId::MC_AES_GCM_DECRYPT_FINAL => CaliptraCommandId::CM_AES_GCM_DECRYPT_FINAL,
-        CommandId::MC_ECDH_GENERATE => CaliptraCommandId::CM_ECDH_GENERATE,
-        CommandId::MC_ECDH_FINISH => CaliptraCommandId::CM_ECDH_FINISH,
-        CommandId::MC_ECDSA_CMK_PUBLIC_KEY => CaliptraCommandId::CM_ECDSA_PUBLIC_KEY,
-        CommandId::MC_ECDSA_CMK_SIGN => CaliptraCommandId::CM_ECDSA_SIGN,
-        CommandId::MC_ECDSA_CMK_VERIFY => CaliptraCommandId::CM_ECDSA_VERIFY,
-        CommandId::MC_MLDSA_CMK_PUBLIC_KEY => CaliptraCommandId::CM_MLDSA_PUBLIC_KEY,
-        CommandId::MC_MLDSA_CMK_SIGN => CaliptraCommandId::CM_MLDSA_SIGN,
-        CommandId::MC_MLDSA_CMK_VERIFY => CaliptraCommandId::CM_MLDSA_VERIFY,
-        CommandId::MC_PROD_DEBUG_UNLOCK_REQ => CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ,
-        CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
-            CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN
-        }
+        CommandId::MC_FIPS_SELF_TEST_START => raw::CMD_SELF_TEST_START,
+        CommandId::MC_FIPS_SELF_TEST_GET_RESULTS => raw::CMD_SELF_TEST_GET_RESULTS,
+        CommandId::MC_SHA_INIT => raw::CMD_CM_SHA_INIT,
+        CommandId::MC_SHA_UPDATE => raw::CMD_CM_SHA_UPDATE,
+        CommandId::MC_SHA_FINAL => raw::CMD_CM_SHA_FINAL,
+        CommandId::MC_HMAC => raw::CMD_CM_HMAC,
+        CommandId::MC_HMAC_KDF_COUNTER => raw::CMD_CM_HMAC_KDF_COUNTER,
+        CommandId::MC_HKDF_EXTRACT => raw::CMD_CM_HKDF_EXTRACT,
+        CommandId::MC_HKDF_EXPAND => raw::CMD_CM_HKDF_EXPAND,
+        CommandId::MC_IMPORT => raw::CMD_CM_IMPORT,
+        CommandId::MC_DELETE => raw::CMD_CM_DELETE,
+        CommandId::MC_CM_STATUS => raw::CMD_CM_STATUS,
+        CommandId::MC_RANDOM_GENERATE => raw::CMD_CM_RANDOM_GENERATE,
+        CommandId::MC_RANDOM_STIR => raw::CMD_CM_RANDOM_STIR,
+        CommandId::MC_AES_ENCRYPT_INIT => raw::CMD_CM_AES_ENCRYPT_INIT,
+        CommandId::MC_AES_ENCRYPT_UPDATE => raw::CMD_CM_AES_ENCRYPT_UPDATE,
+        CommandId::MC_AES_DECRYPT_INIT => raw::CMD_CM_AES_DECRYPT_INIT,
+        CommandId::MC_AES_DECRYPT_UPDATE => raw::CMD_CM_AES_DECRYPT_UPDATE,
+        CommandId::MC_AES_GCM_ENCRYPT_INIT => raw::CMD_CM_AES_GCM_ENCRYPT_INIT,
+        CommandId::MC_AES_GCM_ENCRYPT_UPDATE => raw::CMD_CM_AES_GCM_ENCRYPT_UPDATE,
+        CommandId::MC_AES_GCM_ENCRYPT_FINAL => raw::CMD_CM_AES_GCM_ENCRYPT_FINAL,
+        CommandId::MC_AES_GCM_DECRYPT_INIT => raw::CMD_CM_AES_GCM_DECRYPT_INIT,
+        CommandId::MC_AES_GCM_DECRYPT_UPDATE => raw::CMD_CM_AES_GCM_DECRYPT_UPDATE,
+        CommandId::MC_AES_GCM_DECRYPT_FINAL => raw::CMD_CM_AES_GCM_DECRYPT_FINAL,
+        CommandId::MC_ECDH_GENERATE => raw::CMD_CM_ECDH_GENERATE,
+        CommandId::MC_ECDH_FINISH => raw::CMD_CM_ECDH_FINISH,
+        CommandId::MC_ECDSA_CMK_PUBLIC_KEY => raw::CMD_CM_ECDSA_PUBLIC_KEY,
+        CommandId::MC_ECDSA_CMK_SIGN => raw::CMD_CM_ECDSA_SIGN,
+        CommandId::MC_ECDSA_CMK_VERIFY => raw::CMD_CM_ECDSA_VERIFY,
+        CommandId::MC_MLDSA_CMK_PUBLIC_KEY => raw::CMD_CM_MLDSA_PUBLIC_KEY,
+        CommandId::MC_MLDSA_CMK_SIGN => raw::CMD_CM_MLDSA_SIGN,
+        CommandId::MC_MLDSA_CMK_VERIFY => raw::CMD_CM_MLDSA_VERIFY,
         _ => return None,
     };
-    Some(code.into())
+    Some(code)
+}
+
+fn response_buffer_size(cmd: u32) -> usize {
+    match CommandId::from(cmd) {
+        c if c == CommandId::MC_MLDSA_CMK_VERIFY || c == CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
+            size_of::<MailboxRespHeader>()
+        }
+        _ => size_of::<McuMailboxResp>(),
+    }
+}
+
+fn populate_response_checksum(resp: &mut [u8]) -> McuResult<()> {
+    if resp.len() < size_of::<MailboxRespHeader>() {
+        return Err(errors::INVALID_PARAMS);
+    }
+    let checksum = raw::mailbox_checksum(0, &resp[size_of::<u32>()..]);
+    resp[..size_of::<u32>()].copy_from_slice(&checksum.to_le_bytes());
+    Ok(())
 }

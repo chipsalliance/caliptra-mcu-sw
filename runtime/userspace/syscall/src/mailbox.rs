@@ -241,7 +241,6 @@ impl<S: Syscalls> Mailbox<S> {
         response_buffer: &mut [u8],
     ) -> Result<usize, MailboxError> {
         let mutex = MAILBOX_MUTEX.lock().await;
-
         let request_len = header
             .map_or(Some(payload.len()), |h| h.len().checked_add(payload.len()))
             .ok_or(MailboxError::ErrorCode(ErrorCode::Invalid))?;
