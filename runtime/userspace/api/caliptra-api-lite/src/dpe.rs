@@ -10,11 +10,12 @@
 //! allocated from the caller's [`ApiAlloc`] — never the stack —
 //! keeping async futures small.
 
-use core::mem::size_of;
+use core::{mem::size_of, ops::Deref};
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
+use crate::slice::{checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
     calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_TAG_TCI,
     CMD_INVOKE_DPE, DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN,
@@ -34,6 +35,8 @@ const DPE_CERTIFY_KEY_FORMAT_X509: u32 = 0;
 pub const DPE_CONTEXT_HANDLE_SIZE: usize = 16;
 
 pub type DpeContextHandle = [u8; DPE_CONTEXT_HANDLE_SIZE];
+
+const DEFAULT_DPE_CONTEXT_HANDLE: DpeContextHandle = [0u8; DPE_CONTEXT_HANDLE_SIZE];
 
 /// Upper bound on the X.509 leaf certificate Caliptra's DPE can
 /// emit — mirrored from `dpe::MAX_CERT_SIZE` (2 KB).
@@ -177,6 +180,7 @@ const CERTIFY_KEY_CHUNKS_REQ_HANDLE_OFF: usize = CERTIFY_KEY_CHUNKS_REQ_DPE_CMD_
 const CERTIFY_KEY_CHUNKS_REQ_FORMAT_OFF: usize =
     CERTIFY_KEY_CHUNKS_REQ_DPE_CMD_OFF + DPE_CONTEXT_HANDLE_SIZE + 4;
 const CERTIFY_KEY_CHUNKS_REQ_LABEL_OFF: usize = CERTIFY_KEY_CHUNKS_REQ_FORMAT_OFF + 4;
+const CERTIFY_KEY_CHUNKS_RESP_HANDLE_OFF: usize = 4 + 4;
 const CERTIFY_KEY_CHUNKS_RESP_CHUNK_LEN_OFF: usize = 4 + 4 + DPE_CONTEXT_HANDLE_SIZE;
 
 const ROTATE_CTX_REQ_LEN: usize =
@@ -228,24 +232,34 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     let mut req = alloc.alloc(GET_CERT_CHAIN_REQ_LEN)?;
     req.fill(0);
     {
-        let prefix =
-            InvokeDpeReqPrefix::mut_from_bytes(&mut req[..size_of::<InvokeDpeReqPrefix>()])
-                .map_err(|_| INVARIANT)?;
+        let prefix = InvokeDpeReqPrefix::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            0,
+            size_of::<InvokeDpeReqPrefix>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
         prefix.data_size = U32::new(GET_CERT_CHAIN_DPE_PAYLOAD_LEN);
     }
     let mut cur = size_of::<InvokeDpeReqPrefix>();
     {
-        let hdr = DpeCommandHdr::mut_from_bytes(&mut req[cur..cur + size_of::<DpeCommandHdr>()])
-            .map_err(|_| INVARIANT)?;
+        let hdr = DpeCommandHdr::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            cur,
+            size_of::<DpeCommandHdr>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
         hdr.magic = U32::new(DPE_COMMAND_MAGIC);
         hdr.cmd_id = U32::new(DPE_CMD_GET_CERTIFICATE_CHAIN);
         hdr.profile = U32::new(DPE_PROFILE_P384_SHA384);
     }
     cur += size_of::<DpeCommandHdr>();
     {
-        let cmd =
-            GetCertChainCmd::mut_from_bytes(&mut req[cur..cur + size_of::<GetCertChainCmd>()])
-                .map_err(|_| INVARIANT)?;
+        let cmd = GetCertChainCmd::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            cur,
+            size_of::<GetCertChainCmd>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
         cmd.offset = U32::new(offset);
         cmd.size = U32::new(size);
     }
@@ -267,9 +281,11 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
         return Err(INTERNAL_BUG);
     }
 
-    let dpe_hdr = DpeResponseHdr::ref_from_bytes(
-        &rsp[dpe_hdr_off..dpe_hdr_off + size_of::<DpeResponseHdr>()],
-    )
+    let dpe_hdr = DpeResponseHdr::ref_from_bytes(internal_slice(
+        &rsp,
+        dpe_hdr_off,
+        size_of::<DpeResponseHdr>(),
+    )?)
     .map_err(|_| INTERNAL_BUG)?;
     if dpe_hdr.magic.get() != DPE_RESPONSE_MAGIC || dpe_hdr.status.get() != 0 {
         return Err(INTERNAL_BUG);
@@ -283,164 +299,166 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     if cert_size > dst.len() || chain_off + cert_size > rsp_len {
         return Err(INTERNAL_BUG);
     }
-    dst[..cert_size].copy_from_slice(&rsp[chain_off..chain_off + cert_size]);
+    let out = dst.get_mut(..cert_size).ok_or(INTERNAL_BUG)?;
+    let cert = internal_slice(&rsp, chain_off, cert_size)?;
+    copy_bytes(out, cert)?;
     Ok(cert_size)
 }
 
 /// Invoke DPE `CertifyKey` (P-384 / SHA-384, X.509 format) for the
 /// default context handle and the given 48-byte `label`. Writes the
-/// emitted leaf certificate DER into `dst` and returns the number of
-/// bytes actually written.
+/// emitted leaf certificate DER into `dst` and returns the rotated context
+/// handle plus the number of bytes actually written.
 ///
 /// Prefer [`dpe_certify_key_cert_slice`] when the caller only needs a
 /// slice of the certificate.
 #[inline(never)]
 pub async fn dpe_certify_key<A: ApiAlloc>(
     alloc: &A,
+    handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
     dst: &mut [u8],
-) -> McuResult<usize> {
+) -> McuResult<(DpeContextHandle, usize)> {
     if dst.is_empty() {
         return Err(INVARIANT);
     }
 
-    let cert_size = dpe_certify_key_cert_size(alloc, label).await?;
+    let max_size = CERTIFY_KEY_P384_RESP_PREFIX_LEN
+        .checked_add(dst.len())
+        .ok_or(INVARIANT)?
+        .min(DPE_MAX_CHUNK_SIZE);
+    let chunk =
+        certify_key_chunks_response(alloc, label, dpe_handle_or_default(handle), 0, max_size)
+            .await?;
+    let response = chunk.chunk()?;
+    validate_certify_key_prefix(response)?;
+    let cert_size = read_le_u32(response, CERTIFY_KEY_RESP_CERT_SIZE_OFF)? as usize;
+    let cert_start = CERTIFY_KEY_P384_RESP_PREFIX_LEN;
+    let cert_end = cert_start.checked_add(cert_size).ok_or(INVARIANT)?;
+    let cert = internal_slice(response, cert_start, cert_end - cert_start)?;
+    if cert_size > dst.len() {
+        return Err(INVARIANT);
+    }
+    let out = dst.get_mut(..cert_size).ok_or(INTERNAL_BUG)?;
+    copy_bytes(out, cert)?;
+
     if cert_size > dst.len() {
         return Err(INTERNAL_BUG);
     }
-
-    let mut copied = 0usize;
-    while copied < cert_size {
-        let take = (cert_size - copied).min(DPE_MAX_CHUNK_SIZE);
-        let got = dpe_certify_key_cert_slice(
-            alloc,
-            label,
-            copied as u32,
-            &mut dst[copied..copied + take],
-        )
-        .await?;
-        if got != take {
-            return Err(INTERNAL_BUG);
-        }
-        copied += got;
-    }
-
-    Ok(cert_size)
+    Ok((chunk.next_handle, cert_size))
 }
 
 /// Return the DER leaf certificate length emitted by DPE `CertifyKey`
-/// without fetching the certificate body.
+/// without fetching the certificate body, along with the rotated context handle.
 #[inline(never)]
 pub async fn dpe_certify_key_cert_size<A: ApiAlloc>(
     alloc: &A,
+    handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
-) -> McuResult<usize> {
-    certify_key_chunks_response(
+) -> McuResult<(DpeContextHandle, usize)> {
+    let chunk = certify_key_chunks_response(
         alloc,
         label,
-        &[0u8; DPE_CONTEXT_HANDLE_SIZE],
+        dpe_handle_or_default(handle),
         0,
         CERTIFY_KEY_P384_RESP_PREFIX_LEN,
-        |chunk| {
-            validate_certify_key_prefix(chunk)?;
-            Ok(read_le_u32(chunk, CERTIFY_KEY_RESP_CERT_SIZE_OFF)? as usize)
-        },
     )
-    .await
+    .await?;
+    let response = chunk.chunk()?;
+    validate_certify_key_prefix(response)?;
+    Ok((
+        chunk.next_handle,
+        read_le_u32(response, CERTIFY_KEY_RESP_CERT_SIZE_OFF)? as usize,
+    ))
 }
 
 /// Fetch DER leaf-certificate bytes from DPE `CertifyKey`.
 ///
 /// `cert_offset` is relative to the certificate DER bytes, not the
-/// enclosing `CertifyKey` response.
+/// enclosing `CertifyKey` response. Returns the rotated context handle plus
+/// the number of bytes copied into `dst`.
 #[inline(never)]
 pub async fn dpe_certify_key_cert_slice<A: ApiAlloc>(
     alloc: &A,
+    handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
     cert_offset: u32,
     dst: &mut [u8],
-) -> McuResult<usize> {
-    if dst.is_empty() {
+) -> McuResult<(DpeContextHandle, usize)> {
+    if dst.is_empty() || dst.len() > DPE_MAX_CHUNK_SIZE {
         return Err(INVARIANT);
     }
 
-    let mut copied = 0usize;
-    while copied < dst.len() {
-        let chunk_offset = cert_offset.checked_add(copied as u32).ok_or(INVARIANT)?;
-        let dpe_offset = CERTIFY_KEY_P384_RESP_PREFIX_LEN
-            .checked_add(chunk_offset as usize)
-            .ok_or(INVARIANT)?;
-        let take = (dst.len() - copied).min(DPE_MAX_CHUNK_SIZE);
-
-        let got = certify_key_chunks_response(
-            alloc,
-            label,
-            &[0u8; DPE_CONTEXT_HANDLE_SIZE],
-            dpe_offset as u32,
-            take,
-            |chunk| {
-                if chunk.len() > take {
-                    return Err(INTERNAL_BUG);
-                }
-                dst[copied..copied + chunk.len()].copy_from_slice(chunk);
-                Ok(chunk.len())
-            },
-        )
-        .await?;
-
-        if got == 0 {
-            break;
-        }
-        copied += got;
+    let dpe_offset = CERTIFY_KEY_P384_RESP_PREFIX_LEN
+        .checked_add(cert_offset as usize)
+        .ok_or(INVARIANT)?;
+    let chunk = certify_key_chunks_response(
+        alloc,
+        label,
+        dpe_handle_or_default(handle),
+        dpe_offset as u32,
+        dst.len(),
+    )
+    .await?;
+    let response = chunk.chunk()?;
+    if response.len() > dst.len() {
+        return Err(INTERNAL_BUG);
     }
-
-    Ok(copied)
+    let out = dst.get_mut(..response.len()).ok_or(INTERNAL_BUG)?;
+    copy_bytes(out, response)?;
+    Ok((chunk.next_handle, response.len()))
 }
 
 /// Like [`dpe_certify_key`] but also returns the derived public key
 /// coordinates `(pubkey_x, pubkey_y)`, each 48 bytes for P-384.
 ///
 /// This avoids parsing the X.509 cert when only the raw public key
-/// is needed (e.g. to compute an attestation kid).
+/// is needed (e.g. to compute an attestation kid). Returns the rotated
+/// context handle.
 #[inline(never)]
 pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
     alloc: &A,
+    handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
     pubkey_x: &mut [u8; 48],
     pubkey_y: &mut [u8; 48],
-) -> McuResult<()> {
-    certify_key_chunks_response(
+) -> McuResult<DpeContextHandle> {
+    let chunk = certify_key_chunks_response(
         alloc,
         label,
-        &[0u8; DPE_CONTEXT_HANDLE_SIZE],
+        dpe_handle_or_default(handle),
         0,
         CERTIFY_KEY_P384_RESP_PREFIX_LEN,
-        |chunk| {
-            validate_certify_key_prefix(chunk)?;
-            pubkey_x.copy_from_slice(
-                chunk
-                    .get(CERTIFY_KEY_RESP_PUBKEY_X_OFF..CERTIFY_KEY_RESP_PUBKEY_Y_OFF)
-                    .ok_or(INTERNAL_BUG)?,
-            );
-            pubkey_y.copy_from_slice(
-                chunk
-                    .get(CERTIFY_KEY_RESP_PUBKEY_Y_OFF..CERTIFY_KEY_RESP_CERT_SIZE_OFF)
-                    .ok_or(INTERNAL_BUG)?,
-            );
-            Ok(())
-        },
     )
-    .await
+    .await?;
+    let response = chunk.chunk()?;
+    validate_certify_key_prefix(response)?;
+    let pubkey_x_bytes = internal_slice(response, CERTIFY_KEY_RESP_PUBKEY_X_OFF, 48)?;
+    let pubkey_y_bytes = internal_slice(response, CERTIFY_KEY_RESP_PUBKEY_Y_OFF, 48)?;
+    copy_bytes(pubkey_x, pubkey_x_bytes)?;
+    copy_bytes(pubkey_y, pubkey_y_bytes)?;
+    Ok(chunk.next_handle)
 }
 
-async fn certify_key_chunks_response<A, R>(
-    alloc: &A,
+struct CertifyKeyChunk<B> {
+    next_handle: DpeContextHandle,
+    rsp: B,
+    chunk_len: usize,
+}
+
+impl<B: Deref<Target = [u8]>> CertifyKeyChunk<B> {
+    fn chunk(&self) -> McuResult<&[u8]> {
+        internal_slice(&self.rsp, CERTIFY_KEY_CHUNKS_RESP_INFO_LEN, self.chunk_len)
+    }
+}
+
+async fn certify_key_chunks_response<'a, A>(
+    alloc: &'a A,
     label: &[u8; DPE_LABEL_LEN],
     handle: &[u8; DPE_CONTEXT_HANDLE_SIZE],
     dpe_resp_offset: u32,
     max_size: usize,
-    f: impl FnOnce(&[u8]) -> McuResult<R>,
-) -> McuResult<R>
+) -> McuResult<CertifyKeyChunk<A::Buf<'a>>>
 where
     A: ApiAlloc,
 {
@@ -455,12 +473,17 @@ where
         return Err(INTERNAL_BUG);
     }
 
+    let next_handle = read_context_handle(&rsp, CERTIFY_KEY_CHUNKS_RESP_HANDLE_OFF)?;
     let chunk_len = read_le_u32(&rsp, CERTIFY_KEY_CHUNKS_RESP_CHUNK_LEN_OFF)? as usize;
     if chunk_len > max_size || CERTIFY_KEY_CHUNKS_RESP_INFO_LEN + chunk_len > rsp_len {
         return Err(INTERNAL_BUG);
     }
 
-    f(&rsp[CERTIFY_KEY_CHUNKS_RESP_INFO_LEN..CERTIFY_KEY_CHUNKS_RESP_INFO_LEN + chunk_len])
+    Ok(CertifyKeyChunk {
+        next_handle,
+        rsp,
+        chunk_len,
+    })
 }
 
 fn build_certify_key_chunks_req<'a, A: ApiAlloc>(
@@ -499,8 +522,7 @@ fn build_certify_key_chunks_req<'a, A: ApiAlloc>(
 fn write_fixed(dst: &mut [u8], offset: usize, src: &[u8]) -> McuResult<()> {
     let end = offset.checked_add(src.len()).ok_or(INVARIANT)?;
     let dst = dst.get_mut(offset..end).ok_or(INVARIANT)?;
-    dst.copy_from_slice(src);
-    Ok(())
+    copy_bytes(dst, src)
 }
 
 #[inline]
@@ -510,6 +532,14 @@ fn read_le_u32(src: &[u8], offset: usize) -> McuResult<u32> {
             .and_then(|s| s.first_chunk::<4>())
             .ok_or(INTERNAL_BUG)?,
     ))
+}
+
+#[inline]
+fn read_context_handle(src: &[u8], offset: usize) -> McuResult<DpeContextHandle> {
+    let bytes = internal_slice(src, offset, DPE_CONTEXT_HANDLE_SIZE)?;
+    let mut handle = [0u8; DPE_CONTEXT_HANDLE_SIZE];
+    copy_bytes(&mut handle, bytes)?;
+    Ok(handle)
 }
 
 #[inline]
@@ -546,8 +576,9 @@ pub async fn walk_dpe_chain<A: ApiAlloc, S: DpeChainSink>(
     let mut buf = alloc.alloc(DPE_MAX_CHUNK_SIZE)?;
     let mut total: u32 = 0;
     loop {
-        let n = dpe_get_cert_chain_chunk(alloc, total, &mut buf[..]).await?;
-        sink.on_chunk(&buf[..n]).await?;
+        let n = dpe_get_cert_chain_chunk(alloc, total, &mut buf).await?;
+        let chunk = internal_slice(&buf, 0, n)?;
+        sink.on_chunk(chunk).await?;
         total = total.checked_add(n as u32).ok_or(INVARIANT)?;
         if n < DPE_MAX_CHUNK_SIZE {
             break;
@@ -563,14 +594,16 @@ pub async fn walk_dpe_chain<A: ApiAlloc, S: DpeChainSink>(
 /// and the given 48-byte `label`. Signs `digest` and writes the
 /// concatenated (r || s) signature into `signature`.
 ///
-/// `signature` must be at least [`DPE_P384_SIGNATURE_SIZE`] (96) bytes.
+/// `signature` must be at least [`DPE_P384_SIGNATURE_SIZE`] (96) bytes. Returns
+/// the rotated context handle plus the signature length.
 #[inline(never)]
 pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
     alloc: &A,
+    handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
     digest: &[u8],
     signature: &mut [u8],
-) -> McuResult<usize> {
+) -> McuResult<(DpeContextHandle, usize)> {
     if signature.len() < DPE_P384_SIGNATURE_SIZE || digest.len() < DPE_LABEL_LEN {
         return Err(INVARIANT);
     }
@@ -578,23 +611,35 @@ pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
     let mut req = alloc.alloc(SIGN_REQ_LEN)?;
     req.fill(0);
     {
-        let prefix =
-            InvokeDpeReqPrefix::mut_from_bytes(&mut req[..size_of::<InvokeDpeReqPrefix>()])
-                .map_err(|_| INVARIANT)?;
+        let prefix = InvokeDpeReqPrefix::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            0,
+            size_of::<InvokeDpeReqPrefix>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
         prefix.data_size = U32::new(SIGN_DPE_PAYLOAD_LEN);
     }
     let mut cur = size_of::<InvokeDpeReqPrefix>();
     {
-        let hdr = DpeCommandHdr::mut_from_bytes(&mut req[cur..cur + size_of::<DpeCommandHdr>()])
-            .map_err(|_| INVARIANT)?;
+        let hdr = DpeCommandHdr::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            cur,
+            size_of::<DpeCommandHdr>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
         hdr.magic = U32::new(DPE_COMMAND_MAGIC);
         hdr.cmd_id = U32::new(DPE_CMD_SIGN);
         hdr.profile = U32::new(DPE_PROFILE_P384_SHA384);
     }
     cur += size_of::<DpeCommandHdr>();
     {
-        let cmd = SignP384Cmd::mut_from_bytes(&mut req[cur..cur + size_of::<SignP384Cmd>()])
-            .map_err(|_| INVARIANT)?;
+        let cmd = SignP384Cmd::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            cur,
+            size_of::<SignP384Cmd>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
+        cmd.handle = *dpe_handle_or_default(handle);
         cmd.label = *label;
         cmd.flags = U32::new(0);
         cmd.digest = *digest.first_chunk::<DPE_LABEL_LEN>().ok_or(INVARIANT)?;
@@ -612,23 +657,27 @@ pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
         return Err(INTERNAL_BUG);
     }
 
-    let dpe_hdr = DpeResponseHdr::ref_from_bytes(
-        &rsp[resp_body_off..resp_body_off + size_of::<DpeResponseHdr>()],
-    )
+    let dpe_hdr = DpeResponseHdr::ref_from_bytes(internal_slice(
+        &rsp,
+        resp_body_off,
+        size_of::<DpeResponseHdr>(),
+    )?)
     .map_err(|_| INTERNAL_BUG)?;
     if dpe_hdr.magic.get() != DPE_RESPONSE_MAGIC || dpe_hdr.status.get() != 0 {
         return Err(INTERNAL_BUG);
     }
 
-    let sign_resp = SignP384RespBody::ref_from_bytes(
-        &rsp[resp_body_off..resp_body_off + size_of::<SignP384RespBody>()],
-    )
+    let sign_resp = SignP384RespBody::ref_from_bytes(internal_slice(
+        &rsp,
+        resp_body_off,
+        size_of::<SignP384RespBody>(),
+    )?)
     .map_err(|_| INTERNAL_BUG)?;
     let (sig_r, rest) = signature.split_first_chunk_mut::<48>().ok_or(INVARIANT)?;
     *sig_r = sign_resp.sig_r;
     let (sig_s, _) = rest.split_first_chunk_mut::<48>().ok_or(INVARIANT)?;
     *sig_s = sign_resp.sig_s;
-    Ok(DPE_P384_SIGNATURE_SIZE)
+    Ok((sign_resp._new_context_handle, DPE_P384_SIGNATURE_SIZE))
 }
 
 /// Invoke DPE `RotateContextHandle` for the default context handle,
@@ -647,15 +696,22 @@ pub async fn dpe_rotate_context_default<A: ApiAlloc>(
     let mut req = alloc.alloc(ROTATE_CTX_REQ_LEN)?;
     req.fill(0);
     {
-        let prefix =
-            InvokeDpeReqPrefix::mut_from_bytes(&mut req[..size_of::<InvokeDpeReqPrefix>()])
-                .map_err(|_| INVARIANT)?;
+        let prefix = InvokeDpeReqPrefix::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            0,
+            size_of::<InvokeDpeReqPrefix>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
         prefix.data_size = U32::new(ROTATE_CTX_DPE_PAYLOAD_LEN);
     }
     let mut cur = size_of::<InvokeDpeReqPrefix>();
     {
-        let hdr = DpeCommandHdr::mut_from_bytes(&mut req[cur..cur + size_of::<DpeCommandHdr>()])
-            .map_err(|_| INVARIANT)?;
+        let hdr = DpeCommandHdr::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            cur,
+            size_of::<DpeCommandHdr>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
         hdr.magic = U32::new(DPE_COMMAND_MAGIC);
         hdr.cmd_id = U32::new(DPE_CMD_ROTATE_CONTEXT_HANDLE);
         hdr.profile = U32::new(DPE_PROFILE_P384_SHA384);
@@ -664,8 +720,12 @@ pub async fn dpe_rotate_context_default<A: ApiAlloc>(
     {
         // `handle` stays the default (all-zero) context handle from the zeroed
         // request buffer; empty `flags` request a freshly generated handle.
-        let cmd = RotateCtxCmd::mut_from_bytes(&mut req[cur..cur + size_of::<RotateCtxCmd>()])
-            .map_err(|_| INVARIANT)?;
+        let cmd = RotateCtxCmd::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            cur,
+            size_of::<RotateCtxCmd>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
         cmd.flags = U32::new(0);
     }
     let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
@@ -679,16 +739,20 @@ pub async fn dpe_rotate_context_default<A: ApiAlloc>(
     if rsp_len < resp_body_off + size_of::<NewHandleRespBody>() {
         return Err(INTERNAL_BUG);
     }
-    let dpe_hdr = DpeResponseHdr::ref_from_bytes(
-        &rsp[resp_body_off..resp_body_off + size_of::<DpeResponseHdr>()],
-    )
+    let dpe_hdr = DpeResponseHdr::ref_from_bytes(internal_slice(
+        &rsp,
+        resp_body_off,
+        size_of::<DpeResponseHdr>(),
+    )?)
     .map_err(|_| INTERNAL_BUG)?;
     if dpe_hdr.magic.get() != DPE_RESPONSE_MAGIC || dpe_hdr.status.get() != 0 {
         return Err(INTERNAL_BUG);
     }
-    let body = NewHandleRespBody::ref_from_bytes(
-        &rsp[resp_body_off..resp_body_off + size_of::<NewHandleRespBody>()],
-    )
+    let body = NewHandleRespBody::ref_from_bytes(internal_slice(
+        &rsp,
+        resp_body_off,
+        size_of::<NewHandleRespBody>(),
+    )?)
     .map_err(|_| INTERNAL_BUG)?;
     Ok(body.handle)
 }
@@ -709,7 +773,8 @@ pub async fn dpe_tag_tci<A: ApiAlloc>(
     let mut req = alloc.alloc(TAG_TCI_REQ_LEN)?;
     req.fill(0);
     {
-        let cmd = TagTciReq::mut_from_bytes(&mut req[..TAG_TCI_REQ_LEN]).map_err(|_| INVARIANT)?;
+        let cmd = TagTciReq::mut_from_bytes(checked_slice_mut(&mut req, 0, TAG_TCI_REQ_LEN)?)
+            .map_err(|_| INVARIANT)?;
         cmd.handle = *handle;
         cmd.tag = U32::new(tag);
     }
@@ -723,9 +788,32 @@ pub async fn dpe_tag_tci<A: ApiAlloc>(
     Ok(())
 }
 
+#[inline]
+fn dpe_handle_or_default(handle: Option<&DpeContextHandle>) -> &DpeContextHandle {
+    handle.unwrap_or(&DEFAULT_DPE_CONTEXT_HANDLE)
+}
+
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::*;
+    use std::vec::Vec;
+
+    struct TestAlloc;
+
+    impl ApiAlloc for TestAlloc {
+        type Buf<'a>
+            = Vec<u8>
+        where
+            Self: 'a;
+
+        fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
+            let mut buf = Vec::new();
+            buf.resize(len, 0);
+            Ok(buf)
+        }
+    }
 
     #[test]
     fn rotate_ctx_wire_layout() {
@@ -740,5 +828,39 @@ mod tests {
     fn tag_tci_wire_layout() {
         assert_eq!(CMD_DPE_TAG_TCI, 0x5451_4754);
         assert_eq!(TAG_TCI_REQ_LEN, 4 + DPE_CONTEXT_HANDLE_SIZE + 4);
+    }
+
+    #[test]
+    fn certify_key_chunks_uses_supplied_handle() {
+        let handle = [0xa5u8; DPE_CONTEXT_HANDLE_SIZE];
+        let label = [0x5au8; DPE_LABEL_LEN];
+        let alloc = TestAlloc;
+
+        let req = build_certify_key_chunks_req(&alloc, &label, &handle, 0, 128).unwrap();
+
+        assert_eq!(
+            &req[CERTIFY_KEY_CHUNKS_REQ_HANDLE_OFF
+                ..CERTIFY_KEY_CHUNKS_REQ_HANDLE_OFF + DPE_CONTEXT_HANDLE_SIZE],
+            &handle
+        );
+    }
+
+    #[test]
+    fn none_handle_maps_to_default_handle() {
+        assert_eq!(dpe_handle_or_default(None), &DEFAULT_DPE_CONTEXT_HANDLE);
+    }
+
+    #[test]
+    fn certify_key_chunks_reads_returned_handle_from_response_info() {
+        let handle = [0x3cu8; DPE_CONTEXT_HANDLE_SIZE];
+        let mut rsp = [0u8; CERTIFY_KEY_CHUNKS_RESP_INFO_LEN];
+        rsp[CERTIFY_KEY_CHUNKS_RESP_HANDLE_OFF
+            ..CERTIFY_KEY_CHUNKS_RESP_HANDLE_OFF + DPE_CONTEXT_HANDLE_SIZE]
+            .copy_from_slice(&handle);
+
+        assert_eq!(
+            read_context_handle(&rsp, CERTIFY_KEY_CHUNKS_RESP_HANDLE_OFF).unwrap(),
+            handle
+        );
     }
 }

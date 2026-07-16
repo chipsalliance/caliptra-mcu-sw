@@ -18,8 +18,9 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
 use mcu_caliptra_api_lite::{
-    dpe_rotate_context_default, dpe_tag_tci, sha_finish, sha_init, ApiAlloc, HashAlgo,
-    SHA_CONTEXT_SIZE,
+    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
+    dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci, sha_finish, sha_init, sha_update,
+    ApiAlloc, DpeContextHandle, HashAlgo, DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
 };
 
 use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
@@ -121,10 +122,10 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
 
         let handle = dpe_rotate_context_default(alloc)
             .await
-            .map_err(|_| MeasurementApiError::DpeMailboxFailed)?;
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
         dpe_tag_tci(alloc, &handle, MCU_RT_FW_ID)
             .await
-            .map_err(|_| MeasurementApiError::DpeMailboxFailed)?;
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
 
         let record = DpeHandleRecord {
             fw_id: MCU_RT_FW_ID,
@@ -161,18 +162,18 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         // a mismatch means the preserved state belongs to a different policy.
         dpe_store
             .validate_store(&digest)
-            .map_err(|_| MeasurementApiError::InvalidPreservedState)?;
+            .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
         pcr_store
             .validate_store()
-            .map_err(|_| MeasurementApiError::InvalidPreservedState)?;
+            .map_err(|_| MeasurementApiError::StoreFailed)?;
 
         // The preserved MCU Runtime root record must exist and be well-formed.
         let mut root = DpeHandleRecord::default();
         dpe_store
             .read_record(MCU_RT_FW_ID, &mut root)
-            .map_err(|_| MeasurementApiError::InvalidPreservedState)?;
+            .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
         if !is_mcu_root_record(&root) {
-            return Err(MeasurementApiError::InvalidPreservedState);
+            return Err(MeasurementApiError::InvalidDpeHandleStoreState);
         }
 
         // The active DPE leaf must be readable. Its record semantics are not
@@ -181,24 +182,163 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         let mut leaf = DpeHandleRecord::default();
         dpe_store
             .read_leaf_record(&mut leaf)
-            .map_err(|_| MeasurementApiError::InvalidPreservedState)?;
+            .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
 
         // The attestation target must be readable and, until downstream target
         // re-marking exists, still the MCU Runtime root.
         let mut target = DpeHandleRecord::default();
         dpe_store
             .read_attestation_target(&mut target)
-            .map_err(|_| MeasurementApiError::InvalidPreservedState)?;
+            .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
         if target.fw_id != MCU_RT_FW_ID {
-            return Err(MeasurementApiError::InvalidPreservedState);
+            return Err(MeasurementApiError::InvalidDpeHandleStoreState);
         }
 
         Ok(())
     }
 
+    /// Return the DPE leaf certificate length for the configured attestation
+    /// target and persist the rotated target handle returned by DPE.
+    pub async fn leaf_cert_size<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        key_label: &[u8; DPE_LABEL_LEN],
+    ) -> MeasurementApiResult<usize> {
+        let target = self.read_attestation_target_record()?;
+        let (next_handle, cert_size) =
+            dpe_certify_key_cert_size(alloc, Some(&target.context_handle), key_label)
+                .await
+                .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+        self.write_attestation_target_handle(target, next_handle)?;
+        Ok(cert_size)
+    }
+
+    /// Fetch a DPE leaf certificate slice for the configured attestation target
+    /// and persist the rotated target handle returned by DPE.
+    pub async fn leaf_cert_slice<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        key_label: &[u8; DPE_LABEL_LEN],
+        cert_offset: u32,
+        dst: &mut [u8],
+    ) -> MeasurementApiResult<usize> {
+        let target = self.read_attestation_target_record()?;
+        let (next_handle, bytes_written) = dpe_certify_key_cert_slice(
+            alloc,
+            Some(&target.context_handle),
+            key_label,
+            cert_offset,
+            dst,
+        )
+        .await
+        .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+        self.write_attestation_target_handle(target, next_handle)?;
+        Ok(bytes_written)
+    }
+
+    async fn leaf_pubkey<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        key_label: &[u8; DPE_LABEL_LEN],
+        pubkey_x: &mut [u8; 48],
+        pubkey_y: &mut [u8; 48],
+    ) -> MeasurementApiResult {
+        let target = self.read_attestation_target_record()?;
+        let next_handle = dpe_certify_key_pubkey(
+            alloc,
+            Some(&target.context_handle),
+            key_label,
+            pubkey_x,
+            pubkey_y,
+        )
+        .await
+        .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+        self.write_attestation_target_handle(target, next_handle)
+    }
+
+    /// Compute the COSE `kid` for the configured attestation target and
+    /// persist the rotated target handle returned by DPE.
+    pub async fn leaf_kid<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        key_label: &[u8; DPE_LABEL_LEN],
+        kid: &mut [u8; crate::ATTESTATION_P384_DIGEST_SIZE],
+    ) -> MeasurementApiResult {
+        let mut pubkey_x = [0u8; crate::ATTESTATION_P384_DIGEST_SIZE];
+        let mut pubkey_y = [0u8; crate::ATTESTATION_P384_DIGEST_SIZE];
+        self.leaf_pubkey(alloc, key_label, &mut pubkey_x, &mut pubkey_y)
+            .await?;
+        let ctx = alloc
+            .alloc(SHA_CONTEXT_SIZE)
+            .map_err(|_| MeasurementApiError::DigestFailed)?;
+        let mut state = sha_init(alloc, ctx, HashAlgo::Sha384, &pubkey_x)
+            .await
+            .map_err(|_| MeasurementApiError::DigestFailed)?;
+        sha_update(alloc, &mut state, &pubkey_y)
+            .await
+            .map_err(|_| MeasurementApiError::DigestFailed)?;
+        sha_finish(alloc, &mut state, kid)
+            .await
+            .map_err(|_| MeasurementApiError::DigestFailed)
+    }
+
+    /// Sign a digest with the configured attestation target and persist the
+    /// rotated target handle returned by DPE.
+    pub async fn sign<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        key_label: &[u8; DPE_LABEL_LEN],
+        digest: &[u8],
+        signature: &mut [u8],
+    ) -> MeasurementApiResult<usize> {
+        let target = self.read_attestation_target_record()?;
+        let (next_handle, signature_len) = dpe_sign_ecc_p384(
+            alloc,
+            Some(&target.context_handle),
+            key_label,
+            digest,
+            signature,
+        )
+        .await
+        .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+        self.write_attestation_target_handle(target, next_handle)?;
+        Ok(signature_len)
+    }
+
     /// Current attestation availability state.
     pub fn attestation_state(&self) -> AttestationState {
         self.state
+    }
+
+    fn ensure_active(&self) -> MeasurementApiResult {
+        if self.state == AttestationState::Active {
+            Ok(())
+        } else {
+            Err(MeasurementApiError::AttestationDisabled)
+        }
+    }
+
+    fn read_attestation_target_record(&self) -> MeasurementApiResult<DpeHandleRecord> {
+        self.ensure_active()?;
+        let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        let mut target = DpeHandleRecord::default();
+        dpe_store
+            .read_attestation_target(&mut target)
+            .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
+        Ok(target)
+    }
+
+    fn write_attestation_target_handle(
+        &mut self,
+        mut target: DpeHandleRecord,
+        next_handle: DpeContextHandle,
+    ) -> MeasurementApiResult {
+        target.context_handle = next_handle;
+        let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        dpe_store.write_record(target.fw_id, &target).map_err(|_| {
+            self.state = AttestationState::Error;
+            MeasurementApiError::StoreFailed
+        })
     }
 }
 

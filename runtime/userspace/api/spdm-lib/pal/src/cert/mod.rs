@@ -20,8 +20,7 @@ use caliptra_mcu_spdm_traits::{SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlg
 use core::sync::atomic::Ordering;
 use endorsement::slot_index;
 use mcu_caliptra_api_lite::{
-    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_get_cert_chain_chunk,
-    dpe_sign_ecc_p384, walk_dpe_chain, DpeChainSink, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
+    dpe_get_cert_chain_chunk, walk_dpe_chain, DpeChainSink, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
 };
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 
@@ -64,7 +63,12 @@ async fn validate_root_hash<M: MeasurementProvider>(
     let mut state =
         mcu_caliptra_api_lite::sha_init(pal, sha_buf, mcu_caliptra_api_lite::HashAlgo::Sha384, &[])
             .await?;
-    mcu_caliptra_api_lite::sha_update(pal, &mut state, &cert_chain[..root_cert_len]).await?;
+    mcu_caliptra_api_lite::sha_update(
+        pal,
+        &mut state,
+        checked_slice(cert_chain, 0, root_cert_len)?,
+    )
+    .await?;
     let mut digest = [0u8; 48];
     mcu_caliptra_api_lite::sha_finish(pal, &mut state, &mut digest).await?;
     if &digest != root_hash {
@@ -94,11 +98,13 @@ async fn validate_streamed_root_hash<M: MeasurementProvider>(
     let mut buf = [0u8; 256];
     while offset < first_cert_len {
         let n = (first_cert_len - offset).min(buf.len());
-        let read = managed.read_stream_chunk(offset, &mut buf[..n]).await?;
+        let read = managed
+            .read_stream_chunk(offset, checked_slice_mut(&mut buf, 0, n)?)
+            .await?;
         if read != n {
             return Err(INVARIANT);
         }
-        mcu_caliptra_api_lite::sha_update(pal, &mut state, &buf[..n]).await?;
+        mcu_caliptra_api_lite::sha_update(pal, &mut state, checked_slice(&buf, 0, n)?).await?;
         offset += n;
     }
     let mut digest = [0u8; 48];
@@ -115,7 +121,12 @@ async fn streamed_first_der_len(
     data_len: usize,
 ) -> McuResult<usize> {
     let mut header = [0u8; 6];
-    if data_len < 2 || managed.read_stream_chunk(0, &mut header[..2]).await? != 2 {
+    if data_len < 2
+        || managed
+            .read_stream_chunk(0, checked_slice_mut(&mut header, 0, 2)?)
+            .await?
+            != 2
+    {
         return Err(INVARIANT);
     }
     if header[0] != 0x30 {
@@ -129,15 +140,12 @@ async fn streamed_first_der_len(
         if len_len == 0 || len_len > 4 || data_len < 2 + len_len {
             return Err(INVARIANT);
         }
-        if managed
-            .read_stream_chunk(2, &mut header[2..2 + len_len])
-            .await?
-            != len_len
-        {
+        let len_buf = checked_slice_mut(&mut header, 2, len_len)?;
+        if managed.read_stream_chunk(2, len_buf).await? != len_len {
             return Err(INVARIANT);
         }
         let mut content_len = 0usize;
-        for &byte in &header[2..2 + len_len] {
+        for &byte in checked_slice(&header, 2, len_len)? {
             content_len = content_len.checked_shl(8).ok_or(INVARIANT)?;
             content_len = content_len.checked_add(byte as usize).ok_or(INVARIANT)?;
         }
@@ -353,7 +361,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 .read(
                     SpdmPalAsymAlgo::EccP384,
                     cur_offset,
-                    &mut dst[written..want],
+                    checked_slice_mut(dst, written, want - written)?,
                 )
                 .await
                 .map_err(|_| INVARIANT)?;
@@ -372,7 +380,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             let got = dpe_get_cert_chain_chunk(
                 self,
                 dpe_off as u32,
-                &mut dst[written..written + dpe_take],
+                checked_slice_mut(dst, written, dpe_take)?,
             )
             .await?;
             if got != dpe_take {
@@ -386,13 +394,14 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         if cur_offset >= dpe_end && written < want {
             let leaf_off = cur_offset - dpe_end;
             let leaf_take = (leaf_len - leaf_off).min(want - written);
-            let got = dpe_certify_key_cert_slice(
-                self,
+            let got = caliptra_mcu_measurement_api::leaf_cert_slice(
+                self.allocator,
                 &DPE_LEAF_LABEL,
                 leaf_off as u32,
-                &mut dst[written..written + leaf_take],
+                checked_slice_mut(dst, written, leaf_take)?,
             )
-            .await?;
+            .await
+            .map_err(|_| INTERNAL_BUG)?;
             if got != leaf_take {
                 return Err(INTERNAL_BUG);
             }
@@ -410,7 +419,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         signature: &mut [u8],
     ) -> McuResult<usize> {
         let _idx = slot_index(slot).ok_or(INVARIANT)?;
-        dpe_sign_ecc_p384(self, &DPE_LEAF_LABEL, digest, signature).await
+        caliptra_mcu_measurement_api::sign(self.allocator, &DPE_LEAF_LABEL, digest, signature)
+            .await
+            .map_err(|_| INTERNAL_BUG)
     }
 
     #[cfg(feature = "set-certificate")]
@@ -690,7 +701,20 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 /// reading only its fixed response header. Deterministic, so
 /// subsequent calls produce identical sizes.
 async fn probe_leaf_len<M: MeasurementProvider>(pal: &McuSpdmPal<M>) -> McuResult<usize> {
-    dpe_certify_key_cert_size(pal, &DPE_LEAF_LABEL).await
+    caliptra_mcu_measurement_api::leaf_cert_size(pal.allocator, &DPE_LEAF_LABEL)
+        .await
+        .map_err(|_| INTERNAL_BUG)
+}
+
+#[cfg(any(test, feature = "set-certificate"))]
+fn checked_slice(src: &[u8], offset: usize, len: usize) -> McuResult<&[u8]> {
+    let end = offset.checked_add(len).ok_or(INVARIANT)?;
+    src.get(offset..end).ok_or(INVARIANT)
+}
+
+fn checked_slice_mut(src: &mut [u8], offset: usize, len: usize) -> McuResult<&mut [u8]> {
+    let end = offset.checked_add(len).ok_or(INVARIANT)?;
+    src.get_mut(offset..end).ok_or(INVARIANT)
 }
 
 /// Return the total encoded length of the first DER SEQUENCE in `buf`.
@@ -712,7 +736,7 @@ fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
             return None;
         }
         let mut content = 0usize;
-        for &byte in &buf[2..2 + n] {
+        for &byte in buf.get(2..2 + n)? {
             content = content.checked_shl(8)?;
             content = content.checked_add(byte as usize)?;
         }
