@@ -7,7 +7,8 @@
 //! 2. DPE device chain (IDevID → RT alias, from Caliptra Core)
 //! 3. DPE leaf certificate (CertifyKey, fetched on demand)
 //!
-//! Managed slots store the endorsement/root portion installed by SET_CERTIFICATE.
+//! Managed AliasCert slots store the Owner endorsement chain installed by
+//! SET_CERTIFICATE and expose it followed by the FMC/RT alias and DPE leaf tail.
 //! [`SlotEndorsement`] dispatches to `ReadOnlyEndorsement` (slot 0) or
 //! `ManagedEndorsement` (slots 1-2) without dynamic dispatch.
 
@@ -17,6 +18,7 @@ pub mod store;
 use super::measurements::MeasurementProvider;
 use super::*;
 use caliptra_mcu_spdm_traits::{SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo};
+use core::ops::Range;
 use core::sync::atomic::Ordering;
 use endorsement::slot_index;
 use mcu_caliptra_api_lite::{
@@ -34,6 +36,7 @@ pub const DPE_LEAF_LABEL: [u8; DPE_LABEL_LEN] = [
 
 /// Default KeyUsageMask for all Caliptra slots.
 const DEFAULT_KEY_USAGE_MASK: u16 = 0x0003;
+const DPE_IDEVID_AND_LDEVID_CERT_COUNT: usize = 2;
 
 /// SPDM CertModel AliasCert.
 #[cfg(feature = "set-certificate")]
@@ -48,6 +51,98 @@ struct CountSink;
 impl DpeChainSink for CountSink {
     async fn on_chunk(&mut self, _: &[u8]) -> McuResult<()> {
         Ok(())
+    }
+}
+
+/// Consumes complete DER certificates from the start of a streamed chain.
+struct DpePrefixScanner {
+    certs_left: usize,
+    cert_bytes_left: usize,
+    skip_len: usize,
+    header: [u8; 6],
+    header_len: usize,
+}
+
+impl DpePrefixScanner {
+    fn new(certs: usize) -> Self {
+        Self {
+            certs_left: certs,
+            cert_bytes_left: 0,
+            skip_len: 0,
+            header: [0; 6],
+            header_len: 0,
+        }
+    }
+
+    fn consume(&mut self, chunk: &[u8]) -> McuResult<()> {
+        let mut pos = 0usize;
+        while self.certs_left > 0 && pos < chunk.len() {
+            if self.cert_bytes_left > 0 {
+                let take = self.cert_bytes_left.min(chunk.len() - pos);
+                self.cert_bytes_left -= take;
+                self.skip_len = self.skip_len.checked_add(take).ok_or(INVARIANT)?;
+                pos += take;
+                if self.cert_bytes_left == 0 {
+                    self.certs_left -= 1;
+                }
+                continue;
+            }
+
+            if self.header_len == self.header.len() {
+                return Err(INVARIANT);
+            }
+            self.header[self.header_len] = chunk[pos];
+            self.header_len += 1;
+            self.skip_len = self.skip_len.checked_add(1).ok_or(INVARIANT)?;
+            pos += 1;
+
+            if let Some(cert_len) = der_first_seq_len(&self.header[..self.header_len]) {
+                self.cert_bytes_left = cert_len.checked_sub(self.header_len).ok_or(INVARIANT)?;
+                self.header_len = 0;
+                if self.cert_bytes_left == 0 {
+                    self.certs_left -= 1;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl DpeChainSink for DpePrefixScanner {
+    async fn on_chunk(&mut self, chunk: &[u8]) -> McuResult<()> {
+        self.consume(chunk)
+    }
+}
+
+struct ChainLayout {
+    endorsement: Range<usize>,
+    dpe: Range<usize>,
+    leaf: Range<usize>,
+    dpe_source_offset: usize,
+}
+
+impl ChainLayout {
+    fn new(
+        endorsement_len: usize,
+        full_dpe_len: usize,
+        dpe_source_offset: usize,
+        leaf_len: usize,
+    ) -> McuResult<Self> {
+        let dpe_len = full_dpe_len
+            .checked_sub(dpe_source_offset)
+            .ok_or(INVARIANT)?;
+        let dpe_end = endorsement_len.checked_add(dpe_len).ok_or(INVARIANT)?;
+        let leaf_end = dpe_end.checked_add(leaf_len).ok_or(INVARIANT)?;
+        Ok(Self {
+            endorsement: 0..endorsement_len,
+            dpe: endorsement_len..dpe_end,
+            leaf: dpe_end..leaf_end,
+            dpe_source_offset,
+        })
+    }
+
+    fn total_len(&self) -> usize {
+        self.leaf.end
     }
 }
 
@@ -207,6 +302,14 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .endorsement
             .capacity(SpdmPalAsymAlgo::EccP384)
             .map_err(|_| INVARIANT)?;
+        let total = if cert_slot.is_writable() {
+            let (dpe_len, dpe_skip_len) =
+                dpe_chain_len_and_skip_prefix(self, DPE_IDEVID_AND_LDEVID_CERT_COUNT).await?;
+            let leaf_len = probe_leaf_len(self).await?;
+            ChainLayout::new(capacity, dpe_len, dpe_skip_len, leaf_len)?.total_len()
+        } else {
+            capacity
+        };
 
         // 2. POST-CHECK: Verify Slot remained unlocked during the intermediate async .await points
         if self.cert_store.cert_slots()[idx]
@@ -216,7 +319,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             return Err(INVARIANT);
         }
 
-        Ok(capacity)
+        Ok(total)
     }
 
     #[inline]
@@ -280,13 +383,15 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .endorsement
             .size(SpdmPalAsymAlgo::EccP384)
             .map_err(|_| INVARIANT)?;
-        let dpe_len = walk_dpe_chain(self, &mut CountSink).await?;
+        let dpe_skip = if cert_slot.is_writable() {
+            DPE_IDEVID_AND_LDEVID_CERT_COUNT
+        } else {
+            0
+        };
+        let (dpe_len, dpe_skip_len) = dpe_chain_len_and_skip_prefix(self, dpe_skip).await?;
         let leaf_len = probe_leaf_len(self).await?;
         self.cert_store.set_cached_leaf_len(slot, leaf_len as u32);
-        let total = (slot_chain_len as u32)
-            .checked_add(dpe_len)
-            .and_then(|n| n.checked_add(leaf_len as u32))
-            .ok_or(INVARIANT)? as usize;
+        let total = ChainLayout::new(slot_chain_len, dpe_len, dpe_skip_len, leaf_len)?.total_len();
 
         // 2. POST-CHECK: Verify Slot remained unlocked during the intermediate async .await points
         if self.cert_store.cert_slots()[idx]
@@ -340,7 +445,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .size(SpdmPalAsymAlgo::EccP384)
             .map_err(|_| INVARIANT)?;
         let want = (total - offset).min(dst.len());
-        // Composed chain layout: [endorsement] [DPE chain] [leaf cert]
+        // Read-only layout: [endorsement] [DPE chain] [leaf cert].
+        // Managed AliasCert layout: [Owner Root + Endorsed LDevID]
+        // [DPE chain without Caliptra IDevID/LDevID] [leaf cert].
         let endorsement_len = slot_chain_len;
         let leaf_len = match self.cert_store.cached_leaf_len(slot) {
             Some(n) => n as usize,
@@ -350,12 +457,21 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 n
             }
         };
-        let dpe_len = total - endorsement_len - leaf_len;
+        let dpe_skip = if cert_slot.is_writable() {
+            DPE_IDEVID_AND_LDEVID_CERT_COUNT
+        } else {
+            0
+        };
+        let (full_dpe_len, dpe_skip_len) = dpe_chain_len_and_skip_prefix(self, dpe_skip).await?;
+        let layout = ChainLayout::new(endorsement_len, full_dpe_len, dpe_skip_len, leaf_len)?;
+        if total != layout.total_len() {
+            return Err(INVARIANT);
+        }
         let mut written = 0usize;
         let mut cur_offset = offset;
 
         // 1. Endorsement region
-        if cur_offset < endorsement_len && written < want {
+        if cur_offset < layout.endorsement.end && written < want {
             let n = cert_slot
                 .endorsement
                 .read(
@@ -370,11 +486,12 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         }
 
         // 2. DPE-chain region
-        let dpe_start = endorsement_len;
-        let dpe_end = dpe_start + dpe_len;
-        while cur_offset < dpe_end && written < want {
-            let dpe_off = cur_offset - dpe_start;
-            let dpe_take = (dpe_end - cur_offset)
+        while cur_offset < layout.dpe.end && written < want {
+            let dpe_off = layout
+                .dpe_source_offset
+                .checked_add(cur_offset.checked_sub(layout.dpe.start).ok_or(INVARIANT)?)
+                .ok_or(INVARIANT)?;
+            let dpe_take = (layout.dpe.end - cur_offset)
                 .min(want - written)
                 .min(DPE_MAX_CHUNK_SIZE);
             let got = dpe_get_cert_chain_chunk(
@@ -391,9 +508,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         }
 
         // 3. Leaf-cert region
-        if cur_offset >= dpe_end && written < want {
-            let leaf_off = cur_offset - dpe_end;
-            let leaf_take = (leaf_len - leaf_off).min(want - written);
+        if cur_offset >= layout.leaf.start && written < want {
+            let leaf_off = cur_offset - layout.leaf.start;
+            let leaf_take = (layout.leaf.end - cur_offset).min(want - written);
             let got = caliptra_mcu_measurement_api::leaf_cert_slice(
                 self.allocator,
                 &DPE_LEAF_LABEL,
@@ -717,8 +834,23 @@ fn checked_slice_mut(src: &mut [u8], offset: usize, len: usize) -> McuResult<&mu
     src.get_mut(offset..end).ok_or(INVARIANT)
 }
 
+async fn dpe_chain_len_and_skip_prefix<M: MeasurementProvider>(
+    pal: &McuSpdmPal<M>,
+    skip_certs: usize,
+) -> McuResult<(usize, usize)> {
+    if skip_certs == 0 {
+        return Ok((walk_dpe_chain(pal, &mut CountSink).await? as usize, 0));
+    }
+
+    let mut sink = DpePrefixScanner::new(skip_certs);
+    let total = walk_dpe_chain(pal, &mut sink).await? as usize;
+    if sink.certs_left != 0 || sink.skip_len > total {
+        return Err(INVARIANT);
+    }
+    Ok((total, sink.skip_len))
+}
+
 /// Return the total encoded length of the first DER SEQUENCE in `buf`.
-#[cfg(any(test, feature = "set-certificate"))]
 fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
     if buf.len() < 2 || buf[0] != 0x30 {
         return None;
@@ -745,12 +877,12 @@ fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
         }
         2usize.checked_add(n)?.checked_add(content)?
     };
-    (total <= buf.len()).then_some(total)
+    Some(total)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::der_first_seq_len;
+    use super::{der_first_seq_len, DpePrefixScanner};
 
     #[test]
     fn der_first_sequence_length() {
@@ -763,5 +895,16 @@ mod tests {
         assert_eq!(der_first_seq_len(&[]), None);
         assert_eq!(der_first_seq_len(&[0x31, 0x01]), None);
         assert_eq!(der_first_seq_len(&[0x30]), None);
+    }
+
+    #[test]
+    fn dpe_prefix_scanner_handles_split_headers_and_bodies() {
+        let mut scanner = DpePrefixScanner::new(2);
+        scanner.consume(&[0x30]).unwrap();
+        scanner.consume(&[0x03, 1]).unwrap();
+        scanner.consume(&[2, 3, 0x30, 0x02, 4, 5, 9]).unwrap();
+
+        assert_eq!(scanner.certs_left, 0);
+        assert_eq!(scanner.skip_len, 9);
     }
 }
