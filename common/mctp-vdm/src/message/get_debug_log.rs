@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Get Debug Log command (0x05)
+//! Get Debug Log command (0x03)
 //!
 //! Drains entries from the MCU debug log.
 

@@ -68,7 +68,7 @@ toml.workspace = true
 [features]
 default = ["all-features"]
 # Caliptra MCU features
-all-features = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe", "userspace-log"]
+all-features = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe", "userspace-log", "mctp-vdm-service"]
 spdm = ["mcu-mbox-service"]
 streaming-boot = []
 flash-boot = []
