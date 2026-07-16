@@ -85,7 +85,7 @@ macro_rules! static_init_fs_test {
                     caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
                     caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
                 ),
-                caliptra_mcu_flash_ctrl_emulator::ERASE_SIZE
+                caliptra_mcu_flash_ctrl_emulator::ERASE_SECTOR_SIZE
             )
         );
 
@@ -116,7 +116,7 @@ fn test_single_flash_storage_erase(
     flash_storage_drv.set_client(test_cb);
 
     {
-        let erase_size = caliptra_mcu_flash_ctrl_emulator::ERASE_SIZE;
+        let erase_size = caliptra_mcu_flash_ctrl_emulator::ERASE_SECTOR_SIZE;
 
         // Erase two sectors [0..TEST_BUF_LEN)
         let erase_len = TEST_BUF_LEN;

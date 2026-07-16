@@ -24,7 +24,7 @@ pub const SECONDARY_FLASH_CTRL_BASE: StaticRef<PrimaryFlashCtrl> =
     unsafe { StaticRef::new(SECONDARY_FLASH_CTRL_ADDR as *const PrimaryFlashCtrl) };
 
 pub const PAGE_SIZE: usize = 256;
-pub const ERASE_SIZE: usize = 4096;
+pub const ERASE_SECTOR_SIZE: usize = 4096;
 pub const FLASH_MAX_PAGES: usize = 64 * 1024 * 1024 / PAGE_SIZE;
 
 #[derive(Debug, PartialEq)]

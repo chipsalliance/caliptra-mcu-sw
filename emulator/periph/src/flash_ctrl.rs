@@ -104,7 +104,7 @@ impl DummyFlashCtrl {
     pub const PAGE_SIZE: usize = 256;
 
     /// Erase sector size. The minimum erase unit on real flash hardware.
-    pub const ERASE_SIZE: usize = 4096;
+    pub const ERASE_SECTOR_SIZE: usize = 4096;
 
     /// Maximum number of pages in the flash storage connected to the controller.
     /// This is a dummy value, the actual value should be set based on the flash storage size.
@@ -366,13 +366,13 @@ impl DummyFlashCtrl {
         }
 
         // Calculate the sector-aligned offset. Real flash hardware erases at
-        // sector (ERASE_SIZE) granularity, so we erase the entire sector
+        // sector (ERASE_SECTOR_SIZE) granularity, so we erase the entire sector
         // containing the given page.
         let byte_offset = (page_num as usize) * Self::PAGE_SIZE;
-        let sector_start = byte_offset - (byte_offset % Self::ERASE_SIZE);
+        let sector_start = byte_offset - (byte_offset % Self::ERASE_SECTOR_SIZE);
         let file = self.file.as_mut().unwrap();
         file.seek(std::io::SeekFrom::Start(sector_start as u64))
-            .and_then(|_| file.write_all(&vec![0xFF; Self::ERASE_SIZE]))
+            .and_then(|_| file.write_all(&vec![0xFF; Self::ERASE_SECTOR_SIZE]))
             .map_err(|_| FlashOpError::EraseError)?;
 
         Ok(())
