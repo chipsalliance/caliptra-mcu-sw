@@ -35,6 +35,7 @@ use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyRes
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
+use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 use embassy_executor::Spawner;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
@@ -102,6 +103,18 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
     }
 
     pub async fn start(&mut self) -> Result<(), ErrorCode> {
+        // Store hooks in the shared static so that the PLDM FD ops can invoke
+        // on_fw_update_request when the UA sends an UpdateComponent request.
+        if let Some(hooks) = self.hooks {
+            // Safety: the hooks reference is valid for the duration of start(),
+            // which awaits until the entire firmware update completes.
+            let hooks_static: &'static dyn FirmwareUpdateHooks =
+                unsafe { core::mem::transmute(hooks) };
+            pldm_context::FW_UPDATE_HOOKS.lock(|h| {
+                *h.borrow_mut() = Some(hooks_static);
+            });
+        }
+
         // Download firmware image to staging memory
         pldm_client::initialize_pldm(
             self.spawner,
@@ -899,6 +912,15 @@ pub trait StagingMemory: core::fmt::Debug + Send + Sync {
 /// override the hooks they care about.
 #[async_trait]
 pub trait FirmwareUpdateHooks: Send + Sync {
+    /// Called when a firmware update request is received, before any flash I/O occurs.
+    ///
+    /// Platforms can implement this to apply rate-limiting or other policies that
+    /// protect flash from wear-out attacks. Return `Ok(())` to allow the update
+    /// to proceed, or `Err` to reject it.
+    fn on_fw_update_request(&self, _component: &FirmwareComponent) -> Result<(), ErrorCode> {
+        Ok(())
+    }
+
     /// Called before updating the Caliptra firmware. Returning an error aborts the update.
     async fn pre_caliptra_activation(&self) -> Result<(), ErrorCode> {
         Ok(())

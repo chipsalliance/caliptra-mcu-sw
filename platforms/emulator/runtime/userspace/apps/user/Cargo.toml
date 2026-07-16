@@ -149,6 +149,7 @@ test-defmt-logging-vdm = ["userspace-log", "mcu-mbox-test-handlers", "mctp-vdm-s
 test-flash-based-boot = ["flash-boot"]
 test-firmware-activate = ["firmware-update"]
 test-firmware-update-flash = ["flash-boot", "firmware-update"]
+test-firmware-update-reject = ["flash-boot", "firmware-update"]
 test-firmware-update-streaming = []
 test-firmware-v2 = []
 test-streaming-boot-flash-write-back = ["streaming-boot", "firmware-update"]

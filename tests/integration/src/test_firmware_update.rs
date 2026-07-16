@@ -890,6 +890,25 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// Test that the firmware update is rejected when the on_fw_update_request hook returns Err.
+    /// This exercises the flash wear-out protection mechanism (issue #1528).
+    #[test]
+    fn test_firmware_update_flash_reject() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let feature: &'static str = "test-firmware-update-reject";
+        env::set_var(
+            "CPTRA_EMULATOR_SS_MCI_OFFSET",
+            format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
+        );
+        let i3c_port: u32 = PortPicker::new().random(true).pick().unwrap().into();
+        let opts = create_firmware_update_test_options_build(feature, true, i3c_port);
+        let opts = fast_update_options(&opts);
+        let test = run_runtime_with_options(&opts);
+        // The UA exits with 0 when the FD rejects the component update
+        assert_eq!(0, test);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     #[test]
     fn test_firmware_update_flash_missing_caliptra_image() {
         let lock = TEST_LOCK.lock().unwrap();
