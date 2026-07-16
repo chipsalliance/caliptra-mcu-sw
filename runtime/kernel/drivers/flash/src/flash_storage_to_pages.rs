@@ -53,12 +53,16 @@ pub struct FlashStorageToPages<'a, F: hil::flash::Flash + 'static> {
     remaining_length: Cell<usize>,
     /// Position in the user buffer.
     buffer_index: Cell<usize>,
-    /// Flag to indicate if the erase operation is done and write back is pending.
-    partial_erase_wb_pending: Cell<bool>,
+    /// Minimum erase granularity in bytes (e.g., 4096 for a 4 KiB sector).
+    erase_size: usize,
 }
 
 impl<'a, F: hil::flash::Flash> FlashStorageToPages<'a, F> {
-    pub fn new(driver: &'a F, buffer: &'static mut F::Page) -> FlashStorageToPages<'a, F> {
+    pub fn new(
+        driver: &'a F,
+        buffer: &'static mut F::Page,
+        erase_size: usize,
+    ) -> FlashStorageToPages<'a, F> {
         FlashStorageToPages {
             driver,
             client: OptionalCell::empty(),
@@ -69,7 +73,7 @@ impl<'a, F: hil::flash::Flash> FlashStorageToPages<'a, F> {
             length: Cell::new(0),
             remaining_length: Cell::new(0),
             buffer_index: Cell::new(0),
-            partial_erase_wb_pending: Cell::new(false),
+            erase_size,
         }
     }
 }
@@ -178,6 +182,22 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
             return Err(ErrorCode::BUSY);
         }
 
+        let erase_size = self.erase_size;
+
+        // Validate that the erase address is aligned to the erase size.
+        if address % erase_size != 0 {
+            return Err(ErrorCode::INVAL);
+        }
+
+        // Round length up to the next erase_size boundary. Real flash hardware
+        // cannot erase less than a full sector, so any request that doesn't end
+        // on a sector boundary will erase through the end of the last sector.
+        let aligned_length = if length == 0 {
+            0
+        } else {
+            length.div_ceil(erase_size) * erase_size
+        };
+
         self.page_buffer
             .take()
             .map_or(Err(ErrorCode::RESERVE), move |page_buffer| {
@@ -186,28 +206,28 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
                 self.state.set(State::Erase);
                 self.length.set(length);
 
-                if address % page_size == 0 && length >= page_size {
-                    // This erase is aligned to a page and we are erasing an entire page.
-                    self.address.set(address + page_size);
-                    self.remaining_length.set(length - page_size);
+                if aligned_length >= erase_size {
+                    // Erase one sector. The underlying driver erases erase_size bytes
+                    // when erase_page is called.
+                    self.address.set(address + erase_size);
+                    self.remaining_length.set(aligned_length - erase_size);
 
                     self.page_buffer.replace(page_buffer);
 
                     self.driver.erase_page(address / page_size)
                 } else {
-                    // This erase is non-page-aligned, so we need to do a read first.
-                    self.address.set(address);
-                    self.remaining_length.set(length);
-
-                    match self.driver.read_page(address / page_size, page_buffer) {
-                        Ok(()) => Ok(()),
-                        Err((error_code, page_buffer)) => {
-                            self.page_buffer.replace(page_buffer);
-                            Err(error_code)
-                        }
-                    }
+                    // Nothing to erase (length == 0).
+                    self.page_buffer.replace(page_buffer);
+                    self.state.set(State::Idle);
+                    self.client
+                        .map(move |client| client.erase_done(self.length.get()));
+                    Ok(())
                 }
             })
+    }
+
+    fn erase_size(&self) -> usize {
+        self.erase_size
     }
 }
 
@@ -287,17 +307,9 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
             }
 
             State::Erase => {
-                // A read was done because the operation is not page aligned on either or both ends.
-                // Perform erase after read.
-                let page_size = page_buffer.as_mut().len();
-                // Which page was read and which is going to be erased
-                let page_number = self.address.get() / page_size;
-
+                // Erase operations are now required to be erase-size-aligned,
+                // so this state should not be reached.
                 self.page_buffer.replace(page_buffer);
-
-                // set a flag write_back pending
-                self.partial_erase_wb_pending.set(true);
-                let _ = self.driver.erase_page(page_number);
             }
             _ => {}
         }
@@ -352,34 +364,9 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
             }
 
             State::Erase => {
-                // After an erase, the operation could be done, need to do another erase, or need to
-                // do a read.
-                let page_size = page_buffer.as_mut().len();
-                if self.remaining_length.get() == 0 {
-                    // Done!
-                    self.page_buffer.replace(page_buffer);
-                    self.state.set(State::Idle);
-                    self.client
-                        .map(move |client| client.erase_done(self.length.get()));
-                } else if self.remaining_length.get() >= page_size {
-                    // Erase another page.
-                    let page_number = self.address.get() / page_size;
-
-                    self.remaining_length.subtract(page_size);
-                    self.address.add(page_size);
-
-                    self.page_buffer.replace(page_buffer);
-
-                    let _ = self.driver.erase_page(page_number);
-                } else {
-                    // Erase a partial page. Do read first.
-                    if let Err((_, page_buffer)) = self
-                        .driver
-                        .read_page(self.address.get() / page_size, page_buffer)
-                    {
-                        self.page_buffer.replace(page_buffer);
-                    }
-                }
+                // Erase operations are now required to be erase-size-aligned,
+                // so write_complete during erase should not occur.
+                self.page_buffer.replace(page_buffer);
             }
             _ => {}
         }
@@ -388,6 +375,7 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
     fn erase_complete(&self, _result: Result<(), hil::flash::Error>) {
         if let Some(page_buffer) = self.page_buffer.take() {
             let page_size = page_buffer.as_mut().len();
+            let erase_size = self.erase_size;
 
             if self.remaining_length.get() == 0 {
                 // Done!
@@ -395,45 +383,23 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                 self.state.set(State::Idle);
                 self.client
                     .map(move |client| client.erase_done(self.length.get()));
-            } else if self.partial_erase_wb_pending.get() {
-                // Write back the page
-                let page_index = self.address.get() % page_size;
-                // Length is either the rest of the page or how much is left.
-                let len = cmp::min(page_size - page_index, self.remaining_length.get());
-                // Which page was read and which is going to be written back to.
+            } else if self.remaining_length.get() >= erase_size {
+                // Erase another sector
                 let page_number = self.address.get() / page_size;
 
-                self.remaining_length.subtract(len);
-                self.address.add(len);
-
-                // Fill the rest of the page buffer with 0xFF.
-                page_buffer.as_mut()[page_index..(len + page_index)].fill(0xFF);
-
-                // Perform the write.
-                if let Err((_, page_buffer)) = self.driver.write_page(page_number, page_buffer) {
-                    self.page_buffer.replace(page_buffer);
-                }
-
-                // Clear the flag
-                self.partial_erase_wb_pending.set(false);
-            } else if self.remaining_length.get() >= page_size {
-                // Erase another page
-                let page_number = self.address.get() / page_size;
-
-                self.remaining_length.subtract(page_size);
-                self.address.add(page_size);
+                self.remaining_length.subtract(erase_size);
+                self.address.add(erase_size);
 
                 self.page_buffer.replace(page_buffer);
 
                 let _ = self.driver.erase_page(page_number);
             } else {
-                // Erase a partial page. Do read first.
-                if let Err((_, page_buffer)) = self
-                    .driver
-                    .read_page(self.address.get() / page_size, page_buffer)
-                {
-                    self.page_buffer.replace(page_buffer);
-                }
+                // Remaining length is less than erase_size but non-zero.
+                // This should not happen because erase() validates alignment.
+                self.page_buffer.replace(page_buffer);
+                self.state.set(State::Idle);
+                self.client
+                    .map(move |client| client.erase_done(self.length.get()));
             }
         } else {
             panic!("internal page buffer must have been set for erase operation");

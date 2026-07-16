@@ -19,7 +19,7 @@ use kernel::{static_buf, static_init};
 ))]
 use crate::board::run_kernel_op;
 
-pub const TEST_BUF_LEN: usize = 2048;
+pub const TEST_BUF_LEN: usize = 8192;
 
 pub struct IoState {
     read_bytes: usize,
@@ -84,7 +84,8 @@ macro_rules! static_init_fs_test {
                 static_init!(
                     caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
                     caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
-                )
+                ),
+                caliptra_mcu_flash_ctrl_emulator::ERASE_SIZE
             )
         );
 
@@ -115,7 +116,9 @@ fn test_single_flash_storage_erase(
     flash_storage_drv.set_client(test_cb);
 
     {
-        // Erase the entire test range [0..TEST_BUF_LEN)
+        let erase_size = caliptra_mcu_flash_ctrl_emulator::ERASE_SIZE;
+
+        // Erase two sectors [0..TEST_BUF_LEN)
         let erase_len = TEST_BUF_LEN;
         test_cb.reset();
         assert!(flash_storage_drv.erase(0, erase_len).is_ok());
@@ -142,10 +145,10 @@ fn test_single_flash_storage_erase(
 
         test_cb.reset();
 
-        // Test non-page-aligned erase operation.
-        // Make sure it is within the test range of [0..TEST_BUF_LEN) that is written to flash.
-        let length: usize = 1600;
-        let offset: usize = 50;
+        // Test erase-size-aligned erase operation.
+        // Erase the second sector while keeping the first sector intact.
+        let offset: usize = erase_size;
+        let length: usize = erase_size;
 
         assert!(flash_storage_drv.erase(offset, length).is_ok());
 
@@ -154,6 +157,19 @@ fn test_single_flash_storage_erase(
 
         assert_eq!(test_cb.io_state.borrow().erase_bytes, length);
         test_cb.reset();
+
+        // Verify that non-erase-aligned address returns INVAL
+        assert_eq!(
+            flash_storage_drv.erase(50, erase_size),
+            Err(kernel::ErrorCode::INVAL)
+        );
+
+        // Non-aligned length is accepted (rounded up to next erase_size boundary)
+        // but non-aligned address is still rejected.
+        assert_eq!(
+            flash_storage_drv.erase(100, 100),
+            Err(kernel::ErrorCode::INVAL)
+        );
 
         // Read the entire test range to verify data integrity after erase operation.
         let read_in_buf = test_cb.read_in_buf.take().unwrap();
