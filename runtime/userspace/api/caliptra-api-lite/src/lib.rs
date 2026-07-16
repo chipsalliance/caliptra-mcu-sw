@@ -78,7 +78,10 @@ pub use auth_stash::{
     AUTHORIZE_AND_STASH_CONTEXT_SIZE, AUTHORIZE_AND_STASH_MEASUREMENT_SIZE,
 };
 #[cfg(feature = "mailbox-io")]
-pub use cert::{get_attested_csr_ecc384, get_attested_csr_mldsa87, populate_idev_ecc384_cert};
+pub use cert::{
+    get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
+    populate_idev_ecc384_cert,
+};
 #[cfg(feature = "mailbox-io")]
 pub use debug_unlock::{
     request_debug_unlock_challenge, DEBUG_UNLOCK_CHALLENGE_LEN,

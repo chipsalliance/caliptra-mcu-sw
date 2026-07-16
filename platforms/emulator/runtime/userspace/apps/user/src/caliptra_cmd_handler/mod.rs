@@ -5,8 +5,9 @@ pub(crate) mod device_ops;
 
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, FirmwareVersion, GetLogResult, LogType,
+    DeviceCapabilities, FirmwareVersion, GetLogResult, LogType, MAX_FW_VERSION_LEN,
 };
+use caliptra_mcu_mbox_common::config;
 use mcu_caliptra_api_lite::ApiAlloc;
 
 pub struct CaliptraCmdBackend;
@@ -14,17 +15,33 @@ pub struct CaliptraCmdBackend;
 impl CaliptraCmdHandler for CaliptraCmdBackend {
     async fn get_firmware_version(
         &self,
-        _index: u32,
-        _version: &mut FirmwareVersion,
+        index: u32,
+        version: &mut FirmwareVersion,
     ) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
+        let bytes = config::TEST_FIRMWARE_VERSIONS
+            .get(index as usize)
+            .ok_or(CaliptraCompletionCode::InvalidParameter)?
+            .as_bytes();
+        if bytes.len() > MAX_FW_VERSION_LEN {
+            return Err(CaliptraCompletionCode::InvalidPayloadSize);
+        }
+        version.ver_str[..bytes.len()].copy_from_slice(bytes);
+        version.len = bytes.len();
+        Ok(())
     }
 
     async fn get_device_capabilities(
         &self,
-        _capabilities: &mut DeviceCapabilities,
+        capabilities: &mut DeviceCapabilities,
     ) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
+        let caps = &config::TEST_DEVICE_CAPABILITIES;
+        capabilities.caliptra_rt = caps.caliptra_rt;
+        capabilities.caliptra_fmc = caps.caliptra_fmc;
+        capabilities.caliptra_rom = caps.caliptra_rom;
+        capabilities.mcu_rt = caps.mcu_rt;
+        capabilities.mcu_rom = caps.mcu_rom;
+        capabilities.reserved = caps.reserved;
+        Ok(())
     }
 
     async fn export_attested_csr<Alloc: ApiAlloc>(
@@ -36,6 +53,15 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         device_ops::export_attested_csr(device_key_id, algorithm, nonce, csr_buf).await
+    }
+
+    async fn export_idevid_csr<Alloc: ApiAlloc>(
+        &self,
+        _alloc: &Alloc,
+        algorithm: u32,
+        csr_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        device_ops::export_idevid_csr(algorithm, csr_buf).await
     }
 
     /// Drain entries of `log_type` from the backing store.

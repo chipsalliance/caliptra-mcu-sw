@@ -13,9 +13,9 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_mbox_common::messages::HybridSignature;
 use mcu_caliptra_api_lite::{
-    fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, request_debug_unlock_challenge,
-    rng_generate, ApiAlloc, McuErrorCode, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
-    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
+    fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
+    request_debug_unlock_challenge, rng_generate, ApiAlloc, McuErrorCode,
+    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
 use zerocopy::IntoBytes;
 
@@ -78,6 +78,17 @@ pub async fn export_attested_csr(
         _ => return Err(CaliptraCompletionCode::InvalidParameter),
     };
     result.map_err(map_mcu_err)
+}
+
+pub async fn export_idevid_csr(algorithm: u32, out: &mut [u8]) -> CaliptraCmdResult<usize> {
+    match algorithm {
+        ALGO_ECC_P384 => get_idev_csr_ecc384(out)
+            .await
+            .map_err(map_mcu_err)?
+            .ok_or(CaliptraCompletionCode::InvalidState),
+        ALGO_MLDSA87 => Err(CaliptraCompletionCode::UnsupportedOperation),
+        _ => Err(CaliptraCompletionCode::InvalidParameter),
+    }
 }
 
 pub async fn generate_auth_challenge<A: ApiAlloc>(alloc: &A) -> CaliptraCmdResult<[u8; 32]> {

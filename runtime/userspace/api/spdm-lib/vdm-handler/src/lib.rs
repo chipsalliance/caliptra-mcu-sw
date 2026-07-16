@@ -6,7 +6,8 @@
 //! command codes, and request/response framing for each supported standards
 //! body — and implements the VDM backend used to route
 //! `VENDOR_DEFINED_REQUEST`s. The actual device operations are delegated to
-//! platform-supplied PAL hooks (e.g. [`iana::ocp::caliptra_vdm::CaliptraVdmCommands`]).
+//! platform-supplied PAL hooks (for example,
+//! [`iana::ocp::caliptra_vdm::CaliptraVdmStreamOps`]).
 //!
 //! Handling is organized by SPDM Standards Body ID:
 //!
@@ -20,7 +21,7 @@ pub mod pci_sig;
 
 /// Integrator-facing platform hook traits for supported VDM protocols.
 pub mod drivers {
-    pub use crate::iana::ocp::caliptra_vdm::CaliptraVdmCommands;
+    pub use crate::iana::ocp::caliptra_vdm::{CaliptraVdmAuthorization, CaliptraVdmStreamOps};
     pub use crate::pci_sig::ide_km::{IdeDriver, IdeDriverError, IdeDriverResult};
     pub use crate::pci_sig::tdisp::{TdispDriver, TdispDriverError, TdispDriverResult};
 }

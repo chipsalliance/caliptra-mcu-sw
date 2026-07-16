@@ -183,6 +183,17 @@ pub trait CaliptraCmdHandler {
         csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize>;
 
+    /// Exports an IDevID CSR (manufacturing mode only).
+    async fn export_idevid_csr<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        algorithm: u32,
+        csr_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let _ = (alloc, algorithm, csr_buf);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Requests a production debug unlock challenge.
     ///
     /// # Arguments
