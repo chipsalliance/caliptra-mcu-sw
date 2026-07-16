@@ -172,7 +172,7 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1, true)
             .await?;
         pldm_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2, false)
+            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2, true)
             .await?;
         // Close the PLDM session
         pldm_image_loader.finalize()?;
@@ -233,7 +233,7 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1, true)
             .await?;
         flash_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2, false)
+            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2, true)
             .await?;
         boot_config
             .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)

@@ -27,10 +27,10 @@ pub enum MeasurementApiError {
     DigestFailed = 0x0002,
     /// A DPE Handle Storage or Software PCR Storage operation failed.
     StoreFailed = 0x0003,
-    /// A DPE or mailbox command failed.
-    DpeMailboxFailed = 0x0004,
-    /// Preserved measurement state was missing or semantically invalid.
-    InvalidPreservedState = 0x0005,
+    /// A DPE command failed before producing a usable result.
+    DpeCommandFailed = 0x0004,
+    /// MCU-side DPE Handle Storage state was missing or semantically invalid.
+    InvalidDpeHandleStoreState = 0x0005,
     /// Attestation is disabled because measurement state is in an error state.
     AttestationDisabled = 0x0006,
 }
@@ -64,8 +64,8 @@ mod tests {
             (MeasurementApiError::InvalidManifest, 0x0001u16),
             (MeasurementApiError::DigestFailed, 0x0002),
             (MeasurementApiError::StoreFailed, 0x0003),
-            (MeasurementApiError::DpeMailboxFailed, 0x0004),
-            (MeasurementApiError::InvalidPreservedState, 0x0005),
+            (MeasurementApiError::DpeCommandFailed, 0x0004),
+            (MeasurementApiError::InvalidDpeHandleStoreState, 0x0005),
             (MeasurementApiError::AttestationDisabled, 0x0006),
         ] {
             let mcu: McuErrorCode = err.into();
