@@ -47,9 +47,11 @@ caliptra-mcu-mbox-common = { path = "../common/mcu-mbox" }
 # External dependencies
 SPDM-Utils = { git = "https://github.com/westerndigitalcorporation/spdm-utils.git", tag = "v0.7.1" }
 anyhow = "1.0.97"
+ciborium = "0.2"
 cargo_metadata = "0.18.1"
 cc = "1.0"
 cbindgen = "0.24"
+coset = "0.4.1"
 clap = { version = "4.5.23", features = [
     "cargo",
     "derive",
@@ -62,17 +64,20 @@ ecdsa = { version = "0.16.9", features = ["pem"] }
 defmt-decoder = "1"
 fips204 = "0.4.6"
 hex = "0.4.3"
+getrandom = "0.2"
 hmac = "0.12"
 caliptra-mcu-mctp-vdm-common = { path = "../common/mctp-vdm" }
 caliptra-mcu-testing-common = { path = "../common/testing" }
 p384 = "0.13.0"
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
-sha2 = "0.10"
+sha2 = { version = "0.10", features = ["oid"] }
 toml = "0.8.19"
 log = "0.4"
 simple_logger = "4"
 zerocopy = { version = "0.8.17", features = ["derive"] }
+x509-parser = { version = "0.15.1", features = ["verify"] }
+x509-cert = { version = "0.2.5", features = ["builder", "hazmat"] }
 
 [package]
 name = "caliptra-util-host"
