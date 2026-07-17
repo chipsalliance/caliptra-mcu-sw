@@ -154,3 +154,42 @@ set(new MCU-managed SoC/Auth Manifest image_metadata.fw_id) == set(cold_boot SOC
 ```
 
 This check protects hitless-update measurement state. The active SoC/Auth Manifest must not add a new SoC component after cold boot and must not remove a component that was initialized at cold boot. A partial update may update only a subset of component payloads, but the manifest that becomes active must still describe the full cold-boot SoC component set.
+
+## Owner-provided configuration layer
+
+Some integrations may also support an owner-provided SoC Manifest. The Owner SoC Manifest can introduce an owner-controlled firmware set that MCU Runtime loads and measures after the owner manifest is authenticated. This creates a second static configuration layer on top of the base configuration described above.
+
+The base configuration should measure and report the Owner SoC Manifest itself. If the Owner SoC Manifest is loaded outside the Caliptra Runtime SoC/Auth Manifest metadata path, the owner-manifest authentication flow must provide equivalent authorization before MCU Runtime accepts owner-provided firmware entries.
+
+After the Owner SoC Manifest is accepted, MCU Runtime can derive owner-layer configuration artifacts from it:
+
+| Owner-layer artifact | Purpose |
+| --- | --- |
+| Owner SoC firmware load list | Ordered `fw_id` list for owner-provided firmware components loaded by MCU Runtime. |
+| Owner Attestation Manifest | Attestation routing policy for owner-provided firmware components. |
+| Owner SoC Manifest identity | Digest or equivalent identity of the Owner SoC Manifest that authenticated the owner-layer firmware list and policy. |
+
+Preserved owner-layer measurement state must be bound to the accepted owner configuration:
+
+```text
+owner_measurement_policy_digest = SHA384(
+    owner_soc_manifest_identity ||
+    canonical_owner_attestation_manifest_bytes ||
+    canonical_ordered_owner_soc_image_load_list_bytes
+)
+```
+
+On hitless update, MCU Runtime can reuse preserved owner-layer measurement state only if the owner policy/topology digest remains compatible with the preserved state.
+
+The simplest compatibility rule is exact match: any change to the Owner SoC Manifest identity, Owner Attestation Manifest, or ordered owner firmware load list requires cold boot or owner-layer measurement reinitialization.
+
+If the architecture supports owner firmware list extension during hitless update, that extension must be explicit append-only compatibility:
+
+1. The new owner firmware load list must have the previously accepted list as an exact prefix.
+2. Existing owner `fw_id` entries must keep the same order.
+3. Existing owner Attestation Manifest entries must keep the same measurement handling, AK-target policy, and evidence policy.
+4. Existing entries must not be removed or reordered.
+5. New entries may only be appended.
+6. Appended entries must be measured and initialized before they are included in Evidence.
+
+Any violation of the append-only compatibility rules requires cold boot or owner-layer measurement reinitialization before preserved owner-layer state can be reused.
