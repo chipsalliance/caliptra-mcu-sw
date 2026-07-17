@@ -9,6 +9,7 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
 
+use super::FirmwareUpdateHooks;
 use super::StagingMemory;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -52,3 +53,8 @@ pub static DOWNLOAD_CTX: Mutex<CriticalSectionRawMutex, RefCell<DownloadCtx>> =
 
 pub static PLDM_STATE: Mutex<CriticalSectionRawMutex, RefCell<State>> =
     Mutex::new(RefCell::new(State::NotRunning));
+
+pub static FW_UPDATE_HOOKS: Mutex<
+    CriticalSectionRawMutex,
+    RefCell<Option<&'static dyn FirmwareUpdateHooks>>,
+> = Mutex::new(RefCell::new(None));

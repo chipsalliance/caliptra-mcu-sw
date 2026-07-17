@@ -69,6 +69,22 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
 
         #[async_trait::async_trait]
         impl FirmwareUpdateHooks for TestFwUpdateHooks {
+            fn on_fw_update_request(
+                &self,
+                _component: &caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent,
+            ) -> Result<(), ErrorCode> {
+                #[cfg(feature = "test-firmware-update-reject")]
+                {
+                    crate::log_info!(
+                        Console::<DefaultSyscalls>::writer(),
+                        "[FW Upd] Rejecting firmware update request"
+                    );
+                    return Err(ErrorCode::Fail);
+                }
+                #[cfg(not(feature = "test-firmware-update-reject"))]
+                Ok(())
+            }
+
             async fn pre_caliptra_activation(&self) -> Result<(), ErrorCode> {
                 self.pre_caliptra_called.store(true, Ordering::SeqCst);
                 Ok(())

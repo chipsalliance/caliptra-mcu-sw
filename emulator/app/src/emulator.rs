@@ -1151,6 +1151,19 @@ impl Emulator {
                         rerun_count: 0,
                     },
                 );
+            } else if test_feature == "test-firmware-update-reject" {
+                let pldm_fw_pkg = pldm_fw_pkg.unwrap();
+                PldmDaemon::run(
+                    pldm_socket,
+                    caliptra_mcu_pldm_ua::daemon::Options {
+                        caliptra_mcu_pldm_fw_pkg: Some(pldm_fw_pkg),
+                        discovery_sm_actions: caliptra_mcu_pldm_ua::discovery_sm::DefaultActions {},
+                        update_sm_actions: caliptra_mcu_pldm_ua::update_sm::ExitOnRejectActions {},
+                        fd_tid: 0x01,
+                        rerun_count: 0,
+                    },
+                )
+                .unwrap();
             } else if test_feature == "test-streaming-boot-flash-write-back" {
                 // Single daemon with two update cycles:
                 // first for streaming boot, then for firmware update write-back

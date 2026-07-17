@@ -1209,6 +1209,33 @@ impl StateMachineActions for DefaultActionsExitOnError {
     }
 }
 
+/// Custom actions that exit with success (code 0) when a component update is
+/// rejected by the FD.  Used by the `test-firmware-update-reject` integration
+/// test to verify that the `on_fw_update_request` hook can block an update.
+pub struct ExitOnRejectActions;
+impl StateMachineActions for ExitOnRejectActions {
+    fn on_update_component_response(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+        response: pldm_packet::update_component::UpdateComponentResponse,
+    ) -> Result<(), ()> {
+        ctx.instance_id = ctx.instance_id.wrapping_add(1);
+        if response.completion_code == PldmBaseCompletionCode::Success as u8
+            && response.comp_compatibility_resp
+                == ComponentCompatibilityResponse::CompCanBeUpdated as u8
+        {
+            debug!("UpdateComponent response success, start download");
+            ctx.event_queue
+                .send(PldmEvents::Update(Events::StartDownload))
+                .map_err(|_| ())?;
+            Ok(())
+        } else {
+            info!("Component update rejected by FD — test passed");
+            std::process::exit(0);
+        }
+    }
+}
+
 pub struct InnerContext<S: PldmSocket> {
     socket: S,
     pub caliptra_mcu_pldm_fw_pkg: FirmwareManifest,
