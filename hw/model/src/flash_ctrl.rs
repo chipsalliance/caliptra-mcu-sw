@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 const PAGE_SIZE: usize = 256;
+const ERASE_SIZE: usize = 4096;
 const NUM_PAGES: usize = (64 * 1024 * 1024) / PAGE_SIZE;
 const IO_COMPLETION_TIMEOUT_MS: u32 = 200;
 
@@ -136,10 +137,15 @@ impl ImaginaryFlashController {
             }
             FlashOp::Erase => {
                 if page_num < NUM_PAGES as u32 && page_size as usize == PAGE_SIZE {
-                    let erase_buf = vec![0xFFu8; PAGE_SIZE];
+                    // Erase at sector (ERASE_SIZE) granularity, matching real
+                    // flash hardware behavior where the minimum erase unit is
+                    // a sector (4 KiB), not a page (256 B).
+                    let byte_offset = page_num as usize * PAGE_SIZE;
+                    let sector_start = byte_offset - (byte_offset % ERASE_SIZE);
+                    let erase_buf = vec![0xFFu8; ERASE_SIZE];
                     let io_res = {
                         let mut file = self.flash_file.lock().unwrap();
-                        file.seek(std::io::SeekFrom::Start(page_num as u64 * PAGE_SIZE as u64))
+                        file.seek(std::io::SeekFrom::Start(sector_start as u64))
                             .and_then(|_| file.write_all(&erase_buf))
                     };
                     if io_res.is_ok() {

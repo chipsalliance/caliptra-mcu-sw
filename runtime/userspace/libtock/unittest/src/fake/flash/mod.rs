@@ -8,6 +8,7 @@ pub struct FakeFlashDriver {
     exists: RefCell<bool>,
     capacity: RefCell<u32>,
     chunk_size: RefCell<usize>,
+    erase_size: RefCell<usize>,
     read_buffer: RefCell<RwAllowBuffer>,
     write_buffer: RefCell<RoAllowBuffer>,
     share_ref: DriverShareRef,
@@ -25,7 +26,8 @@ impl FakeFlashDriver {
         Self {
             exists: RefCell::new(true),
             capacity: RefCell::new(0),
-            chunk_size: RefCell::new(256), // Default chunk size
+            chunk_size: RefCell::new(256),  // Default chunk size
+            erase_size: RefCell::new(4096), // Default erase size (4 KiB sector)
             read_buffer: Default::default(),
             write_buffer: Default::default(),
             share_ref: Default::default(),
@@ -41,6 +43,11 @@ impl FakeFlashDriver {
     /// Set the chunk size for read/write operations
     pub fn set_chunk_size(&self, chunk_size: usize) {
         *self.chunk_size.borrow_mut() = chunk_size;
+    }
+
+    /// Set the erase size (minimum erase granularity)
+    pub fn set_erase_size(&self, erase_size: usize) {
+        *self.erase_size.borrow_mut() = erase_size;
     }
 
     /// Set the flash content
@@ -104,6 +111,9 @@ impl SyscallDriver for FakeFlashDriver {
                     .expect("Failed to schedule ERASE_DONE upcall");
                 crate::command_return::success()
             }
+            flash_storage_cmd::GET_ERASE_SIZE => {
+                crate::command_return::success_u32(*self.erase_size.borrow() as u32)
+            }
             _ => crate::command_return::failure(ErrorCode::Invalid),
         }
     }
@@ -148,6 +158,7 @@ mod flash_storage_cmd {
     pub const WRITE: u32 = 3;
     pub const ERASE: u32 = 4;
     pub const GET_CHUNK_SIZE: u32 = 5;
+    pub const GET_ERASE_SIZE: u32 = 6;
 }
 
 mod subscribe {
