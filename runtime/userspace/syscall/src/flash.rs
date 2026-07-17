@@ -228,14 +228,19 @@ impl<S: Syscalls> SpiFlash<S> {
     /// * `Ok(())` if the erase operation is successful.
     /// * `Err(ErrorCode)` if there is an error.
     pub async fn erase(&self, address: usize, len: usize) -> Result<(), ErrorCode> {
-        let async_erase_sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::ERASE_DONE);
-        S::command(
+        let mut async_erase_sub =
+            TockSubscribe::subscribe::<S>(self.driver_num, subscribe::ERASE_DONE);
+        if let Err(e) = S::command(
             self.driver_num,
             flash_storage_cmd::ERASE,
             address as u32,
             len as u32,
         )
-        .to_result::<(), ErrorCode>()?;
+        .to_result::<(), ErrorCode>()
+        {
+            async_erase_sub.cancel();
+            return Err(e);
+        }
         async_erase_sub.await.map(|_| Ok(()))?
     }
 }
