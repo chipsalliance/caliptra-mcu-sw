@@ -386,7 +386,7 @@ caliptra-ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "a
 dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "337f7e4151f60add8e97445f71fc1393afc661a8", default-features = false, features = ["p384"] }
 
 # caliptra-infra dependencies; keep git revs in sync
-caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-infra", rev = "46a84b2b8eea514f10994631a6823c24ebae55d6" }
+caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-infra", rev = "e061f229d5d284ce39387eb104f3022053c6c772" }
 
 # local caliptra dependency; useful when developing
 # caliptra-sw deps:
