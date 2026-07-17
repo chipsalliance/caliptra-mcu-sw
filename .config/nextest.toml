@@ -74,6 +74,20 @@ default-filter = """
 #     poisoned-lock cascade in Drop) when run after the lifecycle tests;
 #     tracked upstream. Still runs on the emulator profile.
 
+[[profile.nightly-ci.overrides]]
+filter = "package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)"
+# FPGA PLDM firmware-update streaming transfers are slow and now also cover
+# Measurement API auth-manifest validation before activation. Keep this timeout
+# scoped to the single FPGA streaming test instead of relaxing the full profile.
+slow-timeout = { period = "5m", terminate-after = 9 }
+
+[[profile.nightly-ci.overrides]]
+filter = "package(caliptra-mcu-tests-integration) and test(test_firmware_activate_fpga)"
+# This test performs the flash-backed activation path on FPGA hardware. W7 adds
+# auth-manifest validation before activation, which can exceed the profile's
+# default slow-test timeout while streaming mailbox payloads on real hardware.
+slow-timeout = { period = "5m", terminate-after = 9 }
+
 [profile.nightly-release]
 inherits = "nightly-emulator"
 default-filter = """
