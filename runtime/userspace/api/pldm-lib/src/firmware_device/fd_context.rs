@@ -358,10 +358,35 @@ impl<'a> FirmwareDeviceContext<'a> {
     pub async fn activate_firmware_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         // Check if FD is in 'ReadyTransfer' state. Otherwise returns 'INVALID_STATE' completion code
         if self.internal.get_fd_state() != FirmwareDeviceState::ReadyXfer {
-            return generate_failure_response(
-                payload,
-                FwUpdateCompletionCode::InvalidStateForCommand as u8,
-            );
+            // Race condition: The UA may send ActivateFirmwareRequest immediately after
+            // responding to ApplyComplete. If the executor polls this responder task before
+            // the initiator task processes the ApplyComplete response, the state is still
+            // Apply. Detect this case and perform the pending transition to ReadyXfer.
+            if self.internal.get_fd_state() == FirmwareDeviceState::Apply {
+                let fd_req = self.internal.get_fd_req();
+                if fd_req.state == FdReqState::Sent
+                    && fd_req.complete
+                    && fd_req.command == Some(FwUpdateCmd::ApplyComplete as u8)
+                    && fd_req.result == Some(ApplyResult::ApplySuccess as u8)
+                {
+                    // The ApplyComplete response has been received by the transport layer
+                    // (evidenced by ActivateFirmwareRequest arriving), but the initiator
+                    // task hasn't processed it yet. Perform the state transition now.
+                    self.internal
+                        .set_fd_req(FdReqState::Unused, false, None, None, None, None);
+                    self.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
+                } else {
+                    return generate_failure_response(
+                        payload,
+                        FwUpdateCompletionCode::InvalidStateForCommand as u8,
+                    );
+                }
+            } else {
+                return generate_failure_response(
+                    payload,
+                    FwUpdateCompletionCode::InvalidStateForCommand as u8,
+                );
+            }
         }
 
         // Decode the request message
@@ -828,6 +853,14 @@ impl<'a> FirmwareDeviceContext<'a> {
     async fn process_apply_complete_rsp(&self, _payload: &mut [u8]) -> McuResult<()> {
         let fd_state = self.internal.get_fd_state();
         if fd_state != FirmwareDeviceState::Apply {
+            // If the state has already advanced past Apply (e.g., the responder task
+            // processed ActivateFirmwareRequest first and performed the Apply→ReadyXfer
+            // transition), this is not an error — the transition was already handled.
+            if fd_state == FirmwareDeviceState::ReadyXfer
+                || fd_state == FirmwareDeviceState::Activate
+            {
+                return Ok(());
+            }
             return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
