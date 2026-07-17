@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use super::pldm_client::{FW_UPDATE_TASK_YIELD, PLDM_DAEMON_TASK_YIELD};
-use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
+use super::pldm_context::{State, DOWNLOAD_CTX, FW_UPDATE_HOOKS, PLDM_STATE};
 use crate::MAX_PLDM_TRANSFER_SIZE;
 use alloc::boxed::Box;
 use async_trait::async_trait;
@@ -107,6 +107,17 @@ impl FdOps for UpdateFdOps {
             }
         } else {
             return Ok(ComponentResponseCode::CompPrerequisitesNotMet);
+        }
+
+        // Notify the application that a firmware update is available.
+        // The hook can reject the update to protect flash from wear-out.
+        if _op == ComponentOperation::UpdateComponent {
+            let hooks = FW_UPDATE_HOOKS.lock(|h| *h.borrow());
+            if let Some(hooks) = hooks {
+                if hooks.on_fw_update_request(component).is_err() {
+                    return Ok(ComponentResponseCode::CompPrerequisitesNotMet);
+                }
+            }
         }
 
         DOWNLOAD_CTX.lock(|ctx| {
