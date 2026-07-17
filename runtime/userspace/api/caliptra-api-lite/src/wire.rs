@@ -68,6 +68,9 @@ pub(crate) const DPE_PROFILE_P384_SHA384: u32 = 4;
 /// DPE `DeriveContext` command ID (`dpe::commands::Command::DERIVE_CONTEXT`).
 pub(crate) const DPE_CMD_DERIVE_CONTEXT: u32 = 0x08;
 
+/// DPE vendor `UpdateContextMeasurement` command ID.
+pub(crate) const DPE_CMD_UPDATE_CONTEXT_MEASUREMENT: u32 = 0x8000_0000;
+
 /// DPE `GetCertificateChain` command ID
 /// (`dpe::commands::Command::GET_CERTIFICATE_CHAIN`).
 pub(crate) const DPE_CMD_GET_CERTIFICATE_CHAIN: u32 = 0x10;

@@ -39,7 +39,7 @@ use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-use caliptra_mcu_measurement_api::ImageMetadata;
+use caliptra_mcu_measurement_api::{ImageHashSource, ImageMetadata};
 #[allow(unused)]
 #[cfg(any(
     feature = "streaming-boot",
@@ -108,9 +108,9 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
     );
     let mci = MciSyscall::<DefaultSyscalls>::new();
     let reset_reason = mci.read(RESET_REASON, 0).unwrap();
-    if reset_reason & RESET_REASON_FW_HITLESS_UPD_RESET_MASK
-        == RESET_REASON_FW_HITLESS_UPD_RESET_MASK
-    {
+    let mcu_fw_hitless_update_reset = reset_reason & RESET_REASON_FW_HITLESS_UPD_RESET_MASK
+        == RESET_REASON_FW_HITLESS_UPD_RESET_MASK;
+    if mcu_fw_hitless_update_reset {
         // Device rebooted due to firmware update
         // MCU SRAM lock is acquired prior to rebooting the device
         // The lock is needed so that Caliptra can write the updated firmware from MCU MBOX SRAM to MCU SRAM
@@ -132,7 +132,13 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
             mbox_sram.release_lock().unwrap();
             mbox_sram.acquire_lock().unwrap();
         }
-        match image_loading(&EMULATED_DMA_MAPPING, soc_image_load_list).await {
+        match image_loading(
+            &EMULATED_DMA_MAPPING,
+            soc_image_load_list,
+            mcu_fw_hitless_update_reset,
+        )
+        .await
+        {
             Ok(_) => {}
             Err(_) => System::exit(1),
         }
@@ -150,7 +156,8 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
             mbox_sram.release_lock().unwrap();
             mbox_sram.acquire_lock().unwrap();
         }
-        match crate::firmware_update::firmware_update(&FPGA_DMA_MAPPING).await {
+        match crate::firmware_update::firmware_update(&FPGA_DMA_MAPPING, soc_image_load_list).await
+        {
             Ok(_) => System::exit(0),
             Err(_) => System::exit(1),
         }
@@ -165,7 +172,9 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
             mbox_sram.release_lock().unwrap();
             mbox_sram.acquire_lock().unwrap();
         }
-        match crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING).await {
+        match crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING, soc_image_load_list)
+            .await
+        {
             Ok(_) => System::exit(0),
             Err(_) => System::exit(1),
         }
@@ -178,6 +187,7 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
 async fn image_loading<D: DMAMapping>(
     dma_mapping: &'static D,
     soc_image_load_list: &'static [u32],
+    mcu_fw_hitless_update_reset: bool,
 ) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     crate::log_info!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
@@ -189,7 +199,7 @@ async fn image_loading<D: DMAMapping>(
         };
         let pldm_image_loader =
             PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
-        load_soc_images(&pldm_image_loader, soc_image_load_list).await?;
+        load_soc_images(&pldm_image_loader, soc_image_load_list, false).await?;
         // Close the PLDM session
         pldm_image_loader.finalize()?;
         // Wait for the PLDM service to fully complete the protocol before proceeding
@@ -236,12 +246,19 @@ async fn image_loading<D: DMAMapping>(
         let flash_syscall = SpiFlash::new(load_partition.1.driver_num);
         let flash_image_loader = FlashImageLoader::new(flash_syscall, &buffered_dma);
 
-        if let Some(pending) = pending {
-            // Set the new Auth Manifest from the pending partition
+        if pending.is_some() {
+            // In the full MCU firmware-update hitless path, FirmwareUpdater already
+            // sets the auth manifest before reset. Keep this call for direct
+            // pending-partition boot and future SoC-only update paths until the
+            // platform owns an explicit "auth manifest already set" signal.
+            // Depending on whether the SoC manifest preamble DPE contexts are
+            // updated during hitless update, setting the manifest here may also
+            // create mismatched journey measurements.
             flash_image_loader.set_auth_manifest().await?;
         }
 
-        load_soc_images(&flash_image_loader, soc_image_load_list).await?;
+        let component_update = pending.is_some() && mcu_fw_hitless_update_reset;
+        load_soc_images(&flash_image_loader, soc_image_load_list, component_update).await?;
         boot_config
             .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
             .await
@@ -281,6 +298,7 @@ async fn image_loading<D: DMAMapping>(
 async fn load_soc_images(
     loader: &impl ImageLoader,
     soc_image_load_list: &'static [u32],
+    component_update: bool,
 ) -> Result<(), ErrorCode> {
     let mut scratch = Vec::new();
     scratch
@@ -301,8 +319,17 @@ async fn load_soc_images(
 
     for fw_id in soc_image_load_list {
         let loaded = loader.load(*fw_id).await?;
-        let metadata =
-            ImageMetadata::initial_load_from_load_address(loaded.image_size, loaded.measurement);
+        let metadata = if component_update {
+            ImageMetadata::component_update(
+                ImageHashSource::LoadAddress,
+                loaded.image_size,
+                loaded.measurement,
+                0,
+                0,
+            )
+        } else {
+            ImageMetadata::initial_load_from_load_address(loaded.image_size, loaded.measurement)
+        };
         caliptra_mcu_measurement_api::authorize_and_stash(&allocator, *fw_id, metadata)
             .await
             .map_err(|_| ErrorCode::Fail)?;

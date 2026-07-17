@@ -8,6 +8,7 @@
 //! rather than stored. Boot initialization is performed by
 //! `measurement_boot_init`.
 
+mod component_update;
 mod initial_load;
 
 use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
@@ -22,12 +23,13 @@ use core::marker::PhantomData;
 use mcu_caliptra_api_lite::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
     dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci, sha_finish, sha_init, sha_update,
-    ApiAlloc, DpeContextHandle, HashAlgo, DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
+    ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle, HashAlgo,
+    DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
 };
 
 use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
-use crate::{AttestationState, BootKind, ImageMetadata};
+use crate::{AttestationState, BootKind, ImageMetadata, MeasurementOperation};
 
 /// Owns the attestation configuration and attestation boot/error state.
 ///
@@ -38,6 +40,7 @@ use crate::{AttestationState, BootKind, ImageMetadata};
 /// created on demand inside each operation.
 pub(crate) struct MeasurementApi<'a, S: Syscalls = DefaultSyscalls> {
     manifest: AttestationManifest<'a>,
+    soc_image_load_fw_ids: &'a [u32],
     state: AttestationState,
     _syscalls: PhantomData<S>,
 }
@@ -56,18 +59,19 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         validate_soc_image_load_fw_ids(&manifest, soc_image_load_fw_ids)?;
         Ok(Self {
             manifest,
+            soc_image_load_fw_ids,
             state: AttestationState::Uninitialized,
             _syscalls: PhantomData,
         })
     }
 
-    /// Compute `attestation_policy_digest = SHA384(canonical manifest bytes)`
-    /// using the Caliptra SHA mailbox, writing it into `digest_out`.
+    /// Compute `measurement_policy_digest = SHA384(canonical manifest bytes ||
+    /// ordered SOC_IMAGE_LOAD_LIST bytes)`
     ///
-    /// The digest is taken over the exact canonical manifest bytes, i.e. the
-    /// authenticated integrator static attestation configuration. Any mailbox
-    /// failure is reported as [`MeasurementApiError::DigestFailed`].
-    async fn attestation_policy_digest<A: ApiAlloc>(
+    /// The digest binds the authenticated integrator static attestation
+    /// configuration and the cold-boot SoC load topology. Any mailbox failure
+    /// is reported as [`MeasurementApiError::DigestFailed`].
+    async fn measurement_policy_digest<A: ApiAlloc>(
         &self,
         alloc: &A,
         digest_out: &mut [u8; POLICY_DIGEST_SIZE],
@@ -78,6 +82,11 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         let mut state = sha_init(alloc, ctx, HashAlgo::Sha384, self.manifest.bytes())
             .await
             .map_err(|_| MeasurementApiError::DigestFailed)?;
+        for fw_id in self.soc_image_load_fw_ids {
+            sha_update(alloc, &mut state, &fw_id.to_le_bytes())
+                .await
+                .map_err(|_| MeasurementApiError::DigestFailed)?;
+        }
         sha_finish(alloc, &mut state, digest_out)
             .await
             .map_err(|_| MeasurementApiError::DigestFailed)?;
@@ -117,7 +126,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         let pcr_store = SoftwarePcrStore::<S>::new(SOFT_PCR_STORE_DRIVER_NUM);
 
         let mut digest = [0u8; POLICY_DIGEST_SIZE];
-        self.attestation_policy_digest(alloc, &mut digest).await?;
+        self.measurement_policy_digest(alloc, &mut digest).await?;
 
         dpe_store
             .initialize_store(&digest)
@@ -162,7 +171,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         let pcr_store = SoftwarePcrStore::<S>::new(SOFT_PCR_STORE_DRIVER_NUM);
 
         let mut digest = [0u8; POLICY_DIGEST_SIZE];
-        self.attestation_policy_digest(alloc, &mut digest).await?;
+        self.measurement_policy_digest(alloc, &mut digest).await?;
 
         // Validate both preserved stores against the policy digest before use;
         // a mismatch means the preserved state belongs to a different policy.
@@ -203,21 +212,26 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         Ok(())
     }
 
-    /// Authorize one MCU-managed initial-load component through Caliptra.
+    /// Authorize one MCU-managed component through Caliptra.
     ///
     /// Validates Measurement API state and Attestation Manifest membership,
     /// then uses public `AUTHORIZE_AND_STASH` with `SKIP_STASH=true` for
-    /// authorization only. After authorization succeeds, TCB entries derive
-    /// explicit DPE state, non-TCB entries create Software PCR records, and
-    /// PCR31 is extended as the final common step.
+    /// authorization only. Initial-load and component-update callers then
+    /// dispatch to operation-specific Measurement API state updates.
     pub async fn authorize_and_stash<A: ApiAlloc>(
         &mut self,
         alloc: &A,
         fw_id: u32,
         metadata: ImageMetadata,
     ) -> MeasurementApiResult {
-        // TODO: extend this for the update case.
-        initial_load::authorize_and_stash(self, alloc, fw_id, metadata).await
+        match metadata.operation {
+            MeasurementOperation::InitialLoad => {
+                initial_load::authorize_and_stash(self, alloc, fw_id, metadata).await
+            }
+            MeasurementOperation::ComponentUpdate => {
+                component_update::authorize_and_stash(self, alloc, fw_id, metadata).await
+            }
+        }
     }
 
     /// Return the DPE leaf certificate length for the configured attestation
@@ -405,6 +419,18 @@ fn validate_soc_image_load_fw_ids(
     Ok(())
 }
 
+fn caliptra_authorize_params(fw_id: u32, metadata: ImageMetadata) -> AuthorizeAndStashParams {
+    AuthorizeAndStashParams {
+        fw_id,
+        measurement: metadata.measurement,
+        context: [0u8; 48],
+        svn: metadata.svn,
+        flags: AuthorizeAndStashFlags::SKIP_STASH,
+        source: metadata.source,
+        image_size: metadata.image_size,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -515,20 +541,49 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn policy_digest_input_is_exact_canonical_manifest_bytes() {
+    fn reference_measurement_policy_digest(
+        manifest_bytes: &[u8],
+        soc_image_load_fw_ids: &[u32],
+    ) -> [u8; POLICY_DIGEST_SIZE] {
         use sha2::{Digest, Sha384};
 
-        let bytes = valid_empty_manifest();
-        let api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[]).unwrap();
+        let mut hasher = Sha384::new();
+        hasher.update(manifest_bytes);
+        for fw_id in soc_image_load_fw_ids {
+            hasher.update(fw_id.to_le_bytes());
+        }
+        hasher.finalize().into()
+    }
 
-        // The digest is computed over the exact canonical manifest bytes.
+    #[test]
+    fn policy_digest_reference_binds_manifest_and_ordered_load_list() {
+        let bytes = valid_manifest_with_entries(&[(0x1000, 0), (0x2000, 0)]);
+        let api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[0x1000, 0x2000]).unwrap();
+
         assert_eq!(api.manifest.bytes(), &bytes[..]);
 
-        // Reference SHA-384 that the mailbox digest path must reproduce.
-        let reference = Sha384::digest(&bytes);
+        let reference =
+            reference_measurement_policy_digest(api.manifest.bytes(), api.soc_image_load_fw_ids);
         assert_eq!(reference.len(), POLICY_DIGEST_SIZE);
-        assert_eq!(&Sha384::digest(api.manifest.bytes())[..], &reference[..]);
+
+        let mut changed_manifest = bytes.clone();
+        changed_manifest[4] ^= 0x01;
+        assert_ne!(
+            reference,
+            reference_measurement_policy_digest(&changed_manifest, &[0x1000, 0x2000])
+        );
+        assert_ne!(
+            reference,
+            reference_measurement_policy_digest(&bytes, &[0x2000, 0x1000])
+        );
+        assert_ne!(
+            reference,
+            reference_measurement_policy_digest(&bytes, &[0x1000])
+        );
+        assert_ne!(
+            reference,
+            reference_measurement_policy_digest(&bytes, &[0x1000, 0x2000, 0x3000])
+        );
     }
 
     #[test]

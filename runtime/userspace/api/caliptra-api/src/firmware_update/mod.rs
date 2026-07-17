@@ -51,6 +51,7 @@ pub struct FirmwareUpdater<'a, D: DMAMapping> {
     staging_memory: &'static dyn StagingMemory,
     mailbox: Mailbox,
     params: &'a PldmFirmwareDeviceParams,
+    soc_image_load_fw_ids: &'a [u32],
     dma_mapping: &'a D,
     spawner: Spawner,
     skip_activation: bool,
@@ -74,6 +75,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
     pub fn new(
         staging_memory: &'static dyn StagingMemory,
         params: &'a PldmFirmwareDeviceParams,
+        soc_image_load_fw_ids: &'a [u32],
         dma_mapping: &'a D,
         spawner: Spawner,
         hooks: Option<&'a dyn FirmwareUpdateHooks>,
@@ -82,6 +84,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             staging_memory,
             mailbox: Mailbox::new(),
             params,
+            soc_image_load_fw_ids,
             dma_mapping,
             spawner,
             skip_activation: false,
@@ -258,6 +261,8 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             )
             .await
             .map_err(|_| ErrorCode::Fail)?;
+        self.validate_auth_manifest_soc_fw_id_set(manifest_offset, manifest_len)
+            .await?;
 
         let mut req = AuthManifestReqHeader {
             chksum: 0,
@@ -365,6 +370,8 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             .await
             .map_err(|_| ErrorCode::Fail)?;
         self.verify_manifest(manifest_offset, manifest_len).await?;
+        self.validate_auth_manifest_soc_fw_id_set(manifest_offset, manifest_len)
+            .await?;
 
         for i in 0..flash_header.image_count as usize {
             let image_header = self
@@ -550,38 +557,14 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         manifest_size: usize,
         image_id: u32,
     ) -> Result<AuthManifestImageMetadata, ErrorCode> {
-        let entry_count_offset = manifest_staging_mem_offset
-            + offset_of!(AuthorizationManifest, image_metadata_col)
-            + offset_of!(AuthManifestImageMetadataCollection, entry_count);
-        if entry_count_offset + 4 > manifest_staging_mem_offset + manifest_size {
-            return Err(ErrorCode::Fail);
-        }
-
-        // Read the entry count from staging memory
-        let mut entry_count = [0u8; 4];
-        self.staging_memory
-            .read(entry_count_offset, &mut entry_count)
+        let entry_count = self
+            .get_image_metadata_entry_count(manifest_staging_mem_offset, manifest_size)
             .await?;
-        let entry_count = u32::from_le_bytes(entry_count);
-
-        let image_metadata_collection_offset = manifest_staging_mem_offset
-            + offset_of!(AuthorizationManifest, image_metadata_col)
-            + offset_of!(AuthManifestImageMetadataCollection, image_metadata_list);
 
         for i in 0..entry_count as usize {
-            let metadata_offset = image_metadata_collection_offset
-                + i * core::mem::size_of::<AuthManifestImageMetadata>();
-            let mut metadata_bytes = [0u8; core::mem::size_of::<AuthManifestImageMetadata>()];
-            if metadata_offset + metadata_bytes.len() > manifest_staging_mem_offset + manifest_size
-            {
-                return Err(ErrorCode::Fail);
-            }
-            self.staging_memory
-                .read(metadata_offset, &mut metadata_bytes)
+            let metadata = self
+                .get_image_metadata_by_index(manifest_staging_mem_offset, manifest_size, i)
                 .await?;
-
-            let (metadata, _) = AuthManifestImageMetadata::read_from_prefix(&metadata_bytes)
-                .map_err(|_| ErrorCode::Fail)?;
 
             if metadata.fw_id == image_id {
                 return Ok(metadata);
@@ -589,6 +572,111 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         }
 
         Err(ErrorCode::Fail)
+    }
+
+    async fn get_image_metadata_entry_count(
+        &self,
+        manifest_staging_mem_offset: usize,
+        manifest_size: usize,
+    ) -> Result<u32, ErrorCode> {
+        let entry_count_offset = manifest_staging_mem_offset
+            + offset_of!(AuthorizationManifest, image_metadata_col)
+            + offset_of!(AuthManifestImageMetadataCollection, entry_count);
+        if entry_count_offset + 4 > manifest_staging_mem_offset + manifest_size {
+            return Err(ErrorCode::Fail);
+        }
+
+        let mut entry_count = [0u8; 4];
+        self.staging_memory
+            .read(entry_count_offset, &mut entry_count)
+            .await?;
+        Ok(u32::from_le_bytes(entry_count))
+    }
+
+    async fn get_image_metadata_by_index(
+        &self,
+        manifest_staging_mem_offset: usize,
+        manifest_size: usize,
+        index: usize,
+    ) -> Result<AuthManifestImageMetadata, ErrorCode> {
+        let image_metadata_collection_offset = manifest_staging_mem_offset
+            + offset_of!(AuthorizationManifest, image_metadata_col)
+            + offset_of!(AuthManifestImageMetadataCollection, image_metadata_list);
+        let metadata_offset = image_metadata_collection_offset
+            + index * core::mem::size_of::<AuthManifestImageMetadata>();
+        let mut metadata_bytes = [0u8; core::mem::size_of::<AuthManifestImageMetadata>()];
+        if metadata_offset + metadata_bytes.len() > manifest_staging_mem_offset + manifest_size {
+            return Err(ErrorCode::Fail);
+        }
+        self.staging_memory
+            .read(metadata_offset, &mut metadata_bytes)
+            .await?;
+
+        let (metadata, _) = AuthManifestImageMetadata::read_from_prefix(&metadata_bytes)
+            .map_err(|_| ErrorCode::Fail)?;
+        Ok(metadata)
+    }
+
+    async fn validate_auth_manifest_soc_fw_id_set(
+        &self,
+        manifest_staging_mem_offset: usize,
+        manifest_size: usize,
+    ) -> Result<(), ErrorCode> {
+        let entry_count = self
+            .get_image_metadata_entry_count(manifest_staging_mem_offset, manifest_size)
+            .await?;
+        let mut manifest_soc_fw_id_count = 0usize;
+        for i in 0..entry_count as usize {
+            let metadata = self
+                .get_image_metadata_by_index(manifest_staging_mem_offset, manifest_size, i)
+                .await?;
+            if metadata.fw_id != MCU_RT_IDENTIFIER {
+                manifest_soc_fw_id_count = manifest_soc_fw_id_count
+                    .checked_add(1)
+                    .ok_or(ErrorCode::Fail)?;
+                if !self.soc_image_load_fw_ids.contains(&metadata.fw_id) {
+                    return Err(ErrorCode::Fail);
+                }
+            }
+        }
+
+        if manifest_soc_fw_id_count != self.soc_image_load_fw_ids.len() {
+            return Err(ErrorCode::Fail);
+        }
+
+        for expected_fw_id in self.soc_image_load_fw_ids.iter().copied() {
+            if !self
+                .auth_manifest_contains_fw_id(
+                    manifest_staging_mem_offset,
+                    manifest_size,
+                    entry_count,
+                    expected_fw_id,
+                )
+                .await?
+            {
+                return Err(ErrorCode::Fail);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn auth_manifest_contains_fw_id(
+        &self,
+        manifest_staging_mem_offset: usize,
+        manifest_size: usize,
+        entry_count: u32,
+        fw_id: u32,
+    ) -> Result<bool, ErrorCode> {
+        for i in 0..entry_count as usize {
+            let metadata = self
+                .get_image_metadata_by_index(manifest_staging_mem_offset, manifest_size, i)
+                .await?;
+            if metadata.fw_id == fw_id {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     async fn process_caliptra_fw(
@@ -1072,4 +1160,69 @@ impl PayloadStream for MailboxPayloadStream {
 pub struct AuthManifestReqHeader {
     pub chksum: u32,
     pub manifest_size: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const A: u32 = 0x1000;
+    const B: u32 = 0x2000;
+    const C: u32 = 0x3000;
+    const D: u32 = 0x4000;
+
+    fn validate_soc_fw_id_same_set(
+        cold_boot_soc_fw_ids: &[u32],
+        manifest_soc_fw_ids: &[u32],
+    ) -> Result<(), ErrorCode> {
+        if cold_boot_soc_fw_ids.len() != manifest_soc_fw_ids.len() {
+            return Err(ErrorCode::Fail);
+        }
+
+        for (index, fw_id) in manifest_soc_fw_ids.iter().copied().enumerate() {
+            if manifest_soc_fw_ids
+                .iter()
+                .take(index)
+                .any(|existing| *existing == fw_id)
+            {
+                return Err(ErrorCode::Fail);
+            }
+            if !cold_boot_soc_fw_ids.contains(&fw_id) {
+                return Err(ErrorCode::Fail);
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn validate_soc_fw_id_same_set_accepts_matching_sets() {
+        for (cold_boot, manifest) in [
+            (&[][..], &[][..]),
+            (&[A][..], &[A][..]),
+            (&[A, B][..], &[A, B][..]),
+            (&[A, B][..], &[B, A][..]),
+            (&[A, B, C][..], &[C, A, B][..]),
+        ] {
+            assert!(validate_soc_fw_id_same_set(cold_boot, manifest).is_ok());
+        }
+    }
+
+    #[test]
+    fn validate_soc_fw_id_same_set_rejects_mismatched_sets() {
+        for (cold_boot, manifest) in [
+            (&[][..], &[A][..]),
+            (&[A][..], &[][..]),
+            (&[A, B][..], &[A][..]),
+            (&[A, B][..], &[A, B, C][..]),
+            (&[A, B][..], &[A, C][..]),
+            (&[A, B][..], &[C, A][..]),
+            (&[A, B][..], &[A, A][..]),
+            (&[A, B][..], &[B, B][..]),
+            (&[A, B, C][..], &[A, B, B][..]),
+            (&[A, B, C][..], &[A, B, D][..]),
+        ] {
+            assert!(validate_soc_fw_id_same_set(cold_boot, manifest).is_err());
+        }
+    }
 }

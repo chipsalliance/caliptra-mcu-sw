@@ -24,7 +24,10 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 
 #[allow(dead_code)]
-pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), ErrorCode> {
+pub async fn firmware_update<D: DMAMapping>(
+    dma_mapping: &D,
+    soc_image_load_list: &'static [u32],
+) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     let reset_reason = get_reset_reason()?;
 
@@ -51,6 +54,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         let mut updater = FirmwareUpdater::new(
             staging_memory,
             &fw_params,
+            soc_image_load_list,
             dma_mapping,
             EXECUTOR.get().spawner(),
             None,
@@ -115,6 +119,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         let mut updater = FirmwareUpdater::new(
             staging_memory,
             &fw_params,
+            soc_image_load_list,
             dma_mapping,
             EXECUTOR.get().spawner(),
             Some(&hooks),
@@ -134,6 +139,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         let mut updater = FirmwareUpdater::new(
             staging_memory,
             &fw_params,
+            soc_image_load_list,
             dma_mapping,
             EXECUTOR.get().spawner(),
             None,
@@ -171,6 +177,7 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         let mut updater = FirmwareUpdater::new(
             staging_memory,
             &fw_params,
+            soc_image_load_list,
             dma_mapping,
             EXECUTOR.get().spawner(),
             None,
