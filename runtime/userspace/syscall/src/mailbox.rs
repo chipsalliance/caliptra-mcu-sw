@@ -132,8 +132,8 @@ impl<S: Syscalls> Mailbox<S> {
     /// verifies the calling process ID, so different processes cannot
     /// interleave chunked flows. Within a single process with multiple async
     /// tasks, callers should either use [`execute_with_payload_stream`](Self::execute_with_payload_stream)
-    /// (which holds the global mailbox mutex) or acquire `MAILBOX_MUTEX`
-    /// externally before calling this method.
+    /// (which holds the global mailbox mutex) or serialize their own chunked
+    /// sequence.
     pub async fn start_chunked_request(
         &self,
         command: u32,
@@ -173,6 +173,13 @@ impl<S: Syscalls> Mailbox<S> {
         })?
         .await
         .map_err(MailboxError::ErrorCode)
+    }
+
+    /// Aborts a previously started chunked mailbox request.
+    pub async fn abort_chunked_request(&self) -> Result<(), MailboxError> {
+        S::command(self.driver_num, mailbox_cmd::ABORT_CHUNKED_REQUEST, 0, 0)
+            .to_result::<(), ErrorCode>()
+            .map_err(MailboxError::ErrorCode)
     }
 
     /// Executes a previously started chunked mailbox request and returns the response.
@@ -218,6 +225,49 @@ impl<S: Syscalls> Mailbox<S> {
         }
     }
 
+    /// Executes a chunked mailbox command from a caller-owned payload slice.
+    ///
+    /// This helper holds the global mailbox mutex for the full
+    /// `start_chunked_request` → `send_chunk`* → `execute_chunked_request`
+    /// sequence, like [`execute_with_payload_stream`](Self::execute_with_payload_stream),
+    /// but avoids copying the payload through an intermediate local staging buffer.
+    /// The request length is computed internally so callers cannot declare a
+    /// length that diverges from the bytes sent to the mailbox.
+    pub async fn execute_with_payload_slice(
+        &self,
+        command: u32,
+        header: Option<&[u8]>,
+        payload: &[u8],
+        response_buffer: &mut [u8],
+    ) -> Result<usize, MailboxError> {
+        let mutex = MAILBOX_MUTEX.lock().await;
+        let request_len = header
+            .map_or(Some(payload.len()), |h| h.len().checked_add(payload.len()))
+            .ok_or(MailboxError::ErrorCode(ErrorCode::Invalid))?;
+
+        self.start_chunked_request(command, request_len).await?;
+
+        if let Some(header) = header {
+            if let Err(err) = self.send_chunk(header).await {
+                let _ = self.abort_chunked_request().await;
+                return Err(err);
+            }
+        }
+
+        for chunk in payload.chunks(PAYLOAD_CHUNK_SIZE) {
+            if !chunk.is_empty() {
+                if let Err(err) = self.send_chunk(chunk).await {
+                    let _ = self.abort_chunked_request().await;
+                    return Err(err);
+                }
+            }
+        }
+
+        let result = self.execute_chunked_request(command, response_buffer).await;
+        black_box(*mutex); // Ensure the mutex is not optimized away
+        result
+    }
+
     pub async fn execute_with_payload_stream(
         &self,
         command: u32,
@@ -236,20 +286,29 @@ impl<S: Syscalls> Mailbox<S> {
         if let Some(header) = header {
             // If a header is provided, write it to the buffer first
             buffer[..header.len()].copy_from_slice(header);
-            self.send_chunk(buffer[..header.len()].as_ref()).await?;
+            if let Err(err) = self.send_chunk(buffer[..header.len()].as_ref()).await {
+                let _ = self.abort_chunked_request().await;
+                return Err(err);
+            }
         }
 
         // Send the payload in chunks
         loop {
             // Read a chunk of data from the payload stream
-            let sz = payload
-                .read(&mut buffer)
-                .await
-                .map_err(MailboxError::ErrorCode)?;
+            let sz = match payload.read(&mut buffer).await {
+                Ok(sz) => sz,
+                Err(err) => {
+                    let _ = self.abort_chunked_request().await;
+                    return Err(MailboxError::ErrorCode(err));
+                }
+            };
             if sz == 0 {
                 break; // No more data to read
             }
-            self.send_chunk(buffer[..sz].as_ref()).await?;
+            if let Err(err) = self.send_chunk(buffer[..sz].as_ref()).await {
+                let _ = self.abort_chunked_request().await;
+                return Err(err);
+            }
         }
 
         let result = self.execute_chunked_request(command, response_buffer).await;
@@ -280,6 +339,7 @@ mod mailbox_cmd {
     pub const START_CHUNKED_REQUEST: u32 = 2;
     pub const NEXT_PAYLOAD_CHUNK: u32 = 3;
     pub const EXECUTE_CHUNKED_REQUEST: u32 = 4;
+    pub const ABORT_CHUNKED_REQUEST: u32 = 5;
 }
 
 /// Buffer IDs for mailbox read operations.

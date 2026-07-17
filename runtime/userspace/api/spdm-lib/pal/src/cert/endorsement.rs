@@ -47,15 +47,6 @@ pub const fn slot_index(slot_id: u8) -> Option<usize> {
     None
 }
 
-/// DPE key indices for device cert chain anchor points.
-/// IDevID (0) is the default.
-#[allow(dead_code)]
-pub const DEVICE_KEY_LDEVID: u8 = 1;
-#[allow(dead_code)]
-pub const DEVICE_KEY_FMC_ALIAS: u8 = 2;
-#[allow(dead_code)]
-pub const DEVICE_KEY_RT_ALIAS: u8 = 3;
-
 /// A single SPDM certificate slot.
 ///
 /// Slots store the endorsement/root portion. The PAL composes the full
@@ -102,7 +93,6 @@ impl CertSlot {
 }
 
 /// Per-slot endorsement cert chain — enum dispatch.
-#[allow(dead_code)]
 pub enum SlotEndorsement {
     /// Not provisioned and not exposed as a supported SPDM slot.
     Empty,
@@ -260,7 +250,6 @@ type CertStoreFlash = SpiFlash<DefaultSyscalls>;
 
 /// Managed flash-backed endorsement/root chain installed by SET_CERTIFICATE.
 #[cfg(feature = "set-certificate")]
-#[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub struct ManagedEndorsement {
     slot: u8,
@@ -277,7 +266,6 @@ pub struct ManagedEndorsement {
 }
 
 #[cfg(feature = "set-certificate")]
-#[allow(dead_code)]
 impl ManagedEndorsement {
     pub const fn new(slot: u8, driver_num: u32, base: usize, capacity: usize) -> Self {
         Self {
@@ -393,6 +381,94 @@ impl ManagedEndorsement {
             .await
             .map_err(map_flash_error)?;
         Ok(n)
+    }
+
+    pub async fn begin_stream_update(
+        mut self,
+        algo: SpdmPalAsymAlgo,
+        data_len: usize,
+    ) -> McuResult<Self> {
+        if algo != SpdmPalAsymAlgo::EccP384 || data_len > self.der_capacity() {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        self.flash()
+            .erase(self.base, self.capacity)
+            .await
+            .map_err(map_flash_error)?;
+        self.initialized = false;
+        self.len = 0;
+        self.root_hash = [0; 48];
+        self.key_pair_id = 0;
+        self.cert_info = 0;
+        Ok(self)
+    }
+
+    pub async fn write_stream_chunk(&self, offset: usize, data: &[u8]) -> McuResult<()> {
+        let end = offset
+            .checked_add(data.len())
+            .ok_or(mcu_error::codes::INVARIANT)?;
+        if end > self.der_capacity() {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        if !data.is_empty() {
+            self.flash()
+                .write(self.data_base() + offset, data.len(), data)
+                .await
+                .map_err(map_flash_error)?;
+        }
+        Ok(())
+    }
+
+    pub async fn read_stream_chunk(&self, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
+        if offset >= self.der_capacity() || buf.is_empty() {
+            return Ok(0);
+        }
+        let n = (self.der_capacity() - offset).min(buf.len());
+        self.flash()
+            .read(self.data_base() + offset, n, &mut buf[..n])
+            .await
+            .map_err(map_flash_error)?;
+        Ok(n)
+    }
+
+    pub async fn finish_stream_update(
+        mut self,
+        algo: SpdmPalAsymAlgo,
+        key_pair_id: u8,
+        cert_info: u8,
+        root_hash: &[u8; 48],
+        data_len: usize,
+    ) -> McuResult<Self> {
+        if algo != SpdmPalAsymAlgo::EccP384 || data_len > self.der_capacity() {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        let data_checksum = self.stored_checksum(data_len).await?;
+        let record = ManagedRecord {
+            version: MANAGED_FORMAT_VERSION,
+            header_size: MANAGED_HEADER_SIZE as u16,
+            slot: self.slot,
+            algo: MANAGED_ALGO_ECC_P384,
+            key_pair_id,
+            cert_info,
+            key_usage_mask: MANAGED_KEY_USAGE_MASK,
+            cert_len: data_len,
+            data_checksum,
+            root_hash: *root_hash,
+        };
+        let mut header = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
+        record.encode(&mut header);
+        self.flash()
+            .write(self.base, MANAGED_HEADER_SIZE, &header)
+            .await
+            .map_err(map_flash_error)?;
+        self.initialized = true;
+        self.algo = algo;
+        self.len = data_len;
+        self.root_hash = *root_hash;
+        self.key_pair_id = key_pair_id;
+        self.cert_info = cert_info;
+        self.key_usage_mask = MANAGED_KEY_USAGE_MASK;
+        Ok(self)
     }
 
     pub async fn write_updated(

@@ -12,6 +12,8 @@
 //! `caliptra-api` dependency, which would otherwise be pulled into
 //! every consumer of [`crate::Alloc`].
 
+use crate::slice::copy_bytes;
+
 // ---- Caliptra mailbox constants -------------------------------------------
 
 /// Maximum payload bytes in any single `Cm*` mailbox request — the
@@ -174,7 +176,10 @@ pub(crate) fn populate_checksum(cmd: u32, data: &mut [u8]) -> mcu_error::McuResu
         return Err(mcu_error::codes::INVARIANT);
     }
     let checksum = calc_checksum(cmd, data);
-    data[..4].copy_from_slice(&checksum.to_le_bytes());
+    let Some(dst) = data.get_mut(..4) else {
+        return Err(mcu_error::codes::INVARIANT);
+    };
+    copy_bytes(dst, &checksum.to_le_bytes())?;
     Ok(())
 }
 

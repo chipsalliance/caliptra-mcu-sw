@@ -31,11 +31,14 @@ mod dpe;
 pub mod eat;
 mod ecdh;
 mod fe_prog;
+mod fw_info;
 mod hmac;
 mod import;
+pub mod raw;
 mod rng;
 mod sha;
 pub mod signed_eat;
+mod slice;
 mod types;
 mod wire;
 
@@ -61,6 +64,7 @@ pub use ecdh::{
     ecdh_finish, ecdh_generate, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
 };
 pub use fe_prog::fe_prog;
+pub use fw_info::{fw_info, FwInfo};
 pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
 pub use import::{cm_delete, cm_import};
 pub use rng::rng_generate;

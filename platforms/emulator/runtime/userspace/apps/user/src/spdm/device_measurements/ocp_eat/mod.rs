@@ -10,19 +10,17 @@
 //! MCTP transport. The same SPDM attestation key signs both the
 //! SPDM transcripts and the EAT token.
 //!
-//! All DPE/SHA mailbox buffers go through caliptra-api-lite
-//! ([`BitmapAllocator`]-backed) — nothing large on the async stack.
+//! All SHA mailbox buffers go through caliptra-api-lite and DPE signing flows
+//! go through Measurement API so handle updates are stored before returning.
 
 pub mod claims;
 
+use caliptra_mcu_measurement_api::{ATTESTATION_P384_DIGEST_SIZE, ATTESTATION_P384_SIGNATURE_SIZE};
 use caliptra_mcu_spdm_pal::measurements::MeasurementProvider;
 use caliptra_mcu_spdm_pal::BitmapAllocator;
 use caliptra_mcu_spdm_traits::{MeasurementInfo, SPDM_NONCE_LEN};
 use mcu_caliptra_api_lite::signed_eat::SignedEatLite;
-use mcu_caliptra_api_lite::{
-    dpe_certify_key_pubkey, sha_finish, sha_init, sha_update, HashAlgo, DPE_LABEL_LEN,
-    SHA_CONTEXT_SIZE,
-};
+use mcu_caliptra_api_lite::DPE_LABEL_LEN;
 use mcu_error::McuResult;
 
 /// Single measurement entry: index 0xFD, StructuredManifest.
@@ -78,46 +76,40 @@ impl MeasurementProvider for OcpEatMeasurementProvider {
             None => &ZERO_NONCE,
         };
 
-        let (kid, claims_buf) = scratch.split_at_mut(KID_LEN);
+        let (kid, claims_buf) = scratch
+            .split_at_mut_checked(KID_LEN)
+            .ok_or(mcu_error::codes::INTERNAL_BUG)?;
         let kid: &mut [u8; KID_LEN] = kid.try_into().map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
 
-        // Compute kid = SHA-384(pubkey_x || pubkey_y) via alloc-backed DPE.
-        compute_kid(&self.key_label, alloc, kid).await?;
+        caliptra_mcu_measurement_api::leaf_kid(alloc, &self.key_label, kid)
+            .await
+            .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
 
         // 1. Generate CBOR EAT claims payload into scratch.
         let payload_size = claims::generate_claims(alloc, claims_buf, eat_nonce)
             .await
             .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
 
-        // 2. Sign claims as COSE_Sign1 with kid via api-lite (alloc-backed).
-        let signed_eat = SignedEatLite::new(&self.key_label);
-
+        // 2. Sign claims as COSE_Sign1 with kid. The EAT encoder computes the
+        // COSE Sig_structure digest, and Measurement API owns DPE signing /
+        // handle-store updates.
+        let signed_eat = SignedEatLite::new();
+        let mut sig_digest = [0u8; ATTESTATION_P384_DIGEST_SIZE];
+        let payload = claims_buf
+            .get(..payload_size)
+            .ok_or(mcu_error::codes::INTERNAL_BUG)?;
         signed_eat
-            .generate_with_kid(alloc, &claims_buf[..payload_size], kid, out)
+            .sig_context_digest(alloc, payload, &mut sig_digest)
             .await
-            .map_err(|_| mcu_error::codes::INTERNAL_BUG)
+            .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
+        let mut signature = [0u8; ATTESTATION_P384_SIGNATURE_SIZE];
+        let sig_len =
+            caliptra_mcu_measurement_api::sign(alloc, &self.key_label, &sig_digest, &mut signature)
+                .await
+                .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
+        if sig_len != signature.len() {
+            return Err(mcu_error::codes::INTERNAL_BUG);
+        }
+        signed_eat.encode_with_kid_and_signature(payload, kid, &signature, out)
     }
-}
-
-/// Compute kid = SHA-384(pubkey_x || pubkey_y) from DPE certify_key.
-///
-/// All mailbox buffers are allocated via `alloc` (BitmapAllocator).
-/// `pubkey_x`/`pubkey_y` are streamed directly into SHA, so no
-/// 96-byte concat buffer lives on the async stack.
-async fn compute_kid(
-    key_label: &[u8; DPE_LABEL_LEN],
-    alloc: &BitmapAllocator,
-    kid: &mut [u8; KID_LEN],
-) -> McuResult<()> {
-    let mut pubkey_x = [0u8; KID_LEN];
-    let mut pubkey_y = [0u8; KID_LEN];
-
-    dpe_certify_key_pubkey(alloc, key_label, &mut pubkey_x, &mut pubkey_y).await?;
-
-    let sha_buf = alloc.alloc_bytes(SHA_CONTEXT_SIZE)?;
-    let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &pubkey_x).await?;
-    sha_update(alloc, &mut state, &pubkey_y).await?;
-    sha_finish(alloc, &mut state, kid).await?;
-
-    Ok(())
 }

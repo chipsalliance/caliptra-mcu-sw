@@ -69,6 +69,21 @@ impl<S: Syscalls> SpiFlash<S> {
             .map(|x: u32| x as usize)
     }
 
+    /// Gets the minimum erase granularity in bytes.
+    ///
+    /// On real flash hardware, the erase unit (sector) is typically larger than
+    /// the read/write page size. Erase operations must be aligned to this size.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(usize)` with the erase size in bytes.
+    /// * `Err(ErrorCode)` if there is an error.
+    pub fn get_erase_size(&self) -> Result<usize, ErrorCode> {
+        S::command(self.driver_num, flash_storage_cmd::GET_ERASE_SIZE, 0, 0)
+            .to_result()
+            .map(|x: u32| x as usize)
+    }
+
     /// Internal function to read a chunk of data from the flash memory.
     /// Don't use this function directly, use `read` instead.
     async fn read_chunk(
@@ -273,6 +288,7 @@ mod rw_allow {
 /// - `3`: Start a write
 /// - `4`: Start an erase
 /// - `5`: Get the chunk size for read/write operations.
+/// - `6`: Get the erase size (minimum erase granularity).
 mod flash_storage_cmd {
     pub const EXISTS: u32 = 0;
     pub const GET_CAPACITY: u32 = 1;
@@ -280,4 +296,5 @@ mod flash_storage_cmd {
     pub const WRITE: u32 = 3;
     pub const ERASE: u32 = 4;
     pub const GET_CHUNK_SIZE: u32 = 5;
+    pub const GET_ERASE_SIZE: u32 = 6;
 }

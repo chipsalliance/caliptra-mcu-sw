@@ -305,6 +305,7 @@ pub fn run_prod_debug_unlock(
 
                 let token = match signer.sign_debug_unlock_token(&challenge, unlock_level) {
                     Ok(t) => ProdDebugUnlockTokenRequest {
+                        checksum: 0,
                         length: t.length,
                         unique_device_identifier: t.unique_device_identifier,
                         unlock_level: t.unlock_level,

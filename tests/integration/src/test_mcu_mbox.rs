@@ -2707,9 +2707,14 @@ pub mod test {
             // a valid challenge-response flow. Sending a zeroed token will be
             // rejected, confirming the passthrough dispatch works.
             println!("  Testing prod debug unlock token passthrough...");
-            let mut prod_token_req = McuMailboxReq::ProdDebugUnlockToken(
-                McuProdDebugUnlockTokenReq(ProductionAuthDebugUnlockToken::new_zeroed()),
-            );
+            let mut prod_token_req =
+                McuMailboxReq::ProdDebugUnlockToken(McuProdDebugUnlockTokenReq {
+                    hdr: MailboxReqHeader::default(),
+                    token: ProductionAuthDebugUnlockToken::new_zeroed(),
+                });
+            if let McuMailboxReq::ProdDebugUnlockToken(req) = &mut prod_token_req {
+                req.populate_caliptra_chksum().unwrap();
+            }
             prod_token_req.populate_chksum().unwrap();
 
             let prod_token_resp = self.process_message(
@@ -3007,8 +3012,13 @@ pub mod test {
 
             // Step 5: Send the signed token
             println!("  Sending signed token...");
-            let mut token_req =
-                McuMailboxReq::ProdDebugUnlockToken(McuProdDebugUnlockTokenReq(token));
+            let mut token_req = McuMailboxReq::ProdDebugUnlockToken(McuProdDebugUnlockTokenReq {
+                hdr: MailboxReqHeader::default(),
+                token,
+            });
+            if let McuMailboxReq::ProdDebugUnlockToken(req) = &mut token_req {
+                req.populate_caliptra_chksum().unwrap();
+            }
             token_req.populate_chksum().unwrap();
 
             let token_resp = self

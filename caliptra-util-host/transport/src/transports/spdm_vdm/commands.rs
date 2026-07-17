@@ -33,9 +33,6 @@ use caliptra_mcu_core_util_host_command_types::debug_unlock::{
 use caliptra_mcu_core_util_host_command_types::*;
 use zerocopy::IntoBytes;
 
-/// Caliptra RT mailbox command ID for PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.
-const CALIPTRA_RT_CMD_PROD_DEBUG_UNLOCK_TOKEN: u32 = 0x5044_5554; // "PDUT"
-
 // ---------------------------------------------------------------------------
 // Helper: build VDM request, send via driver, validate response header
 // ---------------------------------------------------------------------------
@@ -516,34 +513,36 @@ pub fn handle_prod_debug_unlock_req(
     let req = ProdDebugUnlockReqRequest::from_bytes(payload)
         .map_err(|_| TransportError::InvalidMessage)?;
 
-    // VDM payload: [unlock_level(1)]
-    let vdm_payload = [req.unlock_level];
     let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
     let resp_len = send_vdm_request(
         CaliptraVdmCommand::RequestDebugUnlock,
-        &vdm_payload,
+        req.as_bytes(),
         driver,
         &mut resp_buf,
     )?;
 
     let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
 
-    // Response data: [unique_device_identifier(32), challenge(48)]
-    if data.len() < UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE {
+    // Response data: [length(4), unique_device_identifier(32), challenge(48)]
+    if data.len()
+        != core::mem::size_of::<u32>() + UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE
+    {
         return Err(TransportError::InvalidMessage);
     }
+    let length = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    let challenge_data = &data[core::mem::size_of::<u32>()..];
 
     let mut unique_device_identifier = [0u8; UNIQUE_DEVICE_ID_SIZE];
-    unique_device_identifier.copy_from_slice(&data[..UNIQUE_DEVICE_ID_SIZE]);
+    unique_device_identifier.copy_from_slice(&challenge_data[..UNIQUE_DEVICE_ID_SIZE]);
 
     let mut challenge = [0u8; DEBUG_UNLOCK_CHALLENGE_SIZE];
     challenge.copy_from_slice(
-        &data[UNIQUE_DEVICE_ID_SIZE..UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
+        &challenge_data[UNIQUE_DEVICE_ID_SIZE..UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
     );
 
     let internal_resp = ProdDebugUnlockReqResponse {
         common: CommonResponse { fips_status: 0 },
-        length: 0,
+        length,
         unique_device_identifier,
         challenge,
     };
@@ -563,29 +562,13 @@ pub fn handle_prod_debug_unlock_token(
     driver: &mut dyn SpdmVdmDriver,
     response_buffer: &mut [u8],
 ) -> Result<usize, TransportError> {
-    use crate::transports::mailbox::checksum::calc_checksum;
-    use alloc::vec;
-
     let req = ProdDebugUnlockTokenRequest::from_bytes(payload)
         .map_err(|_| TransportError::InvalidMessage)?;
-
-    // Build VDM payload in Caliptra RT mailbox format:
-    // [MailboxReqHeader(chksum: u32) | token_struct_bytes...]
-    // The MCU streams this directly to the Caliptra mailbox FIFO.
-    let token_bytes = req.as_bytes();
-    let hdr_size = core::mem::size_of::<u32>(); // MailboxReqHeader = chksum(u32)
-    let total_len = hdr_size + token_bytes.len();
-
-    // Build the payload with zeroed checksum first, then compute
-    let mut mbox_payload = vec![0u8; total_len];
-    mbox_payload[hdr_size..].copy_from_slice(token_bytes);
-    let chksum = calc_checksum(CALIPTRA_RT_CMD_PROD_DEBUG_UNLOCK_TOKEN, &mbox_payload);
-    mbox_payload[..hdr_size].copy_from_slice(&chksum.to_le_bytes());
 
     let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
     let _resp_len = send_vdm_request(
         CaliptraVdmCommand::AuthorizeDebugUnlockToken,
-        &mbox_payload,
+        req.as_bytes(),
         driver,
         &mut resp_buf,
     )?;
@@ -763,6 +746,36 @@ mod tests {
             TransportError::BufferError(msg) => assert!(msg.contains("maximum CSR size")),
             other => panic!("unexpected error: {:?}", other),
         }
+    }
+
+    #[test]
+    fn debug_unlock_req_rejects_trailing_response_bytes() {
+        let req = ProdDebugUnlockReqRequest::new(1);
+        let mut data = vec![
+            0xA5;
+            core::mem::size_of::<u32>()
+                + UNIQUE_DEVICE_ID_SIZE
+                + DEBUG_UNLOCK_CHALLENGE_SIZE
+                + 1
+        ];
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::RequestDebugUnlock, &data),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer = [0u8; core::mem::size_of::<ProdDebugUnlockReqResponse>()];
+
+        let err = handle_prod_debug_unlock_req(req.as_bytes(), &mut driver, &mut response_buffer)
+            .expect_err("DebugUnlock response with trailing bytes must be rejected");
+
+        assert!(matches!(err, TransportError::InvalidMessage));
+        data.truncate(
+            core::mem::size_of::<u32>() + UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
+        );
+        data[..core::mem::size_of::<u32>()].copy_from_slice(&21u32.to_le_bytes());
+        driver.response = success_response(CaliptraVdmCommand::RequestDebugUnlock, &data);
+        handle_prod_debug_unlock_req(req.as_bytes(), &mut driver, &mut response_buffer)
+            .expect("exact-length DebugUnlock response should be accepted");
+        assert_eq!(&driver.last_request[2..], req.as_bytes());
     }
 
     #[test]

@@ -122,6 +122,259 @@ pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
     Ok(slot_id)
 }
 
+#[derive(Copy, Clone)]
+pub(crate) struct SetCertificateStreamState {
+    slot_id: u8,
+    key_pair_id: u8,
+    cert_model: u8,
+    root_hash: [u8; SHA384_DIGEST_SIZE],
+    der_len: usize,
+    der_received: usize,
+    cert_remaining: usize,
+    header: [u8; 6],
+    header_len: usize,
+    cert_count: usize,
+}
+
+pub(crate) async fn start_set_certificate_stream<Pal: SpdmPal>(
+    state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    large_msg_size: usize,
+    first: &[u8],
+) -> SpdmResult<SetCertificateStreamState> {
+    if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
+        return Err(SPDM_UNEXPECTED_REQUEST);
+    }
+    if !state.advertised_cap_flags.contains(CapFlags::SET_CERT) {
+        return Err(unsupported_set_certificate());
+    }
+    let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(first).map_err(|_| SPDM_INVALID_REQUEST)?;
+    if hdr.version != state.version.to_u8() {
+        return Err(SPDM_VERSION_MISMATCH);
+    }
+    if state.version < SpdmVersion::V12 {
+        return Err(unsupported_set_certificate());
+    }
+    let req_body = SetCertificateReqBody::ref_from_bytes(
+        body.get(..SetCertificateReqBody::SIZE)
+            .ok_or(SPDM_INVALID_REQUEST)?,
+    )
+    .map_err(|_| SPDM_INVALID_REQUEST)?;
+    if req_body.erase() {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let slot_id = req_body.slot_id();
+    validate_request_slot(slot_id, pal.supported_slots())?;
+    let cert_model = effective_cert_model(state, req_body)?;
+    if !pal.set_certificate_authorized(io, slot_id, req_body.key_pair_id, cert_model, false) {
+        return Err(SPDM_SESSION_REQUIRED);
+    }
+    validate_request_attributes(state, req_body)?;
+    validate_negotiated_set_certificate_algorithms(state)?;
+
+    let payload_len = large_msg_size
+        .checked_sub(SpdmMsgHdrPdu::SIZE + SetCertificateReqBody::SIZE)
+        .ok_or(SPDM_INVALID_REQUEST)?;
+    if payload_len < SPDM_CERT_CHAIN_HDR_LEN || payload_len > u16::MAX as usize {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let payload = body
+        .get(SetCertificateReqBody::SIZE..)
+        .ok_or(SPDM_INVALID_REQUEST)?;
+    if payload.len() < SPDM_CERT_CHAIN_HDR_LEN {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let length = u16::from_le_bytes([payload[0], payload[1]]) as usize;
+    let reserved = u16::from_le_bytes([payload[2], payload[3]]);
+    if reserved != 0 || length != payload_len || length < SPDM_CERT_CHAIN_HDR_LEN {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let root_hash: [u8; SHA384_DIGEST_SIZE] = payload
+        .get(4..SPDM_CERT_CHAIN_HDR_LEN)
+        .and_then(|s| s.try_into().ok())
+        .ok_or(SPDM_INVALID_REQUEST)?;
+    let der_len = payload_len - SPDM_CERT_CHAIN_HDR_LEN;
+    if der_len == 0 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+
+    pal.begin_write_cert_chain_stream(
+        io,
+        slot_id,
+        state.asym_algo(),
+        req_body.key_pair_id,
+        cert_model,
+        &root_hash,
+        der_len,
+    )
+    .await?;
+
+    let mut stream = SetCertificateStreamState {
+        slot_id,
+        key_pair_id: req_body.key_pair_id,
+        cert_model,
+        root_hash,
+        der_len,
+        der_received: 0,
+        cert_remaining: 0,
+        header: [0; 6],
+        header_len: 0,
+        cert_count: 0,
+    };
+    let der = &payload[SPDM_CERT_CHAIN_HDR_LEN..];
+    if let Err(err) =
+        continue_set_certificate_stream(pal, io, state.asym_algo(), &mut stream, der).await
+    {
+        abort_set_certificate_stream(state, pal, io, &stream).await;
+        return Err(err);
+    }
+    Ok(stream)
+}
+
+pub(crate) async fn continue_set_certificate_stream<Pal: SpdmPal>(
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    algo: caliptra_mcu_spdm_traits::SpdmPalAsymAlgo,
+    stream: &mut SetCertificateStreamState,
+    der: &[u8],
+) -> SpdmResult<()> {
+    if der.is_empty() {
+        return Ok(());
+    }
+    let end = stream
+        .der_received
+        .checked_add(der.len())
+        .ok_or(SPDM_INVALID_REQUEST)?;
+    if end > stream.der_len {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    validate_der_stream_chunk(stream, der)?;
+    pal.write_cert_chain_stream_chunk(io, stream.slot_id, algo, stream.der_received, der)
+        .await?;
+    stream.der_received = end;
+    Ok(())
+}
+
+pub(crate) async fn finish_set_certificate_stream<Pal: SpdmPal>(
+    state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    stream: &SetCertificateStreamState,
+) -> SpdmResult<u8> {
+    if stream.der_received != stream.der_len
+        || stream.cert_remaining != 0
+        || stream.header_len != 0
+        || stream.cert_count == 0
+    {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    pal.finish_write_cert_chain_stream(
+        io,
+        stream.slot_id,
+        state.asym_algo(),
+        stream.key_pair_id,
+        stream.cert_model,
+        &stream.root_hash,
+        stream.der_len,
+    )
+    .await
+    .map_err(map_set_cert_validation_error)?;
+    Ok(stream.slot_id)
+}
+
+pub(crate) async fn abort_set_certificate_stream<Pal: SpdmPal>(
+    state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    stream: &SetCertificateStreamState,
+) {
+    let _ = pal
+        .abort_write_cert_chain_stream(io, stream.slot_id, state.asym_algo())
+        .await;
+}
+
+fn validate_der_stream_chunk(
+    stream: &mut SetCertificateStreamState,
+    mut data: &[u8],
+) -> SpdmResult<()> {
+    while !data.is_empty() {
+        if stream.cert_remaining == 0 {
+            while !data.is_empty() {
+                if stream.header_len >= stream.header.len() {
+                    return Err(SPDM_INVALID_REQUEST);
+                }
+                stream.header[stream.header_len] = data[0];
+                stream.header_len += 1;
+                data = &data[1..];
+                if let Some(cert_len) =
+                    der_sequence_len_prefix(&stream.header[..stream.header_len])?
+                {
+                    if cert_len < stream.header_len {
+                        return Err(SPDM_INVALID_REQUEST);
+                    }
+                    stream.cert_count = stream.cert_count.saturating_add(1);
+                    stream.cert_remaining = cert_len - stream.header_len;
+                    if stream.cert_remaining == 0 {
+                        stream.header_len = 0;
+                    }
+                    break;
+                }
+            }
+        }
+
+        if stream.cert_remaining != 0 {
+            let n = stream.cert_remaining.min(data.len());
+            stream.cert_remaining -= n;
+            data = &data[n..];
+            if stream.cert_remaining == 0 {
+                stream.header_len = 0;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn der_sequence_len_prefix(input: &[u8]) -> SpdmResult<Option<usize>> {
+    if input.len() < 2 {
+        if input.first().is_some_and(|b| *b != 0x30) {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+        return Ok(None);
+    }
+    if input[0] != 0x30 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let len_byte = input[1];
+    let (header_len, content_len) = if len_byte & 0x80 == 0 {
+        (2usize, len_byte as usize)
+    } else {
+        let len_len = (len_byte & 0x7f) as usize;
+        if len_len == 0 || len_len > 4 {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+        if input.len() < 2 + len_len {
+            return Ok(None);
+        }
+        let mut content_len = 0usize;
+        for &byte in &input[2..2 + len_len] {
+            content_len = content_len.checked_shl(8).ok_or(SPDM_INVALID_REQUEST)?;
+            content_len = content_len
+                .checked_add(byte as usize)
+                .ok_or(SPDM_INVALID_REQUEST)?;
+        }
+        (2 + len_len, content_len)
+    };
+    if content_len == 0 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    Ok(Some(
+        header_len
+            .checked_add(content_len)
+            .ok_or(SPDM_INVALID_REQUEST)?,
+    ))
+}
+
 fn unsupported_set_certificate() -> SpdmError {
     SPDM_UNSUPPORTED_REQUEST.with_data(ReqRespCode::SET_CERTIFICATE.0)
 }
@@ -236,30 +489,7 @@ fn validate_der_chain(der: &[u8]) -> SpdmResult<usize> {
 }
 
 fn der_sequence_len(input: &[u8]) -> Option<usize> {
-    if input.len() < 2 || input[0] != 0x30 {
-        return None;
-    }
-
-    let len_byte = input[1];
-    let (header_len, content_len) = if len_byte & 0x80 == 0 {
-        (2usize, len_byte as usize)
-    } else {
-        let len_len = (len_byte & 0x7f) as usize;
-        if len_len == 0 || len_len > 4 || input.len() < 2 + len_len {
-            return None;
-        }
-        let mut content_len = 0usize;
-        for &byte in &input[2..2 + len_len] {
-            content_len = content_len.checked_shl(8)?;
-            content_len = content_len.checked_add(byte as usize)?;
-        }
-        (2 + len_len, content_len)
-    };
-
-    if content_len == 0 {
-        return None;
-    }
-    let total_len = header_len.checked_add(content_len)?;
+    let total_len = der_sequence_len_prefix(input).ok()??;
     (total_len <= input.len()).then_some(total_len)
 }
 

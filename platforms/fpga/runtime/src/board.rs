@@ -707,7 +707,8 @@ pub unsafe fn main() {
         staging_partition,
         board_kernel,
         mux_mcu_mbox_flash,
-        caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl
+        caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl,
+        caliptra_mcu_flash_ctrl_fpga::ERASE_SECTOR_SIZE
     );
     caliptra_mcu_romtime::println!("[mcu-runtime] Flash partition component initialized");
 
@@ -797,6 +798,7 @@ pub unsafe fn main() {
         caliptra_mcu_flash_driver::flash_storage_to_pages::FlashStorageToPages::new(
             otp_fl_user,
             otp_page_buffer,
+            caliptra_mcu_flash_ctrl_fpga::ERASE_SECTOR_SIZE,
         )
     );
     kernel::hil::flash::HasClient::set_client(otp_fl_user, otp_fs_to_pages);

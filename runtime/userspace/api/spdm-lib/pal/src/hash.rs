@@ -65,7 +65,7 @@ impl<M: MeasurementProvider> SpdmPalHash for McuSpdmPal<M> {
     #[inline]
     fn hash_clone(&self, _io: &impl SpdmPalIo, state: &Self::State) -> McuResult<Self::State> {
         let buf = self.allocator.alloc_bytes(SHA_CONTEXT_SIZE)?;
-        Ok(state.clone_into(buf))
+        state.clone_into(buf)
     }
 
     #[inline]

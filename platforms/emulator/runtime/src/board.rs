@@ -745,7 +745,8 @@ pub unsafe fn main() {
         flash_partitions,
         board_kernel,
         mux_primary_flash,
-        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl,
+        caliptra_mcu_flash_ctrl_emulator::ERASE_SECTOR_SIZE
     );
 
     // Create a mux for the recovery flash controller
@@ -760,7 +761,8 @@ pub unsafe fn main() {
         flash_partitions,
         board_kernel,
         mux_secondary_flash,
-        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl,
+        caliptra_mcu_flash_ctrl_emulator::ERASE_SECTOR_SIZE
     );
 
     let mut logging_flash: [Option<
@@ -828,6 +830,7 @@ pub unsafe fn main() {
         caliptra_mcu_flash_driver::flash_storage_to_pages::FlashStorageToPages::new(
             otp_fl_user,
             otp_page_buffer,
+            caliptra_mcu_flash_ctrl_emulator::ERASE_SECTOR_SIZE,
         )
     );
     kernel::hil::flash::HasClient::set_client(otp_fl_user, otp_fs_to_pages);

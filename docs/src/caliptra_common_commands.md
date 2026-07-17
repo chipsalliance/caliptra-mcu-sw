@@ -248,20 +248,23 @@ Requests debug unlock in production environment.
 ### Authorize Debug Unlock Token
 
 Authorizes the debug unlock token.
+The request body is identical for MCI mailbox and SPDM VDM transports; the
+leading `checksum` is part of the common command body, not transport framing.
 
 **Request Payload**:
 
 | Byte(s)   | Name                     | Type         | Description                                                                 |
 |-----------|--------------------------|--------------|-----------------------------------------------------------------------------|
-| 0:3       | length                   | u32          | Length of the message in DWORDs                                             |
-| 4:35      | unique_device_identifier | u8[32]       | Device identifier of the Caliptra device                                    |
-| 36        | unlock_level             | u8           | Debug unlock level (1-8)                                                    |
-| 37:39     | reserved                 | u8[3]        | Reserved field                                                              |
-| 40:87     | challenge                | u8[48]       | Random number challenge                                                     |
-| 88:183    | ecc_public_key           | u32[24]      | ECC public key in hardware format (little endian)                           |
-| 184:2635  | mldsa_public_key         | u32[648]     | MLDSA public key in hardware format (little endian)                         |
-| 2636:2731 | ecc_signature            | u32[24]      | ECC P-384 signature of the message hashed using SHA2-384 (R and S coordinates) |
-| 2732:6195 | mldsa_signature          | u32[1157]    | MLDSA signature of the message hashed using SHA2-512 (4627 bytes + 1 reserved byte) |
+| 0:3       | checksum                 | u32          | Caliptra RT mailbox request checksum (`MailboxReqHeader.checksum`)          |
+| 4:7       | length                   | u32          | Length of the message in DWORDs                                             |
+| 8:39      | unique_device_identifier | u8[32]       | Device identifier of the Caliptra device                                    |
+| 40        | unlock_level             | u8           | Debug unlock level (1-8)                                                    |
+| 41:43     | reserved                 | u8[3]        | Reserved field                                                              |
+| 44:91     | challenge                | u8[48]       | Random number challenge                                                     |
+| 92:187    | ecc_public_key           | u32[24]      | ECC public key in hardware format (little endian)                           |
+| 188:2639  | mldsa_public_key         | u32[648]     | MLDSA public key in hardware format (little endian)                         |
+| 2640:2735 | ecc_signature            | u32[24]      | ECC P-384 signature of the message hashed using SHA2-384 (R and S coordinates) |
+| 2736:6199 | mldsa_signature          | u32[1157]    | MLDSA signature of the message hashed using SHA2-512 (4627 bytes + 1 reserved byte) |
 
 **Response Payload**:
 

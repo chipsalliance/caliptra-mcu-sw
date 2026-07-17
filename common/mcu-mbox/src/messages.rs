@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_api::mailbox::CommandId as CaliptraCommandId;
 pub use caliptra_api::mailbox::{
     CmAesDecryptInitReq, CmAesDecryptUpdateReq, CmAesEncryptInitReq, CmAesEncryptInitResp,
     CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq, CmAesGcmDecryptFinalReq,
@@ -1327,7 +1328,10 @@ impl Response for McuProdDebugUnlockReqResp {}
 
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct McuProdDebugUnlockTokenReq(pub ProductionAuthDebugUnlockToken);
+pub struct McuProdDebugUnlockTokenReq {
+    pub hdr: MailboxReqHeader,
+    pub token: ProductionAuthDebugUnlockToken,
+}
 impl Request for McuProdDebugUnlockTokenReq {
     const ID: CommandId = CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN;
     type Resp = McuProdDebugUnlockTokenResp;
@@ -1335,7 +1339,25 @@ impl Request for McuProdDebugUnlockTokenReq {
 
 impl Default for McuProdDebugUnlockTokenReq {
     fn default() -> Self {
-        Self(ProductionAuthDebugUnlockToken::new_zeroed())
+        Self {
+            hdr: MailboxReqHeader::default(),
+            token: ProductionAuthDebugUnlockToken::new_zeroed(),
+        }
+    }
+}
+
+impl McuProdDebugUnlockTokenReq {
+    /// Populate the Caliptra command checksum carried inside the token.
+    pub fn populate_caliptra_chksum(&mut self) -> McuMboxResult<()> {
+        let token_bytes = self.token.as_bytes();
+        let token_body = token_bytes
+            .get(size_of::<MailboxReqHeader>()..)
+            .ok_or(McuMboxError::MCU_RUNTIME_INSUFFICIENT_MEMORY)?;
+        self.token.hdr.chksum = calc_checksum(
+            CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.into(),
+            token_body,
+        );
+        Ok(())
     }
 }
 

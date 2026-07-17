@@ -7,6 +7,7 @@ use caliptra_mcu_config_fpga::flash::STAGING_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::flash::{FlashCapacity, SpiFlash};
 
 const BUF_LEN: usize = 1024;
+const ERASE_LEN: usize = 4096;
 const EXPECTED_CHUNK_SIZE: usize = 512;
 
 struct FlashTestConfig<'a> {
@@ -39,7 +40,7 @@ pub async fn test_flash_usermode_emulator() {
         expected_capacity: FlashCapacity(IMAGE_A_PARTITION.size as u32),
         expected_chunk_size: EXPECTED_CHUNK_SIZE,
         e_offset: IMAGE_A_PARTITION.offset,
-        e_len: BUF_LEN,
+        e_len: ERASE_LEN,
         w_offset: IMAGE_A_PARTITION.offset + 20,
         p_offset: IMAGE_A_PARTITION.offset,
         w_len: 1000,
@@ -53,7 +54,7 @@ pub async fn test_flash_usermode_emulator() {
         expected_capacity: FlashCapacity(IMAGE_B_PARTITION.size as u32),
         expected_chunk_size: EXPECTED_CHUNK_SIZE,
         e_offset: IMAGE_B_PARTITION.offset,
-        e_len: BUF_LEN,
+        e_len: ERASE_LEN,
         w_offset: IMAGE_B_PARTITION.offset + 20,
         p_offset: IMAGE_B_PARTITION.offset,
         w_len: 1000,
@@ -80,7 +81,7 @@ pub async fn test_flash_usermode_fpga() {
         expected_capacity: FlashCapacity(STAGING_PARTITION.size as u32),
         expected_chunk_size: EXPECTED_CHUNK_SIZE,
         e_offset: STAGING_PARTITION.offset,
-        e_len: BUF_LEN,
+        e_len: ERASE_LEN,
         w_offset: STAGING_PARTITION.offset + 20,
         p_offset: STAGING_PARTITION.offset,
         w_len: 1000,
@@ -132,13 +133,10 @@ async fn simple_test<'a>(test_cfg: &'a mut FlashTestConfig<'a>) {
     // Reset read buffer
     test_cfg.r_buf.iter_mut().for_each(|x| *x = 0);
 
-    // Read whole test region
+    // Read back a portion of the erased region to verify data integrity
+    let read_len = test_cfg.r_buf.len().min(test_cfg.e_len);
     let ret = flash_par
-        .read(
-            test_cfg.e_offset,
-            test_cfg.e_len,
-            test_cfg.r_buf as &mut [u8],
-        )
+        .read(test_cfg.e_offset, read_len, test_cfg.r_buf as &mut [u8])
         .await;
     assert_eq!(ret, Ok(()));
 
@@ -158,7 +156,7 @@ async fn simple_test<'a>(test_cfg: &'a mut FlashTestConfig<'a>) {
         }
 
         for i in (test_cfg.w_offset - test_cfg.p_offset + test_cfg.w_len).min(test_cfg.r_buf.len())
-            ..test_cfg.e_len.min(test_cfg.r_buf.len())
+            ..read_len.min(test_cfg.r_buf.len())
         {
             assert_eq!(test_cfg.r_buf[i], 0xFF, "data mismatch at {}", i);
         }
