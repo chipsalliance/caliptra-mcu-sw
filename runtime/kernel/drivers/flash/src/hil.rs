@@ -38,9 +38,21 @@ pub trait FlashStorage<'a> {
         length: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])>;
 
-    /// Erase `length` bytes starting at address `address`. The address must be
-    /// in the address space of the physical storage.
+    /// Erase `length` bytes starting at address `address`. The `address` must
+    /// be aligned to the erase size returned by [`Self::erase_size`]. If
+    /// `length` is not a multiple of the erase size, it is rounded up to the
+    /// next erase boundary (real flash hardware cannot erase partial sectors).
+    /// The address must be in the address space of the physical storage.
     fn erase(&self, address: usize, length: usize) -> Result<(), ErrorCode>;
+
+    /// Returns the minimum erase granularity in bytes.
+    ///
+    /// On real flash hardware, the erase unit (sector) is typically larger than
+    /// the read/write page size. For example, a SPI NOR flash may have a 256-byte
+    /// page size for reads and writes but a 4096-byte (4 KiB) sector size for erases.
+    ///
+    /// Callers should ensure that erase operations are aligned to this size.
+    fn erase_size(&self) -> usize;
 }
 
 /// Client interface for flash storage.

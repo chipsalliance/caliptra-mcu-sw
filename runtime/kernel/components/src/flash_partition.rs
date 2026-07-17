@@ -16,7 +16,8 @@ macro_rules! instantiate_flash_partitions {
         $flash_partitions:ident,
         $kernel:expr,
         $mux:expr,
-        $flash_ctrl_ty:ty
+        $flash_ctrl_ty:ty,
+        $erase_size:expr
     ) => {{
         macro_rules! assign_partition {
             ($index:tt, $var:ident, $partition:ident) => {
@@ -30,6 +31,7 @@ macro_rules! instantiate_flash_partitions {
                         image_par_fl_user,
                         $partition.offset,
                         $partition.size,
+                        $erase_size,
                     )
                     .finalize(flash_partition_component_static!(
                         virtual_flash::FlashUser<'static, $flash_ctrl_ty>,
@@ -72,6 +74,7 @@ pub struct FlashPartitionComponent<
     flash: &'static F,
     start_address: usize,
     length: usize,
+    erase_size: usize,
 }
 
 impl<
@@ -89,6 +92,7 @@ impl<
         flash: &'static F,
         start_address: usize,
         length: usize,
+        erase_size: usize,
     ) -> Self {
         Self {
             board_kernel,
@@ -96,6 +100,7 @@ impl<
             flash,
             start_address,
             length,
+            erase_size,
         }
     }
 }
@@ -135,6 +140,7 @@ impl<
             caliptra_mcu_flash_driver::flash_storage_to_pages::FlashStorageToPages::new(
                 self.flash,
                 flash_pagebuffer,
+                self.erase_size,
             ),
         );
         hil::flash::HasClient::set_client(self.flash, fs_to_pages);
