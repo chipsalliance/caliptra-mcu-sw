@@ -16,6 +16,7 @@ use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeabl
 use kernel::ErrorCode;
 
 pub const PAGE_SIZE: usize = 256;
+pub const ERASE_SECTOR_SIZE: usize = 4096;
 pub const FLASH_MAX_PAGES: usize = 64 * 1024 * 1024 / PAGE_SIZE;
 const SOC_RECEIVER_AXI_USER: u32 = 1;
 

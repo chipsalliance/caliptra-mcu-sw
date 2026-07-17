@@ -341,6 +341,7 @@ impl SyscallDriver for FlashPartition<'_> {
     /// - `3`: Start a write
     /// - `4`: Start an erase
     /// - `5`: Return the chunk size for reads and writes
+    /// - `6`: Return the erase size (minimum erase granularity)
     fn command(
         &self,
         command_num: usize,
@@ -404,6 +405,11 @@ impl SyscallDriver for FlashPartition<'_> {
             5 => {
                 // Return the chunk size for reads and writes
                 CommandReturn::success_u32(BUF_LEN as u32)
+            }
+
+            6 => {
+                // Return the erase size (minimum erase granularity)
+                CommandReturn::success_u32(self.driver.erase_size() as u32)
             }
 
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
