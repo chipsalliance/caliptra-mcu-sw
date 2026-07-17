@@ -782,6 +782,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             .iter()
             .map(|img| img.path.clone())
             .collect(),
+        effective_soc_images.clone(),
         false, // Base flash image is not for flash-based boot
     )?;
     let pldm_manifest_decoded = match pldm_manifest {
@@ -946,6 +947,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 Some(feature_soc_manifest_file.path().to_path_buf()),
                 Some(feature_runtime_file.path().to_path_buf()),
                 feature_soc_images_paths,
+                feature_soc_images.clone(),
                 is_flash_based_boot,
             )?;
 
@@ -961,6 +963,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                     Some(feature_soc_manifest_file.path().to_path_buf()),
                     Some(feature_runtime_file.path().to_path_buf()),
                     feature_soc_images_paths_clone,
+                    feature_soc_images.clone(),
                     false, // No partition table for update image
                 )?)
             } else {
@@ -1242,6 +1245,7 @@ fn create_flash_image(
     soc_manifest_path: Option<PathBuf>,
     mcu_runtime_path: Option<PathBuf>,
     soc_images_paths: Vec<PathBuf>,
+    soc_images: Option<Vec<ImageCfg>>,
     is_flash_based_boot: bool,
 ) -> Result<PathBuf> {
     let flash_image_path = tempfile::NamedTempFile::new()
@@ -1268,6 +1272,7 @@ fn create_flash_image(
                 .map(|p| p.to_string_lossy().to_string())
                 .collect(),
         ),
+        soc_images,
         offset: flash_offset,
         output_path: Some(flash_image_path.to_string_lossy().to_string()),
         ..Default::default()
