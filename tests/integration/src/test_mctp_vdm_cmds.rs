@@ -127,7 +127,7 @@ pub mod test {
         fn test_get_firmware_version(&mut self) -> Result<(), VdmTransportError> {
             info!("Testing Get Firmware Version command...");
 
-            for index in 0..3u32 {
+            for index in 0..4u32 {
                 let request = FirmwareVersionRequest::new(index);
                 let response: FirmwareVersionResponse =
                     self.send_request_expect_success(&request)?;

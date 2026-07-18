@@ -28,6 +28,8 @@ use core::convert::From;
 use core::num::NonZeroU32;
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout};
 
+pub const MCU_ROM_VERSION_STR: &str = "MCU_ROM_v2.1.0";
+
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 32;
@@ -669,6 +671,7 @@ pub enum FwIndex {
     CaliptraCore,
     McuRuntime,
     SoC,
+    McuRom,
 }
 
 #[repr(C)]
