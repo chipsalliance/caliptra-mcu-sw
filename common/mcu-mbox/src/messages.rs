@@ -1,31 +1,30 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_api::mailbox::CommandId as CaliptraCommandId;
-pub use caliptra_api::mailbox::{
-    CmAesDecryptInitReq, CmAesDecryptUpdateReq, CmAesEncryptInitReq, CmAesEncryptInitResp,
-    CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq, CmAesGcmDecryptFinalReq,
-    CmAesGcmDecryptFinalResp, CmAesGcmDecryptFinalRespHeader, CmAesGcmDecryptInitReq,
-    CmAesGcmDecryptInitResp, CmAesGcmDecryptUpdateReq, CmAesGcmDecryptUpdateResp,
-    CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq, CmAesGcmEncryptFinalResp,
-    CmAesGcmEncryptFinalRespHeader, CmAesGcmEncryptInitReq, CmAesGcmEncryptInitResp,
-    CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateResp, CmAesGcmEncryptUpdateRespHeader,
-    CmAesMode, CmAesResp, CmAesRespHeader, CmDeleteReq, CmEcdhFinishReq, CmEcdhFinishResp,
-    CmEcdhGenerateReq, CmEcdhGenerateResp, CmEcdsaPublicKeyReq, CmEcdsaPublicKeyResp,
-    CmEcdsaSignReq, CmEcdsaSignResp, CmEcdsaVerifyReq, CmHkdfExpandReq, CmHkdfExpandResp,
-    CmHkdfExtractReq, CmHkdfExtractResp, CmHmacKdfCounterReq, CmHmacKdfCounterResp, CmHmacReq,
-    CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaPublicKeyResp,
-    CmMldsaSignReq, CmMldsaSignResp, CmMldsaVerifyReq, CmRandomGenerateReq, CmRandomGenerateResp,
-    CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
-    CmStatusResp, Cmk, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
-    ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
-    ProductionAuthDebugUnlockToken, ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE,
-    CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE,
-    MAX_CMB_DATA_SIZE,
-};
-pub use caliptra_api::{calc_checksum, verify_checksum};
 use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0;
 use core::convert::From;
 use core::num::NonZeroU32;
+use mcu_caliptra_api_lite::mailbox::CommandId as CaliptraCommandId;
+pub use mcu_caliptra_api_lite::mailbox::{
+    calc_checksum, verify_checksum, CmAesDecryptInitReq, CmAesDecryptUpdateReq,
+    CmAesEncryptInitReq, CmAesEncryptInitResp, CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq,
+    CmAesGcmDecryptFinalReq, CmAesGcmDecryptFinalResp, CmAesGcmDecryptFinalRespHeader,
+    CmAesGcmDecryptInitReq, CmAesGcmDecryptInitResp, CmAesGcmDecryptUpdateReq,
+    CmAesGcmDecryptUpdateResp, CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq,
+    CmAesGcmEncryptFinalResp, CmAesGcmEncryptFinalRespHeader, CmAesGcmEncryptInitReq,
+    CmAesGcmEncryptInitResp, CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateResp,
+    CmAesGcmEncryptUpdateRespHeader, CmAesMode, CmAesResp, CmAesRespHeader, CmDeleteReq,
+    CmEcdhFinishReq, CmEcdhFinishResp, CmEcdhGenerateReq, CmEcdhGenerateResp, CmEcdsaPublicKeyReq,
+    CmEcdsaPublicKeyResp, CmEcdsaSignReq, CmEcdsaSignResp, CmEcdsaVerifyReq, CmHkdfExpandReq,
+    CmHkdfExpandResp, CmHkdfExtractReq, CmHkdfExtractResp, CmHmacKdfCounterReq,
+    CmHmacKdfCounterResp, CmHmacReq, CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage,
+    CmMldsaPublicKeyReq, CmMldsaPublicKeyResp, CmMldsaSignReq, CmMldsaSignResp, CmMldsaVerifyReq,
+    CmRandomGenerateReq, CmRandomGenerateResp, CmRandomStirReq, CmShaFinalReq, CmShaFinalResp,
+    CmShaInitReq, CmShaInitResp, CmShaUpdateReq, CmStatusResp, Cmk, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, ProductionAuthDebugUnlockChallenge,
+    ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken, ResponseVarSize,
+    CMB_AES_ENCRYPTED_CONTEXT_SIZE, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
+    CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE, MAX_CMB_DATA_SIZE,
+};
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout};
 
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;

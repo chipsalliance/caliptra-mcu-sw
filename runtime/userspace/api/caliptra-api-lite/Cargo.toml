@@ -7,7 +7,15 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-mcu-error = { workspace = true }
-caliptra-mcu-libsyscall-caliptra = { workspace = true }
-caliptra-mcu-libtock_platform = { workspace = true }
+mcu-error = { workspace = true, optional = true }
+caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
+caliptra-mcu-libtock_platform = { workspace = true, optional = true }
 zerocopy = { workspace = true }
+
+[features]
+default = ["mailbox-io"]
+mailbox-io = [
+    "dep:mcu-error",
+    "dep:caliptra-mcu-libsyscall-caliptra",
+    "dep:caliptra-mcu-libtock_platform",
+]

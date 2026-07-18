@@ -10,7 +10,7 @@ edition.workspace = true
 caliptra-mcu-spdm-traits = { workspace = true }
 caliptra-mcu-spdm-codec = { workspace = true }
 caliptra-mcu-measurement-api = { workspace = true }
-mcu-caliptra-api-lite = { workspace = true }
+mcu-caliptra-api-lite = { workspace = true, features = ["mailbox-io"] }
 mcu-error = { workspace = true }
 caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
 caliptra-mcu-libtock_platform = { workspace = true, optional = true }

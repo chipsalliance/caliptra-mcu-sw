@@ -7,6 +7,6 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-caliptra-api.workspace = true
+mcu-caliptra-api-lite.workspace = true
 zerocopy.workspace = true
 caliptra-mcu-registers-generated.workspace = true

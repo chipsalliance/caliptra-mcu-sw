@@ -1,10 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use caliptra_api::calc_checksum;
-use caliptra_api::mailbox::MailboxReqHeader;
 use caliptra_mcu_hw_model::McuHwModel;
-use caliptra_mcu_mbox_common::messages::GetAuthCmdChallengeReq;
+use caliptra_mcu_mbox_common::messages::{calc_checksum, GetAuthCmdChallengeReq, MailboxReqHeader};
 use core::mem::size_of;
 use hmac::{Hmac, Mac};
 use sha2::Sha384;
