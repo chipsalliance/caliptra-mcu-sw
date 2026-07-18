@@ -5,7 +5,6 @@ extern crate alloc;
 use crate::DefaultSyscalls;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_api::mailbox::MailboxReqHeader;
 use caliptra_mcu_libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use caliptra_mcu_libtockasync::TockSubscribe;
 use core::{hint::black_box, marker::PhantomData};
@@ -14,6 +13,7 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 // Global mutex to ensure that multiple tasks do not overwrite each other's upcall pointers.
 static MAILBOX_MUTEX: Mutex<CriticalSectionRawMutex, u32> = Mutex::new(0);
 const PAYLOAD_CHUNK_SIZE: usize = 256;
+const MAILBOX_REQ_HEADER_SIZE: usize = core::mem::size_of::<u32>();
 
 /// Mailbox interface user interface.
 ///
@@ -32,14 +32,23 @@ impl<S: Syscalls> Default for Mailbox<S> {
 
 // Populate the checksum for a mailbox request.
 pub fn populate_checksum(cmd: u32, data: &mut [u8]) -> Result<(), ErrorCode> {
-    // Calc checksum, use the size override if provided
-    let checksum = caliptra_api::calc_checksum(cmd, data);
-
-    if data.len() < size_of::<MailboxReqHeader>() {
-        Err(ErrorCode::Invalid)?;
-    }
-    data[..size_of::<MailboxReqHeader>()].copy_from_slice(&checksum.to_le_bytes());
+    let checksum = calc_checksum(cmd, data);
+    let Some(checksum_dst) = data.get_mut(..MAILBOX_REQ_HEADER_SIZE) else {
+        return Err(ErrorCode::Invalid);
+    };
+    checksum_dst.copy_from_slice(&checksum.to_le_bytes());
     Ok(())
+}
+
+fn calc_checksum(cmd: u32, data: &[u8]) -> u32 {
+    let mut checksum = 0u32;
+    for c in cmd.to_le_bytes().iter() {
+        checksum = checksum.wrapping_add(*c as u32);
+    }
+    for d in data {
+        checksum = checksum.wrapping_add(*d as u32);
+    }
+    0u32.wrapping_sub(checksum)
 }
 
 impl<S: Syscalls> Mailbox<S> {
@@ -364,4 +373,39 @@ mod mailbox_subscribe {
 pub enum MailboxError {
     ErrorCode(ErrorCode),
     MailboxError(u32),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checksum_matches_caliptra_api_vector() {
+        assert_eq!(calc_checksum(0xe8dc3994, &[0x83, 0xe7, 0x25]), 0xfffffbe0);
+    }
+
+    #[test]
+    fn populate_checksum_writes_header_word() {
+        let mut data = [0, 0, 0, 0, 0x83, 0xe7, 0x25];
+        assert_eq!(populate_checksum(0xe8dc3994, &mut data), Ok(()));
+
+        let expected_checksum = 0xfffffbe0u32.to_le_bytes();
+        assert_eq!(
+            data.get(..MAILBOX_REQ_HEADER_SIZE),
+            Some(expected_checksum.as_slice())
+        );
+        assert_eq!(
+            data.get(MAILBOX_REQ_HEADER_SIZE..),
+            Some([0x83, 0xe7, 0x25].as_slice())
+        );
+    }
+
+    #[test]
+    fn populate_checksum_rejects_short_header() {
+        let mut data = [0; MAILBOX_REQ_HEADER_SIZE - 1];
+        assert_eq!(
+            populate_checksum(0xe8dc3994, &mut data),
+            Err(ErrorCode::Invalid)
+        );
+    }
 }

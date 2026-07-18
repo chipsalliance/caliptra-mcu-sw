@@ -7,7 +7,7 @@ use caliptra_mcu_common_commands::{
     DeviceInfo, FirmwareVersion, GetLogResult, MAX_UID_LEN,
 };
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
-use caliptra_mcu_libsyscall_caliptra::otp::Otp;
+use caliptra_mcu_libsyscall_caliptra::otp::{Otp, RevokeVendorPubKeyType};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_mbox_common::messages::{
@@ -20,8 +20,8 @@ use caliptra_mcu_mbox_common::messages::{
     MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq,
     McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
     McuProdDebugUnlockTokenReq, McuResponseVarSize, ProvisionVendorPkHashReq,
-    ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE,
-    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{

@@ -4,7 +4,6 @@
 
 use crate::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
-use caliptra_mcu_mbox_common::messages::RevokeVendorPubKeyType;
 use core::{iter::repeat, marker::PhantomData};
 
 pub const VENDOR_PK_HASH_SIZE: usize =
@@ -13,6 +12,33 @@ pub const MAX_NUM_VENDOR_PK_HASH: usize = 16;
 pub const VENDOR_ECC_MAX_KEY_COUNT: u32 = 4;
 pub const VENDOR_LMS_MAX_KEY_COUNT: u32 = 32;
 pub const VENDOR_MLDSA_MAX_KEY_COUNT: u32 = 4;
+
+#[repr(u32)]
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum RevokeVendorPubKeyType {
+    Ecdsa384 = 0,
+    Lms = 1,
+    Mldsa87 = 2,
+}
+
+impl TryFrom<u32> for RevokeVendorPubKeyType {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Ecdsa384),
+            1 => Ok(Self::Lms),
+            2 => Ok(Self::Mldsa87),
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<RevokeVendorPubKeyType> for u32 {
+    fn from(value: RevokeVendorPubKeyType) -> Self {
+        value as u32
+    }
+}
 
 pub struct Otp<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,
