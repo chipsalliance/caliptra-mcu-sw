@@ -19,8 +19,6 @@ use alloc::vec::Vec;
 use core::fmt::Write as _;
 use core::ptr::NonNull;
 
-use super::attestation_manifest_bytes;
-
 /// `FW_HITLESS_UPD_RESET` bit in the MCI `RESET_REASON` register.
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 /// `FW_BOOT_UPD_RESET` bit in the MCI `RESET_REASON` register.
@@ -47,7 +45,10 @@ struct BootScratchSlot([u8; BITMAP_SLOT_SIZE]);
 /// completes; the [`MeasurementApi`] instance is published to [`MEASUREMENT_API`]
 /// for later consumers, and the persistent measurement state lives in the DPE
 /// Handle Storage and Software PCR Storage capsules.
-pub(crate) async fn boot_init() {
+pub(crate) async fn boot_init(
+    attestation_manifest: &'static [u8],
+    soc_image_load_fw_ids: &'static [u32],
+) {
     let boot_kind = match reset_boot_kind() {
         Ok(kind) => kind,
         Err(_) => {
@@ -74,9 +75,14 @@ pub(crate) async fn boot_init() {
     // escape that call.
     let allocator = unsafe { BitmapAllocator::new(scratch_ptr, BOOT_INIT_SCRATCH_SIZE) };
 
-    if caliptra_mcu_measurement_api::init(attestation_manifest_bytes(), boot_kind, &allocator)
-        .await
-        .is_err()
+    if caliptra_mcu_measurement_api::init(
+        attestation_manifest,
+        soc_image_load_fw_ids,
+        boot_kind,
+        &allocator,
+    )
+    .await
+    .is_err()
     {
         log_boot_init_error(BootInitLog::Init);
     }

@@ -18,8 +18,9 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 use crate::slice::{checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
     calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_TAG_TCI,
-    CMD_INVOKE_DPE, DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN,
-    DPE_COMMAND_MAGIC, DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
+    CMD_INVOKE_DPE, DPE_CMD_DERIVE_CONTEXT, DPE_CMD_GET_CERTIFICATE_CHAIN,
+    DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN, DPE_COMMAND_MAGIC, DPE_PROFILE_P384_SHA384,
+    DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
 };
 use crate::ApiAlloc;
 
@@ -35,6 +36,9 @@ const DPE_CERTIFY_KEY_FORMAT_X509: u32 = 0;
 pub const DPE_CONTEXT_HANDLE_SIZE: usize = 16;
 
 pub type DpeContextHandle = [u8; DPE_CONTEXT_HANDLE_SIZE];
+
+/// SHA-384 TCI measurement width used by DPE P-384 / SHA-384 `DeriveContext`.
+pub const DPE_TCI_MEASUREMENT_SIZE: usize = 48;
 
 const DEFAULT_DPE_CONTEXT_HANDLE: DpeContextHandle = [0u8; DPE_CONTEXT_HANDLE_SIZE];
 
@@ -93,6 +97,18 @@ struct SignP384Cmd {
     digest: [u8; DPE_LABEL_LEN], // same size as hash (48)
 }
 
+/// `dpe::commands::DeriveContextCmd`.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct DeriveContextCmd {
+    handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    data: [u8; DPE_TCI_MEASUREMENT_SIZE],
+    flags: U32,
+    tci_type: U32,
+    target_locality: U32,
+    svn: U32,
+}
+
 /// `dpe::response::SignP384Resp`.
 #[repr(C)]
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
@@ -143,6 +159,15 @@ struct NewHandleRespBody {
     handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
 }
 
+/// `dpe::response::DeriveContextResp`.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct DeriveContextRespBody {
+    _resp_hdr: [u8; 12],
+    handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    parent_handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+}
+
 /// Caliptra `TagTciReq`: `chksum(4) + handle(16) + tag(4)`. The
 /// `DPE_TAG_TCI` response carries no command-specific output.
 #[repr(C)]
@@ -164,6 +189,10 @@ const GET_CERT_CHAIN_DPE_PAYLOAD_LEN: u32 =
 const SIGN_REQ_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<SignP384Cmd>();
 const SIGN_DPE_PAYLOAD_LEN: u32 = (size_of::<DpeCommandHdr>() + size_of::<SignP384Cmd>()) as u32;
+const DERIVE_CONTEXT_REQ_LEN: usize =
+    size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<DeriveContextCmd>();
+const DERIVE_CONTEXT_DPE_PAYLOAD_LEN: u32 =
+    (size_of::<DpeCommandHdr>() + size_of::<DeriveContextCmd>()) as u32;
 const CERTIFY_KEY_P384_RESP_PREFIX_LEN: usize = 12 + DPE_CONTEXT_HANDLE_SIZE + 48 + 48 + 4;
 const CERTIFY_KEY_CHUNKS_REQ_LEN: usize =
     4 + 4 + 4 + 4 + 4 + CERTIFY_KEY_CHUNKS_CERTIFY_KEY_REQ_SIZE;
@@ -193,10 +222,16 @@ const _: () = assert!(size_of::<DpeCommandHdr>() == 12);
 const _: () = assert!(size_of::<GetCertChainCmd>() == 8);
 const _: () = assert!(size_of::<SignP384Cmd>() == DPE_CONTEXT_HANDLE_SIZE + 48 + 4 + 48);
 const _: () = assert!(size_of::<SignP384RespBody>() == 12 + DPE_CONTEXT_HANDLE_SIZE + 48 + 48);
+const _: () =
+    assert!(size_of::<DeriveContextCmd>() == DPE_CONTEXT_HANDLE_SIZE + 48 + 4 + 4 + 4 + 4);
+const _: () = assert!(
+    size_of::<DeriveContextRespBody>() == 12 + DPE_CONTEXT_HANDLE_SIZE + DPE_CONTEXT_HANDLE_SIZE
+);
 const _: () = assert!(size_of::<InvokeDpeRespPrefix>() == 12);
 const _: () = assert!(size_of::<DpeResponseHdr>() == 12);
 const _: () = assert!(GET_CERT_CHAIN_REQ_LEN == 28);
 const _: () = assert!(SIGN_REQ_LEN == 8 + 12 + 116);
+const _: () = assert!(DERIVE_CONTEXT_REQ_LEN == 8 + 12 + 80);
 const _: () =
     assert!(CERTIFY_KEY_CHUNKS_CERTIFY_KEY_REQ_SIZE == DPE_CONTEXT_HANDLE_SIZE + 4 + 4 + 48);
 const _: () = assert!(CERTIFY_KEY_P384_RESP_PREFIX_LEN == 128);
@@ -209,6 +244,129 @@ const _: () = assert!(ROTATE_CTX_REQ_LEN == 8 + 12 + 20);
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+/// DPE `DeriveContext` request flags.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct DpeDeriveContextFlags(u32);
+
+impl DpeDeriveContextFlags {
+    /// No request flags.
+    pub const EMPTY: Self = Self(0);
+    /// Keep the parent context and return its rotated handle.
+    pub const RETAIN_PARENT_CONTEXT: Self = Self(1u32 << 29);
+
+    /// Return the raw DPE flag bits.
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+}
+
+/// Parameters for one DPE `DeriveContext` command.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct DpeDeriveContextParams {
+    pub parent_handle: DpeContextHandle,
+    pub measurement: [u8; DPE_TCI_MEASUREMENT_SIZE],
+    pub flags: DpeDeriveContextFlags,
+    pub tci_type: u32,
+    pub target_locality: u32,
+    pub svn: u32,
+}
+
+/// Handles returned by one DPE `DeriveContext` command.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct DpeDeriveContextResult {
+    /// New child context handle.
+    pub child_handle: DpeContextHandle,
+    /// Rotated parent context handle.
+    pub parent_handle: DpeContextHandle,
+}
+
+/// Invoke DPE `DeriveContext`, returning the child handle and rotated parent handle.
+#[inline(never)]
+pub async fn dpe_derive_context<A: ApiAlloc>(
+    alloc: &A,
+    params: &DpeDeriveContextParams,
+) -> McuResult<DpeDeriveContextResult> {
+    let req = build_derive_context_req(alloc, params)?;
+    let mut rsp =
+        alloc.alloc(size_of::<InvokeDpeRespPrefix>() + size_of::<DeriveContextRespBody>())?;
+    let rsp_len = mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
+    parse_derive_context_response(&rsp, rsp_len)
+}
+
+fn build_derive_context_req<'a, A: ApiAlloc>(
+    alloc: &'a A,
+    params: &DpeDeriveContextParams,
+) -> McuResult<A::Buf<'a>> {
+    let mut req = alloc.alloc(DERIVE_CONTEXT_REQ_LEN)?;
+    req.fill(0);
+    {
+        let prefix = InvokeDpeReqPrefix::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            0,
+            size_of::<InvokeDpeReqPrefix>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
+        prefix.data_size = U32::new(DERIVE_CONTEXT_DPE_PAYLOAD_LEN);
+    }
+    let mut cur = size_of::<InvokeDpeReqPrefix>();
+    {
+        let hdr = DpeCommandHdr::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            cur,
+            size_of::<DpeCommandHdr>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
+        hdr.magic = U32::new(DPE_COMMAND_MAGIC);
+        hdr.cmd_id = U32::new(DPE_CMD_DERIVE_CONTEXT);
+        hdr.profile = U32::new(DPE_PROFILE_P384_SHA384);
+    }
+    cur += size_of::<DpeCommandHdr>();
+    {
+        let cmd = DeriveContextCmd::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            cur,
+            size_of::<DeriveContextCmd>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
+        cmd.handle = params.parent_handle;
+        cmd.data = params.measurement;
+        cmd.flags = U32::new(params.flags.bits());
+        cmd.tci_type = U32::new(params.tci_type);
+        cmd.target_locality = U32::new(params.target_locality);
+        cmd.svn = U32::new(params.svn);
+    }
+    let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
+    *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
+    Ok(req)
+}
+
+fn parse_derive_context_response(rsp: &[u8], rsp_len: usize) -> McuResult<DpeDeriveContextResult> {
+    let resp_body_off = size_of::<InvokeDpeRespPrefix>();
+    if rsp_len < resp_body_off + size_of::<DeriveContextRespBody>() {
+        return Err(INTERNAL_BUG);
+    }
+    let dpe_hdr = DpeResponseHdr::ref_from_bytes(internal_slice(
+        rsp,
+        resp_body_off,
+        size_of::<DpeResponseHdr>(),
+    )?)
+    .map_err(|_| INTERNAL_BUG)?;
+    if dpe_hdr.magic.get() != DPE_RESPONSE_MAGIC || dpe_hdr.status.get() != 0 {
+        return Err(INTERNAL_BUG);
+    }
+    let body = DeriveContextRespBody::ref_from_bytes(internal_slice(
+        rsp,
+        resp_body_off,
+        size_of::<DeriveContextRespBody>(),
+    )?)
+    .map_err(|_| INTERNAL_BUG)?;
+    Ok(DpeDeriveContextResult {
+        child_handle: body.handle,
+        parent_handle: body.parent_handle,
+    })
+}
 
 /// Fetch a chunk of the Caliptra-managed DPE certificate chain via
 /// the `INVOKE_DPE / GetCertificateChain` mailbox command.
@@ -825,6 +983,25 @@ mod tests {
     }
 
     #[test]
+    fn derive_context_wire_layout() {
+        assert_eq!(DPE_CMD_DERIVE_CONTEXT, 0x08);
+        assert_eq!(
+            DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT.bits(),
+            1u32 << 29
+        );
+        assert_eq!(
+            size_of::<DeriveContextCmd>(),
+            DPE_CONTEXT_HANDLE_SIZE + 48 + 4 + 4 + 4 + 4
+        );
+        assert_eq!(
+            size_of::<DeriveContextRespBody>(),
+            12 + DPE_CONTEXT_HANDLE_SIZE * 2
+        );
+        assert_eq!(DERIVE_CONTEXT_REQ_LEN, 8 + 12 + 80);
+        assert_eq!(DERIVE_CONTEXT_DPE_PAYLOAD_LEN, (12 + 80) as u32);
+    }
+
+    #[test]
     fn tag_tci_wire_layout() {
         assert_eq!(CMD_DPE_TAG_TCI, 0x5451_4754);
         assert_eq!(TAG_TCI_REQ_LEN, 4 + DPE_CONTEXT_HANDLE_SIZE + 4);
@@ -846,6 +1023,34 @@ mod tests {
     }
 
     #[test]
+    fn derive_context_request_preserves_fields() {
+        let alloc = TestAlloc;
+        let params = DpeDeriveContextParams {
+            parent_handle: [0xa5u8; DPE_CONTEXT_HANDLE_SIZE],
+            measurement: [0x5au8; DPE_TCI_MEASUREMENT_SIZE],
+            flags: DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT,
+            tci_type: 0x1122_3344,
+            target_locality: 0,
+            svn: 7,
+        };
+
+        let req = build_derive_context_req(&alloc, &params).unwrap();
+        let payload_len =
+            u32::from_le_bytes(*req.get(4..8).and_then(|s| s.first_chunk::<4>()).unwrap());
+        let hdr = DpeCommandHdr::ref_from_bytes(&req[8..20]).unwrap();
+        let cmd = DeriveContextCmd::ref_from_bytes(&req[20..100]).unwrap();
+
+        assert_eq!(payload_len, DERIVE_CONTEXT_DPE_PAYLOAD_LEN);
+        assert_eq!(hdr.cmd_id.get(), DPE_CMD_DERIVE_CONTEXT);
+        assert_eq!(cmd.handle, params.parent_handle);
+        assert_eq!(cmd.data, params.measurement);
+        assert_eq!(cmd.flags.get(), params.flags.bits());
+        assert_eq!(cmd.tci_type.get(), params.tci_type);
+        assert_eq!(cmd.target_locality.get(), params.target_locality);
+        assert_eq!(cmd.svn.get(), params.svn);
+    }
+
+    #[test]
     fn none_handle_maps_to_default_handle() {
         assert_eq!(dpe_handle_or_default(None), &DEFAULT_DPE_CONTEXT_HANDLE);
     }
@@ -861,6 +1066,30 @@ mod tests {
         assert_eq!(
             read_context_handle(&rsp, CERTIFY_KEY_CHUNKS_RESP_HANDLE_OFF).unwrap(),
             handle
+        );
+    }
+
+    #[test]
+    fn derive_context_reads_child_and_parent_handles() {
+        let child_handle = [0x3cu8; DPE_CONTEXT_HANDLE_SIZE];
+        let parent_handle = [0xc3u8; DPE_CONTEXT_HANDLE_SIZE];
+        let mut rsp = [0u8; 12 + 12 + DPE_CONTEXT_HANDLE_SIZE * 2];
+        let resp_body_off = size_of::<InvokeDpeRespPrefix>();
+        rsp[resp_body_off..resp_body_off + 4].copy_from_slice(&DPE_RESPONSE_MAGIC.to_le_bytes());
+        rsp[resp_body_off + 8..resp_body_off + 12]
+            .copy_from_slice(&DPE_PROFILE_P384_SHA384.to_le_bytes());
+        rsp[resp_body_off + 12..resp_body_off + 12 + DPE_CONTEXT_HANDLE_SIZE]
+            .copy_from_slice(&child_handle);
+        rsp[resp_body_off + 12 + DPE_CONTEXT_HANDLE_SIZE
+            ..resp_body_off + 12 + DPE_CONTEXT_HANDLE_SIZE * 2]
+            .copy_from_slice(&parent_handle);
+
+        assert_eq!(
+            parse_derive_context_response(&rsp, rsp.len()).unwrap(),
+            DpeDeriveContextResult {
+                child_handle,
+                parent_handle
+            }
         );
     }
 }

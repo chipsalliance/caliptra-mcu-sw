@@ -138,6 +138,10 @@ pub struct BuildArgs {
     /// If set, pass `--no-default-features` to cargo when building runtime binaries.
     #[arg(long)]
     pub no_default_features: bool,
+
+    /// Content fingerprint for generated user-app configuration.
+    #[arg(skip)]
+    pub user_app_config_fingerprint: Option<String>,
 }
 
 /// Arguments required for commands which execute the bundle step of the bundle process.

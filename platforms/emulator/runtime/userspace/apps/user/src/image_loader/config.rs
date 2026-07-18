@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 #![cfg(any(feature = "streaming-boot", feature = "flash-boot",))]
+
 pub mod streaming_boot_consts {
     use caliptra_mcu_pldm_common::{
         message::firmware_update::get_fw_params::FirmwareParameters,
@@ -50,10 +51,4 @@ pub mod streaming_boot_consts {
         embassy_sync::lazy_lock::LazyLock::new(|| {
             [Descriptor::new(DescriptorType::Uuid, &DEVICE_UUID).unwrap()]
         });
-
-    // Image IDs as defined in the SoC manifest
-    #[allow(unused)]
-    pub const IMAGE_ID1: u32 = 4096;
-    #[allow(unused)]
-    pub const IMAGE_ID2: u32 = 4097;
 }
