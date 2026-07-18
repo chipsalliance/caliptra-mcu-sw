@@ -2,15 +2,20 @@
 
 #![no_std]
 
-pub mod api;
+mod api;
 pub mod attestation_manifest;
 pub mod errors;
+pub mod image_metadata;
 
 use api::MeasurementApi;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use errors::{MeasurementApiError, MeasurementApiResult};
+pub use image_metadata::{
+    ImageMetadata, ImageMetadataFlags, MeasurementOperation, IMAGE_MEASUREMENT_DIGEST_SIZE,
+};
+pub use mcu_caliptra_api_lite::ImageHashSource;
 use mcu_caliptra_api_lite::{ApiAlloc, DPE_LABEL_LEN};
 
 static MEASUREMENT_API: Mutex<
@@ -34,8 +39,8 @@ pub enum BootKind {
 
 /// Attestation availability state owned by the Measurement API.
 ///
-/// Later Measurement API entry points (W6-W9) gate evidence generation and
-/// component measurement-state mutation on this state.
+/// Later Measurement API entry points gate evidence generation and component
+/// measurement-state mutation on this state.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AttestationState {
     /// Boot initialization has not completed yet.
@@ -55,10 +60,11 @@ pub enum AttestationState {
 /// serialized.
 pub async fn init<A: ApiAlloc>(
     manifest_bytes: &'static [u8],
+    soc_image_load_fw_ids: &'static [u32],
     boot_kind: BootKind,
     alloc: &A,
 ) -> MeasurementApiResult {
-    let mut api = MeasurementApi::<DefaultSyscalls>::new(manifest_bytes)?;
+    let mut api = MeasurementApi::<DefaultSyscalls>::new(manifest_bytes, soc_image_load_fw_ids)?;
     let result = api.measurement_boot_init(boot_kind, alloc).await;
     let mut guard = MEASUREMENT_API.lock().await;
     guard.replace(api);
@@ -75,6 +81,19 @@ pub async fn leaf_cert_size<A: ApiAlloc>(
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
     api.leaf_cert_size(alloc, key_label).await
+}
+
+/// Authorize one MCU-managed initial-load component.
+pub async fn authorize_and_stash<A: ApiAlloc>(
+    alloc: &A,
+    fw_id: u32,
+    metadata: ImageMetadata,
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.authorize_and_stash(alloc, fw_id, metadata).await
 }
 
 /// Fetch a DPE leaf certificate slice for the configured attestation target.

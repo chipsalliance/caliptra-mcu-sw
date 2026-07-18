@@ -2,6 +2,8 @@
 
 extern crate alloc;
 use alloc::boxed::Box;
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+use alloc::vec::Vec;
 
 #[cfg(any(
     feature = "test-pldm-discovery",
@@ -36,6 +38,8 @@ use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSys
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+use caliptra_mcu_measurement_api::ImageMetadata;
 #[allow(unused)]
 #[cfg(any(
     feature = "streaming-boot",
@@ -45,8 +49,12 @@ use caliptra_mcu_libtock_platform::ErrorCode;
     feature = "test-pldm-streaming-boot"
 ))]
 use caliptra_mcu_pldm_lib::daemon::PldmService;
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+use caliptra_mcu_spdm_pal::{BitmapAllocator, BITMAP_SLOT_SIZE};
 #[allow(unused_imports)]
 use core::fmt::Write;
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+use core::ptr::NonNull;
 
 #[allow(unused)]
 use crate::EXECUTOR;
@@ -82,9 +90,19 @@ use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 use zerocopy::{FromBytes, IntoBytes};
 
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+const IMAGE_LOAD_MEASUREMENT_SCRATCH_SIZE: usize = 4096;
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+const IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS: usize =
+    IMAGE_LOAD_MEASUREMENT_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
+
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+#[repr(C, align(64))]
+#[derive(Clone, Copy)]
+struct ImageLoadMeasurementScratchSlot([u8; BITMAP_SLOT_SIZE]);
 
 #[embassy_executor::task]
-pub async fn image_loading_task() {
+pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
     let mbox_sram = caliptra_mcu_libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
         caliptra_mcu_libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
     );
@@ -114,7 +132,7 @@ pub async fn image_loading_task() {
             mbox_sram.release_lock().unwrap();
             mbox_sram.acquire_lock().unwrap();
         }
-        match image_loading(&EMULATED_DMA_MAPPING).await {
+        match image_loading(&EMULATED_DMA_MAPPING, soc_image_load_list).await {
             Ok(_) => {}
             Err(_) => System::exit(1),
         }
@@ -157,7 +175,10 @@ pub async fn image_loading_task() {
 
 #[allow(dead_code)]
 #[allow(unused_variables)]
-async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), ErrorCode> {
+async fn image_loading<D: DMAMapping>(
+    dma_mapping: &'static D,
+    soc_image_load_list: &'static [u32],
+) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     crate::log_info!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
     #[cfg(feature = "streaming-boot")]
@@ -168,22 +189,13 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
         };
         let pldm_image_loader =
             PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
-        pldm_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1, true)
-            .await?;
-        pldm_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2, true)
-            .await?;
+        load_soc_images(&pldm_image_loader, soc_image_load_list).await?;
         // Close the PLDM session
         pldm_image_loader.finalize()?;
         // Wait for the PLDM service to fully complete the protocol before proceeding
         pldm_image_loader.wait_for_service_stopped().await;
         // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
-        activate_soc_images(&[
-            config::streaming_boot_consts::IMAGE_ID1,
-            config::streaming_boot_consts::IMAGE_ID2,
-        ])
-        .await?;
+        activate_soc_images(soc_image_load_list).await?;
     }
     #[cfg(feature = "flash-boot")]
     {
@@ -229,12 +241,7 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             flash_image_loader.set_auth_manifest().await?;
         }
 
-        flash_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1, true)
-            .await?;
-        flash_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2, true)
-            .await?;
+        load_soc_images(&flash_image_loader, soc_image_load_list).await?;
         boot_config
             .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
             .await
@@ -243,11 +250,7 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             .set_active_partition(load_partition.0)
             .await
             .map_err(|_| ErrorCode::Fail)?;
-        activate_soc_images(&[
-            config::streaming_boot_consts::IMAGE_ID1,
-            config::streaming_boot_consts::IMAGE_ID2,
-        ])
-        .await?
+        activate_soc_images(soc_image_load_list).await?
     }
 
     #[cfg(any(
@@ -270,6 +273,39 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             );
         }
         pldm_fdops_mock::FdOpsObject::wait_for_pldm_done().await;
+    }
+    Ok(())
+}
+
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+async fn load_soc_images(
+    loader: &impl ImageLoader,
+    soc_image_load_list: &'static [u32],
+) -> Result<(), ErrorCode> {
+    let mut scratch = Vec::new();
+    scratch
+        .try_reserve_exact(IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS)
+        .map_err(|_| ErrorCode::Fail)?;
+    scratch.resize(
+        IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS,
+        ImageLoadMeasurementScratchSlot([0; BITMAP_SLOT_SIZE]),
+    );
+    let Some(scratch_ptr) = NonNull::new(scratch.as_mut_ptr().cast::<u8>()) else {
+        return Err(ErrorCode::Fail);
+    };
+    // SAFETY: `scratch_ptr` points at aligned heap memory owned by `scratch`.
+    // `scratch` stays alive for all Measurement API calls below, and allocator
+    // buffers do not escape those calls.
+    let allocator =
+        unsafe { BitmapAllocator::new(scratch_ptr, IMAGE_LOAD_MEASUREMENT_SCRATCH_SIZE) };
+
+    for fw_id in soc_image_load_list {
+        let loaded = loader.load(*fw_id).await?;
+        let metadata =
+            ImageMetadata::initial_load_from_load_address(loaded.image_size, loaded.measurement);
+        caliptra_mcu_measurement_api::authorize_and_stash(&allocator, *fw_id, metadata)
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
     }
     Ok(())
 }

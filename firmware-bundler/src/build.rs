@@ -273,6 +273,9 @@ impl<'a> BuildPass<'a> {
             if let Some(level) = user_app_defmt_log_level(features) {
                 cmd.env("DEFMT_LOG", level);
             }
+            if let Some(fingerprint) = &self.build_args.user_app_config_fingerprint {
+                cmd.env("MCU_USER_APP_CONFIG_FINGERPRINT", fingerprint);
+            }
         }
 
         cmd.arg("--").args(linker_args.split(' '));

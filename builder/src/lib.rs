@@ -54,6 +54,7 @@ pub struct CaliptraBuildArgs<'a> {
     pub soc_image_paths: Option<Vec<String>>,
     pub use_second_key: bool,
     pub no_default_features: bool,
+    pub user_app_config_fingerprint: Option<String>,
 }
 
 use anyhow::{anyhow, Result};

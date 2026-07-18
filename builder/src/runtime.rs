@@ -23,6 +23,19 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let svn = args.svn;
     let target_dir = args.target_dir.clone();
     let profile = args.profile.unwrap_or("devel").to_string();
+    let config_target_dir = target_dir.clone().unwrap_or_else(crate::target_dir);
+    let user_app_config_fingerprint = if args.user_app_config_fingerprint.is_some() {
+        args.user_app_config_fingerprint.clone()
+    } else if ["attestation_manifest.toml", "soc_image_descriptors.toml"]
+        .iter()
+        .all(|name| config_target_dir.join("generated").join(name).exists())
+    {
+        Some(crate::all::generated_user_app_config_fingerprint(
+            &config_target_dir,
+        )?)
+    } else {
+        None
+    };
 
     let manifest = manifest_file_for_profile(platform, example_app, args.profile)?;
     let platform_str = platform.unwrap_or("emulator");
@@ -45,6 +58,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
         build: BuildArgs {
             runtime_features,
             no_default_features: args.no_default_features,
+            user_app_config_fingerprint,
             ..Default::default()
         },
         bundle: BundleArgs {

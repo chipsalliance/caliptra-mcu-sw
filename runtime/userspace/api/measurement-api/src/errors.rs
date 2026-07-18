@@ -33,6 +33,16 @@ pub enum MeasurementApiError {
     InvalidDpeHandleStoreState = 0x0005,
     /// Attestation is disabled because measurement state is in an error state.
     AttestationDisabled = 0x0006,
+    /// The runtime SoC image load-list topology is inconsistent with policy.
+    InvalidSocImageLoadList = 0x0007,
+    /// A caller referenced a firmware identifier not present in policy.
+    UnknownFwId = 0x0008,
+    /// Caliptra image authorization failed.
+    ImageAuthorizationFailed = 0x0009,
+    /// Extending Caliptra PCR31 failed.
+    PcrExtendFailed = 0x000a,
+    /// Measurement state already exists for the requested firmware identifier.
+    DuplicateMeasurementRecord = 0x000b,
 }
 
 /// Convenience alias for a Measurement API operation result. `T` defaults to
@@ -67,6 +77,11 @@ mod tests {
             (MeasurementApiError::DpeCommandFailed, 0x0004),
             (MeasurementApiError::InvalidDpeHandleStoreState, 0x0005),
             (MeasurementApiError::AttestationDisabled, 0x0006),
+            (MeasurementApiError::InvalidSocImageLoadList, 0x0007),
+            (MeasurementApiError::UnknownFwId, 0x0008),
+            (MeasurementApiError::ImageAuthorizationFailed, 0x0009),
+            (MeasurementApiError::PcrExtendFailed, 0x000a),
+            (MeasurementApiError::DuplicateMeasurementRecord, 0x000b),
         ] {
             let mcu: McuErrorCode = err.into();
             assert_eq!(mcu.domain(), domain::ATTESTATION);

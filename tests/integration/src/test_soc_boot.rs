@@ -892,18 +892,6 @@ mod test {
             ([0x55u8; 512].to_vec(), [0xAAu8; 256].to_vec())
         };
 
-        // Get runtime: prefer prebuilt, fall back to compilation
-        let test_runtime = if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let runtime_data = binaries
-                .test_runtime(feature)
-                .expect("Prebuilt runtime not found");
-            let path = std::env::temp_dir().join(format!("soc-boot-build-runtime-{}.bin", feature));
-            std::fs::write(&path, runtime_data).expect("Failed to write runtime");
-            path
-        } else {
-            compile_runtime(Some(feature), false)
-        };
-
         let soc_images_paths =
             create_soc_images(vec![soc_image_fw_1.clone(), soc_image_fw_2.clone()]);
 
@@ -928,6 +916,22 @@ mod test {
                 ..Default::default()
             },
         ];
+
+        CaliptraBuilder::new(&CaliptraBuildArgs::default())
+            .write_attestation_manifest_config(&soc_images)
+            .expect("Failed to write attestation manifest config");
+
+        // Get runtime after writing descriptors so user-app embeds this load list.
+        let test_runtime = if let Ok(binaries) = FirmwareBinaries::from_env() {
+            let runtime_data = binaries
+                .test_runtime(feature)
+                .expect("Prebuilt runtime not found");
+            let path = std::env::temp_dir().join(format!("soc-boot-build-runtime-{}.bin", feature));
+            std::fs::write(&path, runtime_data).expect("Failed to write runtime");
+            path
+        } else {
+            compile_runtime(Some(feature), false)
+        };
 
         // When prebuilt binaries are available, pass the Caliptra ROM/FW paths
         // to the builder so it doesn't try to compile them from scratch.
@@ -1046,6 +1050,14 @@ mod test {
 
     #[test]
     fn test_flash_soc_boot_successful() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        test_successful_boot(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_measurement_api_initial_load_smoke() {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_soc_boot_options(true);
         test_successful_boot(&opts);

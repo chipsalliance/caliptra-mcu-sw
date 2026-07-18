@@ -224,20 +224,49 @@ fn create_attestation_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
     (soc_images, vec![soc_image_path])
 }
 
-/// Pre-generate `target/generated/attestation_manifest.toml` so the runtime build can embed
-/// the integrator-owned static attestation configuration.
+/// Pre-generate the target-dir `generated/` configs so the runtime build can
+/// embed the integrator-owned static attestation configuration.
 fn pre_generate_attestation_manifest_config(
     vendor: &str,
     model: &str,
     soc_images: &[ImageCfg],
 ) -> Result<()> {
-    crate::attestation_manifest::write_config(
+    pre_generate_attestation_manifest_config_to_target_dir(
+        &crate::target_dir(),
+        vendor,
+        model,
+        soc_images,
+    )
+}
+
+fn pre_generate_attestation_manifest_config_to_target_dir(
+    target_dir: &Path,
+    vendor: &str,
+    model: &str,
+    soc_images: &[ImageCfg],
+) -> Result<()> {
+    crate::attestation_manifest::write_config_to_target_dir(
+        target_dir,
         vendor,
         model,
         soc_images,
         "pre_generate_attestation_manifest_config",
         "Pre-generated",
     )
+}
+
+pub(crate) fn generated_user_app_config_fingerprint(target_dir: &Path) -> Result<String> {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut fingerprint = String::new();
+    for file_name in ["attestation_manifest.toml", "soc_image_descriptors.toml"] {
+        let bytes = std::fs::read(target_dir.join("generated").join(file_name))?;
+        for byte in bytes {
+            fingerprint.push(HEX[(byte >> 4) as usize] as char);
+            fingerprint.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+        fingerprint.push('-');
+    }
+    Ok(fingerprint)
 }
 
 #[derive(Default)]
@@ -745,6 +774,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         effective_model,
         effective_soc_images.as_deref().unwrap_or(&[]),
     )?;
+    let base_user_app_config_fingerprint =
+        generated_user_app_config_fingerprint(&crate::target_dir())?;
 
     let base_runtime_file = tempfile::NamedTempFile::new().unwrap();
     let base_runtime_path = base_runtime_file.path().to_str().unwrap();
@@ -781,6 +812,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         platform: Some(platform),
         profile,
         no_default_features: base_no_default,
+        user_app_config_fingerprint: Some(base_user_app_config_fingerprint),
         ..Default::default()
     })?;
     let user_app_profile = profile.unwrap_or("devel");
@@ -923,7 +955,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 
     let test_runtimes: Result<Vec<FeatureTestResource>> = maybe_par_iter(&separate_features)
         .map(|feature| {
-            let target_dir = if cfg!(feature = "parallel-build") {
+            let target_dir = if cfg!(feature = "parallel-build")
+                || FEATURES_REQUIRING_SOC_IMAGES.contains(feature)
+            {
                 Some(crate::target_dir().join(format!("target-runtime-{}", feature)))
             } else {
                 None
@@ -931,6 +965,40 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             let feature_runtime_file = tempfile::NamedTempFile::new().unwrap();
             let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
             let include_example_app = FEATURES_WITH_EXAMPLE_APP.contains(feature);
+
+            // Generate the descriptor files before compiling this runtime so
+            // user-app build.rs embeds the same SoC image IDs that will be put
+            // in the feature-specific SoC manifest below.
+            let (feature_soc_images, feature_soc_images_paths) =
+                if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) && soc_images.is_none() {
+                    let (images, paths) = if *feature == "test-mctp-spdm-attestation"
+                        || *feature == "test-mctp-spdm-attestation-pcr-quote"
+                    {
+                        create_attestation_soc_images()
+                    } else {
+                        create_default_soc_images()
+                    };
+                    (Some(images), paths)
+                } else {
+                    (
+                        soc_images.clone(),
+                        soc_images
+                            .clone()
+                            .unwrap_or_default()
+                            .iter()
+                            .map(|img| img.path.clone())
+                            .collect(),
+                    )
+                };
+            let generated_target_dir = target_dir.clone().unwrap_or_else(crate::target_dir);
+            pre_generate_attestation_manifest_config_to_target_dir(
+                &generated_target_dir,
+                effective_vendor,
+                effective_model,
+                feature_soc_images.as_deref().unwrap_or(&[]),
+            )?;
+            let user_app_config_fingerprint =
+                generated_user_app_config_fingerprint(&generated_target_dir)?;
 
             // When the matching ROM feature enables hw-2-1, combine it with
             // the separate runtime feature so the staging SRAM path is enabled.
@@ -953,6 +1021,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 profile,
                 target_dir: target_dir.clone(),
                 no_default_features: true,
+                user_app_config_fingerprint: Some(user_app_config_fingerprint),
                 ..Default::default()
             })?;
 
@@ -972,29 +1041,6 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature).or_else(
                     || default_mcu_image_cfg_for_feature(feature, feature_runtime_file.path()),
                 );
-
-            // For features that require SoC images, create default ones if not provided
-            let (feature_soc_images, feature_soc_images_paths) =
-                if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) && soc_images.is_none() {
-                    let (images, paths) = if *feature == "test-mctp-spdm-attestation"
-                        || *feature == "test-mctp-spdm-attestation-pcr-quote"
-                    {
-                        create_attestation_soc_images()
-                    } else {
-                        create_default_soc_images()
-                    };
-                    (Some(images), paths)
-                } else {
-                    (
-                        soc_images.clone(),
-                        soc_images
-                            .clone()
-                            .unwrap_or_default()
-                            .iter()
-                            .map(|img| img.path.clone())
-                            .collect(),
-                    )
-                };
 
             let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
                 fpga: platform == "fpga",
