@@ -55,6 +55,10 @@ pub(crate) const CMD_CERTIFY_KEY_CHUNKS: u32 = 0x434B_4348; // "CKCH"
 /// Mirrored from `caliptra-api::CommandId::DPE_TAG_TCI`.
 pub(crate) const CMD_DPE_TAG_TCI: u32 = 0x5451_4754; // "TGQT"
 
+/// Caliptra mailbox command ID for the top-level `DPE_GET_TAGGED_TCI` command.
+/// Mirrored from `caliptra-api::CommandId::DPE_GET_TAGGED_TCI`.
+pub(crate) const CMD_DPE_GET_TAGGED_TCI: u32 = 0x4754_4744; // "GTGD"
+
 /// DPE per-command-header magic (`CommandHdr::DPE_COMMAND_MAGIC`).
 pub(crate) const DPE_COMMAND_MAGIC: u32 = 0x4450_4543; // "DPEC"
 

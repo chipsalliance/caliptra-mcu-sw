@@ -11,6 +11,8 @@ use mcu_error::McuResult;
 
 use crate::pal::McuSpdmPal;
 
+pub mod providers;
+
 /// Platform-specific measurement data provider.
 ///
 /// Integrators implement this trait to supply device-specific

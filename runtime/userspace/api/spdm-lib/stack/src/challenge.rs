@@ -101,36 +101,36 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         )
         .await?;
     }
-    let meas_hash_ref = if meas_hash_type != 0 {
-        Some(&meas_summary_hash)
-    } else {
-        None
-    };
-
     // Build the full response with a zeroed signature placeholder, then sign
     // into the trailing signature slot in place. This avoids a 96-byte stack
     // buffer that would live across the sign `.await`, and avoids building the
     // response twice.
     const ZERO_SIG: [u8; ECC_P384_SIGNATURE_SIZE] = [0u8; ECC_P384_SIGNATURE_SIZE];
-    let body = ChallengeAuthRsp {
-        slot_id,
-        cert_chain_hash: &cert_chain_hash,
-        nonce: &nonce,
-        meas_summary_hash: meas_hash_ref,
-        opaque_len: 0,
-        requester_context: requester_context.as_ref(),
-        signature: &ZERO_SIG,
+    let (mut resp, no_sig_len) = {
+        let meas_hash_ref = if meas_hash_type != 0 {
+            Some(&meas_summary_hash)
+        } else {
+            None
+        };
+        let body = ChallengeAuthRsp {
+            slot_id,
+            cert_chain_hash: &cert_chain_hash,
+            nonce: &nonce,
+            meas_summary_hash: meas_hash_ref,
+            opaque_len: 0,
+            requester_context: requester_context.as_ref(),
+            signature: &ZERO_SIG,
+        };
+
+        let resp = build_response(pal, io, state.version, &body).map_err(|_| SPDM_UNSPECIFIED)?;
+        let no_sig_len = body
+            .encoded_size()
+            .checked_sub(ECC_P384_SIGNATURE_SIZE)
+            .ok_or(SPDM_UNSPECIFIED)?;
+        (resp, no_sig_len)
     };
 
-    let mut resp = build_response(pal, io, state.version, &body).map_err(|_| SPDM_UNSPECIFIED)?;
-
     let head = pal.header_size();
-    // The signature is the trailing field; everything before it is the
-    // no-signature message that gets appended to M1.
-    let no_sig_len = body
-        .encoded_size()
-        .checked_sub(ECC_P384_SIGNATURE_SIZE)
-        .ok_or(SPDM_UNSPECIFIED)?;
 
     // Append CHALLENGE_AUTH response (without signature) to M1.
     // Only the SPDM message bytes, not transport padding.
@@ -141,9 +141,8 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
     let mut m1_hash = [0u8; SHA384_HASH_SIZE];
     state.transcript.finalize_m1(pal, io, &mut m1_hash).await?;
 
-    // Build signing context and compute TBS hash.
-    let signing_ctx = build_signing_context(state.version);
-    let tbs_hash = compute_tbs_hash(pal, io, &signing_ctx, &m1_hash)
+    // Compute TBS hash in-place over the M1 hash.
+    compute_tbs_hash(pal, io, signing_context(state.version), &mut m1_hash)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
 
@@ -152,7 +151,7 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         .get_mut(head + no_sig_len..head + no_sig_len + ECC_P384_SIGNATURE_SIZE)
         .ok_or(SPDM_UNSPECIFIED)?;
     let sig_len = pal
-        .sign_hash(io, slot_id, asym_algo, &tbs_hash, sig_slot)
+        .sign_hash(io, slot_id, asym_algo, &m1_hash, sig_slot)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if sig_len != ECC_P384_SIGNATURE_SIZE {
@@ -165,31 +164,54 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
     Ok(resp)
 }
 
+const SIGNING_CTX_V10: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.0.*");
+const SIGNING_CTX_V11: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.1.*");
+const SIGNING_CTX_V12: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.2.*");
+const SIGNING_CTX_V13: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.3.*");
+
 /// Build the SPDM signing context for CHALLENGE_AUTH.
-fn build_signing_context(version: SpdmVersion) -> [u8; SPDM_SIGNING_CONTEXT_LEN] {
+const fn build_signing_context(ver: &[u8; 5]) -> [u8; SPDM_SIGNING_CONTEXT_LEN] {
     let mut ctx = [0u8; SPDM_SIGNING_CONTEXT_LEN];
 
     // Prefix: "dmtf-spdm-v" + version + ".*" repeated 4× = 64 bytes.
     let base = b"dmtf-spdm-v";
-    let ver = match version {
-        SpdmVersion::V10 => b"1.0.*",
-        SpdmVersion::V11 => b"1.1.*",
-        SpdmVersion::V12 => b"1.2.*",
-        SpdmVersion::V13 => b"1.3.*",
-    };
+    let mut repeat = 0;
     let mut pos = 0;
-    for _ in 0..4 {
-        // Each block is 16 bytes: 11 + 5 = 16.
-        pos = crate::build::write_fixed(&mut ctx, pos, base);
-        pos = crate::build::write_fixed(&mut ctx, pos, ver);
+    while repeat < 4 {
+        let mut i = 0;
+        while i < base.len() {
+            ctx[pos + i] = base[i];
+            i += 1;
+        }
+        pos += base.len();
+        let mut j = 0;
+        while j < ver.len() {
+            ctx[pos + j] = ver[j];
+            j += 1;
+        }
+        pos += ver.len();
+        repeat += 1;
     }
 
     // Operation context: zero-padded on the left, string at the end.
     let op = b"responder-challenge_auth signing";
-    let pad = SPDM_CONTEXT_LEN.saturating_sub(op.len());
-    crate::build::write_fixed(&mut ctx, SPDM_PREFIX_LEN + pad, op);
+    let pad = SPDM_CONTEXT_LEN - op.len();
+    let mut k = 0;
+    while k < op.len() {
+        ctx[SPDM_PREFIX_LEN + pad + k] = op[k];
+        k += 1;
+    }
 
     ctx
+}
+
+fn signing_context(version: SpdmVersion) -> &'static [u8; SPDM_SIGNING_CONTEXT_LEN] {
+    match version {
+        SpdmVersion::V10 => &SIGNING_CTX_V10,
+        SpdmVersion::V11 => &SIGNING_CTX_V11,
+        SpdmVersion::V12 => &SIGNING_CTX_V12,
+        SpdmVersion::V13 => &SIGNING_CTX_V13,
+    }
 }
 
 /// Hash(signing_context || M1_hash) → TBS digest for signing.
@@ -197,13 +219,11 @@ async fn compute_tbs_hash<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     signing_ctx: &[u8; SPDM_SIGNING_CONTEXT_LEN],
-    m1_hash: &[u8; SHA384_HASH_SIZE],
-) -> mcu_error::McuResult<[u8; SHA384_HASH_SIZE]> {
+    m1_hash: &mut [u8; SHA384_HASH_SIZE],
+) -> mcu_error::McuResult<()> {
     let mut state = pal
         .hash_init(io, SpdmPalHashAlgo::Sha384, signing_ctx)
         .await?;
     pal.hash_update(io, &mut state, m1_hash).await?;
-    let mut tbs = [0u8; SHA384_HASH_SIZE];
-    pal.hash_finish(io, &mut state, &mut tbs).await?;
-    Ok(tbs)
+    pal.hash_finish(io, &mut state, m1_hash).await
 }
