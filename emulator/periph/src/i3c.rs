@@ -108,6 +108,9 @@ pub struct I3c {
     /// the emulator app for --active-mode-external-bmc so an external BMC can
     /// drive Phase 1 OCP Recovery directly via I3C (no MCTP).
     recovery_dispatch_enabled: bool,
+    /// Return a well-formed non-ready DEVICE_STATUS to external recovery
+    /// clients while leaving the rest of the I3C transport operational.
+    recovery_not_ready_fault: bool,
     /// SMBus-style block-read state: last cmd_code written by the BMC. The
     /// next priv-read returns the data for this cmd_code, prefixed with a
     /// u16 LE byte_count per OCP Recovery wire format.
@@ -170,6 +173,7 @@ impl I3c {
             events_to_mcu: None,
             events_from_mcu: None,
             recovery_dispatch_enabled: false,
+            recovery_not_ready_fault: false,
             recovery_last_cmd_code: None,
         }
     }
@@ -186,6 +190,10 @@ impl I3c {
     /// All other traffic falls through to the regular TTI MCU queues.
     pub fn enable_recovery_dispatch(&mut self) {
         self.recovery_dispatch_enabled = true;
+    }
+
+    pub fn enable_recovery_not_ready_fault(&mut self) {
+        self.recovery_not_ready_fault = true;
     }
 
     fn write_tx_data_into_target(&mut self) {
@@ -313,23 +321,21 @@ impl I3c {
     /// `[byte_count_lo, byte_count_hi, data_bytes...]`. Data is sourced from
     /// the existing recovery_if_* register block via `read_recovery_interface`.
     fn build_recovery_read_response(&mut self, cmd_code: u8) -> Vec<u8> {
+        if self.recovery_not_ready_fault && cmd_code == 0x24 {
+            return vec![7, 0, 0, 0, 0, 0, 0, 0, 0];
+        }
+
         // (register offsets, effective byte_count) per OCP Recovery spec.
         // Matches `to_payload(...)` sizes used by caliptra-sw dma/recovery.rs.
         let (offsets, byte_count): (&[u32], usize) = match cmd_code {
             0x22 => (&[0x004, 0x008, 0x00c, 0x010][..], 15), // PROT_CAP
-            0x23 => (
-                &[0x014, 0x018, 0x01c, 0x020, 0x024, 0x028, 0x02c][..],
-                24,
-            ), // DEVICE_ID
-            0x24 => (&[0x030, 0x034][..], 7),  // DEVICE_STATUS
-            0x26 => (&[0x03c][..], 3),         // RECOVERY_CTRL
-            0x27 => (&[0x040][..], 2),         // RECOVERY_STATUS
-            0x28 => (&[0x044][..], 4),         // HW_STATUS
-            0x29 => (&[0x048, 0x04c][..], 6),  // INDIRECT_FIFO_CTRL
-            0x2A => (
-                &[0x050, 0x054, 0x058, 0x05c, 0x060][..],
-                20,
-            ), // INDIRECT_FIFO_STATUS
+            0x23 => (&[0x014, 0x018, 0x01c, 0x020, 0x024, 0x028, 0x02c][..], 24), // DEVICE_ID
+            0x24 => (&[0x030, 0x034][..], 7),                // DEVICE_STATUS
+            0x26 => (&[0x03c][..], 3),                       // RECOVERY_CTRL
+            0x27 => (&[0x040][..], 2),                       // RECOVERY_STATUS
+            0x28 => (&[0x044][..], 4),                       // HW_STATUS
+            0x29 => (&[0x048, 0x04c][..], 6),                // INDIRECT_FIFO_CTRL
+            0x2A => (&[0x050, 0x054, 0x058, 0x05c, 0x060][..], 20), // INDIRECT_FIFO_STATUS
             _ => {
                 println!("[i3c-recovery] unsupported read cmd=0x{:02x}", cmd_code);
                 return vec![0, 0];
@@ -356,11 +362,7 @@ impl I3c {
             0x25 if payload.len() >= 3 => {
                 // DEVICE_RESET
                 let val = u32::from_le_bytes([payload[0], payload[1], payload[2], 0]);
-                let _ = self.write_recovery_interface(
-                    caliptra_emu_types::RvSize::Word,
-                    0x038,
-                    val,
-                );
+                let _ = self.write_recovery_interface(caliptra_emu_types::RvSize::Word, 0x038, val);
                 println!(
                     "[i3c-recovery] write DEVICE_RESET = 0x{:06x}",
                     val & 0x00ff_ffff
@@ -369,11 +371,7 @@ impl I3c {
             0x26 if payload.len() >= 3 => {
                 // RECOVERY_CTRL
                 let val = u32::from_le_bytes([payload[0], payload[1], payload[2], 0]);
-                let _ = self.write_recovery_interface(
-                    caliptra_emu_types::RvSize::Word,
-                    0x03c,
-                    val,
-                );
+                let _ = self.write_recovery_interface(caliptra_emu_types::RvSize::Word, 0x03c, val);
                 println!(
                     "[i3c-recovery] write RECOVERY_CTRL = 0x{:06x}",
                     val & 0x00ff_ffff
@@ -382,17 +380,11 @@ impl I3c {
             0x29 if payload.len() >= 6 => {
                 // INDIRECT_FIFO_CTRL: 2-byte ctrl_0 + 4-byte image_size (u32 LE)
                 let ctrl0 = u32::from_le_bytes([payload[0], payload[1], 0, 0]);
-                let _ = self.write_recovery_interface(
-                    caliptra_emu_types::RvSize::Word,
-                    0x048,
-                    ctrl0,
-                );
+                let _ =
+                    self.write_recovery_interface(caliptra_emu_types::RvSize::Word, 0x048, ctrl0);
                 let size = u32::from_le_bytes([payload[2], payload[3], payload[4], payload[5]]);
-                let _ = self.write_recovery_interface(
-                    caliptra_emu_types::RvSize::Word,
-                    0x04c,
-                    size,
-                );
+                let _ =
+                    self.write_recovery_interface(caliptra_emu_types::RvSize::Word, 0x04c, size);
                 println!(
                     "[i3c-recovery] write INDIRECT_FIFO_CTRL ctrl0=0x{:04x} image_size={}",
                     ctrl0 & 0xffff,
@@ -421,14 +413,15 @@ impl I3c {
                     let address = (write_index * 4) as usize;
                     self.indirect_fifo_data
                         .resize(address + std::mem::size_of::<u32>(), 0);
-                    self.indirect_fifo_data
-                        [address..address + std::mem::size_of::<u32>()]
+                    self.indirect_fifo_data[address..address + std::mem::size_of::<u32>()]
                         .copy_from_slice(&val.to_le_bytes());
                     self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
                         .reg
-                        .set(((address + std::mem::size_of::<u32>())
-                            .next_multiple_of(std::mem::size_of::<u32>())
-                            / std::mem::size_of::<u32>()) as u32);
+                        .set(
+                            ((address + std::mem::size_of::<u32>())
+                                .next_multiple_of(std::mem::size_of::<u32>())
+                                / std::mem::size_of::<u32>()) as u32,
+                        );
                     cursor += 4;
                 }
                 println!(
@@ -1323,6 +1316,29 @@ mod tests {
     };
 
     const TTI_RX_DESC_QUEUE_PORT: RvAddr = 0x270;
+
+    #[test]
+    fn recovery_not_ready_fault_overrides_device_status() {
+        let clock = Clock::new();
+        let pic = Pic::new();
+        let irq = pic.register_irq(2);
+        let mut i3c_controller = I3cController::default();
+        let step_lock = Arc::new(Mutex::new(()));
+        let mut i3c = I3c::new(
+            &clock,
+            &mut i3c_controller,
+            irq,
+            Version::new(2, 0, 0),
+            step_lock,
+        );
+
+        i3c.enable_recovery_not_ready_fault();
+
+        assert_eq!(
+            i3c.build_recovery_read_response(0x24),
+            vec![7, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
+    }
 
     #[test]
     fn receive_i3c_cmd() {

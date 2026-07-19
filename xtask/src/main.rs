@@ -75,6 +75,10 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         wait_for_bmc: bool,
 
+        /// Keep external OCP Recovery DEVICE_STATUS reads non-ready.
+        #[arg(long, default_value_t = false)]
+        fault_recovery_not_ready: bool,
+
         #[arg(long)]
         caliptra_rom: Option<PathBuf>,
 

@@ -161,6 +161,10 @@ pub struct EmulatorArgs {
     #[arg(long, default_value_t = false)]
     pub wait_for_bmc: bool,
 
+    /// Keep external OCP Recovery DEVICE_STATUS reads non-ready.
+    #[arg(long, default_value_t = false)]
+    pub fault_recovery_not_ready: bool,
+
     /// The ROM path for the Caliptra CPU.
     #[arg(long)]
     pub caliptra_rom: PathBuf,
@@ -687,6 +691,9 @@ impl Emulator {
             // TCP socket to the recovery_if_* register block instead of the
             // TTI MCU queues. See `enable_recovery_dispatch` in periph/i3c.rs.
             i3c.enable_recovery_dispatch();
+            if cli.fault_recovery_not_ready {
+                i3c.enable_recovery_not_ready_fault();
+            }
         }
 
         let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
