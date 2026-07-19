@@ -17,8 +17,8 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 
 use crate::slice::{checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
-    calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_TAG_TCI,
-    CMD_INVOKE_DPE, DPE_CMD_DERIVE_CONTEXT, DPE_CMD_GET_CERTIFICATE_CHAIN,
+    calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_GET_TAGGED_TCI,
+    CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, DPE_CMD_DERIVE_CONTEXT, DPE_CMD_GET_CERTIFICATE_CHAIN,
     DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN, DPE_CMD_UPDATE_CONTEXT_MEASUREMENT,
     DPE_COMMAND_MAGIC, DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
 };
@@ -198,8 +198,30 @@ struct TagTciReq {
     tag: U32,
 }
 
+/// Caliptra `GetTaggedTciReq`: `chksum(4) + tag(4)`.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct GetTaggedTciReq {
+    chksum: U32,
+    tag: U32,
+}
+
+/// Caliptra `GetTaggedTciResp`: mailbox response header plus cumulative/current TCI.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct GetTaggedTciResp {
+    _chksum: U32,
+    _fips_status: U32,
+    tci_cumulative: [u8; DPE_TCI_MEASUREMENT_SIZE],
+    tci_current: [u8; DPE_TCI_MEASUREMENT_SIZE],
+}
+
 const TAG_TCI_REQ_LEN: usize = size_of::<TagTciReq>();
+const GET_TAGGED_TCI_REQ_LEN: usize = size_of::<GetTaggedTciReq>();
+const GET_TAGGED_TCI_RESP_LEN: usize = size_of::<GetTaggedTciResp>();
 const _: () = assert!(TAG_TCI_REQ_LEN == 4 + DPE_CONTEXT_HANDLE_SIZE + 4);
+const _: () = assert!(GET_TAGGED_TCI_REQ_LEN == 4 + 4);
+const _: () = assert!(GET_TAGGED_TCI_RESP_LEN == MBOX_RESP_HEADER_SIZE + 48 + 48);
 
 const GET_CERT_CHAIN_REQ_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<GetCertChainCmd>();
@@ -329,6 +351,15 @@ pub struct DpeUpdateContextMeasurementResult {
     pub component_handle: DpeContextHandle,
     /// Rotated parent context handle.
     pub parent_handle: DpeContextHandle,
+}
+
+/// TCI values returned by Caliptra `DPE_GET_TAGGED_TCI`.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct DpeTaggedTci {
+    /// Hash of all input data measured into the tagged context.
+    pub tci_cumulative: [u8; DPE_TCI_MEASUREMENT_SIZE],
+    /// Most recent measurement made into the tagged context.
+    pub tci_current: [u8; DPE_TCI_MEASUREMENT_SIZE],
 }
 
 /// Invoke DPE `DeriveContext`, returning the child handle and rotated parent handle.
@@ -1016,6 +1047,43 @@ pub async fn dpe_tag_tci<A: ApiAlloc>(
     Ok(())
 }
 
+/// Read cumulative and current TCI values for the DPE context associated with `tag`.
+#[inline(never)]
+pub async fn dpe_get_tagged_tci<A: ApiAlloc>(alloc: &A, tag: u32) -> McuResult<DpeTaggedTci> {
+    let req = build_get_tagged_tci_req(alloc, tag)?;
+    let mut rsp = alloc.alloc(GET_TAGGED_TCI_RESP_LEN)?;
+    let rsp_len = mbox_execute(CMD_DPE_GET_TAGGED_TCI, &req, &mut rsp).await?;
+    parse_get_tagged_tci_response(&rsp, rsp_len)
+}
+
+fn build_get_tagged_tci_req<A: ApiAlloc>(alloc: &A, tag: u32) -> McuResult<A::Buf<'_>> {
+    let mut req = alloc.alloc(GET_TAGGED_TCI_REQ_LEN)?;
+    req.fill(0);
+    {
+        let cmd = GetTaggedTciReq::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            0,
+            GET_TAGGED_TCI_REQ_LEN,
+        )?)
+        .map_err(|_| INVARIANT)?;
+        cmd.tag = U32::new(tag);
+    }
+    populate_checksum(CMD_DPE_GET_TAGGED_TCI, &mut req)?;
+    Ok(req)
+}
+
+fn parse_get_tagged_tci_response(rsp: &[u8], rsp_len: usize) -> McuResult<DpeTaggedTci> {
+    if rsp_len < GET_TAGGED_TCI_RESP_LEN {
+        return Err(INTERNAL_BUG);
+    }
+    let resp = GetTaggedTciResp::ref_from_bytes(internal_slice(rsp, 0, GET_TAGGED_TCI_RESP_LEN)?)
+        .map_err(|_| INTERNAL_BUG)?;
+    Ok(DpeTaggedTci {
+        tci_cumulative: resp.tci_cumulative,
+        tci_current: resp.tci_current,
+    })
+}
+
 #[inline]
 fn dpe_handle_or_default(handle: Option<&DpeContextHandle>) -> &DpeContextHandle {
     handle.unwrap_or(&DEFAULT_DPE_CONTEXT_HANDLE)
@@ -1090,6 +1158,32 @@ mod tests {
     fn tag_tci_wire_layout() {
         assert_eq!(CMD_DPE_TAG_TCI, 0x5451_4754);
         assert_eq!(TAG_TCI_REQ_LEN, 4 + DPE_CONTEXT_HANDLE_SIZE + 4);
+    }
+
+    #[test]
+    fn get_tagged_tci_wire_layout() {
+        assert_eq!(CMD_DPE_GET_TAGGED_TCI, 0x4754_4744);
+        assert_eq!(GET_TAGGED_TCI_REQ_LEN, 8);
+        assert_eq!(GET_TAGGED_TCI_RESP_LEN, 8 + DPE_TCI_MEASUREMENT_SIZE * 2);
+    }
+
+    #[test]
+    fn get_tagged_tci_request_preserves_tag() {
+        let alloc = TestAlloc;
+        let tag = 0x1122_3344;
+
+        let req = build_get_tagged_tci_req(&alloc, tag).unwrap();
+        let mut checksum_input = req.clone();
+        checksum_input[0..4].fill(0);
+
+        assert_eq!(
+            req.get(0..4).and_then(|s| s.first_chunk::<4>()),
+            Some(&calc_checksum(CMD_DPE_GET_TAGGED_TCI, &checksum_input).to_le_bytes())
+        );
+        assert_eq!(
+            req.get(4..8).and_then(|s| s.first_chunk::<4>()),
+            Some(&tag.to_le_bytes())
+        );
     }
 
     #[test]
@@ -1236,5 +1330,29 @@ mod tests {
             .copy_from_slice(&DPE_PROFILE_P384_SHA384.to_le_bytes());
 
         assert!(parse_update_context_measurement_response(&rsp, rsp.len()).is_err());
+    }
+
+    #[test]
+    fn get_tagged_tci_response_reads_current_and_cumulative() {
+        let cumulative = [0x11u8; DPE_TCI_MEASUREMENT_SIZE];
+        let current = [0x22u8; DPE_TCI_MEASUREMENT_SIZE];
+        let mut rsp = [0u8; 8 + DPE_TCI_MEASUREMENT_SIZE * 2];
+        rsp[8..8 + DPE_TCI_MEASUREMENT_SIZE].copy_from_slice(&cumulative);
+        rsp[8 + DPE_TCI_MEASUREMENT_SIZE..].copy_from_slice(&current);
+
+        assert_eq!(
+            parse_get_tagged_tci_response(&rsp, rsp.len()).unwrap(),
+            DpeTaggedTci {
+                tci_cumulative: cumulative,
+                tci_current: current,
+            }
+        );
+    }
+
+    #[test]
+    fn get_tagged_tci_response_rejects_short_response() {
+        let rsp = [0u8; 8 + DPE_TCI_MEASUREMENT_SIZE * 2 - 1];
+
+        assert!(parse_get_tagged_tci_response(&rsp, rsp.len()).is_err());
     }
 }

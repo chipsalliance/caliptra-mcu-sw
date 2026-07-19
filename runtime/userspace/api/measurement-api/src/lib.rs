@@ -137,3 +137,15 @@ pub async fn sign<A: ApiAlloc>(
         .ok_or(MeasurementApiError::AttestationDisabled)?;
     api.sign(alloc, key_label, digest, signature).await
 }
+
+/// Encode concise measurement evidence for all eligible manifest entries.
+pub async fn encode_measurement_evidence<A: ApiAlloc>(
+    alloc: &A,
+    buffer: &mut [u8],
+) -> MeasurementApiResult<usize> {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.encode_measurement_evidence(alloc, buffer).await
+}

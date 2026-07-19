@@ -13,5 +13,11 @@ caliptra-mcu-libtock_platform = { workspace = true }
 embassy-sync = { workspace = true }
 mcu-caliptra-api-lite = { workspace = true }
 
+[build-dependencies]
+caliptra-ocp-eat = { workspace = true }
+
 [dev-dependencies]
+caliptra-ocp-eat = { workspace = true }
+corim-rs = { git = "https://github.com/chipsalliance/caliptra-corim-rs.git", branch = "caliptra-main" }
+coset = "0.4.1"
 sha2 = { workspace = true }

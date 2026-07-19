@@ -1,0 +1,19 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-attestation-evidence"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+caliptra-mcu-measurement-api = { workspace = true }
+caliptra-mcu-libsyscall-caliptra = { workspace = true }
+mcu-caliptra-api-lite = { workspace = true }
+mcu-error = { workspace = true }
+
+[build-dependencies]
+caliptra-ocp-eat = { workspace = true }
+
+[dev-dependencies]
+coset = "0.4.1"

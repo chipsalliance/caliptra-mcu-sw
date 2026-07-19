@@ -72,6 +72,7 @@ members = [
     "runtime/kernel/veer",
     "runtime/userspace/api/caliptra-api",
     "runtime/userspace/api/caliptra-common-commands",
+    "runtime/userspace/api/attestation-evidence",
     "runtime/userspace/api/measurement-api",
     "runtime/userspace/api/mcu-mbox-lib",
     "runtime/userspace/api/mctp-vdm-lib",
@@ -290,6 +291,7 @@ caliptra-mcu-registers-systemrdl-new = { path = "registers/systemrdl-new" }
 caliptra-mcu-romtime = { path = "romtime" }
 
 # App related dependencies
+caliptra-mcu-attestation-evidence = { path = "runtime/userspace/api/attestation-evidence" }
 caliptra-mcu-common-commands = { path = "runtime/userspace/api/caliptra-common-commands" }
 caliptra-mcu-measurement-api = { path = "runtime/userspace/api/measurement-api" }
 caliptra-mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
