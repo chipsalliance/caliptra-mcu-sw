@@ -378,7 +378,7 @@ dependencies = [
 [[package]]
 name = "caliptra-api"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "bitflags 2.13.0",
  "caliptra-api-types",
@@ -393,7 +393,7 @@ dependencies = [
 [[package]]
 name = "caliptra-api-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-image-types",
 ]
@@ -401,7 +401,7 @@ dependencies = [
 [[package]]
 name = "caliptra-auth-man-gen"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "anyhow",
  "bitflags 2.13.0",
@@ -417,7 +417,7 @@ dependencies = [
 [[package]]
 name = "caliptra-auth-man-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "bitfield",
  "bitflags 2.13.0",
@@ -446,7 +446,7 @@ dependencies = [
 [[package]]
 name = "caliptra-builder"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "anyhow",
  "caliptra-image-crypto",
@@ -519,7 +519,7 @@ source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a10
 [[package]]
 name = "caliptra-common"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "bitfield",
  "bitflags 2.13.0",
@@ -543,7 +543,7 @@ dependencies = [
 [[package]]
 name = "caliptra-coverage"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "anyhow",
  "bit-vec",
@@ -561,7 +561,7 @@ dependencies = [
 [[package]]
 name = "caliptra-cpu"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-drivers",
  "caliptra-registers",
@@ -612,7 +612,7 @@ dependencies = [
 [[package]]
 name = "caliptra-drivers"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "arrayvec",
  "bitfield",
@@ -638,7 +638,7 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-bus"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-emu-types",
  "caliptra-ureg",
@@ -648,7 +648,7 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-cpu"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "bit-vec",
  "bitfield",
@@ -662,7 +662,7 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-crypto"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -678,7 +678,7 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-derive"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-emu-bus",
  "caliptra-emu-types",
@@ -689,7 +689,7 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-periph"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "aes",
  "arrayref",
@@ -718,17 +718,17 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 
 [[package]]
 name = "caliptra-error"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 
 [[package]]
 name = "caliptra-gen-linker-scripts"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-common",
 ]
@@ -736,7 +736,7 @@ dependencies = [
 [[package]]
 name = "caliptra-hw-model"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "anyhow",
  "bit-vec",
@@ -754,6 +754,7 @@ dependencies = [
  "caliptra-image-types",
  "caliptra-registers",
  "caliptra-ureg",
+ "deser-hjson",
  "libc",
  "nix 0.26.4",
  "once_cell",
@@ -774,7 +775,7 @@ dependencies = [
 [[package]]
 name = "caliptra-hw-model-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-api-types",
  "rand 0.8.5",
@@ -783,7 +784,7 @@ dependencies = [
 [[package]]
 name = "caliptra-image-crypto"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "anyhow",
  "caliptra-image-gen",
@@ -803,7 +804,7 @@ dependencies = [
 [[package]]
 name = "caliptra-image-elf"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "anyhow",
  "caliptra-image-gen",
@@ -814,7 +815,7 @@ dependencies = [
 [[package]]
 name = "caliptra-image-fake-keys"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-image-gen",
  "caliptra-image-types",
@@ -825,7 +826,7 @@ dependencies = [
 [[package]]
 name = "caliptra-image-gen"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "anyhow",
  "bitflags 2.13.0",
@@ -842,7 +843,7 @@ dependencies = [
 [[package]]
 name = "caliptra-image-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-cfi-derive 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=72c75dc70cde4120a9ce149d4f5cb21621399958)",
  "caliptra-cfi-lib 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=72c75dc70cde4120a9ce149d4f5cb21621399958)",
@@ -858,7 +859,7 @@ dependencies = [
 [[package]]
 name = "caliptra-image-verify"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "bitflags 2.13.0",
  "caliptra-cfi-derive 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=72c75dc70cde4120a9ce149d4f5cb21621399958)",
@@ -873,7 +874,7 @@ dependencies = [
 [[package]]
 name = "caliptra-kat"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-drivers",
  "caliptra-lms-types",
@@ -885,7 +886,7 @@ dependencies = [
 [[package]]
 name = "caliptra-lms-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-cfi-derive 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=72c75dc70cde4120a9ce149d4f5cb21621399958)",
  "caliptra-cfi-lib 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=72c75dc70cde4120a9ce149d4f5cb21621399958)",
@@ -2610,7 +2611,7 @@ dependencies = [
 [[package]]
 name = "caliptra-ocp-eat"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "arrayvec",
 ]
@@ -2618,20 +2619,29 @@ dependencies = [
 [[package]]
 name = "caliptra-okref"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 
 [[package]]
 name = "caliptra-registers"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-registers-latest",
+ "caliptra-registers-rev-2-1",
 ]
 
 [[package]]
 name = "caliptra-registers-latest"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
+dependencies = [
+ "caliptra-ureg",
+]
+
+[[package]]
+name = "caliptra-registers-rev-2-1"
+version = "0.1.0"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "caliptra-ureg",
 ]
@@ -2639,7 +2649,7 @@ dependencies = [
 [[package]]
 name = "caliptra-runtime"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "arrayvec",
  "bitfield",
@@ -2675,7 +2685,7 @@ dependencies = [
 [[package]]
 name = "caliptra-test"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2719,12 +2729,12 @@ dependencies = [
 [[package]]
 name = "caliptra-test-harness-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 
 [[package]]
 name = "caliptra-ureg"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 
 [[package]]
 name = "caliptra-util-host-commands"
@@ -2758,7 +2768,7 @@ dependencies = [
 [[package]]
 name = "caliptra-x509"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a29882e210df17021240837f47d15d57c5ce5ffd#a29882e210df17021240837f47d15d57c5ce5ffd"
+source = "git+https://github.com/RaunakGu/caliptra-sw?branch=raunakgupta%2Fvendor-auth#5e6a161bc05ec0786c35f291895d44f547e9d8b6"
 dependencies = [
  "zeroize",
 ]
@@ -3451,7 +3461,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.109",
 ]
 
 [[package]]
@@ -3573,6 +3583,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.109",
+]
+
+[[package]]
+name = "deser-hjson"
+version = "2.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0d49a923edd92dc1ca5819822f540ea83f094ab5ac6940e4044e03c1d8e6576"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -3818,7 +3837,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5795,7 +5814,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6158,7 +6177,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.11.0",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6217,7 +6236,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6645,7 +6664,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6804,7 +6823,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.2",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7691,7 +7710,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
