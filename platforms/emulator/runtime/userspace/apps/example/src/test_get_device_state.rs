@@ -1,24 +1,45 @@
 // Licensed under the Apache-2.0 license
-use caliptra_api::mailbox::{FwInfoResp, GetImageInfoResp};
-use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use caliptra_mcu_attestation_evidence::pcr_quote::{
+    encode_pcr_quote, PcrQuoteAlgorithm, PCR_QUOTE_MAX_SIZE,
+};
 use caliptra_mcu_libapi_caliptra::evidence::device_state::*;
-use caliptra_mcu_libapi_caliptra::evidence::pcr_quote::{PcrQuote, PCR_QUOTE_BUFFER_SIZE};
 use caliptra_mcu_romtime::{println, test_exit};
-use core::fmt::Write;
+use caliptra_mcu_spdm_pal::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
+use core::ptr::NonNull;
+
+const PCR_QUOTE_SCRATCH_SIZE: usize = 8192;
+const PCR_QUOTE_SCRATCH_SLOTS: usize = PCR_QUOTE_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
+
+#[repr(C, align(64))]
+#[derive(Clone, Copy)]
+struct PcrQuoteScratchSlot([u8; BITMAP_SLOT_SIZE]);
+
+static PCR_QUOTE_ALLOCATOR: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
+static mut PCR_QUOTE_SCRATCH: [PcrQuoteScratchSlot; PCR_QUOTE_SCRATCH_SLOTS] =
+    [PcrQuoteScratchSlot([0; BITMAP_SLOT_SIZE]); PCR_QUOTE_SCRATCH_SLOTS];
+static mut PCR_QUOTE_BUFFER: [u8; PCR_QUOTE_MAX_SIZE] = [0; PCR_QUOTE_MAX_SIZE];
+
+pub(crate) fn init_pcr_quote_allocator() -> &'static BitmapAllocator {
+    let scratch_ptr =
+        unsafe { NonNull::new_unchecked(core::ptr::addr_of_mut!(PCR_QUOTE_SCRATCH).cast::<u8>()) };
+    debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
+    unsafe { PCR_QUOTE_ALLOCATOR.init_once(scratch_ptr, PCR_QUOTE_SCRATCH_SIZE) }
+}
 
 #[allow(unused)]
-pub(crate) async fn test_get_pcr_quote() {
+pub(crate) async fn test_get_pcr_quote(alloc: &BitmapAllocator) {
     println!("==Starting PCR quote test==");
-    test_pcr_quote_with_pqc_signature().await;
-    test_pcr_quote_with_ecc_signature().await;
+    test_pcr_quote_with_pqc_signature(alloc).await;
+    test_pcr_quote_with_ecc_signature(alloc).await;
     println!("==PCR Quote test success==");
 }
 
-async fn test_pcr_quote_with_pqc_signature() {
+async fn test_pcr_quote_with_pqc_signature(alloc: &BitmapAllocator) {
     println!("Starting PCR quote with PQC signature test");
-    let mut pcr_quote = [0u8; PCR_QUOTE_BUFFER_SIZE];
+    let pcr_quote = unsafe { &mut PCR_QUOTE_BUFFER };
+    pcr_quote.fill(0);
 
-    match PcrQuote::pcr_quote(None, &mut pcr_quote, true).await {
+    match encode_pcr_quote(alloc, PcrQuoteAlgorithm::Mldsa87, None, pcr_quote).await {
         Ok(copy_len) if copy_len > 0 => {
             println!(
                 "PCR quote with PQC Signature[{}]: {:x?} ",
@@ -39,11 +60,12 @@ async fn test_pcr_quote_with_pqc_signature() {
     println!("PCR Quote with PQC signature test success");
 }
 
-async fn test_pcr_quote_with_ecc_signature() {
+async fn test_pcr_quote_with_ecc_signature(alloc: &BitmapAllocator) {
     println!("Starting PCR quote with ECC signature test");
-    let mut pcr_quote = [0u8; PCR_QUOTE_BUFFER_SIZE];
+    let pcr_quote = unsafe { &mut PCR_QUOTE_BUFFER };
+    pcr_quote.fill(0);
 
-    match PcrQuote::pcr_quote(None, &mut pcr_quote, false).await {
+    match encode_pcr_quote(alloc, PcrQuoteAlgorithm::Ecc384, None, pcr_quote).await {
         Ok(copy_len) if copy_len > 0 => {
             println!(
                 "PCR quote with ECC Signature[{}]: {:x?}",
@@ -62,21 +84,6 @@ async fn test_pcr_quote_with_ecc_signature() {
     }
 
     println!("PCR Quote ECC signature test success");
-}
-
-pub async fn test_get_pcrs() {
-    println!("==Starting get PCRs test==");
-    let pcrs = match PcrQuote::get_pcrs().await {
-        Ok(pcrs) => pcrs,
-        Err(err) => {
-            println!("Failed to get the PCRs. {:?}", err);
-            test_exit(1);
-        }
-    };
-    for (i, pcr) in pcrs.iter().enumerate() {
-        println!("PCR[{}]: {:02x?}", i, pcr);
-    }
-    println!("==Get PCRs test success==");
 }
 
 pub async fn test_get_fw_info() {

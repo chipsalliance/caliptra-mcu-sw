@@ -19,6 +19,7 @@ zerocopy = { workspace = true }
 
 [features]
 default = []
+pcr-quote = ["caliptra-mcu-attestation-evidence/pcr-quote"]
 set-certificate = [
   "caliptra-mcu-spdm-traits/set-certificate",
   "caliptra-mcu-libsyscall-caliptra",
