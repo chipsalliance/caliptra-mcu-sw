@@ -245,8 +245,9 @@ async fn image_loading<D: DMAMapping>(
             FlashReaderDma::new(SpiFlash::new(load_partition.1.driver_num), dma_mapping);
         let flash_syscall = SpiFlash::new(load_partition.1.driver_num);
         let flash_image_loader = FlashImageLoader::new(flash_syscall, &buffered_dma);
+        let component_update = pending.is_some() && mcu_fw_hitless_update_reset;
 
-        if pending.is_some() {
+        if pending.is_some() && !mcu_fw_hitless_update_reset {
             // In the full MCU firmware-update hitless path, FirmwareUpdater already
             // sets the auth manifest before reset. Keep this call for direct
             // pending-partition boot and future SoC-only update paths until the
@@ -257,7 +258,6 @@ async fn image_loading<D: DMAMapping>(
             flash_image_loader.set_auth_manifest().await?;
         }
 
-        let component_update = pending.is_some() && mcu_fw_hitless_update_reset;
         load_soc_images(&flash_image_loader, soc_image_load_list, component_update).await?;
         boot_config
             .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
