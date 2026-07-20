@@ -439,7 +439,13 @@ pub fn caliptra_sw_workspace_root() -> PathBuf {
 /// Download a bitstream from a Caliptra bitstream manifest
 pub fn download_bitstream<P: AsRef<Path>>(target_host: Option<&str>, manifest: P) -> Result<()> {
     // Assumes bitstream file is placed in the current directory.
-    let bitstream = caliptra_bitstream_downloader::download_bitstream(manifest.as_ref())?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("Failed to build tokio runtime")?;
+    let bitstream = rt.block_on(caliptra_bitstream_downloader::download_bitstream(
+        manifest.as_ref(),
+    ))?;
 
     if let Some(target_host) = target_host {
         rsync_file(
