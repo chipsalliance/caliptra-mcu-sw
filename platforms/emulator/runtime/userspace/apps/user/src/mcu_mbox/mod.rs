@@ -35,11 +35,17 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
     #[cfg(feature = "mcu-mbox-service")]
     {
         let handler = cmd_handler_mock::NonCryptoCmdHandlerMock;
-        // Single swap site for the authorizer impl (grounding brief Q1). The
-        // dummy-HMAC mock stays the default; the asymmetric, manifest-anchored
-        // relay authorizer is selected only under the non-default
-        // `asym-cmd-auth` feature. `CmdInterface`/`McuMboxService` see only
-        // `&mut dyn CommandAuthorizer`, so nothing else changes.
+        // Single authorizer swap site. `CmdInterface`/`McuMboxService` see only
+        // `&mut dyn CommandAuthorizer`, so selecting the impl is the whole cutover.
+        //
+        // CUTOVER: the asymmetric, manifest-anchored authorizer is selected under
+        // the `asym-cmd-auth` feature; the dummy-HMAC mock is the default/opt-out.
+        // The final production flip — making `asym-cmd-auth` a default feature and
+        // retiring `MockCommandAuthorizer` + its hardcoded HMAC key — is a one-line
+        // change here, gated on: (1) the Caliptra vendor-auth commands merged
+        // UPSTREAM and the pinned caliptra-* rev bumped off the fork
+        // (VENDOR_AUTH_FORK_PIN_REVERT.md), and (2) the end-to-end HELLO/CHALLENGE
+        // suite passing on the emulator. Until both hold, asym stays opt-in.
         #[cfg(not(feature = "asym-cmd-auth"))]
         let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer::default();
         #[cfg(feature = "asym-cmd-auth")]
