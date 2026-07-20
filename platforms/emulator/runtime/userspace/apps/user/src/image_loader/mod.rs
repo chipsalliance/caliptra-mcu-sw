@@ -48,6 +48,15 @@ use caliptra_mcu_measurement_api::{ImageHashSource, ImageMetadata};
     feature = "test-pldm-fw-update-e2e",
     feature = "test-pldm-streaming-boot"
 ))]
+use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
+#[allow(unused)]
+#[cfg(any(
+    feature = "streaming-boot",
+    feature = "test-pldm-discovery",
+    feature = "test-pldm-fw-update",
+    feature = "test-pldm-fw-update-e2e",
+    feature = "test-pldm-streaming-boot"
+))]
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
 use caliptra_mcu_spdm_pal::{BitmapAllocator, BITMAP_SLOT_SIZE};
@@ -199,9 +208,14 @@ async fn image_loading<D: DMAMapping>(
         };
         let pldm_image_loader =
             PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
-        load_soc_images(&pldm_image_loader, soc_image_load_list, false).await?;
-        // Close the PLDM session
-        pldm_image_loader.finalize()?;
+        load_soc_images(&pldm_image_loader, soc_image_load_list, false)
+            .await
+            .inspect_err(|_e| {
+                // Report load/authorization failure to the PLDM Update Agent
+                let _ = pldm_image_loader.finalize(VerifyResult::VerifyFailedFdSecurityChecks);
+            })?;
+        // Close the PLDM session on success
+        pldm_image_loader.finalize(VerifyResult::VerifySuccess)?;
         // Wait for the PLDM service to fully complete the protocol before proceeding
         pldm_image_loader.wait_for_service_stopped().await;
         // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
