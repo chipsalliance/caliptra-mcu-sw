@@ -39,15 +39,6 @@ use core::mem::size_of;
 extern crate alloc;
 use alloc::boxed::Box;
 
-/// Placeholder for the Caliptra-core hybrid-verify mailbox command code.
-///
-/// TODO(caliptra-sw#3928 / Team Alpha PR3): replace with the real
-/// `CommandId` + request/response structs from `caliptra-sw`
-/// (`api/src/mailbox.rs`) once they land and the pinned caliptra-* git rev is
-/// bumped in `Cargo.toml`. Referenced only from [`AsymCommandAuthorizer::relay_verify`].
-#[allow(dead_code)]
-const CORE_HYBRID_VERIFY_CMD_PENDING: u32 = 0;
-
 /// Asymmetric, manifest-anchored per-command authorizer.
 ///
 /// Holds only the one-time challenge nonce; the trust root (the Vendor Ext
@@ -159,15 +150,16 @@ impl AsymCommandAuthorizer {
     /// that the wiring below physically cannot bypass (the only `Ok(())` return
     /// path in this function is behind it).
     ///
-    /// FAIL-CLOSED STUB: the Caliptra-core command does not exist in the pinned
-    /// caliptra-* rev yet, so there is no authoritative echo to bind against.
-    /// This returns `Err` unconditionally. When PR3 lands and the rev is bumped,
-    /// replace the marked block with an
-    /// `execute_mailbox_cmd(&Mailbox::new(), <real CommandId>, req, resp)` call
-    /// (same relay mechanism as `handle_crypto_passthrough`,
-    /// cmd_interface.rs:485-504) that parses the echoed `(cmd_id, body_hash)`
-    /// out of the response, then feeds them to `check_echo_binding` — do NOT add
-    /// any other `Ok` path.
+    /// Relay to the Caliptra `VENDOR_AUTH_CHALLENGE` command and bind the result.
+    ///
+    /// Wire contract:
+    /// * The opaque `tag` is the concatenation the host built (hardware format):
+    ///   `ecc_pub[96] ‖ mldsa_pub[2592] ‖ ecc_sig[96] ‖ mldsa_sig[4628]`.
+    /// * The relay assembles `VendorAuthChallengeReq { cmd_id, body_hash, challenge,
+    ///   ecc_public_key, mldsa_public_key, ecc_signature, mldsa_signature }`, sends it,
+    ///   and Caliptra echoes `(cmd_id, body_hash)` on success.
+    /// * The sole `Ok` path is behind [`check_echo_binding`]: the echoed
+    ///   `(cmd_id, body_hash)` must be byte-identical to what we sent (and will execute).
     async fn relay_verify(
         &self,
         cmd_id: u32,
@@ -175,18 +167,58 @@ impl AsymCommandAuthorizer {
         nonce: &[u8; 32],
         tag: &[u8],
     ) -> Result<(), AuthorizationError> {
-        // ---- BEGIN Caliptra-core relay (stub until caliptra-sw#3928) --------
-        // The real implementation MUST bind execution to what Caliptra
-        // authorized. Concretely, after the mailbox round-trip it will parse the
-        // echoed identifiers and return exactly:
-        //
-        //     return check_echo_binding(cmd_id, echoed_cmd_id, body_hash, echoed_body_hash);
-        //
-        // Until then there is no authoritative echo, so fail closed. All inputs are
-        // consumed by the mailbox request / echo check in the real relay.
-        let _ = (cmd_id, body_hash, nonce, tag, CORE_HYBRID_VERIFY_CMD_PENDING);
-        Err(AuthorizationError)
-        // ---- END Caliptra-core relay ---------------------------------------
+        use caliptra_api::mailbox::{CommandId as CoreCmd, VendorAuthChallengeReq, VendorAuthChallengeResp};
+        use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
+        use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+        use zerocopy::{FromBytes, IntoBytes};
+
+        // Slice the opaque tag into the typed hybrid fields (fail closed on any short read).
+        const ECC_PUB: usize = 96;
+        const MLDSA_PUB: usize = 2592;
+        const ECC_SIG: usize = 96;
+        const MLDSA_SIG: usize = 4628;
+        let mut off = 0usize;
+        let mut take = |n: usize| -> Result<&[u8], AuthorizationError> {
+            let s = tag.get(off..off + n).ok_or(AuthorizationError)?;
+            off += n;
+            Ok(s)
+        };
+        let ecc_pub = take(ECC_PUB)?;
+        let mldsa_pub = take(MLDSA_PUB)?;
+        let ecc_sig = take(ECC_SIG)?;
+        let mldsa_sig = take(MLDSA_SIG)?;
+
+        // Build the Caliptra request. `challenge` is 48 B in core; the MCU nonce is 32 B,
+        // zero-extended into the low bytes (Caliptra minted/compares the same 32 significant
+        // bytes it returned on HELLO).
+        let mut req = VendorAuthChallengeReq {
+            cmd_id,
+            ..Default::default()
+        };
+        req.body_hash.copy_from_slice(body_hash);
+        req.challenge[..nonce.len()].copy_from_slice(nonce);
+        req.ecc_public_key.as_mut_bytes().copy_from_slice(ecc_pub);
+        req.mldsa_public_key.as_mut_bytes().copy_from_slice(mldsa_pub);
+        req.ecc_signature.as_mut_bytes().copy_from_slice(ecc_sig);
+        req.mldsa_signature.as_mut_bytes().copy_from_slice(mldsa_sig);
+
+        let mailbox = Mailbox::new();
+        let mut req_bytes = req.as_bytes().to_vec();
+        let mut resp_bytes = [0u8; size_of::<VendorAuthChallengeResp>()];
+        execute_mailbox_cmd(
+            &mailbox,
+            CoreCmd::VENDOR_AUTH_CHALLENGE.0,
+            &mut req_bytes,
+            &mut resp_bytes,
+        )
+        .await
+        .map_err(|_| AuthorizationError)?;
+
+        let resp = VendorAuthChallengeResp::read_from_bytes(resp_bytes.as_slice())
+            .map_err(|_| AuthorizationError)?;
+
+        // Sole Ok path: bind execution to exactly what Caliptra authorized.
+        check_echo_binding(cmd_id, resp.cmd_id, body_hash, &resp.body_hash)
     }
 }
 
@@ -212,12 +244,8 @@ impl AsymCommandAuthorizer {
 /// * `sent_body_hash`  — SHA-384(body) the MCU relayed (and will execute)
 /// * `echoed_body_hash`— SHA-384(body) Caliptra echoed as authorized
 ///
-/// Currently exercised only by unit tests; the sole production caller is the
-/// `return check_echo_binding(...)` line that lands in [`relay_verify`] when the
-/// Caliptra-core command (caliptra-sw#3928) is wired in. `allow(dead_code)` so
-/// the pre-cutover firmware build stays warning-clean (mirrors
-/// `CORE_HYBRID_VERIFY_CMD_PENDING`).
-#[allow(dead_code)]
+/// The sole production caller is the `return check_echo_binding(...)` at the end of
+/// [`relay_verify`] — the only `Ok` path out of the relay.
 fn check_echo_binding(
     sent_cmd_id: u32,
     echoed_cmd_id: u32,
