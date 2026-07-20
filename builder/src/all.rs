@@ -91,6 +91,7 @@ const FEATURES_REQUIRING_SOC_IMAGES: &[&str] = &[
     "test-streaming-boot-flash-write-back",
     "test-mctp-spdm-attestation",
     "test-mctp-spdm-attestation-pcr-quote",
+    "test-firmware-v2",
 ];
 
 /// Features that require flash-based boot (partition table at offset 0)
