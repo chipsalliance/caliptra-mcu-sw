@@ -87,6 +87,15 @@ impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
         self.allocator.alloc_bytes(len)
     }
 
+    fn large_buf_into_bytes(
+        &self,
+        mut buf: Self::LargeBuf,
+        len: usize,
+    ) -> McuResult<Self::Bytes<'_>> {
+        buf.shrink(len)?;
+        Ok(buf)
+    }
+
     type PersistentBox<T: Sized + 'static> = McuSpdmBox<'static, T>;
 
     fn alloc_persistent<T: Sized + 'static>(&self, value: T) -> McuResult<Self::PersistentBox<T>> {

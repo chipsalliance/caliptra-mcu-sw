@@ -33,10 +33,7 @@ mod cert;
 #[cfg(feature = "mailbox-io")]
 mod debug_unlock;
 #[cfg(feature = "mailbox-io")]
-mod device_state;
-#[cfg(feature = "mailbox-io")]
 mod dpe;
-pub mod eat;
 #[cfg(feature = "mailbox-io")]
 mod ecdh;
 #[cfg(feature = "mailbox-io")]
@@ -55,13 +52,13 @@ pub mod mailbox;
 #[cfg(feature = "mailbox-io")]
 mod pcr;
 #[cfg(feature = "mailbox-io")]
+mod pcr_quote;
+#[cfg(feature = "mailbox-io")]
 pub mod raw;
 #[cfg(feature = "mailbox-io")]
 mod rng;
 #[cfg(feature = "mailbox-io")]
 mod sha;
-#[cfg(feature = "mailbox-io")]
-pub mod signed_eat;
 #[cfg(feature = "mailbox-io")]
 mod slice;
 mod types;
@@ -92,8 +89,6 @@ pub use debug_unlock::{
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
 #[cfg(feature = "mailbox-io")]
-pub use device_state::{get_pcr_value, pcr_quote_ecc384, PCR_QUOTE_ECC384_LEN};
-#[cfg(feature = "mailbox-io")]
 pub use dpe::{
     dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
     dpe_derive_context, dpe_get_cert_chain_chunk, dpe_get_tagged_tci, dpe_rotate_context_default,
@@ -117,6 +112,11 @@ pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
 pub use import::{cm_delete, cm_import};
 #[cfg(feature = "mailbox-io")]
 pub use pcr::{extend_pcr31, PCR31_INDEX, PCR31_MEASUREMENT_SIZE};
+#[cfg(feature = "mailbox-io")]
+pub use pcr_quote::{
+    pcr_quote_ecc384, pcr_quote_mldsa87, PCR_QUOTE_ECC384_LEN, PCR_QUOTE_MAX_LEN,
+    PCR_QUOTE_MLDSA87_LEN,
+};
 #[cfg(feature = "mailbox-io")]
 pub use rng::rng_generate;
 #[cfg(feature = "mailbox-io")]

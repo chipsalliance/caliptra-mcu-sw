@@ -305,17 +305,22 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         key_label: &[u8; DPE_LABEL_LEN],
         kid: &mut [u8; crate::ATTESTATION_P384_DIGEST_SIZE],
     ) -> MeasurementApiResult {
-        let mut pubkey_x = [0u8; crate::ATTESTATION_P384_DIGEST_SIZE];
-        let mut pubkey_y = [0u8; crate::ATTESTATION_P384_DIGEST_SIZE];
-        self.leaf_pubkey(alloc, key_label, &mut pubkey_x, &mut pubkey_y)
-            .await?;
+        let mut pubkey_y_buf = alloc
+            .alloc(crate::ATTESTATION_P384_DIGEST_SIZE)
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+        let pubkey_y = pubkey_y_buf
+            .get_mut(..crate::ATTESTATION_P384_DIGEST_SIZE)
+            .and_then(|buf| buf.first_chunk_mut::<{ crate::ATTESTATION_P384_DIGEST_SIZE }>())
+            .ok_or(MeasurementApiError::DpeCommandFailed)?;
+
+        self.leaf_pubkey(alloc, key_label, kid, pubkey_y).await?;
         let ctx = alloc
             .alloc(SHA_CONTEXT_SIZE)
             .map_err(|_| MeasurementApiError::DigestFailed)?;
-        let mut state = sha_init(alloc, ctx, HashAlgo::Sha384, &pubkey_x)
+        let mut state = sha_init(alloc, ctx, HashAlgo::Sha384, kid)
             .await
             .map_err(|_| MeasurementApiError::DigestFailed)?;
-        sha_update(alloc, &mut state, &pubkey_y)
+        sha_update(alloc, &mut state, pubkey_y)
             .await
             .map_err(|_| MeasurementApiError::DigestFailed)?;
         sha_finish(alloc, &mut state, kid)

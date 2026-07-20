@@ -89,6 +89,9 @@ pub(crate) const DPE_CMD_ROTATE_CONTEXT_HANDLE: u32 = 0x0e;
 /// `QUOTE_PCRS_ECC384` command ID.
 pub(crate) const CMD_QUOTE_PCRS_ECC384: u32 = 0x5043_5251; // "PCRQ"
 
+/// `QUOTE_PCRS_MLDSA87` command ID.
+pub(crate) const CMD_QUOTE_PCRS_MLDSA87: u32 = 0x5043_524d; // "PCRM"
+
 /// `EXTEND_PCR` command ID.
 pub(crate) const CMD_EXTEND_PCR: u32 = 0x5043_5245; // "PCRE"
 

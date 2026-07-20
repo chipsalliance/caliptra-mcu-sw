@@ -393,6 +393,15 @@ mod tests {
             Ok(vec![0; len])
         }
 
+        fn large_buf_into_bytes(
+            &self,
+            mut buf: Self::LargeBuf,
+            len: usize,
+        ) -> McuResult<Self::Bytes<'_>> {
+            buf.truncate(len);
+            Ok(buf)
+        }
+
         type PersistentBox<T: Sized + 'static> = Box<T>;
 
         fn alloc_persistent<T: Sized + 'static>(
