@@ -162,33 +162,33 @@ impl AsymCommandAuthorizer {
         use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
         use zerocopy::{FromBytes, IntoBytes};
 
-        // Slice the opaque tag into the typed hybrid fields (fail closed on any short read).
-        const ECC_PUB: usize = 96;
-        const MLDSA_PUB: usize = 2592;
-        const ECC_SIG: usize = 96;
-        const MLDSA_SIG: usize = 4628;
-        let mut off = 0usize;
-        let mut take = |n: usize| -> Result<&[u8], AuthorizationError> {
-            let s = tag.get(off..off + n).ok_or(AuthorizationError)?;
-            off += n;
-            Ok(s)
-        };
-        let ecc_pub = take(ECC_PUB)?;
-        let mldsa_pub = take(MLDSA_PUB)?;
-        let ecc_sig = take(ECC_SIG)?;
-        let mldsa_sig = take(MLDSA_SIG)?;
-
         // Build the Caliptra request. `nonce` is the 48-B value Caliptra minted on HELLO.
         let mut req = VendorAuthChallengeReq {
             cmd_id,
             ..Default::default()
         };
+
+        // Checked copy: consume exactly the destination field's width from the tag, failing
+        // CLOSED (never panicking) on a short read. Field widths are taken from the struct
+        // itself, so they cannot drift from a hand-maintained literal on a fork bump.
+        let mut off = 0usize;
+        let mut copy_field = |dst: &mut [u8]| -> Result<(), AuthorizationError> {
+            let src = tag.get(off..off + dst.len()).ok_or(AuthorizationError)?;
+            dst.copy_from_slice(src);
+            off += dst.len();
+            Ok(())
+        };
         req.body_hash.copy_from_slice(body_hash);
         req.challenge.copy_from_slice(nonce);
-        req.ecc_public_key.as_mut_bytes().copy_from_slice(ecc_pub);
-        req.mldsa_public_key.as_mut_bytes().copy_from_slice(mldsa_pub);
-        req.ecc_signature.as_mut_bytes().copy_from_slice(ecc_sig);
-        req.mldsa_signature.as_mut_bytes().copy_from_slice(mldsa_sig);
+        // Opaque tag layout: ecc_pub ‖ mldsa_pub ‖ ecc_sig ‖ mldsa_sig.
+        copy_field(req.ecc_public_key.as_mut_bytes())?;
+        copy_field(req.mldsa_public_key.as_mut_bytes())?;
+        copy_field(req.ecc_signature.as_mut_bytes())?;
+        copy_field(req.mldsa_signature.as_mut_bytes())?;
+        // Reject trailing garbage: the tag must be exactly the four fields.
+        if off != tag.len() {
+            return Err(AuthorizationError);
+        }
 
         let mailbox = Mailbox::new();
         let mut req_bytes = req.as_bytes().to_vec();
