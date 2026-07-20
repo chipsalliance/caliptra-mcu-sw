@@ -9,7 +9,8 @@
 use crate::alloc::BitmapAllocator;
 use crate::measurements::MeasurementProvider;
 use caliptra_mcu_attestation_evidence::{
-    encode_signed_ocp_eat, ocp_eat::NONCE_LEN, SIGNED_OCP_EAT_MAX_SIZE, WORKSPACE_SIZE,
+    encode_signed_ocp_eat, ocp_eat::NONCE_LEN, SIGNED_OCP_EAT_MAX_SIZE,
+    SIGNED_OCP_EAT_WORKSPACE_SIZE,
 };
 use caliptra_mcu_spdm_traits::{MeasurementInfo, SPDM_NONCE_LEN};
 use mcu_caliptra_api_lite::DPE_LABEL_LEN;
@@ -39,7 +40,7 @@ impl OcpEatMeasurementProvider {
 }
 
 impl MeasurementProvider for OcpEatMeasurementProvider {
-    const SCRATCH_SIZE: usize = WORKSPACE_SIZE;
+    const SCRATCH_SIZE: usize = SIGNED_OCP_EAT_WORKSPACE_SIZE;
 
     fn measurement_info(&self) -> &[MeasurementInfo] {
         &OCP_EAT_MEAS_INFO

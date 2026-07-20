@@ -27,19 +27,17 @@ mod alloc;
 mod auth_stash;
 mod cert;
 mod debug_unlock;
-mod device_state;
 mod dpe;
-pub mod eat;
 mod ecdh;
 mod fe_prog;
 mod fw_info;
 mod hmac;
 mod import;
 mod pcr;
+mod pcr_quote;
 pub mod raw;
 mod rng;
 mod sha;
-pub mod signed_eat;
 mod slice;
 mod types;
 mod wire;
@@ -59,7 +57,6 @@ pub use debug_unlock::{
     request_debug_unlock_challenge, DEBUG_UNLOCK_CHALLENGE_LEN,
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
-pub use device_state::{get_pcr_value, pcr_quote_ecc384, PCR_QUOTE_ECC384_LEN};
 pub use dpe::{
     dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
     dpe_derive_context, dpe_get_cert_chain_chunk, dpe_get_tagged_tci, dpe_rotate_context_default,
@@ -77,6 +74,10 @@ pub use fw_info::{fw_info, FwInfo};
 pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
 pub use import::{cm_delete, cm_import};
 pub use pcr::{extend_pcr31, PCR31_INDEX, PCR31_MEASUREMENT_SIZE};
+pub use pcr_quote::{
+    pcr_quote_ecc384, pcr_quote_mldsa87, PCR_QUOTE_ECC384_LEN, PCR_QUOTE_MAX_LEN,
+    PCR_QUOTE_MLDSA87_LEN,
+};
 pub use rng::rng_generate;
 pub use sha::{
     sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
