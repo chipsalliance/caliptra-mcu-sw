@@ -39,15 +39,16 @@ use core::mem::size_of;
 extern crate alloc;
 use alloc::boxed::Box;
 
+/// Caliptra-owned nonce width (VENDOR_AUTH_HELLO / CHALLENGE `challenge`).
+const VENDOR_AUTH_NONCE_LEN: usize = 48;
+
 /// Asymmetric, manifest-anchored per-command authorizer.
 ///
-/// Holds only the one-time challenge nonce; the trust root (the Vendor Ext
-/// PK-hash `SHA-384(ECC_pub ‖ MLDSA_pub)`) lives in Caliptra `PersistentData`,
-/// NOT here.
+/// Stateless: Caliptra owns the nonce (minted by VENDOR_AUTH_HELLO, verified by
+/// VENDOR_AUTH_CHALLENGE), like prod-debug-unlock. The trust anchor (Vendor Ext
+/// PK-hash) lives in Caliptra PersistentData. The MCU keeps NO nonce.
 #[derive(Default)]
-pub struct AsymCommandAuthorizer {
-    challenge: Option<[u8; 32]>,
-}
+pub struct AsymCommandAuthorizer {}
 
 #[async_trait]
 impl CommandAuthorizer for AsymCommandAuthorizer {
@@ -105,33 +106,31 @@ impl CommandAuthorizer for AsymCommandAuthorizer {
         payload: &[u8],
         mac: &[u8],
     ) -> Result<(), AuthorizationError> {
-        // Consume the challenge nonce (one-time use). No nonce -> fail closed.
-        let nonce = self.challenge.take().ok_or(AuthorizationError)?;
-
         // Opaque hybrid tag must be present. Fail closed on an empty tail.
         if mac.is_empty() {
             return Err(AuthorizationError);
         }
 
-        // Compute SHA-384(body). This is the value Caliptra must echo back so
-        // the MCU can bind execution to the exact authorized buffer.
+        // Compute SHA-384(body). Caliptra echoes this back so the MCU can bind
+        // execution to the exact authorized buffer.
         let mut body_hash = [0u8; SHA384_HASH_SIZE];
         HashContext::hash_all(HashAlgoType::SHA384, payload, &mut body_hash)
             .await
             .map_err(|_| AuthorizationError)?;
 
-        // Relay to Caliptra-core hybrid verify. Fails closed until the core
-        // command lands (see `relay_verify`).
+        // Fetch the nonce from Caliptra (VENDOR_AUTH_HELLO); Caliptra owns it.
+        let nonce = Self::relay_hello().await?;
+
         self.relay_verify(cmd_id, &body_hash, &nonce, mac).await
     }
 
+    // Nonce is Caliptra-owned; the MCU stores none. These trait methods (the
+    // HMAC-era MCU-local nonce seam) are inert on the asymmetric path.
     fn take_challenge(&mut self) -> Option<[u8; 32]> {
-        self.challenge.take()
+        None
     }
 
-    fn set_challenge(&mut self, challenge: [u8; 32]) {
-        self.challenge = Some(challenge);
-    }
+    fn set_challenge(&mut self, _challenge: [u8; 32]) {}
 }
 
 impl AsymCommandAuthorizer {
@@ -160,11 +159,37 @@ impl AsymCommandAuthorizer {
     ///   and Caliptra echoes `(cmd_id, body_hash)` on success.
     /// * The sole `Ok` path is behind [`check_echo_binding`]: the echoed
     ///   `(cmd_id, body_hash)` must be byte-identical to what we sent (and will execute).
+    /// Relay VENDOR_AUTH_HELLO to Caliptra and return the 48-byte nonce Caliptra
+    /// minted and stored (Caliptra owns the nonce; the MCU keeps none).
+    async fn relay_hello() -> Result<[u8; VENDOR_AUTH_NONCE_LEN], AuthorizationError> {
+        use caliptra_api::mailbox::{
+            CommandId as CoreCmd, VendorAuthHelloReq, VendorAuthHelloResp,
+        };
+        use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
+        use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+        use zerocopy::{FromBytes, IntoBytes};
+
+        let mailbox = Mailbox::new();
+        let mut req = VendorAuthHelloReq::default();
+        let mut resp_bytes = [0u8; size_of::<VendorAuthHelloResp>()];
+        execute_mailbox_cmd(
+            &mailbox,
+            CoreCmd::VENDOR_AUTH_HELLO.0,
+            req.as_mut_bytes(),
+            &mut resp_bytes,
+        )
+        .await
+        .map_err(|_| AuthorizationError)?;
+        let resp = VendorAuthHelloResp::read_from_bytes(resp_bytes.as_slice())
+            .map_err(|_| AuthorizationError)?;
+        Ok(resp.challenge)
+    }
+
     async fn relay_verify(
         &self,
         cmd_id: u32,
         body_hash: &[u8; SHA384_HASH_SIZE],
-        nonce: &[u8; 32],
+        nonce: &[u8; VENDOR_AUTH_NONCE_LEN],
         tag: &[u8],
     ) -> Result<(), AuthorizationError> {
         use caliptra_api::mailbox::{CommandId as CoreCmd, VendorAuthChallengeReq, VendorAuthChallengeResp};
@@ -188,15 +213,13 @@ impl AsymCommandAuthorizer {
         let ecc_sig = take(ECC_SIG)?;
         let mldsa_sig = take(MLDSA_SIG)?;
 
-        // Build the Caliptra request. `challenge` is 48 B in core; the MCU nonce is 32 B,
-        // zero-extended into the low bytes (Caliptra minted/compares the same 32 significant
-        // bytes it returned on HELLO).
+        // Build the Caliptra request. `nonce` is the 48-B value Caliptra minted on HELLO.
         let mut req = VendorAuthChallengeReq {
             cmd_id,
             ..Default::default()
         };
         req.body_hash.copy_from_slice(body_hash);
-        req.challenge[..nonce.len()].copy_from_slice(nonce);
+        req.challenge.copy_from_slice(nonce);
         req.ecc_public_key.as_mut_bytes().copy_from_slice(ecc_pub);
         req.mldsa_public_key.as_mut_bytes().copy_from_slice(mldsa_pub);
         req.ecc_signature.as_mut_bytes().copy_from_slice(ecc_sig);
