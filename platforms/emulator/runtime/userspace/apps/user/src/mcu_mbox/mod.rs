@@ -1,5 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+#[cfg(all(feature = "mcu-mbox-service", feature = "asym-cmd-auth"))]
+pub(crate) mod cmd_auth_asym;
 #[cfg(feature = "mcu-mbox-service")]
 pub(crate) mod cmd_auth_mock;
 #[cfg(feature = "mcu-mbox-service")]
@@ -33,7 +35,15 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
     #[cfg(feature = "mcu-mbox-service")]
     {
         let handler = cmd_handler_mock::NonCryptoCmdHandlerMock;
+        // Single swap site for the authorizer impl (grounding brief Q1). The
+        // dummy-HMAC mock stays the default; the asymmetric, manifest-anchored
+        // relay authorizer is selected only under the non-default
+        // `asym-cmd-auth` feature. `CmdInterface`/`McuMboxService` see only
+        // `&mut dyn CommandAuthorizer`, so nothing else changes.
+        #[cfg(not(feature = "asym-cmd-auth"))]
         let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer::default();
+        #[cfg(feature = "asym-cmd-auth")]
+        let mut cmd_authorizer = cmd_auth_asym::AsymCommandAuthorizer::default();
         let mut transport = caliptra_mcu_mbox_lib::transport::McuMboxTransport::new(
             caliptra_mcu_libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         );

@@ -659,4 +659,131 @@ mod tests {
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
         assert_eq!(cmds.authorized_token.take(), Some(token));
     }
+
+    // ---------------------------------------------------------------------
+    // AUTHORIZED_COMMAND (0x12) framing characterization.
+    //
+    // These lock the CURRENT on-wire framing of the VDM authorized-command
+    // path (sub-command demux + fixed MAC_LEN=48 tag) BEFORE the
+    // transport-agnostic refactor moves verify into Caliptra core and grows
+    // the tag to hold the hybrid ECDSA-P384 + ML-DSA-87 signatures. They are
+    // negative/framing tests only: this lib layer decodes and relays; the
+    // actual crypto verify lives in the platform hook (CaliptraVdmHook::
+    // verify_fe_prog_mac, emulator caliptra_vdm.rs:230), so a byte-level
+    // wrong-key/tampered-body/replayed-nonce assertion cannot run here and is
+    // owned by the emulator/integration harness (see coverage gaps).
+    // Anchors: authorized_command.rs:13-16 (sub-cmd ids, MAC_LEN),
+    // :38-42 (demux), :78-83 (fixed 4+48 length gate).
+    // ---------------------------------------------------------------------
+
+    const VDM_GET_AUTH_CHALLENGE_SUB: u32 = 0x4D41_4343; // "MACC"
+    const VDM_FE_PROG_SUB: u32 = 0x4D43_4650; // "MCFP"
+    const VDM_MAC_LEN: usize = 48;
+
+    fn authorized_command_req(sub_cmd: u32, tail: &[u8]) -> Vec<u8> {
+        let mut req = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::AuthorizedCommand as u8,
+        ];
+        req.extend_from_slice(&sub_cmd.to_le_bytes());
+        req.extend_from_slice(tail);
+        req
+    }
+
+    #[test]
+    fn authorized_command_truncated_subcmd_is_rejected() {
+        // Fewer than 4 sub-command bytes -> InvalidPayloadSize (authorized_command.rs:28-30).
+        let cmds = TestCommands::new(0);
+        let req = [
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::AuthorizedCommand as u8,
+            0x43,
+            0x43,
+        ];
+        let (response, inline, _) = dispatch(&cmds, &req, 32, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+    }
+
+    #[test]
+    fn authorized_command_unknown_subcmd_is_rejected() {
+        // Any sub-command that is neither MACC nor MCFP -> InvalidParameter
+        // (authorized_command.rs:41). Guards against a future first-cut command
+        // (e.g. MC_FUSE_WRITE) silently reaching a stale VDM demux.
+        let cmds = TestCommands::new(0);
+        let req = authorized_command_req(0xDEAD_BEEF, &[]);
+        let (response, inline, _) = dispatch(&cmds, &req, 32, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidParameter as u8);
+    }
+
+    #[test]
+    fn fe_prog_short_tag_is_rejected_before_hook() {
+        // FE_PROG with a tag SHORTER than the fixed 48-byte MAC must be
+        // rejected at the framing gate (authorized_command.rs:78) and never
+        // reach the verify hook. 47-byte tag = off-by-one boundary.
+        let cmds = TestCommands::new(0);
+        let mut tail = 3u32.to_le_bytes().to_vec(); // partition
+        tail.extend_from_slice(&[0u8; VDM_MAC_LEN - 1]);
+        let req = authorized_command_req(VDM_FE_PROG_SUB, &tail);
+        let (response, inline, _) = dispatch(&cmds, &req, 32, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+    }
+
+    #[test]
+    fn fe_prog_long_tag_is_rejected_before_hook() {
+        // A tag LONGER than 48 (e.g. an attacker padding a hybrid-sized blob
+        // onto the legacy path) is also rejected: the current framing is an
+        // EXACT 4+48 match (authorized_command.rs:78 `!=`), not a lower bound.
+        // This is the invariant the refactor must consciously replace when the
+        // tag grows to carry ECDSA-P384 (~96B) + ML-DSA-87 (~4.6KB).
+        let cmds = TestCommands::new(0);
+        let mut tail = 3u32.to_le_bytes().to_vec();
+        tail.extend_from_slice(&[0u8; VDM_MAC_LEN + 1]);
+        let req = authorized_command_req(VDM_FE_PROG_SUB, &tail);
+        let (response, inline, _) = dispatch(&cmds, &req, 32, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+    }
+
+    #[test]
+    fn fe_prog_exact_frame_reaches_hook_and_succeeds() {
+        // Happy-path framing: version + 0x12 + MCFP + partition(4) + mac(48).
+        // The TestCommands hook accepts unconditionally (mod.rs:427-434), so a
+        // Success here proves ONLY that the framing forwarded to the hook --
+        // it does NOT prove MAC verification. That assertion is integration.
+        let cmds = TestCommands::new(0);
+        let mut tail = 5u32.to_le_bytes().to_vec();
+        tail.extend_from_slice(&[0xABu8; VDM_MAC_LEN]);
+        let req = authorized_command_req(VDM_FE_PROG_SUB, &tail);
+        let (response, inline, _) = dispatch(&cmds, &req, 32, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+    }
+
+    #[test]
+    fn get_auth_challenge_rejects_trailing_bytes() {
+        // The challenge sub-command must carry an EMPTY payload
+        // (authorized_command.rs:55 require_empty). Trailing bytes are a
+        // malformed-input rejection; also documents that nonce delivery framing
+        // is distinct from the FE_PROG tag framing above.
+        let cmds = TestCommands::new(0);
+        let req = authorized_command_req(VDM_GET_AUTH_CHALLENGE_SUB, &[0xFF]);
+        let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+    }
+
+    #[test]
+    fn get_auth_challenge_empty_payload_returns_nonce() {
+        // Empty payload -> success + 32-byte nonce echoed (mod.rs:415-424).
+        let cmds = TestCommands::new(0);
+        let req = authorized_command_req(VDM_GET_AUTH_CHALLENGE_SUB, &[]);
+        let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
+        // header(2) + completion(1) + nonce(32)
+        assert_inline(response, 2 + 1 + 32);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(&inline[3..3 + 32], &[0xA5; 32]);
+    }
 }

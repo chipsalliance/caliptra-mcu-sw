@@ -4,9 +4,9 @@ use caliptra_mcu_common_commands::{AuthorizationError, AuthorizationResult, Comm
 use caliptra_mcu_libapi_caliptra::crypto::hmac::Hmac;
 use caliptra_mcu_libapi_caliptra::crypto::import::{CmKeyUsage, Import};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, FuseIncreaseCaliptraMinSvnReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
-    MailboxReqHeader, McuFeProgReq, OcpLockRotateHekReq, OcpLockSetPermaHekReq,
-    ProvisionVendorPkHashReq,
+    CommandId, FuseIncreaseCaliptraMinSvnReq, FuseLockPartitionReq, FuseReadReq,
+    FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, FuseWriteReq, MailboxReqHeader,
+    McuFeProgReq, OcpLockRotateHekReq, OcpLockSetPermaHekReq, ProvisionVendorPkHashReq,
 };
 use constant_time_eq::constant_time_eq;
 use core::mem::size_of;
@@ -42,6 +42,9 @@ impl CommandAuthorizer for MockCommandAuthorizer {
                 size_of::<FuseIncreaseCaliptraMinSvnReq>()
             }
             CommandId::MC_FE_PROG => size_of::<McuFeProgReq>(),
+            CommandId::MC_FUSE_READ => size_of::<FuseReadReq>(),
+            CommandId::MC_FUSE_WRITE => size_of::<FuseWriteReq>(),
+            CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionReq>(),
             CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => size_of::<FuseRevokeVendorPubKeyReq>(),
             CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => size_of::<FuseRevokeVendorPkHashReq>(),
             CommandId::MC_OCP_LOCK_ROTATE_HEK => size_of::<OcpLockRotateHekReq>(),

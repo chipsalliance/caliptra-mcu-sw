@@ -74,6 +74,12 @@ flash-boot = []
 firmware-update = []
 mcu-mbox-service = []
 mctp-vdm-service = []
+# Selects the asymmetric, manifest-anchored, per-command authorizer
+# (AsymCommandAuthorizer) instead of the default dummy-HMAC mock. Non-default:
+# the mock/HMAC path stays intact until a clean cutover. The relay it drives is
+# gated on the Caliptra-core hybrid-verify command (caliptra-sw#3928) and fails
+# closed until that lands and the pinned caliptra-* rev is bumped.
+asym-cmd-auth = ["mcu-mbox-service"]
 debug = []
 hw-2-1 = []
 ocp-lock = [
