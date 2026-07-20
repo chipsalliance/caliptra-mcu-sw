@@ -23,8 +23,8 @@ use caliptra_mcu_mbox_common::messages::{
     GetAuthCmdChallengeResp, GetLogReq, GetLogResp, MailboxRespHeader, MailboxRespHeaderVarSize,
     McuFeProgReq, McuResponseVarSize, OcpLockRotateHekReq, OcpLockRotateHekResp,
     OcpLockSetPermaHekReq, OcpLockSetPermaHekResp, ProvisionVendorPkHashReq,
-    ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE,
-    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    ProvisionVendorPkHashResp, RevokeVendorPubKeyType, VendorAuthHelloReq, VendorAuthHelloResp,
+    DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -161,6 +161,9 @@ impl<'a> CmdInterface<'a> {
                 }
                 CommandId::MC_GET_AUTH_CMD_CHALLENGE => {
                     self.handle_get_auth_cmd_challenge(req, resp_buf).await
+                }
+                CommandId::MC_VENDOR_AUTH_HELLO => {
+                    self.handle_vendor_auth_hello(req, resp_buf).await
                 }
                 inner @ CommandId::MC_PROVISION_VENDOR_PK_HASH
                 | inner @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
@@ -478,6 +481,38 @@ impl<'a> CmdInterface<'a> {
             .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         self.cmd_authorizer.set_challenge(resp.challenge);
+        let len = size_of_val(resp);
+        Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
+    }
+
+    /// MC_VENDOR_AUTH_HELLO: relay to Caliptra `VENDOR_AUTH_HELLO` and return the 48-byte
+    /// nonce Caliptra minted. Caliptra owns the nonce (like prod-debug-unlock); no MCU nonce.
+    async fn handle_vendor_auth_hello<'r>(
+        &mut self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        VendorAuthHelloReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+
+        // Relay VENDOR_AUTH_HELLO to Caliptra core.
+        let mut core_req = caliptra_api::mailbox::VendorAuthHelloReq::default();
+        let mut core_resp =
+            [0u8; core::mem::size_of::<caliptra_api::mailbox::VendorAuthHelloResp>()];
+        execute_mailbox_cmd(
+            &self.caliptra_mbox,
+            caliptra_api::mailbox::CommandId::VENDOR_AUTH_HELLO.0,
+            core_req.as_mut_bytes(),
+            &mut core_resp,
+        )
+        .await
+        .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        let core_resp = caliptra_api::mailbox::VendorAuthHelloResp::ref_from_bytes(&core_resp)
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) = VendorAuthHelloResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = VendorAuthHelloResp::default();
+        resp.challenge.copy_from_slice(&core_resp.challenge);
         let len = size_of_val(resp);
         Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
     }

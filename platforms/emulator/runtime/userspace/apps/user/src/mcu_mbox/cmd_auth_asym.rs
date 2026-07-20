@@ -118,10 +118,19 @@ impl CommandAuthorizer for AsymCommandAuthorizer {
             .await
             .map_err(|_| AuthorizationError)?;
 
-        // Fetch the nonce from Caliptra (VENDOR_AUTH_HELLO); Caliptra owns it.
-        let nonce = Self::relay_hello().await?;
+        // The nonce is Caliptra's (from MC_VENDOR_AUTH_HELLO) and the host signed over
+        // it, so it rides in the tag — NOT re-fetched here (a fresh HELLO would mint a
+        // different nonce and overwrite Caliptra's stored one). Tag layout:
+        //   nonce(48) ‖ ecc_pub ‖ mldsa_pub ‖ ecc_sig ‖ mldsa_sig
+        let nonce: [u8; VENDOR_AUTH_NONCE_LEN] = mac
+            .get(..VENDOR_AUTH_NONCE_LEN)
+            .ok_or(AuthorizationError)?
+            .try_into()
+            .map_err(|_| AuthorizationError)?;
+        let sig_material = mac.get(VENDOR_AUTH_NONCE_LEN..).ok_or(AuthorizationError)?;
 
-        self.relay_verify(cmd_id, &body_hash, &nonce, mac).await
+        self.relay_verify(cmd_id, &body_hash, &nonce, sig_material)
+            .await
     }
 
     // Nonce is Caliptra-owned; the MCU stores none. These trait methods (the
@@ -134,57 +143,13 @@ impl CommandAuthorizer for AsymCommandAuthorizer {
 }
 
 impl AsymCommandAuthorizer {
-    /// Relay the hybrid-verify request to Caliptra core and enforce the TOCTOU
-    /// echo check.
+    /// Relay VENDOR_AUTH_CHALLENGE to Caliptra core and bind the result.
     ///
-    /// Wire contract (Team Alpha, gated on caliptra-sw#3928):
-    /// * request  = `cmd_id(BE,4) ‖ body_hash(48) ‖ nonce(32) ‖ tag(opaque)`
-    /// * response = the authorized `(cmd_id, SHA-384(body))` echoed back
-    ///
-    /// On success the relay MUST verify the echoed `cmd_id` and `body_hash`
-    /// are byte-identical to the values sent here BEFORE returning `Ok`; any
-    /// mismatch is a fail-closed error so the local handler never executes a
-    /// command Caliptra did not authorize. That check is factored out into
-    /// [`check_echo_binding`] so it is a single, testable, fail-closed decision
-    /// that the wiring below physically cannot bypass (the only `Ok(())` return
-    /// path in this function is behind it).
-    ///
-    /// Relay to the Caliptra `VENDOR_AUTH_CHALLENGE` command and bind the result.
-    ///
-    /// Wire contract:
-    /// * The opaque `tag` is the concatenation the host built (hardware format):
-    ///   `ecc_pub[96] ‖ mldsa_pub[2592] ‖ ecc_sig[96] ‖ mldsa_sig[4628]`.
-    /// * The relay assembles `VendorAuthChallengeReq { cmd_id, body_hash, challenge,
-    ///   ecc_public_key, mldsa_public_key, ecc_signature, mldsa_signature }`, sends it,
-    ///   and Caliptra echoes `(cmd_id, body_hash)` on success.
-    /// * The sole `Ok` path is behind [`check_echo_binding`]: the echoed
-    ///   `(cmd_id, body_hash)` must be byte-identical to what we sent (and will execute).
-    /// Relay VENDOR_AUTH_HELLO to Caliptra and return the 48-byte nonce Caliptra
-    /// minted and stored (Caliptra owns the nonce; the MCU keeps none).
-    async fn relay_hello() -> Result<[u8; VENDOR_AUTH_NONCE_LEN], AuthorizationError> {
-        use caliptra_api::mailbox::{
-            CommandId as CoreCmd, VendorAuthHelloReq, VendorAuthHelloResp,
-        };
-        use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-        use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
-        use zerocopy::{FromBytes, IntoBytes};
-
-        let mailbox = Mailbox::new();
-        let mut req = VendorAuthHelloReq::default();
-        let mut resp_bytes = [0u8; size_of::<VendorAuthHelloResp>()];
-        execute_mailbox_cmd(
-            &mailbox,
-            CoreCmd::VENDOR_AUTH_HELLO.0,
-            req.as_mut_bytes(),
-            &mut resp_bytes,
-        )
-        .await
-        .map_err(|_| AuthorizationError)?;
-        let resp = VendorAuthHelloResp::read_from_bytes(resp_bytes.as_slice())
-            .map_err(|_| AuthorizationError)?;
-        Ok(resp.challenge)
-    }
-
+    /// `sig_material` is the host-built hybrid tag minus the leading nonce (already
+    /// split off by the caller): `ecc_pub[96] ‖ mldsa_pub[2592] ‖ ecc_sig[96] ‖ mldsa_sig[4628]`.
+    /// The relay assembles `VendorAuthChallengeReq`, sends it, and Caliptra echoes
+    /// `(cmd_id, body_hash)`. The sole `Ok` path is behind [`check_echo_binding`], so
+    /// the local handler can never execute a command Caliptra did not authorize.
     async fn relay_verify(
         &self,
         cmd_id: u32,
