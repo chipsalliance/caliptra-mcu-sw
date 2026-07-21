@@ -135,6 +135,20 @@ fn cargo_test_archive(archive_file: &str) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn nextest_list() -> Result<()> {
+    println!("Running: cargo nextest list");
+    let status = Command::new("cargo")
+        .current_dir(&*PROJECT_ROOT)
+        .args(["nextest", "list"])
+        .status()?;
+
+    if !status.success() {
+        bail!("cargo nextest list failed");
+    }
+
+    Ok(())
+}
+
 pub(crate) fn e2e_tests() -> Result<()> {
     println!("Running: e2e tests");
 

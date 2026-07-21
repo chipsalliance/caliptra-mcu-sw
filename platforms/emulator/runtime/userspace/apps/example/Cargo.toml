@@ -6,6 +6,11 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "caliptra-mcu-example-app"
+test = false
+
+
 [dependencies]
 async-trait.workspace = true
 caliptra-api.workspace = true

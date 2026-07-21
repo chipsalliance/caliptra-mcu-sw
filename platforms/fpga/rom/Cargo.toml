@@ -6,6 +6,11 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "caliptra-mcu-rom-fpga"
+test = false
+
+
 [build-dependencies]
 caliptra-mcu-builder.workspace = true
 caliptra-mcu-config-fpga.workspace = true

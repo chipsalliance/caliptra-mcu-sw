@@ -66,4 +66,6 @@ mod riscv {
 
 #[cfg(not(target_arch = "riscv32"))]
 #[no_mangle]
-pub extern "C" fn main() {}
+pub extern "C" fn main() {
+    println!("nop");
+}

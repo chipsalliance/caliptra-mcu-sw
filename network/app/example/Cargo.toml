@@ -9,6 +9,7 @@ description = "DHCP + TFTP boot example application using lwip-rs"
 [[bin]]
 name = "caliptra-mcu-lwip-rs-example"
 path = "src/main.rs"
+test = false
 
 [dependencies]
 caliptra-mcu-lwip-rs.workspace = true
