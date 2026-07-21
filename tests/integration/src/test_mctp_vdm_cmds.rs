@@ -8,14 +8,6 @@
 #[cfg(test)]
 pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
-    use caliptra_api::{
-        calc_checksum,
-        mailbox::{CapabilitiesResp, CommandId, MailboxReqHeader},
-        SocManager,
-    };
-    use caliptra_mcu_config::capabilities::{
-        AuthorizedSubcommandCapabilities, ExternalCommandCapabilities, McuRuntimeCapabilities,
-    };
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_mbox_common::config;
     use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
@@ -40,38 +32,20 @@ pub mod test {
     use random_port::PortPicker;
     use simple_logger::SimpleLogger;
     use std::process::exit;
-    use zerocopy::{FromBytes, IntoBytes};
 
     /// Maximum buffer size for encoding VDM requests.
     const MAX_REQUEST_BUF_SIZE: usize = 1024;
 
-    fn semantic_version(packed_version: u32) -> String {
-        format!(
-            "{}.{}.{}",
-            (packed_version >> 24) & 0xff,
-            (packed_version >> 16) & 0xff,
-            packed_version & 0xffff
-        )
-    }
-
     /// Test runner for VDM command tests.
     pub struct VdmCmdTest {
         client: VdmClient,
-        caliptra_runtime_version: u32,
-        core_capabilities: [u8; 16],
     }
 
     impl VdmCmdTest {
         /// Create a new VDM command test instance.
-        pub fn new(
-            socket: MctpVdmSocket,
-            caliptra_runtime_version: u32,
-            core_capabilities: [u8; 16],
-        ) -> Self {
+        pub fn new(socket: MctpVdmSocket) -> Self {
             Self {
                 client: VdmClient::new(socket),
-                caliptra_runtime_version,
-                core_capabilities,
             }
         }
 
@@ -126,7 +100,7 @@ pub mod test {
         }
 
         /// Helper to log and compare values, returning error on mismatch.
-        fn assert_eq<T: PartialEq + core::fmt::Debug + ?Sized>(
+        fn assert_eq<T: PartialEq + core::fmt::Debug>(
             actual: &T,
             expected: &T,
             field_name: &str,
@@ -147,16 +121,12 @@ pub mod test {
         fn test_get_firmware_version(&mut self) -> Result<(), VdmTransportError> {
             info!("Testing Get Firmware Version command...");
 
-            let expected_versions = [
-                semantic_version(self.caliptra_runtime_version),
-                semantic_version(caliptra_mcu_config::version::get_mcu_runtime_version()),
-            ];
-
-            for (index, expected) in expected_versions.iter().enumerate() {
-                let request = FirmwareVersionRequest::new(index as u32);
+            for index in 0..3u32 {
+                let request = FirmwareVersionRequest::new(index);
                 let response: FirmwareVersionResponse =
                     self.send_request_expect_success(&request)?;
 
+                let expected = config::TEST_FIRMWARE_VERSIONS[index as usize];
                 // Find end of null-terminated string
                 let len = response
                     .version
@@ -168,7 +138,7 @@ pub mod test {
 
                 Self::assert_eq(
                     &received_str,
-                    &expected.as_str(),
+                    &expected,
                     &format!("Firmware version index {}", index),
                 )?;
                 info!(
@@ -176,10 +146,6 @@ pub mod test {
                     index, received_str
                 );
             }
-
-            let request = FirmwareVersionRequest::new(2);
-            self.send_request_expect_error(&request, VdmCompletionCode::UnsupportedOperation)?;
-            info!("  SoC version correctly returns UnsupportedOperation");
 
             // Test invalid index
             let request = FirmwareVersionRequest::new(99);
@@ -197,33 +163,14 @@ pub mod test {
             let response: DeviceCapabilitiesResponse =
                 self.send_request_expect_success(&request)?;
 
+            // Convert TestDeviceCapabilities to raw bytes for comparison
+            let expected = &config::TEST_DEVICE_CAPABILITIES;
+            let expected_bytes: &[u8] = zerocopy::IntoBytes::as_bytes(expected);
             Self::assert_eq(
-                &response.caps[..16],
-                &self.core_capabilities,
-                "Core capabilities",
+                &response.caps.as_slice(),
+                &expected_bytes,
+                "Device capabilities",
             )?;
-            let rom = u32::from_be_bytes(response.caps[16..20].try_into().unwrap());
-            let runtime = u32::from_be_bytes(response.caps[20..24].try_into().unwrap());
-            let external = u32::from_be_bytes(response.caps[24..28].try_into().unwrap());
-            let authorized = u32::from_be_bytes(response.caps[28..32].try_into().unwrap());
-            let expected_external = (ExternalCommandCapabilities::FIRMWARE_VERSION
-                | ExternalCommandCapabilities::DEVICE_CAPABILITIES
-                | ExternalCommandCapabilities::GET_DEBUG_LOG
-                | ExternalCommandCapabilities::CLEAR_DEBUG_LOG)
-                .bits();
-            Self::assert_eq(&external, &expected_external, "External commands")?;
-            Self::assert_eq(
-                &runtime,
-                &McuRuntimeCapabilities::MCTP_VDM_RESPONDER.bits(),
-                "MCU Runtime capabilities",
-            )?;
-            Self::assert_eq(&rom, &0, "MCU ROM capabilities")?;
-            Self::assert_eq(
-                &authorized,
-                &AuthorizedSubcommandCapabilities::empty().bits(),
-                "Authorized subcommands",
-            )?;
-            Self::assert_eq(&response.caps[32..], &[0; 4], "Reserved capabilities")?;
             info!("  Capabilities: {:?} (matches expected)", response.caps);
 
             Ok(())
@@ -350,13 +297,14 @@ pub mod test {
             Ok(())
         }
 
+        fn test_production_backend(&mut self) -> Result<(), VdmTransportError> {
+            info!("Testing production CaliptraCmdBackend dispatch...");
+            let request = FirmwareVersionRequest::new(0);
+            self.send_request_expect_error(&request, VdmCompletionCode::UnsupportedOperation)
+        }
+
         /// Spawn test thread and run tests.
-        pub fn run(
-            socket: MctpVdmSocket,
-            debug_level: LevelFilter,
-            caliptra_runtime_version: u32,
-            core_capabilities: [u8; 16],
-        ) {
+        pub fn run(socket: MctpVdmSocket, debug_level: LevelFilter, production_backend: bool) {
             caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
                 wait_for_runtime_start();
                 if !caliptra_mcu_testing_common::is_emulator_running() {
@@ -367,22 +315,27 @@ pub mod test {
                 let _ = SimpleLogger::new().with_level(debug_level).init();
 
                 info!("Running MCTP VDM Command Tests");
-                let mut test = VdmCmdTest::new(socket, caliptra_runtime_version, core_capabilities);
+                let mut test = VdmCmdTest::new(socket);
 
-                if let Err(e) = test.run_all_tests() {
+                let result = if production_backend {
+                    test.test_production_backend()
+                } else {
+                    test.run_all_tests()
+                };
+                if let Err(e) = result {
                     info!("VDM test failed: {:?}", e);
                     exit(-1);
-                } else {
-                    info!("All VDM tests passed!");
-                    caliptra_mcu_testing_common::stop_emulator();
-                    exit(0);
                 }
+
+                info!("All VDM tests passed!");
+                caliptra_mcu_testing_common::stop_emulator();
+                exit(0);
             });
         }
     }
 
     /// Start VDM command test with the given feature.
-    pub fn start_vdm_test(feature: &str, debug_level: LevelFilter) {
+    pub fn start_vdm_test(feature: &str, debug_level: LevelFilter, production_backend: bool) {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -427,28 +380,7 @@ pub mod test {
         let vdm_transport =
             MctpVdmTransport::new(hw.i3c_port().unwrap(), hw.i3c_address().unwrap().into());
         let vdm_socket = vdm_transport.create_socket().unwrap();
-        let caliptra_runtime_version = hw
-            .caliptra_soc_manager()
-            .soc_ifc()
-            .cptra_fw_rev_id()
-            .at(1)
-            .read();
-        let core_req = MailboxReqHeader {
-            chksum: calc_checksum(CommandId::CAPABILITIES.into(), &[]),
-        };
-        let core_resp = hw
-            .caliptra_mailbox_execute(CommandId::CAPABILITIES.into(), core_req.as_bytes())
-            .expect("Core CAPABILITIES command failed")
-            .expect("Core CAPABILITIES returned no response");
-        let core_capabilities = CapabilitiesResp::read_from_bytes(&core_resp)
-            .expect("invalid Core CAPABILITIES response")
-            .capabilities;
-        VdmCmdTest::run(
-            vdm_socket,
-            debug_level,
-            caliptra_runtime_version,
-            core_capabilities,
-        );
+        VdmCmdTest::run(vdm_socket, debug_level, production_backend);
 
         let test = finish_runtime_hw_model(&mut hw);
 
@@ -461,6 +393,11 @@ pub mod test {
 
     #[test]
     fn test_mctp_vdm_cmds() {
-        start_vdm_test("test-mctp-vdm-cmds", LevelFilter::Info);
+        start_vdm_test("test-mctp-vdm-cmds", LevelFilter::Info, false);
+    }
+
+    #[test]
+    fn test_mctp_vdm_production_backend() {
+        start_vdm_test("test-mctp-vdm-production", LevelFilter::Info, true);
     }
 }

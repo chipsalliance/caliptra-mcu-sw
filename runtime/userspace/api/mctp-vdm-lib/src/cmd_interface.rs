@@ -158,7 +158,10 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
 
         // Build the response.
         let (completion_code, ver_bytes) = match result {
-            Ok(()) => (VdmCompletionCode::Success, &version.ver_str[..version.len]),
+            Ok(()) if version.len <= version.ver_str.len() => {
+                (VdmCompletionCode::Success, &version.ver_str[..version.len])
+            }
+            Ok(()) => (VdmCompletionCode::GeneralError, &[][..]),
             Err(err) => (map_caliptra_to_vdm(err), &[][..]),
         };
 
@@ -346,12 +349,295 @@ fn map_caliptra_to_vdm(err: CaliptraCompletionCode) -> VdmCompletionCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliptra_mcu_common_commands::{CaliptraCmdResult, DebugUnlockChallenge};
+    use caliptra_mcu_mctp_vdm_common::message::GetDebugLogResponse;
+    use caliptra_mcu_mctp_vdm_common::protocol::VdmControlByte;
+    use mcu_caliptra_api_lite::ApiAlloc;
+    use std::boxed::Box;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
+    const BUFFER_SIZE: usize = 1024;
+
+    struct TestHandler {
+        firmware_result: CaliptraCmdResult<()>,
+        firmware_len: usize,
+        log_result: CaliptraCmdResult<GetLogResult>,
+    }
+
+    impl Default for TestHandler {
+        fn default() -> Self {
+            Self {
+                firmware_result: Ok(()),
+                firmware_len: 4,
+                log_result: Ok(GetLogResult {
+                    bytes_written: 3,
+                    more_data: true,
+                }),
+            }
+        }
+    }
+
+    impl CaliptraCmdHandler for TestHandler {
+        async fn get_firmware_version(
+            &self,
+            _index: u32,
+            version: &mut FirmwareVersion,
+        ) -> CaliptraCmdResult<()> {
+            if self.firmware_result.is_ok() {
+                version.len = self.firmware_len;
+                version.ver_str[..4].copy_from_slice(b"1.2.");
+            }
+            self.firmware_result
+        }
+
+        async fn get_device_capabilities(
+            &self,
+            capabilities: &mut DeviceCapabilities,
+        ) -> CaliptraCmdResult<()> {
+            capabilities.mcu_rt = *b"mcu-test";
+            Ok(())
+        }
+
+        async fn export_attested_csr<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _device_key_id: u32,
+            _algorithm: u32,
+            _nonce: &[u8; 32],
+            _csr_buf: &mut [u8],
+        ) -> CaliptraCmdResult<usize> {
+            Err(CaliptraCompletionCode::UnsupportedOperation)
+        }
+
+        async fn request_debug_unlock<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _unlock_level: u8,
+            _challenge: &mut DebugUnlockChallenge,
+        ) -> CaliptraCmdResult<()> {
+            Err(CaliptraCompletionCode::UnsupportedOperation)
+        }
+
+        async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _token_request: &[u8],
+        ) -> CaliptraCmdResult<()> {
+            Err(CaliptraCompletionCode::UnsupportedOperation)
+        }
+
+        async fn get_log(
+            &self,
+            _log_type: u32,
+            data: &mut [u8],
+        ) -> CaliptraCmdResult<GetLogResult> {
+            if let Ok(result) = self.log_result {
+                let bytes = b"log";
+                let len = result.bytes_written.min(bytes.len()).min(data.len());
+                data[..len].copy_from_slice(&bytes[..len]);
+            }
+            self.log_result
+        }
+    }
+
+    fn block_on<F: Future>(future: F) -> F::Output {
+        fn raw_waker() -> RawWaker {
+            fn clone(_: *const ()) -> RawWaker {
+                raw_waker()
+            }
+            fn wake(_: *const ()) {}
+            fn wake_by_ref(_: *const ()) {}
+            fn drop(_: *const ()) {}
+            RawWaker::new(
+                core::ptr::null(),
+                &RawWakerVTable::new(clone, wake, wake_by_ref, drop),
+            )
+        }
+
+        // SAFETY: The no-op waker never dereferences its data pointer. Test
+        // handlers complete synchronously and therefore never depend on wakeups.
+        let waker = unsafe { Waker::from_raw(raw_waker()) };
+        let mut context = Context::from_waker(&waker);
+        let mut future = Box::pin(future);
+        loop {
+            match Future::poll(Pin::as_mut(&mut future), &mut context) {
+                Poll::Ready(output) => return output,
+                Poll::Pending => core::hint::spin_loop(),
+            }
+        }
+    }
+
+    fn encode_request<T: VdmCodec>(request: &T) -> ([u8; BUFFER_SIZE], usize) {
+        let mut buffer = [0u8; BUFFER_SIZE];
+        let vdm_msg = construct_mctp_vdm_msg(&mut buffer).unwrap();
+        let request_len = request.encode(vdm_msg).unwrap();
+        (buffer, VDM_MSG_OFFSET + request_len)
+    }
+
+    fn process(handler: &TestHandler, buffer: &mut [u8; BUFFER_SIZE], request_len: usize) -> usize {
+        let mut transport = MctpVdmTransport::default();
+        let interface = CmdInterface::new(&mut transport, handler);
+        block_on(interface.process_request(buffer, request_len)).unwrap()
+    }
+
+    fn failure_response(buffer: &mut [u8; BUFFER_SIZE], response_len: usize) -> VdmFailureResponse {
+        let vdm_msg = extract_vdm_msg(&mut buffer[..response_len]).unwrap();
+        VdmFailureResponse::decode(vdm_msg).unwrap()
+    }
+
+    fn assert_failure(
+        handler: &TestHandler,
+        buffer: &mut [u8; BUFFER_SIZE],
+        request_len: usize,
+        command: u8,
+        completion_code: VdmCompletionCode,
+    ) {
+        let response_len = process(handler, buffer, request_len);
+        let response = failure_response(buffer, response_len);
+        assert!(response.hdr.is_response());
+        assert_eq!(response.hdr.command_code, command);
+        let actual_completion_code = response.completion_code;
+        assert_eq!(actual_completion_code, completion_code as u32);
+    }
 
     #[test]
-    fn unsupported_operation_maps_to_unsupported_operation() {
-        assert_eq!(
-            map_caliptra_to_vdm(CaliptraCompletionCode::UnsupportedOperation),
-            VdmCompletionCode::UnsupportedOperation
+    fn rejects_malformed_headers_and_lengths_with_wire_errors() {
+        let handler = TestHandler::default();
+
+        let (mut buffer, _) = encode_request(&FirmwareVersionRequest::new(0));
+        assert_failure(
+            &handler,
+            &mut buffer,
+            VDM_MSG_OFFSET + VDM_MSG_HEADER_LEN - 1,
+            0,
+            VdmCompletionCode::InvalidLength,
+        );
+
+        let (mut buffer, request_len) = encode_request(&FirmwareVersionRequest::new(0));
+        assert_failure(
+            &handler,
+            &mut buffer,
+            request_len + 1,
+            VdmCommand::FirmwareVersion as u8,
+            VdmCompletionCode::InvalidLength,
+        );
+
+        let (mut buffer, request_len) = encode_request(&FirmwareVersionRequest::new(0));
+        buffer[VDM_MSG_OFFSET] ^= 1;
+        assert_failure(
+            &handler,
+            &mut buffer,
+            request_len,
+            VdmCommand::FirmwareVersion as u8,
+            VdmCompletionCode::InvalidParameter,
+        );
+
+        for control in [
+            VdmControlByte::new_response().as_bytes()[0],
+            0xc0, // request + reserved bit 6
+            0x81, // request + reserved bit 0
+        ] {
+            let (mut buffer, request_len) = encode_request(&FirmwareVersionRequest::new(0));
+            buffer[VDM_MSG_OFFSET + 4] = control;
+            assert_failure(
+                &handler,
+                &mut buffer,
+                request_len,
+                VdmCommand::FirmwareVersion as u8,
+                VdmCompletionCode::InvalidParameter,
+            );
+        }
+
+        let (mut buffer, request_len) = encode_request(&FirmwareVersionRequest::new(0));
+        buffer[VDM_MSG_OFFSET + 5] = 0xff;
+        assert_failure(
+            &handler,
+            &mut buffer,
+            request_len,
+            0xff,
+            VdmCompletionCode::UnsupportedOperation,
+        );
+    }
+
+    #[test]
+    fn writes_variable_responses_directly_into_the_shared_buffer() {
+        let handler = TestHandler::default();
+        let (mut buffer, request_len) = encode_request(&GetDebugLogRequest::new());
+        let response_len = process(&handler, &mut buffer, request_len);
+        let vdm_msg = extract_vdm_msg(&mut buffer[..response_len]).unwrap();
+        let response = GetDebugLogResponse::decode(vdm_msg).unwrap();
+        let completion_code = response.header.completion_code;
+        let more_data = response.header.more_data;
+        let data_size = response.header.data_size;
+        assert_eq!(completion_code, VdmCompletionCode::Success as u32);
+        assert_eq!(more_data, 1);
+        assert_eq!(data_size, 3);
+        assert_eq!(&response.data[..3], b"log");
+    }
+
+    #[test]
+    fn maps_backend_errors_to_wire_completion_codes() {
+        let cases = [
+            (
+                CaliptraCompletionCode::InvalidParameter,
+                VdmCompletionCode::InvalidParameter,
+            ),
+            (
+                CaliptraCompletionCode::InvalidIdentifier,
+                VdmCompletionCode::InvalidIdentifier,
+            ),
+            (
+                CaliptraCompletionCode::UnsupportedOperation,
+                VdmCompletionCode::UnsupportedOperation,
+            ),
+            (
+                CaliptraCompletionCode::DeviceNotReady,
+                VdmCompletionCode::DeviceNotReady,
+            ),
+            (
+                CaliptraCompletionCode::InvalidLength,
+                VdmCompletionCode::InvalidLength,
+            ),
+            (
+                CaliptraCompletionCode::InvalidPayloadSize,
+                VdmCompletionCode::InvalidPayloadSize,
+            ),
+            (
+                CaliptraCompletionCode::AccessDenied,
+                VdmCompletionCode::AccessDenied,
+            ),
+        ];
+        for (caliptra, vdm) in cases {
+            let handler = TestHandler {
+                firmware_result: Err(caliptra),
+                ..Default::default()
+            };
+            let (mut buffer, request_len) = encode_request(&FirmwareVersionRequest::new(0));
+            assert_failure(
+                &handler,
+                &mut buffer,
+                request_len,
+                VdmCommand::FirmwareVersion as u8,
+                vdm,
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_backend_output_without_panicking() {
+        let handler = TestHandler {
+            firmware_len: caliptra_mcu_common_commands::MAX_FW_VERSION_LEN + 1,
+            ..Default::default()
+        };
+        let (mut buffer, request_len) = encode_request(&FirmwareVersionRequest::new(0));
+        assert_failure(
+            &handler,
+            &mut buffer,
+            request_len,
+            VdmCommand::FirmwareVersion as u8,
+            VdmCompletionCode::GeneralError,
         );
     }
 }
