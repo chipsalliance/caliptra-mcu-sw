@@ -95,7 +95,7 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
             },
             PeerRootCert {
                 slot_id: options.slot_id,
-                cert_der: owner_root,
+                cert_der: owner_root.clone(),
             },
         ],
         ..SpdmConfig::default()
@@ -138,7 +138,7 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
         options.key_pair_id, csr.data_len
     );
 
-    let cert_chain = issue_test_owner_ldev_id_chain_from_csr(&csr_der)
+    let cert_chain = issue_test_owner_ldev_id_chain_from_csr(&csr_der, &owner_root)
         .context("failed to issue test Owner/LDevID certificate chain from attested CSR")?;
     println!(
         "[ocp_dev_identity_provision_tool] Issued test Owner/LDevID certificate chain from attested CSR ({} bytes)",
@@ -237,10 +237,9 @@ fn test_owner_root_cert_der() -> Result<Vec<u8>> {
     build_test_ca_certificate(0x1001, name.clone(), name, None, 6, &key)
 }
 
-fn issue_test_owner_ldev_id_chain_from_csr(csr_der: &[u8]) -> Result<Vec<u8>> {
+fn issue_test_owner_ldev_id_chain_from_csr(csr_der: &[u8], root: &[u8]) -> Result<Vec<u8>> {
     let csr = parse_csr(csr_der)?;
     let root_key = test_owner_root_signing_key()?;
-    let root = test_owner_root_cert_der()?;
     let issuer = test_owner_root_subject_name()?;
     if csr.info.subject.0.is_empty() {
         bail!("attested CSR subject is empty; cannot issue Owner/LDevID certificate");
@@ -262,7 +261,7 @@ fn issue_test_owner_ldev_id_chain_from_csr(csr_der: &[u8]) -> Result<Vec<u8>> {
         &root_key,
     )?;
 
-    let mut chain = root;
+    let mut chain = root.to_vec();
     chain.extend_from_slice(&leaf);
     Ok(chain)
 }
@@ -638,8 +637,11 @@ mod tests {
 
     fn test_owner_chain() -> Vec<u8> {
         let key = SigningKey::from_bytes((&[0x07u8; 48]).into()).unwrap();
-        issue_test_owner_ldev_id_chain_from_csr(&test_csr(&key, "CN=Caliptra LDevID"))
-            .unwrap()
+        issue_test_owner_ldev_id_chain_from_csr(
+            &test_csr(&key, "CN=Caliptra LDevID"),
+            &test_owner_root_cert_der().unwrap(),
+        )
+        .unwrap()
     }
 
 
@@ -659,7 +661,11 @@ mod tests {
         let signing_key = SigningKey::from_bytes((&[0x07u8; 48]).into()).unwrap();
         let csr = test_csr(&signing_key, "CN=Caliptra LDevID");
 
-        let chain = issue_test_owner_ldev_id_chain_from_csr(&csr).unwrap();
+        let chain = issue_test_owner_ldev_id_chain_from_csr(
+            &csr,
+            &test_owner_root_cert_der().unwrap(),
+        )
+        .unwrap();
         let certs = split_der_certificates(&chain).unwrap();
 
         assert_eq!(certs.len(), 2);
@@ -677,7 +683,11 @@ mod tests {
             .to_der()
             .unwrap();
 
-        let err = issue_test_owner_ldev_id_chain_from_csr(&csr).unwrap_err();
+        let err = issue_test_owner_ldev_id_chain_from_csr(
+            &csr,
+            &test_owner_root_cert_der().unwrap(),
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("subject is empty"));
     }
 

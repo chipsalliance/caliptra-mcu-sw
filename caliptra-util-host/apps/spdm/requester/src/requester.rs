@@ -18,6 +18,7 @@ use crate::transport::{self, SpdmDeviceIo};
 use crate::{PeerRootCert, SpdmConfig};
 
 const SHA384_DIGEST_LEN: usize = 48;
+const SPDM_CERT_CHAIN_HEADER_LEN: usize = 4;
 const SPDM_MAX_CERTIFICATE_CHAIN_SIZE: usize = 65_535;
 
 // libspdm's verifier registration is a C callback with no user-data pointer.
@@ -96,7 +97,24 @@ fn verify_spdm_cert_chain_root_against_roots(
     chain: &[u8],
     trusted_roots: &[PeerRootCert],
 ) -> anyhow::Result<()> {
-    verify_spdm_cert_chain_payload_root(slot_id, chain, trusted_roots)
+    if chain.len() < SPDM_CERT_CHAIN_HEADER_LEN {
+        return Err(anyhow::anyhow!("SPDM certificate chain header is truncated"));
+    }
+    let declared_len = u16::from_le_bytes([chain[0], chain[1]]) as usize;
+    if declared_len != chain.len() {
+        return Err(anyhow::anyhow!(
+            "SPDM certificate chain length mismatch: header declares {declared_len}, actual {}",
+            chain.len()
+        ));
+    }
+    if chain[2..SPDM_CERT_CHAIN_HEADER_LEN] != [0, 0] {
+        return Err(anyhow::anyhow!("SPDM certificate chain reserved field is non-zero"));
+    }
+    verify_spdm_cert_chain_payload_root(
+        slot_id,
+        &chain[SPDM_CERT_CHAIN_HEADER_LEN..],
+        trusted_roots,
+    )
 }
 
 fn verify_spdm_cert_chain_payload_root(
@@ -805,14 +823,14 @@ mod tests {
     }
 
     fn root_hash_plus_der(root: &[u8]) -> Vec<u8> {
-        let mut chain = Vec::with_capacity(SHA384_DIGEST_LEN + root.len());
-        chain.extend_from_slice(&Sha384::digest(root));
-        chain.extend_from_slice(root);
-        chain
+        root_hash_plus_der_chain(root, &[])
     }
 
     fn root_hash_plus_der_chain(root: &[u8], tail: &[u8]) -> Vec<u8> {
-        let mut chain = Vec::with_capacity(SHA384_DIGEST_LEN + root.len() + tail.len());
+        let len = SPDM_CERT_CHAIN_HEADER_LEN + SHA384_DIGEST_LEN + root.len() + tail.len();
+        let mut chain = Vec::with_capacity(len);
+        chain.extend_from_slice(&(len as u16).to_le_bytes());
+        chain.extend_from_slice(&[0, 0]);
         chain.extend_from_slice(&Sha384::digest(root));
         chain.extend_from_slice(root);
         chain.extend_from_slice(tail);
@@ -833,7 +851,7 @@ mod tests {
     fn verifier_rejects_bad_root_hash() {
         let root = trusted_vendor_root();
         let mut chain = root_hash_plus_der(&root);
-        chain[0] ^= 0x01;
+        chain[SPDM_CERT_CHAIN_HEADER_LEN] ^= 0x01;
 
         let err = verify_spdm_cert_chain_root_against_roots(0, &chain, &[peer_root(0, root)])
             .unwrap_err();
