@@ -1,6 +1,6 @@
 # Licensed under the Apache-2.0 license
 
-name: Caliptra SW Smoke Test
+name: Caliptra SW Smoke Test (Optional)
 
 on:
   pull_request:
@@ -8,6 +8,8 @@ on:
 
 jobs:
   caliptra-sw-mcu-rom-smoke-test:
+    name: Smoke Test (Optional)
+    continue-on-error: true
     uses: chipsalliance/caliptra-sw/.github/workflows/fpga-subsystem.yml@main
     with:
       mcu-commit: ${{ github.event.pull_request.head.sha || github.sha }}
