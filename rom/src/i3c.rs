@@ -5,12 +5,15 @@ use caliptra_mcu_registers_generated::i3c;
 use caliptra_mcu_registers_generated::i3c::bits::{
     DeviceStatus0, HcControl, IndirectFifoCtrl0, QueueThldCtrl, RecoveryStatus,
     RingHeadersSectionOffset, StbyCrCapabilities, StbyCrControl, StbyCrDeviceAddr,
-    StbyCrVirtDeviceAddr, TtiQueueThldCtrl,
+    StbyCrDeviceChar, StbyCrVirtDeviceAddr, TtiQueueThldCtrl,
 };
 use caliptra_mcu_romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use crate::fatal_error;
+
+/// MIPI-assigned Device Characteristic Register value for an MCTP device.
+pub const MCTP_DCR: u8 = 0xCC;
 
 /// I3C bus timing parameters, in clock units.
 ///
@@ -74,6 +77,9 @@ pub struct I3cConfig {
     pub static_addr: u8,
     /// Whether recovery is enabled (also programs the virtual device address).
     pub recovery_enabled: bool,
+    /// Device Characteristic Register (DCR) — distinguishes device type during DAA.
+    /// The virtual target remains at its reset value of 0xBD (OCP Recovery).
+    pub dcr: u8,
     /// Bus timing parameters for this controller.
     pub timings: I3cTimings,
 }
@@ -92,6 +98,7 @@ impl I3c {
         let I3cConfig {
             static_addr: addr,
             recovery_enabled,
+            dcr,
             timings,
         } = config;
         let regs = self.registers;
@@ -163,6 +170,15 @@ impl I3c {
                 + QueueThldCtrl::RespBufThld.val(1)
                 + QueueThldCtrl::IbiStatusThld.val(1),
         );
+
+        // Set the main target's DCR before enabling the standby controller.
+        // Once STBY_CR_ENABLE_INIT is non-zero, the RTL locks DCR read-only.
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom-i3c] Setting main target DCR to {:02x}",
+            dcr
+        );
+        regs.stdby_ctrl_mode_stby_cr_device_char
+            .modify(StbyCrDeviceChar::Dcr.val(dcr as u32));
 
         caliptra_mcu_romtime::println!("[mcu-rom-i3c] Enable the target transaction interface");
         regs.stdby_ctrl_mode_stby_cr_control.modify(
