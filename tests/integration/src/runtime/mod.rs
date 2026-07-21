@@ -109,11 +109,12 @@ pub fn asym_custom_fw(fw: &AsymFw) -> CustomCaliptraFw {
 }
 
 /// Fetch a Caliptra-minted one-time nonce via `MC_VENDOR_AUTH_HELLO` (asym path).
-pub fn get_vendor_auth_nonce(
-    hw: &mut impl McuHwModel,
-) -> Result<[u8; VENDOR_AUTH_NONCE_SIZE]> {
+pub fn get_vendor_auth_nonce(hw: &mut impl McuHwModel) -> Result<[u8; VENDOR_AUTH_NONCE_SIZE]> {
     let resp = hw.mailbox_execute_req(VendorAuthHelloReq::default())?;
-    println!("[HSM-test]   HELLO -> nonce = {}", hex::encode(resp.challenge));
+    println!(
+        "[HSM-test]   HELLO -> nonce = {}",
+        hex::encode(resp.challenge)
+    );
     Ok(resp.challenge)
 }
 
@@ -153,12 +154,21 @@ pub fn execute_authorized_req_asym<R: caliptra_mcu_mbox_common::messages::Reques
     req: R,
     signer: &dyn VendorAuthSigner,
 ) -> Result<R::Resp> {
-    println!("[HSM-test] === asym authorize cmd_id=0x{:08x} ===", u32::from(R::ID));
+    println!(
+        "[HSM-test] === asym authorize cmd_id=0x{:08x} ===",
+        u32::from(R::ID)
+    );
     let (cmd_id, auth_cmd) = build_asym_authorized_cmd(hw, req, signer, |_| {})?;
-    println!("[HSM-test]   sending {} B to MCU mailbox ...", auth_cmd.len());
+    println!(
+        "[HSM-test]   sending {} B to MCU mailbox ...",
+        auth_cmd.len()
+    );
 
     let mut response = hw.mailbox_execute(cmd_id, &auth_cmd)?.unwrap_or_default();
-    println!("[HSM-test]   MCU authorized + executed; resp {} B", response.len());
+    println!(
+        "[HSM-test]   MCU authorized + executed; resp {} B",
+        response.len()
+    );
 
     if response.len() < 4 {
         bail!("Response too short to contain checksum");
@@ -171,6 +181,5 @@ pub fn execute_authorized_req_asym<R: caliptra_mcu_mbox_common::messages::Reques
     if response.len() < size_of::<R::Resp>() {
         response.resize(size_of::<R::Resp>(), 0);
     }
-    R::Resp::read_from_bytes(&response)
-        .map_err(|_| anyhow!("Failed to read response into struct"))
+    R::Resp::read_from_bytes(&response).map_err(|_| anyhow!("Failed to read response into struct"))
 }

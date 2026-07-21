@@ -149,9 +149,10 @@ impl VendorAuthSigner for LocalVendorAuthSigner {
         };
         let ecc_secret = p384::SecretKey::from_slice(&keys.ecc_private_key_bytes)
             .map_err(|e| anyhow!("invalid ECC private key: {e}"))?;
-        let ecc_sig: Signature<p384::NistP384> = EcdsaSigningKey::<p384::NistP384>::from(&ecc_secret)
-            .sign_prehash(&ecc_prehash)
-            .map_err(|e| anyhow!("ECDSA signing failed: {e}"))?;
+        let ecc_sig: Signature<p384::NistP384> =
+            EcdsaSigningKey::<p384::NistP384>::from(&ecc_secret)
+                .sign_prehash(&ecc_prehash)
+                .map_err(|e| anyhow!("ECDSA signing failed: {e}"))?;
         let mut ecc_signature = [0u32; ECC_SIG_WORDS];
         for (i, chunk) in ecc_sig.r().to_bytes().chunks(4).enumerate() {
             ecc_signature[i] = u32::from_be_bytes(chunk.try_into().unwrap());
@@ -168,13 +169,16 @@ impl VendorAuthSigner for LocalVendorAuthSigner {
             Digest::update(&mut h, nonce);
             h.finalize().into()
         };
-        let mldsa_priv: [u8; MLDSA_PRIV_LEN] =
-            keys.mldsa_private_key_bytes.as_slice().try_into().map_err(|_| {
-                anyhow!(
-                    "invalid ML-DSA private key size: expected {MLDSA_PRIV_LEN}, got {}",
-                    keys.mldsa_private_key_bytes.len()
-                )
-            })?;
+        let mldsa_priv: [u8; MLDSA_PRIV_LEN] = keys
+            .mldsa_private_key_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| {
+            anyhow!(
+                "invalid ML-DSA private key size: expected {MLDSA_PRIV_LEN}, got {}",
+                keys.mldsa_private_key_bytes.len()
+            )
+        })?;
         let mldsa_key = fips204::ml_dsa_87::PrivateKey::try_from_bytes(mldsa_priv)
             .map_err(|_| anyhow!("failed to parse ML-DSA-87 private key"))?;
         let raw = mldsa_key

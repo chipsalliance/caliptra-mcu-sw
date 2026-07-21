@@ -232,7 +232,8 @@ fn test_otp_rotate_hek_mailbox() -> Result<()> {
         hek_slot: 1,
         ..Default::default()
     };
-    let _rotate_resp: OcpLockRotateHekResp = execute_authorized_req_asym(&mut hw, rotate_req, &signer)?;
+    let _rotate_resp: OcpLockRotateHekResp =
+        execute_authorized_req_asym(&mut hw, rotate_req, &signer)?;
 
     // Verify Slot 0 OTP memory is sanitized (all 0xFF)
     let otp_after = hw.read_otp_memory();

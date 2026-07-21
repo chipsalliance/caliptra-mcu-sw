@@ -817,7 +817,11 @@ impl CaliptraBuilder {
             owner_fw_key_info,
             owner_man_key_info,
             image_metadata_list,
-            version: if vendor_cmd_auth_pk_hash.is_some() { 2 } else { 1 },
+            version: if vendor_cmd_auth_pk_hash.is_some() {
+                2
+            } else {
+                1
+            },
             flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
             pqc_key_type: FwVerificationPqcKeyType::LMS,
             svn,

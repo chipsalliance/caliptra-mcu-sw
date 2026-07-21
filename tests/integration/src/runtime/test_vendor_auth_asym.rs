@@ -56,7 +56,10 @@ fn test_vendor_auth_asym_authorized_req() -> Result<()> {
 
     // Full asymmetric authorization of an authorized command (MC_FUSE_READ).
     let resp = execute_authorized_req_asym(&mut hw, fuse_read_cmd(), &signer);
-    assert!(resp.is_ok(), "asym-authorized MC_FUSE_READ failed: {resp:?}");
+    assert!(
+        resp.is_ok(),
+        "asym-authorized MC_FUSE_READ failed: {resp:?}"
+    );
     println!("[HSM-test] PASS: full asymmetric authentication succeeded");
     Ok(())
 }
@@ -112,7 +115,10 @@ fn test_vendor_auth_asym_tampered_body_rejected() -> Result<()> {
         buf[4] ^= 0xFF; // flip a body byte (partition) after signing
     })?;
     let resp = hw.mailbox_execute(cmd_id, &auth);
-    assert!(resp.is_err(), "tampered body must be rejected at signature verify");
+    assert!(
+        resp.is_err(),
+        "tampered body must be rejected at signature verify"
+    );
     println!("[HSM-test] PASS: tampered body rejected as expected");
     Ok(())
 }
@@ -129,7 +135,10 @@ fn test_vendor_auth_asym_bad_mldsa_only_rejected() -> Result<()> {
         buf[MLDSA_SIG_OFF] ^= 0x01; // flip one bit of the ML-DSA signature only
     })?;
     let resp = hw.mailbox_execute(cmd_id, &auth);
-    assert!(resp.is_err(), "bad ML-DSA signature must be rejected (strict-AND)");
+    assert!(
+        resp.is_err(),
+        "bad ML-DSA signature must be rejected (strict-AND)"
+    );
     println!("[HSM-test] PASS: bad-ML-DSA-only rejected (strict-AND proven)");
     Ok(())
 }

@@ -206,9 +206,7 @@ pub mod test {
             // host validator still drives HMAC and needs the caliptra-mailbox-client to gain
             // an asym signer before it can validate against asym firmware. Local key kept only
             // so the (ignored) test compiles; it does not authorize against asym firmware.
-            .set_command_authorizer(Box::new(HmacCommandAuthorizer::new(
-                vec![0u8; 48],
-            )));
+            .set_command_authorizer(Box::new(HmacCommandAuthorizer::new(vec![0u8; 48])));
 
             println!("Running Mailbox validator in-process (port={})", udp_port);
 

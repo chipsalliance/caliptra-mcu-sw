@@ -20,11 +20,11 @@ use caliptra_mcu_mbox_common::messages::{
     FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetLogReq, GetLogResp,
-    MailboxRespHeader, MailboxRespHeaderVarSize,
-    McuFeProgReq, McuResponseVarSize, OcpLockRotateHekReq, OcpLockRotateHekResp,
-    OcpLockSetPermaHekReq, OcpLockSetPermaHekResp, ProvisionVendorPkHashReq,
-    ProvisionVendorPkHashResp, RevokeVendorPubKeyType, VendorAuthHelloReq, VendorAuthHelloResp,
-    DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuResponseVarSize,
+    OcpLockRotateHekReq, OcpLockRotateHekResp, OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, RevokeVendorPubKeyType,
+    VendorAuthHelloReq, VendorAuthHelloResp, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE,
+    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -485,8 +485,8 @@ impl<'a> CmdInterface<'a> {
         let core_resp = caliptra_api::mailbox::VendorAuthHelloResp::ref_from_bytes(&core_resp)
             .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
-        let (resp, _) = VendorAuthHelloResp::mut_from_prefix(resp_buf)
-            .map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) =
+            VendorAuthHelloResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
         *resp = VendorAuthHelloResp::default();
         resp.challenge.copy_from_slice(&core_resp.challenge);
         let len = size_of_val(resp);

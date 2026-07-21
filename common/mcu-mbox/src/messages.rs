@@ -1719,7 +1719,13 @@ mod tests {
         };
         let bytes = req.as_bytes();
         assert_eq!(bytes.len(), core::mem::size_of::<VendorAuthHelloReq>());
-        assert_eq!(VendorAuthHelloReq::read_from_bytes(bytes).unwrap().hdr.chksum, 0x55AA);
+        assert_eq!(
+            VendorAuthHelloReq::read_from_bytes(bytes)
+                .unwrap()
+                .hdr
+                .chksum,
+            0x55AA
+        );
 
         // Response: the 48-byte nonce sits immediately after the response header, and the
         // struct is exactly header + 48 bytes (no padding) — the layout the relay copies.
@@ -1734,7 +1740,9 @@ mod tests {
         let bytes = resp.as_bytes();
         assert_eq!(&bytes[hdr_len..hdr_len + 48], &[0xABu8; 48]);
         assert_eq!(
-            VendorAuthHelloResp::read_from_bytes(bytes).unwrap().challenge,
+            VendorAuthHelloResp::read_from_bytes(bytes)
+                .unwrap()
+                .challenge,
             [0xABu8; 48]
         );
     }

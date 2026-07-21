@@ -150,7 +150,9 @@ impl AsymCommandAuthorizer {
         nonce: &[u8; VENDOR_AUTH_NONCE_LEN],
         tag: &[u8],
     ) -> Result<(), AuthorizationError> {
-        use caliptra_api::mailbox::{CommandId as CoreCmd, VendorAuthChallengeReq, VendorAuthChallengeResp};
+        use caliptra_api::mailbox::{
+            CommandId as CoreCmd, VendorAuthChallengeReq, VendorAuthChallengeResp,
+        };
         use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
         use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
         use zerocopy::{FromBytes, IntoBytes};
