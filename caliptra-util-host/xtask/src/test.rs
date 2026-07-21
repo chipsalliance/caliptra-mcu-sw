@@ -113,7 +113,6 @@ fn run_c_tests_in_directory() -> Result<()> {
 
     // Clean only the test executables, not the rust library
     println!("Cleaning Cleaning previous C test executables");
-    let _ = std::fs::remove_file("test_get_device_id");
     let _ = std::fs::remove_file("test_custom_c_transport");
 
     // Run the C tests via make

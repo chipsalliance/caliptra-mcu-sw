@@ -21,62 +21,6 @@ pub use super::command_traits::{process_command, process_command_with_metadata};
 // ============================================================================
 
 // ============================================================================
-// MC_DEVICE_ID Command (0x4D44_4944 - "MDID")
-// ============================================================================
-
-/// External command: Get device ID request (MC_DEVICE_ID)
-/// Matches the format specified in external_mailbox_cmds.md
-#[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
-pub struct ExtCmdGetDeviceIdRequest {
-    /// Checksum over input data
-    pub chksum: u32,
-}
-
-/// External command: Get device ID response (MC_DEVICE_ID)
-/// Matches the format specified in external_mailbox_cmds.md
-#[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
-pub struct ExtCmdGetDeviceIdResponse {
-    /// Checksum field
-    pub chksum: u32,
-
-    /// FIPS approved or an error
-    pub fips_status: u32,
-
-    /// Vendor ID; LSB
-    pub vendor_id: u16,
-
-    /// Device ID; LSB
-    pub device_id: u16,
-
-    /// Subsystem Vendor ID; LSB
-    pub subsystem_vendor_id: u16,
-
-    /// Subsystem ID; LSB
-    pub subsystem_id: u16,
-}
-
-impl FromInternalRequest<GetDeviceIdRequest> for ExtCmdGetDeviceIdRequest {
-    fn from_internal(_internal: &GetDeviceIdRequest, command_code: u32) -> Self {
-        // For empty requests, the payload is empty, so checksum is calculated with empty data
-        let chksum = calc_checksum(command_code, &[]);
-        Self { chksum }
-    }
-}
-
-impl ToInternalResponse<GetDeviceIdResponse> for ExtCmdGetDeviceIdResponse {
-    fn to_internal(&self) -> GetDeviceIdResponse {
-        GetDeviceIdResponse {
-            vendor_id: self.vendor_id,
-            device_id: self.device_id,
-            subsystem_vendor_id: self.subsystem_vendor_id,
-            subsystem_id: self.subsystem_id,
-        }
-    }
-}
-
-// ============================================================================
 // MC_DEVICE_CAPABILITIES Command (0x4D43_4150 - "MCAP")
 // ============================================================================
 
@@ -198,33 +142,6 @@ impl ToInternalResponse<GetFirmwareVersionResponse> for ExtCmdGetFirmwareVersion
     }
 }
 
-impl FromInternalRequest<GetDeviceInfoRequest> for ExtCmdGetDeviceInfoRequest {
-    fn from_internal(internal: &GetDeviceInfoRequest, command_code: u32) -> Self {
-        // Calculate checksum using zerocopy as_bytes() for the entire payload
-        let chksum = calc_checksum(command_code, internal.as_bytes());
-        Self {
-            chksum,
-            index: internal.info_type, // Map info_type to index
-        }
-    }
-}
-
-impl ToInternalResponse<GetDeviceInfoResponse> for ExtCmdGetDeviceInfoResponse {
-    fn to_internal(&self) -> GetDeviceInfoResponse {
-        let mut info_data = [0u8; 64];
-        let data_len = (self.data_len as usize).min(64);
-        info_data[..data_len].copy_from_slice(&self.data[..data_len]);
-
-        GetDeviceInfoResponse {
-            common: CommonResponse {
-                fips_status: self.fips_status,
-            },
-            info_length: self.data_len,
-            info_data,
-        }
-    }
-}
-
 // ============================================================================
 // MC_FIRMWARE_VERSION Command (0x4D46_5756 - "MFWV")
 // ============================================================================
@@ -328,130 +245,21 @@ impl VariableSizeBytes for ExtCmdGetFirmwareVersionResponse {
 }
 
 // ============================================================================
-// MC_DEVICE_INFO Command (0x4D44_494E - "MDIN")
-// ============================================================================
-
-/// External command: Get device info request (MC_DEVICE_INFO)
-#[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
-pub struct ExtCmdGetDeviceInfoRequest {
-    /// Checksum over input data
-    pub chksum: u32,
-
-    /// Information Index:
-    /// - 0x00 = Unique Chip Identifier
-    ///   Additional indexes are firmware-specific
-    pub index: u32,
-}
-
-/// External command: Get device info response (MC_DEVICE_INFO)
-/// This mirrors the MCU's DeviceInfoResp structure with MailboxRespHeaderVarSize
-#[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
-pub struct ExtCmdGetDeviceInfoResponse {
-    /// Checksum field
-    pub chksum: u32,
-
-    /// FIPS approved or an error
-    pub fips_status: u32,
-
-    /// Length of device info data
-    pub data_len: u32,
-
-    /// Requested information in binary format (variable length)
-    pub data: [u8; 64],
-}
-
-impl ExtCmdGetDeviceInfoResponse {
-    /// Create a new response from MCU data with variable length
-    pub fn from_mcu_data(chksum: u32, fips_status: u32, data_len: u32, data: &[u8]) -> Self {
-        let mut response_data = [0u8; 64];
-        let copy_len = (data_len as usize).min(64).min(data.len());
-        response_data[..copy_len].copy_from_slice(&data[..copy_len]);
-
-        Self {
-            chksum,
-            fips_status,
-            data_len,
-            data: response_data,
-        }
-    }
-}
-
-// ============================================================================
 // Default VariableSizeBytes Implementations for Fixed-Size Types
 // ============================================================================
 
 // Implement VariableSizeBytes for all request types (they are all fixed-size)
-impl VariableSizeBytes for ExtCmdGetDeviceIdRequest {}
 impl VariableSizeBytes for ExtCmdGetDeviceCapabilitiesRequest {}
 impl VariableSizeBytes for ExtCmdGetFirmwareVersionRequest {}
-impl VariableSizeBytes for ExtCmdGetDeviceInfoRequest {}
 
 // Fixed-size response types
-impl VariableSizeBytes for ExtCmdGetDeviceIdResponse {}
 impl VariableSizeBytes for ExtCmdGetDeviceCapabilitiesResponse {}
-
-// Variable-size response types (moved here for visibility)
-impl VariableSizeBytes for ExtCmdGetDeviceInfoResponse {
-    fn from_bytes_variable(bytes: &[u8]) -> Result<Self, crate::TransportError> {
-        if bytes.len() < 12 {
-            return Err(crate::TransportError::InvalidMessage);
-        }
-
-        let chksum = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-        let fips_status = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
-        let data_len = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
-
-        if bytes.len() < 12 + (data_len as usize) {
-            return Err(crate::TransportError::InvalidMessage);
-        }
-
-        let mut data = [0u8; 64];
-        let copy_len = core::cmp::min(data_len as usize, 64);
-        data[..copy_len].copy_from_slice(&bytes[12..12 + copy_len]);
-
-        Ok(ExtCmdGetDeviceInfoResponse {
-            chksum,
-            fips_status,
-            data_len,
-            data,
-        })
-    }
-
-    fn to_bytes_variable(&self, buffer: &mut [u8]) -> usize {
-        let header_size = 12;
-        let actual_len = core::cmp::min(self.data_len as usize, 64);
-        let total_size = header_size + actual_len;
-
-        if buffer.len() < total_size {
-            return 0; // Insufficient buffer space
-        }
-
-        buffer[0..4].copy_from_slice(&self.chksum.to_le_bytes());
-        buffer[4..8].copy_from_slice(&self.fips_status.to_le_bytes());
-        buffer[8..12].copy_from_slice(&self.data_len.to_le_bytes());
-        buffer[12..12 + actual_len].copy_from_slice(&self.data[..actual_len]);
-
-        total_size
-    }
-}
 
 // ============================================================================
 // Command Metadata Definitions
 // ============================================================================
 
 use crate::define_command;
-
-// Define command metadata structs using the macro
-define_command!(
-    GetDeviceIdCmd,
-    0x4D44_4944, // MC_DEVICE_ID - "MDID"
-    GetDeviceIdRequest,
-    GetDeviceIdResponse,
-    ExtCmdGetDeviceIdRequest,
-    ExtCmdGetDeviceIdResponse
-);
 
 define_command!(
     GetDeviceCapabilitiesCmd,
@@ -469,13 +277,4 @@ define_command!(
     GetFirmwareVersionResponse,
     ExtCmdGetFirmwareVersionRequest,
     ExtCmdGetFirmwareVersionResponse
-);
-
-define_command!(
-    GetDeviceInfoCmd,
-    0x4D44_494E, // MC_DEVICE_INFO - "MDIN"
-    GetDeviceInfoRequest,
-    GetDeviceInfoResponse,
-    ExtCmdGetDeviceInfoRequest,
-    ExtCmdGetDeviceInfoResponse
 );

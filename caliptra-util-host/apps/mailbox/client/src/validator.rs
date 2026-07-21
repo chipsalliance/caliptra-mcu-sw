@@ -10,12 +10,6 @@ use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallen
 use std::net::SocketAddr;
 use std::time::Duration;
 
-/// Hardcoded fallback expected device responses for validation (when config is not available)
-pub const DEFAULT_EXPECTED_DEVICE_ID: u16 = 0x1234;
-pub const DEFAULT_EXPECTED_VENDOR_ID: u16 = 0x5678;
-pub const DEFAULT_EXPECTED_SUBSYSTEM_VENDOR_ID: u16 = 0x9ABC;
-pub const DEFAULT_EXPECTED_SUBSYSTEM_ID: u16 = 0xDEF0;
-
 /// Validation test results
 #[derive(Debug, Clone)]
 pub struct ValidationResult {
@@ -30,8 +24,6 @@ pub struct ValidationResult {
 pub struct Validator {
     server_addr: SocketAddr,
     verbose: bool,
-    expected_device_id: Option<u16>,
-    expected_vendor_id: Option<u16>,
     config: Option<TestConfig>,
     recv_timeout: Duration,
     debug_unlock_signer: Option<Box<dyn DebugUnlockSigner>>,
@@ -47,8 +39,6 @@ impl Validator {
         Self {
             server_addr,
             verbose: false,
-            expected_device_id: Some(DEFAULT_EXPECTED_DEVICE_ID),
-            expected_vendor_id: Some(DEFAULT_EXPECTED_VENDOR_ID),
             config: None,
             recv_timeout: DEFAULT_RECV_TIMEOUT,
             debug_unlock_signer: None,
@@ -67,8 +57,6 @@ impl Validator {
         Ok(Self {
             server_addr,
             verbose: config.validation.verbose_output,
-            expected_device_id: Some(config.device.device_id),
-            expected_vendor_id: Some(config.device.vendor_id),
             config: Some(config.clone()),
             recv_timeout: Duration::from_secs(config.validation.timeout_seconds),
             debug_unlock_signer: None,
@@ -80,24 +68,6 @@ impl Validator {
     pub fn from_default_config() -> Result<Self> {
         let config = TestConfig::load_default()?;
         Self::from_config(&config)
-    }
-
-    /// Create a validator with custom expected values
-    pub fn with_expected_values(
-        server_addr: SocketAddr,
-        expected_device_id: Option<u16>,
-        expected_vendor_id: Option<u16>,
-    ) -> Self {
-        Self {
-            server_addr,
-            verbose: false,
-            expected_device_id,
-            expected_vendor_id,
-            config: None,
-            recv_timeout: DEFAULT_RECV_TIMEOUT,
-            debug_unlock_signer: None,
-            command_authorizer: None,
-        }
     }
 
     /// Enable or disable verbose logging
@@ -143,14 +113,6 @@ impl Validator {
 
         let mut client = MailboxClient::with_udp_driver(&mut udp_driver);
         let mut results = Vec::new();
-
-        // Run GetDeviceId validation
-        let device_id_result = self.validate_get_device_id(&mut client);
-        results.push(device_id_result);
-
-        // Run GetDeviceInfo validation
-        let device_info_result = self.validate_get_device_info(&mut client);
-        results.push(device_info_result);
 
         // Run GetDeviceCapabilities validation
         let capabilities_result = self.validate_get_device_capabilities(&mut client);
@@ -217,92 +179,6 @@ impl Validator {
 }
 
 impl Validator {
-    /// Validate GetDeviceId command
-    fn validate_get_device_id(&self, client: &mut MailboxClient) -> ValidationResult {
-        let test_name = "GetDeviceId".to_string();
-
-        if self.verbose {
-            println!("\n=== Validating GetDeviceId Command ===");
-        }
-
-        match client.validate_device_id(self.expected_device_id, self.expected_vendor_id) {
-            Ok(_) => {
-                println!("✓ GetDeviceId validation PASSED");
-                ValidationResult {
-                    test_name,
-                    passed: true,
-                    error_message: None,
-                }
-            }
-            Err(e) => {
-                eprintln!("✗ GetDeviceId validation FAILED: {}", e);
-                ValidationResult {
-                    test_name,
-                    passed: false,
-                    error_message: Some(e.to_string()),
-                }
-            }
-        }
-    }
-
-    /// Validate GetDeviceInfo command
-    fn validate_get_device_info(&self, client: &mut MailboxClient) -> ValidationResult {
-        let test_name = "GetDeviceInfo".to_string();
-
-        if self.verbose {
-            println!("\n=== Validating GetDeviceInfo Command ===");
-        }
-
-        match client.get_device_info() {
-            Ok(response) => {
-                // Validate against config if available
-                if let Some(ref config) = self.config {
-                    if let Some(ref info_config) = config.device_info {
-                        // Extract actual info from response (up to info_length bytes)
-                        let actual_length =
-                            std::cmp::min(response.info_length as usize, response.info_data.len());
-                        let actual_info =
-                            String::from_utf8_lossy(&response.info_data[..actual_length]);
-
-                        if actual_info.trim() != info_config.expected_info.trim() {
-                            let error_msg = format!(
-                                "Device info mismatch: expected '{}', got '{}'",
-                                info_config.expected_info,
-                                actual_info.trim()
-                            );
-                            eprintln!("✗ GetDeviceInfo validation FAILED: {}", error_msg);
-                            return ValidationResult {
-                                test_name,
-                                passed: false,
-                                error_message: Some(error_msg),
-                            };
-                        }
-
-                        if self.verbose {
-                            println!("  Device info: '{}' ✓", actual_info.trim());
-                            println!("  Info length: {} bytes ✓", response.info_length);
-                        }
-                    }
-                }
-
-                println!("✓ GetDeviceInfo validation PASSED");
-                ValidationResult {
-                    test_name,
-                    passed: true,
-                    error_message: None,
-                }
-            }
-            Err(e) => {
-                eprintln!("✗ GetDeviceInfo validation FAILED: {}", e);
-                ValidationResult {
-                    test_name,
-                    passed: false,
-                    error_message: Some(e.to_string()),
-                }
-            }
-        }
-    }
-
     /// Validate GetDeviceCapabilities command
     fn validate_get_device_capabilities(&self, client: &mut MailboxClient) -> ValidationResult {
         let test_name = "GetDeviceCapabilities".to_string();

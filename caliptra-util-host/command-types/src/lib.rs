@@ -47,8 +47,6 @@ pub enum CaliptraCommandId {
     // Device Info Commands (0x0001-0x000F)
     GetFirmwareVersion = 0x0001,
     GetDeviceCapabilities = 0x0002,
-    GetDeviceId = 0x0003,
-    GetDeviceInfo = 0x0004,
 
     // Certificate Commands (0x1001-0x101F)
     GetIdevidCert = 0x1001,
@@ -106,6 +104,7 @@ pub enum CaliptraCommandId {
     DebugGetLog = 0x7005,
     DebugSetConfig = 0x7006,
     DebugReset = 0x7007,
+    DebugClearLog = 0x7008,
 
     // Debug Unlock Commands (0x7010-0x7011)
     ProdDebugUnlockReq = 0x7010,

@@ -12,7 +12,7 @@ extern crate alloc;
 use crate::auth_keys::{TEST_AUTH_ECC_PUB_KEY_X, TEST_AUTH_ECC_PUB_KEY_Y, TEST_AUTH_MLDSA_PUB_KEY};
 use alloc::boxed::Box;
 use caliptra_mcu_common_commands::{
-    CaliptraCompletionCode as CommonCompletionCode, GetLogResult, DEBUG_UNLOCK_CHALLENGE_SIZE,
+    CaliptraCompletionCode as CommonCompletionCode, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
@@ -21,7 +21,7 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_mbox_common::messages::HybridSignature;
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
-    CaliptraCompletionCode, CaliptraVdmCommands, CaliptraVdmLogResult, CaliptraVdmResult,
+    CaliptraCompletionCode, CaliptraVdmCommands, CaliptraVdmResult,
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -45,43 +45,6 @@ static AUTH_CHALLENGE: Mutex<CriticalSectionRawMutex, Option<[u8; 32]>> = Mutex:
 pub struct CaliptraVdmHook;
 
 impl CaliptraVdmCommands for CaliptraVdmHook {
-    async fn get_log<A: SpdmPalAlloc>(
-        &self,
-        log_type: u32,
-        _scratch: &A,
-        out: &mut [u8],
-    ) -> CaliptraVdmResult<CaliptraVdmLogResult> {
-        let result = match log_type {
-            0 => crate::caliptra_cmd_handler::debug_log::drain(out)
-                .await
-                .map_err(map_common_completion),
-            1 => Err(CaliptraCompletionCode::UnsupportedOperation),
-            _ => Err(CaliptraCompletionCode::InvalidParameter),
-        }?;
-        let GetLogResult {
-            bytes_written,
-            more_data,
-        } = result;
-        Ok(CaliptraVdmLogResult {
-            bytes_written,
-            more_data,
-        })
-    }
-
-    async fn clear_log<A: SpdmPalAlloc>(
-        &self,
-        log_type: u32,
-        _scratch: &A,
-    ) -> CaliptraVdmResult<()> {
-        match log_type {
-            0 => crate::caliptra_cmd_handler::debug_log::clear()
-                .await
-                .map_err(map_common_completion),
-            1 => Err(CaliptraCompletionCode::UnsupportedOperation),
-            _ => Err(CaliptraCompletionCode::InvalidParameter),
-        }
-    }
-
     async fn request_debug_unlock<A: SpdmPalAlloc>(
         &self,
         unlock_level: u8,

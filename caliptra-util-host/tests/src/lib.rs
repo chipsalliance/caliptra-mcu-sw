@@ -13,12 +13,6 @@ pub mod common;
 pub mod integration_tests;
 
 #[cfg(test)]
-pub mod test_get_device_id;
-
-#[cfg(test)]
-pub mod test_get_device_info;
-
-#[cfg(test)]
 pub mod test_get_device_capabilities;
 
 #[cfg(test)]
