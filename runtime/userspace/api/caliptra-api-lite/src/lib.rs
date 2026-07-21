@@ -29,9 +29,11 @@ mod cert;
 mod debug_unlock;
 mod dpe;
 mod ecdh;
+pub mod errors;
 mod fe_prog;
 mod fw_info;
 mod hmac;
+mod image_loading;
 mod import;
 mod pcr;
 mod pcr_quote;
@@ -72,6 +74,10 @@ pub use ecdh::{
 pub use fe_prog::fe_prog;
 pub use fw_info::{fw_info, FwInfo};
 pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
+pub use image_loading::{
+    activate_firmware, DmaTransfer, FlashImageLoader, ImageLoader, LoadedImage,
+    PldmFirmwareDeviceParams, PldmImageLoader, IMAGE_MEASUREMENT_DIGEST_SIZE,
+};
 pub use import::{cm_delete, cm_import};
 pub use pcr::{extend_pcr31, PCR31_INDEX, PCR31_MEASUREMENT_SIZE};
 pub use pcr_quote::{

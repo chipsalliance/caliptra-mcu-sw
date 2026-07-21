@@ -277,11 +277,11 @@ impl<S: Syscalls> Mailbox<S> {
         result
     }
 
-    pub async fn execute_with_payload_stream(
+    pub async fn execute_with_payload_stream<P: PayloadStream + ?Sized>(
         &self,
         command: u32,
         header: Option<&[u8]>,
-        payload: &mut dyn PayloadStream,
+        payload: &mut P,
         response_buffer: &mut [u8],
     ) -> Result<usize, MailboxError> {
         let mutex = MAILBOX_MUTEX.lock().await;

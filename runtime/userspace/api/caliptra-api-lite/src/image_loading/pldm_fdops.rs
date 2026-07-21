@@ -2,11 +2,7 @@
 
 extern crate alloc;
 
-use super::pldm_client::{IMAGE_LOADING_TASK_YIELD, PLDM_TASK_YIELD};
-use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
-use crate::MAX_PLDM_TRANSFER_SIZE;
 use alloc::boxed::Box;
-use async_trait::async_trait;
 use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
 use caliptra_mcu_libsyscall_caliptra::dma::{
     AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
@@ -14,6 +10,7 @@ use caliptra_mcu_libsyscall_caliptra::dma::{
 use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
+use caliptra_mcu_pldm_common::message::firmware_update::request_fw_data::MAX_PLDM_FW_DATA_SIZE;
 use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::{
@@ -24,18 +21,21 @@ use caliptra_mcu_pldm_lib::errors as pldm_errors;
 use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps};
 use mcu_error::McuResult;
 
-pub struct StreamingFdOps<'a, D: DMAMapping> {
+use super::pldm_client::{IMAGE_LOADING_TASK_YIELD, PLDM_TASK_YIELD};
+use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
+
+pub struct StreamingFdOps<'a> {
     descriptors: &'a [Descriptor],
     fw_params: &'a FirmwareParameters,
-    dma_mapping: &'a D,
+    dma_mapping: &'a dyn DMAMapping,
 }
 
-impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
+impl<'a> StreamingFdOps<'a> {
     /// Creates a new instance of the StreamingFdOps.
     pub const fn new(
         descriptors: &'a [Descriptor],
         fw_params: &'a FirmwareParameters,
-        dma_mapping: &'a D,
+        dma_mapping: &'a dyn DMAMapping,
     ) -> Self {
         Self {
             descriptors,
@@ -49,42 +49,52 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
         load_address: AXIAddr,
         offset: usize,
         data: &[u8],
-        dma_mapping: &impl DMAMapping,
+        dma_mapping: &dyn DMAMapping,
     ) -> McuResult<()> {
         let dma_syscall: DMASyscall = DMASyscall::new();
         let source_address = dma_mapping
             .mcu_sram_to_mcu_axi(data.as_ptr() as u32)
             .map_err(|_| pldm_errors::FW_DOWNLOAD_ERROR)?;
 
+        let dest_addr = load_address
+            .checked_add(offset as u64)
+            .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
         let transaction = DMATransaction {
             byte_count: data.len(),
             source: DMASource::Address(source_address),
-            dest_addr: load_address + offset as u64,
+            dest_addr,
         };
-        dma_syscall.xfer(&transaction).await.unwrap();
+        dma_syscall
+            .xfer(&transaction)
+            .await
+            .map_err(|_| pldm_errors::FW_DOWNLOAD_ERROR)?;
 
         Ok(())
     }
 
     async fn copy_data_to_buffer(&self, _offset: usize, data: &[u8]) -> McuResult<()> {
         let state = PLDM_STATE.lock(|state| *state.borrow());
-        let dma_params = DOWNLOAD_CTX.lock(|ctx| {
+        let dma_params = DOWNLOAD_CTX.lock(|ctx| -> McuResult<Option<(AXIAddr, usize)>> {
             let mut ctx = ctx.borrow_mut();
-            ctx.total_downloaded += data.len();
-            let start = ctx.current_offset - ctx.initial_offset;
+            ctx.total_downloaded = ctx
+                .total_downloaded
+                .checked_add(data.len())
+                .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+            let start = ctx
+                .current_offset
+                .checked_sub(ctx.initial_offset)
+                .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
 
             if state == State::DownloadingHeader {
-                let end = (start + data.len()).min(ctx.header.len());
-                ctx.header[start..end].copy_from_slice(&data[..end - start]);
+                copy_prefix_chunk(&mut ctx.header, start, data)?;
             } else if state == State::DownloadingToc {
-                let end = (start + data.len()).min(ctx.image_info.len());
-                ctx.image_info[start..end].copy_from_slice(&data[..end - start]);
+                copy_prefix_chunk(&mut ctx.image_info, start, data)?;
             } else if state == State::DownloadingImage {
-                return Some((ctx.load_address, start));
+                return Ok(Some((ctx.load_address, start)));
             }
 
-            None
-        });
+            Ok(None)
+        })?;
         if let Some(dma_params) = dma_params {
             return self
                 .copy_buffer_to_load_address(dma_params.0, dma_params.1, data, self.dma_mapping)
@@ -94,8 +104,8 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
     }
 }
 
-#[async_trait(?Send)]
-impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
+#[async_trait::async_trait(?Send)]
+impl FdOps for StreamingFdOps<'_> {
     fn get_device_identifiers(&self, device_identifiers: &mut [Descriptor]) -> McuResult<usize> {
         self.descriptors
             .iter()
@@ -114,7 +124,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
     }
 
     async fn get_xfer_size(&self, ua_transfer_size: usize) -> McuResult<usize> {
-        Ok(ua_transfer_size.min(MAX_PLDM_TRANSFER_SIZE))
+        Ok(ua_transfer_size.min(MAX_PLDM_FW_DATA_SIZE))
     }
 
     fn handle_component(
@@ -127,9 +137,6 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
             if size
                 < (core::mem::size_of::<ImageHeader>() + core::mem::size_of::<FlashHeader>()) as u32
             {
-                // Image size is too small
-                // Return Ok with response code here to allow PLDM lib to pass it to UA
-                // Returning an Err is considered fatal and will cause PLDM lib to halt PLDM process
                 return Ok(ComponentResponseCode::CompPrerequisitesNotMet);
             }
         }
@@ -164,7 +171,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
                 PLDM_FWUP_BASELINE_TRANSFER_SIZE
             } else {
                 let remaining = ctx.total_length - ctx.total_downloaded;
-                remaining.clamp(PLDM_FWUP_BASELINE_TRANSFER_SIZE, MAX_PLDM_TRANSFER_SIZE)
+                remaining.clamp(PLDM_FWUP_BASELINE_TRANSFER_SIZE, MAX_PLDM_FW_DATA_SIZE)
             };
 
             ctx.last_requested_length = length;
@@ -181,11 +188,10 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         _component: &FirmwareComponent,
     ) -> McuResult<TransferResult> {
         self.copy_data_to_buffer(offset, data).await?;
-        // update self.download_ctx
-        let should_yield = DOWNLOAD_CTX.lock(|ctx| {
+        let should_yield = DOWNLOAD_CTX.lock(|ctx| -> McuResult<bool> {
             let mut ctx = ctx.borrow_mut();
             if ctx.total_downloaded >= ctx.total_length {
-                PLDM_STATE.lock(|state| {
+                Ok(PLDM_STATE.lock(|state| {
                     let mut state = state.borrow_mut();
                     if *state == State::DownloadingHeader {
                         *state = State::HeaderDownloadComplete;
@@ -198,12 +204,15 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
                         return true;
                     }
                     false
-                })
+                }))
             } else {
-                ctx.current_offset += data.len();
-                false
+                ctx.current_offset = ctx
+                    .current_offset
+                    .checked_add(data.len())
+                    .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+                Ok(false)
             }
-        });
+        })?;
 
         if should_yield {
             IMAGE_LOADING_TASK_YIELD.signal(());
@@ -231,10 +240,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
     ) -> McuResult<VerifyResult> {
-        // For streaming boot, the firmware images are verified during DOWNLOAD state.
-        // This verify function is called when the device is in the VERIFY PLDM state (after DOWNLOAD state).
-        // Therefore, since images have already been verified, at this stage, we return 100% progress.
-        *progress_percent = ProgressPercent::new(100).unwrap();
+        *progress_percent = ProgressPercent::new(100).map_err(|_| pldm_errors::VERIFY_ERROR)?;
         let verify_result = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().verify_result);
         Ok(verify_result)
     }
@@ -244,19 +250,33 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
     ) -> McuResult<ApplyResult> {
-        // For streaming boot, apply is not applicable, so we return 100% progress.
-        *progress_percent = ProgressPercent::new(100).unwrap();
+        *progress_percent = ProgressPercent::new(100).map_err(|_| pldm_errors::APPLY_ERROR)?;
         Ok(ApplyResult::ApplySuccess)
     }
 
     fn cancel_update_component(&self, _component: &FirmwareComponent) -> McuResult<()> {
-        // TODO: Implement cancel update component logic if needed
         Ok(())
     }
 
     fn activate(&self, _self_contained_activation: u8, estimated_time: &mut u16) -> McuResult<u8> {
         *estimated_time = 0;
-        // Activate is not applicable for streaming boot, so we return success.
-        Ok(0) // PLDM completion code for success
+        Ok(0)
     }
+}
+
+fn copy_prefix_chunk(dst: &mut [u8], start: usize, data: &[u8]) -> McuResult<()> {
+    let remaining = dst
+        .len()
+        .checked_sub(start)
+        .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+    let copy_len = remaining.min(data.len());
+    let end = start
+        .checked_add(copy_len)
+        .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+    let dst = dst
+        .get_mut(start..end)
+        .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+    let src = data.get(..copy_len).ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+    dst.copy_from_slice(src);
+    Ok(())
 }

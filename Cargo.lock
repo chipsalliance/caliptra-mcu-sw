@@ -4657,9 +4657,15 @@ checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 name = "mcu-caliptra-api-lite"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "caliptra-mcu-flash-image",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-lib",
  "caliptra-mcu-runtime-userspace-error",
+ "embassy-executor",
+ "embassy-sync",
  "zerocopy",
 ]
 

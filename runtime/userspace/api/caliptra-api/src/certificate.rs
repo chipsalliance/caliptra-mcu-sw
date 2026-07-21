@@ -98,11 +98,11 @@ impl CertContext {
         Ok(())
     }
 
-    pub async fn populate_idev_mldsa87_cert(
+    pub async fn populate_idev_mldsa87_cert<P: PayloadStream + ?Sized>(
         &mut self,
         cert_size: usize,
         cert_bytesum: u32,
-        payload: &mut dyn PayloadStream,
+        payload: &mut P,
     ) -> CaliptraApiResult<()> {
         let cmd: u32 = CommandId::POPULATE_IDEV_MLDSA87_CERT.into();
 
