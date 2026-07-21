@@ -1703,6 +1703,43 @@ mod tests {
     }
 
     #[test]
+    fn test_vendor_auth_hello_command_id() {
+        assert_eq!(CommandId::MC_VENDOR_AUTH_HELLO.0, 0x4D56_4148); // "MVAH"
+        assert_eq!(
+            <VendorAuthHelloReq as Request>::ID,
+            CommandId::MC_VENDOR_AUTH_HELLO
+        );
+    }
+
+    #[test]
+    fn test_vendor_auth_hello_serialization() {
+        // Request round-trips (header only).
+        let req = VendorAuthHelloReq {
+            hdr: MailboxReqHeader { chksum: 0x55AA },
+        };
+        let bytes = req.as_bytes();
+        assert_eq!(bytes.len(), core::mem::size_of::<VendorAuthHelloReq>());
+        assert_eq!(VendorAuthHelloReq::read_from_bytes(bytes).unwrap().hdr.chksum, 0x55AA);
+
+        // Response: the 48-byte nonce sits immediately after the response header, and the
+        // struct is exactly header + 48 bytes (no padding) — the layout the relay copies.
+        let hdr_len = core::mem::size_of::<MailboxRespHeader>();
+        assert_eq!(
+            core::mem::size_of::<VendorAuthHelloResp>(),
+            hdr_len + 48,
+            "VendorAuthHelloResp must be header + 48-byte challenge with no padding"
+        );
+        let mut resp = VendorAuthHelloResp::default();
+        resp.challenge.copy_from_slice(&[0xABu8; 48]);
+        let bytes = resp.as_bytes();
+        assert_eq!(&bytes[hdr_len..hdr_len + 48], &[0xABu8; 48]);
+        assert_eq!(
+            VendorAuthHelloResp::read_from_bytes(bytes).unwrap().challenge,
+            [0xABu8; 48]
+        );
+    }
+
+    #[test]
     fn test_fuse_read_req_serialization() {
         let req = FuseReadReq {
             hdr: MailboxReqHeader { chksum: 0x1234 },

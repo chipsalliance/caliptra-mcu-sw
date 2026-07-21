@@ -122,12 +122,13 @@ impl CommandAuthorizer for AsymCommandAuthorizer {
         // it, so it rides in the tag — NOT re-fetched here (a fresh HELLO would mint a
         // different nonce and overwrite Caliptra's stored one). Tag layout:
         //   nonce(48) ‖ ecc_pub ‖ mldsa_pub ‖ ecc_sig ‖ mldsa_sig
-        let nonce: [u8; VENDOR_AUTH_NONCE_LEN] = mac
-            .get(..VENDOR_AUTH_NONCE_LEN)
-            .ok_or(AuthorizationError)?
-            .try_into()
-            .map_err(|_| AuthorizationError)?;
-        let sig_material = mac.get(VENDOR_AUTH_NONCE_LEN..).ok_or(AuthorizationError)?;
+        // Split the tag into the leading nonce and the trailing signature material. Both
+        // slices come from the same length check, so the nonce is exactly 48 bytes.
+        let (nonce_slice, sig_material) = mac
+            .split_at_checked(VENDOR_AUTH_NONCE_LEN)
+            .ok_or(AuthorizationError)?;
+        let mut nonce = [0u8; VENDOR_AUTH_NONCE_LEN];
+        nonce.copy_from_slice(nonce_slice);
 
         self.relay_verify(cmd_id, &body_hash, &nonce, sig_material)
             .await
@@ -183,17 +184,22 @@ impl AsymCommandAuthorizer {
         }
 
         let mailbox = Mailbox::new();
-        let mut req_bytes = req.as_bytes().to_vec();
+        // Send the request in place (no heap copy of the ~7.5 KiB struct).
         let mut resp_bytes = [0u8; size_of::<VendorAuthChallengeResp>()];
-        execute_mailbox_cmd(
+        let resp_len = execute_mailbox_cmd(
             &mailbox,
             CoreCmd::VENDOR_AUTH_CHALLENGE.0,
-            &mut req_bytes,
+            req.as_mut_bytes(),
             &mut resp_bytes,
         )
         .await
         .map_err(|_| AuthorizationError)?;
 
+        // Require a full-size response before trusting it: a short/faulted reply must not
+        // parse to a zeroed (cmd_id=0, body_hash=0) struct that could slip past echo-binding.
+        if resp_len != size_of::<VendorAuthChallengeResp>() {
+            return Err(AuthorizationError);
+        }
         let resp = VendorAuthChallengeResp::read_from_bytes(resp_bytes.as_slice())
             .map_err(|_| AuthorizationError)?;
 
