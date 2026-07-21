@@ -1,9 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-#[cfg(all(feature = "mcu-mbox-service", feature = "asym-cmd-auth"))]
-pub(crate) mod cmd_auth_asym;
 #[cfg(feature = "mcu-mbox-service")]
-pub(crate) mod cmd_auth_mock;
+pub(crate) mod cmd_auth_asym;
 #[cfg(feature = "mcu-mbox-service")]
 mod cmd_handler_mock;
 
@@ -35,20 +33,13 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
     #[cfg(feature = "mcu-mbox-service")]
     {
         let handler = cmd_handler_mock::NonCryptoCmdHandlerMock;
-        // Single authorizer swap site. `CmdInterface`/`McuMboxService` see only
-        // `&mut dyn CommandAuthorizer`, so selecting the impl is the whole cutover.
-        //
-        // CUTOVER: the asymmetric, manifest-anchored authorizer is selected under
-        // the `asym-cmd-auth` feature; the dummy-HMAC mock is the default/opt-out.
-        // The final production flip — making `asym-cmd-auth` a default feature and
-        // retiring `MockCommandAuthorizer` + its hardcoded HMAC key — is a one-line
-        // change here, gated on: (1) the Caliptra vendor-auth commands merged
-        // UPSTREAM and the pinned caliptra-* rev bumped off the fork
-        // (VENDOR_AUTH_FORK_PIN_REVERT.md), and (2) the end-to-end HELLO/CHALLENGE
-        // suite passing on the emulator. Until both hold, asym stays opt-in.
-        #[cfg(not(feature = "asym-cmd-auth"))]
-        let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer::default();
-        #[cfg(feature = "asym-cmd-auth")]
+        // Command authorization is the asymmetric, manifest-anchored authorizer
+        // (ECDSA-P384 + ML-DSA-87, verified in Caliptra core). It replaced the
+        // dummy-HMAC mock. `CmdInterface`/`McuMboxService` see only
+        // `&mut dyn CommandAuthorizer`. NOTE: this build only compiles against a
+        // caliptra-* rev that carries the VENDOR_AUTH_* commands (currently the
+        // fork pin — see VENDOR_AUTH_FORK_PIN_REVERT.md); do not merge to main-2.1
+        // until that lands upstream and the pin is reverted.
         let mut cmd_authorizer = cmd_auth_asym::AsymCommandAuthorizer::default();
         let mut transport = caliptra_mcu_mbox_lib::transport::McuMboxTransport::new(
             caliptra_mcu_libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
