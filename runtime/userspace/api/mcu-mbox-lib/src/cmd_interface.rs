@@ -3,25 +3,24 @@
 use crate::errors;
 use crate::transport::McuMboxTransport;
 use caliptra_mcu_common_commands::{
-    CaliptraCmdHandler, CommandAuthorizer, DebugUnlockChallenge, DeviceCapabilities, DeviceId,
-    DeviceInfo, FirmwareVersion, GetLogResult, MAX_UID_LEN,
+    CaliptraCmdHandler, CommandAuthorizer, DebugUnlockChallenge, DeviceCapabilities,
+    FirmwareVersion, GetLogResult,
 };
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_libsyscall_caliptra::otp::{Otp, RevokeVendorPubKeyType};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_mbox_common::messages::{
-    ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp,
-    DeviceInfoReq, DeviceInfoResp, ExportAttestedCsrReq, FirmwareVersionReq, FirmwareVersionResp,
-    FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp, FuseLockPartitionReq,
-    FuseLockPartitionResp, FuseReadReq, FuseReadResp, FuseRevokeVendorPkHashReq,
-    FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp,
-    FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetLogReq,
-    LogType, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq,
-    McuMailboxReq, McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
-    McuProdDebugUnlockTokenReq, McuResponseVarSize, ProvisionVendorPkHashReq,
-    ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, ExportAttestedCsrReq,
+    FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
+    FuseIncreaseCaliptraMinSvnResp, FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq,
+    FuseReadResp, FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
+    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
+    GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader, MailboxRespHeader,
+    MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
+    McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE,
+    MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -190,8 +189,6 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             match cmd_id {
                 CommandId::MC_FIRMWARE_VERSION => self.handle_fw_version(req, resp_buf).await,
                 CommandId::MC_DEVICE_CAPABILITIES => self.handle_device_caps(req, resp_buf).await,
-                CommandId::MC_DEVICE_ID => self.handle_device_id(req, resp_buf).await,
-                CommandId::MC_DEVICE_INFO => self.handle_device_info(req, resp_buf).await,
                 CommandId::MC_GET_LOG => self.handle_get_log(req, resp_buf).await,
                 CommandId::MC_CLEAR_LOG => self.handle_clear_log(req, resp_buf).await,
                 #[cfg(feature = "periodic-fips-self-test")]
@@ -310,88 +307,6 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
 
         // Encode the response and copy to resp_buf.
         let resp_bytes = resp.as_bytes();
-
-        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-
-        Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
-    }
-
-    async fn handle_device_id<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        let _req = DeviceIdReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-
-        // Prepare response
-        let mut device_id = DeviceId::default();
-        let ret = self
-            .non_crypto_cmds_handler
-            .get_device_id(&mut device_id)
-            .await;
-
-        let mbox_cmd_status = if ret.is_ok() {
-            MbxCmdStatus::Complete
-        } else {
-            MbxCmdStatus::Failure
-        };
-
-        let resp = DeviceIdResp {
-            hdr: MailboxRespHeader::default(),
-            vendor_id: device_id.vendor_id,
-            device_id: device_id.device_id,
-            subsystem_vendor_id: device_id.subsystem_vendor_id,
-            subsystem_id: device_id.subsystem_id,
-        };
-
-        // Encode the response and copy to resp_buf.
-        let resp_bytes = resp.as_bytes();
-
-        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-
-        Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
-    }
-
-    async fn handle_device_info<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        // Decode the request
-        let req = DeviceInfoReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-
-        // Prepare response
-        let mut device_info = DeviceInfo::Uid(Default::default());
-        let ret = self
-            .non_crypto_cmds_handler
-            .get_device_info(req.index, &mut device_info)
-            .await;
-
-        let mbox_cmd_status = if ret.is_ok() {
-            MbxCmdStatus::Complete
-        } else {
-            MbxCmdStatus::Failure
-        };
-
-        let resp = if mbox_cmd_status == MbxCmdStatus::Complete {
-            let DeviceInfo::Uid(uid) = &device_info;
-            let mut data = [0u8; MAX_UID_LEN];
-            data[..uid.len].copy_from_slice(&uid.unique_chip_id[..uid.len]);
-            DeviceInfoResp {
-                hdr: MailboxRespHeaderVarSize {
-                    data_len: uid.len as u32,
-                    ..Default::default()
-                },
-                data,
-            }
-        } else {
-            DeviceInfoResp::default()
-        };
-
-        // Encode the response and copy to resp_buf.
-        let resp_bytes = resp
-            .as_bytes_partial()
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 

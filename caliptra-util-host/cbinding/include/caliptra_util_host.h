@@ -40,43 +40,11 @@ typedef enum CaliptraProtocolType {
 typedef struct CaliptraSession CaliptraSession;
 
 /**
- * Get device ID response
- * Clean format containing only the essential device identification fields
- */
-typedef struct GetDeviceIdResponse {
-  /**
-   * Vendor ID (LSB)
-   */
-  uint16_t vendor_id;
-  /**
-   * Device ID (LSB)
-   */
-  uint16_t device_id;
-  /**
-   * Subsystem Vendor ID (LSB)
-   */
-  uint16_t subsystem_vendor_id;
-  /**
-   * Subsystem ID (LSB)
-   */
-  uint16_t subsystem_id;
-} GetDeviceIdResponse;
-
-/**
  * Common response header for all commands
  */
 typedef struct CommonResponse {
   uint32_t fips_status;
 } CommonResponse;
-
-/**
- * Device info response
- */
-typedef struct GetDeviceInfoResponse {
-  struct CommonResponse common;
-  uint32_t info_length;
-  uint8_t info_data[64];
-} GetDeviceInfoResponse;
 
 /**
  * Device capabilities response
@@ -170,57 +138,6 @@ typedef struct CMailboxDriver {
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
-
-enum CaliptraError caliptra_cmd_get_device_id(struct CaliptraSession *session,
-                                              struct GetDeviceIdResponse *device_id);
-
-/**
- * Get device identification information (C-exportable version)
- *
- * This function can be called from C code and takes a direct session pointer.
- *
- * # Parameters
- *
- * - `session_ptr`: Direct pointer to CaliptraSession
- * - `device_id`: Pointer to store the device ID response
- *
- * # Returns
- *
- * - `CaliptraError::Success` on success
- * - Error code on failure
- *
- * # Safety
- *
- * This function is unsafe because it works with raw pointers.
- * The caller must ensure both pointers are valid.
- */
-enum CaliptraError caliptra_cmd_get_device_id_c_impl(struct CaliptraSession *session_ptr,
-                                                     struct GetDeviceIdResponse *device_id);
-
-/**
- * Get device information (C-exportable version)
- *
- * This function can be called from C code and takes a direct session pointer.
- *
- * # Parameters
- *
- * - `session_ptr`: Direct pointer to CaliptraSession
- * - `info_type`: Type of information to retrieve
- * - `device_info`: Pointer to store the device info response
- *
- * # Returns
- *
- * - `CaliptraError::Success` on success
- * - Error code on failure
- *
- * # Safety
- *
- * This function is unsafe because it works with raw pointers.
- * The caller must ensure both pointers are valid.
- */
-enum CaliptraError caliptra_cmd_get_device_info_c_impl(struct CaliptraSession *session_ptr,
-                                                       uint32_t info_type,
-                                                       struct GetDeviceInfoResponse *device_info);
 
 /**
  * Get device capabilities (C-exportable version)

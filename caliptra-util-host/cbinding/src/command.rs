@@ -6,96 +6,9 @@
 
 use crate::error::CaliptraError;
 use caliptra_mcu_core_util_host_command_types::device_info::{
-    GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
-    GetFirmwareVersionResponse,
+    GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse,
 };
 use caliptra_util_host_session::CaliptraSession;
-
-/// Get device identification information (C-exportable version)
-///
-/// This function can be called from C code and takes a direct session pointer.
-///
-/// # Parameters
-///
-/// - `session_ptr`: Direct pointer to CaliptraSession
-/// - `device_id`: Pointer to store the device ID response
-///
-/// # Returns
-///
-/// - `CaliptraError::Success` on success
-/// - Error code on failure
-///
-/// # Safety
-///
-/// This function is unsafe because it works with raw pointers.
-/// The caller must ensure both pointers are valid.
-#[no_mangle]
-pub extern "C" fn caliptra_cmd_get_device_id_c_impl(
-    session_ptr: *mut CaliptraSession<'static>,
-    device_id: *mut GetDeviceIdResponse,
-) -> CaliptraError {
-    if session_ptr.is_null() || device_id.is_null() {
-        return CaliptraError::InvalidArgument;
-    }
-
-    unsafe {
-        let session = &mut *session_ptr;
-
-        // Call the actual implementation
-        match caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_id(session) {
-            Ok(response) => {
-                *device_id = response;
-                CaliptraError::Success
-            }
-            Err(_) => CaliptraError::Device,
-        }
-    }
-}
-
-/// Get device information (C-exportable version)
-///
-/// This function can be called from C code and takes a direct session pointer.
-///
-/// # Parameters
-///
-/// - `session_ptr`: Direct pointer to CaliptraSession
-/// - `info_type`: Type of information to retrieve
-/// - `device_info`: Pointer to store the device info response
-///
-/// # Returns
-///
-/// - `CaliptraError::Success` on success
-/// - Error code on failure
-///
-/// # Safety
-///
-/// This function is unsafe because it works with raw pointers.
-/// The caller must ensure both pointers are valid.
-#[no_mangle]
-pub extern "C" fn caliptra_cmd_get_device_info_c_impl(
-    session_ptr: *mut CaliptraSession<'static>,
-    info_type: u32,
-    device_info: *mut GetDeviceInfoResponse,
-) -> CaliptraError {
-    if session_ptr.is_null() || device_info.is_null() {
-        return CaliptraError::InvalidArgument;
-    }
-
-    unsafe {
-        let session = &mut *session_ptr;
-
-        // Call the actual implementation
-        match caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_info(
-            session, info_type,
-        ) {
-            Ok(response) => {
-                *device_info = response;
-                CaliptraError::Success
-            }
-            Err(_) => CaliptraError::Device,
-        }
-    }
-}
 
 /// Get device capabilities (C-exportable version)
 ///

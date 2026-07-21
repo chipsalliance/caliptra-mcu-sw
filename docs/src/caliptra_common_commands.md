@@ -51,6 +51,8 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 
 This section defines the request and response payloads for each command.
 
+Common response payload tables describe command-specific response data only. They exclude transport-specific status and framing fields such as SPDM VDM completion codes, MCTP VDM completion codes, MCI mailbox `chksum`, MCI mailbox `fips_status`, and MCI mailbox variable-length `data_len` headers.
+
 ### Firmware Version
 
 Retrieves the version of the target firmware.
@@ -65,8 +67,7 @@ Retrieves the version of the target firmware.
 
 | Byte(s) | Name            | Type   | Description                             |
 | ------- | --------------- | ------ | --------------------------------------- |
-| 0:3     | completion_code | u32    | Command completion status               |
-| 4:35    | version         | u8[32] | Firmware Version Number in ASCII format |
+| 0:31    | version         | u8[32] | Firmware Version Number in ASCII format |
 
 ### Device Capabilities
 
@@ -76,8 +77,7 @@ Retrieves the version of the target firmware.
 
 | Byte(s) | Name            | Type   | Description                                                                                                                                                                                                                                                                    |
 | ------- | --------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0:3     | completion_code | u32    | Command completion status                                                                                                                                                                                                                                                      |
-| 4:35    | caps            | u8[32] | Device Capabilities: <br>- Bytes [0:7]: Reserved for Caliptra RT <br>- Bytes [8:11]: Reserved for Caliptra FMC <br>- Bytes [12:15]: Reserved for Caliptra ROM <br>- Bytes [16:23]: Reserved for MCU RT <br>- Bytes [24:27]: Reserved for MCU ROM <br>- Bytes [28:31]: Reserved |
+| 0:31    | caps            | u8[32] | Device Capabilities: <br>- Bytes [0:7]: Reserved for Caliptra RT <br>- Bytes [8:11]: Reserved for Caliptra FMC <br>- Bytes [12:15]: Reserved for Caliptra ROM <br>- Bytes [16:23]: Reserved for MCU RT <br>- Bytes [24:27]: Reserved for MCU ROM <br>- Bytes [28:31]: Reserved |
 
 ### Get Debug Log
 
@@ -89,10 +89,9 @@ Retrieves the debug log for the MCU Runtime.
 
 | Byte(s) | Name            | Type          | Description                         |
 | ------- | --------------- | ------------- | ----------------------------------- |
-| 0:3     | completion_code | u32           | Command completion status           |
-| 4:7     | more_data       | u32           | `1` if more log data remains        |
-| 8:11    | data_size       | u32           | Size of the valid log data in bytes |
-| 12:N    | data            | u8[data_size] | Debug log contents                  |
+| 0:3     | more_data       | u32           | `1` if more log data remains        |
+| 4:7     | data_size       | u32           | Size of the valid log data in bytes |
+| 8:N     | data            | u8[data_size] | Debug log contents                  |
 
 For defmt-based debug logs, the device exposes a sequential drain interface rather than random access to individual log entries. Callers drain the debug log by repeating this command until `more_data` is `0`. Each response contains zero or more complete defmt frames. The host concatenates the returned data and decodes the resulting frame stream using the matching firmware ELF.
 
@@ -108,11 +107,7 @@ Clears the debug log in the MCU Runtime. No authorization is required.
 
 **Request Payload**: Empty
 
-**Response Payload**:
-
-| Byte(s) | Name            | Type | Description               |
-| ------- | --------------- | ---- | ------------------------- |
-| 0:3     | completion_code | u32  | Command completion status |
+**Response Payload**: Empty. Command completion status is carried by the transport-specific response framing.
 
 ### Get Attestation
 
@@ -138,10 +133,9 @@ Requests debug unlock in production environment.
 
 | Byte(s) | Name                     | Type   | Description                              |
 | ------- | ------------------------ | ------ | ---------------------------------------- |
-| 0:3     | completion_code          | u32    | Command completion status                |
-| 4:7     | length                   | u32    | Length of the message in DWORDs          |
-| 8:39    | unique_device_identifier | u8[32] | Device identifier of the Caliptra device |
-| 40:87   | challenge                | u8[48] | Random number challenge                  |
+| 0:3     | length                   | u32    | Length of the message in DWORDs          |
+| 4:35    | unique_device_identifier | u8[32] | Device identifier of the Caliptra device |
+| 36:83   | challenge                | u8[48] | Random number challenge                  |
 
 ### Authorize Debug Unlock Token
 
@@ -162,11 +156,7 @@ Authorizes the debug unlock token. The request body is identical for MCI mailbox
 | 2640:2735 | ecc_signature            | u32[24]   | ECC P-384 signature of the message hashed using SHA2-384 (R and S coordinates)        |
 | 2736:6199 | mldsa_signature          | u32[1157] | MLDSA signature of the message hashed using SHA2-512 (4627 bytes + 1 reserved byte)   |
 
-**Response Payload**:
-
-| Byte(s) | Name            | Type | Description               |
-| ------- | --------------- | ---- | ------------------------- |
-| 0:3     | completion_code | u32  | Command completion status |
+**Response Payload**: Empty. Command completion status is carried by the transport-specific response framing.
 
 ### Export Attested CSR
 
@@ -184,9 +174,8 @@ Exports an attested Certificate Signing Request (CSR) for a specified device key
 
 | Byte(s) | Name            | Type          | Description                              |
 | ------- | --------------- | ------------- | ---------------------------------------- |
-| 0:3     | completion_code | u32           | Command completion status                |
-| 4:7     | data_size       | u32           | Length in bytes of the attested CSR data |
-| 8:N     | data            | u8[data_size] | Attested CSR data blob                   |
+| 0:3     | data_size       | u32           | Length in bytes of the attested CSR data |
+| 4:N     | data            | u8[data_size] | Attested CSR data blob                   |
 
 ### Authorization-Gated Subcommand Wrapper
 

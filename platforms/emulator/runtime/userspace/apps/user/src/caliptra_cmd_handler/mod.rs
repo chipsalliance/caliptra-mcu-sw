@@ -5,7 +5,7 @@ pub(crate) mod device_ops;
 
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, LogType,
+    DeviceCapabilities, FirmwareVersion, GetLogResult, LogType,
 };
 use mcu_caliptra_api_lite::ApiAlloc;
 
@@ -17,14 +17,6 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         _index: u32,
         _version: &mut FirmwareVersion,
     ) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    async fn get_device_id(&self, _device_id: &mut DeviceId) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    async fn get_device_info(&self, _index: u32, _info: &mut DeviceInfo) -> CaliptraCmdResult<()> {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 

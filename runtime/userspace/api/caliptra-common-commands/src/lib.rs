@@ -9,7 +9,6 @@ use zerocopy::{Immutable, IntoBytes};
 
 pub const MAX_ATTESTED_CSR_DATA_LEN: usize = 12_800;
 pub const MAX_FW_VERSION_LEN: usize = 32;
-pub const MAX_UID_LEN: usize = 32;
 
 /// Size of the unique device identifier in bytes.
 pub const DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE: usize = 32;
@@ -68,27 +67,6 @@ impl Default for AttestedCsrData {
 pub struct FirmwareVersion {
     pub len: usize,
     pub ver_str: [u8; MAX_FW_VERSION_LEN],
-}
-
-#[repr(C)]
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct DeviceId {
-    pub vendor_id: u16,
-    pub device_id: u16,
-    pub subsystem_vendor_id: u16,
-    pub subsystem_id: u16,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-#[repr(C)]
-pub struct Uid {
-    pub len: usize,
-    pub unique_chip_id: [u8; MAX_UID_LEN],
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DeviceInfo {
-    Uid(Uid),
 }
 
 /// Log type identifiers used by `get_log` / `clear_log`.
@@ -173,25 +151,6 @@ pub trait CaliptraCmdHandler {
         index: u32,
         version: &mut FirmwareVersion,
     ) -> CaliptraCmdResult<()>;
-
-    /// Retrieves the device ID.
-    ///
-    /// # Arguments
-    /// * `device_id` - Mutable reference to store the device ID.
-    ///
-    /// # Returns
-    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn get_device_id(&self, device_id: &mut DeviceId) -> CaliptraCmdResult<()>;
-
-    /// Retrieves device information for the given index.
-    ///
-    /// # Arguments
-    /// * `index` - The device info index to query.
-    /// * `info` - Mutable reference to store the device info.
-    ///
-    /// # Returns
-    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn get_device_info(&self, index: u32, info: &mut DeviceInfo) -> CaliptraCmdResult<()>;
 
     /// Retrieves the device capabilities.
     ///

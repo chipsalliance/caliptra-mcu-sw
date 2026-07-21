@@ -8,30 +8,29 @@ style = "both"
 parse_deps = true
 include = [
     "caliptra-util-host-cbinding",
-    "caliptra-util-host-commands", 
+    "caliptra-util-host-commands",
     "caliptra-mcu-core-util-host-command-types",
     "caliptra-util-host-session",
     "caliptra-mcu-core-util-host-transport"
 ]
 
-# Export only the real caliptra-util-host library API  
+# Export only the real caliptra-util-host library API
 [export]
 # Include the real C binding API that wraps caliptra-util-host
 include = [
     "CaliptraError",
     "CaliptraProtocolType",
-    "CaliptraSessionHandle", 
+    "CaliptraSessionHandle",
     "CaliptraTransport",
     "CaliptraTransportOps",
     "CaliptraTransportDesc",
-    "GetDeviceIdResponse",
     "CMockMailboxDriver",
     "CMockMailboxDriverVTable",
 ]
 # Exclude only documentation-specific types that aren't part of functional API
 exclude = [
     "CaliptraErrorContext",
-    "ErrorLocation", 
+    "ErrorLocation",
     "CaliptraFwVersion",
     "CaliptraCapabilities",
     "CaliptraFwIndex",

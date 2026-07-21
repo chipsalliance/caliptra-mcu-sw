@@ -11,7 +11,6 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 // Buffer length constants
 const RESPONSE_BUFFER_SIZE: usize = 1024; // Increased for SHA context (200 bytes) + overhead
 const CAPABILITIES_ARRAY_SIZE: usize = 32;
-const DEVICE_INFO_DATA_SIZE: usize = 64;
 const SHA_CONTEXT_SIZE: usize = 200; // Matches CMB_SHA_CONTEXT_SIZE from caliptra-api
 const MAX_HASH_SIZE: usize = 64;
 
@@ -28,32 +27,10 @@ fn calc_checksum(cmd: u32, data: &[u8]) -> u32 {
     0u32.wrapping_sub(checksum)
 }
 
-/// External command response format for testing (matches ExtCmdGetDeviceIdResponse)
-#[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
-pub struct TestExtCmdGetDeviceIdResponse {
-    /// Checksum field
-    pub chksum: u32,
-    /// FIPS approved or an error
-    pub fips_status: u32,
-    /// Vendor ID; LSB
-    pub vendor_id: u16,
-    /// Device ID; LSB
-    pub device_id: u16,
-    /// Subsystem Vendor ID; LSB
-    pub subsystem_vendor_id: u16,
-    /// Subsystem ID; LSB
-    pub subsystem_id: u16,
-}
-
 /// Mock mailbox implementation for testing
 pub struct MockMailbox {
     connected: bool,
     ready: bool,
-    device_id: u16, // Changed to u16 to match GetDeviceIdResponse
-    vendor_id: u16,
-    subsystem_vendor_id: u16,
-    subsystem_id: u16,
     response_buffer: [u8; RESPONSE_BUFFER_SIZE], // Buffer to store response data
 }
 
@@ -63,10 +40,6 @@ impl MockMailbox {
         Self {
             connected: false,
             ready: true,
-            device_id,
-            vendor_id: 0x1234, // Default vendor ID
-            subsystem_vendor_id: 0x5678,
-            subsystem_id: 0x9ABC,
             response_buffer: [0; RESPONSE_BUFFER_SIZE],
         }
     }
@@ -81,11 +54,6 @@ impl MockMailbox {
         self.ready = ready;
     }
 
-    /// Get the configured device ID
-    pub fn get_device_id(&self) -> u16 {
-        self.device_id
-    }
-
     fn process_command(
         &mut self,
         external_cmd: u32,
@@ -93,36 +61,6 @@ impl MockMailbox {
     ) -> Result<&[u8], MailboxError> {
         // Mock responses for external mailbox commands using command codes from external_mailbox_cmds.md
         match external_cmd {
-            0x4D44_4944 => {
-                // MC_DEVICE_ID ("MDID")
-                // For test simplification, return the external format that the transport layer can convert
-                // Build response payload without checksum first
-                let mut payload = Vec::new();
-                payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
-                payload.extend_from_slice(&self.vendor_id.to_le_bytes());
-                payload.extend_from_slice(&self.device_id.to_le_bytes());
-                payload.extend_from_slice(&self.subsystem_vendor_id.to_le_bytes());
-                payload.extend_from_slice(&self.subsystem_id.to_le_bytes());
-
-                // Calculate checksum over the payload data (for responses, cmd should be 0)
-                let chksum = calc_checksum(0, &payload);
-
-                // Create complete response with calculated checksum
-                let response = TestExtCmdGetDeviceIdResponse {
-                    chksum,
-                    fips_status: 0x00000001, // Mock FIPS approved status
-                    vendor_id: self.vendor_id,
-                    device_id: self.device_id,
-                    subsystem_vendor_id: self.subsystem_vendor_id,
-                    subsystem_id: self.subsystem_id,
-                };
-
-                // Convert to bytes using zerocopy for proper serialization
-                let response_bytes = response.as_bytes();
-                let response_len = response_bytes.len();
-                self.response_buffer[0..response_len].copy_from_slice(response_bytes);
-                Ok(&self.response_buffer[0..response_len])
-            }
             0x4D43_4150 => {
                 // MC_DEVICE_CAPABILITIES ("MCAP")
                 // Mock capabilities response with proper external structure (32-byte caps array)
@@ -142,28 +80,6 @@ impl MockMailbox {
                 // Remaining bytes stay 0
 
                 payload.extend_from_slice(&caps);
-
-                let chksum = calc_checksum(0, &payload);
-                // Complete response with checksum
-                let mut response = Vec::new();
-                response.extend_from_slice(&chksum.to_le_bytes());
-                response.extend_from_slice(&payload);
-
-                let response_len = response.len();
-                self.response_buffer[0..response_len].copy_from_slice(&response);
-                Ok(&self.response_buffer[0..response_len])
-            }
-            0x4D44_494E => {
-                // MC_DEVICE_INFO ("MDIN")
-                // Mock device info response with proper external structure
-                let mut payload = Vec::new();
-                payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
-                payload.extend_from_slice(&16u32.to_le_bytes()); // data_size
-
-                // Device info data field
-                let mut data = [0u8; DEVICE_INFO_DATA_SIZE];
-                data[0..16].copy_from_slice(b"Mock Device Info");
-                payload.extend_from_slice(&data);
 
                 let chksum = calc_checksum(0, &payload);
                 // Complete response with checksum

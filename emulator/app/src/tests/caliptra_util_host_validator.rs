@@ -6,15 +6,12 @@ use std::thread::sleep;
 
 use caliptra_mcu_core_mailbox_server::ServerConfig;
 use caliptra_mcu_core_util_host_mailbox_test_config::{
-    DeviceCapabilitiesConfig, DeviceConfig, DeviceInfoConfig, FirmwareVersionConfig, NetworkConfig,
+    DeviceCapabilitiesConfig, FirmwareVersionConfig, NetworkConfig,
     ServerConfig as ConfigServerConfig, TestConfig, ValidationConfig,
 };
 use caliptra_mcu_emulator_mcu_mbox::mcu_mailbox_transport::{McuMailboxError, McuMailboxTransport};
 use caliptra_mcu_testing_common::wait_for_runtime_start;
 use tempfile::NamedTempFile;
-
-const TEST_DEVICE_ID: u16 = 0x0010;
-const TEST_VENDOR_ID: u16 = 0x1414;
 
 pub fn run_caliptra_util_host_validator() {
     caliptra_mcu_testing_common::spawn_with_emulator_state(|| {
@@ -30,12 +27,6 @@ pub fn run_caliptra_util_host_validator() {
 
         // Create temporary config file with test parameters using TestConfig struct
         let test_config = TestConfig {
-            device: DeviceConfig {
-                device_id: TEST_DEVICE_ID,
-                vendor_id: TEST_VENDOR_ID,
-                subsystem_vendor_id: 0x0001,
-                subsystem_id: 0x0002,
-            },
             network: NetworkConfig {
                 default_server_address: format!("{}:{}", addr.ip(), addr.port()),
             },
@@ -62,17 +53,6 @@ pub fn run_caliptra_util_host_validator() {
                 rom_firmware_id: 0,
                 runtime_firmware_id: 1,
             }),
-            device_info: Some(DeviceInfoConfig {
-                info_index: 0,
-                expected_info: String::from_utf8_lossy(&[
-                    0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC,
-                    0xDD, 0xEE, 0xFF,
-                ])
-                .to_string(),
-                min_info_length: 10,
-                max_info_length: 64,
-                fips_status: 0x00000000,
-            }),
         };
 
         let temp_file = NamedTempFile::new().expect("Failed to create temporary file");
@@ -82,10 +62,7 @@ pub fn run_caliptra_util_host_validator() {
             .expect("Failed to write config to temporary file");
 
         println!("Created temporary config file at: {:?}", temp_file.path());
-        println!(
-            "Config contains: device_id=0x{:04X}, vendor_id=0x{:04X}",
-            TEST_DEVICE_ID, TEST_VENDOR_ID
-        );
+        println!("Config contains mailbox command validation parameters");
 
         // Run the validator using cargo xtask validator command with temporary config
         let output = Command::new("cargo")

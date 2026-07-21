@@ -49,8 +49,7 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgRequest, FeProgResponse, GetAuthCmdChallengeResponse,
 };
 use caliptra_mcu_core_util_host_command_types::{
-    GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
-    GetFirmwareVersionResponse,
+    GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse,
 };
 use caliptra_mcu_core_util_host_transport::Mailbox;
 use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
@@ -74,8 +73,7 @@ use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
 use caliptra_util_host_commands::api::device_info::{
-    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
-    caliptra_cmd_get_firmware_version,
+    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_firmware_version,
 };
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
@@ -102,110 +100,6 @@ impl<'a> MailboxClient<'a> {
             udp_driver as &mut dyn caliptra_mcu_core_util_host_transport::MailboxDriver,
         );
         Self { transport }
-    }
-
-    /// Execute the GetDeviceId command and return the response
-    pub fn get_device_id(&mut self) -> Result<GetDeviceIdResponse> {
-        println!("Executing GetDeviceId command...");
-
-        // Create session with Mailbox transport
-        let mut session = CaliptraSession::new(
-            1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
-
-        // Connect to the device
-        session
-            .connect()
-            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
-
-        match caliptra_cmd_get_device_id(&mut session) {
-            Ok(response) => {
-                println!("✓ GetDeviceId succeeded!");
-                println!("  Device ID: 0x{:04X}", response.device_id);
-                println!("  Vendor ID: 0x{:04X}", response.vendor_id);
-                println!(
-                    "  Subsystem Vendor ID: 0x{:04X}",
-                    response.subsystem_vendor_id
-                );
-                println!("  Subsystem ID: 0x{:04X}", response.subsystem_id);
-                Ok(response)
-            }
-            Err(e) => {
-                eprintln!("✗ GetDeviceId failed: {:?}", e);
-                Err(anyhow::anyhow!("GetDeviceId command failed: {:?}", e))
-            }
-        }
-    }
-
-    /// Validate that the device response matches expected values
-    pub fn validate_device_id(
-        &mut self,
-        expected_device_id: Option<u16>,
-        expected_vendor_id: Option<u16>,
-    ) -> Result<()> {
-        let response = self.get_device_id()?;
-        if let Some(expected_id) = expected_device_id {
-            if response.device_id != expected_id {
-                return Err(anyhow::anyhow!(
-                    "Device ID mismatch: got 0x{:04X}, expected 0x{:04X}",
-                    response.device_id,
-                    expected_id
-                ));
-            }
-            println!("✓ Device ID matches expected value: 0x{:04X}", expected_id);
-        }
-
-        if let Some(expected_vendor) = expected_vendor_id {
-            if response.vendor_id != expected_vendor {
-                return Err(anyhow::anyhow!(
-                    "Vendor ID mismatch: got 0x{:04X}, expected 0x{:04X}",
-                    response.vendor_id,
-                    expected_vendor
-                ));
-            }
-            println!(
-                "✓ Vendor ID matches expected value: 0x{:04X}",
-                expected_vendor
-            );
-        }
-
-        Ok(())
-    }
-
-    /// Execute the GetDeviceInfo command and return the response
-    pub fn get_device_info(&mut self) -> Result<GetDeviceInfoResponse> {
-        println!("Executing GetDeviceInfo command...");
-
-        let mut session = CaliptraSession::new(
-            1,
-            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
-
-        session
-            .connect()
-            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
-
-        match caliptra_cmd_get_device_info(&mut session, 0) {
-            Ok(response) => {
-                println!("✓ GetDeviceInfo succeeded!");
-                println!("  Info length: {} bytes", response.info_length);
-                println!("  FIPS status: {}", response.common.fips_status);
-                if response.info_length > 0 {
-                    let info_str =
-                        std::str::from_utf8(&response.info_data[..response.info_length as usize])
-                            .unwrap_or("<binary data>");
-                    println!("  Info data: {}", info_str);
-                }
-                Ok(response)
-            }
-            Err(e) => {
-                eprintln!("✗ GetDeviceInfo failed: {:?}", e);
-                Err(anyhow::anyhow!("GetDeviceInfo command failed: {:?}", e))
-            }
-        }
     }
 
     /// Execute the GetDeviceCapabilities command and return the response

@@ -177,10 +177,6 @@ mod tests {
     fn test_command_id_mapping() {
         use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
         assert_eq!(
-            command_id_to_vdm(CaliptraCommandId::GetDeviceId as u32),
-            None
-        );
-        assert_eq!(
             command_id_to_vdm(CaliptraCommandId::ExportAttestedCsr as u32),
             Some(CaliptraVdmCommand::ExportAttestedCsr)
         );

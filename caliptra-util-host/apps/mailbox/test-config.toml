@@ -3,13 +3,6 @@
 # Caliptra Util Host Test Configuration
 # This file contains shared test parameters used by both the server and validator
 
-[device]
-# Device identification values
-device_id = 0x1234
-vendor_id = 0x5678
-subsystem_vendor_id = 0x0001
-subsystem_id = 0x0002
-
 [network]
 # Default network configuration
 default_server_address = "127.0.0.1:62222"
@@ -41,11 +34,3 @@ fips_status = 0x00000001
 # Firmware IDs for validation
 rom_firmware_id = 0
 runtime_firmware_id = 1
-
-[device_info]
-# Expected device information
-info_index = 0  # 0x00 = Unique Chip Identifier
-expected_info = "Caliptra Test Device v1.0"
-min_info_length = 16
-max_info_length = 64
-fips_status = 0

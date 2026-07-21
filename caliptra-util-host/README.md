@@ -22,7 +22,7 @@ The library is organized into several focused crates:
 ```rust
 use caliptra_util_host_session::CaliptraSession;
 use caliptra_util_host_transport::{Mailbox, MailboxDriver};
-use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_id;
+use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_capabilities;
 
 // Implement a custom mailbox driver (e.g., UDP-based)
 struct UdpMailboxDriver { /* ... */ }
@@ -32,16 +32,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create mailbox driver and transport
     let mut udp_driver = UdpMailboxDriver::new("127.0.0.1:8080".parse()?);
     let mut mailbox_transport = Mailbox::new(&mut udp_driver);
-    
+
     // Create session and connect
     let mut session = CaliptraSession::new(1, &mut mailbox_transport)?;
     session.connect()?;
-    
-    // Execute get device ID command
-    let device_id = caliptra_cmd_get_device_id(&mut session)?;
-    println!("Device ID: 0x{:04X}", device_id.device_id);
-    println!("Vendor ID: 0x{:04X}", device_id.vendor_id);
-    
+
+    // Execute get device capabilities command
+    let capabilities = caliptra_cmd_get_device_capabilities(&mut session)?;
+    println!("Device capabilities: 0x{:08X}", capabilities.capabilities);
+
     Ok(())
 }
 ```
@@ -53,15 +52,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 int main() {
     CaliptraError result;
-    CaliptraDeviceId device_id;
-    
-    // Create UDP-based mailbox driver 
+    GetDeviceCapabilitiesResponse capabilities;
+
+    // Create UDP-based mailbox driver
     CMailboxDriver* driver = caliptra_create_udp_mailbox_driver("127.0.0.1", 8080);
     if (!driver) {
         printf("Failed to create mailbox driver\n");
         return -1;
     }
-    
+
     // Create session with the mailbox driver
     CaliptraSession* session = caliptra_session_create_with_driver(1, driver);
     if (!session) {
@@ -69,7 +68,7 @@ int main() {
         caliptra_destroy_mailbox_driver(driver);
         return -1;
     }
-    
+
     // Connect session
     result = caliptra_session_connect(session);
     if (result != CaliptraSuccess) {
@@ -78,16 +77,15 @@ int main() {
         caliptra_destroy_mailbox_driver(driver);
         return -1;
     }
-    
-    // Execute get device ID command
-    result = caliptra_get_device_id(session, &device_id);
+
+    // Execute get device capabilities command
+    result = caliptra_cmd_get_device_capabilities_c_impl(session, &capabilities);
     if (result == CaliptraSuccess) {
-        printf("Device ID: 0x%04X\n", device_id.device_id);
-        printf("Vendor ID: 0x%04X\n", device_id.vendor_id);
+        printf("Device capabilities: 0x%08X\n", capabilities.capabilities);
     } else {
-        printf("Failed to get device ID\n");
+        printf("Failed to get device capabilities\n");
     }
-    
+
     // Cleanup
     caliptra_session_destroy(session);
     caliptra_destroy_mailbox_driver(driver);
@@ -111,7 +109,7 @@ cargo xtask server
 cargo xtask server --address 192.168.1.100:9090 --verbose
 ```
 
-### Mailbox Client (`apps/mailbox/client`) 
+### Mailbox Client (`apps/mailbox/client`)
 
 A client library and validator for sending external mailbox requests to the server (Caliptra subsystem). It also provides a validator binary to execute test commands against the target.
 
@@ -143,7 +141,7 @@ cargo xtask test
 # Run only Rust tests
 cargo xtask test --rust-only
 
-# Run only C binding tests  
+# Run only C binding tests
 cargo xtask test --c-only
 
 # Format code
@@ -169,7 +167,7 @@ For convenience, you can use the shorter aliases:
 ```bash
 # Short form aliases
 cargo x build      # Same as cargo xtask build
-cargo x test       # Same as cargo xtask test  
+cargo x test       # Same as cargo xtask test
 cargo x server     # Same as cargo xtask server
 cargo x validator  # Same as cargo xtask validator
 cargo x clean      # Same as cargo xtask clean
@@ -193,7 +191,7 @@ cargo xtask test --c-only
 ```
 
 - **Rust Integration Tests**: `tests/` - Test command execution and session management
-- **C Binding Tests**: `cbinding/tests/` - Verify C API functionality  
+- **C Binding Tests**: `cbinding/tests/` - Verify C API functionality
 
 ## SPDM VDM Applications
 
@@ -214,4 +212,3 @@ LIBSPDM_LIB_DIR=$PWD/target/libspdm-lib cargo build -p caliptra-spdm-vdm-client
 # Run validator
 ./target/debug/caliptra-spdm-validator --config apps/spdm/test-config.toml
 ```
-

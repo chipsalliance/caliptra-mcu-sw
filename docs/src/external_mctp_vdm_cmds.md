@@ -28,20 +28,22 @@ For the Caliptra external command protocol, the following information is returne
 - **Vendor ID Format**: `1`
 - **OCP Vendor ID**: `42623`
 
-The following table describes the Caliptra direct MCTP VDM message body layout. Byte offsets are zero-based from the first byte of the MCTP message body.
+The following table describes the Caliptra MCTP VDM (IANA) message body layout. Byte offsets are zero-based from the first byte of the MCTP message body.
 
 | Byte Offset            | Bit(s) | Field Name                  | Value / Description                                                                                                                                                          |
 | ---------------------- | ------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | +0                     | 7      | **IC**                      | MCTP integrity check bit. Indicates whether the MCTP message is covered by an overall MCTP message payload integrity check.                                                  |
-| +0                     | 6:0    | **Message Type**            | MCTP Vendor Defined Message type. Caliptra direct MCTP VDM uses message type `0x7F`.                                                                                         |
+| +0                     | 6:0    | **Message Type**            | MCTP Vendor Defined Message type. Caliptra MCTP VDM (IANA) uses message type `0x7F`.                                                                                         |
 | +1:+4                  | 31:0   | **MCTP IANA Enterprise ID** | IANA enterprise ID for the vendor. Caliptra messages use the OCP Vendor ID `42623` (`0x0000A67F`), encoded most-significant byte first.                                      |
 | +5                     | 7      | **Request Type**            | Set to `1` for requests and `0` for responses.                                                                                                                               |
 | +5                     | 6:0    | **Reserved**                | Reserved and set to `0`.                                                                                                                                                     |
 | +6                     | 7:0    | **Caliptra Command Code**   | Caliptra command code assigned from the Caliptra range reserved in the OCP command registry.                                                                                 |
-| +7:N                   | N/A    | **Message Payload**         | Command-specific request or response payload.                                                                                                                                |
+| +7:N                   | N/A    | **Message Payload**         | Request payload, or response completion code followed by command-specific response data.                                                                                     |
 | Last bytes, if present | N/A    | **Msg Integrity Check**     | Optional MCTP message integrity check. If present, as indicated by the MCTP IC bit, the Message Integrity Check field is carried in the last bytes of the MCTP message body. |
 
 The protocol header fields are to be included only in the first packet of a multiple-packet MCTP message. After reconstruction of the message body, the protocol header will be used to interpret the message contents. Reserved fields must be set to `0`.
+
+All MCTP VDM (IANA) responses carry a 32-bit OCP completion code immediately after the MCTP VDM header. Command-specific response data, if any, follows the completion code. The completion code is transport-specific response status and is not included in the transport-agnostic common response payload tables.
 
 ## Command List and Definitions
 

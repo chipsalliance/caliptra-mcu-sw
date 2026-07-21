@@ -3,13 +3,13 @@
 //! Integration tests for Caliptra Utility Host Library
 //!
 //! These tests focus on general integration scenarios using the modular architecture.
-//! For command-specific tests, see the dedicated test files (e.g., test_get_device_id.rs)
+//! For command-specific tests, see the dedicated test files.
 //!
 //! ## Architecture Overview
 //!
 //! The tests use the new no_std modular architecture:
 //! - `caliptra-transport`: Transport trait definitions (no_std)
-//! - `caliptra-session`: Session management with transport integration (no_std)  
+//! - `caliptra-session`: Session management with transport integration (no_std)
 //! - `caliptra-command-types`: Command structures with zerocopy serialization (no_std)
 //! - `caliptra-commands`: High-level API functions (no_std)
 //! - `caliptra-core`: Core execution logic (no_std)

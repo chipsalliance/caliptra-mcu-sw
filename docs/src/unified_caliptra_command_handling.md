@@ -6,19 +6,17 @@ The Caliptra MCU firmware provides two external command interfaces: [SPDM VDM ov
 <em>Table: Overlapping commands between SPDM VDM (OOB) and MCI Mailbox (IB)</em>
 </span>
 
-| **SPDM VDM Command**              | **MCI Mailbox Command**                | **Description**                                         |
-|-----------------------------------|----------------------------------------|---------------------------------------------------------|
-| Firmware Version                  | MC_FIRMWARE_VERSION                    | Retrieves the version of the firmware.                  |
-| Device Capabilities               | MC_DEVICE_CAPABILITIES                 | Retrieves device capabilities.                          |
-| Device ID                         | MC_DEVICE_ID                           | Retrieves the device ID.                                |
-| Device Information                | MC_DEVICE_INFO                         | Retrieves device information.                           |
-| Export CSR                        | MC_EXPORT_IDEV_CSR                     | Exports the IDEVID CSR.                                 |
-| Import Certificate                | MC_IMPORT_IDEV_CERT                    | Imports the IDevID certificate.                         |
-| Get Log                           | MC_GET_LOG                             | Retrieves the internal log.                             |
-| Clear Log                         | MC_CLEAR_LOG                           | Clears the log in the RoT subsystem.                    |
-| Request Debug Unlock              | MC_PRODUCTION_DEBUG_UNLOCK_REQ         | Requests debug unlock in a production environment.       |
-| Authorize Debug Unlock Token      | MC_PRODUCTION_DEBUG_UNLOCK_TOKEN       | Sends the debug unlock token for authorization.         |
-| Export Attested CSR               | MC_EXPORT_ATTESTED_CSR                 | Exports attested CSR for a specified device key.        |
+| **SPDM VDM Command**         | **MCI Mailbox Command**          | **Description**                                    |
+| ---------------------------- | -------------------------------- | -------------------------------------------------- |
+| Firmware Version             | MC_FIRMWARE_VERSION              | Retrieves the version of the firmware.             |
+| Device Capabilities          | MC_DEVICE_CAPABILITIES           | Retrieves device capabilities.                     |
+| Export CSR                   | MC_EXPORT_IDEV_CSR               | Exports the IDEVID CSR.                            |
+| Import Certificate           | MC_IMPORT_IDEV_CERT              | Imports the IDevID certificate.                    |
+| Get Log                      | MC_GET_LOG                       | Retrieves the internal log.                        |
+| Clear Log                    | MC_CLEAR_LOG                     | Clears the log in the RoT subsystem.               |
+| Request Debug Unlock         | MC_PRODUCTION_DEBUG_UNLOCK_REQ   | Requests debug unlock in a production environment. |
+| Authorize Debug Unlock Token | MC_PRODUCTION_DEBUG_UNLOCK_TOKEN | Sends the debug unlock token for authorization.    |
+| Export Attested CSR          | MC_EXPORT_ATTESTED_CSR           | Exports attested CSR for a specified device key.   |
 
 To ensure consistent command behavior and maximize code reuse, we define a protocol-agnostic command handler trait (`CaliptraCmdHandler`) with unified input/output types in the `caliptra-mcu-common-commands` crate. Both protocol frontends parse their respective protocol, then call the same backend handler, ensuring code reuse and consistent behavior.
 
@@ -104,16 +102,6 @@ pub trait CaliptraCmdHandler: Send + Sync {
         &self,
         index: u32,
         version: &mut FirmwareVersion,
-    ) -> Result<(), CaliptraCompletionCode>;
-
-    /// Retrieves the device ID.
-    async fn get_device_id(&self, device_id: &mut DeviceId) -> Result<(), CaliptraCompletionCode>;
-
-    /// Retrieves device information for the given index.
-    async fn get_device_info(
-        &self,
-        index: u32,
-        info: &mut DeviceInfo,
     ) -> Result<(), CaliptraCompletionCode>;
 
     /// Retrieves the device capabilities.

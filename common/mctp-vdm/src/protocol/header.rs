@@ -13,25 +13,31 @@ pub const CALIPTRA_IANA_ENTERPRISE_ID: u32 = 42623;
 pub const CALIPTRA_IANA_ENTERPRISE_ID_BYTES: [u8; 4] = [0x00, 0x00, 0xA6, 0x7F];
 
 /// Length of the VDM message header in bytes.
-/// Header consists of: IANA enterprise ID (4 bytes) + Request/Crypt byte (1 byte) + Command Code (1 byte)
+/// Header consists of: IANA enterprise ID (4 bytes) + Request/Reserved byte (1 byte) + Command Code (1 byte)
 pub const VDM_MSG_HEADER_LEN: usize = 6;
 
 /// VDM completion codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum VdmCompletionCode {
-    /// Command completed successfully.
     Success = 0x00,
-    /// General error.
     GeneralError = 0x01,
-    /// Invalid data in the request.
-    InvalidData = 0x02,
-    /// Invalid length.
+    InvalidParameter = 0x02,
     InvalidLength = 0x03,
-    /// Device is not ready.
-    NotReady = 0x04,
-    /// Command is not supported.
-    UnsupportedCommand = 0x05,
+    InvalidIdentifier = 0x04,
+    OperationFailed = 0x05,
+    InsufficientResources = 0x06,
+    UnsupportedOperation = 0x07,
+    DeviceNotReady = 0x08,
+    InvalidCommandVersion = 0x09,
+    InvalidPayloadSize = 0x0A,
+    Timeout = 0x0B,
+    AccessDenied = 0x0C,
+    ResourceUnavailable = 0x0D,
+    PolicyViolation = 0x0E,
+    InvalidState = 0x0F,
+    CaliptraMailboxBusy = 0xC0,
+    CaliptraBufferTooSmall = 0xC1,
 }
 
 impl TryFrom<u32> for VdmCompletionCode {
@@ -41,10 +47,22 @@ impl TryFrom<u32> for VdmCompletionCode {
         match value {
             0x00 => Ok(VdmCompletionCode::Success),
             0x01 => Ok(VdmCompletionCode::GeneralError),
-            0x02 => Ok(VdmCompletionCode::InvalidData),
+            0x02 => Ok(VdmCompletionCode::InvalidParameter),
             0x03 => Ok(VdmCompletionCode::InvalidLength),
-            0x04 => Ok(VdmCompletionCode::NotReady),
-            0x05 => Ok(VdmCompletionCode::UnsupportedCommand),
+            0x04 => Ok(VdmCompletionCode::InvalidIdentifier),
+            0x05 => Ok(VdmCompletionCode::OperationFailed),
+            0x06 => Ok(VdmCompletionCode::InsufficientResources),
+            0x07 => Ok(VdmCompletionCode::UnsupportedOperation),
+            0x08 => Ok(VdmCompletionCode::DeviceNotReady),
+            0x09 => Ok(VdmCompletionCode::InvalidCommandVersion),
+            0x0A => Ok(VdmCompletionCode::InvalidPayloadSize),
+            0x0B => Ok(VdmCompletionCode::Timeout),
+            0x0C => Ok(VdmCompletionCode::AccessDenied),
+            0x0D => Ok(VdmCompletionCode::ResourceUnavailable),
+            0x0E => Ok(VdmCompletionCode::PolicyViolation),
+            0x0F => Ok(VdmCompletionCode::InvalidState),
+            0xC0 => Ok(VdmCompletionCode::CaliptraMailboxBusy),
+            0xC1 => Ok(VdmCompletionCode::CaliptraBufferTooSmall),
             _ => Err(VdmError::InvalidCompletionCode),
         }
     }
@@ -59,15 +77,13 @@ impl From<VdmCompletionCode> for u32 {
 bitfield! {
     /// Request/Response control byte.
     /// Bit 7: Request Type (1 = request, 0 = response)
-    /// Bit 6: Crypt (1 = encrypted, 0 = not encrypted)
-    /// Bits 5:0: Reserved (must be 0)
+    /// Bits 6:0: Reserved (must be 0)
     #[repr(C)]
     #[derive(Copy, Clone, FromBytes, IntoBytes, Immutable, PartialEq, Default)]
     pub struct VdmControlByte(u8);
     impl Debug;
     pub u8, request_type, set_request_type: 7, 7;
-    pub u8, crypt, set_crypt: 6, 6;
-    pub u8, reserved, _: 5, 0;
+    pub u8, reserved, _: 6, 0;
 }
 
 impl VdmControlByte {
@@ -92,6 +108,11 @@ impl VdmControlByte {
     pub fn is_response(&self) -> bool {
         self.request_type() == 0
     }
+
+    /// Check whether all reserved bits are zero.
+    pub fn reserved_is_zero(&self) -> bool {
+        self.reserved() == 0
+    }
 }
 
 /// VDM Message Header structure.
@@ -99,14 +120,14 @@ impl VdmControlByte {
 ///
 /// Layout:
 /// - Bytes 0:3 - IANA enterprise ID (MSB first, OCP 42623 for Caliptra VDM commands)
-/// - Byte 4    - Control byte (Request/Crypt/Reserved)
+/// - Byte 4    - Control byte (Request/Reserved)
 /// - Byte 5    - Command Code
 #[derive(Debug, Clone, Copy, PartialEq, FromBytes, IntoBytes, Immutable, Default)]
 #[repr(C, packed)]
 pub struct VdmMsgHeader {
     /// IANA enterprise ID (MSB first).
     pub enterprise_id: [u8; 4],
-    /// Control byte containing request type and crypt flags.
+    /// Control byte containing request type and reserved bits.
     pub control: VdmControlByte,
     /// Command code.
     pub command_code: u8,
@@ -150,6 +171,11 @@ impl VdmMsgHeader {
         self.enterprise_id == CALIPTRA_IANA_ENTERPRISE_ID_BYTES
     }
 
+    /// Check whether all reserved control bits are zero.
+    pub fn reserved_is_zero(&self) -> bool {
+        self.control.reserved_is_zero()
+    }
+
     /// Check if this is a request message.
     pub fn is_request(&self) -> bool {
         self.control.is_request()
@@ -191,12 +217,17 @@ mod tests {
         let req = VdmControlByte::new_request();
         assert!(req.is_request());
         assert!(!req.is_response());
+        assert!(req.reserved_is_zero());
         assert_eq!(req.0, 0x80);
 
         let resp = VdmControlByte::new_response();
         assert!(!resp.is_request());
         assert!(resp.is_response());
+        assert!(resp.reserved_is_zero());
         assert_eq!(resp.0, 0x00);
+
+        let reserved_set = VdmControlByte(0x40);
+        assert!(!reserved_set.reserved_is_zero());
     }
 
     #[test]
@@ -242,12 +273,12 @@ mod tests {
 
     #[test]
     fn test_vdm_failure_response() {
-        let resp = VdmFailureResponse::new(0x01, VdmCompletionCode::UnsupportedCommand);
+        let resp = VdmFailureResponse::new(0x01, VdmCompletionCode::UnsupportedOperation);
         assert!(resp.hdr.is_response());
         let completion_code = resp.completion_code;
         assert_eq!(
             completion_code,
-            VdmCompletionCode::UnsupportedCommand as u32
+            VdmCompletionCode::UnsupportedOperation as u32
         );
 
         let mut buffer = [0u8; VDM_MSG_HEADER_LEN + 4];
@@ -266,7 +297,15 @@ mod tests {
         );
         assert_eq!(
             VdmCompletionCode::try_from(0x05),
-            Ok(VdmCompletionCode::UnsupportedCommand)
+            Ok(VdmCompletionCode::OperationFailed)
+        );
+        assert_eq!(
+            VdmCompletionCode::try_from(0x07),
+            Ok(VdmCompletionCode::UnsupportedOperation)
+        );
+        assert_eq!(
+            VdmCompletionCode::try_from(0x08),
+            Ok(VdmCompletionCode::DeviceNotReady)
         );
         assert_eq!(
             VdmCompletionCode::try_from(0xFF),

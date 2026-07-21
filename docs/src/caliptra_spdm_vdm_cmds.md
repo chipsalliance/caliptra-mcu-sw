@@ -43,7 +43,7 @@ The SPDM VDM standard header identifies the vendor organization:
 
 | Field            | Size    | Value        | Description                                       |
 | ---------------- | ------- | ------------ | ------------------------------------------------- |
-| Standard ID      | 2 bytes | `0x0005`     | IANA Enterprise ID format                         |
+| Standard ID      | 2 bytes | `0x0004`     | IANA Enterprise ID format                         |
 | Vendor ID Length | 1 byte  | `0x04`       | Length of the Vendor ID field (4 bytes)           |
 | Vendor ID (IANA) | 4 bytes | `0x0000A67F` | OCP Caliptra Working Group IANA Enterprise Number |
 
@@ -58,7 +58,7 @@ Following the OCP VDM standard header, the Caliptra-specific message header appe
 
 ### Response Format
 
-Responses follow the same header structure. The Command Code in the response mirrors the request. The response payload begins with an `CaliptraCompletionCode` (1 byte) indicating success or failure:
+Responses follow the same header structure. The Command Code in the response mirrors the request. The response payload begins with a `CaliptraCompletionCode` (1 byte) indicating success or failure. Command-specific response data, if any, follows the completion code:
 
 | Field           | Size    | Description                            |
 | --------------- | ------- | -------------------------------------- |
@@ -68,6 +68,8 @@ Responses follow the same header structure. The Command Code in the response mir
 | Payload         | N bytes | Command-specific response data         |
 
 See [Completion Codes](caliptra_common_commands.md#completion-codes) for the full list of error codes.
+
+The SPDM VDM completion code is transport-specific response status and is not included in the transport-agnostic common response payload tables.
 
 ## Command Codes
 

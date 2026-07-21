@@ -149,8 +149,8 @@ pub mod test {
 
             // Test invalid index
             let request = FirmwareVersionRequest::new(99);
-            self.send_request_expect_error(&request, VdmCompletionCode::InvalidData)?;
-            info!("  Invalid index correctly returns InvalidData");
+            self.send_request_expect_error(&request, VdmCompletionCode::InvalidParameter)?;
+            info!("  Invalid index correctly returns InvalidParameter");
 
             Ok(())
         }
@@ -183,14 +183,14 @@ pub mod test {
             // Send a command with an invalid/unsupported command code
             let response_bytes = self.client.send_command(0xFF)?;
             let code = VdmClient::parse_completion_code(&response_bytes)?;
-            if code != VdmCompletionCode::UnsupportedCommand {
+            if code != VdmCompletionCode::UnsupportedOperation {
                 info!(
-                    "Expected UnsupportedCommand for invalid command, got {:?}",
+                    "Expected UnsupportedOperation for invalid command, got {:?}",
                     code
                 );
                 return Err(VdmTransportError::InvalidResponse);
             }
-            info!("  Unsupported command correctly returns UnsupportedCommand");
+            info!("  Unsupported command correctly returns UnsupportedOperation");
 
             Ok(())
         }

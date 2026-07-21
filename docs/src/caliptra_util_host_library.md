@@ -14,9 +14,8 @@ The Caliptra Utility host library is a modular, extensible, and transport-agnost
 
 ### Use Cases
 
-- **Device Identification and Capabilities**
-    - Retrieve firmware versions, unique device identifiers, and device capabilities to ensure compatibility and proper configuration.
-    - Query device-specific information such as chip identifiers or subsystem details.
+- **Device Capabilities**
+    - Retrieve firmware versions and device capabilities to ensure compatibility and proper configuration.
 - **Debugging and Diagnostics**
     - Retrieve debug logs to analyze device behavior, diagnose issues, and monitor runtime states.
     - Clear logs to reset diagnostic data and maintain storage efficiency.
@@ -61,7 +60,7 @@ flowchart TD
 #### Command Layer
 - **Purpose**: Provides high-level, transport-agnostic APIs for Caliptra commands
 - **Functionality**:
-  - Exposes simple function calls for each Caliptra command (e.g., `caliptra_get_device_id()`)
+    - Exposes simple function calls for each Caliptra command (e.g., `caliptra_cmd_get_device_capabilities()`)
   - Manages stateful operations like multi-part SHA/AES computations
   - Maintains command contexts across multiple related operations
   - Handles command-specific validation and parameter checking
@@ -102,14 +101,14 @@ flowchart TD
 
 The library is organized into several Rust crates, each providing specific functionality:
 
-| Crate | Description |
-|-------|-------------|
-| `caliptra-util-host-transport` | Transport trait and implementations (Mailbox, etc.) |
-| `caliptra-util-host-session` | Session management and command execution |
+| Crate                              | Description                                             |
+| ---------------------------------- | ------------------------------------------------------- |
+| `caliptra-util-host-transport`     | Transport trait and implementations (Mailbox, etc.)     |
+| `caliptra-util-host-session`       | Session management and command execution                |
 | `caliptra-util-host-command-types` | Command/response type definitions with zerocopy support |
-| `caliptra-util-host-commands` | High-level command API functions |
-| `caliptra-util-host-osal` | OS abstraction layer for portability |
-| `caliptra-util-host-cbinding` | C bindings for the library |
+| `caliptra-util-host-commands`      | High-level command API functions                        |
+| `caliptra-util-host-osal`          | OS abstraction layer for portability                    |
+| `caliptra-util-host-cbinding`      | C bindings for the library                              |
 
 ### Transport Layer
 
@@ -316,8 +315,6 @@ pub enum CaliptraCommandId {
     // Device Info Commands (0x0001-0x000F)
     GetFirmwareVersion = 0x0001,
     GetDeviceCapabilities = 0x0002,
-    GetDeviceId = 0x0003,
-    GetDeviceInfo = 0x0004,
 
     // Certificate Commands (0x1001-0x101F)
     GetIdevidCert = 0x1001,
@@ -385,28 +382,6 @@ pub enum CommandError {
 #### Example Command Types
 
 ```rust
-/// Get device ID request
-#[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
-pub struct GetDeviceIdRequest {
-    // Empty request - no parameters needed
-}
-
-/// Get device ID response
-#[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
-pub struct GetDeviceIdResponse {
-    pub vendor_id: u16,
-    pub device_id: u16,
-    pub subsystem_vendor_id: u16,
-    pub subsystem_id: u16,
-}
-
-impl CommandRequest for GetDeviceIdRequest {
-    type Response = GetDeviceIdResponse;
-    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::GetDeviceId;
-}
-
 /// Get firmware version request
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
@@ -445,17 +420,6 @@ pub enum CaliptraApiError {
 // ============================================================================
 // Device Information Commands
 // ============================================================================
-
-/// Get device identification information
-pub fn caliptra_cmd_get_device_id(
-    session: &mut CaliptraSession,
-) -> CaliptraResult<GetDeviceIdResponse>;
-
-/// Get device information
-pub fn caliptra_cmd_get_device_info(
-    session: &mut CaliptraSession,
-    info_type: u32,
-) -> CaliptraResult<GetDeviceInfoResponse>;
 
 /// Get device capabilities
 pub fn caliptra_cmd_get_device_capabilities(
@@ -514,18 +478,10 @@ CaliptraError caliptra_session_destroy(CaliptraSession* session);
 // Transport management
 CaliptraError caliptra_transport_destroy(CaliptraTransport* transport);
 
-// Device ID structure (C-compatible)
-typedef struct {
-    uint16_t vendor_id;
-    uint16_t device_id;
-    uint16_t subsystem_vendor_id;
-    uint16_t subsystem_id;
-} CaliptraDeviceId;
-
 // Command APIs
-CaliptraError caliptra_cmd_get_device_id(
+CaliptraError caliptra_cmd_get_device_capabilities_c_impl(
     CaliptraSession* session,
-    CaliptraDeviceId* device_id
+    GetDeviceCapabilitiesResponse* capabilities
 );
 ```
 
@@ -534,7 +490,7 @@ CaliptraError caliptra_cmd_get_device_id(
 ```rust
 use caliptra_util_host_transport::{Mailbox, MailboxDriver};
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_util_host_commands::api::caliptra_cmd_get_device_id;
+use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_capabilities;
 
 // Implement MailboxDriver for your hardware
 struct MyMailboxDriver { /* ... */ }
@@ -561,10 +517,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Connect
     session.connect()?;
 
-    // Get device ID
-    let device_id = caliptra_cmd_get_device_id(&mut session)?;
-    println!("Vendor ID: 0x{:04x}", device_id.vendor_id);
-    println!("Device ID: 0x{:04x}", device_id.device_id);
+    // Get device capabilities
+    let capabilities = caliptra_cmd_get_device_capabilities(&mut session)?;
+    println!("Device capabilities: 0x{:08x}", capabilities.capabilities);
 
     // Disconnect
     session.disconnect()?;

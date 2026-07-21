@@ -21,26 +21,26 @@ pub mod test {
         CmHkdfExtractReq, CmHmacKdfCounterReq, CmHmacReq, CmImportReq, CmKeyUsage,
         CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, CmRandomGenerateReq,
         CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk,
-        DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp,
-        FirmwareVersionReq, FirmwareVersionResp, GetLogReq, MailboxReqHeader, MailboxRespHeader,
-        MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
-        McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
-        McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
-        McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
-        McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
-        McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp,
-        McuEcdsaCmkSignReq, McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp,
-        McuFipsPeriodicEnableReq, McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp,
-        McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
-        McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
-        McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
-        McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp,
-        McuMldsaCmkVerifyReq, McuMldsaCmkVerifyResp, McuProdDebugUnlockReqReq,
-        McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq,
-        McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
-        ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
-        ProductionAuthDebugUnlockToken, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
-        CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
+        DeviceCapsReq, DeviceCapsResp, FirmwareVersionReq, FirmwareVersionResp, GetLogReq,
+        MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq,
+        McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
+        McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq,
+        McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq,
+        McuCmDeleteReq, McuCmImportReq, McuCmImportResp, McuCmStatusReq, McuCmStatusResp,
+        McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
+        McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq, McuEcdsaCmkSignResp,
+        McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsPeriodicEnableReq,
+        McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsReq,
+        McuFipsSelfTestStartReq, McuFipsSelfTestStartResp, McuHkdfExpandReq, McuHkdfExpandResp,
+        McuHkdfExtractReq, McuHkdfExtractResp, McuHmacKdfCounterReq, McuHmacKdfCounterResp,
+        McuHmacReq, McuMailboxReq, McuMailboxResp, McuMldsaCmkPublicKeyReq,
+        McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq,
+        McuMldsaCmkVerifyResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq,
+        McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
+        McuShaInitResp, McuShaUpdateReq, ProductionAuthDebugUnlockChallenge,
+        ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
+        CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE,
+        MAX_CMB_DATA_SIZE,
     };
     use caliptra_mcu_registers_generated::mci;
     use caliptra_mcu_testing_common::{
@@ -483,58 +483,6 @@ pub mod test {
                 cmd.0,
                 device_caps_req.as_bytes().unwrap().to_vec(),
                 device_caps_resp.as_bytes().unwrap().to_vec(),
-            );
-
-            // Add device ID test message
-            let mut device_id_req = McuMailboxReq::DeviceId(DeviceIdReq {
-                hdr: MailboxReqHeader::default(),
-            });
-            let cmd = device_id_req.cmd_code();
-            device_id_req.populate_chksum().unwrap();
-
-            let test_device_id = &caliptra_mcu_mbox_common::config::TEST_DEVICE_ID;
-            let mut device_id_resp = McuMailboxResp::DeviceId(DeviceIdResp {
-                hdr: MailboxRespHeader::default(),
-                vendor_id: test_device_id.vendor_id,
-                device_id: test_device_id.device_id,
-                subsystem_vendor_id: test_device_id.subsystem_vendor_id,
-                subsystem_id: test_device_id.subsystem_id,
-            });
-            device_id_resp.populate_chksum().unwrap();
-
-            self.push(
-                cmd.0,
-                device_id_req.as_bytes().unwrap().to_vec(),
-                device_id_resp.as_bytes().unwrap().to_vec(),
-            );
-
-            // Add device info test message
-            let mut device_info_req = McuMailboxReq::DeviceInfo(DeviceInfoReq {
-                hdr: MailboxReqHeader::default(),
-                index: 0, // Only index 0 (UID) is supported in this test
-            });
-            let cmd = device_info_req.cmd_code();
-            device_info_req.populate_chksum().unwrap();
-
-            let test_uid = &caliptra_mcu_mbox_common::config::TEST_UID;
-            let mut device_info_resp = McuMailboxResp::DeviceInfo(DeviceInfoResp {
-                hdr: MailboxRespHeaderVarSize {
-                    data_len: test_uid.len() as u32,
-                    ..Default::default()
-                },
-                data: {
-                    let mut u = [0u8; 32];
-                    let len = test_uid.len().min(u.len());
-                    u[..len].copy_from_slice(&test_uid[..len]);
-                    u
-                },
-            });
-            device_info_resp.populate_chksum().unwrap();
-
-            self.push(
-                cmd.0,
-                device_info_req.as_bytes().unwrap().to_vec(),
-                device_info_resp.as_bytes().unwrap().to_vec(),
             );
         }
 

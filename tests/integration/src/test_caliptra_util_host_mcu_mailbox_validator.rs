@@ -33,9 +33,6 @@ pub mod test {
 
     /// Device ID and vendor ID that the firmware returns.
     /// Must match the values configured in the emulator test firmware.
-    const TEST_DEVICE_ID: u16 = 0x0010;
-    const TEST_VENDOR_ID: u16 = 0x1414;
-
     /// Maximum cycles to wait for a mailbox command to complete.
     /// Crypto operations (ECDH, ECDSA, AES, etc.) are slow in the emulator
     /// and need significantly more than the default 40M cycles.
@@ -194,17 +191,13 @@ pub mod test {
             let server_addr = format!("127.0.0.1:{}", udp_port)
                 .parse()
                 .expect("Failed to parse server address");
-            let validator = Validator::with_expected_values(
-                server_addr,
-                Some(TEST_DEVICE_ID),
-                Some(TEST_VENDOR_ID),
-            )
-            .set_recv_timeout(Duration::from_secs(120))
-            .set_verbose(true)
-            .set_debug_unlock_signer(Box::new(debug_unlock_signer))
-            .set_command_authorizer(Box::new(HmacCommandAuthorizer::new(
-                crate::runtime::TEST_AUTH_CMD_HMAC_KEY.to_vec(),
-            )));
+            let validator = Validator::new(server_addr)
+                .set_recv_timeout(Duration::from_secs(120))
+                .set_verbose(true)
+                .set_debug_unlock_signer(Box::new(debug_unlock_signer))
+                .set_command_authorizer(Box::new(HmacCommandAuthorizer::new(
+                    crate::runtime::TEST_AUTH_CMD_HMAC_KEY.to_vec(),
+                )));
 
             println!("Running Mailbox validator in-process (port={})", udp_port);
 

@@ -76,8 +76,6 @@ pub struct CommandId(pub u32);
 impl CommandId {
     pub const MC_FIRMWARE_VERSION: Self = Self(0x4D46_5756); // "MFWV"
     pub const MC_DEVICE_CAPABILITIES: Self = Self(0x4D43_4150); // "MCAP"
-    pub const MC_DEVICE_ID: Self = Self(0x4D44_4944); // "MDID"
-    pub const MC_DEVICE_INFO: Self = Self(0x4D44_494E); // "MDIN"
     pub const MC_GET_LOG: Self = Self(0x4D47_4C47); // "MGLG"
     pub const MC_CLEAR_LOG: Self = Self(0x4D43_4C47); // "MCLG"
     pub const MC_FIPS_SELF_TEST_START: Self = Self(0x4D46_5354); // "MFST"
@@ -155,8 +153,6 @@ impl From<CommandId> for u32 {
 pub enum McuMailboxReq {
     FirmwareVersion(FirmwareVersionReq),
     DeviceCaps(DeviceCapsReq),
-    DeviceId(DeviceIdReq),
-    DeviceInfo(DeviceInfoReq),
     GetLog(GetLogReq),
     ClearLog(ClearLogReq),
     FipsSelfTestStart(McuFipsSelfTestStartReq),
@@ -215,8 +211,6 @@ impl McuMailboxReq {
         match self {
             McuMailboxReq::FirmwareVersion(req) => Ok(req.as_bytes()),
             McuMailboxReq::DeviceCaps(req) => Ok(req.as_bytes()),
-            McuMailboxReq::DeviceId(req) => Ok(req.as_bytes()),
-            McuMailboxReq::DeviceInfo(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetLog(req) => Ok(req.as_bytes()),
             McuMailboxReq::ClearLog(req) => Ok(req.as_bytes()),
             McuMailboxReq::FipsSelfTestStart(req) => Ok(req.as_bytes()),
@@ -272,8 +266,6 @@ impl McuMailboxReq {
         match self {
             McuMailboxReq::FirmwareVersion(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DeviceCaps(req) => Ok(req.as_mut_bytes()),
-            McuMailboxReq::DeviceId(req) => Ok(req.as_mut_bytes()),
-            McuMailboxReq::DeviceInfo(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetLog(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ClearLog(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FipsSelfTestStart(req) => Ok(req.as_mut_bytes()),
@@ -329,8 +321,6 @@ impl McuMailboxReq {
         match self {
             McuMailboxReq::FirmwareVersion(_) => CommandId::MC_FIRMWARE_VERSION,
             McuMailboxReq::DeviceCaps(_) => CommandId::MC_DEVICE_CAPABILITIES,
-            McuMailboxReq::DeviceId(_) => CommandId::MC_DEVICE_ID,
-            McuMailboxReq::DeviceInfo(_) => CommandId::MC_DEVICE_INFO,
             McuMailboxReq::GetLog(_) => CommandId::MC_GET_LOG,
             McuMailboxReq::ClearLog(_) => CommandId::MC_CLEAR_LOG,
             McuMailboxReq::FipsSelfTestStart(_) => CommandId::MC_FIPS_SELF_TEST_START,
@@ -411,8 +401,6 @@ pub enum McuMailboxResp {
     Header(MailboxRespHeader),
     FirmwareVersion(FirmwareVersionResp),
     DeviceCaps(DeviceCapsResp),
-    DeviceId(DeviceIdResp),
-    DeviceInfo(DeviceInfoResp),
     GetLog(GetLogResp),
     ClearLog(ClearLogResp),
     FipsSelfTestStart(McuFipsSelfTestStartResp),
@@ -530,8 +518,6 @@ impl McuMailboxResp {
             McuMailboxResp::Header(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FirmwareVersion(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DeviceCaps(resp) => Ok(resp.as_bytes()),
-            McuMailboxResp::DeviceId(resp) => Ok(resp.as_bytes()),
-            McuMailboxResp::DeviceInfo(resp) => resp.as_bytes_partial(),
             McuMailboxResp::GetLog(resp) => resp.as_bytes_partial(),
             McuMailboxResp::ClearLog(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FipsSelfTestStart(resp) => Ok(resp.as_bytes()),
@@ -586,8 +572,6 @@ impl McuMailboxResp {
             McuMailboxResp::Header(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FirmwareVersion(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DeviceCaps(resp) => Ok(resp.as_mut_bytes()),
-            McuMailboxResp::DeviceId(resp) => Ok(resp.as_mut_bytes()),
-            McuMailboxResp::DeviceInfo(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::GetLog(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::ClearLog(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FipsSelfTestStart(resp) => Ok(resp.as_mut_bytes()),
@@ -706,45 +690,6 @@ pub struct DeviceCapsResp {
     pub caps: [u8; DEVICE_CAPS_SIZE],
 }
 impl Response for DeviceCapsResp {}
-
-#[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
-pub struct DeviceIdReq {
-    pub hdr: MailboxReqHeader,
-}
-impl Request for DeviceIdReq {
-    const ID: CommandId = CommandId::MC_DEVICE_ID;
-    type Resp = DeviceIdResp;
-}
-
-#[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
-pub struct DeviceIdResp {
-    pub hdr: MailboxRespHeader,
-    pub vendor_id: u16,
-    pub device_id: u16,
-    pub subsystem_vendor_id: u16,
-    pub subsystem_id: u16,
-}
-impl Response for DeviceIdResp {}
-
-#[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
-pub struct DeviceInfoReq {
-    pub hdr: MailboxReqHeader,
-    pub index: u32,
-}
-impl Request for DeviceInfoReq {
-    const ID: CommandId = CommandId::MC_DEVICE_INFO;
-    type Resp = DeviceInfoResp;
-}
-#[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
-pub struct DeviceInfoResp {
-    pub hdr: MailboxRespHeaderVarSize,
-    pub data: [u8; MAX_UUID_SIZE], // variable length
-}
-impl McuResponseVarSize for DeviceInfoResp {}
 
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u32)]

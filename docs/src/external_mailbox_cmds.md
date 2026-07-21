@@ -85,7 +85,7 @@ These commands support common Caliptra management functions, including querying 
 
 ## Command Format
 
-Common command payloads are defined in [Caliptra Common Commands](caliptra_common_commands.md#command-definitions). This section lists the MCI mailbox command code for each common command and keeps mailbox-only command definitions in this document. MCI mailbox checksum and status fields are transport-specific framing and are not repeated in each common command section below.
+Common command payloads are defined in [Caliptra Common Commands](caliptra_common_commands.md#command-definitions). This section lists the MCI mailbox command code for each common command and keeps mailbox-only command definitions in this document. MCI mailbox checksum, `fips_status`, and variable-length `data_len` fields are transport-specific response framing and are not part of the common command payload tables.
 
 ### MC_FIRMWARE_VERSION
 
@@ -94,6 +94,15 @@ Retrieves the version of the target firmware.
 Command Code: `0x4D46_5756` ("MFWV")
 
 Payload semantics are defined by [Firmware Version](caliptra_common_commands.md#firmware-version).
+
+MCI mailbox response payload:
+
+| **Name**    | **Type**     | **Description**                            |
+| ----------- | ------------ | ------------------------------------------ |
+| chksum      | u32          | Response checksum.                         |
+| fips_status | u32          | FIPS approved or an error.                 |
+| data_len    | u32          | Length in bytes of the valid version data. |
+| version     | u8[data_len] | Firmware Version Number in ASCII format.   |
 
 ### MC_DEVICE_CAPABILITIES
 
@@ -118,6 +127,18 @@ Retrieves the debug log for the MCU Runtime.
 Command Code: `0x4D47_4C47` ("MGLG")
 
 Payload semantics and debug log format are defined by [Get Debug Log](caliptra_common_commands.md#get-debug-log).
+
+MCI mailbox request payload contains only the mailbox checksum header. The command always retrieves the MCU Runtime debug log.
+
+MCI mailbox response payload:
+
+| **Name**    | **Type**       | **Description**                                 |
+| ----------- | -------------- | ----------------------------------------------- |
+| chksum      | u32            | Response checksum.                              |
+| fips_status | u32            | FIPS approved or an error.                      |
+| data_len    | u32            | Length in bytes of `more_data` plus `log_data`. |
+| more_data   | u32            | `1` if more log data remains, `0` otherwise.    |
+| log_data    | u8[data_len-4] | Debug log contents.                             |
 
 ### MC_CLEAR_LOG
 

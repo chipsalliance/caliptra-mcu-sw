@@ -83,15 +83,15 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
             return self.send_error_response(
                 msg_buf,
                 hdr.command_code,
-                VdmCompletionCode::InvalidData,
+                VdmCompletionCode::InvalidParameter,
             );
         }
 
-        if !hdr.is_request() {
+        if !hdr.is_request() || !hdr.reserved_is_zero() {
             return self.send_error_response(
                 msg_buf,
                 hdr.command_code,
-                VdmCompletionCode::InvalidData,
+                VdmCompletionCode::InvalidParameter,
             );
         }
 
@@ -102,7 +102,7 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
                 return self.send_error_response(
                     msg_buf,
                     hdr.command_code,
-                    VdmCompletionCode::UnsupportedCommand,
+                    VdmCompletionCode::UnsupportedOperation,
                 );
             }
         };
@@ -143,7 +143,7 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
         // Build the response.
         let (completion_code, ver_bytes) = match result {
             Ok(()) => (VdmCompletionCode::Success, &version.ver_str[..version.len]),
-            Err(_) => (VdmCompletionCode::InvalidData, &[][..]),
+            Err(_) => (VdmCompletionCode::InvalidParameter, &[][..]),
         };
 
         let resp = FirmwareVersionResponse::new(completion_code as u32, ver_bytes);
@@ -230,7 +230,7 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
             return self.send_error_response(
                 msg_buf,
                 VdmCommand::GetDebugLog as u8,
-                VdmCompletionCode::UnsupportedCommand,
+                VdmCompletionCode::UnsupportedOperation,
             );
         }
 
@@ -269,7 +269,7 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
             return self.send_error_response(
                 msg_buf,
                 VdmCommand::ClearDebugLog as u8,
-                VdmCompletionCode::UnsupportedCommand,
+                VdmCompletionCode::UnsupportedOperation,
             );
         }
 
@@ -305,14 +305,23 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
 /// MCTP VDM completion code space.
 fn map_caliptra_to_vdm(err: CaliptraCompletionCode) -> VdmCompletionCode {
     match err {
-        CaliptraCompletionCode::InvalidParameter | CaliptraCompletionCode::InvalidIdentifier => {
-            VdmCompletionCode::InvalidData
-        }
-        CaliptraCompletionCode::UnsupportedOperation => VdmCompletionCode::UnsupportedCommand,
-        CaliptraCompletionCode::DeviceNotReady => VdmCompletionCode::NotReady,
-        CaliptraCompletionCode::InvalidLength | CaliptraCompletionCode::InvalidPayloadSize => {
-            VdmCompletionCode::InvalidLength
-        }
-        _ => VdmCompletionCode::GeneralError,
+        CaliptraCompletionCode::Success => VdmCompletionCode::Success,
+        CaliptraCompletionCode::GeneralError => VdmCompletionCode::GeneralError,
+        CaliptraCompletionCode::InvalidParameter => VdmCompletionCode::InvalidParameter,
+        CaliptraCompletionCode::InvalidLength => VdmCompletionCode::InvalidLength,
+        CaliptraCompletionCode::InvalidIdentifier => VdmCompletionCode::InvalidIdentifier,
+        CaliptraCompletionCode::OperationFailed => VdmCompletionCode::OperationFailed,
+        CaliptraCompletionCode::InsufficientResources => VdmCompletionCode::InsufficientResources,
+        CaliptraCompletionCode::UnsupportedOperation => VdmCompletionCode::UnsupportedOperation,
+        CaliptraCompletionCode::DeviceNotReady => VdmCompletionCode::DeviceNotReady,
+        CaliptraCompletionCode::InvalidCommandVersion => VdmCompletionCode::InvalidCommandVersion,
+        CaliptraCompletionCode::InvalidPayloadSize => VdmCompletionCode::InvalidPayloadSize,
+        CaliptraCompletionCode::Timeout => VdmCompletionCode::Timeout,
+        CaliptraCompletionCode::AccessDenied => VdmCompletionCode::AccessDenied,
+        CaliptraCompletionCode::ResourceUnavailable => VdmCompletionCode::ResourceUnavailable,
+        CaliptraCompletionCode::PolicyViolation => VdmCompletionCode::PolicyViolation,
+        CaliptraCompletionCode::InvalidState => VdmCompletionCode::InvalidState,
+        CaliptraCompletionCode::CaliptraMailboxBusy => VdmCompletionCode::CaliptraMailboxBusy,
+        CaliptraCompletionCode::CaliptraBufferTooSmall => VdmCompletionCode::CaliptraBufferTooSmall,
     }
 }

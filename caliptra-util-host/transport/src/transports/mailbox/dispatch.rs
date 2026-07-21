@@ -19,9 +19,7 @@ use super::crypto_asymmetric::{
 };
 use super::debug_unlock::{ProdDebugUnlockReqCmd, ProdDebugUnlockTokenCmd};
 use super::delete::DeleteCmd;
-use super::device_info::{
-    GetDeviceCapabilitiesCmd, GetDeviceIdCmd, GetDeviceInfoCmd, GetFirmwareVersionCmd,
-};
+use super::device_info::{GetDeviceCapabilitiesCmd, GetFirmwareVersionCmd};
 use super::device_log::{DebugClearLogCmd, DebugGetLogCmd};
 use super::fuse::{FeProgCmd, GetAuthCmdChallengeCmd};
 use super::hmac::{HmacCmd, HmacKdfCounterCmd};
@@ -48,8 +46,6 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         // Device Info Commands
         1 => Some(process_command_with_metadata::<GetFirmwareVersionCmd>), // GetFirmwareVersion
         2 => Some(process_command_with_metadata::<GetDeviceCapabilitiesCmd>), // GetDeviceCapabilities
-        3 => Some(process_command_with_metadata::<GetDeviceIdCmd>),           // GetDeviceId
-        4 => Some(process_command_with_metadata::<GetDeviceInfoCmd>),         // GetDeviceInfo
         // SHA Commands (0x2001-0x2003)
         0x2001 => Some(process_command_with_metadata::<ShaInitCmd>), // HashInit
         0x2002 => Some(process_command_with_metadata::<ShaUpdateCmd>), // HashUpdate
@@ -107,8 +103,6 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         // Device Info Commands
         1 => Some(0x4D46_5756), // GetFirmwareVersion -> MC_FIRMWARE_VERSION ("MFWV")
         2 => Some(0x4D43_4150), // GetDeviceCapabilities -> MC_DEVICE_CAPABILITIES ("MCAP")
-        3 => Some(0x4D44_4944), // GetDeviceId -> MC_DEVICE_ID ("MDID")
-        4 => Some(0x4D44_494E), // GetDeviceInfo -> MC_DEVICE_INFO ("MDIN")
         // SHA Commands
         0x2001 => Some(0x4D43_5349), // HashInit -> MC_SHA_INIT ("MCSI")
         0x2002 => Some(0x4D43_5355), // HashUpdate -> MC_SHA_UPDATE ("MCSU")
