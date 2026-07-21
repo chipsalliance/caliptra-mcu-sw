@@ -173,10 +173,7 @@ impl I3c {
 
         // Set the main target's DCR before enabling the standby controller.
         // Once STBY_CR_ENABLE_INIT is non-zero, the RTL locks DCR read-only.
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom-i3c] Setting main target DCR to {:02x}",
-            dcr
-        );
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c] Setting main target DCR to {:02x}", dcr);
         regs.stdby_ctrl_mode_stby_cr_device_char
             .modify(StbyCrDeviceChar::Dcr.val(dcr as u32));
 
