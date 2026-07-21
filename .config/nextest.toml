@@ -11,7 +11,6 @@ store-success-output = false
 store-failure-output = true
 
 [profile.nightly-emulator]
-store-success-output = false
 failure-output = "immediate-final"
 fail-fast = false
 slow-timeout = { period = "60s", terminate-after = 30 }

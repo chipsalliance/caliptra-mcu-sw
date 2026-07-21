@@ -10,3 +10,4 @@ edition = "2021"
 [[bin]]
 name = "hello"
 path = "src/hello.rs"
+test = false

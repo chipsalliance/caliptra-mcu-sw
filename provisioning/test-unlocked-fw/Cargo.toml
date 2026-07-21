@@ -6,6 +6,11 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "caliptra-mcu-provisioning-test-unlocked-fw"
+test = false
+
+
 [dependencies]
 caliptra-mcu-bare-metal-io.workspace = true
 caliptra-mcu-romtime.workspace = true

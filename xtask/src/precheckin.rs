@@ -11,6 +11,7 @@ pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
     crate::deps::check()?;
     crate::docs::check_docs()?;
     crate::registers::autogen(true, &[], &[], None, None)?;
+    crate::test::nextest_list()?;
 
     // Default `devel` profile: 1 MB SRAM, no `release` feature, all debug
     // components present.  Catches code that the dev-time build would actually
