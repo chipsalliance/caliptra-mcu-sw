@@ -320,6 +320,7 @@ mod test {
         pub mcu_rom: Vec<u8>,
         pub soc_manifest: Vec<u8>,
         pub mcu_runtime: Vec<u8>,
+        pub flash_image: Option<Vec<u8>>,
     }
 
     fn prebuilt_binaries(
@@ -336,6 +337,7 @@ mod test {
             mcu_rom: binaries.mcu_rom.clone(),
             soc_manifest: binaries.soc_manifest.clone(),
             mcu_runtime: binaries.mcu_runtime.clone(),
+            flash_image: None,
         };
 
         // check for prebuilt binaries for our test feature
@@ -346,6 +348,7 @@ mod test {
             );
             test_binaries.soc_manifest = binaries.test_soc_manifest(feature).expect(&err).clone();
             test_binaries.mcu_runtime = binaries.test_runtime(feature).expect(&err).clone();
+            test_binaries.flash_image = binaries.test_flash_image(feature).ok();
         }
 
         test_binaries
@@ -1085,6 +1088,7 @@ mod test {
             mcu_rom,
             soc_manifest,
             mcu_runtime: mcu_runtime_bytes,
+            flash_image: None,
         }
     }
 
@@ -1096,6 +1100,7 @@ mod test {
             mcu_rom,
             soc_manifest,
             mcu_runtime,
+            flash_image,
         } = match FirmwareBinaries::from_env() {
             Ok(binaries)
                 if params.firmware_prefix.is_none() && params.custom_mcu_runtime.is_none() =>
@@ -1205,18 +1210,17 @@ mod test {
         };
 
         // Build flash image for flash-based boot, or use individual images for streaming boot
-        let (flash_image, caliptra_firmware, soc_manifest_bytes, mcu_firmware) =
-            if params.flash_boot {
-                let flash = build_flash_image_bytes(
-                    Some(&caliptra_fw),
-                    Some(&soc_manifest),
-                    Some(&mcu_runtime),
-                );
-                (Some(flash), vec![], vec![], vec![])
-            } else {
-                // For streaming boot, pass individual images to BMC
-                (None, caliptra_fw, soc_manifest, mcu_runtime)
-            };
+        let (flash_image, caliptra_firmware, soc_manifest_bytes, mcu_firmware) = if params
+            .flash_boot
+        {
+            let flash = flash_image.unwrap_or_else(|| {
+                build_flash_image_bytes(Some(&caliptra_fw), Some(&soc_manifest), Some(&mcu_runtime))
+            });
+            (Some(flash), vec![], vec![], vec![])
+        } else {
+            // For streaming boot, pass individual images to BMC
+            (None, caliptra_fw, soc_manifest, mcu_runtime)
+        };
 
         let primary_flash_initial_contents = build_primary_flash_initial_contents(
             flash_image,

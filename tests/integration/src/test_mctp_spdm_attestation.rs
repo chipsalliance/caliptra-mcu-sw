@@ -3,7 +3,7 @@
 //! This module executes SPDM attestation tests over MCTP transport
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use crate::test::{
         finish_runtime_hw_model, run_imaginary_flash_controller_service, start_runtime_hw_model,
         TestParams, TEST_LOCK,
@@ -13,7 +13,7 @@ mod test {
     use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
     use caliptra_mcu_testing_common::spdm_responder_validator::mctp::MctpTransport;
     use caliptra_mcu_testing_common::spdm_responder_validator::{
-        execute_spdm_attestation, SpdmValidatorRunner, SERVER_LISTENING,
+        execute_spdm_attestation_with_port, SpdmValidatorRunner, SERVER_LISTENING,
     };
     use caliptra_mcu_testing_common::wait_for_runtime_start;
     use random_port::PortPicker;
@@ -23,21 +23,42 @@ mod test {
     use std::thread;
     use std::time::Duration;
 
-    const TEST_NAME: &str = "MCTP-SPDM-ATTESTATION";
-
     #[ignore]
     #[test]
     fn test_mctp_spdm_attestation() {
+        run_test("test-mctp-spdm-attestation", "MCTP-SPDM-ATTESTATION");
+    }
+
+    #[ignore]
+    #[test]
+    fn test_mctp_spdm_attestation_tcb() {
+        run_test(
+            "test-mctp-spdm-attestation-tcb",
+            "MCTP-SPDM-ATTESTATION-TCB",
+        );
+    }
+
+    #[ignore]
+    #[test]
+    fn test_mctp_spdm_attestation_mixed() {
+        run_test(
+            "test-mctp-spdm-attestation-mixed",
+            "MCTP-SPDM-ATTESTATION-MIXED",
+        );
+    }
+
+    fn run_test(feature: &'static str, test_name: &'static str) {
         if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
             println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
             return;
         }
+        remove_spdm_attestation_artifacts();
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some("test-mctp-spdm-attestation"),
+            feature: Some(feature),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             use_strap_secrets: true,
             ..Default::default()
@@ -50,31 +71,70 @@ mod test {
         run_mctp_spdm_attestation_test(
             hw.i3c_port().unwrap(),
             hw.i3c_address().unwrap().into(),
+            PortPicker::new().pick().unwrap(),
             Duration::from_secs(9000),
+            test_name,
         );
 
         let test = finish_runtime_hw_model(&mut hw);
 
         assert_eq!(0, test);
+        assert_spdm_attestation_artifacts();
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    pub(crate) fn remove_spdm_attestation_artifacts() {
+        let Some(measurement_block) = spdm_measurement_block_path() else {
+            return;
+        };
+        let _ = std::fs::remove_file(measurement_block);
+    }
+
+    pub(crate) fn assert_spdm_attestation_artifacts() {
+        if let Err(err) = validate_spdm_attestation_artifacts() {
+            panic!("{err}");
+        }
+    }
+
+    fn validate_spdm_attestation_artifacts() -> Result<(), String> {
+        let Some(measurement_block) = spdm_measurement_block_path() else {
+            return Ok(());
+        };
+        let metadata = std::fs::metadata(&measurement_block)
+            .map_err(|err| format!("{} missing: {err}", measurement_block.display()))?;
+        if metadata.len() == 0 {
+            return Err(format!("{} must not be empty", measurement_block.display()));
+        }
+        Ok(())
+    }
+
+    fn spdm_measurement_block_path() -> Option<std::path::PathBuf> {
+        std::env::var("SPDM_VALIDATOR_DIR")
+            .ok()
+            .map(|validator_dir| {
+                std::path::Path::new(&validator_dir).join("measurement_block_fd.bin")
+            })
+    }
+
     pub fn run_mctp_spdm_attestation_test(
         port: u16,
         target_addr: DynamicI3cAddress,
+        spdm_port: u16,
         test_timeout_seconds: Duration,
+        test_name: &'static str,
     ) {
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
         let stream = TcpStream::connect(addr).unwrap();
         let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
+        SERVER_LISTENING.store(false, Ordering::Relaxed);
 
         caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             thread::sleep(test_timeout_seconds);
             println!(
                 "[{}] TIMED OUT AFTER {:?} SECONDS",
-                TEST_NAME,
+                test_name,
                 test_timeout_seconds.as_secs()
             );
             exit(-1);
@@ -90,28 +150,38 @@ mod test {
             if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
-            let listener = TcpListener::bind("127.0.0.1:2323")
+            let listener = TcpListener::bind(("127.0.0.1", spdm_port))
                 .expect("Could not bind to the SPDM listener port");
-            println!("[{}]: Spdm Server Listening on port 2323", TEST_NAME);
+            println!(
+                "[{}]: Spdm Server Listening on port {}",
+                test_name, spdm_port
+            );
             SERVER_LISTENING.store(true, Ordering::Relaxed);
 
             if let Some(spdm_stream) = listener.incoming().next() {
                 let mut spdm_stream = spdm_stream.expect("Failed to accept connection");
 
-                let mut test = SpdmValidatorRunner::new(Box::new(transport), TEST_NAME);
+                let mut test = SpdmValidatorRunner::new(Box::new(transport), test_name);
                 test.run_test(&mut spdm_stream);
                 if !test.is_passed() {
-                    println!("[{}]: Spdm Attestation Test Failed", TEST_NAME);
+                    println!("[{}]: Spdm Attestation Test Failed", test_name);
                     exit(-1);
                 } else {
-                    println!("[{}]: Spdm Attestation Test Passed", TEST_NAME);
+                    if let Err(err) = validate_spdm_attestation_artifacts() {
+                        println!(
+                            "[{}]: Spdm Attestation Artifact Check Failed: {err}",
+                            test_name
+                        );
+                        exit(-1);
+                    }
+                    println!("[{}]: Spdm Attestation Test Passed", test_name);
                     exit(0);
                 }
             }
         });
 
         caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
-            execute_spdm_attestation("MCTP");
+            execute_spdm_attestation_with_port("MCTP", Some(spdm_port));
         });
     }
 }

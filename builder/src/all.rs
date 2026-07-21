@@ -90,6 +90,8 @@ const FEATURES_REQUIRING_SOC_IMAGES: &[&str] = &[
     "test-firmware-update-streaming",
     "test-streaming-boot-flash-write-back",
     "test-mctp-spdm-attestation",
+    "test-mctp-spdm-attestation-tcb",
+    "test-mctp-spdm-attestation-mixed",
     "test-mctp-spdm-attestation-pcr-quote",
     "test-firmware-v2",
 ];
@@ -188,24 +190,45 @@ fn create_default_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
     (soc_images, soc_images_paths)
 }
 
-/// Creates a single dummy SoC image for the attestation demo.
-/// Uses fw_id 0x0003 so it appears as a distinct SoC firmware component
-/// in the auth manifest, evidence, and reference value CoRIM.
-fn create_attestation_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
-    let soc_image_fw = vec![0xDEu8; 512];
-    let soc_image_path = std::env::temp_dir().join("attestation-soc-image.bin");
-    std::fs::write(&soc_image_path, &soc_image_fw).expect("Failed to write attestation SoC image");
+/// Creates dummy SoC images for attestation integration tests.
+///
+/// The test features intentionally leave `is_ak_target = false` so MCU Runtime
+/// remains the attestation node. The TCB/non-TCB flags exercise both
+/// Measurement API evidence read paths.
+fn create_attestation_soc_images(feature: Option<&str>) -> (Vec<ImageCfg>, Vec<PathBuf>) {
+    // The default OCP EAT attestation scenario uses only non-TCB SoC
+    // components; dedicated features opt in to TCB-only or mixed coverage.
+    let specs: &[(u8, u32, bool)] = match feature {
+        Some("test-mctp-spdm-attestation-tcb") => &[(0xde, 0x0003, true)],
+        Some("test-mctp-spdm-attestation-mixed") => &[(0xde, 0x0003, true), (0xad, 0x0004, false)],
+        _ => &[(0xde, 0x0003, false)],
+    };
 
-    let soc_images = vec![ImageCfg {
-        path: soc_image_path.clone(),
-        load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
-        image_id: 0x0003,
-        component_id: 0x0003,
-        exec_bit: 5,
-        ..Default::default()
-    }];
+    let mut soc_images = Vec::with_capacity(specs.len());
+    let mut soc_image_paths = Vec::with_capacity(specs.len());
+    let mut load_addr = MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET;
 
-    (soc_images, vec![soc_image_path])
+    for (idx, (fill, fw_id, is_tcb)) in specs.iter().enumerate() {
+        let soc_image_fw = vec![*fill; 512];
+        let soc_image_path =
+            std::env::temp_dir().join(format!("attestation-soc-image-{fw_id:08x}.bin"));
+        std::fs::write(&soc_image_path, &soc_image_fw)
+            .expect("Failed to write attestation SoC image");
+        soc_images.push(ImageCfg {
+            path: soc_image_path.clone(),
+            load_addr,
+            image_id: *fw_id,
+            component_id: *fw_id,
+            exec_bit: 5 + idx as u32,
+            is_tcb: *is_tcb,
+            is_ak_target: false,
+            ..Default::default()
+        });
+        soc_image_paths.push(soc_image_path);
+        load_addr += soc_image_fw.len() as u64;
+    }
+
+    (soc_images, soc_image_paths)
 }
 
 /// Pre-generate the target-dir `generated/` configs so the runtime build can
@@ -681,11 +704,15 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             .iter()
             .any(|f| FEATURES_REQUIRING_SOC_IMAGES.contains(f));
         if needs_soc {
-            let is_attestation = base_runtime_features.iter().any(|f| {
-                *f == "test-mctp-spdm-attestation" || *f == "test-mctp-spdm-attestation-pcr-quote"
+            let attestation_feature = base_runtime_features.iter().find_map(|f| {
+                if f.starts_with("test-mctp-spdm-attestation") {
+                    Some(*f)
+                } else {
+                    None
+                }
             });
-            let (images, _paths) = if is_attestation {
-                create_attestation_soc_images()
+            let (images, _paths) = if let Some(feature) = attestation_feature {
+                create_attestation_soc_images(Some(feature))
             } else {
                 create_default_soc_images()
             };
@@ -887,10 +914,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             // in the feature-specific SoC manifest below.
             let (feature_soc_images, feature_soc_images_paths) =
                 if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) && soc_images.is_none() {
-                    let (images, paths) = if *feature == "test-mctp-spdm-attestation"
-                        || *feature == "test-mctp-spdm-attestation-pcr-quote"
-                    {
-                        create_attestation_soc_images()
+                    let (images, paths) = if feature.starts_with("test-mctp-spdm-attestation") {
+                        create_attestation_soc_images(Some(feature))
                     } else {
                         create_default_soc_images()
                     };
