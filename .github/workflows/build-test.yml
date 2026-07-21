@@ -11,9 +11,45 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  RUSTUP_TOOLCHAIN: "1.85-x86_64-unknown-linux-gnu"
+
 jobs:
+  build-xtask:
+    runs-on: e2-standard-4
+    timeout-minutes: 30
+
+    env:
+      CARGO_INCREMENTAL: 0
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+
+      - name: Prebuild xtask
+        run: |
+          cargo build --package caliptra-mcu-xtask --features parallel-build
+          cp target/debug/caliptra-mcu-xtask /tmp/xtask
+
+      - name: Upload xtask binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: xtask-binary
+          path: /tmp/xtask
+          retention-days: 1
+
   precheckin:
-    runs-on: ubuntu-latest
+    runs-on: e2-standard-8
+    needs: [build-xtask]
     timeout-minutes: 30
 
     env:
@@ -33,14 +69,28 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git && \
-          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+
+      - name: Download xtask binary
+        uses: actions/download-artifact@v4
+        with:
+          name: xtask-binary
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
+
+      - name: Install cargo-nextest (prebuilt binary)
+        run: |
+          curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
 
       - name: Run precheckin
-        run: cargo xtask precheckin
+        run: /tmp/xtask precheckin
 
   build-firmware:
     runs-on: e2-standard-16-big-disk
+    needs: [build-xtask]
     timeout-minutes: 90
 
     env:
@@ -61,8 +111,8 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git && \
-          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v3
@@ -83,6 +133,9 @@ jobs:
           path: ~/.cargo/bin/sccache
           key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
 
+      - name: Make sccache executable
+        run: chmod +x ~/.cargo/bin/sccache || true
+
       - name: Configure sccache
         uses: actions/github-script@v6
         with:
@@ -91,13 +144,22 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+      - name: Download xtask binary
+        uses: actions/download-artifact@v4
+        with:
+          name: xtask-binary
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
+
       - name: Build ROM and runtime binaries
         run: |
           # Build all test runtime features used by integration tests
           # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
           # Note: parallel-build is disabled because it creates separate target dirs
           # per build, which exhausts disk space on the e2-standard-8 runner.
-          cargo run -p caliptra-mcu-xtask -- all-build --platform emulator \
+          /tmp/xtask all-build --platform emulator \
             --rom-features "hw-2-1" \
             --test-rom-features "ocp-lock,stable-owner-key" \
             --separate-runtimes
@@ -105,7 +167,7 @@ jobs:
 
       - name: Build release ROM and runtime binaries
         run: |
-          cargo run -p caliptra-mcu-xtask --features parallel-build -- all-build \
+          /tmp/xtask all-build \
             --platform emulator --separate-runtimes \
             --profile release
           sccache --show-stats
@@ -126,6 +188,7 @@ jobs:
 
   build-emulator:
     runs-on: e2-standard-16
+    needs: [build-xtask]
     timeout-minutes: 60
 
     env:
@@ -146,8 +209,8 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git && \
-          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v3
@@ -168,6 +231,9 @@ jobs:
           path: ~/.cargo/bin/sccache
           key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
 
+      - name: Make sccache executable
+        run: chmod +x ~/.cargo/bin/sccache || true
+
       - name: Configure sccache
         uses: actions/github-script@v6
         with:
@@ -176,10 +242,19 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+      - name: Download xtask binary
+        uses: actions/download-artifact@v4
+        with:
+          name: xtask-binary
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
+
       - name: Build emulator binary
         run: |
           # Build a single emulator that supports all test features via runtime flags
-          cargo xtask emulator-build
+          /tmp/xtask emulator-build
           sccache --show-stats
 
       - name: Upload emulator bundle
@@ -191,6 +266,7 @@ jobs:
 
   build-tests:
     runs-on: e2-standard-8
+    needs: [build-xtask]
     timeout-minutes: 60
 
     env:
@@ -215,8 +291,8 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git libclang-dev && \
-          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Install cargo-nextest (prebuilt binary)
         run: |
@@ -241,6 +317,9 @@ jobs:
           path: ~/.cargo/bin/sccache
           key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
 
+      - name: Make sccache executable
+        run: chmod +x ~/.cargo/bin/sccache || true
+
       - name: Configure sccache
         uses: actions/github-script@v6
         with:
@@ -249,9 +328,18 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+      - name: Download xtask binary
+        uses: actions/download-artifact@v4
+        with:
+          name: xtask-binary
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
+
       - name: Build test archive
         run: |
-          cargo --config "$EXTRA_CARGO_CONFIG" xtask test-archive \
+          /tmp/xtask test-archive \
             --archive /tmp/nextest-archive.tar.zst
           sccache --show-stats
 
@@ -264,7 +352,7 @@ jobs:
 
   test_emulator:
     runs-on: e2-standard-4
-    needs: [precheckin, build-firmware, build-emulator, build-tests]
+    needs: [precheckin, build-firmware, build-emulator, build-tests, build-xtask]
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -284,16 +372,25 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git libclang-dev dnsmasq && \
-          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm dnsmasq && \
+          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Install cargo-nextest (prebuilt binary)
         run: |
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
 
+      - name: Download xtask binary
+        uses: actions/download-artifact@v4
+        with:
+          name: xtask-binary
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
+
       - name: Setup TAP interface for network tests
         run: |
-          cargo xtask network tap setup
+          /tmp/xtask network tap setup
 
       - name: Download firmware bundle
         uses: actions/download-artifact@v4
@@ -326,7 +423,7 @@ jobs:
       #   cargo xtask test --firmware-bundle target/all-fw.zip --emulator-bundle target/emulators.zip
       - name: Run tests (shard ${{ matrix.shard }}/4)
         run: |
-          cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
+          /tmp/xtask test \
             --archive /tmp/nextest-archive.tar.zst \
             --shard hash:${{ matrix.shard }}/4 \
             --firmware-bundle "${PWD}/target/all-fw.zip" \
@@ -341,7 +438,7 @@ jobs:
       - name: Run release tests
         if: matrix.shard == 1
         run: |
-          cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
+          /tmp/xtask test \
             --archive /tmp/nextest-archive.tar.zst \
             --firmware-bundle "${PWD}/target/all-fw-release.zip" \
             --emulator-bundle "${PWD}/target/emulators.zip" \
@@ -393,7 +490,7 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    needs: [precheckin, build-firmware, build-emulator, build-tests]
+    needs: [precheckin, build-firmware, build-emulator, build-tests, build-xtask]
 
     env:
       CARGO_INCREMENTAL: 0
@@ -407,12 +504,21 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git && \
-          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+          sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
+          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Install cargo-nextest (prebuilt binary)
         run: |
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
+
+      - name: Download xtask binary
+        uses: actions/download-artifact@v4
+        with:
+          name: xtask-binary
+          path: /tmp/
+
+      - name: Make xtask executable
+        run: chmod +x /tmp/xtask
 
       - name: Download firmware bundle
         uses: actions/download-artifact@v4
@@ -433,7 +539,7 @@ jobs:
           path: /tmp/
 
       - name: Build ROM ELF for coverage analysis
-        run: cargo xtask rom-build
+        run: /tmp/xtask rom-build
 
       - name: Run tests with coverage collection
         run: |
@@ -449,7 +555,7 @@ jobs:
 
       - name: Analyze coverage
         run: |
-          MCU_COVERAGE_PATH=/tmp/mcu-coverage cargo xtask coverage --analyze-only 2>&1 | tee /tmp/coverage-results.txt
+          MCU_COVERAGE_PATH=/tmp/mcu-coverage /tmp/xtask coverage --analyze-only 2>&1 | tee /tmp/coverage-results.txt
           echo '## Code Coverage' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '| Image | Metric | Value |' >> $GITHUB_STEP_SUMMARY

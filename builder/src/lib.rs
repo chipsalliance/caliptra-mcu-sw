@@ -65,6 +65,9 @@ pub const TARGET: &str = "riscv32imc-unknown-none-elf";
 
 pub static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
     let current_dir = std::env::current_dir().expect("Could not get current directory");
+    if current_dir.join("Cargo.toml").exists() && current_dir.join("xtask").exists() {
+        return current_dir;
+    }
     option_env!("CARGO_MANIFEST_DIR")
         .map(|s| {
             let p = Path::new(&s);
