@@ -36,6 +36,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mctp-vdm-cmds",
     "test-pldm-discovery",
     "test-pldm-fw-update",
+    "test-pldm-request-response",
     "test-mci",
     "test-mcu-mbox-driver",
     "test-mcu-mbox-soc-requester-loopback",
