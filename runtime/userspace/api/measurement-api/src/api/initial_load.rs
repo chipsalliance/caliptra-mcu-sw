@@ -11,11 +11,11 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 use caliptra_mcu_libtock_platform::Syscalls;
 use mcu_caliptra_api_lite::{
     authorize_and_stash as caliptra_authorize, dpe_derive_context, dpe_tag_tci, extend_pcr31,
-    sha_finish, sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
-    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, HashAlgo, SHA_CONTEXT_SIZE,
+    sha_finish, sha_init, sha_update, ApiAlloc, DpeContextHandle, DpeDeriveContextFlags,
+    DpeDeriveContextParams, HashAlgo, SHA_CONTEXT_SIZE,
 };
 
-use super::MeasurementApi;
+use super::{caliptra_authorize_params, MeasurementApi};
 use crate::attestation_manifest::AttestationManifestEntry;
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::ImageMetadata;
@@ -108,8 +108,9 @@ async fn create_software_pcr_record<S: Syscalls, A: ApiAlloc>(
     let pcr_store = SoftwarePcrStore::<S>::new(SOFT_PCR_STORE_DRIVER_NUM);
     reject_existing_measurement_record(&pcr_store, entry.fw_id)?;
 
-    let digest = initial_software_pcr_digest(alloc, &metadata.measurement).await?;
-    let record = software_pcr_initial_load_record(entry.fw_id, digest, metadata);
+    let mut journey_digest = [0u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
+    initial_software_pcr_journey_digest(alloc, &metadata.measurement, &mut journey_digest).await?;
+    let record = software_pcr_initial_load_record(entry.fw_id, journey_digest, metadata);
     pcr_store
         .create_measurement(entry.fw_id, &record)
         .map_err(|_| api.enter_error_state(MeasurementApiError::StoreFailed))
@@ -139,12 +140,12 @@ fn reject_existing_measurement_record<S: Syscalls>(
     Ok(())
 }
 
-async fn initial_software_pcr_digest<A: ApiAlloc>(
+async fn initial_software_pcr_journey_digest<A: ApiAlloc>(
     alloc: &A,
     measurement: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
-) -> MeasurementApiResult<[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE]> {
+    journey_digest: &mut [u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+) -> MeasurementApiResult {
     let zero_digest = [0u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
-    let mut digest = [0u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
     let ctx = alloc
         .alloc(SHA_CONTEXT_SIZE)
         .map_err(|_| MeasurementApiError::DigestFailed)?;
@@ -154,21 +155,20 @@ async fn initial_software_pcr_digest<A: ApiAlloc>(
     sha_update(alloc, &mut state, measurement)
         .await
         .map_err(|_| MeasurementApiError::DigestFailed)?;
-    sha_finish(alloc, &mut state, &mut digest)
+    sha_finish(alloc, &mut state, journey_digest)
         .await
-        .map_err(|_| MeasurementApiError::DigestFailed)?;
-    Ok(digest)
+        .map_err(|_| MeasurementApiError::DigestFailed)
 }
 
 fn software_pcr_initial_load_record(
     fw_id: u32,
-    digest: [u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+    journey_digest: [u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
     metadata: ImageMetadata,
 ) -> MeasurementRecord {
     MeasurementRecord {
         fw_id,
-        current_digest: digest,
-        journey_digest: digest,
+        current_digest: metadata.measurement,
+        journey_digest,
         svn: metadata.svn,
         version: metadata.version,
         reserved: [0u8; 4],
@@ -189,24 +189,13 @@ fn tcb_child_record(
     }
 }
 
-fn caliptra_authorize_params(fw_id: u32, metadata: ImageMetadata) -> AuthorizeAndStashParams {
-    AuthorizeAndStashParams {
-        fw_id,
-        measurement: metadata.measurement,
-        context: [0u8; 48],
-        svn: metadata.svn,
-        flags: AuthorizeAndStashFlags::SKIP_STASH,
-        source: metadata.source,
-        image_size: metadata.image_size,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     extern crate std;
 
     use super::*;
     use crate::attestation_manifest::MCU_RT_FW_ID;
+    use mcu_caliptra_api_lite::AuthorizeAndStashFlags;
 
     #[test]
     fn caliptra_authorize_params_force_skip_stash_for_initial_load() {
@@ -234,19 +223,20 @@ mod tests {
     }
 
     #[test]
-    fn software_pcr_initial_load_record_uses_current_and_journey_digest() {
-        let digest = [0x5a; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
+    fn software_pcr_initial_load_record_uses_raw_current_and_journey_digest() {
+        let journey_digest = [0x5a; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
         let metadata = ImageMetadata {
             svn: 7,
             version: 9,
             ..ImageMetadata::initial_load_from_load_address(0x1234, [0xa5; 48])
         };
 
-        let record = software_pcr_initial_load_record(0x1000, digest, metadata);
+        let record = software_pcr_initial_load_record(0x1000, journey_digest, metadata);
 
         assert_eq!(record.fw_id, 0x1000);
-        assert_eq!(record.current_digest, digest);
-        assert_eq!(record.journey_digest, digest);
+        assert_eq!(record.current_digest, metadata.measurement);
+        assert_eq!(record.journey_digest, journey_digest);
+        assert_ne!(record.current_digest, record.journey_digest);
         assert_eq!(record.svn, 7);
         assert_eq!(record.version, 9);
         assert_eq!(record.reserved, [0u8; 4]);
