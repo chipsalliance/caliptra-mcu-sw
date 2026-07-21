@@ -202,8 +202,12 @@ pub mod test {
             .set_recv_timeout(Duration::from_secs(120))
             .set_verbose(true)
             .set_debug_unlock_signer(Box::new(debug_unlock_signer))
+            // TODO(vendor-auth): the MCU mailbox path is now asymmetric; this #[ignore]'d
+            // host validator still drives HMAC and needs the caliptra-mailbox-client to gain
+            // an asym signer before it can validate against asym firmware. Local key kept only
+            // so the (ignored) test compiles; it does not authorize against asym firmware.
             .set_command_authorizer(Box::new(HmacCommandAuthorizer::new(
-                crate::runtime::TEST_AUTH_CMD_HMAC_KEY.to_vec(),
+                vec![0u8; 48],
             )));
 
             println!("Running Mailbox validator in-process (port={})", udp_port);

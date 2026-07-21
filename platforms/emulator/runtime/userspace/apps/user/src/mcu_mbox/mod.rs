@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 #[cfg(feature = "mcu-mbox-service")]
-pub(crate) mod cmd_auth_mock;
+pub(crate) mod cmd_auth_asym;
 #[cfg(feature = "mcu-mbox-service")]
 mod cmd_handler_mock;
 
@@ -33,7 +33,14 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
     #[cfg(feature = "mcu-mbox-service")]
     {
         let handler = cmd_handler_mock::NonCryptoCmdHandlerMock;
-        let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer::default();
+        // Command authorization is the asymmetric, manifest-anchored authorizer
+        // (ECDSA-P384 + ML-DSA-87, verified in Caliptra core). It replaced the
+        // dummy-HMAC mock. `CmdInterface`/`McuMboxService` see only
+        // `&mut dyn CommandAuthorizer`. NOTE: this build only compiles against a
+        // caliptra-* rev that carries the VENDOR_AUTH_* commands (currently the
+        // fork pin — see VENDOR_AUTH_FORK_PIN_REVERT.md); do not merge to main-2.1
+        // until that lands upstream and the pin is reverted.
+        let mut cmd_authorizer = cmd_auth_asym::AsymCommandAuthorizer::default();
         let mut transport = caliptra_mcu_mbox_lib::transport::McuMboxTransport::new(
             caliptra_mcu_libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         );

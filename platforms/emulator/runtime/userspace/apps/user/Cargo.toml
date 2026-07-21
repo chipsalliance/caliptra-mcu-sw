@@ -67,13 +67,17 @@ toml.workspace = true
 [features]
 default = ["all-features"]
 # Caliptra MCU features
-all-features = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe", "userspace-log"]
+all-features = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe", "userspace-log", "asym-cmd-auth"]
 spdm = ["mcu-mbox-service"]
 streaming-boot = []
 flash-boot = []
 firmware-update = []
 mcu-mbox-service = []
 mctp-vdm-service = []
+# The asymmetric, manifest-anchored, per-command authorizer (now the only one;
+# included in all-features/default). Requires a caliptra-* rev with the
+# VENDOR_AUTH_* commands (currently the fork pin).
+asym-cmd-auth = ["mcu-mbox-service"]
 debug = []
 hw-2-1 = []
 ocp-lock = [

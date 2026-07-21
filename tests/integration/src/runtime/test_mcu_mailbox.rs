@@ -1,11 +1,16 @@
 // Licensed under the Apache-2.0 license
 
-use crate::test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams};
+use crate::runtime::{
+    asym_custom_fw, build_asym_fw, build_asym_fw_features, execute_authorized_req_asym,
+    vendor_auth_keys,
+};
+use crate::test::{start_runtime_hw_model, TestParams};
 use anyhow::Result;
+use caliptra_mcu_command_auth_challenge_signer::LocalVendorAuthSigner;
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    FirmwareVersionReq, GetAuthCmdChallengeReq, McuFeProgReq, OcpLockRotateHekReq,
-    OcpLockRotateHekResp, OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
+    FirmwareVersionReq, McuFeProgReq, OcpLockRotateHekReq, OcpLockRotateHekResp,
+    OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
 };
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_romtime::McuBootMilestones;
@@ -60,68 +65,14 @@ fn test_firmware_version_cmd() -> Result<()> {
 }
 
 #[test]
-fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
-    let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
-        ..Default::default()
-    });
-
-    // wait another little bit for the mailbox to come up after the runtime
-    hw.step_until(|hw| {
-        hw.mci_boot_milestones()
-            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
-    });
-
-    let cmd = GetAuthCmdChallengeReq::default();
-    let resp = hw.mailbox_execute_req(cmd)?;
-
-    assert_eq!(resp.challenge.len(), 32);
-    assert!(
-        resp.challenge
-            .iter()
-            .copied()
-            .reduce(|a, b| (a | b))
-            .unwrap()
-            != 0,
-        "Challenge should not be all-zeros"
-    );
-    Ok(())
-}
-
-#[test]
 fn test_fe_prog_authorized_req() -> Result<()> {
-    use crate::runtime::execute_authorized_req;
-    use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
-
-    let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
-    let (caliptra_fw, vendor_pk_hash_arr, soc_manifest) =
-        if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let fw = binaries.caliptra_fw.clone();
-            let pk_hash = binaries.vendor_pk_hash().unwrap();
-            let manifest = binaries.test_soc_manifest("test-mcu-mbox-cmds").unwrap();
-            (fw, pk_hash, manifest)
-        } else {
-            let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
-                svn: Some(0),
-                mcu_firmware: Some(mcu_runtime_path.clone()),
-                ..Default::default()
-            });
-            let fw = std::fs::read(builder.get_caliptra_fw()?).unwrap();
-            let pk_hash_str = builder.get_vendor_pk_hash()?.to_string();
-            let pk_hash = hex::decode(&pk_hash_str).unwrap();
-            let mut pk_hash_arr = [0u8; 48];
-            pk_hash_arr.copy_from_slice(&pk_hash);
-            let manifest = std::fs::read(builder.get_soc_manifest(None)?).unwrap();
-            (fw, pk_hash_arr, manifest)
-        };
+    let signer = LocalVendorAuthSigner::new(vendor_auth_keys());
+    let fw = build_asym_fw(&signer)?;
 
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
-        custom_caliptra_fw: Some(CustomCaliptraFw {
-            fw_bytes: caliptra_fw,
-            vendor_pk_hash: vendor_pk_hash_arr,
-            soc_manifest: soc_manifest,
-        }),
+        custom_mcu_runtime: Some(fw.mcu_runtime.clone()),
+        custom_caliptra_fw: Some(asym_custom_fw(&fw)),
         lifecycle_controller_state: Some(LifecycleControllerState::Prod),
         ..Default::default()
     });
@@ -131,12 +82,12 @@ fn test_fe_prog_authorized_req() -> Result<()> {
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
     });
 
-    // Verify FE_PROG authorized request succeeds
+    // Verify FE_PROG authorized request succeeds via the asymmetric path.
     let cmd = McuFeProgReq {
         partition: 0,
         ..Default::default()
     };
-    let result = execute_authorized_req(&mut hw, cmd);
+    let result = execute_authorized_req_asym(&mut hw, cmd, &signer);
     assert!(
         result.is_ok(),
         "FE_PROG authorized request failed: {result:?}"
@@ -148,6 +99,8 @@ fn test_fe_prog_authorized_req() -> Result<()> {
 #[test]
 fn test_otp_perma_hek_mailbox() -> Result<()> {
     let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let signer = LocalVendorAuthSigner::new(vendor_auth_keys());
+    let fw = build_asym_fw_features(&signer, &["ocp-lock"])?;
     let mut otp = vec![0u8; 4096];
     for slot in 0..8 {
         crate::test_hek::test::setup_otp_hek(&mut otp, slot, true, false);
@@ -158,6 +111,8 @@ fn test_otp_perma_hek_mailbox() -> Result<()> {
         ocp_lock_en: true,
         feature: Some("test-mcu-mbox-cmds,ocp-lock"),
         rom_feature: Some("ocp-lock"),
+        custom_mcu_runtime: Some(fw.mcu_runtime.clone()),
+        custom_caliptra_fw: Some(asym_custom_fw(&fw)),
         ..Default::default()
     });
 
@@ -174,7 +129,7 @@ fn test_otp_perma_hek_mailbox() -> Result<()> {
     // 2. Write to set Perma HEK
     let write_req = OcpLockSetPermaHekReq::default();
     let _write_resp: OcpLockSetPermaHekResp =
-        super::execute_authorized_req(&mut hw, write_req).unwrap();
+        execute_authorized_req_asym(&mut hw, write_req, &signer).unwrap();
 
     // 3. Verify OTP memory has been updated
     let otp_after = hw.read_otp_memory();
@@ -186,6 +141,8 @@ fn test_otp_perma_hek_mailbox() -> Result<()> {
 #[test]
 fn test_otp_perma_hek_mailbox_not_zeroized_failure() -> Result<()> {
     let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let signer = LocalVendorAuthSigner::new(vendor_auth_keys());
+    let fw = build_asym_fw_features(&signer, &["ocp-lock"])?;
     let mut otp = vec![0u8; 4096];
     // Program a valid HEK in slot 0 (so it is not zeroized)
     crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
@@ -198,6 +155,8 @@ fn test_otp_perma_hek_mailbox_not_zeroized_failure() -> Result<()> {
         ocp_lock_en: true,
         feature: Some("test-mcu-mbox-cmds,ocp-lock"),
         rom_feature: Some("ocp-lock"),
+        custom_mcu_runtime: Some(fw.mcu_runtime.clone()),
+        custom_caliptra_fw: Some(asym_custom_fw(&fw)),
         ..Default::default()
     });
 
@@ -213,7 +172,7 @@ fn test_otp_perma_hek_mailbox_not_zeroized_failure() -> Result<()> {
 
     // 2. Write to set Perma HEK (should fail because slot 0 is not zeroized)
     let write_req = OcpLockSetPermaHekReq::default();
-    let result = super::execute_authorized_req(&mut hw, write_req);
+    let result = execute_authorized_req_asym(&mut hw, write_req, &signer);
     assert!(result.is_err());
 
     // 3. Verify OTP memory has NOT been updated
@@ -225,6 +184,8 @@ fn test_otp_perma_hek_mailbox_not_zeroized_failure() -> Result<()> {
 #[test]
 fn test_otp_rotate_hek_mailbox() -> Result<()> {
     let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let signer = LocalVendorAuthSigner::new(vendor_auth_keys());
+    let fw = build_asym_fw_features(&signer, &["ocp-lock"])?;
     let mut otp = vec![0u8; 4096];
 
     // Program valid HEK in slot 0 (slot 1 starts empty)
@@ -235,6 +196,8 @@ fn test_otp_rotate_hek_mailbox() -> Result<()> {
         ocp_lock_en: true,
         feature: Some("test-mcu-mbox-cmds,ocp-lock"),
         rom_feature: Some("ocp-lock"),
+        custom_mcu_runtime: Some(fw.mcu_runtime.clone()),
+        custom_caliptra_fw: Some(asym_custom_fw(&fw)),
         ..Default::default()
     });
 
@@ -269,7 +232,7 @@ fn test_otp_rotate_hek_mailbox() -> Result<()> {
         hek_slot: 1,
         ..Default::default()
     };
-    let _rotate_resp: OcpLockRotateHekResp = super::execute_authorized_req(&mut hw, rotate_req)?;
+    let _rotate_resp: OcpLockRotateHekResp = execute_authorized_req_asym(&mut hw, rotate_req, &signer)?;
 
     // Verify Slot 0 OTP memory is sanitized (all 0xFF)
     let otp_after = hw.read_otp_memory();
@@ -305,6 +268,8 @@ fn test_otp_rotate_hek_mailbox() -> Result<()> {
         ocp_lock_en: true,
         feature: Some("test-mcu-mbox-cmds,ocp-lock"),
         rom_feature: Some("ocp-lock"),
+        custom_mcu_runtime: Some(fw.mcu_runtime.clone()),
+        custom_caliptra_fw: Some(asym_custom_fw(&fw)),
         ..Default::default()
     });
 

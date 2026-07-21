@@ -10,3 +10,6 @@ description = "Command authorization trait and HMAC implementation for Caliptra 
 anyhow.workspace = true
 hmac.workspace = true
 sha2.workspace = true
+ecdsa.workspace = true
+p384.workspace = true
+fips204.workspace = true

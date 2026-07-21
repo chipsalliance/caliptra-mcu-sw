@@ -363,12 +363,4 @@ pub trait CommandAuthorizer {
         payload: &[u8],
         mac: &[u8],
     ) -> Result<(), AuthorizationError>;
-
-    /// Get the challenge from the last call to `MC_GET_AUTH_CMD_CHALLENGE`.
-    ///
-    /// This consumes the challenge so it can only be used once.
-    fn take_challenge(&mut self) -> Option<[u8; 32]>;
-
-    /// Set the challenge nonce to be used on the next authorized command.
-    fn set_challenge(&mut self, challenge: [u8; 32]);
 }
