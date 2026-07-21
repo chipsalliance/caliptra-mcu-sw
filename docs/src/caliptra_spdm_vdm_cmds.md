@@ -89,14 +89,14 @@ R = Required, O = Optional
 
 ## Authorization-Gated Subcommands
 
-The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are carried under `AuthorizedCommand`. `AuthorizedCommand` does not define the authorization mechanism by itself. The concrete SPDM authorization mechanism and message flow are still under design and will be specified separately.
+The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are carried under `AuthorizedCommand`. Only subcommands marked Supported are currently dispatched; requests for Planned subcommands return `InvalidParameter`. `AuthorizedCommand` does not define the authorization mechanism by itself. The concrete SPDM authorization mechanism and message flow are still under design and will be specified separately.
 
-| Subcommand ID          | Name                       | Description                                        |
-| ---------------------- | -------------------------- | -------------------------------------------------- |
-| `0x4D41_4343` (`MACC`) | GetAuthChallenge           | Challenge acquisition for authorization-gated use. |
-| `0x5056_504B` (`PVPK`) | ProvisionVendorPkHash      | Provision vendor public key hash.                  |
-| `0x4D43_4D53` (`MCMS`) | FuseIncreaseCaliptraMinSvn | Increase Caliptra minimum SVN.                     |
-| `0x4D43_4650` (`MCFP`) | ProgramFieldEntropy        | Program field entropy.                             |
-| `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Revoke vendor public key.                          |
-| `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Revoke vendor public key hash.                     |
-| `0x4946_504B` (`IFPK`) | FuseLockPartition          | Lock fuse partition.                               |
+| Subcommand ID          | Name                       | Status        | Description                                        |
+| ---------------------- | -------------------------- | ------------- | -------------------------------------------------- |
+| `0x4D41_4343` (`MACC`) | GetAuthChallenge           | Supported     | Challenge acquisition for authorization-gated use. |
+| `0x5056_504B` (`PVPK`) | ProvisionVendorPkHash      | Planned (TBD) | Provision vendor public key hash.                  |
+| `0x4D43_4D53` (`MCMS`) | FuseIncreaseCaliptraMinSvn | Planned (TBD) | Increase Caliptra minimum SVN.                     |
+| `0x4D43_4650` (`MCFP`) | ProgramFieldEntropy        | Supported     | Program field entropy.                             |
+| `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Planned (TBD) | Revoke vendor public key.                          |
+| `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Planned (TBD) | Revoke vendor public key hash.                     |
+| `0x4946_504B` (`IFPK`) | FuseLockPartition          | Planned (TBD) | Lock fuse partition.                               |

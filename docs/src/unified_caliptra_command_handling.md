@@ -1,22 +1,20 @@
 ## Unified Handling of External Commands
 
-The Caliptra MCU firmware provides two external command interfaces: [SPDM VDM over MCTP (out-of-band)](caliptra_spdm_vdm_cmds.md) and [MCI Mailbox (in-band)](external_mailbox_cmds.md). Although these interfaces operate over different protocols, they deliver overlapping functionality to external clients.
+The Caliptra MCU firmware provides three external command interfaces: [MCTP VDM (out-of-band)](external_mctp_vdm_cmds.md), [SPDM VDM over MCTP (out-of-band)](caliptra_spdm_vdm_cmds.md), and [MCI Mailbox (in-band)](external_mailbox_cmds.md). Although these interfaces operate over different protocols, they deliver overlapping functionality to external clients.
 
 <span style="font-size: 0.9em;">
-<em>Table: Overlapping commands between SPDM VDM (OOB) and MCI Mailbox (IB)</em>
+<em>Table: Overlapping commands between VDM transports (OOB) and MCI Mailbox (IB)</em>
 </span>
 
-| **SPDM VDM Command**         | **MCI Mailbox Command**          | **Description**                                    |
-| ---------------------------- | -------------------------------- | -------------------------------------------------- |
-| Firmware Version             | MC_FIRMWARE_VERSION              | Retrieves the version of the firmware.             |
-| Device Capabilities          | MC_DEVICE_CAPABILITIES           | Retrieves device capabilities.                     |
-| Export CSR                   | MC_EXPORT_IDEV_CSR               | Exports the IDEVID CSR.                            |
-| Import Certificate           | MC_IMPORT_IDEV_CERT              | Imports the IDevID certificate.                    |
-| Get Log                      | MC_GET_LOG                       | Retrieves the internal log.                        |
-| Clear Log                    | MC_CLEAR_LOG                     | Clears the log in the RoT subsystem.               |
-| Request Debug Unlock         | MC_PRODUCTION_DEBUG_UNLOCK_REQ   | Requests debug unlock in a production environment. |
-| Authorize Debug Unlock Token | MC_PRODUCTION_DEBUG_UNLOCK_TOKEN | Sends the debug unlock token for authorization.    |
-| Export Attested CSR          | MC_EXPORT_ATTESTED_CSR           | Exports attested CSR for a specified device key.   |
+| **Common Command**           | **OOB Transport** | **MCI Mailbox Command**    | **Description**                                    |
+| ---------------------------- | ----------------- | -------------------------- | -------------------------------------------------- |
+| Firmware Version             | MCTP VDM          | MC_FIRMWARE_VERSION        | Retrieves the version of the firmware.             |
+| Device Capabilities          | MCTP VDM          | MC_DEVICE_CAPABILITIES     | Retrieves device capabilities.                     |
+| Get Debug Log                | MCTP VDM          | MC_GET_LOG                 | Retrieves the MCU Runtime debug log.               |
+| Clear Debug Log              | MCTP VDM          | MC_CLEAR_LOG               | Clears the MCU Runtime debug log.                  |
+| Request Debug Unlock         | SPDM VDM          | MC_PROD_DEBUG_UNLOCK_REQ   | Requests debug unlock in a production environment. |
+| Authorize Debug Unlock Token | SPDM VDM          | MC_PROD_DEBUG_UNLOCK_TOKEN | Sends the debug unlock token for authorization.    |
+| Export Attested CSR          | SPDM VDM          | MC_EXPORT_ATTESTED_CSR     | Exports attested CSR for a specified device key.   |
 
 To ensure consistent command behavior and maximize code reuse, we define a protocol-agnostic command handler trait (`CaliptraCmdHandler`) with unified input/output types in the `caliptra-mcu-common-commands` crate. Both protocol frontends parse their respective protocol, then call the same backend handler, ensuring code reuse and consistent behavior.
 
