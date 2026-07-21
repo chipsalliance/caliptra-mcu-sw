@@ -272,7 +272,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
 
     env:
       CARGO_INCREMENTAL: 0
@@ -328,11 +328,11 @@ jobs:
       #   cargo xtask emulator-build
       # Then run the tests with:
       #   cargo xtask test --firmware-bundle target/all-fw.zip --emulator-bundle target/emulators.zip
-      - name: Run tests (shard ${{ matrix.shard }}/4)
+      - name: Run tests (shard ${{ matrix.shard }}/8)
         run: |
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
             --archive /tmp/nextest-archive.tar.zst \
-            --shard hash:${{ matrix.shard }}/4 \
+            --shard hash:${{ matrix.shard }}/8 \
             --firmware-bundle "${PWD}/target/all-fw.zip" \
             --emulator-bundle "${PWD}/target/emulators.zip" \
             --workspace-remap . \
