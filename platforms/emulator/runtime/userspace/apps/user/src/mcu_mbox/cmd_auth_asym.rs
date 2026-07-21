@@ -31,8 +31,9 @@ use async_trait::async_trait;
 use caliptra_mcu_common_commands::{AuthorizationError, AuthorizationResult, CommandAuthorizer};
 use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, FuseLockPartitionReq, FuseReadReq, FuseWriteReq, MailboxReqHeader,
-    ProvisionVendorPkHashReq,
+    CommandId, FuseIncreaseCaliptraMinSvnReq, FuseLockPartitionReq, FuseReadReq,
+    FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, FuseWriteReq, MailboxReqHeader,
+    McuFeProgReq, OcpLockRotateHekReq, OcpLockSetPermaHekReq, ProvisionVendorPkHashReq,
 };
 use constant_time_eq::constant_time_eq;
 use core::mem::size_of;
@@ -57,15 +58,22 @@ impl CommandAuthorizer for AsymCommandAuthorizer {
         cmd_id: CommandId,
         req: &'a [u8],
     ) -> AuthorizationResult<&'a [u8]> {
-        // First-cut command set (re-provision + in-field fuse ops). This closes
-        // the FUSE_READ/WRITE/LOCK_PARTITION gap that the mock leaves rejected
-        // (cmd_auth_mock.rs:39-50 has no arms for them). Every other command
-        // fails closed via the catch-all below.
+        // Authorized-command set — must match the dispatch set in
+        // cmd_interface.rs:168-179 (and the mock's arms) so no routed command is
+        // silently denied. Anything else fails closed via the catch-all.
         let cmd_len = match cmd_id {
             CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashReq>(),
+            CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
+                size_of::<FuseIncreaseCaliptraMinSvnReq>()
+            }
+            CommandId::MC_FE_PROG => size_of::<McuFeProgReq>(),
             CommandId::MC_FUSE_READ => size_of::<FuseReadReq>(),
             CommandId::MC_FUSE_WRITE => size_of::<FuseWriteReq>(),
             CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionReq>(),
+            CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => size_of::<FuseRevokeVendorPubKeyReq>(),
+            CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => size_of::<FuseRevokeVendorPkHashReq>(),
+            CommandId::MC_OCP_LOCK_ROTATE_HEK => size_of::<OcpLockRotateHekReq>(),
+            CommandId::MC_OCP_LOCK_SET_PERMA_HEK => size_of::<OcpLockSetPermaHekReq>(),
             _ => return Err(AuthorizationError),
         };
 
