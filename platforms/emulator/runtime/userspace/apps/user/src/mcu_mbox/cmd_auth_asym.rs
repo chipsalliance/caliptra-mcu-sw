@@ -132,14 +132,6 @@ impl CommandAuthorizer for AsymCommandAuthorizer {
         self.relay_verify(cmd_id, &body_hash, &nonce, sig_material)
             .await
     }
-
-    // Nonce is Caliptra-owned; the MCU stores none. These trait methods (the
-    // HMAC-era MCU-local nonce seam) are inert on the asymmetric path.
-    fn take_challenge(&mut self) -> Option<[u8; 32]> {
-        None
-    }
-
-    fn set_challenge(&mut self, _challenge: [u8; 32]) {}
 }
 
 impl AsymCommandAuthorizer {

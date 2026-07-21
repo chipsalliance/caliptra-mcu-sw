@@ -19,8 +19,8 @@ use caliptra_mcu_mbox_common::messages::{
     FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
     FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
-    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetLogReq, GetLogResp, MailboxRespHeader, MailboxRespHeaderVarSize,
+    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetLogReq, GetLogResp,
+    MailboxRespHeader, MailboxRespHeaderVarSize,
     McuFeProgReq, McuResponseVarSize, OcpLockRotateHekReq, OcpLockRotateHekResp,
     OcpLockSetPermaHekReq, OcpLockSetPermaHekResp, ProvisionVendorPkHashReq,
     ProvisionVendorPkHashResp, RevokeVendorPubKeyType, VendorAuthHelloReq, VendorAuthHelloResp,
@@ -158,9 +158,6 @@ impl<'a> CmdInterface<'a> {
                 #[cfg(feature = "periodic-fips-self-test")]
                 CommandId::MC_FIPS_PERIODIC_STATUS => {
                     self.handle_fips_periodic_status(req, resp_buf).await
-                }
-                CommandId::MC_GET_AUTH_CMD_CHALLENGE => {
-                    self.handle_get_auth_cmd_challenge(req, resp_buf).await
                 }
                 CommandId::MC_VENDOR_AUTH_HELLO => {
                     self.handle_vendor_auth_hello(req, resp_buf).await
@@ -462,27 +459,6 @@ impl<'a> CmdInterface<'a> {
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
-    }
-
-    async fn handle_get_auth_cmd_challenge<'r>(
-        &mut self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        // Decode the request
-        let _req =
-            GetAuthCmdChallengeReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let (resp, _) = GetAuthCmdChallengeResp::mut_from_prefix(resp_buf)
-            .map_err(|_| errors::INVALID_PARAMS)?;
-        *resp = GetAuthCmdChallengeResp::default();
-
-        Rng::generate_random_number(&mut resp.challenge)
-            .await
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
-
-        self.cmd_authorizer.set_challenge(resp.challenge);
-        let len = size_of_val(resp);
-        Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
     }
 
     /// MC_VENDOR_AUTH_HELLO: relay to Caliptra `VENDOR_AUTH_HELLO` and return the 48-byte
