@@ -355,32 +355,32 @@ caliptra-mcu-libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
 caliptra-mcu-tbf-header = { path = "runtime/userspace/libtock/tbf-header" }
 
 # caliptra-sw dependencies
-caliptra-api = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-api-types = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-auth-man-gen = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-auth-man-types = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-builder = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
+caliptra-api = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-api-types = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-auth-man-gen = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-auth-man-types = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-builder = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
 caliptra-cfi-lib = { git = "https://github.com/chipsalliance/caliptra-cfi.git", package = "caliptra-cfi-lib", rev = "767d4ef59a106aea683b883c07bd65456fb3ba", default-features = false, features = ["cfi", "cfi-counter" ] }
 caliptra-cfi-derive = { git = "https://github.com/chipsalliance/caliptra-cfi.git", package = "caliptra-cfi-derive", rev = "767d4ef59a106aea683b883c07bd65456fb3ba"}
-caliptra-drivers = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-emu-bus = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-emu-cpu = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-emu-derive = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-emu-periph = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-emu-types = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-error = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth", default-features = false }
-caliptra-hw-model = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth", features = ["ocp-lock"] }
-caliptra-hw-model-types = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-image-crypto = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth", default-features = false, features = ["rustcrypto"] }
-caliptra-image-fake-keys = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-image-gen = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-image-types = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth", default-features = false }
-caliptra-registers = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-test = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth", features = ["cfi"] }
-caliptra-test-harness = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-test-harness-types = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
-caliptra-ocp-eat = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth", default-features = false }
-caliptra-ureg = { git = "https://github.com/RaunakGu/caliptra-sw", branch = "raunakgupta/vendor-auth" }
+caliptra-drivers = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-emu-bus = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-emu-cpu = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-emu-derive = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-emu-periph = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-emu-types = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-error = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8", default-features = false }
+caliptra-hw-model = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8", features = ["ocp-lock"] }
+caliptra-hw-model-types = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-image-crypto = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8", default-features = false, features = ["rustcrypto"] }
+caliptra-image-fake-keys = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-image-gen = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-image-types = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8", default-features = false }
+caliptra-registers = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-test = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8", features = ["cfi"] }
+caliptra-test-harness = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-test-harness-types = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
+caliptra-ocp-eat = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8", default-features = false }
+caliptra-ureg = { git = "https://github.com/RaunakGu/caliptra-sw", rev = "edabd19a09eae3e108807a91dfafac67f955efd8" }
 
 # caliptra-dpe dependencies; keep git revs in sync with version pulled into caliptra-sw
 dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "337f7e4151f60add8e97445f71fc1393afc661a8", default-features = false, features = ["p384"] }
