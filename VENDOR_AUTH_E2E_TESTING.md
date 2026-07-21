@@ -88,6 +88,21 @@ F    EXECUTE : MCU runs MC_FUSE_READ on the exact authorized bytes
 | `test_vendor_auth_asym_tampered_body_rejected` | reject | ECC verify (C) | `0xE00A2` INVALID_SIGNATURE |
 | `test_vendor_auth_asym_bad_mldsa_only_rejected` | reject | ML-DSA verify (D), proves strict-AND | `0xE00A2` INVALID_SIGNATURE |
 
+Run all 5 together (recommended — one emulator suite, ~2 min):
+```bash
+cargo test -p caliptra-mcu-tests-integration --lib -- \
+  test_vendor_auth_asym --nocapture --test-threads=1
+```
+
+Or run each gate individually:
+```bash
+cargo test -p caliptra-mcu-tests-integration --lib -- test_vendor_auth_asym_authorized_req      --nocapture --test-threads=1
+cargo test -p caliptra-mcu-tests-integration --lib -- test_vendor_auth_asym_wrong_key_rejected  --nocapture --test-threads=1
+cargo test -p caliptra-mcu-tests-integration --lib -- test_vendor_auth_asym_replayed_nonce_rejected --nocapture --test-threads=1
+cargo test -p caliptra-mcu-tests-integration --lib -- test_vendor_auth_asym_tampered_body_rejected  --nocapture --test-threads=1
+cargo test -p caliptra-mcu-tests-integration --lib -- test_vendor_auth_asym_bad_mldsa_only_rejected --nocapture --test-threads=1
+```
+
 `--nocapture` prints `[HSM-test]` lines + the Caliptra UART trace so you can watch
 `MVAH` → `VAHL` (nonce) → `VACH` (verify) → fuse read in the log.
 
