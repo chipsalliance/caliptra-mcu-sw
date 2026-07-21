@@ -26,7 +26,7 @@ pub(super) async fn authorize_and_stash<S: Syscalls, A: ApiAlloc>(
     fw_id: u32,
     metadata: ImageMetadata,
 ) -> MeasurementApiResult {
-    api.attestation_state_active()?;
+    api.initial_load_measurement_state_ready()?;
     let entry = api
         .manifest
         .lookup(fw_id)

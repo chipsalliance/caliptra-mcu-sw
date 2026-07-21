@@ -8,20 +8,12 @@ mod test {
         finish_runtime_hw_model, run_imaginary_flash_controller_service, start_runtime_hw_model,
         TestParams, TEST_LOCK,
     };
+    use crate::test_mctp_spdm_attestation::test::{
+        assert_spdm_attestation_artifacts, remove_spdm_attestation_artifacts,
+        run_mctp_spdm_attestation_test,
+    };
     use caliptra_mcu_hw_model::McuHwModel;
-    use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
-    use caliptra_mcu_testing_common::spdm_responder_validator::mctp::MctpTransport;
-    use caliptra_mcu_testing_common::spdm_responder_validator::{
-        execute_spdm_attestation, SpdmValidatorRunner, SERVER_LISTENING,
-    };
-    use caliptra_mcu_testing_common::{
-        is_emulator_running, spawn_with_emulator_state, wait_for_runtime_start,
-    };
     use random_port::PortPicker;
-    use std::net::{SocketAddr, TcpListener, TcpStream};
-    use std::process::exit;
-    use std::sync::atomic::Ordering;
-    use std::thread;
     use std::time::Duration;
 
     const TEST_NAME: &str = "MCTP-SPDM-ATTESTATION-PCR-QUOTE";
@@ -33,6 +25,7 @@ mod test {
             println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
             return;
         }
+        remove_spdm_attestation_artifacts();
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -48,58 +41,18 @@ mod test {
 
         hw.start_i3c_controller();
 
-        let port = hw.i3c_port().unwrap();
-        let target_addr = hw.i3c_address().unwrap();
-        let addr = SocketAddr::from(([127, 0, 0, 1], port));
-        let stream = TcpStream::connect(addr).unwrap();
-        let transport = MctpTransport::new(BufferedStream::new(stream), target_addr, 1);
-
-        thread::spawn(move || {
-            thread::sleep(Duration::from_secs(9000));
-            println!("[{}] TIMED OUT AFTER 9000 SECONDS", TEST_NAME,);
-            exit(-1);
-        });
-
-        // Worker threads use spawn_with_emulator_state so they inherit
-        // ModelEmulated's per-instance state and can call wait_for_runtime_start
-        // / is_emulator_running without panicking.
-        spawn_with_emulator_state(move || {
-            wait_for_runtime_start();
-
-            if !is_emulator_running() {
-                exit(-1);
-            }
-            thread::sleep(Duration::from_secs(5));
-            if !is_emulator_running() {
-                exit(-1);
-            }
-            let listener = TcpListener::bind("127.0.0.1:2323")
-                .expect("Could not bind to the SPDM listener port");
-            println!("[{}]: Spdm Server Listening on port 2323", TEST_NAME);
-            SERVER_LISTENING.store(true, Ordering::Relaxed);
-
-            if let Some(spdm_stream) = listener.incoming().next() {
-                let mut spdm_stream = spdm_stream.expect("Failed to accept connection");
-
-                let mut test = SpdmValidatorRunner::new(Box::new(transport), TEST_NAME);
-                test.run_test(&mut spdm_stream);
-                if !test.is_passed() {
-                    println!("[{}]: Spdm Attestation Test Failed", TEST_NAME);
-                    exit(-1);
-                } else {
-                    println!("[{}]: Spdm Attestation Test Passed", TEST_NAME);
-                    exit(0);
-                }
-            }
-        });
-
-        spawn_with_emulator_state(move || {
-            execute_spdm_attestation("MCTP");
-        });
+        run_mctp_spdm_attestation_test(
+            hw.i3c_port().unwrap(),
+            hw.i3c_address().unwrap().into(),
+            PortPicker::new().pick().unwrap(),
+            Duration::from_secs(9000),
+            TEST_NAME,
+        );
 
         let test = finish_runtime_hw_model(&mut hw);
 
         assert_eq!(0, test);
+        assert_spdm_attestation_artifacts();
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
