@@ -38,6 +38,14 @@ const ALGO_MLDSA87: u32 = 0x0002;
 
 /// HMAC command ID used by the host for the FE_PROG authorized sub-command.
 const FE_PROG_CMD_ID: u32 = 0x4D43_4650;
+// TODO(vendor-auth-VDM): this SPDM-VDM FE_PROG path is the last remaining dummy-HMAC
+// command-auth (the MCU-mailbox path is now asym — see HMAC_TO_ASYM_CUTOVER_PLAN.md P6,
+// blocker B2). Convert to the asymmetric relay: mint the nonce in Caliptra via a VDM
+// VENDOR_AUTH_HELLO relay (none exists yet on the VDM transport — verify here is
+// terminal-on-MCU), widen the nonce 32->48 B, replace the fixed 4+48 framing
+// (authorized_command.rs) with the variable ~7.5 KiB hybrid tag (exceeds the 4 KiB VDM
+// envelope -> needs chunking/resize), and reuse LocalVendorAuthSigner /
+// VendorAuthChallengeReq. Do NOT delete FE_PROG-over-VDM; it stays functional until then.
 /// Symmetric test HMAC key used by the emulator validator path.
 const TEST_AUTH_CMD_HMAC_KEY: [u8; 48] = [
     0x72, 0xec, 0x12, 0x02, 0x77, 0x69, 0xb9, 0xdc, 0x04, 0xbd, 0xd0, 0xc0, 0x86, 0xca, 0x1b, 0x20,

@@ -9,6 +9,9 @@ use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult,
 };
 
+// TODO(vendor-auth-VDM): this VDM authorized-command path still uses dummy HMAC
+// (32-B nonce, fixed 4+48 framing). Convert to the asymmetric relay — see
+// HMAC_TO_ASYM_CUTOVER_PLAN.md P6 / blocker B2. Keep functional until then.
 /// MC_GET_AUTH_CMD_CHALLENGE sub-command (`MACC`).
 pub const GET_AUTH_CHALLENGE_CMD_ID: u32 = 0x4D41_4343;
 /// MC_FE_PROG sub-command (`MCFP`).
