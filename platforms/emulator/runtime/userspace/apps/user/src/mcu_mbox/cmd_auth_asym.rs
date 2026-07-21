@@ -1,31 +1,24 @@
 // Licensed under the Apache-2.0 license
-//! Asymmetric, manifest-anchored, per-command authorizer (Team Alpha, WIP).
+//! Asymmetric, manifest-anchored, per-command authorizer — the MCU-side relay half
+//! of the hybrid ECDSA-P384 + ML-DSA-87 per-command authentication scheme. This is
+//! the sole command authorizer (it replaced the dummy shared-secret HMAC gate).
 //!
-//! This is the MCU-side relay half of the hybrid ECDSA-P384 + ML-DSA-87
-//! per-command authentication scheme that replaces the dummy shared-secret
-//! HMAC gate ([`super::cmd_auth_mock::MockCommandAuthorizer`]).
-//!
-//! Design (locked decisions):
+//! Design:
 //! * VERIFY RUNS IN CALIPTRA CORE. The MCU does NOT verify signatures locally.
-//!   It relays `cmd_id ‖ SHA-384(body) ‖ nonce ‖ tag` to a new Caliptra-core
+//!   It relays `cmd_id ‖ SHA-384(body) ‖ nonce ‖ tag` to the Caliptra-core
 //!   hybrid-verify mailbox command and executes the command locally only if
 //!   Caliptra authorizes it. Both ECDSA-P384 and ML-DSA-87 must pass in core.
-//! * The tag region is OPAQUE and VARIABLE-LENGTH here: everything trailing the
-//!   fixed request struct is hybrid signature material (two pubkeys + ECC sig +
-//!   ML-DSA sig, ~7.4 KiB). This authorizer never interprets it; only Caliptra
-//!   does. Contrast the mock, which slices a fixed 48-byte HMAC tail.
-//! * TOCTOU binding: verify happens in Caliptra but the first-cut commands
-//!   execute on the MCU. `is_authorized` returns the EXACT `&req[..cmd_len]`
-//!   buffer it authorized (no re-fetch, no re-parse), and `relay_verify` binds
-//!   execution to `SHA-384(body)`. Single-in-flight is enforced by the caller's
-//!   `busy` gate (cmd_interface.rs:135-139); the nonce is one-time via `take()`.
+//! * The tag region is OPAQUE and VARIABLE-LENGTH: everything trailing the fixed
+//!   request struct is hybrid signature material (two pubkeys + ECC sig + ML-DSA
+//!   sig, ~7.4 KiB). This authorizer never interprets it; only Caliptra does.
+//! * TOCTOU binding: verify happens in Caliptra but the commands execute on the
+//!   MCU. `is_authorized` returns the EXACT `&req[..cmd_len]` buffer it authorized
+//!   (no re-fetch, no re-parse), and `relay_verify` binds execution to
+//!   `SHA-384(body)`. Single-in-flight is enforced by the caller's `busy` gate
+//!   (cmd_interface.rs:135-139); the nonce is Caliptra-owned and one-time.
 //!
-//! NON-BREAKING / FAIL-CLOSED: the Caliptra-core hybrid-verify command is gated
-//! on caliptra-sw#3928 and is NOT present in the currently pinned caliptra-*
-//! git rev. Until that lands and `Cargo.toml` is bumped, [`relay_verify`] fails
-//! closed (rejects every command). The `MockCommandAuthorizer` remains the
-//! default authorizer; this impl is only constructed under the non-default
-//! `asym-cmd-auth` feature.
+//! Requires a caliptra-* rev carrying the VENDOR_AUTH_* commands (currently the
+//! fork pin — see VENDOR_AUTH_FORK_PIN_REVERT.md).
 
 use async_trait::async_trait;
 use caliptra_mcu_common_commands::{AuthorizationError, AuthorizationResult, CommandAuthorizer};
@@ -84,8 +77,7 @@ impl CommandAuthorizer for AsymCommandAuthorizer {
         let tag = req.get(cmd_len..).ok_or(AuthorizationError)?;
 
         // Body that Caliptra authenticates. Excludes the checksum header (which
-        // the transport recomputes) and the trailing tag, matching the mock's
-        // body slice (cmd_auth_mock.rs:54-56).
+        // the transport recomputes) and the trailing tag.
         let body = req
             .get(size_of::<MailboxReqHeader>()..cmd_len)
             .ok_or(AuthorizationError)?;
