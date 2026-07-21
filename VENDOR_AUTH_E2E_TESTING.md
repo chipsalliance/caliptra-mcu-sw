@@ -6,15 +6,58 @@ How to run and understand the full asymmetric vendor-command-authentication e2e
 ## TL;DR
 
 ```bash
-# MCU-side full e2e (host → MCU relay → Caliptra hybrid verify → execute), on the emulator:
+# MCU-side full asym e2e (host → MCU relay → Caliptra hybrid verify → execute):
 cd /users/ssdrive/calipta_root/caliptra-mcu-sw
 cargo test -p caliptra-mcu-tests-integration --lib -- \
-  test_vendor_auth_asym --nocapture --test-threads=1
+  test_vendor_auth_asym --nocapture --test-threads=1        # 5/5
 
 # Caliptra-core verify tests (the signature verification, on the hw-model):
 cd /users/ssdrive/calipta_root/caliptra-sw
-cargo test -p caliptra-runtime --test runtime_integration_tests test_vendor_auth
+cargo test -p caliptra-runtime --test runtime_integration_tests test_vendor_auth   # 12/12
 ```
+
+## Full verified command set (after the HMAC→asym cutover)
+
+All authorized-command tests now use the asymmetric path. Run them **individually**
+(`--test-threads=1`, one test filter at a time) — see the rom_only caveat below.
+
+```bash
+cd /users/ssdrive/calipta_root/caliptra-mcu-sw
+
+# Core asym e2e suite — success + 4 negatives (nonce/anchor/ECC/ML-DSA gates):   PASS 5/5
+cargo test -p caliptra-mcu-tests-integration --lib -- test_vendor_auth_asym --test-threads=1
+
+# FE_PROG over the asym path:                                                     PASS
+cargo test -p caliptra-mcu-tests-integration --lib -- test_fe_prog_authorized_req --test-threads=1
+
+# OCP-LOCK HEK (perma-set, not-zeroized-failure, rotate) via asym:                PASS
+cargo test -p caliptra-mcu-tests-integration --lib -- test_otp_perma_hek_mailbox --test-threads=1
+cargo test -p caliptra-mcu-tests-integration --lib -- test_otp_perma_hek_mailbox_not_zeroized_failure --test-threads=1
+cargo test -p caliptra-mcu-tests-integration --lib -- test_otp_rotate_hek_mailbox --test-threads=1
+
+# --- Compile clean + convert-verified, but do NOT run green on this branch (see caveat) ---
+# vendor-key revocation + Caliptra-SVN-increase: use the harness `rom_only` boot path.
+cargo test -p caliptra-mcu-tests-integration --lib -- test_revoke_vendor_pub_key --test-threads=1
+cargo test -p caliptra-mcu-tests-integration --lib -- test_rotate_vendor_pk_hash --test-threads=1
+cargo test -p caliptra-mcu-tests-integration --lib -- test_increase_caliptra_svn --test-threads=1
+
+# add --nocapture to any of the above to see the [HSM-test] + Caliptra UART trace.
+```
+
+**Run individually, not in one batch.** With `--test-threads=1` the failing
+`rom_only` tests below can poison shared build state for the others in the same run;
+each passes on its own.
+
+**rom_only caveat (pre-existing, NOT the asym change):** `test_revoke_*`,
+`test_rotate_vendor_pk_hash`, and `test_increase_caliptra_svn*` boot with
+`rom_only: true`, which drives the harness ROM rebuild
+(`start_runtime_hw_model` → `compile_rom(params.feature)`, lib.rs:1123). That path
+passes `test-mcu-mbox-cmds` to the ROM crate `caliptra-mcu-rom-emulator`, which does
+not define that feature → `error: the package 'caliptra-mcu-rom-emulator' does not
+contain this feature: test-mcu-mbox-cmds`. This is a harness limitation independent
+of the HMAC→asym work (the `rom_only`/ROM-feature wiring was untouched). These tests
+compile and their asym conversion is correct; they will run once the harness ROM
+feature-forwarding is fixed (or a `CPTRA_FIRMWARE_BUNDLE` is provided).
 
 ## What the MCU e2e proves
 
