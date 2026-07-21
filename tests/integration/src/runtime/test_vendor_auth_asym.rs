@@ -205,3 +205,16 @@ fn test_vendor_auth_asym_bad_mldsa_only_rejected() -> Result<()> {
     println!("[HSM-test] PASS: bad-ML-DSA-only rejected (strict-AND proven)");
     Ok(())
 }
+
+// Note: the anchor-not-enrolled gate (a correctly-signed command rejected when Caliptra
+// holds no anchor) is covered on the Caliptra side by
+// caliptra-sw test_vendor_auth_challenge_anchor_not_enrolled. It is not duplicated here:
+// the MCU cold boot enrolls the manifest via recovery_flow, so a no-anchor boot exercises
+// boot-time manifest enrollment rather than the asym relay.
+
+// The P1-widened allowlist arms (SVN-increase, FE_PROG, revoke, HEK) are exercised for
+// *authorization* by the shared build_asym_authorized_cmd path; the happy-path test is the
+// positive control (its unmutated command is what each negative test then mutates). A
+// dedicated positive test per command is intentionally omitted: those handlers require
+// command-specific fuse state and would fail at execution, not authorization — which the
+// mailbox boundary cannot distinguish from an auth failure.
