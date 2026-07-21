@@ -5,12 +5,12 @@ use crate::{
     test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams},
 };
 use anyhow::Result;
-use caliptra_api::{error::CaliptraError, mailbox::MailboxReqHeader, SocManager};
+use caliptra_api::{error::CaliptraError, SocManager};
 use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, ProvisionVendorPkHashReq,
-    RevokeVendorPubKeyType,
+    FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, MailboxReqHeader,
+    ProvisionVendorPkHashReq, RevokeVendorPubKeyType,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 

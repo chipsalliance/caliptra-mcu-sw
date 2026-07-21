@@ -1857,6 +1857,7 @@ dependencies = [
  "caliptra-api",
  "caliptra-image-types",
  "caliptra-mcu-registers-generated",
+ "mcu-caliptra-api-lite",
  "zerocopy",
 ]
 
