@@ -306,7 +306,7 @@ enum Commands {
         #[arg(long)]
         test_filter: Option<String>,
 
-        /// Nextest profile to use (default: nightly-emulator)
+        /// Nextest profile to use (default: emulator)
         #[arg(long)]
         nextest_profile: Option<String>,
     },

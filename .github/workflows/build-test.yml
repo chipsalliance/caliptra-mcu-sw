@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_call:
   workflow_dispatch:
+  schedule:
+    # Run daily at 02:00 UTC (nightly)
+    - cron: '0 2 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -274,6 +277,7 @@ jobs:
     env:
       CARGO_INCREMENTAL: 0
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+      NEXTEST_PROFILE: ${{ github.event_name == 'schedule' && 'emulator' || 'pr-emulator' }}
 
     steps:
       - name: Checkout repo
@@ -331,7 +335,8 @@ jobs:
             --shard hash:${{ matrix.shard }}/4 \
             --firmware-bundle "${PWD}/target/all-fw.zip" \
             --emulator-bundle "${PWD}/target/emulators.zip" \
-            --workspace-remap .
+            --workspace-remap . \
+            --nextest-profile "${{ env.NEXTEST_PROFILE }}"
 
       - name: Move devel junit xml
         if: success() || failure()
