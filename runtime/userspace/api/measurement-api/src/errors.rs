@@ -43,6 +43,10 @@ pub enum MeasurementApiError {
     PcrExtendFailed = 0x000a,
     /// Measurement state already exists for the requested firmware identifier.
     DuplicateMeasurementRecord = 0x000b,
+    /// Component-update metadata is routed but update mutation is not wired yet.
+    ComponentUpdateUnsupported = 0x000c,
+    /// MCU-side Software PCR Storage state was missing or semantically invalid.
+    InvalidSoftwarePcrStoreState = 0x000d,
 }
 
 /// Convenience alias for a Measurement API operation result. `T` defaults to
@@ -82,6 +86,8 @@ mod tests {
             (MeasurementApiError::ImageAuthorizationFailed, 0x0009),
             (MeasurementApiError::PcrExtendFailed, 0x000a),
             (MeasurementApiError::DuplicateMeasurementRecord, 0x000b),
+            (MeasurementApiError::ComponentUpdateUnsupported, 0x000c),
+            (MeasurementApiError::InvalidSoftwarePcrStoreState, 0x000d),
         ] {
             let mcu: McuErrorCode = err.into();
             assert_eq!(mcu.domain(), domain::ATTESTATION);

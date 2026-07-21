@@ -63,9 +63,11 @@ pub use device_state::{get_pcr_value, pcr_quote_ecc384, PCR_QUOTE_ECC384_LEN};
 pub use dpe::{
     dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
     dpe_derive_context, dpe_get_cert_chain_chunk, dpe_rotate_context_default, dpe_sign_ecc_p384,
-    dpe_tag_tci, walk_dpe_chain, DpeChainSink, DpeContextHandle, DpeDeriveContextFlags,
-    DpeDeriveContextParams, DpeDeriveContextResult, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN,
-    DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE, DPE_P384_SIGNATURE_SIZE, DPE_TCI_MEASUREMENT_SIZE,
+    dpe_tag_tci, dpe_update_context_measurement, walk_dpe_chain, DpeChainSink, DpeContextHandle,
+    DpeDeriveContextFlags, DpeDeriveContextParams, DpeDeriveContextResult,
+    DpeUpdateContextMeasurementParams, DpeUpdateContextMeasurementResult, DPE_CONTEXT_HANDLE_SIZE,
+    DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE, DPE_P384_SIGNATURE_SIZE,
+    DPE_TCI_MEASUREMENT_SIZE,
 };
 pub use ecdh::{
     ecdh_finish, ecdh_generate, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,

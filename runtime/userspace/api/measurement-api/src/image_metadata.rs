@@ -13,6 +13,8 @@ pub const IMAGE_MEASUREMENT_DIGEST_SIZE: usize = 48;
 pub enum MeasurementOperation {
     /// Boot-time SoC image load.
     InitialLoad = 1,
+    /// Hitless SoC component update requested by firmware update logic.
+    ComponentUpdate = 2,
 }
 
 /// Control flags associated with image metadata.
@@ -66,6 +68,25 @@ impl ImageMetadata {
             flags: ImageMetadataFlags::EMPTY,
         }
     }
+
+    /// Build component-update metadata from caller-supplied authorization data.
+    pub const fn component_update(
+        source: ImageHashSource,
+        image_size: u32,
+        measurement: [u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+        svn: u32,
+        version: u32,
+    ) -> Self {
+        Self {
+            operation: MeasurementOperation::ComponentUpdate,
+            source,
+            image_size,
+            measurement,
+            svn,
+            version,
+            flags: ImageMetadataFlags::EMPTY,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -84,6 +105,22 @@ mod tests {
         assert_eq!(metadata.measurement, measurement);
         assert_eq!(metadata.svn, 0);
         assert_eq!(metadata.version, 0);
+        assert_eq!(metadata.flags.bits(), 0);
+    }
+
+    #[test]
+    fn component_update_metadata_preserves_caller_supplied_values() {
+        let measurement = [0x5a; IMAGE_MEASUREMENT_DIGEST_SIZE];
+
+        let metadata =
+            ImageMetadata::component_update(ImageHashSource::InRequest, 0x2345, measurement, 7, 9);
+
+        assert_eq!(metadata.operation, MeasurementOperation::ComponentUpdate);
+        assert_eq!(metadata.source, ImageHashSource::InRequest);
+        assert_eq!(metadata.image_size, 0x2345);
+        assert_eq!(metadata.measurement, measurement);
+        assert_eq!(metadata.svn, 7);
+        assert_eq!(metadata.version, 9);
         assert_eq!(metadata.flags.bits(), 0);
     }
 }
