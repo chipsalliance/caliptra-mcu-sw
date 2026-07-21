@@ -4,13 +4,11 @@ use crate::test_caliptra_util_host_mcu_mailbox_validator::test::{
     TEST_ECC_PRIV_KEY, TEST_MLDSA_SEED,
 };
 use anyhow::{anyhow, bail, Result};
-use caliptra_api::calc_checksum;
-use caliptra_api::mailbox::MailboxReqHeader;
 use caliptra_mcu_command_auth_challenge_signer::{
     AsymmetricCommandAuthorizer, CommandAuthChallengeSigner,
 };
 use caliptra_mcu_hw_model::McuHwModel;
-use caliptra_mcu_mbox_common::messages::GetAuthCmdChallengeReq;
+use caliptra_mcu_mbox_common::messages::{calc_checksum, GetAuthCmdChallengeReq, MailboxReqHeader};
 use core::mem::size_of;
 use zerocopy::{FromBytes, IntoBytes};
 

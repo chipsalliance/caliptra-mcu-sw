@@ -10,7 +10,7 @@ edition.workspace = true
 [dependencies]
 caliptra-mcu-spdm-traits = { workspace = true }
 caliptra-mcu-spdm-codec = { workspace = true }
-mcu-caliptra-api-lite = { workspace = true }
+mcu-caliptra-api-lite = { workspace = true, features = ["mailbox-io"] }
 caliptra-mcu-spdm-errors = { workspace = true }
 mcu-error = { workspace = true }
 bitfield-struct = { workspace = true }
