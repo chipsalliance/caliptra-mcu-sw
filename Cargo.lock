@@ -1740,6 +1740,7 @@ dependencies = [
  "defmt",
  "embassy-executor",
  "embassy-sync",
+ "mcu-caliptra-api-lite",
  "zerocopy",
 ]
 
