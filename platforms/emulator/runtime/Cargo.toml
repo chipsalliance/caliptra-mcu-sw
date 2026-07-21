@@ -92,6 +92,8 @@ test-defmt-logging-vdm = []
 test-firmware-v2 = []
 test-mcu-mbox-driver = []
 test-mcu-mbox-cmds = []
+# No-op in the kernel; selects the asym authorizer in the user-app (shared feature string).
+asym-cmd-auth = []
 test-mcu-mbox-fips-self-test = []
 test-mcu-mbox-fips-periodic = []
 test-mcu-mbox-soc-requester-loopback = []

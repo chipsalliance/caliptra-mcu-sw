@@ -89,6 +89,8 @@ pub struct CaliptraBuilder {
     auth_manifest_owner_config: Option<AuthManifestOwnerConfig>,
     svn: Option<u16>,
     use_second_key: bool,
+    /// `Some` → v2 SoC manifest w/ Vendor Ext 0x0001 anchor; `None` → legacy v1.
+    vendor_cmd_auth_pk_hash: Option<[u8; 48]>,
 }
 
 impl CaliptraBuilder {
@@ -118,11 +120,19 @@ impl CaliptraBuilder {
             auth_manifest_owner_config: None,
             svn: args.svn,
             use_second_key: args.use_second_key,
+            vendor_cmd_auth_pk_hash: None,
         }
     }
 
     pub fn from_args(args: &crate::CaliptraBuildArgs) -> Self {
         Self::new(args)
+    }
+
+    /// Emit the next SoC manifest as v2 with `pk_hash` as the vendor-command-auth anchor.
+    pub fn with_vendor_cmd_auth_pk_hash(mut self, pk_hash: [u8; 48]) -> Self {
+        self.vendor_cmd_auth_pk_hash = Some(pk_hash);
+        self.soc_manifest = None; // force a rebuild with the new anchor
+        self
     }
 
     /// Sets a custom owner configuration for re-signing the FW bundle.
@@ -252,6 +262,7 @@ impl CaliptraBuilder {
                 self.soc_manifest_svn.unwrap_or(0),
                 name,
                 self.auth_manifest_owner_config.as_ref(),
+                self.vendor_cmd_auth_pk_hash,
             )?;
             self.write_attestation_manifest_config(self.soc_images.as_deref().unwrap_or(&[]))?;
             self.soc_manifest = Some(path);
@@ -383,9 +394,14 @@ impl CaliptraBuilder {
         svn: u32,
         name: Option<&str>,
         owner_config: Option<&AuthManifestOwnerConfig>,
+        vendor_cmd_auth_pk_hash: Option<[u8; 48]>,
     ) -> Result<PathBuf> {
-        let manifest =
-            Self::create_auth_manifest_with_metadata_and_owner(metadata, svn, owner_config);
+        let manifest = Self::create_auth_manifest_with_metadata_and_owner(
+            metadata,
+            svn,
+            owner_config,
+            vendor_cmd_auth_pk_hash,
+        );
 
         let path = name
             .map(PathBuf::from)
@@ -731,6 +747,7 @@ impl CaliptraBuilder {
             flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
             pqc_key_type: FwVerificationPqcKeyType::LMS,
             svn,
+            vendor_cmd_auth_pk_hash: None,
         };
 
         let gen = AuthManifestGenerator::new(Crypto::default());
@@ -743,6 +760,7 @@ impl CaliptraBuilder {
         image_metadata_list: Vec<AuthManifestImageMetadata>,
         svn: u32,
         owner_config: Option<&AuthManifestOwnerConfig>,
+        vendor_cmd_auth_pk_hash: Option<[u8; 48]>,
     ) -> AuthorizationManifest {
         let vendor_fw_key_info: AuthManifestGeneratorKeyConfig = AuthManifestGeneratorKeyConfig {
             pub_keys: AuthManifestPubKeysConfig {
@@ -799,10 +817,11 @@ impl CaliptraBuilder {
             owner_fw_key_info,
             owner_man_key_info,
             image_metadata_list,
-            version: 1,
+            version: if vendor_cmd_auth_pk_hash.is_some() { 2 } else { 1 },
             flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
             pqc_key_type: FwVerificationPqcKeyType::LMS,
             svn,
+            vendor_cmd_auth_pk_hash,
         };
 
         let gen = AuthManifestGenerator::new(Crypto::default());

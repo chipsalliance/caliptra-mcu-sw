@@ -56,6 +56,7 @@ caliptra-mcu-hw-model.workspace = true
 caliptra-mcu-image-header.workspace = true
 caliptra-mcu-mbox-common.workspace = true
 caliptra-mcu-debug-unlock-signer.workspace = true
+caliptra-mcu-command-auth-challenge-signer.workspace = true
 caliptra-mcu-rom-common.workspace = true
 caliptra-mcu-ocp.workspace = true
 caliptra-mcu-testing-common.workspace = true

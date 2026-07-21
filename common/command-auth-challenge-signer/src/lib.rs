@@ -14,6 +14,11 @@ use anyhow::Result;
 use hmac::{Hmac, Mac};
 use sha2::Sha384;
 
+pub mod vendor_auth;
+pub use vendor_auth::{
+    LocalVendorAuthSigner, VendorAuthKeys, VendorAuthSigner, VendorAuthTag, VENDOR_AUTH_NONCE_SIZE,
+};
+
 /// Trait for authorizing Caliptra commands that require challenge-response MAC.
 ///
 /// Implementors receive:

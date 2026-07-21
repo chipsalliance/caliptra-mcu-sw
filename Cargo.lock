@@ -999,7 +999,10 @@ name = "caliptra-mcu-command-auth-challenge-signer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ecdsa",
+ "fips204",
  "hmac",
+ "p384",
  "sha2",
 ]
 
@@ -2455,6 +2458,7 @@ dependencies = [
  "caliptra-image-types",
  "caliptra-mctp-vdm-client",
  "caliptra-mcu-builder",
+ "caliptra-mcu-command-auth-challenge-signer",
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
