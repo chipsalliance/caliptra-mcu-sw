@@ -127,7 +127,6 @@ impl CommandId {
     pub const MC_FUSE_LOCK_PARTITION: Self = Self(0x4946_504B); // "IFPK"
 
     // Authorized commands
-    pub const MC_GET_AUTH_CMD_CHALLENGE: Self = Self(0x4D414343); // "MACC" (legacy HMAC mock path)
     pub const MC_VENDOR_AUTH_HELLO: Self = Self(0x4D56_4148); // "MVAH" (asym: relays to Caliptra VENDOR_AUTH_HELLO)
     pub const MC_PROVISION_VENDOR_PK_HASH: Self = Self(0x5056_504b); // "PVPK"
     pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
@@ -207,7 +206,6 @@ pub enum McuMailboxReq {
     FuseLockPartition(FuseLockPartitionReq),
     FuseIncreaseCaliptraMinSvn(FuseIncreaseCaliptraMinSvnReq),
     FeProg(McuFeProgReq),
-    GetAuthCmdChallenge(GetAuthCmdChallengeReq),
     VendorAuthHello(VendorAuthHelloReq),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyReq),
     ProvisionVendorPkHash(ProvisionVendorPkHashReq),
@@ -269,7 +267,6 @@ impl McuMailboxReq {
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_bytes()),
-            McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::VendorAuthHello(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
@@ -329,7 +326,6 @@ impl McuMailboxReq {
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_mut_bytes()),
-            McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::VendorAuthHello(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
@@ -391,7 +387,6 @@ impl McuMailboxReq {
                 CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
             }
             McuMailboxReq::FeProg(_) => CommandId::MC_FE_PROG,
-            McuMailboxReq::GetAuthCmdChallenge(_) => CommandId::MC_GET_AUTH_CMD_CHALLENGE,
             McuMailboxReq::VendorAuthHello(_) => CommandId::MC_VENDOR_AUTH_HELLO,
             McuMailboxReq::FuseRevokeVendorPubKey(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY,
             McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
@@ -474,7 +469,6 @@ pub enum McuMailboxResp {
     FuseRead(FuseReadResp),
     FuseWrite(FuseWriteResp),
     FuseLockPartition(FuseLockPartitionResp),
-    GetAuthCmdChallenge(GetAuthCmdChallengeResp),
     VendorAuthHello(VendorAuthHelloResp),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyResp),
     ProvisionVendorPkHash(ProvisionVendorPkHashResp),
@@ -595,7 +589,6 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
-            McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::VendorAuthHello(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
@@ -654,7 +647,6 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
-            McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::VendorAuthHello(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
@@ -1458,29 +1450,6 @@ pub struct FuseLockPartitionResp {
     pub hdr: MailboxRespHeader,
 }
 impl Response for FuseLockPartitionResp {}
-
-/// MC_GET_AUTH_CMD_CHALLENGE request: Get a challenge nonce to prove freshness in auth commands
-#[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct GetAuthCmdChallengeReq {
-    pub hdr: MailboxReqHeader,
-    pub flags: u32,
-    pub reserved: u32,
-}
-impl Request for GetAuthCmdChallengeReq {
-    const ID: CommandId = CommandId::MC_GET_AUTH_CMD_CHALLENGE;
-    type Resp = GetAuthCmdChallengeResp;
-}
-
-/// MC_GET_AUTH_CMD_CHALLENGE response: Indicates success or failure.
-#[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct GetAuthCmdChallengeResp {
-    pub hdr: MailboxRespHeader,
-    pub reserved: u32,
-    pub challenge: [u8; 32],
-}
-impl Response for GetAuthCmdChallengeResp {}
 
 /// MC_VENDOR_AUTH_HELLO request: get a fresh one-time nonce for asymmetric vendor-command
 /// auth. Relays to Caliptra `VENDOR_AUTH_HELLO`; Caliptra mints and owns the nonce.
