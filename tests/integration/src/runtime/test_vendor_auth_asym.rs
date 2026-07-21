@@ -10,98 +10,26 @@
 //! enrolled at boot via a v2 SoC manifest (Vendor Ext 0x0001). Requires the MCU runtime
 //! built with `--features asym-cmd-auth`.
 
-use crate::runtime::{build_asym_authorized_cmd, execute_authorized_req_asym};
-use crate::test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams};
-use anyhow::Result;
-use caliptra_image_fake_keys::{
-    VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC, VENDOR_MLDSA_KEY_0_PRIVATE,
-    VENDOR_MLDSA_KEY_0_PUBLIC,
+use crate::runtime::{
+    asym_custom_fw, build_asym_authorized_cmd, build_asym_fw, execute_authorized_req_asym,
+    vendor_auth_keys,
 };
-use caliptra_image_types::ECC384_SCALAR_WORD_SIZE;
-use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder};
-use caliptra_mcu_command_auth_challenge_signer::{LocalVendorAuthSigner, VendorAuthKeys};
+use crate::test::{start_runtime_hw_model, TestParams};
+use anyhow::Result;
+use caliptra_mcu_command_auth_challenge_signer::LocalVendorAuthSigner;
 use caliptra_mcu_hw_model::McuHwModel;
 use caliptra_mcu_mbox_common::messages::FuseReadReq;
 use caliptra_mcu_romtime::McuBootMilestones;
-use zerocopy::IntoBytes;
 
-/// Build the vendor keys in the hardware word format the signer + Caliptra expect.
-fn vendor_auth_keys() -> VendorAuthKeys {
-    // ECC public: X||Y big-endian u32 words.
-    let mut ecc_public_key = [0u32; ECC384_SCALAR_WORD_SIZE * 2];
-    ecc_public_key[..12].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.x);
-    ecc_public_key[12..].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.y);
-
-    // ECC private: 48 big-endian bytes.
-    let mut ecc_private_key_bytes = [0u8; 48];
-    for (i, word) in VENDOR_ECC_KEY_0_PRIVATE.iter().enumerate() {
-        ecc_private_key_bytes[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
-    }
-
-    // ML-DSA public: little-endian u32 words.
-    let mldsa_public_key: [u32; 648] = VENDOR_MLDSA_KEY_0_PUBLIC
-        .0
-        .as_bytes()
-        .chunks(4)
-        .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-
-    VendorAuthKeys {
-        ecc_private_key_bytes,
-        ecc_public_key,
-        mldsa_private_key_bytes: VENDOR_MLDSA_KEY_0_PRIVATE.0.as_bytes().to_vec(),
-        mldsa_public_key,
-    }
-}
-
-/// Built artifacts whose SoC-manifest MCU digest matches the exact runtime bytes.
-struct FwWithAnchor {
-    caliptra_fw: Vec<u8>,
-    vendor_pk_hash: [u8; 48],
-    soc_manifest: Vec<u8>,
-    mcu_runtime: Vec<u8>,
-}
-
-/// Build the asym MCU runtime, Caliptra FW, and a v2 SoC manifest whose 0x0001 anchor
-/// matches `signer` and whose MCU digest matches the returned `mcu_runtime` bytes.
-fn build_fw_with_anchor(signer: &LocalVendorAuthSigner) -> Result<FwWithAnchor> {
-    // Both features share one string: test-mcu-mbox-cmds enables the authorized-command
-    // set; asym-cmd-auth swaps the mock authorizer for the asymmetric relay one.
-    let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds,asym-cmd-auth"), false);
-    let mcu_runtime = std::fs::read(&mcu_runtime_path)?;
-    let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
-        mcu_firmware: Some(mcu_runtime_path),
-        ..Default::default()
-    })
-    .with_vendor_cmd_auth_pk_hash(signer.anchor());
-
-    let caliptra_fw = std::fs::read(builder.get_caliptra_fw()?)?;
-    let mut vendor_pk_hash = [0u8; 48];
-    vendor_pk_hash.copy_from_slice(&hex::decode(builder.get_vendor_pk_hash()?)?);
-    let soc_manifest = std::fs::read(builder.get_soc_manifest(None)?)?;
-    println!("[HSM-test] built v2 SoC manifest, anchor = {}", hex::encode(signer.anchor()));
-    Ok(FwWithAnchor {
-        caliptra_fw,
-        vendor_pk_hash,
-        soc_manifest,
-        mcu_runtime,
-    })
-}
-
+/// Boot the MCU emulator with the asym firmware + v2 anchor manifest matching `signer`.
 fn boot(signer: &LocalVendorAuthSigner) -> Result<impl McuHwModel> {
-    let fw = build_fw_with_anchor(signer)?;
+    let fw = build_asym_fw(signer)?;
     // Load the SAME runtime bytes the manifest digested (custom_mcu_runtime), else the
     // harness picks its own runtime and Caliptra fails with RUNTIME_DIGEST_MISMATCH.
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
-        custom_mcu_runtime: Some(fw.mcu_runtime),
-        custom_caliptra_fw: Some(CustomCaliptraFw {
-            fw_bytes: fw.caliptra_fw,
-            vendor_pk_hash: fw.vendor_pk_hash,
-            soc_manifest: fw.soc_manifest,
-        }),
+        custom_mcu_runtime: Some(fw.mcu_runtime.clone()),
+        custom_caliptra_fw: Some(asym_custom_fw(&fw)),
         ..Default::default()
     });
     hw.step_until(|hw| {

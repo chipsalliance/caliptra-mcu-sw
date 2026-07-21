@@ -1,51 +1,111 @@
 // Licensed under the Apache-2.0 license
 
+use crate::test::{compile_runtime, CustomCaliptraFw};
 use anyhow::{anyhow, bail, Result};
 use caliptra_api::calc_checksum;
 use caliptra_api::mailbox::MailboxReqHeader;
-use caliptra_mcu_command_auth_challenge_signer::{VendorAuthSigner, VENDOR_AUTH_NONCE_SIZE};
+use caliptra_image_fake_keys::{
+    VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC, VENDOR_MLDSA_KEY_0_PRIVATE,
+    VENDOR_MLDSA_KEY_0_PUBLIC,
+};
+use caliptra_image_types::ECC384_SCALAR_WORD_SIZE;
+use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder};
+use caliptra_mcu_command_auth_challenge_signer::{
+    LocalVendorAuthSigner, VendorAuthKeys, VendorAuthSigner, VENDOR_AUTH_NONCE_SIZE,
+};
 use caliptra_mcu_hw_model::McuHwModel;
-use caliptra_mcu_mbox_common::messages::{GetAuthCmdChallengeReq, VendorAuthHelloReq};
+use caliptra_mcu_mbox_common::messages::VendorAuthHelloReq;
 use core::mem::size_of;
-use hmac::{Hmac, Mac};
-use sha2::Sha384;
-use zerocopy::FromBytes;
+use zerocopy::{FromBytes, IntoBytes};
 
 mod test_increase_caliptra_svn;
 mod test_mcu_mailbox;
 mod test_revoke_vendor_pub_key;
 mod test_vendor_auth_asym;
 
-pub const TEST_AUTH_CMD_HMAC_KEY: [u8; 48] = [
-    0x72, 0xec, 0x12, 0x02, 0x77, 0x69, 0xb9, 0xdc, 0x04, 0xbd, 0xd0, 0xc0, 0x86, 0xca, 0x1b, 0x20,
-    0x2f, 0x47, 0x1e, 0xee, 0xf2, 0x8c, 0x2d, 0xa8, 0xc5, 0x4c, 0x75, 0xc2, 0x48, 0xa6, 0x80, 0x0a,
-    0x11, 0xbf, 0xd5, 0xcd, 0x09, 0xed, 0x57, 0x0c, 0xb4, 0xc2, 0xa1, 0x37, 0x6b, 0xa2, 0xcb, 0xcd,
-];
+/// Vendor keys (VENDOR_*_KEY_0) in the hardware word format the signer + Caliptra expect:
+/// ECC pub/priv big-endian words/bytes, ML-DSA pub little-endian words.
+pub fn vendor_auth_keys() -> VendorAuthKeys {
+    let mut ecc_public_key = [0u32; ECC384_SCALAR_WORD_SIZE * 2];
+    ecc_public_key[..12].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.x);
+    ecc_public_key[12..].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.y);
 
-pub fn get_auth_cmd_challenge(hw: &mut impl McuHwModel) -> Result<[u8; 32]> {
-    let cmd = GetAuthCmdChallengeReq::default();
-    let resp = hw.mailbox_execute_req(cmd)?;
-    Ok(resp.challenge)
+    let mut ecc_private_key_bytes = [0u8; 48];
+    for (i, word) in VENDOR_ECC_KEY_0_PRIVATE.iter().enumerate() {
+        ecc_private_key_bytes[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
+    }
+
+    let mldsa_public_key: [u32; 648] = VENDOR_MLDSA_KEY_0_PUBLIC
+        .0
+        .as_bytes()
+        .chunks(4)
+        .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+
+    VendorAuthKeys {
+        ecc_private_key_bytes,
+        ecc_public_key,
+        mldsa_private_key_bytes: VENDOR_MLDSA_KEY_0_PRIVATE.0.as_bytes().to_vec(),
+        mldsa_public_key,
+    }
 }
 
-pub fn sign_auth_cmd_challenge(challenge: &[u8; 32], cmd_id: u32, cmd: &[u8]) -> Result<[u8; 48]> {
-    type HmacSha384 = Hmac<Sha384>;
-    let cmd_id_bytes = cmd_id.to_be_bytes();
-    let cmd_body = &cmd[size_of::<MailboxReqHeader>()..];
-    let mut mac = HmacSha384::new_from_slice(&TEST_AUTH_CMD_HMAC_KEY)?;
-    mac.update(&cmd_id_bytes);
-    mac.update(cmd_body);
-    mac.update(challenge);
-    let result: [u8; 48] = mac.finalize().into_bytes().into();
-    Ok(result)
+/// Built artifacts whose SoC-manifest MCU digest matches the exact runtime bytes.
+pub struct AsymFw {
+    pub caliptra_fw: Vec<u8>,
+    pub vendor_pk_hash: [u8; 48],
+    pub soc_manifest: Vec<u8>,
+    pub mcu_runtime: Vec<u8>,
 }
 
-pub fn authorize_cmd(hw: &mut impl McuHwModel, cmd_id: u32, cmd: &[u8]) -> Result<Vec<u8>> {
-    let challenge = get_auth_cmd_challenge(hw)?;
-    let mac = sign_auth_cmd_challenge(&challenge, cmd_id, cmd)?;
-    let mut auth_cmd = cmd.to_vec();
-    auth_cmd.extend_from_slice(&mac);
-    Ok(auth_cmd)
+/// Build the asym MCU runtime + Caliptra FW + a v2 SoC manifest whose 0x0001 anchor matches
+/// `signer` and whose MCU digest matches the returned `mcu_runtime` bytes. Callers pass
+/// `mcu_runtime` via `custom_mcu_runtime` so the loaded firmware matches the manifest digest.
+/// `extra_features` (e.g. "ocp-lock") is appended to the base `test-mcu-mbox-cmds,asym-cmd-auth`.
+pub fn build_asym_fw_features(
+    signer: &LocalVendorAuthSigner,
+    extra_features: &[&str],
+) -> Result<AsymFw> {
+    let mut features = String::from("test-mcu-mbox-cmds,asym-cmd-auth");
+    for f in extra_features {
+        features.push(',');
+        features.push_str(f);
+    }
+    let mcu_runtime_path = compile_runtime(Some(&features), false);
+    let mcu_runtime = std::fs::read(&mcu_runtime_path)?;
+    let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+        mcu_firmware: Some(mcu_runtime_path),
+        ocp_lock: extra_features.contains(&"ocp-lock"),
+        ..Default::default()
+    })
+    .with_vendor_cmd_auth_pk_hash(signer.anchor());
+
+    let caliptra_fw = std::fs::read(builder.get_caliptra_fw()?)?;
+    let mut vendor_pk_hash = [0u8; 48];
+    vendor_pk_hash.copy_from_slice(&hex::decode(builder.get_vendor_pk_hash()?)?);
+    let soc_manifest = std::fs::read(builder.get_soc_manifest(None)?)?;
+    Ok(AsymFw {
+        caliptra_fw,
+        vendor_pk_hash,
+        soc_manifest,
+        mcu_runtime,
+    })
+}
+
+/// Build asym firmware with just the base features (no extras).
+pub fn build_asym_fw(signer: &LocalVendorAuthSigner) -> Result<AsymFw> {
+    build_asym_fw_features(signer, &[])
+}
+
+/// Convenience: the `CustomCaliptraFw` an asym boot needs from `build_asym_fw`.
+pub fn asym_custom_fw(fw: &AsymFw) -> CustomCaliptraFw {
+    CustomCaliptraFw {
+        fw_bytes: fw.caliptra_fw.clone(),
+        vendor_pk_hash: fw.vendor_pk_hash,
+        soc_manifest: fw.soc_manifest.clone(),
+    }
 }
 
 /// Fetch a Caliptra-minted one-time nonce via `MC_VENDOR_AUTH_HELLO` (asym path).
@@ -86,8 +146,8 @@ pub fn build_asym_authorized_cmd<R: caliptra_mcu_mbox_common::messages::Request>
 }
 
 /// Full asymmetric authorization: HELLO for a fresh nonce, sign `(cmd_id, body, nonce)`
-/// with the vendor keys, append the tag, and send. Twin of [`execute_authorized_req`]
-/// (HMAC) but drives the hybrid ECDSA-P384 + ML-DSA-87 verify in Caliptra.
+/// with the vendor keys, append the tag, and send. Drives the hybrid ECDSA-P384 +
+/// ML-DSA-87 verify in Caliptra.
 pub fn execute_authorized_req_asym<R: caliptra_mcu_mbox_common::messages::Request>(
     hw: &mut impl McuHwModel,
     req: R,
@@ -113,51 +173,4 @@ pub fn execute_authorized_req_asym<R: caliptra_mcu_mbox_common::messages::Reques
     }
     R::Resp::read_from_bytes(&response)
         .map_err(|_| anyhow!("Failed to read response into struct"))
-}
-
-pub fn execute_authorized_req<R: caliptra_mcu_mbox_common::messages::Request>(
-    hw: &mut impl McuHwModel,
-    mut req: R,
-) -> Result<R::Resp> {
-    let req_bytes = req.as_mut_bytes();
-
-    // Authorize (sign)
-    let mut auth_cmd = authorize_cmd(hw, u32::from(R::ID), req_bytes)?;
-
-    // Populate the request checksum over body + MAC
-    let checksum = calc_checksum(R::ID.into(), &auth_cmd[size_of::<i32>()..]);
-    let hdr: &mut MailboxReqHeader =
-        MailboxReqHeader::mut_from_bytes(&mut auth_cmd[..size_of::<MailboxReqHeader>()]).unwrap();
-    hdr.chksum = checksum;
-
-    // Send the request to the mailbox
-    let mut response = hw
-        .mailbox_execute(R::ID.into(), &auth_cmd)?
-        .unwrap_or_default();
-
-    // Check the response checksum
-    if response.len() < 4 {
-        bail!("Response too short to contain checksum");
-    }
-    let received_chksum = u32::from_le_bytes(response[..4].try_into().unwrap());
-    let calculated_chksum = calc_checksum(0, &response[4..]);
-    if received_chksum != calculated_chksum {
-        bail!(
-            "Response checksum mismatch: expected {:08x}, calculated {:08x}",
-            received_chksum,
-            calculated_chksum
-        );
-    }
-
-    if response.len() < std::mem::size_of::<R::Resp>() {
-        response.resize(std::mem::size_of::<R::Resp>(), 0);
-    }
-    let response = R::Resp::read_from_bytes(&response).map_err(|_| {
-        anyhow!(
-            "Failed to read response into struct: expected len {}, response len {}",
-            std::mem::size_of::<R::Resp>(),
-            response.len()
-        )
-    })?;
-    Ok(response)
 }

@@ -1,12 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-use crate::runtime::execute_authorized_req;
+use crate::runtime::{execute_authorized_req_asym, vendor_auth_keys};
 use crate::test::{
     compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK,
 };
 use anyhow::Result;
 use caliptra_api::{calc_checksum, error::CaliptraError, mailbox::FwInfoResp, SocManager};
-use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
+use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder};
+use caliptra_mcu_command_auth_challenge_signer::LocalVendorAuthSigner;
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::FuseIncreaseCaliptraMinSvnReq;
 use caliptra_mcu_romtime::McuBootMilestones;
@@ -18,40 +19,37 @@ fn test_increase_caliptra_svn() -> Result<()> {
     let lock = TEST_LOCK.lock().unwrap();
     lock.fetch_add(1, Ordering::Relaxed);
 
-    // Step 1: Compile runtime with specific features and build initial Caliptra
-    // firmware with SVN = 0 and SVN = 7.
-    let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
-    let (caliptra_fw_svn0, caliptra_fw_svn7, vendor_pk_hash_arr, soc_manifest) =
-        if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let fw_svn0 = binaries.caliptra_fw.clone();
-            let fw_svn7 = binaries.caliptra_fw_svn7.clone();
-            let pk_hash = binaries.vendor_pk_hash().unwrap();
-            let manifest = binaries.test_soc_manifest("test-mcu-mbox-cmds").unwrap();
-            (fw_svn0, fw_svn7, pk_hash, manifest)
-        } else {
-            let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
-                mcu_firmware: Some(mcu_runtime_path.clone()),
-                svn: Some(0),
-                ..Default::default()
-            });
-            let fw_svn0 = std::fs::read(builder.get_caliptra_fw()?).unwrap();
-            let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
-                mcu_firmware: Some(mcu_runtime_path),
-                svn: Some(7),
-                ..Default::default()
-            });
-            let fw_svn7 = std::fs::read(builder.get_caliptra_fw()?).unwrap();
-            let pk_hash_str = builder.get_vendor_pk_hash()?.to_string();
-            let pk_hash = hex::decode(&pk_hash_str).unwrap();
-            let mut pk_hash_arr = [0u8; 48];
-            pk_hash_arr.copy_from_slice(&pk_hash);
-            let manifest = std::fs::read(builder.get_soc_manifest(None)?).unwrap();
-            (fw_svn0, fw_svn7, pk_hash_arr, manifest)
-        };
+    // Step 1: Build asym MCU runtime + Caliptra firmware (SVN 0 and SVN 7) with a v2
+    // vendor-auth anchor. The signer is the in-test HSM for authorized commands.
+    let signer = LocalVendorAuthSigner::new(vendor_auth_keys());
+    let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds,asym-cmd-auth"), false);
+    let mcu_runtime = std::fs::read(&mcu_runtime_path)?;
+    let (caliptra_fw_svn0, caliptra_fw_svn7, vendor_pk_hash_arr, soc_manifest) = {
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            mcu_firmware: Some(mcu_runtime_path.clone()),
+            svn: Some(0),
+            ..Default::default()
+        })
+        .with_vendor_cmd_auth_pk_hash(signer.anchor());
+        let fw_svn0 = std::fs::read(builder.get_caliptra_fw()?)?;
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            mcu_firmware: Some(mcu_runtime_path),
+            svn: Some(7),
+            ..Default::default()
+        })
+        .with_vendor_cmd_auth_pk_hash(signer.anchor());
+        let fw_svn7 = std::fs::read(builder.get_caliptra_fw()?)?;
+        let pk_hash = hex::decode(builder.get_vendor_pk_hash()?)?;
+        let mut pk_hash_arr = [0u8; 48];
+        pk_hash_arr.copy_from_slice(&pk_hash);
+        let manifest = std::fs::read(builder.get_soc_manifest(None)?)?;
+        (fw_svn0, fw_svn7, pk_hash_arr, manifest)
+    };
 
     // Start the hardware model with the custom Caliptra firmware (SVN 7).
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
+        custom_mcu_runtime: Some(mcu_runtime.clone()),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn7.clone(),
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -72,7 +70,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 0,
         ..Default::default()
     };
-    let result = execute_authorized_req(&mut hw, cmd);
+    let result = execute_authorized_req_asym(&mut hw, cmd, &signer);
     assert!(result.is_err());
 
     // Check requesting to increase SVN past what is currently running returns an error.
@@ -81,7 +79,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 8,
         ..Default::default()
     };
-    let result = execute_authorized_req(&mut hw, cmd);
+    let result = execute_authorized_req_asym(&mut hw, cmd, &signer);
     assert!(result.is_err());
 
     // Check trying to burn a value greater than 128 returns an error.
@@ -89,7 +87,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 129,
         ..Default::default()
     };
-    let result = execute_authorized_req(&mut hw, cmd);
+    let result = execute_authorized_req_asym(&mut hw, cmd, &signer);
     assert!(result.is_err());
 
     // Send a command to increase the Caliptra minimum SVN fuses to 7.
@@ -97,14 +95,14 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 7,
         ..Default::default()
     };
-    let _resp = execute_authorized_req(&mut hw, cmd)?;
+    let _resp = execute_authorized_req_asym(&mut hw, cmd, &signer)?;
 
     // Check requesting twice to burn the SVN of the value currently in fuses passes.
     let cmd = FuseIncreaseCaliptraMinSvnReq {
         svn: 7,
         ..Default::default()
     };
-    let _resp = execute_authorized_req(&mut hw, cmd)?;
+    let _resp = execute_authorized_req_asym(&mut hw, cmd, &signer)?;
 
     // Read OTP memory so we can use the same config in later boots.
     let otp = hw.read_otp_memory();
@@ -112,6 +110,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
     // Step 2: Cold boot with the burned fuses and verify the firmware with SVN 7 can still boot.
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
+        custom_mcu_runtime: Some(mcu_runtime.clone()),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn7,
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -158,7 +157,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 6,
         ..Default::default()
     };
-    let resp = execute_authorized_req(&mut hw, cmd);
+    let resp = execute_authorized_req_asym(&mut hw, cmd, &signer);
     assert!(resp.is_err());
 
     // Step 3: Negative test. Build firmware with SVN = 0 (less than fuse value 7)
@@ -206,32 +205,29 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
     let lock = TEST_LOCK.lock().unwrap();
     lock.fetch_add(1, Ordering::Relaxed);
 
-    // Compile runtime with specific features and build Caliptra firmware with max SVN (128).
-    let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
-    let (caliptra_fw_svn128, vendor_pk_hash_arr, soc_manifest) =
-        if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let fw = binaries.caliptra_fw_svn128.clone();
-            let pk_hash = binaries.vendor_pk_hash().unwrap();
-            let manifest = binaries.test_soc_manifest("test-mcu-mbox-cmds").unwrap();
-            (fw, pk_hash, manifest)
-        } else {
-            let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
-                mcu_firmware: Some(mcu_runtime_path.clone()),
-                svn: Some(128),
-                ..Default::default()
-            });
-            let fw = std::fs::read(builder.get_caliptra_fw()?).unwrap();
-            let pk_hash_str = builder.get_vendor_pk_hash()?.to_string();
-            let pk_hash = hex::decode(&pk_hash_str).unwrap();
-            let mut pk_hash_arr = [0u8; 48];
-            pk_hash_arr.copy_from_slice(&pk_hash);
-            let manifest = std::fs::read(builder.get_soc_manifest(None)?).unwrap();
-            (fw, pk_hash_arr, manifest)
-        };
+    // Build asym MCU runtime + Caliptra firmware with max SVN (128) + v2 vendor-auth anchor.
+    let signer = LocalVendorAuthSigner::new(vendor_auth_keys());
+    let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds,asym-cmd-auth"), false);
+    let mcu_runtime = std::fs::read(&mcu_runtime_path)?;
+    let (caliptra_fw_svn128, vendor_pk_hash_arr, soc_manifest) = {
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            mcu_firmware: Some(mcu_runtime_path),
+            svn: Some(128),
+            ..Default::default()
+        })
+        .with_vendor_cmd_auth_pk_hash(signer.anchor());
+        let fw = std::fs::read(builder.get_caliptra_fw()?)?;
+        let pk_hash = hex::decode(builder.get_vendor_pk_hash()?)?;
+        let mut pk_hash_arr = [0u8; 48];
+        pk_hash_arr.copy_from_slice(&pk_hash);
+        let manifest = std::fs::read(builder.get_soc_manifest(None)?)?;
+        (fw, pk_hash_arr, manifest)
+    };
 
     // Start the hardware model with the custom Caliptra firmware (SVN 128).
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
+        custom_mcu_runtime: Some(mcu_runtime.clone()),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn128.clone(),
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -252,7 +248,7 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
         svn: 128,
         ..Default::default()
     };
-    let _resp = execute_authorized_req(&mut hw, cmd)?;
+    let _resp = execute_authorized_req_asym(&mut hw, cmd, &signer)?;
 
     // Read OTP memory immediately after the command to verify fuses were burned.
     let otp = hw.read_otp_memory();
@@ -269,6 +265,7 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
     // Verify persistence across cold boot.
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
+        custom_mcu_runtime: Some(mcu_runtime.clone()),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn128,
             vendor_pk_hash: vendor_pk_hash_arr,

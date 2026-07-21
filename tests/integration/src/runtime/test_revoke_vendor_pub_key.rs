@@ -1,12 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 use crate::{
-    runtime::execute_authorized_req,
+    runtime::{execute_authorized_req_asym, vendor_auth_keys},
     test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams},
 };
 use anyhow::Result;
 use caliptra_api::{error::CaliptraError, mailbox::MailboxReqHeader, SocManager};
-use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
+use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder};
+use caliptra_mcu_command_auth_challenge_signer::LocalVendorAuthSigner;
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, ProvisionVendorPkHashReq,
@@ -14,42 +15,43 @@ use caliptra_mcu_mbox_common::messages::{
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 
-fn get_fw() -> Result<(Vec<u8>, Vec<u8>, [u8; 48], Vec<u8>)> {
-    if let Ok(binaries) = FirmwareBinaries::from_env() {
-        let fw = binaries.caliptra_fw.clone();
-        let fw_key2 = binaries.caliptra_fw_key2.clone();
-        let pk_hash = binaries.vendor_pk_hash().unwrap();
-        let manifest = binaries.test_soc_manifest("test-mcu-mbox-cmds")?.clone();
-        Ok((fw, fw_key2, pk_hash, manifest))
-    } else {
-        let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
-        let mut builder = CaliptraBuilder::from_args(&CaliptraBuildArgs {
-            mcu_firmware: Some(mcu_runtime_path.clone()),
-            ..Default::default()
-        });
-        let fw = std::fs::read(builder.get_caliptra_fw()?).unwrap();
-        let mut builder_key2 = CaliptraBuilder::from_args(&CaliptraBuildArgs {
-            mcu_firmware: Some(mcu_runtime_path),
-            use_second_key: true,
-            ..Default::default()
-        });
-        let fw_key2 = std::fs::read(builder_key2.get_caliptra_fw()?).unwrap();
-        let pk_hash_str = builder.get_vendor_pk_hash()?.to_string();
-        let pk_hash = hex::decode(&pk_hash_str).unwrap();
-        let mut pk_hash_arr = [0u8; 48];
-        pk_hash_arr.copy_from_slice(&pk_hash);
-        let manifest = std::fs::read(builder.get_soc_manifest(None)?).unwrap();
-        Ok((fw, fw_key2, pk_hash_arr, manifest))
-    }
+/// Build asym firmware (key1 + key2) with a v2 vendor-auth anchor matching `signer`.
+/// Returns (fw_key1, fw_key2, vendor_pk_hash, soc_manifest, mcu_runtime).
+fn get_fw(
+    signer: &LocalVendorAuthSigner,
+) -> Result<(Vec<u8>, Vec<u8>, [u8; 48], Vec<u8>, Vec<u8>)> {
+    let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds,asym-cmd-auth"), false);
+    let mcu_runtime = std::fs::read(&mcu_runtime_path)?;
+    let mut builder = CaliptraBuilder::from_args(&CaliptraBuildArgs {
+        mcu_firmware: Some(mcu_runtime_path.clone()),
+        ..Default::default()
+    })
+    .with_vendor_cmd_auth_pk_hash(signer.anchor());
+    let fw = std::fs::read(builder.get_caliptra_fw()?)?;
+    let mut builder_key2 = CaliptraBuilder::from_args(&CaliptraBuildArgs {
+        mcu_firmware: Some(mcu_runtime_path),
+        use_second_key: true,
+        ..Default::default()
+    })
+    .with_vendor_cmd_auth_pk_hash(signer.anchor());
+    let fw_key2 = std::fs::read(builder_key2.get_caliptra_fw()?)?;
+    let pk_hash = hex::decode(builder.get_vendor_pk_hash()?)?;
+    let mut pk_hash_arr = [0u8; 48];
+    pk_hash_arr.copy_from_slice(&pk_hash);
+    let manifest = std::fs::read(builder.get_soc_manifest(None)?)?;
+    Ok((fw, fw_key2, pk_hash_arr, manifest, mcu_runtime))
 }
 
 #[test]
 fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
-    let (caliptra_fw, caliptra_fw_key2, vendor_pk_hash_arr, soc_manifest) = get_fw()?;
+    let signer = LocalVendorAuthSigner::new(vendor_auth_keys());
+    let (caliptra_fw, caliptra_fw_key2, vendor_pk_hash_arr, soc_manifest, mcu_runtime) =
+        get_fw(&signer)?;
 
     // Boot with default caliptra_fw (key_index = 0)
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
+        custom_mcu_runtime: Some(mcu_runtime),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -71,7 +73,7 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
         key_index: 0,
         ..Default::default()
     };
-    let result = execute_authorized_req(&mut hw, cmd);
+    let result = execute_authorized_req_asym(&mut hw, cmd, &signer);
     assert!(result.is_err());
 
     // Check revoking a non-existent slot fails
@@ -81,7 +83,7 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
         key_index: 0,
         ..Default::default()
     };
-    let result = execute_authorized_req(&mut hw, cmd);
+    let result = execute_authorized_req_asym(&mut hw, cmd, &signer);
     assert!(result.is_err());
 
     // Check revoking an ECC key that wasn't used to boot succeeds
@@ -91,7 +93,7 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
         key_index: 1,
         ..Default::default()
     };
-    let _resp = execute_authorized_req(&mut hw, cmd);
+    let _resp = execute_authorized_req_asym(&mut hw, cmd, &signer);
 
     // Read OTP memory so we can use the same config in later boots.
     let otp = hw.read_otp_memory();
@@ -132,11 +134,14 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
 
 #[test]
 fn test_revoke_vendor_pub_key0_lms() -> Result<()> {
-    let (caliptra_fw, caliptra_fw_key2, vendor_pk_hash_arr, soc_manifest) = get_fw()?;
+    let signer = LocalVendorAuthSigner::new(vendor_auth_keys());
+    let (caliptra_fw, caliptra_fw_key2, vendor_pk_hash_arr, soc_manifest, mcu_runtime) =
+        get_fw(&signer)?;
 
     // Boot with default caliptra_fw (key_index = 0)
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
+        custom_mcu_runtime: Some(mcu_runtime),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -158,7 +163,7 @@ fn test_revoke_vendor_pub_key0_lms() -> Result<()> {
         key_index: 0,
         ..Default::default()
     };
-    let result = execute_authorized_req(&mut hw, cmd);
+    let result = execute_authorized_req_asym(&mut hw, cmd, &signer);
     assert!(result.is_err());
 
     // Check revoking a PQC key that wasn't used to boot succeeds
@@ -168,7 +173,7 @@ fn test_revoke_vendor_pub_key0_lms() -> Result<()> {
         key_index: 1,
         ..Default::default()
     };
-    let _resp = execute_authorized_req(&mut hw, cmd);
+    let _resp = execute_authorized_req_asym(&mut hw, cmd, &signer);
 
     // Read OTP memory so we can use the same config in later boots.
     let otp = hw.read_otp_memory();
@@ -209,11 +214,14 @@ fn test_revoke_vendor_pub_key0_lms() -> Result<()> {
 
 #[test]
 fn test_rotate_vendor_pk_hash() -> Result<()> {
-    let (caliptra_fw, _caliptra_fw_key2, vendor_pk_hash_arr, soc_manifest) = get_fw()?;
+    let signer = LocalVendorAuthSigner::new(vendor_auth_keys());
+    let (caliptra_fw, _caliptra_fw_key2, vendor_pk_hash_arr, soc_manifest, mcu_runtime) =
+        get_fw(&signer)?;
 
     // Boot with default caliptra_fw
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
+        custom_mcu_runtime: Some(mcu_runtime.clone()),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw.clone(),
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -233,7 +241,7 @@ fn test_rotate_vendor_pk_hash() -> Result<()> {
         vendor_pk_hash_slot: 0,
         ..Default::default()
     };
-    let result = execute_authorized_req(&mut hw, cmd);
+    let result = execute_authorized_req_asym(&mut hw, cmd, &signer);
     assert!(result.is_err());
 
     // We can reuse the existing pk hash,
@@ -246,7 +254,7 @@ fn test_rotate_vendor_pk_hash() -> Result<()> {
         hash: new_pk_hash,
         hdr: MailboxReqHeader::default(),
     };
-    let resp = execute_authorized_req(&mut hw, cmd);
+    let resp = execute_authorized_req_asym(&mut hw, cmd, &signer);
     assert!(resp.is_ok(), "{:?}", resp);
 
     // Check revoking a pk hash that isn't active succeeds
@@ -254,7 +262,7 @@ fn test_rotate_vendor_pk_hash() -> Result<()> {
         vendor_pk_hash_slot: 1,
         ..Default::default()
     };
-    let resp = execute_authorized_req(&mut hw, cmd);
+    let resp = execute_authorized_req_asym(&mut hw, cmd, &signer);
     assert!(resp.is_ok());
 
     // Read OTP memory so we can use the same config in later boots.
@@ -263,6 +271,7 @@ fn test_rotate_vendor_pk_hash() -> Result<()> {
     // Boot with caliptra_fw again
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
+        custom_mcu_runtime: Some(mcu_runtime),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
             vendor_pk_hash: vendor_pk_hash_arr,
