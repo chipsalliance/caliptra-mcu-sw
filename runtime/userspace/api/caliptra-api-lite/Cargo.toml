@@ -7,6 +7,13 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+
+async-trait = { workspace = true }
+caliptra-mcu-flash-image = { workspace = true }
+caliptra-mcu-pldm-common = { workspace = true }
+caliptra-mcu-pldm-lib = { workspace = true }
+embassy-executor = { workspace = true }
+embassy-sync = { workspace = true }
 mcu-error = { workspace = true }
 caliptra-mcu-libsyscall-caliptra = { workspace = true }
 caliptra-mcu-libtock_platform = { workspace = true }

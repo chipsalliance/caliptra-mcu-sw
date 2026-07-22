@@ -11,8 +11,7 @@ use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyRes
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
-use caliptra_mcu_pldm_lib::daemon::PldmService;
-use caliptra_mcu_pldm_lib::firmware_device::fd_ops::FdOps;
+use caliptra_mcu_pldm_lib::daemon::{wait_until_stopped, PldmService};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
@@ -21,9 +20,12 @@ pub static FW_UPDATE_TASK_YIELD: Signal<CriticalSectionRawMutex, ()> = Signal::n
 pub static PLDM_DAEMON_TASK_YIELD: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 #[embassy_executor::task]
-async fn pldm_service_task(pldm_ops: &'static dyn FdOps, spawner: Spawner) {
-    let mut pldm_service_init: PldmService = PldmService::init(pldm_ops, spawner);
-    pldm_service_init.start().await.unwrap();
+async fn pldm_service_task(spawner: Spawner) {
+    let pldm_ops = UpdateFdOps::new();
+    let mut pldm_service_init: PldmService = PldmService::init(&pldm_ops, spawner);
+    if pldm_service_init.start().await.is_ok() {
+        wait_until_stopped().await;
+    }
 }
 
 pub async fn initialize_pldm(
@@ -43,12 +45,8 @@ pub async fn initialize_pldm(
     });
     if !is_initialiazed {
         if descriptors.is_empty() {
-            panic!("PLDM descriptors cannot be empty");
+            return Err(ErrorCode::Fail);
         }
-        let mut update_fd_ops: UpdateFdOps = UpdateFdOps::new();
-        let static_update_fd_ops: &'static mut UpdateFdOps =
-            unsafe { core::mem::transmute(&mut update_fd_ops) };
-
         PLDM_STATE.lock(|state| {
             let mut state = state.borrow_mut();
             *state = State::DownloadingImage;
@@ -66,8 +64,8 @@ pub async fn initialize_pldm(
         });
 
         spawner
-            .spawn(pldm_service_task(static_update_fd_ops, spawner))
-            .unwrap();
+            .spawn(pldm_service_task(spawner))
+            .map_err(|_| ErrorCode::Fail)?;
     }
     Ok(())
 }

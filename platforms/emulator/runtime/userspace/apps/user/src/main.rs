@@ -127,6 +127,7 @@ pub(crate) async fn async_main() {
         .map_err(|_| log_spawn_error())
         .ok();
 
+    #[cfg(feature = "mcu-mbox-service")]
     EXECUTOR
         .get()
         .spawner()

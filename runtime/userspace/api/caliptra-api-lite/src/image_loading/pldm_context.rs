@@ -4,7 +4,6 @@ use core::cell::RefCell;
 
 use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
-
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;

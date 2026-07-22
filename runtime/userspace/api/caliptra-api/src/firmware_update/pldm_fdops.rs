@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 extern crate alloc;
-
 use super::pldm_client::{FW_UPDATE_TASK_YIELD, PLDM_DAEMON_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, FW_UPDATE_HOOKS, PLDM_STATE};
 use crate::MAX_PLDM_TRANSFER_SIZE;
