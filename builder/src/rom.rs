@@ -133,7 +133,7 @@ pub fn test_rom_build(args: &crate::CaliptraBuildArgs) -> Result<String> {
     let platform_bin = format!("mcu-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
     let rom_binary = common.release_dir().map(|t| t.join(&platform_bin))?;
 
-    let mut features = fwid.features.to_vec();
+    let mut features = fwid.features().to_vec();
     if !features.contains(&"riscv") {
         features.push("riscv");
     }
