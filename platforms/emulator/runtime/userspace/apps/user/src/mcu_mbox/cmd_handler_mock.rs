@@ -4,6 +4,9 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use caliptra_api::mailbox::HpkeHandle;
+#[cfg(feature = "ocp-lock")]
+use caliptra_api::mailbox::OcpLockEnumerateHpkeHandlesResp;
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
     DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, Uid,
@@ -139,5 +142,24 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
 
     async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
         CaliptraCmdBackend.program_field_entropy(partition).await
+    }
+    async fn get_ocp_lock_endorsement_cert(
+        &self,
+        hpke_handle: &HpkeHandle,
+        cert_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        CaliptraCmdBackend
+            .get_ocp_lock_endorsement_cert(hpke_handle, cert_buf)
+            .await
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_enumerate_hpke_handles(
+        &self,
+        resp: &mut OcpLockEnumerateHpkeHandlesResp,
+    ) -> CaliptraCmdResult<()> {
+        CaliptraCmdBackend
+            .ocp_lock_enumerate_hpke_handles(resp)
+            .await
     }
 }

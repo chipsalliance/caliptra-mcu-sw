@@ -13,6 +13,14 @@ use caliptra_mcu_common_commands::{
 use caliptra_mcu_libapi_caliptra::certificate::{CertContext, IDEV_ECC_CSR_MAX_SIZE};
 use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_libapi_caliptra::ocp_lock::{
+    HpkeHandle, OcpLock, OcpLockEnumerateHpkeHandlesResp,
+};
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_libapi_caliptra::signer::CaliptraDpeSigner;
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 
 pub struct CaliptraCmdBackend;
 
@@ -229,5 +237,42 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
         Ok(())
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn get_ocp_lock_endorsement_cert(
+        &self,
+        hpke_handle: &HpkeHandle,
+        cert_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let mailbox = Mailbox::new();
+        let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);
+        let signer = CaliptraDpeSigner::new(&mailbox);
+
+        ocp_lock
+            .get_hpke_public_key_x509(hpke_handle, cert_buf, &signer)
+            .await
+            .map_err(|e| match e {
+                CaliptraApiError::MailboxBusy => CaliptraCompletionCode::CaliptraMailboxBusy,
+                CaliptraApiError::BufferTooSmall => CaliptraCompletionCode::CaliptraBufferTooSmall,
+                _ => CaliptraCompletionCode::OperationFailed,
+            })
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_enumerate_hpke_handles(
+        &self,
+        resp: &mut OcpLockEnumerateHpkeHandlesResp,
+    ) -> CaliptraCmdResult<()> {
+        let mailbox = Mailbox::new();
+        let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);
+
+        ocp_lock
+            .enumerate_hpke_handles(resp)
+            .await
+            .map_err(|e| match e {
+                CaliptraApiError::MailboxBusy => CaliptraCompletionCode::CaliptraMailboxBusy,
+                _ => CaliptraCompletionCode::OperationFailed,
+            })
     }
 }

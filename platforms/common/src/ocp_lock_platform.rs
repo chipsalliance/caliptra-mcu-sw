@@ -1,12 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_registers_generated::fuses;
-use caliptra_mcu_romtime::ocp_lock::{Error, PlatformRuntime};
+use caliptra_mcu_romtime::ocp_lock::{Error, KernelConfig};
 use caliptra_mcu_romtime::Otp;
 
 pub struct RuntimeOcpLockPlatform;
 
-impl PlatformRuntime for RuntimeOcpLockPlatform {
+impl KernelConfig for RuntimeOcpLockPlatform {
     fn get_hek_slot_offset(&self, slot: usize) -> Result<usize, Error> {
         if slot >= caliptra_mcu_romtime::HEK_OFFSETS.len() {
             return Err(Error::ROM_INVALID_HEK_SLOT);

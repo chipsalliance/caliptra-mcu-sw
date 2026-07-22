@@ -20,8 +20,9 @@ use caliptra_mcu_mbox_common::messages::{
     FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetLogReq, GetLogResp, MailboxRespHeader, MailboxRespHeaderVarSize,
-    McuFeProgReq, McuResponseVarSize, OcpLockRotateHekReq, OcpLockRotateHekResp,
+    GetAuthCmdChallengeResp, GetLogReq, GetLogResp, GetOcpLockEndorsementCertReq,
+    GetOcpLockEndorsementCertResp, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq,
+    McuResponseVarSize, OcpLockEnumerateHpkeHandlesResp, OcpLockRotateHekReq, OcpLockRotateHekResp,
     OcpLockSetPermaHekReq, OcpLockSetPermaHekResp, ProvisionVendorPkHashReq,
     ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE,
     MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
@@ -177,7 +178,14 @@ impl<'a> CmdInterface<'a> {
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
-
+                CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT => {
+                    self.handle_get_ocp_lock_endorsement_cert(req, resp_buf)
+                        .await
+                }
+                CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES => {
+                    self.handle_ocp_lock_enumerate_hpke_handles(req, resp_buf)
+                        .await
+                }
                 _ => Err(errors::UNSUPPORTED_COMMAND),
             }
         };
@@ -459,6 +467,77 @@ impl<'a> CmdInterface<'a> {
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+    }
+
+    async fn handle_get_ocp_lock_endorsement_cert<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = GetOcpLockEndorsementCertReq::ref_from_bytes(req)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+
+        let (resp, _) = GetOcpLockEndorsementCertResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+
+        *resp = GetOcpLockEndorsementCertResp::default();
+
+        let ret = self
+            .non_crypto_cmds_handler
+            .get_ocp_lock_endorsement_cert(&req.hpke_handle, &mut resp.data)
+            .await;
+
+        let (mbox_cmd_status, data_len) = match ret {
+            Ok(len) => (MbxCmdStatus::Complete, len.min(MAX_RESP_DATA_SIZE)),
+            Err(_) => (MbxCmdStatus::Failure, 0),
+        };
+
+        if mbox_cmd_status == MbxCmdStatus::Complete {
+            resp.hdr = MailboxRespHeaderVarSize {
+                data_len: data_len as u32,
+                ..Default::default()
+            };
+        } else {
+            *resp = GetOcpLockEndorsementCertResp::default();
+        }
+
+        let partial_len = resp.partial_len().map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        Ok((&mut resp_buf[..partial_len], mbox_cmd_status))
+    }
+
+    async fn handle_ocp_lock_enumerate_hpke_handles<'r>(
+        &self,
+        _req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let resp_size = core::mem::size_of::<OcpLockEnumerateHpkeHandlesResp>();
+        if resp_buf.len() < resp_size {
+            return Err(errors::INVALID_PARAMS);
+        }
+        resp_buf[..resp_size].fill(0);
+
+        let (resp, _) = match OcpLockEnumerateHpkeHandlesResp::mut_from_prefix(resp_buf) {
+            Ok(r) => r,
+            Err(_) => {
+                return Err(errors::INVALID_PARAMS);
+            }
+        };
+
+        let ret = self
+            .non_crypto_cmds_handler
+            .ocp_lock_enumerate_hpke_handles(resp)
+            .await;
+
+        let mbox_cmd_status = match ret {
+            Ok(_) => MbxCmdStatus::Complete,
+            Err(_) => {
+                resp_buf[..resp_size].fill(0);
+                MbxCmdStatus::Failure
+            }
+        };
+
+        Ok((&mut resp_buf[..resp_size], mbox_cmd_status))
     }
 
     async fn handle_get_auth_cmd_challenge<'r>(

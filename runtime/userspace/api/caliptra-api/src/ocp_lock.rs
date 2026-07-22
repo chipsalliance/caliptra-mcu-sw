@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use crate::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
+use crate::crypto::hash::SHA384_HASH_SIZE;
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::{execute_mailbox_cmd, DpeEcResp, DPE_PROFILE};
 use crate::signer::DpeTransport;
@@ -25,7 +25,7 @@ pub use caliptra_api::mailbox::{
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::mailbox::MailboxError;
 use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_mcu_romtime::ocp_lock::Error as OcpLockError;
+use caliptra_mcu_romtime::ocp_lock::{Error as OcpLockError, RuntimeConfig};
 use core::mem::size_of;
 use core::str::FromStr;
 use dpe::commands::{Command, CommandHdr};
@@ -35,15 +35,106 @@ use zerocopy::{IntoBytes, TryFromBytes};
 
 use const_oid::db::rfc5912::{ECDSA_WITH_SHA_384, ID_EC_PUBLIC_KEY, SECP_384_R_1};
 use der::{
-    asn1::{BitStringRef, GeneralizedTime},
-    AnyRef, DateTime, Encode, Sequence, Tag,
+    asn1::{BitStringRef, GeneralizedTime, ObjectIdentifier, SetOf, UintRef},
+    AnyRef, DateTime, Decode, Encode, Sequence, Tag, ValueOrd,
 };
 use spki::{AlgorithmIdentifier, SubjectPublicKeyInfo};
 
+const TCG_HPKE_IDENTIFIERS: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.23.133.21.1.1");
+
+#[derive(Clone, Debug, Eq, PartialEq, Sequence)]
+pub struct HpkeIdentifiers {
+    pub kem_id: u16,
+    pub kdf_id: u16,
+    pub aead_id: u16,
+}
+
+impl TryFrom<HpkeIdentifiers> for HpkeAlgorithms {
+    type Error = CaliptraApiError;
+
+    fn try_from(idents: HpkeIdentifiers) -> Result<Self, Self::Error> {
+        match (idents.kem_id, idents.kdf_id, idents.aead_id) {
+            (0x0011, 2, 2) => Ok(HpkeAlgorithms::ECDH_P384_HKDF_SHA384_AES_256_GCM),
+            (0x0042, 2, 2) => Ok(HpkeAlgorithms::ML_KEM_1024_HKDF_SHA384_AES_256_GCM),
+            (0x0051, 2, 2) => Ok(HpkeAlgorithms::ML_KEM_1024_ECDH_P384_HKDF_SHA384_AES_256_GCM),
+            _ => Err(CaliptraApiError::OcpLock(
+                OcpLockError::RUNTIME_HPKE_UNSUPPORTED_ALGORITHM,
+            )),
+        }
+    }
+}
+
+impl TryFrom<HpkeAlgorithms> for HpkeIdentifiers {
+    type Error = CaliptraApiError;
+
+    fn try_from(alg: HpkeAlgorithms) -> Result<Self, Self::Error> {
+        match alg {
+            HpkeAlgorithms::ECDH_P384_HKDF_SHA384_AES_256_GCM => Ok(HpkeIdentifiers {
+                kem_id: 0x0011,
+                kdf_id: 0x0002,
+                aead_id: 0x0002,
+            }),
+            HpkeAlgorithms::ML_KEM_1024_HKDF_SHA384_AES_256_GCM => Ok(HpkeIdentifiers {
+                kem_id: 0x0042,
+                kdf_id: 0x0002,
+                aead_id: 0x0002,
+            }),
+            HpkeAlgorithms::ML_KEM_1024_ECDH_P384_HKDF_SHA384_AES_256_GCM => Ok(HpkeIdentifiers {
+                kem_id: 0x0051,
+                kdf_id: 0x0002,
+                aead_id: 0x0002,
+            }),
+            _ => Err(CaliptraApiError::OcpLock(
+                OcpLockError::RUNTIME_HPKE_UNSUPPORTED_ALGORITHM,
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Sequence)]
+pub struct Extension<'a> {
+    pub extn_id: ObjectIdentifier,
+    #[asn1(default = "Default::default")]
+    pub critical: bool,
+    #[asn1(type = "OCTET STRING")]
+    pub extn_value: &'a [u8],
+}
 // TODO(clundin): Should this be documented somewhere?
 // TODO(clundin): Do we need to allow externally supplied labels (I don't think so)?
 
+#[derive(Clone, Debug, Eq, PartialEq, Sequence)]
+pub struct EcdsaSignature<'a> {
+    pub r: der::asn1::UintRef<'a>,
+    pub s: der::asn1::UintRef<'a>,
+}
+
+fn strip_leading_zeros(mut bytes: &[u8]) -> &[u8] {
+    while !bytes.is_empty() && bytes[0] == 0 {
+        bytes = &bytes[1..];
+    }
+    if bytes.is_empty() {
+        &[0]
+    } else {
+        bytes
+    }
+}
+
+const ID_CE_KEY_USAGE: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.29.15");
+const ID_CE_BASIC_CONSTRAINTS: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.29.19");
+
+#[derive(Clone, Debug, Eq, PartialEq, Sequence)]
+pub struct BasicConstraints {
+    pub ca: Option<bool>,
+    pub path_len: Option<u8>,
+}
+
 /// Label used for DPE KDF
+
+#[derive(Clone, Debug, Eq, PartialEq, Sequence, ValueOrd)]
+pub struct AttributeTypeAndValue<'a> {
+    pub oid: ObjectIdentifier,
+    pub value: AnyRef<'a>,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Sequence)]
 pub struct Validity {
@@ -55,12 +146,19 @@ pub struct Validity {
 pub struct TbsCertificate<'a> {
     #[asn1(context_specific = "0", tag_mode = "EXPLICIT", constructed = "true")]
     pub version: u8,
-    pub serial_number: u32,
+    pub serial_number: UintRef<'a>,
     pub signature: AlgorithmIdentifier<AnyRef<'a>>,
     pub issuer: AnyRef<'a>,
     pub validity: Validity,
     pub subject: AnyRef<'a>,
     pub subject_public_key_info: SubjectPublicKeyInfo<AnyRef<'a>, BitStringRef<'a>>,
+    #[asn1(
+        context_specific = "3",
+        tag_mode = "EXPLICIT",
+        constructed = "true",
+        optional = "true"
+    )]
+    pub extensions: Option<[Extension<'a>; 3]>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Sequence)]
@@ -71,22 +169,44 @@ pub struct Certificate<'a> {
 }
 
 #[async_trait]
-pub trait OcpLockSigner {
+pub trait OcpLockSigner: Send + Sync {
     async fn sign(&self, label: &[u8], data: &[u8], signature: &mut [u8]) -> CaliptraApiResult<()>;
     fn signature_size(&self) -> usize;
 }
 
 pub struct OcpLock<'a> {
     mailbox: &'a Mailbox,
+    config: &'static dyn RuntimeConfig,
 }
 
 impl OcpLock<'_> {
-    pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 8096;
+    pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 2048;
+    pub const DPE_LABEL: &'static [u8] = b"MCU FW HPKE Endorsement";
+    pub const ENDORSEMENT_CERT_CN: &'static [u8] = b"Caliptra MCU OCP LOCK Endorsement";
+    pub const ENDORSEMENT_CERT_ISSUER_CN: &'static [u8] = b"DPE Leaf";
+    pub const KEY_USAGE_KEY_ENCIPHERMENT: &'static [u8] = &[0x20];
+
+    pub const X509_VERSION_3: u8 = 2; // v3 is encoded as 2
+    pub const VALIDITY_NOT_BEFORE: &'static str = "2023-01-01T00:00:00Z";
+    pub const VALIDITY_NOT_AFTER: &'static str = "9999-12-31T23:59:59Z";
+
+    // P384 signature components size
+    pub const P384_SCALAR_SIZE: usize = 48;
+    pub const P384_SIGNATURE_SIZE: usize = 96;
+
+    // Temp buffer sizes
+    pub const SUBJECT_DER_BUF_SIZE: usize = 64;
+    pub const ISSUER_DER_BUF_SIZE: usize = 64;
+    pub const HPKE_IDENTS_DER_BUF_SIZE: usize = 32;
+    pub const BASIC_CONSTRAINTS_DER_BUF_SIZE: usize = 16;
+    pub const KEY_USAGE_DER_BUF_SIZE: usize = 16;
+    pub const SIGNATURE_DER_BUF_SIZE: usize = 128;
+    pub const MAX_SIGNATURE_BYTES: usize = 128;
 }
 
 impl<'a> OcpLock<'a> {
-    pub fn new(mailbox: &'a Mailbox) -> Self {
-        Self { mailbox }
+    pub fn new(mailbox: &'a Mailbox, config: &'static dyn RuntimeConfig) -> Self {
+        Self { mailbox, config }
     }
 
     async fn execute<R: Request>(&self, req: &mut R) -> CaliptraApiResult<R::Resp>
@@ -102,6 +222,21 @@ impl<'a> OcpLock<'a> {
         )
         .await?;
         Ok(resp)
+    }
+
+    async fn execute_in_place<R: Request>(
+        &self,
+        req: &mut R,
+        resp: &mut R::Resp,
+    ) -> CaliptraApiResult<()> {
+        execute_mailbox_cmd(
+            self.mailbox,
+            R::ID.into(),
+            req.as_mut_bytes(),
+            resp.as_mut_bytes(),
+        )
+        .await?;
+        Ok(())
     }
 
     pub async fn report_hek_metadata(
@@ -139,9 +274,10 @@ impl<'a> OcpLock<'a> {
 
     pub async fn enumerate_hpke_handles(
         &self,
-    ) -> CaliptraApiResult<OcpLockEnumerateHpkeHandlesResp> {
+        resp: &mut OcpLockEnumerateHpkeHandlesResp,
+    ) -> CaliptraApiResult<()> {
         let mut req = OcpLockEnumerateHpkeHandlesReq::default();
-        self.execute(&mut req).await
+        self.execute_in_place(&mut req, resp).await
     }
 
     pub async fn rotate_hpke_key(
@@ -163,15 +299,27 @@ impl<'a> OcpLock<'a> {
         self.execute(req).await
     }
 
-    /// TODO(clundin): Add HPKE Identifiers
-    /// TODO(clundin): This certificate should pass the test parser in caliptra-sw. I think a
-    /// mailbox command to return it should unblock those tests.
+    #[inline(never)]
+    fn serialize_and_hash_tbs(
+        tbs: &TbsCertificate,
+        digest: &mut [u8; SHA384_HASH_SIZE],
+    ) -> CaliptraApiResult<()> {
+        let mut tbs_der = [0u8; OcpLock::MAX_ENDORSEMENT_CERT_SIZE];
+        let mut writer = der::SliceWriter::new(&mut tbs_der[..]);
+        writer.encode(tbs)?;
+        let tbs_len = tbs.encoded_len()?.try_into()?;
+
+        use sha2::{Digest, Sha384};
+        let mut hasher = Sha384::new();
+        hasher.update(&tbs_der[..tbs_len]);
+        digest.copy_from_slice(&hasher.finalize());
+        Ok(())
+    }
+
     /// TODO(clundin): Support ML-DSA endorsement
     /// Wraps `hpke_handle` with an x509 certificate The certificate is signed by the MCU FW DPE context.
     pub async fn get_hpke_public_key_x509(
         &self,
-        serial_number: u32,
-        subject_name: &[u8],
         handle: &HpkeHandle,
         cert_buf: &mut [u8],
         signer: &dyn OcpLockSigner,
@@ -203,51 +351,107 @@ impl<'a> OcpLock<'a> {
             ))?,
         };
 
-        let subject = AnyRef::new(Tag::Sequence, subject_name)?;
+        let mut subject_der = [0u8; Self::SUBJECT_DER_BUF_SIZE];
+        let subject = encode_subject_name(Self::ENDORSEMENT_CERT_CN, &mut subject_der)?;
+
+        let mut issuer_der = [0u8; Self::ISSUER_DER_BUF_SIZE];
+        let issuer = encode_subject_name(Self::ENDORSEMENT_CERT_ISSUER_CN, &mut issuer_der)?;
+
+        let hpke_idents = HpkeIdentifiers::try_from(handle.hpke_algorithm.clone())?;
+
+        let mut hpke_idents_der = [0u8; Self::HPKE_IDENTS_DER_BUF_SIZE];
+        let mut writer = der::SliceWriter::new(&mut hpke_idents_der);
+        writer.encode(&hpke_idents)?;
+        let hpke_idents_der_len: usize = hpke_idents.encoded_len()?.try_into()?;
+        let hpke_idents_der_slice = &hpke_idents_der[..hpke_idents_der_len];
+
+        let basic_constraints = BasicConstraints {
+            ca: None,
+            path_len: None,
+        };
+        let mut bc_der = [0u8; Self::BASIC_CONSTRAINTS_DER_BUF_SIZE];
+        let mut writer = der::SliceWriter::new(&mut bc_der);
+        writer.encode(&basic_constraints)?;
+        let bc_der_len: usize = basic_constraints.encoded_len()?.try_into()?;
+        let bc_der_slice = &bc_der[..bc_der_len];
+
+        let key_usage = BitStringRef::new(0, Self::KEY_USAGE_KEY_ENCIPHERMENT)?; // keyEncipherment (bit 2)
+        let mut ku_der = [0u8; Self::KEY_USAGE_DER_BUF_SIZE];
+        let mut writer = der::SliceWriter::new(&mut ku_der);
+        writer.encode(&key_usage)?;
+        let ku_der_len: usize = key_usage.encoded_len()?.try_into()?;
+        let ku_der_slice = &ku_der[..ku_der_len];
+
+        let ext_hpke = Extension {
+            extn_id: TCG_HPKE_IDENTIFIERS,
+            critical: false,
+            extn_value: hpke_idents_der_slice,
+        };
+
+        let ext_bc = Extension {
+            extn_id: ID_CE_BASIC_CONSTRAINTS,
+            critical: true,
+            extn_value: bc_der_slice,
+        };
+
+        let ext_ku = Extension {
+            extn_id: ID_CE_KEY_USAGE,
+            critical: true,
+            extn_value: ku_der_slice,
+        };
         let tbs = TbsCertificate {
-            version: 2,
-            serial_number,
+            version: Self::X509_VERSION_3,
+            serial_number: UintRef::new(self.config.endorsement_cert_serial_number())?,
             signature: AlgorithmIdentifier {
                 oid: ECDSA_WITH_SHA_384,
                 parameters: None,
             },
             // TODO(clundin): Get issuer from DPE Certify Key
-            issuer: subject,
+            issuer,
             validity: Validity {
                 // TODO(clundin): Use a newer date ?
                 not_before: GeneralizedTime::from_date_time(DateTime::from_str(
-                    "2023-01-01T00:00:00Z",
+                    Self::VALIDITY_NOT_BEFORE,
                 )?),
                 not_after: GeneralizedTime::from_date_time(DateTime::from_str(
-                    "9999-12-31T23:59:59Z",
+                    Self::VALIDITY_NOT_AFTER,
                 )?),
             },
             subject,
             subject_public_key_info: spki,
+            extensions: Some([ext_hpke, ext_bc, ext_ku]),
         };
 
-        // TODO(clundin): Unique error codes for buffer sizes.
-        let tbs_len: usize = tbs.encoded_len()?.try_into()?;
-
-        // Defer checking if this buffer is sufficient in size to the `der::SliceWriter`.
-        let mut tbs_der = [0u8; OcpLock::MAX_ENDORSEMENT_CERT_SIZE];
-        let mut writer = der::SliceWriter::new(&mut tbs_der);
-        writer.encode(&tbs)?;
-
         let mut digest = [0u8; SHA384_HASH_SIZE];
-        HashContext::hash_all(HashAlgoType::SHA384, &tbs_der[..tbs_len], &mut digest).await?;
+        Self::serialize_and_hash_tbs(&tbs, &mut digest)?;
 
         let sig_len = signer.signature_size();
 
-        let mut signature_bytes = [0u8; 128];
+        let mut signature_bytes = [0u8; Self::MAX_SIGNATURE_BYTES];
         if sig_len > signature_bytes.len() {
             return Err(CaliptraApiError::InvalidResponse);
         }
 
-        const DPE_LABEL: &[u8] = b"MCU FW HPKE Endorsement";
         signer
-            .sign(DPE_LABEL, &digest, &mut signature_bytes[..sig_len])
+            .sign(Self::DPE_LABEL, &digest, &mut signature_bytes[..sig_len])
             .await?;
+
+        let r_raw = &signature_bytes[..Self::P384_SCALAR_SIZE];
+        let s_raw = &signature_bytes[Self::P384_SCALAR_SIZE..Self::P384_SIGNATURE_SIZE];
+
+        let r_stripped = strip_leading_zeros(r_raw);
+        let s_stripped = strip_leading_zeros(s_raw);
+
+        let r = der::asn1::UintRef::new(r_stripped)?;
+        let s = der::asn1::UintRef::new(s_stripped)?;
+
+        let sig = EcdsaSignature { r, s };
+
+        let mut sig_der = [0u8; Self::SIGNATURE_DER_BUF_SIZE];
+        let mut writer = der::SliceWriter::new(&mut sig_der);
+        writer.encode(&sig)?;
+        let sig_der_len = sig.encoded_len()?.try_into()?;
+        let sig_der_slice = &sig_der[..sig_der_len];
 
         let cert = Certificate {
             tbs_certificate: tbs,
@@ -255,7 +459,7 @@ impl<'a> OcpLock<'a> {
                 oid: ECDSA_WITH_SHA_384,
                 parameters: None,
             },
-            signature: BitStringRef::new(0, &signature_bytes[..sig_len])?,
+            signature: BitStringRef::new(0, sig_der_slice)?,
         };
 
         let mut writer = der::SliceWriter::new(cert_buf);
@@ -312,7 +516,6 @@ impl<'a> OcpLock<'a> {
         self.execute(req).await
     }
 }
-
 #[async_trait]
 impl DpeTransport for Mailbox {
     async fn invoke(&self, cmd: &Command, resp_buf: &mut [u8]) -> CaliptraApiResult<usize> {
@@ -366,4 +569,21 @@ impl DpeTransport for Mailbox {
 
         Ok(dpe_resp_len)
     }
+}
+
+fn encode_subject_name<'a>(cn: &[u8], buf: &'a mut [u8]) -> CaliptraApiResult<AnyRef<'a>> {
+    let cn_oid = ObjectIdentifier::new_unwrap("2.5.4.3"); // Common Name
+    let cn_val = AnyRef::new(Tag::Utf8String, cn)?;
+    let atav = AttributeTypeAndValue {
+        oid: cn_oid,
+        value: cn_val,
+    };
+    let rdn = SetOf::try_from([atav])?;
+    let subject_name = [rdn];
+
+    let mut writer = der::SliceWriter::new(buf);
+    writer.encode(&subject_name)?;
+    let len: usize = subject_name.encoded_len()?.try_into()?;
+    let bytes = &buf[..len];
+    Ok(AnyRef::from_der(bytes)?)
 }

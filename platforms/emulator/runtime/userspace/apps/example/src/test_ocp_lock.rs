@@ -3,7 +3,7 @@
 use caliptra_api::mailbox::{CapabilitiesResp, CommandId, HpkeAlgorithms, MailboxReqHeader};
 use caliptra_api::Capabilities;
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-use caliptra_mcu_libapi_caliptra::ocp_lock::OcpLock;
+use caliptra_mcu_libapi_caliptra::ocp_lock::{OcpLock, OcpLockEnumerateHpkeHandlesResp};
 use caliptra_mcu_libapi_caliptra::signer::CaliptraDpeSigner;
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::system::System;
@@ -51,7 +51,7 @@ pub(crate) async fn test_get_algorithms() {
         }
     }
 
-    let ocp_lock = OcpLock::new(&mailbox);
+    let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::EXAMPLE_RUNTIME_CONFIG);
 
     println!("Sending OCP_LOCK_GET_ALGORITHMS command...");
 
@@ -79,12 +79,13 @@ pub(crate) async fn test_get_hpke_public_key_x509() {
     println!("Starting OCP LOCK get HPKE public key x509 test");
 
     let mailbox = Mailbox::new();
-    let ocp_lock = OcpLock::new(&mailbox);
+    let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::EXAMPLE_RUNTIME_CONFIG);
     let signer = CaliptraDpeSigner::new(&mailbox);
 
     println!("Enumerate HPKE handles...");
-    let handles_resp = ocp_lock
-        .enumerate_hpke_handles()
+    let mut handles_resp = OcpLockEnumerateHpkeHandlesResp::default();
+    ocp_lock
+        .enumerate_hpke_handles(&mut handles_resp)
         .await
         .unwrap_or_else(|err| {
             println!("OCP_LOCK_ENUMERATE_HPKE_HANDLES failed with err {:?}", err);
@@ -99,10 +100,8 @@ pub(crate) async fn test_get_hpke_public_key_x509() {
 
     let mut cert_buf = [0u8; OcpLock::MAX_ENDORSEMENT_CERT_SIZE];
 
-    let serial_number = 0xAAAA;
-    let subject_name = b"Sample Endorsement Cert";
     match ocp_lock
-        .get_hpke_public_key_x509(serial_number, subject_name, handle, &mut cert_buf, &signer)
+        .get_hpke_public_key_x509(handle, &mut cert_buf, &signer)
         .await
     {
         Ok(cert_len) => {

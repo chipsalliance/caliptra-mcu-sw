@@ -439,3 +439,16 @@ mod test {
         drop(kernel);
     }
 }
+
+#[cfg(feature = "test-ocp-lock")]
+pub mod ocp_lock_config {
+    pub struct ExampleRuntimeConfig;
+
+    impl caliptra_mcu_romtime::ocp_lock::RuntimeConfig for ExampleRuntimeConfig {
+        fn endorsement_cert_serial_number(&self) -> &[u8; 20] {
+            &[0x7F; 20]
+        }
+    }
+
+    pub static EXAMPLE_RUNTIME_CONFIG: ExampleRuntimeConfig = ExampleRuntimeConfig;
+}

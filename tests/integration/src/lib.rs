@@ -360,13 +360,21 @@ mod test {
     }
 
     fn prebuilt_binaries(params: &TestParams, binaries: &'static FirmwareBinaries) -> TestBinaries {
+        let is_ocp_lock = params.ocp_lock_en
+            || params.feature.is_some_and(|f| f.contains("ocp-lock"))
+            || params.rom_feature.is_some_and(|f| f.contains("ocp-lock"));
+        let caliptra_fw = if is_ocp_lock {
+            binaries.caliptra_fw_ocp_lock.clone()
+        } else {
+            binaries.caliptra_fw.clone()
+        };
         let mut test_binaries = TestBinaries {
             vendor_pk_hash_u8: binaries
                 .vendor_pk_hash()
                 .expect("Failed to get Vendor PK hash")
                 .to_vec(),
             caliptra_rom: binaries.caliptra_rom.clone(),
-            caliptra_fw: binaries.caliptra_fw.clone(),
+            caliptra_fw,
             mcu_rom: binaries.mcu_rom.clone(),
             soc_manifest: binaries.soc_manifest.clone(),
             mcu_runtime: binaries.mcu_runtime.clone(),
@@ -1061,10 +1069,17 @@ mod test {
                     std::env::temp_dir().join("build_test_binaries_caliptra_rom_prebuilt.bin");
                 std::fs::write(&rom_path, &binaries.caliptra_rom)
                     .expect("Failed to write prebuilt Caliptra ROM");
+                let is_ocp_lock = params.ocp_lock_en
+                    || params.feature.is_some_and(|f| f.contains("ocp-lock"))
+                    || params.rom_feature.is_some_and(|f| f.contains("ocp-lock"));
+                let fw_data = if is_ocp_lock {
+                    &binaries.caliptra_fw_ocp_lock
+                } else {
+                    &binaries.caliptra_fw
+                };
                 let fw_path =
                     std::env::temp_dir().join("build_test_binaries_caliptra_fw_prebuilt.bin");
-                std::fs::write(&fw_path, &binaries.caliptra_fw)
-                    .expect("Failed to write prebuilt Caliptra FW");
+                std::fs::write(&fw_path, fw_data).expect("Failed to write prebuilt Caliptra FW");
                 let vendor_pk_hash = hex::encode(
                     binaries
                         .vendor_pk_hash()
@@ -1666,7 +1681,11 @@ mod test {
         std::fs::write(&caliptra_rom_path, &binaries.caliptra_rom).ok()?;
 
         let caliptra_fw_path = target_dir.join("caliptra_fw_prebuilt.bin");
-        let caliptra_fw = &binaries.caliptra_fw;
+        let caliptra_fw = if feature.contains("ocp-lock") {
+            &binaries.caliptra_fw_ocp_lock
+        } else {
+            &binaries.caliptra_fw
+        };
         std::fs::write(&caliptra_fw_path, caliptra_fw).ok()?;
 
         // Get SoC manifest for this feature, or default
@@ -1726,9 +1745,19 @@ mod test {
         });
         let flash_path = primary_flash_file.as_ref().map(|f| f.path().to_path_buf());
 
+        let rom_feature = match feature.as_str() {
+            "test-ocp-lock" => "ocp-lock",
+            _ => "",
+        };
+        let mcu_rom_path = if rom_feature.is_empty() {
+            ROM.to_path_buf()
+        } else {
+            get_or_compile_rom(rom_feature)
+        };
+
         let test = run_runtime(
             &feature,
-            ROM.to_path_buf(),
+            mcu_rom_path,
             test_runtime,
             i3c_port,
             true,                        // active mode is always true
