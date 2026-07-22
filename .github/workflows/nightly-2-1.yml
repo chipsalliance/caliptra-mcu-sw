@@ -1,0 +1,28 @@
+# Licensed under the Apache-2.0 license
+
+name: Nightly 2.1 Dispatcher
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch_nightly_main_2_1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch nightly workflow on main-2.1
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "nightly.yml",
+              ref: "main-2.1",
+            });
