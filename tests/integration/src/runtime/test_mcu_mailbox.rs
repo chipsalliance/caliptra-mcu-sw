@@ -4,7 +4,7 @@ use crate::test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, Tes
 use anyhow::Result;
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    FirmwareVersionReq, GetAuthCmdChallengeReq, McuFeProgReq,
+    FirmwareVersionReq, GetAuthCmdChallengeReq, GetDotBackupBlobReq, McuFeProgReq,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 
@@ -54,6 +54,29 @@ fn test_firmware_version_cmd() -> Result<()> {
     let resp_version_str = std::str::from_utf8(&resp.version[..resp.hdr.data_len as usize])
         .expect("Version string is not valid UTF-8");
     assert_eq!(resp_version_str, expected_version);
+    Ok(())
+}
+
+#[test]
+fn test_get_dot_backup_blob_cmd() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+    hw.write_dot_flash(&caliptra_mcu_mbox_common::config::TEST_DOT_BACKUP_BLOB)
+        .expect("failed to seed DOT flash");
+    let cmd = GetDotBackupBlobReq::default();
+    let resp = hw.mailbox_execute_req(cmd)?;
+
+    assert_eq!(
+        resp.blob,
+        caliptra_mcu_mbox_common::config::TEST_DOT_BACKUP_BLOB
+    );
     Ok(())
 }
 
@@ -118,7 +141,7 @@ fn test_fe_prog_authorized_req() -> Result<()> {
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
             vendor_pk_hash: vendor_pk_hash_arr,
-            soc_manifest: soc_manifest,
+            soc_manifest,
         }),
         lifecycle_controller_state: Some(LifecycleControllerState::Prod),
         ..Default::default()

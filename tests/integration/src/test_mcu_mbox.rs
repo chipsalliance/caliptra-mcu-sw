@@ -21,26 +21,26 @@ pub mod test {
         CmHkdfExtractReq, CmHmacKdfCounterReq, CmHmacReq, CmImportReq, CmKeyUsage,
         CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, CmRandomGenerateReq,
         CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk,
-        DeviceCapsReq, DeviceCapsResp, FirmwareVersionReq, FirmwareVersionResp, GetLogReq,
-        MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq,
-        McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
-        McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq,
-        McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq,
-        McuCmDeleteReq, McuCmImportReq, McuCmImportResp, McuCmStatusReq, McuCmStatusResp,
-        McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
-        McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq, McuEcdsaCmkSignResp,
-        McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsPeriodicEnableReq,
-        McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsReq,
-        McuFipsSelfTestStartReq, McuFipsSelfTestStartResp, McuHkdfExpandReq, McuHkdfExpandResp,
-        McuHkdfExtractReq, McuHkdfExtractResp, McuHmacKdfCounterReq, McuHmacKdfCounterResp,
-        McuHmacReq, McuMailboxReq, McuMailboxResp, McuMldsaCmkPublicKeyReq,
-        McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq,
-        McuMldsaCmkVerifyResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq,
-        McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
-        McuShaInitResp, McuShaUpdateReq, ProductionAuthDebugUnlockChallenge,
-        ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
-        CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE,
-        MAX_CMB_DATA_SIZE,
+        DeviceCapsReq, DeviceCapsResp, FirmwareVersionReq, FirmwareVersionResp,
+        GetDotBackupBlobReq, GetDotBackupBlobResp, GetLogReq, MailboxReqHeader, MailboxRespHeader,
+        MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
+        McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
+        McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
+        McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
+        McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
+        McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp,
+        McuEcdsaCmkSignReq, McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp,
+        McuFipsPeriodicEnableReq, McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp,
+        McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
+        McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
+        McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
+        McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp,
+        McuMldsaCmkVerifyReq, McuMldsaCmkVerifyResp, McuProdDebugUnlockReqReq,
+        McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq,
+        McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
+        ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
+        ProductionAuthDebugUnlockToken, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
+        CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
     };
     use caliptra_mcu_registers_generated::mci;
     use caliptra_mcu_testing_common::{
@@ -213,6 +213,8 @@ pub mod test {
         });
 
         hw.start_i3c_controller();
+        hw.write_dot_flash(&caliptra_mcu_mbox_common::config::TEST_DOT_BACKUP_BLOB)
+            .expect("failed to seed DOT flash");
         let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
 
         caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
@@ -483,6 +485,25 @@ pub mod test {
                 cmd.0,
                 device_caps_req.as_bytes().unwrap().to_vec(),
                 device_caps_resp.as_bytes().unwrap().to_vec(),
+            );
+
+            // Add Get DOT Backup Blob test message
+            let mut dot_backup_req = McuMailboxReq::GetDotBackupBlob(GetDotBackupBlobReq {
+                hdr: MailboxReqHeader::default(),
+            });
+            let cmd = dot_backup_req.cmd_code();
+            dot_backup_req.populate_chksum().unwrap();
+
+            let mut dot_backup_resp = McuMailboxResp::GetDotBackupBlob(GetDotBackupBlobResp {
+                hdr: MailboxRespHeader::default(),
+                blob: caliptra_mcu_mbox_common::config::TEST_DOT_BACKUP_BLOB,
+            });
+            dot_backup_resp.populate_chksum().unwrap();
+
+            self.push(
+                cmd.0,
+                dot_backup_req.as_bytes().unwrap().to_vec(),
+                dot_backup_resp.as_bytes().unwrap().to_vec(),
             );
         }
 

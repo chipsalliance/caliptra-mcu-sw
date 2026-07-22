@@ -35,6 +35,7 @@ pub enum CaliptraVdmCommand {
     RequestDebugUnlock = 0x06,
     AuthorizeDebugUnlockToken = 0x07,
     ExportAttestedCsr = 0x08,
+    DeviceOwnershipTransfer = 0x11,
     /// Single entry point for all authorized sub-commands (GetAuthChallenge, ProgramFieldEntropy).
     AuthorizedCommand = 0x12,
 }
@@ -48,6 +49,7 @@ impl TryFrom<u8> for CaliptraVdmCommand {
             0x06 => Ok(Self::RequestDebugUnlock),
             0x07 => Ok(Self::AuthorizeDebugUnlockToken),
             0x08 => Ok(Self::ExportAttestedCsr),
+            0x11 => Ok(Self::DeviceOwnershipTransfer),
             0x12 => Ok(Self::AuthorizedCommand),
             _ => Err(SpdmVdmProtocolError::UnknownCommand(value)),
         }
@@ -134,6 +136,9 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(CaliptraVdmCommand::AuthorizedCommand)
         }
+        x if x == CaliptraCommandId::GetDotBackupBlob as u32 => {
+            Some(CaliptraVdmCommand::DeviceOwnershipTransfer)
+        }
         _ => None,
     }
 }
@@ -144,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_command_roundtrip() {
-        let valid_codes: &[u8] = &[0x05, 0x06, 0x07, 0x08, 0x12];
+        let valid_codes: &[u8] = &[0x05, 0x06, 0x07, 0x08, 0x11, 0x12];
         for &code in valid_codes {
             let cmd = CaliptraVdmCommand::try_from(code).unwrap();
             assert_eq!(cmd as u8, code);
@@ -183,6 +188,10 @@ mod tests {
         assert_eq!(
             command_id_to_vdm(CaliptraCommandId::ProdDebugUnlockReq as u32),
             Some(CaliptraVdmCommand::RequestDebugUnlock)
+        );
+        assert_eq!(
+            command_id_to_vdm(CaliptraCommandId::GetDotBackupBlob as u32),
+            Some(CaliptraVdmCommand::DeviceOwnershipTransfer)
         );
         // Unsupported command
         assert_eq!(command_id_to_vdm(CaliptraCommandId::HashInit as u32), None);

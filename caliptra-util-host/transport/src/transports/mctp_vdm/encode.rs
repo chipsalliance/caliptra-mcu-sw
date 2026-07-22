@@ -281,6 +281,8 @@ pub fn handle_clear_debug_log(
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::*;
     use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
     use caliptra_mcu_mctp_vdm_common::protocol::CALIPTRA_IANA_ENTERPRISE_ID_BYTES;

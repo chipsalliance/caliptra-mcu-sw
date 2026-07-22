@@ -595,7 +595,7 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
                         overlap_size
                     );
                     caliptra_mcu_romtime::println!(
-                        "  → Earlier region takes precedence in overlapping area"
+                        "  -> Earlier region takes precedence in overlapping area"
                     );
                 }
             }

@@ -5,12 +5,26 @@ pub(crate) mod device_ops;
 
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, FirmwareVersion, GetLogResult, LogType, MAX_FW_VERSION_LEN,
+    DeviceCapabilities, DotBackupBlob, FirmwareVersion, GetLogResult, LogType, MAX_FW_VERSION_LEN,
 };
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_mbox_common::config;
 use mcu_caliptra_api_lite::ApiAlloc;
 
 pub struct CaliptraCmdBackend;
+
+fn map_dot_flash_error(error: ErrorCode) -> CaliptraCompletionCode {
+    match error {
+        ErrorCode::NoSupport | ErrorCode::NoDevice | ErrorCode::Uninstalled => {
+            CaliptraCompletionCode::UnsupportedOperation
+        }
+        ErrorCode::NoMem | ErrorCode::Size => CaliptraCompletionCode::InsufficientResources,
+        ErrorCode::Invalid => CaliptraCompletionCode::InvalidParameter,
+        ErrorCode::Busy => CaliptraCompletionCode::ResourceUnavailable,
+        _ => CaliptraCompletionCode::OperationFailed,
+    }
+}
 
 impl CaliptraCmdHandler for CaliptraCmdBackend {
     async fn get_firmware_version(
@@ -86,6 +100,12 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             LogType::Debug => debug_log::clear().await,
             LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
         }
+    }
+
+    async fn get_dot_backup_blob(&self, blob: &mut DotBackupBlob) -> CaliptraCmdResult<()> {
+        caliptra_mcu_libsyscall_caliptra::dot_flash::DotFlash::<DefaultSyscalls>::new()
+            .read(0, &mut blob.data)
+            .map_err(map_dot_flash_error)
     }
 
     async fn program_field_entropy<Alloc: ApiAlloc>(

@@ -366,6 +366,12 @@ pub mod test {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
 
+        #[cfg(not(feature = "fpga_realtime"))]
+        hw.step_until(|hw| {
+            hw.output()
+                .peek()
+                .contains("Starting MCTP VDM service for integration tests")
+        });
         let vdm_transport =
             MctpVdmTransport::new(hw.i3c_port().unwrap(), hw.i3c_address().unwrap().into());
         let vdm_socket = vdm_transport.create_socket().unwrap();

@@ -2,7 +2,7 @@
 
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, FirmwareVersion, GetLogResult, MAX_FW_VERSION_LEN,
+    DeviceCapabilities, DotBackupBlob, FirmwareVersion, GetLogResult, MAX_FW_VERSION_LEN,
 };
 use caliptra_mcu_mbox_common::config;
 use mcu_caliptra_api_lite::ApiAlloc;
@@ -111,5 +111,10 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         CaliptraCmdBackend
             .program_field_entropy(alloc, partition)
             .await
+    }
+
+    async fn get_dot_backup_blob(&self, blob: &mut DotBackupBlob) -> CaliptraCmdResult<()> {
+        blob.data.copy_from_slice(&config::TEST_DOT_BACKUP_BLOB);
+        Ok(())
     }
 }
