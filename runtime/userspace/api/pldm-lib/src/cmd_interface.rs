@@ -251,7 +251,7 @@ impl<'a> CmdInterface<'a> {
                     .fd_ctx
                     .cancel_update_component_rsp(payload)
                     .await
-                    .map(|len| (len, ResponderAction::Continue)),
+                    .map(|len| (len, ResponderAction::Complete)),
                 FwUpdateCmd::CancelUpdate => self
                     .fd_ctx
                     .cancel_update_rsp(payload)

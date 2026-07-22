@@ -171,8 +171,8 @@ impl<'a, D: DMAMapping + 'static> PldmImageLoader<'a, D> {
             dma_mapping,
         }
     }
-    pub fn finalize(&self) -> Result<(), ErrorCode> {
-        pldm_client::finalize(VerifyResult::VerifySuccess)
+    pub fn finalize(&self, verify_result: VerifyResult) -> Result<(), ErrorCode> {
+        pldm_client::finalize(verify_result)
     }
 
     /// Wait for the PLDM service to fully stop (protocol complete, tasks exited).
@@ -208,10 +208,7 @@ impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
         };
         match result {
             Ok(loaded) => Ok(loaded),
-            Err(_) => {
-                self.finalize()?;
-                Err(ErrorCode::Fail)
-            }
+            Err(_) => Err(ErrorCode::Fail),
         }
     }
 }
