@@ -30,6 +30,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-log-flash-linear",
     "test-log-flash-usermode",
     "test-defmt-logging-mailbox",
+    "test-defmt-logging-release",
     "test-defmt-logging-vdm",
     "test-mctp-ctrl-cmds",
     "test-mctp-user-loopback",
