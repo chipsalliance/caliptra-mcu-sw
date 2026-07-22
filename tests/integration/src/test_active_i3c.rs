@@ -27,8 +27,7 @@ mod test {
         lock.fetch_add(1, Ordering::Relaxed);
 
         let _hw = start_runtime_hw_model(TestParams {
-            feature: Some("active-i3c1"),
-            rom_feature: Some("active-i3c1"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_ACTIVE_I3C1,
             active_i3c1: true,
             ..Default::default()
         });

@@ -42,7 +42,7 @@ mod test {
         let i3c_port = PortPicker::new().random(true).pick().unwrap();
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-i3c-services"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_I3C_SERVICES,
             rom_only: true,
             i3c_port: Some(i3c_port),
             ..Default::default()
@@ -91,7 +91,7 @@ mod test {
         let dot_flash = vec![0u8; DOT_BLOB_SIZE];
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-i3c-services"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_I3C_SERVICES,
             rom_only: true,
             i3c_port: Some(i3c_port),
             dot_flash_initial_contents: Some(dot_flash),
@@ -254,7 +254,7 @@ mod test {
         let dot_flash = vec![0u8; DOT_BLOB_SIZE];
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-i3c-services"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_I3C_SERVICES,
             rom_only: true,
             i3c_port: Some(i3c_port),
             dot_flash_initial_contents: Some(dot_flash),
@@ -437,7 +437,7 @@ mod test {
         let i3c_port = PortPicker::new().random(true).pick().unwrap();
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-i3c-services"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_I3C_SERVICES,
             rom_only: true,
             i3c_port: Some(i3c_port),
             ..Default::default()
@@ -507,7 +507,7 @@ mod test {
         let dot_flash = vec![0u8; DOT_BLOB_SIZE];
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-i3c-services"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_I3C_SERVICES,
             rom_only: true,
             i3c_port: Some(i3c_port),
             dot_flash_initial_contents: Some(dot_flash),

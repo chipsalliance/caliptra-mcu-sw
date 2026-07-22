@@ -102,7 +102,7 @@ mod test {
         assert_eq!(manifest.len(), MCU_COMPONENT_SVN_MANIFEST_SIZE);
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-svn-manifest"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SVN_MANIFEST,
             firmware_prefix: Some(manifest),
             ..Default::default()
         });
@@ -144,7 +144,7 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-svn-manifest"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SVN_MANIFEST,
             // No firmware_prefix: the test ROM enables the manifest
             // path, but the first 4 bytes of the runtime are not the
             // SVN magic, so it's skipped.
@@ -176,7 +176,7 @@ mod test {
         let manifest = manifest_bytes(2, 3, &[]);
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-svn-manifest"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SVN_MANIFEST,
             firmware_prefix: Some(manifest),
             rom_only: true,
             ..Default::default()
@@ -205,7 +205,7 @@ mod test {
         let manifest = manifest_bytes(1, 0, &[]);
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-svn-manifest"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SVN_MANIFEST,
             firmware_prefix: Some(manifest),
             otp_memory: Some(otp_with_manifest_min_svn(3)),
             rom_only: true,
@@ -234,7 +234,7 @@ mod test {
         let manifest = manifest_bytes(3, 0, &[]);
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-svn-manifest"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SVN_MANIFEST,
             firmware_prefix: Some(manifest),
             otp_memory: Some(otp_with_manifest_min_svn(3)),
             ..Default::default()
@@ -267,7 +267,7 @@ mod test {
         let manifest = manifest_bytes(5, 4, &[]);
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-svn-manifest"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SVN_MANIFEST,
             firmware_prefix: Some(manifest),
             otp_memory: Some(otp_with_manifest_min_svn(1)),
             ..Default::default()
@@ -328,7 +328,7 @@ mod test {
         );
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-svn-manifest"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SVN_MANIFEST,
             firmware_prefix: Some(manifest),
             ..Default::default()
         });
@@ -387,7 +387,7 @@ mod test {
         );
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-svn-manifest"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SVN_MANIFEST,
             firmware_prefix: Some(manifest),
             ..Default::default()
         });
@@ -432,7 +432,7 @@ mod test {
         );
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-svn-manifest"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SVN_MANIFEST,
             firmware_prefix: Some(manifest),
             ..Default::default()
         });
@@ -477,7 +477,7 @@ mod test {
         );
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-svn-manifest"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SVN_MANIFEST,
             firmware_prefix: Some(manifest),
             otp_memory: Some(otp),
             rom_only: true,
@@ -524,7 +524,7 @@ mod test {
         let manifest = m.as_bytes().to_vec();
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-svn-manifest"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SVN_MANIFEST,
             firmware_prefix: Some(manifest),
             rom_only: true,
             ..Default::default()

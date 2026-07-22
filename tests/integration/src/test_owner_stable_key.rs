@@ -26,7 +26,7 @@ mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             otp_memory: Some(otp),
             rom_only: true,
-            rom_feature: Some("stable-owner-key"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_STABLE_OWNER_KEY,
             ..Default::default()
         });
 

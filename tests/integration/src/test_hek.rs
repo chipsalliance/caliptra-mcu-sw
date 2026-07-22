@@ -76,8 +76,7 @@ pub mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             otp_memory: Some(otp),
             rom_only: true,
-            ocp_lock_en: true,
-            rom_feature: Some("ocp-lock"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_OCP_LOCK,
             ..Default::default()
         });
 
@@ -111,8 +110,7 @@ pub mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             otp_memory: Some(otp),
             rom_only: true,
-            ocp_lock_en: true,
-            rom_feature: Some("ocp-lock"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_OCP_LOCK,
             ..Default::default()
         });
 
@@ -146,7 +144,7 @@ pub mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             otp_memory: Some(otp),
             rom_only: true,
-            rom_feature: Some("stable-owner-key"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_STABLE_OWNER_KEY,
             ..Default::default()
         });
 
@@ -182,9 +180,7 @@ pub mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             otp_memory: Some(otp),
             rom_only: false,
-            ocp_lock_en: true,
-            feature: Some("test-handoff"),
-            rom_feature: Some("ocp-lock"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_OCP_LOCK,
             ..Default::default()
         });
 
@@ -208,9 +204,7 @@ pub mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             otp_memory: Some(otp),
             rom_only: false,
-            ocp_lock_en: true,
-            feature: Some("test-handoff"),
-            rom_feature: Some("ocp-lock"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_OCP_LOCK,
             ..Default::default()
         });
 
@@ -237,9 +231,7 @@ pub mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             otp_memory: Some(otp),
             rom_only: false,
-            ocp_lock_en: true,
-            feature: Some("test-handoff"),
-            rom_feature: Some("ocp-lock"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_OCP_LOCK,
             ..Default::default()
         });
 
@@ -264,8 +256,7 @@ pub mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             otp_memory: Some(otp),
             rom_only: true,
-            ocp_lock_en: true,
-            rom_feature: Some("ocp-lock"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_OCP_LOCK,
             ..Default::default()
         });
 

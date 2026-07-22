@@ -38,9 +38,8 @@ mod test {
 
         // Pull provisioning FW from bundle
         let binaries = FirmwareBinaries::from_env().expect("Firmware bundle not found");
-        let bare_metal_bytes = binaries
-            .get_bare_metal("caliptra-mcu-provisioning-test-unlocked-fw")
-            .expect("caliptra-mcu-provisioning-test-unlocked-fw binary not found");
+        let target = &caliptra_mcu_builder::firmware::targets::PROVISIONING_TEST_UNLOCKED_FW;
+        let bare_metal_bytes = &binaries.as_bundle(target).mcu_fw.bytes;
         assert!(
             !bare_metal_bytes.is_empty(),
             "caliptra-mcu-provisioning-test-unlocked-fw binary is empty"

@@ -61,7 +61,12 @@ mod test {
     /// (typical emulator runs).
     fn user_app_elf() -> Vec<u8> {
         if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
-            if let Some(bytes) = binaries.test_user_app_elf(FEATURE) {
+            if let Some(bytes) = binaries
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_DEFMT_LOGGING_VDM)
+                .mcu_fw
+                .user_app_elf
+                .as_deref()
+            {
                 return bytes.to_vec();
             }
         }
@@ -139,7 +144,7 @@ mod test {
         let i3c_port = PortPicker::new().random(true).pick().unwrap();
 
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some(FEATURE),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DEFMT_LOGGING_VDM,
             i3c_port: Some(i3c_port),
             ..Default::default()
         });

@@ -9,17 +9,10 @@ mod test {
     #[test]
     fn test_axi_bypass() {
         let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
-        let mcu_rom = binaries
-            .test_rom(&firmware::hw_model_tests::AXI_BYPASS)
-            .unwrap();
-        let caliptra_rom = binaries
-            .caliptra_test_rom(&caliptra_firmware::driver_tests::AXI_BYPASS)
-            .unwrap();
+        let bundle = binaries.as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_AXI_BYPASS);
         let init_params = InitParams {
-            caliptra_rom: &caliptra_rom,
-            mcu_rom: &mcu_rom,
             enable_mcu_uart_log: true,
-            ..Default::default()
+            ..InitParams::from_bundle(bundle)
         };
         let mut model = caliptra_mcu_hw_model::new(init_params).unwrap();
         model.step_until_exit_success().unwrap();

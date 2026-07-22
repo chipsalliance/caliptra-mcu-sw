@@ -10,8 +10,7 @@ mod test {
     #[test]
     fn test_sw_pcr_store() {
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some("test-sw-pcr-store"),
-            example_app: true,
+            target: &caliptra_mcu_builder::firmware::targets::TEST_SW_PCR_STORE,
             i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
             ..Default::default()
         });

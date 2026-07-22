@@ -38,7 +38,7 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some("test-mctp-spdm-attestation-pcr-quote"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_MCTP_SPDM_ATTESTATION_PCR_QUOTE,
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             use_strap_secrets: true,
             ..Default::default()
