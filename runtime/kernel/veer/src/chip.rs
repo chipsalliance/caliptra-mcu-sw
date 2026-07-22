@@ -14,7 +14,7 @@ use caliptra_mcu_config::McuMemoryMap;
 use caliptra_mcu_registers_generated::i3c::regs::I3c;
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_registers_generated::otp_ctrl;
-use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
+use caliptra_mcu_virtual_alarm::MuxAlarm;
 use core::fmt::Write;
 use core::ptr::addr_of;
 use kernel::platform::chip::{Chip, InterruptService};
@@ -173,6 +173,16 @@ impl<'a, I: InterruptService + 'a> kernel::platform::chip::Chip for VeeR<'a, I> 
 
     fn service_pending_interrupts(&self) {
         loop {
+            // Poll hardware timer directly: when mstatus.MIE=0 (kernel mode),
+            // timer interrupts stay pending but the ISR never runs. Detect
+            // expiry here and manually save the interrupt for processing.
+            if self.timers.has_timer0_expired()
+                && self.timers.get_saved_interrupts() == TimerInterrupts::None
+            {
+                CSR.mie.modify(mie::BIT29::CLEAR);
+                self.timers.save_interrupt(0);
+            }
+
             if self.pic.get_saved_interrupts().is_some() {
                 unsafe {
                     self.handle_pic_interrupts();
@@ -196,11 +206,25 @@ impl<'a, I: InterruptService + 'a> kernel::platform::chip::Chip for VeeR<'a, I> 
     fn has_pending_interrupts(&self) -> bool {
         self.pic.get_saved_interrupts().is_some()
             || self.timers.get_saved_interrupts() != TimerInterrupts::None
+            || self.timers.has_timer0_expired()
     }
 
     fn sleep(&self) {
         unsafe {
-            rv32i::support::wfi();
+            if self.timers.is_timer0_enabled() {
+                // Timer is armed. Do NOT use wfi — VeeR's wfi stalls the
+                // core clock which stops the timer counter. Briefly enable
+                // MIE for any pending PIC interrupts, then return to let
+                // the kernel loop poll has_timer0_expired().
+                CSR.mstatus.read_and_set_bits(1 << 3);
+                core::arch::asm!("nop");
+                CSR.mstatus.read_and_clear_bits(1 << 3);
+            } else {
+                // No timer armed. Safe to use wfi for PIC interrupts.
+                CSR.mstatus.read_and_set_bits(1 << 3);
+                rv32i::support::wfi();
+                CSR.mstatus.read_and_clear_bits(1 << 3);
+            }
         }
     }
 

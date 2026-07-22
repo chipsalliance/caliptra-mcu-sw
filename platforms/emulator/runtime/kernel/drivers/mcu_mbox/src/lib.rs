@@ -6,7 +6,7 @@ use caliptra_mcu_mbox_comm::hil::{Mailbox, MailboxClient, MailboxStatus};
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_registers_generated::mci::bits::{MboxCmdStatus, Notif0IntrEnT, Notif0IntrT};
 use caliptra_mcu_romtime::StaticRef;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};

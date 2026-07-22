@@ -7,7 +7,7 @@ use caliptra_mcu_capsules_runtime::mctp::recv::MCTPRxState;
 use caliptra_mcu_capsules_runtime::mctp::send::{MCTPSender, MCTPTxState};
 use caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
 use caliptra_mcu_capsules_runtime::test::mctp::MockMctp;
-use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
+use caliptra_mcu_virtual_alarm::VirtualMuxAlarm;
 use core::mem::MaybeUninit;
 use kernel::component::Component;
 use kernel::hil::time::Alarm;

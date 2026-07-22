@@ -34,7 +34,7 @@ use caliptra_mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use caliptra_mcu_tock_veer::pic::Pic;
 use caliptra_mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
@@ -692,18 +692,6 @@ pub unsafe fn main() {
         let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
             .finalize(components::process_printer_text_component_static!());
         PROCESS_PRINTER = Some(process_printer);
-
-        let process_console = components::process_console::ProcessConsoleComponent::new(
-            board_kernel,
-            uart_mux,
-            mux_alarm,
-            process_printer,
-            None,
-        )
-        .finalize(components::process_console_component_static!(
-            InternalTimers
-        ));
-        let _ = process_console.start();
     }
 
     // Select which I3C core to use for MCTP transport based on platform strap.

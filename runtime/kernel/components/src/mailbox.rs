@@ -5,7 +5,7 @@
 use caliptra_mcu_capsules_runtime::dma::hil::Dma as DmaHal;
 use caliptra_mcu_capsules_runtime::mailbox::Mailbox;
 use caliptra_mcu_romtime::CaliptraSoC;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
@@ -15,7 +15,7 @@ use kernel::hil::time::Alarm;
 #[macro_export]
 macro_rules! mailbox_component_static {
     ($A:ty, $b:expr, $c:expr, $d:expr, $e:expr) => {{
-        use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
+        use caliptra_mcu_virtual_alarm::VirtualMuxAlarm;
         let alarm = kernel::static_buf!(VirtualMuxAlarm<'static, $A>);
         let caliptra_soc = kernel::static_buf!(CaliptraSoC);
         let mbox = kernel::static_buf!(

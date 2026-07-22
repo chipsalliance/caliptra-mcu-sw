@@ -141,6 +141,22 @@ impl<'a> InternalTimers<'a> {
             }
         }
     }
+
+    /// Check if timer0 has expired by polling hardware registers.
+    pub fn has_timer0_expired(&self) -> bool {
+        if self.mitctl0.read(mitctl0::enable) == 1 {
+            let cnt = self.mitcnt0.get();
+            let bound = self.mitb0.read(mitb0::bound);
+            bound > 0 && cnt >= bound
+        } else {
+            false
+        }
+    }
+
+    /// Check if timer0 is currently enabled (armed).
+    pub fn is_timer0_enabled(&self) -> bool {
+        self.mitctl0.read(mitctl0::enable) == 1
+    }
 }
 
 /// Platform-specific frequency for the internal timers.
@@ -158,7 +174,15 @@ impl Time for InternalTimers<'_> {
     type Ticks = Ticks64;
 
     fn now(&self) -> Ticks64 {
-        (((self.mcycleh.get() as u64) << 32) | (self.mcycle.get() as u64)).into()
+        // Race-free 64-bit read: retry if mcycleh changed between reads.
+        loop {
+            let hi = self.mcycleh.get() as u64;
+            let lo = self.mcycle.get() as u64;
+            let hi2 = self.mcycleh.get() as u64;
+            if hi == hi2 {
+                return ((hi << 32) | lo).into();
+            }
+        }
     }
 }
 
@@ -187,8 +211,10 @@ impl<'a> time::Alarm<'a> for InternalTimers<'a> {
 
     fn get_alarm(&self) -> Self::Ticks {
         let bound = self.mitb0.read(mitb0::bound) as u64;
+        let counter = self.mitcnt0.get() as u64;
         let now = self.now().into_u64();
-        (now + bound).into()
+        // fire_time = (now - counter) + bound. When expired, returns past time.
+        now.wrapping_sub(counter).wrapping_add(bound).into()
     }
 
     fn disarm(&self) -> Result<(), ErrorCode> {
