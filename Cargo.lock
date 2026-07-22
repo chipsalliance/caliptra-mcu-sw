@@ -1061,6 +1061,7 @@ dependencies = [
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
  "caliptra-mcu-tock-veer",
+ "caliptra-mcu-virtual-alarm",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
@@ -1163,6 +1164,7 @@ dependencies = [
  "caliptra-mcu-capsules-runtime",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-virtual-alarm",
  "capsules-core",
  "kernel",
  "tock-registers",
@@ -1174,6 +1176,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-doe-transport",
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-virtual-alarm",
  "capsules-core",
  "kernel",
 ]
@@ -1549,6 +1552,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-virtual-alarm",
  "capsules-core",
  "kernel",
  "rv32i",
@@ -1793,6 +1797,7 @@ dependencies = [
  "caliptra-mcu-mbox-comm",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-virtual-alarm",
  "capsules-core",
  "kernel",
 ]
@@ -2167,6 +2172,7 @@ dependencies = [
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
  "caliptra-mcu-tock-veer",
+ "caliptra-mcu-virtual-alarm",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
@@ -2199,6 +2205,7 @@ dependencies = [
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
  "caliptra-mcu-tock-veer",
+ "caliptra-mcu-virtual-alarm",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
@@ -2536,6 +2543,7 @@ dependencies = [
  "caliptra-mcu-mbox-driver",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-virtual-alarm",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
@@ -2571,6 +2579,13 @@ dependencies = [
  "embassy-sync",
  "heapless",
  "portable-atomic",
+]
+
+[[package]]
+name = "caliptra-mcu-virtual-alarm"
+version = "0.1.0"
+dependencies = [
+ "kernel",
 ]
 
 [[package]]

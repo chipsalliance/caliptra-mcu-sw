@@ -71,7 +71,8 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback)) |
-(package(caliptra-mcu-tests-integration) and test(test_firmware_activate_fpga))
+(package(caliptra-mcu-tests-integration) and test(test_firmware_activate_fpga)) |
+(package(caliptra-mcu-tests-integration) and test(test_alarm_race_condition_fpga))
 """
 # Disabled because they hang the FPGA at boot (LifecycleControllerState::Dev):
 #   test_sw_digest_lock,
@@ -115,6 +116,7 @@ not (
     test(test_firmware_update_flash_invalid_mcu_image) |
     test(test_firmware_update_flash_invalid_manifest) |
     test(test_header_burns_caliptra_runtime_svn) |
-    test(test_mctp_user_loopback)
+    test(test_mctp_user_loopback) |
+    test(test_defmt_logging_release)
 )
 """

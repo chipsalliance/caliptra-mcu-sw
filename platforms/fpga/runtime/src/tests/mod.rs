@@ -4,3 +4,5 @@
 pub(crate) mod i3c_target_test;
 #[cfg(feature = "test-mctp-capsule-loopback")]
 pub(crate) mod mctp_test;
+#[cfg(feature = "test-alarm-race-condition")]
+pub(crate) mod timer_alarm_test;

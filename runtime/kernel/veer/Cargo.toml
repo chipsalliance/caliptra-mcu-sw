@@ -10,6 +10,7 @@ edition.workspace = true
 capsules-core.workspace = true
 capsules-extra.workspace = true
 caliptra-mcu-capsules-runtime.workspace = true
+caliptra-mcu-virtual-alarm.workspace = true
 capsules-system.workspace = true
 components.workspace = true
 caliptra-mcu-flash-driver.workspace = true

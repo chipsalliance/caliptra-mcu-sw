@@ -30,7 +30,7 @@ use caliptra_mcu_capsules_runtime::mctp::recv::MCTPRxState;
 use caliptra_mcu_capsules_runtime::mctp::send::MCTPSender;
 use caliptra_mcu_capsules_runtime::mctp::send::MCTPTxState;
 use caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
-use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
+use caliptra_mcu_virtual_alarm::VirtualMuxAlarm;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
@@ -47,7 +47,7 @@ macro_rules! mctp_driver_component_static {
         use caliptra_mcu_capsules_runtime::mctp::recv::MCTPRxState;
         use caliptra_mcu_capsules_runtime::mctp::send::MCTPTxState;
         use caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
-        use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
+        use caliptra_mcu_virtual_alarm::VirtualMuxAlarm;
 
         let tx_state = kernel::static_buf!(
             MCTPTxState<'static, VirtualMuxAlarm<'static, $A>, MCTPI3CBinding<'static>>

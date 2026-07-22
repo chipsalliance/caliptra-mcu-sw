@@ -74,6 +74,7 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mctp-spdm-responder-conformance",
     "test-do-nothing",
     "test-log-flash-usermode",
+    "test-alarm-race-condition",
 ];
 
 /// Release-profile runtime test features (emulator).

@@ -32,7 +32,7 @@ use caliptra_mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use caliptra_mcu_tock_veer::pic::Pic;
 use caliptra_mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
@@ -1053,6 +1053,11 @@ pub unsafe fn main() {
     {
         caliptra_mcu_romtime::println!("Executing test-exit-immediately");
         exit = Some(0);
+    }
+    #[cfg(feature = "test-alarm-race-condition")]
+    {
+        caliptra_mcu_romtime::println!("Executing test-alarm-race-condition");
+        exit = crate::tests::timer_alarm_test::run_test_alarm_race_condition();
     }
     #[cfg(feature = "test-i3c-simple")]
     {

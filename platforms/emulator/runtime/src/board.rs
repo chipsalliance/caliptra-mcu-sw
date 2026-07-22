@@ -34,7 +34,7 @@ use caliptra_mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use caliptra_mcu_tock_veer::pic::Pic;
 use caliptra_mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
@@ -693,10 +693,18 @@ pub unsafe fn main() {
             .finalize(components::process_printer_text_component_static!());
         PROCESS_PRINTER = Some(process_printer);
 
+        // ProcessConsoleComponent requires Tock's own MuxAlarm type (from
+        // capsules_core) because its macro expands to that type. Create a
+        // separate Tock-native MuxAlarm just for it.
+        let tock_mux_for_console = static_init!(
+            capsules_core::virtualizers::virtual_alarm::MuxAlarm<'static, InternalTimers>,
+            capsules_core::virtualizers::virtual_alarm::MuxAlarm::new(timers)
+        );
+
         let process_console = components::process_console::ProcessConsoleComponent::new(
             board_kernel,
             uart_mux,
-            mux_alarm,
+            tock_mux_for_console,
             process_printer,
             None,
         )

@@ -3,7 +3,7 @@
 use crate::io::SemihostUart;
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
-use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
+use caliptra_mcu_virtual_alarm::MuxAlarm;
 use kernel::platform::chip::InterruptService;
 
 pub struct FpgaPeripherals<'a> {

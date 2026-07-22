@@ -8,7 +8,7 @@ use caliptra_mcu_registers_generated::i3c::bits::{
     InterruptEnable, InterruptStatus, Status, StbyCrDeviceAddr,
 };
 use caliptra_mcu_registers_generated::i3c::regs::I3c;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::hil::time::{Alarm, AlarmClient, Time};

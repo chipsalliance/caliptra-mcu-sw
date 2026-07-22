@@ -7,7 +7,7 @@ use caliptra_mcu_doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTra
 use caliptra_mcu_registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
 use caliptra_mcu_registers_generated::doe_mbox::regs::DoeMbox;
 use caliptra_mcu_registers_generated::doe_mbox::DOE_MBOX_ADDR;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};

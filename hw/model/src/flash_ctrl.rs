@@ -164,7 +164,6 @@ impl ImaginaryFlashController {
         let start = Instant::now();
         while self.mci.mcu_mbox0_csr_mbox_execute.get() != MboxExecute::Execute::CLEAR.value {
             if start.elapsed() > timeout {
-                println!("Timeout waiting for EXECUTE bit to clear");
                 break;
             }
         }

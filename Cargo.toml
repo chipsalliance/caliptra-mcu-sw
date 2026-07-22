@@ -79,6 +79,7 @@ members = [
     "runtime/bare-metal/io",
     "runtime/kernel/capsules",
     "runtime/kernel/components",
+    "runtime/kernel/virtual-alarm",
     "runtime/kernel/drivers/doe",
     "runtime/kernel/drivers/external_otp",
     "runtime/kernel/drivers/i3c",
@@ -265,6 +266,7 @@ caliptra-mcu-i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 caliptra-mcu-libtockasync = { path = "runtime/userspace/libtockasync" }
 caliptra-mcu-builder = { path = "builder" }
 caliptra-mcu-components = { path = "runtime/kernel/components" }
+caliptra-mcu-virtual-alarm = { path = "runtime/kernel/virtual-alarm" }
 caliptra-mcu-config = { path = "common/config" }
 caliptra-mcu-command-auth-challenge-signer = { path = "common/command-auth-challenge-signer" }
 caliptra-mcu-debug-unlock-signer = { path = "common/debug-unlock-signer" }

@@ -22,7 +22,7 @@ use caliptra_mcu_capsules_runtime::mctp::transport_binding::{
     MCTPI3CBinding, MCTPTransportBinding,
 };
 use caliptra_mcu_i3c_driver::core::MAX_READ_WRITE_SIZE;
-use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use caliptra_mcu_virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::mem::MaybeUninit;
 use kernel::component::Component;
 use kernel::deferred_call::DeferredCallClient;
@@ -35,7 +35,7 @@ macro_rules! mctp_mux_component_static {
         use caliptra_mcu_capsules_runtime::mctp::mux::MuxMCTPDriver;
         use caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
         use caliptra_mcu_i3c_driver::core::MAX_READ_WRITE_SIZE;
-        use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
+        use caliptra_mcu_virtual_alarm::VirtualMuxAlarm;
 
         let alarm = kernel::static_buf!(VirtualMuxAlarm<'static, $A>);
         let tx_buffer = kernel::static_buf!([u8; MAX_READ_WRITE_SIZE]);
