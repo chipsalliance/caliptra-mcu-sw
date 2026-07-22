@@ -225,18 +225,25 @@ impl<'a> ActionHandler<'a> for Subsystem {
                 ..Default::default()
             }])
         });
+        let output_name = if args.total_shards > 1 {
+            format!("all-fw-shard-{}.zip", args.shard_index)
+        } else {
+            "all-fw.zip".to_string()
+        };
         let args = AllBuildArgs {
-            output: Some("all-fw.zip"),
+            output: Some(&output_name),
             platform: Some("fpga"),
             rom_features: args.rom_features.as_deref(),
             runtime_features: args.runtime_features.as_deref(),
-            mcu_cfgs: mcu_cfgs,
+            mcu_cfgs,
             separate_runtimes: args.separate_runtimes,
+            shard_index: args.shard_index,
+            total_shards: args.total_shards,
             ..Default::default()
         };
         caliptra_mcu_builder::all_build(args)?;
         if let Some(target_host) = &self.target_host {
-            rsync_file(target_host, "all-fw.zip", ".", false)?;
+            rsync_file(target_host, &output_name, ".", false)?;
         }
         Ok(())
     }
