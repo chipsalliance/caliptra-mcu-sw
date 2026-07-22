@@ -16,13 +16,14 @@ use caliptra_mcu_mbox_common::messages::{
     FuseIncreaseCaliptraMinSvnResp, FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq,
     FuseReadResp, FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader, MailboxRespHeader,
-    MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
+    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
     McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE,
     MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 
+use caliptra_mcu_libtock_console::Console;
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{
     GetOcpLockEndorsementCertReq, GetOcpLockEndorsementCertResp, GetOcpLockEpochKeyReportReq,
@@ -35,6 +36,10 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicStatusResp,
 };
 use caliptra_mcu_romtime::{fuse_read_dai_params, PartitionId};
+use caliptra_mcu_userlog::{log_info, Hex32};
+
+#[allow(unused_imports)]
+use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use mcu_caliptra_api_lite::{raw, ApiAlloc, FwInfo};
 use mcu_error::McuResult;
@@ -188,6 +193,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         self.busy.store(true, Ordering::SeqCst);
 
         let cmd_id = CommandId::from(cmd);
+        log_info!(
+            Console::<DefaultSyscalls>::writer(),
+            "MCU mailbox command called: 0x{}",
+            Hex32(cmd)
+        );
         let result = if let Some(caliptra_cmd) = caliptra_passthrough_cmd(cmd_id) {
             self.handle_crypto_passthrough(req_buf, req_len, caliptra_cmd, resp_buf)
                 .await
@@ -244,6 +254,12 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 }
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
+                }
+                CommandId::MC_DPE_SIGNER_CONTEXT_CERT => {
+                    self.handle_dpe_signer_context_cert(req, resp_buf).await
+                }
+                CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
+                    self.handle_get_dpe_cert_chain(req, resp_buf).await
                 }
                 CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
                     self.handle_prod_debug_unlock_token(req, resp_buf).await
@@ -528,6 +544,81 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok((&mut resp_buf[..resp_size], mbox_cmd_status))
     }
 
+    async fn handle_dpe_signer_context_cert<'r>(
+        &mut self,
+        _req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let header_len = core::mem::size_of::<MailboxRespHeaderVarSize>();
+        if resp_buf.len() < header_len {
+            return Err(errors::INVALID_PARAMS);
+        }
+
+        let mut cert_ctx = caliptra_mcu_libapi_caliptra::certificate::CertContext::new();
+        let ret = cert_ctx
+            .dpe_signer_context_cert(&mut resp_buf[header_len..])
+            .await;
+
+        let (mbox_cmd_status, cert_len) = match ret {
+            Ok(len) => (MbxCmdStatus::Complete, len),
+            Err(_) => (MbxCmdStatus::Failure, 0),
+        };
+
+        let hdr = MailboxRespHeaderVarSize {
+            hdr: MailboxRespHeader {
+                chksum: 0,
+                fips_status: 0,
+            },
+            data_len: cert_len as u32,
+        };
+
+        resp_buf[..header_len].copy_from_slice(hdr.as_bytes());
+        let total_len = header_len + cert_len;
+        Ok((&mut resp_buf[..total_len], mbox_cmd_status))
+    }
+
+    async fn handle_get_dpe_cert_chain<'r>(
+        &mut self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = GetDpeCertChainReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+
+        let header_len = core::mem::size_of::<MailboxRespHeaderVarSize>();
+        if resp_buf.len() < header_len {
+            return Err(errors::INVALID_PARAMS);
+        }
+
+        let requested_size = req.size as usize;
+        if requested_size > MAX_RESP_DATA_SIZE || resp_buf.len() < header_len + requested_size {
+            return Err(errors::INVALID_PARAMS);
+        }
+
+        let mut cert_ctx = caliptra_mcu_libapi_caliptra::certificate::CertContext::new();
+        let ret = cert_ctx
+            .cert_chain_chunk(
+                req.offset as usize,
+                &mut resp_buf[header_len..header_len + requested_size],
+            )
+            .await;
+
+        let (mbox_cmd_status, cert_len) = match ret {
+            Ok(len) => (MbxCmdStatus::Complete, len),
+            Err(_) => (MbxCmdStatus::Failure, 0),
+        };
+
+        let hdr = MailboxRespHeaderVarSize {
+            hdr: MailboxRespHeader {
+                chksum: 0,
+                fips_status: 0,
+            },
+            data_len: cert_len as u32,
+        };
+
+        resp_buf[..header_len].copy_from_slice(hdr.as_bytes());
+        let total_len = header_len + cert_len;
+        Ok((&mut resp_buf[..total_len], mbox_cmd_status))
+    }
     async fn handle_prod_debug_unlock_token<'r>(
         &self,
         req: &[u8],

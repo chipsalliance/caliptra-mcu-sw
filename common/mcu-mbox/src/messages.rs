@@ -138,6 +138,8 @@ impl CommandId {
 
     // Certificate commands
     pub const MC_EXPORT_ATTESTED_CSR: Self = Self(0x4D45_4143); // "MEAC"
+    pub const MC_DPE_SIGNER_CONTEXT_CERT: Self = Self(0x4D44_5343); // "MDSC"
+    pub const MC_GET_DPE_CERTIFICATE_CHAIN: Self = Self(0x4D44_4343); // "MDCC"
 
     // OCP Lock commands
     pub const MC_OCP_LOCK_ROTATE_HEK: Self = Self(0x4F4C_5248); // "OLRH"
@@ -215,6 +217,9 @@ pub enum McuMailboxReq {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashReq),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
+    DpeSignerContextCert(DpeSignerContextCertReq),
+    GetDpeCertChain(GetDpeCertChainReq),
+
     // OCP Lock
     OcpLockSetPermaHek(OcpLockSetPermaHekReq),
     OcpLockRotateHek(OcpLockRotateHekReq),
@@ -276,6 +281,9 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_bytes()),
+            McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_bytes()),
+
             McuMailboxReq::OcpLockSetPermaHek(req) => Ok(req.as_bytes()),
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetOcpLockEndorsementCert(req) => Ok(req.as_bytes()),
@@ -336,6 +344,9 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_mut_bytes()),
+
             McuMailboxReq::OcpLockSetPermaHek(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetOcpLockEndorsementCert(req) => Ok(req.as_mut_bytes()),
@@ -398,6 +409,9 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
+            McuMailboxReq::DpeSignerContextCert(_) => CommandId::MC_DPE_SIGNER_CONTEXT_CERT,
+            McuMailboxReq::GetDpeCertChain(_) => CommandId::MC_GET_DPE_CERTIFICATE_CHAIN,
+
             McuMailboxReq::OcpLockSetPermaHek(_) => CommandId::MC_OCP_LOCK_SET_PERMA_HEK,
             McuMailboxReq::OcpLockRotateHek(_) => CommandId::MC_OCP_LOCK_ROTATE_HEK,
             McuMailboxReq::GetOcpLockEndorsementCert(_) => {
@@ -488,6 +502,9 @@ pub enum McuMailboxResp {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
+    DpeSignerContextCert(DpeSignerContextCertResp),
+    GetDpeCertChain(GetDpeCertChainResp),
+
     // OCP Lock
     OcpLockSetPermaHek(OcpLockSetPermaHekResp),
     OcpLockRotateHek(OcpLockRotateHekResp),
@@ -608,6 +625,9 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial(),
+
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial(),
@@ -667,6 +687,9 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial_mut(),
+
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial_mut(),
@@ -1611,6 +1634,67 @@ impl Default for ExportAttestedCsrResp {
 }
 impl McuResponseVarSize for ExportAttestedCsrResp {}
 
+/// MC_DPE_SIGNER_CONTEXT_CERT Command (0x4D44_5343 - "MDSC")
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
+pub struct DpeSignerContextCertReq {
+    pub hdr: MailboxReqHeader,
+}
+
+impl Request for DpeSignerContextCertReq {
+    const ID: CommandId = CommandId::MC_DPE_SIGNER_CONTEXT_CERT;
+    type Resp = DpeSignerContextCertResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct DpeSignerContextCertResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub cert_data: [u8; MAX_RESP_DATA_SIZE],
+}
+impl Default for DpeSignerContextCertResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            cert_data: [0u8; MAX_RESP_DATA_SIZE],
+        }
+    }
+}
+
+impl McuResponseVarSize for DpeSignerContextCertResp {}
+
+/// MC_GET_DPE_CERTIFICATE_CHAIN request: Retrieve DPE Certificate Chain
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
+pub struct GetDpeCertChainReq {
+    pub hdr: MailboxReqHeader,
+    pub offset: u32,
+    pub size: u32,
+}
+
+impl Request for GetDpeCertChainReq {
+    const ID: CommandId = CommandId::MC_GET_DPE_CERTIFICATE_CHAIN;
+    type Resp = GetDpeCertChainResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetDpeCertChainResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub cert_data: [u8; MAX_RESP_DATA_SIZE],
+}
+
+impl Default for GetDpeCertChainResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            cert_data: [0u8; MAX_RESP_DATA_SIZE],
+        }
+    }
+}
+
+impl McuResponseVarSize for GetDpeCertChainResp {}
+
 /// MC_PROVISION_VENDOR_PK_HASH request: Provision a new vendor PK hash
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
@@ -1918,6 +2002,58 @@ mod tests {
         assert_ne!(hdr.chksum, 0);
 
         // Verify checksum can be validated using verify_checksum
+        let payload = &bytes[core::mem::size_of::<u32>()..];
+        assert!(verify_checksum(hdr.chksum, 0, payload));
+    }
+
+    #[test]
+    fn test_dpe_signer_context_cert_command_id() {
+        assert_eq!(CommandId::MC_DPE_SIGNER_CONTEXT_CERT.0, 0x4D44_5343);
+        assert_eq!(CommandId::MC_GET_DPE_CERTIFICATE_CHAIN.0, 0x4D44_4343);
+    }
+
+    #[test]
+    fn test_get_dpe_cert_chain_req_serialization() {
+        let req = GetDpeCertChainReq {
+            hdr: MailboxReqHeader { chksum: 0x1234 },
+            offset: 0,
+            size: 1024,
+        };
+
+        let bytes = req.as_bytes();
+        assert_eq!(bytes.len(), core::mem::size_of::<GetDpeCertChainReq>());
+
+        let parsed = GetDpeCertChainReq::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.hdr.chksum, 0x1234);
+        assert_eq!(parsed.size, 1024);
+    }
+
+    #[test]
+    fn test_dpe_signer_context_cert_req_serialization() {
+        let req = DpeSignerContextCertReq {
+            hdr: MailboxReqHeader { chksum: 0xABCD },
+        };
+
+        let bytes = req.as_bytes();
+        assert_eq!(bytes.len(), core::mem::size_of::<DpeSignerContextCertReq>());
+
+        let parsed = DpeSignerContextCertReq::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.hdr.chksum, 0xABCD);
+    }
+
+    #[test]
+    fn test_dpe_signer_context_cert_resp_serialization() {
+        let mut resp = DpeSignerContextCertResp::default();
+        resp.hdr.data_len = 128;
+        resp.cert_data[..4].copy_from_slice(&[0x30, 0x82, 0x01, 0x00]);
+
+        let mut mbox_resp = McuMailboxResp::DpeSignerContextCert(resp);
+        mbox_resp.populate_chksum().unwrap();
+
+        let bytes = mbox_resp.as_bytes().unwrap();
+        let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
+        assert_ne!(hdr.chksum, 0);
+
         let payload = &bytes[core::mem::size_of::<u32>()..];
         assert!(verify_checksum(hdr.chksum, 0, payload));
     }
