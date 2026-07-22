@@ -27,5 +27,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: "nightly.yml",
-              ref: "main-2.1",
+              ref: "v-focutter/nightly-2-1",
             });
