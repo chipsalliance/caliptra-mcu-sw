@@ -164,7 +164,7 @@ test-pldm-fw-update-e2e = []
 test-pldm-streaming-boot = ["streaming-boot"]
 test-caliptra-util-host-spdm-vdm-validator = ["spdm"]
 test-mctp-spdm-attestation = ["spdm"]
-test-mctp-spdm-attestation-pcr-quote = ["spdm"]
+test-mctp-spdm-attestation-pcr-quote = ["spdm", "caliptra-mcu-spdm-pal/pcr-quote"]
 test-mctp-spdm-responder-conformance = ["spdm"]
 # Test-only SPDM SET_CERTIFICATE path. Enables flash-backed certificate
 # installation without production authorization/key-binding.

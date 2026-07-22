@@ -932,6 +932,8 @@ dependencies = [
  "caliptra-ocp-eat",
  "coset 0.4.2",
  "mcu-caliptra-api-lite",
+ "serde",
+ "toml 0.8.23",
 ]
 
 [[package]]
@@ -3453,6 +3455,7 @@ dependencies = [
  "caliptra-api",
  "caliptra-auth-man-types",
  "caliptra-error",
+ "caliptra-mcu-attestation-evidence",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-libapi-caliptra",
@@ -3467,6 +3470,7 @@ dependencies = [
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-spdm-pal",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
