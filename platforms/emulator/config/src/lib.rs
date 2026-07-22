@@ -59,6 +59,11 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     lc_properties: MemoryRegionType::MMIO,
 };
 
+/// Size of the SRAM block (the last N bytes of SRAM) reserved for copied ROM
+/// logic under `rom-from-ram`. Must match `RAM_TEXT_SIZE` in
+/// rom-ram-text-layout.ld.
+pub const MCU_ROM_RAM_TEXT_SIZE: u32 = 256 * 1024;
+
 const ACTIVE_I3C: u8 = if cfg!(feature = "active-i3c1") { 1 } else { 0 };
 
 pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps {
