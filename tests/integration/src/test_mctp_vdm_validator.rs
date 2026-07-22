@@ -69,11 +69,10 @@ pub mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let feature = "test-caliptra-util-host-mctp-vdm-validator";
         let i3c_port = PortPicker::new().random(true).pick().unwrap();
 
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some(feature),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_MCTP_VDM_VALIDATOR,
             i3c_port: Some(i3c_port),
             ..Default::default()
         });

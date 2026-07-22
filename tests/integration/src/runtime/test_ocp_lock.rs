@@ -23,10 +23,7 @@ fn test_otp_perma_hek_mailbox() -> Result<()> {
 
     let mut hw = start_runtime_hw_model(TestParams {
         otp_memory: Some(otp),
-        ocp_lock_en: true,
-        feature: Some("test-ocp-lock"),
-        rom_feature: Some("ocp-lock"),
-        ..Default::default()
+        ..TestParams::from_target(&caliptra_mcu_builder::firmware::targets::TEST_OCP_LOCK)
     });
 
     // wait for the mailbox to come up
@@ -64,10 +61,7 @@ fn test_otp_perma_hek_mailbox_not_zeroized_failure() -> Result<()> {
 
     let mut hw = start_runtime_hw_model(TestParams {
         otp_memory: Some(otp),
-        ocp_lock_en: true,
-        feature: Some("test-ocp-lock"),
-        rom_feature: Some("ocp-lock"),
-        ..Default::default()
+        ..TestParams::from_target(&caliptra_mcu_builder::firmware::targets::TEST_OCP_LOCK)
     });
 
     // wait for the mailbox to come up
@@ -103,9 +97,7 @@ fn test_otp_rotate_hek_mailbox() -> Result<()> {
 
     let mut hw = start_runtime_hw_model(TestParams {
         otp_memory: Some(otp),
-        ocp_lock_en: true,
-        feature: Some("test-ocp-lock"),
-        rom_feature: Some("ocp-lock"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_OCP_LOCK,
         ..Default::default()
     });
 
@@ -173,10 +165,7 @@ fn test_otp_rotate_hek_mailbox() -> Result<()> {
 
     let mut hw_after_reboot = start_runtime_hw_model(TestParams {
         otp_memory: Some(modified_otp),
-        ocp_lock_en: true,
-        feature: Some("test-ocp-lock"),
-        rom_feature: Some("ocp-lock"),
-        ..Default::default()
+        ..TestParams::from_target(&caliptra_mcu_builder::firmware::targets::TEST_OCP_LOCK)
     });
 
     // Wait for the mailbox to come up
@@ -198,12 +187,9 @@ fn test_otp_rotate_hek_mailbox() -> Result<()> {
 #[test]
 fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
     let _lock = crate::test::TEST_LOCK.lock().unwrap();
-    let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-ocp-lock"),
-        rom_feature: Some("ocp-lock"),
-        ocp_lock_en: true,
-        ..Default::default()
-    });
+    let mut hw = start_runtime_hw_model(TestParams::from_target(
+        &caliptra_mcu_builder::firmware::targets::TEST_OCP_LOCK,
+    ));
 
     hw.step_until(|hw| {
         hw.mci_boot_milestones()

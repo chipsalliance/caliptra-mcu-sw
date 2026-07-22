@@ -16,9 +16,7 @@ mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             otp_memory: Some(otp),
             rom_only: false,
-            ocp_lock_en: true,
-            feature: Some("test-handoff"),
-            rom_feature: Some("ocp-lock"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_HANDOFF,
             ..Default::default()
         });
 

@@ -14,13 +14,11 @@ mod test {
 
     #[test]
     fn test_mctp_capsule_loopback() {
-        let feature = "test-mctp-capsule-loopback";
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let feature = feature.replace("_", "-");
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some(&feature),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_MCTP_CAPSULE_LOOPBACK,
             i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
             ..Default::default()
         });

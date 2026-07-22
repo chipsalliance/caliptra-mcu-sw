@@ -96,11 +96,13 @@ mod test {
 
     fn release_runtime_and_user_app_elf() -> (Vec<u8>, Vec<u8>) {
         if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
-            let runtime = binaries
-                .test_runtime(FEATURE)
-                .expect("release firmware bundle has no test-defmt-logging-release runtime");
-            let elf = binaries
-                .test_user_app_elf(FEATURE)
+            let bundle = binaries
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_DEFMT_LOGGING_RELEASE);
+            let runtime = bundle.mcu_fw.bytes.to_vec();
+            let elf = bundle
+                .mcu_fw
+                .user_app_elf
+                .as_ref()
                 .expect("release firmware bundle has no test-defmt-logging-release user-app ELF")
                 .to_vec();
             return (runtime, elf);
@@ -123,7 +125,7 @@ mod test {
         let (runtime, elf) = release_runtime_and_user_app_elf();
 
         let mut hw = start_runtime_hw_model(TestParams {
-            profile: Some("release"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DEFMT_LOGGING_RELEASE,
             custom_mcu_runtime: Some(runtime),
             ..Default::default()
         });

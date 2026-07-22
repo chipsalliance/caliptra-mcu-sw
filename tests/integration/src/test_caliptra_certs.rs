@@ -16,7 +16,7 @@ mod test {
         lock.fetch_add(1, Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some("test-caliptra-certs"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_CALIPTRA_CERTS,
             i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
             lifecycle_controller_state: Some(LifecycleControllerState::Dev),
             ..Default::default()

@@ -11,7 +11,7 @@ use caliptra_mcu_romtime::McuBootMilestones;
 #[test]
 fn test_invalid_mailbox_cmd() -> Result<()> {
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         ..Default::default()
     });
 
@@ -36,7 +36,7 @@ fn test_invalid_mailbox_cmd() -> Result<()> {
 #[test]
 fn test_firmware_version_cmd() -> Result<()> {
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         ..Default::default()
     });
 
@@ -60,7 +60,7 @@ fn test_firmware_version_cmd() -> Result<()> {
 #[test]
 fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         ..Default::default()
     });
 
@@ -94,9 +94,15 @@ fn test_fe_prog_authorized_req() -> Result<()> {
     let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
     let (caliptra_fw, vendor_pk_hash_arr, soc_manifest) =
         if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let fw = binaries.caliptra_fw.clone();
+            let fw = binaries
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS)
+                .caliptra_rt
+                .to_vec();
             let pk_hash = binaries.vendor_pk_hash().unwrap();
-            let manifest = binaries.test_soc_manifest("test-mcu-mbox-cmds").unwrap();
+            let manifest = binaries
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS)
+                .soc_manifest
+                .to_vec();
             (fw, pk_hash, manifest)
         } else {
             let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
@@ -114,7 +120,7 @@ fn test_fe_prog_authorized_req() -> Result<()> {
         };
 
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
             vendor_pk_hash: vendor_pk_hash_arr,

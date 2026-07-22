@@ -13,11 +13,12 @@ use caliptra_mcu_romtime::McuBootMilestones;
 fn test_warm_reset_success() -> Result<()> {
     let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env()?;
 
-    // Build flash image from firmware binaries
+    let target = &caliptra_mcu_builder::firmware::targets::TEST_WARM_RESET;
+    let bundle = binaries.as_bundle(target);
     let flash_image = build_flash_image_bytes(
-        Some(&binaries.caliptra_fw),
-        Some(&binaries.soc_manifest),
-        Some(&binaries.mcu_runtime),
+        Some(&bundle.caliptra_rt),
+        Some(&bundle.soc_manifest),
+        Some(&bundle.mcu_fw.bytes),
     );
 
     let mut hw = new(InitParams {
@@ -39,8 +40,8 @@ fn test_warm_reset_success() -> Result<()> {
             },
             ..Default::default()
         },
-        caliptra_rom: &binaries.caliptra_rom,
-        mcu_rom: &binaries.mcu_rom,
+        caliptra_rom: &bundle.caliptra_rom,
+        mcu_rom: &bundle.mcu_rom,
         vendor_pk_hash: binaries.vendor_pk_hash(),
         active_mode: true,
         vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),

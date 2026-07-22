@@ -971,21 +971,21 @@ mod tests {
         use crate::DefaultHwModel;
 
         let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
+        let target = &caliptra_mcu_builder::firmware::targets::TEST_DO_NOTHING;
+        let bundle = binaries.as_bundle(target);
 
         // Build flash image from firmware binaries
         let flash_image = build_flash_image_bytes(
-            Some(&binaries.caliptra_fw),
-            Some(&binaries.soc_manifest),
-            Some(&binaries.mcu_runtime),
+            Some(&bundle.caliptra_rt),
+            Some(&bundle.soc_manifest),
+            Some(&bundle.mcu_fw.bytes),
         );
 
         let mut hw = new(InitParams {
-            caliptra_rom: &binaries.caliptra_rom,
-            mcu_rom: &binaries.mcu_rom,
             vendor_pk_hash: binaries.vendor_pk_hash(),
             active_mode: true,
             primary_flash_initial_contents: Some(flash_image),
-            ..Default::default()
+            ..InitParams::from_bundle(bundle)
         })
         .unwrap();
 

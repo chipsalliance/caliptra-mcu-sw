@@ -257,7 +257,34 @@ pub struct InitParams<'a> {
     pub skip_otp_provisioning: bool,
 }
 
-impl InitParams<'_> {
+impl<'a> InitParams<'a> {
+    pub fn from_bundle(bundle: &'a caliptra_mcu_builder::FirmwareBundle) -> Self {
+        Self {
+            caliptra_rom: &bundle.caliptra_rom,
+            caliptra_firmware: &bundle.caliptra_rt,
+            soc_manifest: &bundle.soc_manifest,
+            mcu_rom: &bundle.mcu_rom,
+            mcu_firmware: &bundle.mcu_fw.bytes,
+            ..Default::default()
+        }
+    }
+
+    pub fn from_target(
+        binaries: &'a caliptra_mcu_builder::FirmwareBinaries,
+        target: &caliptra_mcu_builder::firmware::FirmwareTarget,
+    ) -> Self {
+        Self::from_bundle(binaries.as_bundle(target))
+    }
+
+    pub fn with_bundle(mut self, bundle: &'a caliptra_mcu_builder::FirmwareBundle) -> Self {
+        self.caliptra_rom = &bundle.caliptra_rom;
+        self.caliptra_firmware = &bundle.caliptra_rt;
+        self.soc_manifest = &bundle.soc_manifest;
+        self.mcu_rom = &bundle.mcu_rom;
+        self.mcu_firmware = &bundle.mcu_fw.bytes;
+        self
+    }
+
     pub fn summary(&self) -> InitParamsSummary {
         InitParamsSummary {
             rom_sha384: sha2::Sha384::digest(self.mcu_rom).into(),
@@ -938,12 +965,13 @@ fn mbox_read_fifo(mbox: caliptra_registers::mbox::RegisterBlock<impl MmioMut>) -
 #[test]
 fn reg_access_test() {
     let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
+    let bundle = binaries.as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_DO_NOTHING);
 
     // Build flash image from firmware binaries
     let flash_image = build_flash_image_bytes(
-        Some(&binaries.caliptra_fw),
-        Some(&binaries.soc_manifest),
-        Some(&binaries.mcu_runtime),
+        Some(&bundle.caliptra_rt),
+        Some(&bundle.soc_manifest),
+        Some(&bundle.mcu_fw.bytes),
     );
 
     let mut hw = new(InitParams {
@@ -965,13 +993,11 @@ fn reg_access_test() {
             },
             ..Default::default()
         },
-        caliptra_rom: &binaries.caliptra_rom,
-        mcu_rom: &binaries.mcu_rom,
         vendor_pk_hash: binaries.vendor_pk_hash(),
         active_mode: true,
         vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
         primary_flash_initial_contents: Some(flash_image),
-        ..Default::default()
+        ..InitParams::from_bundle(bundle)
     })
     .unwrap();
 
@@ -1019,8 +1045,9 @@ mod tests {
 
     #[test]
     pub fn test_mailbox_execute() -> Result<()> {
+        let target = &caliptra_mcu_builder::firmware::targets::TEST_MAILBOX_RESPONDER;
         let mcu_rom = if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
-            binaries.test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)?
+            binaries.as_bundle(target).mcu_rom.to_vec()
         } else {
             let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {
                 platform: Some(platform()),
@@ -1086,8 +1113,9 @@ mod tests {
     #[cfg(not(feature = "fpga_realtime"))]
     #[test]
     pub fn test_usb_loopback() -> Result<()> {
+        let target = &caliptra_mcu_builder::firmware::targets::TEST_USB_RESPONDER;
         let mcu_rom = if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
-            binaries.test_rom(&firmware::hw_model_tests::USB_RESPONDER)?
+            binaries.as_bundle(target).mcu_rom.to_vec()
         } else {
             let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {
                 platform: Some(platform()),
@@ -1159,8 +1187,9 @@ mod tests {
     #[cfg(not(feature = "fpga_realtime"))]
     #[test]
     pub fn test_usb_ocp_recovery() -> Result<()> {
+        let target = &caliptra_mcu_builder::firmware::targets::TEST_USB_OCP_RECOVERY;
         let mcu_rom = if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
-            binaries.test_rom(&firmware::hw_model_tests::USB_OCP_RECOVERY)?
+            binaries.as_bundle(target).mcu_rom.to_vec()
         } else {
             let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {
                 platform: Some(platform()),

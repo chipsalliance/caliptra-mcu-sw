@@ -15,28 +15,14 @@ use std::io::Write;
 
 fn test_rom_hw_error(inject_val: u32, expected_error: u32, expected_message: &str) -> Result<()> {
     // Use the prebuilt firmware bundle if available; otherwise compile.
-    let (caliptra_rom, mcu_rom, caliptra_fw, soc_manifest, mcu_runtime, vendor_pk_hash_u8) =
-        if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
-            (
-                binaries.caliptra_rom.clone(),
-                binaries.mcu_rom.clone(),
-                binaries.caliptra_fw.clone(),
-                binaries.soc_manifest.clone(),
-                binaries.mcu_runtime.clone(),
-                binaries.vendor_pk_hash().unwrap().to_vec(),
-            )
-        } else {
-            println!("Could not find prebuilt firmware binaries, building firmware...");
-            let tb = crate::test::build_test_binaries(&crate::test::TestParams::default());
-            (
-                tb.caliptra_rom,
-                tb.mcu_rom,
-                tb.caliptra_fw,
-                tb.soc_manifest,
-                tb.mcu_runtime,
-                tb.vendor_pk_hash_u8,
-            )
-        };
+    let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
+    let bundle = binaries.as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_DO_NOTHING);
+    let caliptra_rom = bundle.caliptra_rom.0.clone();
+    let mcu_rom = bundle.mcu_rom.0.clone();
+    let caliptra_fw = bundle.caliptra_rt.0.clone();
+    let soc_manifest = bundle.soc_manifest.0.clone();
+    let mcu_runtime = bundle.mcu_fw.bytes.clone();
+    let vendor_pk_hash_u8 = binaries.vendor_pk_hash().unwrap().to_vec();
 
     // Build flash image from firmware binaries
     let flash_image =

@@ -28,7 +28,6 @@ mod test {
     use std::time::Duration;
 
     const TEST_NAME: &str = "MCTP-SPDM-SET-CERTIFICATE";
-    const FIRMWARE_FEATURE: &str = "test-mctp-spdm-set-certificate";
 
     #[ignore]
     #[test]
@@ -45,7 +44,7 @@ mod test {
         lock.fetch_add(1, Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some(FIRMWARE_FEATURE),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_OCP_DEV_IDENTITY_PROVISION_TOOL,
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             use_strap_secrets: true,
             ..Default::default()

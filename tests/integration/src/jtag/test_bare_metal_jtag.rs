@@ -26,9 +26,8 @@ mod test {
 
         // Pull bare-metal bytes from prebuilt bundle environment.
         let binaries = FirmwareBinaries::from_env().expect("Firmware bundle not found");
-        let bare_metal_bytes = binaries
-            .get_bare_metal("caliptra-mcu-bare-metal")
-            .expect("mcu_bare_metal binary not found");
+        let target = &caliptra_mcu_builder::firmware::targets::BARE_METAL;
+        let bare_metal_bytes = &binaries.as_bundle(target).mcu_fw.bytes;
         assert!(
             !bare_metal_bytes.is_empty(),
             "mcu_bare_metal binary is empty"
