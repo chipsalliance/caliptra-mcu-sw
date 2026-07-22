@@ -522,11 +522,9 @@ Generate a reference-value CoRIM from a firmware bundle.
 Reads the all-build ZIP bundle (from `cargo xtask all-build`) and produces
 CoMID/CoRIM CBOR files with reference value digests for each firmware component.
 
-Components are auto-discovered from the bundle:
-  mkey 0: FMC_INFO      - Caliptra FMC (from caliptra_fw.bin)
-  mkey 1: RT_INFO        - Caliptra Runtime (from caliptra_fw.bin)
-  mkey 2: SOC_MANIFEST   - Authorization Manifest (soc_manifest.bin)
-  mkey 3+: SoC firmware  - Auto-discovered from AuthManifest metadata
+Components are auto-discovered from the bundle's SoC manifest metadata and
+encoded to match Measurement API evidence:
+    mkey 1: SoC firmware  - Auto-discovered from AuthManifest metadata
 
 CONFIG FILE (--config):
   Optional JSON file controlling vendor/model, hash algorithm, output

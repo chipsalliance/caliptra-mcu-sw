@@ -495,11 +495,21 @@ async fn write_measurement_record_block_into_slice<Pal: SpdmPal>(
     mut offset: usize,
 ) -> SpdmResult<usize> {
     let value_size = info.value_size as usize;
-    let mut value = pal.alloc_bytes(io, value_size)?;
-    let value_len = pal
-        .get_measurement_value(io, info.index, nonce, &mut value)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
+    let header_start = offset;
+    let value_start = offset
+        .checked_add(MEAS_BLOCK_METADATA_SIZE)
+        .ok_or(SPDM_UNSPECIFIED)?;
+    let value_end = value_start
+        .checked_add(value_size)
+        .ok_or(SPDM_UNSPECIFIED)?;
+    let value_len = {
+        let value = out
+            .get_mut(value_start..value_end)
+            .ok_or(SPDM_UNSPECIFIED)?;
+        pal.get_measurement_value(io, info.index, nonce, value)
+            .await
+            .map_err(|_| SPDM_UNSPECIFIED)?
+    };
     if value_len > value_size {
         return Err(SPDM_UNSPECIFIED);
     }
@@ -507,10 +517,8 @@ async fn write_measurement_record_block_into_slice<Pal: SpdmPal>(
 
     let block_hdr =
         DmtfMeasurementBlockHeader::new(info.index, info.is_raw, info.value_type, value_len_u16);
-    offset = write_into_slice(out, offset, block_hdr.as_bytes())?;
-
-    let value = value.get(..value_len).ok_or(SPDM_UNSPECIFIED)?;
-    write_into_slice(out, offset, value)
+    offset = write_into_slice(out, header_start, block_hdr.as_bytes())?;
+    offset.checked_add(value_len).ok_or(SPDM_UNSPECIFIED)
 }
 
 /// Write a single DMTF measurement block (header + value) into `out`.

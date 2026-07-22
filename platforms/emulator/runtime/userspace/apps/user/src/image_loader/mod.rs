@@ -27,6 +27,12 @@ use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,
 };
+#[cfg(any(
+    feature = "test-mctp-spdm-attestation",
+    feature = "test-mctp-spdm-attestation-tcb",
+    feature = "test-mctp-spdm-attestation-mixed"
+))]
+use caliptra_mcu_libapi_caliptra::evidence::device_state::DeviceState;
 #[allow(unused)]
 use caliptra_mcu_libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
 use caliptra_mcu_libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
@@ -89,6 +95,7 @@ use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 #[allow(unused)]
 use zerocopy::{FromBytes, IntoBytes};
 
+#[allow(dead_code)]
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
 const IMAGE_LOAD_MEASUREMENT_SCRATCH_SIZE: usize = 4096;
@@ -118,12 +125,28 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
         mbox_sram.release_lock().unwrap();
     }
     #[cfg(any(
-        feature = "streaming-boot",
-        all(feature = "flash-boot", not(feature = "firmware-update")),
-        feature = "test-pldm-discovery",
-        feature = "test-pldm-fw-update",
-        feature = "test-pldm-fw-update-e2e",
-        feature = "test-streaming-boot-flash-write-back",
+        feature = "test-mctp-spdm-attestation",
+        feature = "test-mctp-spdm-attestation-tcb",
+        feature = "test-mctp-spdm-attestation-mixed"
+    ))]
+    {
+        if let Err(_) = seed_attestation_measurements(soc_image_load_list).await {
+            System::exit(1);
+        }
+        return;
+    }
+    #[cfg(all(
+        any(
+            feature = "streaming-boot",
+            all(feature = "flash-boot", not(feature = "firmware-update")),
+            feature = "test-pldm-discovery",
+            feature = "test-pldm-fw-update",
+            feature = "test-pldm-fw-update-e2e",
+            feature = "test-streaming-boot-flash-write-back",
+        ),
+        not(feature = "test-mctp-spdm-attestation"),
+        not(feature = "test-mctp-spdm-attestation-tcb"),
+        not(feature = "test-mctp-spdm-attestation-mixed")
     ))]
     {
         // Release SRAM lock, in case previous session hasn't released it
@@ -143,13 +166,23 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
             Err(_) => System::exit(1),
         }
         mbox_sram.release_lock().unwrap();
-        #[cfg(not(feature = "firmware-update"))]
+        #[cfg(all(
+            not(feature = "firmware-update"),
+            not(feature = "test-mctp-spdm-attestation"),
+            not(feature = "test-mctp-spdm-attestation-tcb"),
+            not(feature = "test-mctp-spdm-attestation-mixed")
+        ))]
         System::exit(0);
     }
     // After image loading, proceed to firmware update if enabled
-    #[cfg(any(
-        feature = "test-firmware-activate",
-        feature = "test-firmware-update-streaming"
+    #[cfg(all(
+        any(
+            feature = "test-firmware-activate",
+            feature = "test-firmware-update-streaming"
+        ),
+        not(feature = "test-mctp-spdm-attestation"),
+        not(feature = "test-mctp-spdm-attestation-tcb"),
+        not(feature = "test-mctp-spdm-attestation-mixed")
     ))]
     {
         if mbox_sram.acquire_lock().is_err() {
@@ -165,7 +198,10 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
     }
     #[cfg(all(
         feature = "firmware-update",
-        not(feature = "test-firmware-update-streaming")
+        not(feature = "test-firmware-update-streaming"),
+        not(feature = "test-mctp-spdm-attestation"),
+        not(feature = "test-mctp-spdm-attestation-tcb"),
+        not(feature = "test-mctp-spdm-attestation-mixed")
     ))]
     {
         if mbox_sram.acquire_lock().is_err() {
@@ -180,6 +216,62 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
         }
         // MBOX SRAM lock will be released after reboot
     }
+}
+
+#[cfg(any(
+    feature = "test-mctp-spdm-attestation",
+    feature = "test-mctp-spdm-attestation-tcb",
+    feature = "test-mctp-spdm-attestation-mixed"
+))]
+pub(crate) async fn seed_attestation_measurements(
+    soc_image_load_list: &'static [u32],
+) -> Result<(), ErrorCode> {
+    let mut console_writer = Console::<DefaultSyscalls>::writer();
+    let mut scratch = Vec::new();
+    scratch
+        .try_reserve_exact(IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS)
+        .map_err(|_| ErrorCode::Fail)?;
+    scratch.resize(
+        IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS,
+        ImageLoadMeasurementScratchSlot([0; BITMAP_SLOT_SIZE]),
+    );
+    let Some(scratch_ptr) = NonNull::new(scratch.as_mut_ptr().cast::<u8>()) else {
+        return Err(ErrorCode::Fail);
+    };
+    // SAFETY: `scratch_ptr` points at aligned heap memory owned by `scratch`.
+    // `scratch` stays alive for all Measurement API calls below, and allocator
+    // buffers do not escape those calls.
+    let allocator =
+        unsafe { BitmapAllocator::new(scratch_ptr, IMAGE_LOAD_MEASUREMENT_SCRATCH_SIZE) };
+
+    for fw_id in soc_image_load_list {
+        crate::log_info!(
+            console_writer,
+            "ATTESTATION_SEED: seeding fw_id 0x{}",
+            crate::Hex32(*fw_id)
+        );
+        let image_info = DeviceState::image_info(*fw_id).await.map_err(|err| {
+            crate::log_error!(
+                console_writer,
+                "ATTESTATION_SEED: GET_IMAGE_INFO failed: {}",
+                crate::Dbg(err)
+            );
+            ErrorCode::Fail
+        })?;
+        let metadata = ImageMetadata::initial_load_from_digest(0, image_info.digest);
+        caliptra_mcu_measurement_api::authorize_and_stash(&allocator, *fw_id, metadata)
+            .await
+            .map_err(|err| {
+                crate::log_error!(
+                    console_writer,
+                    "ATTESTATION_SEED: authorize_and_stash failed: {}",
+                    crate::Dbg(err)
+                );
+                ErrorCode::Fail
+            })?;
+    }
+    crate::log_info!(console_writer, "ATTESTATION_SEED: complete");
+    Ok(())
 }
 
 #[allow(dead_code)]

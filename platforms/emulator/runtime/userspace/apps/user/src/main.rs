@@ -117,9 +117,26 @@ pub(crate) async fn async_main() {
     )
     .await;
 
+    #[cfg(any(
+        feature = "test-mctp-spdm-attestation",
+        feature = "test-mctp-spdm-attestation-tcb",
+        feature = "test-mctp-spdm-attestation-mixed"
+    ))]
+    if image_loader::seed_attestation_measurements(soc_image_load_list)
+        .await
+        .is_err()
+    {
+        caliptra_mcu_libsyscall_caliptra::system::System::exit(1);
+    }
+
     #[cfg(feature = "spdm")]
     spdm::spawn_spdm_tasks(&EXECUTOR.get().spawner());
 
+    #[cfg(not(any(
+        feature = "test-mctp-spdm-attestation",
+        feature = "test-mctp-spdm-attestation-tcb",
+        feature = "test-mctp-spdm-attestation-mixed"
+    )))]
     EXECUTOR
         .get()
         .spawner()
