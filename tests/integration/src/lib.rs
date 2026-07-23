@@ -42,6 +42,7 @@ mod test_raw_lifecycle_boot;
 mod test_soc_boot;
 mod test_svn_manifest;
 mod test_sw_pcr_store;
+mod test_timer_alarm;
 mod test_usb_ocp_recovery;
 
 pub fn platform() -> &'static str {

@@ -50,6 +50,10 @@ register_bitfields![usize,
 pub struct InternalTimers<'a> {
     client: OptionalCell<&'a dyn time::AlarmClient>,
     saved: Cell<TimerInterrupts>,
+    /// Absolute tick time when the current alarm should fire.
+    /// Used by get_alarm() to return the correct expiration time
+    /// regardless of whether the hardware timer has expired.
+    fire_at: Cell<u64>,
     mitcnt0: ReadWriteRiscvCsr<usize, mitcnt0::Register, 0x7D2>,
     #[allow(dead_code)]
     mitcnt1: ReadWriteRiscvCsr<usize, mitcnt1::Register, 0x7D5>,
@@ -81,6 +85,7 @@ impl<'a> InternalTimers<'a> {
         Self {
             client: OptionalCell::empty(),
             saved: Cell::new(TimerInterrupts::None),
+            fire_at: Cell::new(0),
             mitcnt0: ReadWriteRiscvCsr::new(),
             mitcnt1: ReadWriteRiscvCsr::new(),
             mitb0: ReadWriteRiscvCsr::new(),
@@ -158,7 +163,14 @@ impl Time for InternalTimers<'_> {
     type Ticks = Ticks64;
 
     fn now(&self) -> Ticks64 {
-        (((self.mcycleh.get() as u64) << 32) | (self.mcycle.get() as u64)).into()
+        // Race-free 64-bit read: retry if mcycleh changed between reads
+        loop {
+            let hi = self.mcycleh.get() as u64;
+            let lo = self.mcycle.get() as u64;
+            if hi == self.mcycleh.get() as u64 {
+                return ((hi << 32) | lo).into();
+            }
+        }
     }
 }
 
@@ -168,27 +180,36 @@ impl<'a> time::Alarm<'a> for InternalTimers<'a> {
     }
 
     fn set_alarm(&self, reference: Self::Ticks, dt: Self::Ticks) {
-        // This does not handle the 64-bit wraparound case.
-        // TODO: support cascade to support larger time ranges
-        let now = self.now();
+        // Store the absolute fire time for get_alarm() to return.
         let expire = reference.wrapping_add(dt);
-        let dt = if now.within_range(reference, expire) {
+        self.fire_at.set(expire.into_u64());
+
+        // Compute remaining ticks from now to expiration.
+        let now = self.now();
+        let remaining = if now.within_range(reference, expire) {
+            // Alarm is in the future — compute how many ticks remain
             expire.wrapping_sub(now)
         } else {
-            // expire immediately
+            // Alarm is already in the past — expire immediately
             1u64.into()
         };
-        let val = (dt.into_u64() & 0xffff_ffff) as usize;
-        // Set the start as 0 and the bound as the delta.
+
+        // VeeR's mitcnt0/mitb0 are 32-bit. Cap the remaining ticks to u32::MAX.
+        // If the alarm is further out, it will fire at u32::MAX and
+        // MuxAlarm::alarm() will rescan and reprogram for the remaining time.
+        let val = remaining.into_u64().min(u32::MAX as u64) as usize;
+
         self.mitcnt0.set(0);
         self.mitb0.set(val);
         self.enable_timer0();
     }
 
     fn get_alarm(&self) -> Self::Ticks {
-        let bound = self.mitb0.read(mitb0::bound) as u64;
-        let now = self.now().into_u64();
-        (now + bound).into()
+        // Return the absolute fire time stored by set_alarm().
+        // This is correct regardless of whether the timer has expired:
+        // - If pending: fire_at is in the future
+        // - If expired: fire_at is in the past (correctly signals expiry to Guard 1)
+        self.fire_at.get().into()
     }
 
     fn disarm(&self) -> Result<(), ErrorCode> {
