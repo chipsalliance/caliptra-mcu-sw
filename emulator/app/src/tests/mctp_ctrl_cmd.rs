@@ -35,9 +35,10 @@ pub(crate) enum MCTPCtrlCmdTests {
     GetMctpVersionSupportPldm,
     GetMctpVersionSupportSpdm,
     GetMctpVersionSupportSecuredSpdmUnsupported,
-    GetMctpVersionSupportCaliptra,
+    GetMctpVersionSupportCaliptraUnsupported,
     GetMctpVersionSupportUnsupported,
     GetMsgTypeSupport,
+    GetVendorDefinedMessageSupport,
     UnsupportedCmd,
     GetEIDAfterUnsupported,
 }
@@ -90,7 +91,7 @@ impl MCTPCtrlCmdTests {
             MCTPCtrlCmdTests::GetMctpVersionSupportSecuredSpdmUnsupported => {
                 vec![MctpMsgType::SecureSpdm as u8]
             }
-            MCTPCtrlCmdTests::GetMctpVersionSupportCaliptra => {
+            MCTPCtrlCmdTests::GetMctpVersionSupportCaliptraUnsupported => {
                 vec![MctpMsgType::Caliptra as u8]
             }
             MCTPCtrlCmdTests::GetMctpVersionSupportUnsupported => {
@@ -98,6 +99,9 @@ impl MCTPCtrlCmdTests {
             }
             MCTPCtrlCmdTests::GetMsgTypeSupport => {
                 vec![]
+            }
+            MCTPCtrlCmdTests::GetVendorDefinedMessageSupport => {
+                vec![0x00]
             }
             MCTPCtrlCmdTests::UnsupportedCmd => {
                 vec![]
@@ -171,11 +175,8 @@ impl MCTPCtrlCmdTests {
                 CmdCompletionCode::Success as u8,
                 Some(&[VersionEntry::from_u32(0xF1F0F200)]),
             ),
-            MCTPCtrlCmdTests::GetMctpVersionSupportCaliptra => get_version_support_resp_bytes(
-                CmdCompletionCode::Success as u8,
-                Some(&[VersionEntry::from_u32(0xF1F0F000)]),
-            ),
             MCTPCtrlCmdTests::GetMctpVersionSupportSecuredSpdmUnsupported
+            | MCTPCtrlCmdTests::GetMctpVersionSupportCaliptraUnsupported
             | MCTPCtrlCmdTests::GetMctpVersionSupportUnsupported => {
                 get_version_support_resp_bytes(0x80, None)
             }
@@ -188,12 +189,15 @@ impl MCTPCtrlCmdTests {
                 ];
                 generate_msg_type_support_resp_bytes(CmdCompletionCode::Success as u8, &msg_types)
             }
-            // Issue #1138: Unsupported command should return completion code 0x05
+            MCTPCtrlCmdTests::GetVendorDefinedMessageSupport => {
+                get_vendor_defined_msg_support_resp_bytes()
+            }
+            // Unsupported command should return completion code 0x05
             // and not leak the TX buffer
             MCTPCtrlCmdTests::UnsupportedCmd => {
                 vec![CmdCompletionCode::ErrorNotSupportedCmd as u8]
             }
-            // Issue #1138: Verify MCU still responds after receiving an unsupported command
+            // Verify MCU still responds after receiving an unsupported command
             MCTPCtrlCmdTests::GetEIDAfterUnsupported => {
                 get_eid_resp_bytes(CmdCompletionCode::Success, TEST_TARGET_EID + 1)
             }
@@ -237,13 +241,15 @@ impl MCTPCtrlCmdTests {
             | MCTPCtrlCmdTests::GetMctpVersionSupportPldm
             | MCTPCtrlCmdTests::GetMctpVersionSupportSpdm
             | MCTPCtrlCmdTests::GetMctpVersionSupportSecuredSpdmUnsupported
-            | MCTPCtrlCmdTests::GetMctpVersionSupportCaliptra
+            | MCTPCtrlCmdTests::GetMctpVersionSupportCaliptraUnsupported
             | MCTPCtrlCmdTests::GetMctpVersionSupportUnsupported => {
                 MCTPCtrlCmd::GetMctpVersionSupport as u8
             }
             MCTPCtrlCmdTests::GetMsgTypeSupport => MCTPCtrlCmd::GetMsgTypeSupport as u8,
-            // Command code 0x06 (GetVendorDefinedMessageSupport) is not implemented
-            MCTPCtrlCmdTests::UnsupportedCmd => 0x06,
+            MCTPCtrlCmdTests::GetVendorDefinedMessageSupport => {
+                MCTPCtrlCmd::GetVendorDefinedMsgSupport as u8
+            }
+            MCTPCtrlCmdTests::UnsupportedCmd => 0x15,
             MCTPCtrlCmdTests::GetEIDAfterUnsupported => MCTPCtrlCmd::GetEID as u8,
         }
     }
@@ -315,7 +321,6 @@ impl MctpTransportTest for Test {
 
                     if !resp_msg.is_empty() {
                         self.check_response(&resp_msg);
-                        self.passed = true;
                     }
                     self.test_state = MctpTestState::Finish;
                 }
