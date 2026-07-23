@@ -12,7 +12,6 @@ The Tock OS `VirtualMuxAlarm` virtualizer has an optimization in `set_alarm()` (
 
 The fix stores the absolute fire time (`reference + dt`) in a `fire_at` field when `set_alarm()` is called. `get_alarm()` returns this stored value, which correctly represents a **past** time for expired timers. Guard 1 then sees it's not within the new alarm's range and allows the reprogram.
 
-
 ## How VirtualMuxAlarm Works
 
 Tock OS has a single hardware timer (`InternalTimers` on VeeR). Multiple kernel capsules (Mailbox, I3C, MCU_MBOX, scheduler) all need independent alarms. VirtualMuxAlarm solves this by multiplexing:
@@ -191,6 +190,40 @@ Guard 1: Is cur_alarm=700 within [600, 2100)?  → YES
 ```
 
 **Result**: Both alarms fire correctly. Guard 1 correctly detected that the pending alarm (at 700) will fire before Mailbox's (at 2100), so there's no need to reprogram — the rescan catches it.
+
+#### Case 3: cur_alarm NOT in range → reprogram (new alarm fires sooner, correct)
+
+```
+Setup: MCU_MBOX sets alarm(ref=500, dt=200). enabled=0 → first alarm → HW programmed.
+       mitcnt0=0, mitb0=200, enable=1
+       next_tick_vals = (500, 200). fire_at = 700.
+
+0                500       700                                              3000
+|─────────────────O═════════X───────────────────────────────────────────────|
+
+At T=600, Mailbox calls set_alarm(600, 50). enabled=1 → guard checks.
+  HW state: mitcnt0=100 (still counting), mitb0=200, enable=1
+  get_alarm() = fire_at = 700  (the true fire time)
+
+0                500 600 650 700                                            3000
+|─────────────────O═══^═══v══X──────────────────────────────────────────────|
+                      |   |   |
+                      now |   cur_alarm=700
+                          new alarm expires at 650
+                      new alarm range: [600, 650)
+
+Guard 1: Is cur_alarm=700 within [600, 650)?  → NO (700 ≥ 650)
+         → Guard 1 PASSES ✓ (existing alarm fires AFTER ours — we need to reprogram)
+
+Guard 2: next_tick_vals = (500, 200), window = [500, 700)
+         Is now=600 within [500, 700)?  → YES ✓
+         → Guard 2 PASSES ✓
+
+         → mux.set_alarm() called! Hardware reprogrammed for Mailbox! ✓
+         → mitcnt0=0, mitb0=50, enable=1
+```
+
+**Result**: Mailbox's alarm (650) fires before MCU_MBOX's (700). Guard 1 correctly detected that the existing alarm fires *after* ours, and both guards pass → reprogram. Mailbox fires at 650, then MuxAlarm::alarm() rescans and reprograms for MCU_MBOX at 700.
 
 ### Buggy case: `get_alarm()` returns `now + bound` (incorrect)
 
