@@ -770,7 +770,17 @@ fn main() {
                 images,
                 mcu_image,
                 output,
-            } => auth_manifest::create(images, mcu_image, output),
+                signing_request,
+                key_paths,
+                svn,
+            } => auth_manifest::create(
+                images,
+                mcu_image,
+                output,
+                signing_request.as_deref(),
+                key_paths,
+                *svn,
+            ),
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
         Commands::Corim { subcommand } => match subcommand {
