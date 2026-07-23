@@ -453,6 +453,7 @@ impl McuHwModel for ModelFpgaRealtime {
             uds_fuse_row_granularity_64: !params.uds_granularity_32,
             otp_dai_idle_bit_offset: params.otp_dai_idle_bit_offset,
             otp_direct_access_cmd_reg_offset: params.otp_direct_access_cmd_reg_offset,
+            otp_status_reg_offset: 0x10,
             prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs,
             debug_intent: params.debug_intent,
             bootfsm_break: params.bootfsm_break,
@@ -479,7 +480,6 @@ impl McuHwModel for ModelFpgaRealtime {
                     .lifecycle_controller_state
                     .map(|s| caliptra_hw_model::LifecycleControllerState::from(u8::from(s))),
                 use_strap_secrets: params.use_strap_secrets,
-                skip_otp_provisioning: params.skip_otp_provisioning,
                 ..Default::default()
             },
         };
