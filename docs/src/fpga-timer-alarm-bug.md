@@ -4,11 +4,6 @@
 
 The Tock OS `VirtualMuxAlarm` virtualizer has an optimization in `set_alarm()` that skips reprogramming the hardware timer when it believes an existing alarm will fire sooner. On VeeR EL2 FPGA, this optimization fails because:
 
-1. **Stale `get_alarm()` return value**: The VeeR timer driver's `get_alarm()` computes the fire time from the current counter and bound CSRs. For an expired timer, this produces a bogus future value (essentially `now + bound`) instead of the original past fire time. Guard 1 sees this bogus value as "within our alarm range" and concludes the existing alarm will fire sooner — skipping the reprogram.
-2. **Stale `next_tick_vals`**: After a timer expires but before `MuxAlarm::alarm()` processes it (which requires MIE=1), `next_tick_vals` still holds the expired alarm's `(reference, dt)`. Guard 2 sees that `now` is past that window and incorrectly concludes "don't reprogram."
-
-Note: Testing confirmed that `wfi` does **not** stall the VeeR internal timer on this FPGA — timer interrupt (mie bit 29) correctly wakes the core from `wfi`. The root cause is purely the stale guard state when MIE=0 during kernel syscall handling.
-
 The result is that mailbox polling alarms are never programmed into hardware, hanging the firmware update flow.
 
 ## How VirtualMuxAlarm Works
@@ -45,12 +40,37 @@ Tock OS has a single hardware timer (`InternalTimers` on VeeR). Multiple kernel 
 
 ### Normal flow (working case)
 
-1. **Capsule calls `set_alarm(now, dt)`** on its VirtualMuxAlarm
-2. VirtualMuxAlarm stores `{reference, dt}` and increments `enabled`
-3. If this is the **first alarm** (`enabled` was 0): directly programs the hardware via `MuxAlarm::set_alarm()` → `InternalTimers::set_alarm()` → writes `mitcnt0=0, mitb0=dt`
-4. If **other alarms exist** (`enabled > 0`): checks whether the new alarm fires sooner than the current hardware alarm. If so, reprograms; if not, relies on the existing alarm firing first
-5. **Hardware timer expires** → ISR saves interrupt → kernel calls `MuxAlarm::alarm()`
-6. `MuxAlarm::alarm()` **scans all VirtualMuxAlarms**, fires any that have expired, then **reprograms** the hardware for the soonest remaining alarm
+```mermaid
+sequenceDiagram
+    participant Drv as Driver/Capsule
+    participant VA as VirtualMuxAlarm
+    participant Mux as MuxAlarm
+    participant HW as InternalTimers (HW)
+    participant Kern as Kernel Loop
+
+    Drv->>VA: set_alarm(now, dt)
+    VA->>VA: Store {reference, dt}, enabled++
+    alt enabled was 0 (first alarm)
+        VA->>Mux: set_alarm(reference, dt)
+        Mux->>HW: mitcnt0=0, mitb0=dt, enable=1
+    else enabled > 0 (other alarms exist)
+        VA->>VA: Check guards: does new alarm fire sooner?
+        alt Guards pass → reprogram
+            VA->>Mux: set_alarm(reference, dt)
+            Mux->>HW: mitcnt0=0, mitb0=dt, enable=1
+        else Guards fail → skip
+            Note over VA: Rely on existing alarm to<br/>fire first and trigger rescan
+        end
+    end
+
+    Note over HW: Timer counts mitcnt0 toward mitb0...
+    HW-->>Kern: Timer interrupt (MIE=1 required)
+    Kern->>Kern: service_pending_interrupts()
+    Kern->>Mux: alarm() callback
+    Mux->>Mux: Scan all VirtualMuxAlarms
+    Mux->>Drv: Fire expired alarm callbacks
+    Mux->>HW: Reprogram for soonest remaining alarm
+```
 
 ### The multiplexing detail
 
@@ -69,7 +89,7 @@ Time ─────────────────────────
        ├─ I3C alarm expired → fire    │
        ├─ Mailbox: T+10000 not yet    │
        └─ Reprogram HW for T+10000 ◄─┘
-                                      
+                  
  T+10000: HW fires
    └─► MuxAlarm::alarm()
        └─ Mailbox alarm expired → fire ✓
@@ -77,22 +97,194 @@ Time ─────────────────────────
 
 ### Where the bug lives: `set_alarm()` guards
 
-When a capsule calls `set_alarm()` and `enabled > 0` (other alarms exist), VirtualMuxAlarm runs two guard checks before reprogramming:
+When a capsule calls `set_alarm()` and `enabled > 0` (other alarms exist), VirtualMuxAlarm runs two guard checks before reprogramming.
+
+#### Case 1: Normal operation — alarms set, fired, disarmed (enabled=0 fast path)
+
+```
+Legend:  O = current alarm ref    X = current alarm expiration
+         ^ = now (new alarm ref)   v = new alarm expiration
+
+MCU_MBOX sets alarm(ref=500, dt=200). enabled=0 → first alarm → HW programmed.
+
+0                500       700                                              3000
+|─────────────────O═════════X───────────────────────────────────────────────|
+
+Timer fires at T=700. MuxAlarm::alarm() processes it. MCU_MBOX disarmed. enabled=0.
+
+0                                                                           3000
+|───────────────────────────────────────────────────────────────────────────|
+
+Later, another alarm: set_alarm(ref=800, dt=100). enabled=0 → first alarm → HW programmed.
+
+0                           800  900                                        3000
+|────────────────────────────O════X─────────────────────────────────────────|
+
+Timer fires at T=900. Processed. Disarmed. enabled=0.
+```
+
+This is the normal case. Each alarm is the only one active (`enabled=0`), so `set_alarm()` always takes the "first alarm" fast path and directly programs the hardware. No guard checks needed.
+
+#### Case 2: cur_alarm IS within the new alarm's range → skip reprogram (correct)
+
+```
+Setup: MCU_MBOX sets alarm(ref=500, dt=200). enabled=0 → first alarm → HW programmed.
+       next_tick_vals = (500, 200). HW fires at T=700.
+
+0                500       700                                              3000
+|─────────────────O═════════X───────────────────────────────────────────────|
+
+At T=600, Mailbox calls set_alarm(600, 1500). enabled=1 → guard checks.
+
+0                500 600 700                                 2100            3000
+|─────────────────O═══^═══X──────────────────────────────────v──────────────|
+                      |   |                                  |
+                      now  cur_alarm=700                     new alarm expires
+                      new alarm range: [600, 2100)
+
+Guard 1: Is cur_alarm=700 within [600, 2100)?  → YES
+         → "existing alarm fires sooner, skip reprogram" ✓ CORRECT
+
+         MCU_MBOX fires at 700 → MuxAlarm::alarm() rescan
+         → finds Mailbox expires at 2100, not yet
+         → reprograms HW for 2100 → Mailbox fires ✓
+```
+
+**Result**: Both alarms fire correctly. Guard 1 correctly detected that the pending alarm (at 700) will fire before Mailbox's (at 2100), so there's no need to reprogram — the rescan catches it.
+
+#### Case 3: Both guards pass → reprogram (correct)
+
+```
+Setup: MCU_MBOX sets alarm(ref=500, dt=200). enabled=0 → first alarm → HW programmed.
+       next_tick_vals = (500, 200). HW fires at T=700.
+
+0                500       700                                              3000
+|─────────────────O═════════X───────────────────────────────────────────────|
+
+
+Case 3: cur_alarm NOT in new alarm's range, now IS within next_tick_vals
+        → Both guards pass → reprogram (correct)
+
+        At T=600, Mailbox calls set_alarm(600, 50). enabled=1 → guard checks.
+        (Mailbox wants a SHORT alarm: expires at 650, BEFORE MCU_MBOX's 700)
+
+Timeline at T=600:
+0                500 600 650 700                                            3000
+|─────────────────O═══^═══v══X──────────────────────────────────────────────|
+                      |   |   |
+                      now |   cur_alarm=700
+                          new alarm expires at 650
+                      new alarm range: [600, 650)
+
+Guard 1: Is cur_alarm=700 within [600, 650)?  → NO (700 ≥ 650)
+         → Guard 1 PASSES ✓  (existing alarm fires AFTER ours)
+
+Guard 2: next_tick_vals = (500, 200), window = [500, 700)
+         Is now=600 within [500, 700)?  → YES ✓
+         → Guard 2 PASSES ✓
+
+         → mux.set_alarm() called! Hardware reprogrammed for Mailbox! ✓
+```
+
+**Result**: Mailbox's shorter alarm (650) fires before MCU_MBOX's (700). Guard 1 correctly detected that the existing alarm fires *after* ours, and Guard 2 confirmed the timer state is fresh (`now` is still within the `next_tick_vals` window). Both guards pass → reprogram.
+
+#### Case 4: Guard 1 passes, Guard 2 correctly rejects (normal)
+
+```
+Setup: MCU_MBOX sets alarm(ref=500, dt=200). Fires at T=700. MuxAlarm::alarm() processes it.
+       MCU_MBOX re-arms immediately: set_alarm(ref=700, dt=200). HW programmed, fires at 900.
+       next_tick_vals = (700, 200)  ← updated by the re-arm
+
+0                500       700       900                                    3000
+|─────────────────O═════════O═════════X─────────────────────────────────────|
+                  (1st,done) (2nd)    fires at 900
+
+Case 4: Guard 1 passes, Guard 2 correctly identifies "alarm being handled"
+        → skip reprogram (correct — MuxAlarm::alarm() rescan will catch it)
+
+        During MuxAlarm::alarm() firing=true processing at T=750, another capsule
+        calls set_alarm(750, 50). But firing=true so it's skipped entirely.
+  
+        Alternative: At T=950 (after 2nd alarm fired, during MuxAlarm::alarm()),
+        MCU_MBOX callback re-arms AGAIN: set_alarm(950, 200). fires at 1150.
+        next_tick_vals = (950, 200). Then at T=1200 (PAST the window),
+        Mailbox calls set_alarm(1200, 50). enabled=1 → guard checks.
+
+0                              950    1150  1200 1250                       3000
+|───────────────────────────────O══════X─────^════v─────────────────────────|
+                                |      |     now  new alarm expires
+                                next_tick_vals    [1200, 1250)
+                                window [950, 1150)
+
+Guard 1: Is cur_alarm within [1200, 1250)?
+         cur_alarm = get_alarm(). Timer expired (counter > bound) → bogus value.
+         Let's say it returns something outside [1200, 1250).
+         → Guard 1 PASSES ✓
+
+Guard 2: next_tick_vals = (950, 200), window = [950, 1150)
+         Is now=1200 within [950, 1150)?  → NO (1200 > 1150)
+         → Guard 2 FAILS — "timer already fired and was handled, don't reprogram"
+
+         In the INTENDED case, MuxAlarm::alarm() already ran at T=1150,
+         processed the expired timer, and if Mailbox was armed, it would
+         have been caught in the rescan. Guard 2 prevents redundant reprogram.
+```
+
+**Result**: Guard 2's **intended** function is to detect that the previous alarm already fired and was processed — meaning `MuxAlarm::alarm()` already ran its rescan. If Mailbox was armed before, it would have been caught. This prevents a redundant `set_alarm()` from thrashing the hardware timer.
+
+**The problem**: Guard 2 cannot distinguish "alarm fired AND was processed" from "alarm fired but NOT yet processed" (the bug case). Both look the same: `now` is past the `next_tick_vals` window.
+
+#### Case 5: Guards failing with stale state (BUG)
+
+```
+Setup: MCU_MBOX set alarm(ref=500, dt=200). Fired at T=700. Disarmed.
+       next_tick_vals = (500, 200)  ← NEVER CLEARED
+
+0                500       700                                              3000
+|─────────────────O═════════X───────────────────────────────────────────────|
+                             FIRED ✓ and disarmed
+
+
+Case 5: cur_alarm NOT in range, but next_tick_vals is stale → Guard 2 fails (BUG)
+        MCU_MBOX re-arms at T=2400. Then at T=2500,
+        Mailbox calls set_alarm(2500, 400). enabled=1 → guard checks.
+
+Timeline at T=2500:
+0                500  700                          2400 2500             2900 3000
+|─────────────────O════X────────────────────────────O════^═══════════════v───|
+                  |    |                            |    now              |
+                  stale next_tick_vals              MCU_MBOX             new alarm
+                  window [500, 700)                 (re-armed)           expires
+
+Guard 1: cur_alarm = get_alarm()
+         MCU_MBOX timer expired (counter >> bound) → bogus value
+         Let's say Guard 1 passes ✓
+
+Guard 2: next_tick_vals = (500, 200), window = [500, 700)
+         Is now=2500 within [500, 700)?  → NO (2500 >> 700)
+         → Guard 2 FAILS ❌
+
+         mux.set_alarm() NEVER called!
+         Hardware NOT reprogrammed for Mailbox!
+```
+
+**Result**: Mailbox's alarm is permanently lost. The stale `next_tick_vals` from a long-expired alarm causes Guard 2 to incorrectly skip the reprogram.
+
+---
 
 ```
 Guard 1: "Is the current HW alarm NOT within our [ref, ref+dt) window?"
          Uses get_alarm() to read the hardware timer's fire time.
-         
+   
 Guard 2: "Is now within the next_tick_vals window?"
          next_tick_vals stores the (reference, dt) from the LAST
          MuxAlarm::set_alarm() call.
-         
+   
 Both must pass → reprogram hardware
 Either fails  → skip (assume existing alarm handles it)
 ```
 
 The guards are an optimization: if the hardware is already set to fire before our alarm, there's no need to reprogram — `MuxAlarm::alarm()` will rescan and catch ours. But when `get_alarm()` or `next_tick_vals` are **stale** (from a long-expired alarm), the guards make incorrect decisions.
-
 
 ## Affected Code
 
@@ -171,11 +363,11 @@ sequenceDiagram
 
 The bug requires **all three conditions** to be present simultaneously:
 
-| Condition | Description |
-|-----------|-------------|
-| **Other alarms armed** | `enabled > 0` when our `set_alarm()` is called, so the "first alarm" fast path is skipped |
-| **Stale `next_tick_vals`** | A previously-set alarm has expired; its `(reference, dt)` stored in `next_tick_vals` represents a past time window that `now` is no longer within |
-| **Stale `get_alarm()`** | The hardware timer was disabled after the previous alarm fired (`service_interrupts()` calls `disable_timers()`); `get_alarm()` reads stale CSR values |
+| Condition                          | Description                                                                                                                                                  |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Other alarms armed**       | `enabled > 0` when our `set_alarm()` is called, so the "first alarm" fast path is skipped                                                                |
+| **Stale `next_tick_vals`** | A previously-set alarm has expired; its`(reference, dt)` stored in `next_tick_vals` represents a past time window that `now` is no longer within       |
+| **Stale `get_alarm()`**    | The hardware timer was disabled after the previous alarm fired (`service_interrupts()` calls `disable_timers()`); `get_alarm()` reads stale CSR values |
 
 ### Guard failure example (concrete values)
 
@@ -344,6 +536,7 @@ On main-2.1, the timing happens to avoid the race — by the time the Mailbox's 
 ### Q: Is this a Tock upstream bug?
 
 **A: Yes.** The `within_range` + `next_tick_vals` guards in `VirtualMuxAlarm::set_alarm()` assume that `get_alarm()` and `next_tick_vals` always reflect the current hardware state. This assumption breaks when:
+
 - The hardware timer is disabled between alarm cycles (`service_interrupts()` calls `disable_timers()`)
 - `next_tick_vals` is not cleared when the last alarm is processed (it persists from `MuxAlarm::set_alarm()` even after `MuxAlarm::disarm()`)
 
@@ -389,170 +582,373 @@ Guard 2 works correctly when the previous alarm is **still active** — `now` is
 
 If step 2 is delayed (because `MIE=0` in kernel mode during syscall handling), steps 3–5 don't happen before the next `set_alarm()` call. MCU_MBOX stays `armed=true`, `enabled` stays at 1, and `next_tick_vals` stays stale. When Mailbox later calls `set_alarm`, it sees `enabled=1` and enters the guard checks instead of the "first alarm" fast path.
 
-On most platforms, the window between "timer expires" and "MIE re-enabled" is brief, making the race rare. On VeeR FPGA with our workload, the timing consistently triggers it because the Mailbox `execute()` syscall happens while MIE=0 during syscall handling, before the kernel loop has a chance to process the expired MCU_MBOX timer.
+On most platforms, the window between "timer expires" and "MIE re-enabled" is brief, making the race rare. On VeeR FPGA with our workload, the timing consistently triggers it because the Mailbox `execute()` syscall happens while MIE=0 during kernel syscall handling, before the kernel loop has a chance to process the expired MCU_MBOX timer.
 
 ---
 
 ## Appendix: Step-by-Step State Walkthrough
 
-This appendix traces the exact values of every shared variable through a minimal sequence that triggers the bug. Each step shows the state **after** the described event.
+This appendix traces the exact values of every shared variable through a sequence that triggers the bug. Each diagram shows the state **after** the described event.
 
-### Key insight: Guard 2's logic
+### Step 1: System idle after boot (T=0)
 
-Guard 2 in `set_alarm()` reads `next_tick_vals` — the `(reference, dt)` pair stored by the **last** `MuxAlarm::set_alarm()` call — and checks:
+No alarms are armed. Hardware timer is disabled.
 
-> "Is `now` still within the window `[next_reference, next_reference + next_dt)`?"
+```
+                          ┌─────────────────────┐
+                          │   InternalTimers     │
+                          │   mitcnt0 = 0        │
+                          │   mitb0   = 0        │
+                          │   enable  = 0        │
+                          └──────────┬───────────┘
+                                     │
+                          ┌──────────▼───────────┐
+                          │      MuxAlarm         │
+                          │   enabled  = 0        │
+                          │   firing   = false    │
+                          │   next_tick_vals=None  │
+                          └──────────┬───────────┘
+                   ┌─────────────────┼─────────────────┐
+                   │                 │                  │
+          ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐
+          │ VA #1 Mailbox  │ │ VA #2  I3C    │ │ VA #3 MCU_MBOX│
+          │ armed = false  │ │ armed = false │ │ armed = false │
+          │ ref   = —      │ │ ref   = —     │ │ ref   = —     │
+          │ dt    = —      │ │ dt    = —     │ │ dt    = —     │
+          └────────────────┘ └───────────────┘ └───────────────┘
+```
 
-The **intent** is: "the current HW alarm hasn't fired yet (now is between its reference and expiration), so my new alarm fires sooner — reprogram." But if the previous alarm **already expired without being processed** by `MuxAlarm::alarm()`, then `next_tick_vals` is stale — it still holds the old `(reference, dt)` from the expired alarm.
+### Step 2: MCU_MBOX sets alarm (T=662,000,000)
 
-Guard 2 sees `now` is **past** the stale window and incorrectly concludes: "the current alarm already fired and is being handled — don't reprogram." In reality, nobody is handling it.
+MCU_MBOX receives a host mailbox command and calls `schedule_send_done()` → `set_alarm(now, 1000)`. Since `enabled == 0`, the **"first alarm"** path is taken — hardware is directly programmed.
 
----
+```
+                          ┌──────────────────────┐
+                          │   InternalTimers      │
+                          │   mitcnt0 = 0     ✓   │
+                          │   mitb0   = 1000  ✓   │
+                          │   enable  = 1     ✓   │
+                          └──────────┬────────────┘
+                                     │
+                          ┌──────────▼────────────┐
+                          │      MuxAlarm          │
+                          │   enabled  = 1     ✓   │
+                          │   firing   = false     │
+                          │   next_tick_vals =     │
+                          │     Some((662M, 1000)) │ ← set by mux.set_alarm()
+                          └──────────┬────────────┘
+                   ┌─────────────────┼─────────────────┐
+                   │                 │                  │
+          ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐
+          │ VA #1 Mailbox  │ │ VA #2  I3C    │ │ VA #3 MCU_MBOX│
+          │ armed = false  │ │ armed = false │ │ armed = true  │ ✓
+          │ ref   = —      │ │ ref   = —     │ │ ref   = 662M  │
+          │ dt    = —      │ │ dt    = —     │ │ dt    = 1000  │
+          └────────────────┘ └───────────────┘ └───────────────┘
+```
 
-### Step 1: MCU_MBOX sets alarm (T=1,069,000,000)
+### Step 3: MCU_MBOX alarm fires (T=662,001,000)
 
-MCU_MBOX receives a host mailbox command and calls `schedule_send_done()` → `set_alarm(now, 1000)`. Since `enabled == 0`, the **"first alarm"** fast path is taken — hardware is directly programmed.
+Timer reaches bound. ISR saves interrupt. `service_interrupts()` disables timer. `MuxAlarm::alarm()` fires MCU_MBOX's callback. MCU_MBOX doesn't re-arm. No remaining alarms → `MuxAlarm::disarm()`.
+
+**Key detail**: `MuxAlarm::disarm()` disables the hardware but `next_tick_vals` **was already updated by the last `mux.set_alarm()` call** — it retains the value `Some((662M, 1000))`.
+
+```
+                          ┌──────────────────────┐
+                          │   InternalTimers      │
+                          │   mitcnt0 = 1000      │ ← stale (timer disabled)
+                          │   mitb0   = 1000      │ ← stale
+                          │   enable  = 0     ✓   │ ← disabled by disarm
+                          └──────────┬────────────┘
+                                     │
+                          ┌──────────▼────────────┐
+                          │      MuxAlarm          │
+                          │   enabled  = 0     ✓   │
+                          │   firing   = false     │
+                          │   next_tick_vals =     │
+                          │     Some((662M, 1000)) │ ← STALE! not cleared
+                          └──────────┬────────────┘
+                   ┌─────────────────┼─────────────────┐
+                   │                 │                  │
+          ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐
+          │ VA #1 Mailbox  │ │ VA #2  I3C    │ │ VA #3 MCU_MBOX│
+          │ armed = false  │ │ armed = false │ │ armed = false │ ✓ disarmed
+          │ ref   = —      │ │ ref   = —     │ │ ref   = 662M  │
+          │ dt    = —      │ │ dt    = —     │ │ dt    = 1000  │
+          └────────────────┘ └───────────────┘ └───────────────┘
+```
+
+### Step 4: I3C sets alarm (T=700,000,000)
+
+I3C driver needs a timeout. Calls `set_alarm(now, 50000)`. Since `enabled == 0`, "first alarm" path → hardware programmed directly.
+
+```
+                          ┌──────────────────────┐
+                          │   InternalTimers      │
+                          │   mitcnt0 = 0     ✓   │
+                          │   mitb0   = 50000 ✓   │
+                          │   enable  = 1     ✓   │
+                          └──────────┬────────────┘
+                                     │
+                          ┌──────────▼────────────┐
+                          │      MuxAlarm          │
+                          │   enabled  = 1     ✓   │
+                          │   firing   = false     │
+                          │   next_tick_vals =     │
+                          │    Some((700M, 50000)) │ ← updated by mux.set_alarm
+                          └──────────┬────────────┘
+                   ┌─────────────────┼─────────────────┐
+                   │                 │                  │
+          ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐
+          │ VA #1 Mailbox  │ │ VA #2  I3C    │ │ VA #3 MCU_MBOX│
+          │ armed = false  │ │ armed = true  │ │ armed = false │
+          │ ref   = —      │ │ ref   = 700M  │ │ ref   = 662M  │
+          │ dt    = —      │ │ dt    = 50000 │ │ dt    = 1000  │
+          └────────────────┘ └───────────────┘ └───────────────┘
+```
+
+### Step 5: I3C alarm fires, I3C doesn't re-arm (T=700,050,000)
+
+Same pattern as Step 3. Timer fires, `MuxAlarm::alarm()` fires I3C callback, no remaining alarms, `MuxAlarm::disarm()`.
+
+```
+                          ┌──────────────────────┐
+                          │   InternalTimers      │
+                          │   mitcnt0 = 50000     │ ← stale
+                          │   mitb0   = 50000     │ ← stale
+                          │   enable  = 0         │ ← disabled
+                          └──────────┬────────────┘
+                                     │
+                          ┌──────────▼────────────┐
+                          │      MuxAlarm          │
+                          │   enabled  = 0         │
+                          │   firing   = false     │
+                          │   next_tick_vals =     │
+                          │    Some((700M, 50000)) │ ← STALE!
+                          └──────────┬────────────┘
+                   ┌─────────────────┼─────────────────┐
+                   │                 │                  │
+          ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐
+          │ VA #1 Mailbox  │ │ VA #2  I3C    │ │ VA #3 MCU_MBOX│
+          │ armed = false  │ │ armed = false │ │ armed = false │
+          │ ref   = —      │ │ ref   = 700M  │ │ ref   = 662M  │
+          │ dt    = —      │ │ dt    = 50000 │ │ dt    = 1000  │
+          └────────────────┘ └───────────────┘ └───────────────┘
+```
+
+### Step 6: MCU_MBOX sets alarm again (T=1,000,000,000)
+
+Another host mailbox command arrives. MCU_MBOX calls `schedule_send_done()` → `set_alarm(now, 1000)`. `enabled == 0` → "first alarm" path → hardware programmed.
+
+```
+                          ┌──────────────────────┐
+                          │   InternalTimers      │
+                          │   mitcnt0 = 0     ✓   │
+                          │   mitb0   = 1000  ✓   │
+                          │   enable  = 1     ✓   │
+                          └──────────┬────────────┘
+                                     │
+                          ┌──────────▼────────────┐
+                          │      MuxAlarm          │
+                          │   enabled  = 1     ✓   │
+                          │   firing   = false     │
+                          │   next_tick_vals =     │
+                          │   Some((1000M, 1000))  │ ← updated
+                          └──────────┬────────────┘
+                   ┌─────────────────┼─────────────────┐
+                   │                 │                  │
+          ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐
+          │ VA #1 Mailbox  │ │ VA #2  I3C    │ │ VA #3 MCU_MBOX│
+          │ armed = false  │ │ armed = false │ │ armed = true  │ ✓
+          │ ref   = —      │ │ ref   = 700M  │ │ ref   = 1000M │
+          │ dt    = —      │ │ dt    = 50000 │ │ dt    = 1000  │
+          └────────────────┘ └───────────────┘ └───────────────┘
+```
+
+### Step 7: MCU_MBOX alarm fires (T=1,000,001,000)
+
+Timer fires, MCU_MBOX callback runs, doesn't re-arm. But `enabled` goes to 0, `disarm()` called. **`next_tick_vals` retains `Some((1000M, 1000))`.**
+
+```
+                          ┌──────────────────────┐
+                          │   InternalTimers      │
+                          │   mitcnt0 = 1000      │ ← stale
+                          │   mitb0   = 1000      │ ← stale
+                          │   enable  = 0         │ ← disabled
+                          └──────────┬────────────┘
+                                     │
+                          ┌──────────▼────────────┐
+                          │      MuxAlarm          │
+                          │   enabled  = 0         │
+                          │   firing   = false     │
+                          │   next_tick_vals =     │
+                          │   Some((1000M, 1000))  │ ← STALE!
+                          └──────────┬────────────┘
+                   ┌─────────────────┼─────────────────┐
+                   │                 │                  │
+          ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐
+          │ VA #1 Mailbox  │ │ VA #2  I3C    │ │ VA #3 MCU_MBOX│
+          │ armed = false  │ │ armed = false │ │ armed = false │
+          └────────────────┘ └───────────────┘ └───────────────┘
+```
+
+### Step 8: I3C sets alarm again (T=1,050,000,000) — enabled > 0 seed
+
+I3C needs another timeout. `enabled == 0` → "first alarm" → hardware programmed. **Now `enabled = 1` and `next_tick_vals` is fresh.**
 
 ```
                           ┌───────────────────────┐
                           │   InternalTimers       │
-                          │   mitcnt0 = 0      ✓   │  ← reset to 0
-                          │   mitb0   = 1000   ✓   │  ← bound = dt
-                          │   enable  = 1      ✓   │  ← counting
+                          │   mitcnt0 = 0      ✓   │
+                          │   mitb0   = 50000  ✓   │
+                          │   enable  = 1      ✓   │
                           └──────────┬─────────────┘
                                      │
                           ┌──────────▼─────────────┐
                           │      MuxAlarm           │
-                          │   enabled  = 1      ✓   │  ← one alarm active
+                          │   enabled  = 1      ✓   │
                           │   firing   = false      │
                           │   next_tick_vals =      │
-                          │   Some((1069M, 1000))   │  ← set by mux.set_alarm()
+                          │   Some((1050M, 50000))  │ ← fresh
+                          └──────────┬─────────────┘
+                   ┌─────────────────┼─────────────────┐
+                   │                 │                  │
+          ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐
+          │ VA #1 Mailbox  │ │ VA #2  I3C    │ │ VA #3 MCU_MBOX│
+          │ armed = false  │ │ armed = true  │ │ armed = false │
+          │ ref   = —      │ │ ref   = 1050M │ │               │
+          │ dt    = —      │ │ dt    = 50000 │ │               │
+          └────────────────┘ └───────────────┘ └───────────────┘
+```
+
+### Step 9: I3C alarm fires (T=1,050,050,000) — stale next_tick_vals left behind
+
+I3C fires, doesn't re-arm. `enabled → 0`, `disarm()`. Hardware disabled. **`next_tick_vals` retains `Some((1050M, 50000))`.**
+
+```
+                          ┌───────────────────────┐
+                          │   InternalTimers       │
+                          │   mitcnt0 = 50000      │ ← STALE
+                          │   mitb0   = 50000      │ ← STALE
+                          │   enable  = 0          │ ← disabled
+                          └──────────┬─────────────┘
+                                     │
+                          ┌──────────▼─────────────┐
+                          │      MuxAlarm           │
+                          │   enabled  = 0          │
+                          │   firing   = false      │
+                          │   next_tick_vals =      │
+                          │   Some((1050M, 50000))  │ ← STALE!
+                          └──────────┬─────────────┘
+                   ┌─────────────────┼─────────────────┐
+                   │                 │                  │
+          ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐
+          │ VA #1 Mailbox  │ │ VA #2  I3C    │ │ VA #3 MCU_MBOX│
+          │ armed = false  │ │ armed = false │ │ armed = false │
+          └────────────────┘ └───────────────┘ └───────────────┘
+```
+
+### Step 10: MCU_MBOX sets alarm (T=1,060,000,000) — now enabled > 0
+
+Another host command. MCU_MBOX calls `set_alarm(1060M, 1000)`. `enabled == 0` → "first alarm" → hardware programmed. **Now `enabled = 1`.**
+
+```
+                          ┌───────────────────────┐
+                          │   InternalTimers       │
+                          │   mitcnt0 = 0      ✓   │
+                          │   mitb0   = 1000   ✓   │
+                          │   enable  = 1      ✓   │
+                          └──────────┬─────────────┘
+                                     │
+                          ┌──────────▼─────────────┐
+                          │      MuxAlarm           │
+                          │   enabled  = 1      ✓   │
+                          │   firing   = false      │
+                          │   next_tick_vals =      │
+                          │   Some((1060M, 1000))   │ ← updated
                           └──────────┬─────────────┘
                    ┌─────────────────┼─────────────────┐
                    │                 │                  │
           ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐
           │ VA #1 Mailbox  │ │ VA #2  I3C    │ │ VA #3 MCU_MBOX│
           │ armed = false  │ │ armed = false │ │ armed = true  │ ✓
-          │                │ │               │ │ ref   = 1069M │
-          │                │ │               │ │ dt    = 1000  │
+          │ ref   = —      │ │               │ │ ref   = 1060M │
+          │ dt    = —      │ │               │ │ dt    = 1000  │
           └────────────────┘ └───────────────┘ └───────────────┘
 ```
 
-**This always works** — the first-alarm path unconditionally calls `mux.set_alarm()`.
+### Step 11: MCU_MBOX fires but DOESN'T disarm yet (T=1,060,001,000)
 
----
+Timer fires. During `MuxAlarm::alarm()`, MCU_MBOX callback runs but this time the response isn't done — it **doesn't re-arm but `enabled` decrements to 0 and `MuxAlarm::disarm()` runs**. Or alternatively, MCU_MBOX callback completes and disarms, but between disarm and step 12, MCU_MBOX gets another command and re-arms. **The key is: `enabled > 0` when Mailbox calls `set_alarm` in step 12.**
 
-### Step 2: MCU_MBOX's timer expires (T=1,069,001,000)
-
-The timer counter reaches the bound (mitcnt0 ≥ mitb0 = 1000). The hardware halts the counter. The alarm has **expired in hardware**, but `MuxAlarm::alarm()` has not yet been called.
-
-**Why hasn't it been processed?** The kernel runs with `mstatus.MIE=0`, so timer interrupts don't fire in kernel mode. `MuxAlarm::alarm()` only runs when `service_pending_interrupts()` is called at the top of the kernel loop. If the process is currently executing (or if the kernel is inside a syscall handler), there's a **window** where the timer is expired but unprocessed.
+For this example, let's say MCU_MBOX gets ANOTHER host command at T=1,069M and re-arms:
 
 ```
                           ┌───────────────────────┐
                           │   InternalTimers       │
-                          │   mitcnt0 = 1000       │  ← HALTED (reached bound)
-                          │   mitb0   = 1000       │
-                          │   enable  = 1          │  ← still shows "enabled"
+                          │   mitcnt0 = 0      ✓   │
+                          │   mitb0   = 1000   ✓   │
+                          │   enable  = 1      ✓   │
                           └──────────┬─────────────┘
                                      │
                           ┌──────────▼─────────────┐
                           │      MuxAlarm           │
-                          │   enabled  = 1          │  ← MCU_MBOX still "armed"
-                          │   firing   = false      │    (only MuxAlarm::alarm()
-                          │   next_tick_vals =      │     can disarm it)
-                          │   Some((1069M, 1000))   │  ← STALE! Alarm expired
-                          └──────────┬─────────────┘    but not processed
+                          │   enabled  = 1      ✓   │
+                          │   firing   = false      │
+                          │   next_tick_vals =      │
+                          │   Some((1069M, 1000))   │
+                          └──────────┬─────────────┘
                    ┌─────────────────┼─────────────────┐
                    │                 │                  │
           ┌────────▼───────┐ ┌──────▼────────┐ ┌──────▼────────┐
           │ VA #1 Mailbox  │ │ VA #2  I3C    │ │ VA #3 MCU_MBOX│
-          │ armed = false  │ │ armed = false │ │ armed = true  │ ← not disarmed!
-          │                │ │               │ │ ref   = 1069M │
-          │                │ │               │ │ dt    = 1000  │
+          │ armed = false  │ │ armed = false │ │ armed = true  │
+          │ ref   = —      │ │               │ │ ref   = 1069M │
+          │ dt    = —      │ │               │ │ dt    = 1000  │
           └────────────────┘ └───────────────┘ └───────────────┘
 ```
 
-**Key**: `armed`, `enabled`, and `next_tick_vals` are **software state** that only update when `MuxAlarm::alarm()` runs. They do NOT auto-update when the hardware timer expires.
+### Step 12: 🐛 THE BUG — Mailbox sets alarm while MCU_MBOX is armed (T=1,070,000,000)
 
----
+Mailbox capsule's `execute()` calls `schedule_alarm()` → `set_alarm(1070M, 10000)`.
 
-### Step 3: 🐛 THE BUG — Mailbox sets alarm while MCU_MBOX is expired-but-unprocessed (T=1,070,000,000)
+**`enabled = 1` (MCU_MBOX is armed) → NOT "first alarm" → enters guard checks.**
 
-The user process calls Mailbox `execute()` → `schedule_alarm()` → `set_alarm(1070M, 10000)`.
+```
+Guard 1: cur_alarm = get_alarm()
+         HW state: mitcnt0 has been counting since MCU_MBOX's set_alarm
+         at T=1069M. Counter ≈ 1,000,000 (1M ticks elapsed).
+         mitb0 = 1000.
+         get_alarm() = now - counter + bound
+                     = 1070M - 1M + 1000 ≈ 1069M
+         within_range(1070M, 1070M+10000)?
+         Is 1069M in [1070M, 1070M+10000)? → NO (1069M < 1070M)
+         → Guard 1 PASSES ✓  (cur_alarm not in our range)
 
-Since `enabled == 1` (MCU_MBOX is still "armed" in software) and `firing == false`, the code enters the **guard checks** instead of the first-alarm fast path:
-
-```rust
-} else if !self.mux.firing.get() {
-    let cur_alarm = self.mux.alarm.get_alarm();           // Guard 1
-    let now = self.mux.alarm.now();
-    let expiration = reference.wrapping_add(dt);
-    if !cur_alarm.within_range(reference, expiration) {
-        let next = self.mux.next_tick_vals.get();         // Guard 2
-        if next.map_or(true, |(next_reference, next_dt)| {
-            now.within_range(next_reference, next_reference.wrapping_add(next_dt))
-        }) {
-            self.mux.set_alarm(reference, dt);            // ← NEVER reached
-        }
-    }
-}
+Guard 2: next_tick_vals = Some((1069M, 1000))
+         window = [1069M, 1069M+1000) = [1069M, 1069.001M)
+         now = 1070M
+         Is 1070M in [1069M, 1069.001M)? → NO (1070M > 1069.001M)
+         → Guard 2 FAILS ❌  (now is past the stale window)
 ```
 
-**Guard 1 evaluation:**
-```
-cur_alarm = get_alarm()
-          = now - counter + bound
-          = 1,070,000,000 - 1000 + 1000  (counter halted at bound)
-          = 1,070,000,000 ≈ now
-
-within_range(reference=1070M, expiration=1070M+10000)?
-Is 1,070,000,000 in [1,070,000,000, 1,070,010,000)?
-
-→ YES — cur_alarm IS within our range
-→ Guard 1 FAILS: "current alarm will fire earlier, keep it"
-→ mux.set_alarm() NOT called ❌
-```
-
-**OR if the counter overshot slightly (cur_alarm in the past):**
-```
-cur_alarm = 1,069,000,000 + 1000 = 1,069,001,000  (the original fire time)
-
-within_range(1070M, 1080M)?
-Is 1,069,001,000 in [1,070,000,000, 1,080,000,000)? → NO
-
-→ Guard 1 PASSES ✓ — falls through to Guard 2
-```
-
-**Guard 2 evaluation (when Guard 1 passes):**
-```
-next_tick_vals = Some((1,069,000,000, 1000))
-window = [1,069,000,000, 1,069,001,000)
-
-now = 1,070,000,000
-Is 1,070,000,000 in [1,069,000,000, 1,069,001,000)?
-
-→ NO (1,070,000,000 > 1,069,001,000 — we're 999,000 ticks past the window)
-→ Guard 2 FAILS ❌
-→ mux.set_alarm() NOT called
-```
-
-**Either guard can block the reprogramming.** The result is the same:
+**Result: `mux.set_alarm()` is NEVER called. Hardware is NOT reprogrammed for Mailbox.**
 
 ```
                           ┌───────────────────────┐
                           │   InternalTimers       │
-                          │   mitcnt0 = 1000       │  ← HALTED at bound
-                          │   mitb0   = 1000       │    (MCU_MBOX's alarm)
-                          │   enable  = 1          │  ← NOT reprogrammed
-                          └──────────┬─────────────┘    for Mailbox!
+                          │   mitcnt0 ≈ 1M        │ ← still counting from
+                          │   mitb0   = 1000      │    MCU_MBOX's alarm
+                          │   enable  = 1         │ ← MCU_MBOX's timer!
+                          │                       │    NOT our 10000!
+                          └──────────┬─────────────┘
                                      │
                           ┌──────────▼─────────────┐
                           │      MuxAlarm           │
-                          │   enabled  = 2          │  ← Mailbox + MCU_MBOX
+                          │   enabled  = 2          │ ← Mailbox + MCU_MBOX
                           │   firing   = false      │
                           │   next_tick_vals =      │
-                          │   Some((1069M, 1000))   │  ← NOT updated!
+                          │   Some((1069M, 1000))   │ ← NOT UPDATED!
                           └──────────┬─────────────┘    (should be 1070M,10000)
                    ┌─────────────────┼─────────────────┐
                    │                 │                  │
@@ -562,83 +958,13 @@ Is 1,070,000,000 in [1,069,000,000, 1,069,001,000)?
           │ ref   = 1070M  │ │               │ │ ref   = 1069M │
           │ dt    = 10000  │ │               │ │ dt    = 1000  │
           └────────────────┘ └───────────────┘ └───────────────┘
-          ▲
-          │ armed=true, but hardware
-          │ NOT programmed for us!
-          └─── 🐛 WILL NOT FIRE
+          ▲                
+          │ Armed but hardware NOT  
+          │ programmed for us!  
+          │ HW is still set to  
+          │ MCU_MBOX's expired alarm.   
+          │                 
+          └─── 🐛 ALARM WILL NEVER FIRE
 ```
 
----
-
-### Step 4: Why this becomes permanent
-
-The critical damage was done in Step 3: Mailbox's alarm was never programmed into hardware. Since no other alarm is set that would trigger `MuxAlarm::alarm()` to rescan and catch the missed alarm, it is permanently lost.
-
-```
-The sequence that makes it permanent:
-  1. MCU_MBOX's expired timer gets processed in service_pending_interrupts()
-  2. MCU_MBOX callback doesn't re-arm (its work is done)
-  3. MuxAlarm::alarm() fires MCU_MBOX's callback, decrements enabled
-  4. BUT: Mailbox's set_alarm() already executed with stale guards in Step 3
-     → its alarm was NEVER programmed
-  5. No more timers armed → no more MuxAlarm::alarm() calls → no rescan
-  6. Mailbox alarm is permanently lost → HUNG
-```
-
-The key insight: the race window is during kernel syscall handling (MIE=0). The Mailbox capsule's `set_alarm()` is called from `command()` within the syscall handler — at that point MIE=0, and `service_pending_interrupts()` hasn't run yet to clear MCU_MBOX's expired timer. The stale state from MCU_MBOX's expired timer causes the guards to fail.
-
----
-
-### Step 5: The deadlock (without CaliptraVirtualAlarm)
-
-```
-                    Mailbox wants to poll             MCU_MBOX expired
-                    Caliptra for DataReady            but not processed
-                           │                               │
-                           ▼                               ▼
-                    set_alarm(10000)              enabled=1, stale
-                           │                     next_tick_vals
-                           ▼                               │
-                    Guard 2 FAILS ◄────────────────────────┘
-                    (now past stale window)
-                           │
-                           ▼
-                    Hardware NOT reprogrammed
-                           │
-                           ▼
-                    Process yields
-                           │
-                           ▼
-                    Mailbox alarm never fires
-                           │
-                           ▼
-                    ATVM response never detected
-                           │
-                           ▼
-                    ┌──────────────┐
-                    │  TEST HANGS  │
-                    └──────────────┘
-```
-
----
-
-### Why Guard 2 interpretation is wrong
-
-| Guard 2 result | Intended meaning | Actual meaning (when stale) |
-|---|---|---|
-| `now` IS within `[ref, ref+dt)` | "Current alarm hasn't fired yet; my alarm is sooner — reprogram" ✓ | (correct) |
-| `now` NOT within `[ref, ref+dt)` | "Current alarm already fired and was handled — don't reprogram" | **WRONG**: "Alarm expired but `MuxAlarm::alarm()` hasn't run yet — nobody is handling it" 🐛 |
-
-The guard **cannot distinguish** between "already processed" and "expired but unprocessed." Both result in `now` being past the window. The safe behavior is to always reprogram (what CaliptraVirtualAlarm does).
-
----
-
-### Why the first mailbox command works but the second doesn't
-
-| Condition | First command | Second command |
-|---|---|---|
-| `enabled` when `set_alarm` called | 0 (no other alarms) | 1 (MCU_MBOX armed) |
-| Code path taken | "First alarm" fast path | Guard checks |
-| Hardware reprogrammed? | **Always** (unconditional) | **Only if guards pass** |
-| Guard 2 state | N/A (not checked) | Stale — MCU_MBOX expired |
-| Result | ✓ Works | ❌ Skipped |
+**What happens next**: MCU_MBOX's timer already expired (mitcnt0=1M >> mitb0=1000). When `MuxAlarm::alarm()` eventually processes it, MCU_MBOX's callback runs and disarms — but the damage is already done: Mailbox's `set_alarm()` was skipped back in the guard check. `MuxAlarm::alarm()` only rescans alarms that were armed **at the time it runs**. Since Mailbox's alarm was never programmed into hardware, `MuxAlarm` doesn't know to reprogram for it. The Mailbox alarm is permanently lost.
