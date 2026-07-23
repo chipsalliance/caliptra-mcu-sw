@@ -26,7 +26,7 @@ pub use validator::{all_passed, print_summary, run_all, ValidationResult, Valida
 
 // Re-export the command authorizer trait and types from the common crate
 pub use caliptra_mcu_command_auth_challenge_signer::{
-    CommandAuthChallengeSigner, HmacCommandAuthorizer,
+    CommandAuthChallengeSigner, AsymmetricCommandAuthorizer,
 };
 
 // Re-export the debug unlock signer trait and types from the common crate

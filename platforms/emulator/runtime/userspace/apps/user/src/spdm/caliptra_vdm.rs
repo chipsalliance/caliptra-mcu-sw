@@ -9,8 +9,8 @@
 
 extern crate alloc;
 
+use crate::auth_keys::{TEST_AUTH_ECC_PUB_KEY_X, TEST_AUTH_ECC_PUB_KEY_Y, TEST_AUTH_MLDSA_PUB_KEY};
 use alloc::boxed::Box;
-use arrayvec::ArrayVec;
 use caliptra_mcu_common_commands::{
     CaliptraCompletionCode as CommonCompletionCode, GetLogResult, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
@@ -18,17 +18,17 @@ use caliptra_mcu_common_commands::{
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
+use caliptra_mcu_mbox_common::messages::HybridSignature;
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdmCommands, CaliptraVdmLogResult, CaliptraVdmResult,
 };
-use constant_time_eq::constant_time_eq;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
-    cm_hmac, cm_import, fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87,
-    request_debug_unlock_challenge, rng_generate, ApiAlloc, CmKeyUsage, McuErrorCode,
-    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
+    get_attested_csr_ecc384, get_attested_csr_mldsa87, request_debug_unlock_challenge,
+    rng_generate, ApiAlloc, McuErrorCode, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
+    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
 
 /// AsymAlgo wire encoding (`EccP384 = 1`, `MlDsa87 = 2`), mirrored locally so
@@ -38,12 +38,6 @@ const ALGO_MLDSA87: u32 = 0x0002;
 
 /// HMAC command ID used by the host for the FE_PROG authorized sub-command.
 const FE_PROG_CMD_ID: u32 = 0x4D43_4650;
-/// Symmetric test HMAC key used by the emulator validator path.
-const TEST_AUTH_CMD_HMAC_KEY: [u8; 48] = [
-    0x72, 0xec, 0x12, 0x02, 0x77, 0x69, 0xb9, 0xdc, 0x04, 0xbd, 0xd0, 0xc0, 0x86, 0xca, 0x1b, 0x20,
-    0x2f, 0x47, 0x1e, 0xee, 0xf2, 0x8c, 0x2d, 0xa8, 0xc5, 0x4c, 0x75, 0xc2, 0x48, 0xa6, 0x80, 0x0a,
-    0x11, 0xbf, 0xd5, 0xcd, 0x09, 0xed, 0x57, 0x0c, 0xb4, 0xc2, 0xa1, 0x37, 0x6b, 0xa2, 0xcb, 0xcd,
-];
 
 static AUTH_CHALLENGE: Mutex<CriticalSectionRawMutex, Option<[u8; 32]>> = Mutex::new(None);
 
@@ -158,11 +152,13 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
     async fn program_field_entropy<A: SpdmPalAlloc>(
         &self,
         partition: u32,
-        mac: &[u8; 48],
+        sig: &HybridSignature,
         scratch: &A,
     ) -> CaliptraVdmResult<()> {
-        verify_fe_prog_mac(scratch, partition, mac).await?;
-        fe_prog(scratch, partition).await.map_err(map_mcu_err)
+        verify_fe_prog_signatures(partition, sig).await?;
+        crate::caliptra_cmd_handler::device_ops::program_field_entropy(scratch, partition)
+            .await
+            .map_err(map_common_completion)
     }
 }
 
@@ -227,44 +223,25 @@ fn copy_bytes(src: &[u8], out: &mut [u8]) -> CaliptraVdmResult<usize> {
     Ok(src.len())
 }
 
-async fn verify_fe_prog_mac<A: ApiAlloc>(
-    scratch: &A,
-    partition: u32,
-    mac: &[u8; 48],
-) -> CaliptraVdmResult<()> {
+async fn verify_fe_prog_signatures(partition: u32, sig: &HybridSignature) -> CaliptraVdmResult<()> {
     let challenge = AUTH_CHALLENGE
         .lock()
         .await
         .take()
         .ok_or(CaliptraCompletionCode::AccessDenied)?;
+    let partition_bytes = partition.to_le_bytes();
 
-    let cmk = cm_import(scratch, CmKeyUsage::Hmac, &TEST_AUTH_CMD_HMAC_KEY)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-
-    let mut hmac_input = ArrayVec::<u8, 256>::new();
-    hmac_input
-        .try_extend_from_slice(&FE_PROG_CMD_ID.to_be_bytes())
-        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-    hmac_input
-        .try_extend_from_slice(&partition.to_le_bytes())
-        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-    hmac_input
-        .try_extend_from_slice(&challenge)
-        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-
-    let mut computed_mac = [0u8; 48];
-    let mac_len = cm_hmac(scratch, &cmk, hmac_input.as_slice(), &mut computed_mac)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    if mac_len != 48 {
-        return Err(CaliptraCompletionCode::OperationFailed);
-    }
-    if constant_time_eq(&computed_mac, mac) {
-        Ok(())
-    } else {
-        Err(CaliptraCompletionCode::AccessDenied)
-    }
+    crate::caliptra_cmd_handler::device_ops::verify_authorized_signatures(
+        FE_PROG_CMD_ID,
+        &partition_bytes,
+        &challenge,
+        TEST_AUTH_ECC_PUB_KEY_X,
+        TEST_AUTH_ECC_PUB_KEY_Y,
+        TEST_AUTH_MLDSA_PUB_KEY,
+        sig,
+    )
+    .await
+    .map_err(map_common_completion)
 }
 
 fn map_common_completion(code: CommonCompletionCode) -> CaliptraCompletionCode {

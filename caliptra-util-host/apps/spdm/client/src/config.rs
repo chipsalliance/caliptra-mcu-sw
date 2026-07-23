@@ -140,8 +140,8 @@ impl Default for DebugUnlockConfig {
 pub struct FeProgConfig {
     #[serde(default)]
     pub partition: u32,
-    /// Hex-encoded HMAC key for FE_PROG authorization.
-    /// Must match the AUTH_CMD_HMAC_KEY used by the MCU firmware.
     #[serde(default)]
-    pub auth_key: Option<String>,
+    pub ecc_auth_key: Option<String>,
+    #[serde(default)]
+    pub mldsa_auth_key: Option<String>,
 }

@@ -1625,13 +1625,13 @@ impl Validator {
     ///
     /// Tests the authorization challenge-response flow:
     /// 1. Requests a challenge nonce via GetAuthCmdChallenge
-    /// 2. Computes HMAC-SHA384 over `cmd_id(BE) || partition(LE) || challenge`
+    /// 2. Computes hybrid signature over `cmd_id(BE) || partition(LE) || challenge`
     ///    using the configured `CommandAuthChallengeSigner`
     /// 3. Submits the FE_PROG command with the MAC
     ///
     /// If no `CommandAuthChallengeSigner` is configured, the test is skipped.
     fn validate_fe_prog(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_mcu_core_util_host_command_types::fuse::{FeProgRequest, AUTH_CMD_MAC_SIZE};
+        use caliptra_mcu_core_util_host_command_types::fuse::FeProgRequest;
 
         let test_name = "FeProg".to_string();
 
@@ -1682,14 +1682,14 @@ impl Validator {
         const MC_FE_PROG: u32 = 0x4D43_4650;
         let partition: u32 = 0;
 
-        let mac_result = authorizer.authorize(
+        let auth_result = authorizer.authorize(
             MC_FE_PROG,
             &partition.to_le_bytes(),
             &challenge_resp.challenge,
         );
 
-        let mac_bytes = match mac_result {
-            Ok(m) => m,
+        let sig = match auth_result {
+            Ok(s) => s,
             Err(e) => {
                 let error_str = format!("CommandAuthChallengeSigner::authorize failed: {}", e);
                 eprintln!("✗ FeProg validation FAILED: {}", error_str);
@@ -1701,11 +1701,8 @@ impl Validator {
             }
         };
 
-        let mut mac = [0u8; AUTH_CMD_MAC_SIZE];
-        mac.copy_from_slice(&mac_bytes);
-
-        // Step 3: Submit FE_PROG with the MAC
-        let request = FeProgRequest { partition, mac };
+        // Step 3: Submit FE_PROG with the signatures
+        let request = FeProgRequest { partition, sig };
 
         match client.fe_prog(&request) {
             Ok(_) => {

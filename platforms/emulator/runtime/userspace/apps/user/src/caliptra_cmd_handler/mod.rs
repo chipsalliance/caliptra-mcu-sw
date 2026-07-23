@@ -3,6 +3,7 @@
 extern crate alloc;
 
 pub(crate) mod debug_log;
+pub(crate) mod device_ops;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
