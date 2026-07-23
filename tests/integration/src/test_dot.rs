@@ -879,6 +879,75 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// A valid local backup takes precedence over BMC reset recovery. ROM
+    /// restores the active copy and completes the current cold boot without
+    /// publishing the DOT failure status or requesting an intermediate reset.
+    #[test]
+    fn test_dot_recovery_reset_flow_restores_backup_and_continues_boot() {
+        const DEVICE_RESET_CTRL_PREVIOUS_DOT_SUCCEEDED: u32 = 0x11;
+        const DOT_RECOVERY_DEVICE_STATUS: u32 = 0x0094_000E;
+        const RECOVERY_BLOB_OFFSET: usize = 2048;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak());
+        let mut flash_contents = vec![0u8; 4096];
+        flash_contents[RECOVERY_BLOB_OFFSET..RECOVERY_BLOB_OFFSET + DOT_BLOB_SIZE]
+            .copy_from_slice(blob.as_bytes());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            rom_feature: Some("test-dot-recovery-reset-flow"),
+            ..Default::default()
+        });
+
+        let i3c_initialized = u16::from(McuRomBootStatus::I3cInitialized);
+        hw.step_until(|m| {
+            m.mci_boot_checkpoint() >= i3c_initialized
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 50_000_000
+        });
+        assert!(
+            hw.mci_fw_fatal_error().is_none(),
+            "ROM failed before I3C initialization"
+        );
+
+        hw.set_i3c_recovery_device_reset_ctrl(DEVICE_RESET_CTRL_PREVIOUS_DOT_SUCCEEDED);
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 150_000_000
+        });
+
+        assert!(
+            hw.mci_fw_fatal_error().is_none(),
+            "Cold boot after DOT backup recovery failed: 0x{:x}",
+            hw.mci_fw_fatal_error().unwrap_or(0)
+        );
+        assert!(
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE),
+            "Cold boot did not complete after DOT backup recovery"
+        );
+        assert_ne!(
+            hw.i3c_recovery_device_status_0(),
+            DOT_RECOVERY_DEVICE_STATUS,
+            "Successful local backup recovery must not signal BMC reset recovery"
+        );
+        assert_eq!(
+            &hw.read_dot_flash()[..DOT_BLOB_SIZE],
+            blob.as_bytes(),
+            "Backup blob was not restored to the active DOT slot"
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Test that a corrupt DOT blob in ODD state (locked) with no recovery handler fails
     /// with the BLOB_CORRUPT error.
     #[test]
