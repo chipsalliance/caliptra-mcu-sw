@@ -158,7 +158,14 @@ impl Time for InternalTimers<'_> {
     type Ticks = Ticks64;
 
     fn now(&self) -> Ticks64 {
-        (((self.mcycleh.get() as u64) << 32) | (self.mcycle.get() as u64)).into()
+        // Race-free 64-bit read: retry if mcycleh changed between reads
+        loop {
+            let hi = self.mcycleh.get() as u64;
+            let lo = self.mcycle.get() as u64;
+            if hi == self.mcycleh.get() as u64 {
+                return ((hi << 32) | lo).into();
+            }
+        }
     }
 }
 
