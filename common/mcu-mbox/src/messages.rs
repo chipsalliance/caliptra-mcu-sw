@@ -15,7 +15,8 @@ pub use caliptra_api::mailbox::{
     CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaPublicKeyResp,
     CmMldsaSignReq, CmMldsaSignResp, CmMldsaVerifyReq, CmRandomGenerateReq, CmRandomGenerateResp,
     CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
-    CmStatusResp, Cmk, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+    CmStatusResp, Cmk, HpkeHandle, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+    OcpLockEnumerateHpkeHandlesReq, OcpLockEnumerateHpkeHandlesResp,
     ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
     ProductionAuthDebugUnlockToken, ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE,
     CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE,
@@ -140,6 +141,8 @@ impl CommandId {
     // OCP Lock commands
     pub const MC_OCP_LOCK_ROTATE_HEK: Self = Self(0x4F4C_5248); // "OLRH"
     pub const MC_OCP_LOCK_SET_PERMA_HEK: Self = Self(0x4F4C_5350); // "OLSP"
+    pub const MC_GET_OCP_LOCK_ENDORSEMENT_CERT: Self = Self(0x4F4C_4543); // "OLEC"
+    pub const MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES: Self = Self(0x4F4C_4548); // "OLEH"
 }
 
 impl From<u32> for CommandId {
@@ -215,6 +218,8 @@ pub enum McuMailboxReq {
     // OCP Lock
     OcpLockSetPermaHek(OcpLockSetPermaHekReq),
     OcpLockRotateHek(OcpLockRotateHekReq),
+    GetOcpLockEndorsementCert(GetOcpLockEndorsementCertReq),
+    OcpLockEnumerateHpkeHandles(OcpLockEnumerateHpkeHandlesReq),
 }
 
 impl McuMailboxReq {
@@ -274,6 +279,8 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
             McuMailboxReq::OcpLockSetPermaHek(req) => Ok(req.as_bytes()),
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_bytes()),
+            McuMailboxReq::GetOcpLockEndorsementCert(req) => Ok(req.as_bytes()),
+            McuMailboxReq::OcpLockEnumerateHpkeHandles(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -333,6 +340,8 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::OcpLockSetPermaHek(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::GetOcpLockEndorsementCert(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::OcpLockEnumerateHpkeHandles(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -394,6 +403,12 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
             McuMailboxReq::OcpLockSetPermaHek(_) => CommandId::MC_OCP_LOCK_SET_PERMA_HEK,
             McuMailboxReq::OcpLockRotateHek(_) => CommandId::MC_OCP_LOCK_ROTATE_HEK,
+            McuMailboxReq::GetOcpLockEndorsementCert(_) => {
+                CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT
+            }
+            McuMailboxReq::OcpLockEnumerateHpkeHandles(_) => {
+                CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES
+            }
         }
     }
 
@@ -478,6 +493,8 @@ pub enum McuMailboxResp {
     // OCP Lock
     OcpLockSetPermaHek(OcpLockSetPermaHekResp),
     OcpLockRotateHek(OcpLockRotateHekResp),
+    GetOcpLockEndorsementCert(GetOcpLockEndorsementCertResp),
+    OcpLockEnumerateHpkeHandles(OcpLockEnumerateHpkeHandlesResp),
 }
 
 /// A trait for responses with variable size data.
@@ -596,6 +613,8 @@ impl McuMailboxResp {
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -654,6 +673,8 @@ impl McuMailboxResp {
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -1678,6 +1699,41 @@ pub struct OcpLockRotateHekResp {
 }
 
 impl Response for OcpLockRotateHekResp {}
+/// MC_GET_OCP_LOCK_ENDORSEMENT_CERT request
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetOcpLockEndorsementCertReq {
+    pub hdr: MailboxReqHeader,
+    pub hpke_handle: HpkeHandle,
+}
+impl Request for GetOcpLockEndorsementCertReq {
+    const ID: CommandId = CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT;
+    type Resp = GetOcpLockEndorsementCertResp;
+}
+
+/// MC_GET_OCP_LOCK_ENDORSEMENT_CERT response
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetOcpLockEndorsementCertResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub data: [u8; MAX_RESP_DATA_SIZE],
+}
+impl Default for GetOcpLockEndorsementCertResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            data: [0u8; MAX_RESP_DATA_SIZE],
+        }
+    }
+}
+impl McuResponseVarSize for GetOcpLockEndorsementCertResp {}
+
+impl Request for OcpLockEnumerateHpkeHandlesReq {
+    const ID: CommandId = CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES;
+    type Resp = OcpLockEnumerateHpkeHandlesResp;
+}
+impl Response for OcpLockEnumerateHpkeHandlesResp {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

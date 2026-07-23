@@ -24,7 +24,6 @@ mod test {
             debug_intent: true,
             bootfsm_break: false,
             enable_mcu_uart_log: true,
-            skip_otp_provisioning: true,
             ..Default::default()
         };
 

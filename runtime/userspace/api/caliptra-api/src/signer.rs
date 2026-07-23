@@ -35,13 +35,15 @@ impl<'a> OcpLockSigner for CaliptraDpeSigner<'a> {
             .try_into()
             .map_err(|_| CaliptraApiError::InvalidArgDigestSize)?;
 
-        let label: [u8; 48] = label
-            .try_into()
-            .map_err(|_| CaliptraApiError::InvalidArgDigestSize)?;
+        let mut label_padded = [0u8; 48];
+        if label.len() > 48 {
+            return Err(CaliptraApiError::InvalidArgSize);
+        }
+        label_padded[..label.len()].copy_from_slice(label);
 
         let dpe_cmd = SignP384Cmd {
             handle: dpe::context::ContextHandle::default(),
-            label,
+            label: label_padded,
             flags: dpe::commands::SignFlags::empty(),
             digest,
         };

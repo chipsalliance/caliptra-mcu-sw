@@ -17,6 +17,8 @@ aes-gcm.workspace = true
 anyhow.workspace = true
 caliptra-api.workspace = true
 caliptra-api-types.workspace = true
+caliptra-mcu-libapi-caliptra.workspace = true
+dpe.workspace = true
 caliptra-auth-man-types.workspace = true
 caliptra-builder.workspace = true
 caliptra-emu-bus.workspace = true
@@ -76,6 +78,7 @@ simple_logger.workspace = true
 tempfile.workspace = true
 uio = { workspace = true, optional = true }
 uuid.workspace = true
+x509-parser.workspace = true
 zerocopy.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]

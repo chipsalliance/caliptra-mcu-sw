@@ -413,6 +413,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
             caliptra_rom,
             caliptra_fw: blank.to_vec(),
             caliptra_fw_key2: blank.to_vec(),
+            caliptra_fw_ocp_lock: blank.to_vec(),
             caliptra_fw_svn7: blank.to_vec(),
             caliptra_fw_svn128: blank.to_vec(),
             soc_manifest: blank.to_vec(),

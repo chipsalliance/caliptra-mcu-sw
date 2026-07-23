@@ -12,6 +12,7 @@ use zerocopy::FromBytes;
 
 mod test_increase_caliptra_svn;
 mod test_mcu_mailbox;
+mod test_ocp_lock;
 mod test_revoke_vendor_pub_key;
 
 pub const TEST_AUTH_CMD_HMAC_KEY: [u8; 48] = [

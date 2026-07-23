@@ -6,6 +6,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
 use caliptra_mcu_mbox_common::messages::CommandId;
 use zerocopy::{Immutable, IntoBytes};
 
@@ -317,6 +318,25 @@ pub trait CaliptraCmdHandler: Send + Sync {
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
     async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
         let _ = partition;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Retrieves the OCP Lock endorsement certificate.
+    async fn get_ocp_lock_endorsement_cert(
+        &self,
+        hpke_handle: &HpkeHandle,
+        cert_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let _ = (hpke_handle, cert_buf);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Enumerates the OCP Lock HPKE handles.
+    async fn ocp_lock_enumerate_hpke_handles(
+        &self,
+        resp: &mut OcpLockEnumerateHpkeHandlesResp,
+    ) -> CaliptraCmdResult<()> {
+        let _ = resp;
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }
