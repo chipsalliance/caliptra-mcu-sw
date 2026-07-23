@@ -18,7 +18,13 @@ jobs:
   dispatch_nightly_main_2_1:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch nightly workflow
+      - uses: actions/checkout@v4
+        with:
+          ref: v-focutter/nightly-2-1
+          fetch-depth: 0
+          submodules: 'true'
+
+      - name: Launch and monitor nightly workflow
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -95,3 +101,4 @@ jobs:
             }
 
             core.setFailed("Timed out while waiting for the dispatched nightly run to complete.");
+
