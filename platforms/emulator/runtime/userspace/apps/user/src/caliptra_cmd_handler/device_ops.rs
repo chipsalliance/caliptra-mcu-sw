@@ -3,8 +3,8 @@
 use arrayvec::ArrayVec;
 use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, MldsaVerifyReq};
 use caliptra_mcu_common_commands::{
-    CaliptraCmdResult, CaliptraCompletionCode, DEBUG_UNLOCK_CHALLENGE_SIZE,
-    DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
+    CaliptraCmdResult, CaliptraCompletionCode, DeviceCapabilities, FirmwareVersion, GetLogResult,
+    LogType, DEBUG_UNLOCK_CHALLENGE_SIZE, DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
@@ -21,6 +21,33 @@ use zerocopy::IntoBytes;
 
 const ALGO_ECC_P384: u32 = 0x0001;
 const ALGO_MLDSA87: u32 = 0x0002;
+
+pub async fn get_firmware_version(
+    _index: u32,
+    _version: &mut FirmwareVersion,
+) -> CaliptraCmdResult<()> {
+    Err(CaliptraCompletionCode::UnsupportedOperation)
+}
+
+pub async fn get_device_capabilities(
+    _capabilities: &mut DeviceCapabilities,
+) -> CaliptraCmdResult<()> {
+    Err(CaliptraCompletionCode::UnsupportedOperation)
+}
+
+pub async fn get_debug_log(log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
+    match LogType::try_from(log_type)? {
+        LogType::Debug => super::debug_log::drain(data).await,
+        LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
+    }
+}
+
+pub async fn clear_debug_log(log_type: u32) -> CaliptraCmdResult<()> {
+    match LogType::try_from(log_type)? {
+        LogType::Debug => super::debug_log::clear().await,
+        LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
+    }
+}
 
 pub async fn request_debug_unlock<A: ApiAlloc>(
     alloc: &A,

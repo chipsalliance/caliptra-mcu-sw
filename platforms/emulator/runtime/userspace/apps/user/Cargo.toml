@@ -68,7 +68,7 @@ toml.workspace = true
 [features]
 default = ["all-features"]
 # Caliptra MCU features
-all-features = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe", "userspace-log"]
+all-features = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe", "userspace-log", "mctp-vdm-service"]
 spdm = ["mcu-mbox-service"]
 streaming-boot = []
 flash-boot = []
@@ -157,6 +157,8 @@ test-firmware-v2 = []
 test-streaming-boot-flash-write-back = ["streaming-boot", "firmware-update"]
 test-mcu-mbox-fips-periodic = ["mcu-mbox-test-handlers", "caliptra-mcu-mbox-lib/periodic-fips-self-test"]
 test-mctp-vdm-cmds = ["mctp-vdm-service"]
+# Exercise the production CaliptraCmdBackend rather than the VDM test mock.
+test-mctp-vdm-production = ["mctp-vdm-service"]
 test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
 test-caliptra-util-host-validator = ["mcu-mbox-test-handlers"]
 test-mcu-mbox-cmds = ["mcu-mbox-test-handlers"]
