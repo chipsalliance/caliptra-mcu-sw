@@ -79,6 +79,20 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
+    /// Mark whether the initiator has a response pending processing.
+    /// Called by [`CmdInterface::handle_initiator_msg`].
+    pub fn set_pending_response(&self, pending: bool) {
+        self.internal.set_pending_response(pending);
+    }
+
+    /// Wait until the initiator signals that it has finished processing
+    /// any pending response. Returns immediately if no response is pending.
+    async fn wait_for_initiator(&self) {
+        if self.internal.has_pending_response() {
+            self.internal.wait_for_response_signal().await;
+        }
+    }
+
     pub async fn query_devid_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         // Decode the request message
         let req =
@@ -270,35 +284,17 @@ impl<'a> FirmwareDeviceContext<'a> {
     }
 
     pub async fn update_component_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
+        // Ensure the initiator task has finished processing any pending
+        // response (e.g. ApplyComplete for the previous component) before
+        // we inspect the FD state.
+        self.wait_for_initiator().await;
+
         // Check if FD is in 'ReadyTransfer' state. Otherwise returns 'INVALID_STATE' completion code
         if self.internal.get_fd_state() != FirmwareDeviceState::ReadyXfer {
-            // Race condition (same pattern as activate_firmware_rsp): In a multi-component
-            // update, the UA sends UpdateComponent for the next component immediately after
-            // responding to ApplyComplete(Success). If the executor polls this responder
-            // task before the initiator task processes the ApplyComplete response, the state
-            // is still Apply. Detect this case and perform the pending transition.
-            if self.internal.get_fd_state() == FirmwareDeviceState::Apply {
-                let fd_req = self.internal.get_fd_req();
-                if fd_req.state == FdReqState::Sent
-                    && fd_req.complete
-                    && fd_req.command == Some(FwUpdateCmd::ApplyComplete as u8)
-                    && fd_req.result == Some(ApplyResult::ApplySuccess as u8)
-                {
-                    self.internal
-                        .set_fd_req(FdReqState::Unused, false, None, None, None, None);
-                    self.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
-                } else {
-                    return generate_failure_response(
-                        payload,
-                        FwUpdateCompletionCode::InvalidStateForCommand as u8,
-                    );
-                }
-            } else {
-                return generate_failure_response(
-                    payload,
-                    FwUpdateCompletionCode::InvalidStateForCommand as u8,
-                );
-            }
+            return generate_failure_response(
+                payload,
+                FwUpdateCompletionCode::InvalidStateForCommand as u8,
+            );
         }
 
         // Set timestamp for FD T1 timeout
@@ -379,37 +375,17 @@ impl<'a> FirmwareDeviceContext<'a> {
     }
 
     pub async fn activate_firmware_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
+        // Ensure the initiator task has finished processing any pending
+        // response (e.g. ApplyComplete) before we inspect the FD state.
+        // This eliminates the Apply/Activate race condition at its root.
+        self.wait_for_initiator().await;
+
         // Check if FD is in 'ReadyTransfer' state. Otherwise returns 'INVALID_STATE' completion code
         if self.internal.get_fd_state() != FirmwareDeviceState::ReadyXfer {
-            // Race condition: The UA may send ActivateFirmwareRequest immediately after
-            // responding to ApplyComplete. If the executor polls this responder task before
-            // the initiator task processes the ApplyComplete response, the state is still
-            // Apply. Detect this case and perform the pending transition to ReadyXfer.
-            if self.internal.get_fd_state() == FirmwareDeviceState::Apply {
-                let fd_req = self.internal.get_fd_req();
-                if fd_req.state == FdReqState::Sent
-                    && fd_req.complete
-                    && fd_req.command == Some(FwUpdateCmd::ApplyComplete as u8)
-                    && fd_req.result == Some(ApplyResult::ApplySuccess as u8)
-                {
-                    // The ApplyComplete response has been received by the transport layer
-                    // (evidenced by ActivateFirmwareRequest arriving), but the initiator
-                    // task hasn't processed it yet. Perform the state transition now.
-                    self.internal
-                        .set_fd_req(FdReqState::Unused, false, None, None, None, None);
-                    self.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
-                } else {
-                    return generate_failure_response(
-                        payload,
-                        FwUpdateCompletionCode::InvalidStateForCommand as u8,
-                    );
-                }
-            } else {
-                return generate_failure_response(
-                    payload,
-                    FwUpdateCompletionCode::InvalidStateForCommand as u8,
-                );
-            }
+            return generate_failure_response(
+                payload,
+                FwUpdateCompletionCode::InvalidStateForCommand as u8,
+            );
         }
 
         // Decode the request message
@@ -876,16 +852,6 @@ impl<'a> FirmwareDeviceContext<'a> {
     async fn process_apply_complete_rsp(&self, _payload: &mut [u8]) -> McuResult<()> {
         let fd_state = self.internal.get_fd_state();
         if fd_state != FirmwareDeviceState::Apply {
-            // If the state has already advanced past Apply (e.g., the responder task
-            // processed ActivateFirmwareRequest or UpdateComponent first and performed
-            // the Apply→ReadyXfer transition), this is not an error — the transition
-            // was already handled.
-            if fd_state == FirmwareDeviceState::ReadyXfer
-                || fd_state == FirmwareDeviceState::Activate
-                || fd_state == FirmwareDeviceState::Download
-            {
-                return Ok(());
-            }
             return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
@@ -910,7 +876,7 @@ impl<'a> FirmwareDeviceContext<'a> {
 
     /// Test-only wrapper for `process_apply_complete_rsp`.
     #[cfg(test)]
-    pub async fn handle_apply_complete_rsp_for_test(&self, payload: &mut [u8]) -> McuResult<()> {
+    pub async fn process_apply_complete_rsp_for_test(&self, payload: &mut [u8]) -> McuResult<()> {
         self.process_apply_complete_rsp(payload).await
     }
 
@@ -1142,18 +1108,22 @@ mod test {
         ActivateFirmwareRequest, ActivateFirmwareResponse, SelfContainedActivationRequest,
     };
     use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+    use caliptra_mcu_pldm_common::message::firmware_update::update_component::{
+        UpdateComponentRequest, UpdateComponentResponse,
+    };
     use caliptra_mcu_pldm_common::protocol::base::{
         PldmBaseCompletionCode, PldmFailureResponse, PldmMsgType,
     };
     use caliptra_mcu_pldm_common::protocol::firmware_update::{
-        FirmwareDeviceState, FwUpdateCmd, FwUpdateCompletionCode,
+        ComponentClassification, FirmwareDeviceState, FwUpdateCmd, FwUpdateCompletionCode,
+        PldmFirmwareString, UpdateOptionFlags,
     };
     use futures::executor::block_on;
 
     use crate::firmware_device::fd_internal::FdReqState;
     use crate::firmware_device::fd_ops::FdOps;
 
-    /// Minimal mock FdOps for testing activate_firmware_rsp.
+    /// Minimal mock FdOps for testing.
     struct MockFdOps;
 
     #[async_trait::async_trait(?Send)]
@@ -1254,159 +1224,80 @@ mod test {
         req.encode(payload).unwrap()
     }
 
-    /// Test that activate_firmware_rsp succeeds when the FD state is ReadyXfer
-    /// (the normal, non-racy case).
-    #[test]
-    fn test_activate_firmware_in_ready_xfer_state() {
-        let mock_ops = MockFdOps;
-        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
-
-        // Set state to ReadyXfer (the expected state)
-        fd_ctx.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
-
-        let mut payload = [0u8; 256];
-        encode_activate_firmware_request(&mut payload);
-
-        let result = block_on(fd_ctx.activate_firmware_rsp(&mut payload));
-        assert!(result.is_ok());
-
-        let resp = ActivateFirmwareResponse::decode(&payload).unwrap();
-        assert_eq!(resp.completion_code, PldmBaseCompletionCode::Success as u8);
+    fn encode_update_component_request(payload: &mut [u8]) -> usize {
+        let ver_str = PldmFirmwareString::new("UTF-8", "fw-v2.0").unwrap();
+        let req = UpdateComponentRequest::new(
+            2,
+            PldmMsgType::Request,
+            ComponentClassification::Firmware,
+            0x0001,
+            0,
+            0x12345678,
+            1024,
+            UpdateOptionFlags(0),
+            &ver_str,
+        );
+        req.encode(payload).unwrap()
     }
 
+    // =========================================================================
+    // Signal mechanism tests
+    // =========================================================================
+
+    /// Verify the pending_response signal mechanism: set_pending_response(true)
+    /// sets the flag, set_pending_response(false) clears it and signals.
     #[test]
-    fn test_activate_firmware_race_condition_apply_state_with_pending_apply_complete() {
+    fn test_pending_response_signal_mechanism() {
         let mock_ops = MockFdOps;
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
-        // Set state to Apply with a pending successful ApplyComplete request.
-        // This simulates the state when:
-        //   1. The initiator sent ApplyComplete(Success) to the UA
-        //   2. The UA responded and immediately sent ActivateFirmwareRequest
-        //   3. The responder task is polled before the initiator task processes the response
-        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
-        fd_ctx.internal.set_fd_req(
-            FdReqState::Sent,
-            true, // complete
-            Some(ApplyResult::ApplySuccess as u8),
-            Some(1), // instance_id
-            Some(FwUpdateCmd::ApplyComplete as u8),
-            Some(0), // sent_time
-        );
+        // Initially no response pending
+        assert!(!fd_ctx.internal.has_pending_response());
 
-        let mut payload = [0u8; 256];
-        encode_activate_firmware_request(&mut payload);
+        // Set pending
+        fd_ctx.set_pending_response(true);
+        assert!(fd_ctx.internal.has_pending_response());
 
-        // With the fix, activate_firmware_rsp should detect the pending transition,
-        // perform Apply→ReadyXfer, and then succeed.
-        let result = block_on(fd_ctx.activate_firmware_rsp(&mut payload));
-        assert!(
-            result.is_ok(),
-            "activate_firmware_rsp should succeed during Apply→ReadyXfer race"
-        );
+        // Clear pending (also signals)
+        fd_ctx.set_pending_response(false);
+        assert!(!fd_ctx.internal.has_pending_response());
 
-        let resp = ActivateFirmwareResponse::decode(&payload).unwrap();
-        assert_eq!(
-            resp.completion_code,
-            PldmBaseCompletionCode::Success as u8,
-            "Expected success completion code, not InvalidStateForCommand"
-        );
-
-        // Verify the state has advanced to Activate (activate was successful)
-        assert_eq!(
-            fd_ctx.internal.get_fd_state(),
-            FirmwareDeviceState::Activate
-        );
+        // wait_for_initiator returns immediately when no response pending
+        block_on(fd_ctx.wait_for_initiator());
     }
 
-    /// Emulate the two-task race condition from issue #1764 end-to-end.
-    ///
-    /// In the real system, `pldm_responder_task` and `pldm_initiator_task` run
-    /// as concurrent Embassy tasks sharing the same `FirmwareDeviceContext`.
-    /// The race occurs during the Apply→Activate transition:
-    ///
-    ///   1. Initiator sends ApplyComplete(Success) and awaits response
-    ///   2. UA responds to ApplyComplete + sends ActivateFirmwareRequest back-to-back
-    ///   3. Both packets arrive: response → initiator, request → responder
-    ///   4. Embassy executor polls tasks in arbitrary order
-    ///
-    /// This test simulates BOTH execution orderings to prove the fix handles either:
-    ///   - "Responder first" (the racy order that triggers the bug)
-    ///   - "Initiator first" (the normal order)
+    /// Verify that wait_for_initiator returns immediately after the signal
+    /// has been sent (i.e. pending_response was cleared).
     #[test]
-    fn test_two_task_race_responder_polled_before_initiator() {
-        // Simulate two concurrent tasks sharing the same FirmwareDeviceContext.
-        // Embassy is single-threaded: the "race" is which task the executor polls first.
+    fn test_wait_for_initiator_returns_after_signal() {
         let mock_ops = MockFdOps;
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
-        // === Setup: Both tasks have received their packets ===
-        // The initiator sent ApplyComplete(Success) and the response came back.
-        // Simultaneously, the UA sent ActivateFirmwareRequest.
-        // State reflects "initiator sent ApplyComplete but hasn't processed the response yet."
-        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
-        fd_ctx.internal.set_fd_req(
-            FdReqState::Sent,
-            true, // complete (apply operation succeeded)
-            Some(ApplyResult::ApplySuccess as u8),
-            Some(1), // instance_id
-            Some(FwUpdateCmd::ApplyComplete as u8),
-            Some(0), // sent_time
-        );
+        // Simulate: initiator sets pending, then clears (signal is sent).
+        fd_ctx.set_pending_response(true);
+        fd_ctx.set_pending_response(false);
 
-        // === TASK 1 (Responder) — polled FIRST by executor (the racy ordering) ===
-        // Responder received ActivateFirmwareRequest from UA and calls activate_firmware_rsp.
-        // Without the fix, this would fail because state is still Apply (not ReadyXfer).
-        let mut activate_payload = [0u8; 256];
-        encode_activate_firmware_request(&mut activate_payload);
-
-        let responder_result = block_on(fd_ctx.activate_firmware_rsp(&mut activate_payload));
-        assert!(
-            responder_result.is_ok(),
-            "Responder task: activate_firmware_rsp must not fail when polled before initiator"
-        );
-        let resp = ActivateFirmwareResponse::decode(&activate_payload).unwrap();
-        assert_eq!(
-            resp.completion_code,
-            PldmBaseCompletionCode::Success as u8,
-            "Responder task: expected Success, got InvalidStateForCommand (0x84) — the race bug!"
-        );
-
-        // After responder completes: state should be Activate
-        assert_eq!(
-            fd_ctx.internal.get_fd_state(),
-            FirmwareDeviceState::Activate,
-            "State should be Activate after successful activation"
-        );
-
-        // === TASK 2 (Initiator) — polled SECOND by executor ===
-        // Initiator now processes the ApplyComplete response it received.
-        // With the fix, this is a no-op because the responder already performed
-        // the Apply→ReadyXfer→Activate transitions.
-        let mut apply_rsp_payload = [0u8; 256];
-        let initiator_result =
-            block_on(fd_ctx.handle_apply_complete_rsp_for_test(&mut apply_rsp_payload));
-        assert!(
-            initiator_result.is_ok(),
-            "Initiator task: process_apply_complete_rsp must tolerate state already advanced"
-        );
-
-        // Final state should remain Activate (initiator didn't break anything)
-        assert_eq!(
-            fd_ctx.internal.get_fd_state(),
-            FirmwareDeviceState::Activate,
-        );
+        // Signal was already sent, so even if we re-set and check, the signal
+        // has been consumed. Just verify no deadlock with no pending response.
+        block_on(fd_ctx.wait_for_initiator());
     }
 
-    /// The non-racy ordering: initiator processes ApplyComplete response first,
-    /// then responder handles ActivateFirmwareRequest. This should always work
-    /// regardless of the fix, but we verify it for completeness.
+    // =========================================================================
+    // Two-task simulation: initiator processes response first (guaranteed by
+    // the signal), then responder handles the next command.
+    // =========================================================================
+
+    /// Simulate the correct two-task sequence for ActivateFirmware:
+    /// 1. Initiator processes ApplyComplete response → transitions Apply→ReadyXfer
+    /// 2. Responder handles ActivateFirmwareRequest → state is ReadyXfer → succeeds
+    ///
+    /// This is the ordering that the signal mechanism guarantees at runtime.
     #[test]
-    fn test_two_task_normal_order_initiator_polled_before_responder() {
+    fn test_two_task_activate_firmware_with_signal_ordering() {
         let mock_ops = MockFdOps;
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
-        // Same setup: state=Apply, pending successful ApplyComplete
+        // Setup: state=Apply, pending successful ApplyComplete
         fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
         fd_ctx.internal.set_fd_req(
             FdReqState::Sent,
@@ -1417,11 +1308,11 @@ mod test {
             Some(0),
         );
 
-        // === TASK 1 (Initiator) — polled FIRST (the normal/happy path) ===
-        // Initiator processes ApplyComplete response → transitions Apply→ReadyXfer
+        // === TASK 1 (Initiator) — processes ApplyComplete response first ===
+        // The signal mechanism ensures this always runs before the responder.
         let mut apply_rsp_payload = [0u8; 256];
         let initiator_result =
-            block_on(fd_ctx.handle_apply_complete_rsp_for_test(&mut apply_rsp_payload));
+            block_on(fd_ctx.process_apply_complete_rsp_for_test(&mut apply_rsp_payload));
         assert!(initiator_result.is_ok());
         assert_eq!(
             fd_ctx.internal.get_fd_state(),
@@ -1429,8 +1320,11 @@ mod test {
             "Initiator should transition to ReadyXfer"
         );
 
-        // === TASK 2 (Responder) — polled SECOND ===
-        // Responder processes ActivateFirmwareRequest — state is now ReadyXfer (no race)
+        // Initiator clears pending_response (signal fires, responder unblocks)
+        fd_ctx.set_pending_response(false);
+
+        // === TASK 2 (Responder) — handles ActivateFirmwareRequest ===
+        // wait_for_initiator returns immediately (no pending response)
         let mut activate_payload = [0u8; 256];
         encode_activate_firmware_request(&mut activate_payload);
 
@@ -1444,40 +1338,75 @@ mod test {
         );
     }
 
-    /// Verify that activate_firmware_rsp still correctly rejects requests when
-    /// the FD state is Apply but ApplyComplete was NOT successful (no race, genuine error).
+    /// Simulate the correct two-task sequence for multi-component UpdateComponent:
+    /// 1. Initiator processes ApplyComplete response → transitions Apply→ReadyXfer
+    /// 2. Responder handles UpdateComponent for next component → succeeds
     #[test]
-    fn test_activate_firmware_rejected_in_apply_state_without_successful_apply_complete() {
+    fn test_two_task_update_component_with_signal_ordering() {
         let mock_ops = MockFdOps;
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
-        // State is Apply but fd_req is not in the "pending successful ApplyComplete" state
+        // Setup: state=Apply, pending successful ApplyComplete
         fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
         fd_ctx.internal.set_fd_req(
-            FdReqState::Ready, // Not Sent - no pending response
-            false,
-            None,
-            None,
-            None,
-            None,
+            FdReqState::Sent,
+            true,
+            Some(ApplyResult::ApplySuccess as u8),
+            Some(1),
+            Some(FwUpdateCmd::ApplyComplete as u8),
+            Some(0),
         );
+
+        // === TASK 1 (Initiator) — processes ApplyComplete response first ===
+        let mut apply_rsp_payload = [0u8; 256];
+        let initiator_result =
+            block_on(fd_ctx.process_apply_complete_rsp_for_test(&mut apply_rsp_payload));
+        assert!(initiator_result.is_ok());
+        assert_eq!(
+            fd_ctx.internal.get_fd_state(),
+            FirmwareDeviceState::ReadyXfer,
+        );
+
+        fd_ctx.set_pending_response(false);
+
+        // === TASK 2 (Responder) — handles UpdateComponent ===
+        let mut payload = [0u8; 512];
+        encode_update_component_request(&mut payload);
+
+        let responder_result = block_on(fd_ctx.update_component_rsp(&mut payload));
+        assert!(responder_result.is_ok());
+        let resp = UpdateComponentResponse::decode(&payload).unwrap();
+        assert_eq!(resp.completion_code, PldmBaseCompletionCode::Success as u8);
+        assert_eq!(
+            fd_ctx.internal.get_fd_state(),
+            FirmwareDeviceState::Download,
+        );
+    }
+
+    // =========================================================================
+    // State validation tests (handlers reject invalid states)
+    // =========================================================================
+
+    /// Test that activate_firmware_rsp succeeds when state is ReadyXfer
+    /// (the normal, non-racy case with no pending response).
+    #[test]
+    fn test_activate_firmware_in_ready_xfer_state() {
+        let mock_ops = MockFdOps;
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
 
         let mut payload = [0u8; 256];
         encode_activate_firmware_request(&mut payload);
 
         let result = block_on(fd_ctx.activate_firmware_rsp(&mut payload));
-        assert!(result.is_ok()); // Returns Ok with failure completion code
+        assert!(result.is_ok());
 
-        let resp = PldmFailureResponse::decode(&payload).unwrap();
-        assert_eq!(
-            resp.completion_code,
-            FwUpdateCompletionCode::InvalidStateForCommand as u8,
-            "Should reject with InvalidStateForCommand when not a race condition"
-        );
+        let resp = ActivateFirmwareResponse::decode(&payload).unwrap();
+        assert_eq!(resp.completion_code, PldmBaseCompletionCode::Success as u8);
     }
 
-    /// Verify that activate_firmware_rsp rejects requests in invalid states
-    /// (e.g., Download, Verify) where the race condition logic should not apply.
+    /// Verify that activate_firmware_rsp rejects requests in invalid states.
     #[test]
     fn test_activate_firmware_rejected_in_wrong_state() {
         let mock_ops = MockFdOps;
@@ -1498,160 +1427,24 @@ mod test {
         );
     }
 
-    /// Test that process_apply_complete_rsp tolerates the state having already
-    /// advanced past Apply (the other half of the race condition fix).
-    /// When the responder already performed the Apply→ReadyXfer→Activate transition,
-    /// the initiator's process_apply_complete_rsp should be a no-op.
+    /// Verify that update_component_rsp rejects requests in invalid states.
     #[test]
-    fn test_process_apply_complete_rsp_tolerates_advanced_state() {
+    fn test_update_component_rejected_in_wrong_state() {
         let mock_ops = MockFdOps;
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
-        // Simulate: responder already transitioned to Activate
-        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Activate);
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);
 
-        let mut payload = [0u8; 256];
-        let result = block_on(fd_ctx.handle_apply_complete_rsp_for_test(&mut payload));
-        assert!(
-            result.is_ok(),
-            "process_apply_complete_rsp should tolerate Activate state"
-        );
-
-        // Also test with ReadyXfer state
-        fd_ctx.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
-
-        let result = block_on(fd_ctx.handle_apply_complete_rsp_for_test(&mut payload));
-        assert!(
-            result.is_ok(),
-            "process_apply_complete_rsp should tolerate ReadyXfer state"
-        );
-    }
-
-    // =========================================================================
-    // Multi-component race condition tests (UpdateComponent after ApplyComplete)
-    // =========================================================================
-
-    use caliptra_mcu_pldm_common::message::firmware_update::update_component::{
-        UpdateComponentRequest, UpdateComponentResponse,
-    };
-    use caliptra_mcu_pldm_common::protocol::firmware_update::{
-        ComponentClassification, PldmFirmwareString, UpdateOptionFlags,
-    };
-
-    fn encode_update_component_request(payload: &mut [u8]) -> usize {
-        let ver_str = PldmFirmwareString::new("UTF-8", "fw-v2.0").unwrap();
-        let req = UpdateComponentRequest::new(
-            2,
-            PldmMsgType::Request,
-            ComponentClassification::Firmware,
-            0x0001,
-            0,
-            0x12345678,
-            1024,
-            UpdateOptionFlags(0),
-            &ver_str,
-        );
-        req.encode(payload).unwrap()
-    }
-
-    /// Multi-component race condition: UA sends UpdateComponent for the next
-    /// component immediately after responding to ApplyComplete(Success) for the
-    /// previous component. Same root cause as issue #1764 but for multi-component
-    /// firmware updates.
-    #[test]
-    fn test_two_task_race_update_component_after_apply_complete() {
-        let mock_ops = MockFdOps;
-        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
-
-        // Setup: FD just sent ApplyComplete(Success) for component N.
-        // The UA responded and immediately sent UpdateComponent for component N+1.
-        // State is still Apply because initiator hasn't processed the response.
-        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
-        fd_ctx.internal.set_fd_req(
-            FdReqState::Sent,
-            true,
-            Some(ApplyResult::ApplySuccess as u8),
-            Some(1),
-            Some(FwUpdateCmd::ApplyComplete as u8),
-            Some(0),
-        );
-
-        // === TASK 1 (Responder) — polled FIRST (racy ordering) ===
-        // Responder receives UpdateComponent for the next component.
-        // Without the fix, this returns InvalidStateForCommand (state=Apply, not ReadyXfer).
-        let mut payload = [0u8; 512];
-        encode_update_component_request(&mut payload);
-
-        let result = block_on(fd_ctx.update_component_rsp(&mut payload));
-        assert!(
-            result.is_ok(),
-            "Responder: update_component_rsp must not fail during Apply→ReadyXfer race"
-        );
-
-        let resp = UpdateComponentResponse::decode(&payload).unwrap();
-        assert_eq!(
-            resp.completion_code,
-            PldmBaseCompletionCode::Success as u8,
-            "Responder: expected Success, not InvalidStateForCommand (0x84)"
-        );
-
-        // State should now be Download (UpdateComponent succeeded, FD starts downloading)
-        assert_eq!(
-            fd_ctx.internal.get_fd_state(),
-            FirmwareDeviceState::Download,
-        );
-
-        // === TASK 2 (Initiator) — polled SECOND ===
-        // Initiator processes the ApplyComplete response; state already advanced past Apply.
-        let mut apply_rsp_payload = [0u8; 256];
-        let initiator_result =
-            block_on(fd_ctx.handle_apply_complete_rsp_for_test(&mut apply_rsp_payload));
-        assert!(
-            initiator_result.is_ok(),
-            "Initiator: process_apply_complete_rsp must tolerate state already advanced"
-        );
-    }
-
-    /// Normal ordering for multi-component: initiator processes ApplyComplete first,
-    /// then responder handles UpdateComponent. Should always work.
-    #[test]
-    fn test_two_task_normal_order_update_component_after_apply_complete() {
-        let mock_ops = MockFdOps;
-        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
-
-        // Setup: same as above
-        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
-        fd_ctx.internal.set_fd_req(
-            FdReqState::Sent,
-            true,
-            Some(ApplyResult::ApplySuccess as u8),
-            Some(1),
-            Some(FwUpdateCmd::ApplyComplete as u8),
-            Some(0),
-        );
-
-        // === TASK 1 (Initiator) — polled FIRST (normal ordering) ===
-        let mut apply_rsp_payload = [0u8; 256];
-        let initiator_result =
-            block_on(fd_ctx.handle_apply_complete_rsp_for_test(&mut apply_rsp_payload));
-        assert!(initiator_result.is_ok());
-        assert_eq!(
-            fd_ctx.internal.get_fd_state(),
-            FirmwareDeviceState::ReadyXfer,
-        );
-
-        // === TASK 2 (Responder) — polled SECOND ===
         let mut payload = [0u8; 512];
         encode_update_component_request(&mut payload);
 
         let result = block_on(fd_ctx.update_component_rsp(&mut payload));
         assert!(result.is_ok());
 
-        let resp = UpdateComponentResponse::decode(&payload).unwrap();
-        assert_eq!(resp.completion_code, PldmBaseCompletionCode::Success as u8);
+        let resp = PldmFailureResponse::decode(&payload).unwrap();
         assert_eq!(
-            fd_ctx.internal.get_fd_state(),
-            FirmwareDeviceState::Download,
+            resp.completion_code,
+            FwUpdateCompletionCode::InvalidStateForCommand as u8
         );
     }
 }
