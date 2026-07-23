@@ -781,6 +781,19 @@ fn main() {
                 key_paths,
                 *svn,
             ),
+            AuthManifestCommands::AttachSignatures {
+                unsigned_manifest,
+                signatures,
+                vendor_fw_pub_key,
+                owner_fw_pub_key,
+                output,
+            } => auth_manifest::attach_signatures(
+                unsigned_manifest,
+                signatures,
+                vendor_fw_pub_key.as_deref(),
+                owner_fw_pub_key.as_deref(),
+                output,
+            ),
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
         Commands::Corim { subcommand } => match subcommand {
