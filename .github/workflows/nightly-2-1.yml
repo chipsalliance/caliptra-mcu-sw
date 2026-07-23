@@ -6,9 +6,6 @@ on:
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
-  push:
-    branches:
-      - v-focutter/nightly-2-1
 
 permissions:
   actions: write
@@ -17,19 +14,15 @@ permissions:
 jobs:
   dispatch_nightly_main_2_1:
     runs-on: ubuntu-latest
+    env:
+      TARGET_REF: main-2.1
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: v-focutter/nightly-2-1
-          fetch-depth: 0
-          submodules: 'true'
-
       - name: Launch and monitor nightly workflow
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const targetRef = "v-focutter/nightly-2-1";
+            const targetRef = process.env.TARGET_REF;
             const workflowId = "nightly.yml";
             const startedAt = new Date().toISOString();
 
