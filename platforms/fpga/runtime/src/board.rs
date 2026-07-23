@@ -1054,6 +1054,11 @@ pub unsafe fn main() {
         caliptra_mcu_romtime::println!("Executing test-exit-immediately");
         exit = Some(0);
     }
+    #[cfg(feature = "test-get-alarm-expired")]
+    {
+        caliptra_mcu_romtime::println!("Executing test-get-alarm-expired");
+        exit = crate::tests::timer_alarm_test::run_test_get_alarm_expired();
+    }
     #[cfg(feature = "test-i3c-simple")]
     {
         caliptra_mcu_romtime::println!("Executing test-i3c-simple");

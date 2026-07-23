@@ -118,6 +118,7 @@ test-mcu-svn-lt-fuse = []
 test-mctp-user-loopback = []
 test-pldm-request-response = []
 # --- Test features: kernel-only ---
+test-get-alarm-expired = []
 test-exit-immediately = []
 test-i3c-simple = []
 test-i3c-constant-writes = []
