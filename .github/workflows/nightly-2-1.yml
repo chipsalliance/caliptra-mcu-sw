@@ -18,16 +18,18 @@ jobs:
   dispatch_nightly_main_2_1:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch nightly workflow on v-focutter/nightly-2-1
+      - name: Dispatch nightly workflow
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const targetRef = "v-focutter/nightly-2-1";
+
             await github.request("POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches", {
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: "nightly.yml",
-              ref: "v-focutter/nightly-2-1",
+              ref: targetRef,
               headers: {
                 "X-GitHub-Api-Version": "2022-11-28",
               },
