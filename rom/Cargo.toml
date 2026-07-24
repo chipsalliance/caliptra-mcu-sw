@@ -49,4 +49,4 @@ svn-manifest = []
 # `FirmwareBootReset`. Used by the DOT manifest hitless-update integration
 # test to exercise `FwHitlessUpdate::run` without a real PLDM update flow.
 test-force-hitless-update = []
-stable-owner-key = []
+stable-owner-key = ["caliptra-mcu-romtime/stable-owner-key"]

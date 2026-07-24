@@ -1491,12 +1491,17 @@ impl BootFlow for ColdBoot {
         {
             // Derive stable owner key using the OTP personalization seed.
             crate::call_hook(params.hooks, |h| h.pre_stable_owner_key_derivation());
-            if let Err(err) = crate::stable_owner_key::derive_stable_owner_key(env) {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] Stable owner key derivation failed: {}",
-                    HexWord(err.into())
-                );
-                fatal_error(err);
+            match crate::stable_owner_key::derive_stable_owner_key(env) {
+                Ok(cmk) => {
+                    caliptra_mcu_romtime::handoff::HandoffData::store_stable_owner_cmk(&cmk.0);
+                }
+                Err(err) => {
+                    caliptra_mcu_romtime::println!(
+                        "[mcu-rom] Stable owner key derivation failed: {}",
+                        HexWord(err.into())
+                    );
+                    fatal_error(err);
+                }
             }
             crate::call_hook(params.hooks, |h| h.post_stable_owner_key_derivation());
         }

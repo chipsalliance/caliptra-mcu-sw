@@ -13,6 +13,7 @@ mod test_active_i3c;
 mod test_caliptra_runtime_svn_burn;
 mod test_caliptra_util_host_mcu_mailbox_validator;
 mod test_caliptra_util_host_spdm_vdm_validator;
+mod test_cmk_handoff;
 mod test_defmt_logging_mailbox;
 mod test_defmt_logging_release;
 mod test_defmt_logging_vdm;

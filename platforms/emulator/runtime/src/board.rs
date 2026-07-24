@@ -354,6 +354,11 @@ pub unsafe fn main() {
             ho.rom.hek_state.active_slot,
             ho.rom.hek_state.total_slots
         );
+        #[cfg(feature = "stable-owner-key")]
+        caliptra_mcu_romtime::println!(
+            "[mcu-runtime] Stable owner key CMK from handoff: valid={}",
+            ho.rom.stable_owner_cmk_valid != 0
+        );
     } else {
         caliptra_mcu_romtime::println!("[mcu-runtime] Handoff is None");
     }
@@ -1130,6 +1135,37 @@ fn run_kernel_tests(
         } else {
             caliptra_mcu_romtime::println!(
                 "[mcu-runtime] HandOff verification FAILED: Handoff is None"
+            );
+            exit = Some(1);
+        }
+    }
+
+    #[cfg(feature = "test-cmk-handoff")]
+    {
+        caliptra_mcu_romtime::println!("Executing test-cmk-handoff");
+        // Safety: Test code, no other users of Handoff table so it's safe to take a mutable reference.
+        if let Some(ho) = unsafe { HandOff::new_mut() } {
+            if ho.rom.stable_owner_cmk_valid == 1
+                && ho.rom.fht_major_ver == caliptra_mcu_romtime::handoff::FHT_MAJOR_VERSION
+                && ho.rom.fht_minor_ver == caliptra_mcu_romtime::handoff::FHT_MINOR_VERSION
+            {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-runtime] CMK HandOff verification successful: valid={}",
+                    ho.rom.stable_owner_cmk_valid
+                );
+                exit = Some(0);
+            } else {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-runtime] CMK HandOff verification FAILED: valid={}, ver={}.{}",
+                    ho.rom.stable_owner_cmk_valid,
+                    ho.rom.fht_major_ver,
+                    ho.rom.fht_minor_ver,
+                );
+                exit = Some(1);
+            }
+        } else {
+            caliptra_mcu_romtime::println!(
+                "[mcu-runtime] CMK HandOff verification FAILED: Handoff is None"
             );
             exit = Some(1);
         }

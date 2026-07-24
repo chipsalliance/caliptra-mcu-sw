@@ -33,8 +33,22 @@ pub struct RomHandoffTable {
     #[cfg(not(feature = "ocp-lock"))]
     pub reserved_hek: [u32; 3], // 12 bytes
 
-    /// Padding to reach 64 bytes total.
-    pub padding: [u8; 44],
+    /// Stable owner key CMK handle, derived after this table's initial write.
+    /// See `stable_owner_cmk_valid` and `HandoffData::store_stable_owner_cmk`.
+    #[cfg(feature = "stable-owner-key")]
+    pub stable_owner_cmk: [u32; 32], // 128 bytes
+    #[cfg(not(feature = "stable-owner-key"))]
+    pub reserved_cmk: [u32; 32], // 128 bytes
+
+    /// Non-zero once `stable_owner_cmk` holds a derived key.
+    #[cfg(feature = "stable-owner-key")]
+    pub stable_owner_cmk_valid: u32,
+    #[cfg(not(feature = "stable-owner-key"))]
+    pub reserved_cmk_valid: u32,
+
+    /// Reserved for future ROM handoff fields. Sized so RomHandoffTable's total
+    /// size (192 bytes) is a 64-byte multiple.
+    pub padding: [u8; 40],
 }
 
 impl Default for RomHandoffTable {
@@ -47,7 +61,15 @@ impl Default for RomHandoffTable {
             hek_state: HekState::default(),
             #[cfg(not(feature = "ocp-lock"))]
             reserved_hek: [0; 3],
-            padding: [0; 44],
+            #[cfg(feature = "stable-owner-key")]
+            stable_owner_cmk: [0; 32],
+            #[cfg(not(feature = "stable-owner-key"))]
+            reserved_cmk: [0; 32],
+            #[cfg(feature = "stable-owner-key")]
+            stable_owner_cmk_valid: 0,
+            #[cfg(not(feature = "stable-owner-key"))]
+            reserved_cmk_valid: 0,
+            padding: [0; 40],
         }
     }
 }
@@ -102,6 +124,20 @@ impl HandoffData {
     /// Size of the handoff data structure.
     pub const SIZE: usize = core::mem::size_of::<Self>();
 
+    /// Store the derived stable owner key CMK handle for Runtime to consume.
+    ///
+    /// Called after `write()`, once `derive_stable_owner_key` succeeds — the CMK isn't
+    /// known at the time the rest of the table is populated. Only the CMK and its
+    /// validity flag are touched; the marker/version and other fields are left as-is.
+    #[cfg(feature = "stable-owner-key")]
+    pub fn store_stable_owner_cmk(cmk: &[u32; 32]) {
+        // SAFETY: see write() below — ROM is the sole writer of this region pre-handoff.
+        unsafe {
+            HANDOFF.rom.stable_owner_cmk = *cmk;
+            HANDOFF.rom.stable_owner_cmk_valid = 1;
+        }
+    }
+
     /// Persist handoff data structure from the given arguments.
     pub fn write(_args: HandoffArgs) {
         println!(
@@ -145,7 +181,15 @@ pub static mut HANDOFF: HandoffData = HandoffData {
         },
         #[cfg(not(feature = "ocp-lock"))]
         reserved_hek: [0; 3],
-        padding: [0; 44],
+        #[cfg(feature = "stable-owner-key")]
+        stable_owner_cmk: [0; 32],
+        #[cfg(not(feature = "stable-owner-key"))]
+        reserved_cmk: [0; 32],
+        #[cfg(feature = "stable-owner-key")]
+        stable_owner_cmk_valid: 0,
+        #[cfg(not(feature = "stable-owner-key"))]
+        reserved_cmk_valid: 0,
+        padding: [0; 40],
     },
     runtime: RuntimeHandoffTable { reserved: [0; 64] },
 };
