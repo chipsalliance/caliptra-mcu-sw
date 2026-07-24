@@ -80,6 +80,91 @@ fn maybe_enter_dot_recovery_reset_failure_flow(
     fatal_error(err);
 }
 
+/// Attempts a configured, noninteractive backup-blob recovery.
+///
+/// On success, re-reads the active copy and runs the normal DOT flow so the
+/// current cold boot can continue with the recovered owner.
+fn attempt_dot_backup_recovery(
+    env: &mut RomEnv,
+    dot_fuses: &crate::DotFuses,
+    params: &RomParameters,
+    dot_flash: &dyn crate::hil::FlashStorage,
+    key_type: CmStableKeyType,
+) -> Option<caliptra_mcu_error::McuResult<Option<OwnerPkHash>>> {
+    if params.dot_recovery_policy != crate::DotRecoveryPolicy::BackupBlob {
+        return None;
+    }
+    let recovery_handler = params.dot_recovery_handler?;
+
+    Some(
+        device_ownership_transfer::dot_recovery_flow(
+            env,
+            dot_fuses,
+            recovery_handler,
+            dot_flash,
+            key_type,
+        )
+        .and_then(|()| {
+            let mut blob_bytes = [0u8; device_ownership_transfer::DOT_BLOB_SIZE];
+            dot_flash
+                .read(&mut blob_bytes, 0)
+                .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+            let blob: DotBlob = transmute!(blob_bytes);
+            device_ownership_transfer::dot_flow(env, dot_fuses, &blob, key_type)
+        }),
+    )
+}
+
+/// Handles an empty or corrupt DOT blob while the device is locked.
+///
+/// With reset recovery enabled, a configured local backup is attempted first.
+/// If it cannot restore a valid active blob, ROM reports the failure to the BMC
+/// through the reset-recovery flow. Platforms using the legacy handler chain
+/// retain their existing behavior when reset recovery is disabled.
+fn recover_locked_dot_or_fail(
+    env: &mut RomEnv,
+    dot_fuses: &crate::DotFuses,
+    params: &RomParameters,
+    dot_flash: &dyn crate::hil::FlashStorage,
+    i3c_base: I3cRegs,
+    original_err: McuError,
+) -> Option<OwnerPkHash> {
+    let key_type = params
+        .dot_stable_key_type
+        .unwrap_or(CmStableKeyType::IDevId);
+
+    if params.dot_recovery_reset_flow {
+        if let Some(result) =
+            attempt_dot_backup_recovery(env, dot_fuses, params, dot_flash, key_type)
+        {
+            match result {
+                Ok(owner) => {
+                    caliptra_mcu_romtime::println!(
+                        "[mcu-rom] DOT backup recovery succeeded, continuing cold boot"
+                    );
+                    return owner;
+                }
+                Err(err) => {
+                    caliptra_mcu_romtime::println!(
+                        "[mcu-rom] DOT backup recovery failed: {}",
+                        HexWord(err.into())
+                    );
+                }
+            }
+        }
+    }
+
+    maybe_enter_dot_recovery_reset_failure_flow(
+        &env.mci,
+        i3c_base,
+        params.dot_recovery_reset_flow,
+        original_err,
+    );
+
+    let err = attempt_dot_locked_recovery(env, dot_fuses, params, dot_flash, key_type);
+    fatal_error(err)
+}
+
 impl ColdBoot {
     fn program_field_entropy(
         program_field_entropy: &[bool; 4],
@@ -737,21 +822,18 @@ impl BootFlow for ColdBoot {
 
             if dot_blob.iter().all(|&b| b == 0) || dot_blob.iter().all(|&b| b == 0xFF) {
                 if dot_fuses.enabled && dot_fuses.is_locked() {
-                    maybe_enter_dot_recovery_reset_failure_flow(
-                        &env.mci,
+                    recover_locked_dot_or_fail(
+                        env,
+                        &dot_fuses,
+                        &params,
+                        dot_flash,
                         i3c_base,
-                        params.dot_recovery_reset_flow,
                         McuError::ROM_COLD_BOOT_DOT_ERROR,
-                    );
-                    let key_type = params
-                        .dot_stable_key_type
-                        .unwrap_or(CmStableKeyType::IDevId);
-                    let err =
-                        attempt_dot_locked_recovery(env, &dot_fuses, &params, dot_flash, key_type);
-                    fatal_error(err);
+                    )
+                } else {
+                    caliptra_mcu_romtime::println!("[mcu-rom] DOT empty");
+                    device_ownership_transfer::load_owner_pkhash(&env.otp)
                 }
-                caliptra_mcu_romtime::println!("[mcu-rom] DOT empty");
-                device_ownership_transfer::load_owner_pkhash(&env.otp)
             } else {
                 let dot_blob: DotBlob = transmute!(dot_blob);
                 match device_ownership_transfer::dot_flow(
@@ -765,26 +847,16 @@ impl BootFlow for ColdBoot {
                     Ok(owner) => owner,
                     Err(err) => {
                         if dot_fuses.is_locked() {
-                            maybe_enter_dot_recovery_reset_failure_flow(
-                                &env.mci,
-                                i3c_base,
-                                params.dot_recovery_reset_flow,
-                                err,
+                            recover_locked_dot_or_fail(
+                                env, &dot_fuses, &params, dot_flash, i3c_base, err,
+                            )
+                        } else {
+                            caliptra_mcu_romtime::println!(
+                                "[mcu-rom] DOT err: {}",
+                                HexWord(err.into())
                             );
-                            let key_type = params
-                                .dot_stable_key_type
-                                .unwrap_or(CmStableKeyType::IDevId);
-                            // Try locked-state recovery; if it succeeds it
-                            // resets and never returns.
-                            let _recovery_err = attempt_dot_locked_recovery(
-                                env, &dot_fuses, &params, dot_flash, key_type,
-                            );
+                            fatal_error(err)
                         }
-                        caliptra_mcu_romtime::println!(
-                            "[mcu-rom] DOT err: {}",
-                            HexWord(err.into())
-                        );
-                        fatal_error(err);
                     }
                 }
             }
