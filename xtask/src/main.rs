@@ -728,6 +728,7 @@ fn main() {
                 soc_manifest,
                 mcu_runtime,
                 soc_images,
+                &None,
                 0,
                 output,
             ),
