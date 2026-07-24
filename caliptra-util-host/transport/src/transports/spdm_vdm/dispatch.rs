@@ -36,3 +36,35 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transports::spdm_vdm::protocol::command_id_to_vdm;
+    use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
+
+    #[test]
+    fn dispatch_and_protocol_mappings_stay_aligned() {
+        let ids = [
+            CaliptraCommandId::ExportAttestedCsr,
+            CaliptraCommandId::ProdDebugUnlockReq,
+            CaliptraCommandId::ProdDebugUnlockToken,
+            CaliptraCommandId::FeProg,
+            CaliptraCommandId::GetAuthCmdChallenge,
+        ];
+
+        for id in ids {
+            assert!(
+                get_command_handler(id as u32).is_some(),
+                "missing dispatch for {id:?}"
+            );
+            assert!(
+                command_id_to_vdm(id as u32).is_some(),
+                "missing VDM code for {id:?}"
+            );
+        }
+
+        assert!(get_command_handler(CaliptraCommandId::HashInit as u32).is_none());
+        assert!(command_id_to_vdm(CaliptraCommandId::HashInit as u32).is_none());
+    }
+}

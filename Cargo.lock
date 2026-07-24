@@ -2032,6 +2032,7 @@ dependencies = [
 name = "caliptra-mcu-spdm-vdm-handler"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-common-commands",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-spdm-codec",
