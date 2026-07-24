@@ -26,6 +26,7 @@ mod test_fpga_flash_ctrl;
 mod test_handoff;
 mod test_hek;
 mod test_i3c_constant_writes;
+mod test_i3c_dcr;
 mod test_i3c_simple;
 mod test_log_flash_usermode;
 mod test_mctp_capsule_loopback;

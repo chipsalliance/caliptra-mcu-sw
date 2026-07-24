@@ -1173,12 +1173,14 @@ impl BootFlow for ColdBoot {
             i3c1.configure(crate::I3cConfig {
                 static_addr: straps.i3c1_static_addr,
                 recovery_enabled: true,
+                dcr: crate::i3c::MCTP_DCR,
                 timings: params.i3c1_timings.unwrap_or_default(),
             });
         } else {
             i3c.configure(crate::I3cConfig {
                 static_addr: straps.i3c_static_addr,
                 recovery_enabled: true,
+                dcr: crate::i3c::MCTP_DCR,
                 timings: params.i3c_timings.unwrap_or_default(),
             });
         }
