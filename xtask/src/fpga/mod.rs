@@ -27,6 +27,8 @@ struct BuildArgs<'a> {
     runtime_features: &'a Option<String>,
     separate_runtimes: bool,
     mcu_cfgs: &'a Option<Vec<ImageCfg>>,
+    shard_index: usize,
+    total_shards: usize,
 }
 
 struct BootstrapArgs<'a> {
@@ -136,6 +138,14 @@ pub(crate) enum Fpga {
         /// Build a separate runtime for each feature flag
         #[arg(long)]
         separate_runtimes: bool,
+
+        /// Shard index for parallel build sharding (0-indexed)
+        #[arg(long, default_value_t = 0)]
+        shard_index: usize,
+
+        /// Total number of parallel build shards
+        #[arg(long, default_value_t = 1)]
+        total_shards: usize,
 
         // MCU configuration to include in the SoC manifest
         // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>
@@ -254,6 +264,8 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             runtime_features,
             separate_runtimes,
             mcu_cfgs,
+            shard_index,
+            total_shards,
         } => {
             println!("Building FPGA firmware");
             let resolved_target = resolve_target_host(target_host.as_deref());
@@ -269,6 +281,8 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                     runtime_features,
                     separate_runtimes: *separate_runtimes,
                     mcu_cfgs,
+                    shard_index: *shard_index,
+                    total_shards: *total_shards,
                 })?;
         }
         Fpga::BuildTest {

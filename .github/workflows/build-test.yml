@@ -94,7 +94,11 @@ jobs:
   build-firmware:
     runs-on: e2-standard-16-big-disk
     needs: [build-xtask]
-    timeout-minutes: 90
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4]
 
     env:
       CARGO_INCREMENTAL: 0
@@ -156,24 +160,61 @@ jobs:
       - name: Make xtask executable
         run: chmod +x /tmp/xtask
 
-      - name: Build ROM and runtime binaries
+      - name: Build ROM and runtime binaries (Shard ${{ matrix.shard }}/5)
         run: |
-          # Build all test runtime features used by integration tests
-          # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
-          # Note: parallel-build is disabled because it creates separate target dirs
-          # per build, which exhausts disk space on the e2-standard-8 runner.
           /tmp/xtask all-build --platform emulator \
             --rom-features "hw-2-1" \
             --test-rom-features "ocp-lock,stable-owner-key" \
-            --separate-runtimes
+            --separate-runtimes \
+            --shard-index ${{ matrix.shard }} \
+            --total-shards 5
           sccache --show-stats
 
-      - name: Build release ROM and runtime binaries
+      - name: Build release ROM and runtime binaries (Shard ${{ matrix.shard }}/5)
         run: |
           /tmp/xtask all-build \
             --platform emulator --separate-runtimes \
-            --profile release
+            --profile release \
+            --shard-index ${{ matrix.shard }} \
+            --total-shards 5
           sccache --show-stats
+
+      - name: Upload partial firmware bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-bundle-shard-${{ matrix.shard }}
+          path: target/all-fw*.zip
+          retention-days: 1
+
+  merge-firmware-bundles:
+    needs: build-firmware
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Install zip/unzip tools
+        run: sudo apt-get update -qy && sudo apt-get install -qy zip unzip
+
+      - name: Download all shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-bundle-shard-*
+          path: staging/
+
+      - name: Merge firmware bundles
+        run: |
+          mkdir -p target/merged-all-fw target/merged-all-fw-release
+          for shard_dir in staging/firmware-bundle-shard-*; do
+            if [ -f "$shard_dir"/all-fw-shard-*.zip ]; then
+              unzip -o "$shard_dir"/all-fw-shard-*.zip -d target/merged-all-fw/
+            fi
+            if [ -f "$shard_dir"/all-fw-release-shard-*.zip ]; then
+              unzip -o "$shard_dir"/all-fw-release-shard-*.zip -d target/merged-all-fw-release/
+            fi
+          done
+
+          cd target/merged-all-fw && zip -r ../all-fw.zip . && cd -
+          cd target/merged-all-fw-release && zip -r ../all-fw-release.zip . && cd -
 
       - name: Upload firmware bundle
         uses: actions/upload-artifact@v4
@@ -355,7 +396,7 @@ jobs:
 
   test_emulator:
     runs-on: e2-standard-4
-    needs: [precheckin, build-firmware, build-emulator, build-tests, build-xtask]
+    needs: [precheckin, merge-firmware-bundles, build-emulator, build-tests, build-xtask]
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -495,7 +536,7 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    needs: [precheckin, build-firmware, build-emulator, build-tests, build-xtask]
+    needs: [precheckin, merge-firmware-bundles, build-emulator, build-tests, build-xtask]
 
     env:
       CARGO_INCREMENTAL: 0

@@ -587,6 +587,8 @@ pub struct AllBuildArgs<'a> {
     pub vendor: Option<&'a str>,
     pub model: Option<&'a str>,
     pub profile: Option<&'a str>,
+    pub shard_index: usize,
+    pub total_shards: usize,
 }
 
 /// Build Caliptra ROM and firmware bundle, MCU ROM and runtime, and SoC manifest, and package them all together in a ZIP file.
@@ -603,6 +605,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         vendor,
         model,
         profile,
+        shard_index,
+        total_shards,
     } = args;
 
     // TODO: use temp files
@@ -691,7 +695,16 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let mut separate_features = vec![];
     if separate_runtimes {
         // build a separate runtime for each feature flag, since they are used as tests
-        separate_features = runtime_features;
+        if total_shards > 1 {
+            separate_features = runtime_features
+                .into_iter()
+                .enumerate()
+                .filter(|(idx, _)| idx % total_shards == shard_index)
+                .map(|(_, feature)| feature)
+                .collect();
+        } else {
+            separate_features = runtime_features;
+        }
     } else {
         // build one runtime with all feature flags
         base_runtime_features = runtime_features;
@@ -1071,12 +1084,13 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         .collect();
     let test_runtimes = test_runtimes?;
 
-    let default_name = if is_release {
-        "all-fw-release.zip"
-    } else {
-        "all-fw.zip"
+    let default_name = match (is_release, total_shards > 1) {
+        (true, true) => format!("all-fw-release-shard-{}.zip", shard_index),
+        (true, false) => "all-fw-release.zip".to_string(),
+        (false, true) => format!("all-fw-shard-{}.zip", shard_index),
+        (false, false) => "all-fw.zip".to_string(),
     };
-    let default_path = crate::target_dir().join(default_name);
+    let default_path = crate::target_dir().join(&default_name);
     let path = output.map(Path::new).unwrap_or(&default_path);
     println!("Creating ZIP file: {}", path.display());
     let file = std::fs::File::create(path)?;

@@ -220,6 +220,14 @@ enum Commands {
         /// Cargo profile to build with.  Default: `devel`.
         #[arg(long, default_value = "devel")]
         profile: String,
+
+        /// Shard index for parallel build sharding (0-indexed)
+        #[arg(long, default_value_t = 0)]
+        shard_index: usize,
+
+        /// Total number of parallel build shards
+        #[arg(long, default_value_t = 1)]
+        total_shards: usize,
     },
     /// Generate CoRIM (Concise Reference Integrity Manifest) from build artifacts
     Corim {
@@ -609,6 +617,8 @@ fn main() {
             vendor,
             model,
             profile,
+            shard_index,
+            total_shards,
         } => caliptra_mcu_builder::all_build(caliptra_mcu_builder::AllBuildArgs {
             output: output.as_deref(),
             platform: platform.as_deref(),
@@ -621,6 +631,8 @@ fn main() {
             vendor: vendor.as_deref(),
             model: model.as_deref(),
             profile: Some(profile.as_str()),
+            shard_index: *shard_index,
+            total_shards: *total_shards,
         }),
         Commands::EmulatorBuild { output } => {
             caliptra_mcu_builder::emulator_build(caliptra_mcu_builder::EmulatorBuildArgs {
