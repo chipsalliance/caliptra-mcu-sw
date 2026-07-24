@@ -27,8 +27,23 @@ const SECURED_SPDM_OVER_MCTP_VERSIONS: [[u8; 4]; 1] = [
     [0xF2, 0xF0, 0xF0, 0x00], // DSP0276 2.0.0
 ];
 
-const CALIPTRA_IANA_VDM_VERSIONS: [[u8; 4]; 1] = [
-    [0xF1, 0xF0, 0xF0, 0x00], // Caliptra/OCP VDM 1.0.0
+const VENDOR_ID_SET_SELECTOR_FIRST: u8 = 0;
+const VENDOR_ID_SET_SELECTOR_NO_MORE: u8 = 0xFF;
+const VENDOR_ID_FORMAT_IANA: u8 = 0x01;
+const GET_VENDOR_DEFINED_MSG_SUPPORT_EMPTY_RESP: [u8; 2] = [
+    CmdCompletionCode::Success as u8,
+    VENDOR_ID_SET_SELECTOR_NO_MORE,
+];
+const GET_VENDOR_DEFINED_MSG_SUPPORT_CALIPTRA_RESP: [u8; 9] = [
+    CmdCompletionCode::Success as u8,
+    VENDOR_ID_SET_SELECTOR_NO_MORE,
+    VENDOR_ID_FORMAT_IANA,
+    0x00,
+    0x00,
+    0xA6,
+    0x7F,
+    0x00,
+    0x01,
 ];
 
 bitfield! {
@@ -99,36 +114,55 @@ pub fn process_mctp_control_msg(
     );
 
     let req_buf = &msg_buf[MCTP_CTRL_MSG_HEADER_LEN..];
-    let mctp_ctrl_cmd: MCTPCtrlCmd = mctp_ctrl_msg_hdr.cmd().into();
-    if req_buf.len() < mctp_ctrl_cmd.req_data_len() {
-        return Err(ErrorCode::INVAL);
-    }
-
-    if resp_buf.len() < MCTP_CTRL_MSG_HEADER_LEN + mctp_ctrl_cmd.resp_data_len() {
-        return Err(ErrorCode::NOMEM);
-    }
-
-    let rsp_payload = &mut resp_buf[MCTP_CTRL_MSG_HEADER_LEN..];
     let mut assigned_eid = None;
-    let resp_data_len = match mctp_ctrl_cmd {
-        MCTPCtrlCmd::SetEID => mctp_ctrl_cmd
-            .process_set_endpoint_id(req_buf, rsp_payload)
-            .map(|eid| {
-                assigned_eid = eid;
-                mctp_ctrl_cmd.resp_data_len()
-            }),
-        MCTPCtrlCmd::GetEID => mctp_ctrl_cmd
-            .process_get_endpoint_id(local_eid, rsp_payload)
-            .map(|_| mctp_ctrl_cmd.resp_data_len()),
-        MCTPCtrlCmd::GetVersionSupport => {
-            mctp_ctrl_cmd.process_get_version_support(req_buf, rsp_payload, supported_msg_types)
+    let resp_data_len = match MCTPCtrlCmd::try_from(mctp_ctrl_msg_hdr.cmd()) {
+        Ok(mctp_ctrl_cmd) => {
+            if req_buf.len() < mctp_ctrl_cmd.req_data_len() {
+                return Err(ErrorCode::INVAL);
+            }
+
+            if resp_buf.len() < MCTP_CTRL_MSG_HEADER_LEN + mctp_ctrl_cmd.resp_data_len() {
+                return Err(ErrorCode::NOMEM);
+            }
+
+            let rsp_payload = &mut resp_buf[MCTP_CTRL_MSG_HEADER_LEN..];
+            match mctp_ctrl_cmd {
+                MCTPCtrlCmd::SetEID => mctp_ctrl_cmd
+                    .process_set_endpoint_id(req_buf, rsp_payload)
+                    .map(|eid| {
+                        assigned_eid = eid;
+                        mctp_ctrl_cmd.resp_data_len()
+                    }),
+                MCTPCtrlCmd::GetEID => mctp_ctrl_cmd
+                    .process_get_endpoint_id(local_eid, rsp_payload)
+                    .map(|_| mctp_ctrl_cmd.resp_data_len()),
+                MCTPCtrlCmd::GetVersionSupport => mctp_ctrl_cmd.process_get_version_support(
+                    req_buf,
+                    rsp_payload,
+                    supported_msg_types,
+                ),
+                MCTPCtrlCmd::GetMsgTypeSupport => mctp_ctrl_cmd.process_get_msg_type_support(
+                    req_buf,
+                    rsp_payload,
+                    supported_msg_types,
+                ),
+                MCTPCtrlCmd::GetVendorDefinedMsgSupport => {
+                    MCTPCtrlCmd::process_get_vendor_defined_msg_support(
+                        req_buf,
+                        rsp_payload,
+                        supported_msg_types,
+                    )
+                }
+            }
         }
-        MCTPCtrlCmd::GetMsgTypeSupport => {
-            mctp_ctrl_cmd.process_get_msg_type_support(req_buf, rsp_payload, supported_msg_types)
-        }
-        MCTPCtrlCmd::Unsupported => {
+        Err(()) => {
+            if resp_buf.len() < MCTP_CTRL_MSG_HEADER_LEN + 1 {
+                return Err(ErrorCode::NOMEM);
+            }
+
+            let rsp_payload = &mut resp_buf[MCTP_CTRL_MSG_HEADER_LEN..];
             rsp_payload[0] = CmdCompletionCode::ErrorNotSupportedCmd as u8;
-            Ok(mctp_ctrl_cmd.resp_data_len())
+            Ok(1)
         }
     }?;
 
@@ -142,20 +176,23 @@ pub fn process_mctp_control_msg(
 pub enum MCTPCtrlCmd {
     SetEID = 1,
     GetEID = 2,
-    GetMsgTypeSupport = 5,
     GetVersionSupport = 4,
-    Unsupported = 0xFF,
+    GetMsgTypeSupport = 5,
+    GetVendorDefinedMsgSupport = 6,
 }
 
-impl From<u8> for MCTPCtrlCmd {
-    fn from(val: u8) -> MCTPCtrlCmd {
-        match val {
-            1 => MCTPCtrlCmd::SetEID,
-            2 => MCTPCtrlCmd::GetEID,
-            4 => MCTPCtrlCmd::GetVersionSupport,
-            5 => MCTPCtrlCmd::GetMsgTypeSupport,
-            _ => MCTPCtrlCmd::Unsupported,
-        }
+impl TryFrom<u8> for MCTPCtrlCmd {
+    type Error = ();
+
+    fn try_from(val: u8) -> Result<Self, Self::Error> {
+        Ok(match val {
+            1 => Self::SetEID,
+            2 => Self::GetEID,
+            4 => Self::GetVersionSupport,
+            5 => Self::GetMsgTypeSupport,
+            6 => Self::GetVendorDefinedMsgSupport,
+            _ => return Err(()),
+        })
     }
 }
 
@@ -166,7 +203,7 @@ impl MCTPCtrlCmd {
             MCTPCtrlCmd::GetEID => 0,
             MCTPCtrlCmd::GetVersionSupport => 1,
             MCTPCtrlCmd::GetMsgTypeSupport => 0,
-            MCTPCtrlCmd::Unsupported => 0,
+            MCTPCtrlCmd::GetVendorDefinedMsgSupport => 1,
         }
     }
 
@@ -176,7 +213,9 @@ impl MCTPCtrlCmd {
             MCTPCtrlCmd::GetEID => 4,
             MCTPCtrlCmd::GetVersionSupport => 18, // 2 bytes header + 4 entries * 4 bytes each
             MCTPCtrlCmd::GetMsgTypeSupport => 2 + MCTP_NUM_MSG_TYPES_SUPPORTED, // 1 byte for completion code + 1 byte for count + supported message types
-            MCTPCtrlCmd::Unsupported => 1, // 1 byte for completion code
+            MCTPCtrlCmd::GetVendorDefinedMsgSupport => {
+                GET_VENDOR_DEFINED_MSG_SUPPORT_CALIPTRA_RESP.len()
+            }
         }
     }
 
@@ -259,9 +298,7 @@ impl MCTPCtrlCmd {
         }
 
         rsp_buf[..self.resp_data_len()].fill(0);
-        let version_type = VersionSupportType::from(req[0]);
-
-        match version_type {
+        match VersionSupportType::from(req[0]) {
             VersionSupportType::BaseSpec | VersionSupportType::ControlProtocolMessage => {
                 Self::write_get_version_support_success(rsp_buf, &MCTP_BASE_CONTROL_VERSIONS)
             }
@@ -275,11 +312,6 @@ impl MCTPCtrlCmd {
                 if supported_msg_types.contains(&MessageType::SecureSpdm) =>
             {
                 Self::write_get_version_support_success(rsp_buf, &SECURED_SPDM_OVER_MCTP_VERSIONS)
-            }
-            VersionSupportType::VendorControlled7F
-                if supported_msg_types.contains(&MessageType::Caliptra) =>
-            {
-                Self::write_get_version_support_success(rsp_buf, &CALIPTRA_IANA_VDM_VERSIONS)
             }
             _ => Self::write_get_version_support_unsupported(rsp_buf),
         }
@@ -332,6 +364,36 @@ impl MCTPCtrlCmd {
         }
 
         Ok(2 + supported_msg_types.len())
+    }
+
+    pub fn process_get_vendor_defined_msg_support(
+        req: &[u8],
+        rsp_buf: &mut [u8],
+        supported_msg_types: &[MessageType],
+    ) -> Result<usize, ErrorCode> {
+        if req.is_empty() {
+            return Err(ErrorCode::INVAL);
+        }
+
+        if req[0] != VENDOR_ID_SET_SELECTOR_FIRST
+            || !supported_msg_types.contains(&MessageType::Caliptra)
+        {
+            if rsp_buf.len() < GET_VENDOR_DEFINED_MSG_SUPPORT_EMPTY_RESP.len() {
+                return Err(ErrorCode::NOMEM);
+            }
+            rsp_buf[..GET_VENDOR_DEFINED_MSG_SUPPORT_EMPTY_RESP.len()]
+                .copy_from_slice(&GET_VENDOR_DEFINED_MSG_SUPPORT_EMPTY_RESP);
+            return Ok(GET_VENDOR_DEFINED_MSG_SUPPORT_EMPTY_RESP.len());
+        }
+
+        if rsp_buf.len() < GET_VENDOR_DEFINED_MSG_SUPPORT_CALIPTRA_RESP.len() {
+            return Err(ErrorCode::NOMEM);
+        }
+
+        rsp_buf[..GET_VENDOR_DEFINED_MSG_SUPPORT_CALIPTRA_RESP.len()]
+            .copy_from_slice(&GET_VENDOR_DEFINED_MSG_SUPPORT_CALIPTRA_RESP);
+
+        Ok(GET_VENDOR_DEFINED_MSG_SUPPORT_CALIPTRA_RESP.len())
     }
 }
 
@@ -488,36 +550,31 @@ impl From<u8> for EIDType {
     }
 }
 
-// Get Version Support Request
-#[derive(Debug)]
+// Get Version Support Request "Message Type Number" values.
 enum VersionSupportType {
     BaseSpec,
-    VendorControlled7E,
-    VendorControlled7F,
+    VendorDefinedPci,
+    VendorDefinedIana,
     ControlProtocolMessage,
     DSP0241,
     DSP0261,
     DSP0275,
     DSP0276,
-    #[allow(dead_code)]
-    Other(u8),
+    Other,
 }
-
-#[allow(dead_code)]
-struct VersionSupportResp {}
 
 impl From<u8> for VersionSupportType {
     fn from(val: u8) -> VersionSupportType {
         match val {
             0xff => VersionSupportType::BaseSpec,
-            0x7e => VersionSupportType::VendorControlled7E,
-            0x7f => VersionSupportType::VendorControlled7F,
+            0x7e => VersionSupportType::VendorDefinedPci,
+            0x7f => VersionSupportType::VendorDefinedIana,
             0x00 => VersionSupportType::ControlProtocolMessage,
             0x01 => VersionSupportType::DSP0241,
-            0x02 => VersionSupportType::DSP0261,
+            0x02 | 0x03 => VersionSupportType::DSP0261,
             0x05 => VersionSupportType::DSP0275,
             0x06 => VersionSupportType::DSP0276,
-            _ => VersionSupportType::Other(val),
+            _ => VersionSupportType::Other,
         }
     }
 }
@@ -622,6 +679,84 @@ mod tests {
 
         assert_eq!(resp.assigned_eid, Some(0x0A));
         assert_eq!(resp.resp_len, MCTP_CTRL_MSG_HEADER_LEN + 4);
+    }
+
+    #[test]
+    fn test_get_vendor_defined_msg_support_returns_caliptra_iana_capability() {
+        const INSTANCE_ID: u8 = 0x05;
+
+        let mut msg_req = [0; MCTP_CTRL_MSG_HEADER_LEN + 1];
+        let mut msg_hdr = MCTPCtrlMsgHdr::new();
+        msg_hdr.prepare_header(
+            1,
+            0,
+            INSTANCE_ID,
+            MCTPCtrlCmd::GetVendorDefinedMsgSupport as u8,
+        );
+        msg_hdr
+            .write_to_buf(&mut msg_req[..MCTP_CTRL_MSG_HEADER_LEN])
+            .unwrap();
+        msg_req[MCTP_CTRL_MSG_HEADER_LEN] = VENDOR_ID_SET_SELECTOR_FIRST;
+
+        let rsp_buf = &mut [0xA5; MCTP_CTRL_MSG_HEADER_LEN + 9];
+        let resp =
+            process_mctp_control_msg(&msg_req, 0, &[MessageType::Caliptra], rsp_buf).unwrap();
+
+        let mut hdr = [0; 4];
+        hdr[..MCTP_CTRL_MSG_HEADER_LEN].copy_from_slice(&rsp_buf[..MCTP_CTRL_MSG_HEADER_LEN]);
+        let rsp_hdr = MCTPCtrlMsgHdr(u32::from_le_bytes(hdr));
+
+        assert_eq!(resp.assigned_eid, None);
+        assert_eq!(resp.resp_len, MCTP_CTRL_MSG_HEADER_LEN + 9);
+        assert_eq!(rsp_hdr.rq(), 0);
+        assert_eq!(rsp_hdr.datagram(), 0);
+        assert_eq!(rsp_hdr.instance_id(), INSTANCE_ID);
+        assert_eq!(rsp_hdr.cmd(), MCTPCtrlCmd::GetVendorDefinedMsgSupport as u8);
+        assert_eq!(
+            &rsp_buf[MCTP_CTRL_MSG_HEADER_LEN..resp.resp_len],
+            &[
+                CmdCompletionCode::Success as u8,
+                VENDOR_ID_SET_SELECTOR_NO_MORE,
+                VENDOR_ID_FORMAT_IANA,
+                0x00,
+                0x00,
+                0xA6,
+                0x7F,
+                0x00,
+                0x01,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_unsupported_control_cmd_returns_not_supported_response() {
+        const UNSUPPORTED_CMD: u8 = 0x15;
+        const INSTANCE_ID: u8 = 0x05;
+
+        let mut msg_req = [0; MCTP_CTRL_MSG_HEADER_LEN];
+        let mut msg_hdr = MCTPCtrlMsgHdr::new();
+        msg_hdr.prepare_header(1, 0, INSTANCE_ID, UNSUPPORTED_CMD);
+        msg_hdr
+            .write_to_buf(&mut msg_req[..MCTP_CTRL_MSG_HEADER_LEN])
+            .unwrap();
+
+        let rsp_buf = &mut [0xA5; MCTP_CTRL_MSG_HEADER_LEN + 1];
+        let resp = process_mctp_control_msg(&msg_req, 0, &[], rsp_buf).unwrap();
+
+        let mut hdr = [0; 4];
+        hdr[..MCTP_CTRL_MSG_HEADER_LEN].copy_from_slice(&rsp_buf[..MCTP_CTRL_MSG_HEADER_LEN]);
+        let rsp_hdr = MCTPCtrlMsgHdr(u32::from_le_bytes(hdr));
+
+        assert_eq!(resp.assigned_eid, None);
+        assert_eq!(resp.resp_len, MCTP_CTRL_MSG_HEADER_LEN + 1);
+        assert_eq!(rsp_hdr.rq(), 0);
+        assert_eq!(rsp_hdr.datagram(), 0);
+        assert_eq!(rsp_hdr.instance_id(), INSTANCE_ID);
+        assert_eq!(rsp_hdr.cmd(), UNSUPPORTED_CMD);
+        assert_eq!(
+            rsp_buf[MCTP_CTRL_MSG_HEADER_LEN],
+            CmdCompletionCode::ErrorNotSupportedCmd as u8
+        );
     }
 
     #[test]
@@ -772,13 +907,21 @@ mod tests {
                 [0xF2, 0xF0, 0xF0, 0x00], // DSP0276 2.0.0
             ],
         );
-        assert_get_version_support(
-            &[MessageType::Caliptra],
-            MessageType::Caliptra as u8,
-            &[
-                [0xF1, 0xF0, 0xF0, 0x00], // Caliptra/OCP VDM 1.0.0
-            ],
-        );
+    }
+
+    #[test]
+    fn test_get_version_support_vendor_defined_iana_unsupported() {
+        let req = [MessageType::Caliptra as u8];
+        let rsp_buf = &mut [0; 18];
+
+        MCTPCtrlCmd::GetVersionSupport
+            .process_get_version_support(&req, rsp_buf, &[MessageType::Caliptra])
+            .unwrap();
+
+        let header: GetVersionSupportHeaderResp =
+            GetVersionSupportHeaderResp::read_from_bytes(&rsp_buf[..2]).unwrap();
+        assert_eq!(header.completion_code, 0x80);
+        assert_eq!(header.entry_counter, 0);
     }
 
     #[test]
@@ -803,7 +946,6 @@ mod tests {
             MessageType::Pldm,
             MessageType::Spdm,
             MessageType::SecureSpdm,
-            MessageType::Caliptra,
         ];
 
         for msg_type in supported_msg_types {
