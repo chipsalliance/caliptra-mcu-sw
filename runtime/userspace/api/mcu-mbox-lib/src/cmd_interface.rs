@@ -27,7 +27,7 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
     McuFipsPeriodicStatusResp,
 };
-use caliptra_mcu_romtime::{fuse_read_dai_params, PartitionId};
+use caliptra_mcu_otp_fuse::{fuse_read_dai_params, PartitionId};
 use core::sync::atomic::{AtomicBool, Ordering};
 use mcu_caliptra_api_lite::{raw, ApiAlloc, FwInfo};
 use mcu_error::McuResult;

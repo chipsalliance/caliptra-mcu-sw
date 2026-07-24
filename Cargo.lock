@@ -1705,7 +1705,7 @@ dependencies = [
  "caliptra-mcu-libtock_runtime",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
- "caliptra-mcu-romtime",
+ "caliptra-mcu-otp-fuse",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-userlog",
  "defmt",
@@ -1760,6 +1760,14 @@ dependencies = [
 [[package]]
 name = "caliptra-mcu-otp-digest"
 version = "0.1.0"
+
+[[package]]
+name = "caliptra-mcu-otp-fuse"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-error",
+ "caliptra-mcu-registers-generated",
+]
 
 [[package]]
 name = "caliptra-mcu-otp-lifecycle"
@@ -1933,6 +1941,7 @@ dependencies = [
  "caliptra-mcu-error",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-digest",
+ "caliptra-mcu-otp-fuse",
  "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-registers-generated",
  "caliptra-registers",
