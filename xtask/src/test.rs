@@ -30,6 +30,7 @@ const EXCLUDED_PACKAGES: &[&str] = &[
     "caliptra-mcu-syscalls_tests",
     "caliptra-mcu-network-rom",
     "caliptra-mcu-provisioning-test-unlocked-fw",
+    "caliptra-mcu-provisioning-manuf-fw",
 ];
 
 pub(crate) fn test(args: TestArgs) -> Result<()> {
