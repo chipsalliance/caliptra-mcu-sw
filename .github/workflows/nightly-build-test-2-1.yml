@@ -1,0 +1,12 @@
+# Licensed under the Apache-2.0 license
+
+name: Nightly Build and Test (main-2.1)
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    uses: chipsalliance/caliptra-mcu-sw/.github/workflows/build-test.yml@main-2.1
