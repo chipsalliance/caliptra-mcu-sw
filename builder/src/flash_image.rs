@@ -253,10 +253,15 @@ pub fn flash_image_create_inner(
     }
 
     // Generate FirmwareImage from soc image buffer
-    let mut soc_image_identifer = SOC_IMAGES_BASE_IDENTIFIER;
-    for soc_img in soc_img_buffers.iter() {
-        images.push(FirmwareImage::new(soc_image_identifer, soc_img)?);
-        soc_image_identifer += 1;
+    // Use image_id from soc_images config when available; otherwise fall back to
+    // SOC_IMAGES_BASE_IDENTIFIER + index for backward compatibility.
+    for (i, soc_img) in soc_img_buffers.iter().enumerate() {
+        let identifier = if let Some(ref soc_images) = args.soc_images {
+            soc_images[i].image_id
+        } else {
+            SOC_IMAGES_BASE_IDENTIFIER + i as u32
+        };
+        images.push(FirmwareImage::new(identifier, soc_img)?);
     }
 
     let image_info = generate_image_info(images.clone());
@@ -398,7 +403,7 @@ pub fn write_partition_table(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PROJECT_ROOT;
+    use crate::{ImageCfg, PROJECT_ROOT};
     use std::fs::{self, File};
     use std::io::Write;
     use tempfile::NamedTempFile;
@@ -606,5 +611,66 @@ mod tests {
 
         // Cleanup
         fs::remove_file(image_path).expect("Failed to clean up test file");
+    }
+
+    #[test]
+    fn test_flash_image_uses_image_id_from_config() {
+        // Regression test for #1580: when ImageCfg provides nonsequential image_id
+        // values (e.g. 12 and 6), flash_image_create must use those as the flash
+        // TOC identifiers instead of SOC_IMAGES_BASE_IDENTIFIER + index.
+        let soc_image1_content = b"Soc Image 1 - custom id";
+        let soc_image2_content = b"Soc Image 2 - custom id";
+
+        let soc_image1 = create_temp_file(soc_image1_content).unwrap();
+        let soc_image2 = create_temp_file(soc_image2_content).unwrap();
+
+        let soc_image_paths = Some(vec![
+            soc_image1.path().to_str().unwrap().to_string(),
+            soc_image2.path().to_str().unwrap().to_string(),
+        ]);
+
+        let soc_images = Some(vec![
+            ImageCfg {
+                path: soc_image1.path().to_path_buf(),
+                image_id: 12,
+                ..Default::default()
+            },
+            ImageCfg {
+                path: soc_image2.path().to_path_buf(),
+                image_id: 6,
+                ..Default::default()
+            },
+        ]);
+
+        let output_file = NamedTempFile::new().unwrap();
+        let output_path = output_file.path().to_str().unwrap();
+
+        flash_image_create(&CaliptraBuildArgs {
+            soc_image_paths,
+            soc_images,
+            offset: 0,
+            output_path: Some(output_path.to_string()),
+            ..Default::default()
+        })
+        .expect("Failed to build flash image");
+
+        // Read and verify identifiers
+        let mut file = File::open(output_path).unwrap();
+        let mut data = Vec::new();
+        file.read_to_end(&mut data).unwrap();
+
+        let header =
+            FlashHeader::read_from_bytes(&data[..HEADER_SIZE]).expect("Failed to parse header");
+        assert_eq!(header.image_count, 2);
+
+        // First SOC image should have identifier 12
+        let offset0 = header.image_headers_offset as usize;
+        let img0 = ImageHeader::read_from_bytes(&data[offset0..offset0 + IMAGE_INFO_SIZE]).unwrap();
+        assert_eq!(img0.identifier, 12);
+
+        // Second SOC image should have identifier 6
+        let offset1 = offset0 + IMAGE_INFO_SIZE;
+        let img1 = ImageHeader::read_from_bytes(&data[offset1..offset1 + IMAGE_INFO_SIZE]).unwrap();
+        assert_eq!(img1.identifier, 6);
     }
 }
