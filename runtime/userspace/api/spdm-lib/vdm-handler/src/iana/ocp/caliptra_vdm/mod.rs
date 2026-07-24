@@ -5,12 +5,12 @@
 //! Implements [`SpdmVdmBackend`] for the Caliptra VDM protocol (IANA standards
 //! body, vendor id [`CALIPTRA_VENDOR_ID`]). The backend decodes the
 //! Caliptra VDM message header, dispatches the command, and frames the response.
-//! Per-command device operations are provided by the platform through the
-//! [`CaliptraVdmCommands`] PAL hook — the protocol/dispatch stays in this lib,
-//! only the device work crosses to the platform.
+//! Transport-neutral operations use [`caliptra_mcu_common_commands::CaliptraCmdHandler`].
+//! SPDM-specific stream state and shared command authorization use separate hooks.
 
 mod commands;
 
+use caliptra_mcu_common_commands::CaliptraCmdHandler;
 use caliptra_mcu_mbox_common::messages::HybridSignature;
 use caliptra_mcu_spdm_codec::StandardsBodyId;
 use caliptra_mcu_spdm_traits::{
@@ -31,34 +31,8 @@ const MAX_LARGE_COMMAND_DATA_LEN: usize = 4 * 1024;
 /// `[command_version, command_code, completion, data_len, data...]`.
 const MAX_LARGE_VDM_PAYLOAD_LEN: usize = VDM_HEADER_LEN + 1 + 4 + MAX_LARGE_COMMAND_DATA_LEN;
 
-/// Platform hook for executing Caliptra VDM commands ("device operations").
-///
-/// The protocol and dispatch layers live in this crate; the platform implements
-/// this trait to perform the actual device work (e.g. Caliptra mailbox calls).
-/// Each method writes its command-specific response data into `out` and returns
-/// the number of bytes written, or a [`CaliptraCompletionCode`] on failure
-/// (surfaced as a VDM error completion, not an SPDM error).
-///
-/// `scratch` gives each device op the request-scoped scratch allocator so it can
-/// stage device interactions without owning persistent buffers.
-pub trait CaliptraVdmCommands {
-    /// Requests a production debug unlock challenge for `unlock_level`, writing
-    /// `[unique_device_identifier, challenge]` into `out`.
-    async fn request_debug_unlock<A: SpdmPalAlloc>(
-        &self,
-        unlock_level: u8,
-        scratch: &A,
-        out: &mut [u8],
-    ) -> CaliptraVdmResult<usize>;
-
-    /// Submits a production debug unlock token. `token_data` is the remaining
-    /// command payload exactly as sent by the requester.
-    async fn authorize_debug_unlock_token<A: SpdmPalAlloc>(
-        &self,
-        token_data: &[u8],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
+/// Platform hook for SPDM-specific Caliptra VDM stream state.
+pub trait CaliptraVdmStreamOps {
     /// Starts streaming a production debug unlock token request.
     async fn start_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
         &self,
@@ -88,19 +62,10 @@ pub trait CaliptraVdmCommands {
 
     /// Aborts a streaming production debug unlock token request.
     async fn abort_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(&self, _scratch: &A) {}
+}
 
-    /// Exports an attested CSR for `device_key_id` using `algorithm` and `nonce`,
-    /// writing the raw CSR bytes into `out` and returning their length.
-    async fn export_attested_csr<A: SpdmPalAlloc>(
-        &self,
-        device_key_id: u32,
-        algorithm: u32,
-        nonce: &[u8; 32],
-        scratch: &A,
-        out: &mut [u8],
-    ) -> CaliptraVdmResult<usize>;
-
-    /// Generates an authorization challenge nonce into `out`.
+/// Platform hook for the shared command-authorization service.
+pub trait CaliptraVdmAuthorization {
     async fn get_auth_challenge<A: SpdmPalAlloc>(
         &self,
         scratch: &A,
@@ -116,19 +81,29 @@ pub trait CaliptraVdmCommands {
     ) -> CaliptraVdmResult<()>;
 }
 
-/// Caliptra VDM backend, parameterized over a platform [`CaliptraVdmCommands`] hook.
-pub struct CaliptraVdm<'a, H: CaliptraVdmCommands> {
-    cmds: &'a H,
+/// Caliptra VDM backend with separate shared-command, stream, and authorization hooks.
+pub struct CaliptraVdm<'a, H, S, A> {
+    commands: &'a H,
+    stream: &'a S,
+    authorization: &'a A,
 }
 
-impl<'a, H: CaliptraVdmCommands> CaliptraVdm<'a, H> {
-    /// Creates a backend that dispatches commands to `cmds`.
-    pub fn new(cmds: &'a H) -> Self {
-        Self { cmds }
+impl<'a, H, S, A> CaliptraVdm<'a, H, S, A> {
+    pub fn new(commands: &'a H, stream: &'a S, authorization: &'a A) -> Self {
+        Self {
+            commands,
+            stream,
+            authorization,
+        }
     }
 }
 
-impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
+impl<H, S, A> SpdmVdmBackend for CaliptraVdm<'_, H, S, A>
+where
+    H: CaliptraCmdHandler,
+    S: CaliptraVdmStreamOps,
+    A: CaliptraVdmAuthorization,
+{
     // Caliptra VDM can emit responses (CSRs, logs) larger than one transport
     // frame, so the stack provisions the buffered large-response path.
     const USES_LARGE_RESPONSE: bool = true;
@@ -159,7 +134,7 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
             return Ok(false);
         }
         match self
-            .cmds
+            .stream
             .start_authorize_debug_unlock_token_stream(
                 req_len - VDM_HEADER_LEN,
                 &first[VDM_HEADER_LEN..],
@@ -183,7 +158,7 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
         Alloc: SpdmPalAlloc,
         Io: SpdmPalIo,
     {
-        self.cmds
+        self.stream
             .continue_authorize_debug_unlock_token_stream(chunk, alloc)
             .await
             .map_err(|_| INVARIANT)
@@ -202,7 +177,7 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
             return Err(INVARIANT);
         }
         let completion = match self
-            .cmds
+            .stream
             .finish_authorize_debug_unlock_token_stream(rsp.alloc)
             .await
         {
@@ -220,7 +195,7 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
         Alloc: SpdmPalAlloc,
         Io: SpdmPalIo,
     {
-        self.cmds
+        self.stream
             .abort_authorize_debug_unlock_token_stream(alloc)
             .await;
     }
@@ -273,19 +248,25 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
         let result = match CaliptraVdmCommand::try_from(command_code) {
             Ok(CaliptraVdmCommand::RequestDebugUnlock) => {
                 commands::debug_unlock::handle_request_debug_unlock(
-                    self.cmds, cmd_req, scratch, payload,
+                    self.commands,
+                    cmd_req,
+                    scratch,
+                    payload,
                 )
                 .await
             }
             Ok(CaliptraVdmCommand::AuthorizeDebugUnlockToken) => {
                 commands::debug_unlock::handle_authorize_debug_unlock_token(
-                    self.cmds, cmd_req, scratch, payload,
+                    self.commands,
+                    cmd_req,
+                    scratch,
+                    payload,
                 )
                 .await
             }
             Ok(CaliptraVdmCommand::ExportAttestedCsr) => {
                 commands::export_attested_csr::handle(
-                    self.cmds,
+                    self.commands,
                     cmd_req,
                     command_code,
                     payload,
@@ -295,7 +276,8 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
                 .await
             }
             Ok(CaliptraVdmCommand::AuthorizedCommand) => {
-                commands::authorized_command::handle(self.cmds, cmd_req, scratch, payload).await
+                commands::authorized_command::handle(self.authorization, cmd_req, scratch, payload)
+                    .await
             }
             // Recognized-but-unimplemented and unknown command codes both map to
             // an UnsupportedOperation completion.
@@ -318,18 +300,19 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
 mod tests {
     extern crate std;
 
-    use core::cell::RefCell;
     use core::future::Future;
     use core::marker::PhantomData;
     use core::ops::{Deref, DerefMut};
     use core::pin::Pin;
     use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
+    use caliptra_mcu_common_commands::{DeviceCapabilities, FirmwareVersion};
     use caliptra_mcu_spdm_traits::{
         SpdmPalAlloc, SpdmPalIo, SpdmPalIoKind, SpdmVdmBackend, VdmResponse, VdmResponseBuffer,
     };
     use mcu_error::McuResult;
     use std::boxed::Box;
+    use std::sync::Mutex;
     use std::vec;
     use std::vec::Vec;
 
@@ -425,20 +408,25 @@ mod tests {
 
     struct TestCommands {
         csr_len: usize,
-        authorized_token: RefCell<Option<Vec<u8>>>,
+        authorized_token: Mutex<Option<Vec<u8>>>,
     }
 
     impl TestCommands {
         fn new(csr_len: usize) -> Self {
             Self {
                 csr_len,
-                authorized_token: RefCell::new(None),
+                authorized_token: Mutex::new(None),
             }
         }
 
-        fn write_csr(&self, out: &mut [u8]) -> CaliptraVdmResult<usize> {
+        fn write_csr(
+            &self,
+            out: &mut [u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
             if out.len() < self.csr_len {
-                return Err(CaliptraCompletionCode::InsufficientResources);
+                return Err(
+                    caliptra_mcu_common_commands::CaliptraCompletionCode::InsufficientResources,
+                );
             }
             for (i, byte) in out[..self.csr_len].iter_mut().enumerate() {
                 *byte = i as u8;
@@ -447,45 +435,70 @@ mod tests {
         }
     }
 
-    impl CaliptraVdmCommands for TestCommands {
-        async fn request_debug_unlock<A: SpdmPalAlloc>(
+    impl CaliptraCmdHandler for TestCommands {
+        async fn get_firmware_version(
             &self,
-            unlock_level: u8,
-            _scratch: &A,
-            out: &mut [u8],
-        ) -> CaliptraVdmResult<usize> {
-            if unlock_level != 7 {
-                return Err(CaliptraCompletionCode::InvalidParameter);
+            area_index: u32,
+            out: &mut FirmwareVersion,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            if area_index != 1 {
+                return Err(caliptra_mcu_common_commands::CaliptraCompletionCode::InvalidParameter);
             }
-            let needed = DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE;
-            if out.len() < needed {
-                return Err(CaliptraCompletionCode::InsufficientResources);
-            }
-            out[..DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE].fill(0x11);
-            out[DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE..needed].fill(0x22);
-            Ok(needed)
-        }
-
-        async fn authorize_debug_unlock_token<A: SpdmPalAlloc>(
-            &self,
-            token_data: &[u8],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.authorized_token.replace(Some(token_data.to_vec()));
+            out.ver_str[..5].copy_from_slice(b"1.2.3");
+            out.len = 5;
             Ok(())
         }
 
-        async fn export_attested_csr<A: SpdmPalAlloc>(
+        async fn get_device_capabilities(
             &self,
+            out: &mut DeviceCapabilities,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            out.caliptra_rt = [0x11; 8];
+            out.mcu_rt = [0x22; 8];
+            Ok(())
+        }
+
+        async fn export_attested_csr<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
             _device_key_id: u32,
             _algorithm: u32,
             _nonce: &[u8; 32],
-            _scratch: &A,
             out: &mut [u8],
-        ) -> CaliptraVdmResult<usize> {
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
             self.write_csr(out)
         }
 
+        async fn request_debug_unlock<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            unlock_level: u8,
+            challenge: &mut caliptra_mcu_common_commands::DebugUnlockChallenge,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            if unlock_level != 7 {
+                return Err(caliptra_mcu_common_commands::CaliptraCompletionCode::InvalidParameter);
+            }
+            challenge.unique_device_identifier.fill(0x11);
+            challenge.challenge.fill(0x22);
+            Ok(())
+        }
+
+        async fn authorize_debug_unlock_token<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            token_data: &[u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.authorized_token
+                .lock()
+                .unwrap()
+                .replace(token_data.to_vec());
+            Ok(())
+        }
+    }
+
+    impl CaliptraVdmStreamOps for TestCommands {}
+
+    impl CaliptraVdmAuthorization for TestCommands {
         async fn get_auth_challenge<A: SpdmPalAlloc>(
             &self,
             _scratch: &A,
@@ -543,7 +556,7 @@ mod tests {
     ) -> (VdmResponse, Vec<u8>, Vec<u8>) {
         let alloc = TestAlloc;
         let io = TestIo;
-        let backend = CaliptraVdm::new(cmds);
+        let backend = CaliptraVdm::new(cmds, cmds, cmds);
         let mut inline = vec![0; inline_len];
         let mut large = vec![0; large_len];
         let response = block_on(backend.handle_request(
@@ -662,6 +675,17 @@ mod tests {
     }
 
     #[test]
+    fn export_attested_csr_allows_empty_inline_csr() {
+        let cmds = TestCommands::new(0);
+        let req = export_attested_csr_req();
+        let (response, inline, _) = dispatch(&cmds, &req, 2 + 1 + 4, 0);
+
+        assert_inline(response, 2 + 1 + 4);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(u32::from_le_bytes(inline[3..7].try_into().unwrap()), 0);
+    }
+
+    #[test]
     fn export_attested_csr_uses_large_response_when_inline_is_too_small() {
         let cmds = TestCommands::new(12);
         let req = export_attested_csr_req();
@@ -681,32 +705,24 @@ mod tests {
         let req = [
             CALIPTRA_VDM_COMMAND_VERSION,
             CaliptraVdmCommand::RequestDebugUnlock as u8,
-            2,
-            0,
-            0,
-            0,
             7,
-            0,
-            0,
-            0,
         ];
         let (response, inline, _) = dispatch(&cmds, &req, 128, 0);
 
         assert_inline(
             response,
-            2 + 1 + 4 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
+            2 + 1 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
         );
         assert_eq!(inline[0], CALIPTRA_VDM_COMMAND_VERSION);
         assert_eq!(inline[1], CaliptraVdmCommand::RequestDebugUnlock as u8);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
-        assert_eq!(u32::from_le_bytes(inline[3..7].try_into().unwrap()), 21);
         assert_eq!(
-            &inline[7..7 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE],
+            &inline[3..3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE],
             &[0x11; DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE]
         );
         assert_eq!(
-            &inline[7 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE
-                ..7 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
+            &inline[3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE
+                ..3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
             &[0x22; DEBUG_UNLOCK_CHALLENGE_SIZE]
         );
     }
@@ -717,14 +733,7 @@ mod tests {
         let req = [
             CALIPTRA_VDM_COMMAND_VERSION,
             CaliptraVdmCommand::RequestDebugUnlock as u8,
-            2,
-            0,
-            0,
-            0,
             7,
-            0,
-            0,
-            0,
             0xaa,
         ];
         let (response, inline, _) = dispatch(&cmds, &req, 128, 0);
@@ -746,6 +755,6 @@ mod tests {
 
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
-        assert_eq!(cmds.authorized_token.take(), Some(token));
+        assert_eq!(cmds.authorized_token.lock().unwrap().take(), Some(token));
     }
 }
