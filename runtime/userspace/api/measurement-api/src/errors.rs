@@ -47,6 +47,8 @@ pub enum MeasurementApiError {
     ComponentUpdateUnsupported = 0x000c,
     /// MCU-side Software PCR Storage state was missing or semantically invalid.
     InvalidSoftwarePcrStoreState = 0x000d,
+    /// The caller-provided evidence output buffer is too small.
+    EvidenceBufferTooSmall = 0x000e,
 }
 
 /// Convenience alias for a Measurement API operation result. `T` defaults to
@@ -88,6 +90,7 @@ mod tests {
             (MeasurementApiError::DuplicateMeasurementRecord, 0x000b),
             (MeasurementApiError::ComponentUpdateUnsupported, 0x000c),
             (MeasurementApiError::InvalidSoftwarePcrStoreState, 0x000d),
+            (MeasurementApiError::EvidenceBufferTooSmall, 0x000e),
         ] {
             let mcu: McuErrorCode = err.into();
             assert_eq!(mcu.domain(), domain::ATTESTATION);

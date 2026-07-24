@@ -7,6 +7,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+caliptra-mcu-attestation-evidence = { workspace = true }
 caliptra-mcu-spdm-traits = { workspace = true }
 caliptra-mcu-spdm-codec = { workspace = true }
 caliptra-mcu-measurement-api = { workspace = true }

@@ -10,7 +10,6 @@ extern crate alloc;
 
 mod caliptra_vdm;
 mod cert_store;
-mod device_measurements;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 mod pci_sig_vdm;
 
@@ -62,13 +61,15 @@ static CERT_STORE_DONE: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 static CERT_STORE_STATE: AtomicU8 = AtomicU8::new(0);
 
 #[cfg(feature = "test-mctp-spdm-attestation-pcr-quote")]
-fn measurement_provider() -> device_measurements::pcr_quote::PcrQuoteMeasurementProvider {
-    device_measurements::pcr_quote::PcrQuoteMeasurementProvider::new()
+fn measurement_provider(
+) -> caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider {
+    caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider::new()
 }
 
 #[cfg(not(feature = "test-mctp-spdm-attestation-pcr-quote"))]
-fn measurement_provider() -> device_measurements::ocp_eat::OcpEatMeasurementProvider {
-    device_measurements::ocp_eat::OcpEatMeasurementProvider::new(
+fn measurement_provider(
+) -> caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider {
+    caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider::new(
         caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL,
     )
 }
