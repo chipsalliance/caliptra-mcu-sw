@@ -42,6 +42,7 @@ use caliptra_mcu_core_util_host_command_types::debug_unlock::{
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgResponse, GetAuthCmdChallengeResponse,
 };
+use caliptra_mcu_core_util_host_command_types::dot::GetDotBackupBlobResponse;
 use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmTransport,
 };
@@ -50,6 +51,7 @@ use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
+use caliptra_util_host_commands::api::dot::caliptra_cmd_get_dot_backup_blob;
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
 };
@@ -82,6 +84,13 @@ impl<'a> SpdmVdmClient<'a> {
         self.transport
             .disconnect()
             .map_err(|e| anyhow::anyhow!("Failed to disconnect SPDM VDM transport: {:?}", e))
+    }
+
+    /// Execute the GetDotBackupBlob command.
+    pub fn get_dot_backup_blob(&mut self) -> Result<GetDotBackupBlobResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_get_dot_backup_blob(&mut session)
+            .map_err(|e| anyhow::anyhow!("GetDotBackupBlob failed: {:?}", e))
     }
 
     /// Execute the ExportAttestedCsr command.

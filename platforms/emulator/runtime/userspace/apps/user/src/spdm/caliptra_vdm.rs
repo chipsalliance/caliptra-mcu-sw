@@ -7,6 +7,7 @@ use caliptra_mcu_common_commands::{
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_mbox_common::messages::HybridSignature;
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
@@ -143,12 +144,40 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .await
             .map_err(map_common_completion)
     }
+
+    async fn get_dot_backup_blob<A: SpdmPalAlloc>(
+        &self,
+        _scratch: &A,
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<usize> {
+        let dot_blob_size = caliptra_mcu_common_commands::DOT_BLOB_SIZE;
+        if out.len() < dot_blob_size {
+            return Err(CaliptraCompletionCode::InsufficientResources);
+        }
+
+        caliptra_mcu_libsyscall_caliptra::dot_flash::DotFlash::<DefaultSyscalls>::new()
+            .read(0, &mut out[..dot_blob_size])
+            .map_err(map_dot_flash_error)?;
+        Ok(dot_blob_size)
+    }
 }
 
 fn map_mailbox_error(error: MailboxError) -> CaliptraCompletionCode {
     map_common_completion(crate::caliptra_cmd_handler::device_ops::map_mailbox_error(
         error,
     ))
+}
+
+fn map_dot_flash_error(e: ErrorCode) -> CaliptraCompletionCode {
+    match e {
+        ErrorCode::NoSupport | ErrorCode::NoDevice | ErrorCode::Uninstalled => {
+            CaliptraCompletionCode::UnsupportedOperation
+        }
+        ErrorCode::NoMem | ErrorCode::Size => CaliptraCompletionCode::InsufficientResources,
+        ErrorCode::Invalid => CaliptraCompletionCode::InvalidParameter,
+        ErrorCode::Busy => CaliptraCompletionCode::ResourceUnavailable,
+        _ => CaliptraCompletionCode::OperationFailed,
+    }
 }
 
 fn map_common_completion(code: CommonCode) -> CaliptraCompletionCode {

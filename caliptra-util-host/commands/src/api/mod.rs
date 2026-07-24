@@ -19,6 +19,7 @@ pub mod crypto_import;
 pub mod debug_unlock;
 pub mod device_info;
 pub mod device_log;
+pub mod dot;
 pub mod fuse;
 
 pub use caliptra_util_host_session::CommandSession;
@@ -32,6 +33,7 @@ pub use crypto_import::*;
 pub use debug_unlock::*;
 pub use device_info::*;
 pub use device_log::*;
+pub use dot::*;
 pub use fuse::*;
 
 /// High-level result type for API functions

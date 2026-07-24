@@ -33,10 +33,12 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(commands::handle_get_auth_challenge)
         }
+        x if x == CaliptraCommandId::GetDotBackupBlob as u32 => {
+            Some(commands::handle_get_dot_backup_blob)
+        }
         _ => None,
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,6 +53,7 @@ mod tests {
             CaliptraCommandId::ProdDebugUnlockToken,
             CaliptraCommandId::FeProg,
             CaliptraCommandId::GetAuthCmdChallenge,
+            CaliptraCommandId::GetDotBackupBlob,
         ];
 
         for id in ids {
