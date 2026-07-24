@@ -95,6 +95,7 @@ mod test {
                     .map(|p| p.to_string_lossy().to_string())
                     .collect(),
             ),
+            &None,
             flash_offset,
             flash_image_path.to_str().unwrap(),
         )
