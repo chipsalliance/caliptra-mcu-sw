@@ -4,7 +4,8 @@
 //!
 //! The test boots MCU runtime firmware with the SPDM responder enabled, bridges
 //! `ocp_dev_identity_provision_tool` to the firmware over MCTP, sends
-//! SET_CERTIFICATE, and verifies the installed chain through GET_CERTIFICATE.
+//! SET_CERTIFICATE, verifies the full Owner slot chain through GET_CERTIFICATE,
+//! and performs Owner-slot CHALLENGE attestation.
 
 #[cfg(test)]
 mod test {
@@ -34,11 +35,11 @@ mod test {
     #[test]
     fn test_mctp_spdm_set_certificate_with_ocp_provision_tool() {
         let tool_bin = find_ocp_provisioning_tool();
-        let cert_chain = test_owner_certchain_path();
+        let vendor_trust_anchor = test_vendor_root_path();
         assert!(
-            cert_chain.is_file(),
-            "test owner certificate chain not found: {}",
-            cert_chain.display()
+            vendor_trust_anchor.is_file(),
+            "test vendor root certificate not found: {}",
+            vendor_trust_anchor.display()
         );
 
         let lock = TEST_LOCK.lock().unwrap();
@@ -57,7 +58,7 @@ mod test {
             hw.i3c_address().unwrap().into(),
             Duration::from_secs(120),
             &tool_bin,
-            &cert_chain,
+            &vendor_trust_anchor,
         );
 
         let test = finish_runtime_hw_model(&mut hw);
@@ -71,7 +72,7 @@ mod test {
         target_addr: DynamicI3cAddress,
         test_timeout: Duration,
         tool_bin: &Path,
-        cert_chain: &Path,
+        vendor_trust_anchor: &Path,
     ) {
         SERVER_LISTENING.store(false, Ordering::Relaxed);
 
@@ -122,7 +123,7 @@ mod test {
         });
 
         let tool_bin = tool_bin.to_path_buf();
-        let cert_chain = cert_chain.to_path_buf();
+        let vendor_trust_anchor = vendor_trust_anchor.to_path_buf();
         spawn_with_emulator_state(move || {
             println!("[{}]: Waiting for bridge to start...", TEST_NAME);
             while !SERVER_LISTENING.load(Ordering::Relaxed) {
@@ -134,9 +135,8 @@ mod test {
             let mut child = Command::new(&tool_bin)
                 .arg("--server")
                 .arg(&bridge_addr)
-                .arg("--cert-chain")
-                .arg(&cert_chain)
-                .arg("--verify-get-certificate")
+                .arg("--vendor-trust-anchor")
+                .arg(&vendor_trust_anchor)
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit())
                 .spawn()
@@ -235,8 +235,8 @@ mod test {
             .cloned()
     }
 
-    fn test_owner_certchain_path() -> PathBuf {
-        repo_root().join("caliptra-util-host/apps/spdm/certs/test_owner_certchain.der")
+    fn test_vendor_root_path() -> PathBuf {
+        repo_root().join("caliptra-util-host/apps/spdm/certs/test_vendor_root.der")
     }
 
     fn repo_root() -> &'static Path {

@@ -11,6 +11,9 @@ SPDM-Utils.workspace = true
 caliptra-mcu-core-util-host-transport.workspace = true
 anyhow.workspace = true
 log.workspace = true
+sha2.workspace = true
+x509-parser.workspace = true
+x509-cert.workspace = true
 zerocopy.workspace = true
 
 [features]
