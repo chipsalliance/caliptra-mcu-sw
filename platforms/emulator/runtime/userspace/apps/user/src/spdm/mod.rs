@@ -160,8 +160,12 @@ async fn spdm_mctp_responder() {
     let pal = unsafe { McuSpdmPal::new(transport, allocator, &CERT_STORE, measurement_provider()) };
     // MCTP hosts the IANA / Caliptra VDM backend (plaintext today). DOE uses
     // the default NoVdmBackend unless the TDISP/IDE validator feature wires PCI-SIG.
-    static MCTP_VDM_HOOK: caliptra_vdm::CaliptraVdmHook = caliptra_vdm::CaliptraVdmHook;
-    let vdm = CaliptraVdm::new(&MCTP_VDM_HOOK);
+    static COMMANDS: crate::caliptra_cmd_handler::CaliptraCmdBackend =
+        crate::caliptra_cmd_handler::CaliptraCmdBackend;
+    static STREAM: caliptra_vdm::CaliptraVdmStreamHook = caliptra_vdm::CaliptraVdmStreamHook;
+    static AUTHORIZATION: caliptra_vdm::CaliptraVdmAuthorizationHook =
+        caliptra_vdm::CaliptraVdmAuthorizationHook;
+    let vdm = CaliptraVdm::new(&COMMANDS, &STREAM, &AUTHORIZATION);
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 
     crate::log_info!(cw, "SPDM_MCTP: starting spdm-lib MCTP run loop");

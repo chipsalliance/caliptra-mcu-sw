@@ -67,13 +67,14 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
             .await
     }
 
-    async fn export_idevid_csr(
+    async fn export_idevid_csr<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         algorithm: u32,
         csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         CaliptraCmdBackend
-            .export_idevid_csr(algorithm, csr_buf)
+            .export_idevid_csr(alloc, algorithm, csr_buf)
             .await
     }
 

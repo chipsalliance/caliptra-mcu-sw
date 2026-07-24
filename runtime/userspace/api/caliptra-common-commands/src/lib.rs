@@ -190,16 +190,21 @@ pub trait CaliptraCmdHandler {
     /// Exports an IDevID CSR (manufacturing mode only).
     ///
     /// # Arguments
+    /// * `alloc` - Scratch allocator for mailbox operations.
     /// * `algorithm` - The asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87).
     /// * `csr_buf` - Mutable buffer to write the CSR DER data into directly.
     ///
     /// # Returns
     /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
-    async fn export_idevid_csr(
+    async fn export_idevid_csr<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         algorithm: u32,
         csr_buf: &mut [u8],
-    ) -> CaliptraCmdResult<usize>;
+    ) -> CaliptraCmdResult<usize> {
+        let _ = (alloc, algorithm, csr_buf);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 
     /// Requests a production debug unlock challenge.
     ///

@@ -10,6 +10,7 @@ edition.workspace = true
 default = []
 
 [dependencies]
+caliptra-mcu-common-commands = { workspace = true }
 caliptra-mcu-spdm-traits = { workspace = true }
 caliptra-mcu-spdm-codec = { workspace = true }
 caliptra-mcu-spdm-errors = { workspace = true }

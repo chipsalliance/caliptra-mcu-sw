@@ -5,10 +5,9 @@ pub(crate) mod device_ops;
 
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, FirmwareVersion, GetLogResult, LogType,
+    DeviceCapabilities, FirmwareVersion, GetLogResult, LogType, MAX_FW_VERSION_LEN,
 };
-use caliptra_mcu_libapi_caliptra::certificate::{CertContext, IDEV_ECC_CSR_MAX_SIZE};
-use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
+#[cfg(feature = "ocp-lock")]
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_libapi_caliptra::ocp_lock::{
@@ -18,6 +17,7 @@ use caliptra_mcu_libapi_caliptra::ocp_lock::{
 use caliptra_mcu_libapi_caliptra::signer::CaliptraDpeSigner;
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_mbox_common::config;
 use mcu_caliptra_api_lite::ApiAlloc;
 
 pub struct CaliptraCmdBackend;
@@ -25,17 +25,33 @@ pub struct CaliptraCmdBackend;
 impl CaliptraCmdHandler for CaliptraCmdBackend {
     async fn get_firmware_version(
         &self,
-        _index: u32,
-        _version: &mut FirmwareVersion,
+        index: u32,
+        version: &mut FirmwareVersion,
     ) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
+        let bytes = config::TEST_FIRMWARE_VERSIONS
+            .get(index as usize)
+            .ok_or(CaliptraCompletionCode::InvalidParameter)?
+            .as_bytes();
+        if bytes.len() > MAX_FW_VERSION_LEN {
+            return Err(CaliptraCompletionCode::InvalidPayloadSize);
+        }
+        version.ver_str[..bytes.len()].copy_from_slice(bytes);
+        version.len = bytes.len();
+        Ok(())
     }
 
     async fn get_device_capabilities(
         &self,
-        _capabilities: &mut DeviceCapabilities,
+        capabilities: &mut DeviceCapabilities,
     ) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
+        let caps = &config::TEST_DEVICE_CAPABILITIES;
+        capabilities.caliptra_rt = caps.caliptra_rt;
+        capabilities.caliptra_fmc = caps.caliptra_fmc;
+        capabilities.caliptra_rom = caps.caliptra_rom;
+        capabilities.mcu_rt = caps.mcu_rt;
+        capabilities.mcu_rom = caps.mcu_rom;
+        capabilities.reserved = caps.reserved;
+        Ok(())
     }
 
     async fn export_attested_csr<Alloc: ApiAlloc>(
@@ -49,39 +65,13 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::export_attested_csr(device_key_id, algorithm, nonce, csr_buf).await
     }
 
-    async fn export_idevid_csr(
+    async fn export_idevid_csr<Alloc: ApiAlloc>(
         &self,
+        _alloc: &Alloc,
         algorithm: u32,
         csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
-        let algo =
-            AsymAlgo::try_from_u32(algorithm).ok_or(CaliptraCompletionCode::InvalidParameter)?;
-        let mut cert_ctx = CertContext::new();
-
-        match algo {
-            AsymAlgo::EccP384 => {
-                let mut csr_der = [0u8; IDEV_ECC_CSR_MAX_SIZE];
-                let len = cert_ctx
-                    .get_idev_csr(&mut csr_der)
-                    .await
-                    .map_err(|e| match e {
-                        CaliptraApiError::MailboxBusy => {
-                            CaliptraCompletionCode::CaliptraMailboxBusy
-                        }
-                        CaliptraApiError::UnprovisionedCsr => CaliptraCompletionCode::InvalidState,
-                        CaliptraApiError::InvalidResponse
-                        | CaliptraApiError::Mailbox(_)
-                        | CaliptraApiError::Syscall(_) => CaliptraCompletionCode::OperationFailed,
-                        _ => CaliptraCompletionCode::GeneralError,
-                    })?;
-                if len > csr_buf.len() {
-                    return Err(CaliptraCompletionCode::CaliptraBufferTooSmall);
-                }
-                csr_buf[..len].copy_from_slice(&csr_der[..len]);
-                Ok(len)
-            }
-            AsymAlgo::MlDsa87 => Err(CaliptraCompletionCode::UnsupportedOperation),
-        }
+        device_ops::export_idevid_csr(algorithm, csr_buf).await
     }
 
     /// Drain entries of `log_type` from the backing store.

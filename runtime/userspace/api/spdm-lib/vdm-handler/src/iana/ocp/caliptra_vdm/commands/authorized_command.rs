@@ -4,7 +4,7 @@
 
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
-use crate::iana::ocp::caliptra_vdm::CaliptraVdmCommands;
+use crate::iana::ocp::caliptra_vdm::CaliptraVdmAuthorization;
 use caliptra_mcu_mbox_common::messages::HybridSignature;
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult,
@@ -23,7 +23,7 @@ pub(crate) async fn handle<H, A>(
     out: &mut [u8],
 ) -> CaliptraVdmCmdResult
 where
-    H: CaliptraVdmCommands,
+    H: CaliptraVdmAuthorization,
     A: SpdmPalAlloc,
 {
     let Some(sub_cmd_bytes) = req.get(..4) else {
@@ -50,7 +50,7 @@ async fn handle_get_auth_challenge<H, A>(
     out: &mut [u8],
 ) -> CaliptraVdmCmdResult
 where
-    H: CaliptraVdmCommands,
+    H: CaliptraVdmAuthorization,
     A: SpdmPalAlloc,
 {
     if let Err(code) = super::require_empty(req) {
@@ -73,7 +73,7 @@ async fn handle_fe_prog<H, A>(
     out: &mut [u8],
 ) -> CaliptraVdmCmdResult
 where
-    H: CaliptraVdmCommands,
+    H: CaliptraVdmAuthorization,
     A: SpdmPalAlloc,
 {
     let (partition, sig) = match parse_fe_prog_req(req) {
