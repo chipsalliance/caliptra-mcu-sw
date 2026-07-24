@@ -99,24 +99,35 @@ impl<'a> CmdInterface<'a> {
             return Ok(());
         }
 
-        // Send the request
-        transport
-            .send_request(ua_eid, &msg_buf[..req_len + reserved_len])
-            .await
-            .map_err(|_| errors::TRANSPORT_ERROR)?;
+        // Mark that a response is pending. The responder task will wait
+        // on the signal in wait_for_initiator() before processing commands
+        // that depend on state transitions the initiator has not performed yet.
+        self.fd_ctx.set_pending_response(true);
 
-        // Wait for and process the response
-        transport
-            .receive_response(msg_buf)
-            .await
-            .map_err(|_| errors::TRANSPORT_ERROR)?;
+        let result = async {
+            // Send the request
+            transport
+                .send_request(ua_eid, &msg_buf[..req_len + reserved_len])
+                .await
+                .map_err(|_| errors::TRANSPORT_ERROR)?;
 
-        let payload = extract_pldm_msg(msg_buf).map_err(|_| errors::UTIL_ERROR)?;
+            // Wait for and process the response
+            transport
+                .receive_response(msg_buf)
+                .await
+                .map_err(|_| errors::TRANSPORT_ERROR)?;
 
-        // Handle the response
-        self.fd_ctx.handle_response(payload).await?;
+            let payload = extract_pldm_msg(msg_buf).map_err(|_| errors::UTIL_ERROR)?;
 
-        Ok(())
+            // Handle the response
+            self.fd_ctx.handle_response(payload).await
+        }
+        .await;
+
+        // Always clear the flag — this also signals the responder.
+        self.fd_ctx.set_pending_response(false);
+
+        result
     }
 
     pub async fn should_start_initiator_mode(&self) -> bool {

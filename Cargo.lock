@@ -1845,6 +1845,7 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
+ "futures",
 ]
 
 [[package]]
