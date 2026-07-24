@@ -13,8 +13,6 @@ permissions:
 
 jobs:
   dispatch_nightly_main_2_1:
-    uses: chipsalliance/caliptra-mcu-sw/.github/workflows/nightly.yml@main-2.1
-
     runs-on: ubuntu-latest
     env:
       TARGET_REF: main-2.1
