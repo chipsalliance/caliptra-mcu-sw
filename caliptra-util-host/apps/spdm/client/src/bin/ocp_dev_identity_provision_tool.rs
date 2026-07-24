@@ -2,16 +2,14 @@
 
 //! OCP device identity provisioning tool for SPDM SET_CERTIFICATE.
 //!
-//! This follows the mandatory requester-side provisioning flow from
-//! `docs/src/cert_slot_mgmt.md`: establish SPDM VCA and send SET_CERTIFICATE for
-//! the Owner slot. Optional discovery/verification steps from the sequence
-//! diagram are intentionally skipped by default.
+//! Authenticates the Vendor slot, provisions an Owner/LDevID chain from an
+//! attested CSR, and verifies the installed Owner slot.
 
 use std::path::PathBuf;
 
 use anyhow::Result;
 use caliptra_spdm_vdm_client::ocp_dev_identity_provision::{
-    default_cert_chain_path, provision_device_identity, ProvisionOptions,
+    default_vendor_trust_anchor_path, provision_device_identity, ProvisionOptions,
     DEFAULT_LDEVID_KEY_PAIR_ID, DEFAULT_OWNER_SLOT_ID,
 };
 use clap::Parser;
@@ -32,14 +30,10 @@ struct Args {
     #[arg(long, default_value_t = DEFAULT_LDEVID_KEY_PAIR_ID)]
     key_pair_id: u8,
 
-    /// DER X.509 certificate chain to install. The tool wraps this in the SPDM
-    /// certificate-chain header before sending SET_CERTIFICATE.
-    #[arg(long, default_value_os_t = default_cert_chain_path())]
-    cert_chain: PathBuf,
 
-    /// Verify the installed certificate with GET_CERTIFICATE after provisioning.
-    #[arg(long)]
-    verify_get_certificate: bool,
+    /// DER X.509 root certificate used to authenticate the initial Vendor slot.
+    #[arg(long, default_value_os_t = default_vendor_trust_anchor_path())]
+    vendor_trust_anchor: PathBuf,
 }
 
 fn main() -> Result<()> {
@@ -54,7 +48,6 @@ fn main() -> Result<()> {
         server: args.server,
         slot_id: args.slot_id,
         key_pair_id: args.key_pair_id,
-        cert_chain: args.cert_chain,
-        verify_get_certificate: args.verify_get_certificate,
+        vendor_trust_anchor: args.vendor_trust_anchor,
     })
 }

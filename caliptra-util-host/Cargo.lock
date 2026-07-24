@@ -441,7 +441,7 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 [[package]]
 name = "caliptra-api"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=7575a31842f21837d768c7a67f04132eb61c8850#7575a31842f21837d768c7a67f04132eb61c8850"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb46b49818666d31e95873539e7c6759acddf278#fb46b49818666d31e95873539e7c6759acddf278"
 dependencies = [
  "bitflags 2.11.1",
  "caliptra-api-types",
@@ -456,7 +456,7 @@ dependencies = [
 [[package]]
 name = "caliptra-api-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=7575a31842f21837d768c7a67f04132eb61c8850#7575a31842f21837d768c7a67f04132eb61c8850"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb46b49818666d31e95873539e7c6759acddf278#fb46b49818666d31e95873539e7c6759acddf278"
 dependencies = [
  "caliptra-image-types",
 ]
@@ -464,7 +464,7 @@ dependencies = [
 [[package]]
 name = "caliptra-cfi-derive"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=7575a31842f21837d768c7a67f04132eb61c8850#7575a31842f21837d768c7a67f04132eb61c8850"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb46b49818666d31e95873539e7c6759acddf278#fb46b49818666d31e95873539e7c6759acddf278"
 dependencies = [
  "paste",
  "proc-macro2",
@@ -475,7 +475,7 @@ dependencies = [
 [[package]]
 name = "caliptra-cfi-lib"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=7575a31842f21837d768c7a67f04132eb61c8850#7575a31842f21837d768c7a67f04132eb61c8850"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb46b49818666d31e95873539e7c6759acddf278#fb46b49818666d31e95873539e7c6759acddf278"
 dependencies = [
  "caliptra-error",
  "caliptra-registers",
@@ -485,17 +485,17 @@ dependencies = [
 [[package]]
 name = "caliptra-emu-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=7575a31842f21837d768c7a67f04132eb61c8850#7575a31842f21837d768c7a67f04132eb61c8850"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb46b49818666d31e95873539e7c6759acddf278#fb46b49818666d31e95873539e7c6759acddf278"
 
 [[package]]
 name = "caliptra-error"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=7575a31842f21837d768c7a67f04132eb61c8850#7575a31842f21837d768c7a67f04132eb61c8850"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb46b49818666d31e95873539e7c6759acddf278#fb46b49818666d31e95873539e7c6759acddf278"
 
 [[package]]
 name = "caliptra-image-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=7575a31842f21837d768c7a67f04132eb61c8850#7575a31842f21837d768c7a67f04132eb61c8850"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb46b49818666d31e95873539e7c6759acddf278#fb46b49818666d31e95873539e7c6759acddf278"
 dependencies = [
  "caliptra-cfi-derive",
  "caliptra-cfi-lib",
@@ -509,7 +509,7 @@ dependencies = [
 [[package]]
 name = "caliptra-lms-types"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=7575a31842f21837d768c7a67f04132eb61c8850#7575a31842f21837d768c7a67f04132eb61c8850"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb46b49818666d31e95873539e7c6759acddf278#fb46b49818666d31e95873539e7c6759acddf278"
 dependencies = [
  "caliptra-cfi-derive",
  "caliptra-cfi-lib",
@@ -711,7 +711,7 @@ dependencies = [
 [[package]]
 name = "caliptra-registers"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=7575a31842f21837d768c7a67f04132eb61c8850#7575a31842f21837d768c7a67f04132eb61c8850"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb46b49818666d31e95873539e7c6759acddf278#fb46b49818666d31e95873539e7c6759acddf278"
 dependencies = [
  "caliptra-registers-latest",
 ]
@@ -719,7 +719,7 @@ dependencies = [
 [[package]]
 name = "caliptra-registers-latest"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=7575a31842f21837d768c7a67f04132eb61c8850#7575a31842f21837d768c7a67f04132eb61c8850"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb46b49818666d31e95873539e7c6759acddf278#fb46b49818666d31e95873539e7c6759acddf278"
 dependencies = [
  "caliptra-ureg",
 ]
@@ -732,6 +732,9 @@ dependencies = [
  "anyhow",
  "caliptra-mcu-core-util-host-transport",
  "log",
+ "sha2",
+ "x509-cert",
+ "x509-parser",
  "zerocopy",
 ]
 
@@ -747,18 +750,24 @@ dependencies = [
  "caliptra-spdm-requester",
  "caliptra-util-host-commands",
  "caliptra-util-host-session",
+ "ciborium",
  "clap 4.6.1",
+ "coset",
+ "getrandom 0.2.17",
  "hex",
  "log",
+ "p384",
  "serde",
+ "sha2",
  "simple_logger",
  "toml 0.8.23",
+ "x509-cert",
 ]
 
 [[package]]
 name = "caliptra-ureg"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=7575a31842f21837d768c7a67f04132eb61c8850#7575a31842f21837d768c7a67f04132eb61c8850"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fb46b49818666d31e95873539e7c6759acddf278#fb46b49818666d31e95873539e7c6759acddf278"
 
 [[package]]
 name = "caliptra-util-host"
@@ -940,6 +949,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "ciborium"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42e69ffd6f0917f5c029256a24d0161db17cea3997d185db0d35926308770f0e"
+dependencies = [
+ "ciborium-io",
+ "ciborium-ll",
+ "serde",
+]
+
+[[package]]
+name = "ciborium-io"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05afea1e0a06c9be33d539b876f1ce3692f4afea2cb41f740e7743225ed1c757"
+
+[[package]]
+name = "ciborium-ll"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
+dependencies = [
+ "ciborium-io",
+ "half",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1063,6 +1099,16 @@ name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
+
+[[package]]
+name = "coset"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1eb98d5e9155e2cf7cd942c8b3033097d4563b6fb0a00b9caecb74669555c058"
+dependencies = [
+ "ciborium",
+ "ciborium-io",
+]
 
 [[package]]
 name = "cpufeatures"
@@ -1199,6 +1245,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
 dependencies = [
  "const-oid",
+ "der_derive",
+ "flagset",
  "pem-rfc7468",
  "zeroize",
 ]
@@ -1215,6 +1263,17 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "rusticata-macros",
+]
+
+[[package]]
+name = "der_derive"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8034092389675178f570469e6c3b0465d3d30b4505c294a6550db47f3c17ad18"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -1406,6 +1465,12 @@ dependencies = [
  "sha3",
  "zeroize",
 ]
+
+[[package]]
+name = "flagset"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7ac824320a75a52197e8f2d787f6a38b6718bb6897a35142d749af3c0e8f4fe"
 
 [[package]]
 name = "foldhash"
@@ -2290,6 +2355,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ring"
+version = "0.16.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3053cf52e236a3ed746dfc745aa9cacf1b791d846bdaf412f60a8d7d6e17c8fc"
+dependencies = [
+ "cc",
+ "libc",
+ "once_cell",
+ "spin",
+ "untrusted",
+ "web-sys",
+ "winapi",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2444,6 +2524,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2527,6 +2618,12 @@ dependencies = [
  "string_morph",
  "syn 1.0.109",
 ]
+
+[[package]]
+name = "spin"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "spki"
@@ -2725,6 +2822,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "tls_codec"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0de2e01245e2bb89d6f05801c564fa27624dbd7b1846859876c7dad82e90bf6b"
+dependencies = [
+ "tls_codec_derive",
+ "zeroize",
+]
+
+[[package]]
+name = "tls_codec_derive"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d2e76690929402faae40aebdda620a2c0e25dd6d3b9afe48867dfd95991f4bd"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "tock-registers"
 version = "0.9.0"
 source = "git+https://github.com/tock/tock.git?rev=release-2.2#9554639b17501a9f5940cef7a1770a0823e790c3"
@@ -2841,6 +2959,12 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "untrusted"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "utf8parse"
@@ -2983,6 +3107,16 @@ dependencies = [
  "hashbrown 0.15.5",
  "indexmap 2.14.0",
  "semver",
+]
+
+[[package]]
+name = "web-sys"
+version = "0.3.98"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b572dff8bcf38bad0fa19729c89bb5748b2b9b1d8be70cf90df697e3a8f32aa"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3366,6 +3500,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "x509-cert"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1301e935010a701ae5f8655edc0ad17c44bad3ac5ce8c39185f75453b720ae94"
+dependencies = [
+ "const-oid",
+ "der",
+ "sha1",
+ "signature",
+ "spki",
+ "tls_codec",
+]
+
+[[package]]
 name = "x509-parser"
 version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3377,6 +3525,7 @@ dependencies = [
  "lazy_static",
  "nom",
  "oid-registry",
+ "ring",
  "rusticata-macros",
  "thiserror 1.0.69",
  "time",
