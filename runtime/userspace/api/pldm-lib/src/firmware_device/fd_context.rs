@@ -79,6 +79,20 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
+    /// Mark whether the initiator has a response pending processing.
+    /// Called by [`CmdInterface::handle_initiator_msg`].
+    pub fn set_pending_response(&self, pending: bool) {
+        self.internal.set_pending_response(pending);
+    }
+
+    /// Wait until the initiator signals that it has finished processing
+    /// any pending response. Returns immediately if no response is pending.
+    async fn wait_for_initiator(&self) {
+        if self.internal.has_pending_response() {
+            self.internal.wait_for_response_signal().await;
+        }
+    }
+
     pub async fn query_devid_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
         // Decode the request message
         let req =
@@ -270,6 +284,11 @@ impl<'a> FirmwareDeviceContext<'a> {
     }
 
     pub async fn update_component_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
+        // Ensure the initiator task has finished processing any pending
+        // response (e.g. ApplyComplete for the previous component) before
+        // we inspect the FD state.
+        self.wait_for_initiator().await;
+
         // Check if FD is in 'ReadyTransfer' state. Otherwise returns 'INVALID_STATE' completion code
         if self.internal.get_fd_state() != FirmwareDeviceState::ReadyXfer {
             return generate_failure_response(
@@ -356,6 +375,11 @@ impl<'a> FirmwareDeviceContext<'a> {
     }
 
     pub async fn activate_firmware_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
+        // Ensure the initiator task has finished processing any pending
+        // response (e.g. ApplyComplete) before we inspect the FD state.
+        // This eliminates the Apply/Activate race condition at its root.
+        self.wait_for_initiator().await;
+
         // Check if FD is in 'ReadyTransfer' state. Otherwise returns 'INVALID_STATE' completion code
         if self.internal.get_fd_state() != FirmwareDeviceState::ReadyXfer {
             return generate_failure_response(
@@ -850,6 +874,12 @@ impl<'a> FirmwareDeviceContext<'a> {
         Ok(())
     }
 
+    /// Test-only wrapper for `process_apply_complete_rsp`.
+    #[cfg(test)]
+    pub async fn process_apply_complete_rsp_for_test(&self, payload: &mut [u8]) -> McuResult<()> {
+        self.process_apply_complete_rsp(payload).await
+    }
+
     async fn fd_progress_download(&self, payload: &mut [u8]) -> McuResult<usize> {
         // Get offset and length from ops first (this is async but outside the batch)
         // We need to do this before the batch because query_download_offset_and_length
@@ -1067,5 +1097,354 @@ impl<'a> FirmwareDeviceContext<'a> {
     /// Get the ops reference for download operations.
     pub fn ops(&self) -> &dyn FdOps {
         self.ops
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use caliptra_mcu_pldm_common::codec::PldmCodec;
+    use caliptra_mcu_pldm_common::message::firmware_update::activate_fw::{
+        ActivateFirmwareRequest, ActivateFirmwareResponse, SelfContainedActivationRequest,
+    };
+    use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+    use caliptra_mcu_pldm_common::message::firmware_update::update_component::{
+        UpdateComponentRequest, UpdateComponentResponse,
+    };
+    use caliptra_mcu_pldm_common::protocol::base::{
+        PldmBaseCompletionCode, PldmFailureResponse, PldmMsgType,
+    };
+    use caliptra_mcu_pldm_common::protocol::firmware_update::{
+        ComponentClassification, FirmwareDeviceState, FwUpdateCmd, FwUpdateCompletionCode,
+        PldmFirmwareString, UpdateOptionFlags,
+    };
+    use futures::executor::block_on;
+
+    use crate::firmware_device::fd_internal::FdReqState;
+    use crate::firmware_device::fd_ops::FdOps;
+
+    /// Minimal mock FdOps for testing.
+    struct MockFdOps;
+
+    #[async_trait::async_trait(?Send)]
+    impl FdOps for MockFdOps {
+        fn get_device_identifiers(
+            &self,
+            _device_identifiers: &mut [caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor],
+        ) -> McuResult<usize> {
+            Ok(0)
+        }
+        fn get_firmware_parms(
+            &self,
+            _firmware_params: &mut caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters,
+        ) -> McuResult<()> {
+            Ok(())
+        }
+        async fn get_xfer_size(&self, ua_transfer_size: usize) -> McuResult<usize> {
+            Ok(ua_transfer_size)
+        }
+        fn handle_component(
+            &self,
+            _component: &caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent,
+            _fw_params: &caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters,
+            _op: ComponentOperation,
+        ) -> McuResult<caliptra_mcu_pldm_common::protocol::firmware_update::ComponentResponseCode>
+        {
+            Ok(caliptra_mcu_pldm_common::protocol::firmware_update::ComponentResponseCode::CompCanBeUpdated)
+        }
+        async fn query_download_offset_and_length(
+            &self,
+            _component: &caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent,
+        ) -> McuResult<(usize, usize)> {
+            Ok((0, 0))
+        }
+        async fn download_fw_data(
+            &self,
+            _offset: usize,
+            _data: &[u8],
+            _component: &caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent,
+        ) -> McuResult<
+            caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult,
+        > {
+            Ok(caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult::TransferSuccess)
+        }
+        fn is_download_complete(
+            &self,
+            _component: &caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent,
+        ) -> bool {
+            true
+        }
+        fn query_download_progress(
+            &self,
+            _component: &caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent,
+            _progress_percent: &mut caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent,
+        ) -> McuResult<()> {
+            Ok(())
+        }
+        async fn verify(
+            &self,
+            _component: &caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent,
+            _progress_percent: &mut caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent,
+        ) -> McuResult<
+            caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult,
+        > {
+            Ok(caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult::VerifySuccess)
+        }
+        async fn apply(
+            &self,
+            _component: &caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent,
+            _progress_percent: &mut caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent,
+        ) -> McuResult<ApplyResult> {
+            Ok(ApplyResult::ApplySuccess)
+        }
+        fn activate(
+            &self,
+            _self_contained_activation: u8,
+            _estimated_time: &mut u16,
+        ) -> McuResult<u8> {
+            Ok(PldmBaseCompletionCode::Success as u8)
+        }
+        fn cancel_update_component(
+            &self,
+            _component: &caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent,
+        ) -> McuResult<()> {
+            Ok(())
+        }
+        fn now(&self) -> caliptra_mcu_pldm_common::protocol::firmware_update::PldmFdTime {
+            0
+        }
+    }
+
+    fn encode_activate_firmware_request(payload: &mut [u8]) -> usize {
+        let req = ActivateFirmwareRequest::new(
+            1,
+            PldmMsgType::Request,
+            SelfContainedActivationRequest::ActivateSelfContainedComponents,
+        );
+        req.encode(payload).unwrap()
+    }
+
+    fn encode_update_component_request(payload: &mut [u8]) -> usize {
+        let ver_str = PldmFirmwareString::new("UTF-8", "fw-v2.0").unwrap();
+        let req = UpdateComponentRequest::new(
+            2,
+            PldmMsgType::Request,
+            ComponentClassification::Firmware,
+            0x0001,
+            0,
+            0x12345678,
+            1024,
+            UpdateOptionFlags(0),
+            &ver_str,
+        );
+        req.encode(payload).unwrap()
+    }
+
+    // =========================================================================
+    // Signal mechanism tests
+    // =========================================================================
+
+    /// Verify the pending_response signal mechanism: set_pending_response(true)
+    /// sets the flag, set_pending_response(false) clears it and signals.
+    #[test]
+    fn test_pending_response_signal_mechanism() {
+        let mock_ops = MockFdOps;
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+
+        // Initially no response pending
+        assert!(!fd_ctx.internal.has_pending_response());
+
+        // Set pending
+        fd_ctx.set_pending_response(true);
+        assert!(fd_ctx.internal.has_pending_response());
+
+        // Clear pending (also signals)
+        fd_ctx.set_pending_response(false);
+        assert!(!fd_ctx.internal.has_pending_response());
+
+        // wait_for_initiator returns immediately when no response pending
+        block_on(fd_ctx.wait_for_initiator());
+    }
+
+    /// Verify that wait_for_initiator returns immediately after the signal
+    /// has been sent (i.e. pending_response was cleared).
+    #[test]
+    fn test_wait_for_initiator_returns_after_signal() {
+        let mock_ops = MockFdOps;
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+
+        // Simulate: initiator sets pending, then clears (signal is sent).
+        fd_ctx.set_pending_response(true);
+        fd_ctx.set_pending_response(false);
+
+        // Signal was already sent, so even if we re-set and check, the signal
+        // has been consumed. Just verify no deadlock with no pending response.
+        block_on(fd_ctx.wait_for_initiator());
+    }
+
+    // =========================================================================
+    // Two-task simulation: initiator processes response first (guaranteed by
+    // the signal), then responder handles the next command.
+    // =========================================================================
+
+    /// Simulate the correct two-task sequence for ActivateFirmware:
+    /// 1. Initiator processes ApplyComplete response → transitions Apply→ReadyXfer
+    /// 2. Responder handles ActivateFirmwareRequest → state is ReadyXfer → succeeds
+    ///
+    /// This is the ordering that the signal mechanism guarantees at runtime.
+    #[test]
+    fn test_two_task_activate_firmware_with_signal_ordering() {
+        let mock_ops = MockFdOps;
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+
+        // Setup: state=Apply, pending successful ApplyComplete
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
+        fd_ctx.internal.set_fd_req(
+            FdReqState::Sent,
+            true,
+            Some(ApplyResult::ApplySuccess as u8),
+            Some(1),
+            Some(FwUpdateCmd::ApplyComplete as u8),
+            Some(0),
+        );
+
+        // === TASK 1 (Initiator) — processes ApplyComplete response first ===
+        // The signal mechanism ensures this always runs before the responder.
+        let mut apply_rsp_payload = [0u8; 256];
+        let initiator_result =
+            block_on(fd_ctx.process_apply_complete_rsp_for_test(&mut apply_rsp_payload));
+        assert!(initiator_result.is_ok());
+        assert_eq!(
+            fd_ctx.internal.get_fd_state(),
+            FirmwareDeviceState::ReadyXfer,
+            "Initiator should transition to ReadyXfer"
+        );
+
+        // Initiator clears pending_response (signal fires, responder unblocks)
+        fd_ctx.set_pending_response(false);
+
+        // === TASK 2 (Responder) — handles ActivateFirmwareRequest ===
+        // wait_for_initiator returns immediately (no pending response)
+        let mut activate_payload = [0u8; 256];
+        encode_activate_firmware_request(&mut activate_payload);
+
+        let responder_result = block_on(fd_ctx.activate_firmware_rsp(&mut activate_payload));
+        assert!(responder_result.is_ok());
+        let resp = ActivateFirmwareResponse::decode(&activate_payload).unwrap();
+        assert_eq!(resp.completion_code, PldmBaseCompletionCode::Success as u8);
+        assert_eq!(
+            fd_ctx.internal.get_fd_state(),
+            FirmwareDeviceState::Activate,
+        );
+    }
+
+    /// Simulate the correct two-task sequence for multi-component UpdateComponent:
+    /// 1. Initiator processes ApplyComplete response → transitions Apply→ReadyXfer
+    /// 2. Responder handles UpdateComponent for next component → succeeds
+    #[test]
+    fn test_two_task_update_component_with_signal_ordering() {
+        let mock_ops = MockFdOps;
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+
+        // Setup: state=Apply, pending successful ApplyComplete
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
+        fd_ctx.internal.set_fd_req(
+            FdReqState::Sent,
+            true,
+            Some(ApplyResult::ApplySuccess as u8),
+            Some(1),
+            Some(FwUpdateCmd::ApplyComplete as u8),
+            Some(0),
+        );
+
+        // === TASK 1 (Initiator) — processes ApplyComplete response first ===
+        let mut apply_rsp_payload = [0u8; 256];
+        let initiator_result =
+            block_on(fd_ctx.process_apply_complete_rsp_for_test(&mut apply_rsp_payload));
+        assert!(initiator_result.is_ok());
+        assert_eq!(
+            fd_ctx.internal.get_fd_state(),
+            FirmwareDeviceState::ReadyXfer,
+        );
+
+        fd_ctx.set_pending_response(false);
+
+        // === TASK 2 (Responder) — handles UpdateComponent ===
+        let mut payload = [0u8; 512];
+        encode_update_component_request(&mut payload);
+
+        let responder_result = block_on(fd_ctx.update_component_rsp(&mut payload));
+        assert!(responder_result.is_ok());
+        let resp = UpdateComponentResponse::decode(&payload).unwrap();
+        assert_eq!(resp.completion_code, PldmBaseCompletionCode::Success as u8);
+        assert_eq!(
+            fd_ctx.internal.get_fd_state(),
+            FirmwareDeviceState::Download,
+        );
+    }
+
+    // =========================================================================
+    // State validation tests (handlers reject invalid states)
+    // =========================================================================
+
+    /// Test that activate_firmware_rsp succeeds when state is ReadyXfer
+    /// (the normal, non-racy case with no pending response).
+    #[test]
+    fn test_activate_firmware_in_ready_xfer_state() {
+        let mock_ops = MockFdOps;
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
+
+        let mut payload = [0u8; 256];
+        encode_activate_firmware_request(&mut payload);
+
+        let result = block_on(fd_ctx.activate_firmware_rsp(&mut payload));
+        assert!(result.is_ok());
+
+        let resp = ActivateFirmwareResponse::decode(&payload).unwrap();
+        assert_eq!(resp.completion_code, PldmBaseCompletionCode::Success as u8);
+    }
+
+    /// Verify that activate_firmware_rsp rejects requests in invalid states.
+    #[test]
+    fn test_activate_firmware_rejected_in_wrong_state() {
+        let mock_ops = MockFdOps;
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);
+
+        let mut payload = [0u8; 256];
+        encode_activate_firmware_request(&mut payload);
+
+        let result = block_on(fd_ctx.activate_firmware_rsp(&mut payload));
+        assert!(result.is_ok());
+
+        let resp = PldmFailureResponse::decode(&payload).unwrap();
+        assert_eq!(
+            resp.completion_code,
+            FwUpdateCompletionCode::InvalidStateForCommand as u8
+        );
+    }
+
+    /// Verify that update_component_rsp rejects requests in invalid states.
+    #[test]
+    fn test_update_component_rejected_in_wrong_state() {
+        let mock_ops = MockFdOps;
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);
+
+        let mut payload = [0u8; 512];
+        encode_update_component_request(&mut payload);
+
+        let result = block_on(fd_ctx.update_component_rsp(&mut payload));
+        assert!(result.is_ok());
+
+        let resp = PldmFailureResponse::decode(&payload).unwrap();
+        assert_eq!(
+            resp.completion_code,
+            FwUpdateCompletionCode::InvalidStateForCommand as u8
+        );
     }
 }

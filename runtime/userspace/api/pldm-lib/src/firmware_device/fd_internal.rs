@@ -6,7 +6,9 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::{
     FirmwareDeviceState, PldmFdTime, UpdateOptionFlags, PLDM_FWUP_MAX_PADDING_SIZE,
 };
 use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 
 /// Result of prepare_download_request batch operation
 pub struct DownloadRequestInfo {
@@ -19,6 +21,13 @@ pub struct DownloadRequestInfo {
 
 pub struct FdInternal {
     inner: RefCell<FdInternalInner>,
+    /// True while the initiator has sent a request and has not yet finished
+    /// processing the response. The responder checks this flag to decide
+    /// whether it needs to wait.
+    pending_response: Cell<bool>,
+    /// Signal fired by the initiator after it finishes processing a response.
+    /// The responder awaits this signal only when `pending_response` is true.
+    response_signal: Signal<CriticalSectionRawMutex, ()>,
 }
 
 pub struct FdInternalInner {
@@ -80,7 +89,33 @@ impl FdInternal {
                 fd_t1_timeout,
                 fd_t2_retry_time,
             )),
+            pending_response: Cell::new(false),
+            response_signal: Signal::new(),
         }
+    }
+
+    /// Mark that the initiator is about to send a request.
+    pub fn set_pending_response(&self, pending: bool) {
+        if pending {
+            // Clear any stale signal left from a previous cycle so the
+            // responder's `wait()` will actually block.
+            self.response_signal.reset();
+        }
+        self.pending_response.set(pending);
+        if !pending {
+            // Wake up the responder task immediately.
+            self.response_signal.signal(());
+        }
+    }
+
+    /// Check whether the initiator has a response pending processing.
+    pub fn has_pending_response(&self) -> bool {
+        self.pending_response.get()
+    }
+
+    /// Wait until the initiator signals that it has finished processing.
+    pub async fn wait_for_response_signal(&self) {
+        self.response_signal.wait().await;
     }
 
     pub fn is_update_mode(&self) -> bool {
