@@ -84,3 +84,6 @@ zerocopy.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc.workspace = true
+
+[dev-dependencies]
+minicbor = { version = "0.24", features = ["std", "alloc"] }

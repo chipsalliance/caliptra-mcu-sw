@@ -25,8 +25,9 @@ use caliptra_mcu_mbox_common::messages::{
 
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{
-    GetOcpLockEndorsementCertReq, GetOcpLockEndorsementCertResp, OcpLockEnumerateHpkeHandlesResp,
-    OcpLockRotateHekReq, OcpLockRotateHekResp, OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
+    GetOcpLockEndorsementCertReq, GetOcpLockEndorsementCertResp, GetOcpLockEpochKeyReportReq,
+    GetOcpLockEpochKeyReportResp, OcpLockEnumerateHpkeHandlesResp, OcpLockRotateHekReq,
+    OcpLockRotateHekResp, OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -236,6 +237,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                     self.handle_ocp_lock_enumerate_hpke_handles(req, resp_buf)
                         .await
                 }
+                #[cfg(feature = "ocp-lock")]
+                CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT => {
+                    self.handle_get_ocp_lock_epoch_key_report(req, resp_buf)
+                        .await
+                }
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
                 }
@@ -439,8 +445,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .await;
 
         let (mbox_cmd_status, data_len) = match ret {
-            Ok(len) => (MbxCmdStatus::Complete, len.min(MAX_RESP_DATA_SIZE)),
-            Err(_) => (MbxCmdStatus::Failure, 0),
+            Ok(len) if len <= MAX_RESP_DATA_SIZE => (MbxCmdStatus::Complete, len),
+            _ => (MbxCmdStatus::Failure, 0),
         };
 
         let resp_len = if mbox_cmd_status == MbxCmdStatus::Complete {
@@ -582,6 +588,49 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
 
         let resp_len = resp.as_bytes().len();
         Ok((&mut resp_buf[..resp_len], status))
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn handle_get_ocp_lock_epoch_key_report<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req =
+            GetOcpLockEpochKeyReportReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let sek_state = caliptra_mcu_mbox_common::messages::SekState::try_from(req.sek_state)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+
+        let mut data = [0u8; MAX_RESP_DATA_SIZE];
+        let ret = self
+            .non_crypto_cmds_handler
+            .get_ocp_lock_epoch_key_report(&req.nonce, sek_state, &mut data)
+            .await;
+
+        let (mbox_cmd_status, data_len) = match ret {
+            Ok(len) if len <= MAX_RESP_DATA_SIZE => (MbxCmdStatus::Complete, len),
+            _ => (MbxCmdStatus::Failure, 0),
+        };
+
+        let resp = if mbox_cmd_status == MbxCmdStatus::Complete {
+            GetOcpLockEpochKeyReportResp {
+                hdr: MailboxRespHeaderVarSize {
+                    data_len: data_len as u32,
+                    ..Default::default()
+                },
+                data,
+            }
+        } else {
+            GetOcpLockEpochKeyReportResp::default()
+        };
+
+        let resp_bytes = resp
+            .as_bytes_partial()
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+
+        Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
     }
 
     async fn handle_get_auth_cmd_challenge<'r>(

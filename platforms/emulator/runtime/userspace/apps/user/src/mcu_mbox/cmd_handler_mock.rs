@@ -146,4 +146,17 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
             .ocp_lock_enumerate_hpke_handles(resp)
             .await
     }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn get_ocp_lock_epoch_key_report(
+        &self,
+        nonce: &[u8; 32],
+        sek_state: caliptra_mcu_mbox_common::messages::SekState,
+        report_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let handler = CaliptraCmdBackend;
+        handler
+            .get_ocp_lock_epoch_key_report(nonce, sek_state, report_buf)
+            .await
+    }
 }

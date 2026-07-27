@@ -104,6 +104,12 @@ impl From<der::Error> for CaliptraApiError {
     }
 }
 
+impl From<EatError> for CaliptraApiError {
+    fn from(e: EatError) -> Self {
+        CaliptraApiError::Eat(e)
+    }
+}
+
 impl CaliptraApiError {
     /// Returns a stable numeric ID for this variant.
     pub fn error_code(&self) -> u8 {

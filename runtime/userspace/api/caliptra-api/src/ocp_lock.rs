@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use crate::crypto::hash::SHA384_HASH_SIZE;
+use crate::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::{execute_mailbox_cmd, DpeEcResp, DPE_PROFILE};
 use crate::signer::DpeTransport;
@@ -22,10 +22,16 @@ pub use caliptra_api::mailbox::{
     OcpLockTestAccessKeyReq, OcpLockTestAccessKeyResp, OcpLockUnloadMekReq, OcpLockUnloadMekResp,
     Request, Response, SealedAccessKey, WrappedKey,
 };
+use caliptra_mcu_libsyscall_caliptra::caliptra::Caliptra;
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::mailbox::MailboxError;
+use caliptra_mcu_libsyscall_caliptra::otp::Otp;
 use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_mcu_romtime::ocp_lock::{Error as OcpLockError, RuntimeConfig};
+pub use caliptra_mcu_mbox_common::messages::SekState;
+use caliptra_mcu_romtime::ocp_lock::{
+    Error as OcpLockError, HekSeedState, RuntimeConfig, MAX_HEK_SLOTS, MIN_HEK_SLOTS,
+};
+use caliptra_ocp_eat::CborEncoder;
 use core::mem::size_of;
 use core::str::FromStr;
 use dpe::commands::{Command, CommandHdr};
@@ -182,6 +188,7 @@ pub struct OcpLock<'a> {
 impl OcpLock<'_> {
     pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 2048;
     pub const DPE_LABEL: &'static [u8] = b"MCU FW HPKE Endorsement";
+    pub const EKP_DPE_LABEL: &'static [u8] = b"MCU EKP Attestation";
     pub const ENDORSEMENT_CERT_CN: &'static [u8] = b"Caliptra MCU OCP LOCK Endorsement";
     pub const ENDORSEMENT_CERT_ISSUER_CN: &'static [u8] = b"DPE Leaf";
     pub const KEY_USAGE_KEY_ENCIPHERMENT: &'static [u8] = &[0x20];
@@ -515,6 +522,133 @@ impl<'a> OcpLock<'a> {
     ) -> CaliptraApiResult<OcpLockUnloadMekResp> {
         self.execute(req).await
     }
+
+    fn init_hek_state_list(
+        &self,
+        otp_driver: &Otp<caliptra_mcu_libsyscall_caliptra::DefaultSyscalls>,
+        num_slots: usize,
+        active_state: &HekSeedState,
+    ) -> CaliptraApiResult<[HekSeedState; 8]> {
+        if !(MIN_HEK_SLOTS..=MAX_HEK_SLOTS).contains(&num_slots) {
+            return Err(CaliptraApiError::Syscall(ErrorCode::Invalid));
+        }
+
+        let mut hek_state_list = [
+            HekSeedState::Unused,
+            HekSeedState::Unused,
+            HekSeedState::Unused,
+            HekSeedState::Unused,
+            HekSeedState::Unused,
+            HekSeedState::Unused,
+            HekSeedState::Unused,
+            HekSeedState::Unused,
+        ];
+
+        for (idx, slot) in hek_state_list
+            .get_mut(..num_slots)
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            let reg = caliptra_mcu_libsyscall_caliptra::otp::reg::LOCK_HEK_PROD_ALL[idx];
+            let mut slot_bytes = [0u8; 48];
+            for word_idx in 0..12 {
+                let word = otp_driver
+                    .read(reg, word_idx as u32)
+                    .map_err(CaliptraApiError::Syscall)?;
+                slot_bytes[word_idx * 4..(word_idx + 1) * 4].copy_from_slice(&word.to_le_bytes());
+            }
+            *slot = HekSeedState::from_seed_bytes(&slot_bytes, active_state);
+        }
+
+        Ok(hek_state_list)
+    }
+
+    pub async fn get_ocp_lock_epoch_key_report<S: OcpLockSigner>(
+        &self,
+        nonce: &[u8; 32],
+        sek_state: SekState,
+        signer: &S,
+        report_buf: &mut [u8],
+    ) -> CaliptraApiResult<usize> {
+        let caliptra_driver = Caliptra::<caliptra_mcu_libsyscall_caliptra::DefaultSyscalls>::new();
+
+        let active_state = HekSeedState::try_from(
+            caliptra_driver
+                .get_hek_active_state()
+                .map_err(CaliptraApiError::Syscall)?,
+        )
+        .map_err(|_| CaliptraApiError::Syscall(ErrorCode::Fail))?;
+        let total_slots = caliptra_driver
+            .get_hek_total_slots()
+            .map_err(CaliptraApiError::Syscall)?;
+
+        let otp_driver = Otp::<caliptra_mcu_libsyscall_caliptra::DefaultSyscalls>::new();
+        let num_slots = total_slots as usize;
+        let hek_state_list = self.init_hek_state_list(&otp_driver, num_slots, &active_state)?;
+
+        let remaining_hek_sanitizations = hek_state_list[..num_slots]
+            .iter()
+            .filter(|&state| matches!(state, HekSeedState::Programmed | HekSeedState::Unused))
+            .count();
+
+        let ekp_allowed = self.config.ekp_mode_active();
+
+        let evidence = EkpEvidence {
+            nonce,
+            ekp_allowed,
+            max_hek_sanitizations: total_slots as u16,
+            remaining_hek_sanitizations: remaining_hek_sanitizations as u16,
+            hek_state: active_state,
+            sek_state,
+            hek_state_list: &hek_state_list[..num_slots],
+        };
+
+        self.sign_and_assemble_ekp_report(&evidence, signer, report_buf)
+            .await
+    }
+
+    async fn sign_and_assemble_ekp_report<S: OcpLockSigner>(
+        &self,
+        evidence: &EkpEvidence<'_>,
+        signer: &S,
+        report_buf: &mut [u8],
+    ) -> CaliptraApiResult<usize> {
+        let mut evidence_buf = [0u8; 256];
+        let mut evidence_encoder = CborEncoder::new(&mut evidence_buf);
+        evidence.serialize(&mut evidence_encoder)?;
+        let evidence_len = evidence_encoder.len();
+
+        let mut sig_struct_buf = [0u8; 384];
+        let mut sig_struct_encoder = CborEncoder::new(&mut sig_struct_buf);
+        EkpEvidence::serialize_sig_structure(
+            &evidence_buf[..evidence_len],
+            &mut sig_struct_encoder,
+        )?;
+        let sig_struct_len = sig_struct_encoder.len();
+
+        let mut digest = [0u8; SHA384_HASH_SIZE];
+        HashContext::hash_all(
+            HashAlgoType::SHA384,
+            &sig_struct_buf[..sig_struct_len],
+            &mut digest,
+        )
+        .await?;
+
+        let mut signature = [0u8; 96];
+        signer
+            .sign(Self::EKP_DPE_LABEL, &digest, &mut signature)
+            .await?;
+
+        let mut report_encoder = CborEncoder::new(report_buf);
+        EkpEvidence::assemble_cose_sign1(
+            &evidence_buf[..evidence_len],
+            &signature,
+            &mut report_encoder,
+        )?;
+
+        Ok(report_encoder.len())
+    }
 }
 #[async_trait]
 impl DpeTransport for Mailbox {
@@ -586,4 +720,100 @@ fn encode_subject_name<'a>(cn: &[u8], buf: &'a mut [u8]) -> CaliptraApiResult<An
     let len: usize = subject_name.encoded_len()?.try_into()?;
     let bytes = &buf[..len];
     Ok(AnyRef::from_der(bytes)?)
+}
+
+// TODO(clundin): Update the code to the release EKP spec once published.
+// Spec Versioning Notice: The following EKP implementation is written against:
+// - TCG Storage Epoch Key Purge Feature Specification v1.00 r0.33
+// - OCP L.O.C.K. Specification v1.1
+// These are subject to change once official releases are available.
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EkpEvidence<'a> {
+    pub nonce: &'a [u8; 32],
+    pub ekp_allowed: bool,
+    pub max_hek_sanitizations: u16,
+    pub remaining_hek_sanitizations: u16,
+    pub hek_state: HekSeedState,
+    pub sek_state: SekState,
+    pub hek_state_list: &'a [HekSeedState],
+}
+
+impl<'a> EkpEvidence<'a> {
+    pub const MAP_HEADER_COUNT: u64 = 9;
+    pub const MAP_LABEL: &'static str = "TCG EKP Feature Set Evidence";
+    pub const VERSION: &'static str = "1.00";
+
+    pub const CLAIM_MAP_LABEL: u64 = 0;
+    pub const CLAIM_VERSION: u64 = 1;
+    pub const CLAIM_NONCE: u64 = 2;
+    pub const CLAIM_EKP_ALLOWED: u64 = 3;
+    pub const CLAIM_MAX_HEK_SANITIZATIONS: u64 = 4;
+    pub const CLAIM_REMAINING_HEK_SANITIZATIONS: u64 = 5;
+    pub const CLAIM_HEK_STATE: u64 = 6;
+    pub const CLAIM_SEK_STATE: u64 = 7;
+    pub const CLAIM_HEK_STATE_LIST: u64 = 8;
+
+    pub fn serialize(&self, encoder: &mut CborEncoder) -> Result<(), CaliptraApiError> {
+        encoder.encode_map_header(Self::MAP_HEADER_COUNT)?;
+
+        encoder.encode_uint(Self::CLAIM_MAP_LABEL)?;
+        encoder.encode_text(Self::MAP_LABEL)?;
+
+        encoder.encode_uint(Self::CLAIM_VERSION)?;
+        encoder.encode_text(Self::VERSION)?;
+
+        encoder.encode_uint(Self::CLAIM_NONCE)?;
+        encoder.encode_bytes(self.nonce)?;
+
+        encoder.encode_uint(Self::CLAIM_EKP_ALLOWED)?;
+        encoder.encode_bool(self.ekp_allowed)?;
+
+        // Note: Spec draft example encoded these as bytes(2), but CDDL specifies uint. We use uint (u16).
+        encoder.encode_uint(Self::CLAIM_MAX_HEK_SANITIZATIONS)?;
+        encoder.encode_uint(self.max_hek_sanitizations as u64)?;
+
+        encoder.encode_uint(Self::CLAIM_REMAINING_HEK_SANITIZATIONS)?;
+        encoder.encode_uint(self.remaining_hek_sanitizations as u64)?;
+
+        encoder.encode_uint(Self::CLAIM_HEK_STATE)?;
+        encoder.encode_uint(self.hek_state.clone() as u64)?;
+
+        encoder.encode_uint(Self::CLAIM_SEK_STATE)?;
+        encoder.encode_uint(self.sek_state.clone() as u64)?;
+
+        encoder.encode_uint(Self::CLAIM_HEK_STATE_LIST)?;
+        encoder.encode_array_header(self.hek_state_list.len() as u64)?;
+        for state in self.hek_state_list {
+            encoder.encode_uint(state.clone() as u64)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn serialize_sig_structure(
+        ekp_evidence: &[u8],
+        encoder: &mut CborEncoder,
+    ) -> Result<(), CaliptraApiError> {
+        encoder.encode_array_header(4)?;
+        encoder.encode_text("Signature1")?;
+        encoder.encode_bytes(&[0xA0])?;
+        encoder.encode_bytes(&[])?;
+        encoder.encode_bytes(ekp_evidence)?;
+        Ok(())
+    }
+
+    pub fn assemble_cose_sign1(
+        ekp_evidence: &[u8],
+        signature: &[u8],
+        encoder: &mut CborEncoder,
+    ) -> Result<(), CaliptraApiError> {
+        encoder.encode_cose_sign1_tag()?;
+        encoder.encode_array_header(4)?;
+        encoder.encode_bytes(&[0xA0])?;
+        encoder.encode_map_header(0)?;
+        encoder.encode_bytes(ekp_evidence)?;
+        encoder.encode_bytes(signature)?;
+        Ok(())
+    }
 }

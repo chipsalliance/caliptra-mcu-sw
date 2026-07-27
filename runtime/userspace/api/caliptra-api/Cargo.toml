@@ -25,6 +25,7 @@ caliptra-mcu-libsyscall-caliptra.workspace = true
 caliptra-mcu-libtock_console.workspace = true
 caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtock_runtime.workspace = true
+caliptra-mcu-mbox-common.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-lib.workspace = true
 caliptra-mcu-romtime.workspace = true

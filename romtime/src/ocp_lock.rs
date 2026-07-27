@@ -5,6 +5,11 @@
 
 use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
+/// OCP LOCK spec requires max 8 HEK slots
+pub const MAX_HEK_SLOTS: usize = 8;
+/// OCP LOCK spec requires min 4 HEK slots
+pub const MIN_HEK_SLOTS: usize = 4;
+
 #[derive(Debug, Clone, PartialEq, Eq, TryFromBytes, IntoBytes, KnownLayout, Immutable, Default)]
 #[repr(u16)]
 pub enum HekSeedState {
@@ -53,6 +58,22 @@ impl From<&HekSeedState> for u16 {
             HekSeedState::Sanitized => 0x5,
             HekSeedState::SanitizedPendingReset => 0x6,
             HekSeedState::SanitizedCorrupted => 0x7,
+        }
+    }
+}
+
+impl HekSeedState {
+    /// Determine the state of a HEK slot from its 48-byte fuse data.
+    pub fn from_seed_bytes(seed_bytes: &[u8; 48], active_state: &HekSeedState) -> Self {
+        if *active_state == HekSeedState::Permanent {
+            return HekSeedState::Permanent;
+        }
+        if seed_bytes.iter().all(|&b| b == 0x00) {
+            HekSeedState::Unused
+        } else if seed_bytes.iter().all(|&b| b == 0xFF) {
+            HekSeedState::Sanitized
+        } else {
+            HekSeedState::Programmed
         }
     }
 }
@@ -236,6 +257,11 @@ pub trait RuntimeConfig: Send + Sync {
     /// Get the endorsement certificate serial number
     /// NOTE: Do not include leading 0s in the serial number
     fn endorsement_cert_serial_number(&self) -> &[u8; 20];
+
+    /// Check whether EKP mode is active on this platform.
+    fn ekp_mode_active(&self) -> bool {
+        false
+    }
 }
 
 /// Platform specific OCP LOCK behavior for runtime key rotation
