@@ -22,10 +22,14 @@ mod test {
     fn load_roms() -> (Vec<u8>, Vec<u8>) {
         if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
             (
-                binaries.caliptra_rom.clone(),
                 binaries
-                    .test_rom(&firmware::hw_model_tests::OTP_SCRAMBLE_CHECK)
-                    .unwrap(),
+                    .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_DO_NOTHING)
+                    .caliptra_rom
+                    .to_vec(),
+                binaries
+                    .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_OTP_SCRAMBLE_CHECK)
+                    .mcu_rom
+                    .to_vec(),
             )
         } else {
             let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {

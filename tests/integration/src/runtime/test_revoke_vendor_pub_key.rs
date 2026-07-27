@@ -16,10 +16,19 @@ use caliptra_mcu_romtime::McuBootMilestones;
 
 fn get_fw() -> Result<(Vec<u8>, Vec<u8>, [u8; 48], Vec<u8>)> {
     if let Ok(binaries) = FirmwareBinaries::from_env() {
-        let fw = binaries.caliptra_fw.clone();
-        let fw_key2 = binaries.caliptra_fw_key2.clone();
+        let fw = binaries
+            .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS)
+            .caliptra_rt
+            .to_vec();
+        let fw_key2 = binaries
+            .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS)
+            .caliptra_rt
+            .to_vec();
         let pk_hash = binaries.vendor_pk_hash().unwrap();
-        let manifest = binaries.test_soc_manifest("test-mcu-mbox-cmds")?.clone();
+        let manifest = binaries
+            .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS)
+            .soc_manifest
+            .to_vec();
         Ok((fw, fw_key2, pk_hash, manifest))
     } else {
         let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
@@ -49,7 +58,7 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
 
     // Boot with default caliptra_fw (key_index = 0)
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -99,7 +108,7 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
     // We use `rom_only: true` here to prevent the emulator initialization from
     // blocking or crashing while waiting for a successful boot that will never happen.
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_key2,
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -136,7 +145,7 @@ fn test_revoke_vendor_pub_key0_lms() -> Result<()> {
 
     // Boot with default caliptra_fw (key_index = 0)
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -176,7 +185,7 @@ fn test_revoke_vendor_pub_key0_lms() -> Result<()> {
     // We use `rom_only: true` here to prevent the emulator initialization from
     // blocking or crashing while waiting for a successful boot that will never happen.
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_key2,
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -213,7 +222,7 @@ fn test_rotate_vendor_pk_hash() -> Result<()> {
 
     // Boot with default caliptra_fw
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw.clone(),
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -262,7 +271,7 @@ fn test_rotate_vendor_pk_hash() -> Result<()> {
 
     // Boot with caliptra_fw again
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
             vendor_pk_hash: vendor_pk_hash_arr,

@@ -8,7 +8,7 @@
 
 #[cfg(test)]
 mod test {
-    use crate::test::{build_test_binaries, start_runtime_hw_model, TestParams, TEST_LOCK};
+    use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mcu_emulator_periph::UsbHostController;
     use caliptra_mcu_hw_model::usb_ctrl::*;
     use caliptra_mcu_hw_model::{DefaultHwModel, McuHwModel};
@@ -33,30 +33,33 @@ mod test {
     /// compilation pass and return both the hw model and the recovery
     /// images (caliptra_fw, soc_manifest, mcu_runtime).
     fn build_and_start_usb_ocp_recovery() -> (DefaultHwModel, Vec<u8>, Vec<u8>, Vec<u8>) {
-        let bins = build_test_binaries(&TestParams {
-            rom_feature: Some("test-usb-ocp-recovery"),
-            ..Default::default()
-        });
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-usb-ocp-recovery"),
-            custom_mcu_rom: Some(bins.mcu_rom),
+        let params = TestParams {
+            target: &caliptra_mcu_builder::firmware::targets::TEST_USB_OCP_RECOVERY,
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             flash_boot: true,
             rom_only: true,
             ..Default::default()
-        });
+        };
+        let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
+        let bundle =
+            binaries.as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_USB_OCP_RECOVERY);
 
-        let images = (bins.caliptra_fw, bins.soc_manifest, bins.mcu_runtime);
+        let mut hw = start_runtime_hw_model(params);
+
         start_usb_ocp_recovery_enumerate(&mut hw);
-        (hw, images.0, images.1, images.2)
+        (
+            hw,
+            bundle.caliptra_rt.0.clone(),
+            bundle.soc_manifest.0.clone(),
+            bundle.mcu_fw.bytes.clone(),
+        )
     }
 
     /// Start the emulator with the USB OCP recovery feature and enumerate USB.
     /// Returns the hw model with USB already enumerated.
     fn start_usb_ocp_recovery() -> DefaultHwModel {
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_feature: Some("test-usb-ocp-recovery"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_USB_OCP_RECOVERY,
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             flash_boot: true,
             rom_only: true,

@@ -461,7 +461,7 @@ impl CaliptraBuilder {
         Ok(path)
     }
 
-    fn compile_caliptra_fw_cached(
+    pub fn compile_caliptra_fw_cached(
         fpga: bool,
         ocp_lock: bool,
         svn: Option<u16>,

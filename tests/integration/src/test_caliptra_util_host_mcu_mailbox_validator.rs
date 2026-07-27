@@ -115,7 +115,6 @@ pub mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, Ordering::Relaxed);
 
-        let feature = "test-caliptra-util-host-validator";
         let udp_port = PortPicker::new().random(true).pick().unwrap();
         let unlock_level = 1u8;
 
@@ -161,7 +160,7 @@ pub mod test {
 
         // --- Start hw_model with keys provisioned in fuses ---
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some(feature),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_CALIPTRA_UTIL_HOST_MCU_MAILBOX_VALIDATOR,
             debug_intent: true,
             lifecycle_controller_state: Some(caliptra_mcu_romtime::LifecycleControllerState::Prod),
             prod_dbg_unlock_keypairs: prod_dbg_keypairs,

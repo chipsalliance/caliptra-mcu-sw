@@ -110,7 +110,12 @@ mod test {
     /// path (typical local emulator runs that build firmware on demand).
     fn user_app_elf() -> Vec<u8> {
         if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
-            if let Some(bytes) = binaries.test_user_app_elf(FEATURE) {
+            if let Some(bytes) = binaries
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_DEFMT_LOGGING_MAILBOX)
+                .mcu_fw
+                .user_app_elf
+                .as_deref()
+            {
                 return bytes.to_vec();
             }
         }
@@ -131,7 +136,7 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
 
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some(FEATURE),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DEFMT_LOGGING_MAILBOX,
             ..Default::default()
         });
 

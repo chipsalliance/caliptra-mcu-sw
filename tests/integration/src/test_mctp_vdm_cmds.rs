@@ -403,13 +403,12 @@ pub mod test {
     }
 
     /// Start VDM command test with the given feature.
-    pub fn start_vdm_test(feature: &str, debug_level: LevelFilter) {
+    pub fn start_vdm_test(_feature: &str, debug_level: LevelFilter) {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let feature = feature.replace("_", "-");
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some(&feature),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_MCTP_VDM_CMDS,
             i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
             seeded_log_entries: Some(config::TEST_DEBUG_LOG_ENTRIES),
             ..Default::default()

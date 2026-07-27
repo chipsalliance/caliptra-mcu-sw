@@ -165,7 +165,7 @@ mod test {
     /// firmware internally via `start_runtime_hw_model`.
     fn compute_hmac(blob: &[u8]) -> Vec<u8> {
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some("test-do-nothing"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DO_NOTHING,
             ..Default::default()
         });
 
@@ -370,11 +370,22 @@ mod test {
         let (mcu_runtime_path, prebuilt_caliptra_fw, prebuilt_vendor_pk_hash) =
             if let Ok(binaries) = FirmwareBinaries::from_env() {
                 let rt_path = std::env::temp_dir().join("test_dot_mcu_runtime.bin");
-                std::fs::write(&rt_path, &binaries.mcu_runtime)
-                    .expect("Failed to write MCU runtime");
+                std::fs::write(
+                    &rt_path,
+                    &binaries
+                        .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_DOT_RECOVERY)
+                        .mcu_fw
+                        .bytes,
+                )
+                .expect("Failed to write MCU runtime");
                 let fw_path = std::env::temp_dir().join("test_dot_custom_owner_caliptra_fw.bin");
-                std::fs::write(&fw_path, &binaries.caliptra_fw)
-                    .expect("Failed to write prebuilt Caliptra FW");
+                std::fs::write(
+                    &fw_path,
+                    &binaries
+                        .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_DOT_RECOVERY)
+                        .caliptra_rt,
+                )
+                .expect("Failed to write prebuilt Caliptra FW");
                 let vendor_pk_hash = hex::encode(
                     binaries
                         .vendor_pk_hash()
@@ -842,7 +853,7 @@ mod test {
             dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
             otp_memory: Some(create_locked_otp_memory()),
-            rom_feature: Some("test-dot-recovery-reset-flow"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DOT_RECOVERY_RESET_FLOW,
             ..Default::default()
         });
 
@@ -952,7 +963,7 @@ mod test {
             dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
             otp_memory: Some(create_locked_otp_memory()),
-            rom_feature: Some("test-dot-recovery"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DOT_RECOVERY,
             ..Default::default()
         });
 
@@ -1017,7 +1028,7 @@ mod test {
             dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
             otp_memory: Some(create_locked_otp_memory()),
-            rom_feature: Some("test-dot-recovery"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DOT_RECOVERY,
             ..Default::default()
         });
 
@@ -2097,7 +2108,7 @@ mod test {
             dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
             otp_memory: Some(create_challenge_recovery_otp_memory(&vendor_pk_hash)),
-            rom_feature: Some("test-dot-recovery"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DOT_RECOVERY,
             ..Default::default()
         });
 
@@ -2283,7 +2294,7 @@ mod test {
             dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
             otp_memory: Some(otp_via_owner_convention),
-            rom_feature: Some("test-dot-recovery"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DOT_RECOVERY,
             ..Default::default()
         });
 
@@ -2386,7 +2397,7 @@ mod test {
             dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
             otp_memory: Some(create_challenge_recovery_otp_memory(&vendor_pk_hash)),
-            rom_feature: Some("test-dot-recovery"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DOT_RECOVERY,
             ..Default::default()
         });
 
@@ -2455,7 +2466,7 @@ mod test {
             dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
             otp_memory: Some(create_challenge_recovery_otp_memory(&vendor_pk_hash)),
-            rom_feature: Some("test-dot-recovery"),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DOT_RECOVERY,
             ..Default::default()
         });
 
@@ -2697,8 +2708,8 @@ mod test {
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
 
         let mut hw = start_runtime_hw_model(TestParams {
+            target: &caliptra_mcu_builder::firmware::targets::TEST_DOT_RECOVERY_RESET_FLOW,
             firmware_prefix: Some(manifest),
-            fw_manifest_dot_hitless: true,
             dot_flash_initial_contents: Some(dot_flash),
             dot_enabled: true,
             rom_only: true,

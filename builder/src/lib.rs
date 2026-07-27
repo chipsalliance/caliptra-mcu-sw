@@ -12,7 +12,9 @@ mod runtime;
 mod utils;
 
 pub use all::{
-    all_build, emulator_build, AllBuildArgs, EmulatorBinaries, EmulatorBuildArgs, FirmwareBinaries,
+    all_build, emulator_build, AllBuildArgs, CaliptraRomBinary, CaliptraRtBinary, EmulatorBinaries,
+    EmulatorBuildArgs, FirmwareBinaries, FirmwareBundle, McuFwBinary, McuRomBinary,
+    SocManifestBinary,
 };
 pub use caliptra::{AuthManifestOwnerConfig, CaliptraBuilder, ImageCfg};
 pub use network_rom::network_rom_build;

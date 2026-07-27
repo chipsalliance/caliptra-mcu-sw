@@ -842,13 +842,15 @@ mod test {
     fn test_new_unbooted() {
         let (mcu_rom, mcu_runtime, caliptra_rom, caliptra_fw, vendor_pk_hash, soc_manifest) =
             if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
+                let bundle =
+                    binaries.as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_DO_NOTHING);
                 (
-                    binaries.mcu_rom.clone(),
-                    binaries.mcu_runtime.clone(),
-                    binaries.caliptra_rom.clone(),
-                    binaries.caliptra_fw.clone(),
+                    bundle.mcu_rom.to_vec(),
+                    bundle.mcu_fw.bytes.clone(),
+                    bundle.caliptra_rom.to_vec(),
+                    bundle.caliptra_rt.to_vec(),
                     binaries.vendor_pk_hash().unwrap(),
-                    binaries.soc_manifest.clone(),
+                    bundle.soc_manifest.to_vec(),
                 )
             } else {
                 let mcu_rom = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs::default())

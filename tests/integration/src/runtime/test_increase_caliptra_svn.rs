@@ -23,10 +23,19 @@ fn test_increase_caliptra_svn() -> Result<()> {
     let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
     let (caliptra_fw_svn0, caliptra_fw_svn7, vendor_pk_hash_arr, soc_manifest) =
         if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let fw_svn0 = binaries.caliptra_fw.clone();
-            let fw_svn7 = binaries.caliptra_fw_svn7.clone();
+            let fw_svn0 = binaries
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS)
+                .caliptra_rt
+                .to_vec();
+            let fw_svn7 = binaries
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_MCU_SVN_GT_FUSE)
+                .caliptra_rt
+                .to_vec();
             let pk_hash = binaries.vendor_pk_hash().unwrap();
-            let manifest = binaries.test_soc_manifest("test-mcu-mbox-cmds").unwrap();
+            let manifest = binaries
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS)
+                .soc_manifest
+                .to_vec();
             (fw_svn0, fw_svn7, pk_hash, manifest)
         } else {
             let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
@@ -51,7 +60,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
 
     // Start the hardware model with the custom Caliptra firmware (SVN 7).
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn7.clone(),
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -111,7 +120,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
 
     // Step 2: Cold boot with the burned fuses and verify the firmware with SVN 7 can still boot.
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_SVN_GT_FUSE,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn7,
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -167,7 +176,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
     // We use `rom_only: true` here to prevent the emulator initialization from
     // blocking or crashing while waiting for a successful boot that will never happen.
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_SVN_LT_FUSE,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn0.clone(),
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -210,9 +219,15 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
     let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
     let (caliptra_fw_svn128, vendor_pk_hash_arr, soc_manifest) =
         if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let fw = binaries.caliptra_fw_svn128.clone();
+            let fw = binaries
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_MCU_SVN_LT_FUSE)
+                .caliptra_rt
+                .to_vec();
             let pk_hash = binaries.vendor_pk_hash().unwrap();
-            let manifest = binaries.test_soc_manifest("test-mcu-mbox-cmds").unwrap();
+            let manifest = binaries
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS)
+                .soc_manifest
+                .to_vec();
             (fw, pk_hash, manifest)
         } else {
             let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
@@ -231,7 +246,7 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
 
     // Start the hardware model with the custom Caliptra firmware (SVN 128).
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn128.clone(),
             vendor_pk_hash: vendor_pk_hash_arr,
@@ -268,7 +283,7 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
 
     // Verify persistence across cold boot.
     let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
+        target: &caliptra_mcu_builder::firmware::targets::TEST_MCU_MBOX_CMDS,
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn128,
             vendor_pk_hash: vendor_pk_hash_arr,

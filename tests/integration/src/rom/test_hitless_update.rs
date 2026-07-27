@@ -14,10 +14,9 @@ fn test_hitless_update_flow() -> Result<()> {
     let cptra_rom_id = &caliptra_builder::firmware::hw_model_tests::MCU_HITLESS_UPDATE_FLOW;
     let (caliptra_rom, mcu_rom) =
         if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
-            (
-                binaries.caliptra_test_rom(cptra_rom_id)?,
-                binaries.test_rom(mcu_rom_id)?,
-            )
+            let bundle = binaries
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_HITLESS_UPDATE_FLOW);
+            (bundle.caliptra_rom.to_vec(), bundle.mcu_rom.to_vec())
         } else {
             let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {
                 platform: Some(platform()),

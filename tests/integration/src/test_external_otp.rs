@@ -11,8 +11,7 @@ mod test {
     fn test_external_otp() {
         // Instantiate hardware model with external OTP memory loaded.
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some("test-external-otp"),
-            example_app: true,
+            target: &caliptra_mcu_builder::firmware::targets::TEST_EXTERNAL_OTP,
             i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
             ..Default::default()
         });

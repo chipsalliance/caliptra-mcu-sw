@@ -23,7 +23,7 @@ pub mod test {
         let feature = feature.replace("_", "-");
 
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some(&feature),
+            target: &caliptra_mcu_builder::firmware::targets::TEST_FLASH_CTRL_READ_WRITE_PAGE,
             i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
             ..Default::default()
         });

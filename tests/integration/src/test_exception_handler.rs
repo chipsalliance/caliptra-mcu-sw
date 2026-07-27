@@ -16,8 +16,9 @@ mod test {
 
         let mcu_rom = if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
             binaries
-                .test_rom(&firmware::hw_model_tests::EXCEPTION_HANDLER)
-                .unwrap()
+                .as_bundle(&caliptra_mcu_builder::firmware::targets::TEST_EXCEPTION_HANDLER)
+                .mcu_rom
+                .to_vec()
         } else {
             let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {
                 platform: Some(platform()),
