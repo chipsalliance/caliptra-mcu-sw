@@ -46,6 +46,8 @@ jobs:
 
   build-firmware:
     runs-on: [e2-standard-16-big-disk]
+    # Changes to shared userspace code invalidate every feature-specific runtime;
+    # a cold rebuild can exceed one hour before the release bundle is packaged.
     timeout-minutes: 90
 
     env:
