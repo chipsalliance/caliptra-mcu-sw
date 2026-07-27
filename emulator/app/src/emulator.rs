@@ -39,7 +39,6 @@ use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootB
 use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 use caliptra_mcu_pldm_ua::daemon::PldmDaemon;
 use caliptra_mcu_pldm_ua::transport::{EndpointId, PldmTransport};
-use caliptra_mcu_testing_common::i3c_socket;
 use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use caliptra_mcu_testing_common::mctp_transport::MctpTransport;
 use caliptra_mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
@@ -59,7 +58,6 @@ use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use tests::pldm_request_response_test::PldmRequestResponseTest;
 
 // Type aliases for external shim callbacks
 pub type ExternalReadCallback =
@@ -674,39 +672,6 @@ impl Emulator {
             let tests = tests::doe_user_loopback::generate_tests();
             doe_mbox_fsm::run_doe_transport_tests(test_tx, test_rx, tests);
         }
-        if test_feature == "test-mctp-ctrl-cmds" {
-            i3c_controller_join_handle = Some(i3c_controller.start());
-            println!(
-                "Starting test-mctp-ctrl-cmds test thread for testing target {:?}",
-                i3c.get_dynamic_address().unwrap()
-            );
-
-            let tests = tests::mctp_ctrl_cmd::MCTPCtrlCmdTests::generate_tests();
-            i3c_socket::run_tests(
-                cli.i3c_port.unwrap(),
-                i3c.get_dynamic_address().unwrap(),
-                tests,
-                None,
-            );
-        }
-        if test_feature == "test-mctp-user-loopback" {
-            i3c_controller_join_handle = Some(i3c_controller.start());
-            println!(
-                "Starting loopback test thread for testing target {:?}",
-                i3c.get_dynamic_address().unwrap()
-            );
-
-            let spdm_loopback_tests = tests::mctp_user_loopback::MctpUserAppTests::generate_tests(
-                caliptra_mcu_testing_common::mctp_util::base_protocol::MctpMsgType::Caliptra as u8,
-            );
-
-            i3c_socket::run_tests(
-                cli.i3c_port.unwrap(),
-                i3c.get_dynamic_address().unwrap(),
-                spdm_loopback_tests,
-                None,
-            );
-        }
         if test_feature == "test-doe-spdm-responder-conformance" {
             if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
                 println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
@@ -732,19 +697,6 @@ impl Emulator {
                 SpdmTestType::SpdmTeeIoValidator,
                 std::time::Duration::from_secs(9000), // timeout in seconds
             );
-        }
-
-        if test_feature == "test-pldm-request-response"
-            || test_feature == "test-pldm-discovery"
-            || test_feature == "test-pldm-fw-update"
-        {
-            i3c_controller_join_handle = Some(i3c_controller.start());
-            let pldm_transport =
-                MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
-            let pldm_socket = pldm_transport
-                .create_socket(EndpointId(0), EndpointId(1))
-                .unwrap();
-            PldmRequestResponseTest::run(pldm_socket, test_feature.to_string());
         }
 
         let create_flash_controller =

@@ -2,6 +2,8 @@
 //! This module tests the PLDM request/response interaction between the emulator and the device.
 //! The emulator sends out different PLDM requests and expects a corresponding response for those requests.
 
+use crate::mctp_transport::MctpPldmSocket;
+use crate::wait_for_runtime_start;
 use caliptra_mcu_pldm_common::codec::PldmCodec;
 use caliptra_mcu_pldm_common::message::control::*;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::{
@@ -13,8 +15,6 @@ use caliptra_mcu_pldm_common::message::firmware_update::query_devid::{
 use caliptra_mcu_pldm_common::protocol::base::*;
 use caliptra_mcu_pldm_common::protocol::firmware_update::*;
 use caliptra_mcu_pldm_ua::transport::PldmSocket;
-use caliptra_mcu_testing_common::mctp_transport::MctpPldmSocket;
-use caliptra_mcu_testing_common::wait_for_runtime_start;
 use std::process::exit;
 
 pub struct PldmRequestResponseTest {
@@ -89,9 +89,9 @@ impl PldmRequestResponseTest {
     }
 
     pub fn run(socket: MctpPldmSocket, test_feature: String) {
-        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+        crate::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
-            if !caliptra_mcu_testing_common::is_emulator_running() {
+            if !crate::is_emulator_running() {
                 exit(-1);
             }
             print!("Emulator: Running PLDM Loopback Test: ",);
@@ -102,7 +102,7 @@ impl PldmRequestResponseTest {
             } else {
                 println!("Passed");
             }
-            caliptra_mcu_testing_common::stop_emulator();
+            crate::stop_emulator();
         });
     }
 
