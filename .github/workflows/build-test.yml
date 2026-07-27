@@ -102,11 +102,6 @@ jobs:
 
     env:
       CARGO_INCREMENTAL: 0
-      SCCACHE_VERSION: 0.8.2
-      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
-      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
-      # Change this to a new random value if you suspect the cache is corrupted
-      SCCACHE_C_CUSTOM_CACHE_BUSTER: 6b6eb61a2989
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
@@ -120,36 +115,6 @@ jobs:
           sudo apt-get update -qy && \
           sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
           rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
-
-      - name: Restore sccache binary
-        uses: actions/cache/restore@v3
-        id: sccache_bin_restore
-        with:
-          path: ~/.cargo/bin/sccache
-          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
-
-      - name: Install sccache
-        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
-        run: |
-          cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
-
-      - name: Save sccache binary
-        uses: actions/cache/save@v3
-        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
-        with:
-          path: ~/.cargo/bin/sccache
-          key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
-
-      - name: Make sccache executable
-        run: chmod +x ~/.cargo/bin/sccache || true
-
-      - name: Configure sccache
-        uses: actions/github-script@v6
-        with:
-          script: |
-            core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Download xtask binary
         uses: actions/download-artifact@v4
@@ -168,7 +133,6 @@ jobs:
             --separate-runtimes \
             --shard-index ${{ matrix.shard }} \
             --total-shards 5
-          sccache --show-stats
 
       - name: Build release ROM and runtime binaries (Shard ${{ matrix.shard }}/5)
         run: |
@@ -177,7 +141,6 @@ jobs:
             --profile release \
             --shard-index ${{ matrix.shard }} \
             --total-shards 5
-          sccache --show-stats
 
       - name: Upload partial firmware bundle
         uses: actions/upload-artifact@v4
@@ -237,11 +200,6 @@ jobs:
 
     env:
       CARGO_INCREMENTAL: 0
-      SCCACHE_VERSION: 0.8.2
-      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
-      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
-      # Change this to a new random value if you suspect the cache is corrupted
-      SCCACHE_C_CUSTOM_CACHE_BUSTER: 6b6eb61a2989
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
@@ -256,36 +214,6 @@ jobs:
           sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
           rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
-      - name: Restore sccache binary
-        uses: actions/cache/restore@v3
-        id: sccache_bin_restore
-        with:
-          path: ~/.cargo/bin/sccache
-          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
-
-      - name: Install sccache
-        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
-        run: |
-          cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
-
-      - name: Save sccache binary
-        uses: actions/cache/save@v3
-        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
-        with:
-          path: ~/.cargo/bin/sccache
-          key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
-
-      - name: Make sccache executable
-        run: chmod +x ~/.cargo/bin/sccache || true
-
-      - name: Configure sccache
-        uses: actions/github-script@v6
-        with:
-          script: |
-            core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
       - name: Download xtask binary
         uses: actions/download-artifact@v4
         with:
@@ -299,7 +227,6 @@ jobs:
         run: |
           # Build a single emulator that supports all test features via runtime flags
           /tmp/xtask emulator-build
-          sccache --show-stats
 
       - name: Upload emulator bundle
         uses: actions/upload-artifact@v4
@@ -315,11 +242,6 @@ jobs:
 
     env:
       CARGO_INCREMENTAL: 0
-      SCCACHE_VERSION: 0.8.2
-      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
-      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
-      # Change this to a new random value if you suspect the cache is corrupted
-      SCCACHE_C_CUSTOM_CACHE_BUSTER: 6b6eb61a2989
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
@@ -342,36 +264,6 @@ jobs:
         run: |
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
 
-      - name: Restore sccache binary
-        uses: actions/cache/restore@v3
-        id: sccache_bin_restore
-        with:
-          path: ~/.cargo/bin/sccache
-          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
-
-      - name: Install sccache
-        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
-        run: |
-          cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
-
-      - name: Save sccache binary
-        uses: actions/cache/save@v3
-        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
-        with:
-          path: ~/.cargo/bin/sccache
-          key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
-
-      - name: Make sccache executable
-        run: chmod +x ~/.cargo/bin/sccache || true
-
-      - name: Configure sccache
-        uses: actions/github-script@v6
-        with:
-          script: |
-            core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
       - name: Download xtask binary
         uses: actions/download-artifact@v4
         with:
@@ -385,7 +277,6 @@ jobs:
         run: |
           /tmp/xtask test-archive \
             --archive /tmp/nextest-archive.tar.zst
-          sccache --show-stats
 
       - name: Upload test archive
         uses: actions/upload-artifact@v4
