@@ -215,6 +215,7 @@ impl<'a> time::Alarm<'a> for InternalTimers<'a> {
     fn disarm(&self) -> Result<(), ErrorCode> {
         self.mitctl0.modify(mitctl0::enable::CLEAR);
         self.mitctl1.modify(mitctl1::enable::CLEAR);
+        self.fire_at.set(0);
         Ok(())
     }
 
