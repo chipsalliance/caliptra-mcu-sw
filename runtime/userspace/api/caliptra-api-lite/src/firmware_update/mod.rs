@@ -5,9 +5,6 @@ mod pldm_client;
 mod pldm_context;
 mod pldm_fdops;
 
-use crate::firmware_update::pldm_client::pldm_total_component_size;
-use crate::firmware_update::pldm_context::State;
-use crate::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
@@ -22,6 +19,7 @@ use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
 };
+use caliptra_mcu_libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
 use caliptra_mcu_libsyscall_caliptra::dma::{
@@ -38,6 +36,8 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
 use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 use embassy_executor::Spawner;
+use pldm_client::pldm_total_component_size;
+use pldm_context::State;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -45,7 +45,7 @@ use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
 use core::mem::offset_of;
 
-use crate::crypto::hash::{HashAlgoType, HashContext};
+use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 
 pub struct FirmwareUpdater<'a, D: DMAMapping> {
     staging_memory: &'static dyn StagingMemory,
