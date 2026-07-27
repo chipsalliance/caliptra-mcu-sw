@@ -426,7 +426,10 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
-            dot_recovery_handler: if cfg!(feature = "test-dot-recovery") {
+            dot_recovery_handler: if cfg!(any(
+                feature = "test-dot-recovery",
+                feature = "test-dot-recovery-reset-flow"
+            )) {
                 Some(&*recovery_handler)
             } else {
                 None
