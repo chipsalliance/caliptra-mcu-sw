@@ -27,6 +27,7 @@ use zerocopy::IntoBytes;
 const ALGO_ECC_P384: u32 = 0x0001;
 const ALGO_MLDSA87: u32 = 0x0002;
 
+// TODO: Implement firmware version retrieval for the production backend.
 pub async fn get_firmware_version(
     _index: u32,
     _version: &mut FirmwareVersion,
@@ -34,6 +35,7 @@ pub async fn get_firmware_version(
     Err(CaliptraCompletionCode::UnsupportedOperation)
 }
 
+// TODO: Implement device capability retrieval for the production backend.
 pub async fn get_device_capabilities(
     _capabilities: &mut DeviceCapabilities,
 ) -> CaliptraCmdResult<()> {
@@ -41,17 +43,13 @@ pub async fn get_device_capabilities(
 }
 
 pub async fn get_debug_log(log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
-    match LogType::try_from(log_type)? {
-        LogType::Debug => super::debug_log::drain(data).await,
-        LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
-    }
+    LogType::try_from(log_type)?;
+    super::debug_log::drain(data).await
 }
 
 pub async fn clear_debug_log(log_type: u32) -> CaliptraCmdResult<()> {
-    match LogType::try_from(log_type)? {
-        LogType::Debug => super::debug_log::clear().await,
-        LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
-    }
+    LogType::try_from(log_type)?;
+    super::debug_log::clear().await
 }
 
 pub async fn request_debug_unlock<A: ApiAlloc>(

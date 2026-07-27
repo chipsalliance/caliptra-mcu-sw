@@ -64,6 +64,7 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-mbox-usermode",
     "test-mcu-mbox-cmds",
     "test-mctp-vdm-cmds",
+    "test-mctp-vdm-production",
     "test-mcu-mbox-fips-self-test",
     "test-mcu-mbox-fips-periodic",
     "test-defmt-logging-vdm",

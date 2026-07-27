@@ -49,13 +49,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 
     /// Drain entries of `log_type` from the backing store.
     ///
-    /// `LogType::Debug` is backed by the Tock logging-flash capsule via
+    /// The debug log is backed by the Tock logging-flash capsule via
     /// [`LoggingSyscall`](caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall);
     /// the kernel cursor is advanced as entries are consumed and any entry
     /// that does not fit is held over for the next call.
-    ///
-    /// `LogType::Attestation` returns `UnsupportedOperation` until the
-    /// Caliptra-mailbox-backed implementation lands.
     async fn get_log(&self, log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
         device_ops::get_debug_log(log_type, data).await
     }
