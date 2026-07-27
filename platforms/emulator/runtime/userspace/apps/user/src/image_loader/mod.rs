@@ -67,6 +67,11 @@ use core::ptr::NonNull;
 
 #[allow(unused)]
 use crate::EXECUTOR;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+#[allow(unused)]
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+#[allow(unused)]
+use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 #[allow(unused)]
 #[cfg(not(any(
     feature = "streaming-boot",
@@ -75,7 +80,7 @@ use crate::EXECUTOR;
     feature = "test-pldm-fw-update-e2e",
     feature = "test-pldm-streaming-boot"
 )))]
-use caliptra_mcu_libapi_caliptra::image_loading::{
+use mcu_caliptra_api_lite::image_loader::{
     dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader,
 };
 #[allow(unused)]
@@ -86,15 +91,10 @@ use caliptra_mcu_libapi_caliptra::image_loading::{
     feature = "test-pldm-fw-update-e2e",
     feature = "test-pldm-streaming-boot"
 ))]
-use caliptra_mcu_libapi_caliptra::image_loading::{
+use mcu_caliptra_api_lite::image_loader::{
     dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams,
     PldmImageLoader,
 };
-use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-#[allow(unused)]
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-#[allow(unused)]
-use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 #[allow(unused)]
 use zerocopy::{FromBytes, IntoBytes};
 
