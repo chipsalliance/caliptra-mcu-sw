@@ -25,7 +25,7 @@ mod test {
 
         let mut hw = start_runtime_hw_model(TestParams {
             otp_memory: Some(otp),
-            rom_only: true,
+            feature: Some("test-exit-immediately"),
             rom_feature: Some("stable-owner-key"),
             ..Default::default()
         });
@@ -53,7 +53,16 @@ mod test {
             checkpoint
         );
 
-        println!("[TEST] Stable owner key derivation path succeeded");
+        hw.step_until_exit_success()
+            .expect("Runtime failed to retrieve stable owner key handoff");
+        assert!(
+            hw.output()
+                .peek()
+                .contains("[mcu-runtime] Stable owner key CMK available from handoff"),
+            "Runtime did not report a valid stable owner key handoff"
+        );
+
+        println!("[TEST] Stable owner key derivation and handoff succeeded");
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }

@@ -40,6 +40,8 @@ use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg;
 use caliptra_mcu_registers_generated::mci::bits::SecurityState::DeviceLifecycle as MciDeviceLifecycle;
 use caliptra_mcu_registers_generated::mci::bits::{MboxExecute, MboxLock};
+#[cfg(feature = "stable-owner-key")]
+use caliptra_mcu_romtime::handoff::{HandoffData, STABLE_OWNER_KEY_CMK_SIZE};
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_romtime::ocp_lock::HekState;
 use caliptra_mcu_romtime::{
@@ -1491,13 +1493,17 @@ impl BootFlow for ColdBoot {
         {
             // Derive stable owner key using the OTP personalization seed.
             crate::call_hook(params.hooks, |h| h.pre_stable_owner_key_derivation());
-            if let Err(err) = crate::stable_owner_key::derive_stable_owner_key(env) {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] Stable owner key derivation failed: {}",
-                    HexWord(err.into())
-                );
-                fatal_error(err);
-            }
+            let stable_owner_key = crate::stable_owner_key::derive_stable_owner_key(env)
+                .unwrap_or_else(|err| {
+                    caliptra_mcu_romtime::println!(
+                        "[mcu-rom] Stable owner key derivation failed: {}",
+                        HexWord(err.into())
+                    );
+                    fatal_error(err);
+                });
+            let stable_owner_key_cmk: [u8; STABLE_OWNER_KEY_CMK_SIZE] =
+                transmute!(stable_owner_key.0);
+            HandoffData::write_stable_owner_key(&stable_owner_key_cmk);
             crate::call_hook(params.hooks, |h| h.post_stable_owner_key_derivation());
         }
 

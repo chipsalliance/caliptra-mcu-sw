@@ -367,6 +367,11 @@ pub unsafe fn main() {
     let handoff = HandOff::new();
     if let Some(ref ho) = handoff {
         caliptra_mcu_romtime::println!("[mcu-runtime] HandOff marker: 0x{:08x}", ho.rom.fht_marker);
+        if ho.stable_owner_key().is_some() {
+            caliptra_mcu_romtime::println!(
+                "[mcu-runtime] Stable owner key CMK available from handoff"
+            );
+        }
         #[cfg(feature = "ocp-lock")]
         caliptra_mcu_romtime::println!(
             "[mcu-runtime] HEK state from handoff: active_state={:?}, active_slot={}, total_slots={}",

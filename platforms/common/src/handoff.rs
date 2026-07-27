@@ -78,6 +78,13 @@ impl HandOff<ReadWrite> {
 }
 
 impl<Access> HandOff<Access> {
+    /// Return the stable owner CMK produced by ROM when this handoff version supports it.
+    pub fn stable_owner_key(
+        &self,
+    ) -> Option<&[u8; caliptra_mcu_romtime::handoff::STABLE_OWNER_KEY_CMK_SIZE]> {
+        self.deref().stable_owner_key()
+    }
+
     /// Get the address of the handoff table.
     pub fn addr(&self) -> *const HandoffData {
         // Safety: Linker MUST place this static object in the `.handoff` section.
