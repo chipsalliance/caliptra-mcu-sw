@@ -42,6 +42,7 @@ rv32i.workspace = true
 
 [features]
 default = []
+debug = []
 # Production / minimal-size build.  Strips:
 #   - kernel `debug!()` macro          (via kernel/no_debug_panics)
 #   - romtime `print!`/`println!`      (via caliptra-mcu-romtime/no-print)
