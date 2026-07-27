@@ -1,0 +1,19 @@
+# Licensed under the Apache-2.0 license
+
+name: Nightly Workflows
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  attestation_e2e:
+    uses: ./.github/workflows/attestation.yml
+
+  caliptra_util_host_validator_tests:
+    uses: ./.github/workflows/caliptra-util-host-validator.yml
+
+  spdm_validator_tests:
+    uses: ./.github/workflows/spdm-validator.yml
+

@@ -13,6 +13,7 @@ default = []
 caliptra-mcu-spdm-traits = { workspace = true }
 caliptra-mcu-spdm-codec = { workspace = true }
 caliptra-mcu-spdm-errors = { workspace = true }
+caliptra-mcu-mbox-common = { workspace = true }
 mcu-error = { workspace = true }
 zerocopy = { workspace = true }
 

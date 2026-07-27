@@ -5,15 +5,23 @@
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
 use crate::iana::ocp::caliptra_vdm::CaliptraVdmCommands;
+use caliptra_mcu_mbox_common::messages::HybridSignature;
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult,
 };
+use zerocopy::{FromBytes, Immutable, KnownLayout};
+
+#[repr(C)]
+#[derive(Debug, FromBytes, Immutable, KnownLayout)]
+struct FeProgVdmReq {
+    partition: u32,
+    sig: HybridSignature,
+}
 
 /// MC_GET_AUTH_CMD_CHALLENGE sub-command (`MACC`).
 pub const GET_AUTH_CHALLENGE_CMD_ID: u32 = 0x4D41_4343;
 /// MC_FE_PROG sub-command (`MCFP`).
 pub const FE_PROG_CMD_ID: u32 = 0x4D43_4650;
-const MAC_LEN: usize = 48;
 
 pub(crate) async fn handle<H, A>(
     cmds: &H,
@@ -75,13 +83,17 @@ where
     H: CaliptraVdmCommands,
     A: SpdmPalAlloc,
 {
-    if req.len() != 4 + MAC_LEN {
-        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
-    }
-    let partition = u32::from_le_bytes([req[0], req[1], req[2], req[3]]);
-    let mut mac = [0u8; MAC_LEN];
-    mac.copy_from_slice(&req[4..4 + MAC_LEN]);
-    match cmds.program_field_entropy(partition, &mac, scratch).await {
+    let Ok(fe_req) = FeProgVdmReq::ref_from_bytes(req) else {
+        return CaliptraVdmCmdResult::Error(if req.len() != core::mem::size_of::<FeProgVdmReq>() {
+            CaliptraCompletionCode::InvalidPayloadSize
+        } else {
+            CaliptraCompletionCode::InvalidParameter
+        });
+    };
+    match cmds
+        .program_field_entropy(fe_req.partition, &fe_req.sig, scratch)
+        .await
+    {
         Ok(()) => match super::write_success(out) {
             Ok(_) => CaliptraVdmCmdResult::Response(1),
             Err(code) => CaliptraVdmCmdResult::Error(code),

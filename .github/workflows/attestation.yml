@@ -3,10 +3,9 @@
 name: End-to-End Attestation
 
 on:
-  schedule:
-    - cron: "0 0 * * *"
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   attestation_e2e:
