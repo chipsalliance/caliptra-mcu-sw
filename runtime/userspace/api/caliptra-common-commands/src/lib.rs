@@ -311,28 +311,40 @@ pub trait CommandAuthorizer {
 
     /// Verify signatures over a command using the stored challenge.
     ///
-    /// This is transport-agnostic: the caller provides the raw command ID
-    /// (which may differ between mailbox and SPDM VDM namespaces), the
-    /// command payload, and the received signature.
+    /// This is transport-agnostic and is the SINGLE step-1 gate shared by the
+    /// mailbox (`is_authorized`) and SPDM VDM paths: the implementation consumes
+    /// the stored one-time challenge via `take()`, redundantly/constant-time
+    /// compares it against the wire `nonce`, then verifies the hybrid signature
+    /// with the wire-carried public keys (the device-side anchor check lives in
+    /// `device_ops`).
     ///
-    /// Consumes the stored challenge (one-time use).
+    /// Consumes the stored challenge (one-time use) on any attempt.
     ///
     /// # Arguments
     /// * `cmd_id` - Raw command identifier (u32, serialized big-endian in verification)
     /// * `payload` - Command-specific payload bytes
+    /// * `nonce` - 48-byte freshness nonce carried on the wire (compared to the
+    ///   stored one-time challenge)
+    /// * `ecc_pub_x`/`ecc_pub_y`/`mldsa_pub` - verifier public keys carried on the
+    ///   wire (hash-anchored device-side before use)
     /// * `sig` - The hybrid signature received from the host
+    #[allow(clippy::too_many_arguments)]
     async fn verify_signatures(
         &mut self,
         cmd_id: u32,
         payload: &[u8],
+        nonce: &[u8; 48],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
         sig: &HybridSignature,
     ) -> Result<(), AuthorizationError>;
 
     /// Get the challenge from the last call to `MC_GET_AUTH_CMD_CHALLENGE`.
     ///
     /// This consumes the challenge so it can only be used once.
-    fn take_challenge(&mut self) -> Option<[u8; AUTH_CMD_NONCE_LEN]>;
+    fn take_challenge(&mut self) -> Option<[u8; 48]>;
 
     /// Set the challenge nonce to be used on the next authorized command.
-    fn set_challenge(&mut self, challenge: [u8; AUTH_CMD_NONCE_LEN]);
+    fn set_challenge(&mut self, challenge: [u8; 48]);
 }

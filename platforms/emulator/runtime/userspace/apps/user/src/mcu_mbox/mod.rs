@@ -24,8 +24,13 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::signal::Signal;
 
+// Authorized commands carry the vendor public keys on the wire (ECC X/Y + ML-DSA
+// pub, ~2.7 KiB) on top of the hybrid signature, so a decoded request is ~7.5 KiB.
+// The dispatcher holds that request buffer and the response buffer for the whole
+// handler, and the SVN/revoke handlers then allocate again for a nested Caliptra
+// FW_INFO call. 16 KiB fits that concurrent peak with headroom.
 #[cfg(feature = "mcu-mbox-service")]
-const MCU_MBOX_SCRATCH_SIZE: usize = 12 * 1024;
+const MCU_MBOX_SCRATCH_SIZE: usize = 16 * 1024;
 
 #[cfg(feature = "mcu-mbox-service")]
 struct McuMboxScratchAlloc(&'static BitmapAllocator);
