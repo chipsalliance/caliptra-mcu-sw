@@ -354,6 +354,8 @@ pub fn load_flash_image_to_recovery(
                     state_machine.context_mut().flash_offset = image_info.0;
                     state_machine.context_mut().image_size = image_info.1;
                     state_machine.context_mut().transfer_offset = 0;
+                    start_cycle = None;
+                    next_print_offset = 0;
                     i3c_periph
                         .sec_fw_recovery_if_indirect_fifo_ctrl_1
                         .set(state_machine.context().image_size / 4);
