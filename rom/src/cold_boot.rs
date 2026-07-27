@@ -128,6 +128,7 @@ fn recover_locked_dot_or_fail(
     dot_flash: &dyn crate::hil::FlashStorage,
     i3c_base: I3cRegs,
     original_err: McuError,
+    preserve_original_err: bool,
 ) -> Option<OwnerPkHash> {
     let key_type = params
         .dot_stable_key_type
@@ -161,8 +162,12 @@ fn recover_locked_dot_or_fail(
         original_err,
     );
 
-    let err = attempt_dot_locked_recovery(env, dot_fuses, params, dot_flash, key_type);
-    fatal_error(err)
+    let recovery_err = attempt_dot_locked_recovery(env, dot_fuses, params, dot_flash, key_type);
+    fatal_error(if preserve_original_err {
+        original_err
+    } else {
+        recovery_err
+    })
 }
 
 impl ColdBoot {
@@ -829,6 +834,7 @@ impl BootFlow for ColdBoot {
                         dot_flash,
                         i3c_base,
                         McuError::ROM_COLD_BOOT_DOT_ERROR,
+                        false,
                     )
                 } else {
                     caliptra_mcu_romtime::println!("[mcu-rom] DOT empty");
@@ -848,7 +854,7 @@ impl BootFlow for ColdBoot {
                     Err(err) => {
                         if dot_fuses.is_locked() {
                             recover_locked_dot_or_fail(
-                                env, &dot_fuses, &params, dot_flash, i3c_base, err,
+                                env, &dot_fuses, &params, dot_flash, i3c_base, err, true,
                             )
                         } else {
                             caliptra_mcu_romtime::println!(
