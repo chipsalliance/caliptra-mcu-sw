@@ -176,6 +176,7 @@ fn build_signing_context(version: SpdmVersion) -> [u8; SPDM_SIGNING_CONTEXT_LEN]
         SpdmVersion::V11 => b"1.1.*",
         SpdmVersion::V12 => b"1.2.*",
         SpdmVersion::V13 => b"1.3.*",
+        SpdmVersion::V14 => b"1.4.*",
     };
     let mut pos = 0;
     for _ in 0..4 {

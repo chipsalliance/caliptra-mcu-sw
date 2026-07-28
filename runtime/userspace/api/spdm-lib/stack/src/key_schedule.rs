@@ -48,6 +48,7 @@ pub fn spdm_version_str(version: SpdmVersion) -> &'static [u8] {
         SpdmVersion::V11 => b"spdm1.1 ",
         SpdmVersion::V12 => b"spdm1.2 ",
         SpdmVersion::V13 => b"spdm1.3 ",
+        SpdmVersion::V14 => b"spdm1.4 ",
     }
 }
 

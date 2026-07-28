@@ -8,9 +8,7 @@ use caliptra_mcu_spdm_codec::{errors as wire_errors, OtherParamSupport};
 use futures::executor::block_on;
 use std::vec::Vec;
 
-#[path = "support.rs"]
-mod support;
-use support::*;
+use crate::test_support::*;
 
 fn state(version: SpdmVersion) -> ConnectionState<TestHashState, Vec<u8>> {
     negotiated_state(version)
@@ -360,7 +358,7 @@ fn test_handle_set_certificate_passes_root_hash_through_without_recomputing() {
     let pal = TestPal::default();
     let mut state = state(SpdmVersion::V12);
     let der = der_chain();
-    let root_hash = [0xa5; support::SHA384_DIGEST_SIZE];
+    let root_hash = [0xa5; crate::test_support::SHA384_DIGEST_SIZE];
     let payload = cert_payload(&der, root_hash);
     let io = set_certificate_io(SpdmVersion::V12, 1, 0, &payload);
 
