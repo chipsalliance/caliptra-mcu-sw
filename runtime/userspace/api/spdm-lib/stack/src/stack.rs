@@ -576,6 +576,15 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
     code: ReqRespCode,
     vdm: &Vdm,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
+    // GET_VERSION resets the connection, but malformed requests must not alter
+    // existing connection, session, or large-message state.
+    if code == ReqRespCode::GET_VERSION {
+        version::validate_get_version(io.request())?;
+        abort_chunk_reassembly_if_interrupted(state, pal, io, vdm, code).await;
+        state.reset_negotiation();
+        sessions.remove_all_and_destroy();
+        return version::handle_get_version(state, pal, io).await;
+    }
     abort_chunk_reassembly_if_interrupted(state, pal, io, vdm, code).await;
     if code != ReqRespCode::CHUNK_GET
         && code != ReqRespCode::CHUNK_SEND
@@ -584,11 +593,7 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         state.large_msg_ctx.reset();
     }
     match code {
-        ReqRespCode::GET_VERSION => {
-            state.reset_negotiation();
-            sessions.remove_all_and_destroy();
-            version::handle_get_version(state, pal, io).await
-        }
+        ReqRespCode::GET_VERSION => unreachable!(),
         ReqRespCode::GET_CAPABILITIES => {
             capabilities::handle_get_capabilities(state, pal, io).await
         }
@@ -803,7 +808,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
     match spdm_hdr.code {
         ReqRespCode::FINISH => {
             let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
-            let finish_rsp =
+            let (finish_rsp, finish_rsp_len) =
                 finish::handle_finish::<Pal>(version, session, pal, io, spdm_msg).await?;
             let rsp = encrypt_secured_spdm_response(
                 pal,
@@ -812,7 +817,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
                 session_id,
                 version,
                 response_key_type,
-                &finish_rsp,
+                &finish_rsp[..finish_rsp_len],
             )
             .await?;
             session.key_schedule.destroy_handshake_secrets();
@@ -1104,3 +1109,7 @@ fn decode_header(req: &[u8]) -> (ReqRespCode, SpdmVersion) {
 #[cfg(all(test, feature = "set-certificate"))]
 #[path = "tests/stack_set_certificate.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/version.rs"]
+mod version_tests;
