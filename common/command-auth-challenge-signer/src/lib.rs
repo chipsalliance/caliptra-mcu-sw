@@ -5,7 +5,8 @@
 //! Provides the [`CommandAuthChallengeSigner`] trait and one implementation:
 //! - [`AsymmetricCommandAuthorizer`]: Dual asymmetric verification using ECC P-384 and ML-DSA-87.
 //!
-//! The authorized-command challenge/nonce is 48 bytes wide.
+//! Both signature legs sign a digest of the raw pre-image (ECDSA over SHA-384,
+//! ML-DSA over SHA-512), mirroring the prod-debug-unlock idiom.
 
 use anyhow::Result;
 use caliptra_image_types::{MLDSA87_PUB_KEY_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE};
