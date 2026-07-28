@@ -82,7 +82,7 @@ fn get_version_advertises_v14_and_resets_valid_connection() {
 }
 
 #[test]
-fn invalid_get_version_preserves_connection_and_sessions() {
+fn version_mismatch_preserves_connection_and_sessions() {
     let pal = TestPal::default();
     let mut state = ConnectionState {
         phase: Phase::AfterAlgorithms,
@@ -114,18 +114,31 @@ fn invalid_get_version_preserves_connection_and_sessions() {
 }
 
 #[test]
-fn get_version_ignores_reserved_parameters() {
+fn invalid_get_version_preserves_connection_and_sessions() {
     let pal = TestPal::default();
     let mut state = ConnectionState::default();
+    state.phase = Phase::AfterAlgorithms;
+    state.version = SpdmVersion::V13;
+    state.peer_cap_flags = CapFlags::CHUNK;
     let mut sessions = SessionManager::new();
+    let session_id = sessions
+        .create_session(0x1234, SpdmVersion::V13, |info| pal.alloc_persistent(info))
+        .unwrap();
 
-    dispatch_request(
+    let err = dispatch_request(
         &mut state,
         &mut sessions,
         &pal,
-        get_version_request(SpdmVersion::V10.to_u8(), 0xa5, 0x5a),
+        get_version_request(SpdmVersion::V10.to_u8(), 1, 0),
     )
-    .unwrap();
+    .unwrap_err();
 
-    assert_eq!(state.phase, Phase::AfterVersion);
+    assert_eq!(err.spec_byte(), SPDM_INVALID_REQUEST.spec_byte());
+    assert_eq!(state.phase, Phase::AfterAlgorithms);
+    assert_eq!(state.version, SpdmVersion::V13);
+    assert_eq!(
+        state.peer_cap_flags.into_bits(),
+        CapFlags::CHUNK.into_bits()
+    );
+    assert!(sessions.find(session_id).is_some());
 }

@@ -32,7 +32,7 @@ pub(crate) fn validate_get_version(req: &[u8]) -> SpdmResult<()> {
     if hdr.version != SpdmVersion::V10.to_u8() {
         return Err(SPDM_VERSION_MISMATCH);
     }
-    if rest.len() < 2 {
+    if rest.len() < 2 || rest[0] != 0 || rest[1] != 0 {
         return Err(SPDM_INVALID_REQUEST);
     }
     Ok(())
@@ -70,6 +70,10 @@ pub(crate) async fn handle_get_version<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &Pal::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
+    // Keep the handler safe for direct callers; dispatch validates before
+    // resetting connection/session state so invalid requests cannot reset it.
+    validate_get_version(io.request())?;
+
     let body = VersionRsp {
         versions: SUPPORTED_VERSIONS,
     };
