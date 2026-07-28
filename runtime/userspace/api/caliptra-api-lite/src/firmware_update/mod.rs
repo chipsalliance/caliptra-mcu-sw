@@ -433,13 +433,24 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             )
             .await?;
 
-        // Read the ImageManifest from the downloaded Caliptra bundle
-        let mut manifest_bytes = [0u8; core::mem::size_of::<ImageManifest>()];
+        // Read FMC and Runtime digests directly from staging memory at known offsets,
+        // avoiding allocation of the full ~16KB ImageManifest.
+        use caliptra_image_types::ImageTocEntry;
+
+        let fmc_digest_offset =
+            cptra_image_offset + offset_of!(ImageManifest, fmc) + offset_of!(ImageTocEntry, digest);
+        let mut fmc_digest = [0u32; 12];
         self.staging_memory
-            .read(cptra_image_offset, &mut manifest_bytes)
+            .read(fmc_digest_offset, fmc_digest.as_mut_bytes())
             .await?;
-        let (manifest, _) =
-            ImageManifest::read_from_prefix(&manifest_bytes).map_err(|_| ErrorCode::Fail)?;
+
+        let rt_digest_offset = cptra_image_offset
+            + offset_of!(ImageManifest, runtime)
+            + offset_of!(ImageTocEntry, digest);
+        let mut rt_digest = [0u32; 12];
+        self.staging_memory
+            .read(rt_digest_offset, rt_digest.as_mut_bytes())
+            .await?;
 
         // Get the running firmware digests via FW_INFO
         let mut req = MailboxReqHeader::default();
@@ -462,7 +473,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         let fw_info = FwInfoResp::read_from_bytes(response_buffer).map_err(|_| ErrorCode::Fail)?;
 
         // Compare FMC digests
-        if manifest.fmc.digest != fw_info.fmc_sha384_digest {
+        if fmc_digest != fw_info.fmc_sha384_digest {
             console_writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] FMC digest mismatch"
@@ -471,7 +482,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         }
 
         // Compare RT digests
-        if manifest.runtime.digest != fw_info.runtime_sha384_digest {
+        if rt_digest != fw_info.runtime_sha384_digest {
             console_writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] RT digest mismatch"
