@@ -24,7 +24,8 @@
 
 use caliptra_mcu_spdm_codec::{
     alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, CapFlags, DheAlgos, KeyScheduleAlgos,
-    NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
+    NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, PqcAsymAlgos, ResponseBody, SpdmMsgHdrPdu,
+    SpdmVersion,
 };
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::FromBytes;
@@ -131,7 +132,7 @@ fn locate_alg_structs<'a>(
     fixed: &NegotiateAlgorithmsReqBodyFixed,
     body: &'a [u8],
 ) -> SpdmResult<&'a [u8]> {
-    if fixed.param2 != 0 || fixed.reserved1 != [0; 12] || fixed.reserved2 != 0 {
+    if fixed.param2 != 0 || fixed.reserved1 != [0; 8] || fixed.reserved2 != 0 {
         return Err(SPDM_INVALID_REQUEST);
     }
 
@@ -270,6 +271,7 @@ fn build_response_body<S, L>(
         meas_hash_algo: state.meas_hash_algo,
         base_asym_sel: state.base_asym_sel & fixed.base_asym_algo,
         base_hash_sel: state.base_hash_sel & fixed.base_hash_algo,
+        pqc_asym_sel: PqcAsymAlgos::EMPTY, // TODO
         alg_structs: [
             (!dhe.is_empty()).then(|| AlgStructEntry::dhe(dhe)),
             (!aead.is_empty()).then(|| AlgStructEntry::aead(aead)),
