@@ -62,6 +62,7 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check)) |
 (package(caliptra-mcu-tests-integration) and test(test_firmware_activate_fpga)) |
+(package(caliptra-mcu-tests-integration) and test(test_get_alarm_expired_fpga)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback_after_warm_reset)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback_after_hitless_update_reset))
 """
