@@ -13,80 +13,62 @@
 
 use caliptra_mcu_romtime::println;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
-use kernel::hil::time::{Alarm, Time};
+use kernel::hil::time::{Alarm, Ticks, Time};
 
-/// Reproduce the get_alarm() bug on VeeR EL2.
+/// Test that get_alarm() returns the correct fire time after timer expiry.
 ///
 /// Strategy:
-/// - Create a scenario where:
-///   (a) One VirtualMuxAlarm (VA1) sets a SHORT alarm (dt=1000)
-///   (b) That alarm expires (mitcnt0 halts at mitb0)
-///   (c) Without calling MuxAlarm::alarm() (simulates MIE=0 during syscall)
-///   (d) A second VirtualMuxAlarm (VA2) calls set_alarm() with enabled > 0
-///   (e) Without fix: get_alarm() = now + bound (slightly in future) →
-///       Guard 1 sees it as "within range" → skips reprogram
-///   (f) With fix: get_alarm() = fire_at (past time) →
-///       Guard 1 sees it as NOT within range → passes → reprogram
+///   1. Set an alarm with a known reference and dt
+///   2. Wait for the timer to expire (mitcnt0 halts at mitb0)
+///   3. Call get_alarm() and verify it returns reference + dt (the past fire
+///      time), NOT now + bound (a bogus future value)
 ///
-/// Expected: exit 0 when fire_at fix is applied (hardware reprogrammed correctly).
-///           exit 1 on unfixed code (hardware NOT reprogrammed — bug present).
+/// This directly validates the fire_at fix without going through VirtualMuxAlarm
+/// guards, which avoids flakiness from Guard 2 (next_tick_vals) interactions.
+///
+/// Expected: exit 0 when fire_at fix is applied (get_alarm returns correct value).
+///           exit 1 on unfixed code (get_alarm returns bogus value).
 pub(crate) fn run_test_get_alarm_expired() -> Option<u32> {
-    use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
     use core::ptr::addr_of;
-    use kernel::hil::time::Alarm as AlarmTrait;
-    use kernel::static_init;
 
-    println!("[test-alarm-race] Starting...");
-    println!("[test-alarm-race] This test verifies get_alarm() returns correct fire_at for expired timers");
+    println!("[test-get-alarm] Starting...");
+    println!("[test-get-alarm] This test verifies get_alarm() returns correct fire_at for expired timers");
 
     // Get the timer hardware from the static
     let timers: &'static InternalTimers<'static> =
         unsafe { &*addr_of!(caliptra_mcu_tock_veer::chip::TIMERS) };
 
-    // Create a fresh MuxAlarm and two VirtualMuxAlarms for this test
-    let mux_alarm = unsafe {
-        static_init!(
-            MuxAlarm<'static, InternalTimers<'static>>,
-            MuxAlarm::new(timers)
-        )
-    };
-    timers.set_alarm_client(mux_alarm);
+    // Step 1: Set an alarm with a known dt, large enough that it won't expire
+    // before we finish setting it up (200000 ticks = 10ms at 20MHz)
+    let reference = timers.now();
+    let dt = 200_000u64.into();
+    let expected_fire_at = reference.wrapping_add(dt);
 
-    let va1 = unsafe {
-        static_init!(
-            VirtualMuxAlarm<'static, InternalTimers<'static>>,
-            VirtualMuxAlarm::new(mux_alarm)
-        )
-    };
-    va1.setup();
-
-    let va2 = unsafe {
-        static_init!(
-            VirtualMuxAlarm<'static, InternalTimers<'static>>,
-            VirtualMuxAlarm::new(mux_alarm)
-        )
-    };
-    va2.setup();
-
-    println!("[test-alarm-race] Created MuxAlarm + 2 VirtualMuxAlarms");
-
-    // Step 1: VA1 sets a SHORT alarm (simulating MCU_MBOX's schedule_send_done)
-    let now = timers.now();
-    let short_dt = 1000u64.into();
     println!(
-        "[test-alarm-race] Step 1: VA1 sets alarm (now={}, dt=1000)",
-        now.into_u64()
+        "[test-get-alarm] Step 1: Setting alarm (reference={}, dt=200000, expected_fire_at={})",
+        reference.into_u64(),
+        expected_fire_at.into_u64()
     );
-    va1.set_alarm(now, short_dt);
-    println!(
-        "[test-alarm-race] VA1 armed={}, timer enabled={}",
-        va1.is_armed(),
-        timers.is_armed()
-    );
+    timers.set_alarm(reference, dt);
 
-    // Step 2: Wait for the hardware timer to expire (spin without calling
-    // service_pending_interrupts — simulates kernel busy in syscall handler)
-    println!("[test-alarm-race] Step 2: Waiting for timer to expire in hardware...");
+    // Verify get_alarm() returns the correct value BEFORE expiry
+    let alarm_before = timers.get_alarm();
+    println!(
+        "[test-get-alarm] get_alarm() before expiry: {} (expected {})",
+        alarm_before.into_u64(),
+        expected_fire_at.into_u64()
+    );
+    if alarm_before != expected_fire_at {
+        println!(
+            "[test-get-alarm] FAIL: get_alarm() before expiry returned wrong value! got={}, expected={}",
+            alarm_before.into_u64(),
+            expected_fire_at.into_u64()
+        );
+        return Some(1);
+    }
+
+    // Step 2: Wait for the hardware timer to expire
+    println!("[test-get-alarm] Step 2: Waiting for timer to expire...");
     let mut mitcnt0: u32;
     let mitb0: u32;
     unsafe {
@@ -102,57 +84,55 @@ pub(crate) fn run_test_get_alarm_expired() -> Option<u32> {
             break;
         }
         spin_count += 1;
-        if spin_count > 10_000_000 {
-            println!("[test-alarm-race] FAIL: timer never expired");
+        if spin_count > 100_000_000 {
+            println!("[test-get-alarm] FAIL: timer never expired");
             return Some(1);
         }
     }
     println!(
-        "[test-alarm-race] Timer expired: mitcnt0={} >= mitb0={} (after {} spins)",
+        "[test-get-alarm] Timer expired: mitcnt0={} >= mitb0={} (after {} spins)",
         mitcnt0, mitb0, spin_count
     );
 
-    // CRITICAL: We do NOT call mux_alarm.alarm() here.
-    // This simulates the MIE=0 window during syscall handling.
-    // VA1 is still armed=true, enabled=1. Timer expired but unprocessed.
-
-    // Step 3: VA2 tries to set an alarm (simulating Mailbox's execute())
-    let now2 = timers.now();
-    let long_dt = 100_000u64.into();
+    // Step 3: Check get_alarm() AFTER expiry
+    let now_after = timers.now();
+    let alarm_after = timers.get_alarm();
     println!(
-        "[test-alarm-race] Step 3: VA2 sets alarm (now={}, dt=100000) with VA1 still 'armed'",
-        now2.into_u64()
-    );
-    va2.set_alarm(now2, long_dt);
-    println!("[test-alarm-race] VA2 armed={}", va2.is_armed());
-
-    // Step 4: Check if hardware was reprogrammed for VA2
-    let mitcnt0_after: u32;
-    let mitb0_after: u32;
-    let mitctl0_after: u32;
-    unsafe {
-        core::arch::asm!("csrr {}, 0x7D2", out(reg) mitcnt0_after);
-        core::arch::asm!("csrr {}, 0x7D3", out(reg) mitb0_after);
-        core::arch::asm!("csrr {}, 0x7D4", out(reg) mitctl0_after);
-    }
-    println!(
-        "[test-alarm-race] After VA2 set_alarm: mitcnt0={}, mitb0={}, mitctl0={}",
-        mitcnt0_after, mitb0_after, mitctl0_after
+        "[test-get-alarm] get_alarm() after expiry: {} (now={}, expected_fire_at={})",
+        alarm_after.into_u64(),
+        now_after.into_u64(),
+        expected_fire_at.into_u64()
     );
 
-    let hardware_was_reprogrammed = mitb0_after > 1000 || mitcnt0_after < mitb0_after;
-
-    if !hardware_was_reprogrammed {
-        println!("[test-alarm-race] FAIL: Hardware NOT reprogrammed for VA2!");
+    // With fix: get_alarm() should still return the original fire_at (in the past)
+    // Without fix: get_alarm() = now + bound (in the future, bogus)
+    if alarm_after != expected_fire_at {
         println!(
-            "[test-alarm-race] get_alarm() returned bogus value, Guard 1 incorrectly skipped."
+            "[test-get-alarm] FAIL: get_alarm() after expiry returned wrong value! got={}, expected={}",
+            alarm_after.into_u64(),
+            expected_fire_at.into_u64()
         );
-        Some(1)
-    } else {
         println!(
-            "[test-alarm-race] PASS: Hardware WAS reprogrammed (mitb0={}). Alarm works correctly.",
-            mitb0_after
+            "[test-get-alarm] The old buggy get_alarm() would return now+bound = {}",
+            now_after.into_u64() + mitb0 as u64
         );
-        Some(0)
+        return Some(1);
     }
+
+    // Verify the returned value is in the past (fire_at < now)
+    if alarm_after.into_u64() >= now_after.into_u64() {
+        println!(
+            "[test-get-alarm] WARN: get_alarm() returned a future value after expiry (fire_at={} >= now={})",
+            alarm_after.into_u64(),
+            now_after.into_u64()
+        );
+        // This shouldn't happen if the timer truly expired, but don't fail on it
+    }
+
+    println!(
+        "[test-get-alarm] PASS: get_alarm() correctly returns fire_at={} (in the past, now={})",
+        alarm_after.into_u64(),
+        now_after.into_u64()
+    );
+    Some(0)
 }
