@@ -38,6 +38,7 @@ mod test_raw_lifecycle_boot;
 mod test_soc_boot;
 mod test_svn_manifest;
 mod test_sw_pcr_store;
+mod test_timer_alarm;
 
 pub fn platform() -> &'static str {
     if cfg!(feature = "fpga_realtime") {
