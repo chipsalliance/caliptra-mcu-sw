@@ -14,13 +14,13 @@ use zerocopy::FromBytes;
 
 extern crate alloc;
 
-static CHALLENGE: Mutex<CriticalSectionRawMutex, RefCell<Option<[u8; 32]>>> =
+static CHALLENGE: Mutex<CriticalSectionRawMutex, RefCell<Option<[u8; 48]>>> =
     Mutex::new(RefCell::new(None));
 
 #[derive(Default)]
 pub struct MockCommandAuthorizer;
 
-fn set_challenge(challenge: [u8; 32]) {
+fn set_challenge(challenge: [u8; 48]) {
     CHALLENGE.lock(|state| *state.borrow_mut() = Some(challenge));
 }
 
@@ -78,11 +78,11 @@ impl CommandAuthorizer for MockCommandAuthorizer {
         .map_err(|_| AuthorizationError)
     }
 
-    fn take_challenge(&mut self) -> Option<[u8; 32]> {
+    fn take_challenge(&mut self) -> Option<[u8; 48]> {
         CHALLENGE.lock(|state| state.borrow_mut().take())
     }
 
-    fn set_challenge(&mut self, challenge: [u8; 32]) {
+    fn set_challenge(&mut self, challenge: [u8; 48]) {
         set_challenge(challenge);
     }
 }

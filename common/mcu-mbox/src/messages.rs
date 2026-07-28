@@ -1411,11 +1411,21 @@ impl Request for GetAuthCmdChallengeReq {
 
 /// MC_GET_AUTH_CMD_CHALLENGE response: Indicates success or failure.
 #[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct GetAuthCmdChallengeResp {
     pub hdr: MailboxRespHeader,
     pub reserved: u32,
-    pub challenge: [u8; 32],
+    pub challenge: [u8; 48],
+}
+// `[u8; 48]` does not implement `Default` via derive, so provide it by hand.
+impl Default for GetAuthCmdChallengeResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            reserved: 0,
+            challenge: [0u8; 48],
+        }
+    }
 }
 impl Response for GetAuthCmdChallengeResp {}
 

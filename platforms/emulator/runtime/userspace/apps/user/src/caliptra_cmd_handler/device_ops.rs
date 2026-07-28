@@ -91,8 +91,8 @@ pub async fn export_idevid_csr(algorithm: u32, out: &mut [u8]) -> CaliptraCmdRes
     }
 }
 
-pub async fn generate_auth_challenge<A: ApiAlloc>(alloc: &A) -> CaliptraCmdResult<[u8; 32]> {
-    let mut challenge = [0u8; 32];
+pub async fn generate_auth_challenge<A: ApiAlloc>(alloc: &A) -> CaliptraCmdResult<[u8; 48]> {
+    let mut challenge = [0u8; 48];
     rng_generate(alloc, &mut challenge)
         .await
         .map_err(map_mcu_err)?;
@@ -102,7 +102,7 @@ pub async fn generate_auth_challenge<A: ApiAlloc>(alloc: &A) -> CaliptraCmdResul
 pub async fn verify_authorized_signatures(
     cmd_id: u32,
     payload: &[u8],
-    challenge: &[u8; 32],
+    challenge: &[u8; 48],
     ecc_pub_x: [u8; 48],
     ecc_pub_y: [u8; 48],
     mldsa_pub: [u8; 2592],
