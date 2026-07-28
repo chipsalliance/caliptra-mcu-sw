@@ -85,8 +85,17 @@ impl SpdmPalTransport for McuSpdmDoeTransport {
     fn mtu(&self) -> usize {
         let max = self.doe.max_message_size().unwrap_or(0) as usize;
         // Cap to the SPDM responder buffer size. The PAL allocates
-        // header+mtu from the BitmapAllocator per exchange.
-        const MAX_SPDM_MTU: usize = 1024;
+        // header+mtu from the BitmapAllocator per exchange. The 4 KiB
+        // floor keeps DataTransferSize large enough for post-quantum
+        // signatures (e.g. an ML-DSA-87 signature is ~4.6 KiB).
+        const MAX_SPDM_MTU: usize = 4096;
+        // assert! (not debug_assert!) so a driver that reports a
+        // sub-4-KiB max_message_size fails loudly in release builds
+        // rather than silently under-sizing DataTransferSize.
+        assert!(
+            max >= MAX_SPDM_MTU + DOE_HEADER_SIZE,
+            "DOE driver max_message_size must be >= 4 KiB + DOE header for DataTransferSize"
+        );
         max.saturating_sub(DOE_HEADER_SIZE).min(MAX_SPDM_MTU)
     }
 
