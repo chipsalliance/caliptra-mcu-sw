@@ -168,6 +168,7 @@ const SIGNING_CTX_V10: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"
 const SIGNING_CTX_V11: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.1.*");
 const SIGNING_CTX_V12: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.2.*");
 const SIGNING_CTX_V13: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.3.*");
+const SIGNING_CTX_V14: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.4.*");
 
 /// Build the SPDM signing context for CHALLENGE_AUTH.
 const fn build_signing_context(ver: &[u8; 5]) -> [u8; SPDM_SIGNING_CONTEXT_LEN] {
@@ -211,6 +212,7 @@ fn signing_context(version: SpdmVersion) -> &'static [u8; SPDM_SIGNING_CONTEXT_L
         SpdmVersion::V11 => &SIGNING_CTX_V11,
         SpdmVersion::V12 => &SIGNING_CTX_V12,
         SpdmVersion::V13 => &SIGNING_CTX_V13,
+        SpdmVersion::V14 => &SIGNING_CTX_V14,
     }
 }
 
