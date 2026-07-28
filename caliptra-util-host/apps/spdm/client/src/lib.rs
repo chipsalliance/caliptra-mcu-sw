@@ -26,7 +26,7 @@ pub use validator::{all_passed, print_summary, run_all, ValidationResult, Valida
 
 // Re-export the command authorizer trait and types from the common crate
 pub use caliptra_mcu_command_auth_challenge_signer::{
-    CommandAuthChallengeSigner, AsymmetricCommandAuthorizer,
+    AsymmetricCommandAuthorizer, CommandAuthChallengeSigner,
 };
 
 // Re-export the debug unlock signer trait and types from the common crate
@@ -46,6 +46,7 @@ use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmTransport,
 };
 use caliptra_mcu_core_util_host_transport::Transport;
+use caliptra_mcu_mbox_common::messages::HybridSignature;
 use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
@@ -138,12 +139,12 @@ impl<'a> SpdmVdmClient<'a> {
     ///
     /// # Parameters
     /// - `partition`: OTP partition to program (0-3)
-    /// - `mac`: 48-byte HMAC-SHA384 authorization token
-    pub fn fe_prog(&mut self, partition: u32, mac: &[u8; 48]) -> Result<FeProgResponse> {
+    /// - `sig`: Hybrid (ECC + ML-DSA) authorization signature
+    pub fn fe_prog(&mut self, partition: u32, sig: &HybridSignature) -> Result<FeProgResponse> {
         use caliptra_mcu_core_util_host_command_types::fuse::FeProgRequest;
         let request = FeProgRequest {
             partition,
-            mac: *mac,
+            sig: sig.clone(),
         };
         let mut session = self.create_session()?;
         caliptra_cmd_fe_prog(&mut session, &request)

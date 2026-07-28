@@ -69,9 +69,9 @@ unsafe extern "C" fn verify_peer_cert_chain_trust_anchor(
     _trust_anchor: *mut *const c_void,
     _trust_anchor_size: *mut usize,
 ) -> bool {
-    let Some(chain) = (unsafe { cert_chain.as_ref() }).map(|_| unsafe {
-        core::slice::from_raw_parts(cert_chain as *const u8, cert_chain_size)
-    }) else {
+    let Some(chain) = (unsafe { cert_chain.as_ref() })
+        .map(|_| unsafe { core::slice::from_raw_parts(cert_chain as *const u8, cert_chain_size) })
+    else {
         log::error!("SPDM cert-chain verifier received null chain for slot {slot_id}");
         return false;
     };
@@ -98,7 +98,9 @@ fn verify_spdm_cert_chain_root_against_roots(
     trusted_roots: &[PeerRootCert],
 ) -> anyhow::Result<()> {
     if chain.len() < SPDM_CERT_CHAIN_HEADER_LEN {
-        return Err(anyhow::anyhow!("SPDM certificate chain header is truncated"));
+        return Err(anyhow::anyhow!(
+            "SPDM certificate chain header is truncated"
+        ));
     }
     let declared_len = u16::from_le_bytes([chain[0], chain[1]]) as usize;
     if declared_len != chain.len() {
@@ -108,7 +110,9 @@ fn verify_spdm_cert_chain_root_against_roots(
         ));
     }
     if chain[2..SPDM_CERT_CHAIN_HEADER_LEN] != [0, 0] {
-        return Err(anyhow::anyhow!("SPDM certificate chain reserved field is non-zero"));
+        return Err(anyhow::anyhow!(
+            "SPDM certificate chain reserved field is non-zero"
+        ));
     }
     verify_spdm_cert_chain_payload_root(
         slot_id,
@@ -199,13 +203,17 @@ pub fn verify_x509_certificate_chain(certs: &[&[u8]]) -> anyhow::Result<()> {
                 idx + 1
             ));
         }
-        child.verify_signature(Some(parent.public_key())).map_err(|e| {
-            anyhow::anyhow!("X.509 cert {} signature verification failed: {e:?}", idx + 1)
-        })?;
+        child
+            .verify_signature(Some(parent.public_key()))
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "X.509 cert {} signature verification failed: {e:?}",
+                    idx + 1
+                )
+            })?;
     }
     Ok(())
 }
-
 
 /// SPDM requester wrapping a libspdm context.
 ///
@@ -364,7 +372,11 @@ impl SpdmRequester {
         }
 
         self.get_certificate_large_buffer(None, slot_id)
-            .map_err(|err| anyhow::anyhow!("SPDM authenticated GET_CERTIFICATE failed for slot {slot_id}: {err}"))?;
+            .map_err(|err| {
+                anyhow::anyhow!(
+                    "SPDM authenticated GET_CERTIFICATE failed for slot {slot_id}: {err}"
+                )
+            })?;
 
         let mut measurement_hash = [0u8; libspdm_rs::LIBSPDM_MAX_HASH_SIZE as usize];
         let ret = unsafe {
@@ -837,7 +849,6 @@ mod tests {
         chain
     }
 
-
     #[test]
     fn verifier_accepts_libspdm_root_hash_der_payload() {
         let root = trusted_vendor_root();
@@ -845,7 +856,6 @@ mod tests {
 
         verify_spdm_cert_chain_root_against_roots(0, &chain, &[peer_root(0, root)]).unwrap();
     }
-
 
     #[test]
     fn verifier_rejects_bad_root_hash() {

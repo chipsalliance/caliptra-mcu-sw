@@ -10,8 +10,8 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
 use caliptra_spdm_requester::{
-    split_der_certificates, verify_x509_certificate_chain, PeerRootCert, SpdmConfig,
-    SpdmRequester, SpdmSocketDeviceIo, SpdmVdmDriverImpl,
+    split_der_certificates, verify_x509_certificate_chain, PeerRootCert, SpdmConfig, SpdmRequester,
+    SpdmSocketDeviceIo, SpdmVdmDriverImpl,
 };
 use coset::{cbor::value::Value, iana::Algorithm, AsCborValue, CoseSign1};
 use p384::ecdsa::signature::Verifier;
@@ -112,9 +112,9 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
         VENDOR_SLOT_ID
     );
 
-    let vendor_spdm_chain = requester
-        .get_certificate(None, VENDOR_SLOT_ID)
-        .context("failed to read authenticated Vendor slot certificate chain for CSR attestation")?;
+    let vendor_spdm_chain = requester.get_certificate(None, VENDOR_SLOT_ID).context(
+        "failed to read authenticated Vendor slot certificate chain for CSR attestation",
+    )?;
     let vendor_chain = parse_spdm_cert_chain(&vendor_spdm_chain)
         .context("failed to parse Vendor slot SPDM certificate chain")?;
     let vendor_certs = split_der_certificates(vendor_chain.der)
@@ -152,10 +152,9 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
     );
 
     println!(
-        "[ocp_dev_identity_provision_tool] SET_CERTIFICATE slot_id={} key_pair_id={} cert_chain={} ({} bytes)",
+        "[ocp_dev_identity_provision_tool] SET_CERTIFICATE slot_id={} key_pair_id={} cert_chain=attested CSR ({} bytes)",
         options.slot_id,
         options.key_pair_id,
-        "attested CSR",
         cert_chain.len()
     );
     requester.set_certificate(
@@ -167,12 +166,7 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
     )?;
 
     let provisioned = requester.get_certificate(None, options.slot_id)?;
-    verify_returned_owner_chain(
-        options.slot_id,
-        &cert_chain,
-        &vendor_certs,
-        &provisioned,
-    )?;
+    verify_returned_owner_chain(options.slot_id, &cert_chain, &vendor_certs, &provisioned)?;
 
     println!(
         "[ocp_dev_identity_provision_tool] Provisioning verified (GET_CERTIFICATE returned {} bytes)",
@@ -360,8 +354,8 @@ struct AttestedCsrClaims {
 }
 
 fn parse_cose_sign1(data: &[u8]) -> Result<CoseSign1> {
-    let mut value: Value = ciborium::from_reader(data)
-        .context("attested CSR payload is not valid CBOR")?;
+    let mut value: Value =
+        ciborium::from_reader(data).context("attested CSR payload is not valid CBOR")?;
     if matches!(value, Value::Tag(55799, _)) {
         value = unwrap_cbor_tag(value, 55799)?;
     }
@@ -379,13 +373,12 @@ fn unwrap_cbor_tag(value: Value, expected: u64) -> Result<Value> {
     }
 }
 
-fn verify_attested_csr_cose(
-    cose: &CoseSign1,
-    rt_alias_cert: &[u8],
-) -> Result<AttestedCsrClaims> {
+fn verify_attested_csr_cose(cose: &CoseSign1, rt_alias_cert: &[u8]) -> Result<AttestedCsrClaims> {
     if !matches!(
         cose.protected.header.alg,
-        Some(coset::RegisteredLabelWithPrivate::Assigned(Algorithm::ES384 | Algorithm::ESP384))
+        Some(coset::RegisteredLabelWithPrivate::Assigned(
+            Algorithm::ES384 | Algorithm::ESP384
+        ))
     ) {
         bail!("unsupported attested CSR COSE algorithm, expected ES384/ESP384");
     }
@@ -414,8 +407,8 @@ fn rt_alias_signing_cert<'a>(attestation_certs: &'a [&'a [u8]]) -> Result<&'a [u
 }
 
 fn parse_attested_csr_claims(payload: &[u8]) -> Result<AttestedCsrClaims> {
-    let value: Value = ciborium::from_reader(payload)
-        .context("attested CSR COSE payload is not valid CBOR")?;
+    let value: Value =
+        ciborium::from_reader(payload).context("attested CSR COSE payload is not valid CBOR")?;
     let Value::Map(entries) = value else {
         bail!("attested CSR COSE payload is not a map");
     };
@@ -433,7 +426,10 @@ fn parse_attested_csr_claims(payload: &[u8]) -> Result<AttestedCsrClaims> {
     let nonce = nonce.ok_or_else(|| anyhow!("attested CSR COSE payload missing nonce claim"))?;
     let csr = csr.ok_or_else(|| anyhow!("attested CSR COSE payload missing CSR claim"))?;
     if nonce.len() != 32 {
-        bail!("attested CSR COSE nonce is {} bytes, expected 32", nonce.len());
+        bail!(
+            "attested CSR COSE nonce is {} bytes, expected 32",
+            nonce.len()
+        );
     }
     Ok(AttestedCsrClaims { nonce, csr })
 }
@@ -491,7 +487,11 @@ fn certificate_matches_cose_kid(cert_der: &[u8], kid: &[u8]) -> Result<bool> {
 
 fn parse_certificate_public_key_sec1(cert_der: &[u8]) -> Result<Vec<u8>> {
     let cert = Certificate::from_der(cert_der).context("failed to parse X.509 certificate DER")?;
-    let public_key = cert.tbs_certificate.subject_public_key_info.subject_public_key.raw_bytes();
+    let public_key = cert
+        .tbs_certificate
+        .subject_public_key_info
+        .subject_public_key
+        .raw_bytes();
     if public_key.first() != Some(&0x04) {
         bail!("attestation certificate public key is not an uncompressed P-384 point");
     }
@@ -543,9 +543,12 @@ fn verify_returned_owner_chain(
     let installed_certs = split_der_certificates(installed_der)?;
     let returned_certs = split_der_certificates(returned.der)?;
     if returned_certs.is_empty() {
-        bail!("GET_CERTIFICATE slot {} returned an empty DER chain", slot_id);
+        bail!(
+            "GET_CERTIFICATE slot {} returned an empty DER chain",
+            slot_id
+        );
     }
-    verify_spdm_root_hash(&returned.root_hash, returned_certs[0])?;
+    verify_spdm_root_hash(returned.root_hash, returned_certs[0])?;
 
     let expected_count = installed_certs.len() + OWNER_SLOT_DYNAMIC_TAIL_CERTS;
     if returned_certs.len() != expected_count {
@@ -575,9 +578,9 @@ fn verify_returned_owner_chain(
         );
     }
     if tail.iter().any(|cert| installed_certs.contains(cert))
-        || tail[..2]
-            .iter()
-            .any(|cert| vendor_certs[..vendor_certs.len() - OWNER_SLOT_DYNAMIC_TAIL_CERTS].contains(cert))
+        || tail[..2].iter().any(|cert| {
+            vendor_certs[..vendor_certs.len() - OWNER_SLOT_DYNAMIC_TAIL_CERTS].contains(cert)
+        })
     {
         bail!(
             "GET_CERTIFICATE slot {} duplicated Owner, Caliptra IDevID, or Caliptra LDevID certificates in the dynamic tail",
@@ -612,7 +615,8 @@ fn parse_spdm_cert_chain(chain: &[u8]) -> Result<SpdmCertChain<'_>> {
         bail!("SPDM certificate chain reserved field is non-zero: {reserved:#x}");
     }
     Ok(SpdmCertChain {
-        root_hash: &chain[SPDM_CERT_CHAIN_HEADER_LEN..SPDM_CERT_CHAIN_HEADER_LEN + SHA384_DIGEST_LEN],
+        root_hash: &chain
+            [SPDM_CERT_CHAIN_HEADER_LEN..SPDM_CERT_CHAIN_HEADER_LEN + SHA384_DIGEST_LEN],
         der: &chain[SPDM_CERT_CHAIN_HEADER_LEN + SHA384_DIGEST_LEN..],
     })
 }
@@ -630,9 +634,9 @@ mod tests {
     use super::*;
     use caliptra_mcu_core_util_host_command_types::certificate::MAX_CSR_DATA_SIZE;
     use caliptra_mcu_core_util_host_command_types::CommonResponse;
+    use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder, TaggedCborSerializable};
     use p384::ecdsa::signature::Signer;
     use p384::ecdsa::{Signature, SigningKey};
-    use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder, TaggedCborSerializable};
     use x509_cert::builder::RequestBuilder;
 
     fn test_owner_chain() -> Vec<u8> {
@@ -643,7 +647,6 @@ mod tests {
         )
         .unwrap()
     }
-
 
     #[test]
     fn test_verify_csr_matches_owner_leaf_rejects_mismatched_spki() {
@@ -661,11 +664,9 @@ mod tests {
         let signing_key = SigningKey::from_bytes((&[0x07u8; 48]).into()).unwrap();
         let csr = test_csr(&signing_key, "CN=Caliptra LDevID");
 
-        let chain = issue_test_owner_ldev_id_chain_from_csr(
-            &csr,
-            &test_owner_root_cert_der().unwrap(),
-        )
-        .unwrap();
+        let chain =
+            issue_test_owner_ldev_id_chain_from_csr(&csr, &test_owner_root_cert_der().unwrap())
+                .unwrap();
         let certs = split_der_certificates(&chain).unwrap();
 
         assert_eq!(certs.len(), 2);
@@ -683,11 +684,9 @@ mod tests {
             .to_der()
             .unwrap();
 
-        let err = issue_test_owner_ldev_id_chain_from_csr(
-            &csr,
-            &test_owner_root_cert_der().unwrap(),
-        )
-        .unwrap_err();
+        let err =
+            issue_test_owner_ldev_id_chain_from_csr(&csr, &test_owner_root_cert_der().unwrap())
+                .unwrap_err();
         assert!(err.to_string().contains("subject is empty"));
     }
 
@@ -749,11 +748,11 @@ mod tests {
 
         let vendor_root = signer_cert.clone();
         let dpe_leaf = signer_cert.clone();
-        let err = validate_attested_csr(&response, &nonce, &[&vendor_root, &signer_cert, &dpe_leaf])
-            .unwrap_err();
+        let err =
+            validate_attested_csr(&response, &nonce, &[&vendor_root, &signer_cert, &dpe_leaf])
+                .unwrap_err();
         assert!(err.to_string().contains("COSE signature"));
     }
-
 
     #[test]
     fn test_verify_returned_owner_chain_rejects_suffix_only_match() {
@@ -765,13 +764,8 @@ mod tests {
         returned_der.extend_from_slice(certs[0]);
 
         let returned = spdm_chain(&returned_der);
-        let err = verify_returned_owner_chain(
-            DEFAULT_OWNER_SLOT_ID,
-            &chain,
-            &certs,
-            &returned,
-        )
-        .unwrap_err();
+        let err = verify_returned_owner_chain(DEFAULT_OWNER_SLOT_ID, &chain, &certs, &returned)
+            .unwrap_err();
         assert!(err.to_string().contains("exact installed"));
     }
 
@@ -786,16 +780,11 @@ mod tests {
         returned_der.extend_from_slice(vendor_certs[2]);
 
         let returned = spdm_chain(&returned_der);
-        let err = verify_returned_owner_chain(
-            DEFAULT_OWNER_SLOT_ID,
-            &chain,
-            &vendor_certs,
-            &returned,
-        )
-        .unwrap_err();
+        let err =
+            verify_returned_owner_chain(DEFAULT_OWNER_SLOT_ID, &chain, &vendor_certs, &returned)
+                .unwrap_err();
         assert!(err.to_string().contains("duplicated"));
     }
-
 
     #[test]
     fn test_parse_spdm_cert_chain_rejects_bad_root_hash() {
@@ -808,13 +797,8 @@ mod tests {
         let mut returned = spdm_chain(&returned_der);
         returned[SPDM_CERT_CHAIN_HEADER_LEN] ^= 0x01;
 
-        let err = verify_returned_owner_chain(
-            DEFAULT_OWNER_SLOT_ID,
-            &chain,
-            &certs,
-            &returned,
-        )
-        .unwrap_err();
+        let err = verify_returned_owner_chain(DEFAULT_OWNER_SLOT_ID, &chain, &certs, &returned)
+            .unwrap_err();
         assert!(err.to_string().contains("root hash"));
     }
 
@@ -849,7 +833,6 @@ mod tests {
             .to_der()
             .unwrap()
     }
-
 
     fn signed_cose_attested_csr(signing_key: &SigningKey, nonce: &[u8; 32], csr: &[u8]) -> Vec<u8> {
         let public_key = signing_key.verifying_key().to_encoded_point(false);
@@ -887,6 +870,4 @@ mod tests {
         let name = Name::from_str("CN=COSE signer").unwrap();
         build_test_ca_certificate(1, name.clone(), name, None, 0, signing_key).unwrap()
     }
-
-
 }

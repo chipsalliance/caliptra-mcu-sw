@@ -11,8 +11,8 @@ use anyhow::Result;
 use caliptra_spdm_requester::{SpdmConfig, SpdmRequester, SpdmSocketDeviceIo, SpdmVdmDriverImpl};
 use caliptra_spdm_vdm_client::config::{self, TestConfig};
 use caliptra_spdm_vdm_client::{
-    validator, CommandAuthChallengeSigner, DebugUnlockKeys, DebugUnlockSigner,
-    AsymmetricCommandAuthorizer, LocalDebugUnlockSigner, SpdmVdmClient,
+    validator, AsymmetricCommandAuthorizer, CommandAuthChallengeSigner, DebugUnlockKeys,
+    DebugUnlockSigner, LocalDebugUnlockSigner, SpdmVdmClient,
 };
 use clap::Parser;
 
@@ -103,18 +103,22 @@ fn main() -> Result<()> {
         };
     let config = args.into_config()?;
 
-    let fe_prog_authorizer: Option<Box<dyn CommandAuthChallengeSigner>> =
-        match (&config.fe_prog.ecc_auth_key, &config.fe_prog.mldsa_auth_key) {
-            (Some(hex_ecc), Some(hex_mldsa)) => {
-                let ecc_key = hex::decode(hex_ecc)?;
-                let mldsa_key = hex::decode(hex_mldsa)?;
-                Some(Box::new(AsymmetricCommandAuthorizer::new(&ecc_key, &mldsa_key)?))
-            }
-            (None, None) => None,
-            _ => {
-                anyhow::bail!("Both ecc_auth_key and mldsa_auth_key must be provided for asymmetric authorization");
-            }
-        };
+    let fe_prog_authorizer: Option<Box<dyn CommandAuthChallengeSigner>> = match (
+        &config.fe_prog.ecc_auth_key,
+        &config.fe_prog.mldsa_auth_key,
+    ) {
+        (Some(hex_ecc), Some(hex_mldsa)) => {
+            let ecc_key = hex::decode(hex_ecc)?;
+            let mldsa_key = hex::decode(hex_mldsa)?;
+            Some(Box::new(AsymmetricCommandAuthorizer::new(
+                &ecc_key, &mldsa_key,
+            )?))
+        }
+        (None, None) => None,
+        _ => {
+            anyhow::bail!("Both ecc_auth_key and mldsa_auth_key must be provided for asymmetric authorization");
+        }
+    };
 
     println!(
         "[caliptra-spdm-validator] Connecting to bridge at {}",
