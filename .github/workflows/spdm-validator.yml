@@ -150,7 +150,9 @@ jobs:
             exit 1
           fi
 
+      # Pull requests gate responder conformance; dependent requester flows remain nightly.
       - name: Run SPDM attestation test on MCTP transport (PCR Quote measurements)
+        if: github.event_name != 'pull_request'
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
@@ -158,7 +160,7 @@ jobs:
           cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_attestation_pcr_quote --nocapture --include-ignored
 
       - name: Upload attestation logs and traces for MCTP transport
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
@@ -206,6 +208,7 @@ jobs:
           fi
 
       - name: Checkout CCC spdm-rs repository
+        if: github.event_name != 'pull_request'
         uses: actions/checkout@v7
         with:
           repository: chipsalliance/caliptra-spdm-rs
@@ -214,6 +217,7 @@ jobs:
           submodules: recursive
 
       - name: Prepare, build spdm-rs, and copy test keys
+        if: github.event_name != 'pull_request'
         working-directory: spdm-rs
         run: |
           git submodule update --init --recursive
@@ -223,11 +227,13 @@ jobs:
           ls -l target/debug/test_key/ecp384/
 
       - name: Copy caliptra root CA cert into spdm-rs test_key
+        if: github.event_name != 'pull_request'
         run: |
           cp ${{ github.workspace }}/ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der \
              ${{ github.workspace }}/spdm-rs/target/debug/test_key/ecp384/ca.cert.der
 
       - name: Run CCC spdm-requester-emu tests for TDISP+IDE
+        if: github.event_name != 'pull_request'
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
         run: |
@@ -236,13 +242,14 @@ jobs:
           sccache --show-stats
 
       - name: Display CCC spdm-requester-emu test results for TDISP+IDE
+        if: github.event_name != 'pull_request'
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
         run: |
           cat $SPDM_VALIDATOR_DIR/tdisp_ide_validator_output.txt
 
       - name: Upload CCC spdm-requester-emu test results for TDISP+IDE
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
