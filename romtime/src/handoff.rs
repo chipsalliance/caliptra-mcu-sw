@@ -12,7 +12,16 @@ pub const FHT_MARKER: u32 = 0x4855434D;
 pub const FHT_MAJOR_VERSION: u16 = 1;
 
 /// Minor version of the handoff table.
-pub const FHT_MINOR_VERSION: u16 = 0;
+pub const FHT_MINOR_VERSION: u16 = 1;
+
+/// Minor version that introduced the stable owner key handoff.
+pub const STABLE_OWNER_KEY_FHT_MINOR_VERSION: u16 = 1;
+
+/// Size of an encrypted Caliptra Cryptographic Manager key blob.
+pub const STABLE_OWNER_KEY_CMK_SIZE: usize = caliptra_api::mailbox::CMK_SIZE_BYTES;
+
+/// Valid marker for a stable owner key handoff ("SOKV" in little-endian).
+pub const STABLE_OWNER_KEY_VALID_MARKER: u32 = 0x564B4F53;
 
 /// Handoff data produced by ROM.
 #[derive(Debug, TryFromBytes, IntoBytes, KnownLayout, Immutable, Clone)]
@@ -66,6 +75,43 @@ impl Default for RuntimeHandoffTable {
     }
 }
 
+/// Stable owner key data produced by ROM for Runtime.
+#[derive(TryFromBytes, IntoBytes, KnownLayout, Immutable, Clone)]
+#[repr(C)]
+pub struct StableOwnerKeyHandoff {
+    /// Opaque encrypted CMK returned by Caliptra.
+    pub cmk: [u8; STABLE_OWNER_KEY_CMK_SIZE],
+
+    /// Written after `cmk` to indicate that the complete blob is available.
+    pub valid_marker: u32,
+}
+
+impl Default for StableOwnerKeyHandoff {
+    fn default() -> Self {
+        Self {
+            cmk: [0; STABLE_OWNER_KEY_CMK_SIZE],
+            valid_marker: 0,
+        }
+    }
+}
+
+impl core::fmt::Debug for StableOwnerKeyHandoff {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("StableOwnerKeyHandoff")
+            .field("cmk", &"<redacted>")
+            .field("valid", &self.cmk().is_some())
+            .finish()
+    }
+}
+
+impl StableOwnerKeyHandoff {
+    /// Return the encrypted CMK when ROM completed the handoff.
+    pub fn cmk(&self) -> Option<&[u8; STABLE_OWNER_KEY_CMK_SIZE]> {
+        (self.valid_marker == STABLE_OWNER_KEY_VALID_MARKER).then_some(&self.cmk)
+    }
+}
+
 /// Top-level handoff structure stored in DCCM.
 /// Resident at a well-known location in DCCM.
 ///
@@ -82,7 +128,22 @@ pub struct HandoffData {
 
     /// Runtime handoff table.
     pub runtime: RuntimeHandoffTable,
+
+    /// Stable owner key handoff produced by ROM.
+    ///
+    /// This field is appended after the original 128-byte layout so the ROM and
+    /// Runtime table offsets remain compatible with handoff version 1.0.
+    pub rom_stable_owner_key: StableOwnerKeyHandoff,
 }
+
+// Keep the original tables fixed so append-only extensions do not move either ABI.
+const _: () = assert!(core::mem::size_of::<RomHandoffTable>() == 64);
+const _: () = assert!(core::mem::size_of::<RuntimeHandoffTable>() == 64);
+const _: () = assert!(core::mem::size_of::<StableOwnerKeyHandoff>() == 132);
+const _: () = assert!(core::mem::offset_of!(HandoffData, rom) == 0);
+const _: () = assert!(core::mem::offset_of!(HandoffData, runtime) == 64);
+const _: () = assert!(core::mem::offset_of!(HandoffData, rom_stable_owner_key) == 128);
+const _: () = assert!(core::mem::size_of::<HandoffData>() == 260);
 
 // Enforce that the handoff data structure fits within the reserved 1KB region.
 const _: () = assert!(core::mem::size_of::<HandoffData>() <= 1024);
@@ -101,6 +162,14 @@ pub struct HandoffArgs {
 impl HandoffData {
     /// Size of the handoff data structure.
     pub const SIZE: usize = core::mem::size_of::<Self>();
+
+    /// Return the stable owner CMK when this handoff version supports it.
+    pub fn stable_owner_key(&self) -> Option<&[u8; STABLE_OWNER_KEY_CMK_SIZE]> {
+        if self.rom.fht_minor_ver < STABLE_OWNER_KEY_FHT_MINOR_VERSION {
+            return None;
+        }
+        self.rom_stable_owner_key.cmk()
+    }
 
     /// Persist handoff data structure from the given arguments.
     pub fn write(_args: HandoffArgs) {
@@ -123,7 +192,20 @@ impl HandoffData {
                     ..Default::default()
                 },
                 runtime: RuntimeHandoffTable::default(),
+                rom_stable_owner_key: StableOwnerKeyHandoff::default(),
             }
+        }
+    }
+
+    /// Persist an encrypted stable owner CMK for Runtime.
+    pub fn write_stable_owner_key(cmk: &[u8; STABLE_OWNER_KEY_CMK_SIZE]) {
+        // Safety: ROM owns the handoff table while constructing data for Runtime.
+        // Invalidate first and publish the marker only after the full CMK is present.
+        unsafe {
+            let handoff = &raw mut HANDOFF;
+            (*handoff).rom_stable_owner_key.valid_marker = 0;
+            (*handoff).rom_stable_owner_key.cmk = *cmk;
+            (*handoff).rom_stable_owner_key.valid_marker = STABLE_OWNER_KEY_VALID_MARKER;
         }
     }
 }
@@ -148,4 +230,43 @@ pub static mut HANDOFF: HandoffData = HandoffData {
         padding: [0; 44],
     },
     runtime: RuntimeHandoffTable { reserved: [0; 64] },
+    rom_stable_owner_key: StableOwnerKeyHandoff {
+        cmk: [0; STABLE_OWNER_KEY_CMK_SIZE],
+        valid_marker: 0,
+    },
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::mem::{offset_of, size_of};
+
+    #[test]
+    fn handoff_layout_is_append_only() {
+        assert_eq!(size_of::<RomHandoffTable>(), 64);
+        assert_eq!(size_of::<RuntimeHandoffTable>(), 64);
+        assert_eq!(size_of::<StableOwnerKeyHandoff>(), 132);
+        assert_eq!(offset_of!(HandoffData, rom), 0);
+        assert_eq!(offset_of!(HandoffData, runtime), 64);
+        assert_eq!(offset_of!(HandoffData, rom_stable_owner_key), 128);
+        assert_eq!(size_of::<HandoffData>(), 260);
+    }
+
+    #[test]
+    fn stable_owner_key_requires_valid_marker() {
+        let mut handoff = HandoffData::default();
+        assert!(handoff.stable_owner_key().is_none());
+
+        handoff.rom_stable_owner_key.cmk = [0x5a; STABLE_OWNER_KEY_CMK_SIZE];
+        assert!(handoff.stable_owner_key().is_none());
+
+        handoff.rom_stable_owner_key.valid_marker = STABLE_OWNER_KEY_VALID_MARKER;
+        assert_eq!(
+            handoff.stable_owner_key(),
+            Some(&[0x5a; STABLE_OWNER_KEY_CMK_SIZE])
+        );
+
+        handoff.rom.fht_minor_ver = STABLE_OWNER_KEY_FHT_MINOR_VERSION - 1;
+        assert!(handoff.stable_owner_key().is_none());
+    }
+}
