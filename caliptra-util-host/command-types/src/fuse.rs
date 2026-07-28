@@ -17,8 +17,11 @@ use crate::{CaliptraCommandId, CommandRequest, CommandResponse, CommonResponse};
 use caliptra_mcu_mbox_common::messages::HybridSignature;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-/// Size of the authorization challenge nonce in bytes
-pub const AUTH_CMD_CHALLENGE_SIZE: usize = 48;
+/// Size of the authorization challenge nonce in bytes.
+///
+/// Re-exported from `caliptra-mcu-mbox-common`, the single source of truth for
+/// the nonce width, so the host and device never diverge.
+pub use caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN as AUTH_CMD_CHALLENGE_SIZE;
 
 /// Canonical command identifier for the GET_AUTH_CMD_CHALLENGE command used in sub-command dispatch.
 ///

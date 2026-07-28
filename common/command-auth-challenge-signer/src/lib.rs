@@ -14,8 +14,13 @@ use fips204::ml_dsa_87;
 use fips204::traits::{KeyGen, Signer as MldsaSigner};
 use p384::ecdsa::{signature::Signer, Signature, SigningKey};
 
-/// Width of the authorization challenge nonce in bytes.
-pub const AUTH_CMD_NONCE_LEN: usize = 48;
+/// Width of the authorization challenge nonce in bytes. Re-exported from
+/// `caliptra-mcu-mbox-common`, the single source of truth for this size.
+pub use caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN;
+
+// The signer's wire/signing logic assumes a 48-byte nonce; assert it near the
+// use site so a future change to the shared constant fails to compile here.
+const _: () = assert!(AUTH_CMD_NONCE_LEN == 48);
 
 /// Trait for authorizing Caliptra commands that require challenge-response signatures.
 pub trait CommandAuthChallengeSigner: Send + Sync {
@@ -93,6 +98,7 @@ impl CommandAuthChallengeSigner for AsymmetricCommandAuthorizer {
 mod tests {
     use super::*;
     use caliptra_image_types::MLDSA87_SIGNATURE_BYTE_SIZE;
+    use fips204::traits::Verifier as MldsaVerifier;
     use p384::ecdsa::{signature::Verifier, Signature as EcdsaSignature, VerifyingKey};
 
     /// Test vendor keypair (matches the integration-test vector).
@@ -103,17 +109,27 @@ mod tests {
     ];
     const TEST_MLDSA_SEED: [u8; 32] = *b"caliptra-mcu-testing-mldsa-seed-";
 
-    /// The authorization nonce is 48 bytes.
-    #[test]
-    fn nonce_width_is_48() {
-        assert_eq!(AUTH_CMD_NONCE_LEN, 48);
+    /// The signed message on this baseline is `cmd_id(BE) || payload || challenge`.
+    fn message(cmd_id: u32, payload: &[u8], nonce: &[u8]) -> Vec<u8> {
+        let mut m = Vec::new();
+        m.extend_from_slice(&cmd_id.to_be_bytes());
+        m.extend_from_slice(payload);
+        m.extend_from_slice(nonce);
+        m
+    }
+
+    /// Recreate the ML-DSA-87 public key from the test seed for verification.
+    fn mldsa_pubkey() -> ml_dsa_87::PublicKey {
+        let (pk, _sk) = ml_dsa_87::KG::keygen_from_seed(&TEST_MLDSA_SEED);
+        pk
     }
 
     /// `authorize` accepts a 48-byte challenge and produces a well-formed
-    /// `HybridSignature` (correct sizes, non-zero legs) whose ECDSA leg verifies
-    /// over the raw signed message `cmd_id(BE) || payload || challenge`.
+    /// `HybridSignature` whose BOTH legs verify over the signed message: the
+    /// ECDSA leg against the vendor P-384 key, and the ML-DSA-87 leg against the
+    /// vendor ML-DSA key.
     #[test]
-    fn authorize_round_trips_over_48_byte_nonce() {
+    fn authorize_round_trips_both_legs() {
         let signer =
             AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED).unwrap();
         let cmd_id: u32 = 0x4D43_4650; // MC_FE_PROG ("MCFP")
@@ -121,34 +137,30 @@ mod tests {
         let challenge = [0x11u8; AUTH_CMD_NONCE_LEN];
 
         let sig = signer.authorize(cmd_id, &payload, &challenge).unwrap();
-
-        // Sizes are locked by the wire contract.
         assert_eq!(sig.ecc_sig_r.len(), 48);
         assert_eq!(sig.ecc_sig_s.len(), 48);
         assert_eq!(sig.mldsa_sig.len(), MLDSA87_SIGNATURE_BYTE_SIZE);
-        // Signatures must not be all-zero.
-        assert!(sig.ecc_sig_r.iter().any(|&b| b != 0));
-        assert!(sig.mldsa_sig.iter().take(4627).any(|&b| b != 0));
 
-        // Reconstruct the raw signed message and verify the ECDSA leg against
-        // the vendor public key (proves the 48-byte nonce is what was signed).
-        let mut message = Vec::new();
-        message.extend_from_slice(&cmd_id.to_be_bytes());
-        message.extend_from_slice(&payload);
-        message.extend_from_slice(&challenge);
+        let msg = message(cmd_id, &payload, &challenge);
 
-        let signing_key = SigningKey::from_slice(&TEST_ECC_PRIV_KEY).unwrap();
-        let verifying_key = VerifyingKey::from(&signing_key);
-        let mut sig_bytes = [0u8; 96];
-        sig_bytes[..48].copy_from_slice(&sig.ecc_sig_r);
-        sig_bytes[48..].copy_from_slice(&sig.ecc_sig_s);
-        let ecdsa_sig = EcdsaSignature::from_slice(&sig_bytes).unwrap();
-        assert!(verifying_key.verify(&message, &ecdsa_sig).is_ok());
+        // ECDSA leg (p384 hashes the message with SHA-384 internally).
+        let vk = VerifyingKey::from(&SigningKey::from_slice(&TEST_ECC_PRIV_KEY).unwrap());
+        let mut ecc_bytes = [0u8; 96];
+        ecc_bytes[..48].copy_from_slice(&sig.ecc_sig_r);
+        ecc_bytes[48..].copy_from_slice(&sig.ecc_sig_s);
+        assert!(vk
+            .verify(&msg, &EcdsaSignature::from_slice(&ecc_bytes).unwrap())
+            .is_ok());
+
+        // ML-DSA-87 leg: fips204 sig is the first 4627 bytes (the struct pads to 4628).
+        let mldsa_sig: [u8; 4627] = sig.mldsa_sig[..4627].try_into().unwrap();
+        assert!(mldsa_pubkey().verify(&msg, &mldsa_sig, &[]));
     }
 
-    /// A challenge that differs from the one signed must NOT verify (freshness).
+    /// A challenge that differs from the one signed must NOT verify on EITHER
+    /// leg (freshness) — checked for ECDSA and ML-DSA-87.
     #[test]
-    fn wrong_nonce_does_not_verify() {
+    fn wrong_nonce_does_not_verify_either_leg() {
         let signer =
             AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED).unwrap();
         let cmd_id: u32 = 0x4D43_4650;
@@ -157,18 +169,18 @@ mod tests {
             .authorize(cmd_id, &payload, &[0x11u8; AUTH_CMD_NONCE_LEN])
             .unwrap();
 
-        // Verify against a message built with a DIFFERENT nonce.
-        let mut message = Vec::new();
-        message.extend_from_slice(&cmd_id.to_be_bytes());
-        message.extend_from_slice(&payload);
-        message.extend_from_slice(&[0x22u8; AUTH_CMD_NONCE_LEN]);
+        // Message built with a DIFFERENT nonce.
+        let wrong = message(cmd_id, &payload, &[0x22u8; AUTH_CMD_NONCE_LEN]);
 
-        let verifying_key =
-            VerifyingKey::from(&SigningKey::from_slice(&TEST_ECC_PRIV_KEY).unwrap());
-        let mut sig_bytes = [0u8; 96];
-        sig_bytes[..48].copy_from_slice(&sig.ecc_sig_r);
-        sig_bytes[48..].copy_from_slice(&sig.ecc_sig_s);
-        let ecdsa_sig = EcdsaSignature::from_slice(&sig_bytes).unwrap();
-        assert!(verifying_key.verify(&message, &ecdsa_sig).is_err());
+        let vk = VerifyingKey::from(&SigningKey::from_slice(&TEST_ECC_PRIV_KEY).unwrap());
+        let mut ecc_bytes = [0u8; 96];
+        ecc_bytes[..48].copy_from_slice(&sig.ecc_sig_r);
+        ecc_bytes[48..].copy_from_slice(&sig.ecc_sig_s);
+        assert!(vk
+            .verify(&wrong, &EcdsaSignature::from_slice(&ecc_bytes).unwrap())
+            .is_err());
+
+        let mldsa_sig: [u8; 4627] = sig.mldsa_sig[..4627].try_into().unwrap();
+        assert!(!mldsa_pubkey().verify(&wrong, &mldsa_sig, &[]));
     }
 }

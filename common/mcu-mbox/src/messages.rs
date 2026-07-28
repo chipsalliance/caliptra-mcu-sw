@@ -1396,6 +1396,13 @@ pub struct FuseLockPartitionResp {
 }
 impl Response for FuseLockPartitionResp {}
 
+/// Width, in bytes, of the authorized-command challenge nonce.
+///
+/// Single source of truth for the nonce size — every authorized-command site
+/// (challenge response, signer, device verifier, transports, tests) references
+/// this constant instead of a hard-coded `48`.
+pub const AUTH_CMD_NONCE_LEN: usize = 48;
+
 /// MC_GET_AUTH_CMD_CHALLENGE request: Get a challenge nonce to prove freshness in auth commands
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
@@ -1415,15 +1422,15 @@ impl Request for GetAuthCmdChallengeReq {
 pub struct GetAuthCmdChallengeResp {
     pub hdr: MailboxRespHeader,
     pub reserved: u32,
-    pub challenge: [u8; 48],
+    pub challenge: [u8; AUTH_CMD_NONCE_LEN],
 }
-// `[u8; 48]` does not implement `Default` via derive, so provide it by hand.
+// `[u8; AUTH_CMD_NONCE_LEN]` does not implement `Default` via derive, so provide it by hand.
 impl Default for GetAuthCmdChallengeResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeader::default(),
             reserved: 0,
-            challenge: [0u8; 48],
+            challenge: [0u8; AUTH_CMD_NONCE_LEN],
         }
     }
 }
