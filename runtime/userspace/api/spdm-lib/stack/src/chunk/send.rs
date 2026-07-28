@@ -933,10 +933,6 @@ fn encode_error_pdu(version: SpdmVersion, err: SpdmError, out: &mut [u8; 4]) {
 }
 
 #[cfg(test)]
-#[path = "../tests/support.rs"]
-mod support;
-
-#[cfg(test)]
 mod tests {
     extern crate std;
 
@@ -955,7 +951,7 @@ mod tests {
 
     use super::*;
 
-    use super::support::{chunk_send_request, chunking_state, TestIo, TestPal};
+    use crate::test_support::{chunk_send_request, chunking_state, TestIo, TestPal};
 
     const CALIPTRA_VENDOR_ID_BYTES: [u8; 4] = CALIPTRA_VENDOR_ID.to_le_bytes();
 

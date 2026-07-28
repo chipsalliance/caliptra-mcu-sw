@@ -8,9 +8,7 @@ use caliptra_mcu_spdm_traits::NoVdmBackend;
 use futures::executor::block_on;
 use std::vec::Vec;
 
-#[path = "support.rs"]
-mod support;
-use support::*;
+use crate::test_support::*;
 
 fn send_secured_chunk(
     state: &mut ConnectionState<TestHashState, Vec<u8>>,

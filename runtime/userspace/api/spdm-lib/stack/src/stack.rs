@@ -576,6 +576,11 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
     code: ReqRespCode,
     vdm: &Vdm,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
+    // GET_VERSION resets the connection, but malformed requests must not alter
+    // existing connection, session, or large-message state.
+    if code == ReqRespCode::GET_VERSION {
+        version::validate_get_version(io.request())?;
+    }
     abort_chunk_reassembly_if_interrupted(state, pal, io, vdm, code).await;
     if code != ReqRespCode::CHUNK_GET
         && code != ReqRespCode::CHUNK_SEND
@@ -1104,3 +1109,7 @@ fn decode_header(req: &[u8]) -> (ReqRespCode, SpdmVersion) {
 #[cfg(all(test, feature = "set-certificate"))]
 #[path = "tests/stack_set_certificate.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/version_capabilities.rs"]
+mod version_capabilities_tests;

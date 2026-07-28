@@ -53,6 +53,10 @@ mod transcript;
 mod vendor_defined;
 mod version;
 
+#[cfg(test)]
+#[path = "tests/support.rs"]
+pub(crate) mod test_support;
+
 pub use error::*;
 pub use stack::*;
 pub use transcript::*;
