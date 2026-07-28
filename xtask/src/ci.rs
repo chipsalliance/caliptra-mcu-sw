@@ -95,14 +95,23 @@ fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
     // FPGA does not have a `*-devel.toml` manifest variant (HW-fixed SRAM);
     // still exercise the `release` cargo feature / `release` cargo profile
     // against its single 512 KB layout so size regressions and
-    // release-only `cfg`s are caught.
-    caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
-        platform: Some("fpga"),
-        features: Some("release"),
-        profile: Some("release"),
-        target_dir: Some(target_dir.to_path_buf()),
-        ..Default::default()
-    })
+    // release-only `cfg`s are caught.  Build with `all-features` so the
+    // size-history CI tracks the production-representative binary that
+    // includes SPDM, PLDM, firmware-update, DOE, etc.
+    //
+    // The linker layout step may fail if the binary overflows SRAM — that's
+    // acceptable because the individual ELFs are still produced by cargo and
+    // we only need those to measure .text/.stack sizes.
+    let _ =
+        caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
+            platform: Some("fpga"),
+            features: Some("all-features,release"),
+            profile: Some("release"),
+            no_default_features: true,
+            target_dir: Some(target_dir.to_path_buf()),
+            ..Default::default()
+        });
+    Ok(target_dir.join("runtime-fpga.bin"))
 }
 
 fn get_elf_bytes(target_dir: &Path, fwid: FwId<'_>) -> io::Result<Vec<u8>> {

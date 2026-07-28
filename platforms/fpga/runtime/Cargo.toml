@@ -45,6 +45,13 @@ default = []
 # the manifest) does not cause a "feature not found" error.
 spdm = []
 mcu-mbox-service = []
+# Passthrough: user-app-only services; kernel has no conditional code for these.
+all-features = []
+streaming-boot = []
+flash-boot = []
+firmware-update = []
+doe = []
+userspace-log = []
 # See `mcu-runtime-emulator`'s `release` feature for rationale.
 release = ["kernel/no_debug_panics", "caliptra-mcu-romtime/no-print"]
 test-caliptra-certs = []

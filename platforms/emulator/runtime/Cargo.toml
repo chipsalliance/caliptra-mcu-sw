@@ -49,6 +49,14 @@ debug = []
 #   - DebugWriter, Console, LowLevelDebug, ProcessConsole, ProcessPrinter
 # Default (off) = full debug / interactive experience.
 release = ["kernel/no_debug_panics", "caliptra-mcu-romtime/no-print"]
+# Passthrough: user-app-only services; kernel has no conditional code for these.
+all-features = []
+spdm = []
+streaming-boot = []
+flash-boot = []
+firmware-update = []
+doe = []
+userspace-log = []
 hw-2-1 = []
 # Example app test features
 test-caliptra-certs = []
