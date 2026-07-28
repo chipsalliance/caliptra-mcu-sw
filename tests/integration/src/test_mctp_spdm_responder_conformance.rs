@@ -13,7 +13,8 @@ mod test {
     use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
     use caliptra_mcu_testing_common::spdm_responder_validator::mctp::MctpTransport;
     use caliptra_mcu_testing_common::spdm_responder_validator::{
-        execute_spdm_responder_validator, SpdmValidatorRunner, SERVER_LISTENING,
+        execute_spdm_responder_validator, wait_for_spdm_responder_validator, SpdmValidatorRunner,
+        SERVER_LISTENING,
     };
     use caliptra_mcu_testing_common::{
         wait_for_runtime_start, wait_for_spdm_responder_ready, SpdmResponderTransport,
@@ -104,9 +105,12 @@ mod test {
                 if !test.is_passed() {
                     println!("[{}]: Spdm Responder Conformance Test Failed", TEST_NAME);
                     exit(-1);
-                } else {
+                } else if wait_for_spdm_responder_validator() {
                     println!("[{}]: Spdm Responder Conformance Test Passed", TEST_NAME);
                     exit(0);
+                } else {
+                    println!("[{}]: Spdm Validator Result Check Failed", TEST_NAME);
+                    exit(-1);
                 }
             }
         });

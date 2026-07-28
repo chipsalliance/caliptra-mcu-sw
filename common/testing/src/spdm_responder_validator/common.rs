@@ -17,6 +17,7 @@ pub const SOCKET_SPDM_COMMAND_TEST: u32 = 0xDEAD;
 pub const SOCKET_HEADER_LEN: usize = 12;
 
 pub static SERVER_LISTENING: AtomicBool = AtomicBool::new(false);
+static SPDM_RESPONDER_VALIDATOR_DONE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Copy, Clone, Default, FromBytes, IntoBytes, Immutable)]
 pub struct SpdmSocketHeader {
@@ -326,7 +327,15 @@ pub fn execute_spdm_attestation_with_port(
     })
 }
 
+pub fn wait_for_spdm_responder_validator() -> bool {
+    while crate::is_emulator_running() && !SPDM_RESPONDER_VALIDATOR_DONE.load(Ordering::Acquire) {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    SPDM_RESPONDER_VALIDATOR_DONE.load(Ordering::Acquire)
+}
+
 pub fn execute_spdm_responder_validator(transport: &'static str) {
+    SPDM_RESPONDER_VALIDATOR_DONE.store(false, Ordering::Release);
     crate::spawn_with_emulator_state(move || {
         println!(
             "Starting spdm_device_validator_sample process on transport: {}. Waiting for SPDM listener to start...",
@@ -345,6 +354,10 @@ pub fn execute_spdm_responder_validator(transport: &'static str) {
                                 "spdm_device_validator_sample exited with status: {:?}",
                                 status
                             );
+                            if !status.success() {
+                                std::process::exit(1);
+                            }
+                            SPDM_RESPONDER_VALIDATOR_DONE.store(true, Ordering::Release);
                             break;
                         }
                         Ok(None) => {}
