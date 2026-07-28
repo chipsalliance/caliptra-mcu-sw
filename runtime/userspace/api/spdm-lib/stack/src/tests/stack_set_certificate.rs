@@ -104,6 +104,38 @@ fn plaintext_chunked_set_certificate_succeeds() {
 }
 
 #[test]
+fn get_version_aborts_chunked_set_certificate_stream() {
+    let pal = TestPal::default();
+    let mut state = chunking_state();
+    let mut sessions = crate::session::SessionManager::new();
+    let large_req = set_certificate_request(&pal);
+    let first_chunk = chunk_send_request(7, 0, false, Some(large_req.len()), &large_req[..60]);
+
+    send_plaintext_chunk(&mut state, &mut sessions, &pal, &first_chunk);
+    assert!(state.large_msg_ctx.request_in_progress());
+
+    let io = TestIo::message(Vec::from([
+        SpdmVersion::V10.to_u8(),
+        ReqRespCode::GET_VERSION.0,
+        0,
+        0,
+    ]));
+    block_on(dispatch(
+        &mut state,
+        &mut sessions,
+        &pal,
+        &io,
+        ReqRespCode::GET_VERSION,
+        &NoVdmBackend,
+    ))
+    .unwrap();
+
+    assert_eq!(pal.stream_aborts.get(), 1);
+    assert!(!state.large_msg_ctx.request_in_progress());
+    assert_eq!(state.phase, Phase::AfterVersion);
+}
+
+#[test]
 fn chunked_set_certificate_rejects_context_switch_without_resetting() {
     let pal = TestPal::default();
     let (mut state, mut sessions, session_id) = handshake_session(&pal);
