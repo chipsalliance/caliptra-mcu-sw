@@ -1,12 +1,121 @@
 # Licensed under the Apache-2.0 license
 
-name: Nightly Build and Test (main-2.1)
+name: Nightly Workflows (main-2.1)
 
 on:
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
 
+permissions:
+  actions: write
+  contents: read
+
 jobs:
-  build-test:
-    uses: chipsalliance/caliptra-mcu-sw/.github/workflows/build-test.yml@main-2.1
+  dispatch-and-monitor:
+    name: ${{ matrix.workflow }} (main-2.1)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workflow:
+          - build-test.yml
+          - nightly.yml
+    env:
+      TARGET_REF: main-2.1
+      TARGET_WORKFLOW: ${{ matrix.workflow }}
+    steps:
+      - name: Launch and monitor workflow
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const targetRef = process.env.TARGET_REF;
+            const workflowId = process.env.TARGET_WORKFLOW;
+
+            const previousRuns = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflowId,
+              event: "workflow_dispatch",
+              branch: targetRef,
+              per_page: 20,
+            });
+            const previousRunIds = new Set(
+              previousRuns.data.workflow_runs.map((run) => run.id),
+            );
+            const dispatchedAt = Date.now();
+
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflowId,
+              ref: targetRef,
+            });
+
+            core.info(`Dispatched ${workflowId} on ref ${targetRef}`);
+
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const maxLocateAttempts = 20;
+            const locateDelayMs = 15000;
+
+            let dispatchedRun = null;
+            for (let attempt = 1; attempt <= maxLocateAttempts; attempt++) {
+              const runsResp = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: workflowId,
+                event: "workflow_dispatch",
+                branch: targetRef,
+                per_page: 20,
+              });
+
+              dispatchedRun = runsResp.data.workflow_runs.find(
+                (run) =>
+                  !previousRunIds.has(run.id) &&
+                  Date.parse(run.created_at) >= dispatchedAt - 5000,
+              );
+
+              if (dispatchedRun) {
+                break;
+              }
+
+              core.info(`Waiting for dispatched run to appear (${attempt}/${maxLocateAttempts})...`);
+              await sleep(locateDelayMs);
+            }
+
+            if (!dispatchedRun) {
+              core.setFailed(`Could not find the dispatched ${workflowId} run after waiting.`);
+              return;
+            }
+
+            core.info(
+              `Tracking ${dispatchedRun.html_url} (run #${dispatchedRun.run_number}, id ${dispatchedRun.id})`,
+            );
+
+            const maxTrackAttempts = 240;
+            const trackDelayMs = 30000;
+
+            for (let attempt = 1; attempt <= maxTrackAttempts; attempt++) {
+              const runResp = await github.rest.actions.getWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: dispatchedRun.id,
+              });
+
+              const run = runResp.data;
+              core.info(`Run status: ${run.status}, conclusion: ${run.conclusion ?? "n/a"}`);
+
+              if (run.status === "completed") {
+                if (run.conclusion !== "success") {
+                  core.setFailed(
+                    `${workflowId} completed with conclusion: ${run.conclusion}`,
+                  );
+                }
+                return;
+              }
+
+              await sleep(trackDelayMs);
+            }
+
+            core.setFailed(`Timed out while waiting for ${workflowId} to complete.`);
