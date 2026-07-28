@@ -11,6 +11,7 @@ use crate::{ReqRespCode, ResponseBody, WireError, WireWriter};
 /// FINISH request fixed body (after SPDM header).
 ///
 /// After this struct the request carries:
+/// - In V1.4: `opaque_length(2) + opaque_data`
 /// - If `signature_present()`: requester signature (96 bytes, ECC P-384)
 /// - Requester verify_data (48 bytes, SHA-384 HMAC)
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Copy, Clone, Debug)]
@@ -36,18 +37,29 @@ impl FinishReqBody {
 
 /// FINISH_RSP response builder.
 ///
-/// Wire layout: `reserved(1) + reserved(1)`.
-/// No ResponderVerifyData when HBITC is NOT negotiated (our case).
-pub struct FinishRsp;
+/// Wire layout: `reserved(1) + reserved(1)`, followed in V1.4 by an
+/// empty `OpaqueData` field (`opaque_length(2)`). No ResponderVerifyData is
+/// present when HBITC is not negotiated (our case).
+pub struct FinishRsp {
+    pub include_opaque: bool,
+}
 
 impl ResponseBody for FinishRsp {
     const RESPONSE_CODE: ReqRespCode = ReqRespCode::FINISH_RSP;
 
     fn body_size(&self) -> usize {
-        2
+        if self.include_opaque {
+            4
+        } else {
+            2
+        }
     }
 
     fn encode_body(&self, w: &mut WireWriter<'_>) -> Result<(), WireError> {
-        w.write_bytes(&[0u8, 0u8])
+        w.write_bytes(&[0u8, 0u8])?;
+        if self.include_opaque {
+            w.write_bytes(&0u16.to_le_bytes())?;
+        }
+        Ok(())
     }
 }
