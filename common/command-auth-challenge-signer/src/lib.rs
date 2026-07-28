@@ -4,6 +4,8 @@
 //!
 //! Provides the [`CommandAuthChallengeSigner`] trait and one implementation:
 //! - [`AsymmetricCommandAuthorizer`]: Dual asymmetric verification using ECC P-384 and ML-DSA-87.
+//!
+//! The authorized-command challenge/nonce is 48 bytes wide.
 
 use anyhow::Result;
 use caliptra_image_types::MLDSA87_SIGNATURE_BYTE_SIZE;
