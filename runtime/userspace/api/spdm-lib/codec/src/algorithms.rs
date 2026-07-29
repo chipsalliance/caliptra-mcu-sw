@@ -130,6 +130,15 @@ def_flag_set_le! {
     }
 }
 
+def_flag_set_le! {
+  /// KEMAlg.AlgSupported.
+    pub struct KemAlgos(U16: u16) {
+        ML_KEM512 = 1 << 0,
+        ML_KEM768 = 1 << 1,
+        ML_KEM1024 = 1 << 2,
+    }
+}
+
 // ---- AlgType discriminants -------------------------------------------------
 
 /// `AlgType` byte values for AlgStruct entries.
