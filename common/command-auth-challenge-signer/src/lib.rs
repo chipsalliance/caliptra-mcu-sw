@@ -20,6 +20,7 @@ pub use caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN;
 
 // The signer's wire/signing logic assumes a 48-byte nonce; assert it near the
 // use site so a future change to the shared constant fails to compile here.
+// (Width is fixed by the Caliptra prod-debug-unlock challenge/nonce format.)
 const _: () = assert!(AUTH_CMD_NONCE_LEN == 48);
 
 /// Trait for authorizing Caliptra commands that require challenge-response signatures.
