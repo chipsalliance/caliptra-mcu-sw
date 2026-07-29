@@ -4,7 +4,7 @@ use crate::auth_keys::{TEST_AUTH_ECC_PUB_KEY_X, TEST_AUTH_ECC_PUB_KEY_Y, TEST_AU
 use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, FuseIncreaseCaliptraMinSvnReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
-    HybridSignature, MailboxReqHeader, McuFeProgReq, ProvisionVendorPkHashReq,
+    HybridSignature, MailboxReqHeader, McuFeProgReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
 };
 use core::cell::RefCell;
 use core::mem::size_of;
@@ -14,13 +14,13 @@ use zerocopy::FromBytes;
 
 extern crate alloc;
 
-static CHALLENGE: Mutex<CriticalSectionRawMutex, RefCell<Option<[u8; 32]>>> =
+static CHALLENGE: Mutex<CriticalSectionRawMutex, RefCell<Option<[u8; AUTH_CMD_NONCE_LEN]>>> =
     Mutex::new(RefCell::new(None));
 
 #[derive(Default)]
 pub struct MockCommandAuthorizer;
 
-fn set_challenge(challenge: [u8; 32]) {
+fn set_challenge(challenge: [u8; AUTH_CMD_NONCE_LEN]) {
     CHALLENGE.lock(|state| *state.borrow_mut() = Some(challenge));
 }
 
@@ -78,11 +78,11 @@ impl CommandAuthorizer for MockCommandAuthorizer {
         .map_err(|_| AuthorizationError)
     }
 
-    fn take_challenge(&mut self) -> Option<[u8; 32]> {
+    fn take_challenge(&mut self) -> Option<[u8; AUTH_CMD_NONCE_LEN]> {
         CHALLENGE.lock(|state| state.borrow_mut().take())
     }
 
-    fn set_challenge(&mut self, challenge: [u8; 32]) {
+    fn set_challenge(&mut self, challenge: [u8; AUTH_CMD_NONCE_LEN]) {
         set_challenge(challenge);
     }
 }
