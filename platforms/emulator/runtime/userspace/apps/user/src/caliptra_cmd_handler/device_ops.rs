@@ -12,8 +12,8 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
-use core::cell::RefCell;
-use critical_section::Mutex;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
     fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
     request_debug_unlock_challenge, rng_generate, ApiAlloc, McuErrorCode,
@@ -160,37 +160,26 @@ pub async fn verify_authorized_signatures(
         .await
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
-    // Use a shared static buffer to avoid inflating the async task future
-    // by ~11 KB (MldsaVerifyReq contains a 4 KB message + 2.6 KB pub_key +
-    // 4.6 KB signature).
+    // Use a shared static buffer behind an async Mutex to avoid inflating
+    // the async task future by ~11 KB.  The guard is held across `.await`.
     // SAFETY: MldsaVerifyReq derives FromBytes, so all-zeros is a valid repr.
-    static MLDSA_REQ: Mutex<RefCell<core::mem::MaybeUninit<MldsaVerifyReq>>> =
-        Mutex::new(RefCell::new(core::mem::MaybeUninit::zeroed()));
+    static MLDSA_REQ: Mutex<CriticalSectionRawMutex, core::mem::MaybeUninit<MldsaVerifyReq>> =
+        Mutex::new(core::mem::MaybeUninit::zeroed());
 
-    let mldsa_req_bytes = critical_section::with(|cs| {
-        let mut cell = MLDSA_REQ.borrow_ref_mut(cs);
-        // SAFETY: MldsaVerifyReq derives FromBytes — all-zeros (from the static
-        // initializer) and any byte pattern we write are valid representations.
-        let req: &mut MldsaVerifyReq = unsafe { cell.assume_init_mut() };
-        req.hdr = MailboxReqHeader::default();
-        req.pub_key = *mldsa_pub;
-        req.signature = sig.mldsa_sig;
-        req.message_size = mldsa_msg.len() as u32;
-        req.message = [0u8; caliptra_api::mailbox::MAX_CMB_DATA_SIZE];
-        req.message[..mldsa_msg.len()].copy_from_slice(&mldsa_msg);
-        req.as_bytes_partial_mut()
-            .map(|b| b.as_ptr() as usize..b.as_ptr() as usize + b.len())
-    });
-    let mldsa_req_range = mldsa_req_bytes.map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    // SAFETY: the static buffer is not mutated while we hold this slice —
-    // cooperative executor ensures no re-entrancy between the critical
-    // section above and the await below.
-    let mldsa_req_slice = unsafe {
-        core::slice::from_raw_parts_mut(
-            mldsa_req_range.start as *mut u8,
-            mldsa_req_range.end - mldsa_req_range.start,
-        )
-    };
+    let mut guard = MLDSA_REQ.lock().await;
+    // SAFETY: MldsaVerifyReq derives FromBytes — all-zeros (from the static
+    // initializer) and any byte pattern we write are valid representations.
+    let req: &mut MldsaVerifyReq = unsafe { guard.assume_init_mut() };
+    req.hdr = MailboxReqHeader::default();
+    req.pub_key = *mldsa_pub;
+    req.signature = sig.mldsa_sig;
+    req.message_size = mldsa_msg.len() as u32;
+    req.message = [0u8; caliptra_api::mailbox::MAX_CMB_DATA_SIZE];
+    req.message[..mldsa_msg.len()].copy_from_slice(&mldsa_msg);
+
+    let mldsa_req_bytes = req
+        .as_bytes_partial_mut()
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
     let mut mldsa_resp = MailboxRespHeader::default();
     let mldsa_resp_bytes = mldsa_resp.as_mut_bytes();
@@ -200,7 +189,7 @@ pub async fn verify_authorized_signatures(
     execute_mailbox_cmd(
         &mailbox,
         cmd_mldsa_verify,
-        mldsa_req_slice,
+        mldsa_req_bytes,
         mldsa_resp_bytes,
     )
     .await
