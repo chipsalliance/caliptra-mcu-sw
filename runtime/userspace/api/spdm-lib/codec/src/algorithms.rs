@@ -252,6 +252,7 @@ pub struct AlgorithmsRsp {
     pub meas_hash_algo: MeasHashAlgos,
     pub base_asym_sel: AsymAlgos,
     pub base_hash_sel: HashAlgos,
+    pub pqc_asym_sel: PqcAsymAlgos,
     /// AlgStruct entries to advertise; `None` slots are skipped.
     pub alg_structs: [Option<AlgStructEntry>; MAX_ALG_STRUCT_ENTRIES],
 }
