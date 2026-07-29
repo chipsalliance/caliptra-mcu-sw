@@ -46,6 +46,8 @@ mod fw_info;
 #[cfg(feature = "mailbox-io")]
 mod hmac;
 #[cfg(feature = "mailbox-io")]
+pub mod image_loader;
+#[cfg(feature = "mailbox-io")]
 mod import;
 pub mod mailbox;
 #[cfg(feature = "mailbox-io")]

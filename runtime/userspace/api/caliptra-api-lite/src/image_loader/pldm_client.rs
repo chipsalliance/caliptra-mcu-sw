@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 extern crate alloc;
-use crate::image_loading::pldm_context::State;
-use crate::image_loading::pldm_fdops::StreamingFdOps;
+use super::pldm_context::State;
+use super::pldm_fdops::StreamingFdOps;
 use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
