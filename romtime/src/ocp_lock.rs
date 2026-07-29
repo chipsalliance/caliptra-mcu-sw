@@ -5,9 +5,10 @@
 
 use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromBytes, IntoBytes, KnownLayout, Immutable)]
+#[derive(Debug, Clone, PartialEq, Eq, TryFromBytes, IntoBytes, KnownLayout, Immutable, Default)]
 #[repr(u16)]
 pub enum HekSeedState {
+    #[default]
     Unused = 0x0,
     Programmed = 0x1,
     ProgrammedPendingReset = 0x2,
@@ -18,9 +19,20 @@ pub enum HekSeedState {
     SanitizedCorrupted = 0x7,
 }
 
-impl Default for HekSeedState {
-    fn default() -> Self {
-        Self::Unused
+impl TryFrom<u16> for HekSeedState {
+    type Error = ();
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Unused),
+            1 => Ok(Self::Programmed),
+            2 => Ok(Self::ProgrammedPendingReset),
+            3 => Ok(Self::ProgrammedCorrupted),
+            4 => Ok(Self::Permanent),
+            5 => Ok(Self::Sanitized),
+            6 => Ok(Self::SanitizedPendingReset),
+            7 => Ok(Self::SanitizedCorrupted),
+            _ => Err(()),
+        }
     }
 }
 
@@ -49,7 +61,7 @@ impl From<&HekSeedState> for u16 {
 const OCP_LOCK_KEY_MEK_SIZE: u32 = 64;
 
 /// A single HEK Seed
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HekSeed<'a> {
     pub buf: &'a [u8; 48],
     pub state: HekSeedState,
@@ -57,7 +69,7 @@ pub struct HekSeed<'a> {
 
 impl HekSeed<'_> {
     pub fn state(&self) -> HekSeedState {
-        self.state
+        self.state.clone()
     }
 }
 
@@ -90,14 +102,14 @@ impl<'a> HekSeeds<'a> {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum PermaBitStatus {
     #[default]
     Unset,
     Set,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error(u32);
 
 impl Error {
@@ -115,15 +127,19 @@ impl Error {
     pub const RUNTIME_INVALID_HEK_SLOT: Self = Self(0x0000_0000_1000_0005);
 }
 
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, Default, TryFromBytes, IntoBytes, KnownLayout, Immutable,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, TryFromBytes, IntoBytes, KnownLayout, Immutable)]
 #[repr(C)]
 pub struct HekState {
     pub active_state: HekSeedState,
     pub reserved: u16,
     pub active_slot: u32,
     pub total_slots: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, TryFromBytes, IntoBytes, KnownLayout, Immutable)]
+#[repr(C)]
+pub struct OcpLockState {
+    pub hek_state: HekState,
 }
 
 // TODO(clundin): Clean up the trait once most of the implementation is completed.

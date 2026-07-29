@@ -80,6 +80,8 @@ hw-2-1 = []
 ocp-lock = [
     "caliptra-mcu-libapi-caliptra/ocp-lock",
     "mcu-mbox-service",
+    "caliptra-mcu-mbox-lib/ocp-lock",
+    "caliptra-mcu-common-commands/ocp-lock",
 ]
 doe = []
 userspace-log = [
@@ -133,6 +135,7 @@ test-doe-transport-loopback = []
 test-log-flash-circular = []
 test-log-flash-linear = []
 test-mcu-mbox-driver = []
+test-ekp = ["test-mcu-mbox-cmds", "ocp-lock"]
 test-mcu-mbox-soc-requester-loopback = []
 test-mcu-rom-flash-access = []
 test-mctp-capsule-loopback = []

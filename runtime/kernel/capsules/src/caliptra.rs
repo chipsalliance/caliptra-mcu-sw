@@ -14,6 +14,12 @@ pub const DRIVER_NUM: usize = 0x8000_0011;
 mod cmd {
     pub const CALIPTRA_READ: u32 = 1;
     pub const CALIPTRA_SET_REGISTER: u32 = 3;
+    #[cfg(feature = "ocp-lock")]
+    pub const CALIPTRA_GET_HEK_ACTIVE_STATE: u32 = 4;
+    #[cfg(feature = "ocp-lock")]
+    pub const CALIPTRA_GET_HEK_ACTIVE_SLOT: u32 = 5;
+    #[cfg(feature = "ocp-lock")]
+    pub const CALIPTRA_GET_HEK_TOTAL_SLOTS: u32 = 6;
 }
 
 pub mod reg {
@@ -89,6 +95,29 @@ impl SyscallDriver for Caliptra {
         match caliptra_cmd as u32 {
             cmd::CALIPTRA_READ => self.read_reg(processid),
             cmd::CALIPTRA_SET_REGISTER => self.set_reg(arg1 as u32, arg2 as u32, processid),
+            #[cfg(feature = "ocp-lock")]
+            cmd::CALIPTRA_GET_HEK_ACTIVE_STATE => {
+                match caliptra_mcu_romtime::handoff::get_ocp_lock_state() {
+                    Ok(state) => {
+                        CommandReturn::success_u32(state.hek_state.active_state.clone() as u32)
+                    }
+                    Err(_) => CommandReturn::failure(ErrorCode::NOSUPPORT),
+                }
+            }
+            #[cfg(feature = "ocp-lock")]
+            cmd::CALIPTRA_GET_HEK_ACTIVE_SLOT => {
+                match caliptra_mcu_romtime::handoff::get_ocp_lock_state() {
+                    Ok(state) => CommandReturn::success_u32(state.hek_state.active_slot),
+                    Err(_) => CommandReturn::failure(ErrorCode::NOSUPPORT),
+                }
+            }
+            #[cfg(feature = "ocp-lock")]
+            cmd::CALIPTRA_GET_HEK_TOTAL_SLOTS => {
+                match caliptra_mcu_romtime::handoff::get_ocp_lock_state() {
+                    Ok(state) => CommandReturn::success_u32(state.hek_state.total_slots),
+                    Err(_) => CommandReturn::failure(ErrorCode::NOSUPPORT),
+                }
+            }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }

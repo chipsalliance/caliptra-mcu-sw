@@ -1247,7 +1247,7 @@ impl BootFlow for ColdBoot {
         caliptra_mcu_romtime::handoff::HandoffData::write(
             caliptra_mcu_romtime::handoff::HandoffArgs {
                 #[cfg(feature = "ocp-lock")]
-                hek_state: _fuse_state.hek_state.unwrap_or_default(),
+                ocp_lock: _fuse_state.ocp_lock.clone().unwrap_or_default(),
             },
         );
 
@@ -1362,7 +1362,10 @@ impl BootFlow for ColdBoot {
 
         // Report HEK metadata to Caliptra ROM
         #[cfg(feature = "ocp-lock")]
-        Self::report_hek_metadata(_fuse_state.hek_state, &mut env.soc_manager);
+        Self::report_hek_metadata(
+            _fuse_state.ocp_lock.map(|o| o.hek_state),
+            &mut env.soc_manager,
+        );
 
         // Load DOT fuses from vendor non-secret partition
         // TODO: read these from a place specified by ROM configuration

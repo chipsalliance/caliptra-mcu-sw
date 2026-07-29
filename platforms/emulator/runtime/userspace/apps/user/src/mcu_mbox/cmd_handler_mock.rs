@@ -4,6 +4,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+#[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::HpkeHandle;
 #[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::OcpLockEnumerateHpkeHandlesResp;
@@ -143,6 +144,7 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
     async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
         CaliptraCmdBackend.program_field_entropy(partition).await
     }
+    #[cfg(feature = "ocp-lock")]
     async fn get_ocp_lock_endorsement_cert(
         &self,
         hpke_handle: &HpkeHandle,

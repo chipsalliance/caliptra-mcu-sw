@@ -20,12 +20,16 @@ use caliptra_mcu_mbox_common::messages::{
     FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetLogReq, GetLogResp, GetOcpLockEndorsementCertReq,
-    GetOcpLockEndorsementCertResp, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq,
-    McuResponseVarSize, OcpLockEnumerateHpkeHandlesResp, OcpLockRotateHekReq, OcpLockRotateHekResp,
-    OcpLockSetPermaHekReq, OcpLockSetPermaHekResp, ProvisionVendorPkHashReq,
-    ProvisionVendorPkHashResp, RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE,
-    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    GetAuthCmdChallengeResp, GetLogReq, GetLogResp, MailboxRespHeader, MailboxRespHeaderVarSize,
+    McuFeProgReq, McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
+    RevokeVendorPubKeyType, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
+};
+
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_mbox_common::messages::{
+    GetOcpLockEndorsementCertReq, GetOcpLockEndorsementCertResp, OcpLockEnumerateHpkeHandlesResp,
+    OcpLockRotateHekReq, OcpLockRotateHekResp, OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -45,6 +49,7 @@ pub struct CmdInterface<'a> {
     non_crypto_cmds_handler: &'a dyn CaliptraCmdHandler,
     cmd_authorizer: &'a mut dyn CommandAuthorizer,
     caliptra_mbox: caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
+    #[allow(dead_code)]
     otp: caliptra_mcu_libsyscall_caliptra::otp::Otp,
     busy: AtomicBool,
 }
@@ -170,18 +175,23 @@ impl<'a> CmdInterface<'a> {
                 | inner @ CommandId::MC_FUSE_READ
                 | inner @ CommandId::MC_FUSE_WRITE
                 | inner @ CommandId::MC_FUSE_LOCK_PARTITION
-                | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY
-                | inner @ CommandId::MC_OCP_LOCK_ROTATE_HEK
+                | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
+                    self.handle_authorized_command(inner, req, resp_buf).await
+                }
+                #[cfg(feature = "ocp-lock")]
+                inner @ CommandId::MC_OCP_LOCK_ROTATE_HEK
                 | inner @ CommandId::MC_OCP_LOCK_SET_PERMA_HEK => {
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
+                #[cfg(feature = "ocp-lock")]
                 CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT => {
                     self.handle_get_ocp_lock_endorsement_cert(req, resp_buf)
                         .await
                 }
+                #[cfg(feature = "ocp-lock")]
                 CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES => {
                     self.handle_ocp_lock_enumerate_hpke_handles(req, resp_buf)
                         .await
@@ -469,6 +479,7 @@ impl<'a> CmdInterface<'a> {
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
     }
 
+    #[cfg(feature = "ocp-lock")]
     async fn handle_get_ocp_lock_endorsement_cert<'r>(
         &self,
         req: &[u8],
@@ -506,6 +517,7 @@ impl<'a> CmdInterface<'a> {
         Ok((&mut resp_buf[..partial_len], mbox_cmd_status))
     }
 
+    #[cfg(feature = "ocp-lock")]
     async fn handle_ocp_lock_enumerate_hpke_handles<'r>(
         &self,
         _req: &[u8],
@@ -612,9 +624,11 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_FUSE_LOCK_PARTITION => {
                 self.handle_fuse_lock_partition(cmd, resp_buf).await
             }
+            #[cfg(feature = "ocp-lock")]
             CommandId::MC_OCP_LOCK_ROTATE_HEK => {
                 self.handle_ocp_lock_rotate_hek(cmd, resp_buf).await
             }
+            #[cfg(feature = "ocp-lock")]
             CommandId::MC_OCP_LOCK_SET_PERMA_HEK => {
                 self.handle_ocp_lock_set_perma_hek(cmd, resp_buf).await
             }
@@ -1011,6 +1025,7 @@ impl<'a> CmdInterface<'a> {
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
     }
 
+    #[cfg(feature = "ocp-lock")]
     async fn handle_ocp_lock_set_perma_hek<'r>(
         &self,
         req: &[u8],
@@ -1032,6 +1047,7 @@ impl<'a> CmdInterface<'a> {
         Ok((&mut resp_buf[..resp.len()], status))
     }
 
+    #[cfg(feature = "ocp-lock")]
     async fn handle_ocp_lock_rotate_hek<'r>(
         &self,
         req: &[u8],

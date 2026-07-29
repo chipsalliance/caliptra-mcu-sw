@@ -28,6 +28,7 @@ zerocopy.workspace = true
 [features]
 default = []
 periodic-fips-self-test = []
+ocp-lock = ["caliptra-mcu-common-commands/ocp-lock"]
 release = [
 	"dep:defmt",
 	"caliptra-mcu-libapi-caliptra/release",

@@ -92,7 +92,7 @@ pub struct FuseParams<'a, 'b> {
 /// Reports the state of Fuses back to the caller
 pub struct FuseState {
     #[cfg(feature = "ocp-lock")]
-    pub hek_state: Option<caliptra_mcu_romtime::ocp_lock::HekState>,
+    pub ocp_lock: Option<caliptra_mcu_romtime::ocp_lock::OcpLockState>,
     pub pk_hash_idx: usize,
 }
 
@@ -491,7 +491,7 @@ impl Soc {
         caliptra_mcu_romtime::println!("");
 
         #[cfg(feature = "ocp-lock")]
-        let hek_state = if let Some(ref mut config) = params.ocp_lock_config {
+        let ocp_lock = if let Some(ref mut config) = params.ocp_lock_config {
             caliptra_mcu_romtime::println!("[mcu-rom] OCP LOCK enabled");
             // TODO(clundin): Need to communicate HEK availability to firmware.
             match self.set_ocp_lock_fuses(otp, config) {
@@ -505,7 +505,7 @@ impl Soc {
 
         FuseState {
             #[cfg(feature = "ocp-lock")]
-            hek_state,
+            ocp_lock,
             pk_hash_idx,
         }
     }
@@ -516,7 +516,7 @@ impl Soc {
         &self,
         otp: &Otp,
         config: &mut caliptra_mcu_romtime::ocp_lock::RomConfig,
-    ) -> Result<caliptra_mcu_romtime::ocp_lock::HekState, caliptra_mcu_romtime::ocp_lock::Error>
+    ) -> Result<caliptra_mcu_romtime::ocp_lock::OcpLockState, caliptra_mcu_romtime::ocp_lock::Error>
     {
         // Key release is always 64 bytes currently
         self.registers.ss_key_release_size.set(config.mek_size);
@@ -598,11 +598,13 @@ impl Soc {
             }
         };
 
-        Ok(caliptra_mcu_romtime::ocp_lock::HekState {
-            active_slot: active_slot as u32,
-            reserved: 0,
-            total_slots: total_slots as u32,
-            active_state,
+        Ok(caliptra_mcu_romtime::ocp_lock::OcpLockState {
+            hek_state: caliptra_mcu_romtime::ocp_lock::HekState {
+                active_slot: active_slot as u32,
+                reserved: 0,
+                total_slots: total_slots as u32,
+                active_state,
+            },
         })
     }
 
