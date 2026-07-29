@@ -24,8 +24,7 @@
 
 use caliptra_mcu_spdm_codec::{
     alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, CapFlags, DheAlgos, KeyScheduleAlgos,
-    NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, PqcAsymAlgos, ResponseBody, SpdmMsgHdrPdu,
-    SpdmVersion,
+    NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
 };
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::FromBytes;
@@ -92,6 +91,7 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     state.other_param_sel = rsp_body.other_param_support;
     state.negotiated_base_asym_sel = rsp_body.base_asym_sel;
     state.negotiated_base_hash_sel = rsp_body.base_hash_sel;
+    state.negotiated_pqc_asym_sel = rsp_body.pqc_asym_sel;
 
     let resp = build_response(pal, io, state.version, &rsp_body)?;
 
@@ -271,7 +271,7 @@ fn build_response_body<S, L>(
         meas_hash_algo: state.meas_hash_algo,
         base_asym_sel: state.base_asym_sel & fixed.base_asym_algo,
         base_hash_sel: state.base_hash_sel & fixed.base_hash_algo,
-        pqc_asym_sel: PqcAsymAlgos::EMPTY, // TODO
+        pqc_asym_sel: state.pqc_asym_sel & fixed.pqc_asym_algo,
         alg_structs: [
             (!dhe.is_empty()).then(|| AlgStructEntry::dhe(dhe)),
             (!aead.is_empty()).then(|| AlgStructEntry::aead(aead)),
