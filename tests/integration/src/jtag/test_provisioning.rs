@@ -129,39 +129,12 @@ mod test {
             .jtag_tap_connect(&jtag_params, JtagTap::CaliptraMcuTap)
             .expect("Failed to connect to MCU TAP");
 
-        core_tap
-            .write_reg(&CaliptraCoreReg::SsDbgManufServiceRegReq, 0x1)
-            .expect("Unable to write SsDbgManufServiceRegReq reg.");
-        model.base.step();
-
-        core_tap
-            .write_reg(&CaliptraCoreReg::BootfsmGo, 0x1)
-            .expect("Unable to write BootfsmGo.");
-        model.base.step();
-
-        jtag_send_caliptra_mailbox_cmd(
-            &mut *core_tap,
-            CommandId::MANUF_DEBUG_UNLOCK_REQ_TOKEN,
+        caliptra_mcu_hw_model::debug_unlock::manuf_debug_unlock(
+            &mut model,
+            &mut core_tap,
             DEFAULT_MANUF_DEBUG_UNLOCK_RAW_TOKEN.0.as_bytes(),
         )
-        .expect("Failed to send manuf debug unlock token.");
-        model.base.step();
-
-        let _ = jtag_get_caliptra_mailbox_resp(&mut *core_tap)
-            .expect("Failed to get manuf debug unlock response.");
-        model.base.step();
-
-        while let Ok(ss_debug_manuf_response) =
-            core_tap.read_reg(&CaliptraCoreReg::SsDbgManufServiceRegRsp)
-        {
-            if (ss_debug_manuf_response & 0x3) != 0 {
-                assert_eq!(ss_debug_manuf_response, 0x1);
-                model.base.step();
-                break;
-            }
-            model.base.step();
-            thread::sleep(Duration::from_millis(100));
-        }
+        .expect("Failed to execute manuf debug unlock.");
 
         core_tap
             .reexamine_cpu_target()
