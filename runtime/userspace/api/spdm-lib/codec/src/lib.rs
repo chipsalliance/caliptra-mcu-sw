@@ -28,7 +28,7 @@ mod wire;
 
 pub use algorithms::{
     alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, AlgorithmsRspBodyFixed, AsymAlgos,
-    DheAlgos, HashAlgos, KeyScheduleAlgos, MeasHashAlgos, MeasSpec,
+    DheAlgos, HashAlgos, KemAlgos, KeyScheduleAlgos, MeasHashAlgos, MeasSpec,
     NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, PqcAsymAlgos, MAX_ALG_STRUCT_ENTRIES,
 };
 pub use builder::ResponseBody;
