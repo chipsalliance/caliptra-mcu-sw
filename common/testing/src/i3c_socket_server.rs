@@ -100,6 +100,22 @@ pub struct OutgoingHeader {
     pub response_descriptor: ResponseDescriptor,
 }
 
+/// Returns true when an I/O error indicates that the TCP client has gone away.
+///
+/// When the client disconnects (cleanly via EOF, or abruptly via a reset/abort/
+/// broken pipe) the connection can no longer be used. The connection handler
+/// should stop and return to the accept loop instead of panicking, which would
+/// kill the server thread and prevent any new connections from being accepted.
+fn is_client_disconnect(e: &std::io::Error) -> bool {
+    matches!(
+        e.kind(),
+        ErrorKind::UnexpectedEof
+            | ErrorKind::ConnectionReset
+            | ErrorKind::ConnectionAborted
+            | ErrorKind::BrokenPipe
+    )
+}
+
 fn handle_i3c_socket_connection(
     mut stream: TcpStream,
     _addr: SocketAddr,
@@ -122,9 +138,17 @@ fn handle_i3c_socket_connection(
                 let wire_data_len = if is_read { 0 } else { cmd.data_len() };
                 let mut data = vec![0u8; wire_data_len];
                 stream.set_nonblocking(false).unwrap();
-                stream
-                    .read_exact(&mut data)
-                    .expect("Failed to read message from socket");
+                let payload_result = stream.read_exact(&mut data);
+                if let Err(e) = payload_result {
+                    if is_client_disconnect(&e) {
+                        println!(
+                            "handle_i3c_socket_connection: Client disconnected while reading payload ({}); returning to accept loop",
+                            e.kind()
+                        );
+                        break;
+                    }
+                    panic!("Error reading message from socket: {}", e);
+                }
                 stream.set_nonblocking(true).unwrap();
                 let bus_command = I3cBusCommand {
                     addr: incoming_header.to_addr.into(),
@@ -136,12 +160,11 @@ fn handle_i3c_socket_connection(
                 }
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
-            Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
-                println!("handle_i3c_socket_connection: Connection reset by client");
-                break;
-            }
-            Err(ref e) if e.kind() == ErrorKind::UnexpectedEof => {
-                println!("handle_i3c_socket_connection: Client disconnected (EOF)");
+            Err(ref e) if is_client_disconnect(e) => {
+                println!(
+                    "handle_i3c_socket_connection: Client disconnected while reading header ({}); returning to accept loop",
+                    e.kind()
+                );
                 break;
             }
             Err(e) => panic!("Error reading message from socket: {}", e),
@@ -160,9 +183,22 @@ fn handle_i3c_socket_connection(
                     response_descriptor: response.resp.resp,
                 };
                 let header_bytes: [u8; 6] = transmute!(outgoing_header);
-                stream.write_all(&header_bytes).unwrap();
-                if data_len > 0 {
-                    stream.write_all(&response.resp.data[..data_len]).unwrap();
+                let write_result = stream.write_all(&header_bytes).and_then(|()| {
+                    if data_len > 0 {
+                        stream.write_all(&response.resp.data[..data_len])
+                    } else {
+                        Ok(())
+                    }
+                });
+                if let Err(e) = write_result {
+                    if is_client_disconnect(&e) {
+                        println!(
+                            "handle_i3c_socket_connection: Client disconnected while writing response ({}); returning to accept loop",
+                            e.kind()
+                        );
+                        break;
+                    }
+                    panic!("Error writing message to socket: {}", e);
                 }
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => {
@@ -173,5 +209,98 @@ fn handle_i3c_socket_connection(
             }
             Err(_) => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::i3c::ReguDataTransferCommand;
+    use crate::{
+        init_emulator_state, set_emulator_running, spawn_with_emulator_state, EmulatorState,
+    };
+    use std::time::Duration;
+
+    // Build the 9-byte on-wire header for a private write command that promises
+    // `data_length` payload bytes to follow (rnw = 0, Regular transfer).
+    fn private_write_header(to_addr: u8, data_length: u16) -> [u8; 9] {
+        let mut cmd = ReguDataTransferCommand::read_from_bytes(&[0u8; 8]).unwrap();
+        cmd.set_rnw(0);
+        cmd.set_data_length(data_length);
+        let command: [u32; 2] = transmute!(cmd);
+        let header = IncomingHeader { to_addr, command };
+        transmute!(header)
+    }
+
+    // Spawn the socket server loop on an ephemeral port. Returns the bound port,
+    // the server join handle, and the channel ends that must be kept alive for
+    // the duration of the test (dropping them would disconnect the server's
+    // channels).
+    fn spawn_server() -> (
+        u16,
+        std::thread::JoinHandle<()>,
+        Receiver<I3cBusCommand>,
+        Sender<I3cBusResponse>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (bus_command_tx, bus_command_rx) = mpsc::channel::<I3cBusCommand>();
+        let (bus_response_tx, bus_response_rx) = mpsc::channel::<I3cBusResponse>();
+        let handle = spawn_with_emulator_state(move || {
+            handle_i3c_socket_loop(listener, bus_response_rx, bus_command_tx);
+        });
+        (port, handle, bus_command_rx, bus_response_tx)
+    }
+
+    // A client that connects and then disconnects while idle must not crash the
+    // server thread: it should return to the accept loop and keep serving.
+    #[test]
+    fn server_survives_client_disconnect_before_sending() {
+        init_emulator_state(EmulatorState::new_arc());
+        let (port, server, _cmd_rx, _resp_tx) = spawn_server();
+
+        let client = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        drop(client);
+        std::thread::sleep(Duration::from_millis(50));
+
+        let reconnect = TcpStream::connect(("127.0.0.1", port));
+        assert!(
+            reconnect.is_ok(),
+            "server should accept new connections after a client disconnect"
+        );
+        drop(reconnect);
+
+        set_emulator_running(false);
+        server
+            .join()
+            .expect("server thread must not panic when a client disconnects");
+    }
+
+    // Regression test for issue #1137: a client that disconnects after sending a
+    // command header but before the promised payload must not panic the server.
+    #[test]
+    fn server_survives_client_disconnect_mid_message() {
+        init_emulator_state(EmulatorState::new_arc());
+        let (port, server, _cmd_rx, _resp_tx) = spawn_server();
+
+        let mut client = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        client.write_all(&private_write_header(0x08, 4)).unwrap();
+        client.flush().unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        drop(client);
+        std::thread::sleep(Duration::from_millis(50));
+
+        let reconnect = TcpStream::connect(("127.0.0.1", port));
+        assert!(
+            reconnect.is_ok(),
+            "server should accept new connections after a mid-message disconnect"
+        );
+        drop(reconnect);
+
+        set_emulator_running(false);
+        server
+            .join()
+            .expect("server thread must not panic on mid-message client disconnect");
     }
 }
