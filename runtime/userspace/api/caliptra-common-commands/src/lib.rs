@@ -333,7 +333,7 @@ pub trait CommandAuthorizer {
         &mut self,
         cmd_id: u32,
         payload: &[u8],
-        nonce: &[u8; 48],
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
@@ -343,8 +343,8 @@ pub trait CommandAuthorizer {
     /// Get the challenge from the last call to `MC_GET_AUTH_CMD_CHALLENGE`.
     ///
     /// This consumes the challenge so it can only be used once.
-    fn take_challenge(&mut self) -> Option<[u8; 48]>;
+    fn take_challenge(&mut self) -> Option<[u8; AUTH_CMD_NONCE_LEN]>;
 
     /// Set the challenge nonce to be used on the next authorized command.
-    fn set_challenge(&mut self, challenge: [u8; 48]);
+    fn set_challenge(&mut self, challenge: [u8; AUTH_CMD_NONCE_LEN]);
 }

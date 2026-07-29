@@ -5,14 +5,12 @@
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
 use crate::iana::ocp::caliptra_vdm::CaliptraVdmAuthorization;
-use caliptra_mcu_mbox_common::messages::HybridSignature;
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult,
 };
 use zerocopy::{FromBytes, Immutable, KnownLayout};
 
-/// Freshness nonce width (prod-debug-unlock idiom); matches `AUTH_CMD_NONCE_LEN`.
-const AUTH_CMD_NONCE_LEN: usize = 48;
 /// ECC P-384 public-key coordinate size (bytes).
 const ECC_P384_COORD_SIZE: usize = 48;
 /// ML-DSA-87 public-key size (bytes).

@@ -21,9 +21,9 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 /// Size of the authorization challenge nonce in bytes.
 ///
-/// Widened 32 -> 48 to match the prod-debug-unlock nonce width
-/// (`AUTH_CMD_NONCE_LEN` in the challenge signer).
-pub const AUTH_CMD_CHALLENGE_SIZE: usize = 48;
+/// Re-exported from `caliptra-mcu-mbox-common`, the single source of truth for
+/// the nonce width, so the host and device never diverge.
+pub use caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN as AUTH_CMD_CHALLENGE_SIZE;
 
 /// ECC P-384 public-key coordinate size (bytes). Two coordinates travel on the wire.
 pub const AUTH_PUB_ECC_COORD_SIZE: usize = 48;

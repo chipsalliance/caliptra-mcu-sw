@@ -98,8 +98,10 @@ pub async fn export_idevid_csr(algorithm: u32, out: &mut [u8]) -> CaliptraCmdRes
 // path generates its own in `mcu-mbox-lib`. Gate to the caller's feature so the
 // non-SPDM (mailbox-test) build does not see it as dead code.
 #[cfg(feature = "spdm")]
-pub async fn generate_auth_challenge<A: ApiAlloc>(alloc: &A) -> CaliptraCmdResult<[u8; 48]> {
-    let mut challenge = [0u8; 48];
+pub async fn generate_auth_challenge<A: ApiAlloc>(
+    alloc: &A,
+) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
+    let mut challenge = [0u8; AUTH_CMD_NONCE_LEN];
     rng_generate(alloc, &mut challenge)
         .await
         .map_err(map_mcu_err)?;
@@ -117,7 +119,7 @@ pub async fn generate_auth_challenge<A: ApiAlloc>(alloc: &A) -> CaliptraCmdResul
 pub async fn verify_authorized_signatures(
     cmd_id: u32,
     payload: &[u8],
-    challenge: &[u8; 48],
+    challenge: &[u8; AUTH_CMD_NONCE_LEN],
     ecc_pub_x: &[u8; 48],
     ecc_pub_y: &[u8; 48],
     mldsa_pub: &[u8; 2592],

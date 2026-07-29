@@ -42,7 +42,7 @@ use caliptra_mcu_core_util_host_command_types::debug_unlock::{
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgResponse, GetAuthCmdChallengeResponse,
 };
-use caliptra_mcu_mbox_common::messages::HybridSignature;
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmTransport,
 };
@@ -150,7 +150,7 @@ impl<'a> SpdmVdmClient<'a> {
         &mut self,
         partition: u32,
         sig: &HybridSignature,
-        nonce: &[u8; 48],
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],

@@ -1422,16 +1422,16 @@ impl Request for GetAuthCmdChallengeReq {
 pub struct GetAuthCmdChallengeResp {
     pub hdr: MailboxRespHeader,
     pub reserved: u32,
-    /// 48-byte freshness challenge (widened 32 -> 48 to match the SHA-384 transcript nonce).
-    pub challenge: [u8; 48],
+    /// Freshness challenge (widened 32 -> 48 to match the SHA-384/SHA-512 nonce).
+    pub challenge: [u8; AUTH_CMD_NONCE_LEN],
 }
-// Hand-written `Default`: `[u8; 48]` does not implement `Default` via derive.
+// Hand-written `Default`: `[u8; AUTH_CMD_NONCE_LEN]` does not implement `Default` via derive.
 impl Default for GetAuthCmdChallengeResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeader::default(),
             reserved: 0,
-            challenge: [0u8; 48],
+            challenge: [0u8; AUTH_CMD_NONCE_LEN],
         }
     }
 }

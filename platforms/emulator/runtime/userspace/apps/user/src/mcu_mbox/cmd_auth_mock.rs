@@ -4,7 +4,7 @@ use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, FuseIncreaseCaliptraMinSvnReq, FuseLockPartitionReq, FuseReadReq,
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, FuseWriteReq, HybridSignature,
-    MailboxReqHeader, McuFeProgReq, ProvisionVendorPkHashReq,
+    MailboxReqHeader, McuFeProgReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
 };
 use core::cell::RefCell;
 use core::mem::size_of;
@@ -14,9 +14,6 @@ use zerocopy::FromBytes;
 
 extern crate alloc;
 
-/// Length of the authorized-command challenge nonce
-/// (matches `command-auth-challenge-signer::AUTH_CMD_NONCE_LEN`).
-const AUTH_CMD_NONCE_LEN: usize = 48;
 /// Length of one P-384 public-key coordinate.
 const ECC_P384_COORD_LEN: usize = 48;
 /// Length of the ML-DSA-87 public key.
@@ -115,7 +112,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
         &mut self,
         cmd_id: u32,
         payload: &[u8],
-        nonce: &[u8; 48],
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],

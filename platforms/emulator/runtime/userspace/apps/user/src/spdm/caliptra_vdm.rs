@@ -7,7 +7,7 @@ use caliptra_mcu_common_commands::{
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_mbox_common::messages::HybridSignature;
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdmAuthorization, CaliptraVdmResult, CaliptraVdmStreamOps,
@@ -132,7 +132,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         &self,
         partition: u32,
         sig: &HybridSignature,
-        nonce: &[u8; 48],
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],

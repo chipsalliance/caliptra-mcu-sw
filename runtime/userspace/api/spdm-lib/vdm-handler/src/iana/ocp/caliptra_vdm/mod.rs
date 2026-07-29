@@ -11,7 +11,7 @@
 mod commands;
 
 use caliptra_mcu_common_commands::CaliptraCmdHandler;
-use caliptra_mcu_mbox_common::messages::HybridSignature;
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_codec::StandardsBodyId;
 use caliptra_mcu_spdm_traits::{
     McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
@@ -82,7 +82,7 @@ pub trait CaliptraVdmAuthorization {
         &self,
         partition: u32,
         sig: &HybridSignature,
-        nonce: &[u8; 48],
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
@@ -525,7 +525,7 @@ mod tests {
             &self,
             _partition: u32,
             _sig: &HybridSignature,
-            _nonce: &[u8; 48],
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
             _ecc_pub_x: &[u8; 48],
             _ecc_pub_y: &[u8; 48],
             _mldsa_pub: &[u8; 2592],

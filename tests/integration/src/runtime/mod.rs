@@ -19,13 +19,17 @@ mod test_increase_caliptra_svn;
 mod test_mcu_mailbox;
 mod test_revoke_vendor_pub_key;
 
-pub fn get_auth_cmd_challenge(hw: &mut impl McuHwModel) -> Result<[u8; 48]> {
+pub fn get_auth_cmd_challenge(hw: &mut impl McuHwModel) -> Result<[u8; AUTH_CMD_NONCE_LEN]> {
     let cmd = GetAuthCmdChallengeReq::default();
     let resp = hw.mailbox_execute_req(cmd)?;
     Ok(resp.challenge)
 }
 
-pub fn sign_auth_cmd_challenge(challenge: &[u8; 48], cmd_id: u32, cmd: &[u8]) -> Result<Vec<u8>> {
+pub fn sign_auth_cmd_challenge(
+    challenge: &[u8; AUTH_CMD_NONCE_LEN],
+    cmd_id: u32,
+    cmd: &[u8],
+) -> Result<Vec<u8>> {
     sign_auth_cmd_challenge_with(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED, challenge, cmd_id, cmd)
 }
 
@@ -34,7 +38,7 @@ pub fn sign_auth_cmd_challenge(challenge: &[u8; 48], cmd_id: u32, cmd: &[u8]) ->
 pub fn sign_auth_cmd_challenge_with(
     ecc_priv: &[u8; 48],
     mldsa_seed: &[u8; 32],
-    challenge: &[u8; 48],
+    challenge: &[u8; AUTH_CMD_NONCE_LEN],
     cmd_id: u32,
     cmd: &[u8],
 ) -> Result<Vec<u8>> {
