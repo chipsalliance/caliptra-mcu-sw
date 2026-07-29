@@ -129,7 +129,7 @@ mod tests {
     fn entry_too_big_for_remaining_page_starts_new_page() {
         // Each entry takes 4 (header) + N (payload). Choose N so two entries
         // fit on page 0 and the third must spill onto page 1.
-        let big = vec![b'a'; 120]; // 124 bytes per entry on disk
+        let big = [b'a'; 120]; // 124 bytes per entry on disk
         let entries: &[&[u8]] = &[&big[..], &big[..], &big[..]];
         let buf = encode_logging_partition(entries, PARTITION_SIZE, PAGE_SIZE);
         // Page 0: header + 2 entries = 4 + 248 = 252 bytes; remaining 4 bytes padded.
