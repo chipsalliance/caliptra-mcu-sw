@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 #![no_std]
+#![allow(async_fn_in_trait)]
 
 mod api;
 pub mod attestation_manifest;
@@ -17,6 +18,7 @@ pub use image_metadata::{
 };
 pub use mcu_caliptra_api_lite::ImageHashSource;
 use mcu_caliptra_api_lite::{ApiAlloc, DPE_LABEL_LEN};
+use mcu_error::McuResult;
 
 static MEASUREMENT_API: Mutex<
     CriticalSectionRawMutex,
@@ -25,6 +27,29 @@ static MEASUREMENT_API: Mutex<
 
 pub const ATTESTATION_P384_DIGEST_SIZE: usize = 48;
 pub const ATTESTATION_P384_SIGNATURE_SIZE: usize = 96;
+
+/// Builds evidence token buffers and the to-be-signed digest while Measurement
+/// API keeps measurement state locked.
+///
+/// Implementations must not call back into Measurement API, because
+/// [`measure_and_sign_evidence`] holds the global Measurement API lock while
+/// invoking this hook.
+pub trait EvidenceBuilder<A: ApiAlloc> {
+    /// Return the final token `kid` slot.
+    fn kid_buffer_mut(&mut self) -> McuResult<&mut [u8; ATTESTATION_P384_DIGEST_SIZE]>;
+
+    /// Return the final concise-evidence slot.
+    fn concise_evidence_buffer_mut(&mut self) -> McuResult<&mut [u8]>;
+
+    /// Build the evidence payload from the concise evidence already written,
+    /// write the signature digest into `digest`, and return the payload length.
+    async fn digest_for_signature(
+        &mut self,
+        alloc: &A,
+        concise_evidence_len: usize,
+        digest: &mut [u8; ATTESTATION_P384_DIGEST_SIZE],
+    ) -> McuResult<usize>;
+}
 
 /// Reset classification passed to `measurement_boot_init`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -136,4 +161,59 @@ pub async fn sign<A: ApiAlloc>(
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
     api.sign(alloc, key_label, digest, signature).await
+}
+
+/// Generate a selected-AK `kid`, encode concise evidence, build the evidence
+/// digest, and sign it as one serialized Measurement API operation.
+///
+/// This prevents component-update measurement mutation from interleaving between
+/// the `kid`/evidence read and final signature. The caller supplies
+/// `digest_builder` for the transport-neutral payload shape, but that builder
+/// must not call Measurement API while this function holds the lock.
+pub async fn measure_and_sign_evidence<A, B>(
+    alloc: &A,
+    key_label: &[u8; DPE_LABEL_LEN],
+    signature: &mut [u8; ATTESTATION_P384_SIGNATURE_SIZE],
+    evidence_builder: &mut B,
+) -> McuResult<usize>
+where
+    A: ApiAlloc,
+    B: EvidenceBuilder<A>,
+{
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+
+    {
+        let kid = evidence_builder.kid_buffer_mut()?;
+        api.leaf_kid(alloc, key_label, kid).await?;
+    }
+    let concise_evidence_len = {
+        let concise_evidence = evidence_builder.concise_evidence_buffer_mut()?;
+        api.encode_measurement_evidence(alloc, concise_evidence)
+            .await?
+    };
+
+    let mut sig_digest = [0u8; ATTESTATION_P384_DIGEST_SIZE];
+    let payload_len = evidence_builder
+        .digest_for_signature(alloc, concise_evidence_len, &mut sig_digest)
+        .await?;
+    let sig_len = api.sign(alloc, key_label, &sig_digest, signature).await?;
+    if sig_len != signature.len() {
+        return Err(mcu_error::codes::INTERNAL_BUG);
+    }
+    Ok(payload_len)
+}
+
+/// Encode concise measurement evidence for all eligible manifest entries.
+pub async fn encode_measurement_evidence<A: ApiAlloc>(
+    alloc: &A,
+    buffer: &mut [u8],
+) -> MeasurementApiResult<usize> {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.encode_measurement_evidence(alloc, buffer).await
 }

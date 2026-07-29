@@ -65,6 +65,7 @@ pub mod cmd {
 
 pub mod mci_reg {
     pub const RESET_REASON: u32 = 0x38;
+    pub const SECURITY_STATE: u32 = 0x40;
     pub const WDT_TIMER1_EN: u32 = 0xb0;
     pub const NOTIF0_INTR_TRIG_R: u32 = 0x1034;
 }
