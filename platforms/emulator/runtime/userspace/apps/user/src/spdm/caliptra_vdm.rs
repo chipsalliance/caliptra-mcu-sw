@@ -7,7 +7,7 @@ use caliptra_mcu_common_commands::{
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_mbox_common::messages::HybridSignature;
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdmAuthorization, CaliptraVdmResult, CaliptraVdmStreamOps,
@@ -117,7 +117,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         scratch: &A,
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize> {
-        let mut challenge = [0u8; 32];
+        let mut challenge = [0u8; AUTH_CMD_NONCE_LEN];
         rng_generate(scratch, &mut challenge)
             .await
             .map_err(crate::caliptra_cmd_handler::device_ops::map_mcu_err)
