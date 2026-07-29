@@ -30,7 +30,7 @@ pub const TEST_CERT_CHAIN: &[u8] = &[0x30, 0x03, 1, 2, 3, 0x30, 0x01, 4];
 
 #[derive(Clone)]
 pub struct TestHashState {
-    digest: [u8; SHA384_DIGEST_SIZE],
+    pub digest: [u8; SHA384_DIGEST_SIZE],
 }
 
 pub struct TestIo {
@@ -99,7 +99,9 @@ impl<T> DerefMut for TestBox<'_, T> {
 
 pub struct TestPal {
     pub mtu: usize,
+    pub large_capacity: usize,
     pub supported_slots: u8,
+    pub provisioned_slots: u8,
     pub authorized: bool,
     pub validate_error: Option<McuErrorCode>,
     pub write_error: Option<McuErrorCode>,
@@ -114,7 +116,9 @@ impl Default for TestPal {
     fn default() -> Self {
         Self {
             mtu: 1024,
+            large_capacity: 4096,
             supported_slots: u8::MAX,
+            provisioned_slots: u8::MAX,
             authorized: true,
             validate_error: None,
             write_error: None,
@@ -162,7 +166,7 @@ impl SpdmPalAlloc for TestPal {
     }
 
     fn large_capacity(&self) -> usize {
-        self.mtu
+        self.large_capacity
     }
 
     fn alloc_large_buf(&self, len: usize) -> McuResult<Self::LargeBuf> {
@@ -249,7 +253,7 @@ impl SpdmPalHash for TestPal {
 
 impl SpdmPalCertStore for TestPal {
     fn provisioned_slots(&self) -> u8 {
-        0
+        self.provisioned_slots
     }
 
     fn supported_slots(&self) -> u8 {

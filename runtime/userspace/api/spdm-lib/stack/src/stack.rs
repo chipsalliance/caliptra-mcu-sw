@@ -231,11 +231,17 @@ impl<S, L> ConnectionState<S, L> {
         local.min(peer)
     }
 
-    /// Convert the negotiated `base_asym_sel` bitfield to
+    /// Convert the negotiated `base_asym_sel` or `pqc_asym_sel` bitfield to
     /// [`SpdmPalAsymAlgo`] for cert-store calls.
     pub(crate) fn asym_algo(&self) -> SpdmPalAsymAlgo {
-        // TODO: add MLDSA-87 mapping once codec and DPE support it.
-        SpdmPalAsymAlgo::EccP384
+        if self
+            .negotiated_pqc_asym_sel
+            .contains(PqcAsymAlgos::MLDSA_87)
+        {
+            SpdmPalAsymAlgo::MlDsa87
+        } else {
+            SpdmPalAsymAlgo::EccP384
+        }
     }
 }
 
@@ -1122,3 +1128,7 @@ mod tests;
 #[cfg(test)]
 #[path = "tests/version_capabilities.rs"]
 mod version_capabilities_tests;
+
+#[cfg(test)]
+#[path = "tests/asym_algo.rs"]
+mod asym_algo_tests;
