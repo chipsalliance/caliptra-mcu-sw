@@ -8,7 +8,9 @@ use caliptra_mcu_command_auth_challenge_signer::{
     AsymmetricCommandAuthorizer, CommandAuthChallengeSigner,
 };
 use caliptra_mcu_hw_model::McuHwModel;
-use caliptra_mcu_mbox_common::messages::{calc_checksum, GetAuthCmdChallengeReq, MailboxReqHeader};
+use caliptra_mcu_mbox_common::messages::{
+    calc_checksum, GetAuthCmdChallengeReq, MailboxReqHeader, AUTH_CMD_NONCE_LEN,
+};
 use core::mem::size_of;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -17,13 +19,17 @@ mod test_mcu_mailbox;
 mod test_ocp_lock;
 mod test_revoke_vendor_pub_key;
 
-pub fn get_auth_cmd_challenge(hw: &mut impl McuHwModel) -> Result<[u8; 32]> {
+pub fn get_auth_cmd_challenge(hw: &mut impl McuHwModel) -> Result<[u8; AUTH_CMD_NONCE_LEN]> {
     let cmd = GetAuthCmdChallengeReq::default();
     let resp = hw.mailbox_execute_req(cmd)?;
     Ok(resp.challenge)
 }
 
-pub fn sign_auth_cmd_challenge(challenge: &[u8; 32], cmd_id: u32, cmd: &[u8]) -> Result<Vec<u8>> {
+pub fn sign_auth_cmd_challenge(
+    challenge: &[u8; AUTH_CMD_NONCE_LEN],
+    cmd_id: u32,
+    cmd: &[u8],
+) -> Result<Vec<u8>> {
     let authorizer = AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED)?;
     let cmd_body = &cmd[size_of::<MailboxReqHeader>()..];
     let sigs = authorizer.authorize(cmd_id, cmd_body, challenge)?;

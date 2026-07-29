@@ -74,7 +74,10 @@ fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
     let cmd = GetAuthCmdChallengeReq::default();
     let resp = hw.mailbox_execute_req(cmd)?;
 
-    assert_eq!(resp.challenge.len(), 32);
+    assert_eq!(
+        resp.challenge.len(),
+        caliptra_mcu_command_auth_challenge_signer::AUTH_CMD_NONCE_LEN
+    );
     assert!(
         resp.challenge
             .iter()
