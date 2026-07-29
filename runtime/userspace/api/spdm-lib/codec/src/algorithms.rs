@@ -201,9 +201,10 @@ const _: () =
 pub struct AlgStructEntry {
     /// One of [`alg_type`] constants.
     pub alg_type: u8,
-    /// `FixedAlgCount[3:0] | ExtAlgCount[7:4]`. We always emit
+    /// `ExtAlgCount[3:0] | FixedAlgCount[7:4]`. We always emit
     /// `FixedAlgCount = 2` (one 16-bit AlgSupported bitmap, no
     /// external algs).
+    /// `FixedAlgCount` + 2 shall be a multiple of 4.
     pub alg_count_etc: u8,
     pub alg_supported: U16,
 }
