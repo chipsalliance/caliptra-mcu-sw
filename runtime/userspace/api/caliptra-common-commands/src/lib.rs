@@ -7,7 +7,7 @@
 use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::SekState;
-use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature};
+use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature, AUTH_CMD_NONCE_LEN};
 use mcu_caliptra_api_lite::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
@@ -375,8 +375,8 @@ pub trait CommandAuthorizer {
     /// Get the challenge from the last call to `MC_GET_AUTH_CMD_CHALLENGE`.
     ///
     /// This consumes the challenge so it can only be used once.
-    fn take_challenge(&mut self) -> Option<[u8; 32]>;
+    fn take_challenge(&mut self) -> Option<[u8; AUTH_CMD_NONCE_LEN]>;
 
     /// Set the challenge nonce to be used on the next authorized command.
-    fn set_challenge(&mut self, challenge: [u8; 32]);
+    fn set_challenge(&mut self, challenge: [u8; AUTH_CMD_NONCE_LEN]);
 }
