@@ -13,5 +13,5 @@ pub enum SpdmTestType {
 
 pub use common::{
     execute_spdm_attestation, execute_spdm_attestation_with_port, execute_spdm_responder_validator,
-    SpdmValidatorRunner, SERVER_LISTENING,
+    wait_for_spdm_responder_validator, SpdmValidatorRunner, SERVER_LISTENING,
 };
