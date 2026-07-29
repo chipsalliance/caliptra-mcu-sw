@@ -4,7 +4,6 @@ extern crate alloc;
 
 use super::pldm_client::{IMAGE_LOADING_TASK_YIELD, PLDM_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
-use crate::MAX_PLDM_TRANSFER_SIZE;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
@@ -14,6 +13,7 @@ use caliptra_mcu_libsyscall_caliptra::dma::{
 use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
+use caliptra_mcu_pldm_common::message::firmware_update::request_fw_data::MAX_PLDM_FW_DATA_SIZE as MAX_PLDM_TRANSFER_SIZE;
 use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::{
