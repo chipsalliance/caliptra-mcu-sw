@@ -761,6 +761,15 @@ impl McuHwModel for ModelFpgaRealtime {
     }
 
     fn start_i3c_controller(&mut self) {
+        while !self.base.i3c_target_configured() {
+            self.step();
+        }
+        {
+            let i3c_ctrl = self.base.i3c_controller().unwrap();
+            let ctrl = i3c_ctrl.controller.lock().unwrap();
+            ctrl.ready.set(false);
+        }
+        self.base.i3c_controller().unwrap().configure();
         self.base
             .i3c_controller()
             .unwrap()
