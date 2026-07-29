@@ -285,7 +285,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
-        _algo: SpdmPalAsymAlgo,
+        algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
 
@@ -300,7 +300,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         let cert_slot = &self.cert_store.cert_slots()[idx];
         let capacity = cert_slot
             .endorsement
-            .capacity(SpdmPalAsymAlgo::EccP384)
+            .capacity(algo)
             .map_err(|_| INVARIANT)?;
         let total = if cert_slot.is_writable() {
             let (dpe_len, dpe_skip_len) =
@@ -359,7 +359,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
-        _algo: SpdmPalAsymAlgo,
+        algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
 
@@ -381,7 +381,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         let cert_slot = &self.cert_store.cert_slots()[idx];
         let slot_chain_len = cert_slot
             .endorsement
-            .size(SpdmPalAsymAlgo::EccP384)
+            .size(algo)
             .map_err(|_| INVARIANT)?;
         let dpe_skip = if cert_slot.is_writable() {
             DPE_IDEVID_AND_LDEVID_CERT_COUNT
@@ -409,21 +409,21 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
-        _algo: SpdmPalAsymAlgo,
+        algo: SpdmPalAsymAlgo,
         _hash_algo: SpdmPalHashAlgo,
         out: &mut [u8],
     ) -> McuResult<()> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
         self.cert_store.cert_slots()[idx]
             .endorsement
-            .root_cert_hash(SpdmPalAsymAlgo::EccP384, out)
+            .root_cert_hash(algo, out)
     }
 
     async fn read_cert_chain(
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
-        _algo: SpdmPalAsymAlgo,
+        algo: SpdmPalAsymAlgo,
         offset: usize,
         dst: &mut [u8],
     ) -> McuResult<usize> {
@@ -442,7 +442,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         let cert_slot = &self.cert_store.cert_slots()[idx];
         let slot_chain_len = cert_slot
             .endorsement
-            .size(SpdmPalAsymAlgo::EccP384)
+            .size(algo)
             .map_err(|_| INVARIANT)?;
         let want = (total - offset).min(dst.len());
         // Read-only layout: [endorsement] [DPE chain] [leaf cert].
@@ -475,7 +475,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             let n = cert_slot
                 .endorsement
                 .read(
-                    SpdmPalAsymAlgo::EccP384,
+                    algo,
                     cur_offset,
                     checked_slice_mut(dst, written, want - written)?,
                 )
@@ -882,7 +882,9 @@ fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    use super::endorsement::{ReadOnlyEndorsement, SlotEndorsement};
     use super::{der_first_seq_len, DpePrefixScanner};
+    use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 
     #[test]
     fn der_first_sequence_length() {
@@ -906,5 +908,16 @@ mod tests {
 
         assert_eq!(scanner.certs_left, 0);
         assert_eq!(scanner.skip_len, 9);
+    }
+
+    #[test]
+    fn mldsa87_asym_algo_forwarded_to_slot_endorsement() {
+        let root_hash = [0u8; 48];
+        let cert_chain: &[&[u8]] = &[&[0x30, 0x03, 1, 2, 3]];
+        let endorsement = ReadOnlyEndorsement::new(cert_chain, root_hash);
+        let slot_endorsement = SlotEndorsement::ReadOnly(endorsement);
+
+        assert_eq!(slot_endorsement.size(SpdmPalAsymAlgo::MlDsa87).unwrap(), 5);
+        assert_eq!(slot_endorsement.capacity(SpdmPalAsymAlgo::MlDsa87).unwrap(), 5);
     }
 }
