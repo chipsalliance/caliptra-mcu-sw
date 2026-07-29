@@ -15,9 +15,9 @@
 //! itself is unaware of the phase.
 
 use caliptra_mcu_spdm_codec::{
-    encode_aad, AeadAlgos, AsymAlgos, CapFlags, DheAlgos, HashAlgos, KeyScheduleAlgos,
-    MeasHashAlgos, MeasSpec, OtherParamSupport, ReqRespCode, SecuredMessageHeader, SpdmMsgHdrPdu,
-    SpdmVersion, AES_256_GCM_TAG_SIZE, SECURED_MSG_HDR_SIZE,
+    encode_aad, AeadAlgos, AsymAlgos, CapFlags, DheAlgos, HashAlgos, KemAlgos, KeyScheduleAlgos,
+    MeasHashAlgos, MeasSpec, OtherParamSupport, PqcAsymAlgos, ReqRespCode, SecuredMessageHeader,
+    SpdmMsgHdrPdu, SpdmVersion, AES_256_GCM_TAG_SIZE, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_traits::*;
@@ -111,6 +111,10 @@ pub struct ConnectionState<S, L> {
     pub aead: AeadAlgos,
     /// Key-schedule bitmap (always `SPDM` for this responder).
     pub key_schedule: KeyScheduleAlgos,
+    /// PQC asymmetric algorithms advertised
+    pub pqc_asym_sel: PqcAsymAlgos,
+    /// Advertised KEMs (Key Encapsulation Mechanisms)
+    pub kem: KemAlgos,
 
     // ---- Connection-scoped negotiation -----------------------------------
     /// Current connection phase.
@@ -138,6 +142,8 @@ pub struct ConnectionState<S, L> {
     pub transcript: crate::transcript::Transcript<S>,
     /// Consolidated context managing large-payload request reassembly and response chunking.
     pub(crate) large_msg_ctx: chunk::LargeMessageCtx<L>,
+    /// Negotiated PQC asymmetric algorithms
+    pub negotiated_pqc_asym_sel: PqcAsymAlgos,
 }
 
 impl<S, L> ConnectionState<S, L> {
@@ -180,9 +186,11 @@ impl<S, L> ConnectionState<S, L> {
             meas_hash_algo: MeasHashAlgos::SHA_384,
             base_asym_sel: AsymAlgos::ECDSA_ECC_NIST_P384,
             base_hash_sel: HashAlgos::SHA_384,
+            pqc_asym_sel: PqcAsymAlgos::EMPTY, // TODO
             dhe: DheAlgos::SECP_384_R1,
             aead: AeadAlgos::AES_256_GCM,
             key_schedule: KeyScheduleAlgos::SPDM,
+            kem: KemAlgos::EMPTY, // TODO
 
             phase: Phase::Start,
             version: SpdmVersion::V12,
@@ -195,6 +203,7 @@ impl<S, L> ConnectionState<S, L> {
             negotiated_base_hash_sel: HashAlgos::EMPTY,
             transcript: crate::transcript::Transcript::new(),
             large_msg_ctx: chunk::LargeMessageCtx::new(),
+            negotiated_pqc_asym_sel: PqcAsymAlgos::EMPTY,
         }
     }
 
