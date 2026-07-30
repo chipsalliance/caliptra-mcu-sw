@@ -5,9 +5,6 @@ mod pldm_client;
 mod pldm_context;
 mod pldm_fdops;
 
-use crate::firmware_update::pldm_client::pldm_total_component_size;
-use crate::firmware_update::pldm_context::State;
-use crate::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
@@ -22,6 +19,7 @@ use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
 };
+use caliptra_mcu_libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
 use caliptra_mcu_libsyscall_caliptra::dma::{
@@ -38,6 +36,8 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
 use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 use embassy_executor::Spawner;
+use pldm_client::pldm_total_component_size;
+use pldm_context::State;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -45,7 +45,7 @@ use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
 use core::mem::offset_of;
 
-use crate::crypto::hash::{HashAlgoType, HashContext};
+use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 
 pub struct FirmwareUpdater<'a, D: DMAMapping> {
     staging_memory: &'static dyn StagingMemory,
@@ -433,13 +433,24 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             )
             .await?;
 
-        // Read the ImageManifest from the downloaded Caliptra bundle
-        let mut manifest_bytes = [0u8; core::mem::size_of::<ImageManifest>()];
+        // Read FMC and Runtime digests directly from staging memory at known offsets,
+        // avoiding allocation of the full ~16KB ImageManifest.
+        use caliptra_image_types::ImageTocEntry;
+
+        let fmc_digest_offset =
+            cptra_image_offset + offset_of!(ImageManifest, fmc) + offset_of!(ImageTocEntry, digest);
+        let mut fmc_digest = [0u32; 12];
         self.staging_memory
-            .read(cptra_image_offset, &mut manifest_bytes)
+            .read(fmc_digest_offset, fmc_digest.as_mut_bytes())
             .await?;
-        let (manifest, _) =
-            ImageManifest::read_from_prefix(&manifest_bytes).map_err(|_| ErrorCode::Fail)?;
+
+        let rt_digest_offset = cptra_image_offset
+            + offset_of!(ImageManifest, runtime)
+            + offset_of!(ImageTocEntry, digest);
+        let mut rt_digest = [0u32; 12];
+        self.staging_memory
+            .read(rt_digest_offset, rt_digest.as_mut_bytes())
+            .await?;
 
         // Get the running firmware digests via FW_INFO
         let mut req = MailboxReqHeader::default();
@@ -462,7 +473,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         let fw_info = FwInfoResp::read_from_bytes(response_buffer).map_err(|_| ErrorCode::Fail)?;
 
         // Compare FMC digests
-        if manifest.fmc.digest != fw_info.fmc_sha384_digest {
+        if fmc_digest != fw_info.fmc_sha384_digest {
             console_writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] FMC digest mismatch"
@@ -471,7 +482,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         }
 
         // Compare RT digests
-        if manifest.runtime.digest != fw_info.runtime_sha384_digest {
+        if rt_digest != fw_info.runtime_sha384_digest {
             console_writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] RT digest mismatch"
