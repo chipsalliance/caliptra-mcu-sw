@@ -74,7 +74,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             &challenge,
             TEST_AUTH_ECC_PUB_KEY_X,
             TEST_AUTH_ECC_PUB_KEY_Y,
-            TEST_AUTH_MLDSA_PUB_KEY,
+            &TEST_AUTH_MLDSA_PUB_KEY,
             sig,
         )
         .await
