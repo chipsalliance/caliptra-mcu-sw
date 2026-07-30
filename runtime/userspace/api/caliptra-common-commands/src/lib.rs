@@ -4,7 +4,8 @@
 #![allow(async_fn_in_trait)]
 
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+    CommandId, DotDisablePayload, DotLockPayload, DotUnlockPayload, HybridSignature,
+    AUTH_CMD_NONCE_LEN,
 };
 use mcu_caliptra_api_lite::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
@@ -312,6 +313,16 @@ pub trait CaliptraCmdHandler {
         alloc: &Alloc,
     ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
         let _ = alloc;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Verify and commit an ODD-to-EVEN DOT unlock transition.
+    async fn dot_unlock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotUnlockPayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }

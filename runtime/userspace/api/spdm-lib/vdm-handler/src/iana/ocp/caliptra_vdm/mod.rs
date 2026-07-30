@@ -441,6 +441,7 @@ mod tests {
         dot_lock_calls: AtomicUsize,
         dot_disable_calls: AtomicUsize,
         dot_challenge_calls: AtomicUsize,
+        dot_unlock_calls: AtomicUsize,
     }
 
     impl TestCommands {
@@ -451,6 +452,7 @@ mod tests {
                 dot_lock_calls: AtomicUsize::new(0),
                 dot_disable_calls: AtomicUsize::new(0),
                 dot_challenge_calls: AtomicUsize::new(0),
+                dot_unlock_calls: AtomicUsize::new(0),
             }
         }
 
@@ -556,6 +558,15 @@ mod tests {
         > {
             self.dot_challenge_calls.fetch_add(1, Ordering::Relaxed);
             Ok([0xA5; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
+        }
+
+        async fn dot_unlock<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _request: &caliptra_mcu_mbox_common::messages::DotUnlockPayload,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_unlock_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
         }
     }
 
@@ -819,6 +830,30 @@ mod tests {
             &[0xA5; AUTH_CMD_NONCE_LEN]
         );
         assert_eq!(cmds.dot_challenge_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_unlock_dispatches_through_device_ownership_transfer() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, DotUnlockPayload};
+        use zerocopy::IntoBytes;
+
+        let cmds = TestCommands::new(0);
+        let mut payload = DotUnlockPayload::default();
+        payload.lak_ecc_pub_x[0] = 1;
+        payload.lak_mldsa_pub[0] = 1;
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_UNLOCK.0.to_le_bytes());
+        request.extend_from_slice(payload.as_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(cmds.dot_unlock_calls.load(Ordering::Relaxed), 1);
     }
 
     #[test]

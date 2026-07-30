@@ -8,7 +8,7 @@ use caliptra_mcu_common_commands::{
     DeviceCapabilities, FirmwareVersion, GetLogResult, LogType, MAX_FW_VERSION_LEN,
 };
 use caliptra_mcu_mbox_common::config;
-use caliptra_mcu_mbox_common::messages::{DotDisablePayload, DotLockPayload};
+use caliptra_mcu_mbox_common::messages::{DotDisablePayload, DotLockPayload, DotUnlockPayload};
 use mcu_caliptra_api_lite::ApiAlloc;
 
 pub struct CaliptraCmdBackend;
@@ -118,6 +118,14 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         alloc: &Alloc,
     ) -> CaliptraCmdResult<[u8; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN]> {
         device_ops::dot_unlock_challenge(alloc).await
+    }
+
+    async fn dot_unlock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotUnlockPayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_unlock(alloc, request).await
     }
 
     async fn request_debug_unlock<Alloc: ApiAlloc>(

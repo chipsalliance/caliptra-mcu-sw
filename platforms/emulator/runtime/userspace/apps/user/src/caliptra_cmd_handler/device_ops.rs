@@ -14,8 +14,8 @@ use caliptra_mcu_libsyscall_caliptra::otp::Otp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
-    DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
+    CommandId, DotDisablePayload, DotLockPayload, DotUnlockPayload, HybridSignature,
+    AUTH_CMD_NONCE_LEN, DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
 use caliptra_mcu_registers_generated::fuses;
 use core::cell::RefCell;
@@ -629,6 +629,53 @@ pub async fn dot_unlock_challenge<A: ApiAlloc>(
         });
     });
     Ok(challenge)
+}
+
+pub async fn dot_unlock<A: ApiAlloc>(
+    alloc: &A,
+    request: &DotUnlockPayload,
+) -> CaliptraCmdResult<()> {
+    let _guard = DotTransactionGuard::acquire()?;
+    let context = UNLOCK_CONTEXT
+        .lock(|state| *state.borrow())
+        .ok_or(CaliptraCompletionCode::InvalidState)?;
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count != context.fuse_count || current_fuse_count & 1 == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    let lak_hash = dot_lak_hash(
+        alloc,
+        &request.lak_ecc_pub_x,
+        &request.lak_ecc_pub_y,
+        &request.lak_mldsa_pub,
+    )
+    .await?;
+    if !constant_time_eq::constant_time_eq(&lak_hash, &context.lak_hash) {
+        return Err(CaliptraCompletionCode::AccessDenied);
+    }
+
+    let mut transcript = [0u8; 4 + AUTH_CMD_NONCE_LEN];
+    transcript[..4].copy_from_slice(&CommandId::MC_DOT_UNLOCK.0.to_be_bytes());
+    transcript[4..].copy_from_slice(&context.challenge);
+    verify_hybrid_message(
+        &transcript,
+        &request.lak_ecc_pub_x,
+        &request.lak_ecc_pub_y,
+        &request.lak_mldsa_pub,
+        &request.signature,
+    )
+    .await?;
+    commit_dot_transition(
+        alloc,
+        current_fuse_count,
+        current_fuse_count + 2,
+        [0; DOT_KEY_HASH_SIZE],
+        [0; DOT_KEY_HASH_SIZE],
+    )
+    .await?;
+    UNLOCK_CONTEXT.lock(|state| *state.borrow_mut() = None);
+    Ok(())
 }
 
 pub async fn program_field_entropy<A: ApiAlloc>(

@@ -25,7 +25,7 @@ use caliptra_mcu_mbox_common::messages::{
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
     DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotUnlockChallengeReq,
-    DotUnlockChallengeResp,
+    DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -228,6 +228,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 CommandId::MC_DOT_UNLOCK_CHALLENGE => {
                     self.handle_dot_unlock_challenge(req, resp_buf).await
                 }
+                #[cfg(feature = "device-ownership-transfer")]
+                CommandId::MC_DOT_UNLOCK => self.handle_dot_unlock(req, resp_buf).await,
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
                 }
@@ -348,6 +350,28 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .map_err(|_| errors::INVALID_PARAMS)?;
         *resp = DotUnlockChallengeResp {
             challenge,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_unlock<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotUnlockReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        self.non_crypto_cmds_handler
+            .dot_unlock(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotUnlockResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotUnlockResp {
+            reset_required: 1,
             ..Default::default()
         };
         let response_len = resp.as_bytes().len();
@@ -1071,6 +1095,8 @@ fn response_buffer_size(cmd: u32) -> usize {
         CommandId::MC_DOT_DISABLE => size_of::<DotDisableResp>(),
         #[cfg(feature = "device-ownership-transfer")]
         CommandId::MC_DOT_UNLOCK_CHALLENGE => size_of::<DotUnlockChallengeResp>(),
+        #[cfg(feature = "device-ownership-transfer")]
+        CommandId::MC_DOT_UNLOCK => size_of::<DotUnlockResp>(),
         _ => size_of::<McuMailboxResp>(),
     }
 }
