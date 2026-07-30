@@ -23,7 +23,10 @@ use caliptra_mcu_mbox_common::messages::{
     MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "device-ownership-transfer")]
-use caliptra_mcu_mbox_common::messages::{DotDisableReq, DotDisableResp, DotLockReq, DotLockResp};
+use caliptra_mcu_mbox_common::messages::{
+    DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotUnlockChallengeReq,
+    DotUnlockChallengeResp,
+};
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
@@ -221,6 +224,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 CommandId::MC_DOT_LOCK => self.handle_dot_lock(req, resp_buf).await,
                 #[cfg(feature = "device-ownership-transfer")]
                 CommandId::MC_DOT_DISABLE => self.handle_dot_disable(req, resp_buf).await,
+                #[cfg(feature = "device-ownership-transfer")]
+                CommandId::MC_DOT_UNLOCK_CHALLENGE => {
+                    self.handle_dot_unlock_challenge(req, resp_buf).await
+                }
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
                 }
@@ -318,6 +325,29 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             DotDisableResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
         *resp = DotDisableResp {
             reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_unlock_challenge<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        DotUnlockChallengeReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let challenge = self
+            .non_crypto_cmds_handler
+            .dot_unlock_challenge(self.scratch)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) = DotUnlockChallengeResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotUnlockChallengeResp {
+            challenge,
             ..Default::default()
         };
         let response_len = resp.as_bytes().len();
@@ -1039,6 +1069,8 @@ fn response_buffer_size(cmd: u32) -> usize {
         CommandId::MC_DOT_LOCK => size_of::<DotLockResp>(),
         #[cfg(feature = "device-ownership-transfer")]
         CommandId::MC_DOT_DISABLE => size_of::<DotDisableResp>(),
+        #[cfg(feature = "device-ownership-transfer")]
+        CommandId::MC_DOT_UNLOCK_CHALLENGE => size_of::<DotUnlockChallengeResp>(),
         _ => size_of::<McuMailboxResp>(),
     }
 }

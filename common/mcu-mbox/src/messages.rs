@@ -139,6 +139,7 @@ impl CommandId {
     // Device Ownership Transfer commands
     pub const MC_DOT_LOCK: Self = Self(0x4D44_4C4B); // "MDLK"
     pub const MC_DOT_DISABLE: Self = Self(0x4D44_4453); // "MDDS"
+    pub const MC_DOT_UNLOCK_CHALLENGE: Self = Self(0x4D44_5543); // "MDUC"
 }
 
 impl From<u32> for CommandId {
@@ -212,6 +213,7 @@ pub enum McuMailboxReq {
     // Device Ownership Transfer commands
     DotLock(DotLockReq),
     DotDisable(DotDisableReq),
+    DotUnlockChallenge(DotUnlockChallengeReq),
 }
 
 impl McuMailboxReq {
@@ -269,6 +271,7 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotDisable(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -326,6 +329,7 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotDisable(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -385,6 +389,7 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
             McuMailboxReq::DotLock(_) => CommandId::MC_DOT_LOCK,
             McuMailboxReq::DotDisable(_) => CommandId::MC_DOT_DISABLE,
+            McuMailboxReq::DotUnlockChallenge(_) => CommandId::MC_DOT_UNLOCK_CHALLENGE,
         }
     }
 
@@ -467,6 +472,7 @@ pub enum McuMailboxResp {
     // Device Ownership Transfer commands
     DotLock(DotLockResp),
     DotDisable(DotDisableResp),
+    DotUnlockChallenge(DotUnlockChallengeResp),
 }
 
 /// A trait for responses with variable size data.
@@ -583,6 +589,7 @@ impl McuMailboxResp {
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -639,6 +646,7 @@ impl McuMailboxResp {
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -1728,6 +1736,35 @@ pub struct DotDisableResp {
 
 impl Response for DotDisableResp {}
 
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotUnlockChallengeReq {
+    pub hdr: MailboxReqHeader,
+}
+
+impl Request for DotUnlockChallengeReq {
+    const ID: CommandId = CommandId::MC_DOT_UNLOCK_CHALLENGE;
+    type Resp = DotUnlockChallengeResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotUnlockChallengeResp {
+    pub hdr: MailboxRespHeader,
+    pub challenge: [u8; AUTH_CMD_NONCE_LEN],
+}
+
+impl Default for DotUnlockChallengeResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            challenge: [0; AUTH_CMD_NONCE_LEN],
+        }
+    }
+}
+
+impl Response for DotUnlockChallengeResp {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1762,6 +1799,15 @@ mod tests {
                 + 2 * DOT_ECC_PUBLIC_KEY_COORD_SIZE
                 + DOT_MLDSA_PUBLIC_KEY_SIZE
                 + core::mem::size_of::<HybridSignature>()
+        );
+    }
+
+    #[test]
+    fn dot_unlock_challenge_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_UNLOCK_CHALLENGE.0, 0x4D44_5543);
+        assert_eq!(
+            core::mem::size_of::<DotUnlockChallengeResp>(),
+            core::mem::size_of::<MailboxRespHeader>() + AUTH_CMD_NONCE_LEN
         );
     }
 

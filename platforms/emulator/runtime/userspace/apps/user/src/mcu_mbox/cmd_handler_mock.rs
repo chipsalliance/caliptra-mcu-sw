@@ -129,4 +129,11 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
     ) -> CaliptraCmdResult<()> {
         CaliptraCmdBackend.dot_disable(alloc, request).await
     }
+
+    async fn dot_unlock_challenge<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+    ) -> CaliptraCmdResult<[u8; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN]> {
+        CaliptraCmdBackend.dot_unlock_challenge(alloc).await
+    }
 }

@@ -10,6 +10,7 @@ use zerocopy::FromBytes;
 
 pub const DOT_LOCK_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
+pub const DOT_UNLOCK_CHALLENGE_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK_CHALLENGE.0;
 
 pub(crate) async fn handle<H, A>(
     commands: &H,
@@ -30,7 +31,40 @@ where
     match subcommand {
         DOT_LOCK_CMD_ID => handle_dot_lock(commands, &request[4..], scratch, output).await,
         DOT_DISABLE_CMD_ID => handle_dot_disable(commands, &request[4..], scratch, output).await,
+        DOT_UNLOCK_CHALLENGE_CMD_ID => {
+            handle_dot_unlock_challenge(commands, &request[4..], scratch, output).await
+        }
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    }
+}
+
+async fn handle_dot_unlock_challenge<H, A>(
+    commands: &H,
+    request: &[u8],
+    scratch: &A,
+    output: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraCmdHandler,
+    A: SpdmPalAlloc,
+{
+    if !request.is_empty() {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    }
+    let Some((completion, challenge_out)) = output.split_first_mut() else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+    if challenge_out.len() < caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    }
+
+    match commands.dot_unlock_challenge(scratch).await {
+        Ok(challenge) => {
+            *completion = CaliptraCompletionCode::Success as u8;
+            challenge_out[..challenge.len()].copy_from_slice(&challenge);
+            CaliptraVdmCmdResult::Response(1 + challenge.len())
+        }
+        Err(error) => CaliptraVdmCmdResult::Error(super::map_common_completion(error)),
     }
 }
 

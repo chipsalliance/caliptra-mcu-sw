@@ -1606,6 +1606,37 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    #[test]
+    fn test_runtime_dot_unlock_challenge() {
+        use caliptra_mcu_mbox_common::messages::DotUnlockChallengeReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak());
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_locked_otp_memory()),
+            dot_flash_initial_contents: Some(blob.to_flash_contents()),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let first = hw
+            .mailbox_execute_req(DotUnlockChallengeReq::default())
+            .unwrap();
+        assert!(first.challenge.iter().any(|byte| *byte != 0));
+        assert!(hw
+            .mailbox_execute_req(DotUnlockChallengeReq::default())
+            .is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Computes SHA-384 of the combined vendor public keys using the
     /// caliptra-sw owner-PK-hash convention: the ECC public key is
     /// per-dword byte-reversed before hashing, the MLDSA public key is

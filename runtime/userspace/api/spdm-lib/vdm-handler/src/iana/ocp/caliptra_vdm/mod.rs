@@ -440,6 +440,7 @@ mod tests {
         authorized_token: Mutex<Option<Vec<u8>>>,
         dot_lock_calls: AtomicUsize,
         dot_disable_calls: AtomicUsize,
+        dot_challenge_calls: AtomicUsize,
     }
 
     impl TestCommands {
@@ -449,6 +450,7 @@ mod tests {
                 authorized_token: Mutex::new(None),
                 dot_lock_calls: AtomicUsize::new(0),
                 dot_disable_calls: AtomicUsize::new(0),
+                dot_challenge_calls: AtomicUsize::new(0),
             }
         }
 
@@ -544,6 +546,16 @@ mod tests {
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             self.dot_disable_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
+        }
+
+        async fn dot_unlock_challenge<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<
+            [u8; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN],
+        > {
+            self.dot_challenge_calls.fetch_add(1, Ordering::Relaxed);
+            Ok([0xA5; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
         }
     }
 
@@ -784,6 +796,29 @@ mod tests {
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
         assert_eq!(cmds.dot_disable_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_unlock_challenge_dispatches_through_device_ownership_transfer() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, AUTH_CMD_NONCE_LEN};
+
+        let cmds = TestCommands::new(0);
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_UNLOCK_CHALLENGE.0.to_le_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 64, 0);
+
+        assert_inline(response, 3 + AUTH_CMD_NONCE_LEN);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(
+            &inline[3..3 + AUTH_CMD_NONCE_LEN],
+            &[0xA5; AUTH_CMD_NONCE_LEN]
+        );
+        assert_eq!(cmds.dot_challenge_calls.load(Ordering::Relaxed), 1);
     }
 
     #[test]

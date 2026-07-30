@@ -18,8 +18,9 @@ use caliptra_mcu_mbox_common::messages::{
     DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
 use caliptra_mcu_registers_generated::fuses;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
+use core::cell::RefCell;
+use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
+use embassy_sync::mutex::Mutex as AsyncMutex;
 use mcu_caliptra_api_lite::{
     cm_hmac_sha512, derive_stable_key, fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87,
     get_idev_csr_ecc384, request_debug_unlock_challenge, rng_generate, sha_finish, sha_init,
@@ -59,10 +60,22 @@ struct RuntimeDotBlob {
 const _: [(); DOT_BLOB_FIELDS_SIZE] = [(); core::mem::size_of::<RuntimeDotBlobFields>()];
 const _: [(); DOT_BLOB_SIZE] = [(); core::mem::size_of::<RuntimeDotBlob>()];
 
+#[derive(Clone, Copy)]
+struct UnlockContext {
+    challenge: [u8; AUTH_CMD_NONCE_LEN],
+    lak_hash: [u8; DOT_KEY_HASH_SIZE],
+    fuse_count: u32,
+}
+
+static UNLOCK_CONTEXT: BlockingMutex<CriticalSectionRawMutex, RefCell<Option<UnlockContext>>> =
+    BlockingMutex::new(RefCell::new(None));
+
 static DOT_TRANSACTION_BUSY: AtomicBool = AtomicBool::new(false);
 // SAFETY: MldsaVerifyReq derives FromBytes, so all-zeros is a valid representation.
-static MLDSA_VERIFY_REQ: Mutex<CriticalSectionRawMutex, core::mem::MaybeUninit<MldsaVerifyReq>> =
-    Mutex::new(core::mem::MaybeUninit::zeroed());
+static MLDSA_VERIFY_REQ: AsyncMutex<
+    CriticalSectionRawMutex,
+    core::mem::MaybeUninit<MldsaVerifyReq>,
+> = AsyncMutex::new(core::mem::MaybeUninit::zeroed());
 
 struct DotTransactionGuard;
 
@@ -436,6 +449,35 @@ async fn write_and_verify_dot_blob(blob: &RuntimeDotBlob) -> CaliptraCmdResult<(
     Ok(())
 }
 
+async fn read_and_verify_dot_blob<A: ApiAlloc>(
+    alloc: &A,
+    derivation_value: u32,
+) -> CaliptraCmdResult<RuntimeDotBlob> {
+    let flash = SpiFlash::<DefaultSyscalls>::new(caliptra_mcu_config::DOT_BLOB_STORE_DRIVER_NUM);
+    let mut bytes = [0u8; DOT_BLOB_SIZE];
+    flash
+        .read(0, DOT_BLOB_SIZE, &mut bytes)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    let blob = RuntimeDotBlob::read_from_bytes(&bytes)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if blob.fields.version != DOT_BLOB_VERSION {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    let info = dot_derivation_info(derivation_value)?;
+    let key = derive_stable_key(StableKeyType::IDevId, &info)
+        .await
+        .map_err(map_mcu_err)?;
+    let mut expected = [0u8; DOT_HMAC_SIZE];
+    cm_hmac_sha512(alloc, &key, blob.fields.as_bytes(), &mut expected)
+        .await
+        .map_err(map_mcu_err)?;
+    if !constant_time_eq::constant_time_eq(&expected, &blob.hmac) {
+        return Err(CaliptraCompletionCode::AccessDenied);
+    }
+    Ok(blob)
+}
+
 fn burn_next_dot_fuse(current_fuse_count: u32) -> CaliptraCmdResult<()> {
     let word_addr = (fuses::DOT_FUSE_ARRAY.byte_offset / 4) as u32 + current_fuse_count / 32;
     let bit_mask = 1u32 << (current_fuse_count % 32);
@@ -557,6 +599,36 @@ pub async fn dot_disable<A: ApiAlloc>(
         lak_hash,
     )
     .await
+}
+
+pub async fn dot_unlock_challenge<A: ApiAlloc>(
+    alloc: &A,
+) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
+    let _guard = DotTransactionGuard::acquire()?;
+    if UNLOCK_CONTEXT.lock(|state| state.borrow().is_some()) {
+        return Err(CaliptraCompletionCode::ResourceUnavailable);
+    }
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count & 1 == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    let blob = read_and_verify_dot_blob(alloc, current_fuse_count).await?;
+    if blob.fields.lak_pub.iter().all(|byte| *byte == 0) {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    let mut challenge = [0u8; AUTH_CMD_NONCE_LEN];
+    rng_generate(alloc, &mut challenge)
+        .await
+        .map_err(map_mcu_err)?;
+    UNLOCK_CONTEXT.lock(|state| {
+        *state.borrow_mut() = Some(UnlockContext {
+            challenge,
+            lak_hash: blob.fields.lak_pub,
+            fuse_count: current_fuse_count,
+        });
+    });
+    Ok(challenge)
 }
 
 pub async fn program_field_entropy<A: ApiAlloc>(
