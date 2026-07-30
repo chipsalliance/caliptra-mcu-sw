@@ -277,8 +277,18 @@ jobs:
       - name: Execute SPDM responder tests on MCTP transport
         run: |
           export RUST_BACKTRACE=1
+          set -o pipefail
           TEST_BIN=/tmp/caliptra-test-binaries
 
+          # --no-capture streams each test process's stdout (the MCU device UART,
+          # emitted by the hw-model with a "<cycles> UART: " line prefix) live so
+          # tee can save it to a file. Without it, nextest discards passing tests'
+          # stdout (this profile only replays captured output on failure), so the
+          # device UART would reach neither the console nor an artifact. --no-capture
+          # forces serial execution, but this job already passes --test-threads=1.
+          # tee runs as the (non-sudo) runner user and writes into the runner-owned
+          # /tmp/spdm-emu-binaries dir, so the later upload step can read the file.
+          status=0
           sudo CPTRA_FIRMWARE_BUNDLE="${PWD}/all-fw.zip" \
               SPDM_VALIDATOR_DIR=/tmp/spdm-emu-binaries \
               cargo-nextest nextest run \
@@ -289,7 +299,12 @@ jobs:
               --profile=nightly-ci-spdm \
               --run-ignored all \
               --test-threads=1 \
-              --no-fail-fast
+              --no-fail-fast \
+              --no-capture 2>&1 | tee /tmp/spdm-emu-binaries/mcu-device.log || status=$?
+
+          # Re-raise nextest's original exit code so this step still fails exactly
+          # when the tests fail (tee always exits 0 and would otherwise mask it).
+          exit "${status}"
 
       - name: Display and check SPDM Validator test results
         if: success() || failure()
@@ -326,3 +341,4 @@ jobs:
             /tmp/spdm-emu-binaries/caliptra-evidence.pcap
             /tmp/spdm-emu-binaries/measurement_block_fd.bin
             /tmp/spdm-emu-binaries/certificate_chain_slot_00.der
+            /tmp/spdm-emu-binaries/mcu-device.log
