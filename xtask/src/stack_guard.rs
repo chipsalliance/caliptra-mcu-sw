@@ -10,14 +10,13 @@
 //! `-Z emit-stack-sizes`, reads the exact LLVM-emitted per-function frames, and
 //! fails if the largest frame exceeds `[[app]].stack` budget − `STACK_RESERVE`.
 //!
-//! Why the largest single frame (not a full call-graph sum): the user-app's
-//! peak is dominated by one monolithic async `poll` frame (the SPDM responder
-//! coroutine embeds its whole handler tree inline), so max-frame is the peak
-//! driver. A precise additive walk is unreliable here anyway — the executor
-//! dispatches task polls through indirect/`dyn` edges a static call graph can't
-//! follow, and `.stack_sizes` omits asm/intrinsic frames. `STACK_RESERVE`
-//! bounds the handler/entry frames that sit above the poll plus a cushion for
-//! that undercount; see its definition.
+//! Why the largest single frame + a fixed reserve (not a full call-graph sum):
+//! a precise additive walk is unreliable here — the executor dispatches task
+//! polls through indirect/`dyn` edges a static call graph cannot follow, and
+//! `.stack_sizes` omits asm/intrinsic frames. So the guard tracks the largest
+//! single frame (cheap and exact to parse) and adds `STACK_RESERVE` to bound
+//! the handler/entry frames stacked above it plus a cushion for the undercount;
+//! see its definition for the measured derivation.
 
 use anyhow::{anyhow, bail, Context, Result};
 use caliptra_mcu_builder::{runtime_build_with_apps, CaliptraBuildArgs, PROJECT_ROOT, TARGET};
@@ -25,15 +24,20 @@ use elf::endian::LittleEndian;
 use elf::ElfBytes;
 use std::path::PathBuf;
 
-/// Bytes reserved above the largest single frame. The user-app peak is the
-/// dominant async `poll` frame plus the handler/entry frames stacked on top of
-/// it; the measured top-of-stack above `poll` is ~6,656 B (deepest chain 35,568
-/// − largest frame 28,912 on the fixed build; top handler `handle_key_exchange`).
-/// This reserve is that gap plus a ~2,560 B cushion for the `.stack_sizes`
-/// undercount (asm/intrinsic frames, indirect/`dyn` edges the static analysis
-/// can't follow) and modest future growth of a handler above `poll`. The guard
-/// fails if the largest frame exceeds `budget - RESERVE`.
-const STACK_RESERVE: u64 = 0x2400; // 9,216 B
+/// Bytes reserved above the largest single frame to cover the other frames
+/// stacked on top of it. Measured on current main (post-#1859): the deepest
+/// additive stack chain is 13,520 B while the largest single frame is 6,960 B
+/// (`spdm_mctp_responder::poll`), so ~6,560 B of the peak comes from handlers
+/// stacked above it (`handle_key_exchange` 3,376, `get_measurement_value`
+/// 1,888, SHA/mailbox glue). This reserve is that gap plus a ~3,680 B cushion
+/// for the `.stack_sizes` undercount (asm/intrinsic frames and indirect/`dyn`
+/// dispatch edges the static analysis cannot follow). The guard fails if the
+/// largest single frame exceeds `budget - RESERVE`; with the current 0x5000
+/// (20,480 B) budget that limit is 10,240 B, giving the implied worst-case
+/// ceiling (largest frame + reserve = 17,200 B) comfortable margin over the
+/// measured 13,520 B peak while still tripping on any newly-introduced
+/// multi-KB on-stack buffer.
+const STACK_RESERVE: u64 = 0x2800; // 10,240 B
 
 /// Feature set that reproduces the deepest observed stack path (the SPDM
 /// attestation + command-auth responder). `release` matches the shipping
@@ -284,19 +288,22 @@ mod tests {
 
     #[test]
     fn frame_limit_subtracts_reserve() {
-        assert_eq!(frame_limit(0xae80), 0xae80 - STACK_RESERVE);
+        assert_eq!(frame_limit(0x5000), 0x5000 - STACK_RESERVE); // 20,480 - 10,240 = 10,240
         assert_eq!(frame_limit(0), 0); // saturating, no underflow
     }
 
-    // The gate must FAIL the pre-fix frame and PASS the right-sized frame at the
-    // 0xae80 budget — the exact regression this guard exists to catch.
+    // At the current 0x5000 (20,480 B) budget, the gate must PASS the measured
+    // largest frame (6,960 B, spdm_mctp_responder::poll) and FAIL any frame that
+    // regrows past the 10,240 B limit — e.g. re-introducing a multi-KB on-stack
+    // buffer like the pre-#1859 11 KB MldsaVerifyReq.
     #[test]
-    fn gate_rejects_baseline_accepts_fixed() {
-        let limit = frame_limit(0xae80);
-        assert!(36_960 > limit, "baseline 36,960 B must exceed the limit");
+    fn gate_passes_current_frame_rejects_regression() {
+        let limit = frame_limit(0x5000);
+        assert_eq!(limit, 10_240);
+        assert!(6_960 <= limit, "current largest frame 6,960 B must pass");
         assert!(
-            28_912 <= limit,
-            "right-sized 28,912 B must be within the limit"
+            6_960 + 11_324 > limit,
+            "re-adding an 11 KB on-stack buffer must trip the guard"
         );
     }
 
