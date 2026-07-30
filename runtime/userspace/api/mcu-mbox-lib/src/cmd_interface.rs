@@ -23,7 +23,7 @@ use caliptra_mcu_mbox_common::messages::{
     MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "device-ownership-transfer")]
-use caliptra_mcu_mbox_common::messages::{DotLockReq, DotLockResp};
+use caliptra_mcu_mbox_common::messages::{DotDisableReq, DotDisableResp, DotLockReq, DotLockResp};
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
@@ -219,6 +219,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 }
                 #[cfg(feature = "device-ownership-transfer")]
                 CommandId::MC_DOT_LOCK => self.handle_dot_lock(req, resp_buf).await,
+                #[cfg(feature = "device-ownership-transfer")]
+                CommandId::MC_DOT_DISABLE => self.handle_dot_disable(req, resp_buf).await,
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
                 }
@@ -293,6 +295,28 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let (resp, _) =
             DotLockResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
         *resp = DotLockResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_disable<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotDisableReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        self.non_crypto_cmds_handler
+            .dot_disable(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotDisableResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotDisableResp {
             reset_required: 1,
             ..Default::default()
         };
@@ -1013,6 +1037,8 @@ fn response_buffer_size(cmd: u32) -> usize {
         }
         #[cfg(feature = "device-ownership-transfer")]
         CommandId::MC_DOT_LOCK => size_of::<DotLockResp>(),
+        #[cfg(feature = "device-ownership-transfer")]
+        CommandId::MC_DOT_DISABLE => size_of::<DotDisableResp>(),
         _ => size_of::<McuMailboxResp>(),
     }
 }

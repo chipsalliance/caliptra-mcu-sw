@@ -1532,6 +1532,80 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    #[test]
+    fn test_runtime_dot_disable_commits_transition() {
+        use caliptra_mcu_mbox_common::messages::{
+            CommandId as McuCommandId, DotDisablePayload, DotDisableReq, HybridSignature,
+        };
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (ecc_pub_x, ecc_pub_y, ecc_private) = generate_random_ecc_keys();
+        let (mldsa_public, mldsa_private) = generate_random_mldsa_keys();
+        let lak_hash = compute_recovery_pk_hash(&ecc_pub_x, &ecc_pub_y, &mldsa_public);
+
+        let mut transcript = [0u8; 52];
+        transcript[..4].copy_from_slice(&McuCommandId::MC_DOT_DISABLE.0.to_be_bytes());
+        transcript[4..].copy_from_slice(&lak_hash);
+
+        let signing_key = SigningKey::from_bytes((&ecc_private).into()).unwrap();
+        let digest = Sha384::digest(transcript);
+        let ecc_signature: p384::ecdsa::Signature = signing_key.sign_prehash(&digest).unwrap();
+        let mldsa_signature = mldsa_private
+            .try_sign_with_seed(&[0u8; 32], &transcript, &[])
+            .unwrap();
+        let mut hybrid_signature = HybridSignature {
+            ecc_sig_r: ecc_signature.r().to_bytes().into(),
+            ecc_sig_s: ecc_signature.s().to_bytes().into(),
+            ..Default::default()
+        };
+        hybrid_signature.mldsa_sig[..mldsa_signature.len()].copy_from_slice(&mldsa_signature);
+
+        let payload = DotDisablePayload {
+            lak_ecc_pub_x: ecc_pub_x,
+            lak_ecc_pub_y: ecc_pub_y,
+            lak_mldsa_pub: mldsa_public.try_into().unwrap(),
+            signature: hybrid_signature,
+        };
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let response = hw
+            .mailbox_execute_req(DotDisableReq {
+                payload,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] & 1,
+            1
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        assert!(blob.cak.iter().all(|word| *word == 0));
+        assert!(blob.lak_pub.iter().any(|word| *word != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Computes SHA-384 of the combined vendor public keys using the
     /// caliptra-sw owner-PK-hash convention: the ECC public key is
     /// per-dword byte-reversed before hashing, the MLDSA public key is

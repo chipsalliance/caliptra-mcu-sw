@@ -439,6 +439,7 @@ mod tests {
         csr_len: usize,
         authorized_token: Mutex<Option<Vec<u8>>>,
         dot_lock_calls: AtomicUsize,
+        dot_disable_calls: AtomicUsize,
     }
 
     impl TestCommands {
@@ -447,6 +448,7 @@ mod tests {
                 csr_len,
                 authorized_token: Mutex::new(None),
                 dot_lock_calls: AtomicUsize::new(0),
+                dot_disable_calls: AtomicUsize::new(0),
             }
         }
 
@@ -532,6 +534,15 @@ mod tests {
             _request: &caliptra_mcu_mbox_common::messages::DotLockPayload,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             self.dot_lock_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+
+        async fn dot_disable<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_disable_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
     }
@@ -749,6 +760,30 @@ mod tests {
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
         assert_eq!(cmds.dot_lock_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_disable_dispatches_through_device_ownership_transfer() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, DotDisablePayload};
+        use zerocopy::IntoBytes;
+
+        let cmds = TestCommands::new(0);
+        let mut payload = DotDisablePayload::default();
+        payload.lak_ecc_pub_x[0] = 1;
+        payload.lak_mldsa_pub[0] = 1;
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_DISABLE.0.to_le_bytes());
+        request.extend_from_slice(payload.as_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(cmds.dot_disable_calls.load(Ordering::Relaxed), 1);
     }
 
     #[test]

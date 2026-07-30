@@ -14,8 +14,8 @@ use caliptra_mcu_libsyscall_caliptra::otp::Otp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN, DOT_KEY_HASH_SIZE,
-    DOT_MLDSA_PUBLIC_KEY_SIZE,
+    CommandId, DotDisablePayload, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+    DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
 use caliptra_mcu_registers_generated::fuses;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -511,6 +511,49 @@ async fn dot_lock_impl<A: ApiAlloc>(alloc: &A, request: &DotLockPayload) -> Cali
         current_fuse_count,
         current_fuse_count + 1,
         request.cak,
+        lak_hash,
+    )
+    .await
+}
+
+pub async fn dot_disable<A: ApiAlloc>(
+    alloc: &A,
+    request: &DotDisablePayload,
+) -> CaliptraCmdResult<()> {
+    let _guard = DotTransactionGuard::acquire()?;
+    let lak_hash = dot_lak_hash(
+        alloc,
+        &request.lak_ecc_pub_x,
+        &request.lak_ecc_pub_y,
+        &request.lak_mldsa_pub,
+    )
+    .await?;
+    if lak_hash.iter().all(|byte| *byte == 0) {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
+    let mut transcript = [0u8; 4 + DOT_KEY_HASH_SIZE];
+    transcript[..4].copy_from_slice(&CommandId::MC_DOT_DISABLE.0.to_be_bytes());
+    transcript[4..].copy_from_slice(&lak_hash);
+    verify_hybrid_message(
+        &transcript,
+        &request.lak_ecc_pub_x,
+        &request.lak_ecc_pub_y,
+        &request.lak_mldsa_pub,
+        &request.signature,
+    )
+    .await?;
+
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count & 1 != 0 || current_fuse_count >= 256 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    commit_dot_transition(
+        alloc,
+        current_fuse_count,
+        current_fuse_count + 1,
+        [0; DOT_KEY_HASH_SIZE],
         lak_hash,
     )
     .await

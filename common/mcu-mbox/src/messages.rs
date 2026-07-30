@@ -138,6 +138,7 @@ impl CommandId {
 
     // Device Ownership Transfer commands
     pub const MC_DOT_LOCK: Self = Self(0x4D44_4C4B); // "MDLK"
+    pub const MC_DOT_DISABLE: Self = Self(0x4D44_4453); // "MDDS"
 }
 
 impl From<u32> for CommandId {
@@ -210,6 +211,7 @@ pub enum McuMailboxReq {
     ExportAttestedCsr(ExportAttestedCsrReq),
     // Device Ownership Transfer commands
     DotLock(DotLockReq),
+    DotDisable(DotDisableReq),
 }
 
 impl McuMailboxReq {
@@ -266,6 +268,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotDisable(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -322,6 +325,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotDisable(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -380,6 +384,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
             McuMailboxReq::DotLock(_) => CommandId::MC_DOT_LOCK,
+            McuMailboxReq::DotDisable(_) => CommandId::MC_DOT_DISABLE,
         }
     }
 
@@ -461,6 +466,7 @@ pub enum McuMailboxResp {
     ExportAttestedCsr(ExportAttestedCsrResp),
     // Device Ownership Transfer commands
     DotLock(DotLockResp),
+    DotDisable(DotDisableResp),
 }
 
 /// A trait for responses with variable size data.
@@ -576,6 +582,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotDisable(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -631,6 +638,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotDisable(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -1678,6 +1686,48 @@ pub struct DotLockResp {
 
 impl Response for DotLockResp {}
 
+/// Transport-neutral DOT_DISABLE payload.
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotDisablePayload {
+    pub lak_ecc_pub_x: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub lak_ecc_pub_y: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub lak_mldsa_pub: [u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
+    pub signature: HybridSignature,
+}
+
+impl Default for DotDisablePayload {
+    fn default() -> Self {
+        Self {
+            lak_ecc_pub_x: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            lak_ecc_pub_y: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            lak_mldsa_pub: [0; DOT_MLDSA_PUBLIC_KEY_SIZE],
+            signature: HybridSignature::default(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotDisableReq {
+    pub hdr: MailboxReqHeader,
+    pub payload: DotDisablePayload,
+}
+
+impl Request for DotDisableReq {
+    const ID: CommandId = CommandId::MC_DOT_DISABLE;
+    type Resp = DotDisableResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotDisableResp {
+    pub hdr: MailboxRespHeader,
+    pub reset_required: u32,
+}
+
+impl Response for DotDisableResp {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1697,6 +1747,18 @@ mod tests {
             core::mem::size_of::<DotLockReq>(),
             core::mem::size_of::<MailboxReqHeader>()
                 + DOT_KEY_HASH_SIZE
+                + 2 * DOT_ECC_PUBLIC_KEY_COORD_SIZE
+                + DOT_MLDSA_PUBLIC_KEY_SIZE
+                + core::mem::size_of::<HybridSignature>()
+        );
+    }
+
+    #[test]
+    fn dot_disable_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_DISABLE.0, 0x4D44_4453);
+        assert_eq!(
+            core::mem::size_of::<DotDisableReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
                 + 2 * DOT_ECC_PUBLIC_KEY_COORD_SIZE
                 + DOT_MLDSA_PUBLIC_KEY_SIZE
                 + core::mem::size_of::<HybridSignature>()
