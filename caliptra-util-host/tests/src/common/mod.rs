@@ -6,7 +6,6 @@
 //! implementations and common test data structures.
 
 use caliptra_mcu_core_util_host_transport::{MailboxDriver, MailboxError};
-use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 // Buffer length constants
 const RESPONSE_BUFFER_SIZE: usize = 1024; // Increased for SHA context (200 bytes) + overhead
@@ -36,7 +35,7 @@ pub struct MockMailbox {
 
 impl MockMailbox {
     /// Create a new MockMailbox with specified device characteristics
-    pub fn new(device_id: u16) -> Self {
+    pub fn new(_device_id: u16) -> Self {
         Self {
             connected: false,
             ready: true,

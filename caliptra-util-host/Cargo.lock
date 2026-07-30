@@ -638,9 +638,9 @@ version = "0.1.0"
 name = "caliptra-mcu-mbox-common"
 version = "0.1.0"
 dependencies = [
- "caliptra-api",
  "caliptra-image-types",
  "caliptra-mcu-registers-generated",
+ "mcu-caliptra-api-lite",
  "zerocopy",
 ]
 
@@ -747,6 +747,7 @@ dependencies = [
  "caliptra-mcu-core-util-host-command-types",
  "caliptra-mcu-core-util-host-transport",
  "caliptra-mcu-debug-unlock-signer",
+ "caliptra-mcu-mbox-common",
  "caliptra-spdm-requester",
  "caliptra-util-host-commands",
  "caliptra-util-host-session",
@@ -1964,6 +1965,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d640282b302c0bb0a2a8e0233ead9035e3bed871f0b7e81fe4a1ec829765db44"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "mcu-caliptra-api-lite"
+version = "0.1.0"
+dependencies = [
+ "zerocopy",
 ]
 
 [[package]]
