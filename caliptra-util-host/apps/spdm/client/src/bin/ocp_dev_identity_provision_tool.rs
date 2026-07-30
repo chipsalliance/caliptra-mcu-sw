@@ -30,7 +30,6 @@ struct Args {
     #[arg(long, default_value_t = DEFAULT_LDEVID_KEY_PAIR_ID)]
     key_pair_id: u8,
 
-
     /// DER X.509 root certificate used to authenticate the initial Vendor slot.
     #[arg(long, default_value_os_t = default_vendor_trust_anchor_path())]
     vendor_trust_anchor: PathBuf,
