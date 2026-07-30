@@ -222,9 +222,15 @@ fn short(sym: &str) -> &str {
     sym
 }
 
+/// The gate limit for a given budget: how large the biggest single frame may be
+/// before the reserve for the frames stacked above it is exhausted.
+fn frame_limit(budget: u64) -> u64 {
+    budget.saturating_sub(STACK_RESERVE)
+}
+
 pub(crate) fn run() -> Result<()> {
     let budget = app_stack_budget()?;
-    let limit = budget.saturating_sub(STACK_RESERVE);
+    let limit = frame_limit(budget);
     println!("user-app stack budget = {budget} B; largest-frame limit = {limit} B (budget − {STACK_RESERVE} B reserve)");
 
     println!("Building instrumented user-app ({GUARD_FEATURES})...");
@@ -248,4 +254,62 @@ pub(crate) fn run() -> Result<()> {
     }
     println!("STACK GUARD OK: largest frame {max_frame} B is within the {limit} B limit ({margin} B margin).");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Minimal, valid .stack_sizes-style records: u32 LE addr + ULEB128 size.
+    fn record(addr: u32, size_bytes: &[u8]) -> Vec<u8> {
+        let mut v = addr.to_le_bytes().to_vec();
+        v.extend_from_slice(size_bytes);
+        v
+    }
+
+    #[test]
+    fn uleb128_decodes_single_and_multibyte() {
+        assert_eq!(uleb128(&[0x00]).unwrap(), (0, 1));
+        assert_eq!(uleb128(&[0x7f]).unwrap(), (127, 1));
+        assert_eq!(uleb128(&[0x60]).unwrap(), (96, 1));
+        // 36960 -> ULEB 0xe0 0xa0 0x02
+        assert_eq!(uleb128(&[0xe0, 0xa0, 0x02]).unwrap(), (36960, 3));
+    }
+
+    #[test]
+    fn uleb128_rejects_truncated_and_overlong() {
+        assert!(uleb128(&[0x80]).is_err()); // continuation bit but no next byte
+        assert!(uleb128(&[0x80; 11]).is_err()); // never terminates within 64 bits
+    }
+
+    #[test]
+    fn frame_limit_subtracts_reserve() {
+        assert_eq!(frame_limit(0xae80), 0xae80 - STACK_RESERVE);
+        assert_eq!(frame_limit(0), 0); // saturating, no underflow
+    }
+
+    // The gate must FAIL the pre-fix frame and PASS the right-sized frame at the
+    // 0xae80 budget — the exact regression this guard exists to catch.
+    #[test]
+    fn gate_rejects_baseline_accepts_fixed() {
+        let limit = frame_limit(0xae80);
+        assert!(36_960 > limit, "baseline 36,960 B must exceed the limit");
+        assert!(
+            28_912 <= limit,
+            "right-sized 28,912 B must be within the limit"
+        );
+    }
+
+    // Largest-frame selection picks the max size and resolves nothing to panic on
+    // an address with no symbol (returns a hex fallback name via the ELF path;
+    // here we exercise the pure record scan through a hand-built section is not
+    // possible without a full ELF, so we assert the ULEB+addr record shape the
+    // parser consumes stays fixed).
+    #[test]
+    fn stack_size_record_layout_is_addr_then_uleb() {
+        let r = record(0x4001_cf94, &[0xe0, 0xa0, 0x02]); // addr + 36960
+        assert_eq!(&r[..4], 0x4001_cf94u32.to_le_bytes());
+        let (sz, adv) = uleb128(&r[4..]).unwrap();
+        assert_eq!((sz, adv), (36960, 3));
+    }
 }
