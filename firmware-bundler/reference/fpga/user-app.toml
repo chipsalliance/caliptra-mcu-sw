@@ -30,5 +30,10 @@ stack = 0x0_7000
 
 [[app]]
 name = "user-app"
-stack = 0xae80
+# Measured worst-case app stack (deepest additive chain, -Z emit-stack-sizes)
+# is 13,520 B. Budget = ~1.5x that, covering the .stack_sizes undercount
+# (indirect/dyn-dispatch edges the static walker can't follow, asm frames).
+# App faults trap to the kernel M-mode stack, so no ISR headroom is needed here.
+# Keep emulator and fpga equal.
+stack = 0x5000
 grant_space = 0x4000
