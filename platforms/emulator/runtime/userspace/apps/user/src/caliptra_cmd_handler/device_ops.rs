@@ -110,22 +110,25 @@ pub async fn verify_authorized_signatures(
     mldsa_pub: [u8; 2592],
     sig: &HybridSignature,
 ) -> CaliptraCmdResult<()> {
-    let mut message = ArrayVec::<u8, 256>::new();
-    message
+    // Pre-image = cmd_id(BE,4) || payload || challenge(48), built from the raw
+    // payload (no inner hash), mirroring prod-debug-unlock. Each leg verifies a
+    // digest of it: ECDSA over SHA-384(pre-image), ML-DSA over SHA-512(pre-image).
+    let mut pre_image = ArrayVec::<u8, 256>::new();
+    pre_image
         .try_extend_from_slice(&cmd_id.to_be_bytes())
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-    message
+    pre_image
         .try_extend_from_slice(payload)
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-    message
+    pre_image
         .try_extend_from_slice(challenge)
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
 
     let mailbox = Mailbox::new();
 
-    // 1. Verify ECC P-384 Signature using Caliptra Mailbox
+    // 1. Verify ECC P-384 Signature using Caliptra Mailbox (over SHA-384(pre-image)).
     let mut hash = [0u8; 48];
-    HashContext::hash_all(HashAlgoType::SHA384, message.as_slice(), &mut hash)
+    HashContext::hash_all(HashAlgoType::SHA384, pre_image.as_slice(), &mut hash)
         .await
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
@@ -149,15 +152,20 @@ pub async fn verify_authorized_signatures(
         .await
         .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
 
-    // 2. Verify ML-DSA-87 Signature using Caliptra Mailbox
+    // 2. Verify ML-DSA-87 Signature using Caliptra Mailbox (over SHA-512(pre-image)).
+    let mut mldsa_msg = [0u8; 64];
+    HashContext::hash_all(HashAlgoType::SHA512, pre_image.as_slice(), &mut mldsa_msg)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+
     let mut mldsa_req = MldsaVerifyReq {
         hdr: MailboxReqHeader::default(),
         pub_key: mldsa_pub,
         signature: sig.mldsa_sig,
-        message_size: message.len() as u32,
+        message_size: mldsa_msg.len() as u32,
         message: [0u8; caliptra_api::mailbox::MAX_CMB_DATA_SIZE],
     };
-    mldsa_req.message[..message.len()].copy_from_slice(message.as_slice());
+    mldsa_req.message[..mldsa_msg.len()].copy_from_slice(&mldsa_msg);
 
     let mut mldsa_resp = MailboxRespHeader::default();
 
