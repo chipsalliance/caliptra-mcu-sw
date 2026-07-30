@@ -14,7 +14,7 @@ mod utils;
 pub use all::{
     all_build, emulator_build, AllBuildArgs, EmulatorBinaries, EmulatorBuildArgs, FirmwareBinaries,
 };
-pub use caliptra::{AuthManifestOwnerConfig, CaliptraBuilder, ImageCfg};
+pub use caliptra::{AuthManifestOwnerConfig, AuthManifestPubKeysPaths, CaliptraBuilder, ImageCfg};
 pub use offline_signing::*;
 pub use rom::{append_rom_digest, rom_build, rom_size_for_platform, test_rom_build};
 pub use runtime::{bare_metal_build, runtime_build_with_apps};
@@ -82,6 +82,23 @@ pub fn target_dir() -> PathBuf {
     std::env::var("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PROJECT_ROOT.join("target"))
+}
+
+/// Returns the Path to the caliptra-sw workspace root.
+pub fn caliptra_sw_workspace_root() -> PathBuf {
+    let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
+    let package = metadata
+        .packages
+        .iter()
+        .find(|p| {
+            p.name.as_ref() == "caliptra-image-fake-keys" || p.name.as_ref() == "caliptra-api-types"
+        })
+        .map(|p| p.manifest_path.clone())
+        .and_then(|p| p.ancestors().nth(3).map(|p| p.to_path_buf()));
+    match package {
+        Some(path) => path.into(),
+        None => panic!("Could not determine caliptra-sw path"),
+    }
 }
 
 pub(crate) static SYSROOT: LazyLock<String> = LazyLock::new(|| {

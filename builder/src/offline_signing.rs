@@ -1,10 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, Context, Result};
+use caliptra_auth_man_types::AuthManifestPreamble;
 use caliptra_image_gen::to_hw_format;
 use caliptra_image_types::{ImageEccSignature, ImagePqcSignature};
 use p384::ecdsa::Signature;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha384};
 use zerocopy::IntoBytes;
 
 /// Request payload containing signature targets to be signed offline.
@@ -49,6 +51,64 @@ pub struct SignatureEntry {
     pub ecc_sig: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pqc_sig: Option<String>,
+}
+
+fn sha384_hex(data: &[u8]) -> String {
+    let mut hasher = Sha384::new();
+    hasher.update(data);
+    hex::encode(hasher.finalize())
+}
+
+/// Generate a `SigningRequestJson` containing SHA-384 targets and hex payloads from an unsigned `AuthorizationManifest`.
+pub fn create_signing_request(
+    manifest: &caliptra_auth_man_types::AuthorizationManifest,
+) -> Result<SigningRequestJson> {
+    let preamble_bytes = manifest.preamble.as_bytes();
+
+    let vendor_range = AuthManifestPreamble::vendor_signed_data_range();
+    let vendor_payload = preamble_bytes
+        .get(vendor_range.start as usize..vendor_range.end as usize)
+        .ok_or_else(|| anyhow!("Invalid vendor signed data range"))?;
+    let vendor_digest = sha384_hex(vendor_payload);
+
+    let owner_range = AuthManifestPreamble::owner_pub_keys_range();
+    let owner_payload = preamble_bytes
+        .get(owner_range.start as usize..owner_range.end as usize)
+        .ok_or_else(|| anyhow!("Invalid owner pub keys range"))?;
+    let owner_digest = sha384_hex(owner_payload);
+
+    let imc_payload = manifest.image_metadata_col.as_bytes();
+    let imc_digest = sha384_hex(imc_payload);
+
+    Ok(SigningRequestJson {
+        version: 1,
+        requests: SigningRequests {
+            vendor_pub_keys_signatures: SignatureRequestEntry {
+                ecc_key: "vendor_fw_ecc_key".to_string(),
+                pqc_key: "vendor_fw_pqc_key".to_string(),
+                digest_sha384: vendor_digest,
+                payload_hex: hex::encode(vendor_payload),
+            },
+            owner_pub_keys_signatures: SignatureRequestEntry {
+                ecc_key: "owner_fw_ecc_key".to_string(),
+                pqc_key: "owner_fw_pqc_key".to_string(),
+                digest_sha384: owner_digest,
+                payload_hex: hex::encode(owner_payload),
+            },
+            vendor_imc_signatures: SignatureRequestEntry {
+                ecc_key: "vendor_man_ecc_key".to_string(),
+                pqc_key: "vendor_man_pqc_key".to_string(),
+                digest_sha384: imc_digest.clone(),
+                payload_hex: hex::encode(imc_payload),
+            },
+            owner_imc_signatures: SignatureRequestEntry {
+                ecc_key: "owner_man_ecc_key".to_string(),
+                pqc_key: "owner_man_pqc_key".to_string(),
+                digest_sha384: imc_digest,
+                payload_hex: hex::encode(imc_payload),
+            },
+        },
+    })
 }
 
 pub trait ImageEccSignatureExt: Sized {
