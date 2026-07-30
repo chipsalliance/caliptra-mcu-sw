@@ -29,6 +29,8 @@ impl BootFlow for WarmBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
         crate::call_hook(params.hooks, |h| h.pre_warm_boot());
         env.mci
+            .reset_flow_milestones(McuBootMilestones::ROM_STARTED.into());
+        env.mci
             .set_flow_checkpoint(McuRomBootStatus::WarmResetFlowStarted.into());
         caliptra_mcu_romtime::println!("[mcu-rom] Starting warm boot flow");
 

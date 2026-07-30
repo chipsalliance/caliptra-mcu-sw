@@ -83,6 +83,13 @@ impl Mci {
         self.set_flow_status(milestone | self.flow_status());
     }
 
+    /// Reset flow milestones (clears upper 16 bits of flow_status) and sets new milestone
+    pub fn reset_flow_milestones(&self, milestone: u16) {
+        let checkpoint = self.flow_checkpoint();
+        let milestone_val = u32::from(milestone) << 16;
+        self.set_flow_status(milestone_val | u32::from(checkpoint));
+    }
+
     pub fn flow_milestone(&self) -> u16 {
         (self.flow_status() >> 16) as u16
     }
