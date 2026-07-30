@@ -28,6 +28,7 @@ p384.workspace = true
 rayon = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 semver.workspace = true
 subst.workspace = true
 caliptra-mcu-tbf-header.workspace = true
