@@ -42,6 +42,8 @@ mod ecdh;
 #[cfg(feature = "mailbox-io")]
 mod fe_prog;
 #[cfg(feature = "mailbox-io")]
+pub mod firmware_update;
+#[cfg(feature = "mailbox-io")]
 mod fw_info;
 #[cfg(feature = "mailbox-io")]
 mod hmac;
