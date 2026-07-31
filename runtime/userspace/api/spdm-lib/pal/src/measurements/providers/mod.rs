@@ -6,7 +6,9 @@
 //! while delegating evidence-format construction to lower-level APIs.
 
 pub mod ocp_eat;
+#[cfg(feature = "pcr-quote")]
 pub mod pcr_quote;
 
 pub use ocp_eat::OcpEatMeasurementProvider;
+#[cfg(feature = "pcr-quote")]
 pub use pcr_quote::PcrQuoteMeasurementProvider;
