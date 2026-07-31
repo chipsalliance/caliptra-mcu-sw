@@ -2,12 +2,13 @@
 
 //! Allocator-backed COSE_Sign1 EAT token generation via byte templates.
 
-use crate::eat::cbor_bstr_len;
-use crate::sha::{sha_finish, sha_init, sha_update, HashAlgo, SHA_CONTEXT_SIZE};
-use crate::slice::copy_bytes;
-use crate::ApiAlloc;
+use mcu_caliptra_api_lite::{
+    sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CONTEXT_SIZE,
+};
 use mcu_error::codes::INVARIANT;
 use mcu_error::McuResult;
+
+use super::common::{cbor_bstr_len, write_type_header};
 
 const KID_LEN: usize = 48;
 const SHA384_DIGEST_SIZE: usize = 48;
@@ -133,24 +134,40 @@ impl SignedEat {
 
     /// Finish a COSE_Sign1 EAT token whose payload and kid are already in their
     /// final locations in `eat_buffer`.
+    #[cfg(test)]
     pub fn finish_in_place(
         &self,
         payload_len: usize,
         signature: &[u8; ECDSA_P384_SIGNATURE_SIZE],
         eat_buffer: &mut [u8],
     ) -> McuResult<usize> {
+        let (cose_len, sig_slot) = self.signature_buffer_mut(payload_len, eat_buffer)?;
+        sig_slot.copy_from_slice(signature);
+        Ok(cose_len)
+    }
+
+    /// Finalize the COSE_Sign1 layout and return the final signature slot.
+    pub fn signature_buffer_mut<'a>(
+        &self,
+        payload_len: usize,
+        eat_buffer: &'a mut [u8],
+    ) -> McuResult<(usize, &'a mut [u8; ECDSA_P384_SIGNATURE_SIZE])> {
         let cose_len = cose_sign1_len(payload_len);
         if eat_buffer.len() < cose_len {
             return Err(INVARIANT);
         }
 
+        // Write the minimal (canonical) COSE payload bstr header. The payload
+        // was staged at `PAYLOAD_OFFSET` assuming a reserved 3-byte header, so
+        // when the canonical header is shorter, compact the payload left. This
+        // keeps the token deterministic and matches the Sig_structure hashed by
+        // `sig_context_digest`, which also uses the minimal header.
         let header_len = write_cose_payload_bstr_len(
             eat_buffer
                 .get_mut(PAYLOAD_HEADER_OFFSET..PAYLOAD_OFFSET)
                 .ok_or(INVARIANT)?,
             payload_len,
-        )
-        .ok_or(INVARIANT)?;
+        )?;
         if header_len > PAYLOAD_BSTR_HEADER_LEN {
             return Err(INVARIANT);
         }
@@ -177,56 +194,11 @@ impl SignedEat {
             .and_then(|slot| slot.split_first_chunk_mut::<{ SIGNATURE_BSTR_HEADER.len() }>())
             .ok_or(INVARIANT)?;
         *sig_hdr_slot = SIGNATURE_BSTR_HEADER;
-        sig_slot.copy_from_slice(signature);
-
-        Ok(cose_len)
-    }
-
-    /// Encode a COSE_Sign1 EAT token with a `kid` unprotected header and a
-    /// caller-provided signature.
-    ///
-    /// # Parameters
-    /// - `payload` — encoded EAT claims payload
-    /// - `kid` — 48-byte key identifier (SHA-384 of public key)
-    /// - `signature` — ECDSA P-384 signature over the COSE Sig_structure
-    /// - `eat_buffer` — output buffer sized for [`cose_sign1_len`]
-    pub fn encode_with_kid_and_signature(
-        &self,
-        payload: &[u8],
-        kid: &[u8],
-        signature: &[u8; ECDSA_P384_SIGNATURE_SIZE],
-        eat_buffer: &mut [u8],
-    ) -> McuResult<usize> {
-        let kid_arr: &[u8; KID_LEN] = kid.try_into().map_err(|_| INVARIANT)?;
-        let cose_len = cose_sign1_len(payload.len());
-        if eat_buffer.len() < cose_len {
-            return Err(INVARIANT);
-        }
-
-        // Walk `eat_buffer` with `split_first_chunk_mut` so each
-        // fixed-size write becomes a panic-free `*chunk = SRC` array
-        // assignment instead of a `copy_from_slice` length-check.
-        let rest = eat_buffer;
-        let (preamble_slot, rest) = rest
-            .split_first_chunk_mut::<{ COSE_PREAMBLE.len() }>()
+        let sig_slot = sig_slot
+            .first_chunk_mut::<ECDSA_P384_SIGNATURE_SIZE>()
             .ok_or(INVARIANT)?;
-        *preamble_slot = COSE_PREAMBLE;
-        let (kid_slot, rest) = rest.split_first_chunk_mut::<KID_LEN>().ok_or(INVARIANT)?;
-        *kid_slot = *kid_arr;
-        let pl_hdr_len = write_cose_payload_bstr_len(rest, payload.len()).ok_or(INVARIANT)?;
-        let rest = rest.get_mut(pl_hdr_len..).ok_or(INVARIANT)?;
-        let (payload_slot, rest) = rest.split_at_mut_checked(payload.len()).ok_or(INVARIANT)?;
-        copy_bytes(payload_slot, payload)?;
-        let (sig_hdr_slot, rest) = rest
-            .split_first_chunk_mut::<{ SIGNATURE_BSTR_HEADER.len() }>()
-            .ok_or(INVARIANT)?;
-        *sig_hdr_slot = SIGNATURE_BSTR_HEADER;
-        let (sig_slot, _) = rest
-            .split_first_chunk_mut::<ECDSA_P384_SIGNATURE_SIZE>()
-            .ok_or(INVARIANT)?;
-        *sig_slot = *signature;
 
-        Ok(cose_len)
+        Ok((cose_len, sig_slot))
     }
 
     /// Hash the COSE Sig_structure for a COSE_Sign1 EAT token.
@@ -239,8 +211,7 @@ impl SignedEat {
         let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
         let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &SIG_PREAMBLE).await?;
         let mut payload_header = [0u8; 9];
-        let payload_header_len =
-            write_cose_payload_bstr_len(&mut payload_header, payload.len()).ok_or(INVARIANT)?;
+        let payload_header_len = write_cose_payload_bstr_len(&mut payload_header, payload.len())?;
         let payload_header = payload_header.get(..payload_header_len).ok_or(INVARIANT)?;
         sha_update(alloc, &mut state, payload_header).await?;
         sha_update(alloc, &mut state, payload).await?;
@@ -248,29 +219,72 @@ impl SignedEat {
     }
 }
 
-fn write_cose_payload_bstr_len(out: &mut [u8], len: usize) -> Option<usize> {
+fn write_cose_payload_bstr_len(out: &mut [u8], len: usize) -> McuResult<usize> {
     write_type_header(out, 2, len as u64)
 }
 
-fn write_type_header(out: &mut [u8], major: u8, value: u64) -> Option<usize> {
-    if value <= 23 {
-        *out.get_mut(0)? = (major << 5) | value as u8;
-        Some(1)
-    } else if value <= u8::MAX as u64 {
-        *out.get_mut(0)? = (major << 5) | 24;
-        *out.get_mut(1)? = value as u8;
-        Some(2)
-    } else if value <= u16::MAX as u64 {
-        *out.get_mut(0)? = (major << 5) | 25;
-        copy_bytes(out.get_mut(1..3)?, &(value as u16).to_be_bytes()).ok()?;
-        Some(3)
-    } else if value <= u32::MAX as u64 {
-        *out.get_mut(0)? = (major << 5) | 26;
-        copy_bytes(out.get_mut(1..5)?, &(value as u32).to_be_bytes()).ok()?;
-        Some(5)
-    } else {
-        *out.get_mut(0)? = (major << 5) | 27;
-        copy_bytes(out.get_mut(1..9)?, &value.to_be_bytes()).ok()?;
-        Some(9)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    extern crate std;
+    use std::vec::Vec;
+
+    fn expected_bstr_header(len: usize) -> Vec<u8> {
+        if len <= 23 {
+            std::vec![0x40 | len as u8]
+        } else if len <= 255 {
+            std::vec![0x58, len as u8]
+        } else {
+            std::vec![0x59, (len >> 8) as u8, (len & 0xff) as u8]
+        }
+    }
+
+    fn assert_in_place_layout(payload_len: usize) {
+        let signer = SignedEat::new();
+        let payload: Vec<u8> = (0..payload_len).map(|i| (i % 251) as u8).collect();
+        let kid = [0x5a; KID_LEN];
+        let signature = [0xc3; ECDSA_P384_SIGNATURE_SIZE];
+        let mut out = std::vec![0u8; cose_sign1_len(payload_len)];
+
+        *signer.prepare_in_place(&mut out).unwrap() = kid;
+        signer
+            .payload_buffer_mut(&mut out, payload_len)
+            .unwrap()
+            .copy_from_slice(&payload);
+        let encoded_len = signer
+            .finish_in_place(payload_len, &signature, &mut out)
+            .unwrap();
+
+        let header = expected_bstr_header(payload_len);
+        let payload_start = PAYLOAD_HEADER_OFFSET + header.len();
+        let sig_header_offset = payload_start + payload_len;
+
+        assert_eq!(encoded_len, out.len());
+        assert_eq!(encoded_len, cose_sign1_len(payload_len));
+        assert_eq!(&out[..COSE_PREAMBLE.len()], COSE_PREAMBLE);
+        assert_eq!(&out[COSE_PREAMBLE.len()..PAYLOAD_HEADER_OFFSET], &kid);
+        assert_eq!(
+            &out[PAYLOAD_HEADER_OFFSET..payload_start],
+            header.as_slice()
+        );
+        assert_eq!(&out[payload_start..sig_header_offset], payload.as_slice());
+        assert_eq!(
+            &out[sig_header_offset..sig_header_offset + SIGNATURE_BSTR_HEADER.len()],
+            SIGNATURE_BSTR_HEADER
+        );
+        assert_eq!(
+            &out[sig_header_offset + SIGNATURE_BSTR_HEADER.len()..],
+            &signature
+        );
+    }
+
+    #[test]
+    fn in_place_layout_places_kid_payload_and_signature() {
+        // 300 -> 3-byte header (no compaction); 100 -> 2-byte header (shift 1);
+        // 10 -> 1-byte header (shift 2). The small cases are what the emulator
+        // hits (concise evidence < 256) and previously errored out.
+        for payload_len in [10usize, 100, 300] {
+            assert_in_place_layout(payload_len);
+        }
     }
 }

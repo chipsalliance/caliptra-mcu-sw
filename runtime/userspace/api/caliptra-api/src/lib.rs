@@ -14,7 +14,6 @@ pub mod evidence;
 pub mod mailbox_api;
 #[cfg(feature = "ocp-lock")]
 pub mod ocp_lock;
-pub mod signed_eat;
 #[cfg(feature = "ocp-lock")]
 pub mod signer;
 

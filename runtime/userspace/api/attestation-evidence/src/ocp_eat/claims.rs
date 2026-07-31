@@ -8,8 +8,9 @@
 
 use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg, Mci};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use mcu_caliptra_api_lite::eat::cbor_bstr_len;
 use mcu_error::McuResult;
+
+use super::common::{cbor_bstr_len, write_type_header};
 
 include!(concat!(env!("OUT_DIR"), "/eat_claims_template.rs"));
 
@@ -19,7 +20,7 @@ pub const EAT_PAYLOAD_MAX_SIZE: usize = EAT_CLAIMS_PREFIX.len()
     + EAT_CLAIMS_DBGSTAT_PREFIX.len()
     + 1
     + EAT_CLAIMS_EVIDENCE_PREFIX.len()
-    + cbor_bstr_len(CONCISE_EVIDENCE_WORKSPACE_SIZE)
+    + cbor_bstr_len(CONCISE_EVIDENCE_MAX_SIZE)
     + EAT_CLAIMS_SUFFIX.len();
 
 const DEBUG_LOCKED_MASK: u32 = 1 << 2;
@@ -97,6 +98,9 @@ pub(crate) fn finish_claims_payload(
     layout: ClaimsPayloadLayout,
     concise_evidence_len: usize,
 ) -> McuResult<usize> {
+    // Upper bound on the payload assuming the maximum reserved 3-byte concise
+    // evidence header. Validating against this before compaction guarantees the
+    // `copy_within` below stays in bounds (the canonical header is <= reserved).
     let reserved_end = layout
         .evidence_offset
         .checked_add(concise_evidence_len)
@@ -106,6 +110,10 @@ pub(crate) fn finish_claims_payload(
         return Err(mcu_error::codes::INTERNAL_BUG);
     }
 
+    // Write the minimal (canonical) CBOR bstr header. `start_claims_payload`
+    // reserves `CONCISE_EVIDENCE_BSTR_HEADER_LEN` bytes; when the actual length
+    // needs a shorter header, compact the evidence left so the payload is
+    // deterministically encoded (required by CHALLENGE measurement summaries).
     let header_len = write_type_header(
         claims_buf
             .get_mut(
@@ -224,35 +232,6 @@ impl<'a> ClaimsWriter<'a> {
     }
 }
 
-fn write_type_header(out: &mut [u8], major: u8, value: u64) -> McuResult<usize> {
-    if value <= 23 {
-        *out.get_mut(0).ok_or(mcu_error::codes::INTERNAL_BUG)? = (major << 5) | value as u8;
-        Ok(1)
-    } else if value <= u8::MAX as u64 {
-        *out.get_mut(0).ok_or(mcu_error::codes::INTERNAL_BUG)? = (major << 5) | 24;
-        *out.get_mut(1).ok_or(mcu_error::codes::INTERNAL_BUG)? = value as u8;
-        Ok(2)
-    } else if value <= u16::MAX as u64 {
-        *out.get_mut(0).ok_or(mcu_error::codes::INTERNAL_BUG)? = (major << 5) | 25;
-        out.get_mut(1..3)
-            .ok_or(mcu_error::codes::INTERNAL_BUG)?
-            .copy_from_slice(&(value as u16).to_be_bytes());
-        Ok(3)
-    } else if value <= u32::MAX as u64 {
-        *out.get_mut(0).ok_or(mcu_error::codes::INTERNAL_BUG)? = (major << 5) | 26;
-        out.get_mut(1..5)
-            .ok_or(mcu_error::codes::INTERNAL_BUG)?
-            .copy_from_slice(&(value as u32).to_be_bytes());
-        Ok(5)
-    } else {
-        *out.get_mut(0).ok_or(mcu_error::codes::INTERNAL_BUG)? = (major << 5) | 27;
-        out.get_mut(1..9)
-            .ok_or(mcu_error::codes::INTERNAL_BUG)?
-            .copy_from_slice(&value.to_be_bytes());
-        Ok(9)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -267,7 +246,7 @@ mod tests {
     const CLAIM_KEY_ISSUER: i128 = 1;
     const CLAIM_KEY_CTI: i128 = 7;
 
-    fn map_value<'a>(value: &'a Value, key: i128) -> Option<&'a Value> {
+    fn map_value(value: &Value, key: i128) -> Option<&Value> {
         let Value::Map(entries) = value else {
             return None;
         };
@@ -299,7 +278,7 @@ mod tests {
     #[test]
     fn claims_payload_embeds_nonce_debug_status_and_concise_evidence() {
         let nonce = [0x11; NONCE_LEN];
-        let concise_evidence = [0xd9, 0x02, 0x3b, 0xa1, 0x00, 0xa0];
+        let concise_evidence = [0x5a; 32];
         let mut encoded = [0u8; 256];
 
         let encoded_len = encode_claims_payload_with_debug_status(
@@ -338,29 +317,45 @@ mod tests {
     }
 
     #[test]
-    fn claims_payload_decodes_concise_evidence_with_one_byte_cbor_length() {
+    fn in_place_payload_matches_reference_encoder() {
+        // Concise evidence lengths that exercise 1-, 2- and 3-byte bstr headers.
+        // The <256 cases (which need compaction) are what the emulator hits and
+        // previously errored; assert the in-place path is byte-identical to the
+        // known-good non-in-place encoder, i.e. canonically encoded.
         let nonce = [0x11; NONCE_LEN];
-        let concise_evidence = [0x5a; 24];
-        let mut encoded = [0u8; EAT_PAYLOAD_MAX_SIZE];
+        for concise_len in [10usize, 32, 200, 300] {
+            let concise_evidence: std::vec::Vec<u8> =
+                (0..concise_len).map(|i| (i % 251) as u8).collect();
 
-        let encoded_len = encode_claims_payload_with_debug_status(
-            &mut encoded,
-            &nonce,
-            EAT_DBGSTAT_ENABLED,
-            &concise_evidence,
-        )
-        .unwrap();
-        let claims = Value::from_slice(&encoded[..encoded_len]).unwrap();
+            let mut in_place = std::vec![0u8; EAT_PAYLOAD_MAX_SIZE];
+            let layout =
+                start_claims_payload_with_debug_status(&mut in_place, &nonce, EAT_DBGSTAT_ENABLED)
+                    .unwrap();
+            concise_evidence_buffer_mut(&mut in_place, layout).unwrap()[..concise_len]
+                .copy_from_slice(&concise_evidence);
+            let payload_len = finish_claims_payload(&mut in_place, layout, concise_len).unwrap();
 
-        let Some(Value::Array(entries)) = map_value(&claims, CLAIM_KEY_MEASUREMENTS) else {
-            panic!("measurements must be an array");
-        };
-        let Value::Array(measurement_entry) = &entries[0] else {
-            panic!("measurement entry must be an array");
-        };
-        assert_eq!(
-            measurement_entry[1],
-            Value::Bytes(concise_evidence.to_vec())
-        );
+            let mut reference = std::vec![0u8; EAT_PAYLOAD_MAX_SIZE];
+            let reference_len = encode_claims_payload_with_debug_status(
+                &mut reference,
+                &nonce,
+                EAT_DBGSTAT_ENABLED,
+                &concise_evidence,
+            )
+            .unwrap();
+
+            assert_eq!(payload_len, reference_len, "len mismatch for {concise_len}");
+            assert_eq!(
+                &in_place[..payload_len],
+                &reference[..reference_len],
+                "bytes mismatch for {concise_len}"
+            );
+
+            let claims = Value::from_slice(&in_place[..payload_len]).unwrap();
+            let Some(Value::Array(entries)) = map_value(&claims, CLAIM_KEY_MEASUREMENTS) else {
+                panic!("measurements must be an array");
+            };
+            assert_eq!(entries.len(), 1);
+        }
     }
 }
