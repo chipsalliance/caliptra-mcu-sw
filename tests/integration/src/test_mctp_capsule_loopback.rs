@@ -5,7 +5,7 @@
 #[cfg(test)]
 mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
-    use caliptra_mcu_hw_model::McuHwModel;
+    use caliptra_mcu_hw_model::{McuHwModel, McuManager};
     use caliptra_mcu_romtime::McuBootMilestones;
     use caliptra_mcu_testing_common::i3c_socket::{
         self, BufferedStream, MctpTestState, MctpTransportTest,
@@ -67,6 +67,44 @@ mod test {
         assert!(hw
             .mci_boot_milestones()
             .contains(McuBootMilestones::WARM_RESET_FLOW_COMPLETE));
+
+        hw.start_i3c_controller();
+
+        let tests = generate_tests();
+        i3c_socket::run_tests(
+            hw.i3c_port().unwrap(),
+            hw.i3c_address().unwrap().into(),
+            tests,
+            None,
+        );
+
+        let test = finish_runtime_hw_model(&mut hw);
+
+        assert_eq!(0, test);
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[cfg_attr(not(feature = "fpga_realtime"), ignore)]
+    #[test]
+    fn test_mctp_capsule_loopback_after_hitless_update_reset() {
+        let feature = "test-mctp-capsule-loopback";
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some(feature),
+            rom_feature: Some("test-force-hitless-update"),
+            i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
+            ..Default::default()
+        });
+
+        let reset_reason = hw.mcu_manager().with_mci(|mci| mci.reset_reason().read());
+        assert!(
+            reset_reason.fw_hitless_upd_reset(),
+            "MCU did not boot through the hitless update flow"
+        );
 
         hw.start_i3c_controller();
 

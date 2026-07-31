@@ -90,6 +90,7 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-dot-recovery",
     "test-dot-recovery-reset-flow",
     "test-rom-hooks",
+    "test-force-hitless-update",
 ];
 
 /// A single ROM build target (platform + feature combo). Shared between
