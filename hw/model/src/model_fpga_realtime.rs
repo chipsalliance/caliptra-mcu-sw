@@ -480,6 +480,7 @@ impl McuHwModel for ModelFpgaRealtime {
                     .lifecycle_controller_state
                     .map(|s| caliptra_hw_model::LifecycleControllerState::from(u8::from(s))),
                 use_strap_secrets: params.use_strap_secrets,
+                target_provisioning_stage: params.target_provisioning_stage,
                 ..Default::default()
             },
         };

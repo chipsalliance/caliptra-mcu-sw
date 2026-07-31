@@ -66,6 +66,7 @@ members = [
     "provisioning/common",
     "provisioning/fuses/fusegen",
     "provisioning/test-unlocked-fw",
+    "provisioning/manuf-fw",
     "provisioning/fuses/lib",
     "registers/fuses",
     "registers/generated-emulator",

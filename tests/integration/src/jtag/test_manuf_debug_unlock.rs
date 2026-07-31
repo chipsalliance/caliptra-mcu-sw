@@ -51,46 +51,13 @@ mod test {
         let is_unlocked = debug_is_unlocked(&mut *core_tap, &mut *mcu_tap).unwrap_or(false);
         assert_eq!(is_unlocked, false);
 
-        // Request manuf debug unlock operation.
-        core_tap
-            .write_reg(&CaliptraCoreReg::SsDbgManufServiceRegReq, 0x1)
-            .expect("Unable to write SsDbgManufServiceRegReq reg.");
-        model.base.step();
-
-        // Continue Caliptra Core boot.
-        core_tap
-            .write_reg(&CaliptraCoreReg::BootfsmGo, 0x1)
-            .expect("Unable to write BootfsmGo.");
-        model.base.step();
-
-        // Send the manuf debug unlock token.
-        jtag_send_caliptra_mailbox_cmd(
-            &mut *core_tap,
-            CommandId::MANUF_DEBUG_UNLOCK_REQ_TOKEN,
+        // Request and execute manuf debug unlock operation.
+        caliptra_mcu_hw_model::debug_unlock::manuf_debug_unlock(
+            &mut model,
+            &mut core_tap,
             DEFAULT_MANUF_DEBUG_UNLOCK_RAW_TOKEN.0.as_bytes(),
         )
-        .expect("Failed to send manuf debug unlock token.");
-        model.base.step();
-        let _ = jtag_get_caliptra_mailbox_resp(&mut *core_tap)
-            .expect("Failed to get manuf debug unlock response.");
-        model.base.step();
-
-        // Wait for debug unlock operation to complete.
-        while let Ok(ss_debug_manuf_response) =
-            core_tap.read_reg(&CaliptraCoreReg::SsDbgManufServiceRegRsp)
-        {
-            if (ss_debug_manuf_response & 0x3) != 0 {
-                println!(
-                    "Manuf debug unlock operation complete (response: 0x{:08x}).",
-                    ss_debug_manuf_response
-                );
-                assert_eq!(ss_debug_manuf_response, 0x1);
-                model.base.step();
-                break;
-            }
-            model.base.step();
-            thread::sleep(Duration::from_millis(100));
-        }
+        .expect("Failed to execute manuf debug unlock.");
 
         // Confirm debug is unlocked.
         core_tap

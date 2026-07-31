@@ -22,6 +22,52 @@ use p384::SecretKey;
 use sha2::{Digest, Sha384, Sha512};
 use zerocopy::{FromBytes, IntoBytes};
 
+/// Perform manufacturing debug unlock over JTAG and wait for completion.
+///
+/// Assumes you are connected to the Caliptra Core JTAG TAP.
+pub fn manuf_debug_unlock(
+    model: &mut DefaultHwModel,
+    core_tap: &mut OpenOcdJtagTap,
+    token: &[u8],
+) -> Result<()> {
+    core_tap
+        .write_reg(&CaliptraCoreReg::SsDbgManufServiceRegReq, 0x1)
+        .context("Unable to write SsDbgManufServiceRegReq reg.")?;
+    model.base.step();
+
+    core_tap
+        .write_reg(&CaliptraCoreReg::BootfsmGo, 0x1)
+        .context("Unable to write BootfsmGo.")?;
+    model.base.step();
+
+    jtag_send_caliptra_mailbox_cmd(core_tap, CommandId::MANUF_DEBUG_UNLOCK_REQ_TOKEN, token)
+        .context("Failed to send manuf debug unlock token.")?;
+    model.base.step();
+
+    let _ = jtag_get_caliptra_mailbox_resp(core_tap)
+        .context("Failed to get manuf debug unlock response.")?;
+    model.base.step();
+
+    while let Ok(ss_debug_manuf_response) =
+        core_tap.read_reg(&CaliptraCoreReg::SsDbgManufServiceRegRsp)
+    {
+        if (ss_debug_manuf_response & 0x3) != 0 {
+            if ss_debug_manuf_response != 0x1 {
+                anyhow::bail!(
+                    "Manuf debug unlock failed with response: 0x{:08x}",
+                    ss_debug_manuf_response
+                );
+            }
+            model.base.step();
+            break;
+        }
+        model.base.step();
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    Ok(())
+}
+
 /// Send the prod debug unlock request via the Caliptra Core mailbox.
 ///
 /// Assumes you are connected to the Caliptra Core JTAG TAP and that you have acquired the
