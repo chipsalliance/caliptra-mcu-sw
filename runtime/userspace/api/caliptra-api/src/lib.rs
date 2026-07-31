@@ -7,7 +7,6 @@ pub mod crypto;
 pub mod error;
 pub mod evidence;
 pub mod mailbox_api;
-pub mod signed_eat;
 
 /// Max PLDM firmware data transfer size per RequestFirmwareData.
 /// Derived from MAX_MCTP_PLDM_MSG_SIZE minus MCTP message type byte and PLDM response header overhead.

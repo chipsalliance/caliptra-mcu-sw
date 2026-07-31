@@ -49,6 +49,13 @@ pub trait EvidenceBuilder<A: ApiAlloc> {
         concise_evidence_len: usize,
         digest: &mut [u8; ATTESTATION_P384_DIGEST_SIZE],
     ) -> McuResult<usize>;
+
+    /// Finalize the evidence layout for `payload_len` and return the final
+    /// token length plus the final signature slot.
+    fn signature_buffer_mut(
+        &mut self,
+        payload_len: usize,
+    ) -> McuResult<(usize, &mut [u8; ATTESTATION_P384_SIGNATURE_SIZE])>;
 }
 
 /// Reset classification passed to `measurement_boot_init`.
@@ -173,7 +180,6 @@ pub async fn sign<A: ApiAlloc>(
 pub async fn measure_and_sign_evidence<A, B>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
-    signature: &mut [u8; ATTESTATION_P384_SIGNATURE_SIZE],
     evidence_builder: &mut B,
 ) -> McuResult<usize>
 where
@@ -195,15 +201,20 @@ where
             .await?
     };
 
-    let mut sig_digest = [0u8; ATTESTATION_P384_DIGEST_SIZE];
+    let mut sig_digest_buf = alloc.alloc(ATTESTATION_P384_DIGEST_SIZE)?;
+    let sig_digest = sig_digest_buf
+        .get_mut(..ATTESTATION_P384_DIGEST_SIZE)
+        .and_then(|buf| buf.first_chunk_mut::<ATTESTATION_P384_DIGEST_SIZE>())
+        .ok_or(mcu_error::codes::INTERNAL_BUG)?;
     let payload_len = evidence_builder
-        .digest_for_signature(alloc, concise_evidence_len, &mut sig_digest)
+        .digest_for_signature(alloc, concise_evidence_len, sig_digest)
         .await?;
-    let sig_len = api.sign(alloc, key_label, &sig_digest, signature).await?;
+    let (evidence_len, signature) = evidence_builder.signature_buffer_mut(payload_len)?;
+    let sig_len = api.sign(alloc, key_label, sig_digest, signature).await?;
     if sig_len != signature.len() {
         return Err(mcu_error::codes::INTERNAL_BUG);
     }
-    Ok(payload_len)
+    Ok(evidence_len)
 }
 
 /// Encode concise measurement evidence for all eligible manifest entries.

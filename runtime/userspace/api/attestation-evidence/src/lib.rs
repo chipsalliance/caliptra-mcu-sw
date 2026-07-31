@@ -5,14 +5,15 @@
 //! Transport-neutral signed attestation evidence generation.
 
 pub mod ocp_eat;
+#[cfg(feature = "pcr-quote")]
 pub mod pcr_quote;
 
 use caliptra_mcu_measurement_api::{
     EvidenceBuilder, ATTESTATION_P384_DIGEST_SIZE, ATTESTATION_P384_SIGNATURE_SIZE,
 };
-use mcu_caliptra_api_lite::signed_eat::{cose_sign1_len, SignedEat};
 use mcu_caliptra_api_lite::{ApiAlloc, DPE_LABEL_LEN};
 use mcu_error::McuResult;
+use ocp_eat::{cose_sign1_len, ClaimsPayloadLayout, SignedEat};
 
 pub const KID_LEN: usize = 48;
 pub const SIGNED_OCP_EAT_MAX_SIZE: usize = cose_sign1_len(ocp_eat::EAT_PAYLOAD_MAX_SIZE);
@@ -31,7 +32,7 @@ struct SignedOcpEatBuilder<'a> {
     signed_eat: SignedEat,
     nonce: &'a [u8],
     eat_buffer: &'a mut [u8],
-    claims_layout: Option<ocp_eat::ClaimsPayloadLayout>,
+    claims_layout: Option<ClaimsPayloadLayout>,
 }
 
 impl<'a> SignedOcpEatBuilder<'a> {
@@ -42,15 +43,6 @@ impl<'a> SignedOcpEatBuilder<'a> {
             eat_buffer,
             claims_layout: None,
         }
-    }
-
-    fn finish(
-        self,
-        payload_len: usize,
-        signature: &[u8; ATTESTATION_P384_SIGNATURE_SIZE],
-    ) -> McuResult<usize> {
-        self.signed_eat
-            .finish_in_place(payload_len, signature, self.eat_buffer)
     }
 }
 
@@ -89,6 +81,14 @@ impl<A: ApiAlloc> EvidenceBuilder<A> for SignedOcpEatBuilder<'_> {
             .await?;
         Ok(payload_len)
     }
+
+    fn signature_buffer_mut(
+        &mut self,
+        payload_len: usize,
+    ) -> McuResult<(usize, &mut [u8; ATTESTATION_P384_SIGNATURE_SIZE])> {
+        self.signed_eat
+            .signature_buffer_mut(payload_len, self.eat_buffer)
+    }
 }
 
 /// Encode a signed OCP EAT token containing Measurement API concise evidence.
@@ -104,13 +104,5 @@ pub async fn encode_signed_ocp_eat<A: ApiAlloc>(
     out: &mut [u8],
 ) -> McuResult<usize> {
     let mut builder = SignedOcpEatBuilder::new(nonce, out);
-    let mut signature = [0u8; ATTESTATION_P384_SIGNATURE_SIZE];
-    let payload_len = caliptra_mcu_measurement_api::measure_and_sign_evidence(
-        alloc,
-        key_label,
-        &mut signature,
-        &mut builder,
-    )
-    .await?;
-    builder.finish(payload_len, &signature)
+    caliptra_mcu_measurement_api::measure_and_sign_evidence(alloc, key_label, &mut builder).await
 }
