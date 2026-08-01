@@ -17,25 +17,46 @@ const ECC_P384_COORD_SIZE: usize = 48;
 const MLDSA87_PUB_KEY_SIZE: usize = 2592;
 
 // Canonical wire layout (after the AUTHORIZED_COMMAND sub-command id):
-//   partition(4) | sig(HybridSignature) | nonce(48) | ecc_pub_x(48) | ecc_pub_y(48) | mldsa_pub(2592)
+//   partition(4) | nonce(48) | ecc_pub_x(48) | ecc_pub_y(48) | mldsa_pub(2592) | sig(HybridSignature)
+// Signatures LAST (nonce + public keys precede them), matching the caliptra-sw
+// ProductionAuthDebugUnlockToken field order.
 #[repr(C)]
 #[derive(Debug, FromBytes, Immutable, KnownLayout)]
 struct FeProgVdmReq {
     partition: u32,
-    sig: HybridSignature,
     nonce: [u8; AUTH_CMD_NONCE_LEN],
     ecc_pub_x: [u8; ECC_P384_COORD_SIZE],
     ecc_pub_y: [u8; ECC_P384_COORD_SIZE],
     mldsa_pub: [u8; MLDSA87_PUB_KEY_SIZE],
+    sig: HybridSignature,
 }
 
 const _: () = assert!(
     core::mem::size_of::<FeProgVdmReq>()
         == core::mem::size_of::<u32>()
-            + core::mem::size_of::<HybridSignature>()
             + AUTH_CMD_NONCE_LEN
             + 2 * ECC_P384_COORD_SIZE
             + MLDSA87_PUB_KEY_SIZE
+            + core::mem::size_of::<HybridSignature>()
+);
+// Per-field offset asserts lock the wire order at compile time (a size-only
+// assert passes for any field permutation). Mirrors the host `FeProgRequest`.
+const _: () = assert!(core::mem::offset_of!(FeProgVdmReq, nonce) == core::mem::size_of::<u32>());
+const _: () = assert!(
+    core::mem::offset_of!(FeProgVdmReq, ecc_pub_x)
+        == core::mem::offset_of!(FeProgVdmReq, nonce) + AUTH_CMD_NONCE_LEN
+);
+const _: () = assert!(
+    core::mem::offset_of!(FeProgVdmReq, ecc_pub_y)
+        == core::mem::offset_of!(FeProgVdmReq, ecc_pub_x) + ECC_P384_COORD_SIZE
+);
+const _: () = assert!(
+    core::mem::offset_of!(FeProgVdmReq, mldsa_pub)
+        == core::mem::offset_of!(FeProgVdmReq, ecc_pub_y) + ECC_P384_COORD_SIZE
+);
+const _: () = assert!(
+    core::mem::offset_of!(FeProgVdmReq, sig)
+        == core::mem::offset_of!(FeProgVdmReq, mldsa_pub) + MLDSA87_PUB_KEY_SIZE
 );
 
 /// MC_GET_AUTH_CMD_CHALLENGE sub-command (`MACC`).

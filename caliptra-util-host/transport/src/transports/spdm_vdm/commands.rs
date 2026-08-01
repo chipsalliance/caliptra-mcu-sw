@@ -194,10 +194,11 @@ pub fn handle_get_auth_challenge(
 ///
 /// VDM wire format request:  [version, 0x12 (AuthorizedCommand),
 ///   sub_cmd_id=0x4D43_4650 (4 LE), partition(4 LE),
-///   sig (HybridSignature: ecc_sig_r 48 || ecc_sig_s 48 || mldsa_sig 4628),
-///   nonce(48), ecc_pub_x(48), ecc_pub_y(48), mldsa_pub(2592)]
-/// The nonce and public keys are fields of `FeProgRequest`, so they are carried
-/// automatically by `req.as_bytes()` below — no manual serialization here.
+///   nonce(48), ecc_pub_x(48), ecc_pub_y(48), mldsa_pub(2592),
+///   ecc_sig(r 48 || s 48), mldsa_sig(4628)]
+/// Signatures come LAST. The nonce and public keys are fields of `FeProgRequest`,
+/// so they are carried automatically by `req.as_bytes()` below — no manual
+/// serialization here.
 /// VDM wire format response: [version, 0x12 (AuthorizedCommand), completion_code]
 pub fn handle_fe_prog(
     payload: &[u8],
@@ -210,7 +211,7 @@ pub fn handle_fe_prog(
     let req = FeProgRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
 
     // VDM payload: sub_cmd_id(4 LE) || FeProgRequest bytes
-    //   = sub_cmd_id || partition(4 LE) || sig || nonce(48) || ecc_pub_x(48) || ecc_pub_y(48) || mldsa_pub(2592)
+    //   = sub_cmd_id || partition(4 LE) || nonce(48) || ecc_pub_x(48) || ecc_pub_y(48) || mldsa_pub(2592) || ecc_sig(96) || mldsa_sig(4628)
     let mut vdm_payload = Vec::with_capacity(4 + size_of::<FeProgRequest>());
     vdm_payload.extend_from_slice(&MC_FE_PROG_CANONICAL_CMD_ID.to_le_bytes());
     vdm_payload.extend_from_slice(req.as_bytes());

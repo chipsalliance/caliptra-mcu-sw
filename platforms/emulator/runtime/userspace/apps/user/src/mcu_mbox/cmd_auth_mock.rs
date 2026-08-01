@@ -51,14 +51,10 @@ impl CommandAuthorizer for MockCommandAuthorizer {
         };
 
         // Canonical wire layout after the command body:
-        //   [ sig(HybridSignature) | nonce(48) | ecc_x(48) | ecc_y(48) | mldsa(2592) ]
+        //   [ nonce(48) | ecc_x(48) | ecc_y(48) | mldsa(2592) | sig(HybridSignature) ]
+        // Signatures LAST (nonce + public keys precede them), matching the
+        // caliptra-sw ProductionAuthDebugUnlockToken field order.
         let mut off = cmd_len;
-        let sig_bytes = req
-            .get(off..off + size_of::<HybridSignature>())
-            .ok_or(AuthorizationError)?;
-        let sig = HybridSignature::ref_from_bytes(sig_bytes).map_err(|_| AuthorizationError)?;
-        off += size_of::<HybridSignature>();
-
         let wire_nonce: &[u8; AUTH_CMD_NONCE_LEN] = req
             .get(off..off + AUTH_CMD_NONCE_LEN)
             .ok_or(AuthorizationError)?
@@ -85,6 +81,12 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             .ok_or(AuthorizationError)?
             .try_into()
             .map_err(|_| AuthorizationError)?;
+        off += MLDSA87_PUB_KEY_LEN;
+
+        let sig_bytes = req
+            .get(off..off + size_of::<HybridSignature>())
+            .ok_or(AuthorizationError)?;
+        let sig = HybridSignature::ref_from_bytes(sig_bytes).map_err(|_| AuthorizationError)?;
 
         let cmd_body = req
             .get(size_of::<MailboxReqHeader>()..cmd_len)

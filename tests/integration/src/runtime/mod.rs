@@ -47,12 +47,14 @@ pub fn sign_auth_cmd_challenge_with(
     let sigs = authorizer.authorize(cmd_id, cmd_body, challenge)?;
     let (ecc_pub_x, ecc_pub_y, mldsa_pub) = authorizer.public_keys()?;
 
-    // Canonical wire tail: sig || nonce(48) || ecc_pub_x || ecc_pub_y || mldsa_pub.
-    let mut tail = sigs.as_bytes().to_vec();
-    tail.extend_from_slice(challenge);
+    // Canonical wire tail: nonce(48) || ecc_pub_x || ecc_pub_y || mldsa_pub || sig.
+    // Signatures LAST (nonce + public keys precede them), matching the
+    // caliptra-sw ProductionAuthDebugUnlockToken field order.
+    let mut tail = challenge.to_vec();
     tail.extend_from_slice(&ecc_pub_x);
     tail.extend_from_slice(&ecc_pub_y);
     tail.extend_from_slice(&mldsa_pub);
+    tail.extend_from_slice(sigs.as_bytes());
     Ok(tail)
 }
 

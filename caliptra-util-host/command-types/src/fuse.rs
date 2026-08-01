@@ -96,12 +96,13 @@ impl CommandResponse for GetAuthCmdChallengeResponse {}
 /// anchor) and the `nonce` echoes the challenge back (prod-debug-unlock idiom):
 /// the device compares it to its stored one-time challenge, then rebuilds the
 /// pre-image from this wire copy. Canonical wire layout (after the transport
-/// header): `partition(4) | sig | nonce(48) | ecc_pub_x(48) | ecc_pub_y(48) | mldsa_pub(2592)`.
+/// header): `partition(4) | nonce(48) | ecc_pub_x(48) | ecc_pub_y(48) | mldsa_pub(2592) | sig`.
+/// The signatures come LAST (nonce + public keys precede them), matching the
+/// caliptra-sw `ProductionAuthDebugUnlockToken` field order.
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct FeProgRequest {
     pub partition: u32,
-    pub sig: HybridSignature,
     /// Freshness nonce echoed back from `GetAuthCmdChallenge`.
     pub nonce: [u8; AUTH_CMD_CHALLENGE_SIZE],
     /// ECC P-384 verifier public key X coordinate (hashed into the anchor).
@@ -110,6 +111,8 @@ pub struct FeProgRequest {
     pub ecc_pub_y: [u8; AUTH_PUB_ECC_COORD_SIZE],
     /// ML-DSA-87 verifier public key.
     pub mldsa_pub: [u8; AUTH_PUB_MLDSA_SIZE],
+    /// Hybrid signature (ECDSA P-384 r||s then ML-DSA-87), placed LAST.
+    pub sig: HybridSignature,
 }
 
 // Hand-written `Default`: arrays with > 32 elements have no derive `Default`.
@@ -117,30 +120,26 @@ impl Default for FeProgRequest {
     fn default() -> Self {
         Self {
             partition: 0,
-            sig: HybridSignature::default(),
             nonce: [0u8; AUTH_CMD_CHALLENGE_SIZE],
             ecc_pub_x: [0u8; AUTH_PUB_ECC_COORD_SIZE],
             ecc_pub_y: [0u8; AUTH_PUB_ECC_COORD_SIZE],
             mldsa_pub: [0u8; AUTH_PUB_MLDSA_SIZE],
+            sig: HybridSignature::default(),
         }
     }
 }
 
-// Canonical wire layout: partition(4) | sig | nonce(48) | ecc_pub_x(48) | ecc_pub_y(48) | mldsa_pub(2592)
+// Canonical wire layout: partition(4) | nonce(48) | ecc_pub_x(48) | ecc_pub_y(48) | mldsa_pub(2592) | sig
 const _: () = assert!(
     core::mem::size_of::<FeProgRequest>()
         == core::mem::size_of::<u32>()
-            + core::mem::size_of::<HybridSignature>()
             + AUTH_CMD_CHALLENGE_SIZE
             + AUTH_PUB_ECC_COORD_SIZE
             + AUTH_PUB_ECC_COORD_SIZE
             + AUTH_PUB_MLDSA_SIZE
+            + core::mem::size_of::<HybridSignature>()
 );
-const _: () = assert!(core::mem::offset_of!(FeProgRequest, sig) == core::mem::size_of::<u32>());
-const _: () = assert!(
-    core::mem::offset_of!(FeProgRequest, nonce)
-        == core::mem::size_of::<u32>() + core::mem::size_of::<HybridSignature>()
-);
+const _: () = assert!(core::mem::offset_of!(FeProgRequest, nonce) == core::mem::size_of::<u32>());
 const _: () = assert!(
     core::mem::offset_of!(FeProgRequest, ecc_pub_x)
         == core::mem::offset_of!(FeProgRequest, nonce) + AUTH_CMD_CHALLENGE_SIZE
@@ -152,6 +151,10 @@ const _: () = assert!(
 const _: () = assert!(
     core::mem::offset_of!(FeProgRequest, mldsa_pub)
         == core::mem::offset_of!(FeProgRequest, ecc_pub_y) + AUTH_PUB_ECC_COORD_SIZE
+);
+const _: () = assert!(
+    core::mem::offset_of!(FeProgRequest, sig)
+        == core::mem::offset_of!(FeProgRequest, mldsa_pub) + AUTH_PUB_MLDSA_SIZE
 );
 
 /// Response for field entropy programming (header-only on success).

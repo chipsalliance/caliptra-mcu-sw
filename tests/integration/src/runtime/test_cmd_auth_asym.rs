@@ -183,13 +183,13 @@ fn test_fe_prog_auth_negative_gates() -> Result<()> {
     let mut hw = boot_mcu_mbox_hw();
 
     // Byte offsets into the assembled authorized frame:
-    //   [ body | sig(HybridSignature) | nonce(48) | ecc_x(48) | ecc_y(48) | mldsa_pub(2592) ]
+    //   [ body | nonce(48) | ecc_x(48) | ecc_y(48) | mldsa_pub(2592) | sig(HybridSignature) ]
     let body_len = size_of::<McuFeProgReq>();
-    let sig_off = body_len; // HybridSignature: ecc_sig_r[48] | ecc_sig_s[48] | mldsa_sig[4628]
-    let ecc_r_off = sig_off; // first byte of the ECDSA signature
-    let mldsa_off = sig_off + 96; // first byte of the ML-DSA signature (after r||s)
-    let nonce_off = sig_off + size_of::<HybridSignature>();
+    let nonce_off = body_len;
     let ecc_pub_x_off = nonce_off + AUTH_CMD_NONCE_LEN;
+    let sig_off = ecc_pub_x_off + 48 + 48 + 2592; // after ecc_x | ecc_y | mldsa_pub
+    let ecc_r_off = sig_off; // first byte of the ECDSA signature (r||s)
+    let mldsa_off = sig_off + 96; // first byte of the ML-DSA signature (after r||s)
     let body_off = size_of::<MailboxReqHeader>(); // first signed body byte (partition)
 
     let cmd = || McuFeProgReq {
@@ -205,7 +205,7 @@ fn test_fe_prog_auth_negative_gates() -> Result<()> {
     let r = execute_authorized_req_tampered(&mut hw, cmd(), |b| b[ecc_pub_x_off] ^= 0xff);
     assert_rejected_not_timeout(r, "G2 FE_PROG anchor");
 
-    // G4 ECC/BODY: mutate the body after signing so SHA-512(payload) differs -> ECDSA (step 3) fails.
+    // G4 ECC/BODY: mutate the body after signing so the pre-image differs -> ECDSA over SHA-384 (step 3) fails.
     let r = execute_authorized_req_tampered(&mut hw, cmd(), |b| b[body_off] ^= 0xff);
     assert_rejected_not_timeout(r, "G4 FE_PROG body");
 
@@ -227,11 +227,11 @@ fn test_fuse_read_auth_negative_gates() -> Result<()> {
     let mut hw = boot_mcu_mbox_hw();
 
     let body_len = size_of::<FuseReadReq>();
-    let sig_off = body_len;
+    let nonce_off = body_len;
+    let ecc_pub_x_off = nonce_off + AUTH_CMD_NONCE_LEN;
+    let sig_off = ecc_pub_x_off + 48 + 48 + 2592; // after ecc_x | ecc_y | mldsa_pub
     let ecc_r_off = sig_off;
     let mldsa_off = sig_off + 96;
-    let nonce_off = sig_off + size_of::<HybridSignature>();
-    let ecc_pub_x_off = nonce_off + AUTH_CMD_NONCE_LEN;
     let body_off = size_of::<MailboxReqHeader>();
 
     let cmd = || FuseReadReq {
@@ -277,9 +277,9 @@ fn test_auth_wire_sizes_kat() {
 
     // Device-side canonical authorized FE_PROG request (matches FeProgVdmReq /
     // FeProgRequest, which the firmware/host assert == 7464):
-    //   partition(4) | sig(4724) | nonce(48) | ecc_x(48) | ecc_y(48) | mldsa_pub(2592)
+    //   partition(4) | nonce(48) | ecc_x(48) | ecc_y(48) | mldsa_pub(2592) | ecc_sig(96) | mldsa_sig(4628)
     let fe_prog_authed_body =
-        size_of::<u32>() + size_of::<HybridSignature>() + AUTH_CMD_NONCE_LEN + 48 + 48 + 2592;
+        size_of::<u32>() + AUTH_CMD_NONCE_LEN + 48 + 48 + 2592 + size_of::<HybridSignature>();
     assert_eq!(fe_prog_authed_body, 7464);
 
     // On the host mailbox path the body is preceded by the 4-byte MailboxReqHeader
