@@ -141,10 +141,9 @@ mod test {
                 .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
         });
 
-        // Build the GetLog request for the debug log (log_type 0).
+        // Build the GetLog request for the debug log.
         let mut req = McuMailboxReq::GetLog(GetLogReq {
             hdr: MailboxReqHeader::default(),
-            log_type: 0,
         });
         req.populate_chksum().expect("populate_chksum");
         let cmd = req.cmd_code().0;

@@ -8,7 +8,8 @@
 use super::checksum::calc_checksum;
 use super::command_traits::*;
 use caliptra_mcu_core_util_host_command_types::device_log::{
-    DebugGetLogRequest, DebugGetLogResponse, MAX_DEBUG_LOG_DATA_SIZE,
+    DebugClearLogRequest, DebugClearLogResponse, DebugGetLogRequest, DebugGetLogResponse,
+    MAX_DEBUG_LOG_DATA_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -32,8 +33,6 @@ const MORE_DATA_LEN: usize = 4;
 pub struct ExtCmdDebugGetLogRequest {
     /// Checksum over input data
     pub chksum: u32,
-    /// Log type to retrieve
-    pub log_type: u32,
 }
 
 /// External command: Get Log response
@@ -53,10 +52,7 @@ pub struct ExtCmdDebugGetLogResponse {
 impl FromInternalRequest<DebugGetLogRequest> for ExtCmdDebugGetLogRequest {
     fn from_internal(internal: &DebugGetLogRequest, command_code: u32) -> Self {
         let chksum = calc_checksum(command_code, internal.as_bytes());
-        Self {
-            chksum,
-            log_type: internal.log_type,
-        }
+        Self { chksum }
     }
 }
 
@@ -132,6 +128,43 @@ impl VariableSizeBytes for ExtCmdDebugGetLogResponse {
 }
 
 // ============================================================================
+// MC_CLEAR_LOG Command (0x4D43_4C47 - "MCLG")
+// ============================================================================
+
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdDebugClearLogRequest {
+    pub chksum: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdDebugClearLogResponse {
+    pub chksum: u32,
+    pub fips_status: u32,
+}
+
+impl FromInternalRequest<DebugClearLogRequest> for ExtCmdDebugClearLogRequest {
+    fn from_internal(internal: &DebugClearLogRequest, command_code: u32) -> Self {
+        let chksum = calc_checksum(command_code, internal.as_bytes());
+        Self { chksum }
+    }
+}
+
+impl ToInternalResponse<DebugClearLogResponse> for ExtCmdDebugClearLogResponse {
+    fn to_internal(&self) -> DebugClearLogResponse {
+        DebugClearLogResponse {
+            common: CommonResponse {
+                fips_status: self.fips_status,
+            },
+        }
+    }
+}
+
+impl VariableSizeBytes for ExtCmdDebugClearLogRequest {}
+impl VariableSizeBytes for ExtCmdDebugClearLogResponse {}
+
+// ============================================================================
 // Command Metadata Definition
 // ============================================================================
 
@@ -144,4 +177,13 @@ define_command!(
     DebugGetLogResponse,
     ExtCmdDebugGetLogRequest,
     ExtCmdDebugGetLogResponse
+);
+
+define_command!(
+    DebugClearLogCmd,
+    0x4D43_4C47, // MC_CLEAR_LOG - "MCLG"
+    DebugClearLogRequest,
+    DebugClearLogResponse,
+    ExtCmdDebugClearLogRequest,
+    ExtCmdDebugClearLogResponse
 );

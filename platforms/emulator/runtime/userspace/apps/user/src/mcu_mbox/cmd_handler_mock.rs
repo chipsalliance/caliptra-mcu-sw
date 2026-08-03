@@ -10,8 +10,7 @@ use caliptra_api::mailbox::HpkeHandle;
 use caliptra_api::mailbox::OcpLockEnumerateHpkeHandlesResp;
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, Uid,
-    MAX_FW_VERSION_LEN, MAX_UID_LEN,
+    DeviceCapabilities, FirmwareVersion, GetLogResult, MAX_FW_VERSION_LEN,
 };
 use caliptra_mcu_mbox_common::config;
 
@@ -23,8 +22,8 @@ pub struct NonCryptoCmdHandlerMock;
 
 /// Mock implementation of the `CaliptraCmdHandler` trait.
 ///
-/// This handler provides mock responses for firmware version queries,
-/// device ID, device information, and device capabilities. Intended to use for
+/// This handler provides mock responses for firmware version queries
+/// and device capabilities. Intended to use for
 /// integration testing on the emulator platform.
 #[async_trait]
 impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
@@ -48,35 +47,6 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         version.ver_str[..len].copy_from_slice(&bytes[..len]);
         version.len = len;
         Ok(())
-    }
-
-    async fn get_device_id(&self, device_id: &mut DeviceId) -> CaliptraCmdResult<()> {
-        let test_device_id = &config::TEST_DEVICE_ID;
-        device_id.vendor_id = test_device_id.vendor_id;
-        device_id.device_id = test_device_id.device_id;
-        device_id.subsystem_vendor_id = test_device_id.subsystem_vendor_id;
-        device_id.subsystem_id = test_device_id.subsystem_id;
-        Ok(())
-    }
-
-    async fn get_device_info(&self, index: u32, info: &mut DeviceInfo) -> CaliptraCmdResult<()> {
-        match index {
-            0 => {
-                let test_uid = &config::TEST_UID;
-                if test_uid.len() > MAX_UID_LEN {
-                    return Err(CaliptraCompletionCode::InvalidPayloadSize);
-                }
-                let mut unique_chip_id = [0u8; MAX_UID_LEN];
-                unique_chip_id[..test_uid.len()].copy_from_slice(&test_uid[..]);
-                let uid = Uid {
-                    len: test_uid.len(),
-                    unique_chip_id,
-                };
-                *info = DeviceInfo::Uid(uid);
-                Ok(())
-            }
-            _ => Err(CaliptraCompletionCode::InvalidParameter),
-        }
     }
 
     async fn get_device_capabilities(

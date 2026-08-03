@@ -9,7 +9,7 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, LogType,
+    DeviceCapabilities, FirmwareVersion, GetLogResult, LogType,
 };
 use caliptra_mcu_libapi_caliptra::certificate::{CertContext, IDEV_ECC_CSR_MAX_SIZE};
 use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
@@ -32,14 +32,6 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         _index: u32,
         _version: &mut FirmwareVersion,
     ) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    async fn get_device_id(&self, _device_id: &mut DeviceId) -> CaliptraCmdResult<()> {
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    async fn get_device_info(&self, _index: u32, _info: &mut DeviceInfo) -> CaliptraCmdResult<()> {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
