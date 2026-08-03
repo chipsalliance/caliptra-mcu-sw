@@ -128,6 +128,10 @@ pub struct ConnectionState<S, L> {
     pub advertised_cap_flags: CapFlags,
     /// Peer-advertised capability flags.
     pub peer_cap_flags: CapFlags,
+    /// Peer-advertised CTExponent from the successful GET_CAPABILITIES.
+    /// Together with the other peer capability fields, this identifies an
+    /// identical fixed-format GET_CAPABILITIES retry without retaining bytes.
+    pub peer_ct_exponent: u8,
     /// Negotiated OtherParamsSel from NEGOTIATE_ALGORITHMS.
     pub other_param_sel: OtherParamSupport,
     /// Negotiated BaseAsymSel from NEGOTIATE_ALGORITHMS.
@@ -190,6 +194,7 @@ impl<S, L> ConnectionState<S, L> {
             peer_max_spdm_msg_size: 0,
             advertised_cap_flags: CapFlags::EMPTY,
             peer_cap_flags: CapFlags::EMPTY,
+            peer_ct_exponent: 0,
             other_param_sel: OtherParamSupport::EMPTY,
             negotiated_base_asym_sel: AsymAlgos::EMPTY,
             negotiated_base_hash_sel: HashAlgos::EMPTY,
@@ -239,6 +244,7 @@ impl<S, L: core::ops::DerefMut<Target = [u8]>> ConnectionState<S, L> {
         self.peer_max_spdm_msg_size = 0;
         self.advertised_cap_flags = CapFlags::EMPTY;
         self.peer_cap_flags = CapFlags::EMPTY;
+        self.peer_ct_exponent = 0;
         self.other_param_sel = OtherParamSupport::EMPTY;
         self.negotiated_base_asym_sel = AsymAlgos::EMPTY;
         self.negotiated_base_hash_sel = HashAlgos::EMPTY;

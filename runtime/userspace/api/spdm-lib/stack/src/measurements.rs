@@ -575,7 +575,7 @@ async fn compute_tbs_hash<Pal: SpdmPal>(
 
 #[cfg(test)]
 #[path = "tests/support.rs"]
-mod support;
+pub(crate) mod support;
 
 #[cfg(test)]
 mod tests {

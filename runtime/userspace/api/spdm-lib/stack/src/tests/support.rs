@@ -31,6 +31,7 @@ pub const TEST_CERT_CHAIN: &[u8] = &[0x30, 0x03, 1, 2, 3, 0x30, 0x01, 4];
 #[derive(Clone)]
 pub struct TestHashState {
     digest: [u8; SHA384_DIGEST_SIZE],
+    pub updates: usize,
 }
 
 pub struct TestIo {
@@ -232,6 +233,7 @@ impl SpdmPalHash for TestPal {
     ) -> McuResult<Self::State> {
         Ok(TestHashState {
             digest: test_digest(seed),
+            updates: 1,
         })
     }
 
@@ -242,6 +244,7 @@ impl SpdmPalHash for TestPal {
         data: &[u8],
     ) -> McuResult<()> {
         state.digest = test_digest(data);
+        state.updates += 1;
         Ok(())
     }
 
