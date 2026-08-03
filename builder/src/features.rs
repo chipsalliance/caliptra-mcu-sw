@@ -98,6 +98,7 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-i3c-services",
     "test-dot-recovery-reset-flow",
     "test-rom-hooks",
+    "test-force-hitless-update",
     "test-svn-manifest",
     "test-usb-ocp-recovery",
 ];
