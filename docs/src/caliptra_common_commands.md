@@ -26,7 +26,7 @@ The following table describes the commands defined under this specification. The
 | Device Capabilities             | R   | MCTP VDM, MCI Mailbox | Retrieve device capabilities.                                                                                                        |
 | Get Debug Log                   | R   | MCTP VDM, MCI Mailbox | Retrieve debug log.                                                                                                                  |
 | Clear Debug Log                 | R   | MCTP VDM, MCI Mailbox | Clear debug log.                                                                                                                     |
-| Get Attestation                 | O   | SPDM VDM, MCI Mailbox | Retrieve attestation evidence.                                                                                                       |
+| Get Attestation                 | O   | SPDM VDM              | Retrieve attestation evidence. MCI Mailbox support is TBD.                                                                           |
 | Request Debug Unlock            | O   | SPDM VDM, MCI Mailbox | Request debug unlock in production environment.                                                                                      |
 | Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
 | Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias).                                             |
@@ -65,9 +65,9 @@ Retrieves the version of the target firmware.
 
 **Response Payload**:
 
-| Byte(s) | Name            | Type   | Description                             |
-| ------- | --------------- | ------ | --------------------------------------- |
-| 0:31    | version         | u8[32] | Firmware Version Number in ASCII format |
+| Byte(s) | Name    | Type   | Description                             |
+| ------- | ------- | ------ | --------------------------------------- |
+| 0:31    | version | u8[32] | Firmware Version Number in ASCII format |
 
 ### Device Capabilities
 
@@ -75,9 +75,9 @@ Retrieves the version of the target firmware.
 
 **Response Payload**:
 
-| Byte(s) | Name            | Type   | Description                                                                                                                                                                                                                                                                    |
-| ------- | --------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0:31    | caps            | u8[32] | Device Capabilities: <br>- Bytes [0:7]: Reserved for Caliptra RT <br>- Bytes [8:11]: Reserved for Caliptra FMC <br>- Bytes [12:15]: Reserved for Caliptra ROM <br>- Bytes [16:23]: Reserved for MCU RT <br>- Bytes [24:27]: Reserved for MCU ROM <br>- Bytes [28:31]: Reserved |
+| Byte(s) | Name | Type   | Description                                                                                                                                                                                                                                                                    |
+| ------- | ---- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0:31    | caps | u8[32] | Device Capabilities: <br>- Bytes [0:7]: Reserved for Caliptra RT <br>- Bytes [8:11]: Reserved for Caliptra FMC <br>- Bytes [12:15]: Reserved for Caliptra ROM <br>- Bytes [16:23]: Reserved for MCU RT <br>- Bytes [24:27]: Reserved for MCU ROM <br>- Bytes [28:31]: Reserved |
 
 ### Get Debug Log
 
@@ -87,11 +87,11 @@ Retrieves the debug log for the MCU Runtime.
 
 **Response Payload**:
 
-| Byte(s) | Name            | Type          | Description                         |
-| ------- | --------------- | ------------- | ----------------------------------- |
-| 0:3     | more_data       | u32           | `1` if more log data remains        |
-| 4:7     | data_size       | u32           | Size of the valid log data in bytes |
-| 8:N     | data            | u8[data_size] | Debug log contents                  |
+| Byte(s) | Name      | Type          | Description                         |
+| ------- | --------- | ------------- | ----------------------------------- |
+| 0:3     | more_data | u32           | `1` if more log data remains        |
+| 4:7     | data_size | u32           | Size of the valid log data in bytes |
+| 8:N     | data      | u8[data_size] | Debug log contents                  |
 
 For defmt-based debug logs, the device exposes a sequential drain interface rather than random access to individual log entries. Callers drain the debug log by repeating this command until `more_data` is `0`. Each response contains zero or more complete defmt frames. The host concatenates the returned data and decodes the resulting frame stream using the matching firmware ELF.
 
@@ -111,7 +111,7 @@ Clears the debug log in the MCU Runtime. No authorization is required.
 
 ### Get Attestation
 
-Retrieves attestation evidence. This command is assigned to SPDM VDM IANA. The payload format is TBD.
+Retrieves attestation evidence. This command is assigned to SPDM VDM IANA. MCI Mailbox support and the payload format are TBD.
 
 **Request Payload**: TBD
 
@@ -172,10 +172,10 @@ Exports an attested Certificate Signing Request (CSR) for a specified device key
 
 **Response Payload**:
 
-| Byte(s) | Name            | Type          | Description                              |
-| ------- | --------------- | ------------- | ---------------------------------------- |
-| 0:3     | data_size       | u32           | Length in bytes of the attested CSR data |
-| 4:N     | data            | u8[data_size] | Attested CSR data blob                   |
+| Byte(s) | Name      | Type          | Description                              |
+| ------- | --------- | ------------- | ---------------------------------------- |
+| 0:3     | data_size | u32           | Length in bytes of the attested CSR data |
+| 4:N     | data      | u8[data_size] | Attested CSR data blob                   |
 
 ### Authorization-Gated Subcommand Wrapper
 
