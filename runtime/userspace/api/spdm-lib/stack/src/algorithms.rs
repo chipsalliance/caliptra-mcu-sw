@@ -60,8 +60,10 @@ struct PeerAlgs {
 ///
 /// # Errors
 ///
-/// * [`SPDM_UNEXPECTED_REQUEST`] — connection is not in
-///   [`Phase::AfterCapabilities`].
+/// * [`SPDM_REQUEST_RESYNCH`](crate::error::SPDM_REQUEST_RESYNCH) - request
+///   arrived before [`Phase::AfterCapabilities`] (a skipped prerequisite; latches resync).
+/// * [`SPDM_UNEXPECTED_REQUEST`] — algorithms were already negotiated
+///   (a non-identical retry past [`Phase::AfterCapabilities`]).
 /// * [`SPDM_INVALID_REQUEST`] — header undecodable or body violates
 ///   the corresponding table (see [`locate_alg_structs`] / [`parse_peer_algs`]
 ///   for the exact rules).
@@ -70,6 +72,15 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
+    // A NEGOTIATE_ALGORITHMS that arrives before GET_CAPABILITIES has completed
+    // skips a prerequisite phase: that is out of order (SPDM-19 - RequestResynch,
+    // latch). A NEGOTIATE_ALGORITHMS that arrives after algorithms were already
+    // negotiated is a non-identical retry, which DSP0274 1.4.0 section 17
+    // (General ordering rules) answers with ERROR(UnexpectedRequest, 0x04),
+    // not RequestResynch.
+    if (state.phase as u8) < (Phase::AfterCapabilities as u8) {
+        return Err(state.out_of_order());
+    }
     if state.phase != Phase::AfterCapabilities {
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
