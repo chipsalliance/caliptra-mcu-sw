@@ -1040,27 +1040,24 @@ mod tests {
                 INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
                 {
                     let mut payload = vec![];
-                    payload.extend_from_slice(&0x1122_3344u32.to_le_bytes());
+                    payload.extend_from_slice(&0u32.to_le_bytes());
                     payload.extend_from_slice(&17u32.to_le_bytes());
                     payload
                 },
-                AuthorizedOperation::IncreaseCaliptraMinSvn {
-                    flags: 0x1122_3344,
-                    svn: 17,
-                },
+                AuthorizedOperation::IncreaseCaliptraMinSvn { flags: 0, svn: 17 },
             ),
             (
                 REVOKE_VENDOR_PUB_KEY_CMD_ID,
                 {
                     let mut payload = vec![];
-                    payload.extend_from_slice(&0xAABB_CCDDu32.to_le_bytes());
+                    payload.extend_from_slice(&0u32.to_le_bytes());
                     payload.extend_from_slice(&3u32.to_le_bytes());
                     payload.extend_from_slice(&2u32.to_le_bytes());
                     payload.extend_from_slice(&7u32.to_le_bytes());
                     payload
                 },
                 AuthorizedOperation::RevokeVendorPubKey {
-                    reserved: 0xAABB_CCDD,
+                    reserved: 0,
                     slot: 3,
                     key_type: 2,
                     key_index: 7,
@@ -1070,12 +1067,12 @@ mod tests {
                 REVOKE_VENDOR_PK_HASH_CMD_ID,
                 {
                     let mut payload = vec![];
-                    payload.extend_from_slice(&0x5566_7788u32.to_le_bytes());
+                    payload.extend_from_slice(&0u32.to_le_bytes());
                     payload.extend_from_slice(&4u32.to_le_bytes());
                     payload
                 },
                 AuthorizedOperation::RevokeVendorPkHash {
-                    reserved: 0x5566_7788,
+                    reserved: 0,
                     slot: 4,
                 },
             ),

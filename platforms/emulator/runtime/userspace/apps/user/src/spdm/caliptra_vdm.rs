@@ -160,7 +160,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
 
     async fn increase_caliptra_min_svn<A: SpdmPalAlloc>(
         &self,
-        _flags: u32,
+        flags: u32,
         svn: u32,
         payload: &[u8],
         sig: &HybridSignature,
@@ -183,6 +183,9 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             )
             .await
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        if flags != 0 {
+            return Err(CaliptraCompletionCode::InvalidParameter);
+        }
         CaliptraCmdBackend
             .increase_caliptra_min_svn(scratch, svn)
             .await
@@ -226,7 +229,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
     #[allow(clippy::too_many_arguments)]
     async fn revoke_vendor_pub_key<A: SpdmPalAlloc>(
         &self,
-        _reserved: u32,
+        reserved: u32,
         slot: u32,
         key_type: u32,
         key_index: u32,
@@ -251,6 +254,9 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             )
             .await
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        if reserved != 0 {
+            return Err(CaliptraCompletionCode::InvalidParameter);
+        }
         CaliptraCmdBackend
             .revoke_vendor_pub_key(scratch, slot, key_type, key_index)
             .await
@@ -259,7 +265,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
 
     async fn revoke_vendor_pk_hash<A: SpdmPalAlloc>(
         &self,
-        _reserved: u32,
+        reserved: u32,
         slot: u32,
         payload: &[u8],
         sig: &HybridSignature,
@@ -282,6 +288,9 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             )
             .await
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        if reserved != 0 {
+            return Err(CaliptraCompletionCode::InvalidParameter);
+        }
         CaliptraCmdBackend
             .revoke_vendor_pk_hash(slot)
             .await

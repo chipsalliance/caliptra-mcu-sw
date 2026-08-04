@@ -10,7 +10,7 @@ For the unified software architecture shared between OOB (SPDM VDM) and in-band 
 
 ## Transport Stack
 
-```
+```text
 ┌─────────────────────────────────────────┐
 │        Caliptra VDM Commands            │
 │ (FirmwareVersion, ExportAttestedCsr, …) │
@@ -105,31 +105,57 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 ### Authorization Flow
 
 1. Send `GetAuthChallenge` with an empty subcommand payload. The successful response data is a 48-byte challenge.
-2. Serialize the target subcommand payload exactly as listed below, excluding `HybridSignature`.
-3. Sign `subcommand_id(BE) || payload || challenge` with both the authorized ECC P-384 and ML-DSA-87 keys.
-4. Append `HybridSignature` (`ecc_sig_r[48] || ecc_sig_s[48] || mldsa_sig[4628]`) to the payload and submit it under `AuthorizedCommand`.
+2. Serialize the target subcommand payload exactly as listed below, excluding the common authorization trailer.
+3. Sign `subcommand_id(BE) || payload || challenge` with both the authorized ECC P-384 and ML-DSA-87 keys. The signed command ID is big-endian even though the `AuthorizedCommand` wire field is little-endian.
+4. Append the common authorization trailer and submit the complete request under `AuthorizedCommand`.
 
-The challenge is consumed by the verification attempt and cannot be reused. Requests must have the exact documented size; missing, truncated, and oversized signatures are rejected with `InvalidPayloadSize`, while failed authorization returns `AccessDenied`.
+The common authorization trailer is:
+
+```text
+nonce[48] || ecc_pub_x[48] || ecc_pub_y[48] || mldsa_pub[2592] || HybridSignature
+```
+
+`nonce` echoes the challenge. `HybridSignature` is `ecc_sig_r[48] || ecc_sig_s[48] || mldsa_sig[4628]`. The challenge is consumed by the verification attempt and cannot be reused. Requests must have the exact documented size; missing, truncated, and oversized trailers are rejected with `InvalidPayloadSize`, while failed authorization returns `AccessDenied`.
 
 ### Implemented Subcommand Payloads
 
-Byte offsets below begin immediately after the four-byte `subcommand_id`.
+Byte offsets below begin immediately after the four-byte `subcommand_id` and include the complete authorization trailer.
 
 | Subcommand | Bytes | Field | Encoding |
 | ---------- | ----- | ----- | -------- |
 | PVPK | 0:3 | `slot` | u32, little-endian |
 | | 4:51 | `hash` | u8[48] |
-| | 52:4775 | `signature` | HybridSignature |
-| MCMS | 0:3 | `flags` | u32, little-endian |
+| | 52:99 | `nonce` | u8[48] |
+| | 100:147 | `ecc_pub_x` | u8[48] |
+| | 148:195 | `ecc_pub_y` | u8[48] |
+| | 196:2787 | `mldsa_pub` | u8[2592] |
+| | 2788:7511 | `signature` | HybridSignature |
+| MCMS | 0:3 | `flags` | u32, little-endian; must be zero |
 | | 4:7 | `svn` | u32, little-endian |
-| | 8:4731 | `signature` | HybridSignature |
+| | 8:55 | `nonce` | u8[48] |
+| | 56:103 | `ecc_pub_x` | u8[48] |
+| | 104:151 | `ecc_pub_y` | u8[48] |
+| | 152:2743 | `mldsa_pub` | u8[2592] |
+| | 2744:7467 | `signature` | HybridSignature |
 | MCFP | 0:3 | `partition` | u32, little-endian |
-| | 4:4727 | `signature` | HybridSignature |
-| MRVK | 0:3 | `reserved` | u32, little-endian |
+| | 4:51 | `nonce` | u8[48] |
+| | 52:99 | `ecc_pub_x` | u8[48] |
+| | 100:147 | `ecc_pub_y` | u8[48] |
+| | 148:2739 | `mldsa_pub` | u8[2592] |
+| | 2740:7463 | `signature` | HybridSignature |
+| MRVK | 0:3 | `reserved` | u32, little-endian; must be zero |
 | | 4:7 | `slot` | u32, little-endian |
 | | 8:11 | `key_type` | u32, little-endian |
 | | 12:15 | `key_index` | u32, little-endian |
-| | 16:4739 | `signature` | HybridSignature |
-| RVKH | 0:3 | `reserved` | u32, little-endian |
+| | 16:63 | `nonce` | u8[48] |
+| | 64:111 | `ecc_pub_x` | u8[48] |
+| | 112:159 | `ecc_pub_y` | u8[48] |
+| | 160:2751 | `mldsa_pub` | u8[2592] |
+| | 2752:7475 | `signature` | HybridSignature |
+| RVKH | 0:3 | `reserved` | u32, little-endian; must be zero |
 | | 4:7 | `slot` | u32, little-endian |
-| | 8:4731 | `signature` | HybridSignature |
+| | 8:55 | `nonce` | u8[48] |
+| | 56:103 | `ecc_pub_x` | u8[48] |
+| | 104:151 | `ecc_pub_y` | u8[48] |
+| | 152:2743 | `mldsa_pub` | u8[2592] |
+| | 2744:7467 | `signature` | HybridSignature |
