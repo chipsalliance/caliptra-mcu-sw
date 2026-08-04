@@ -396,7 +396,7 @@ mod tests {
             &self,
             capabilities: &mut DeviceCapabilities,
         ) -> CaliptraCmdResult<()> {
-            capabilities.mcu_rt = *b"mcu-test";
+            capabilities.mcu_rt = *b"test";
             Ok(())
         }
 
