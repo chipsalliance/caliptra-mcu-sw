@@ -1,8 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use crate::auth_keys::{TEST_AUTH_ECC_PUB_KEY_X, TEST_AUTH_ECC_PUB_KEY_Y, TEST_AUTH_MLDSA_PUB_KEY};
-use alloc::boxed::Box;
-use async_trait::async_trait;
 use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, FuseIncreaseCaliptraMinSvnReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
@@ -10,19 +8,18 @@ use caliptra_mcu_mbox_common::messages::{
     ProvisionVendorPkHashReq,
 };
 use core::mem::size_of;
+use mcu_caliptra_api_lite::ApiAlloc;
 use zerocopy::FromBytes;
-
-extern crate alloc;
 
 #[derive(Default)]
 pub struct MockCommandAuthorizer {
     challenge: Option<[u8; 32]>,
 }
 
-#[async_trait]
 impl CommandAuthorizer for MockCommandAuthorizer {
-    async fn is_authorized<'a>(
+    async fn is_authorized<'a, Alloc: ApiAlloc>(
         &mut self,
+        _alloc: &Alloc,
         cmd_id: CommandId,
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError> {

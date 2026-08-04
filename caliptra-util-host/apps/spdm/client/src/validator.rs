@@ -11,11 +11,11 @@
 //! 3. Call it from `run_all()`
 //! 4. Add a config section in `config.rs`
 
-use crate::config::{DeviceMode, TestConfig};
+use crate::config::TestConfig;
 use crate::SpdmVdmClient;
 use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
-use caliptra_mcu_core_util_host_command_types::fuse::MC_FE_PROG_CANONICAL_CMD_ID;
+use caliptra_mcu_core_util_host_command_types::fuse::{FeProgRequest, MC_FE_PROG_CANONICAL_CMD_ID};
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
 
 /// Result of a single validation check.
@@ -96,10 +96,6 @@ pub fn all_passed(results: &[ValidationResult]) -> bool {
 }
 
 /// Run all VDM command validations using the typed SpdmVdmClient.
-///
-/// Test suite depends on the configured DeviceMode:
-/// - Production: ExportAttestedCsr + ExportIdevidCsr(expect_fail)
-/// - Manufacturing: ExportIdevidCsr only
 pub fn run_all(
     client: &mut SpdmVdmClient,
     config: &TestConfig,
@@ -109,28 +105,12 @@ pub fn run_all(
 ) -> Vec<ValidationResult> {
     let mut results = Vec::new();
 
-    match config.mode {
-        DeviceMode::Production => {
-            results.extend(run_export_attested_csr(
-                client,
-                &config.export_attested_csr.key_ids,
-                config.export_attested_csr.algorithm,
-                verbose,
-            ));
-            results.extend(run_export_idevid_csr_expect_fail(
-                client,
-                &config.export_idevid_csr.algorithms,
-                verbose,
-            ));
-        }
-        DeviceMode::Manufacturing => {
-            results.extend(run_export_idevid_csr(
-                client,
-                &config.export_idevid_csr.algorithms,
-                verbose,
-            ));
-        }
-    }
+    results.extend(run_export_attested_csr(
+        client,
+        &config.export_attested_csr.key_ids,
+        config.export_attested_csr.algorithm,
+        verbose,
+    ));
 
     if config.debug_unlock.enabled {
         results.push(run_prod_debug_unlock(
@@ -192,74 +172,6 @@ pub fn run_export_attested_csr(
         .collect()
 }
 
-/// Validate ExportIdevidCsr for each algorithm (manufacturing mode).
-pub fn run_export_idevid_csr(
-    client: &mut SpdmVdmClient,
-    algorithms: &[u32],
-    verbose: bool,
-) -> Vec<ValidationResult> {
-    algorithms
-        .iter()
-        .map(|&algorithm| {
-            let test_name = format!("ExportIdevidCsr(algorithm={})", algorithm);
-            match client.export_idevid_csr(algorithm) {
-                Ok(response) => match response.validate_csr_payload() {
-                    Ok(len) => {
-                        if verbose {
-                            println!("  csr: {} bytes", len);
-                        }
-                        ValidationResult::pass(test_name, format!("{} bytes", len))
-                    }
-                    Err(AttestedCsrValidationError::Empty) => {
-                        ValidationResult::fail(test_name, "CSR data is empty")
-                    }
-                    Err(AttestedCsrValidationError::TooLarge(len)) => ValidationResult::fail(
-                        test_name,
-                        format!("CSR data_len {} exceeds maximum", len),
-                    ),
-                },
-                Err(msg) => {
-                    let msg_str = format!("{}", msg);
-                    if msg_str.contains("NotSupported") {
-                        ValidationResult::skip(test_name, msg_str)
-                    } else {
-                        ValidationResult::fail(test_name, msg_str)
-                    }
-                }
-            }
-        })
-        .collect()
-}
-
-/// Negative test: ExportIdevidCsr should be rejected in production mode.
-pub fn run_export_idevid_csr_expect_fail(
-    client: &mut SpdmVdmClient,
-    algorithms: &[u32],
-    verbose: bool,
-) -> Vec<ValidationResult> {
-    algorithms
-        .iter()
-        .map(|&algorithm| {
-            let test_name = format!("ExportIdevidCsr(algorithm={},expect_fail)", algorithm);
-            match client.export_idevid_csr(algorithm) {
-                Ok(_response) => {
-                    if verbose {
-                        println!("  Expected rejection but got success");
-                    }
-                    ValidationResult::fail(
-                        test_name,
-                        "Expected device to reject ExportIdevidCsr in production mode",
-                    )
-                }
-                Err(_) => ValidationResult::pass(
-                    test_name,
-                    "Device correctly rejected ExportIdevidCsr in production mode",
-                ),
-            }
-        })
-        .collect()
-}
-
 /// Validate Production Debug Unlock via SPDM VDM.
 ///
 /// When a [`DebugUnlockSigner`] is provided, performs a full end-to-end flow:
@@ -305,6 +217,7 @@ pub fn run_prod_debug_unlock(
 
                 let token = match signer.sign_debug_unlock_token(&challenge, unlock_level) {
                     Ok(t) => ProdDebugUnlockTokenRequest {
+                        checksum: 0,
                         length: t.length,
                         unique_device_identifier: t.unique_device_identifier,
                         unlock_level: t.unlock_level,
@@ -391,18 +304,19 @@ pub fn run_fe_prog(
         );
     }
 
-    // Step 2: Compute MAC via the authorizer
+    // Step 2: Compute the hybrid signature via the authorizer
     let cmd_id = MC_FE_PROG_CANONICAL_CMD_ID;
-    let mac_bytes =
+    let sig =
         match authorizer.authorize(cmd_id, &partition.to_le_bytes(), &challenge_resp.challenge) {
-            Ok(mac) => mac,
+            Ok(sig) => sig,
             Err(e) => {
                 return ValidationResult::fail(test_name, format!("Authorization failed: {}", e));
             }
         };
 
     // Step 3: Submit FE_PROG
-    match client.fe_prog(partition, &mac_bytes) {
+    let request = FeProgRequest { partition, sig };
+    match client.fe_prog(&request) {
         Ok(_) => {
             if verbose {
                 println!("  FE_PROG succeeded for partition {}", partition);

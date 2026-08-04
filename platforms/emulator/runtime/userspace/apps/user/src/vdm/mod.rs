@@ -49,7 +49,10 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
         static TRANSPORT: StaticCell<caliptra_mcu_mctp_vdm_lib::transport::MctpVdmTransport> =
             StaticCell::new();
         static CMD_INTERFACE: StaticCell<
-            caliptra_mcu_mctp_vdm_lib::cmd_interface::CmdInterface<'static>,
+            caliptra_mcu_mctp_vdm_lib::cmd_interface::CmdInterface<
+                'static,
+                cmd_handler_mock::NonCryptoCmdHandlerMock,
+            >,
         > = StaticCell::new();
 
         let handler: &'static cmd_handler_mock::NonCryptoCmdHandlerMock =
@@ -69,6 +72,7 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
         // Create the command interface with static storage
         let cmd_interface: &'static mut caliptra_mcu_mctp_vdm_lib::cmd_interface::CmdInterface<
             'static,
+            cmd_handler_mock::NonCryptoCmdHandlerMock,
         > = CMD_INTERFACE.init(caliptra_mcu_mctp_vdm_lib::cmd_interface::CmdInterface::new(
             transport, handler,
         ));
@@ -78,16 +82,7 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
             "Starting MCTP VDM service for integration tests..."
         );
 
-        if let Err(e) = caliptra_mcu_mctp_vdm_lib::daemon::spawn_vdm_responder(
-            crate::EXECUTOR.get().spawner(),
-            cmd_interface,
-        ) {
-            crate::log_error!(
-                console_writer,
-                "USER_APP: Error starting MCTP VDM service: {}",
-                crate::Dbg(e)
-            );
-        }
+        caliptra_mcu_mctp_vdm_lib::daemon::vdm_responder(cmd_interface).await;
         let suspend_signal: Signal<CriticalSectionRawMutex, ()> = Signal::new();
         suspend_signal.wait().await;
     }

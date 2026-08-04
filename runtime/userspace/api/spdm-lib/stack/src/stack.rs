@@ -280,14 +280,7 @@ impl<S, L: core::ops::DerefMut<Target = [u8]>> ConnectionState<S, L> {
     }
 
     /// Resets the incoming chunk reassembly state, securely wiping any buffered reassembly bytes.
-    #[allow(dead_code)]
     pub(crate) fn reset_chunk_assembly(&mut self) {
-        self.large_msg_ctx.reset();
-    }
-
-    /// Resets the outgoing large response state, securely wiping any buffered response bytes.
-    #[allow(dead_code)]
-    pub(crate) fn reset_large_response(&mut self) {
         self.large_msg_ctx.reset();
     }
 }
@@ -622,7 +615,7 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
     if state.resync_required && code != ReqRespCode::GET_VERSION {
         return Err(SPDM_REQUEST_RESYNCH);
     }
-    abort_chunk_reassembly_if_interrupted(state, code);
+    abort_chunk_reassembly_if_interrupted(state, pal, io, vdm, code).await;
     if code != ReqRespCode::CHUNK_GET
         && code != ReqRespCode::CHUNK_SEND
         && state.large_msg_ctx.response_in_progress()
@@ -645,7 +638,7 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         ReqRespCode::GET_CERTIFICATE => certificate::handle_get_certificate(state, pal, io).await,
         ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
         ReqRespCode::CHUNK_SEND => {
-            chunk::handle_chunk_send(state, pal, io, vdm, io.request(), false).await
+            chunk::handle_chunk_send(state, pal, io, vdm, io.request(), None, true).await
         }
         ReqRespCode::CHUNK_GET => chunk::handle_chunk_get(state, pal, io, io.request()).await,
         #[cfg(feature = "set-certificate")]
@@ -680,11 +673,15 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
     }
 }
 
-fn abort_chunk_reassembly_if_interrupted<S, L>(state: &mut ConnectionState<S, L>, code: ReqRespCode)
-where
-    L: core::ops::DerefMut<Target = [u8]>,
-{
+async fn abort_chunk_reassembly_if_interrupted<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    vdm: &Vdm,
+    code: ReqRespCode,
+) {
     if code != ReqRespCode::CHUNK_SEND && state.large_msg_ctx.request_in_progress() {
+        chunk::abort_active_streaming_request(state, pal, io, vdm).await;
         state.large_msg_ctx.reset();
     }
 }
@@ -829,7 +826,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
     // ── Dispatch on SPDM code ───────────────────────────────────────
     let (spdm_hdr, _) =
         SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
-    abort_chunk_reassembly_if_interrupted(state, spdm_hdr.code);
+    abort_chunk_reassembly_if_interrupted(state, pal, io, vdm, spdm_hdr.code).await;
     let session_state = sessions.find(session_id).ok_or(SPDM_UNSPECIFIED)?.state;
 
     // A request that is not valid for the current session phase is an
@@ -969,8 +966,16 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             .await
         }
         ReqRespCode::CHUNK_SEND => {
-            let chunk_send_ack =
-                chunk::handle_chunk_send(state, pal, io, vdm, spdm_msg, true).await?;
+            let chunk_send_ack = chunk::handle_chunk_send(
+                state,
+                pal,
+                io,
+                vdm,
+                spdm_msg,
+                Some(session_id),
+                session_state == SessionState::Established,
+            )
+            .await?;
             let head = pal.header_size();
             let spdm_rsp = &chunk_send_ack[head..];
             let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;

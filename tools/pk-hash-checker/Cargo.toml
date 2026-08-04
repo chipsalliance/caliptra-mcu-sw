@@ -1,0 +1,27 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-pk-hash-checker"
+version = "0.1.0"
+edition = "2021"
+description = "Tool to verify vendor or owner public-key hashes embedded in a Caliptra firmware bundle"
+
+[[bin]]
+name = "pk-hash-checker"
+path = "src/main.rs"
+
+[dependencies]
+# Caliptra image-format types: provides ImageManifest, IMAGE_MANIFEST_BYTE_SIZE, etc.
+caliptra-image-types = { workspace = true, features = ["std"] }
+# Caliptra RustCrypto shim that produces hardware-compatible SHA-384 digests.
+caliptra-image-crypto.workspace = true
+# Helpers such as `from_hw_format` that convert hardware word arrays to byte slices.
+caliptra-image-gen.workspace = true
+# General error-handling / propagation.
+anyhow.workspace = true
+# Hex encoding / decoding for hash display and expected-hash input.
+hex.workspace = true
+# Zero-copy struct overlay used to interpret raw bundle bytes as an ImageManifest.
+zerocopy.workspace = true
+# CLI argument parsing.
+clap.workspace = true

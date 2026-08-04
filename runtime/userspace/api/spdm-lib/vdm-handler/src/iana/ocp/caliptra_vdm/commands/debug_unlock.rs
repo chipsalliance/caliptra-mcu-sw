@@ -18,17 +18,34 @@ where
     H: CaliptraVdmCommands,
     A: SpdmPalAlloc,
 {
-    // Decode only the required unlock-level byte. Missing data is an invalid
-    // payload; extra bytes are ignored by the command handler.
-    let Some(&unlock_level) = req.first() else {
+    const REQUEST_LENGTH_DWORDS: u32 = 2;
+    const RESPONSE_LENGTH_DWORDS: u32 = 21;
+
+    let &[length_0, length_1, length_2, length_3, unlock_level, _, _, _] = req else {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
     };
+    let length = u32::from_le_bytes([length_0, length_1, length_2, length_3]);
+    if length != REQUEST_LENGTH_DWORDS {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    }
+
     let data = match super::write_success(out) {
         Ok(data) => data,
         Err(code) => return CaliptraVdmCmdResult::Error(code),
     };
-    match cmds.request_debug_unlock(unlock_level, scratch, data).await {
-        Ok(n) => CaliptraVdmCmdResult::Response(1 + n),
+    let Some((length_out, challenge_out)) = data.split_at_mut_checked(core::mem::size_of::<u32>())
+    else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+
+    match cmds
+        .request_debug_unlock(unlock_level, scratch, challenge_out)
+        .await
+    {
+        Ok(n) => {
+            length_out.copy_from_slice(&RESPONSE_LENGTH_DWORDS.to_le_bytes());
+            CaliptraVdmCmdResult::Response(1 + length_out.len() + n)
+        }
         Err(code) => CaliptraVdmCmdResult::Error(code),
     }
 }

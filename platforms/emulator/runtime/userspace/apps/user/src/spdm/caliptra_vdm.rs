@@ -10,18 +10,17 @@
 extern crate alloc;
 
 use crate::auth_keys::{TEST_AUTH_ECC_PUB_KEY_X, TEST_AUTH_ECC_PUB_KEY_Y, TEST_AUTH_MLDSA_PUB_KEY};
-use alloc::boxed::Box;
 use caliptra_mcu_common_commands::{
-    CaliptraCompletionCode as CommonCompletionCode, GetLogResult, DEBUG_UNLOCK_CHALLENGE_SIZE,
+    CaliptraCompletionCode as CommonCompletionCode, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
-use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
+use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_mbox_common::messages::HybridSignature;
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
-    CaliptraCompletionCode, CaliptraVdmCommands, CaliptraVdmLogResult, CaliptraVdmResult,
+    CaliptraCompletionCode, CaliptraVdmCommands, CaliptraVdmResult,
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -40,48 +39,14 @@ const ALGO_MLDSA87: u32 = 0x0002;
 const FE_PROG_CMD_ID: u32 = 0x4D43_4650;
 
 static AUTH_CHALLENGE: Mutex<CriticalSectionRawMutex, Option<[u8; 32]>> = Mutex::new(None);
+// Kernel chunked-mailbox state rejects other processes; this flag serializes this
+// app's DebugUnlock stream and lets abort clean up the in-flight mailbox request.
+static DEBUG_UNLOCK_TOKEN_STREAM: Mutex<CriticalSectionRawMutex, bool> = Mutex::new(false);
 
 /// Emulator Caliptra VDM device-operations backend.
 pub struct CaliptraVdmHook;
 
 impl CaliptraVdmCommands for CaliptraVdmHook {
-    async fn get_log<A: SpdmPalAlloc>(
-        &self,
-        log_type: u32,
-        _scratch: &A,
-        out: &mut [u8],
-    ) -> CaliptraVdmResult<CaliptraVdmLogResult> {
-        let result = match log_type {
-            0 => crate::caliptra_cmd_handler::debug_log::drain(out)
-                .await
-                .map_err(map_common_completion),
-            1 => Err(CaliptraCompletionCode::UnsupportedOperation),
-            _ => Err(CaliptraCompletionCode::InvalidParameter),
-        }?;
-        let GetLogResult {
-            bytes_written,
-            more_data,
-        } = result;
-        Ok(CaliptraVdmLogResult {
-            bytes_written,
-            more_data,
-        })
-    }
-
-    async fn clear_log<A: SpdmPalAlloc>(
-        &self,
-        log_type: u32,
-        _scratch: &A,
-    ) -> CaliptraVdmResult<()> {
-        match log_type {
-            0 => crate::caliptra_cmd_handler::debug_log::clear()
-                .await
-                .map_err(map_common_completion),
-            1 => Err(CaliptraCompletionCode::UnsupportedOperation),
-            _ => Err(CaliptraCompletionCode::InvalidParameter),
-        }
-    }
-
     async fn request_debug_unlock<A: SpdmPalAlloc>(
         &self,
         unlock_level: u8,
@@ -104,20 +69,103 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
         scratch: &A,
     ) -> CaliptraVdmResult<()> {
         let cmd = PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD;
-        // The host sends the production debug-unlock token payload in Caliptra RT
-        // mailbox format, including the MailboxReqHeader/checksum, and large
-        // requests are streamed directly to the mailbox. Do not synthesize
-        // another checksum header here or the mailbox would receive
-        // `[new_checksum || host_checksum || token]`.
-        let mut token_stream = SlicePayloadStream::new(token_data);
+        // The host sends AuthorizeDebugUnlockToken as a complete Caliptra RT
+        // mailbox request, including MailboxReqHeader.checksum. Preserve those
+        // payload bytes exactly; do not synthesize another mailbox header here.
         let mut resp_buf = ApiAlloc::alloc(scratch, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN)
             .map_err(map_mcu_err)?;
 
         Mailbox::<DefaultSyscalls>::new()
-            .execute_with_payload_stream(cmd, None, &mut token_stream, &mut resp_buf)
+            .execute_with_payload_slice(cmd, None, token_data, &mut resp_buf)
             .await
             .map_err(map_mailbox_error)?;
         Ok(())
+    }
+
+    async fn start_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        token_len: usize,
+        first: &[u8],
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        let mut active = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
+        let mailbox = Mailbox::<DefaultSyscalls>::new();
+        if *active {
+            let _ = mailbox.abort_chunked_request().await;
+            *active = false;
+        }
+
+        mailbox
+            .start_chunked_request(PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, token_len)
+            .await
+            .map_err(map_mailbox_error)?;
+        *active = true;
+        if !first.is_empty() {
+            if let Err(err) = mailbox.send_chunk(first).await {
+                let _ = mailbox.abort_chunked_request().await;
+                *active = false;
+                return Err(map_mailbox_error(err));
+            }
+        }
+        Ok(())
+    }
+
+    async fn continue_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        chunk: &[u8],
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        if chunk.is_empty() {
+            return Ok(());
+        }
+        let mut active = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
+        if !*active {
+            return Err(CaliptraCompletionCode::InvalidState);
+        }
+        let mailbox = Mailbox::<DefaultSyscalls>::new();
+        if let Err(err) = mailbox.send_chunk(chunk).await {
+            let _ = mailbox.abort_chunked_request().await;
+            *active = false;
+            return Err(map_mailbox_error(err));
+        }
+        Ok(())
+    }
+
+    async fn finish_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        let mut active = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
+        if !*active {
+            return Err(CaliptraCompletionCode::InvalidState);
+        }
+        let mailbox = Mailbox::<DefaultSyscalls>::new();
+        let mut resp_buf =
+            match ApiAlloc::alloc(scratch, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN) {
+                Ok(buf) => buf,
+                Err(err) => {
+                    let _ = mailbox.abort_chunked_request().await;
+                    *active = false;
+                    return Err(map_mcu_err(err));
+                }
+            };
+        let result = mailbox
+            .execute_chunked_request(PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, &mut resp_buf)
+            .await
+            .map_err(map_mailbox_error);
+        *active = false;
+        result?;
+        Ok(())
+    }
+
+    async fn abort_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(&self, _scratch: &A) {
+        let mut active = DEBUG_UNLOCK_TOKEN_STREAM.lock().await;
+        if *active {
+            let _ = Mailbox::<DefaultSyscalls>::new()
+                .abort_chunked_request()
+                .await;
+            *active = false;
+        }
     }
 
     async fn export_attested_csr<A: SpdmPalAlloc>(
@@ -162,40 +210,11 @@ impl CaliptraVdmCommands for CaliptraVdmHook {
     }
 }
 
-struct SlicePayloadStream<'a> {
-    data: &'a [u8],
-    offset: usize,
-}
-
-impl<'a> SlicePayloadStream<'a> {
-    fn new(data: &'a [u8]) -> Self {
-        Self { data, offset: 0 }
-    }
-}
-
-#[async_trait::async_trait(?Send)]
-impl PayloadStream for SlicePayloadStream<'_> {
-    fn size(&self) -> usize {
-        self.data.len()
-    }
-
-    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
-        let remaining = self.data.len().saturating_sub(self.offset);
-        if remaining == 0 {
-            return Ok(0);
-        }
-        let n = remaining.min(buffer.len());
-        buffer[..n].copy_from_slice(&self.data[self.offset..self.offset + n]);
-        self.offset += n;
-        Ok(n)
-    }
-}
-
 fn map_mcu_err(e: McuErrorCode) -> CaliptraCompletionCode {
     use mcu_error::codes;
     if e == codes::MAILBOX_BUSY {
         CaliptraCompletionCode::CaliptraMailboxBusy
-    } else if e == codes::INVARIANT {
+    } else if e == codes::INVARIANT || e == codes::INTERNAL_BUG {
         CaliptraCompletionCode::OperationFailed
     } else if e.domain() == mcu_error::domain::MEMORY {
         CaliptraCompletionCode::InsufficientResources

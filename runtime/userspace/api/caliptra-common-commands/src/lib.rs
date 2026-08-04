@@ -1,17 +1,16 @@
 // Licensed under the Apache-2.0 license
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
-extern crate alloc;
+#![allow(async_fn_in_trait)]
 
-use alloc::boxed::Box;
-use async_trait::async_trait;
+#[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
 use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature};
+use mcu_caliptra_api_lite::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
 pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_CSR_DATA_LEN;
 pub const MAX_FW_VERSION_LEN: usize = 32;
-pub const MAX_UID_LEN: usize = 32;
 
 /// Size of the unique device identifier in bytes.
 pub const DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE: usize = 32;
@@ -70,27 +69,6 @@ impl Default for AttestedCsrData {
 pub struct FirmwareVersion {
     pub len: usize,
     pub ver_str: [u8; MAX_FW_VERSION_LEN],
-}
-
-#[repr(C)]
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct DeviceId {
-    pub vendor_id: u16,
-    pub device_id: u16,
-    pub subsystem_vendor_id: u16,
-    pub subsystem_id: u16,
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-#[repr(C)]
-pub struct Uid {
-    pub len: usize,
-    pub unique_chip_id: [u8; MAX_UID_LEN],
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DeviceInfo {
-    Uid(Uid),
 }
 
 /// Log type identifiers used by `get_log` / `clear_log`.
@@ -161,8 +139,7 @@ impl Default for DebugUnlockChallenge {
 ///
 /// Each function represents a transport-agnostic command handler. Implementors should provide
 /// the specific logic for each command as required by their application.
-#[async_trait]
-pub trait CaliptraCmdHandler: Send + Sync {
+pub trait CaliptraCmdHandler {
     /// Retrieves the firmware version for the given index.
     ///
     /// # Arguments
@@ -176,25 +153,6 @@ pub trait CaliptraCmdHandler: Send + Sync {
         index: u32,
         version: &mut FirmwareVersion,
     ) -> CaliptraCmdResult<()>;
-
-    /// Retrieves the device ID.
-    ///
-    /// # Arguments
-    /// * `device_id` - Mutable reference to store the device ID.
-    ///
-    /// # Returns
-    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn get_device_id(&self, device_id: &mut DeviceId) -> CaliptraCmdResult<()>;
-
-    /// Retrieves device information for the given index.
-    ///
-    /// # Arguments
-    /// * `index` - The device info index to query.
-    /// * `info` - Mutable reference to store the device info.
-    ///
-    /// # Returns
-    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn get_device_info(&self, index: u32, info: &mut DeviceInfo) -> CaliptraCmdResult<()>;
 
     /// Retrieves the device capabilities.
     ///
@@ -218,8 +176,9 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
-    async fn export_attested_csr(
+    async fn export_attested_csr<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         device_key_id: u32,
         algorithm: u32,
         nonce: &[u8; 32],
@@ -248,8 +207,9 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn request_debug_unlock(
+    async fn request_debug_unlock<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         unlock_level: u8,
         challenge: &mut DebugUnlockChallenge,
     ) -> CaliptraCmdResult<()>;
@@ -264,7 +224,11 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn authorize_debug_unlock_token(&self, token_data: &[u8]) -> CaliptraCmdResult<()>;
+    async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        token_data: &[u8],
+    ) -> CaliptraCmdResult<()>;
 
     /// Drain log entries of `log_type` into `data`.
     ///
@@ -315,12 +279,17 @@ pub trait CaliptraCmdHandler: Send + Sync {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
-        let _ = partition;
+    async fn program_field_entropy<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        partition: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, partition);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
     /// Retrieves the OCP Lock endorsement certificate.
+    #[cfg(feature = "ocp-lock")]
     async fn get_ocp_lock_endorsement_cert(
         &self,
         hpke_handle: &HpkeHandle,
@@ -331,6 +300,7 @@ pub trait CaliptraCmdHandler: Send + Sync {
     }
 
     /// Enumerates the OCP Lock HPKE handles.
+    #[cfg(feature = "ocp-lock")]
     async fn ocp_lock_enumerate_hpke_handles(
         &self,
         resp: &mut OcpLockEnumerateHpkeHandlesResp,
@@ -344,7 +314,6 @@ pub struct AuthorizationError;
 
 pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 
-#[async_trait]
 pub trait CommandAuthorizer {
     /// Validates if a message is authorized.
     ///
@@ -358,8 +327,9 @@ pub trait CommandAuthorizer {
     ///
     /// # Returns
     /// * `Result<&[u8], CommandError>` - Unpacked command or Error
-    async fn is_authorized<'a>(
+    async fn is_authorized<'a, Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: CommandId,
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError>;

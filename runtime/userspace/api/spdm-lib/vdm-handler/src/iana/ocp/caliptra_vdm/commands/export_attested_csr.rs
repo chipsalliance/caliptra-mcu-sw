@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! EXPORT_ATTESTED_CSR (0x0F): exports an attested CSR.
+//! EXPORT_ATTESTED_CSR (0x08): exports an attested CSR.
 //!
 //! This is the largest Caliptra VDM response and exercises the inline-or-large
 //! response path. The CSR bytes are fetched (via the device-ops hook) into the

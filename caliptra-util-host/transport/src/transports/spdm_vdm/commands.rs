@@ -11,14 +11,11 @@
 //!   Response: [version(1), command_code(1), completion_code(1), data...]
 //!
 //! Currently supported commands:
-//! - FirmwareVersion (0x01)
-//! - DeviceCapabilities (0x02)
-//! - DeviceId (0x03)
-//! - DeviceInfo (0x04)
-//! - ExportIdevidCsr (0x0C)
-//! - RequestDebugUnlock (0x0A)
-//! - AuthorizeDebugUnlockToken (0x0B)
-//! - ExportAttestedCsr (0x0F)
+//! - GetAttestation (0x05) — recognized by the responder, handler TBD
+//! - RequestDebugUnlock (0x06)
+//! - AuthorizeDebugUnlockToken (0x07)
+//! - ExportAttestedCsr (0x08)
+//! - AuthorizedCommand (0x12)
 
 use super::protocol::{
     CaliptraVdmCommand, CaliptraVdmCompletionCode, CALIPTRA_VDM_COMMAND_VERSION,
@@ -32,9 +29,6 @@ use caliptra_mcu_core_util_host_command_types::debug_unlock::{
 };
 use caliptra_mcu_core_util_host_command_types::*;
 use zerocopy::IntoBytes;
-
-/// Caliptra RT mailbox command ID for PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.
-const CALIPTRA_RT_CMD_PROD_DEBUG_UNLOCK_TOKEN: u32 = 0x5044_5554; // "PDUT"
 
 // ---------------------------------------------------------------------------
 // Helper: build VDM request, send via driver, validate response header
@@ -89,219 +83,6 @@ fn send_vdm_request(
 }
 
 // ---------------------------------------------------------------------------
-// FirmwareVersion (CaliptraCommandId::GetFirmwareVersion)
-// ---------------------------------------------------------------------------
-
-pub fn handle_firmware_version(
-    payload: &[u8],
-    driver: &mut dyn SpdmVdmDriver,
-    response_buffer: &mut [u8],
-) -> Result<usize, TransportError> {
-    // Parse internal request (may be empty → default to index 0)
-    let area_index = if payload.len() >= core::mem::size_of::<GetFirmwareVersionRequest>() {
-        let req = GetFirmwareVersionRequest::from_bytes(payload)
-            .map_err(|_| TransportError::InvalidMessage)?;
-        req.index
-    } else {
-        0
-    };
-
-    // VDM payload for FirmwareVersion: [area_index(4 LE)]. Older callers may
-    // send an empty internal request, which defaults to index 0 above.
-    let vdm_payload = area_index.to_le_bytes();
-    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
-    let resp_len = send_vdm_request(
-        CaliptraVdmCommand::FirmwareVersion,
-        &vdm_payload,
-        driver,
-        &mut resp_buf,
-    )?;
-
-    // Response data after header: version string bytes
-    let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
-
-    // Convert to internal response: parse version string if present
-    let mut version = [0u32; 4];
-    let mut commit_id = [0u8; 20];
-
-    if !data.is_empty() {
-        // Try to parse as UTF-8 version string "M.m.p commit_hash"
-        if let Ok(version_str) = core::str::from_utf8(data) {
-            let trimmed = version_str.trim_end_matches('\0');
-            let (version_part, commit_part) = trimmed.split_once(' ').unwrap_or((trimmed, ""));
-            for (i, part) in version_part.split('.').take(4).enumerate() {
-                if let Ok(num) = part.parse::<u32>() {
-                    version[i] = num;
-                }
-            }
-            let cb = commit_part.as_bytes();
-            let len = cb.len().min(20);
-            commit_id[..len].copy_from_slice(&cb[..len]);
-        }
-    }
-
-    let internal_resp = GetFirmwareVersionResponse {
-        common: CommonResponse { fips_status: 0 },
-        version,
-        commit_id,
-    };
-
-    let resp_bytes = internal_resp.as_bytes();
-    let copy_len = resp_bytes.len().min(response_buffer.len());
-    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
-    Ok(copy_len)
-}
-
-// ---------------------------------------------------------------------------
-// DeviceCapabilities (CaliptraCommandId::GetDeviceCapabilities)
-// ---------------------------------------------------------------------------
-
-pub fn handle_device_capabilities(
-    _payload: &[u8],
-    driver: &mut dyn SpdmVdmDriver,
-    response_buffer: &mut [u8],
-) -> Result<usize, TransportError> {
-    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
-    let resp_len = send_vdm_request(
-        CaliptraVdmCommand::DeviceCapabilities,
-        &[],
-        driver,
-        &mut resp_buf,
-    )?;
-
-    let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
-
-    // Response data: [capabilities(4), max_cert_size(4), max_csr_size(4), device_lifecycle(4)]
-    let capabilities = if data.len() >= 4 {
-        u32::from_le_bytes([data[0], data[1], data[2], data[3]])
-    } else {
-        0
-    };
-    let max_cert_size = if data.len() >= 8 {
-        u32::from_le_bytes([data[4], data[5], data[6], data[7]])
-    } else {
-        0
-    };
-    let max_csr_size = if data.len() >= 12 {
-        u32::from_le_bytes([data[8], data[9], data[10], data[11]])
-    } else {
-        0
-    };
-    let device_lifecycle = if data.len() >= 16 {
-        u32::from_le_bytes([data[12], data[13], data[14], data[15]])
-    } else {
-        0
-    };
-
-    let internal_resp = GetDeviceCapabilitiesResponse {
-        common: CommonResponse { fips_status: 0 },
-        capabilities,
-        max_cert_size,
-        max_csr_size,
-        device_lifecycle,
-    };
-
-    let resp_bytes = internal_resp.as_bytes();
-    let copy_len = resp_bytes.len().min(response_buffer.len());
-    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
-    Ok(copy_len)
-}
-
-// ---------------------------------------------------------------------------
-// DeviceId (CaliptraCommandId::GetDeviceId)
-// ---------------------------------------------------------------------------
-
-pub fn handle_device_id(
-    _payload: &[u8],
-    driver: &mut dyn SpdmVdmDriver,
-    response_buffer: &mut [u8],
-) -> Result<usize, TransportError> {
-    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
-    let resp_len = send_vdm_request(CaliptraVdmCommand::DeviceId, &[], driver, &mut resp_buf)?;
-
-    let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
-
-    // Response: [vendor_id(2), device_id(2), subsystem_vendor_id(2), subsystem_id(2)]
-    let vendor_id = if data.len() >= 2 {
-        u16::from_le_bytes([data[0], data[1]])
-    } else {
-        0
-    };
-    let device_id = if data.len() >= 4 {
-        u16::from_le_bytes([data[2], data[3]])
-    } else {
-        0
-    };
-    let subsystem_vendor_id = if data.len() >= 6 {
-        u16::from_le_bytes([data[4], data[5]])
-    } else {
-        0
-    };
-    let subsystem_id = if data.len() >= 8 {
-        u16::from_le_bytes([data[6], data[7]])
-    } else {
-        0
-    };
-
-    let internal_resp = GetDeviceIdResponse {
-        vendor_id,
-        device_id,
-        subsystem_vendor_id,
-        subsystem_id,
-    };
-
-    let resp_bytes = internal_resp.as_bytes();
-    let copy_len = resp_bytes.len().min(response_buffer.len());
-    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
-    Ok(copy_len)
-}
-
-// ---------------------------------------------------------------------------
-// DeviceInfo (CaliptraCommandId::GetDeviceInfo)
-// ---------------------------------------------------------------------------
-
-pub fn handle_device_info(
-    payload: &[u8],
-    driver: &mut dyn SpdmVdmDriver,
-    response_buffer: &mut [u8],
-) -> Result<usize, TransportError> {
-    let info_type = if payload.len() >= core::mem::size_of::<GetDeviceInfoRequest>() {
-        let req = GetDeviceInfoRequest::from_bytes(payload)
-            .map_err(|_| TransportError::InvalidMessage)?;
-        req.info_type
-    } else {
-        0
-    };
-
-    // VDM payload: [info_type as u32 LE]
-    let vdm_payload = info_type.to_le_bytes();
-    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
-    let resp_len = send_vdm_request(
-        CaliptraVdmCommand::DeviceInfo,
-        &vdm_payload,
-        driver,
-        &mut resp_buf,
-    )?;
-
-    let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
-
-    let mut info_data = [0u8; 64];
-    let data_len = data.len().min(64);
-    info_data[..data_len].copy_from_slice(&data[..data_len]);
-
-    let internal_resp = GetDeviceInfoResponse {
-        common: CommonResponse { fips_status: 0 },
-        info_length: data_len as u32,
-        info_data,
-    };
-
-    let resp_bytes = internal_resp.as_bytes();
-    let copy_len = resp_bytes.len().min(response_buffer.len());
-    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
-    Ok(copy_len)
-}
-
-// ---------------------------------------------------------------------------
 // ExportAttestedCsr (CaliptraCommandId::ExportAttestedCsr)
 // ---------------------------------------------------------------------------
 
@@ -350,63 +131,6 @@ pub fn handle_export_attested_csr(
     csr_data[..csr_len].copy_from_slice(&data[csr_start..csr_end]);
 
     let internal_resp = certificate::ExportAttestedCsrResponse {
-        common: CommonResponse { fips_status: 0 },
-        data_len: csr_len as u32,
-        csr_data,
-    };
-
-    let resp_bytes = internal_resp.as_bytes();
-    let copy_len = resp_bytes.len().min(response_buffer.len());
-    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
-    Ok(copy_len)
-}
-
-/// Handle ExportIdevidCsr command (manufacturing mode only).
-pub fn handle_export_idevid_csr(
-    payload: &[u8],
-    driver: &mut dyn SpdmVdmDriver,
-    response_buffer: &mut [u8],
-) -> Result<usize, TransportError> {
-    let req = certificate::ExportIdevidCsrRequest::from_bytes(payload)
-        .map_err(|_| TransportError::InvalidMessage)?;
-
-    // VDM payload: [algorithm(4)]
-    let vdm_payload = req.as_bytes();
-
-    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
-    let resp_len = send_vdm_request(
-        CaliptraVdmCommand::ExportIdevidCsr,
-        vdm_payload,
-        driver,
-        &mut resp_buf,
-    )?;
-
-    let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
-
-    // Response data format: [data_len: u32 LE, csr_data...]
-    if data.len() < 4 {
-        return Err(TransportError::InvalidMessage);
-    }
-
-    let csr_len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
-    let csr_start = 4;
-    let csr_end = csr_start + csr_len;
-
-    if csr_end > data.len() {
-        return Err(TransportError::BufferError(
-            "ExportIdevidCsr data_len exceeds response",
-        ));
-    }
-    if csr_len > certificate::MAX_CSR_DATA_SIZE {
-        return Err(TransportError::BufferError(
-            "ExportIdevidCsr data_len exceeds maximum CSR size",
-        ));
-    }
-
-    let mut csr_data = [0u8; certificate::MAX_CSR_DATA_SIZE];
-    csr_data[..csr_len].copy_from_slice(&data[csr_start..csr_end]);
-
-    let internal_resp = certificate::ExportIdevidCsrResponse {
         common: CommonResponse { fips_status: 0 },
         data_len: csr_len as u32,
         csr_data,
@@ -516,34 +240,36 @@ pub fn handle_prod_debug_unlock_req(
     let req = ProdDebugUnlockReqRequest::from_bytes(payload)
         .map_err(|_| TransportError::InvalidMessage)?;
 
-    // VDM payload: [unlock_level(1)]
-    let vdm_payload = [req.unlock_level];
     let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
     let resp_len = send_vdm_request(
         CaliptraVdmCommand::RequestDebugUnlock,
-        &vdm_payload,
+        req.as_bytes(),
         driver,
         &mut resp_buf,
     )?;
 
     let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
 
-    // Response data: [unique_device_identifier(32), challenge(48)]
-    if data.len() < UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE {
+    // Response data: [length(4), unique_device_identifier(32), challenge(48)]
+    if data.len()
+        != core::mem::size_of::<u32>() + UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE
+    {
         return Err(TransportError::InvalidMessage);
     }
+    let length = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    let challenge_data = &data[core::mem::size_of::<u32>()..];
 
     let mut unique_device_identifier = [0u8; UNIQUE_DEVICE_ID_SIZE];
-    unique_device_identifier.copy_from_slice(&data[..UNIQUE_DEVICE_ID_SIZE]);
+    unique_device_identifier.copy_from_slice(&challenge_data[..UNIQUE_DEVICE_ID_SIZE]);
 
     let mut challenge = [0u8; DEBUG_UNLOCK_CHALLENGE_SIZE];
     challenge.copy_from_slice(
-        &data[UNIQUE_DEVICE_ID_SIZE..UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
+        &challenge_data[UNIQUE_DEVICE_ID_SIZE..UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
     );
 
     let internal_resp = ProdDebugUnlockReqResponse {
         common: CommonResponse { fips_status: 0 },
-        length: 0,
+        length,
         unique_device_identifier,
         challenge,
     };
@@ -563,29 +289,13 @@ pub fn handle_prod_debug_unlock_token(
     driver: &mut dyn SpdmVdmDriver,
     response_buffer: &mut [u8],
 ) -> Result<usize, TransportError> {
-    use crate::transports::mailbox::checksum::calc_checksum;
-    use alloc::vec;
-
     let req = ProdDebugUnlockTokenRequest::from_bytes(payload)
         .map_err(|_| TransportError::InvalidMessage)?;
-
-    // Build VDM payload in Caliptra RT mailbox format:
-    // [MailboxReqHeader(chksum: u32) | token_struct_bytes...]
-    // The MCU streams this directly to the Caliptra mailbox FIFO.
-    let token_bytes = req.as_bytes();
-    let hdr_size = core::mem::size_of::<u32>(); // MailboxReqHeader = chksum(u32)
-    let total_len = hdr_size + token_bytes.len();
-
-    // Build the payload with zeroed checksum first, then compute
-    let mut mbox_payload = vec![0u8; total_len];
-    mbox_payload[hdr_size..].copy_from_slice(token_bytes);
-    let chksum = calc_checksum(CALIPTRA_RT_CMD_PROD_DEBUG_UNLOCK_TOKEN, &mbox_payload);
-    mbox_payload[..hdr_size].copy_from_slice(&chksum.to_le_bytes());
 
     let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
     let _resp_len = send_vdm_request(
         CaliptraVdmCommand::AuthorizeDebugUnlockToken,
-        &mbox_payload,
+        req.as_bytes(),
         driver,
         &mut resp_buf,
     )?;
@@ -593,61 +303,6 @@ pub fn handle_prod_debug_unlock_token(
     // Response is just completion code (already validated by send_vdm_request)
     let internal_resp = ProdDebugUnlockTokenResponse {
         common: CommonResponse { fips_status: 0 },
-    };
-
-    let resp_bytes = internal_resp.as_bytes();
-    let copy_len = resp_bytes.len().min(response_buffer.len());
-    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
-    Ok(copy_len)
-}
-
-// ---------------------------------------------------------------------------
-// GetDebugLog (CaliptraCommandId::DebugGetLog)
-// ---------------------------------------------------------------------------
-
-/// Handle GetDebugLog - drain one page of the device debug log.
-///
-/// VDM wire format request:  [version, 0x05 (GetDebugLog)]
-/// VDM wire format response: [version, 0x05, completion_code, more_data(1), bytes_written(4 LE), log bytes...]
-pub fn handle_get_debug_log(
-    _payload: &[u8],
-    driver: &mut dyn SpdmVdmDriver,
-    response_buffer: &mut [u8],
-) -> Result<usize, TransportError> {
-    use caliptra_mcu_core_util_host_command_types::device_log::{
-        DebugGetLogResponse, MAX_DEBUG_LOG_DATA_SIZE,
-    };
-
-    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
-    let resp_len = send_vdm_request(CaliptraVdmCommand::GetDebugLog, &[], driver, &mut resp_buf)?;
-
-    let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
-
-    // Response data format: [more_data(u8), bytes_written(u32 LE), log bytes...]
-    if data.len() < 5 {
-        return Err(TransportError::InvalidMessage);
-    }
-
-    let more_data = data[0] as u32;
-    let bytes_written = u32::from_le_bytes([data[1], data[2], data[3], data[4]]) as usize;
-    let log_start = 5;
-    let log_end = log_start + bytes_written;
-
-    if log_end > data.len() {
-        return Err(TransportError::BufferError(
-            "GetDebugLog bytes_written exceeds response",
-        ));
-    }
-
-    let copy_len = bytes_written.min(MAX_DEBUG_LOG_DATA_SIZE);
-    let mut log_data = [0u8; MAX_DEBUG_LOG_DATA_SIZE];
-    log_data[..copy_len].copy_from_slice(&data[log_start..log_start + copy_len]);
-
-    let internal_resp = DebugGetLogResponse {
-        common: CommonResponse { fips_status: 0 },
-        more_data,
-        data_len: copy_len as u32,
-        data: log_data,
     };
 
     let resp_bytes = internal_resp.as_bytes();
@@ -702,43 +357,6 @@ mod tests {
     }
 
     #[test]
-    fn firmware_version_sends_requested_area_index() {
-        let mut response = vec![
-            CALIPTRA_VDM_COMMAND_VERSION,
-            CaliptraVdmCommand::FirmwareVersion as u8,
-            0,
-        ];
-        response.extend_from_slice(b"2.0.0 abcdef");
-        let mut driver = FakeDriver {
-            response,
-            last_request: Vec::new(),
-        };
-        let req = GetFirmwareVersionRequest { index: 1 };
-        let mut response_buffer = [0u8; 128];
-
-        let len = handle_firmware_version(req.as_bytes(), &mut driver, &mut response_buffer)
-            .expect("firmware version request should succeed");
-
-        assert_eq!(
-            driver.last_request,
-            vec![
-                CALIPTRA_VDM_COMMAND_VERSION,
-                CaliptraVdmCommand::FirmwareVersion as u8,
-                1,
-                0,
-                0,
-                0,
-            ]
-        );
-        assert_eq!(len, core::mem::size_of::<GetFirmwareVersionResponse>());
-        assert_eq!(
-            u32::from_le_bytes(response_buffer[4..8].try_into().unwrap()),
-            2
-        );
-        assert_eq!(&response_buffer[20..26], b"abcdef");
-    }
-
-    #[test]
     fn export_attested_csr_rejects_oversized_csr_len() {
         let req = certificate::ExportAttestedCsrRequest {
             device_key_id: 1,
@@ -766,25 +384,32 @@ mod tests {
     }
 
     #[test]
-    fn export_idevid_csr_rejects_oversized_csr_len() {
-        let req = certificate::ExportIdevidCsrRequest { algorithm: 1 };
-        let oversized_len = (certificate::MAX_CSR_DATA_SIZE + 1) as u32;
-        let mut data = Vec::new();
-        data.extend_from_slice(&oversized_len.to_le_bytes());
-        data.resize(4 + certificate::MAX_CSR_DATA_SIZE + 1, 0xA5);
+    fn debug_unlock_req_rejects_trailing_response_bytes() {
+        let req = ProdDebugUnlockReqRequest::new(1);
+        let mut data = vec![
+            0xA5;
+            core::mem::size_of::<u32>()
+                + UNIQUE_DEVICE_ID_SIZE
+                + DEBUG_UNLOCK_CHALLENGE_SIZE
+                + 1
+        ];
         let mut driver = FakeDriver {
-            response: success_response(CaliptraVdmCommand::ExportIdevidCsr, &data),
+            response: success_response(CaliptraVdmCommand::RequestDebugUnlock, &data),
             last_request: Vec::new(),
         };
-        let mut response_buffer =
-            vec![0; core::mem::size_of::<certificate::ExportIdevidCsrResponse>()];
+        let mut response_buffer = [0u8; core::mem::size_of::<ProdDebugUnlockReqResponse>()];
 
-        let err = handle_export_idevid_csr(req.as_bytes(), &mut driver, &mut response_buffer)
-            .expect_err("oversized CSR response must be rejected");
+        let err = handle_prod_debug_unlock_req(req.as_bytes(), &mut driver, &mut response_buffer)
+            .expect_err("DebugUnlock response with trailing bytes must be rejected");
 
-        match err {
-            TransportError::BufferError(msg) => assert!(msg.contains("maximum CSR size")),
-            other => panic!("unexpected error: {:?}", other),
-        }
+        assert!(matches!(err, TransportError::InvalidMessage));
+        data.truncate(
+            core::mem::size_of::<u32>() + UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
+        );
+        data[..core::mem::size_of::<u32>()].copy_from_slice(&21u32.to_le_bytes());
+        driver.response = success_response(CaliptraVdmCommand::RequestDebugUnlock, &data);
+        handle_prod_debug_unlock_req(req.as_bytes(), &mut driver, &mut response_buffer)
+            .expect("exact-length DebugUnlock response should be accepted");
+        assert_eq!(&driver.last_request[2..], req.as_bytes());
     }
 }

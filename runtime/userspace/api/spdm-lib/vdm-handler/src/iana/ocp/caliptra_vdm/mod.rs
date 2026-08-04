@@ -42,18 +42,6 @@ const MAX_LARGE_VDM_PAYLOAD_LEN: usize = VDM_HEADER_LEN + 1 + 4 + MAX_LARGE_COMM
 /// `scratch` gives each device op the request-scoped scratch allocator so it can
 /// stage device interactions without owning persistent buffers.
 pub trait CaliptraVdmCommands {
-    /// Drains log bytes of `log_type` into `out`.
-    async fn get_log<A: SpdmPalAlloc>(
-        &self,
-        log_type: u32,
-        scratch: &A,
-        out: &mut [u8],
-    ) -> CaliptraVdmResult<CaliptraVdmLogResult>;
-
-    /// Clears the log identified by `log_type`.
-    async fn clear_log<A: SpdmPalAlloc>(&self, log_type: u32, scratch: &A)
-        -> CaliptraVdmResult<()>;
-
     /// Requests a production debug unlock challenge for `unlock_level`, writing
     /// `[unique_device_identifier, challenge]` into `out`.
     async fn request_debug_unlock<A: SpdmPalAlloc>(
@@ -70,6 +58,36 @@ pub trait CaliptraVdmCommands {
         token_data: &[u8],
         scratch: &A,
     ) -> CaliptraVdmResult<()>;
+
+    /// Starts streaming a production debug unlock token request.
+    async fn start_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        _token_len: usize,
+        _first: &[u8],
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Streams additional production debug unlock token bytes.
+    async fn continue_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        _chunk: &[u8],
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Finishes a streaming production debug unlock token request.
+    async fn finish_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(
+        &self,
+        _scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Aborts a streaming production debug unlock token request.
+    async fn abort_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(&self, _scratch: &A) {}
 
     /// Exports an attested CSR for `device_key_id` using `algorithm` and `nonce`,
     /// writing the raw CSR bytes into `out` and returning their length.
@@ -98,14 +116,6 @@ pub trait CaliptraVdmCommands {
     ) -> CaliptraVdmResult<()>;
 }
 
-/// Result metadata for log-drain commands.
-pub struct CaliptraVdmLogResult {
-    /// Number of bytes written into the caller-provided log buffer.
-    pub bytes_written: usize,
-    /// Indicates whether more log data remains to be drained.
-    pub more_data: bool,
-}
-
 /// Caliptra VDM backend, parameterized over a platform [`CaliptraVdmCommands`] hook.
 pub struct CaliptraVdm<'a, H: CaliptraVdmCommands> {
     cmds: &'a H,
@@ -127,6 +137,92 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
     fn match_id(&self, registry: &VdmRegistry<'_>) -> bool {
         registry.standard_id == StandardsBodyId::Iana.as_u16()
             && registry.vendor_id == CALIPTRA_VENDOR_ID.to_le_bytes()
+    }
+
+    async fn start_authorize_debug_unlock_token_stream<Alloc, Io>(
+        &self,
+        req_len: usize,
+        first: &[u8],
+        alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<bool>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        if first.len() < VDM_HEADER_LEN || req_len < VDM_HEADER_LEN {
+            return Err(INVARIANT);
+        }
+        if first[0] != CALIPTRA_VDM_COMMAND_VERSION
+            || first[1] != CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8
+        {
+            return Ok(false);
+        }
+        match self
+            .cmds
+            .start_authorize_debug_unlock_token_stream(
+                req_len - VDM_HEADER_LEN,
+                &first[VDM_HEADER_LEN..],
+                alloc,
+            )
+            .await
+        {
+            Ok(()) => Ok(true),
+            Err(CaliptraCompletionCode::UnsupportedOperation) => Ok(false),
+            Err(_) => Err(INVARIANT),
+        }
+    }
+
+    async fn continue_authorize_debug_unlock_token_stream<Alloc, Io>(
+        &self,
+        chunk: &[u8],
+        alloc: &Alloc,
+        _io: &Io,
+    ) -> McuResult<()>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        self.cmds
+            .continue_authorize_debug_unlock_token_stream(chunk, alloc)
+            .await
+            .map_err(|_| INVARIANT)
+    }
+
+    async fn finish_authorize_debug_unlock_token_stream<Alloc, Io>(
+        &self,
+        rsp: VdmResponseBuffer<'_, Alloc, Io>,
+    ) -> McuResult<VdmResponse>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        let out = rsp.inline;
+        if out.len() < VDM_HEADER_LEN + 1 {
+            return Err(INVARIANT);
+        }
+        let completion = match self
+            .cmds
+            .finish_authorize_debug_unlock_token_stream(rsp.alloc)
+            .await
+        {
+            Ok(()) => CaliptraCompletionCode::Success,
+            Err(code) => code,
+        };
+        out[0] = CALIPTRA_VDM_COMMAND_VERSION;
+        out[1] = CaliptraVdmCommand::AuthorizeDebugUnlockToken as u8;
+        out[2] = completion as u8;
+        Ok(VdmResponse::Inline(VDM_HEADER_LEN + 1))
+    }
+
+    async fn abort_authorize_debug_unlock_token_stream<Alloc, Io>(&self, alloc: &Alloc, _io: &Io)
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        self.cmds
+            .abort_authorize_debug_unlock_token_stream(alloc)
+            .await;
     }
 
     async fn handle_request<Alloc, Io>(
@@ -175,12 +271,6 @@ impl<H: CaliptraVdmCommands> SpdmVdmBackend for CaliptraVdm<'_, H> {
         }
 
         let result = match CaliptraVdmCommand::try_from(command_code) {
-            Ok(CaliptraVdmCommand::GetDebugLog) => {
-                commands::get_debug_log::handle(self.cmds, cmd_req, scratch, payload).await
-            }
-            Ok(CaliptraVdmCommand::ClearDebugLog) => {
-                commands::clear_debug_log::handle(self.cmds, cmd_req, scratch, payload).await
-            }
             Ok(CaliptraVdmCommand::RequestDebugUnlock) => {
                 commands::debug_unlock::handle_request_debug_unlock(
                     self.cmds, cmd_req, scratch, payload,
@@ -358,23 +448,6 @@ mod tests {
     }
 
     impl CaliptraVdmCommands for TestCommands {
-        async fn get_log<A: SpdmPalAlloc>(
-            &self,
-            _log_type: u32,
-            _scratch: &A,
-            _out: &mut [u8],
-        ) -> CaliptraVdmResult<CaliptraVdmLogResult> {
-            Err(CaliptraCompletionCode::UnsupportedOperation)
-        }
-
-        async fn clear_log<A: SpdmPalAlloc>(
-            &self,
-            _log_type: u32,
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            Err(CaliptraCompletionCode::UnsupportedOperation)
-        }
-
         async fn request_debug_unlock<A: SpdmPalAlloc>(
             &self,
             unlock_level: u8,
@@ -514,15 +587,19 @@ mod tests {
     #[test]
     fn bad_command_version_returns_vdm_completion() {
         let cmds = TestCommands::new(0);
-        let (response, inline, _) =
-            dispatch(&cmds, &[0x7F, CaliptraVdmCommand::GetDebugLog as u8], 32, 0);
+        let (response, inline, _) = dispatch(
+            &cmds,
+            &[0x7F, CaliptraVdmCommand::RequestDebugUnlock as u8],
+            32,
+            0,
+        );
 
         assert_inline(response, 3);
         assert_eq!(
             &inline[..3],
             &[
                 CALIPTRA_VDM_COMMAND_VERSION,
-                CaliptraVdmCommand::GetDebugLog as u8,
+                CaliptraVdmCommand::RequestDebugUnlock as u8,
                 CaliptraCompletionCode::InvalidCommandVersion as u8,
             ]
         );
@@ -604,45 +681,56 @@ mod tests {
         let req = [
             CALIPTRA_VDM_COMMAND_VERSION,
             CaliptraVdmCommand::RequestDebugUnlock as u8,
+            2,
+            0,
+            0,
+            0,
             7,
+            0,
+            0,
+            0,
         ];
         let (response, inline, _) = dispatch(&cmds, &req, 128, 0);
 
         assert_inline(
             response,
-            2 + 1 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
+            2 + 1 + 4 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
         );
         assert_eq!(inline[0], CALIPTRA_VDM_COMMAND_VERSION);
         assert_eq!(inline[1], CaliptraVdmCommand::RequestDebugUnlock as u8);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(u32::from_le_bytes(inline[3..7].try_into().unwrap()), 21);
         assert_eq!(
-            &inline[3..3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE],
+            &inline[7..7 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE],
             &[0x11; DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE]
         );
         assert_eq!(
-            &inline[3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE
-                ..3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
+            &inline[7 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE
+                ..7 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
             &[0x22; DEBUG_UNLOCK_CHALLENGE_SIZE]
         );
     }
 
     #[test]
-    fn request_debug_unlock_allows_trailing_payload() {
+    fn request_debug_unlock_rejects_trailing_payload() {
         let cmds = TestCommands::new(0);
         let req = [
             CALIPTRA_VDM_COMMAND_VERSION,
             CaliptraVdmCommand::RequestDebugUnlock as u8,
+            2,
+            0,
+            0,
+            0,
             7,
+            0,
+            0,
+            0,
             0xaa,
-            0xbb,
         ];
         let (response, inline, _) = dispatch(&cmds, &req, 128, 0);
 
-        assert_inline(
-            response,
-            2 + 1 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE,
-        );
-        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
     }
 
     #[test]

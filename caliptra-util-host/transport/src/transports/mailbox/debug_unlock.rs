@@ -101,6 +101,7 @@ impl VariableSizeBytes for ExtCmdProdDebugUnlockReqResponse {}
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdProdDebugUnlockTokenRequest {
     pub chksum: u32,
+    pub caliptra_chksum: u32,
     pub length: u32,
     pub unique_device_identifier: [u8; UNIQUE_DEVICE_ID_SIZE],
     pub unlock_level: u8,
@@ -116,6 +117,7 @@ impl Default for ExtCmdProdDebugUnlockTokenRequest {
     fn default() -> Self {
         Self {
             chksum: 0,
+            caliptra_chksum: 0,
             length: 0,
             unique_device_identifier: [0u8; UNIQUE_DEVICE_ID_SIZE],
             unlock_level: 0,
@@ -138,29 +140,11 @@ pub struct ExtCmdProdDebugUnlockTokenResponse {
 
 impl FromInternalRequest<ProdDebugUnlockTokenRequest> for ExtCmdProdDebugUnlockTokenRequest {
     fn from_internal(internal: &ProdDebugUnlockTokenRequest, command_code: u32) -> Self {
-        let mut payload = Vec::new();
-        payload.extend_from_slice(&internal.length.to_le_bytes());
-        payload.extend_from_slice(&internal.unique_device_identifier);
-        payload.push(internal.unlock_level);
-        payload.extend_from_slice(&internal.reserved);
-        payload.extend_from_slice(&internal.challenge);
-        for word in &internal.ecc_public_key {
-            payload.extend_from_slice(&word.to_le_bytes());
-        }
-        for word in &internal.mldsa_public_key {
-            payload.extend_from_slice(&word.to_le_bytes());
-        }
-        for word in &internal.ecc_signature {
-            payload.extend_from_slice(&word.to_le_bytes());
-        }
-        for word in &internal.mldsa_signature {
-            payload.extend_from_slice(&word.to_le_bytes());
-        }
-
-        let chksum = calc_checksum(command_code, &payload);
+        let chksum = calc_checksum(command_code, internal.as_bytes());
 
         Self {
             chksum,
+            caliptra_chksum: internal.checksum,
             length: internal.length,
             unique_device_identifier: internal.unique_device_identifier,
             unlock_level: internal.unlock_level,
@@ -208,3 +192,30 @@ define_command!(
     ExtCmdProdDebugUnlockTokenRequest,
     ExtCmdProdDebugUnlockTokenResponse
 );
+
+#[cfg(test)]
+mod tests {
+    use super::super::checksum::verify_checksum;
+    use super::*;
+
+    #[test]
+    fn token_request_preserves_caliptra_checksum_inside_mailbox_request() {
+        const MCU_CMD: u32 = 0x4D50_5554; // "MPUT"
+
+        let mut internal = ProdDebugUnlockTokenRequest {
+            length: 1,
+            unlock_level: 2,
+            ..Default::default()
+        };
+        internal.populate_checksum();
+
+        let external = ExtCmdProdDebugUnlockTokenRequest::from_internal(&internal, MCU_CMD);
+
+        assert_eq!(external.caliptra_chksum, internal.checksum);
+        assert!(verify_checksum(
+            external.chksum,
+            MCU_CMD,
+            &external.as_bytes()[core::mem::size_of::<u32>()..],
+        ));
+    }
+}

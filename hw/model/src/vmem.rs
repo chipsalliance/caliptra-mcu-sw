@@ -256,7 +256,7 @@ mod tests {
     /// offset 0x428 through OTP bytes, vmem, and DAI read for both MLDSA and LMS. FPGA-verified.
     #[test]
     fn test_pqc_key_type_doc_example() {
-        // For OneHotLinearMajorityVote { bits: 2, duplication: 3 }:
+        // For OneHotLinearOr { bits: 2, duplication: 3 }:
         //   MLDSA logical value = 1 → bit-count pattern = 0b01 → raw = 0x00000007
         //   LMS   logical value = 2 → bit-count pattern = 0b11 → raw = 0x0000003F
         let cases: &[(&str, u32, u16)] =

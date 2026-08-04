@@ -12,7 +12,7 @@ INCLUDE_DIR = ../include
 TEST_DIR = .
 
 # Targets
-TESTS = test_get_device_id test_custom_c_transport
+TESTS = test_custom_c_transport
 STATIC_LIB = $(TARGET_DIR)/libcaliptra_util_host_cbinding.a
 TEST_UTILS_LIB = $(shell find $(TARGET_DIR)/build -name "libcaliptra_test_utils.a" -type f | head -1)
 DYNAMIC_LIB = $(TARGET_DIR)/libcaliptra_util_host_cbinding.so
@@ -37,11 +37,6 @@ build-rust:
 	fi
 
 # Build test executables
-test_get_device_id: test_get_device_id.c $(STATIC_LIB) $(TEST_UTILS_LIB) $(HEADER)
-	@echo "Building test: $@"
-	@mkdir -p $(TARGET_DIR)
-	$(CC) $(CFLAGS) $(INCLUDES) -o $(TARGET_DIR)/$@ $< $(STATIC_LIB) $(TEST_UTILS_LIB) $(LDFLAGS)
-
 test_custom_c_transport: test_custom_c_transport.c $(STATIC_LIB) $(HEADER)
 	@echo "Building test: $@"
 	@mkdir -p $(TARGET_DIR)

@@ -74,12 +74,20 @@ streaming-boot = []
 flash-boot = []
 firmware-update = []
 mcu-mbox-service = []
+# Measurement boot init (off by default). Runs DPE Handle Storage / Software PCR
+# Storage cold-boot and hitless-update initialization. Cold boot rotates MCU-RT
+# off the default DPE handle, so keep this off until the SPDM evidence path is
+# rewired to track the rotated handle.
+measurement-boot-init = []
 mctp-vdm-service = []
+mcu-mbox-test-handlers = ["mcu-mbox-service"]
 debug = []
 hw-2-1 = []
 ocp-lock = [
     "caliptra-mcu-libapi-caliptra/ocp-lock",
     "mcu-mbox-service",
+    "caliptra-mcu-mbox-lib/ocp-lock",
+    "caliptra-mcu-common-commands/ocp-lock",
 ]
 doe = []
 userspace-log = [
@@ -133,6 +141,7 @@ test-doe-transport-loopback = []
 test-log-flash-circular = []
 test-log-flash-linear = []
 test-mcu-mbox-driver = []
+test-ekp = ["test-mcu-mbox-cmds", "ocp-lock"]
 test-mcu-mbox-soc-requester-loopback = []
 test-mcu-rom-flash-access = []
 test-mctp-capsule-loopback = []
@@ -150,9 +159,9 @@ test-streaming-boot-flash-write-back = ["streaming-boot", "firmware-update"]
 test-mcu-mbox-fips-periodic = ["mcu-mbox-service", "caliptra-mcu-mbox-lib/periodic-fips-self-test"]
 test-mctp-vdm-cmds = ["mctp-vdm-service"]
 test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
-test-caliptra-util-host-validator = ["mcu-mbox-service"]
-test-mcu-mbox-cmds = ["mcu-mbox-service"]
-test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
+test-caliptra-util-host-validator = ["mcu-mbox-test-handlers"]
+test-mcu-mbox-cmds = ["mcu-mbox-test-handlers"]
+test-mcu-mbox-fips-self-test = ["mcu-mbox-test-handlers"]
 test-ocp-lock = ["ocp-lock"]
 test-handoff = ["caliptra-mcu-libapi-caliptra/ocp-lock"]
 test-pldm-discovery = []

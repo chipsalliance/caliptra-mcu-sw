@@ -66,6 +66,7 @@ members = [
     "provisioning/common",
     "provisioning/fuses/fusegen",
     "provisioning/test-unlocked-fw",
+    "provisioning/manuf-fw",
     "provisioning/fuses/lib",
     "registers/fuses",
     "registers/generated-emulator",
@@ -118,6 +119,7 @@ members = [
     "runtime/userspace/userlog",
     "tests/hello",
     "tests/integration",
+    "tools/pk-hash-checker",
     "xtask",
 ]
 resolver = "2"
@@ -388,6 +390,8 @@ dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "337f7e4151
 
 # caliptra-infra dependencies; keep git revs in sync
 caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-infra", rev = "e061f229d5d284ce39387eb104f3022053c6c772" }
+
+size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", package = "caliptra-size-history", rev = "64e75e17e1a2eb07ff8dd6698932af82182da85e" }
 
 # local caliptra dependency; useful when developing
 # caliptra-sw deps:

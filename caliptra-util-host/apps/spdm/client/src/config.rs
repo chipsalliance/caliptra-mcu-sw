@@ -3,23 +3,11 @@
 //! Validator test configuration (TOML-based).
 //!
 //! Each VDM command has its own config section. Adding a new command:
-//! 1. Add a new config struct (e.g., `GetFirmwareVersionConfig`)
+//! 1. Add a new config struct (e.g., `ExportAttestedCsrConfig`)
 //! 2. Add it as a `#[serde(default)]` field in `TestConfig`
 
-use clap::ValueEnum;
 use serde::Deserialize;
 use std::path::Path;
-
-/// Device mode determines which test suite to run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ValueEnum, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum DeviceMode {
-    /// Production mode: ExportAttestedCsr + ExportIdevidCsr(expect_fail)
-    #[default]
-    Production,
-    /// Manufacturing mode: ExportIdevidCsr only
-    Manufacturing,
-}
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct TestConfig {
@@ -28,11 +16,7 @@ pub struct TestConfig {
     #[serde(default)]
     pub spdm: SpdmTestConfig,
     #[serde(default)]
-    pub mode: DeviceMode,
-    #[serde(default)]
     pub export_attested_csr: ExportAttestedCsrConfig,
-    #[serde(default)]
-    pub export_idevid_csr: ExportIdevidCsrConfig,
     #[serde(default)]
     pub debug_unlock: DebugUnlockConfig,
     #[serde(default)]
@@ -93,25 +77,6 @@ impl TestConfig {
         let content = std::fs::read_to_string(path)?;
         let config: Self = toml::from_str(&content)?;
         Ok(config)
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ExportIdevidCsrConfig {
-    /// Algorithms to test (0x0001=ECC384, 0x0002=MLDSA87)
-    #[serde(default = "default_idevid_algorithms")]
-    pub algorithms: Vec<u32>,
-}
-
-fn default_idevid_algorithms() -> Vec<u32> {
-    vec![1] // ECC384 by default
-}
-
-impl Default for ExportIdevidCsrConfig {
-    fn default() -> Self {
-        Self {
-            algorithms: default_idevid_algorithms(),
-        }
     }
 }
 

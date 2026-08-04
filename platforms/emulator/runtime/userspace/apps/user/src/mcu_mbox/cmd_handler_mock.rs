@@ -1,18 +1,15 @@
 // Licensed under the Apache-2.0 license
 
-extern crate alloc;
-
-use alloc::boxed::Box;
-use async_trait::async_trait;
+#[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::HpkeHandle;
 #[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::OcpLockEnumerateHpkeHandlesResp;
 use caliptra_mcu_common_commands::{
     CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, GetLogResult, Uid,
-    MAX_FW_VERSION_LEN, MAX_UID_LEN,
+    DeviceCapabilities, FirmwareVersion, GetLogResult, MAX_FW_VERSION_LEN,
 };
 use caliptra_mcu_mbox_common::config;
+use mcu_caliptra_api_lite::ApiAlloc;
 
 use crate::caliptra_cmd_handler::CaliptraCmdBackend;
 
@@ -22,10 +19,9 @@ pub struct NonCryptoCmdHandlerMock;
 
 /// Mock implementation of the `CaliptraCmdHandler` trait.
 ///
-/// This handler provides mock responses for firmware version queries,
-/// device ID, device information, and device capabilities. Intended to use for
+/// This handler provides mock responses for firmware version queries
+/// and device capabilities. Intended to use for
 /// integration testing on the emulator platform.
-#[async_trait]
 impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
     async fn get_firmware_version(
         &self,
@@ -49,35 +45,6 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         Ok(())
     }
 
-    async fn get_device_id(&self, device_id: &mut DeviceId) -> CaliptraCmdResult<()> {
-        let test_device_id = &config::TEST_DEVICE_ID;
-        device_id.vendor_id = test_device_id.vendor_id;
-        device_id.device_id = test_device_id.device_id;
-        device_id.subsystem_vendor_id = test_device_id.subsystem_vendor_id;
-        device_id.subsystem_id = test_device_id.subsystem_id;
-        Ok(())
-    }
-
-    async fn get_device_info(&self, index: u32, info: &mut DeviceInfo) -> CaliptraCmdResult<()> {
-        match index {
-            0 => {
-                let test_uid = &config::TEST_UID;
-                if test_uid.len() > MAX_UID_LEN {
-                    return Err(CaliptraCompletionCode::InvalidPayloadSize);
-                }
-                let mut unique_chip_id = [0u8; MAX_UID_LEN];
-                unique_chip_id[..test_uid.len()].copy_from_slice(&test_uid[..]);
-                let uid = Uid {
-                    len: test_uid.len(),
-                    unique_chip_id,
-                };
-                *info = DeviceInfo::Uid(uid);
-                Ok(())
-            }
-            _ => Err(CaliptraCompletionCode::InvalidParameter),
-        }
-    }
-
     async fn get_device_capabilities(
         &self,
         capabilities: &mut DeviceCapabilities,
@@ -92,8 +59,9 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         Ok(())
     }
 
-    async fn export_attested_csr(
+    async fn export_attested_csr<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         device_key_id: u32,
         algorithm: u32,
         nonce: &[u8; 32],
@@ -102,7 +70,7 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         // Delegate to real CaliptraCmdBackend for actual Caliptra mailbox interaction
         let handler = CaliptraCmdBackend;
         handler
-            .export_attested_csr(device_key_id, algorithm, nonce, csr_buf)
+            .export_attested_csr(alloc, device_key_id, algorithm, nonce, csr_buf)
             .await
     }
 
@@ -116,18 +84,27 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         handler.export_idevid_csr(algorithm, csr_buf).await
     }
 
-    async fn request_debug_unlock(
+    async fn request_debug_unlock<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         unlock_level: u8,
         challenge: &mut DebugUnlockChallenge,
     ) -> CaliptraCmdResult<()> {
         let handler = CaliptraCmdBackend;
-        handler.request_debug_unlock(unlock_level, challenge).await
+        handler
+            .request_debug_unlock(alloc, unlock_level, challenge)
+            .await
     }
 
-    async fn authorize_debug_unlock_token(&self, token_data: &[u8]) -> CaliptraCmdResult<()> {
+    async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        token_data: &[u8],
+    ) -> CaliptraCmdResult<()> {
         let handler = CaliptraCmdBackend;
-        handler.authorize_debug_unlock_token(token_data).await
+        handler
+            .authorize_debug_unlock_token(alloc, token_data)
+            .await
     }
 
     async fn get_log(&self, log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
@@ -140,9 +117,16 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         CaliptraCmdBackend.clear_log(log_type).await
     }
 
-    async fn program_field_entropy(&self, partition: u32) -> CaliptraCmdResult<()> {
-        CaliptraCmdBackend.program_field_entropy(partition).await
+    async fn program_field_entropy<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        partition: u32,
+    ) -> CaliptraCmdResult<()> {
+        CaliptraCmdBackend
+            .program_field_entropy(alloc, partition)
+            .await
     }
+    #[cfg(feature = "ocp-lock")]
     async fn get_ocp_lock_endorsement_cert(
         &self,
         hpke_handle: &HpkeHandle,

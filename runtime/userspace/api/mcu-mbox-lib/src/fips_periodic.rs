@@ -5,9 +5,6 @@
 //! This module provides functionality to run FIPS self-tests periodically
 //! in the background. It can be enabled/disabled via MCU mailbox commands.
 
-use caliptra_api::mailbox::CommandId as CaliptraCommandId;
-use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_alarm::{Convert, Hz, Milliseconds};
 use caliptra_mcu_libtock_console::Console;
@@ -20,6 +17,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
+use mcu_caliptra_api_lite::raw;
 
 /// Periodic FIPS self-test interval in milliseconds.
 /// Default: 60 seconds (60000 ms)
@@ -99,18 +97,13 @@ async fn sleep_ms(ms: u32) {
 /// 1. Sends SELF_TEST_START to Caliptra
 /// 2. Polls SELF_TEST_GET_RESULTS until completion
 /// 3. Returns true on success, false on failure
-async fn run_fips_self_test(caliptra_mbox: &Mailbox) -> bool {
+async fn run_fips_self_test() -> bool {
     // Start the self-test
     let mut req_buf = [0u8; 8]; // Minimal request buffer (just header)
     let mut resp_buf = [0u8; 8]; // Response buffer
 
-    let start_result = execute_mailbox_cmd(
-        caliptra_mbox,
-        CaliptraCommandId::SELF_TEST_START.into(),
-        &mut req_buf,
-        &mut resp_buf,
-    )
-    .await;
+    let start_result =
+        raw::raw_mailbox_execute(raw::CMD_SELF_TEST_START, &mut req_buf, &mut resp_buf).await;
 
     if start_result.is_err() {
         log_error!(
@@ -127,13 +120,9 @@ async fn run_fips_self_test(caliptra_mbox: &Mailbox) -> bool {
         sleep_ms(100).await;
 
         // Get results
-        let get_results = execute_mailbox_cmd(
-            caliptra_mbox,
-            CaliptraCommandId::SELF_TEST_GET_RESULTS.into(),
-            &mut req_buf,
-            &mut resp_buf,
-        )
-        .await;
+        let get_results =
+            raw::raw_mailbox_execute(raw::CMD_SELF_TEST_GET_RESULTS, &mut req_buf, &mut resp_buf)
+                .await;
 
         match get_results {
             Ok(_) => {
@@ -160,8 +149,6 @@ async fn run_fips_self_test(caliptra_mbox: &Mailbox) -> bool {
 /// when enabled.
 #[embassy_executor::task]
 pub async fn fips_periodic_task() {
-    let caliptra_mbox = Mailbox::new();
-
     log_info!(
         Console::<DefaultSyscalls>::writer(),
         "Periodic FIPS self-test task started"
@@ -170,7 +157,7 @@ pub async fn fips_periodic_task() {
     loop {
         if is_enabled() {
             // Run self-test
-            let result = run_fips_self_test(&caliptra_mbox).await;
+            let result = run_fips_self_test().await;
 
             // Update state (load-modify-store since fetch_add not available on riscv32)
             let current = ITERATIONS.load(Ordering::SeqCst);

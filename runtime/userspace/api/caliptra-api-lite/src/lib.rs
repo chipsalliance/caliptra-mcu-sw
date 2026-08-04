@@ -31,11 +31,14 @@ mod dpe;
 pub mod eat;
 mod ecdh;
 mod fe_prog;
+mod fw_info;
 mod hmac;
 mod import;
+pub mod raw;
 mod rng;
 mod sha;
 pub mod signed_eat;
+mod slice;
 mod types;
 mod wire;
 
@@ -52,14 +55,16 @@ pub use debug_unlock::{
 };
 pub use device_state::{get_pcr_value, pcr_quote_ecc384, PCR_QUOTE_ECC384_LEN};
 pub use dpe::{
-    dpe_certify_key, dpe_certify_key_pubkey, dpe_get_cert_chain_chunk, dpe_sign_ecc_p384,
-    walk_dpe_chain, DpeChainSink, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE,
-    DPE_P384_SIGNATURE_SIZE,
+    dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
+    dpe_get_cert_chain_chunk, dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci,
+    walk_dpe_chain, DpeChainSink, DpeContextHandle, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN,
+    DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE, DPE_P384_SIGNATURE_SIZE,
 };
 pub use ecdh::{
     ecdh_finish, ecdh_generate, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
 };
 pub use fe_prog::fe_prog;
+pub use fw_info::{fw_info, FwInfo};
 pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
 pub use import::{cm_delete, cm_import};
 pub use rng::rng_generate;

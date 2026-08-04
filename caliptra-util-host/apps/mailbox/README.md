@@ -47,7 +47,7 @@ use caliptra_mailbox_client::Validator;
 let validator = Validator::new("127.0.0.1:8080".parse()?);
 let results = validator.start()?;
 for result in results {
-    println!("Test '{}': {}", result.test_name, 
+    println!("Test '{}': {}", result.test_name,
         if result.passed { "PASSED" } else { "FAILED" });
 }
 ```
@@ -72,7 +72,9 @@ for result in results {
 ## Supported Commands
 
 Currently implemented:
-- **GetDeviceId**: Retrieve device identification information (vendor ID, device ID, subsystem information)
+
+- **GetFirmwareVersion**: Retrieve firmware version information
+- **GetDeviceCapabilities**: Retrieve device capability information
 
 ## Network Protocol
 
@@ -87,9 +89,9 @@ Currently implemented:
 The mailbox applications demonstrate the full transport stack:
 
 1. **UdpTransportDriver**: Implements `MailboxDriver` for UDP communication
-2. **Mailbox Transport**: Provides `Transport` interface with command translation  
+2. **Mailbox Transport**: Provides `Transport` interface with command translation
 3. **CaliptraSession**: Session management and command execution
-4. **High-level API**: Type-safe command functions (e.g., `caliptra_cmd_get_device_id`)
+4. **High-level API**: Type-safe command functions (e.g., `caliptra_cmd_get_device_capabilities`)
 
 This layered approach allows easy substitution of transport mechanisms while maintaining the same high-level API.
 

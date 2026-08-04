@@ -16,17 +16,10 @@ pub const CALIPTRA_VDM_COMMAND_VERSION: u8 = 0x01;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CaliptraVdmCommand {
-    GetDebugLog = 0x05,
-    ClearDebugLog = 0x06,
-    GetAttestationLog = 0x07,
-    ClearAttestationLog = 0x08,
-    GetAttestation = 0x09,
-    RequestDebugUnlock = 0x0A,
-    AuthorizeDebugUnlockToken = 0x0B,
-    SetSlot0Cert = 0x0D,
-    GetSlot0State = 0x0E,
-    ExportAttestedCsr = 0x0F,
-    DeviceOwnershipTransfer = 0x11,
+    GetAttestation = 0x05,
+    RequestDebugUnlock = 0x06,
+    AuthorizeDebugUnlockToken = 0x07,
+    ExportAttestedCsr = 0x08,
     /// Single entry point for authorization-related sub-commands.
     AuthorizedCommand = 0x12,
 }
@@ -36,17 +29,10 @@ impl TryFrom<u8> for CaliptraVdmCommand {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Ok(match value {
-            0x05 => Self::GetDebugLog,
-            0x06 => Self::ClearDebugLog,
-            0x07 => Self::GetAttestationLog,
-            0x08 => Self::ClearAttestationLog,
-            0x09 => Self::GetAttestation,
-            0x0A => Self::RequestDebugUnlock,
-            0x0B => Self::AuthorizeDebugUnlockToken,
-            0x0D => Self::SetSlot0Cert,
-            0x0E => Self::GetSlot0State,
-            0x0F => Self::ExportAttestedCsr,
-            0x11 => Self::DeviceOwnershipTransfer,
+            0x05 => Self::GetAttestation,
+            0x06 => Self::RequestDebugUnlock,
+            0x07 => Self::AuthorizeDebugUnlockToken,
+            0x08 => Self::ExportAttestedCsr,
             0x12 => Self::AuthorizedCommand,
             _ => return Err(()),
         })

@@ -21,26 +21,26 @@ pub mod test {
         CmHkdfExtractReq, CmHmacKdfCounterReq, CmHmacReq, CmImportReq, CmKeyUsage,
         CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, CmRandomGenerateReq,
         CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk,
-        DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp,
-        FirmwareVersionReq, FirmwareVersionResp, GetLogReq, MailboxReqHeader, MailboxRespHeader,
-        MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
-        McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
-        McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
-        McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
-        McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
-        McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp,
-        McuEcdsaCmkSignReq, McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp,
-        McuFipsPeriodicEnableReq, McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp,
-        McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
-        McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
-        McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
-        McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp,
-        McuMldsaCmkVerifyReq, McuMldsaCmkVerifyResp, McuProdDebugUnlockReqReq,
-        McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq,
-        McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
-        ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
-        ProductionAuthDebugUnlockToken, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
-        CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
+        DeviceCapsReq, DeviceCapsResp, FirmwareVersionReq, FirmwareVersionResp, GetLogReq,
+        MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq,
+        McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
+        McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq,
+        McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq,
+        McuCmDeleteReq, McuCmImportReq, McuCmImportResp, McuCmStatusReq, McuCmStatusResp,
+        McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
+        McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq, McuEcdsaCmkSignResp,
+        McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsPeriodicEnableReq,
+        McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsReq,
+        McuFipsSelfTestStartReq, McuFipsSelfTestStartResp, McuHkdfExpandReq, McuHkdfExpandResp,
+        McuHkdfExtractReq, McuHkdfExtractResp, McuHmacKdfCounterReq, McuHmacKdfCounterResp,
+        McuHmacReq, McuMailboxReq, McuMailboxResp, McuMldsaCmkPublicKeyReq,
+        McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq,
+        McuMldsaCmkVerifyResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq,
+        McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
+        McuShaInitResp, McuShaUpdateReq, ProductionAuthDebugUnlockChallenge,
+        ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
+        CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE,
+        MAX_CMB_DATA_SIZE,
     };
     use caliptra_mcu_registers_generated::mci;
     use caliptra_mcu_testing_common::{
@@ -489,58 +489,6 @@ pub mod test {
                 cmd.0,
                 device_caps_req.as_bytes().unwrap().to_vec(),
                 device_caps_resp.as_bytes().unwrap().to_vec(),
-            );
-
-            // Add device ID test message
-            let mut device_id_req = McuMailboxReq::DeviceId(DeviceIdReq {
-                hdr: MailboxReqHeader::default(),
-            });
-            let cmd = device_id_req.cmd_code();
-            device_id_req.populate_chksum().unwrap();
-
-            let test_device_id = &caliptra_mcu_mbox_common::config::TEST_DEVICE_ID;
-            let mut device_id_resp = McuMailboxResp::DeviceId(DeviceIdResp {
-                hdr: MailboxRespHeader::default(),
-                vendor_id: test_device_id.vendor_id,
-                device_id: test_device_id.device_id,
-                subsystem_vendor_id: test_device_id.subsystem_vendor_id,
-                subsystem_id: test_device_id.subsystem_id,
-            });
-            device_id_resp.populate_chksum().unwrap();
-
-            self.push(
-                cmd.0,
-                device_id_req.as_bytes().unwrap().to_vec(),
-                device_id_resp.as_bytes().unwrap().to_vec(),
-            );
-
-            // Add device info test message
-            let mut device_info_req = McuMailboxReq::DeviceInfo(DeviceInfoReq {
-                hdr: MailboxReqHeader::default(),
-                index: 0, // Only index 0 (UID) is supported in this test
-            });
-            let cmd = device_info_req.cmd_code();
-            device_info_req.populate_chksum().unwrap();
-
-            let test_uid = &caliptra_mcu_mbox_common::config::TEST_UID;
-            let mut device_info_resp = McuMailboxResp::DeviceInfo(DeviceInfoResp {
-                hdr: MailboxRespHeaderVarSize {
-                    data_len: test_uid.len() as u32,
-                    ..Default::default()
-                },
-                data: {
-                    let mut u = [0u8; 32];
-                    let len = test_uid.len().min(u.len());
-                    u[..len].copy_from_slice(&test_uid[..len]);
-                    u
-                },
-            });
-            device_info_resp.populate_chksum().unwrap();
-
-            self.push(
-                cmd.0,
-                device_info_req.as_bytes().unwrap().to_vec(),
-                device_info_resp.as_bytes().unwrap().to_vec(),
             );
         }
 
@@ -2713,9 +2661,14 @@ pub mod test {
             // a valid challenge-response flow. Sending a zeroed token will be
             // rejected, confirming the passthrough dispatch works.
             println!("  Testing prod debug unlock token passthrough...");
-            let mut prod_token_req = McuMailboxReq::ProdDebugUnlockToken(
-                McuProdDebugUnlockTokenReq(ProductionAuthDebugUnlockToken::new_zeroed()),
-            );
+            let mut prod_token_req =
+                McuMailboxReq::ProdDebugUnlockToken(McuProdDebugUnlockTokenReq {
+                    hdr: MailboxReqHeader::default(),
+                    token: ProductionAuthDebugUnlockToken::new_zeroed(),
+                });
+            if let McuMailboxReq::ProdDebugUnlockToken(req) = &mut prod_token_req {
+                req.populate_caliptra_chksum().unwrap();
+            }
             prod_token_req.populate_chksum().unwrap();
 
             let prod_token_resp = self.process_message(
@@ -2755,7 +2708,6 @@ pub mod test {
             // ---------- 1) Drain debug log (one round-trip suffices) ----------
             let mut req = McuMailboxReq::GetLog(GetLogReq {
                 hdr: MailboxReqHeader::default(),
-                log_type: 0, // Debug
             });
             let cmd = req.cmd_code();
             req.populate_chksum().unwrap();
@@ -2797,7 +2749,6 @@ pub mod test {
             // ---------- 2) Second drain returns 0 bytes (cursor at end) ----------
             let mut req = McuMailboxReq::GetLog(GetLogReq {
                 hdr: MailboxReqHeader::default(),
-                log_type: 0,
             });
             req.populate_chksum().unwrap();
 
@@ -2817,7 +2768,6 @@ pub mod test {
             // ---------- 3) ClearLog(Debug) succeeds ----------
             let mut req = McuMailboxReq::ClearLog(ClearLogReq {
                 hdr: MailboxReqHeader::default(),
-                log_type: 0,
             });
             let clear_cmd = req.cmd_code();
             req.populate_chksum().unwrap();
@@ -2837,7 +2787,6 @@ pub mod test {
             // ---------- 4) Post-clear GetLog(Debug) is empty ----------
             let mut req = McuMailboxReq::GetLog(GetLogReq {
                 hdr: MailboxReqHeader::default(),
-                log_type: 0,
             });
             req.populate_chksum().unwrap();
             let resp = self
@@ -2852,80 +2801,6 @@ pub mod test {
                 "Post-clear GetLog should be empty"
             );
             println!("  Post-clear GetLog(Debug): 0 bytes (expected)");
-
-            // ---------- 5) Attestation log still unsupported on both platforms ----------
-            // Attestation log: not yet wired anywhere → Failure on both platforms.
-            let mut req = McuMailboxReq::GetLog(GetLogReq {
-                hdr: MailboxReqHeader::default(),
-                log_type: 1, // Attestation
-            });
-            req.populate_chksum().unwrap();
-            let resp = self
-                .process_message(cmd.0, req.as_bytes().unwrap())
-                .map_err(|e| {
-                    println!("    GetLog(Attestation) transport error: {:?}", e);
-                })?;
-            assert_eq!(
-                resp.status_code,
-                MbxCmdStatus::Failure as u32,
-                "GetLog(Attestation) should report Failure until the production \
-                 attestation-log backend lands"
-            );
-            println!("  GetLog(Attestation): Failure (expected — unsupported)");
-
-            // ClearLog(Attestation) — also unsupported on both platforms.
-            // (Reuse `cmd` as the GetLog cmd code; we need ClearLog cmd code now.)
-            let mut req = McuMailboxReq::ClearLog(ClearLogReq {
-                hdr: MailboxReqHeader::default(),
-                log_type: 1,
-            });
-            let clear_cmd = req.cmd_code();
-            req.populate_chksum().unwrap();
-            let resp = self
-                .process_message(clear_cmd.0, req.as_bytes().unwrap())
-                .map_err(|e| {
-                    println!("    ClearLog(Attestation) transport error: {:?}", e);
-                })?;
-            assert_eq!(
-                resp.status_code,
-                MbxCmdStatus::Failure as u32,
-                "ClearLog(Attestation) should report Failure until production backend lands"
-            );
-            println!("  ClearLog(Attestation): Failure (expected — unsupported)");
-
-            // ---------- 6) Invalid log_type rejected ----------
-            let mut req = McuMailboxReq::GetLog(GetLogReq {
-                hdr: MailboxReqHeader::default(),
-                log_type: 0xFF,
-            });
-            req.populate_chksum().unwrap();
-            let resp = self
-                .process_message(cmd.0, req.as_bytes().unwrap())
-                .map_err(|e| {
-                    println!("    GetLog(invalid) transport error: {:?}", e);
-                })?;
-            assert_eq!(
-                resp.status_code,
-                MbxCmdStatus::Failure as u32,
-                "GetLog with unknown log_type should report Failure"
-            );
-
-            let mut req = McuMailboxReq::ClearLog(ClearLogReq {
-                hdr: MailboxReqHeader::default(),
-                log_type: 0xFF,
-            });
-            req.populate_chksum().unwrap();
-            let resp = self
-                .process_message(clear_cmd.0, req.as_bytes().unwrap())
-                .map_err(|e| {
-                    println!("    ClearLog(invalid) transport error: {:?}", e);
-                })?;
-            assert_eq!(
-                resp.status_code,
-                MbxCmdStatus::Failure as u32,
-                "ClearLog with unknown log_type should report Failure"
-            );
-            println!("  Invalid log_type rejected for both GetLog and ClearLog");
 
             println!("MC_GET_LOG / MC_CLEAR_LOG tests passed");
             Ok(())
@@ -3013,8 +2888,13 @@ pub mod test {
 
             // Step 5: Send the signed token
             println!("  Sending signed token...");
-            let mut token_req =
-                McuMailboxReq::ProdDebugUnlockToken(McuProdDebugUnlockTokenReq(token));
+            let mut token_req = McuMailboxReq::ProdDebugUnlockToken(McuProdDebugUnlockTokenReq {
+                hdr: MailboxReqHeader::default(),
+                token,
+            });
+            if let McuMailboxReq::ProdDebugUnlockToken(req) = &mut token_req {
+                req.populate_caliptra_chksum().unwrap();
+            }
             token_req.populate_chksum().unwrap();
 
             let token_resp = self

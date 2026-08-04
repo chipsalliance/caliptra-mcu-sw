@@ -10,12 +10,15 @@ on:
     # Run daily at 02:00 UTC (nightly)
     - cron: '0 2 * * *'
 
+env:
+  # Pin the Caliptra core ROM to a release tag; image/update crates continue
+  # to use the Cargo.toml caliptra-sw rev. main-2.1 pins rom-2.1.2 instead.
+  CALIPTRA_ROM_REF: rom-2.1.2
+  RUSTUP_TOOLCHAIN: "1.85-x86_64-unknown-linux-gnu"
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-env:
-  RUSTUP_TOOLCHAIN: "1.85-x86_64-unknown-linux-gnu"
 
 jobs:
   build-xtask:
@@ -61,7 +64,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -106,7 +109,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -117,7 +120,7 @@ jobs:
           rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Download xtask binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: xtask-binary
           path: /tmp/
@@ -180,14 +183,14 @@ jobs:
           cd target/merged-all-fw-release && zip -r ../all-fw-release.zip . && cd -
 
       - name: Upload firmware bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-bundle
           path: target/all-fw.zip
           retention-days: 1
 
       - name: Upload release firmware bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-firmware-bundle
           path: target/all-fw-release.zip
@@ -204,7 +207,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -215,7 +218,7 @@ jobs:
           rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Download xtask binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: xtask-binary
           path: /tmp/
@@ -229,7 +232,7 @@ jobs:
           /tmp/xtask emulator-build
 
       - name: Upload emulator bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: emulator-bundle
           path: target/emulators.zip
@@ -246,7 +249,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -265,7 +268,7 @@ jobs:
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
 
       - name: Download xtask binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: xtask-binary
           path: /tmp/
@@ -279,7 +282,7 @@ jobs:
             --archive /tmp/nextest-archive.tar.zst
 
       - name: Upload test archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nextest-archive
           path: /tmp/nextest-archive.tar.zst
@@ -301,7 +304,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -329,25 +332,25 @@ jobs:
           /tmp/xtask network tap setup
 
       - name: Download firmware bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: firmware-bundle
           path: target/
 
       - name: Download release firmware bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-firmware-bundle
           path: target/
 
       - name: Download emulator bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: emulator-bundle
           path: target/
 
       - name: Download test archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nextest-archive
           path: /tmp/
@@ -388,7 +391,7 @@ jobs:
           sudo mv /tmp/junit.xml /tmp/junit-release.xml
 
       - name: 'Upload test results'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: success() || failure()
         with:
           name: caliptra-test-results-${{ matrix.shard }}
@@ -403,12 +406,12 @@ jobs:
     if: always()
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: 'Download test results'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: caliptra-test-results-*
           merge-multiple: true
@@ -434,7 +437,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -458,19 +461,19 @@ jobs:
         run: chmod +x /tmp/xtask
 
       - name: Download firmware bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: firmware-bundle
           path: target/
 
       - name: Download emulator bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: emulator-bundle
           path: target/
 
       - name: Download test archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nextest-archive
           path: /tmp/

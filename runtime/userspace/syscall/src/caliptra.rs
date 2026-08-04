@@ -52,6 +52,22 @@ impl<S: Syscalls> Caliptra<S> {
         }
         Ok(fuse_value)
     }
+
+    pub fn get_hek_active_state(&self) -> Result<u16, ErrorCode> {
+        S::command(self.driver_num, cmd::CALIPTRA_GET_HEK_ACTIVE_STATE, 0, 0)
+            .to_result::<u32, ErrorCode>()
+            .map(|val| val as u16)
+    }
+
+    pub fn get_hek_active_slot(&self) -> Result<u32, ErrorCode> {
+        S::command(self.driver_num, cmd::CALIPTRA_GET_HEK_ACTIVE_SLOT, 0, 0)
+            .to_result::<u32, ErrorCode>()
+    }
+
+    pub fn get_hek_total_slots(&self) -> Result<u32, ErrorCode> {
+        S::command(self.driver_num, cmd::CALIPTRA_GET_HEK_TOTAL_SLOTS, 0, 0)
+            .to_result::<u32, ErrorCode>()
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -65,6 +81,9 @@ pub mod cmd {
     pub const CALIPTRA_READ: u32 = 1;
     pub const CALIPTRA_WRITE: u32 = 2;
     pub const CALIPTRA_SET_REGISTER: u32 = 3;
+    pub const CALIPTRA_GET_HEK_ACTIVE_STATE: u32 = 4;
+    pub const CALIPTRA_GET_HEK_ACTIVE_SLOT: u32 = 5;
+    pub const CALIPTRA_GET_HEK_TOTAL_SLOTS: u32 = 6;
 }
 
 pub mod reg {

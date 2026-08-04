@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 #[cfg(feature = "ocp-lock")]
-use crate::ocp_lock::HekState;
+use crate::ocp_lock::{HekState, OcpLockState};
 use crate::println;
 use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
@@ -36,9 +36,9 @@ pub struct RomHandoffTable {
     /// Minor version of FHT.
     pub fht_minor_ver: u16,
 
-    /// HEK state from OCP LOCK fuse population.
+    /// OCP LOCK state from fuse population.
     #[cfg(feature = "ocp-lock")]
-    pub hek_state: HekState,
+    pub ocp_lock: OcpLockState,
     #[cfg(not(feature = "ocp-lock"))]
     pub reserved_hek: [u32; 3], // 12 bytes
 
@@ -53,7 +53,7 @@ impl Default for RomHandoffTable {
             fht_major_ver: FHT_MAJOR_VERSION,
             fht_minor_ver: FHT_MINOR_VERSION,
             #[cfg(feature = "ocp-lock")]
-            hek_state: HekState::default(),
+            ocp_lock: OcpLockState::default(),
             #[cfg(not(feature = "ocp-lock"))]
             reserved_hek: [0; 3],
             padding: [0; 44],
@@ -152,11 +152,11 @@ const _: () = assert!(core::mem::size_of::<HandoffData>() <= 1024);
 const _: () = assert!(core::mem::align_of::<HandoffData>() == 4);
 
 /// Arguments for initializing the handoff table.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 pub struct HandoffArgs {
-    /// HEK state from OCP LOCK fuse population.
+    /// OCP LOCK state from fuse population.
     #[cfg(feature = "ocp-lock")]
-    pub hek_state: HekState,
+    pub ocp_lock: OcpLockState,
 }
 
 impl HandoffData {
@@ -186,7 +186,7 @@ impl HandoffData {
             HANDOFF = Self {
                 rom: RomHandoffTable {
                     #[cfg(feature = "ocp-lock")]
-                    hek_state: _args.hek_state,
+                    ocp_lock: _args.ocp_lock,
                     #[cfg(not(feature = "ocp-lock"))]
                     reserved_hek: [0; 3],
                     ..Default::default()
@@ -219,11 +219,13 @@ pub static mut HANDOFF: HandoffData = HandoffData {
         fht_major_ver: 0,
         fht_minor_ver: 0,
         #[cfg(feature = "ocp-lock")]
-        hek_state: HekState {
-            active_state: crate::ocp_lock::HekSeedState::Unused,
-            reserved: 0,
-            active_slot: 0,
-            total_slots: 0,
+        ocp_lock: OcpLockState {
+            hek_state: HekState {
+                active_state: crate::ocp_lock::HekSeedState::Unused,
+                reserved: 0,
+                active_slot: 0,
+                total_slots: 0,
+            },
         },
         #[cfg(not(feature = "ocp-lock"))]
         reserved_hek: [0; 3],
@@ -235,6 +237,15 @@ pub static mut HANDOFF: HandoffData = HandoffData {
         valid_marker: 0,
     },
 };
+
+/// Safe accessor for the entire OCP LOCK state in handoff table.
+/// Available to kernel capsules without requiring unsafe blocks.
+#[cfg(feature = "ocp-lock")]
+pub fn get_ocp_lock_state() -> Result<&'static OcpLockState, ()> {
+    // SAFETY: HANDOFF is populated by ROM at boot and is read-only for Runtime.
+    // The linker will place the handoff struct in the correct location.
+    unsafe { Ok(&HANDOFF.rom.ocp_lock) }
+}
 
 #[cfg(test)]
 mod tests {

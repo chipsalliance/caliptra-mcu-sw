@@ -12,6 +12,8 @@
 //! `caliptra-api` dependency, which would otherwise be pulled into
 //! every consumer of [`crate::Alloc`].
 
+use crate::slice::copy_bytes;
+
 // ---- Caliptra mailbox constants -------------------------------------------
 
 /// Maximum payload bytes in any single `Cm*` mailbox request — the
@@ -41,6 +43,14 @@ pub(crate) const CMD_CM_RANDOM_GENERATE: u32 = 0x434D_5247; // "CMRG"
 /// Mirrored from `caliptra-api::CommandId::INVOKE_DPE`.
 pub(crate) const CMD_INVOKE_DPE: u32 = 0x4450_4543; // "DPEC"
 
+/// Caliptra mailbox command ID for `CERTIFY_KEY_CHUNKS`.
+/// Mirrored from `caliptra-api::CommandId::CERTIFY_KEY_CHUNKS`.
+pub(crate) const CMD_CERTIFY_KEY_CHUNKS: u32 = 0x434B_4348; // "CKCH"
+
+/// Caliptra mailbox command ID for the top-level `DPE_TAG_TCI` command.
+/// Mirrored from `caliptra-api::CommandId::DPE_TAG_TCI`.
+pub(crate) const CMD_DPE_TAG_TCI: u32 = 0x5451_4754; // "TGQT"
+
 /// DPE per-command-header magic (`CommandHdr::DPE_COMMAND_MAGIC`).
 pub(crate) const DPE_COMMAND_MAGIC: u32 = 0x4450_4543; // "DPEC"
 
@@ -55,11 +65,12 @@ pub(crate) const DPE_PROFILE_P384_SHA384: u32 = 4;
 /// (`dpe::commands::Command::GET_CERTIFICATE_CHAIN`).
 pub(crate) const DPE_CMD_GET_CERTIFICATE_CHAIN: u32 = 0x10;
 
-/// DPE `CertifyKey` command ID (`dpe::commands::Command::CERTIFY_KEY`).
-pub(crate) const DPE_CMD_CERTIFY_KEY: u32 = 0x09;
-
 /// DPE `Sign` command ID (`dpe::commands::Command::SIGN`).
 pub(crate) const DPE_CMD_SIGN: u32 = 0x0A;
+
+/// DPE `RotateContextHandle` command ID
+/// (`dpe::commands::Command::ROTATE_CONTEXT_HANDLE`).
+pub(crate) const DPE_CMD_ROTATE_CONTEXT_HANDLE: u32 = 0x0e;
 
 /// `QUOTE_PCRS_ECC384` command ID.
 pub(crate) const CMD_QUOTE_PCRS_ECC384: u32 = 0x5043_5251; // "PCRQ"
@@ -165,7 +176,10 @@ pub(crate) fn populate_checksum(cmd: u32, data: &mut [u8]) -> mcu_error::McuResu
         return Err(mcu_error::codes::INVARIANT);
     }
     let checksum = calc_checksum(cmd, data);
-    data[..4].copy_from_slice(&checksum.to_le_bytes());
+    let Some(dst) = data.get_mut(..4) else {
+        return Err(mcu_error::codes::INVARIANT);
+    };
+    copy_bytes(dst, &checksum.to_le_bytes())?;
     Ok(())
 }
 

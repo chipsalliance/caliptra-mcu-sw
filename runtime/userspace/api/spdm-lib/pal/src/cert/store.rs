@@ -8,7 +8,6 @@
 
 use core::cell::UnsafeCell;
 
-use caliptra_mcu_spdm_traits::MAX_SLOTS;
 use mcu_caliptra_api_lite::{
     sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CONTEXT_SIZE,
 };
@@ -16,19 +15,19 @@ use mcu_error::McuResult;
 
 #[cfg(feature = "set-certificate")]
 use super::endorsement::ManagedEndorsement;
-use super::endorsement::{CertSlot, ReadOnlyEndorsement, SlotEndorsement, NUM_CERT_SLOTS};
+use super::endorsement::{
+    slot_index, CertSlot, ReadOnlyEndorsement, SlotEndorsement, NUM_CERT_SLOTS,
+};
 
 const DEFAULT_CERT_INFO: u8 = 0x01;
 
 /// Static shared cert store.
 ///
-/// Holds per-slot endorsement data and caches that are common to all
-/// transports.  Created once at program start and referenced by every
-/// `McuSpdmPal` instance via `&'static SharedCertStore`.
+/// Holds per-slot endorsement data common to all transports. Created once at
+/// program start and referenced by every `McuSpdmPal` instance via
+/// `&'static SharedCertStore`.
 pub struct SharedCertStore {
     cert_slots: UnsafeCell<[CertSlot; NUM_CERT_SLOTS]>,
-    cached_chain_len: UnsafeCell<[Option<u32>; MAX_SLOTS as usize]>,
-    cached_chain_digest: UnsafeCell<[Option<[u8; 48]>; MAX_SLOTS as usize]>,
 }
 
 // SAFETY: single-core cooperative scheduling — no concurrent access.
@@ -44,8 +43,6 @@ impl SharedCertStore {
     pub const fn new() -> Self {
         Self {
             cert_slots: UnsafeCell::new([CertSlot::empty(), CertSlot::empty(), CertSlot::empty()]),
-            cached_chain_len: UnsafeCell::new([None; MAX_SLOTS as usize]),
-            cached_chain_digest: UnsafeCell::new([None; MAX_SLOTS as usize]),
         }
     }
 
@@ -62,66 +59,6 @@ impl SharedCertStore {
     pub(crate) fn cert_slot_mut(&self, idx: usize) -> Option<&mut CertSlot> {
         // SAFETY: single-task invariant.
         unsafe { (*self.cert_slots.get()).get_mut(idx) }
-    }
-
-    // ---------------------------------------------------------------
-    // Chain-length cache
-    // ---------------------------------------------------------------
-
-    pub fn get_cached_chain_len(&self, slot: u8) -> Option<u32> {
-        if slot >= MAX_SLOTS {
-            return None;
-        }
-        unsafe { (*self.cached_chain_len.get())[slot as usize] }
-    }
-
-    pub fn cached_chain_len_or_zero(&self, slot: u8) -> usize {
-        self.get_cached_chain_len(slot).unwrap_or(0) as usize
-    }
-
-    pub fn set_cached_chain_len(&self, slot: u8, len: u32) {
-        if slot >= MAX_SLOTS {
-            return;
-        }
-        unsafe {
-            (*self.cached_chain_len.get())[slot as usize] = Some(len);
-        }
-    }
-
-    // ---------------------------------------------------------------
-    // Chain-digest cache
-    // ---------------------------------------------------------------
-
-    pub fn cached_chain_digest(&self, slot: u8) -> Option<[u8; 48]> {
-        if slot >= MAX_SLOTS {
-            return None;
-        }
-        unsafe { (*self.cached_chain_digest.get())[slot as usize] }
-    }
-
-    pub fn cache_chain_digest(&self, slot: u8, digest: &[u8]) {
-        if slot >= MAX_SLOTS || digest.len() > 48 {
-            return;
-        }
-        let mut entry = [0u8; 48];
-        for (d, s) in entry.iter_mut().zip(digest) {
-            *d = *s;
-        }
-        unsafe {
-            (*self.cached_chain_digest.get())[slot as usize] = Some(entry);
-        }
-    }
-
-    /// Invalidate all caches for `slot`. Called on SET_CERTIFICATE /
-    /// erase so that the next GET_DIGESTS / GET_CERTIFICATE re-probes.
-    pub fn invalidate_cache(&self, slot: u8) {
-        if slot >= MAX_SLOTS {
-            return;
-        }
-        unsafe {
-            (*self.cached_chain_len.get())[slot as usize] = None;
-            (*self.cached_chain_digest.get())[slot as usize] = None;
-        }
     }
 
     // ---------------------------------------------------------------
@@ -178,5 +115,109 @@ impl SharedCertStore {
         slot.cert_info = endorsement.cert_info();
         slot.endorsement = SlotEndorsement::Managed(endorsement);
         Ok(())
+    }
+}
+
+#[derive(Copy, Clone, Default)]
+struct SlotCache {
+    chain_len: Option<u32>,
+    leaf_len: Option<u32>,
+    chain_digest: Option<[u8; 48]>,
+}
+
+/// Per-task cert store wrapper.
+///
+/// Wraps a reference to the global `'static SharedCertStore` alongside
+/// task-local caches (lengths, digests, etc.) to ensure complete task isolation.
+pub struct TaskCertStore {
+    shared: &'static SharedCertStore,
+    caches: UnsafeCell<[SlotCache; NUM_CERT_SLOTS]>,
+}
+
+impl TaskCertStore {
+    pub const fn new(shared: &'static SharedCertStore) -> Self {
+        Self {
+            shared,
+            caches: UnsafeCell::new(
+                [SlotCache {
+                    chain_len: None,
+                    leaf_len: None,
+                    chain_digest: None,
+                }; NUM_CERT_SLOTS],
+            ),
+        }
+    }
+
+    #[inline]
+    pub fn shared(&self) -> &'static SharedCertStore {
+        self.shared
+    }
+
+    #[inline]
+    pub fn cert_slots(&self) -> &[CertSlot; NUM_CERT_SLOTS] {
+        self.shared.cert_slots()
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub(crate) fn cert_slot_mut(&self, idx: usize) -> Option<&mut CertSlot> {
+        self.shared.cert_slot_mut(idx)
+    }
+
+    pub(crate) fn cached_chain_len(&self, slot: u8) -> Option<u32> {
+        let idx = slot_index(slot)?;
+        unsafe { (*self.caches.get())[idx].chain_len }
+    }
+
+    pub(crate) fn set_cached_chain_len(&self, slot: u8, len: u32) {
+        if let Some(idx) = slot_index(slot) {
+            unsafe {
+                (*self.caches.get())[idx].chain_len = Some(len);
+            }
+        }
+    }
+
+    pub(crate) fn cached_leaf_len(&self, slot: u8) -> Option<u32> {
+        let idx = slot_index(slot)?;
+        unsafe { (*self.caches.get())[idx].leaf_len }
+    }
+
+    pub(crate) fn set_cached_leaf_len(&self, slot: u8, len: u32) {
+        if let Some(idx) = slot_index(slot) {
+            unsafe {
+                (*self.caches.get())[idx].leaf_len = Some(len);
+            }
+        }
+    }
+
+    pub(crate) fn cached_chain_digest(&self, slot: u8) -> Option<[u8; 48]> {
+        let idx = slot_index(slot)?;
+        unsafe { (*self.caches.get())[idx].chain_digest }
+    }
+
+    pub(crate) fn cache_chain_digest(&self, slot: u8, digest: &[u8]) {
+        if let Some(idx) = slot_index(slot) {
+            if digest.len() > 48 {
+                return;
+            }
+            let mut entry = [0u8; 48];
+            for (d, s) in entry.iter_mut().zip(digest) {
+                *d = *s;
+            }
+            unsafe {
+                (*self.caches.get())[idx].chain_digest = Some(entry);
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn invalidate_cert_caches(&self, slot: u8) {
+        if let Some(idx) = slot_index(slot) {
+            unsafe {
+                (*self.caches.get())[idx].chain_len = None;
+                (*self.caches.get())[idx].leaf_len = None;
+                (*self.caches.get())[idx].chain_digest = None;
+            }
+        }
     }
 }

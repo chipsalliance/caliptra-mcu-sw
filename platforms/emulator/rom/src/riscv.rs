@@ -604,7 +604,10 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
-    } else if cfg!(feature = "flash-boot") {
+    } else if cfg!(all(
+        feature = "flash-boot",
+        not(feature = "test-dot-recovery-reset-flow")
+    )) {
         // Simple flash-based boot without partition tables.
         // Uses flash image starting at offset 0.
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
@@ -704,7 +707,10 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
-            dot_recovery_handler: if cfg!(feature = "test-dot-recovery") {
+            dot_recovery_handler: if cfg!(any(
+                feature = "test-dot-recovery",
+                feature = "test-dot-recovery-reset-flow"
+            )) {
                 Some(&*recovery_handler)
             } else {
                 None

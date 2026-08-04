@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use std::io::Write;
 use std::mem::offset_of;
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -8,9 +9,9 @@ use caliptra_api::checksum::calc_checksum;
 use caliptra_api::mailbox::CommandId;
 use caliptra_hw_model::jtag::{CaliptraCoreReg, CsrReg};
 use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
+use caliptra_mcu_registers_generated::mci::regs::Mci;
 
 use anyhow::{anyhow, Context, Result};
-use caliptra_mcu_registers_generated::mci::regs::Mci;
 use int_enum::IntEnum;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -134,17 +135,10 @@ pub fn sideload_binary(
         0,
     )?;
 
-    let mut words = Vec::with_capacity((bytes.len() + 3) / 4);
-    for chunk in bytes.chunks(4) {
-        let mut word_bytes = [0u8; 4];
-        word_bytes[..chunk.len()].copy_from_slice(chunk);
-        words.push(u32::from_le_bytes(word_bytes));
-    }
-
-    for (i, word) in words.iter().enumerate() {
-        let addr = offset + (i as u32) * 4;
-        tap.write_memory_32(addr, *word)?;
-    }
+    let mut temp_file = tempfile::NamedTempFile::new()?;
+    temp_file.write_all(bytes)?;
+    temp_file.flush()?;
+    tap.load_image(&temp_file.path(), offset)?;
 
     tap.write_csr_reg(CsrReg::Dpc, offset)?;
 

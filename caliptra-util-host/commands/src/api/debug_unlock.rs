@@ -62,8 +62,10 @@ pub fn caliptra_cmd_prod_debug_unlock_token(
     session: &mut CaliptraSession,
     request: &ProdDebugUnlockTokenRequest,
 ) -> CaliptraResult<ProdDebugUnlockTokenResponse> {
+    let mut request = request.clone();
+    request.populate_checksum();
     session
-        .execute_command_with_id(CaliptraCommandId::ProdDebugUnlockToken, request)
+        .execute_command_with_id(CaliptraCommandId::ProdDebugUnlockToken, &request)
         .map_err(|_| {
             CaliptraApiError::SessionError("Production debug unlock token command execution failed")
         })

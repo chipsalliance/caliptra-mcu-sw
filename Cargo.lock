@@ -1029,9 +1029,11 @@ dependencies = [
  "chrono",
  "elf",
  "hex",
+ "p384",
  "rayon",
  "semver",
  "serde",
+ "serde_json",
  "subst",
  "tempfile",
  "toml 0.8.23",
@@ -1095,9 +1097,9 @@ dependencies = [
 name = "caliptra-mcu-common-commands"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "caliptra-api",
  "caliptra-mcu-mbox-common",
+ "mcu-caliptra-api-lite",
  "zerocopy",
 ]
 
@@ -1608,6 +1610,7 @@ dependencies = [
  "semver",
  "sha2",
  "sha3 0.10.8",
+ "tempfile",
  "thiserror 2.0.17",
  "tock-registers",
  "uio",
@@ -1874,9 +1877,7 @@ dependencies = [
 name = "caliptra-mcu-mbox-lib"
 version = "0.1.0"
 dependencies = [
- "caliptra-api",
  "caliptra-mcu-common-commands",
- "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_alarm",
  "caliptra-mcu-libtock_console",
@@ -1890,6 +1891,7 @@ dependencies = [
  "defmt",
  "embassy-executor",
  "embassy-sync",
+ "mcu-caliptra-api-lite",
  "zerocopy",
 ]
 
@@ -1906,7 +1908,6 @@ dependencies = [
 name = "caliptra-mcu-mctp-vdm-lib"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "caliptra-mcu-common-commands",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_alarm",
@@ -1927,6 +1928,14 @@ dependencies = [
 [[package]]
 name = "caliptra-mcu-measurement-api"
 version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-runtime-userspace-error",
+ "embassy-sync",
+ "mcu-caliptra-api-lite",
+ "sha2",
+]
 
 [[package]]
 name = "caliptra-mcu-network-app-rom-test"
@@ -1982,6 +1991,19 @@ name = "caliptra-mcu-otp-lifecycle"
 version = "0.1.0"
 dependencies = [
  "sha3 0.10.8",
+]
+
+[[package]]
+name = "caliptra-mcu-pk-hash-checker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-image-crypto",
+ "caliptra-image-gen",
+ "caliptra-image-types",
+ "clap 4.5.51",
+ "hex",
+ "zerocopy",
 ]
 
 [[package]]
@@ -2081,6 +2103,20 @@ dependencies = [
  "anyhow",
  "caliptra-mcu-fusegen",
  "caliptra-mcu-registers-generated",
+]
+
+[[package]]
+name = "caliptra-mcu-provisioning-manuf-fw"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-bare-metal-io",
+ "caliptra-mcu-error",
+ "caliptra-mcu-otp-digest",
+ "caliptra-mcu-provisioning-common",
+ "caliptra-mcu-provisioning-fuses",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "tock-registers",
 ]
 
 [[package]]
@@ -2313,6 +2349,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-measurement-api",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-spdm-codec",
  "caliptra-mcu-spdm-traits",
@@ -2677,6 +2714,7 @@ dependencies = [
  "caliptra-mcu-registers-systemrdl",
  "caliptra-mcu-rom-common",
  "caliptra-mcu-romtime",
+ "caliptra-size-history",
  "cargo_metadata",
  "cc",
  "clap 4.5.51",
@@ -2777,6 +2815,19 @@ dependencies = [
  "ufmt 0.2.0",
  "zerocopy",
  "zeroize",
+]
+
+[[package]]
+name = "caliptra-size-history"
+version = "0.1.0"
+source = "git+https://github.com/chipsalliance/caliptra-infra.git?rev=64e75e17e1a2eb07ff8dd6698932af82182da85e#64e75e17e1a2eb07ff8dd6698932af82182da85e"
+dependencies = [
+ "ghac",
+ "prost 0.13.2",
+ "prost-derive 0.13.2",
+ "serde",
+ "serde_json",
+ "tinytemplate",
 ]
 
 [[package]]
@@ -4261,6 +4312,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ghac"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a10bd5b898cac1a4de4a882a754b2ccaafead449348cfb420b48cd5c00ffd08b"
+dependencies = [
+ "prost 0.13.2",
+]
+
+[[package]]
 name = "ghash"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4394,7 +4454,7 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "percent-encoding",
  "pin-project",
- "prost",
+ "prost 0.14.4",
  "prost-types",
  "reqwest 0.13.4",
  "rustc_version",
@@ -4521,7 +4581,7 @@ dependencies = [
  "md5",
  "percent-encoding",
  "pin-project",
- "prost",
+ "prost 0.14.4",
  "prost-types",
  "serde",
  "serde_json",
@@ -5918,12 +5978,35 @@ dependencies = [
 
 [[package]]
 name = "prost"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b2ecbe40f08db5c006b5764a2645f7f3f141ce756412ac9e1dd6087e6d32995"
+dependencies = [
+ "bytes",
+ "prost-derive 0.13.2",
+]
+
+[[package]]
+name = "prost"
 version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
 dependencies = [
  "bytes",
- "prost-derive",
+ "prost-derive 0.14.4",
+]
+
+[[package]]
+name = "prost-derive"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acf0c195eebb4af52c752bec4f52f645da98b6e92077a04110c7f349477ae5ac"
+dependencies = [
+ "anyhow",
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.109",
 ]
 
 [[package]]
@@ -5945,7 +6028,7 @@ version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a"
 dependencies = [
- "prost",
+ "prost 0.14.4",
 ]
 
 [[package]]
@@ -7161,6 +7244,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinytemplate"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be4d6b5f19ff7664e8c98d03e2139cb510db9b0a60b55f8e8709b689d939b6bc"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "tinyvec"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7421,7 +7514,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a55376a0bbaa4975a3f10d009ad763d8f4108f067c7c2e74f3001fb49778d309"
 dependencies = [
  "bytes",
- "prost",
+ "prost 0.14.4",
  "tonic",
 ]
 

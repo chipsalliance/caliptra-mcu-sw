@@ -2,12 +2,6 @@
 
 # MCTP VDM Test Configuration
 
-[device]
-device_id = 0x0010
-vendor_id = 0x1414
-subsystem_vendor_id = 0x0001
-subsystem_id = 0x0002
-
 [network]
 default_server_address = "127.0.0.1:63333"
 target_i3c_address = 0x08
@@ -34,10 +28,3 @@ runtime_version = "1.0.0"
 fips_status = 0x00000001
 rom_firmware_id = 0
 runtime_firmware_id = 1
-
-[device_info]
-info_index = 0
-expected_info = "Caliptra VDM Test Device v1.0"
-min_info_length = 16
-max_info_length = 64
-fips_status = 0
