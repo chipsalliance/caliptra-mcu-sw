@@ -145,3 +145,18 @@ async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
 
     Ok(())
 }
+
+/// OTP partition ID for the IDevID ML-DSA-87 certificate.
+const OTP_IDEVID_MLDSA87_PARTITION: u32 = 0x02;
+/// IDevID ML-DSA-87 cert size in OTP partition 2.
+const MLDSA87_DEVID_CERT_SIZE: usize = 4627;
+
+/// Read the IDevID ML-DSA-87 cert from OTP and install it into Caliptra.
+#[allow(dead_code)]
+async fn populate_idev_mldsa87_from_otp<A: ApiAlloc>(_alloc: &A) -> McuResult<()> {
+    // Stub for ML-DSA-87 IDevID OTP population
+    let _otp = ExternalOtp::<DefaultSyscalls>::new();
+    let _partition = OTP_IDEVID_MLDSA87_PARTITION;
+    let _size = MLDSA87_DEVID_CERT_SIZE;
+    Ok(())
+}
