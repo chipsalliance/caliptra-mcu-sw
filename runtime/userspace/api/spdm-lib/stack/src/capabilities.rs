@@ -46,8 +46,10 @@ use crate::version::SUPPORTED_VERSIONS;
 ///
 /// # Errors
 ///
-/// * [`SPDM_UNEXPECTED_REQUEST`] — connection is not in
-///   [`Phase::AfterVersion`].
+/// * [`SPDM_REQUEST_RESYNCH`](crate::error::SPDM_REQUEST_RESYNCH) - request
+///   arrived before [`Phase::AfterVersion`] (a skipped prerequisite; latches resync).
+/// * [`SPDM_UNEXPECTED_REQUEST`] — capabilities were already negotiated
+///   (a non-identical retry past [`Phase::AfterVersion`]).
 /// * [`SPDM_INVALID_REQUEST`] — header undecodable, body too short,
 ///   any reserved field non-zero, `ct_exponent` out of range, or
 ///   `DataTransferSize` / `MaxSPDMmsgSize` violate the corresponding table.
@@ -58,6 +60,14 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
+    // A GET_CAPABILITIES that arrives before GET_VERSION has completed skips a
+    // prerequisite phase: that is out of order (SPDM-19 - RequestResynch, latch).
+    // A GET_CAPABILITIES that arrives after capabilities were already negotiated
+    // is a non-identical retry, which DSP0274 1.4.0 section 17 (General ordering
+    // rules) answers with ERROR(UnexpectedRequest, 0x04), not RequestResynch.
+    if (state.phase as u8) < (Phase::AfterVersion as u8) {
+        return Err(state.out_of_order());
+    }
     if state.phase != Phase::AfterVersion {
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
