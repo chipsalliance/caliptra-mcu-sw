@@ -30,6 +30,18 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
             Some(commands::handle_prod_debug_unlock_token)
         }
         x if x == CaliptraCommandId::FeProg as u32 => Some(commands::handle_fe_prog),
+        x if x == CaliptraCommandId::ProvisionVendorPkHash as u32 => {
+            Some(commands::handle_provision_vendor_pk_hash)
+        }
+        x if x == CaliptraCommandId::FuseIncreaseCaliptraMinSvn as u32 => {
+            Some(commands::handle_fuse_increase_caliptra_min_svn)
+        }
+        x if x == CaliptraCommandId::FuseRevokeVendorPubKey as u32 => {
+            Some(commands::handle_fuse_revoke_vendor_pub_key)
+        }
+        x if x == CaliptraCommandId::FuseRevokeVendorPkHash as u32 => {
+            Some(commands::handle_fuse_revoke_vendor_pk_hash)
+        }
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(commands::handle_get_auth_challenge)
         }
@@ -50,6 +62,10 @@ mod tests {
             CaliptraCommandId::ProdDebugUnlockReq,
             CaliptraCommandId::ProdDebugUnlockToken,
             CaliptraCommandId::FeProg,
+            CaliptraCommandId::ProvisionVendorPkHash,
+            CaliptraCommandId::FuseIncreaseCaliptraMinSvn,
+            CaliptraCommandId::FuseRevokeVendorPubKey,
+            CaliptraCommandId::FuseRevokeVendorPkHash,
             CaliptraCommandId::GetAuthCmdChallenge,
         ];
 

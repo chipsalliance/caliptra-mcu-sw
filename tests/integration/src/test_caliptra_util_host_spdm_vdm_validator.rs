@@ -3,12 +3,18 @@
 //! Integration test for Caliptra VDM commands over SPDM vendor-defined messages.
 //!
 //! This test spawns the `caliptra-spdm-validator` binary (from caliptra-spdm-vdm-client) which
-//! runs all Caliptra VDM commands against the MCU's SPDM responder.
+//! runs all Caliptra VDM commands against the MCU's SPDM responder. The checked-in
+//! config includes authorized-fuse success, authorization rejection, and fuse-policy
+//! rejection flows against inactive slot 1 in this disposable emulator model.
 
 #[cfg(test)]
 mod test {
-    use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
+    use crate::test::{
+        compile_runtime, finish_runtime_hw_model, start_runtime_hw_model, CustomCaliptraFw,
+        TestParams, TEST_LOCK,
+    };
     use caliptra_api::SocManager;
+    use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
     use caliptra_mcu_debug_unlock_signer::DebugUnlockKeys;
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
@@ -23,12 +29,42 @@ mod test {
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::process::{exit, Command, Stdio};
-    use std::sync::atomic::Ordering;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
     use zerocopy::IntoBytes;
 
     const TEST_NAME: &str = "SPDM-VDM";
+    const TEST_FEATURE: &str = "test-caliptra-util-host-spdm-vdm-validator";
+
+    fn caliptra_fw_svn7() -> CustomCaliptraFw {
+        if let Ok(binaries) = FirmwareBinaries::from_env() {
+            return CustomCaliptraFw {
+                fw_bytes: binaries.caliptra_fw_svn7.clone(),
+                vendor_pk_hash: binaries.vendor_pk_hash().unwrap(),
+                soc_manifest: binaries.test_soc_manifest(TEST_FEATURE).unwrap().clone(),
+            };
+        }
+
+        let runtime = compile_runtime(Some(TEST_FEATURE), false);
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            svn: Some(7),
+            mcu_firmware: Some(runtime),
+            ..Default::default()
+        });
+        let fw_bytes = std::fs::read(builder.get_caliptra_fw().unwrap()).unwrap();
+        let vendor_pk_hash: [u8; 48] = hex::decode(builder.get_vendor_pk_hash().unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let soc_manifest = std::fs::read(builder.get_soc_manifest(None).unwrap()).unwrap();
+        CustomCaliptraFw {
+            fw_bytes,
+            vendor_pk_hash,
+            soc_manifest,
+        }
+    }
 
     /// Reusable test harness for running the caliptra-spdm-validator binary against
     /// the MCU HW model's SPDM responder.
@@ -43,21 +79,27 @@ mod test {
         target_addr: DynamicI3cAddress,
         test_timeout: Duration,
         validator_args: &[&str],
-    ) {
+    ) -> Arc<AtomicBool> {
+        SERVER_LISTENING.store(false, Ordering::Relaxed);
         let bridge_port = PortPicker::new().pick().unwrap();
         let addr = SocketAddr::from(([127, 0, 0, 1], i3c_port));
         let stream = TcpStream::connect(addr).unwrap();
         let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
 
-        // Timeout watchdog
+        // Timeout watchdog. The completion flag prevents a finished suite's
+        // watchdog from terminating a later isolated emulator instance.
+        let completed = Arc::new(AtomicBool::new(false));
+        let watchdog_completed = completed.clone();
         thread::spawn(move || {
             thread::sleep(test_timeout);
-            println!(
-                "[{}] TIMED OUT AFTER {:?} SECONDS",
-                TEST_NAME,
-                test_timeout.as_secs()
-            );
-            exit(-1);
+            if !watchdog_completed.load(Ordering::Relaxed) {
+                println!(
+                    "[{}] TIMED OUT AFTER {:?} SECONDS",
+                    TEST_NAME,
+                    test_timeout.as_secs()
+                );
+                exit(-1);
+            }
         });
 
         let validator_args: Vec<String> = validator_args.iter().map(|s| s.to_string()).collect();
@@ -108,6 +150,7 @@ mod test {
 
             execute_spdm_validator(bridge_port, &validator_args);
         });
+        completed
     }
 
     /// Spawn the caliptra-spdm-validator binary as a subprocess.
@@ -196,9 +239,7 @@ mod test {
             .to_string()
     }
 
-    #[ignore]
-    #[test]
-    fn test_caliptra_util_host_spdm_vdm_validator() {
+    fn run_isolated_fuse_suite(suite: &str) {
         use caliptra_image_fake_keys::{
             VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC, VENDOR_MLDSA_KEY_0_PRIVATE,
             VENDOR_MLDSA_KEY_0_PUBLIC,
@@ -256,7 +297,8 @@ mod test {
 
         // --- Start hw_model with keys provisioned in fuses ---
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some("test-caliptra-util-host-spdm-vdm-validator"),
+            feature: Some(TEST_FEATURE),
+            custom_caliptra_fw: Some(caliptra_fw_svn7()),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             use_strap_secrets: true,
             debug_intent: true,
@@ -275,10 +317,10 @@ mod test {
             .write(|w| w.prod_dbg_unlock_req(true));
 
         let config_path = test_config_path();
-        run_spdm_vdm_test(
+        let completed = run_spdm_vdm_test(
             hw.i3c_port().unwrap(),
             hw.i3c_address().unwrap().into(),
-            Duration::from_secs(120),
+            Duration::from_secs(600),
             &[
                 "--config",
                 &config_path,
@@ -290,12 +332,46 @@ mod test {
                 &keys_path,
                 "--unlock-level",
                 &unlock_level.to_string(),
+                "--fuse-suite",
+                suite,
             ],
         );
 
         let test = finish_runtime_hw_model(&mut hw);
+        completed.store(true, Ordering::Relaxed);
         assert_eq!(0, test);
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+
+    macro_rules! isolated_fuse_suite_test {
+        ($name:ident, $suite:literal) => {
+            #[ignore]
+            #[test]
+            fn $name() {
+                run_isolated_fuse_suite($suite);
+            }
+        };
+    }
+
+    isolated_fuse_suite_test!(
+        test_caliptra_util_host_spdm_vdm_validator_authorization,
+        "authorization"
+    );
+    isolated_fuse_suite_test!(
+        test_caliptra_util_host_spdm_vdm_validator_provision_vendor_pk_hash,
+        "provision-vendor-pk-hash"
+    );
+    isolated_fuse_suite_test!(
+        test_caliptra_util_host_spdm_vdm_validator_increase_min_svn,
+        "increase-min-svn"
+    );
+    isolated_fuse_suite_test!(
+        test_caliptra_util_host_spdm_vdm_validator_revoke_vendor_pub_key,
+        "revoke-vendor-pub-key"
+    );
+    isolated_fuse_suite_test!(
+        test_caliptra_util_host_spdm_vdm_validator_revoke_vendor_pk_hash,
+        "revoke-vendor-pk-hash"
+    );
 }

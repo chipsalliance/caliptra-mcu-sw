@@ -50,6 +50,8 @@ pub enum CaliptraApiError {
     TransportNotAvailable,
     /// Command execution failed
     CommandFailed(&'static str),
+    /// Device returned a protocol completion code.
+    DeviceError(u8),
     /// Session error (generic session layer error)
     SessionError(&'static str),
 }
@@ -80,6 +82,9 @@ impl core::fmt::Display for CaliptraApiError {
             CaliptraApiError::SessionNotInitialized => write!(f, "Session not initialized"),
             CaliptraApiError::TransportNotAvailable => write!(f, "Transport not available"),
             CaliptraApiError::CommandFailed(msg) => write!(f, "Command failed: {}", msg),
+            CaliptraApiError::DeviceError(code) => {
+                write!(f, "Device completion code: {code:#04x}")
+            }
             CaliptraApiError::SessionError(msg) => write!(f, "Session error: {}", msg),
         }
     }

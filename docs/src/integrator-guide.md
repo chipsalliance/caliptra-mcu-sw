@@ -293,27 +293,30 @@ utility dispatch tables. MCI-only operations still require a trusted SoC-side
 service or bridge that owns MCI access and enforces the deployment policy.
 
 ## Vendor Public Key Selection and Rotation
+
 Caliptra MCU supports a vendor public key selection and rotation scheme
 based on fuses and hardware strapping pins. This section describes how the ROM
 selects the active vendor public key slot and how integrators can manage
 rotation and revocation.
 
 ### Key Policy and Selection Process
+
 The ROM follows this process to select a vendor public key hash slot (out of 16
 available slots):
-1.  **Validity Check**: The ROM reads the `VENDOR_PK_HASH_VALID` fuse mask.
+
+1. **Validity Check**: The ROM reads the `VENDOR_PK_HASH_VALID` fuse mask.
     Each bit corresponds to a slot. If a bit is set to `1`, the slot is
     considered invalid and skipped.
-2.  **Revocation Check**: For each valid slot, the ROM checks the revocation
+2. **Revocation Check**: For each valid slot, the ROM checks the revocation
     status of the keys in the `CPTRA_CORE_ECC_REVOCATION_X`,
     `CPTRA_CORE_MLDSA_REVOCATION_X`, and `CPTRA_CORE_LMS_REVOCATION_X` fields:
-    -   **ECC Keys**: Checked against the ECC revocation fuses (4 bits per
+    - **ECC Keys**: Checked against the ECC revocation fuses (4 bits per
         slot).
-    -   **PQC Keys**: Checked against PQC revocation fuses (4 bits for MLDSA,
+    - **PQC Keys**: Checked against PQC revocation fuses (4 bits for MLDSA,
         16 bits for LMS).
     A slot is considered **functional** if it has at least one unrevoked ECC key
     AND at least one unrevoked PQC key.
-3.  **Default Selection**: By default, the ROM selects the **first functional
+3. **Default Selection**: By default, the ROM selects the **first functional
     slot** it encounters (searching from slot 0 to 15). However, this logic can
     be overridden by passing a different implementation of the `VendorKeyPolicy`
     into the ROM parameters.
@@ -352,11 +355,11 @@ authorization flow before invoking it.
 Keys can be revoked permanently by burning fuses. MCU Runtime exposes
 authorized MCI mailbox commands for the supported in-field flows:
 
--   `MC_FUSE_REVOKE_VENDOR_PUB_KEY` revokes an individual firmware
+- `MC_FUSE_REVOKE_VENDOR_PUB_KEY` revokes an individual firmware
     verification key within a vendor PK hash slot. The command supports ECC
     P-384, LMS, and MLDSA-87 key types and burns the corresponding bit in the
     slot's revocation field.
--   `MC_FUSE_REVOKE_VENDOR_PK_HASH` revokes an entire vendor PK hash slot by
+- `MC_FUSE_REVOKE_VENDOR_PK_HASH` revokes an entire vendor PK hash slot by
     setting the corresponding bit in `VENDOR_PK_HASH_VALID` to `1`.
 
 Both commands use the runtime authorization flow. They reject requests that
@@ -384,6 +387,30 @@ authorizer trait (`CommandAuthorizer` for mailbox or `CaliptraVdmAuthorization` 
 SPDM VDM) and provisioning the corresponding verification public keys in OTP
 fuses, secure platform storage, or embedded in firmware directly.
 
+The `caliptra-spdm-validator` host tool supports the four authorized fuse VDMs
+through the `[provision_vendor_pk_hash]`, `[increase_caliptra_min_svn]`,
+`[revoke_vendor_pub_key]`, and `[revoke_vendor_pk_hash]` configuration sections.
+All integer fields below are little-endian, and the signature covers exactly the
+bytes before `HybridSignature`:
+
+| Subcommand | Canonical ID | Authorized payload |
+|---|---:|---|
+| Provision Vendor PK Hash | `0x5056504b` (`PVPK`) | `slot:u32 \| hash:[u8;48] \| HybridSignature` |
+| Increase Caliptra Min SVN | `0x4d434d53` (`MCMS`) | `flags:u32 \| svn:u32 \| HybridSignature` |
+| Revoke Vendor Public Key | `0x4d52564b` (`MRVK`) | `reserved:u32 \| slot:u32 \| key_type:u32 \| key_index:u32 \| HybridSignature` |
+| Revoke Vendor PK Hash | `0x52564b48` (`RVKH`) | `reserved:u32 \| slot:u32 \| HybridSignature` |
+
+The shared `[authorized_commands]` section supplies the test signer keys. The
+integration harness selects `authorization`, `provision-vendor-pk-hash`,
+`increase-min-svn`, `revoke-vendor-pub-key`, or `revoke-vendor-pk-hash` with
+`--fuse-suite`; each destructive suite boots a separate emulator instance. It
+asserts responder completion codes for malformed, authorization, and policy
+failures rather than treating transport/session failures as expected rejection.
+These operations burn OTP state: validation must use disposable devices or a
+fresh emulator instance for each independently destructive scenario. The
+checked-in test keys are emulator fixtures only and must not be used as
+production authorization credentials.
+
 For per-key revocation, once all usable bits for a key type are burned in a
 slot, that key type is fully revoked in that slot. The last key index for a
 given key type cannot be revoked, matching Caliptra's requirement that a slot
@@ -401,10 +428,11 @@ revoked (e.g., moving to a new key version) but other keys within that PK hash
 remain trusted.
 
 **Process**:
-1.  Push a new Runtime (RT) firmware signed with a new key.
-2.  After the device boots with the replacement key, an authorized requester
+
+1. Push a new Runtime (RT) firmware signed with a new key.
+2. After the device boots with the replacement key, an authorized requester
     sends `MC_FUSE_REVOKE_VENDOR_PUB_KEY` to MCU Runtime for the old key.
-3.  MCU Runtime validates that the target key was not used for the current boot
+3. MCU Runtime validates that the target key was not used for the current boot
     and burns the corresponding revocation bit.
 
 ```mermaid
@@ -428,13 +456,14 @@ This flow is used when the entire PK hash slot is compromised or needs to be
 replaced, requiring a transition to a new PK hash slot.
 
 **Process**:
-1.  Provision the new vendor PK hash into an empty inactive slot if it was not
+
+1. Provision the new vendor PK hash into an empty inactive slot if it was not
     provisioned during manufacturing.
-2.  Push a new Runtime (RT) firmware signed with a key from the new PK hash slot.
-3.  Additionally assert the hardware strapping pin (bit 1 of
+2. Push a new Runtime (RT) firmware signed with a key from the new PK hash slot.
+3. Additionally assert the hardware strapping pin (bit 1 of
     `mci_reg_generic_input_wires[1]`) to enable rotation.
-4.  On reboot, the MCU ROM will select the new PK hash slot.
-5.  An authorized requester sends `MC_FUSE_REVOKE_VENDOR_PK_HASH` to MCU
+4. On reboot, the MCU ROM will select the new PK hash slot.
+5. An authorized requester sends `MC_FUSE_REVOKE_VENDOR_PK_HASH` to MCU
     Runtime to burn the old PK hash slot as invalid.
 
 ```mermaid
@@ -620,4 +649,3 @@ region, separate from the application RAM region.  Userspace processes
 cannot access it directly; they interact with the stored data only
 through the kernel capsule syscall interfaces
 (`DpeHandleStore` driver `0x8000_0020` and `PcrStore` driver `0x8000_0021`).
-

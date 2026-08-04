@@ -121,6 +121,10 @@ pub enum CaliptraCommandId {
     // Authorized Commands (0x8010-0x801F)
     GetAuthCmdChallenge = 0x8010,
     FeProg = 0x8011,
+    ProvisionVendorPkHash = 0x8012,
+    FuseIncreaseCaliptraMinSvn = 0x8013,
+    FuseRevokeVendorPubKey = 0x8014,
+    FuseRevokeVendorPkHash = 0x8015,
 }
 
 /// Common response header for all commands
