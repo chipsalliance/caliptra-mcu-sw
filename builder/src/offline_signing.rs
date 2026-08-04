@@ -4,7 +4,16 @@ use anyhow::{anyhow, Context, Result};
 use caliptra_auth_man_types::{AuthManifestFlags, AuthManifestPreamble, AuthorizationManifest};
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, to_hw_format, ImageGeneratorCrypto};
-use caliptra_image_types::{ImageEccPubKey, ImageEccSignature, ImagePqcSignature};
+use caliptra_image_types::{
+    ImageEccPubKey, ImageEccSignature, ImageLmsPublicKey, ImageLmsSignature, ImageMldsaPubKey,
+    ImageMldsaSignature, ImagePqcSignature,
+};
+use openssl::{
+    pkey::Public,
+    pkey_ctx::PkeyCtx,
+    pkey_ml_dsa::{PKeyMlDsaBuilder, Variant},
+    signature::Signature as OsslSignature,
+};
 use p384::ecdsa::{signature::hazmat::PrehashVerifier, Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha384};
@@ -227,6 +236,34 @@ pub fn verify_ecdsa384_signature(
     verifying_key
         .verify_prehash(digest, &signature)
         .map_err(|e| anyhow!("ECDSA P-384 signature verification failed: {}", e))
+}
+
+/// Perform cryptographic verification of an LMS signature over a 48-byte digest against an `ImageLmsPublicKey`.
+pub fn verify_lms_signature(
+    _digest: &[u8; 48],
+    _pub_key: &ImageLmsPublicKey,
+    _sig: &ImageLmsSignature,
+) -> Result<()> {
+    eprintln!("WARNING: LMS signature cryptographic verification is not yet implemented.");
+    // TODO(timothytrippel): Cryptographically verify LMS signatures.
+    Ok(())
+}
+
+/// Perform cryptographic verification of an ML-DSA-87 signature over a message against an `ImageMldsaPubKey`.
+pub fn verify_mldsa_signature(
+    msg: &[u8],
+    pub_key: &ImageMldsaPubKey,
+    sig: &ImageMldsaSignature,
+) -> Result<()> {
+    let builder = PKeyMlDsaBuilder::<Public>::new(Variant::MlDsa87, pub_key.0.as_bytes(), None)?;
+    let pkey = builder.build()?;
+    let mut algo = OsslSignature::for_ml_dsa(Variant::MlDsa87)?;
+    let mut ctx = PkeyCtx::new(&pkey)?;
+    ctx.verify_message_init(&mut algo)?;
+    match ctx.verify(msg, &sig.0.as_bytes()[..4627]) {
+        Ok(true) => Ok(()),
+        _ => anyhow::bail!("ML-DSA-87 signature verification failed against ImageMldsaPubKey"),
+    }
 }
 
 /// Attach signatures from a `SignaturesJson` file to an unsigned authorization manifest binary, verify all signatures, and save the resulting `signed_auth_manifest.bin`.
