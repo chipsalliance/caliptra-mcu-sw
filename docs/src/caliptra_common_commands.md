@@ -30,11 +30,11 @@ The following table describes the commands defined under this specification. The
 | Request Debug Unlock            | O   | SPDM VDM, MCI Mailbox | Request debug unlock in production environment.                                                                                      |
 | Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
 | Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias).                                             |
-| Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands. Authorization requirements and transport-specific authorization flows are TBD. |
+| Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands. SPDM VDM uses a one-use challenge and hybrid signature.                        |
 
 ### Authorization-Gated Subcommands
 
-The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are also available through the MCI mailbox path where implemented. The concrete SPDM authorization mechanism and message flow are still under design and will be specified separately. For the MCI mailbox path, access control is governed by the mailbox security boundary and platform policy.
+The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are also available through the MCI mailbox path where implemented. SPDM VDM requests use the challenge and hybrid-signature flow described in [Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow). For the MCI mailbox path, access control is governed by the mailbox security boundary and platform policy.
 
 | Subcommand Name                | Transport(s)               | Description                                        |
 | ------------------------------ | -------------------------- | -------------------------------------------------- |
@@ -45,7 +45,6 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
-
 
 ## Command Definitions
 
@@ -244,7 +243,7 @@ Exports an attested Certificate Signing Request (CSR) for a specified device key
 
 ### Authorization-Gated Subcommand Wrapper
 
-Security-sensitive provisioning and fuse subcommands are assigned to the SPDM VDM IANA authorization-gated path and the MCI mailbox path. Authorization requirements and transport-specific authorization flows are TBD. The SPDM VDM transport uses an `Authorized Command` wrapper to carry subcommands, but the wrapper does not define the authorization mechanism by itself.
+Security-sensitive provisioning and fuse subcommands are assigned to the SPDM VDM IANA authorization-gated path and the MCI mailbox path. The SPDM VDM transport uses an `Authorized Command` wrapper. Its requester first obtains a one-use 48-byte challenge, then appends a hybrid signature over `sub_cmd_id(BE) || sub_payload || challenge`. See [Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow) for the byte-exact transport payloads.
 
 #### Request Payload
 
@@ -262,55 +261,59 @@ Security-sensitive provisioning and fuse subcommands are assigned to the SPDM VD
 
 The subcommands covered by this wrapper are listed in [Authorization-Gated Subcommands](#authorization-gated-subcommands).
 
-Subcommand-specific payloads are defined by the corresponding command specifications. Any additional SPDM authorization wrapper fields are TBD.
+Subcommand-specific payloads are defined by the corresponding command specifications and contain no mailbox request header.
 
 ### Get Auth Challenge
 
-Requests a challenge for authorization-gated commands.
+Requests a one-use challenge for authorization-gated commands.
 
-**Request Payload**: TBD
+**Request Payload**: Empty
 
-**Response Payload**: TBD
+**Response Payload**:
+
+| Byte(s) | Name      | Type   | Description                               |
+| ------- | --------- | ------ | ----------------------------------------- |
+| 0:47    | challenge | u8[48] | One-use command authorization challenge.  |
 
 ### Provision Vendor PK Hash
 
 Provisions the vendor public key hash.
 
-**Request Payload**: TBD
+**Request Payload**: `slot:u32 | hash:u8[48] | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
 
 ### Fuse Increase Caliptra Min SVN
 
 Increases the Caliptra minimum SVN.
 
-**Request Payload**: TBD
+**Request Payload**: `flags:u32 | svn:u32 | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
 
 ### Program Field Entropy
 
 Programs field entropy.
 
-**Request Payload**: TBD
+**Request Payload**: `partition:u32 | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
 
 ### Fuse Revoke Vendor Public Key
 
 Revokes a vendor public key.
 
-**Request Payload**: TBD
+**Request Payload**: `reserved:u32 | slot:u32 | key_type:u32 | key_index:u32 | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
 
 ### Fuse Revoke Vendor PK Hash
 
 Revokes a vendor public key hash.
 
-**Request Payload**: TBD
+**Request Payload**: `reserved:u32 | slot:u32 | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
 
 ### Fuse Lock Partition
 

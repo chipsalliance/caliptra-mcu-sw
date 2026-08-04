@@ -36,7 +36,6 @@ For the unified software architecture shared between OOB (SPDM VDM) and in-band 
 
 Caliptra commands assigned to SPDM VDM are carried within SPDM `VENDOR_DEFINED_REQUEST` and `VENDOR_DEFINED_RESPONSE` messages using the OCP-assigned Vendor ID (`42623`). The command range `0x01`-`0x20` is [reserved in the OCP registry](https://github.com/opencomputeproject/ocp-registry/blob/main/command-registry.md) and defined by the Caliptra Working Group.
 
-
 ### OCP VDM Header
 
 The SPDM VDM standard header identifies the vendor organization:
@@ -83,7 +82,7 @@ These command codes are assigned from the Caliptra range reserved in the [OCP co
 | `0x06`       | RequestDebugUnlock        | O   | Request debug unlock in production environment.                            |
 | `0x07`       | AuthorizeDebugUnlockToken | O   | Send debug unlock token to device for authorization.                       |
 | `0x08`       | ExportAttestedCsr         | O   | Export attested CSR for a Caliptra device identity key.                    |
-| `0x12`       | AuthorizedCommand         | O   | Carry authorization-gated subcommands. The SPDM authorization flow is TBD. |
+| `0x12`       | AuthorizedCommand         | O   | Carry challenge-authorized provisioning and fuse subcommands.              |
 
 R = Required, O = Optional
 
@@ -91,14 +90,46 @@ Implemented commands are advertised in the `external_commands` field returned by
 
 ## Authorization-Gated Subcommands
 
-The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are carried under `AuthorizedCommand`. Only subcommands marked Supported are currently dispatched; requests for Planned subcommands return `InvalidParameter`. `AuthorizedCommand` does not define the authorization mechanism by itself. The concrete SPDM authorization mechanism and message flow are still under design and will be specified separately.
+The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are carried under `AuthorizedCommand`. Multi-byte payload integers and the subcommand ID are encoded little-endian on the wire.
 
-| Subcommand ID          | Name                       | Status        | Description                                        |
-| ---------------------- | -------------------------- | ------------- | -------------------------------------------------- |
-| `0x4D41_4343` (`MACC`) | GetAuthChallenge           | Supported     | Challenge acquisition for authorization-gated use. |
-| `0x5056_504B` (`PVPK`) | ProvisionVendorPkHash      | Planned (TBD) | Provision vendor public key hash.                  |
-| `0x4D43_4D53` (`MCMS`) | FuseIncreaseCaliptraMinSvn | Planned (TBD) | Increase Caliptra minimum SVN.                     |
-| `0x4D43_4650` (`MCFP`) | ProgramFieldEntropy        | Supported     | Program field entropy.                             |
-| `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Planned (TBD) | Revoke vendor public key.                          |
-| `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Planned (TBD) | Revoke vendor public key hash.                     |
-| `0x4946_504B` (`IFPK`) | FuseLockPartition          | Planned (TBD) | Lock fuse partition.                               |
+| Subcommand ID          | Name                       | Status        | Description                                         |
+| ---------------------- | -------------------------- | ------------- | --------------------------------------------------- |
+| `0x4D41_4343` (`MACC`) | GetAuthChallenge           | Supported     | Acquire a one-use 48-byte authorization challenge.  |
+| `0x5056_504B` (`PVPK`) | ProvisionVendorPkHash      | Supported     | Provision vendor public key hash.                   |
+| `0x4D43_4D53` (`MCMS`) | FuseIncreaseCaliptraMinSvn | Supported     | Increase Caliptra minimum SVN.                      |
+| `0x4D43_4650` (`MCFP`) | ProgramFieldEntropy        | Supported     | Program field entropy.                              |
+| `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
+| `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
+| `0x4946_504B` (`IFPK`) | FuseLockPartition          | Planned (TBD) | Lock fuse partition.                                |
+
+### Authorization Flow
+
+1. Send `GetAuthChallenge` with an empty subcommand payload. The successful response data is a 48-byte challenge.
+2. Serialize the target subcommand payload exactly as listed below, excluding `HybridSignature`.
+3. Sign `subcommand_id(BE) || payload || challenge` with both the authorized ECC P-384 and ML-DSA-87 keys.
+4. Append `HybridSignature` (`ecc_sig_r[48] || ecc_sig_s[48] || mldsa_sig[4628]`) to the payload and submit it under `AuthorizedCommand`.
+
+The challenge is consumed by the verification attempt and cannot be reused. Requests must have the exact documented size; missing, truncated, and oversized signatures are rejected with `InvalidPayloadSize`, while failed authorization returns `AccessDenied`.
+
+### Implemented Subcommand Payloads
+
+Byte offsets below begin immediately after the four-byte `subcommand_id`.
+
+| Subcommand | Bytes | Field | Encoding |
+| ---------- | ----- | ----- | -------- |
+| PVPK | 0:3 | `slot` | u32, little-endian |
+| | 4:51 | `hash` | u8[48] |
+| | 52:4775 | `signature` | HybridSignature |
+| MCMS | 0:3 | `flags` | u32, little-endian |
+| | 4:7 | `svn` | u32, little-endian |
+| | 8:4731 | `signature` | HybridSignature |
+| MCFP | 0:3 | `partition` | u32, little-endian |
+| | 4:4727 | `signature` | HybridSignature |
+| MRVK | 0:3 | `reserved` | u32, little-endian |
+| | 4:7 | `slot` | u32, little-endian |
+| | 8:11 | `key_type` | u32, little-endian |
+| | 12:15 | `key_index` | u32, little-endian |
+| | 16:4739 | `signature` | HybridSignature |
+| RVKH | 0:3 | `reserved` | u32, little-endian |
+| | 4:7 | `slot` | u32, little-endian |
+| | 8:4731 | `signature` | HybridSignature |
