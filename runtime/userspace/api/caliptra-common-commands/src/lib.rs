@@ -264,6 +264,40 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Provision a vendor public-key hash in an OTP slot.
+    async fn provision_vendor_pk_hash(&self, slot: u32, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
+        let _ = (slot, hash);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Increase the minimum allowed Caliptra firmware SVN.
+    async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        svn: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, svn);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Revoke one vendor public key in a provisioned public-key-hash slot.
+    async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        vendor_pk_hash_slot: u32,
+        key_type: u32,
+        key_index: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, vendor_pk_hash_slot, key_type, key_index);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Revoke a provisioned vendor public-key-hash slot.
+    async fn revoke_vendor_pk_hash(&self, vendor_pk_hash_slot: u32) -> CaliptraCmdResult<()> {
+        let _ = vendor_pk_hash_slot;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Program field entropy for a given partition.
     ///
     /// Over both the MCU mailbox and VDM paths, the dispatch layer verifies
