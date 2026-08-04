@@ -3,13 +3,11 @@
 use crate::errors;
 use crate::transport::McuMboxTransport;
 use caliptra_mcu_common_commands::{
-    CaliptraCmdHandler, CommandAuthorizer, DebugUnlockChallenge, DeviceCapabilities,
-    FirmwareVersion, GetLogResult,
+    CaliptraCmdHandler, CaliptraCompletionCode, CommandAuthorizer, DebugUnlockChallenge,
+    DeviceCapabilities, FirmwareVersion, GetLogResult,
 };
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
-use caliptra_mcu_libsyscall_caliptra::otp::{Otp, RevokeVendorPubKeyType};
-use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
+use caliptra_mcu_libsyscall_caliptra::{otp, DefaultSyscalls};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, ExportAttestedCsrReq,
     FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
@@ -29,12 +27,19 @@ use caliptra_mcu_mbox_common::messages::{
 };
 use caliptra_mcu_otp_fuse::{fuse_read_dai_params, PartitionId};
 use core::sync::atomic::{AtomicBool, Ordering};
-use mcu_caliptra_api_lite::{raw, ApiAlloc, FwInfo};
-use mcu_error::McuResult;
+use mcu_caliptra_api_lite::{raw, ApiAlloc};
+use mcu_error::{McuErrorCode, McuResult};
 use zerocopy::{FromBytes, IntoBytes};
 
 pub trait McuMboxScratch: ApiAlloc {
     fn shrink(buf: &mut Self::Buf<'_>, new_len: usize) -> McuResult<()>;
+}
+
+fn map_common_cmd_error(error: CaliptraCompletionCode) -> McuErrorCode {
+    match error {
+        CaliptraCompletionCode::InvalidParameter => errors::INVALID_PARAMS,
+        _ => errors::MCU_MBOX_COMMON,
+    }
 }
 
 /// Command interface for handling MCU mailbox commands.
@@ -659,9 +664,12 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         let req =
             ProvisionVendorPkHashReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let otp: Otp<DefaultSyscalls> = Otp::new();
-        let res = match otp.provision_vendor_pk_hash(req.slot, &req.hash) {
-            Ok(_) => MbxCmdStatus::Complete,
+        let res = match self
+            .non_crypto_cmds_handler
+            .provision_vendor_pk_hash(req.slot, &req.hash)
+            .await
+        {
+            Ok(()) => MbxCmdStatus::Complete,
             Err(_) => MbxCmdStatus::Failure,
         };
         let resp = ProvisionVendorPkHashResp::default();
@@ -683,67 +691,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let req = FuseIncreaseCaliptraMinSvnReq::ref_from_bytes(req)
             .map_err(|_| errors::INVALID_PARAMS)?;
 
-        // Check the request has a valid SVN value
-        if req.svn == 0 {
-            return Err(errors::INVALID_PARAMS);
-        }
-        if req.svn > 128 {
-            return Err(errors::INVALID_PARAMS);
-        }
-
-        let caliptra_fw_info = self.get_caliptra_fw_info().await?;
-
-        // Ensure the requested SVN will allow current Caliptra firmware to run
-        if req.svn > caliptra_fw_info.fw_svn {
-            return Err(errors::INVALID_PARAMS);
-        }
-
-        // Get the minimum SVN set in fuses
-        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
-        let mut current_fuses = [0u32; 4];
-        for (i, fuse) in current_fuses.iter_mut().enumerate() {
-            *fuse = otp
-                .read(otp::reg::CALIPTRA_FW_SVN, i as u32)
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-        }
-
-        // Convert the fuses to the SVN value
-        let fused_min_svn = {
-            // Value is take as the most significant bit set in fuses
-            let fuse: u128 = u128::from_le_bytes(current_fuses.as_bytes().try_into().unwrap());
-            128 - fuse.leading_zeros()
-        };
-
-        // Ensure we are not trying to decrease the SVN
-        if req.svn < fused_min_svn {
-            return Err(errors::INVALID_PARAMS);
-        }
-
-        // We are done, if the fuses already match the requested SVN.
-        if fused_min_svn == req.svn {
-            let resp = FuseIncreaseCaliptraMinSvnResp::default();
-            let resp_bytes = resp.as_bytes();
-            resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-            return Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete));
-        }
-
-        let new_fuse_svn = if req.svn == 128 {
-            u128::MAX
-        } else {
-            !(u128::MAX << req.svn)
-        };
-
-        for (i, (current, new_bytes)) in current_fuses
-            .iter()
-            .zip(new_fuse_svn.as_bytes().chunks_exact(4))
-            .enumerate()
-        {
-            let new_svn_word = u32::from_le_bytes(new_bytes.try_into().unwrap());
-            if *current != new_svn_word {
-                otp.write(otp::reg::CALIPTRA_FW_SVN, i as u32, new_svn_word)
-                    .map_err(|_| errors::INVALID_PARAMS)?;
-            }
-        }
+        self.non_crypto_cmds_handler
+            .increase_caliptra_min_svn(self.scratch, req.svn)
+            .await
+            .map_err(map_common_cmd_error)?;
 
         let resp = FuseIncreaseCaliptraMinSvnResp::default();
         let resp_bytes = resp.as_bytes();
@@ -780,56 +731,15 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             FuseRevokeVendorPubKeyReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let (resp, _) = FuseRevokeVendorPubKeyResp::mut_from_prefix(resp_buf)
             .map_err(|_| errors::INVALID_PARAMS)?;
-        let key_type =
-            RevokeVendorPubKeyType::try_from(req.key_type).map_err(|_| errors::INVALID_PARAMS)?;
-
-        // Check the given slot has a valid PK hash provisioned
-        let otp = otp::Otp::<DefaultSyscalls>::new();
-        if !otp.valid_vendor_pk_hash_slot(req.vendor_pk_hash_slot) {
-            Err(errors::INVALID_PARAMS)?;
-        }
-
-        let caliptra_info = self.get_caliptra_fw_info().await?;
-
-        // Check if the key to be revoked was a key used to boot. If so, return an error as a form
-        // of proof of possession for other keys.
-        let same_key_used_to_boot = || -> McuResult<bool> {
-            let caliptra_soc = caliptra::Caliptra::<DefaultSyscalls>::new();
-            let booted_pk_hash = caliptra_soc
-                .read_vendor_pk_hash()
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-            let pk_hash_from_slot = otp
-                .read_vendor_pk_hash(req.vendor_pk_hash_slot)
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-
-            // Check if the requested slot was the one used to boot
-            if booted_pk_hash != pk_hash_from_slot {
-                return Ok(false);
-            }
-
-            const FW_VERIFICATION_PQC_TYPE_MLDSA: u32 = 1;
-            const FW_VERIFICATION_PQC_TYPE_LMS: u32 = 3;
-            let same_key = match (key_type, caliptra_info.image_manifest_pqc_type) {
-                (RevokeVendorPubKeyType::Ecdsa384, _) => {
-                    req.key_index == caliptra_info.vendor_ecc384_pub_key_index
-                }
-                // Same PQC type
-                (RevokeVendorPubKeyType::Lms, FW_VERIFICATION_PQC_TYPE_LMS)
-                | (RevokeVendorPubKeyType::Mldsa87, FW_VERIFICATION_PQC_TYPE_MLDSA) => {
-                    req.key_index == caliptra_info.vendor_pqc_pub_key_index
-                }
-                // Different PQC types
-                _ => false,
-            };
-            Ok(same_key)
-        };
-
-        if same_key_used_to_boot()? {
-            Err(errors::INVALID_PARAMS)?;
-        }
-
-        otp.revoke_vendor_pub_key(req.vendor_pk_hash_slot, key_type, req.key_index)
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        self.non_crypto_cmds_handler
+            .revoke_vendor_pub_key(
+                self.scratch,
+                req.vendor_pk_hash_slot,
+                req.key_type,
+                req.key_index,
+            )
+            .await
+            .map_err(map_common_cmd_error)?;
 
         *resp = FuseRevokeVendorPubKeyResp::default();
         let len = size_of_val(resp);
@@ -847,39 +757,14 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let (resp, _) = FuseRevokeVendorPkHashResp::mut_from_prefix(resp_buf)
             .map_err(|_| errors::INVALID_PARAMS)?;
 
-        let otp = otp::Otp::<DefaultSyscalls>::new();
-
-        // Check if the PK hash to be revoked was used to boot. If so, return an error as a form
-        // of proof of possession for other keys.
-        let same_key_used_to_boot = || -> McuResult<bool> {
-            let caliptra_soc = caliptra::Caliptra::<DefaultSyscalls>::new();
-            let booted_pk_hash = caliptra_soc
-                .read_vendor_pk_hash()
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-            let pk_hash_from_slot = otp
-                .read_vendor_pk_hash(req.vendor_pk_hash_slot)
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-
-            // Check if the requested slot was the one used to boot
-            Ok(booted_pk_hash == pk_hash_from_slot)
-        };
-
-        if same_key_used_to_boot()? {
-            Err(errors::INVALID_PARAMS)?;
-        }
-
-        otp.revoke_vendor_pk_hash(req.vendor_pk_hash_slot)
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        self.non_crypto_cmds_handler
+            .revoke_vendor_pk_hash(req.vendor_pk_hash_slot)
+            .await
+            .map_err(map_common_cmd_error)?;
 
         *resp = FuseRevokeVendorPkHashResp::default();
         let resp_len = resp.as_bytes().len();
         Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
-    }
-
-    async fn get_caliptra_fw_info(&self) -> McuResult<FwInfo> {
-        mcu_caliptra_api_lite::fw_info(self.scratch)
-            .await
-            .map_err(|_| errors::MCU_MBOX_COMMON)
     }
 
     #[cfg(feature = "periodic-fips-self-test")]
