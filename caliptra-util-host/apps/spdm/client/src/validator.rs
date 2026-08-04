@@ -15,8 +15,15 @@ use crate::config::TestConfig;
 use crate::SpdmVdmClient;
 use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
-use caliptra_mcu_core_util_host_command_types::fuse::MC_FE_PROG_CANONICAL_CMD_ID;
+use caliptra_mcu_core_util_host_command_types::fuse::{
+    MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
+    MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
+    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+};
+use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompletionCode};
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_util_host_commands::api::CaliptraApiError;
 
 /// Result of a single validation check.
 #[derive(Debug, Clone)]
@@ -100,9 +107,13 @@ pub fn run_all(
     client: &mut SpdmVdmClient,
     config: &TestConfig,
     debug_unlock_signer: Option<&dyn DebugUnlockSigner>,
-    fe_prog_authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    command_authorizer: Option<&dyn CommandAuthChallengeSigner>,
     verbose: bool,
 ) -> Vec<ValidationResult> {
+    if let Some(suite) = config.validation.fuse_suite.as_deref() {
+        return run_fuse_suite(client, suite, command_authorizer, verbose);
+    }
+
     let mut results = Vec::new();
 
     results.extend(run_export_attested_csr(
@@ -121,12 +132,70 @@ pub fn run_all(
         ));
     }
 
-    results.push(run_fe_prog(
-        client,
-        config.fe_prog.partition,
-        fe_prog_authorizer,
-        verbose,
-    ));
+    if config.authorized_commands.negative_authorization_tests {
+        results.extend(run_authorization_negative_tests(
+            client,
+            command_authorizer,
+            verbose,
+        ));
+    }
+
+    if config.authorized_commands.policy_rejection_tests {
+        results.extend(run_fuse_policy_rejection_tests(
+            client,
+            command_authorizer,
+            verbose,
+        ));
+    }
+
+    if config.provision_vendor_pk_hash.enabled {
+        results.push(run_provision_vendor_pk_hash(
+            client,
+            config.provision_vendor_pk_hash.slot,
+            &config.provision_vendor_pk_hash.hash,
+            command_authorizer,
+            verbose,
+        ));
+    }
+    if config.increase_caliptra_min_svn.enabled {
+        results.push(run_increase_caliptra_min_svn(
+            client,
+            config.increase_caliptra_min_svn.flags,
+            config.increase_caliptra_min_svn.svn,
+            command_authorizer,
+            verbose,
+        ));
+    }
+    if config.fe_prog.enabled {
+        results.push(run_fe_prog(
+            client,
+            config.fe_prog.partition,
+            command_authorizer,
+            verbose,
+        ));
+    }
+    if config.revoke_vendor_pub_key.enabled {
+        let cfg = &config.revoke_vendor_pub_key;
+        results.push(run_revoke_vendor_pub_key(
+            client,
+            cfg.reserved,
+            cfg.vendor_pk_hash_slot,
+            cfg.key_type,
+            cfg.key_index,
+            command_authorizer,
+            verbose,
+        ));
+    }
+    if config.revoke_vendor_pk_hash.enabled {
+        let cfg = &config.revoke_vendor_pk_hash;
+        results.push(run_revoke_vendor_pk_hash(
+            client,
+            cfg.reserved,
+            cfg.vendor_pk_hash_slot,
+            command_authorizer,
+            verbose,
+        ));
+    }
 
     results
 }
@@ -259,12 +328,700 @@ pub fn run_prod_debug_unlock(
     }
 }
 
+struct AuthorizedCommandAuthorization {
+    sig: HybridSignature,
+    nonce: [u8; AUTH_CMD_NONCE_LEN],
+    ecc_pub_x: [u8; 48],
+    ecc_pub_y: [u8; 48],
+    mldsa_pub: [u8; 2592],
+}
+
+fn authorize_command(
+    client: &mut SpdmVdmClient,
+    command_id: u32,
+    payload: &[u8],
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+) -> Result<AuthorizedCommandAuthorization, String> {
+    let authorizer = authorizer.ok_or_else(|| "no command authorizer provided".to_string())?;
+    let challenge = client
+        .get_auth_challenge()
+        .map_err(|e| format!("Failed to get auth challenge: {e}"))?;
+    let sig = authorizer
+        .authorize(command_id, payload, &challenge.challenge)
+        .map_err(|e| format!("Authorization failed: {e}"))?;
+    let (ecc_pub_x, ecc_pub_y, mldsa_pub) = authorizer
+        .public_keys()
+        .map_err(|e| format!("public_keys() failed: {e}"))?;
+    Ok(AuthorizedCommandAuthorization {
+        sig,
+        nonce: challenge.challenge,
+        ecc_pub_x,
+        ecc_pub_y,
+        mldsa_pub,
+    })
+}
+
+pub fn run_provision_vendor_pk_hash(
+    client: &mut SpdmVdmClient,
+    slot: u32,
+    hash_hex: &str,
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    _verbose: bool,
+) -> ValidationResult {
+    let test_name = format!("ProvisionVendorPkHash(slot={slot})");
+    let hash_vec = match hex::decode(hash_hex) {
+        Ok(hash) if hash.len() == 48 => hash,
+        Ok(hash) => {
+            return ValidationResult::fail(
+                test_name,
+                format!("hash must be 48 bytes, got {}", hash.len()),
+            )
+        }
+        Err(e) => return ValidationResult::fail(test_name, format!("invalid hash hex: {e}")),
+    };
+    let hash: [u8; 48] = hash_vec.try_into().unwrap();
+    let mut payload = Vec::with_capacity(52);
+    payload.extend_from_slice(&slot.to_le_bytes());
+    payload.extend_from_slice(&hash);
+    let auth = match authorize_command(
+        client,
+        MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+        &payload,
+        authorizer,
+    ) {
+        Ok(auth) => auth,
+        Err(e) => return ValidationResult::fail(test_name, e),
+    };
+    match client.provision_vendor_pk_hash(
+        slot,
+        &hash,
+        &auth.sig,
+        &auth.nonce,
+        &auth.ecc_pub_x,
+        &auth.ecc_pub_y,
+        &auth.mldsa_pub,
+    ) {
+        Ok(_) => ValidationResult::pass(test_name, "hash provisioned"),
+        Err(e) => ValidationResult::fail(test_name, e.to_string()),
+    }
+}
+
+pub fn run_increase_caliptra_min_svn(
+    client: &mut SpdmVdmClient,
+    flags: u32,
+    svn: u32,
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    _verbose: bool,
+) -> ValidationResult {
+    let test_name = format!("FuseIncreaseCaliptraMinSvn(svn={svn})");
+    let mut payload = Vec::with_capacity(8);
+    payload.extend_from_slice(&flags.to_le_bytes());
+    payload.extend_from_slice(&svn.to_le_bytes());
+    let auth = match authorize_command(
+        client,
+        MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
+        &payload,
+        authorizer,
+    ) {
+        Ok(auth) => auth,
+        Err(e) => return ValidationResult::fail(test_name, e),
+    };
+    match client.fuse_increase_caliptra_min_svn(
+        flags,
+        svn,
+        &auth.sig,
+        &auth.nonce,
+        &auth.ecc_pub_x,
+        &auth.ecc_pub_y,
+        &auth.mldsa_pub,
+    ) {
+        Ok(_) => ValidationResult::pass(test_name, "minimum SVN updated"),
+        Err(e) => ValidationResult::fail(test_name, e.to_string()),
+    }
+}
+
+pub fn run_revoke_vendor_pub_key(
+    client: &mut SpdmVdmClient,
+    reserved: u32,
+    slot: u32,
+    key_type: u32,
+    key_index: u32,
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    _verbose: bool,
+) -> ValidationResult {
+    let test_name =
+        format!("FuseRevokeVendorPubKey(slot={slot},type={key_type},index={key_index})");
+    let mut payload = Vec::with_capacity(16);
+    for value in [reserved, slot, key_type, key_index] {
+        payload.extend_from_slice(&value.to_le_bytes());
+    }
+    let auth = match authorize_command(
+        client,
+        MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
+        &payload,
+        authorizer,
+    ) {
+        Ok(auth) => auth,
+        Err(e) => return ValidationResult::fail(test_name, e),
+    };
+    match client.fuse_revoke_vendor_pub_key(
+        reserved,
+        slot,
+        key_type,
+        key_index,
+        &auth.sig,
+        &auth.nonce,
+        &auth.ecc_pub_x,
+        &auth.ecc_pub_y,
+        &auth.mldsa_pub,
+    ) {
+        Ok(_) => ValidationResult::pass(test_name, "key revoked"),
+        Err(e) => ValidationResult::fail(test_name, e.to_string()),
+    }
+}
+
+pub fn run_revoke_vendor_pk_hash(
+    client: &mut SpdmVdmClient,
+    reserved: u32,
+    slot: u32,
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    _verbose: bool,
+) -> ValidationResult {
+    let test_name = format!("FuseRevokeVendorPkHash(slot={slot})");
+    let mut payload = Vec::with_capacity(8);
+    payload.extend_from_slice(&reserved.to_le_bytes());
+    payload.extend_from_slice(&slot.to_le_bytes());
+    let auth = match authorize_command(
+        client,
+        MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+        &payload,
+        authorizer,
+    ) {
+        Ok(auth) => auth,
+        Err(e) => return ValidationResult::fail(test_name, e),
+    };
+    match client.fuse_revoke_vendor_pk_hash(
+        reserved,
+        slot,
+        &auth.sig,
+        &auth.nonce,
+        &auth.ecc_pub_x,
+        &auth.ecc_pub_y,
+        &auth.mldsa_pub,
+    ) {
+        Ok(_) => ValidationResult::pass(test_name, "PK-hash slot revoked"),
+        Err(e) => ValidationResult::fail(test_name, e.to_string()),
+    }
+}
+
+#[derive(Debug)]
+enum AuthorizedCommandError {
+    Preparation(String),
+    Command(CaliptraApiError),
+}
+
+fn signed_provision_vendor_pk_hash(
+    client: &mut SpdmVdmClient,
+    slot: u32,
+    hash: &[u8; 48],
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let mut payload = Vec::with_capacity(52);
+    payload.extend_from_slice(&slot.to_le_bytes());
+    payload.extend_from_slice(hash);
+    let auth = authorize_command(
+        client,
+        MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+        &payload,
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .provision_vendor_pk_hash(
+            slot,
+            hash,
+            &auth.sig,
+            &auth.nonce,
+            &auth.ecc_pub_x,
+            &auth.ecc_pub_y,
+            &auth.mldsa_pub,
+        )
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
+fn signed_increase_caliptra_min_svn(
+    client: &mut SpdmVdmClient,
+    flags: u32,
+    svn: u32,
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let mut payload = Vec::with_capacity(8);
+    payload.extend_from_slice(&flags.to_le_bytes());
+    payload.extend_from_slice(&svn.to_le_bytes());
+    let auth = authorize_command(
+        client,
+        MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
+        &payload,
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .fuse_increase_caliptra_min_svn(
+            flags,
+            svn,
+            &auth.sig,
+            &auth.nonce,
+            &auth.ecc_pub_x,
+            &auth.ecc_pub_y,
+            &auth.mldsa_pub,
+        )
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
+fn signed_revoke_vendor_pub_key(
+    client: &mut SpdmVdmClient,
+    slot: u32,
+    key_type: u32,
+    key_index: u32,
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let mut payload = Vec::with_capacity(16);
+    for field in [0, slot, key_type, key_index] {
+        payload.extend_from_slice(&field.to_le_bytes());
+    }
+    let auth = authorize_command(
+        client,
+        MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
+        &payload,
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .fuse_revoke_vendor_pub_key(
+            0,
+            slot,
+            key_type,
+            key_index,
+            &auth.sig,
+            &auth.nonce,
+            &auth.ecc_pub_x,
+            &auth.ecc_pub_y,
+            &auth.mldsa_pub,
+        )
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
+fn signed_revoke_vendor_pk_hash(
+    client: &mut SpdmVdmClient,
+    slot: u32,
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let mut payload = Vec::with_capacity(8);
+    payload.extend_from_slice(&0u32.to_le_bytes());
+    payload.extend_from_slice(&slot.to_le_bytes());
+    let auth = authorize_command(
+        client,
+        MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+        &payload,
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .fuse_revoke_vendor_pk_hash(
+            0,
+            slot,
+            &auth.sig,
+            &auth.nonce,
+            &auth.ecc_pub_x,
+            &auth.ecc_pub_y,
+            &auth.mldsa_pub,
+        )
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
+fn expect_success(test_name: &str, result: Result<(), AuthorizedCommandError>) -> ValidationResult {
+    match result {
+        Ok(()) => ValidationResult::pass(test_name, "accepted"),
+        Err(error) => ValidationResult::fail(test_name, format!("{error:?}")),
+    }
+}
+
+fn expect_completion(
+    test_name: &str,
+    result: Result<(), AuthorizedCommandError>,
+    expected: CaliptraVdmCompletionCode,
+) -> ValidationResult {
+    match result {
+        Err(AuthorizedCommandError::Command(CaliptraApiError::DeviceError(code)))
+            if code == expected as u8 =>
+        {
+            ValidationResult::pass(test_name, format!("completion code {code:#04x}"))
+        }
+        Err(AuthorizedCommandError::Command(CaliptraApiError::DeviceError(code))) => {
+            ValidationResult::fail(
+                test_name,
+                format!("expected {:#04x}, got {code:#04x}", expected as u8),
+            )
+        }
+        Err(AuthorizedCommandError::Preparation(error)) => {
+            ValidationResult::fail(test_name, format!("authorization setup failed: {error}"))
+        }
+        Err(AuthorizedCommandError::Command(error)) => {
+            ValidationResult::fail(test_name, format!("non-device command failure: {error}"))
+        }
+        Ok(()) => ValidationResult::fail(test_name, "request was unexpectedly accepted"),
+    }
+}
+
+fn expect_api_completion<T>(
+    test_name: &str,
+    result: Result<T, CaliptraApiError>,
+    expected: CaliptraVdmCompletionCode,
+) -> ValidationResult {
+    match result {
+        Err(CaliptraApiError::DeviceError(code)) if code == expected as u8 => {
+            ValidationResult::pass(test_name, format!("completion code {code:#04x}"))
+        }
+        Err(CaliptraApiError::DeviceError(code)) => ValidationResult::fail(
+            test_name,
+            format!("expected {:#04x}, got {code:#04x}", expected as u8),
+        ),
+        Err(error) => {
+            ValidationResult::fail(test_name, format!("non-device command failure: {error}"))
+        }
+        Ok(_) => ValidationResult::fail(test_name, "request was unexpectedly accepted"),
+    }
+}
+
+fn run_raw_malformed_request_tests(client: &mut SpdmVdmClient) -> Vec<ValidationResult> {
+    let signature_len = core::mem::size_of::<HybridSignature>();
+    let mut exact = vec![1, CaliptraVdmCommand::AuthorizedCommand as u8];
+    exact.extend_from_slice(&MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID.to_le_bytes());
+    exact.extend_from_slice(&1u32.to_le_bytes());
+    exact.extend_from_slice(&[0xA5; 48]);
+    exact.resize(exact.len() + signature_len, 0);
+
+    let missing_signature = exact[..exact.len() - signature_len].to_vec();
+    let truncated = exact[..exact.len() - 1].to_vec();
+    let mut oversized = exact;
+    oversized.push(0);
+
+    [
+        (
+            "AuthorizedCommand rejects missing signature",
+            missing_signature,
+        ),
+        ("AuthorizedCommand rejects truncated request", truncated),
+        ("AuthorizedCommand rejects oversized request", oversized),
+    ]
+    .into_iter()
+    .map(|(name, request)| {
+        let mut response = [0u8; 16];
+        match client.send_raw_vdm(&request, &mut response) {
+            Ok(3)
+                if response[..3]
+                    == [
+                        1,
+                        CaliptraVdmCommand::AuthorizedCommand as u8,
+                        CaliptraVdmCompletionCode::InvalidPayloadSize as u8,
+                    ] =>
+            {
+                ValidationResult::pass(name, "responder returned InvalidPayloadSize")
+            }
+            Ok(len) => ValidationResult::fail(
+                name,
+                format!("unexpected raw response {:02x?}", &response[..len]),
+            ),
+            Err(error) => ValidationResult::fail(name, format!("transport failure: {error:?}")),
+        }
+    })
+    .collect()
+}
+
+pub fn run_fuse_policy_rejection_tests(
+    client: &mut SpdmVdmClient,
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    _verbose: bool,
+) -> Vec<ValidationResult> {
+    let Some(authorizer) = authorizer else {
+        return vec![ValidationResult::skip(
+            "Authorized fuse policy rejections",
+            "no command authorizer provided",
+        )];
+    };
+    vec![
+        expect_completion(
+            "ProvisionVendorPkHash rejects invalid slot",
+            signed_provision_vendor_pk_hash(client, 16, &[0xA5; 48], authorizer),
+            CaliptraVdmCompletionCode::OperationFailed,
+        ),
+        expect_completion(
+            "FuseIncreaseCaliptraMinSvn rejects zero SVN",
+            signed_increase_caliptra_min_svn(client, 0, 0, authorizer),
+            CaliptraVdmCompletionCode::InvalidParameter,
+        ),
+        expect_completion(
+            "FuseRevokeVendorPubKey rejects current-boot key",
+            signed_revoke_vendor_pub_key(client, 0, 0, 0, authorizer),
+            CaliptraVdmCompletionCode::InvalidParameter,
+        ),
+        expect_completion(
+            "FuseRevokeVendorPkHash rejects current-boot slot",
+            signed_revoke_vendor_pk_hash(client, 0, authorizer),
+            CaliptraVdmCompletionCode::InvalidParameter,
+        ),
+    ]
+}
+
+fn run_fuse_suite(
+    client: &mut SpdmVdmClient,
+    suite: &str,
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    verbose: bool,
+) -> Vec<ValidationResult> {
+    let Some(authorizer) = authorizer else {
+        return vec![ValidationResult::fail(
+            suite,
+            "no command authorizer provided",
+        )];
+    };
+    let hash = [0xA5; 48];
+    let other_hash = [0x5A; 48];
+
+    match suite {
+        "authorization" => {
+            let mut results = run_raw_malformed_request_tests(client);
+            results.extend(run_authorization_negative_tests(
+                client,
+                Some(authorizer),
+                verbose,
+            ));
+            results
+        }
+        "provision-vendor-pk-hash" => vec![
+            expect_completion(
+                "PVPK invalid slot",
+                signed_provision_vendor_pk_hash(client, 16, &hash, authorizer),
+                CaliptraVdmCompletionCode::OperationFailed,
+            ),
+            expect_success(
+                "PVPK programs and reads back slot",
+                signed_provision_vendor_pk_hash(client, 1, &hash, authorizer),
+            ),
+            expect_success(
+                "PVPK same hash is idempotent",
+                signed_provision_vendor_pk_hash(client, 1, &hash, authorizer),
+            ),
+            expect_completion(
+                "PVPK conflicting hash rejected",
+                signed_provision_vendor_pk_hash(client, 1, &other_hash, authorizer),
+                CaliptraVdmCompletionCode::OperationFailed,
+            ),
+        ],
+        "increase-min-svn" => vec![
+            expect_completion(
+                "MCMS rejects zero SVN",
+                signed_increase_caliptra_min_svn(client, 0, 0, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+            expect_completion(
+                "MCMS rejects SVN above encoding bound",
+                signed_increase_caliptra_min_svn(client, 0, 129, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+            expect_completion(
+                "MCMS rejects SVN above running firmware",
+                signed_increase_caliptra_min_svn(client, 0, 8, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+            expect_success(
+                "MCMS increases minimum SVN",
+                signed_increase_caliptra_min_svn(client, 0, 5, authorizer),
+            ),
+            expect_success(
+                "MCMS equal SVN is idempotent",
+                signed_increase_caliptra_min_svn(client, 0, 5, authorizer),
+            ),
+            expect_completion(
+                "MCMS rejects decrease",
+                signed_increase_caliptra_min_svn(client, 0, 4, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+        ],
+        "revoke-vendor-pub-key" => vec![
+            expect_completion(
+                "MRVK rejects unprovisioned slot",
+                signed_revoke_vendor_pub_key(client, 1, 0, 0, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+            expect_success(
+                "MRVK prerequisite slot provisioning",
+                signed_provision_vendor_pk_hash(client, 1, &hash, authorizer),
+            ),
+            expect_completion(
+                "MRVK rejects invalid key type",
+                signed_revoke_vendor_pub_key(client, 1, 99, 0, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+            expect_completion(
+                "MRVK rejects invalid key index",
+                signed_revoke_vendor_pub_key(client, 1, 0, 4, authorizer),
+                CaliptraVdmCompletionCode::OperationFailed,
+            ),
+            expect_completion(
+                "MRVK rejects current-boot key",
+                signed_revoke_vendor_pub_key(client, 0, 0, 0, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+            expect_success(
+                "MRVK revokes inactive key",
+                signed_revoke_vendor_pub_key(client, 1, 0, 0, authorizer),
+            ),
+            expect_completion(
+                "MRVK rejects last algorithm key",
+                signed_revoke_vendor_pub_key(client, 1, 0, 3, authorizer),
+                CaliptraVdmCompletionCode::OperationFailed,
+            ),
+        ],
+        "revoke-vendor-pk-hash" => vec![
+            expect_completion(
+                "RVKH rejects unprovisioned slot",
+                signed_revoke_vendor_pk_hash(client, 1, authorizer),
+                CaliptraVdmCompletionCode::OperationFailed,
+            ),
+            expect_completion(
+                "RVKH rejects current-boot slot",
+                signed_revoke_vendor_pk_hash(client, 0, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+            expect_success(
+                "RVKH prerequisite slot provisioning",
+                signed_provision_vendor_pk_hash(client, 1, &hash, authorizer),
+            ),
+            expect_success(
+                "RVKH revokes inactive slot",
+                signed_revoke_vendor_pk_hash(client, 1, authorizer),
+            ),
+            expect_success(
+                "RVKH repeated revocation is idempotent",
+                signed_revoke_vendor_pk_hash(client, 1, authorizer),
+            ),
+        ],
+        _ => vec![ValidationResult::fail(
+            "Authorized fuse suite",
+            format!("unknown suite {suite:?}"),
+        )],
+    }
+}
+
+pub fn run_authorization_negative_tests(
+    client: &mut SpdmVdmClient,
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    _verbose: bool,
+) -> Vec<ValidationResult> {
+    let Some(authorizer) = authorizer else {
+        return vec![ValidationResult::skip(
+            "AuthorizedCommand negative authorization",
+            "no command authorizer provided",
+        )];
+    };
+    let partition = 0u32;
+    let payload = partition.to_le_bytes();
+    let mut results = Vec::new();
+
+    let challenge = match client.get_auth_challenge() {
+        Ok(challenge) => challenge,
+        Err(e) => {
+            return vec![ValidationResult::fail(
+                "AuthorizedCommand bad signature",
+                e.to_string(),
+            )]
+        }
+    };
+    let valid =
+        match authorizer.authorize(MC_FE_PROG_CANONICAL_CMD_ID, &payload, &challenge.challenge) {
+            Ok(auth) => auth,
+            Err(e) => {
+                return vec![ValidationResult::fail(
+                    "AuthorizedCommand bad signature",
+                    e.to_string(),
+                )]
+            }
+        };
+    let (ecc_pub_x, ecc_pub_y, mldsa_pub) = match authorizer.public_keys() {
+        Ok(keys) => keys,
+        Err(e) => {
+            return vec![ValidationResult::fail(
+                "AuthorizedCommand public keys",
+                e.to_string(),
+            )]
+        }
+    };
+    results.push(expect_api_completion(
+        "AuthorizedCommand bad signature",
+        client.fe_prog(
+            partition,
+            &HybridSignature::default(),
+            &challenge.challenge,
+            &ecc_pub_x,
+            &ecc_pub_y,
+            &mldsa_pub,
+        ),
+        CaliptraVdmCompletionCode::AccessDenied,
+    ));
+    results.push(expect_api_completion(
+        "AuthorizedCommand reused challenge",
+        client.fe_prog(
+            partition,
+            &valid,
+            &challenge.challenge,
+            &ecc_pub_x,
+            &ecc_pub_y,
+            &mldsa_pub,
+        ),
+        CaliptraVdmCompletionCode::AccessDenied,
+    ));
+
+    let wrong_sig = match authorize_command(
+        client,
+        MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+        &payload,
+        Some(authorizer),
+    ) {
+        Ok(auth) => auth,
+        Err(e) => {
+            results.push(ValidationResult::fail(
+                "AuthorizedCommand wrong-command signature",
+                e,
+            ));
+            return results;
+        }
+    };
+    results.push(expect_api_completion(
+        "AuthorizedCommand wrong-command signature",
+        client.fe_prog(
+            partition,
+            &wrong_sig.sig,
+            &wrong_sig.nonce,
+            &wrong_sig.ecc_pub_x,
+            &wrong_sig.ecc_pub_y,
+            &wrong_sig.mldsa_pub,
+        ),
+        CaliptraVdmCompletionCode::AccessDenied,
+    ));
+    results
+}
+
 /// Validate Field Entropy Programming (FE_PROG) via SPDM VDM.
 ///
 /// When a [`CommandAuthChallengeSigner`] is provided, performs the full authorized flow:
 /// 1. Request an auth challenge
-/// 2. Ask the authorizer to produce the MAC
-/// 3. Submit FE_PROG with the MAC
+/// 2. Ask the authorizer to produce the hybrid signature
+/// 3. Submit FE_PROG with the signature
 ///
 /// Without an authorizer the test is skipped.
 pub fn run_fe_prog(
@@ -308,7 +1065,7 @@ pub fn run_fe_prog(
     let cmd_id = MC_FE_PROG_CANONICAL_CMD_ID;
     let sig =
         match authorizer.authorize(cmd_id, &partition.to_le_bytes(), &challenge_resp.challenge) {
-            Ok(sig) => sig,
+            Ok(auth) => auth,
             Err(e) => {
                 return ValidationResult::fail(test_name, format!("Authorization failed: {}", e));
             }

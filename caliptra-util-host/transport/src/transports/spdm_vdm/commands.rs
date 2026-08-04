@@ -23,6 +23,7 @@ use super::protocol::{
 };
 use super::transport::{SpdmVdmDriver, SpdmVdmError};
 use crate::TransportError;
+use alloc::vec::Vec;
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqRequest, ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest,
     ProdDebugUnlockTokenResponse, DEBUG_UNLOCK_CHALLENGE_SIZE, UNIQUE_DEVICE_ID_SIZE,
@@ -146,10 +147,10 @@ pub fn handle_export_attested_csr(
 // GetAuthCmdChallenge (CaliptraCommandId::GetAuthCmdChallenge)
 // ---------------------------------------------------------------------------
 
-/// Handle GetAuthChallenge sub-command — request a challenge nonce for HMAC authorization.
+/// Handle GetAuthChallenge sub-command — request a one-use authorization nonce.
 ///
 /// VDM wire format request:  [version, 0x12 (AuthorizedCommand), sub_cmd_id=0x4D41_4343 (4 LE)]
-/// VDM wire format response: [version, 0x12 (AuthorizedCommand), completion_code, challenge(32)]
+/// VDM wire format response: [version, 0x12 (AuthorizedCommand), completion_code, challenge(48)]
 pub fn handle_get_auth_challenge(
     _payload: &[u8],
     driver: &mut dyn SpdmVdmDriver,
@@ -169,9 +170,9 @@ pub fn handle_get_auth_challenge(
         &mut resp_buf,
     )?;
 
-    // Response data: [challenge(32)]
+    // Response data: [challenge(48)]
     let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
-    if data.len() < AUTH_CMD_CHALLENGE_SIZE {
+    if data.len() != AUTH_CMD_CHALLENGE_SIZE {
         return Err(TransportError::InvalidMessage);
     }
 
@@ -181,59 +182,110 @@ pub fn handle_get_auth_challenge(
         .copy_from_slice(&data[..AUTH_CMD_CHALLENGE_SIZE]);
 
     let resp_bytes = internal_resp.as_bytes();
-    let copy_len = resp_bytes.len().min(response_buffer.len());
-    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
-    Ok(copy_len)
+    if response_buffer.len() < resp_bytes.len() {
+        return Err(TransportError::BufferError("Response buffer too small"));
+    }
+    response_buffer[..resp_bytes.len()].copy_from_slice(resp_bytes);
+    Ok(resp_bytes.len())
+}
+
+fn handle_authorized_fuse_command(
+    command_id: u32,
+    request: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let mut vdm_payload = Vec::with_capacity(4 + request.len());
+    vdm_payload.extend_from_slice(&command_id.to_le_bytes());
+    vdm_payload.extend_from_slice(request);
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(
+        CaliptraVdmCommand::AuthorizedCommand,
+        &vdm_payload,
+        driver,
+        &mut resp_buf,
+    )?;
+    if resp_len != VDM_RESPONSE_HEADER_SIZE {
+        return Err(TransportError::InvalidMessage);
+    }
+    let response = CommonResponse { fips_status: 0 };
+    if response_buffer.len() < response.as_bytes().len() {
+        return Err(TransportError::BufferError("Response buffer too small"));
+    }
+    response_buffer[..response.as_bytes().len()].copy_from_slice(response.as_bytes());
+    Ok(response.as_bytes().len())
 }
 
 // ---------------------------------------------------------------------------
-// ProgramFieldEntropy (CaliptraCommandId::FeProg)
+// Authorized fuse commands
 // ---------------------------------------------------------------------------
 
 /// Handle ProgramFieldEntropy (FE_PROG) authorized sub-command.
 ///
-/// VDM wire format request:  [version, 0x12 (AuthorizedCommand),
-///   sub_cmd_id=0x4D43_4650 (4 LE), partition(4 LE),
-///   nonce(48), ecc_pub_x(48), ecc_pub_y(48), mldsa_pub(2592),
-///   ecc_sig(r 48 || s 48), mldsa_sig(4628)]
-/// Signatures come LAST. The nonce and public keys are fields of `FeProgRequest`,
-/// so they are carried automatically by `req.as_bytes()` below — no manual
-/// serialization here.
+/// VDM wire format request: [version, 0x12, sub_cmd_id, partition,
+/// nonce, ECC public key, ML-DSA public key, HybridSignature].
 /// VDM wire format response: [version, 0x12 (AuthorizedCommand), completion_code]
 pub fn handle_fe_prog(
     payload: &[u8],
     driver: &mut dyn SpdmVdmDriver,
     response_buffer: &mut [u8],
 ) -> Result<usize, TransportError> {
-    use alloc::vec::Vec;
     use caliptra_mcu_core_util_host_command_types::fuse::{FeProgRequest, FeProgResponse};
-
     let req = FeProgRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
-
-    // VDM payload: sub_cmd_id(4 LE) || FeProgRequest bytes
-    //   = sub_cmd_id || partition(4 LE) || nonce(48) || ecc_pub_x(48) || ecc_pub_y(48) || mldsa_pub(2592) || ecc_sig(96) || mldsa_sig(4628)
     let mut vdm_payload = Vec::with_capacity(4 + size_of::<FeProgRequest>());
     vdm_payload.extend_from_slice(&MC_FE_PROG_CANONICAL_CMD_ID.to_le_bytes());
     vdm_payload.extend_from_slice(req.as_bytes());
-
     let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
-    let _resp_len = send_vdm_request(
+    send_vdm_request(
         CaliptraVdmCommand::AuthorizedCommand,
         &vdm_payload,
         driver,
         &mut resp_buf,
     )?;
-
-    // Response is header-only (completion code checked by send_vdm_request)
-    let internal_resp = FeProgResponse {
+    let response = FeProgResponse {
         common: CommonResponse { fips_status: 0 },
     };
-
-    let resp_bytes = internal_resp.as_bytes();
-    let copy_len = resp_bytes.len().min(response_buffer.len());
-    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
-    Ok(copy_len)
+    let bytes = response.as_bytes();
+    if response_buffer.len() < bytes.len() {
+        return Err(TransportError::BufferError("Response buffer too small"));
+    }
+    response_buffer[..bytes.len()].copy_from_slice(bytes);
+    Ok(bytes.len())
 }
+
+macro_rules! authorized_fuse_handler {
+    ($name:ident, $request:ty, $command_id:expr) => {
+        pub fn $name(
+            payload: &[u8],
+            driver: &mut dyn SpdmVdmDriver,
+            response_buffer: &mut [u8],
+        ) -> Result<usize, TransportError> {
+            let req =
+                <$request>::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+            handle_authorized_fuse_command($command_id, req.as_bytes(), driver, response_buffer)
+        }
+    };
+}
+authorized_fuse_handler!(
+    handle_provision_vendor_pk_hash,
+    fuse::ProvisionVendorPkHashRequest,
+    fuse::MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID
+);
+authorized_fuse_handler!(
+    handle_fuse_increase_caliptra_min_svn,
+    fuse::FuseIncreaseCaliptraMinSvnRequest,
+    fuse::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID
+);
+authorized_fuse_handler!(
+    handle_fuse_revoke_vendor_pub_key,
+    fuse::FuseRevokeVendorPubKeyRequest,
+    fuse::MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID
+);
+authorized_fuse_handler!(
+    handle_fuse_revoke_vendor_pk_hash,
+    fuse::FuseRevokeVendorPkHashRequest,
+    fuse::MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID
+);
 
 // ---------------------------------------------------------------------------
 // RequestDebugUnlock (CaliptraCommandId::ProdDebugUnlockReq)
@@ -415,6 +467,188 @@ mod tests {
             TransportError::BufferError(msg) => assert!(msg.contains("maximum CSR size")),
             other => panic!("unexpected error: {:?}", other),
         }
+    }
+
+    #[test]
+    fn authorized_fuse_commands_preserve_exact_wire_layout() {
+        let mut sig = caliptra_mcu_mbox_common::messages::HybridSignature::default();
+        sig.ecc_sig_r.fill(0x11);
+        sig.ecc_sig_s.fill(0x22);
+        sig.mldsa_sig.fill(0x33);
+
+        let pvpk = fuse::ProvisionVendorPkHashRequest {
+            slot: 0x0102_0304,
+            hash: [0xA5; 48],
+            sig: sig.clone(),
+            nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
+            ecc_pub_x: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            ecc_pub_y: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
+        };
+        let mcms = fuse::FuseIncreaseCaliptraMinSvnRequest {
+            flags: 0x1122_3344,
+            svn: 0x5566_7788,
+            sig: sig.clone(),
+            nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
+            ecc_pub_x: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            ecc_pub_y: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
+        };
+        let mrvk = fuse::FuseRevokeVendorPubKeyRequest {
+            reserved: 0x0102_0304,
+            vendor_pk_hash_slot: 0x1112_1314,
+            key_type: 0x2122_2324,
+            key_index: 0x3132_3334,
+            sig: sig.clone(),
+            nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
+            ecc_pub_x: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            ecc_pub_y: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
+        };
+        let rvkh = fuse::FuseRevokeVendorPkHashRequest {
+            reserved: 0x4142_4344,
+            vendor_pk_hash_slot: 0x5152_5354,
+            sig: sig.clone(),
+            nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
+            ecc_pub_x: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            ecc_pub_y: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
+        };
+
+        let signature_bytes = {
+            let mut bytes = vec![0x11; 48];
+            bytes.extend_from_slice(&[0x22; 48]);
+            bytes.extend_from_slice(&vec![0x33; sig.mldsa_sig.len()]);
+            bytes
+        };
+        let make_golden = |command_id: u32, fields: &[u8]| {
+            let mut packet = vec![
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::AuthorizedCommand as u8,
+            ];
+            packet.extend_from_slice(&command_id.to_le_bytes());
+            packet.extend_from_slice(fields);
+            packet.extend_from_slice(&[0u8; fuse::AUTH_CMD_CHALLENGE_SIZE]);
+            packet.extend_from_slice(&[0u8; fuse::AUTH_PUB_ECC_COORD_SIZE]);
+            packet.extend_from_slice(&[0u8; fuse::AUTH_PUB_ECC_COORD_SIZE]);
+            packet.extend_from_slice(&[0u8; fuse::AUTH_PUB_MLDSA_SIZE]);
+            packet.extend_from_slice(&signature_bytes);
+            packet
+        };
+
+        let mut pvpk_fields = 0x0102_0304u32.to_le_bytes().to_vec();
+        pvpk_fields.extend_from_slice(&[0xA5; 48]);
+        let mut mcms_fields = 0x1122_3344u32.to_le_bytes().to_vec();
+        mcms_fields.extend_from_slice(&0x5566_7788u32.to_le_bytes());
+        let mut mrvk_fields = Vec::new();
+        for field in [0x0102_0304u32, 0x1112_1314, 0x2122_2324, 0x3132_3334] {
+            mrvk_fields.extend_from_slice(&field.to_le_bytes());
+        }
+        let mut rvkh_fields = 0x4142_4344u32.to_le_bytes().to_vec();
+        rvkh_fields.extend_from_slice(&0x5152_5354u32.to_le_bytes());
+
+        let cases: Vec<(&[u8], Vec<u8>, VdmCommandHandlerFnForTest)> = vec![
+            (
+                pvpk.as_bytes(),
+                make_golden(
+                    fuse::MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+                    &pvpk_fields,
+                ),
+                handle_provision_vendor_pk_hash,
+            ),
+            (
+                mcms.as_bytes(),
+                make_golden(
+                    fuse::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
+                    &mcms_fields,
+                ),
+                handle_fuse_increase_caliptra_min_svn,
+            ),
+            (
+                mrvk.as_bytes(),
+                make_golden(
+                    fuse::MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
+                    &mrvk_fields,
+                ),
+                handle_fuse_revoke_vendor_pub_key,
+            ),
+            (
+                rvkh.as_bytes(),
+                make_golden(
+                    fuse::MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+                    &rvkh_fields,
+                ),
+                handle_fuse_revoke_vendor_pk_hash,
+            ),
+        ];
+
+        for (request, golden, handler) in cases {
+            let mut driver = FakeDriver {
+                response: success_response(CaliptraVdmCommand::AuthorizedCommand, &[]),
+                last_request: Vec::new(),
+            };
+            let mut response = [0u8; core::mem::size_of::<CommonResponse>()];
+            handler(request, &mut driver, &mut response).unwrap();
+            assert_eq!(driver.last_request, golden);
+
+            let err = handler(&request[..request.len() - 1], &mut driver, &mut response)
+                .expect_err("truncated hybrid signature must be rejected locally");
+            assert!(matches!(err, TransportError::InvalidMessage));
+
+            let mut oversized = request.to_vec();
+            oversized.push(0);
+            let err = handler(&oversized, &mut driver, &mut response)
+                .expect_err("trailing request bytes must be rejected locally");
+            assert!(matches!(err, TransportError::InvalidMessage));
+        }
+    }
+
+    type VdmCommandHandlerFnForTest =
+        fn(&[u8], &mut dyn SpdmVdmDriver, &mut [u8]) -> Result<usize, TransportError>;
+
+    #[test]
+    fn authorized_command_rejects_trailing_response_and_small_output_buffer() {
+        let req = fuse::FuseIncreaseCaliptraMinSvnRequest {
+            flags: 0,
+            svn: 1,
+            sig: Default::default(),
+            nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
+            ecc_pub_x: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            ecc_pub_y: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
+            mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
+        };
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::AuthorizedCommand, &[0xAA]),
+            last_request: Vec::new(),
+        };
+        let mut response = [0u8; core::mem::size_of::<CommonResponse>()];
+        assert!(matches!(
+            handle_fuse_increase_caliptra_min_svn(req.as_bytes(), &mut driver, &mut response),
+            Err(TransportError::InvalidMessage)
+        ));
+
+        driver.response = success_response(CaliptraVdmCommand::AuthorizedCommand, &[]);
+        assert!(matches!(
+            handle_fuse_increase_caliptra_min_svn(req.as_bytes(), &mut driver, &mut []),
+            Err(TransportError::BufferError(_))
+        ));
+    }
+
+    #[test]
+    fn get_auth_challenge_requires_exact_response_length() {
+        let challenge = [0x5A; fuse::AUTH_CMD_CHALLENGE_SIZE];
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::AuthorizedCommand, &challenge),
+            last_request: Vec::new(),
+        };
+        let mut response = [0u8; core::mem::size_of::<fuse::GetAuthCmdChallengeResponse>()];
+        handle_get_auth_challenge(&[], &mut driver, &mut response).unwrap();
+
+        driver.response.push(0);
+        assert!(matches!(
+            handle_get_auth_challenge(&[], &mut driver, &mut response),
+            Err(TransportError::InvalidMessage)
+        ));
     }
 
     #[test]
