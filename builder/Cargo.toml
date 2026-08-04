@@ -24,6 +24,7 @@ caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-firmware-bundler.workspace = true
 caliptra-mcu-pldm-fw-pkg.workspace = true
+openssl.workspace = true
 p384.workspace = true
 rayon = { workspace = true, optional = true }
 serde.workspace = true

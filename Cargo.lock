@@ -1043,6 +1043,7 @@ dependencies = [
  "chrono",
  "elf",
  "hex",
+ "openssl",
  "p384",
  "rayon",
  "semver",
@@ -1577,6 +1578,25 @@ dependencies = [
  "serde",
  "serde-hjson",
  "syn 2.0.109",
+]
+
+[[package]]
+name = "caliptra-mcu-fw-signer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-image-crypto",
+ "caliptra-image-fake-keys",
+ "caliptra-image-gen",
+ "caliptra-image-types",
+ "caliptra-mcu-builder",
+ "clap 4.5.51",
+ "hex",
+ "openssl",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "zerocopy",
 ]
 
 [[package]]
@@ -2631,6 +2651,7 @@ dependencies = [
  "caliptra-mcu-error",
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
+ "caliptra-mcu-fw-signer",
  "caliptra-mcu-hw-model",
  "caliptra-mcu-image-header",
  "caliptra-mcu-libapi-caliptra",
