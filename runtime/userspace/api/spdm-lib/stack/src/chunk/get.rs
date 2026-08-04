@@ -119,3 +119,7 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     state.large_msg_ctx.chunk_sent(chunk_size);
     Ok(rsp)
 }
+
+#[cfg(test)]
+#[path = "../tests/chunk_get.rs"]
+mod tests;

@@ -261,7 +261,7 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         || chunk_size < min_chunk_size
         || chunk_size >= large_msg_size
         || large_msg_size <= CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
-        || large_msg_size > pal.large_capacity();
+        || large_msg_size > crate::stack::usable_large_capacity(pal);
     if invalid {
         return Err(ChunkProcessError::Early {
             handle,

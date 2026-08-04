@@ -1081,4 +1081,48 @@ mod tests {
             }
         }
     }
+
+    /// With a 4 KiB `DataTransferSize`, a buffered CHUNK_GET large response must
+    /// be able to allocate its per-chunk response
+    /// (`header + mtu`) for the full transfer. The stack advertises a
+    /// `MaxSPDMmsgSize` that reserves this headroom (`usable_large_capacity`);
+    /// this test proves the reservation is load-bearing against the real
+    /// allocator: a `usable`-sized buffer leaves room to chunk, while a buffer
+    /// sized to the full raw pool starves the next chunk allocation.
+    #[test]
+    fn headroom_lets_buffered_response_allocate_next_chunk() {
+        const MTU: usize = 4096;
+        const HEADER: usize = 8; // DOE header
+        // Mirror the stack's headroom formula: two header+mtu frames + 2 KiB.
+        const HEADROOM: usize = 2 * (HEADER + MTU) + 2 * 1024;
+
+        let (alloc, _buf) = make_alloc(20 * 1024);
+        let pool = alloc.num_slots() * BITMAP_SLOT_SIZE;
+        let usable = pool.saturating_sub(HEADROOM);
+        assert!(usable >= MTU, "20 KiB pool must leave one usable frame");
+
+        // A buffered response sized to `usable` coexists with a fresh
+        // header+mtu chunk-response allocation — the CHUNK_GET happy path.
+        {
+            let _large = alloc.alloc_bytes(usable).expect("usable large buffer");
+            let chunk = alloc.alloc_bytes(HEADER + MTU);
+            assert!(
+                chunk.is_ok(),
+                "headroom must leave room for one header+mtu chunk response"
+            );
+        }
+        assert_eq!(alloc.live_slots(), 0);
+
+        // A buffer sized to the full raw pool (i.e. ignoring headroom) leaves
+        // nothing for the next chunk — the starvation the reservation prevents.
+        {
+            let _greedy = alloc.alloc_bytes(pool).expect("full-pool buffer");
+            let chunk = alloc.alloc_bytes(HEADER + MTU);
+            assert!(
+                chunk.is_err(),
+                "full-pool buffer must starve the next chunk allocation"
+            );
+        }
+        assert_eq!(alloc.live_slots(), 0);
+    }
 }

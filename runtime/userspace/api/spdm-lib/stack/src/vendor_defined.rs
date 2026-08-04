@@ -72,7 +72,7 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
         if requested > inline_cap {
             state
                 .effective_max_spdm_msg_size(pal)
-                .min(pal.large_capacity())
+                .min(crate::stack::usable_large_capacity(pal))
                 .saturating_sub(envelope)
                 .min(requested)
         } else {

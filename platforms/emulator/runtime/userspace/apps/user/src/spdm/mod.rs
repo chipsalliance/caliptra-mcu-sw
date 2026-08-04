@@ -25,6 +25,7 @@ use caliptra_mcu_spdm_pal::{
     BitmapAllocator, McuSpdmPal, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE,
 };
 use caliptra_mcu_spdm_stack::SpdmStack;
+use caliptra_mcu_spdm_traits::SpdmPalTransport;
 use caliptra_mcu_spdm_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
@@ -44,8 +45,13 @@ use embassy_sync::signal::Signal;
 ///
 /// Must hold `MEAS_RECORD_BUF_SIZE + MeasurementProvider::SCRATCH_SIZE`
 /// plus transient DPE/SHA mailbox buffers (peak ~2.4 KB during
-/// certify_key for kid computation).
-const SPDM_SCRATCH_SIZE: usize = 12 * 1024;
+/// certify_key for kid computation). It must also leave room for CHUNK_GET:
+/// a buffered large response coexists with a per-chunk `header + mtu`
+/// response allocation. The advertised `MaxSPDMmsgSize` reserves that
+/// headroom (see `usable_large_capacity` in the stack), so at a 4 KiB MTU a
+/// 12 KiB pool would strip CHUNK entirely; 20 KiB keeps ~8 KiB of usable
+/// large-message capacity for chunking.
+const SPDM_SCRATCH_SIZE: usize = 20 * 1024;
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
@@ -178,9 +184,27 @@ async fn spdm_mctp_responder() {
 async fn spdm_doe_responder() {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
-    let doe_transport = McuSpdmDoeTransport::new(doe::driver_num::DOE_SPDM);
+    // OCP 2.7 SPDM-14 requires a 4 KiB DataTransferSize. This minimum is
+    // integrator/profile policy, so it lives here rather than inside the
+    // reusable DOE transport; the transport simply advertises the configured
+    // size (bounded by the driver) and the stack chunks larger messages.
+    const OCP_MIN_DATA_TRANSFER_SIZE: usize = 4096;
+    let doe_transport =
+        McuSpdmDoeTransport::with_transfer_size(doe::driver_num::DOE_SPDM, OCP_MIN_DATA_TRANSFER_SIZE);
     if !doe_transport.exists() {
         crate::log_info!(cw, "SPDM_DOE: No DOE device, exiting");
+        return;
+    }
+    // Enforce the OCP minimum once at init against the driver-bounded MTU. A
+    // short driver MTU exits this task gracefully rather than panicking deep in
+    // the transport (which carries no profile policy of its own).
+    let doe_mtu = SpdmPalTransport::mtu(&doe_transport);
+    if doe_mtu < OCP_MIN_DATA_TRANSFER_SIZE {
+        crate::log_info!(
+            cw,
+            "SPDM_DOE: DataTransferSize 0x{} < OCP min, exiting",
+            crate::Hex32(doe_mtu as u32)
+        );
         return;
     }
 

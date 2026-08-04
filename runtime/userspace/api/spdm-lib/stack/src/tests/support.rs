@@ -99,6 +99,9 @@ impl<T> DerefMut for TestBox<'_, T> {
 
 pub struct TestPal {
     pub mtu: usize,
+    /// Backing large-message pool capacity, independent of `mtu` so tests can
+    /// exercise the CHUNK_GET headroom accounting.
+    pub large_capacity: usize,
     pub supported_slots: u8,
     pub authorized: bool,
     pub validate_error: Option<McuErrorCode>,
@@ -114,6 +117,9 @@ impl Default for TestPal {
     fn default() -> Self {
         Self {
             mtu: 1024,
+            // Generous by default so existing chunk tests keep ample usable
+            // capacity after the CHUNK_GET headroom reservation.
+            large_capacity: 64 * 1024,
             supported_slots: u8::MAX,
             authorized: true,
             validate_error: None,
@@ -162,7 +168,7 @@ impl SpdmPalAlloc for TestPal {
     }
 
     fn large_capacity(&self) -> usize {
-        self.mtu
+        self.large_capacity
     }
 
     fn alloc_large_buf(&self, len: usize) -> McuResult<Self::LargeBuf> {
