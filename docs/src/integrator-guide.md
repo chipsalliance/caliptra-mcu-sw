@@ -270,12 +270,10 @@ Caliptra Core has loaded the runtime image into MCU SRAM.
 There is also an authorized runtime mailbox command,
 `MC_FUSE_INCREASE_CALIPTRA_MIN_SVN`, that advances the Caliptra firmware minimum
 SVN directly in the `CALIPTRA_FW_SVN` fuse. The reference runtime exposes this
-command through the in-band MCI mailbox path today and requires the runtime
-authorization flow. It rejects requests that are zero, above 128, lower than the
-current fuse floor, or higher than the currently running Caliptra firmware SVN
-reported by `FW_INFO`. Platforms that need BMC-originated workflows can route
-the command through a trusted SoC-side agent today, or through an OOB SPDM VDM
-path when that platform support is added.
+command through both the in-band MCI mailbox and OOB SPDM VDM paths and requires
+the runtime authorization flow. It rejects requests that are zero, above 128,
+lower than the current fuse floor, or higher than the currently running
+Caliptra firmware SVN reported by `FW_INFO`.
 
 ## Management Command Transport Expectations
 
@@ -285,17 +283,14 @@ treated as interchangeable:
 | Path | Who can use it | Privileged commands in that path |
 |---|---|---|
 | MCI mailbox runtime interface | A SoC-side agent with MCI mailbox access, or an explicit platform proxy to that agent | Runtime handlers exist for `MC_PROVISION_VENDOR_PK_HASH`, `MC_FUSE_REVOKE_VENDOR_PUB_KEY`, `MC_FUSE_REVOKE_VENDOR_PK_HASH`, `MC_FUSE_INCREASE_CALIPTRA_MIN_SVN`, `MC_FE_PROG`, and generic fuse read/write/lock commands. |
-| OOB SPDM VDM over MCTP/I3C | External BMC/OOB requester speaking the Caliptra SPDM VDM protocol | `Get Auth Challenge` and `Program Field Entropy` under the SPDM `Authorized Command` code today; platforms may add OOB wrappers for additional authorized commands as support lands. |
+| OOB SPDM VDM over MCTP/I3C | External BMC/OOB requester speaking the Caliptra SPDM VDM protocol | `Get Auth Challenge`, `Provision Vendor PK Hash`, `Fuse Increase Caliptra Min SVN`, `Program Field Entropy`, `Fuse Revoke Vendor Public Key`, and `Fuse Revoke Vendor PK Hash` under SPDM `AuthorizedCommand`. |
 
 The `caliptra-util-host` mailbox transport is a software abstraction that
 formats supported MCU mailbox commands through a platform-provided
 `MailboxDriver`; it does not give an external BMC native access to the MCI
 mailbox, and not every runtime MCI command is wrapped by the current host
-utility dispatch tables. If an OOB BMC must initiate MCI-only operations such
-as PK provisioning, PK revocation, or direct Caliptra SVN increment, the
-platform must provide a trusted SoC-side service or bridge that owns the MCI
-access, exposes the intended command wrappers, and enforces the deployment
-policy.
+utility dispatch tables. MCI-only operations still require a trusted SoC-side
+service or bridge that owns MCI access and enforces the deployment policy.
 
 ## Vendor Public Key Selection and Rotation
 Caliptra MCU supports a vendor public key selection and rotation scheme
@@ -348,12 +343,9 @@ New vendor PK hash slots can be provisioned in the field through
 `MC_PROVISION_VENDOR_PK_HASH`. The command writes a 48-byte SHA-384 vendor PK
 hash into the requested slot. It is idempotent if the slot already contains the
 same hash, and fails if the slot is invalid or contains a different nonzero
-hash. It is an authorized MCU Runtime mailbox command, so the requester must
-complete the runtime authorization flow before invoking it.
-
-This command is not exposed through the OOB SPDM VDM command set today. If the
-BMC owns the operational workflow, it must call a trusted SoC-side agent or
-platform proxy that has MCI mailbox access.
+hash. It is exposed through both the authorized MCU Runtime mailbox and OOB
+SPDM VDM `AuthorizedCommand` paths, so the requester must complete the runtime
+authorization flow before invoking it.
 
 ### Key Revocation
 
@@ -373,9 +365,8 @@ prevents a requester from bricking the current boot by revoking its own active
 trust path; revocation is intended to happen after the device has successfully
 booted with a replacement key or replacement PK hash slot.
 
-Like provisioning, these revocation commands are not exposed through the OOB
-SPDM VDM command set today. A BMC-originated field workflow therefore needs a
-SoC-side MCI mailbox agent or an explicit platform proxy.
+These revocation commands are exposed through the OOB SPDM VDM
+`AuthorizedCommand` path over MCTP/I3C as well as through the MCI mailbox path.
 
 #### Command Authorization Mechanism
 
@@ -383,13 +374,13 @@ Command authorization across both MCU mailbox and SPDM VDM transports uses an
 asymmetric challenge-response signature flow. To execute an authorized command
 (e.g., key revocation or field entropy programming), the requester must:
 
-1. Request a 32-byte challenge nonce from the device via `Get Auth Challenge`.
+1. Request a one-use 48-byte challenge nonce from the device via `Get Auth Challenge`.
 2. Compute dual asymmetric signatures (ECC P-384 and ML-DSA-87) over
-   `cmd_id(BE) || payload(LE) || challenge(32)`.
+   `cmd_id(BE) || payload(LE) || challenge(48)`.
 3. Submit the command payload accompanied by the resulting hybrid signature.
 
 Integrators configure the authorizer policy by implementing the platform
-authorizer trait (`CommandAuthorizer` for mailbox or `CaliptraVdmCommands` for
+authorizer trait (`CommandAuthorizer` for mailbox or `CaliptraVdmAuthorization` for
 SPDM VDM) and provisioning the corresponding verification public keys in OTP
 fuses, secure platform storage, or embedded in firmware directly.
 

@@ -22,6 +22,10 @@ pub use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult, CaliptraVdmCommand, CaliptraVdmResult,
     CALIPTRA_VDM_COMMAND_VERSION, CALIPTRA_VENDOR_ID,
 };
+pub use commands::authorized_command::{
+    FE_PROG_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
+    PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
+};
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
 const VDM_HEADER_LEN: usize = 2;
@@ -65,6 +69,10 @@ pub trait CaliptraVdmStreamOps {
 }
 
 /// Platform hook for the shared command-authorization service.
+///
+/// Each `payload` is the exact little-endian wire payload preceding `sig`.
+/// Implementations must verify `cmd_id(BE) || payload || challenge(48)` without
+/// re-encoding parsed fields.
 pub trait CaliptraVdmAuthorization {
     async fn get_auth_challenge<A: SpdmPalAlloc>(
         &self,
@@ -72,15 +80,68 @@ pub trait CaliptraVdmAuthorization {
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize>;
 
-    /// Verifies `sig` for FE_PROG and programs field entropy for `partition`.
-    ///
-    /// The wire-carried `nonce` and verifier public keys are forwarded to the
-    /// single step-1/anchor gate; the device compares `nonce` to its stored
-    /// one-time challenge and hash-anchors the keys before verifying.
+    #[allow(clippy::too_many_arguments)]
+    async fn provision_vendor_pk_hash<A: SpdmPalAlloc>(
+        &self,
+        slot: u32,
+        hash: &[u8; 48],
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn increase_caliptra_min_svn<A: SpdmPalAlloc>(
+        &self,
+        flags: u32,
+        svn: u32,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
     #[allow(clippy::too_many_arguments)]
     async fn program_field_entropy<A: SpdmPalAlloc>(
         &self,
         partition: u32,
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn revoke_vendor_pub_key<A: SpdmPalAlloc>(
+        &self,
+        reserved: u32,
+        slot: u32,
+        key_type: u32,
+        key_index: u32,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn revoke_vendor_pk_hash<A: SpdmPalAlloc>(
+        &self,
+        reserved: u32,
+        slot: u32,
+        payload: &[u8],
         sig: &HybridSignature,
         nonce: &[u8; AUTH_CMD_NONCE_LEN],
         ecc_pub_x: &[u8; 48],
@@ -324,6 +385,7 @@ mod tests {
     use std::sync::Mutex;
     use std::vec;
     use std::vec::Vec;
+    use zerocopy::IntoBytes;
 
     use super::*;
 
@@ -423,10 +485,40 @@ mod tests {
 
     const DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE: usize = 32;
     const DEBUG_UNLOCK_CHALLENGE_SIZE: usize = 48;
+    const TEST_AUTH_CHALLENGE: [u8; 48] = [0xA5; 48];
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum AuthorizedOperation {
+        ProvisionVendorPkHash {
+            slot: u32,
+            hash: [u8; 48],
+        },
+        IncreaseCaliptraMinSvn {
+            flags: u32,
+            svn: u32,
+        },
+        ProgramFieldEntropy {
+            partition: u32,
+        },
+        RevokeVendorPubKey {
+            reserved: u32,
+            slot: u32,
+            key_type: u32,
+            key_index: u32,
+        },
+        RevokeVendorPkHash {
+            reserved: u32,
+            slot: u32,
+        },
+    }
 
     struct TestCommands {
         csr_len: usize,
         authorized_token: Mutex<Option<Vec<u8>>>,
+        authorized_operation: Mutex<Option<AuthorizedOperation>>,
+        authorization_error: Mutex<Option<CaliptraCompletionCode>>,
+        enforce_authorization: bool,
+        challenge: Mutex<Option<[u8; 48]>>,
     }
 
     impl TestCommands {
@@ -434,7 +526,54 @@ mod tests {
             Self {
                 csr_len,
                 authorized_token: Mutex::new(None),
+                authorized_operation: Mutex::new(None),
+                authorization_error: Mutex::new(None),
+                enforce_authorization: false,
+                challenge: Mutex::new(None),
             }
+        }
+
+        fn with_authorization(mut self) -> Self {
+            self.enforce_authorization = true;
+            self
+        }
+
+        fn verify_test_signature(
+            &self,
+            cmd_id: u32,
+            payload: &[u8],
+            sig: &HybridSignature,
+        ) -> CaliptraVdmResult<()> {
+            if !self.enforce_authorization {
+                return Ok(());
+            }
+            // Taking the challenge before verification matches the production
+            // one-use authorization path, including failed signature attempts.
+            let challenge = self
+                .challenge
+                .lock()
+                .unwrap()
+                .take()
+                .ok_or(CaliptraCompletionCode::AccessDenied)?;
+            let sig_bytes = sig.as_bytes();
+            let payload_end = 4 + payload.len();
+            let challenge_end = payload_end + challenge.len();
+            if sig_bytes[..4] != cmd_id.to_be_bytes()
+                || sig_bytes[4..payload_end] != *payload
+                || sig_bytes[payload_end..challenge_end] != challenge
+                || sig_bytes[challenge_end..].iter().any(|byte| *byte != 0x3C)
+            {
+                return Err(CaliptraCompletionCode::AccessDenied);
+            }
+            Ok(())
+        }
+
+        fn complete_authorized(&self, operation: AuthorizedOperation) -> CaliptraVdmResult<()> {
+            if let Some(code) = self.authorization_error.lock().unwrap().take() {
+                return Err(code);
+            }
+            self.authorized_operation.lock().unwrap().replace(operation);
+            Ok(())
         }
 
         fn write_csr(
@@ -522,13 +661,50 @@ mod tests {
             _scratch: &A,
             out: &mut [u8],
         ) -> CaliptraVdmResult<usize> {
-            if out.len() < 32 {
+            if out.len() < 48 {
                 return Err(CaliptraCompletionCode::InsufficientResources);
             }
-            out[..32].copy_from_slice(&[0xA5; 32]);
-            Ok(32)
+            out[..48].copy_from_slice(&TEST_AUTH_CHALLENGE);
+            *self.challenge.lock().unwrap() = Some(TEST_AUTH_CHALLENGE);
+            Ok(48)
         }
 
+        async fn provision_vendor_pk_hash<A: SpdmPalAlloc>(
+            &self,
+            slot: u32,
+            hash: &[u8; 48],
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(PROVISION_VENDOR_PK_HASH_CMD_ID, payload, sig)?;
+            self.complete_authorized(AuthorizedOperation::ProvisionVendorPkHash {
+                slot,
+                hash: *hash,
+            })
+        }
+
+        async fn increase_caliptra_min_svn<A: SpdmPalAlloc>(
+            &self,
+            flags: u32,
+            svn: u32,
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, payload, sig)?;
+            self.complete_authorized(AuthorizedOperation::IncreaseCaliptraMinSvn { flags, svn })
+        }
+
+        #[allow(clippy::too_many_arguments)]
         #[allow(clippy::too_many_arguments)]
         async fn program_field_entropy<A: SpdmPalAlloc>(
             &self,
@@ -541,6 +717,45 @@ mod tests {
             _scratch: &A,
         ) -> CaliptraVdmResult<()> {
             Ok(())
+        }
+
+        async fn revoke_vendor_pub_key<A: SpdmPalAlloc>(
+            &self,
+            reserved: u32,
+            slot: u32,
+            key_type: u32,
+            key_index: u32,
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(REVOKE_VENDOR_PUB_KEY_CMD_ID, payload, sig)?;
+            self.complete_authorized(AuthorizedOperation::RevokeVendorPubKey {
+                reserved,
+                slot,
+                key_type,
+                key_index,
+            })
+        }
+
+        async fn revoke_vendor_pk_hash<A: SpdmPalAlloc>(
+            &self,
+            reserved: u32,
+            slot: u32,
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(REVOKE_VENDOR_PK_HASH_CMD_ID, payload, sig)?;
+            self.complete_authorized(AuthorizedOperation::RevokeVendorPkHash { reserved, slot })
         }
     }
 
@@ -607,6 +822,50 @@ mod tests {
             VdmResponse::Large(len) => assert_eq!(len, expected_len),
             VdmResponse::Inline(_) => panic!("expected large response"),
         }
+    }
+
+    fn authorized_req_with_sig(sub_cmd: u32, payload: &[u8], sig: &HybridSignature) -> Vec<u8> {
+        let mut req = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::AuthorizedCommand as u8,
+        ];
+        req.extend_from_slice(&sub_cmd.to_le_bytes());
+        req.extend_from_slice(payload);
+        req.extend_from_slice(&[0u8; AUTH_CMD_NONCE_LEN]);
+        req.extend_from_slice(&[0u8; 48]);
+        req.extend_from_slice(&[0u8; 48]);
+        req.extend_from_slice(&[0u8; 2592]);
+        req.extend_from_slice(sig.as_bytes());
+        req
+    }
+
+    fn authorized_req(sub_cmd: u32, payload: &[u8]) -> Vec<u8> {
+        authorized_req_with_sig(sub_cmd, payload, &HybridSignature::default())
+    }
+
+    /// Deterministic test signature containing the complete signed preimage.
+    /// The production verifier performs ECC and ML-DSA verification over this
+    /// same `cmd_id(BE) || payload || challenge(48)` byte sequence.
+    fn test_signature(cmd_id: u32, payload: &[u8], challenge: &[u8; 48]) -> HybridSignature {
+        let mut sig = HybridSignature::default();
+        sig.as_mut_bytes().fill(0x3C);
+        let preimage_len = 4 + payload.len() + challenge.len();
+        let preimage = &mut sig.as_mut_bytes()[..preimage_len];
+        preimage[..4].copy_from_slice(&cmd_id.to_be_bytes());
+        preimage[4..4 + payload.len()].copy_from_slice(payload);
+        preimage[4 + payload.len()..].copy_from_slice(challenge);
+        sig
+    }
+
+    fn issue_test_challenge(cmds: &TestCommands) {
+        let mut req = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::AuthorizedCommand as u8,
+        ];
+        req.extend_from_slice(&GET_AUTH_CHALLENGE_CMD_ID.to_le_bytes());
+        let (response, inline, _) = dispatch(cmds, &req, 64, 0);
+        assert_inline(response, 51);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
     }
 
     fn export_attested_csr_req() -> Vec<u8> {
@@ -763,6 +1022,251 @@ mod tests {
 
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+    }
+
+    #[test]
+    fn authorized_fuse_commands_parse_golden_packets() {
+        let cases = [
+            (
+                PROVISION_VENDOR_PK_HASH_CMD_ID,
+                {
+                    let mut payload = vec![];
+                    payload.extend_from_slice(&2u32.to_le_bytes());
+                    payload.extend_from_slice(&[0x5A; 48]);
+                    payload
+                },
+                AuthorizedOperation::ProvisionVendorPkHash {
+                    slot: 2,
+                    hash: [0x5A; 48],
+                },
+            ),
+            (
+                INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
+                {
+                    let mut payload = vec![];
+                    payload.extend_from_slice(&0x1122_3344u32.to_le_bytes());
+                    payload.extend_from_slice(&17u32.to_le_bytes());
+                    payload
+                },
+                AuthorizedOperation::IncreaseCaliptraMinSvn {
+                    flags: 0x1122_3344,
+                    svn: 17,
+                },
+            ),
+            (
+                REVOKE_VENDOR_PUB_KEY_CMD_ID,
+                {
+                    let mut payload = vec![];
+                    payload.extend_from_slice(&0xAABB_CCDDu32.to_le_bytes());
+                    payload.extend_from_slice(&3u32.to_le_bytes());
+                    payload.extend_from_slice(&2u32.to_le_bytes());
+                    payload.extend_from_slice(&7u32.to_le_bytes());
+                    payload
+                },
+                AuthorizedOperation::RevokeVendorPubKey {
+                    reserved: 0xAABB_CCDD,
+                    slot: 3,
+                    key_type: 2,
+                    key_index: 7,
+                },
+            ),
+            (
+                REVOKE_VENDOR_PK_HASH_CMD_ID,
+                {
+                    let mut payload = vec![];
+                    payload.extend_from_slice(&0x5566_7788u32.to_le_bytes());
+                    payload.extend_from_slice(&4u32.to_le_bytes());
+                    payload
+                },
+                AuthorizedOperation::RevokeVendorPkHash {
+                    reserved: 0x5566_7788,
+                    slot: 4,
+                },
+            ),
+        ];
+
+        for (sub_cmd, payload, expected) in cases {
+            let cmds = TestCommands::new(0).with_authorization();
+            issue_test_challenge(&cmds);
+            let sig = test_signature(sub_cmd, &payload, &TEST_AUTH_CHALLENGE);
+            let req = authorized_req_with_sig(sub_cmd, &payload, &sig);
+            assert_eq!(&req[2..6], &sub_cmd.to_le_bytes());
+            assert_eq!(&req[6..6 + payload.len()], payload.as_slice());
+
+            let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+            assert_inline(response, 3);
+            assert_eq!(
+                &inline[..3],
+                &[
+                    CALIPTRA_VDM_COMMAND_VERSION,
+                    CaliptraVdmCommand::AuthorizedCommand as u8,
+                    CaliptraCompletionCode::Success as u8,
+                ]
+            );
+            assert_eq!(
+                cmds.authorized_operation.lock().unwrap().take(),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn authorized_fuse_commands_reject_missing_truncated_and_oversized_signatures() {
+        let payloads = [
+            (PROVISION_VENDOR_PK_HASH_CMD_ID, vec![0u8; 52]),
+            (INCREASE_CALIPTRA_MIN_SVN_CMD_ID, vec![0u8; 8]),
+            (REVOKE_VENDOR_PUB_KEY_CMD_ID, vec![0u8; 16]),
+            (REVOKE_VENDOR_PK_HASH_CMD_ID, vec![0u8; 8]),
+        ];
+
+        for (sub_cmd, payload) in payloads {
+            let cmds = TestCommands::new(0);
+            let mut missing = vec![
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::AuthorizedCommand as u8,
+            ];
+            missing.extend_from_slice(&sub_cmd.to_le_bytes());
+            missing.extend_from_slice(&payload);
+            for req in [
+                missing,
+                {
+                    let mut req = authorized_req(sub_cmd, &payload);
+                    req.pop();
+                    req
+                },
+                {
+                    let mut req = authorized_req(sub_cmd, &payload);
+                    req.push(0xA5);
+                    req
+                },
+            ] {
+                let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+                assert_inline(response, 3);
+                assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+            }
+        }
+    }
+
+    #[test]
+    fn authorized_command_rejects_bad_signature_and_consumes_challenge() {
+        let cmds = TestCommands::new(0).with_authorization();
+        let payload = [0u8; 8];
+        issue_test_challenge(&cmds);
+        let bad_req = authorized_req(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload);
+
+        let (response, inline, _) = dispatch(&cmds, &bad_req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+
+        // This signature is valid for the original challenge, but verification
+        // must fail because the bad attempt already consumed that challenge.
+        let sig = test_signature(
+            INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
+            &payload,
+            &TEST_AUTH_CHALLENGE,
+        );
+        let valid_req = authorized_req_with_sig(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &sig);
+        let (response, inline, _) = dispatch(&cmds, &valid_req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+
+        // The same signed preimage succeeds after obtaining a fresh challenge.
+        issue_test_challenge(&cmds);
+        let (response, inline, _) = dispatch(&cmds, &valid_req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+    }
+
+    #[test]
+    fn authorized_command_rejects_signature_for_wrong_command() {
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let payload = [0u8; 8];
+        let sig = test_signature(
+            PROVISION_VENDOR_PK_HASH_CMD_ID,
+            &payload,
+            &TEST_AUTH_CHALLENGE,
+        );
+        let req = authorized_req_with_sig(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+    }
+
+    #[test]
+    fn authorized_command_rejects_signature_for_wrong_payload_or_challenge() {
+        let cmds = TestCommands::new(0).with_authorization();
+        let payload = [0u8; 8];
+
+        issue_test_challenge(&cmds);
+        let sig = test_signature(
+            INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
+            &[1u8; 8],
+            &TEST_AUTH_CHALLENGE,
+        );
+        let req = authorized_req_with_sig(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &sig);
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+
+        issue_test_challenge(&cmds);
+        let sig = test_signature(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &[0x5A; 48]);
+        let req = authorized_req_with_sig(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &sig);
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+    }
+
+    #[test]
+    fn authorized_command_rejects_reused_challenge() {
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let payload = [0u8; 8];
+        let sig = test_signature(
+            INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
+            &payload,
+            &TEST_AUTH_CHALLENGE,
+        );
+        let req = authorized_req_with_sig(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+    }
+
+    #[test]
+    fn authorized_command_maps_authorization_failures() {
+        let cmds = TestCommands::new(0);
+        cmds.authorization_error
+            .lock()
+            .unwrap()
+            .replace(CaliptraCompletionCode::AccessDenied);
+        let req = authorized_req(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &[0u8; 8]);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+        assert_eq!(*cmds.authorized_operation.lock().unwrap(), None);
+    }
+
+    #[test]
+    fn get_auth_challenge_returns_48_bytes() {
+        let cmds = TestCommands::new(0);
+        let mut req = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::AuthorizedCommand as u8,
+        ];
+        req.extend_from_slice(&GET_AUTH_CHALLENGE_CMD_ID.to_le_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
+        assert_inline(response, 3 + 48);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(&inline[3..51], &[0xA5; 48]);
     }
 
     #[test]
