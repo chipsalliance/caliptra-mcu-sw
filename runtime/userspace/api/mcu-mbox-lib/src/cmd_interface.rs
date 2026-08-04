@@ -218,8 +218,23 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
+                #[cfg(feature = "ocp-lock")]
+                inner @ CommandId::MC_OCP_LOCK_ROTATE_HEK
+                | inner @ CommandId::MC_OCP_LOCK_SET_PERMA_HEK => {
+                    self.handle_authorized_command(inner, req, resp_buf).await
+                }
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
+                }
+                #[cfg(feature = "ocp-lock")]
+                CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT => {
+                    self.handle_get_ocp_lock_endorsement_cert(req, resp_buf)
+                        .await
+                }
+                #[cfg(feature = "ocp-lock")]
+                CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES => {
+                    self.handle_ocp_lock_enumerate_hpke_handles(req, resp_buf)
+                        .await
                 }
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
@@ -444,6 +459,69 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok((&mut resp_buf[..resp_len], mbox_cmd_status))
     }
 
+    #[cfg(feature = "ocp-lock")]
+    async fn handle_get_ocp_lock_endorsement_cert<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = GetOcpLockEndorsementCertReq::ref_from_bytes(req)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) = GetOcpLockEndorsementCertResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = GetOcpLockEndorsementCertResp::default();
+
+        let ret = self
+            .non_crypto_cmds_handler
+            .get_ocp_lock_endorsement_cert(&req.hpke_handle, &mut resp.data)
+            .await;
+        let (mbox_cmd_status, data_len) = match ret {
+            Ok(len) => (MbxCmdStatus::Complete, len.min(MAX_RESP_DATA_SIZE)),
+            Err(_) => (MbxCmdStatus::Failure, 0),
+        };
+
+        if mbox_cmd_status == MbxCmdStatus::Complete {
+            resp.hdr = MailboxRespHeaderVarSize {
+                data_len: data_len as u32,
+                ..Default::default()
+            };
+        } else {
+            *resp = GetOcpLockEndorsementCertResp::default();
+        }
+
+        let partial_len = resp.partial_len().map_err(|_| errors::MCU_MBOX_COMMON)?;
+        Ok((&mut resp_buf[..partial_len], mbox_cmd_status))
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn handle_ocp_lock_enumerate_hpke_handles<'r>(
+        &self,
+        _req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let resp_size = size_of::<OcpLockEnumerateHpkeHandlesResp>();
+        if resp_buf.len() < resp_size {
+            return Err(errors::INVALID_PARAMS);
+        }
+        resp_buf[..resp_size].fill(0);
+
+        let (resp, _) = OcpLockEnumerateHpkeHandlesResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        let ret = self
+            .non_crypto_cmds_handler
+            .ocp_lock_enumerate_hpke_handles(resp)
+            .await;
+        let mbox_cmd_status = match ret {
+            Ok(_) => MbxCmdStatus::Complete,
+            Err(_) => {
+                resp_buf[..resp_size].fill(0);
+                MbxCmdStatus::Failure
+            }
+        };
+
+        Ok((&mut resp_buf[..resp_size], mbox_cmd_status))
+    }
+
     async fn handle_prod_debug_unlock_token<'r>(
         &self,
         req: &[u8],
@@ -576,6 +654,14 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             CommandId::MC_FUSE_WRITE => self.handle_fuse_write(cmd, resp_buf).await,
             CommandId::MC_FUSE_LOCK_PARTITION => {
                 self.handle_fuse_lock_partition(cmd, resp_buf).await
+            }
+            #[cfg(feature = "ocp-lock")]
+            CommandId::MC_OCP_LOCK_ROTATE_HEK => {
+                self.handle_ocp_lock_rotate_hek(cmd, resp_buf).await
+            }
+            #[cfg(feature = "ocp-lock")]
+            CommandId::MC_OCP_LOCK_SET_PERMA_HEK => {
+                self.handle_ocp_lock_set_perma_hek(cmd, resp_buf).await
             }
             _ => Err(errors::UNSUPPORTED_COMMAND),
         }
@@ -888,6 +974,55 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .map_err(|_| errors::MCU_MBOX_COMMON)
     }
 
+    #[cfg(feature = "ocp-lock")]
+    async fn handle_ocp_lock_set_perma_hek<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        if req.len() > size_of::<OcpLockSetPermaHekReq>() {
+            return Err(errors::INVALID_PARAMS);
+        }
+
+        let otp: Otp<DefaultSyscalls> = Otp::new();
+        let status = if otp.set_hek_perma().is_err() {
+            MbxCmdStatus::Failure
+        } else {
+            MbxCmdStatus::Complete
+        };
+
+        let resp = OcpLockSetPermaHekResp::default();
+        let resp = resp.as_bytes();
+        resp_buf[..resp.len()].copy_from_slice(resp);
+        Ok((&mut resp_buf[..resp.len()], status))
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn handle_ocp_lock_rotate_hek<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = OcpLockRotateHekReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) =
+            OcpLockRotateHekResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = OcpLockRotateHekResp::default();
+
+        let mut seed = [0u8; 32];
+        mcu_caliptra_api_lite::rng_generate(self.scratch, &mut seed)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let otp: Otp<DefaultSyscalls> = Otp::new();
+        let status = if otp.rotate_hek(req.hek_slot, &seed).is_err() {
+            MbxCmdStatus::Failure
+        } else {
+            MbxCmdStatus::Complete
+        };
+
+        Ok((&mut resp_buf[..size_of::<OcpLockRotateHekResp>()], status))
+    }
+
     #[cfg(feature = "periodic-fips-self-test")]
     async fn handle_fips_periodic_enable<'r>(
         &self,
@@ -990,6 +1125,18 @@ fn response_buffer_size(cmd: u32) -> usize {
     match CommandId::from(cmd) {
         c if c == CommandId::MC_MLDSA_CMK_VERIFY || c == CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
             size_of::<MailboxRespHeader>()
+        }
+        #[cfg(feature = "ocp-lock")]
+        c if c == CommandId::MC_OCP_LOCK_ROTATE_HEK => size_of::<OcpLockRotateHekResp>(),
+        #[cfg(feature = "ocp-lock")]
+        c if c == CommandId::MC_OCP_LOCK_SET_PERMA_HEK => size_of::<OcpLockSetPermaHekResp>(),
+        #[cfg(feature = "ocp-lock")]
+        c if c == CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT => {
+            size_of::<GetOcpLockEndorsementCertResp>()
+        }
+        #[cfg(feature = "ocp-lock")]
+        c if c == CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES => {
+            size_of::<OcpLockEnumerateHpkeHandlesResp>()
         }
         _ => size_of::<McuMailboxResp>(),
     }
