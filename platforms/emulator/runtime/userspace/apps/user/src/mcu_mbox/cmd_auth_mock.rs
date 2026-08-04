@@ -7,10 +7,10 @@ use caliptra_mcu_mbox_common::messages::{
     MailboxReqHeader, McuFeProgReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
 };
 use core::cell::RefCell;
-use core::mem::size_of;
+use core::mem::{offset_of, size_of};
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex};
 use mcu_caliptra_api_lite::ApiAlloc;
-use zerocopy::FromBytes;
+use zerocopy::{FromBytes, Immutable, KnownLayout};
 
 extern crate alloc;
 
@@ -18,6 +18,49 @@ extern crate alloc;
 const ECC_P384_COORD_LEN: usize = 48;
 /// Length of the ML-DSA-87 public key.
 const MLDSA87_PUB_KEY_LEN: usize = 2592;
+
+/// Fixed authorization block following the command-specific body; identical for
+/// every authorized command. Signatures LAST, matching the caliptra-sw
+/// `ProductionAuthDebugUnlockToken` order and the `FeProgVdmReq`/`FeProgRequest` twins.
+#[repr(C)]
+#[derive(FromBytes, KnownLayout, Immutable)]
+struct AuthorizationBlock {
+    /// Freshness nonce echoed back from `GetAuthCmdChallenge`.
+    nonce: [u8; AUTH_CMD_NONCE_LEN],
+    /// ECC P-384 verifier public key X coordinate (hashed into the anchor).
+    ecc_pub_x: [u8; ECC_P384_COORD_LEN],
+    /// ECC P-384 verifier public key Y coordinate.
+    ecc_pub_y: [u8; ECC_P384_COORD_LEN],
+    /// ML-DSA-87 verifier public key.
+    mldsa_pub: [u8; MLDSA87_PUB_KEY_LEN],
+    /// Hybrid signature (ECDSA P-384 r||s then ML-DSA-87), placed LAST.
+    sig: HybridSignature,
+}
+
+// Canonical wire layout: nonce(48) | ecc_pub_x(48) | ecc_pub_y(48) | mldsa_pub(2592) | sig(4724).
+// Per-field offsets, not just size: a size-only assert passes for any field permutation.
+const _: () = assert!(
+    size_of::<AuthorizationBlock>()
+        == AUTH_CMD_NONCE_LEN
+            + ECC_P384_COORD_LEN
+            + ECC_P384_COORD_LEN
+            + MLDSA87_PUB_KEY_LEN
+            + size_of::<HybridSignature>()
+);
+const _: () = assert!(offset_of!(AuthorizationBlock, nonce) == 0);
+const _: () = assert!(offset_of!(AuthorizationBlock, ecc_pub_x) == AUTH_CMD_NONCE_LEN);
+const _: () = assert!(
+    offset_of!(AuthorizationBlock, ecc_pub_y)
+        == offset_of!(AuthorizationBlock, ecc_pub_x) + ECC_P384_COORD_LEN
+);
+const _: () = assert!(
+    offset_of!(AuthorizationBlock, mldsa_pub)
+        == offset_of!(AuthorizationBlock, ecc_pub_y) + ECC_P384_COORD_LEN
+);
+const _: () = assert!(
+    offset_of!(AuthorizationBlock, sig)
+        == offset_of!(AuthorizationBlock, mldsa_pub) + MLDSA87_PUB_KEY_LEN
+);
 
 static CHALLENGE: Mutex<CriticalSectionRawMutex, RefCell<Option<[u8; AUTH_CMD_NONCE_LEN]>>> =
     Mutex::new(RefCell::new(None));
@@ -50,43 +93,20 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             _ => return Err(AuthorizationError),
         };
 
-        // Canonical wire layout after the command body:
-        //   [ nonce(48) | ecc_x(48) | ecc_y(48) | mldsa(2592) | sig(HybridSignature) ]
-        // Signatures LAST (nonce + public keys precede them), matching the
-        // caliptra-sw ProductionAuthDebugUnlockToken field order.
-        let mut off = cmd_len;
-        let wire_nonce: &[u8; AUTH_CMD_NONCE_LEN] = req
-            .get(off..off + AUTH_CMD_NONCE_LEN)
-            .ok_or(AuthorizationError)?
-            .try_into()
-            .map_err(|_| AuthorizationError)?;
-        off += AUTH_CMD_NONCE_LEN;
-
-        let ecc_pub_x: &[u8; ECC_P384_COORD_LEN] = req
-            .get(off..off + ECC_P384_COORD_LEN)
-            .ok_or(AuthorizationError)?
-            .try_into()
-            .map_err(|_| AuthorizationError)?;
-        off += ECC_P384_COORD_LEN;
-
-        let ecc_pub_y: &[u8; ECC_P384_COORD_LEN] = req
-            .get(off..off + ECC_P384_COORD_LEN)
-            .ok_or(AuthorizationError)?
-            .try_into()
-            .map_err(|_| AuthorizationError)?;
-        off += ECC_P384_COORD_LEN;
-
-        let mldsa_pub: &[u8; MLDSA87_PUB_KEY_LEN] = req
-            .get(off..off + MLDSA87_PUB_KEY_LEN)
-            .ok_or(AuthorizationError)?
-            .try_into()
-            .map_err(|_| AuthorizationError)?;
-        off += MLDSA87_PUB_KEY_LEN;
-
-        let sig_bytes = req
-            .get(off..off + size_of::<HybridSignature>())
-            .ok_or(AuthorizationError)?;
-        let sig = HybridSignature::ref_from_bytes(sig_bytes).map_err(|_| AuthorizationError)?;
+        // Tail starts at `cmd_len`, which INCLUDES the MailboxReqHeader; `cmd_body`
+        // below starts after it, so the two bases differ deliberately.
+        // `ref_from_prefix` keeps the old walk's tolerance of trailing bytes
+        // (`ref_from_bytes` is exact-size; `ref_from_suffix` would silently shift the window).
+        let (auth, _trailing) =
+            AuthorizationBlock::ref_from_prefix(req.get(cmd_len..).ok_or(AuthorizationError)?)
+                .map_err(|_| AuthorizationError)?;
+        let AuthorizationBlock {
+            nonce: wire_nonce,
+            ecc_pub_x,
+            ecc_pub_y,
+            mldsa_pub,
+            sig,
+        } = auth;
 
         let cmd_body = req
             .get(size_of::<MailboxReqHeader>()..cmd_len)
@@ -120,9 +140,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
         mldsa_pub: &[u8; 2592],
         sig: &HybridSignature,
     ) -> Result<(), AuthorizationError> {
-        let stored = CHALLENGE
-            .lock(|state| state.borrow_mut().take())
-            .ok_or(AuthorizationError)?;
+        let stored = self.take_challenge().ok_or(AuthorizationError)?;
         if *nonce != stored {
             return Err(AuthorizationError);
         }
