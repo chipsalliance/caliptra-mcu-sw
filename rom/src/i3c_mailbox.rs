@@ -312,9 +312,7 @@ impl<'a> I3cMailboxHandler<'a> {
         let recovery_pk_hash = match ctx.dot_fuses.recovery_pk_hash.as_ref() {
             Some(hash) => hash,
             None => {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom-i3c-svc] No vendor recovery PK hash in OTP"
-                );
+                caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] No DOT recovery key hash in OTP");
                 self.send_status(STATUS_ERROR);
                 return DispatchResult::Continue;
             }
@@ -340,7 +338,7 @@ impl<'a> I3cMailboxHandler<'a> {
 
         let fuse_hash_bytes: [u8; 48] = zerocopy::transmute!(recovery_pk_hash.0);
         if !constant_time_eq::constant_time_eq(&computed_hash, &fuse_hash_bytes) {
-            caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Vendor recovery PK hash mismatch");
+            caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] DOT recovery key hash mismatch");
             #[cfg(feature = "test-i3c-services")]
             {
                 caliptra_mcu_romtime::println!(

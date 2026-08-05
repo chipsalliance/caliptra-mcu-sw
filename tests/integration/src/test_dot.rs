@@ -1769,7 +1769,7 @@ mod test {
     }
 
     /// Creates OTP memory for override testing.
-    /// Includes locked state fuses AND the vendor recovery PK hash.
+    /// Includes locked state fuses AND the DOT recovery key hash.
     ///
     /// `pk_hash` is the digest in natural (FIPS) byte order. The
     /// `VENDOR_RECOVERY_PK_HASH` fuse uses the caliptra-sw fuse layout — each
@@ -1880,7 +1880,7 @@ mod test {
     /// Test DOT override challenge/response success.
     ///
     /// Host sends override challenge request via MCI mbox0 with vendor public keys,
-    /// ROM generates challenge, host signs challenge with VendorKey.priv (ECDSA + MLDSA),
+    /// ROM generates challenge, host signs it with the DOT recovery private keys (ECDSA + MLDSA),
     /// ROM verifies both signatures, burns fuse, and erases DOT blob.
     #[test]
     fn test_dot_override_challenge_success() {
@@ -1892,12 +1892,12 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        // Generate random ECC P-384 key pair for VendorKey
-        println!("[TEST] Generating random VendorKey ECC key pair...");
+        // Generate a random ECC P-384 DOT recovery key pair.
+        println!("[TEST] Generating random DOT recovery ECC key pair...");
         let (vendor_pub_x, vendor_pub_y, vendor_priv_bytes) = generate_random_ecc_keys();
 
-        // Generate random MLDSA-87 key pair for VendorKey
-        println!("[TEST] Generating random VendorKey MLDSA key pair...");
+        // Generate a random MLDSA-87 DOT recovery key pair.
+        println!("[TEST] Generating random DOT recovery MLDSA key pair...");
         let (mldsa_pub, mldsa_priv) = generate_random_mldsa_keys();
 
         // Compute vendor PK hash (ECC + MLDSA) for OTP fuses
@@ -1933,7 +1933,7 @@ mod test {
             challenge.len()
         );
 
-        // Step 3: Sign the challenge with VendorKey.priv (ECDSA + MLDSA)
+        // Step 3: Sign the challenge with the DOT recovery private keys (ECDSA + MLDSA).
         println!("[TEST] Signing challenge with ECDSA...");
         let challenge_hash: [u8; 48] = {
             let mut hasher = Sha384::new();
@@ -2055,7 +2055,7 @@ mod test {
     /// Regression test for the recovery-PK-hash / owner-PK-hash fuse layout
     /// alignment.
     ///
-    /// Burns a vendor recovery PK hash into OTP using the *exact same*
+    /// Burns a DOT recovery key hash into OTP using the *exact same*
     /// storage convention an integrator would use for
     /// `cptra_ss_owner_pk_hash` (big-endian decode into `[u32; 12]`, stored
     /// little-endian). The DOT override flow must accept that layout and
@@ -2114,7 +2114,7 @@ mod test {
             .expect("Expected challenge data from ROM");
         assert_eq!(challenge.len(), 48, "Challenge should be 48 bytes");
 
-        // Sign the challenge with VendorKey.priv (ECDSA + MLDSA).
+        // Sign the challenge with the DOT recovery private keys (ECDSA + MLDSA).
         let challenge_hash: [u8; 48] = {
             let mut hasher = Sha384::new();
             hasher.update(&challenge);

@@ -19,7 +19,7 @@ DOT I3C recovery is entered when **any** of the following conditions are met:
 The BMC has two recovery paths available over I3C:
 
 - **DOT_RECOVERY** — Supply a backup DOT blob (HMAC'd with the current DOT effective key). This restores the blob without changing fuse state.
-- **DOT_OVERRIDE** — Challenge/response authentication with the VendorKey. This burns a fuse in `DOT_FUSE_ARRAY` (ODD→EVEN transition; requires `DOT_FUSE_ARRAY` to be in a non-ECC protected partition to allow sequential 1-bit writes) and writes a new empty DOT blob, effectively factory-resetting device ownership.
+- **DOT_OVERRIDE** — Challenge/response authentication with the DOT recovery key. This burns a fuse in `DOT_FUSE_ARRAY` (ODD→EVEN transition; requires `DOT_FUSE_ARRAY` to be in a non-ECC protected partition to allow sequential 1-bit writes) and writes a new empty DOT blob, effectively factory-resetting device ownership.
 
 ### `DOT_RECOVERY` Flow
 
@@ -53,7 +53,7 @@ sequenceDiagram
     MCU->>BMC: IBI (MDB=0x1F) payload: [0x80] (AWAITING status)
 
     BMC->>MCU: DOT_UNLOCK_CHALLENGE (0x03) + ECC PK + MLDSA PK
-    Note over MCU: Verifies vendor PK hash against OTP fuses
+    Note over MCU: Verifies DOT recovery key hash against OTP fuses
     MCU->>BMC: Private read: [0x00] + 48-byte challenge
 
     BMC->>MCU: DOT_OVERRIDE (0x04) + ECC PK + ECC sig + MLDSA PK + MLDSA sig
@@ -70,7 +70,7 @@ All commands follow the [ROM I3C Services framing](rom_i3c_services.md), includi
 |--------|------|---------|-------------|
 | 0x01 | DOT_STATUS | (none) | Query current DOT fuse state |
 | 0x02 | DOT_RECOVERY | backup DOT blob | Supply a backup DOT blob for recovery |
-| 0x03 | DOT_UNLOCK_CHALLENGE | ECC PK + MLDSA PK | Start override: send vendor public keys |
+| 0x03 | DOT_UNLOCK_CHALLENGE | ECC PK + MLDSA PK | Start override: send DOT recovery public keys |
 | 0x04 | DOT_OVERRIDE | ECC PK + ECC sig + MLDSA PK + MLDSA sig | Complete override: send signed challenge response |
 
 ### DOT_STATUS (0x01)
@@ -107,7 +107,7 @@ exceeds 256 bytes, it is sent using the
 
 ### DOT_UNLOCK_CHALLENGE (0x03)
 
-Initiate a DOT override by sending the vendor's public keys (ECC P-384 + MLDSA-87). The ROM verifies the public key hash against the `VENDOR_RECOVERY_PK_HASH` stored in OTP fuses, then generates a random 48-byte challenge.
+Initiate a DOT override by sending the DOT recovery public keys (ECC P-384 + MLDSA-87). The ROM verifies the public key hash against `VENDOR_RECOVERY_PK_HASH` stored in OTP fuses, then generates a random 48-byte challenge.
 
 **Request (private write):**
 
@@ -126,7 +126,7 @@ The payload below is sent using the [packetized transport](rom_i3c_services.md#p
 
 ### DOT_OVERRIDE (0x04)
 
-Complete the override by sending the vendor's public keys and signatures over the challenge. Must be preceded by a successful DOT_UNLOCK_CHALLENGE.
+Complete the override by sending the DOT recovery public keys and signatures over the challenge. Must be preceded by a successful DOT_UNLOCK_CHALLENGE.
 
 **Request (private write):**
 

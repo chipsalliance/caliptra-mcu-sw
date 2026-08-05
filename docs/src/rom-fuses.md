@@ -84,7 +84,7 @@ can be reclaimed.
 |---|---|---|---|
 | `dot_initialized` | 1 bit | DOT | Gate flag indicating DOT flow is active for this part |
 | `dot_fuse_array` | 256 bits | DOT | Monotonic bit-count DOT state counter; must reside in a non-ECC protected partition; supports 128 lock/unlock cycles; more or less can be allocated depending on use cases |
-| `vendor_recovery_pk_hash` | 384 bits | DOT | Vendor master key for `DOT_OVERRIDE` catastrophic recovery (lives in `VENDOR_SECRET_PROD_PARTITION`). One slot today; integrators that need rotation should add `vendor_recovery_pk_hash_{0..N}` + a `vendor_recovery_pk_hash_valid` bitmask and/or revocation bits |
+| `vendor_recovery_pk_hash` | 384 bits | DOT | DOT recovery key hash for `DOT_OVERRIDE` catastrophic recovery (lives in `VENDOR_SECRET_PROD_PARTITION`). One slot today; integrators that need rotation should add `vendor_recovery_pk_hash_{0..N}` + a `vendor_recovery_pk_hash_valid` bitmask and/or revocation bits |
 | `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | 32 bits (recommended) | MCU SVN anti-rollback | Min SVN for the MCU Component SVN Manifest itself; must reside in a non-ECC protected partition |
 | `SOC_IMAGE_MIN_SVN[0..M]` | 32 bits each (recommended) | MCU SVN anti-rollback | Per-slot SoC image min SVN; must reside in a non-ECC protected partition; M is integrator-defined (reference map examples like slots 0 and 1 should be scaled per platform needs) |
 | `perma_hek_en` | 1 bit | OCP LOCK (2.1+) | Permanent HEK enable flag |
@@ -218,14 +218,14 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   not accessible to non-MCU bus masters.
 
 - **`vendor_recovery_pk_hash`** — MCU internal use only, not written to any
-  Caliptra register. `Single{bits:384}` raw 48 bytes. Vendor master key used by
+  Caliptra register. `Single{bits:384}` raw 48-byte DOT recovery key hash used by
   the `DOT_OVERRIDE` catastrophic recovery flow; lives in
   `VENDOR_SECRET_PROD_PARTITION` (`CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0`).
   The stored value is `SHA-384(ECC P-384 pubkey X ‖ Y ‖ MLDSA-87 pubkey)`
-  — see [Vendor Recovery PK Hash Format](dot.md#vendor-recovery-pk-hash-format)
+  — see [DOT Recovery Key Hash Format](dot.md#dot-recovery-key-hash-format)
   in the DOT spec for the exact byte layout. The current reference design
   provisions exactly one recovery PK hash and has no revocation mechanism;
-  integrators that need to rotate the vendor recovery key in the field should
+  integrators that need to rotate the DOT recovery key in the field should
   allocate additional slots (`vendor_recovery_pk_hash_{0..N}`, 48 B each) plus
   a `vendor_recovery_pk_hash_valid` bitmask (`LinearOr{bits:N, dupe:3}`)
   analogous to `CPTRA_CORE_VENDOR_PK_HASH_VALID`.
