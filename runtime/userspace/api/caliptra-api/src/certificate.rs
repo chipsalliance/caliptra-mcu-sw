@@ -11,7 +11,11 @@ use caliptra_api::mailbox::{
     GetRtAliasEcc384CertReq, InvokeDpeReq, InvokeDpeResp, MailboxRespHeader,
     PopulateIdevEcc384CertReq, Request, VarSizeDataResp,
 };
+use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
+    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM,
+};
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use dpe::commands::{
     CertifyKeyCommand, CertifyKeyFlags, CertifyKeyP384Cmd, Command, CommandHdr,
@@ -204,8 +208,16 @@ impl CertContext {
             }
         }
 
+        let dpe_store = DpeHandleStore::<DefaultSyscalls>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        let mut target = DpeHandleRecord::default();
+        let handle = if dpe_store.read_attestation_target(&mut target).is_ok() {
+            ContextHandle(target.context_handle)
+        } else {
+            ContextHandle::default()
+        };
+
         let mut dpe_cmd = CertifyKeyP384Cmd {
-            handle: ContextHandle::default(),
+            handle,
             flags: CertifyKeyFlags::empty(),
             format: CertifyKeyCommand::FORMAT_X509,
             label: [0; KEY_LABEL_SIZE],
@@ -231,6 +243,11 @@ impl CertContext {
                 .ok_or(CaliptraApiError::InvalidResponse)?,
         )
         .map_err(|_| CaliptraApiError::InvalidResponse)?;
+
+        if target.context_handle != [0u8; 16] {
+            target.context_handle = hdr.new_context_handle.0;
+            let _ = dpe_store.write_record(target.fw_id, &target);
+        }
 
         let cert_len = hdr.cert_size as usize;
         let cert_offset = size_of::<CertifyKeyRespHdr>();
@@ -268,8 +285,16 @@ impl CertContext {
             return Err(CaliptraApiError::InvalidArgSignatureSize);
         }
 
+        let dpe_store = DpeHandleStore::<DefaultSyscalls>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        let mut target = DpeHandleRecord::default();
+        let handle = if dpe_store.read_attestation_target(&mut target).is_ok() {
+            ContextHandle(target.context_handle)
+        } else {
+            ContextHandle::default()
+        };
+
         let mut dpe_cmd = SignP384Cmd {
-            handle: ContextHandle::default(),
+            handle,
             label: [0; KEY_LABEL_SIZE],
             flags: SignFlags::empty(),
             digest: [0; DPE_PROFILE.hash_size()],
@@ -294,6 +319,11 @@ impl CertContext {
                 .ok_or(CaliptraApiError::InvalidResponse)?,
         )
         .map_err(|_| CaliptraApiError::InvalidResponse)?;
+
+        if target.context_handle != [0u8; 16] {
+            target.context_handle = sign_resp.new_context_handle.0;
+            let _ = dpe_store.write_record(target.fw_id, &target);
+        }
 
         let sig_r_size = sign_resp.sig_r.len();
         let sig_s_size = sign_resp.sig_s.len();

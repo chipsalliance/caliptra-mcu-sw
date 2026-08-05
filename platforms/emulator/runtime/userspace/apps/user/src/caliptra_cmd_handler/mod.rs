@@ -183,4 +183,29 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
                 _ => CaliptraCompletionCode::OperationFailed,
             })
     }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn get_ocp_lock_epoch_key_report(
+        &self,
+        nonce: &[u8; 32],
+        sek_state: caliptra_mcu_mbox_common::messages::SekState,
+        report_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let mailbox = Mailbox::new();
+        let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);
+        let signer = CaliptraDpeSigner::new(&mailbox);
+
+        let len = ocp_lock
+            .get_ocp_lock_epoch_key_report(nonce, sek_state, &signer, report_buf)
+            .await
+            .map_err(|e| match e {
+                CaliptraApiError::MailboxBusy => CaliptraCompletionCode::CaliptraMailboxBusy,
+                CaliptraApiError::BufferTooSmall | CaliptraApiError::InvalidArgBufferTooSmall => {
+                    CaliptraCompletionCode::CaliptraBufferTooSmall
+                }
+                _ => CaliptraCompletionCode::OperationFailed,
+            })?;
+
+        Ok(len)
+    }
 }

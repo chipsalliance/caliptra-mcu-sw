@@ -5,6 +5,8 @@
 
 #[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_mbox_common::messages::SekState;
 use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature};
 use mcu_caliptra_api_lite::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
@@ -306,6 +308,18 @@ pub trait CaliptraCmdHandler {
         resp: &mut OcpLockEnumerateHpkeHandlesResp,
     ) -> CaliptraCmdResult<()> {
         let _ = resp;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Retrieves the OCP Lock Epoch Key Report.
+    #[cfg(feature = "ocp-lock")]
+    async fn get_ocp_lock_epoch_key_report(
+        &self,
+        nonce: &[u8; 32],
+        sek_state: SekState,
+        report_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let _ = (nonce, sek_state, report_buf);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }

@@ -18,6 +18,7 @@ mod test_defmt_logging_release;
 mod test_defmt_logging_vdm;
 mod test_dot;
 mod test_dpe_handle_store;
+mod test_ekp;
 mod test_exception_handler;
 mod test_external_otp;
 mod test_fips_zeroization;
@@ -61,10 +62,10 @@ mod test {
         ImageCfg, TARGET,
     };
     use caliptra_mcu_emulator_periph::TapDevice;
-    use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
+    use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel, McuManager};
     use caliptra_mcu_testing_common::DeviceLifecycle;
     use random_port::PortPicker;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::AtomicU32;
     use std::sync::{Arc, Mutex};
     use std::{
         path::{Path, PathBuf},
@@ -396,6 +397,68 @@ mod test {
         }
 
         test_binaries
+    }
+
+    const MAILBOX_TIMEOUT_CYCLES: u64 = 20_000_000;
+
+    /// Execute a mailbox command with a large timeout and return the raw
+    /// response bytes.
+    pub fn mailbox_execute_with_timeout(
+        hw: &mut impl McuHwModel,
+        cmd: u32,
+        payload: &[u8],
+    ) -> Result<Option<Vec<u8>>, String> {
+        hw.start_mailbox_execute(cmd, payload)
+            .map_err(|e| format!("start_mailbox_execute failed: {}", e))?;
+
+        let mut remaining = MAILBOX_TIMEOUT_CYCLES;
+        while hw.cmd_status().cmd_busy() {
+            hw.step();
+            remaining -= 1;
+            if remaining == 0 {
+                return Err("Mailbox command timed out".to_string());
+            }
+        }
+
+        let status = hw.cmd_status();
+
+        if status.cmd_failure() {
+            hw.mcu_manager().with_mbox0(|mbox| {
+                mbox.mbox_execute().write(|w| w.execute(false));
+            });
+            return Err("Mailbox command failed".to_string());
+        }
+
+        hw.mcu_manager().with_mbox0(|mbox| {
+            if status.cmd_complete() {
+                let dlen = mbox.mbox_dlen().read() as usize;
+                if dlen == 0 {
+                    mbox.mbox_execute().write(|w| w.execute(false));
+                    return Ok(None);
+                }
+            } else if !status.data_ready() {
+                mbox.mbox_execute().write(|w| w.execute(false));
+                return Err(format!("Unknown mailbox status {:x}", u32::from(status)));
+            }
+
+            let dlen = mbox.mbox_dlen().read() as usize;
+            let mut output = Vec::with_capacity(dlen);
+
+            let len_words = dlen / size_of::<u32>();
+            for i in 0..len_words {
+                let word = mbox.mbox_sram().at(i).read();
+                output.extend_from_slice(&word.to_le_bytes());
+            }
+
+            let remaining_bytes = dlen % size_of::<u32>();
+            if remaining_bytes > 0 {
+                let word = mbox.mbox_sram().at(len_words).read();
+                output.extend_from_slice(&word.to_le_bytes()[..remaining_bytes]);
+            }
+
+            mbox.mbox_execute().write(|w| w.execute(false));
+            Ok(Some(output))
+        })
     }
 
     // Sample IDevID ECC Cert (same as ECC_DEVID_CERT_DER in external_otp component)

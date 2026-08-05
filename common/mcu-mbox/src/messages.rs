@@ -29,7 +29,7 @@ pub use mcu_caliptra_api_lite::mailbox::{
     CMB_AES_ENCRYPTED_CONTEXT_SIZE, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
     CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE, MAX_CMB_DATA_SIZE,
 };
-use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout};
+use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
@@ -144,6 +144,7 @@ impl CommandId {
     pub const MC_OCP_LOCK_SET_PERMA_HEK: Self = Self(0x4F4C_5350); // "OLSP"
     pub const MC_GET_OCP_LOCK_ENDORSEMENT_CERT: Self = Self(0x4F4C_4543); // "OLEC"
     pub const MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES: Self = Self(0x4F4C_4548); // "OLEH"
+    pub const MC_GET_OCP_LOCK_EPOCH_KEY_REPORT: Self = Self(0x4F4C_4552); // "OLER"
 }
 
 impl From<u32> for CommandId {
@@ -219,6 +220,7 @@ pub enum McuMailboxReq {
     OcpLockRotateHek(OcpLockRotateHekReq),
     GetOcpLockEndorsementCert(GetOcpLockEndorsementCertReq),
     OcpLockEnumerateHpkeHandles(OcpLockEnumerateHpkeHandlesReq),
+    GetOcpLockEpochKeyReport(GetOcpLockEpochKeyReportReq),
 }
 
 impl McuMailboxReq {
@@ -278,6 +280,7 @@ impl McuMailboxReq {
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetOcpLockEndorsementCert(req) => Ok(req.as_bytes()),
             McuMailboxReq::OcpLockEnumerateHpkeHandles(req) => Ok(req.as_bytes()),
+            McuMailboxReq::GetOcpLockEpochKeyReport(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -337,6 +340,7 @@ impl McuMailboxReq {
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetOcpLockEndorsementCert(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::OcpLockEnumerateHpkeHandles(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::GetOcpLockEpochKeyReport(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -401,6 +405,9 @@ impl McuMailboxReq {
             }
             McuMailboxReq::OcpLockEnumerateHpkeHandles(_) => {
                 CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES
+            }
+            McuMailboxReq::GetOcpLockEpochKeyReport(_) => {
+                CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT
             }
         }
     }
@@ -486,6 +493,7 @@ pub enum McuMailboxResp {
     OcpLockRotateHek(OcpLockRotateHekResp),
     GetOcpLockEndorsementCert(GetOcpLockEndorsementCertResp),
     OcpLockEnumerateHpkeHandles(OcpLockEnumerateHpkeHandlesResp),
+    GetOcpLockEpochKeyReport(GetOcpLockEpochKeyReportResp),
 }
 
 /// A trait for responses with variable size data.
@@ -604,6 +612,7 @@ impl McuMailboxResp {
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial(),
             McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::GetOcpLockEpochKeyReport(resp) => resp.as_bytes_partial(),
         }
     }
 
@@ -662,6 +671,7 @@ impl McuMailboxResp {
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::GetOcpLockEpochKeyReport(resp) => resp.as_bytes_partial_mut(),
         }
     }
 
@@ -1718,6 +1728,63 @@ impl Default for HybridSignature {
         }
     }
 }
+// ============================================================================
+// MC_GET_OCP_LOCK_EPOCH_KEY_REPORT Command (0x4F4C_4552 - "OLER")
+// ============================================================================
+
+#[derive(Debug, Clone, PartialEq, Eq, TryFromBytes, IntoBytes, KnownLayout, Immutable, Default)]
+#[repr(u16)]
+pub enum SekState {
+    #[default]
+    Unused = 0x0,
+    Programmed = 0x1,
+    Sanitized = 0x2,
+}
+
+impl TryFrom<u16> for SekState {
+    type Error = ();
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Unused),
+            1 => Ok(Self::Programmed),
+            2 => Ok(Self::Sanitized),
+            _ => Err(()),
+        }
+    }
+}
+
+// TODO(clundin): Update to the release EKP spec once published.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
+pub struct GetOcpLockEpochKeyReportReq {
+    pub hdr: MailboxReqHeader,
+    /// 32-byte nonce for freshness
+    pub nonce: [u8; 32],
+    /// SEK state (0=Unused, 1=Programmed, 2=Sanitized)
+    pub sek_state: u16,
+    pub reserved: u16,
+}
+impl Request for GetOcpLockEpochKeyReportReq {
+    const ID: CommandId = CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT;
+    type Resp = GetOcpLockEpochKeyReportResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetOcpLockEpochKeyReportResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub data: [u8; MAX_RESP_DATA_SIZE],
+}
+impl Default for GetOcpLockEpochKeyReportResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            data: [0u8; MAX_RESP_DATA_SIZE],
+        }
+    }
+}
+impl McuResponseVarSize for GetOcpLockEpochKeyReportResp {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
