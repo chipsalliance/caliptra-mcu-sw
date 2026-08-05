@@ -304,18 +304,36 @@ pub fn run_fe_prog(
         );
     }
 
-    // Step 2: Compute MAC via the authorizer
+    // Step 2: Compute the hybrid signature via the authorizer
     let cmd_id = MC_FE_PROG_CANONICAL_CMD_ID;
-    let mac_bytes =
+    let sig =
         match authorizer.authorize(cmd_id, &partition.to_le_bytes(), &challenge_resp.challenge) {
-            Ok(mac) => mac,
+            Ok(sig) => sig,
             Err(e) => {
                 return ValidationResult::fail(test_name, format!("Authorization failed: {}", e));
             }
         };
 
-    // Step 3: Submit FE_PROG
-    match client.fe_prog(partition, &mac_bytes) {
+    // Public keys travel on the wire; the device re-derives its SHA-384 anchor
+    // from these bytes before verifying.
+    let (ecc_pub_x, ecc_pub_y, mldsa_pub) = match authorizer.public_keys() {
+        Ok(keys) => keys,
+        Err(e) => {
+            return ValidationResult::fail(test_name, format!("public_keys() failed: {}", e));
+        }
+    };
+
+    // Step 3: Submit FE_PROG. `nonce` echoes the challenge the device minted for
+    // us (prod-debug-unlock idiom): the device compares this wire copy to its
+    // stored one-time challenge, then rebuilds the signed transcript from it.
+    match client.fe_prog(
+        partition,
+        &sig,
+        &challenge_resp.challenge,
+        &ecc_pub_x,
+        &ecc_pub_y,
+        &mldsa_pub,
+    ) {
         Ok(_) => {
             if verbose {
                 println!("  FE_PROG succeeded for partition {}", partition);

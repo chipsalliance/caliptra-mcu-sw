@@ -16,9 +16,12 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
     fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
-    request_debug_unlock_challenge, rng_generate, ApiAlloc, McuErrorCode,
-    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
+    request_debug_unlock_challenge, ApiAlloc, McuErrorCode, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
+    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
+// Only used by the SPDM/VDM-gated `generate_auth_challenge` below.
+#[cfg(feature = "spdm")]
+use mcu_caliptra_api_lite::rng_generate;
 use zerocopy::IntoBytes;
 
 const ALGO_ECC_P384: u32 = 0x0001;
@@ -93,6 +96,10 @@ pub async fn export_idevid_csr(algorithm: u32, out: &mut [u8]) -> CaliptraCmdRes
     }
 }
 
+// Only the SPDM/VDM authorization path issues challenges from here; the mailbox
+// path generates its own in `mcu-mbox-lib`. Gate to the caller's feature so the
+// non-SPDM (mailbox-test) build does not see it as dead code.
+#[cfg(feature = "spdm")]
 pub async fn generate_auth_challenge<A: ApiAlloc>(
     alloc: &A,
 ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
@@ -103,18 +110,50 @@ pub async fn generate_auth_challenge<A: ApiAlloc>(
     Ok(challenge)
 }
 
+/// Verify a command's dual signatures (ECC P-384 + ML-DSA-87) using the vendor
+/// public keys received on the wire. Fail-closed: anchor -> ECDSA -> ML-DSA;
+/// any failure returns `AccessDenied`. `challenge` is the wire nonce (already
+/// checked against the stored one-time value by the caller).
+///
+/// Mirrors the prod-debug-unlock authorization idiom: each leg verifies a digest
+/// of the raw pre-image = cmd_id(BE,4) || payload || nonce(48). ECDSA verifies
+/// over SHA-384(pre-image); ML-DSA verifies over SHA-512(pre-image).
 pub async fn verify_authorized_signatures(
     cmd_id: u32,
     payload: &[u8],
     challenge: &[u8; AUTH_CMD_NONCE_LEN],
-    ecc_pub_x: [u8; 48],
-    ecc_pub_y: [u8; 48],
+    ecc_pub_x: &[u8; 48],
+    ecc_pub_y: &[u8; 48],
     mldsa_pub: &[u8; 2592],
     sig: &HybridSignature,
 ) -> CaliptraCmdResult<()> {
-    // Pre-image = cmd_id(BE,4) || payload || challenge(48), built from the raw
-    // payload (no inner hash), mirroring prod-debug-unlock. Each leg verifies a
-    // digest of it: ECDSA over SHA-384(pre-image), ML-DSA over SHA-512(pre-image).
+    // Anchor: SHA-384(received keys) must equal the embedded AUTH_PK_HASH.
+    // Streamed (2688 B exceeds the one-shot hash cap).
+    let mut pk_hash = [0u8; 48];
+    let mut anchor_ctx = HashContext::new();
+    anchor_ctx
+        .init(HashAlgoType::SHA384, Some(&ecc_pub_x[..]))
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    anchor_ctx
+        .update(&ecc_pub_y[..])
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    anchor_ctx
+        .update(&mldsa_pub[..])
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    anchor_ctx
+        .finalize(&mut pk_hash)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+
+    if pk_hash != crate::auth_keys::AUTH_PK_HASH {
+        return Err(CaliptraCompletionCode::AccessDenied);
+    }
+
+    // Pre-image = cmd_id(BE,4) || payload || nonce(48). Built from the raw payload
+    // (no inner hash), mirroring prod-debug-unlock; each leg verifies a digest of it.
     let mut pre_image = ArrayVec::<u8, 256>::new();
     pre_image
         .try_extend_from_slice(&cmd_id.to_be_bytes())
@@ -128,7 +167,8 @@ pub async fn verify_authorized_signatures(
 
     let mailbox = Mailbox::new();
 
-    // 1. Verify ECC P-384 Signature using Caliptra Mailbox (over SHA-384(pre-image)).
+    // ECC P-384 over SHA-384(pre-image) (ECDSA takes a 48-byte digest; matches the
+    // host's `sign(&pre_image)`, which hashes the pre-image with SHA-384 internally).
     let mut hash = [0u8; 48];
     HashContext::hash_all(HashAlgoType::SHA384, pre_image.as_slice(), &mut hash)
         .await
@@ -136,8 +176,8 @@ pub async fn verify_authorized_signatures(
 
     let mut ecc_req = EcdsaVerifyReq {
         hdr: MailboxReqHeader::default(),
-        pub_key_x: ecc_pub_x,
-        pub_key_y: ecc_pub_y,
+        pub_key_x: *ecc_pub_x,
+        pub_key_y: *ecc_pub_y,
         signature_r: sig.ecc_sig_r,
         signature_s: sig.ecc_sig_s,
         hash,
@@ -154,7 +194,8 @@ pub async fn verify_authorized_signatures(
         .await
         .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
 
-    // 2. Verify ML-DSA-87 Signature using Caliptra Mailbox (over SHA-512(pre-image)).
+    // ML-DSA-87 over SHA-512(pre-image): the 64-byte digest is the signed message
+    // (external pre-hash), matching the host's `try_sign(&SHA-512(pre-image))`.
     let mut mldsa_msg = [0u8; 64];
     HashContext::hash_all(HashAlgoType::SHA512, pre_image.as_slice(), &mut mldsa_msg)
         .await

@@ -11,7 +11,7 @@
 mod commands;
 
 use caliptra_mcu_common_commands::CaliptraCmdHandler;
-use caliptra_mcu_mbox_common::messages::HybridSignature;
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_codec::StandardsBodyId;
 use caliptra_mcu_spdm_traits::{
     McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
@@ -73,10 +73,19 @@ pub trait CaliptraVdmAuthorization {
     ) -> CaliptraVdmResult<usize>;
 
     /// Verifies `sig` for FE_PROG and programs field entropy for `partition`.
+    ///
+    /// The wire-carried `nonce` and verifier public keys are forwarded to the
+    /// single step-1/anchor gate; the device compares `nonce` to its stored
+    /// one-time challenge and hash-anchors the keys before verifying.
+    #[allow(clippy::too_many_arguments)]
     async fn program_field_entropy<A: SpdmPalAlloc>(
         &self,
         partition: u32,
         sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
         scratch: &A,
     ) -> CaliptraVdmResult<()>;
 }
@@ -520,10 +529,15 @@ mod tests {
             Ok(32)
         }
 
+        #[allow(clippy::too_many_arguments)]
         async fn program_field_entropy<A: SpdmPalAlloc>(
             &self,
             _partition: u32,
             _sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
             _scratch: &A,
         ) -> CaliptraVdmResult<()> {
             Ok(())

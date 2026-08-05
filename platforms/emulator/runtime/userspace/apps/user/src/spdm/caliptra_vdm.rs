@@ -7,7 +7,7 @@ use caliptra_mcu_common_commands::{
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_mbox_common::messages::HybridSignature;
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdmAuthorization, CaliptraVdmResult, CaliptraVdmStreamOps,
@@ -127,15 +127,33 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         Ok(challenge.len())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn program_field_entropy<A: SpdmPalAlloc>(
         &self,
         partition: u32,
         sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
         scratch: &A,
     ) -> CaliptraVdmResult<()> {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        // Forward the WIRE nonce and public keys by reference. `verify_signatures`
+        // performs step-1 (stored one-time challenge present AND wire-nonce ==
+        // stored, redundant compare) and hands the equality-checked wire nonce
+        // plus the received public keys to device_ops::verify_authorized_signatures
+        // for step-0 anchor + ECDSA + ML-DSA.
         authorizer
-            .verify_signatures(FE_PROG_CMD_ID, &partition.to_le_bytes(), sig)
+            .verify_signatures(
+                FE_PROG_CMD_ID,
+                &partition.to_le_bytes(),
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            )
             .await
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
         CaliptraCmdBackend

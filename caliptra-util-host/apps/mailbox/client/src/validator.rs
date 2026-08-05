@@ -1578,8 +1578,33 @@ impl Validator {
             }
         };
 
-        // Step 3: Submit FE_PROG with the signatures
-        let request = FeProgRequest { partition, sig };
+        // Fetch the public keys that travel on the wire alongside the signature.
+        // The device holds only SHA-384(ecc_x || ecc_y || mldsa_pub) and re-derives
+        // it from these received bytes (step-0) before verifying.
+        let (ecc_pub_x, ecc_pub_y, mldsa_pub) = match authorizer.public_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let error_str = format!("public_keys() failed: {}", e);
+                eprintln!("✗ FeProg validation FAILED: {}", error_str);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_str),
+                };
+            }
+        };
+
+        // Step 3: Submit FE_PROG. `nonce` echoes the challenge the device minted
+        // for us (prod-debug-unlock idiom): the device compares this wire copy to
+        // its stored one-time challenge, then rebuilds the transcript from it.
+        let request = FeProgRequest {
+            partition,
+            sig,
+            nonce: challenge_resp.challenge,
+            ecc_pub_x,
+            ecc_pub_y,
+            mldsa_pub,
+        };
 
         match client.fe_prog(&request) {
             Ok(_) => {

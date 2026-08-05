@@ -5,18 +5,59 @@
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
 use crate::iana::ocp::caliptra_vdm::CaliptraVdmAuthorization;
-use caliptra_mcu_mbox_common::messages::HybridSignature;
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult,
 };
 use zerocopy::{FromBytes, Immutable, KnownLayout};
 
+/// ECC P-384 public-key coordinate size (bytes).
+const ECC_P384_COORD_SIZE: usize = 48;
+/// ML-DSA-87 public-key size (bytes).
+const MLDSA87_PUB_KEY_SIZE: usize = 2592;
+
+// Canonical wire layout (after the AUTHORIZED_COMMAND sub-command id):
+//   partition(4) | nonce(48) | ecc_pub_x(48) | ecc_pub_y(48) | mldsa_pub(2592) | sig(HybridSignature)
+// Signatures LAST (nonce + public keys precede them), matching the caliptra-sw
+// ProductionAuthDebugUnlockToken field order.
 #[repr(C)]
 #[derive(Debug, FromBytes, Immutable, KnownLayout)]
 struct FeProgVdmReq {
     partition: u32,
+    nonce: [u8; AUTH_CMD_NONCE_LEN],
+    ecc_pub_x: [u8; ECC_P384_COORD_SIZE],
+    ecc_pub_y: [u8; ECC_P384_COORD_SIZE],
+    mldsa_pub: [u8; MLDSA87_PUB_KEY_SIZE],
     sig: HybridSignature,
 }
+
+const _: () = assert!(
+    core::mem::size_of::<FeProgVdmReq>()
+        == core::mem::size_of::<u32>()
+            + AUTH_CMD_NONCE_LEN
+            + 2 * ECC_P384_COORD_SIZE
+            + MLDSA87_PUB_KEY_SIZE
+            + core::mem::size_of::<HybridSignature>()
+);
+// Per-field offset asserts lock the wire order at compile time (a size-only
+// assert passes for any field permutation). Mirrors the host `FeProgRequest`.
+const _: () = assert!(core::mem::offset_of!(FeProgVdmReq, nonce) == core::mem::size_of::<u32>());
+const _: () = assert!(
+    core::mem::offset_of!(FeProgVdmReq, ecc_pub_x)
+        == core::mem::offset_of!(FeProgVdmReq, nonce) + AUTH_CMD_NONCE_LEN
+);
+const _: () = assert!(
+    core::mem::offset_of!(FeProgVdmReq, ecc_pub_y)
+        == core::mem::offset_of!(FeProgVdmReq, ecc_pub_x) + ECC_P384_COORD_SIZE
+);
+const _: () = assert!(
+    core::mem::offset_of!(FeProgVdmReq, mldsa_pub)
+        == core::mem::offset_of!(FeProgVdmReq, ecc_pub_y) + ECC_P384_COORD_SIZE
+);
+const _: () = assert!(
+    core::mem::offset_of!(FeProgVdmReq, sig)
+        == core::mem::offset_of!(FeProgVdmReq, mldsa_pub) + MLDSA87_PUB_KEY_SIZE
+);
 
 /// MC_GET_AUTH_CMD_CHALLENGE sub-command (`MACC`).
 pub const GET_AUTH_CHALLENGE_CMD_ID: u32 = 0x4D41_4343;
@@ -91,7 +132,15 @@ where
         });
     };
     match cmds
-        .program_field_entropy(fe_req.partition, &fe_req.sig, scratch)
+        .program_field_entropy(
+            fe_req.partition,
+            &fe_req.sig,
+            &fe_req.nonce,
+            &fe_req.ecc_pub_x,
+            &fe_req.ecc_pub_y,
+            &fe_req.mldsa_pub,
+            scratch,
+        )
         .await
     {
         Ok(()) => match super::write_success(out) {

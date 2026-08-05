@@ -42,11 +42,11 @@ use caliptra_mcu_core_util_host_command_types::debug_unlock::{
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgResponse, GetAuthCmdChallengeResponse,
 };
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmTransport,
 };
 use caliptra_mcu_core_util_host_transport::Transport;
-use caliptra_mcu_mbox_common::messages::HybridSignature;
 use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
@@ -139,12 +139,30 @@ impl<'a> SpdmVdmClient<'a> {
     ///
     /// # Parameters
     /// - `partition`: OTP partition to program (0-3)
-    /// - `sig`: Hybrid (ECC + ML-DSA) authorization signature
-    pub fn fe_prog(&mut self, partition: u32, sig: &HybridSignature) -> Result<FeProgResponse> {
+    /// - `sig`: hybrid ECC-P384 + ML-DSA-87 signature over the transcript
+    /// - `nonce`: the 48-byte challenge received from `get_auth_challenge`,
+    ///   echoed back on the wire (device compares it to its stored one-time
+    ///   challenge, then rebuilds the transcript from this wire copy)
+    /// - `ecc_pub_x`/`ecc_pub_y`/`mldsa_pub`: the public keys that travel on the
+    ///   wire; the device holds only their SHA-384 anchor and re-derives it from
+    ///   these received bytes before verifying
+    pub fn fe_prog(
+        &mut self,
+        partition: u32,
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+    ) -> Result<FeProgResponse> {
         use caliptra_mcu_core_util_host_command_types::fuse::FeProgRequest;
         let request = FeProgRequest {
             partition,
             sig: sig.clone(),
+            nonce: *nonce,
+            ecc_pub_x: *ecc_pub_x,
+            ecc_pub_y: *ecc_pub_y,
+            mldsa_pub: *mldsa_pub,
         };
         let mut session = self.create_session()?;
         caliptra_cmd_fe_prog(&mut session, &request)

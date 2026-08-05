@@ -1422,9 +1422,10 @@ impl Request for GetAuthCmdChallengeReq {
 pub struct GetAuthCmdChallengeResp {
     pub hdr: MailboxRespHeader,
     pub reserved: u32,
+    /// Freshness challenge (widened 32 -> 48 to match the SHA-384/SHA-512 nonce).
     pub challenge: [u8; AUTH_CMD_NONCE_LEN],
 }
-// `[u8; AUTH_CMD_NONCE_LEN]` does not implement `Default` via derive, so provide it by hand.
+// Hand-written `Default`: `[u8; AUTH_CMD_NONCE_LEN]` does not implement `Default` via derive.
 impl Default for GetAuthCmdChallengeResp {
     fn default() -> Self {
         Self {
