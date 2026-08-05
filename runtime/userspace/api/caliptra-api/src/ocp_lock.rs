@@ -20,7 +20,8 @@ pub use caliptra_api::mailbox::{
     OcpLockReportHekMetadataReq, OcpLockReportHekMetadataResp, OcpLockRewrapMpkReq,
     OcpLockRewrapMpkResp, OcpLockRotateHpkeKeyReq, OcpLockRotateHpkeKeyResp,
     OcpLockTestAccessKeyReq, OcpLockTestAccessKeyResp, OcpLockUnloadMekReq, OcpLockUnloadMekResp,
-    Request, Response, SealedAccessKey, WrappedKey,
+    Request, Response, SealedAccessKey, WrappedKey, MLKEM1024_ENCAPS_KEY_SIZE,
+    OCP_LOCK_MAX_HPKE_PUBKEY_LEN,
 };
 use caliptra_mcu_libsyscall_caliptra::caliptra::Caliptra;
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
@@ -47,6 +48,10 @@ use der::{
 use spki::{AlgorithmIdentifier, SubjectPublicKeyInfo};
 
 const TCG_HPKE_IDENTIFIERS: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.23.133.21.1.1");
+
+const ID_ALG_ML_KEM_1024: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.4.3");
+const ID_ALG_HYBRID_MLKEM_1024_ECDH_P384: ObjectIdentifier =
+    ObjectIdentifier::new_unwrap("1.3.6.1.5.5.7.6.63");
 
 #[derive(Clone, Debug, Eq, PartialEq, Sequence)]
 pub struct HpkeIdentifiers {
@@ -200,6 +205,7 @@ impl OcpLock<'_> {
     // P384 signature components size
     pub const P384_SCALAR_SIZE: usize = 48;
     pub const P384_SIGNATURE_SIZE: usize = 96;
+    pub const P384_PUB_KEY_SIZE: usize = 1 + 2 * Self::P384_SCALAR_SIZE;
 
     // Temp buffer sizes
     pub const SUBJECT_DER_BUF_SIZE: usize = 64;
@@ -352,7 +358,27 @@ impl<'a> OcpLock<'a> {
                 },
                 subject_public_key: BitStringRef::new(0, pub_key)?,
             },
-            // TODO(clundin): Support ML-KEM & Hybrid public keys
+            HpkeAlgorithms::ML_KEM_1024_HKDF_SHA384_AES_256_GCM => SubjectPublicKeyInfo {
+                algorithm: AlgorithmIdentifier {
+                    oid: ID_ALG_ML_KEM_1024,
+                    parameters: None,
+                },
+                subject_public_key: BitStringRef::new(0, pub_key)?,
+            },
+            HpkeAlgorithms::ML_KEM_1024_ECDH_P384_HKDF_SHA384_AES_256_GCM => {
+                if pub_key.len() < MLKEM1024_ENCAPS_KEY_SIZE + Self::P384_PUB_KEY_SIZE {
+                    return Err(CaliptraApiError::OcpLock(
+                        OcpLockError::RUNTIME_HPKE_PUB_KEY_EMPTY,
+                    ));
+                }
+                SubjectPublicKeyInfo {
+                    algorithm: AlgorithmIdentifier {
+                        oid: ID_ALG_HYBRID_MLKEM_1024_ECDH_P384,
+                        parameters: None,
+                    },
+                    subject_public_key: BitStringRef::new(0, pub_key)?,
+                }
+            }
             _ => Err(CaliptraApiError::OcpLock(
                 OcpLockError::RUNTIME_HPKE_UNSUPPORTED_ALGORITHM,
             ))?,
