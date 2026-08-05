@@ -8,24 +8,78 @@ use caliptra_mcu_common_commands::{
 };
 use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
+use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
+use caliptra_mcu_libsyscall_caliptra::otp::Otp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_mcu_mbox_common::messages::{
+    CommandId, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN, DOT_KEY_HASH_SIZE,
+    DOT_MLDSA_PUBLIC_KEY_SIZE,
+};
+use caliptra_mcu_registers_generated::fuses;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
-    fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
-    request_debug_unlock_challenge, ApiAlloc, McuErrorCode, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
-    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
+    cm_hmac_sha512, derive_stable_key, fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87,
+    get_idev_csr_ecc384, request_debug_unlock_challenge, rng_generate, sha_finish, sha_init,
+    sha_update, ApiAlloc, HashAlgo, McuErrorCode, StableKeyType,
+    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
+    SHA_CONTEXT_SIZE,
 };
-// Only used by the SPDM/VDM-gated `generate_auth_challenge` below.
-#[cfg(feature = "spdm")]
-use mcu_caliptra_api_lite::rng_generate;
-use zerocopy::IntoBytes;
+use portable_atomic::{AtomicBool, Ordering};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 const ALGO_ECC_P384: u32 = 0x0001;
 const ALGO_MLDSA87: u32 = 0x0002;
+const DOT_LABEL: &[u8; 23] = b"Caliptra DOT stable key";
+const DOT_BLOB_VERSION: u32 = 1;
+const DOT_UNLOCK_METHOD_CHALLENGE_RESPONSE: u8 = 1;
+const DOT_BLOB_FIELDS_SIZE: usize = 104;
+const DOT_HMAC_SIZE: usize = 64;
+const DOT_BLOB_SIZE: usize = DOT_BLOB_FIELDS_SIZE + DOT_HMAC_SIZE;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, FromBytes, IntoBytes, Immutable, KnownLayout, PartialEq, Eq)]
+struct RuntimeDotBlobFields {
+    version: u32,
+    cak: [u8; DOT_KEY_HASH_SIZE],
+    lak_pub: [u8; DOT_KEY_HASH_SIZE],
+    unlock_method: u8,
+    reserved: [u8; 3],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, FromBytes, IntoBytes, Immutable, KnownLayout, PartialEq, Eq)]
+struct RuntimeDotBlob {
+    fields: RuntimeDotBlobFields,
+    hmac: [u8; DOT_HMAC_SIZE],
+}
+
+const _: [(); DOT_BLOB_FIELDS_SIZE] = [(); core::mem::size_of::<RuntimeDotBlobFields>()];
+const _: [(); DOT_BLOB_SIZE] = [(); core::mem::size_of::<RuntimeDotBlob>()];
+
+static DOT_TRANSACTION_BUSY: AtomicBool = AtomicBool::new(false);
+// SAFETY: MldsaVerifyReq derives FromBytes, so all-zeros is a valid representation.
+static MLDSA_VERIFY_REQ: Mutex<CriticalSectionRawMutex, core::mem::MaybeUninit<MldsaVerifyReq>> =
+    Mutex::new(core::mem::MaybeUninit::zeroed());
+
+struct DotTransactionGuard;
+
+impl DotTransactionGuard {
+    fn acquire() -> CaliptraCmdResult<Self> {
+        DOT_TRANSACTION_BUSY
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| Self)
+            .map_err(|_| CaliptraCompletionCode::ResourceUnavailable)
+    }
+}
+
+impl Drop for DotTransactionGuard {
+    fn drop(&mut self) {
+        DOT_TRANSACTION_BUSY.store(false, Ordering::Release);
+    }
+}
 
 pub async fn request_debug_unlock<A: ApiAlloc>(
     alloc: &A,
@@ -165,12 +219,48 @@ pub async fn verify_authorized_signatures(
         .try_extend_from_slice(challenge)
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
 
+    let mut mldsa_digest = [0u8; 64];
+    HashContext::hash_all(
+        HashAlgoType::SHA512,
+        pre_image.as_slice(),
+        &mut mldsa_digest,
+    )
+    .await
+    .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+
+    verify_hybrid_message_parts(
+        pre_image.as_slice(),
+        &mldsa_digest,
+        ecc_pub_x,
+        ecc_pub_y,
+        mldsa_pub,
+        sig,
+    )
+    .await
+}
+
+async fn verify_hybrid_message(
+    message: &[u8],
+    ecc_pub_x: &[u8; 48],
+    ecc_pub_y: &[u8; 48],
+    mldsa_pub: &[u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
+    sig: &HybridSignature,
+) -> CaliptraCmdResult<()> {
+    verify_hybrid_message_parts(message, message, ecc_pub_x, ecc_pub_y, mldsa_pub, sig).await
+}
+
+async fn verify_hybrid_message_parts(
+    ecc_message: &[u8],
+    mldsa_message: &[u8],
+    ecc_pub_x: &[u8; 48],
+    ecc_pub_y: &[u8; 48],
+    mldsa_pub: &[u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
+    sig: &HybridSignature,
+) -> CaliptraCmdResult<()> {
     let mailbox = Mailbox::new();
 
-    // ECC P-384 over SHA-384(pre-image) (ECDSA takes a 48-byte digest; matches the
-    // host's `sign(&pre_image)`, which hashes the pre-image with SHA-384 internally).
     let mut hash = [0u8; 48];
-    HashContext::hash_all(HashAlgoType::SHA384, pre_image.as_slice(), &mut hash)
+    HashContext::hash_all(HashAlgoType::SHA384, ecc_message, &mut hash)
         .await
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
@@ -194,29 +284,19 @@ pub async fn verify_authorized_signatures(
         .await
         .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
 
-    // ML-DSA-87 over SHA-512(pre-image): the 64-byte digest is the signed message
-    // (external pre-hash), matching the host's `try_sign(&SHA-512(pre-image))`.
-    let mut mldsa_msg = [0u8; 64];
-    HashContext::hash_all(HashAlgoType::SHA512, pre_image.as_slice(), &mut mldsa_msg)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-
-    // Use a shared static buffer behind an async Mutex to avoid inflating
-    // the async task future by ~11 KB.  The guard is held across `.await`.
-    // SAFETY: MldsaVerifyReq derives FromBytes, so all-zeros is a valid repr.
-    static MLDSA_REQ: Mutex<CriticalSectionRawMutex, core::mem::MaybeUninit<MldsaVerifyReq>> =
-        Mutex::new(core::mem::MaybeUninit::zeroed());
-
-    let mut guard = MLDSA_REQ.lock().await;
+    let mut guard = MLDSA_VERIFY_REQ.lock().await;
     // SAFETY: MldsaVerifyReq derives FromBytes — all-zeros (from the static
     // initializer) and any byte pattern we write are valid representations.
     let req: &mut MldsaVerifyReq = unsafe { guard.assume_init_mut() };
+    if mldsa_message.len() > req.message.len() {
+        return Err(CaliptraCompletionCode::InsufficientResources);
+    }
     req.hdr = MailboxReqHeader::default();
     req.pub_key = *mldsa_pub;
     req.signature = sig.mldsa_sig;
-    req.message_size = mldsa_msg.len() as u32;
+    req.message_size = mldsa_message.len() as u32;
     req.message = [0u8; caliptra_api::mailbox::MAX_CMB_DATA_SIZE];
-    req.message[..mldsa_msg.len()].copy_from_slice(&mldsa_msg);
+    req.message[..mldsa_message.len()].copy_from_slice(mldsa_message);
 
     let mldsa_req_bytes = req
         .as_bytes_partial_mut()
@@ -237,6 +317,203 @@ pub async fn verify_authorized_signatures(
     .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
 
     Ok(())
+}
+
+async fn dot_lak_hash<A: ApiAlloc>(
+    alloc: &A,
+    ecc_pub_x: &[u8; 48],
+    ecc_pub_y: &[u8; 48],
+    mldsa_pub: &[u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
+) -> CaliptraCmdResult<[u8; DOT_KEY_HASH_SIZE]> {
+    let mut ecc_key = [0u8; 96];
+    for (dst, src) in ecc_key[..48]
+        .chunks_exact_mut(4)
+        .zip(ecc_pub_x.chunks_exact(4))
+    {
+        dst.copy_from_slice(src);
+        dst.reverse();
+    }
+    for (dst, src) in ecc_key[48..]
+        .chunks_exact_mut(4)
+        .zip(ecc_pub_y.chunks_exact(4))
+    {
+        dst.copy_from_slice(src);
+        dst.reverse();
+    }
+    let context = alloc
+        .alloc(SHA_CONTEXT_SIZE)
+        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
+    let mut state = sha_init(alloc, context, HashAlgo::Sha384, &ecc_key)
+        .await
+        .map_err(map_mcu_err)?;
+    sha_update(alloc, &mut state, mldsa_pub)
+        .await
+        .map_err(map_mcu_err)?;
+    let mut hash = [0u8; DOT_KEY_HASH_SIZE];
+    sha_finish(alloc, &mut state, &mut hash)
+        .await
+        .map_err(map_mcu_err)?;
+    Ok(hash)
+}
+
+fn read_dot_fuse_count() -> CaliptraCmdResult<u32> {
+    let otp = Otp::<DefaultSyscalls>::new();
+    let initialized = otp
+        .read_raw((fuses::DOT_INITIALIZED.byte_offset / 4) as u32, 0)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if initialized & 0x7 == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    let mut burned = 0u32;
+    for index in 0..(fuses::DOT_FUSE_ARRAY.byte_size / 4) {
+        burned += otp
+            .read_raw((fuses::DOT_FUSE_ARRAY.byte_offset / 4) as u32, index as u32)
+            .map_err(|_| CaliptraCompletionCode::OperationFailed)?
+            .count_ones();
+    }
+    Ok(burned)
+}
+
+fn dot_derivation_info(derivation_value: u32) -> CaliptraCmdResult<[u8; 32]> {
+    let derivation_value =
+        u16::try_from(derivation_value).map_err(|_| CaliptraCompletionCode::InvalidState)?;
+    let mut info = [0u8; 32];
+    info[..DOT_LABEL.len()].copy_from_slice(DOT_LABEL);
+    info[DOT_LABEL.len()..DOT_LABEL.len() + 2].copy_from_slice(&derivation_value.to_le_bytes());
+    Ok(info)
+}
+
+async fn seal_dot_blob<A: ApiAlloc>(
+    alloc: &A,
+    derivation_value: u32,
+    cak: [u8; DOT_KEY_HASH_SIZE],
+    lak_hash: [u8; DOT_KEY_HASH_SIZE],
+) -> CaliptraCmdResult<RuntimeDotBlob> {
+    let info = dot_derivation_info(derivation_value)?;
+    let key = derive_stable_key(StableKeyType::IDevId, &info)
+        .await
+        .map_err(map_mcu_err)?;
+    let fields = RuntimeDotBlobFields {
+        version: DOT_BLOB_VERSION,
+        cak,
+        lak_pub: lak_hash,
+        unlock_method: DOT_UNLOCK_METHOD_CHALLENGE_RESPONSE,
+        reserved: [0; 3],
+    };
+    let mut hmac = [0u8; DOT_HMAC_SIZE];
+    cm_hmac_sha512(alloc, &key, fields.as_bytes(), &mut hmac)
+        .await
+        .map_err(map_mcu_err)?;
+    Ok(RuntimeDotBlob { fields, hmac })
+}
+
+async fn write_and_verify_dot_blob(blob: &RuntimeDotBlob) -> CaliptraCmdResult<()> {
+    let flash = SpiFlash::<DefaultSyscalls>::new(caliptra_mcu_config::DOT_BLOB_STORE_DRIVER_NUM);
+    flash
+        .exists()
+        .map_err(|_| CaliptraCompletionCode::UnsupportedOperation)?;
+    if (flash
+        .get_capacity()
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?
+        .0 as usize)
+        < DOT_BLOB_SIZE
+    {
+        return Err(CaliptraCompletionCode::InsufficientResources);
+    }
+    flash
+        .write(0, DOT_BLOB_SIZE, blob.as_bytes())
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    let mut readback = [0u8; DOT_BLOB_SIZE];
+    flash
+        .read(0, DOT_BLOB_SIZE, &mut readback)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if !constant_time_eq::constant_time_eq(&readback, blob.as_bytes()) {
+        return Err(CaliptraCompletionCode::OperationFailed);
+    }
+    Ok(())
+}
+
+fn burn_next_dot_fuse(current_fuse_count: u32) -> CaliptraCmdResult<()> {
+    let word_addr = (fuses::DOT_FUSE_ARRAY.byte_offset / 4) as u32 + current_fuse_count / 32;
+    let bit_mask = 1u32 << (current_fuse_count % 32);
+    let otp = Otp::<DefaultSyscalls>::new();
+    let current_word = otp
+        .read_raw(word_addr, 0)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if current_word & bit_mask != 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    otp.write_raw(word_addr, bit_mask, bit_mask)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if read_dot_fuse_count()? != current_fuse_count + 1 {
+        return Err(CaliptraCompletionCode::OperationFailed);
+    }
+    caliptra_mcu_romtime::println!("[mcu-rt-dot] DOT fuse committed");
+    Ok(())
+}
+
+async fn commit_dot_transition<A: ApiAlloc>(
+    alloc: &A,
+    current_fuse_count: u32,
+    derivation_value: u32,
+    cak: [u8; DOT_KEY_HASH_SIZE],
+    lak_hash: [u8; DOT_KEY_HASH_SIZE],
+) -> CaliptraCmdResult<()> {
+    let blob = seal_dot_blob(alloc, derivation_value, cak, lak_hash).await?;
+    write_and_verify_dot_blob(&blob).await?;
+    burn_next_dot_fuse(current_fuse_count)
+}
+
+pub async fn dot_lock<A: ApiAlloc>(alloc: &A, request: &DotLockPayload) -> CaliptraCmdResult<()> {
+    let _guard = DotTransactionGuard::acquire()?;
+    dot_lock_impl(alloc, request).await
+}
+
+async fn dot_lock_impl<A: ApiAlloc>(alloc: &A, request: &DotLockPayload) -> CaliptraCmdResult<()> {
+    if request.cak.iter().all(|byte| *byte == 0) {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
+    let lak_hash = dot_lak_hash(
+        alloc,
+        &request.lak_ecc_pub_x,
+        &request.lak_ecc_pub_y,
+        &request.lak_mldsa_pub,
+    )
+    .await?;
+    if lak_hash.iter().all(|byte| *byte == 0) {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
+    let mut transcript = [0u8; 4 + 2 * DOT_KEY_HASH_SIZE];
+    transcript[..4].copy_from_slice(&CommandId::MC_DOT_LOCK.0.to_be_bytes());
+    transcript[4..4 + DOT_KEY_HASH_SIZE].copy_from_slice(&request.cak);
+    transcript[4 + DOT_KEY_HASH_SIZE..].copy_from_slice(&lak_hash);
+    verify_hybrid_message(
+        &transcript,
+        &request.lak_ecc_pub_x,
+        &request.lak_ecc_pub_y,
+        &request.lak_mldsa_pub,
+        &request.signature,
+    )
+    .await?;
+
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count & 1 != 0 || current_fuse_count >= 256 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    commit_dot_transition(
+        alloc,
+        current_fuse_count,
+        current_fuse_count + 1,
+        request.cak,
+        lak_hash,
+    )
+    .await
 }
 
 pub async fn program_field_entropy<A: ApiAlloc>(

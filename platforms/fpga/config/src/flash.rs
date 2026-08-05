@@ -5,10 +5,17 @@ use caliptra_mcu_config::flash::FlashPartition;
 pub const DRIVER_NUM_EMULATED_FLASH_CTRL: usize = 0x8000_0012;
 pub const BLOCK_SIZE: usize = 64 * 1024;
 
+pub const DOT_BLOB_PARTITION: FlashPartition = FlashPartition {
+    name: "dot_blob",
+    offset: 0,
+    size: caliptra_mcu_config::DOT_BLOB_STORE_SIZE,
+    driver_num: caliptra_mcu_config::DOT_BLOB_STORE_DRIVER_NUM,
+};
+
 pub const STAGING_PARTITION: FlashPartition = FlashPartition {
     name: "staging_par",
-    offset: 0x0000_0000,
-    size: (BLOCK_SIZE * 0x200),
+    offset: DOT_BLOB_PARTITION.size,
+    size: (BLOCK_SIZE * 0x200) - DOT_BLOB_PARTITION.size,
     driver_num: DRIVER_NUM_EMULATED_FLASH_CTRL as u32,
 };
 
@@ -23,6 +30,7 @@ pub const EMULATED_EXT_OTP_PARTITION: FlashPartition = FlashPartition {
 macro_rules! flash_partition_list_imaginary_flash {
     ($macro:ident) => {{
         $macro!(0, staging_par, STAGING_PARTITION);
+        $macro!(1, dot_blob, DOT_BLOB_PARTITION);
     }};
 }
 

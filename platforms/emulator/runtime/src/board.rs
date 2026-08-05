@@ -12,7 +12,8 @@ use caliptra_mcu_components::{
     doe_component_static, dpe_handle_store_component_static, external_otp_component_static,
     flash_partition_component_static, instantiate_flash_partitions, instantiate_logging_flash,
     mailbox_component_static, mbox_sram_component_static, mctp_driver_component_static,
-    mcu_mbox_component_static, soft_pcr_store_component_static,
+    mcu_mbox_component_static, memory_flash_partition_component_static,
+    soft_pcr_store_component_static,
 };
 #[cfg(feature = "crash-log")]
 use caliptra_mcu_config_emulator::flash::CRASH_LOG_PARTITION;
@@ -167,6 +168,7 @@ struct VeeR {
     external_otp: &'static caliptra_mcu_capsules_runtime::external_otp::ExternalOtpCapsule<'static>,
     dpe_handle_store: &'static caliptra_mcu_capsules_runtime::dpe_handle_store::DpeHandleStore,
     pcr_store: &'static caliptra_mcu_capsules_runtime::soft_pcr_store::SoftPcrStore,
+    dot_blob_store: &'static FlashPartition<'static>,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>,
 }
 
@@ -241,6 +243,9 @@ impl SyscallDriverLookup for VeeR {
                 f(Some(self.dpe_handle_store))
             }
             caliptra_mcu_capsules_runtime::soft_pcr_store::DRIVER_NUM => f(Some(self.pcr_store)),
+            n if n == caliptra_mcu_config::DOT_BLOB_STORE_DRIVER_NUM as usize => {
+                f(Some(self.dot_blob_store))
+            }
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
 
             _ => f(None),
@@ -451,6 +456,18 @@ pub unsafe fn main() {
     platform_regions.push(PlatformRegion {
         start_addr: caliptra_mcu_registers_generated::axicdma::AXICDMA_ADDR as *const u8,
         size: 0x1000,
+        is_mmio: true,
+        user_accessible: false,
+        read: true,
+        write: true,
+        execute: false,
+    });
+
+    // Dedicated DOT blob storage shared with ROM. Userspace reaches it only
+    // through the bounded flash-partition syscall.
+    platform_regions.push(PlatformRegion {
+        start_addr: 0x8100_0000 as *const u8,
+        size: caliptra_mcu_config::DOT_BLOB_STORE_SIZE,
         is_mmio: true,
         user_accessible: false,
         read: true,
@@ -765,6 +782,18 @@ pub unsafe fn main() {
         caliptra_mcu_flash_ctrl_emulator::ERASE_SECTOR_SIZE
     );
 
+    let dot_blob_memory = core::slice::from_raw_parts_mut(
+        0x8100_0000 as *mut u8,
+        caliptra_mcu_config::DOT_BLOB_STORE_SIZE,
+    );
+    let dot_blob_store =
+        caliptra_mcu_components::memory_flash_partition::MemoryFlashPartitionComponent::new(
+            board_kernel,
+            caliptra_mcu_config::DOT_BLOB_STORE_DRIVER_NUM as usize,
+            dot_blob_memory,
+        )
+        .finalize(memory_flash_partition_component_static!());
+
     let mut logging_flash: [Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
     >;
@@ -855,25 +884,22 @@ pub unsafe fn main() {
     )
     .finalize(external_otp_component_static!());
 
-    // DPE Handle Store + Software PCR Store: both backed by the persistent storage
+    // DPE Handle Store + Software PCR Store: backed by persistent storage
     // SRAM reservation (_sstorage.._estorage).  The region is split as:
-    //   [_sstorage .. _sstorage + DPE_STORE_SIZE)  → DPE Handle Store
-    //   [_sstorage + DPE_STORE_SIZE .. _estorage)   → Software PCR Store
+    //   [_sstorage .. +0x400) - DPE Handle Store
+    //   [+0x400 .. _estorage) - Software PCR Store
     // When built outside the firmware-bundler (e.g. cargo check), _sstorage ==
     // _estorage == 0 so both slices are empty, which is safe.
     // Storage layout constants: board owns the split, capsules derive capacity
     // from the slice length they receive.
-    const DPE_STORE_SIZE: usize = 0x400; // 1 KiB → DPE Handle Store
-    const PCR_STORE_SIZE: usize = 0xC00; // 3 KiB → Software PCR Store
+    const DPE_STORE_SIZE: usize = 0x400;
     let (dpe_handle_store, pcr_store) = {
         let start = addr_of!(_sstorage) as *mut u8;
         let end = addr_of!(_estorage) as usize;
         let total_len = end.saturating_sub(start as usize);
         let dpe_len = DPE_STORE_SIZE.min(total_len);
-        let pcr_len = PCR_STORE_SIZE.min(total_len.saturating_sub(dpe_len));
         let full: &'static mut [u8] = core::slice::from_raw_parts_mut(start, total_len);
-        let (dpe_sram, rest) = full.split_at_mut(dpe_len);
-        let pcr_sram = &mut rest[..pcr_len];
+        let (dpe_sram, pcr_sram) = full.split_at_mut(dpe_len);
         let dpe = caliptra_mcu_components::dpe_handle_store::DpeHandleStoreComponent::new(
             board_kernel,
             caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM,
@@ -955,6 +981,7 @@ pub unsafe fn main() {
             external_otp,
             dpe_handle_store,
             pcr_store,
+            dot_blob_store,
             system,
         }
     );

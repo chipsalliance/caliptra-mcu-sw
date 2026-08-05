@@ -22,6 +22,8 @@ use caliptra_mcu_mbox_common::messages::{
     McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE,
     MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
+#[cfg(feature = "device-ownership-transfer")]
+use caliptra_mcu_mbox_common::messages::{DotLockReq, DotLockResp};
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
@@ -215,6 +217,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
+                #[cfg(feature = "device-ownership-transfer")]
+                CommandId::MC_DOT_LOCK => self.handle_dot_lock(req, resp_buf).await,
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
                 }
@@ -272,6 +276,28 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_lock<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotLockReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        self.non_crypto_cmds_handler
+            .dot_lock(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotLockResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotLockResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
     }
 
     async fn handle_device_caps<'r>(
@@ -985,6 +1011,8 @@ fn response_buffer_size(cmd: u32) -> usize {
         c if c == CommandId::MC_MLDSA_CMK_VERIFY || c == CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
             size_of::<MailboxRespHeader>()
         }
+        #[cfg(feature = "device-ownership-transfer")]
+        CommandId::MC_DOT_LOCK => size_of::<DotLockResp>(),
         _ => size_of::<McuMailboxResp>(),
     }
 }

@@ -5,6 +5,7 @@ use caliptra_mcu_common_commands::{
     DeviceCapabilities, FirmwareVersion, GetLogResult, MAX_FW_VERSION_LEN,
 };
 use caliptra_mcu_mbox_common::config;
+use caliptra_mcu_mbox_common::messages::DotLockPayload;
 use mcu_caliptra_api_lite::ApiAlloc;
 
 use crate::caliptra_cmd_handler::CaliptraCmdBackend;
@@ -111,5 +112,13 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         CaliptraCmdBackend
             .program_field_entropy(alloc, partition)
             .await
+    }
+
+    async fn dot_lock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotLockPayload,
+    ) -> CaliptraCmdResult<()> {
+        CaliptraCmdBackend.dot_lock(alloc, request).await
     }
 }

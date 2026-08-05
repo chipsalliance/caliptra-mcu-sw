@@ -1440,6 +1440,98 @@ mod test {
         (pk_bytes.to_vec(), sk)
     }
 
+    #[test]
+    fn test_runtime_dot_lock_commits_transition() {
+        use caliptra_mcu_mbox_common::messages::{
+            CommandId as McuCommandId, DotLockPayload, DotLockReq, HybridSignature,
+        };
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (ecc_pub_x, ecc_pub_y, ecc_private) = generate_random_ecc_keys();
+        let (mldsa_public, mldsa_private) = generate_random_mldsa_keys();
+        let lak_hash = compute_recovery_pk_hash(&ecc_pub_x, &ecc_pub_y, &mldsa_public);
+        let cak = [0xA5; 48];
+
+        let mut transcript = [0u8; 100];
+        transcript[..4].copy_from_slice(&McuCommandId::MC_DOT_LOCK.0.to_be_bytes());
+        transcript[4..52].copy_from_slice(&cak);
+        transcript[52..].copy_from_slice(&lak_hash);
+
+        let signing_key = SigningKey::from_bytes((&ecc_private).into()).unwrap();
+        let digest = Sha384::digest(transcript);
+        let ecc_signature: p384::ecdsa::Signature = signing_key.sign_prehash(&digest).unwrap();
+        let mldsa_signature = mldsa_private
+            .try_sign_with_seed(&[0u8; 32], &transcript, &[])
+            .unwrap();
+
+        let mut hybrid_signature = HybridSignature {
+            ecc_sig_r: ecc_signature.r().to_bytes().into(),
+            ecc_sig_s: ecc_signature.s().to_bytes().into(),
+            ..Default::default()
+        };
+        hybrid_signature.mldsa_sig[..mldsa_signature.len()].copy_from_slice(&mldsa_signature);
+
+        let payload = DotLockPayload {
+            cak,
+            lak_ecc_pub_x: ecc_pub_x,
+            lak_ecc_pub_y: ecc_pub_y,
+            lak_mldsa_pub: mldsa_public.try_into().unwrap(),
+            signature: hybrid_signature,
+        };
+
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let mut bad_payload = payload.clone();
+        bad_payload.signature.ecc_sig_r[0] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotLockReq {
+                payload: bad_payload,
+                ..Default::default()
+            })
+            .is_err());
+
+        let response = hw
+            .mailbox_execute_req(DotLockReq {
+                payload: payload.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(hw
+            .mailbox_execute_req(DotLockReq {
+                payload,
+                ..Default::default()
+            })
+            .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] & 1,
+            1
+        );
+        let dot_blob = hw.read_dot_flash();
+        assert!(dot_blob[..DOT_BLOB_SIZE].iter().any(|byte| *byte != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Computes SHA-384 of the combined vendor public keys using the
     /// caliptra-sw owner-PK-hash convention: the ECC public key is
     /// per-dword byte-reversed before hashing, the MLDSA public key is
@@ -2134,6 +2226,9 @@ mod test {
             "Expected 1 fuse burned by manifest LOCK, found {}",
             burned
         );
+        let dot_flash = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_flash[..DOT_BLOB_SIZE]).unwrap();
+        assert_eq!(blob.reserved[0] & 1, 0);
 
         println!("[TEST] Firmware manifest LOCK command successfully burned lock fuse");
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
