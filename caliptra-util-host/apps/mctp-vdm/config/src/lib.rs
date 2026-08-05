@@ -6,6 +6,11 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+const DEFAULT_DEVICE_CAPABILITIES: [u8; 36] = [
+    0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0, 2, 0, 0xEF, 0, 0,
+    0, 9, 0, 0, 0, 0,
+];
+
 /// Top-level test configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestConfig {
@@ -49,11 +54,31 @@ pub struct ServerConfig {
 /// Expected device capabilities.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceCapabilitiesConfig {
-    pub capabilities: u32,
-    pub max_cert_size: u32,
-    pub max_csr_size: u32,
-    pub device_lifecycle: u32,
+    #[serde(with = "capabilities_serde")]
+    pub capabilities: [u8; 36],
     pub fips_status: u32,
+}
+
+mod capabilities_serde {
+    use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(capabilities: &[u8; 36], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        capabilities.as_slice().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 36], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let capabilities = Vec::<u8>::deserialize(deserializer)?;
+        let len = capabilities.len();
+        capabilities
+            .try_into()
+            .map_err(|_| D::Error::custom(format!("expected 36 capability bytes, got {len}")))
+    }
 }
 
 /// Expected firmware version information.
@@ -132,10 +157,7 @@ impl Default for TestConfig {
                 max_connections: 10,
             },
             device_capabilities: Some(DeviceCapabilitiesConfig {
-                capabilities: 0x000001F3,
-                max_cert_size: 4096,
-                max_csr_size: 2048,
-                device_lifecycle: 1,
+                capabilities: DEFAULT_DEVICE_CAPABILITIES,
                 fips_status: 0x00000001,
             }),
             firmware_version: Some(FirmwareVersionConfig {
@@ -146,5 +168,21 @@ impl Default for TestConfig {
                 runtime_firmware_id: 1,
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_has_complete_device_capabilities() {
+        let config: TestConfig = toml::from_str(include_str!("../../test-config.toml")).unwrap();
+        let capabilities = config.device_capabilities.unwrap().capabilities;
+
+        assert_eq!(capabilities.len(), 36);
+        assert_eq!(&capabilities[20..24], &0x0000_00FFu32.to_be_bytes());
+        assert_eq!(&capabilities[24..28], &0x0002_00EFu32.to_be_bytes());
+        assert_eq!(&capabilities[28..32], &0x0000_0009u32.to_be_bytes());
     }
 }

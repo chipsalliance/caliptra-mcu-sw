@@ -1,12 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-#[cfg(any(
-    feature = "test-mctp-vdm-cmds",
-    feature = "test-caliptra-util-host-mctp-vdm-validator",
-    feature = "test-defmt-logging-vdm"
-))]
-mod cmd_handler_mock;
-
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
@@ -17,18 +10,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use static_cell::StaticCell;
 
-#[cfg(not(any(
-    feature = "test-mctp-vdm-cmds",
-    feature = "test-caliptra-util-host-mctp-vdm-validator",
-    feature = "test-defmt-logging-vdm"
-)))]
 use crate::caliptra_cmd_handler::CaliptraCmdBackend as VdmHandler;
-#[cfg(any(
-    feature = "test-mctp-vdm-cmds",
-    feature = "test-caliptra-util-host-mctp-vdm-validator",
-    feature = "test-defmt-logging-vdm"
-))]
-use cmd_handler_mock::NonCryptoCmdHandlerMock as VdmHandler;
 
 #[embassy_executor::task]
 pub async fn vdm_task() {

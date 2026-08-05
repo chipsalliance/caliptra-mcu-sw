@@ -11,6 +11,8 @@ use mcu_error::McuResult;
 
 pub const CMD_SELF_TEST_START: u32 = 0x4650_4C54; // "FPLT"
 pub const CMD_SELF_TEST_GET_RESULTS: u32 = 0x4650_4C67; // "FPLg"
+pub const CMD_VERSION: u32 = 0x4650_5652; // "FPVR"
+pub const CMD_CAPABILITIES: u32 = 0x4341_5053; // "CAPS"
 pub const CMD_FW_INFO: u32 = 0x494E_464F; // "INFO"
 
 pub const CMD_CM_SHA_INIT: u32 = 0x434D_5349; // "CMSI"

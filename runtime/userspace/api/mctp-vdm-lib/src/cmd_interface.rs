@@ -8,8 +8,9 @@ use caliptra_mcu_common_commands::{
 };
 use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 use caliptra_mcu_mctp_vdm_common::message::{
-    ClearDebugLogResponse, DeviceCapabilitiesResponse, FirmwareVersionRequest,
-    FirmwareVersionResponse, GetDebugLogResponse, DEVICE_CAPS_SIZE, MAX_LOG_DATA_SIZE,
+    ClearDebugLogResponse, DeviceCapabilitiesRequest, DeviceCapabilitiesResponse,
+    FirmwareVersionRequest, FirmwareVersionResponse, GetDebugLogResponse, DEVICE_CAPS_SIZE,
+    MAX_LOG_DATA_SIZE,
 };
 use caliptra_mcu_mctp_vdm_common::protocol::{
     VdmCommand, VdmCompletionCode, VdmFailureResponse, VdmMsgHeader, VDM_MSG_HEADER_LEN,
@@ -143,7 +144,7 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
         // Build the response.
         let (completion_code, ver_bytes) = match result {
             Ok(()) => (VdmCompletionCode::Success, &version.ver_str[..version.len]),
-            Err(_) => (VdmCompletionCode::InvalidParameter, &[][..]),
+            Err(error) => (map_caliptra_to_vdm(error), &[][..]),
         };
 
         let resp = FirmwareVersionResponse::new(completion_code as u32, ver_bytes);
@@ -156,8 +157,19 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
     async fn handle_device_capabilities(
         &self,
         msg_buf: &mut [u8],
-        _req_len: usize,
+        req_len: usize,
     ) -> Result<usize, VdmLibError> {
+        if req_len != VDM_MSG_HEADER_LEN {
+            return self.send_error_response(
+                msg_buf,
+                VdmCommand::DeviceCapabilities as u8,
+                VdmCompletionCode::InvalidLength,
+            );
+        }
+        let vdm_msg = extract_vdm_msg(msg_buf).map_err(|_| VdmLibError::DecodingError)?;
+        DeviceCapabilitiesRequest::decode(&vdm_msg[..req_len])
+            .map_err(|_| VdmLibError::DecodingError)?;
+
         // Get the device capabilities using the unified handler.
         let mut caps = DeviceCapabilities::default();
         let result = self
@@ -179,7 +191,7 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
 
         let completion_code = match result {
             Ok(()) => VdmCompletionCode::Success,
-            Err(_) => VdmCompletionCode::GeneralError,
+            Err(error) => map_caliptra_to_vdm(error),
         };
 
         let resp = DeviceCapabilitiesResponse::new(completion_code as u32, &caps_bytes);

@@ -16,7 +16,7 @@ pub const MAX_FW_VERSION_LEN: usize = 32;
 /// - Bytes 0:3 - area_index (u32): Area Index
 ///   - 0x00 = Caliptra core firmware
 ///   - 0x01 = MCU runtime firmware
-///   - 0x02 = SoC firmware
+///   - 0x02 = Optional integrator-defined aggregate SoC firmware-set version
 ///   - Additional indexes are firmware-specific
 #[derive(Debug, Clone, Copy, PartialEq, FromBytes, IntoBytes, Immutable)]
 #[repr(C, packed)]

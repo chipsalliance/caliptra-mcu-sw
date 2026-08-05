@@ -71,16 +71,32 @@ static enum CaliptraError mock_disconnect(void *ctx) {
 
 // Mock hardcoded GetDeviceCapabilities response.
 static const uint8_t MOCK_DEVICE_CAPABILITIES_RESPONSE[] = {
-    // GetDeviceCapabilitiesResponse structure in little-endian:
-    0x01, 0x00, 0x00, 0x00,  // fips_status
-    0xF3, 0x01, 0x00, 0x00,  // capabilities
-    0x00, 0x10, 0x00, 0x00,  // max_cert_size
-    0x00, 0x08, 0x00, 0x00,  // max_csr_size
-    0x01, 0x00, 0x00, 0x00   // device_lifecycle
+    0x01, 0x00, 0x00, 0x00,  // fips_status (little-endian host field)
+    // caps[36] (component capability fields are big-endian)
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // Caliptra RT
+    0x00, 0x00, 0x00, 0x00,                         // Caliptra FMC
+    0x00, 0x00, 0x00, 0x01,                         // Caliptra ROM
+    0x00, 0x00, 0x00, 0x00,                         // MCU ROM unavailable
+    0x00, 0x00, 0x00, 0xFF,                         // MCU RT
+    0x00, 0x02, 0x00, 0xEF,                         // External commands
+    0x00, 0x00, 0x00, 0x09,                         // Authorized subcommands
+    0x00, 0x00, 0x00, 0x00                          // Reserved
+};
+
+static const uint8_t MOCK_FIRMWARE_VERSION_RESPONSE[] = {
+    0x01, 0x00, 0x00, 0x00, // fips_status
+    0x02, 0x00, 0x00, 0x00, // major
+    0x00, 0x00, 0x00, 0x00, // minor
+    0x00, 0x00, 0x00, 0x00, // patch
+    0x00, 0x00, 0x00, 0x00, // build
+    // commit_id[20]
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
 static enum CaliptraError mock_send(void *ctx, uint32_t command_id, const uint8_t *data, size_t len) {
     printf("  Custom transport: mock_send called with ctx=%p, command_id=0x%08X, len=%zu\n", ctx, command_id, len);
+    (void)data;
     if (ctx == NULL) {
         printf("  ERROR: ctx is NULL in mock_send\n");
         return InvalidArgument;
@@ -100,12 +116,24 @@ static enum CaliptraError mock_send(void *ctx, uint32_t command_id, const uint8_
     // Store the command ID for analysis and prepare appropriate response
     transport->last_command_id = command_id;
 
-    // For this demo, prepare a hardcoded GetDeviceCapabilities response.
     transport->has_pending_response = true;
-    memcpy(transport->response_buffer, MOCK_DEVICE_CAPABILITIES_RESPONSE, sizeof(MOCK_DEVICE_CAPABILITIES_RESPONSE));
-    transport->response_len = sizeof(MOCK_DEVICE_CAPABILITIES_RESPONSE);
-
-    printf("  Custom transport: Prepared hardcoded device capabilities response\n");
+    switch (command_id) {
+        case 0x0001:
+            memcpy(transport->response_buffer, MOCK_FIRMWARE_VERSION_RESPONSE,
+                   sizeof(MOCK_FIRMWARE_VERSION_RESPONSE));
+            transport->response_len = sizeof(MOCK_FIRMWARE_VERSION_RESPONSE);
+            printf("  Custom transport: Prepared firmware version response\n");
+            break;
+        case 0x0002:
+            memcpy(transport->response_buffer, MOCK_DEVICE_CAPABILITIES_RESPONSE,
+                   sizeof(MOCK_DEVICE_CAPABILITIES_RESPONSE));
+            transport->response_len = sizeof(MOCK_DEVICE_CAPABILITIES_RESPONSE);
+            printf("  Custom transport: Prepared device capabilities response\n");
+            break;
+        default:
+            transport->has_pending_response = false;
+            return NotSupported;
+    }
     return Success;
 }
 
@@ -203,12 +231,25 @@ int test_custom_c_transport_device_capabilities(void) {
     TEST_ASSERT_EQ(result, Success, "Get device capabilities command should succeed");
 
     TEST_ASSERT(capabilities_response.common.fips_status == 1, "FIPS status should match expected mock value");
-    TEST_ASSERT(capabilities_response.capabilities == 0x000001F3, "Capabilities should match expected mock value");
-    TEST_ASSERT(capabilities_response.max_cert_size == 4096, "Max cert size should match expected mock value");
-    TEST_ASSERT(capabilities_response.max_csr_size == 2048, "Max CSR size should match expected mock value");
+    TEST_ASSERT(capabilities_response.caps[23] == 0xFF, "MCU Runtime capabilities should match expected mock value");
+    TEST_ASSERT(capabilities_response.caps[19] == 0x00, "MCU ROM capabilities should be unavailable");
+    TEST_ASSERT(capabilities_response.caps[27] == 0xEF, "External commands should match expected mock value");
+    TEST_ASSERT(capabilities_response.caps[31] == 0x09, "Authorized subcommands should match expected mock value");
 
     printf("✓ Successfully executed get_device_capabilities through custom transport\n");
-    printf("  Retrieved capabilities: 0x%08X\n", capabilities_response.capabilities);
+    printf("  Retrieved MCU Runtime capabilities: 0x%02X\n", capabilities_response.caps[23]);
+
+        struct GetFirmwareVersionResponse version_response = {0};
+        result = caliptra_cmd_get_firmware_version_c_impl(session, 1, &version_response);
+        TEST_ASSERT_EQ(result, Success, "Get firmware version command should succeed");
+        TEST_ASSERT(version_response.common.fips_status == 1, "Version FIPS status should match expected mock value");
+        TEST_ASSERT(version_response.version[0] == 2, "Firmware major version should match");
+        TEST_ASSERT(version_response.version[1] == 0, "Firmware minor version should match");
+        TEST_ASSERT(version_response.version[2] == 0, "Firmware patch version should match");
+
+        printf("✓ Successfully executed get_firmware_version through custom transport\n");
+        printf("  Retrieved firmware version: %u.%u.%u\n",
+            version_response.version[0], version_response.version[1], version_response.version[2]);
 
     // Verify transport context shows command was processed
     TEST_ASSERT(transport_ctx.has_pending_response == false, "Response should have been consumed");
