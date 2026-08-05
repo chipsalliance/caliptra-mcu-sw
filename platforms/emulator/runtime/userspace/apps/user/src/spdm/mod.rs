@@ -15,6 +15,7 @@ mod pci_sig_vdm;
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 use self::pci_sig_vdm::{emulated_ide_km::EmulatedIdeDriver, emulated_tdisp::EmulatedTdispDriver};
+#[cfg(feature = "doe")]
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -24,7 +25,9 @@ use caliptra_mcu_spdm_pal::{
     BitmapAllocator, McuSpdmPal, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE,
 };
 use caliptra_mcu_spdm_stack::SpdmStack;
-use caliptra_mcu_spdm_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
+#[cfg(feature = "doe")]
+use caliptra_mcu_spdm_transports::McuSpdmDoeTransport;
+use caliptra_mcu_spdm_transports::McuSpdmMctpTransport;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 use caliptra_mcu_spdm_vdm_handler::pci_sig::{
@@ -108,15 +111,18 @@ async fn ensure_cert_store_init<A: mcu_caliptra_api_lite::ApiAlloc>(
     }
 }
 
-/// Spawn SPDM responder tasks (MCTP + DOE) on the given executor.
+/// Spawn SPDM responder tasks on the given executor.
 pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
     if spawner.spawn(spdm_mctp_responder()).is_err() {
         crate::log_error!(cw, "SPDM: Failed to spawn MCTP responder");
     }
-    if spawner.spawn(spdm_doe_responder()).is_err() {
-        crate::log_error!(cw, "SPDM: Failed to spawn DOE responder");
+    #[cfg(feature = "doe")]
+    {
+        if spawner.spawn(spdm_doe_responder()).is_err() {
+            crate::log_error!(cw, "SPDM: Failed to spawn DOE responder");
+        }
     }
 }
 
@@ -179,6 +185,7 @@ async fn spdm_mctp_responder() {
     }
 }
 
+#[cfg(feature = "doe")]
 #[embassy_executor::task]
 async fn spdm_doe_responder() {
     let mut cw = Console::<DefaultSyscalls>::writer();

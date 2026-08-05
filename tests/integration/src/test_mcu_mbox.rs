@@ -5,7 +5,14 @@
 pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use aes_gcm::{aead::AeadMutInPlace, Aes256Gcm, Key, KeyInit};
-    use caliptra_api::mailbox::CmHashAlgorithm;
+    use caliptra_api::{
+        calc_checksum,
+        mailbox::{
+            CapabilitiesResp, CmHashAlgorithm, CommandId, MailboxReqHeader as CoreReqHeader,
+        },
+        SocManager,
+    };
+    use caliptra_mcu_config::capabilities::McuRuntimeCapabilities;
     use caliptra_mcu_hw_model::mcu_mbox_transport::{
         McuMailboxError, McuMailboxResponse, McuMailboxTransport,
     };
@@ -181,7 +188,7 @@ pub mod test {
                 unsafe { caliptra_mcu_romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
             let mbox_transport = McuMailboxTransport::new(mci_base);
             println!("MCU MBOX Prod Debug Unlock Test Thread Starting:");
-            let mut test = RequestResponseTest::new(mbox_transport);
+            let mut test = RequestResponseTest::new(mbox_transport, 0, [0; 16]);
 
             if test
                 .add_prod_debug_unlock_e2e_test(unlock_level, &signer)
@@ -220,6 +227,22 @@ pub mod test {
         // the read, the MCU will hold the mailbox lock forever, causing the integration
         // test thread to time out waiting for the lock.
         crate::test_fpga_flash_ctrl::test::run_imaginary_flash_controller_service(mci_ptr);
+        let caliptra_runtime_version = hw
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .cptra_fw_rev_id()
+            .at(1)
+            .read();
+        let core_req = CoreReqHeader {
+            chksum: calc_checksum(CommandId::CAPABILITIES.into(), &[]),
+        };
+        let core_resp = hw
+            .caliptra_mailbox_execute(CommandId::CAPABILITIES.into(), core_req.as_bytes())
+            .expect("Core CAPABILITIES command failed")
+            .expect("Core CAPABILITIES returned no response");
+        let core_capabilities = CapabilitiesResp::read_from_bytes(&core_resp)
+            .expect("invalid Core CAPABILITIES response")
+            .capabilities;
 
         caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
@@ -232,7 +255,11 @@ pub mod test {
                 unsafe { caliptra_mcu_romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
             let mbox_transport = McuMailboxTransport::new(mci_base);
             println!("MCU MBOX Test Thread Starting:");
-            let mut test = RequestResponseTest::new(mbox_transport);
+            let mut test = RequestResponseTest::new(
+                mbox_transport,
+                caliptra_runtime_version,
+                core_capabilities,
+            );
 
             if test.direct_test_process_and_check(&feature).is_err() {
                 println!("Failed");
@@ -259,6 +286,8 @@ pub mod test {
     struct RequestResponseTest {
         test_messages: Vec<ExpectedMessagePair>,
         mbox: McuMailboxTransport,
+        caliptra_runtime_version: u32,
+        core_capabilities: [u8; 16],
     }
 
     #[derive(Clone)]
@@ -285,11 +314,17 @@ pub mod test {
     }
 
     impl RequestResponseTest {
-        pub fn new(mbox: McuMailboxTransport) -> Self {
+        pub fn new(
+            mbox: McuMailboxTransport,
+            caliptra_runtime_version: u32,
+            core_capabilities: [u8; 16],
+        ) -> Self {
             let test_messages: Vec<ExpectedMessagePair> = Vec::new();
             Self {
                 test_messages,
                 mbox,
+                caliptra_runtime_version,
+                core_capabilities,
             }
         }
 
@@ -431,13 +466,18 @@ pub mod test {
 
         fn add_basic_cmds_tests(&mut self) {
             // Add firmware version test messages
-            for idx in 0..=2 {
-                let version_str = match idx {
-                    0 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[0],
-                    1 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[1],
-                    2 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[2],
+            for idx in 0..=1 {
+                let packed_version = match idx {
+                    0 => self.caliptra_runtime_version,
+                    1 => caliptra_mcu_config::version::get_mcu_runtime_version(),
                     _ => unreachable!(),
                 };
+                let version_str = format!(
+                    "{}.{}.{}",
+                    (packed_version >> 24) & 0xff,
+                    (packed_version >> 16) & 0xff,
+                    packed_version & 0xffff
+                );
 
                 let mut fw_version_req = McuMailboxReq::FirmwareVersion(FirmwareVersionReq {
                     hdr: MailboxReqHeader::default(),
@@ -473,13 +513,16 @@ pub mod test {
             let cmd = device_caps_req.cmd_code();
             device_caps_req.populate_chksum().unwrap();
 
-            let test_capabilities = &caliptra_mcu_mbox_common::config::TEST_DEVICE_CAPABILITIES;
             let mut device_caps_resp = McuMailboxResp::DeviceCaps(DeviceCapsResp {
                 hdr: MailboxRespHeader::default(),
                 caps: {
                     let mut c = [0u8; DEVICE_CAPS_SIZE];
-                    c[..test_capabilities.as_bytes().len()]
-                        .copy_from_slice(test_capabilities.as_bytes());
+                    c[..16].copy_from_slice(&self.core_capabilities);
+                    c[20..24].copy_from_slice(
+                        &McuRuntimeCapabilities::MCI_MAILBOX_SERVICE
+                            .bits()
+                            .to_be_bytes(),
+                    );
                     c
                 },
             });

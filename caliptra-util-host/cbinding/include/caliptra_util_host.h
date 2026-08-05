@@ -51,10 +51,7 @@ typedef struct CommonResponse {
  */
 typedef struct GetDeviceCapabilitiesResponse {
   struct CommonResponse common;
-  uint32_t capabilities;
-  uint32_t max_cert_size;
-  uint32_t max_csr_size;
-  uint32_t device_lifecycle;
+  uint8_t caps[36];
 } GetDeviceCapabilitiesResponse;
 
 /**

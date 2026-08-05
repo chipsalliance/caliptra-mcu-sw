@@ -37,10 +37,10 @@ build-rust:
 	fi
 
 # Build test executables
-test_custom_c_transport: test_custom_c_transport.c $(STATIC_LIB) $(HEADER)
+test_custom_c_transport: test_custom_c_transport.c cfi_stubs.c $(STATIC_LIB) $(HEADER)
 	@echo "Building test: $@"
 	@mkdir -p $(TARGET_DIR)
-	$(CC) $(CFLAGS) $(INCLUDES) -o $(TARGET_DIR)/$@ $< $(STATIC_LIB) $(LDFLAGS)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(TARGET_DIR)/$@ test_custom_c_transport.c cfi_stubs.c $(STATIC_LIB) $(LDFLAGS)
 
 # Run tests
 test: $(TESTS)

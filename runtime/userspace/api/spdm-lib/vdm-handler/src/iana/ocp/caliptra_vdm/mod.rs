@@ -454,7 +454,7 @@ mod tests {
             out: &mut DeviceCapabilities,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             out.caliptra_rt = [0x11; 8];
-            out.mcu_rt = [0x22; 8];
+            out.mcu_rt = [0x22; 4];
             Ok(())
         }
 
