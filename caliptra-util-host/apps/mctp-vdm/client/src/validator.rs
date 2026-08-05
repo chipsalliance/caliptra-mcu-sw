@@ -130,8 +130,10 @@ impl Validator {
             Ok(resp) => {
                 if self.verbose {
                     println!(
-                        "  Capabilities: caps=0x{:08X} lifecycle={}",
-                        resp.capabilities, resp.device_lifecycle,
+                        "  Capabilities: mcu_rt=0x{:08X} external_commands=0x{:08X} authorized_subcommands=0x{:08X}",
+                        resp.mcu_runtime_capabilities(),
+                        resp.external_command_capabilities(),
+                        resp.authorized_subcommand_capabilities(),
                     );
                 }
                 ValidationResult {

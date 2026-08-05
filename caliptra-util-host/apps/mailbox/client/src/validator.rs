@@ -193,10 +193,10 @@ impl Validator {
                 if let Some(ref config) = self.config {
                     if let Some(ref capabilities_config) = config.device_capabilities {
                         // Validate the response matches expected values
-                        if response.capabilities != capabilities_config.capabilities {
+                        if response.caps != capabilities_config.capabilities {
                             let error_msg = format!(
-                                "Capabilities mismatch: expected 0x{:08X}, got 0x{:08X}",
-                                capabilities_config.capabilities, response.capabilities
+                                "Device capabilities mismatch: expected {:02X?}, got {:02X?}",
+                                capabilities_config.capabilities, response.caps
                             );
                             eprintln!("✗ GetDeviceCapabilities validation FAILED: {}", error_msg);
                             return ValidationResult {
@@ -207,7 +207,10 @@ impl Validator {
                         }
 
                         if self.verbose {
-                            println!("  Capabilities: 0x{:08X} ✓", response.capabilities);
+                            println!(
+                                "  MCU Runtime capabilities: 0x{:08X} ✓",
+                                response.mcu_runtime_capabilities()
+                            );
                         }
                     }
                 }

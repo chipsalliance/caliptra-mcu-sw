@@ -7,7 +7,7 @@
 
 use anyhow::{Context, Result};
 use caliptra_mcu_core_mailbox_server::{MailboxServer, ServerConfig};
-use caliptra_mcu_core_util_host_mailbox_test_config::TestConfig;
+use caliptra_mcu_core_util_host_mailbox_test_config::{TestConfig, DEFAULT_DEVICE_CAPABILITIES};
 use clap::Parser;
 use std::net::SocketAddr;
 
@@ -71,46 +71,32 @@ fn main() -> Result<()> {
                     println!("✓ MATCHED GetDeviceCapabilities command (MCAP)!");
 
                     // Create proper external mailbox response format for GetDeviceCapabilities
-                    // Following the MockMailbox format: checksum + fips_status + 32-byte caps array
+                    // Following the MockMailbox format: checksum + fips_status + 36-byte caps array
                     // Response structure:
                     // - chksum: u32 (4 bytes)
                     // - fips_status: u32 (4 bytes)
-                    // - caps_array: [u8; 32] (32 bytes containing structured capability data)
-                    // Total: 40 bytes
+                    // - caps_array: [u8; 36] (36 bytes containing structured capability data)
+                    // Total: 44 bytes
 
-                    let mut response = vec![0u8; 40];
+                    let mut response = vec![0u8; 44];
 
                     // Use config values if available, otherwise fallback defaults
-                    let (fips_status, capabilities, max_cert_size, max_csr_size, device_lifecycle) =
-                        if let Some(ref config) = test_config {
-                            if let Some(ref caps_config) = config.device_capabilities {
-                                (
-                                    caps_config.fips_status,
-                                    caps_config.capabilities,
-                                    caps_config.max_cert_size,
-                                    caps_config.max_csr_size,
-                                    caps_config.device_lifecycle,
-                                )
-                            } else {
-                                (0x00000001u32, 0x000001F3u32, 4096u32, 2048u32, 1u32)
-                            }
+                    let (fips_status, capabilities) = if let Some(ref config) = test_config {
+                        if let Some(ref caps_config) = config.device_capabilities {
+                            (caps_config.fips_status, caps_config.capabilities)
                         } else {
-                            (0x00000001u32, 0x000001F3u32, 4096u32, 2048u32, 1u32)
-                        };
-
-                    // Build 32-byte caps array matching MockMailbox format
-                    let mut caps = [0u8; 32];
-                    caps[0..4].copy_from_slice(&capabilities.to_le_bytes());
-                    caps[4..8].copy_from_slice(&max_cert_size.to_le_bytes());
-                    caps[8..12].copy_from_slice(&max_csr_size.to_le_bytes());
-                    caps[12..16].copy_from_slice(&device_lifecycle.to_le_bytes());
+                            (0x00000001u32, DEFAULT_DEVICE_CAPABILITIES)
+                        }
+                    } else {
+                        (0x00000001u32, DEFAULT_DEVICE_CAPABILITIES)
+                    };
 
                     // Fill response data (excluding checksum)
                     response[4..8].copy_from_slice(&fips_status.to_le_bytes());
-                    response[8..40].copy_from_slice(&caps);
+                    response[8..44].copy_from_slice(&capabilities);
 
                     // Calculate checksum on payload only
-                    let payload = &response[4..40];
+                    let payload = &response[4..44];
                     let mut sum = 0u32;
                     for byte in payload.iter() {
                         sum = sum.wrapping_add(*byte as u32);

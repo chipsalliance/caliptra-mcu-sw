@@ -29,6 +29,8 @@ mod alloc;
 #[cfg(feature = "mailbox-io")]
 mod auth_stash;
 #[cfg(feature = "mailbox-io")]
+mod capabilities;
+#[cfg(feature = "mailbox-io")]
 mod cert;
 #[cfg(feature = "mailbox-io")]
 mod debug_unlock;
@@ -62,6 +64,8 @@ pub mod signed_eat;
 mod slice;
 mod types;
 #[cfg(feature = "mailbox-io")]
+mod version;
+#[cfg(feature = "mailbox-io")]
 mod wire;
 
 #[cfg(feature = "mailbox-io")]
@@ -77,6 +81,8 @@ pub use auth_stash::{
     authorize_and_stash, AuthorizeAndStashFlags, AuthorizeAndStashParams, ImageHashSource,
     AUTHORIZE_AND_STASH_CONTEXT_SIZE, AUTHORIZE_AND_STASH_MEASUREMENT_SIZE,
 };
+#[cfg(feature = "mailbox-io")]
+pub use capabilities::{core_capabilities, CORE_CAPABILITIES_SIZE};
 #[cfg(feature = "mailbox-io")]
 pub use cert::{
     get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
@@ -120,6 +126,8 @@ pub use sha::{
     sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
 };
 pub use types::{CmKeyUsage, Cmk, CMK_SIZE};
+#[cfg(feature = "mailbox-io")]
+pub use version::{core_firmware_version, CoreFirmwareVersion};
 
 #[cfg(feature = "mailbox-io")]
 pub use mcu_error::{McuErrorCode, McuResult};
