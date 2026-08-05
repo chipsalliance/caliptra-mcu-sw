@@ -56,6 +56,7 @@ macro_rules! mctp_mux_component_static {
 pub struct MCTPMuxComponent<A: Alarm<'static> + 'static> {
     i3c_target: &'static dyn caliptra_mcu_i3c_driver::hil::I3CTarget<'static>,
     mux_alarm: &'static MuxAlarm<'static, A>,
+    uuid: [u8; 16],
 }
 
 impl<A: Alarm<'static>> MCTPMuxComponent<A> {
@@ -66,7 +67,13 @@ impl<A: Alarm<'static>> MCTPMuxComponent<A> {
         Self {
             i3c_target,
             mux_alarm,
+            uuid: [0; 16],
         }
+    }
+
+    pub fn with_uuid(mut self, uuid: [u8; 16]) -> Self {
+        self.uuid = uuid;
+        self
     }
 }
 
@@ -100,6 +107,7 @@ impl<A: Alarm<'static>> Component for MCTPMuxComponent<A> {
         let mux_mctp_driver = static_buffer.4.write(MuxMCTPDriver::new(
             mctp_device,
             local_eid,
+            self.uuid,
             mtu,
             tx_pkt_buffer,
             rx_pkt_buffer,
