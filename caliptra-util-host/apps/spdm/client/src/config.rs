@@ -21,6 +21,8 @@ pub struct TestConfig {
     pub debug_unlock: DebugUnlockConfig,
     #[serde(default)]
     pub fe_prog: FeProgConfig,
+    #[serde(default)]
+    pub dot: DotConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -109,4 +111,16 @@ pub struct FeProgConfig {
     pub ecc_auth_key: Option<String>,
     #[serde(default)]
     pub mldsa_auth_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct DotConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub cak: Option<String>,
+    #[serde(default)]
+    pub ecc_lak_private_key: Option<String>,
+    #[serde(default)]
+    pub mldsa_lak_seed: Option<String>,
 }

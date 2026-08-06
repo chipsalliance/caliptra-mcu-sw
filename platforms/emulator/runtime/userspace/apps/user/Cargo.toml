@@ -91,6 +91,7 @@ dot-mci-mailbox = [
 dot-spdm-vdm = [
   "spdm",
   "caliptra-mcu-spdm-vdm-handler/device-ownership-transfer",
+  "caliptra-mcu-spdm-stack/generic-large-request",
 ]
 # Test-only mock command HANDLER: device-identity queries (firmware version,
 # device ID, UID, capabilities) return hardcoded `config::TEST_*` values for
@@ -183,7 +184,7 @@ test-pldm-discovery = []
 test-pldm-fw-update = []
 test-pldm-fw-update-e2e = []
 test-pldm-streaming-boot = ["streaming-boot"]
-test-caliptra-util-host-spdm-vdm-validator = ["spdm"]
+test-caliptra-util-host-spdm-vdm-validator = ["spdm", "dot-spdm-vdm"]
 test-mctp-spdm-attestation = ["spdm", "flash-boot"]
 test-mctp-spdm-attestation-tcb = ["spdm", "flash-boot"]
 test-mctp-spdm-attestation-mixed = ["spdm", "flash-boot"]

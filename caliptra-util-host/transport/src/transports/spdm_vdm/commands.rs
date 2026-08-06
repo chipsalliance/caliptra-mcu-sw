@@ -15,6 +15,7 @@
 //! - RequestDebugUnlock (0x06)
 //! - AuthorizeDebugUnlockToken (0x07)
 //! - ExportAttestedCsr (0x08)
+//! - DeviceOwnershipTransfer (0x11)
 //! - AuthorizedCommand (0x12)
 
 use super::protocol::{
@@ -80,6 +81,115 @@ fn send_vdm_request(
     }
 
     Ok(resp_len)
+}
+
+fn send_dot_transition(
+    subcommand: u32,
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    use alloc::vec::Vec;
+
+    let mut vdm_payload = Vec::with_capacity(4 + payload.len());
+    vdm_payload.extend_from_slice(&subcommand.to_le_bytes());
+    vdm_payload.extend_from_slice(payload);
+
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(
+        CaliptraVdmCommand::DeviceOwnershipTransfer,
+        &vdm_payload,
+        driver,
+        &mut resp_buf,
+    )?;
+    if resp_len != VDM_RESPONSE_HEADER_SIZE {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let internal_resp = DotTransitionResponse {
+        common: CommonResponse { fips_status: 0 },
+        reset_required: 1,
+    };
+    let resp_bytes = internal_resp.as_bytes();
+    let copy_len = resp_bytes.len().min(response_buffer.len());
+    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
+    Ok(copy_len)
+}
+
+// ---------------------------------------------------------------------------
+// DeviceOwnershipTransfer (CaliptraVdmCommand::DeviceOwnershipTransfer)
+// ---------------------------------------------------------------------------
+
+pub fn handle_dot_lock(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        DotLockRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    send_dot_transition(
+        MC_DOT_LOCK_CANONICAL_CMD_ID,
+        request.as_bytes(),
+        driver,
+        response_buffer,
+    )
+}
+
+pub fn handle_dot_disable(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        DotDisableRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    send_dot_transition(
+        MC_DOT_DISABLE_CANONICAL_CMD_ID,
+        request.as_bytes(),
+        driver,
+        response_buffer,
+    )
+}
+
+pub fn handle_dot_unlock_challenge(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    DotUnlockChallengeRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(
+        CaliptraVdmCommand::DeviceOwnershipTransfer,
+        &MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID.to_le_bytes(),
+        driver,
+        &mut resp_buf,
+    )?;
+    let challenge = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
+    if challenge.len() != AUTH_CMD_NONCE_LEN {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let mut internal_resp = DotUnlockChallengeResponse::default();
+    internal_resp.challenge.copy_from_slice(challenge);
+    let resp_bytes = internal_resp.as_bytes();
+    let copy_len = resp_bytes.len().min(response_buffer.len());
+    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
+    Ok(copy_len)
+}
+
+pub fn handle_dot_unlock(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        DotUnlockRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    send_dot_transition(
+        MC_DOT_UNLOCK_CANONICAL_CMD_ID,
+        request.as_bytes(),
+        driver,
+        response_buffer,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +433,7 @@ mod tests {
     extern crate std;
 
     use super::*;
+    use crate::transports::spdm_vdm::dispatch::VdmCommandHandlerFn;
     use std::vec;
     use std::vec::Vec;
     use zerocopy::IntoBytes;
@@ -443,5 +554,98 @@ mod tests {
                 req.unlock_level,
             ]
         );
+    }
+
+    #[test]
+    fn dot_transition_commands_preserve_subcommand_and_payload() {
+        let cases: [(u32, Vec<u8>, VdmCommandHandlerFn); 3] = [
+            (
+                MC_DOT_LOCK_CANONICAL_CMD_ID,
+                DotLockRequest::default().as_bytes().to_vec(),
+                handle_dot_lock,
+            ),
+            (
+                MC_DOT_DISABLE_CANONICAL_CMD_ID,
+                DotDisableRequest::default().as_bytes().to_vec(),
+                handle_dot_disable,
+            ),
+            (
+                MC_DOT_UNLOCK_CANONICAL_CMD_ID,
+                DotUnlockRequest::default().as_bytes().to_vec(),
+                handle_dot_unlock,
+            ),
+        ];
+
+        for (subcommand, payload, handler) in cases {
+            let mut driver = FakeDriver {
+                response: success_response(CaliptraVdmCommand::DeviceOwnershipTransfer, &[]),
+                last_request: Vec::new(),
+            };
+            let mut response_buffer = [0u8; core::mem::size_of::<DotTransitionResponse>()];
+
+            handler(&payload, &mut driver, &mut response_buffer)
+                .expect("DOT transition should be accepted");
+
+            assert_eq!(
+                &driver.last_request[..2],
+                &[
+                    CALIPTRA_VDM_COMMAND_VERSION,
+                    CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+                ]
+            );
+            assert_eq!(&driver.last_request[2..6], &subcommand.to_le_bytes());
+            assert_eq!(&driver.last_request[6..], payload);
+            let response = DotTransitionResponse::read_from_bytes(&response_buffer).unwrap();
+            assert_eq!(response.reset_required, 1);
+        }
+    }
+
+    #[test]
+    fn dot_requests_fit_session_and_spdm_large_message_limits() {
+        const SESSION_LIMIT: usize = 8 * 1024;
+        const LIBSPDM_LIMIT: usize = 0x2000;
+        const VDM_ENVELOPE: usize = 2 + 4;
+
+        let largest_request = core::mem::size_of::<DotLockRequest>() + VDM_ENVELOPE;
+        assert!(largest_request <= SESSION_LIMIT);
+        assert!(largest_request <= LIBSPDM_LIMIT);
+    }
+
+    #[test]
+    fn dot_unlock_challenge_decodes_exact_length_response() {
+        let expected_challenge = [0xA5; AUTH_CMD_NONCE_LEN];
+        let mut driver = FakeDriver {
+            response: success_response(
+                CaliptraVdmCommand::DeviceOwnershipTransfer,
+                &expected_challenge,
+            ),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer = [0u8; core::mem::size_of::<DotUnlockChallengeResponse>()];
+
+        handle_dot_unlock_challenge(&[], &mut driver, &mut response_buffer)
+            .expect("DOT unlock challenge should be accepted");
+
+        assert_eq!(
+            driver.last_request,
+            [
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+                MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID.to_le_bytes()[0],
+                MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID.to_le_bytes()[1],
+                MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID.to_le_bytes()[2],
+                MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID.to_le_bytes()[3],
+            ]
+        );
+        assert_eq!(&response_buffer[4..], &expected_challenge);
+
+        driver.response = success_response(
+            CaliptraVdmCommand::DeviceOwnershipTransfer,
+            &[0; AUTH_CMD_NONCE_LEN - 1],
+        );
+        assert!(matches!(
+            handle_dot_unlock_challenge(&[], &mut driver, &mut response_buffer),
+            Err(TransportError::InvalidMessage)
+        ));
     }
 }

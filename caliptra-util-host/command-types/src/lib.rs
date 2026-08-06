@@ -23,6 +23,7 @@ pub mod crypto_import;
 pub mod debug_unlock;
 pub mod device_info;
 pub mod device_log;
+pub mod device_ownership_transfer;
 pub mod error;
 pub mod fuse;
 
@@ -37,6 +38,7 @@ pub use crypto_import::*;
 pub use debug_unlock::*;
 pub use device_info::*;
 pub use device_log::*;
+pub use device_ownership_transfer::*;
 pub use error::*;
 pub use fuse::*;
 
@@ -121,6 +123,12 @@ pub enum CaliptraCommandId {
     // Authorized Commands (0x8010-0x801F)
     GetAuthCmdChallenge = 0x8010,
     FeProg = 0x8011,
+
+    // Device Ownership Transfer Commands (0x8020-0x8023)
+    DotLock = 0x8020,
+    DotDisable = 0x8021,
+    DotUnlockChallenge = 0x8022,
+    DotUnlock = 0x8023,
 }
 
 /// Common response header for all commands
