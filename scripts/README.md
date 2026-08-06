@@ -92,8 +92,11 @@ replaced.
 
 ```bash
 ./build_fpga_artifacts.sh --with-bitstream --rebuild-test
-./upload_fpga_release.sh fpga-artifacts-2026-08-05
+./upload_fpga_release.sh
 ```
+
+With no tag argument, the uploader and manual workflow both use
+`fpga-artifacts-latest`. Pass a tag argument to publish a versioned release.
 
 The release contains:
 

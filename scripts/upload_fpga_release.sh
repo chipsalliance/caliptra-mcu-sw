@@ -6,16 +6,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARTIFACTS_DIR="${FPGA_ARTIFACTS_DIR:-${SCRIPT_DIR}/fpga-artifacts}"
 REPOSITORY="${FPGA_RELEASE_REPOSITORY:-mlvisaya/caliptra-mcu-sw}"
+DEFAULT_RELEASE_TAG="fpga-artifacts-latest"
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") <release-tag>
+Usage: $(basename "$0") [release-tag]
 
 Upload FPGA test artifacts from:
   ${ARTIFACTS_DIR}
 
 Release repository:
   ${REPOSITORY}
+
+Default release tag:
+    ${DEFAULT_RELEASE_TAG}
 
 Environment overrides:
   FPGA_ARTIFACTS_DIR       Directory containing the built artifacts
@@ -28,12 +32,12 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
     exit 0
 fi
 
-if [[ $# -ne 1 ]]; then
+if [[ $# -gt 1 ]]; then
     usage >&2
     exit 1
 fi
 
-RELEASE_TAG="$1"
+RELEASE_TAG="${1:-${DEFAULT_RELEASE_TAG}}"
 ASSET_NAMES=(
     caliptra-bitstream.pdi
     caliptra-test-binaries.sqsh
