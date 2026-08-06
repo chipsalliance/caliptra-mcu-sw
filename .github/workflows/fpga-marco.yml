@@ -7,7 +7,8 @@ on:
     inputs:
       release_tag:
         description: Release tag containing the FPGA test artifacts
-        required: true
+        required: false
+        default: fpga-artifacts-latest
       release_repository:
         description: Repository containing the release
         required: true
