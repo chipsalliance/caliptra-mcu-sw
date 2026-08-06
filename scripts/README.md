@@ -84,6 +84,36 @@ Mirrors the `build_test_binaries` CI job from `.github/workflows/fpga.yml` for l
 | `--configuration <mode>` | FPGA configuration mode (default: `subsystem`) |
 | `--with-bitstream` | Download FPGA bitstream (skipped by default) |
 
+### `upload_fpga_release.sh` — Publish Test Artifacts
+
+Uploads a complete FPGA artifact set from `scripts/fpga-artifacts/` to a tagged
+release in `mlvisaya/caliptra-mcu-sw`. Existing assets with the same names are
+replaced.
+
+```bash
+./build_fpga_artifacts.sh --with-bitstream --rebuild-test
+./upload_fpga_release.sh fpga-artifacts-2026-08-05
+```
+
+The release contains:
+
+- `caliptra-bitstream.pdi`
+- `caliptra-test-binaries.sqsh`
+- `caliptra-binaries.tar.gz`
+- `xtask`
+
+To use another release repository or artifact directory:
+
+```bash
+FPGA_RELEASE_REPOSITORY=owner/repo \
+FPGA_ARTIFACTS_DIR=/path/to/artifacts \
+./upload_fpga_release.sh release-tag
+```
+
+The manual `FPGA Tests - Marco Artifacts` workflow accepts the release tag and
+repository, converts these release assets into Actions artifacts, and runs the
+standard FPGA `test_artifacts` job.
+
 ### `run_fpga_tests.sh` — Run Tests on the FPGA Board
 
 SSHes into the FPGA board and runs the test suite via `xtask fpga test`. Fetches `junit.xml` results back to `scripts/fpga-test-results/`.

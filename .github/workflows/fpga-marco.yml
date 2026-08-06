@@ -1,0 +1,147 @@
+# Licensed under the Apache-2.0 license
+
+name: FPGA Tests - Marco Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag containing the FPGA test artifacts
+        required: true
+      release_repository:
+        description: Repository containing the release
+        required: true
+        default: mlvisaya/caliptra-mcu-sw
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  prepare_artifacts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_REPOSITORY: ${{ inputs.release_repository }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - name: Download release assets
+        run: |
+          mkdir -p /tmp/fpga-release
+          for asset in \
+            caliptra-bitstream.pdi \
+            caliptra-test-binaries.sqsh \
+            caliptra-binaries.tar.gz \
+            xtask
+          do
+            curl --fail --location \
+              --retry 3 \
+              --retry-all-errors \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --output "/tmp/fpga-release/${asset}" \
+              "https://github.com/${RELEASE_REPOSITORY}/releases/download/${RELEASE_TAG}/${asset}"
+          done
+
+      - name: Validate release assets
+        run: |
+          test -s /tmp/fpga-release/caliptra-bitstream.pdi
+          test -s /tmp/fpga-release/caliptra-test-binaries.sqsh
+          test -s /tmp/fpga-release/caliptra-binaries.tar.gz
+          test -s /tmp/fpga-release/xtask
+          tar -tzf /tmp/fpga-release/caliptra-binaries.tar.gz | grep -Fx all-fw.zip
+          chmod +x /tmp/fpga-release/xtask
+
+      - name: Upload bitstream artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: caliptra-bitstream
+          path: /tmp/fpga-release/caliptra-bitstream.pdi
+          retention-days: 1
+
+      - name: Upload test binaries artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: caliptra-test-binaries
+          path: /tmp/fpga-release/caliptra-test-binaries.sqsh
+          retention-days: 1
+
+      - name: Upload test firmware artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: caliptra-test-firmware
+          path: |
+            /tmp/fpga-release/caliptra-binaries.tar.gz
+            /tmp/fpga-release/xtask
+          retention-days: 1
+
+  test_artifacts:
+    runs-on: vck190-subsystem
+    needs: prepare_artifacts
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+
+      - name: Download Test Binaries Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: caliptra-test-binaries
+          path: /tmp/caliptra-test-binaries.sqsh
+
+      - name: Download Test Firmware Artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: caliptra-test-firmware
+          path: /tmp/caliptra-binaries
+
+      - name: Download Bitstream
+        uses: actions/download-artifact@v8
+        with:
+          name: caliptra-bitstream
+          path: /tmp/caliptra-bitstream
+
+      - name: Load bitstream
+        run: |
+          chmod +x /tmp/caliptra-binaries/xtask
+          /tmp/caliptra-binaries/xtask fpga bootstrap --bitstream /tmp/caliptra-bitstream/caliptra-bitstream.pdi
+
+      - name: Mount binaries
+        run: |
+          tar -xvf /tmp/caliptra-binaries/caliptra-binaries.tar.gz
+
+          sudo mkdir /tmp/caliptra-test-binaries
+          echo mount squashfs
+          sudo mount /tmp/caliptra-test-binaries.sqsh/caliptra-test-binaries.sqsh /tmp/caliptra-test-binaries -t squashfs -o loop
+
+      - name: Execute tests
+        run: |
+          export RUST_BACKTRACE=1
+          export TEST_BIN=/tmp/caliptra-test-binaries
+          export CPTRA_TEST_WORKSPACE=.
+          export CPTRA_FIRMWARE_BUNDLE="${PWD}/all-fw.zip"
+
+          cargo-nextest nextest list \
+              --cargo-metadata="${TEST_BIN}/target/nextest/cargo-metadata.json" \
+              --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json" \
+              --target-dir-remap="${TEST_BIN}/target" \
+              --workspace-remap=. \
+              --profile=nightly-ci \
+              --message-format json > /tmp/nextest-list.json
+
+          /tmp/caliptra-binaries/xtask fpga test
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v7
+        if: success() || failure()
+        with:
+          name: caliptra-test-results
+          path: |
+            /tmp/junit.xml
+            /tmp/nextest-list.json

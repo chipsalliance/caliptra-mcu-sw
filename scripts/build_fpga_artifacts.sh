@@ -194,7 +194,17 @@ build_firmware() {
 
     # Package the firmware bundle
     cp all-fw.zip "${ARTIFACTS_DIR}/all-fw.zip"
+    tar -czf "${ARTIFACTS_DIR}/caliptra-binaries.tar.gz" all-fw.zip
     echo "[+] Firmware built."
+}
+
+build_xtask() {
+    echo "[*] Building xtask for ARM..."
+    cd "${REPO_ROOT}"
+
+    cargo build --package xtask --features=fpga_realtime --target aarch64-unknown-linux-gnu
+    cp target/aarch64-unknown-linux-gnu/debug/xtask "${ARTIFACTS_DIR}/xtask"
+    echo "[+] ARM xtask built."
 }
 
 build_test_binaries() {
@@ -208,15 +218,6 @@ build_test_binaries() {
     cd "${REPO_ROOT}"
 
     cargo xtask-fpga fpga build-test --configuration "${CONFIGURATION}" --no-container
-
-    # Skip ARM xtask build if binary already exists
-    if [[ -f "${ARTIFACTS_DIR}/xtask" ]]; then
-        echo "[*] ARM xtask binary already exists, skipping. Delete ${ARTIFACTS_DIR}/xtask to rebuild."
-    else
-        echo "[*] Building xtask for ARM..."
-#        cargo build --package caliptra-mcu-xtask --features=fpga_realtime --target aarch64-unknown-linux-gnu
-#        cp target/aarch64-unknown-linux-gnu/debug/caliptra-mcu-xtask "${ARTIFACTS_DIR}/xtask"
-    fi
 
     # Extract the nextest archive into a staging dir and create a squashfs image
     local staging_dir
@@ -259,8 +260,8 @@ deploy_to_fpga() {
 
     # Copy xtask binary
     echo "[*] Copying xtask..."
-#    ${scp_cmd} "${ARTIFACTS_DIR}/xtask" "${remote}:${REMOTE_DIR}/"
-#    ${ssh_cmd} "${remote}" "chmod +x ${REMOTE_DIR}/xtask"
+    ${scp_cmd} "${ARTIFACTS_DIR}/xtask" "${remote}:${REMOTE_DIR}/"
+    ${ssh_cmd} "${remote}" "chmod +x ${REMOTE_DIR}/xtask"
 
     # Copy firmware bundle
     echo "[*] Copying firmware bundle..."
@@ -322,6 +323,7 @@ main() {
     download_bitstream
     build_firmware
     build_test_binaries
+    build_xtask
 
     echo ""
     echo "[+] All artifacts built in: ${ARTIFACTS_DIR}"
