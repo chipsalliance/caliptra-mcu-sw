@@ -116,4 +116,26 @@ pub trait SpdmPalIoTransport {
         kind: SpdmPalIoKind,
         msg: &mut [u8],
     ) -> McuResult<()>;
+
+    /// Current value of a free-running monotonic millisecond clock.
+    ///
+    /// Used by the SPDM stack's HEARTBEAT liveness watchdog to compute and
+    /// check per-session deadlines. The default returns 0; a PAL that wants
+    /// heartbeat-driven session teardown must override this with a real
+    /// monotonic source (e.g. the libtock alarm capsule). With the default,
+    /// `now_ms` never advances so no watchdog deadline is ever reached.
+    fn now_ms(&self) -> u64 {
+        0
+    }
+
+    /// Sleep until at least `ms` milliseconds have elapsed.
+    ///
+    /// Raced against [`Self::recv_request`] in the responder run loop so a
+    /// silent peer's session can be torn down on watchdog expiry. The default
+    /// never resolves, so a PAL that does not provide a real clock simply
+    /// waits on `recv_request` alone (the pre-heartbeat behavior).
+    async fn sleep_ms(&self, ms: u64) {
+        let _ = ms;
+        core::future::pending::<()>().await
+    }
 }
