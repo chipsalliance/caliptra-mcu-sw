@@ -240,10 +240,14 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
         let mut hash = [0u8; SHA384_HASH_SIZE];
         state.transcript.finalize_l1(pal, io, &mut hash).await?;
 
-        let signing_ctx = signing_context(state.version);
-        compute_tbs_hash(pal, io, signing_ctx, &mut hash)
-            .await
-            .map_err(|_| SPDM_UNSPECIFIED)?;
+        // The signing-context prefix is V1.2+; a V1.0/1.1 Responder signs the
+        // raw L1 hash with no prefix (DSP0274 1.1.1 section 10.11).
+        if state.version >= SpdmVersion::V12 {
+            let signing_ctx = signing_context(state.version);
+            compute_tbs_hash(pal, io, signing_ctx, &mut hash)
+                .await
+                .map_err(|_| SPDM_UNSPECIFIED)?;
+        }
 
         let asym_algo = state.asym_algo();
         let signature = buf
