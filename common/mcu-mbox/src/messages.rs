@@ -34,6 +34,7 @@ pub use mcu_caliptra_api::mailbox::{
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout};
 
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
+pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 12 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 64;
 pub const DOT_BLOB_SIZE: usize = 168;
@@ -168,6 +169,8 @@ impl CommandId {
 
     // Certificate commands
     pub const MC_EXPORT_ATTESTED_CSR: Self = Self(0x4D45_4143); // "MEAC"
+    pub const MC_DPE_SIGNER_CONTEXT_CERT: Self = Self(0x4D44_5343); // "MDSC"
+    pub const MC_GET_DPE_CERTIFICATE_CHAIN: Self = Self(0x4D44_4343); // "MDCC"
 
     // Attestation commands
     pub const MC_GET_ATTESTATION: Self = Self(0x4D47_4154); // "MGAT"
@@ -260,6 +263,8 @@ pub enum McuMailboxReq {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashReq),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
+    DpeSignerContextCert(DpeSignerContextCertReq),
+    GetDpeCertChain(GetDpeCertChainReq),
     GetAttestation(GetAttestationReq),
     // Device Ownership Transfer commands
     DotEnable(DotEnableReq),
@@ -332,6 +337,8 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionOwnerPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_bytes()),
+            McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotEnable(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_bytes()),
@@ -403,6 +410,8 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionOwnerPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotEnable(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_mut_bytes()),
@@ -474,6 +483,8 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionOwnerPkHash(_) => CommandId::MC_PROVISION_OWNER_PK_HASH,
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
+            McuMailboxReq::DpeSignerContextCert(_) => CommandId::MC_DPE_SIGNER_CONTEXT_CERT,
+            McuMailboxReq::GetDpeCertChain(_) => CommandId::MC_GET_DPE_CERTIFICATE_CHAIN,
             McuMailboxReq::GetAttestation(_) => CommandId::MC_GET_ATTESTATION,
             McuMailboxReq::DotEnable(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotLock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
@@ -568,6 +579,7 @@ pub enum McuMailboxResp {
     ProvisionOwnerPkHash(ProvisionOwnerPkHashResp),
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
+    GetDpeCertChain(GetDpeCertChainResp),
     // Device Ownership Transfer commands
     DotEnable(DotEnableResp),
     DotLock(DotLockResp),
@@ -697,6 +709,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DotEnable(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_bytes()),
@@ -765,6 +778,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DotEnable(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_mut_bytes()),
@@ -1825,6 +1839,85 @@ impl Default for ExportAttestedCsrResp {
     }
 }
 impl McuResponseVarSize for ExportAttestedCsrResp {}
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoBytes, FromBytes, KnownLayout, Immutable)]
+pub struct EndorsementAlgorithm(pub u32);
+
+impl EndorsementAlgorithm {
+    pub const ECDSA_384: Self = Self(0x1);
+    pub const MLDSA_87: Self = Self(0x2);
+}
+
+impl Default for EndorsementAlgorithm {
+    fn default() -> Self {
+        Self::ECDSA_384
+    }
+}
+
+/// MC_DPE_SIGNER_CONTEXT_CERT Command (0x4D44_5343 - "MDSC")
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
+pub struct DpeSignerContextCertReq {
+    pub hdr: MailboxReqHeader,
+    pub algorithm: EndorsementAlgorithm,
+}
+
+impl Request for DpeSignerContextCertReq {
+    const ID: CommandId = CommandId::MC_DPE_SIGNER_CONTEXT_CERT;
+    type Resp = DpeSignerContextCertResp;
+}
+
+/// Deliberately absent from [`McuMailboxResp`] so other commands do not reserve a leaf-sized buffer.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct DpeSignerContextCertResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub cert_data: [u8; MAX_ENDORSEMENT_CERT_SIZE],
+}
+
+impl Default for DpeSignerContextCertResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            cert_data: [0u8; MAX_ENDORSEMENT_CERT_SIZE],
+        }
+    }
+}
+
+impl McuResponseVarSize for DpeSignerContextCertResp {}
+
+/// MC_GET_DPE_CERTIFICATE_CHAIN request: retrieve a DPE certificate-chain chunk.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
+pub struct GetDpeCertChainReq {
+    pub hdr: MailboxReqHeader,
+    pub offset: u32,
+    pub size: u32,
+}
+
+impl Request for GetDpeCertChainReq {
+    const ID: CommandId = CommandId::MC_GET_DPE_CERTIFICATE_CHAIN;
+    type Resp = GetDpeCertChainResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetDpeCertChainResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub cert_data: [u8; MAX_RESP_DATA_SIZE],
+}
+
+impl Default for GetDpeCertChainResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            cert_data: [0u8; MAX_RESP_DATA_SIZE],
+        }
+    }
+}
+
+impl McuResponseVarSize for GetDpeCertChainResp {}
 
 // ============================================================================
 // MC_GET_ATTESTATION Command (0x4D47_4154 - "MGAT")
