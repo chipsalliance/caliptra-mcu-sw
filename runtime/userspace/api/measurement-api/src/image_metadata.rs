@@ -69,6 +69,23 @@ impl ImageMetadata {
         }
     }
 
+    /// Build initial-load metadata when the trusted caller already has the
+    /// authenticated image digest and does not need Caliptra to hash memory.
+    pub const fn initial_load_from_digest(
+        image_size: u32,
+        measurement: [u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+    ) -> Self {
+        Self {
+            operation: MeasurementOperation::InitialLoad,
+            source: ImageHashSource::InRequest,
+            image_size,
+            svn: 0,
+            version: 0,
+            measurement,
+            flags: ImageMetadataFlags::EMPTY,
+        }
+    }
+
     /// Build component-update metadata from caller-supplied authorization data.
     pub const fn component_update(
         source: ImageHashSource,

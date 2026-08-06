@@ -96,6 +96,7 @@ use mcu_caliptra_api::image_loader::{
 #[allow(unused)]
 use zerocopy::{FromBytes, IntoBytes};
 
+#[allow(dead_code)]
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
 const IMAGE_LOAD_MEASUREMENT_SCRATCH_SIZE: usize = 4096;
@@ -109,6 +110,7 @@ const IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS: usize =
 struct ImageLoadMeasurementScratchSlot([u8; BITMAP_SLOT_SIZE]);
 
 #[embassy_executor::task]
+#[allow(unused_variables)]
 pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
     let mbox_sram = caliptra_mcu_libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
         caliptra_mcu_libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
@@ -147,16 +149,31 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
         .await
         {
             Ok(_) => {}
-            Err(_) => System::exit(1),
+            Err(_) => {
+                let mut console_writer = Console::<DefaultSyscalls>::writer();
+                crate::log_error!(console_writer, "IMAGE_LOADER_APP: image_loading failed");
+                System::exit(1);
+            }
         }
         mbox_sram.release_lock().unwrap();
-        #[cfg(not(feature = "firmware-update"))]
+        emit_attestation_evidence_ready();
+        #[cfg(all(
+            not(feature = "firmware-update"),
+            not(feature = "test-mctp-spdm-attestation"),
+            not(feature = "test-mctp-spdm-attestation-tcb"),
+            not(feature = "test-mctp-spdm-attestation-mixed")
+        ))]
         System::exit(0);
     }
     // After image loading, proceed to firmware update if enabled
-    #[cfg(any(
-        feature = "test-firmware-activate",
-        feature = "test-firmware-update-streaming"
+    #[cfg(all(
+        any(
+            feature = "test-firmware-activate",
+            feature = "test-firmware-update-streaming"
+        ),
+        not(feature = "test-mctp-spdm-attestation"),
+        not(feature = "test-mctp-spdm-attestation-tcb"),
+        not(feature = "test-mctp-spdm-attestation-mixed")
     ))]
     {
         if mbox_sram.acquire_lock().is_err() {
@@ -172,7 +189,10 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
     }
     #[cfg(all(
         feature = "firmware-update",
-        not(feature = "test-firmware-update-streaming")
+        not(feature = "test-firmware-update-streaming"),
+        not(feature = "test-mctp-spdm-attestation"),
+        not(feature = "test-mctp-spdm-attestation-tcb"),
+        not(feature = "test-mctp-spdm-attestation-mixed")
     ))]
     {
         if mbox_sram.acquire_lock().is_err() {
@@ -283,6 +303,14 @@ async fn image_loading<D: DMAMapping>(
             .set_active_partition(load_partition.0)
             .await
             .map_err(|_| ErrorCode::Fail)?;
+        #[cfg(any(
+            feature = "test-mctp-spdm-attestation",
+            feature = "test-mctp-spdm-attestation-tcb",
+            feature = "test-mctp-spdm-attestation-mixed"
+        ))]
+        {
+            return Ok(());
+        }
         activate_soc_images(soc_image_load_list).await?
     }
 
@@ -348,10 +376,48 @@ async fn load_soc_images(
         };
         caliptra_mcu_measurement_api::authorize_and_stash(&allocator, *fw_id, metadata)
             .await
+            .inspect_err(|_| {
+                let mut console_writer = Console::<DefaultSyscalls>::writer();
+                crate::log_error!(
+                    console_writer,
+                    "IMAGE_LOADER_APP: authorize_and_stash failed for 0x{}",
+                    crate::Hex32(*fw_id)
+                );
+            })
+            .map_err(|_| ErrorCode::Fail)?;
+    }
+    if !component_update {
+        caliptra_mcu_measurement_api::mark_initial_soc_load_complete()
+            .await
+            .inspect_err(|_| {
+                let mut console_writer = Console::<DefaultSyscalls>::writer();
+                crate::log_error!(
+                    console_writer,
+                    "IMAGE_LOADER_APP: mark initial SoC load complete failed"
+                );
+            })
             .map_err(|_| ErrorCode::Fail)?;
     }
     Ok(())
 }
+
+#[cfg(any(
+    feature = "test-mctp-spdm-attestation",
+    feature = "test-mctp-spdm-attestation-tcb",
+    feature = "test-mctp-spdm-attestation-mixed"
+))]
+fn emit_attestation_evidence_ready() {
+    let mut console_writer = Console::<DefaultSyscalls>::writer();
+    let _ = writeln!(console_writer, "ATTESTATION_EVIDENCE_READY");
+}
+
+#[cfg(not(any(
+    feature = "test-mctp-spdm-attestation",
+    feature = "test-mctp-spdm-attestation-tcb",
+    feature = "test-mctp-spdm-attestation-mixed"
+)))]
+#[allow(dead_code)]
+fn emit_attestation_evidence_ready() {}
 
 #[allow(dead_code)]
 async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {

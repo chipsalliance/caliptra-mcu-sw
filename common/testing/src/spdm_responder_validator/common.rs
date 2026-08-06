@@ -235,7 +235,6 @@ impl SpdmValidatorRunner {
                         return false;
                     }
                 };
-
                 self.state = SpdmServerState::SendResponse;
                 true
             }
@@ -281,13 +280,17 @@ pub fn execute_spdm_tee_io_validator(transport: &'static str) {
 }
 
 pub fn execute_spdm_attestation(transport: &'static str) {
+    execute_spdm_attestation_with_port(transport, None);
+}
+
+pub fn execute_spdm_attestation_with_port(transport: &'static str, port: Option<u16>) {
     crate::spawn_with_emulator_state(move || {
         println!("Starting spdm_requester_emu process. Waiting for SPDM listener to start...");
         while !SERVER_LISTENING.load(Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
 
-        match start_spdm_attestation(transport) {
+        match start_spdm_attestation_with_port(transport, port) {
             Ok(mut child) => {
                 while crate::is_emulator_running() {
                     match child.try_wait() {
@@ -370,7 +373,10 @@ pub fn start_spdm_responder_validator(transport: &'static str) -> io::Result<Chi
     )
 }
 
-pub fn start_spdm_attestation(transport: &'static str) -> io::Result<Child> {
+fn start_spdm_attestation_with_port(
+    transport: &'static str,
+    port: Option<u16>,
+) -> io::Result<Child> {
     spawn_validator_binary(
         "spdm_requester_emu",
         "spdm_requester_emu_output.txt",
@@ -383,6 +389,9 @@ pub fn start_spdm_attestation(transport: &'static str) -> io::Result<Child> {
                 .arg(transport)
                 .arg("--pcap")
                 .arg("caliptra-evidence.pcap");
+            if let Some(port) = port {
+                cmd.arg("--port").arg(port.to_string());
+            }
         },
     )
 }

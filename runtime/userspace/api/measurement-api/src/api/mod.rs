@@ -29,13 +29,15 @@ use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
     dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci,
     sha_finish, sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
-    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, HashAlgo, DPE_LABEL_LEN,
-    DPE_TCI_MEASUREMENT_SIZE, SHA_CONTEXT_SIZE,
+    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, HashAlgo,
+    DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE, SHA_CONTEXT_SIZE,
 };
 
 use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
-use crate::{AttestationState, BootKind, ImageMetadata, MeasurementOperation};
+use crate::{
+    AttestationState, BootKind, EvidenceReadinessPolicy, ImageMetadata, MeasurementOperation,
+};
 
 /// Owns the attestation configuration and attestation boot/error state.
 ///
@@ -110,6 +112,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     pub async fn measurement_boot_init<A: ApiAlloc>(
         &mut self,
         boot: BootKind,
+        readiness_policy: EvidenceReadinessPolicy,
         alloc: &A,
     ) -> MeasurementApiResult {
         let result = match boot {
@@ -117,7 +120,12 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             BootKind::HitlessUpdate => self.hitless_update_init(alloc).await,
         };
         self.state = if result.is_ok() {
-            AttestationState::Active
+            match (boot, readiness_policy) {
+                (BootKind::ColdBoot, EvidenceReadinessPolicy::RequireInitialSocLoadComplete) => {
+                    AttestationState::InitialMeasurementsPending
+                }
+                _ => AttestationState::Active,
+            }
         } else {
             AttestationState::Error
         };
@@ -463,6 +471,30 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         encoder.finish()
     }
 
+    /// Mark initial SoC image measurement state complete.
+    pub fn mark_initial_soc_load_complete(&mut self) -> MeasurementApiResult {
+        match self.state {
+            AttestationState::InitialMeasurementsPending | AttestationState::Active => {}
+            AttestationState::Uninitialized | AttestationState::Error => {
+                return Err(MeasurementApiError::AttestationDisabled);
+            }
+        }
+
+        for fw_id in self.soc_image_load_fw_ids {
+            let entry = self
+                .manifest
+                .lookup(*fw_id)
+                .map_err(|_| MeasurementApiError::UnknownFwId)?;
+            if entry.is_tcb() {
+                validate_loaded_tcb_record::<S>(*fw_id)?;
+            } else {
+                validate_loaded_non_tcb_record::<S>(*fw_id)?;
+            }
+        }
+        self.state = AttestationState::Active;
+        Ok(())
+    }
+
     /// Current attestation availability state.
     #[cfg(test)]
     pub fn attestation_state(&self) -> AttestationState {
@@ -474,6 +506,15 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             Ok(())
         } else {
             Err(MeasurementApiError::AttestationDisabled)
+        }
+    }
+
+    fn initial_load_measurement_state_ready(&self) -> MeasurementApiResult {
+        match self.state {
+            AttestationState::InitialMeasurementsPending | AttestationState::Active => Ok(()),
+            AttestationState::Uninitialized | AttestationState::Error => {
+                Err(MeasurementApiError::AttestationDisabled)
+            }
         }
     }
 
@@ -530,6 +571,43 @@ fn is_mcu_root_record(record: &DpeHandleRecord) -> bool {
         && record.parent_fw_id.is_none()
         && record.tci_tag == MCU_RT_FW_ID
         && record.context_handle != [0u8; 16]
+}
+
+fn validate_loaded_tcb_record<S: Syscalls>(fw_id: u32) -> MeasurementApiResult {
+    let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+    let mut record = DpeHandleRecord::default();
+    dpe_store
+        .read_record(fw_id, &mut record)
+        .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
+    if record.fw_id != fw_id {
+        return Err(MeasurementApiError::InvalidDpeHandleStoreState);
+    }
+    if record.fw_id == MCU_RT_FW_ID {
+        if is_mcu_root_record(&record) {
+            return Ok(());
+        }
+        return Err(MeasurementApiError::InvalidDpeHandleStoreState);
+    }
+    if record.parent_fw_id.is_none()
+        || record.tci_tag != fw_id
+        || record.context_handle == [0u8; DPE_CONTEXT_HANDLE_SIZE]
+    {
+        return Err(MeasurementApiError::InvalidDpeHandleStoreState);
+    }
+    Ok(())
+}
+
+fn validate_loaded_non_tcb_record<S: Syscalls>(fw_id: u32) -> MeasurementApiResult {
+    let pcr_store = SoftwarePcrStore::<S>::new(SOFT_PCR_STORE_DRIVER_NUM);
+    let mut record = caliptra_mcu_libsyscall_caliptra::soft_pcr_store::MeasurementRecord::default();
+    pcr_store
+        .read_measurement(fw_id, &mut record)
+        .map_err(|_| MeasurementApiError::InvalidSoftwarePcrStoreState)?;
+    if record.fw_id == fw_id {
+        Ok(())
+    } else {
+        Err(MeasurementApiError::InvalidSoftwarePcrStoreState)
+    }
 }
 
 fn validate_soc_image_load_fw_ids(
@@ -676,6 +754,20 @@ mod tests {
             MeasurementApi::<DefaultSyscalls>::new(&bytes, &[0x1000]),
             Err(MeasurementApiError::InvalidSocImageLoadList)
         ));
+    }
+
+    #[test]
+    fn pending_initial_measurements_allow_initial_load_but_not_evidence() {
+        let bytes = valid_empty_manifest();
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[]).unwrap();
+
+        api.state = AttestationState::InitialMeasurementsPending;
+
+        assert_eq!(api.initial_load_measurement_state_ready(), Ok(()));
+        assert_eq!(
+            api.attestation_state_active(),
+            Err(MeasurementApiError::AttestationDisabled)
+        );
     }
 
     fn reference_measurement_policy_digest(

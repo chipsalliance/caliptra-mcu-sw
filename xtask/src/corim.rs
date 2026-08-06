@@ -4,31 +4,24 @@ use anyhow::{bail, Result};
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
 use caliptra_auth_man_types::AuthorizationManifest;
-use caliptra_image_types::{ImageManifest, IMAGE_MANIFEST_BYTE_SIZE};
 use p384::elliptic_curve::sec1::ToEncodedPoint;
 use p384::pkcs8::EncodePrivateKey;
 use serde::Deserialize;
-use sha2::{Digest, Sha256, Sha384};
+use sha2::{Digest, Sha384};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use zerocopy::FromBytes;
 
-const CALIPTRA_FW_NAME: &str = "caliptra_fw.bin";
 const SOC_MANIFEST_NAME: &str = "soc_manifest.bin";
-const MCU_RUNTIME_NAME: &str = "mcu_runtime.bin";
 
 /// Default seed string for test signing key generation when no signing config is provided.
 const DEFAULT_TEST_KEY_SEED: &str = "caliptra-corim-default-test-signing-key";
 
-/// Class-ID strings matching the OCP EAT evidence triples produced by the device.
-/// See platforms/emulator/runtime/userspace/apps/user/src/soc_env.rs
-const CLASS_ID_FMC: &str = "FMC_INFO";
-const CLASS_ID_RT: &str = "RT_INFO";
-
 /// MCU runtime firmware identifier.
 /// See common/flash-image/src/lib.rs: MCU_RT_IDENTIFIER = 0x00000002
 const MCU_RT_FW_ID: u32 = 0x00000002;
+const MEASUREMENT_API_MEASUREMENT_KEY: usize = 1;
 
 fn default_vendor() -> String {
     "ChipsAlliance".to_string()
@@ -54,7 +47,7 @@ pub struct CorimConfig {
     #[serde(default = "default_model")]
     pub model: String,
 
-    /// Hash algorithm for reference value digests ("sha-256" or "sha-384").
+    /// Hash algorithm for reference value digests. Measurement API evidence currently uses SHA-384.
     #[serde(default = "default_hash_algo")]
     pub hash_algo: String,
 
@@ -103,7 +96,7 @@ impl CorimConfig {
   // Model string for SoC firmware components (default: "Caliptra-SS")
   "model": "Caliptra-SS",
 
-  // Hash algorithm for reference value digests: "sha-256" or "sha-384" (default: "sha-384")
+    // Hash algorithm for reference value digests. Measurement API evidence currently uses SHA-384.
   "hash_algo": "sha-384",
 
   // Output directory for generated CoRIM/CoMID files (default: "target/corim")
@@ -124,6 +117,9 @@ impl CorimConfig {
     }
 
     fn validate(&self) -> Result<()> {
+        if self.hash_algo != "sha-384" {
+            bail!("Config error: only sha-384 reference values match Measurement API evidence");
+        }
         if let Some(signing) = &self.signing {
             if signing.test_key.is_some() && signing.key.is_some() {
                 bail!(
@@ -154,7 +150,7 @@ pub struct SigningConfig {
 /// A firmware component whose reference values will appear in the CoMID,
 /// structured to match the OCP EAT evidence triples from the device.
 struct EvidenceComponent {
-    /// Class-ID string matching the evidence environment (e.g. "FMC_INFO").
+    /// Class-ID string matching the evidence environment (e.g. "0x00000003").
     class_id: String,
     /// Measurement key matching the evidence mkey.
     mkey: usize,
@@ -168,26 +164,6 @@ struct EvidenceComponent {
     svn: Option<u32>,
 }
 
-/// Compute SHA-256 digest and return as "sha-256:<base64>" string.
-fn sha256_digest_str(data: &[u8]) -> String {
-    let hash = Sha256::digest(data);
-    format!("sha-256:{}", STANDARD.encode(hash))
-}
-
-/// Compute SHA-384 digest and return as "sha-384:<base64>" string.
-fn sha384_digest_str(data: &[u8]) -> String {
-    let hash = Sha384::digest(data);
-    format!("sha-384:{}", STANDARD.encode(hash))
-}
-
-/// Compute digest string using the configured hash algorithm.
-fn compute_digest(data: &[u8], hash_algo: &str) -> String {
-    match hash_algo {
-        "sha-256" => sha256_digest_str(data),
-        _ => sha384_digest_str(data),
-    }
-}
-
 /// Format a raw SHA-384 digest (from auth manifest metadata) as a digest string.
 fn sha384_raw_to_digest_str(digest: &[u8; 48]) -> String {
     format!("sha-384:{}", STANDARD.encode(digest))
@@ -196,10 +172,8 @@ fn sha384_raw_to_digest_str(digest: &[u8; 48]) -> String {
 /// Read firmware binaries from the all-build ZIP bundle and decompose them
 /// into evidence-matching components.
 ///
-/// Returns components matching the OCP EAT evidence structure:
-///   mkey 0: FMC_INFO      - Caliptra FMC binary (from caliptra_fw.bin)
-///   mkey 1: RT_INFO        - Caliptra Runtime binary (from caliptra_fw.bin)
-///   mkey 2+: SoC firmware  - Auto-discovered from AuthManifest metadata
+/// Returns SoC firmware components matching Measurement API evidence:
+///   mkey 1: SoC firmware measurement map - auto-discovered from AuthManifest metadata.
 fn read_evidence_components(
     bundle_path: &Path,
     config: &CorimConfig,
@@ -212,13 +186,7 @@ fn read_evidence_components(
     let soc_manifest_name = feature
         .map(|f| format!("mcu-test-soc-manifest-{}.bin", f))
         .unwrap_or_else(|| SOC_MANIFEST_NAME.to_string());
-    let mcu_runtime_name = feature
-        .map(|f| format!("mcu-test-runtime-{}.bin", f))
-        .unwrap_or_else(|| MCU_RUNTIME_NAME.to_string());
-
-    let mut caliptra_fw_data: Option<Vec<u8>> = None;
     let mut soc_manifest_data: Option<Vec<u8>> = None;
-    let mut mcu_runtime_data: Option<Vec<u8>> = None;
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
@@ -226,50 +194,13 @@ fn read_evidence_components(
         let mut data = Vec::new();
         file.read_to_end(&mut data)?;
 
-        if name == CALIPTRA_FW_NAME {
-            caliptra_fw_data = Some(data);
-        } else if name == soc_manifest_name {
+        if name == soc_manifest_name {
             soc_manifest_data = Some(data);
-        } else if name == mcu_runtime_name {
-            mcu_runtime_data = Some(data);
         }
     }
 
-    let caliptra_fw = caliptra_fw_data
-        .ok_or_else(|| anyhow::anyhow!("{} not found in bundle", CALIPTRA_FW_NAME))?;
     let soc_manifest = soc_manifest_data
         .ok_or_else(|| anyhow::anyhow!("{} not found in bundle", soc_manifest_name))?;
-
-    // Decompose caliptra_fw.bin into FMC and Runtime
-    if caliptra_fw.len() < IMAGE_MANIFEST_BYTE_SIZE {
-        bail!(
-            "caliptra_fw.bin too small ({} bytes) to contain manifest ({} bytes)",
-            caliptra_fw.len(),
-            IMAGE_MANIFEST_BYTE_SIZE
-        );
-    }
-
-    let image_manifest: ImageManifest = {
-        let bytes: [u8; IMAGE_MANIFEST_BYTE_SIZE] = caliptra_fw[..IMAGE_MANIFEST_BYTE_SIZE]
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("Failed to read manifest bytes"))?;
-        zerocopy::transmute!(bytes)
-    };
-
-    let fmc_offset = image_manifest.fmc.offset as usize;
-    let fmc_size = image_manifest.fmc.size as usize;
-    let rt_offset = image_manifest.runtime.offset as usize;
-    let rt_size = image_manifest.runtime.size as usize;
-
-    if fmc_offset + fmc_size > caliptra_fw.len() || rt_offset + rt_size > caliptra_fw.len() {
-        bail!("caliptra_fw.bin truncated - FMC or runtime extends beyond bundle size");
-    }
-
-    let fmc_content = &caliptra_fw[fmc_offset..fmc_offset + fmc_size];
-    let rt_content = &caliptra_fw[rt_offset..rt_offset + rt_size];
-
-    // Extract SVN from the Caliptra image manifest header
-    let caliptra_fw_svn = image_manifest.header.svn;
 
     // Parse AuthManifest to get preamble version/SVN and per-image metadata
     let auth_manifest = AuthorizationManifest::read_from_bytes(&soc_manifest).map_err(|e| {
@@ -278,25 +209,7 @@ fn read_evidence_components(
             e
         )
     })?;
-    // Build the fixed evidence components (mkeys 0-1)
-    let mut components = vec![
-        EvidenceComponent {
-            class_id: CLASS_ID_FMC.to_string(),
-            mkey: 0,
-            vendor: None,
-            model: None,
-            digest: compute_digest(fmc_content, &config.hash_algo),
-            svn: Some(caliptra_fw_svn),
-        },
-        EvidenceComponent {
-            class_id: CLASS_ID_RT.to_string(),
-            mkey: 1,
-            vendor: None,
-            model: None,
-            digest: compute_digest(rt_content, &config.hash_algo),
-            svn: Some(caliptra_fw_svn),
-        },
-    ];
+    let mut components = Vec::new();
 
     // Auto-discover SoC firmware components from the AuthManifest metadata
     let entry_count = auth_manifest.image_metadata_col.entry_count as usize;
@@ -305,28 +218,15 @@ fn read_evidence_components(
             break;
         }
         let metadata = &auth_manifest.image_metadata_col.image_metadata_list[i];
+        if metadata.fw_id == MCU_RT_FW_ID {
+            continue;
+        }
 
-        // For MCU runtime, compute digest from the binary in the ZIP,
-        // padded to match the flash image alignment used at runtime.
-        // The flash image builder pads images to 256-byte boundaries, and
-        // Caliptra's AUTHORIZE_AND_STASH hashes the padded data.
-        // For other SoC images, use the SHA-384 digest from the manifest metadata.
-        let digest = if metadata.fw_id == MCU_RT_FW_ID {
-            if let Some(ref mcu_rt) = mcu_runtime_data {
-                let padded_len = mcu_rt.len().next_multiple_of(256);
-                let mut padded = mcu_rt.clone();
-                padded.resize(padded_len, 0);
-                compute_digest(&padded, &config.hash_algo)
-            } else {
-                sha384_raw_to_digest_str(&metadata.digest)
-            }
-        } else {
-            sha384_raw_to_digest_str(&metadata.digest)
-        };
+        let digest = sha384_raw_to_digest_str(&metadata.digest);
 
         components.push(EvidenceComponent {
             class_id: format!("0x{:08X}", metadata.fw_id),
-            mkey: 2 + i,
+            mkey: MEASUREMENT_API_MEASUREMENT_KEY,
             vendor: Some(config.vendor.clone()),
             model: Some(config.model.clone()),
             digest,
@@ -560,12 +460,10 @@ fn generate_meta_template(output_dir: &Path) -> Result<PathBuf> {
 
 /// Generate CoRIM from a firmware bundle ZIP using cocli.
 ///
-/// The generated CoMID reference values are structured to match the OCP EAT
+/// The generated CoMID reference values are structured to match Measurement API
 /// evidence triples produced by the Caliptra subsystem:
 ///
-///   mkey 0: FMC_INFO      - Caliptra FMC digest
-///   mkey 1: RT_INFO        - Caliptra Runtime digest
-///   mkey 2+: SoC FW        - Auto-discovered from AuthManifest metadata
+///   mkey 1: SoC FW        - Auto-discovered from AuthManifest metadata
 ///
 /// Each measurement includes svn and digest fields.
 ///
