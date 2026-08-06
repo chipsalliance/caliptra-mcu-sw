@@ -4,7 +4,8 @@ use crate::test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, Tes
 use anyhow::Result;
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    FirmwareVersionReq, GetAuthCmdChallengeReq, McuFeProgReq,
+    DpeSignerContextCertReq, FirmwareVersionReq, GetAuthCmdChallengeReq, GetDpeCertChainReq,
+    McuFeProgReq,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 
@@ -139,6 +140,140 @@ fn test_fe_prog_authorized_req() -> Result<()> {
         result.is_ok(),
         "FE_PROG authorized request failed: {result:?}"
     );
+
+    Ok(())
+}
+
+#[test]
+fn test_dpe_signer_context_cert_cmd() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ocp_lock_en: true,
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // 1. Fetch DPE Certificate Chain via MC_GET_DPE_CERTIFICATE_CHAIN (looping across chunks)
+    let mut chain_der = Vec::new();
+    let mut offset = 0u32;
+    loop {
+        let chain_req = GetDpeCertChainReq {
+            offset,
+            size: 1024,
+            ..Default::default()
+        };
+        let chain_resp = hw.mailbox_execute_req(chain_req)?;
+        let chunk_len = chain_resp.hdr.data_len as usize;
+        if chunk_len == 0 {
+            break;
+        }
+        chain_der.extend_from_slice(&chain_resp.cert_data[..chunk_len]);
+        offset += chunk_len as u32;
+        if chunk_len < 1024 {
+            break;
+        }
+    }
+    assert!(
+        !chain_der.is_empty(),
+        "DPE Certificate Chain response data length should be non-zero"
+    );
+    assert_eq!(
+        chain_der[0], 0x30,
+        "DPE Cert Chain should start with ASN.1 SEQUENCE tag 0x30"
+    );
+
+    let mut chain_certs = Vec::new();
+    let mut remaining: &[u8] = &chain_der;
+    while !remaining.is_empty() && remaining[0] == 0x30 {
+        if let Ok(c) = openssl::x509::X509::from_der(remaining) {
+            if let Ok(der_bytes) = c.to_der() {
+                let der_len = der_bytes.len();
+                chain_certs.push(c);
+                if remaining.len() >= der_len {
+                    remaining = &remaining[der_len..];
+                    continue;
+                }
+            }
+        }
+        break;
+    }
+    assert!(
+        !chain_certs.is_empty(),
+        "Parsed DPE certificate chain should not be empty"
+    );
+
+    // 2. Fetch DPE Signer Context Certificate via MC_DPE_SIGNER_CONTEXT_CERT
+    let req = DpeSignerContextCertReq::default();
+    let resp = hw.mailbox_execute_req(req)?;
+    let cert_len = resp.hdr.data_len as usize;
+    assert!(cert_len > 0, "Response data length should be non-zero");
+
+    let cert_der = &resp.cert_data[..cert_len];
+    assert_eq!(
+        cert_der[0], 0x30,
+        "Certificate should start with ASN.1 SEQUENCE tag 0x30"
+    );
+
+    let cert = openssl::x509::X509::from_der(cert_der)
+        .expect("Failed to parse DPE derived leaf certificate as DER");
+
+    // Validate Serial Number (SN)
+    let serial_bn = cert
+        .serial_number()
+        .to_bn()
+        .expect("Failed to get serial number BigNum");
+    let serial_hex = serial_bn
+        .to_hex_str()
+        .expect("Failed to convert serial number to hex");
+    assert!(!serial_hex.is_empty(), "Serial number should not be empty");
+
+    // Validate Subject CN
+    let subject_cn = cert
+        .subject_name()
+        .entries_by_nid(openssl::nid::Nid::COMMONNAME)
+        .next()
+        .expect("DPE leaf certificate must have a Common Name entry in Subject");
+    let subject_cn_str = std::str::from_utf8(subject_cn.data().as_slice())
+        .expect("Subject Common Name should be valid UTF-8");
+    assert_eq!(
+        subject_cn_str, "DPE Exported CDI",
+        "DPE leaf certificate Subject CN should match expected 'DPE Exported CDI'"
+    );
+
+    let expected_issuer_cn = "Caliptra 2.1 Ecc384 Rt Alias";
+
+    // Validate Issuer CN
+    let issuer_cn = cert
+        .issuer_name()
+        .entries_by_nid(openssl::nid::Nid::COMMONNAME)
+        .next()
+        .expect("DPE leaf certificate must have a Common Name entry in Issuer");
+    let issuer_cn_str = std::str::from_utf8(issuer_cn.data().as_slice())
+        .expect("Issuer Common Name should be valid UTF-8");
+
+    assert_eq!(issuer_cn_str, expected_issuer_cn,);
+
+    // Verify leaf certificate was signed by the runtime alias key
+    let expected_signer = chain_certs
+        .iter()
+        .find(|cert| {
+            let sn = cert
+                .subject_name()
+                .entries_by_nid(openssl::nid::Nid::COMMONNAME)
+                .last()
+                .unwrap();
+
+            let sn = std::str::from_utf8(sn.data().as_slice()).unwrap();
+            sn == expected_issuer_cn
+        })
+        .unwrap();
+
+    let pubkey = expected_signer.public_key().unwrap();
+    assert!(cert.verify(&pubkey).is_ok());
 
     Ok(())
 }

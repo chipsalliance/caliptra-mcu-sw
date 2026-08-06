@@ -622,14 +622,18 @@ pub trait McuHwModel {
 
     /// Send a command to the mailbox but don't wait for the response
     fn start_mailbox_execute(&mut self, cmd: u32, buf: &[u8]) -> Result<()> {
-        // Read a 0 to get the lock
-        while !(self.mcu_manager().mbox0().mbox_lock().read().lock()) {
+        // Read to acquire the lock (true when lock is successfully acquired)
+        let mut acquired = false;
+        let start = std::time::Instant::now();
+        while start.elapsed() < std::time::Duration::from_secs(5) {
+            if self.mcu_manager().mbox0().mbox_lock().read().lock() {
+                acquired = true;
+                break;
+            }
             self.step();
         }
 
-        // Mailbox lock value should read 1 now
-        // If not, the reads are likely being blocked by the AXI_USER check or some other issue
-        if !(self.mcu_manager().mbox0().mbox_lock().read().lock()) {
+        if !acquired {
             bail!("Mailbox lock is not set");
         }
 

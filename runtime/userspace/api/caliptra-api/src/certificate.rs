@@ -18,11 +18,12 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadSt
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use dpe::commands::{
-    CertifyKeyCommand, CertifyKeyFlags, CertifyKeyP384Cmd, Command, CommandHdr,
-    GetCertificateChainCmd, SignCommand, SignFlags, SignP384Cmd,
+    CertifyKeyCommand, CertifyKeyFlags, CertifyKeyP384Cmd, Command, CommandHdr, DeriveContextCmd,
+    DeriveContextFlags, GetCertificateChainCmd, SignCommand, SignFlags, SignP384Cmd,
 };
 use dpe::context::ContextHandle;
-use dpe::response::SignP384Resp;
+use dpe::response::{DeriveContextExportedCdiResp, SignP384Resp};
+use dpe::tci::TciMeasurement;
 use zerocopy::{FromBytes, FromZeros, IntoBytes, TryFromBytes};
 
 pub const IDEV_ECC_CSR_MAX_SIZE: usize = GetIdevCsrResp::DATA_MAX_SIZE;
@@ -188,6 +189,65 @@ impl CertContext {
                 self.get_attested_csr_inner(&mut req, csr_data).await
             }
         }
+    }
+
+    // TODO(clundin): Retain the exported_cdi handle.
+    pub async fn dpe_signer_context_cert(&mut self, cert: &mut [u8]) -> CaliptraApiResult<usize> {
+        let dpe_store = caliptra_mcu_libsyscall_caliptra::dpe_handle_store::DpeHandleStore::<
+            caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+        >::new(
+            caliptra_mcu_libsyscall_caliptra::dpe_handle_store::DPE_HANDLE_STORE_DRIVER_NUM,
+        );
+        let mut target =
+            caliptra_mcu_libsyscall_caliptra::dpe_handle_store::DpeHandleRecord::default();
+        dpe_store
+            .read_attestation_target(&mut target)
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+
+        let cmd = DeriveContextCmd {
+            handle: ContextHandle(target.context_handle),
+            data: TciMeasurement([0u8; 48]),
+            flags: DeriveContextFlags::EXPORT_CDI
+                | DeriveContextFlags::CREATE_CERTIFICATE
+                | DeriveContextFlags::RETAIN_PARENT_CONTEXT,
+            tci_type: 0,
+            target_locality: 0,
+            svn: 0,
+        };
+
+        let mut cmd = Command::DeriveContext(&cmd);
+        let mut mbox_resp = InvokeDpeResp::default();
+        self.send_dpe_cmd(&mut cmd, &mut mbox_resp).await?;
+
+        let data_size = mbox_resp.data_size as usize;
+        if data_size > InvokeDpeResp::DATA_MAX_SIZE {
+            return Err(CaliptraApiError::InvalidResponse);
+        }
+
+        let (resp, _) = DeriveContextExportedCdiResp::try_read_from_prefix(&mbox_resp.data)
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+
+        if resp.resp_hdr.status != 0 {
+            return Err(CaliptraApiError::InvalidResponse);
+        }
+
+        let cert_len = resp.certificate_size as usize;
+        if cert_len > cert.len() {
+            return Err(CaliptraApiError::InvalidResponse);
+        }
+
+        let cert_bytes = resp
+            .new_certificate
+            .get(..cert_len)
+            .ok_or(CaliptraApiError::InvalidResponse)?;
+
+        target.context_handle = resp.parent_handle.0;
+        dpe_store
+            .write_record(target.fw_id, &target)
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+
+        cert[..cert_len].copy_from_slice(cert_bytes);
+        Ok(cert_len)
     }
 
     pub async fn certify_key(
