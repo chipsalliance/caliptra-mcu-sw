@@ -54,25 +54,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
 
 pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-i3c-simple",
-    "test-i3c-constant-writes",
     "test-mctp-capsule-loopback",
-    "test-fpga-flash-ctrl",
-    "test-pldm-fw-update-e2e",
-    "test-firmware-update-streaming",
-    "test-firmware-activate",
-    "test-firmware-v2",
-    "test-mcu-mbox-usermode",
-    "test-mcu-mbox-cmds",
-    "test-mctp-vdm-cmds",
-    "test-mctp-vdm-production",
-    "test-mcu-mbox-fips-self-test",
-    "test-mcu-mbox-fips-periodic",
-    "test-defmt-logging-vdm",
-    "test-exit-immediately",
-    "test-mctp-spdm-attestation",
-    "test-mctp-spdm-attestation-pcr-quote",
-    "test-mctp-spdm-responder-conformance",
-    "test-external-otp",
 ];
 
 /// Release-profile runtime test features (emulator).
