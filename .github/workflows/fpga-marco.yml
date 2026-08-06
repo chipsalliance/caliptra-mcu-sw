@@ -3,6 +3,7 @@
 name: FPGA Tests - Marco Artifacts
 
 on:
+  pull_request:
   workflow_dispatch:
     inputs:
       release_tag:
@@ -27,8 +28,8 @@ jobs:
     timeout-minutes: 20
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_REPOSITORY: ${{ inputs.release_repository }}
-      RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_REPOSITORY: ${{ inputs.release_repository || 'mlvisaya/caliptra-mcu-sw' }}
+      RELEASE_TAG: ${{ inputs.release_tag || 'fpga-artifacts-latest' }}
     steps:
       - name: Download release assets
         run: |
