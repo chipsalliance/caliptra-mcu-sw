@@ -1445,7 +1445,6 @@ mod test {
         } else if flash.len() < IMAGE_A_PARTITION.offset {
             flash.resize(IMAGE_A_PARTITION.offset, 0xff);
         }
-
         let mut file = tempfile::NamedTempFile::new().unwrap();
         std::io::Write::write_all(&mut file, flash).unwrap();
         let mut partition_table = PartitionTable {
@@ -1478,6 +1477,23 @@ mod test {
         assert_eq!(
             &flash[IMAGE_A_PARTITION.offset..IMAGE_A_PARTITION.offset + unpartitioned_flash.len()],
             unpartitioned_flash.as_slice()
+        );
+    }
+
+    #[test]
+    fn runtime_seeded_flash_image_preserves_existing_partition_contents() {
+        let image_contents = vec![0xaa, 0xbb, 0xcc, 0xdd];
+        let mut flash = image_contents.clone();
+        write_valid_partition_table_for_runtime_flash_load(&mut flash);
+
+        let original_len = flash.len();
+        write_valid_partition_table_for_runtime_flash_load(&mut flash);
+
+        assert_eq!(flash.len(), original_len);
+        assert!(has_valid_partition_table(&flash));
+        assert_eq!(
+            &flash[IMAGE_A_PARTITION.offset..IMAGE_A_PARTITION.offset + image_contents.len()],
+            image_contents.as_slice()
         );
     }
 
