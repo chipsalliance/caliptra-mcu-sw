@@ -124,11 +124,12 @@ pub enum CaliptraCommandId {
     GetAuthCmdChallenge = 0x8010,
     FeProg = 0x8011,
 
-    // Device Ownership Transfer Commands (0x8020-0x8023)
+    // Device Ownership Transfer Commands (0x8020-0x8024)
     DotLock = 0x8020,
     DotDisable = 0x8021,
     DotUnlockChallenge = 0x8022,
     DotUnlock = 0x8023,
+    GetDotBackupBlob = 0x8024,
 }
 
 /// Common response header for all commands

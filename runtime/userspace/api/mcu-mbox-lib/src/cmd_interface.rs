@@ -25,7 +25,7 @@ use caliptra_mcu_mbox_common::messages::{
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
     DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotUnlockChallengeReq,
-    DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp,
+    DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp, GetDotBackupBlobReq, GetDotBackupBlobResp,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -230,6 +230,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 }
                 #[cfg(feature = "device-ownership-transfer")]
                 CommandId::MC_DOT_UNLOCK => self.handle_dot_unlock(req, resp_buf).await,
+                #[cfg(feature = "device-ownership-transfer")]
+                CommandId::MC_GET_DOT_BACKUP_BLOB => {
+                    self.handle_dot_get_backup_blob(req, resp_buf).await
+                }
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
                 }
@@ -374,6 +378,24 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             reset_required: 1,
             ..Default::default()
         };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_get_backup_blob<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        GetDotBackupBlobReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) =
+            GetDotBackupBlobResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        self.non_crypto_cmds_handler
+            .dot_get_backup_blob(self.scratch, &mut resp.blob)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        resp.hdr = MailboxRespHeader::default();
         let response_len = resp.as_bytes().len();
         Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
     }

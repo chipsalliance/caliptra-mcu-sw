@@ -156,6 +156,7 @@ pub fn run_dot(
     verbose: bool,
 ) -> Vec<ValidationResult> {
     const LOCK_NAME: &str = "DotLock";
+    const BACKUP_NAME: &str = "GetDotBackupBlob";
     const CHALLENGE_NAME: &str = "DotUnlockChallenge";
     const UNLOCK_NAME: &str = "DotUnlock";
     const DISABLE_NAME: &str = "DotDisable";
@@ -242,6 +243,36 @@ pub fn run_dot(
         }
         Err(error) => {
             results.push(ValidationResult::fail(LOCK_NAME, error.to_string()));
+            return results;
+        }
+    }
+
+    // Runtime has the device-only effective key and authenticates the HMAC
+    // before returning. The host can independently check only the known fields
+    // and that a tag was populated.
+    match client.get_dot_backup_blob() {
+        Ok(response)
+            if response.blob[..4] == 1u32.to_le_bytes()
+                && response.blob[4..52] == cak
+                && response.blob[52..100] == lak_hash
+                && response.blob[100] == 1
+                && response.blob[101..104] == [0; 3]
+                && response.blob[104..].iter().any(|byte| *byte != 0) =>
+        {
+            results.push(ValidationResult::pass(
+                BACKUP_NAME,
+                "authenticated locked-state blob received",
+            ));
+        }
+        Ok(_) => {
+            results.push(ValidationResult::fail(
+                BACKUP_NAME,
+                "returned blob fields do not match DOT_LOCK",
+            ));
+            return results;
+        }
+        Err(error) => {
+            results.push(ValidationResult::fail(BACKUP_NAME, error.to_string()));
             return results;
         }
     }

@@ -39,6 +39,9 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
             Some(commands::handle_dot_unlock_challenge)
         }
         x if x == CaliptraCommandId::DotUnlock as u32 => Some(commands::handle_dot_unlock),
+        x if x == CaliptraCommandId::GetDotBackupBlob as u32 => {
+            Some(commands::handle_get_dot_backup_blob)
+        }
         _ => None,
     }
 }
@@ -61,6 +64,7 @@ mod tests {
             CaliptraCommandId::DotDisable,
             CaliptraCommandId::DotUnlockChallenge,
             CaliptraCommandId::DotUnlock,
+            CaliptraCommandId::GetDotBackupBlob,
         ];
 
         for id in ids {

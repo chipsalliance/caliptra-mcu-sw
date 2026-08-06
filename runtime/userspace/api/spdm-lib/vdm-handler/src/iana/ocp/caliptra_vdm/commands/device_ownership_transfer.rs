@@ -14,6 +14,7 @@ pub const DOT_LOCK_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 pub const DOT_UNLOCK_CHALLENGE_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK_CHALLENGE.0;
 pub const DOT_UNLOCK_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK.0;
+pub const GET_DOT_BACKUP_BLOB_CMD_ID: u32 = CommandId::MC_GET_DOT_BACKUP_BLOB.0;
 
 pub(crate) async fn handle<H, A>(
     commands: &H,
@@ -38,7 +39,42 @@ where
             handle_dot_unlock_challenge(commands, &request[4..], scratch, output).await
         }
         DOT_UNLOCK_CMD_ID => handle_dot_unlock(commands, &request[4..], scratch, output).await,
+        GET_DOT_BACKUP_BLOB_CMD_ID => {
+            handle_dot_get_backup_blob(commands, &request[4..], scratch, output).await
+        }
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    }
+}
+
+async fn handle_dot_get_backup_blob<H, A>(
+    commands: &H,
+    request: &[u8],
+    scratch: &A,
+    output: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraCmdHandler,
+    A: SpdmPalAlloc,
+{
+    if !request.is_empty() {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    }
+    let Some((completion, blob_out)) = output.split_first_mut() else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+    let Some(blob_out) = blob_out.get_mut(..caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE)
+    else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+    let blob_out: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE] =
+        blob_out.try_into().unwrap();
+
+    match commands.dot_get_backup_blob(scratch, blob_out).await {
+        Ok(()) => {
+            *completion = CaliptraCompletionCode::Success as u8;
+            CaliptraVdmCmdResult::Response(1 + blob_out.len())
+        }
+        Err(error) => CaliptraVdmCmdResult::Error(super::map_common_completion(error)),
     }
 }
 

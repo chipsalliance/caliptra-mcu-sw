@@ -139,7 +139,8 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         x if x == CaliptraCommandId::DotLock as u32
             || x == CaliptraCommandId::DotDisable as u32
             || x == CaliptraCommandId::DotUnlockChallenge as u32
-            || x == CaliptraCommandId::DotUnlock as u32 =>
+            || x == CaliptraCommandId::DotUnlock as u32
+            || x == CaliptraCommandId::GetDotBackupBlob as u32 =>
         {
             Some(CaliptraVdmCommand::DeviceOwnershipTransfer)
         }
@@ -198,6 +199,7 @@ mod tests {
             CaliptraCommandId::DotDisable,
             CaliptraCommandId::DotUnlockChallenge,
             CaliptraCommandId::DotUnlock,
+            CaliptraCommandId::GetDotBackupBlob,
         ] {
             assert_eq!(
                 command_id_to_vdm(command as u32),

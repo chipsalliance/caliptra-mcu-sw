@@ -1443,7 +1443,8 @@ mod test {
     #[test]
     fn test_runtime_dot_lock_commits_transition() {
         use caliptra_mcu_mbox_common::messages::{
-            CommandId as McuCommandId, DotLockPayload, DotLockReq, HybridSignature,
+            CommandId as McuCommandId, DotLockPayload, DotLockReq, GetDotBackupBlobReq,
+            HybridSignature,
         };
         use ecdsa::signature::hazmat::PrehashSigner;
         use fips204::traits::Signer;
@@ -1528,6 +1529,49 @@ mod test {
         );
         let dot_blob = hw.read_dot_flash();
         assert!(dot_blob[..DOT_BLOB_SIZE].iter().any(|byte| *byte != 0));
+        let backup = hw
+            .mailbox_execute_req(GetDotBackupBlobReq::default())
+            .unwrap();
+        assert_eq!(&backup.blob, &dot_blob[..DOT_BLOB_SIZE]);
+
+        let mut corrupted_blob = dot_blob.clone();
+        corrupted_blob[DOT_BLOB_SIZE - 1] ^= 1;
+        hw.write_dot_flash(&corrupted_blob).unwrap();
+        assert!(hw
+            .mailbox_execute_req(GetDotBackupBlobReq::default())
+            .is_err());
+
+        corrupted_blob = dot_blob;
+        corrupted_blob[0] ^= 1;
+        hw.write_dot_flash(&corrupted_blob).unwrap();
+        assert!(hw
+            .mailbox_execute_req(GetDotBackupBlobReq::default())
+            .is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_get_backup_blob_rejects_even_state() {
+        use caliptra_mcu_mbox_common::messages::GetDotBackupBlobReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: true,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        assert!(hw
+            .mailbox_execute_req(GetDotBackupBlobReq::default())
+            .is_err());
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }

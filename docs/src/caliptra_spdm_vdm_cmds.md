@@ -83,9 +83,23 @@ These command codes are assigned from the Caliptra range reserved in the [OCP co
 | `0x06`       | RequestDebugUnlock        | O   | Request debug unlock in production environment.                            |
 | `0x07`       | AuthorizeDebugUnlockToken | O   | Send debug unlock token to device for authorization.                       |
 | `0x08`       | ExportAttestedCsr         | O   | Export attested CSR for a Caliptra device identity key.                    |
+| `0x11`       | DeviceOwnershipTransfer   | O   | Carry Device Ownership Transfer subcommands.                               |
 | `0x12`       | AuthorizedCommand         | O   | Carry authorization-gated subcommands. The SPDM authorization flow is TBD. |
 
 R = Required, O = Optional
+
+## Device Ownership Transfer Subcommands
+
+The following subcommands are carried under `DeviceOwnershipTransfer` (`0x11`).
+All integer subcommand IDs are little-endian on the wire.
+
+| Subcommand ID          | Name                  | Description |
+| ---------------------- | --------------------- | ----------- |
+| `0x4D44_4C4B` (`MDLK`) | DotLock               | Lock DOT ownership and commit the transition. |
+| `0x4D44_4453` (`MDDS`) | DotDisable            | Commit the DOT disabled state. |
+| `0x4D44_5543` (`MDUC`) | DotUnlockChallenge    | Return a one-time unlock challenge. |
+| `0x4D44_554C` (`MDUL`) | DotUnlock             | Verify the challenge response and unlock DOT. |
+| `0x4D44_4F54` (`MDOT`) | GetDotBackupBlob      | Return the authenticated current ODD-state DOT blob. |
 
 ## Authorization-Gated Subcommands
 

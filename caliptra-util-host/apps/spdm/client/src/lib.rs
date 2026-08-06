@@ -41,7 +41,7 @@ use caliptra_mcu_core_util_host_command_types::debug_unlock::{
 };
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
     DotDisableRequest, DotLockRequest, DotTransitionResponse, DotUnlockChallengeResponse,
-    DotUnlockRequest,
+    DotUnlockRequest, GetDotBackupBlobResponse,
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgResponse, GetAuthCmdChallengeResponse,
@@ -57,7 +57,7 @@ use caliptra_util_host_commands::api::debug_unlock::{
 };
 use caliptra_util_host_commands::api::device_ownership_transfer::{
     caliptra_cmd_dot_disable, caliptra_cmd_dot_lock, caliptra_cmd_dot_unlock,
-    caliptra_cmd_dot_unlock_challenge,
+    caliptra_cmd_dot_unlock_challenge, caliptra_cmd_get_dot_backup_blob,
 };
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
@@ -203,6 +203,13 @@ impl<'a> SpdmVdmClient<'a> {
         let mut session = self.create_session()?;
         caliptra_cmd_dot_unlock(&mut session, request)
             .map_err(|e| anyhow::anyhow!("DOT_UNLOCK failed: {:?}", e))
+    }
+
+    /// Retrieve an authenticated copy of the current ODD-state DOT blob.
+    pub fn get_dot_backup_blob(&mut self) -> Result<GetDotBackupBlobResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_get_dot_backup_blob(&mut session)
+            .map_err(|e| anyhow::anyhow!("GET_DOT_BACKUP_BLOB failed: {:?}", e))
     }
 
     fn create_session(&mut self) -> Result<CaliptraSession> {

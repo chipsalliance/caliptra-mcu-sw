@@ -31,6 +31,7 @@ The following table describes the commands defined under this specification. The
 | Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
 | Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias).                                             |
 | Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands. Authorization requirements and transport-specific authorization flows are TBD. |
+| Get DOT Backup Blob             | O   | SPDM VDM, MCI Mailbox | Retrieve the authenticated current ODD-state DOT blob for external recovery storage.                                                |
 
 ### Authorization-Gated Subcommands
 
@@ -52,6 +53,20 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 This section defines the request and response payloads for each command.
 
 Common response payload tables describe command-specific response data only. They exclude transport-specific status and framing fields such as SPDM VDM completion codes, MCTP VDM completion codes, MCI mailbox `chksum`, MCI mailbox `fips_status`, and MCI mailbox variable-length `data_len` headers.
+
+### Get DOT Backup Blob
+
+Returns the exact 168-byte DOT blob currently authenticated by Runtime for the
+ODD fuse state. The request is rejected when DOT is uninitialized or EVEN, or
+when the stored blob fails version or HMAC verification.
+
+**Request Payload**: Empty
+
+**Response Payload**:
+
+| Byte(s) | Name | Type | Description |
+| ------- | ---- | ---- | ----------- |
+| 0:167 | blob | u8[168] | Opaque authenticated DOT blob suitable for external backup and later ROM recovery. |
 
 ### Firmware Version
 

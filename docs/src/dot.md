@@ -743,6 +743,29 @@ Caliptra_MCU -> BMC : DOT process started, request subsystem reset
 current Caliptra boot remains in effect until the requested reset; owner
 selection on the next boot follows the platform's normal EVEN-state policy.
 
+### 5. GET_DOT_BACKUP_BLOB
+
+Runtime exposes `GET_DOT_BACKUP_BLOB` through MCI mailbox command `MDOT` and
+through SPDM VDM `DeviceOwnershipTransfer` (`0x11`) with the `MDOT` subcommand.
+Both transports use the same Runtime backend.
+
+The command is valid only while `DOT_FUSE_ARRAY` is ODD (Locked or Disabled).
+Runtime serializes the read with other DOT transactions, derives the effective
+key for the current fuse count, verifies the stored blob version and
+HMAC-SHA-512, and returns the exact 168-byte blob. It rejects uninitialized or
+EVEN state and never returns a stale or corrupted blob as a backup.
+
+The requester is responsible for storing the returned opaque bytes in a
+separate recovery location. This command does not create or manage a second
+flash slot. During locked-state recovery, ROM can authenticate and restore the
+externally supplied backup without changing `DOT_FUSE_ARRAY`.
+
+MDOT does not require a separate LAK signature. The returned blob contains no
+private key material: CAK and LAK are represented by public hashes, and the
+HMAC is not a reusable key. Runtime still authenticates the HMAC with the
+device-only effective key before releasing the blob. Products may additionally
+restrict access to the MCI or SPDM management transport as platform policy.
+
 ---
 
 ## State Management

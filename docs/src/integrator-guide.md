@@ -98,6 +98,11 @@ Both transports invoke the same Runtime backend, which authenticates the
 command, seals and verifies the target blob, and burns and verifies the fuse
 before returning success with reset required.
 
+`GET_DOT_BACKUP_BLOB` (`MDOT`) is available through both DOT transport features.
+It returns only a blob that Runtime authenticates for the current ODD fuse state;
+the platform or BMC must persist those opaque bytes outside the active DOT
+partition for use by a configured ROM backup-recovery handler.
+
 `DOT_LOCK` and `DOT_DISABLE` currently perform the DOT-native LAK
 proof-of-possession check but are not yet wrapped by the generic
 `AuthorizedCommand` policy. Products must not expose these commands to an

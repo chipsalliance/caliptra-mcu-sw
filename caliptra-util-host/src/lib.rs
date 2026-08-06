@@ -83,6 +83,9 @@
 //! ```
 
 // Re-export main public APIs for convenience
+pub use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
+    GetDotBackupBlobRequest, GetDotBackupBlobResponse,
+};
 pub use caliptra_mcu_core_util_host_command_types::{
     CaliptraCommandId, GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse,
     GetFirmwareVersionRequest, GetFirmwareVersionResponse,
@@ -95,6 +98,7 @@ pub use caliptra_mcu_core_util_host_command_types::crypto_hash::{
 pub use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_firmware_version,
 };
+pub use caliptra_util_host_commands::api::device_ownership_transfer::caliptra_cmd_get_dot_backup_blob;
 // Re-export SHA API functions
 pub use caliptra_mcu_core_util_host_transport::{Mailbox, Transport};
 pub use caliptra_util_host_commands::api::crypto_hash::{

@@ -192,6 +192,35 @@ pub fn handle_dot_unlock(
     )
 }
 
+pub fn handle_get_dot_backup_blob(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    GetDotBackupBlobRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(
+        CaliptraVdmCommand::DeviceOwnershipTransfer,
+        &MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID.to_le_bytes(),
+        driver,
+        &mut resp_buf,
+    )?;
+    let blob = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
+    if blob.len() != DOT_BLOB_SIZE {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let mut internal_resp = GetDotBackupBlobResponse::default();
+    internal_resp.blob.copy_from_slice(blob);
+    let resp_bytes = internal_resp.as_bytes();
+    if response_buffer.len() < resp_bytes.len() {
+        return Err(TransportError::BufferError("Response buffer too small"));
+    }
+    response_buffer[..resp_bytes.len()].copy_from_slice(resp_bytes);
+    Ok(resp_bytes.len())
+}
+
 // ---------------------------------------------------------------------------
 // ExportAttestedCsr (CaliptraCommandId::ExportAttestedCsr)
 // ---------------------------------------------------------------------------
@@ -645,6 +674,42 @@ mod tests {
         );
         assert!(matches!(
             handle_dot_unlock_challenge(&[], &mut driver, &mut response_buffer),
+            Err(TransportError::InvalidMessage)
+        ));
+    }
+
+    #[test]
+    fn dot_get_backup_blob_encodes_subcommand_and_decodes_blob() {
+        let expected_blob = [0x5A; DOT_BLOB_SIZE];
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::DeviceOwnershipTransfer, &expected_blob),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer = [0u8; core::mem::size_of::<GetDotBackupBlobResponse>()];
+
+        handle_get_dot_backup_blob(&[], &mut driver, &mut response_buffer)
+            .expect("DOT backup blob should be accepted");
+
+        assert_eq!(
+            &driver.last_request[..2],
+            &[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+            ]
+        );
+        assert_eq!(
+            &driver.last_request[2..],
+            &MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID.to_le_bytes()
+        );
+        let response = GetDotBackupBlobResponse::read_from_bytes(&response_buffer).unwrap();
+        assert_eq!(response.blob, expected_blob);
+
+        driver.response = success_response(
+            CaliptraVdmCommand::DeviceOwnershipTransfer,
+            &[0; DOT_BLOB_SIZE - 1],
+        );
+        assert!(matches!(
+            handle_get_dot_backup_blob(&[], &mut driver, &mut response_buffer),
             Err(TransportError::InvalidMessage)
         ));
     }

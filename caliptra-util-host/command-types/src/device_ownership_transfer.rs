@@ -8,7 +8,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub use caliptra_mcu_mbox_common::messages::{
     DotDisablePayload as DotDisableRequest, DotLockPayload as DotLockRequest,
-    DotUnlockPayload as DotUnlockRequest, HybridSignature, AUTH_CMD_NONCE_LEN,
+    DotUnlockPayload as DotUnlockRequest, HybridSignature, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
     DOT_ECC_PUBLIC_KEY_COORD_SIZE, DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
 
@@ -16,6 +16,7 @@ pub const MC_DOT_LOCK_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 pub const MC_DOT_DISABLE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 pub const MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK_CHALLENGE.0;
 pub const MC_DOT_UNLOCK_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK.0;
+pub const MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID: u32 = CommandId::MC_GET_DOT_BACKUP_BLOB.0;
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]
@@ -68,6 +69,33 @@ impl CommandRequest for DotUnlockRequest {
     const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::DotUnlock;
 }
 
+#[repr(C)]
+#[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct GetDotBackupBlobRequest;
+
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct GetDotBackupBlobResponse {
+    pub common: CommonResponse,
+    pub blob: [u8; DOT_BLOB_SIZE],
+}
+
+impl Default for GetDotBackupBlobResponse {
+    fn default() -> Self {
+        Self {
+            common: CommonResponse::default(),
+            blob: [0; DOT_BLOB_SIZE],
+        }
+    }
+}
+
+impl CommandRequest for GetDotBackupBlobRequest {
+    type Response = GetDotBackupBlobResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::GetDotBackupBlob;
+}
+
+impl CommandResponse for GetDotBackupBlobResponse {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,5 +109,9 @@ mod tests {
             CommandId::MC_DOT_UNLOCK_CHALLENGE.0
         );
         assert_eq!(MC_DOT_UNLOCK_CANONICAL_CMD_ID, CommandId::MC_DOT_UNLOCK.0);
+        assert_eq!(
+            MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID,
+            CommandId::MC_GET_DOT_BACKUP_BLOB.0
+        );
     }
 }

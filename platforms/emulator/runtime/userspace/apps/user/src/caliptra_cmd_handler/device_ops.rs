@@ -453,6 +453,9 @@ async fn read_and_verify_dot_blob<A: ApiAlloc>(
     alloc: &A,
     derivation_value: u32,
 ) -> CaliptraCmdResult<RuntimeDotBlob> {
+    if derivation_value & 1 == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
     let flash = SpiFlash::<DefaultSyscalls>::new(caliptra_mcu_config::DOT_BLOB_STORE_DRIVER_NUM);
     let mut bytes = [0u8; DOT_BLOB_SIZE];
     flash
@@ -675,6 +678,21 @@ pub async fn dot_unlock<A: ApiAlloc>(
     )
     .await?;
     UNLOCK_CONTEXT.lock(|state| *state.borrow_mut() = None);
+    Ok(())
+}
+
+pub async fn dot_get_backup_blob<A: ApiAlloc>(
+    alloc: &A,
+    output: &mut [u8; DOT_BLOB_SIZE],
+) -> CaliptraCmdResult<()> {
+    let _guard = DotTransactionGuard::acquire()?;
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count & 1 == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    let blob = read_and_verify_dot_blob(alloc, current_fuse_count).await?;
+    output.copy_from_slice(blob.as_bytes());
     Ok(())
 }
 

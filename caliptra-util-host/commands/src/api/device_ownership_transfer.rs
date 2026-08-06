@@ -5,7 +5,8 @@
 use crate::api::{CaliptraApiError, CaliptraResult};
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
     DotDisableRequest, DotLockRequest, DotTransitionResponse, DotUnlockChallengeRequest,
-    DotUnlockChallengeResponse, DotUnlockRequest,
+    DotUnlockChallengeResponse, DotUnlockRequest, GetDotBackupBlobRequest,
+    GetDotBackupBlobResponse,
 };
 use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::CaliptraSession;
@@ -48,4 +49,15 @@ pub fn caliptra_cmd_dot_unlock(
     session
         .execute_command_with_id(CaliptraCommandId::DotUnlock, request)
         .map_err(|_| CaliptraApiError::SessionError("DOT_UNLOCK command execution failed"))
+}
+
+pub fn caliptra_cmd_get_dot_backup_blob(
+    session: &mut CaliptraSession,
+) -> CaliptraResult<GetDotBackupBlobResponse> {
+    session
+        .execute_command_with_id(
+            CaliptraCommandId::GetDotBackupBlob,
+            &GetDotBackupBlobRequest,
+        )
+        .map_err(|_| CaliptraApiError::SessionError("GET_DOT_BACKUP_BLOB command execution failed"))
 }

@@ -5,7 +5,7 @@
 
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisablePayload, DotLockPayload, DotUnlockPayload, HybridSignature,
-    AUTH_CMD_NONCE_LEN,
+    AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
 };
 use mcu_caliptra_api_lite::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
@@ -323,6 +323,21 @@ pub trait CaliptraCmdHandler {
         request: &DotUnlockPayload,
     ) -> CaliptraCmdResult<()> {
         let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Authenticate and return the current ODD-state DOT blob for backup.
+    ///
+    /// No LAK signature is required: the opaque blob contains public key
+    /// hashes and an HMAC, not secret key material. Transport access remains a
+    /// platform policy decision, and implementations must verify the HMAC
+    /// before returning bytes.
+    async fn dot_get_backup_blob<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &mut [u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, blob);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }
