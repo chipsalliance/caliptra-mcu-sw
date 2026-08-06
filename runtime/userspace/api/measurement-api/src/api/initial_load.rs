@@ -43,7 +43,9 @@ pub(super) async fn create_dpe_context<S: Syscalls, A: ScratchAlloc>(
         &DpeDeriveContextParams {
             parent_handle: parent.context_handle,
             measurement: *measurement,
-            flags: DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT,
+            flags: DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT
+                | DpeDeriveContextFlags::ALLOW_NEW_CONTEXT_TO_EXPORT
+                | DpeDeriveContextFlags::INPUT_ALLOW_X509,
             tci_type: fw_id,
             target_locality: 0,
             svn,

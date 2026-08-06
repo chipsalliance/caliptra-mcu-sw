@@ -62,6 +62,9 @@ pub const DPE_CONTEXT_HANDLE_SIZE: usize = 16;
 
 pub type DpeContextHandle = [u8; DPE_CONTEXT_HANDLE_SIZE];
 
+/// Exported CDI handle width.
+pub const EXPORTED_CDI_SIZE: usize = 32;
+
 /// SHA-384 TCI measurement width used by DPE P-384 / SHA-384 `DeriveContext`.
 pub const DPE_TCI_MEASUREMENT_SIZE: usize = 48;
 
@@ -276,6 +279,16 @@ struct DeriveContextRespBody {
     parent_handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
 }
 
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct DeriveContextExportedCdiRespPrefix {
+    _resp_hdr: [u8; 12],
+    handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    parent_handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    exported_cdi: [u8; EXPORTED_CDI_SIZE],
+    cert_size: U32,
+}
+
 /// `dpe::response::UpdateContextMeasurementResp`.
 #[repr(C)]
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
@@ -342,8 +355,18 @@ const SIGN_MLDSA87_RESP_LEN: usize =
 pub const DPE_MLDSA87_SIGN_SCRATCH_PEAK: usize = SIGN_MLDSA87_RESP_LEN;
 const DERIVE_CONTEXT_REQ_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<DeriveContextCmd>();
+const DERIVE_CONTEXT_MLDSA87_REQ_LEN: usize = size_of::<InvokeDpeMldsa87ReqPrefix>()
+    + size_of::<DpeCommandHdr>()
+    + size_of::<DeriveContextCmd>();
 const DERIVE_CONTEXT_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<DeriveContextCmd>()) as u32;
+/// Peak scratch allocation while an exported-CDI response is staged in the caller's buffer.
+pub const DPE_DERIVE_CONTEXT_EXPORTED_CDI_SCRATCH_PEAK: usize =
+    if DERIVE_CONTEXT_MLDSA87_REQ_LEN > DERIVE_CONTEXT_REQ_LEN {
+        DERIVE_CONTEXT_MLDSA87_REQ_LEN
+    } else {
+        DERIVE_CONTEXT_REQ_LEN
+    };
 const UPDATE_CONTEXT_MEASUREMENT_REQ_LEN: usize = size_of::<InvokeDpeReqPrefix>()
     + size_of::<DpeCommandHdr>()
     + size_of::<UpdateContextMeasurementCmd>();
@@ -471,12 +494,28 @@ pub struct DpeDeriveContextFlags(u32);
 impl DpeDeriveContextFlags {
     /// No request flags.
     pub const EMPTY: Self = Self(0);
+    /// Create an X.509 certificate.
+    pub const CREATE_CERTIFICATE: Self = Self(1u32 << 22);
+    /// Derive an exported CDI.
+    pub const EXPORT_CDI: Self = Self(1u32 << 23);
+    /// Allow the derived child context to create X.509 certificates.
+    pub const INPUT_ALLOW_X509: Self = Self(1u32 << 25);
+    /// Allow the derived child context to export CDI.
+    pub const ALLOW_NEW_CONTEXT_TO_EXPORT: Self = Self(1u32 << 26);
     /// Keep the parent context and return its rotated handle.
     pub const RETAIN_PARENT_CONTEXT: Self = Self(1u32 << 29);
 
     /// Return the raw DPE flag bits.
     pub const fn bits(self) -> u32 {
         self.0
+    }
+}
+
+impl core::ops::BitOr for DpeDeriveContextFlags {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
     }
 }
 
@@ -498,6 +537,15 @@ pub struct DpeDeriveContextResult {
     pub child_handle: DpeContextHandle,
     /// Rotated parent context handle.
     pub parent_handle: DpeContextHandle,
+}
+
+/// Handles and certificate length returned by an exported-CDI derivation.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct DpeDeriveContextExportedCdiResult {
+    pub child_handle: DpeContextHandle,
+    pub parent_handle: DpeContextHandle,
+    pub exported_cdi: [u8; EXPORTED_CDI_SIZE],
+    pub cert_size: usize,
 }
 
 /// Parameters for one DPE `UpdateContextMeasurement` command.
@@ -532,23 +580,29 @@ pub async fn dpe_derive_context<A: ScratchAlloc>(
     alloc: &A,
     params: &DpeDeriveContextParams,
 ) -> McuResult<DpeDeriveContextResult> {
-    let req = build_derive_context_req(alloc, params)?;
+    let (req, mbox_cmd) = build_derive_context_req(alloc, params, DpeProfile::P384Sha384)?;
     let mut rsp =
         alloc.alloc(size_of::<InvokeDpeRespPrefix>() + size_of::<DeriveContextRespBody>())?;
-    let rsp_len = mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
+    let rsp_len = mbox_execute(mbox_cmd, &req, &mut rsp).await?;
     parse_derive_context_response(&rsp, rsp_len)
 }
 
 fn build_derive_context_req<'a, A: ScratchAlloc>(
     alloc: &'a A,
     params: &DpeDeriveContextParams,
-) -> McuResult<A::Buf<'a>> {
-    let mut req = alloc.alloc(DERIVE_CONTEXT_REQ_LEN)?;
+    profile: DpeProfile,
+) -> McuResult<(A::Buf<'a>, u32)> {
+    let req_len = match profile {
+        DpeProfile::P384Sha384 => DERIVE_CONTEXT_REQ_LEN,
+        DpeProfile::Mldsa87 => DERIVE_CONTEXT_MLDSA87_REQ_LEN,
+    };
+    let mut req = alloc.alloc(req_len)?;
     req.fill(0);
-    let cur = build_invoke_dpe_header(
+    let cur = build_invoke_dpe_header_profile(
         &mut req,
         DERIVE_CONTEXT_DPE_PAYLOAD_LEN,
         DPE_CMD_DERIVE_CONTEXT,
+        profile,
     )?;
     {
         let cmd = DeriveContextCmd::mut_from_bytes(checked_slice_mut(
@@ -564,9 +618,10 @@ fn build_derive_context_req<'a, A: ScratchAlloc>(
         cmd.target_locality = U32::new(params.target_locality);
         cmd.svn = U32::new(params.svn);
     }
-    let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
+    let mbox_cmd = profile.invoke_cmd_id();
+    let checksum = calc_checksum(mbox_cmd, &req);
     *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
-    Ok(req)
+    Ok((req, mbox_cmd))
 }
 
 fn parse_derive_context_response(rsp: &[u8], rsp_len: usize) -> McuResult<DpeDeriveContextResult> {
@@ -593,6 +648,66 @@ fn parse_derive_context_response(rsp: &[u8], rsp_len: usize) -> McuResult<DpeDer
         child_handle: body.handle,
         parent_handle: body.parent_handle,
     })
+}
+
+/// Bytes staged ahead of an exported-CDI certificate before moving it to offset zero.
+pub const DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN: usize =
+    size_of::<InvokeDpeRespPrefix>() + size_of::<DeriveContextExportedCdiRespPrefix>();
+
+/// Derive an exported CDI and write its X.509 certificate into `cert_dst`.
+///
+/// The destination must be word-aligned and hold
+/// `DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN + DPE_MAX_LEAF_CERT_SIZE` bytes.
+/// Caliptra 2.0 returns both profiles inline, including the ML-DSA certificate.
+#[inline(never)]
+pub async fn dpe_derive_context_exported_cdi<A: ScratchAlloc>(
+    alloc: &A,
+    params: &DpeDeriveContextParams,
+    profile: DpeProfile,
+    cert_dst: &mut [u8],
+) -> McuResult<DpeDeriveContextExportedCdiResult> {
+    let in_place_len = DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN + DPE_MAX_LEAF_CERT_SIZE;
+    if cert_dst.len() < in_place_len
+        || !(cert_dst.as_ptr() as usize).is_multiple_of(core::mem::align_of::<u32>())
+    {
+        return Err(INVARIANT);
+    }
+    let (req, mbox_cmd) = build_derive_context_req(alloc, params, profile)?;
+    let rsp = &mut cert_dst[..in_place_len];
+    let rsp_len = mbox_execute(mbox_cmd, &req, rsp).await?;
+    parse_derive_context_exported_cdi_response_in_place(rsp, rsp_len)
+}
+
+fn parse_derive_context_exported_cdi_response_in_place(
+    rsp: &mut [u8],
+    rsp_len: usize,
+) -> McuResult<DpeDeriveContextExportedCdiResult> {
+    let cert_off = DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN;
+    if rsp_len < cert_off || rsp_len > rsp.len() {
+        return Err(INTERNAL_BUG);
+    }
+    let prefix = DeriveContextExportedCdiRespPrefix::ref_from_bytes(internal_slice(
+        rsp,
+        size_of::<InvokeDpeRespPrefix>(),
+        size_of::<DeriveContextExportedCdiRespPrefix>(),
+    )?)
+    .map_err(|_| INTERNAL_BUG)?;
+    let hdr = DpeResponseHdr::ref_from_bytes(&prefix._resp_hdr).map_err(|_| INTERNAL_BUG)?;
+    if hdr.magic.get() != DPE_RESPONSE_MAGIC || hdr.status.get() != 0 {
+        return Err(INTERNAL_BUG);
+    }
+    let cert_size = prefix.cert_size.get() as usize;
+    if cert_size > rsp_len - cert_off || cert_size > DPE_MAX_LEAF_CERT_SIZE {
+        return Err(INTERNAL_BUG);
+    }
+    let result = DpeDeriveContextExportedCdiResult {
+        child_handle: prefix.handle,
+        parent_handle: prefix.parent_handle,
+        exported_cdi: prefix.exported_cdi,
+        cert_size,
+    };
+    rsp.copy_within(cert_off..cert_off + cert_size, 0);
+    Ok(result)
 }
 
 /// Invoke DPE `UpdateContextMeasurement`, returning the rotated component and parent handles.
@@ -1649,20 +1764,80 @@ mod tests {
             svn: 7,
         };
 
-        let req = build_derive_context_req(&alloc, &params).unwrap();
-        let payload_len =
-            u32::from_le_bytes(*req.get(4..8).and_then(|s| s.first_chunk::<4>()).unwrap());
-        let hdr = DpeCommandHdr::ref_from_bytes(&req[8..20]).unwrap();
-        let cmd = DeriveContextCmd::ref_from_bytes(&req[20..100]).unwrap();
+        for (profile, prefix_len) in [
+            (DpeProfile::P384Sha384, size_of::<InvokeDpeReqPrefix>()),
+            (DpeProfile::Mldsa87, size_of::<InvokeDpeMldsa87ReqPrefix>()),
+        ] {
+            let (req, mbox_cmd) = build_derive_context_req(&alloc, &params, profile).unwrap();
+            let hdr = DpeCommandHdr::ref_from_bytes(
+                &req[prefix_len..prefix_len + size_of::<DpeCommandHdr>()],
+            )
+            .unwrap();
+            let cmd =
+                DeriveContextCmd::ref_from_bytes(&req[prefix_len + size_of::<DpeCommandHdr>()..])
+                    .unwrap();
 
-        assert_eq!(payload_len, DERIVE_CONTEXT_DPE_PAYLOAD_LEN);
-        assert_eq!(hdr.cmd_id.get(), DPE_CMD_DERIVE_CONTEXT);
-        assert_eq!(cmd.handle, params.parent_handle);
-        assert_eq!(cmd.data, params.measurement);
-        assert_eq!(cmd.flags.get(), params.flags.bits());
-        assert_eq!(cmd.tci_type.get(), params.tci_type);
-        assert_eq!(cmd.target_locality.get(), params.target_locality);
-        assert_eq!(cmd.svn.get(), params.svn);
+            assert_eq!(mbox_cmd, profile.invoke_cmd_id());
+            assert_eq!(
+                read_le_u32(&req, 0).unwrap(),
+                calc_checksum(mbox_cmd, &req[4..])
+            );
+            assert_eq!(
+                read_le_u32(&req, prefix_len - 4).unwrap(),
+                DERIVE_CONTEXT_DPE_PAYLOAD_LEN
+            );
+            assert_eq!(hdr.profile.get(), profile.profile_id());
+            assert_eq!(hdr.cmd_id.get(), DPE_CMD_DERIVE_CONTEXT);
+            assert_eq!(cmd.handle, params.parent_handle);
+            assert_eq!(cmd.data, params.measurement);
+            assert_eq!(cmd.flags.get(), params.flags.bits());
+            assert_eq!(cmd.tci_type.get(), params.tci_type);
+            assert_eq!(cmd.target_locality.get(), params.target_locality);
+            assert_eq!(cmd.svn.get(), params.svn);
+        }
+    }
+
+    #[test]
+    fn exported_cdi_response_moves_certificate_and_rejects_invalid_lengths() {
+        let cert = [0x30, 0x02, 0x05, 0x00];
+        let cert_off = DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN;
+        let header = DpeResponseHdr {
+            magic: U32::new(DPE_RESPONSE_MAGIC),
+            status: U32::new(0),
+            profile: U32::new(DpeProfile::P384Sha384.profile_id()),
+        };
+        let mut prefix = DeriveContextExportedCdiRespPrefix {
+            _resp_hdr: header.as_bytes().try_into().unwrap(),
+            handle: [0x11; DPE_CONTEXT_HANDLE_SIZE],
+            parent_handle: [0x22; DPE_CONTEXT_HANDLE_SIZE],
+            exported_cdi: [0x33; EXPORTED_CDI_SIZE],
+            cert_size: U32::new(cert.len() as u32),
+        };
+        let mut rsp = std::vec![0u8; cert_off + cert.len()];
+        rsp[size_of::<InvokeDpeRespPrefix>()..cert_off].copy_from_slice(prefix.as_bytes());
+        rsp[cert_off..].copy_from_slice(&cert);
+        let rsp_len = rsp.len();
+
+        let mut valid = rsp.clone();
+        let result =
+            parse_derive_context_exported_cdi_response_in_place(&mut valid, rsp_len).unwrap();
+        assert_eq!(result.child_handle, prefix.handle);
+        assert_eq!(result.parent_handle, prefix.parent_handle);
+        assert_eq!(result.exported_cdi, prefix.exported_cdi);
+        assert_eq!(result.cert_size, cert.len());
+        assert_eq!(&valid[..result.cert_size], &cert);
+
+        for len in [cert_off - 1, rsp_len - 1, rsp_len + 1] {
+            assert!(parse_derive_context_exported_cdi_response_in_place(&mut rsp, len).is_err());
+        }
+        prefix.cert_size = U32::new(u32::MAX);
+        rsp[size_of::<InvokeDpeRespPrefix>()..cert_off].copy_from_slice(prefix.as_bytes());
+        assert!(parse_derive_context_exported_cdi_response_in_place(&mut rsp, rsp_len).is_err());
+
+        prefix.cert_size = U32::new(cert.len() as u32);
+        prefix._resp_hdr[4..8].copy_from_slice(&1u32.to_le_bytes());
+        rsp[size_of::<InvokeDpeRespPrefix>()..cert_off].copy_from_slice(prefix.as_bytes());
+        assert!(parse_derive_context_exported_cdi_response_in_place(&mut rsp, rsp_len).is_err());
     }
 
     #[test]

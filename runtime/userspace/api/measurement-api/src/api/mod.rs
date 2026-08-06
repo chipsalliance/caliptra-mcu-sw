@@ -16,7 +16,8 @@ mod initial_load;
 pub(crate) mod read;
 
 use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
-    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, POLICY_DIGEST_SIZE,
+    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, EXPORTED_CDI_SIZE,
+    POLICY_DIGEST_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
     SoftwarePcrStore, SOFT_PCR_STORE_DRIVER_NUM,
@@ -26,10 +27,11 @@ use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
 use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_mldsa87_pubkey,
-    dpe_certify_key_pubkey, dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish,
-    sha_init, sha_update, AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle,
-    DpeProfile, HashAlgo, ScratchAlloc, SigningInput, CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
-    DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
+    dpe_certify_key_pubkey, dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign,
+    dpe_tag_tci, sha_finish, sha_init, sha_update, AuthorizeAndStashFlags, AuthorizeAndStashParams,
+    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo,
+    ScratchAlloc, SigningInput, CERTIFY_KEY_MLDSA87_PUBKEY_SIZE, DPE_CONTEXT_HANDLE_SIZE,
+    DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE, SHA_CONTEXT_SIZE,
 };
 use sha3::{
     digest::{ExtendableOutput, XofReader},
@@ -440,6 +442,45 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         .map_err(|_| self.enter_error_state(MeasurementApiError::DpeCommandFailed))?;
         self.write_attestation_target_handle(target, next_handle)?;
         Ok(signature_len)
+    }
+
+    /// Export a CDI from the selected attestation target and preserve its rotated handle.
+    pub async fn export_cdi_and_stash<A: ScratchAlloc>(
+        &mut self,
+        alloc: &A,
+        profile: DpeProfile,
+        cert_out: &mut [u8],
+    ) -> MeasurementApiResult<usize> {
+        self.attestation_state_active()?;
+        let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        let mut existing_cdi = [0u8; EXPORTED_CDI_SIZE];
+        dpe_store
+            .read_exported_cdi(&mut existing_cdi)
+            .map_err(|_| MeasurementApiError::StoreFailed)?;
+        if existing_cdi != [0u8; EXPORTED_CDI_SIZE] {
+            return Err(MeasurementApiError::ExportedCdiAlreadyDerived);
+        }
+
+        let target = self.read_attestation_target_record()?;
+        let params = DpeDeriveContextParams {
+            parent_handle: target.context_handle,
+            measurement: [0u8; DPE_TCI_MEASUREMENT_SIZE],
+            flags: DpeDeriveContextFlags::EXPORT_CDI
+                | DpeDeriveContextFlags::CREATE_CERTIFICATE
+                | DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT,
+            tci_type: 0,
+            target_locality: 0,
+            svn: 0,
+        };
+        let derived = dpe_derive_context_exported_cdi(alloc, &params, profile, cert_out)
+            .await
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+
+        dpe_store
+            .write_exported_cdi(&derived.exported_cdi)
+            .map_err(|_| self.enter_error_state(MeasurementApiError::StoreFailed))?;
+        self.write_attestation_target_handle(target, derived.parent_handle)?;
+        Ok(derived.cert_size)
     }
 
     /// Read stored measurement state for one manifest `fw_id`.

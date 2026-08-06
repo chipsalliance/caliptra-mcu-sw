@@ -14,12 +14,13 @@ use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::GetDotBackupBlobResp;
 use caliptra_mcu_mbox_common::messages::{
-    ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, FirmwareVersionReq,
-    FirmwareVersionResp, FuseReadResp, GetAttestationReq, GetAuthCmdChallengeResp, GetLogReq,
-    LogType, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuMailboxReq,
-    McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
-    McuProdDebugUnlockTokenReq, McuResponseVarSize, VendorPkHashStatusReq, VendorPkHashStatusResp,
-    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
+    EndorsementAlgorithm, FirmwareVersionReq, FirmwareVersionResp, FuseReadResp, GetAttestationReq,
+    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetDpeCertChainResp, GetLogReq, LogType,
+    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
+    McuResponseVarSize, VendorPkHashStatusReq, VendorPkHashStatusResp, DEVICE_CAPS_SIZE,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "attested-csr")]
 use caliptra_mcu_mbox_common::messages::{
@@ -271,6 +272,12 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
+                CommandId::MC_DPE_SIGNER_CONTEXT_CERT => {
+                    self.handle_dpe_signer_context_cert(req, resp_buf).await
+                }
+                CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
+                    self.handle_get_dpe_cert_chain(req, resp_buf).await
+                }
                 CommandId::MC_GET_ATTESTATION => self.handle_get_attestation(req, resp_buf).await,
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
@@ -505,6 +512,92 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
         };
 
         Ok((&mut resp_buf[..resp_len], mbox_cmd_status))
+    }
+
+    async fn handle_dpe_signer_context_cert<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req =
+            DpeSignerContextCertReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let profile = match req.algorithm {
+            EndorsementAlgorithm::ECDSA_384 => mcu_caliptra_api::DpeProfile::P384Sha384,
+            EndorsementAlgorithm::MLDSA_87 => mcu_caliptra_api::DpeProfile::Mldsa87,
+            _ => return Err(errors::INVALID_PARAMS),
+        };
+        let header_len = size_of::<MailboxRespHeaderVarSize>();
+        let (header, cert_out) = resp_buf
+            .split_at_mut_checked(header_len)
+            .ok_or(errors::INVALID_PARAMS)?;
+        let result =
+            caliptra_mcu_measurement_api::export_cdi_and_stash(self.scratch, profile, cert_out)
+                .await;
+        let (status, cert_len) = match result {
+            Ok(len) => (MbxCmdStatus::Complete, len),
+            Err(_) => (MbxCmdStatus::Failure, 0),
+        };
+        header.copy_from_slice(
+            MailboxRespHeaderVarSize {
+                data_len: cert_len as u32,
+                ..Default::default()
+            }
+            .as_bytes(),
+        );
+        Ok((&mut resp_buf[..header_len + cert_len], status))
+    }
+
+    async fn handle_get_dpe_cert_chain<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = GetDpeCertChainReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let requested_size = req.size as usize;
+        let header_len = size_of::<MailboxRespHeaderVarSize>();
+        if requested_size > MAX_RESP_DATA_SIZE || resp_buf.len() < header_len + requested_size {
+            return Err(errors::INVALID_PARAMS);
+        }
+
+        let mut cert_len = 0;
+        let mut status = MbxCmdStatus::Complete;
+        while cert_len < requested_size {
+            let chunk_len = (requested_size - cert_len).min(mcu_caliptra_api::DPE_MAX_CHUNK_SIZE);
+            let offset = req
+                .offset
+                .checked_add(cert_len as u32)
+                .ok_or(errors::INVALID_PARAMS)?;
+            let chunk = &mut resp_buf[header_len + cert_len..header_len + cert_len + chunk_len];
+            match mcu_caliptra_api::dpe_get_cert_chain_chunk(
+                self.scratch,
+                mcu_caliptra_api::DpeProfile::P384Sha384,
+                offset,
+                chunk,
+            )
+            .await
+            {
+                Ok(len) => {
+                    cert_len += len;
+                    if len < chunk_len {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    status = MbxCmdStatus::Failure;
+                    cert_len = 0;
+                    break;
+                }
+            }
+        }
+
+        resp_buf[..header_len].copy_from_slice(
+            MailboxRespHeaderVarSize {
+                data_len: cert_len as u32,
+                ..Default::default()
+            }
+            .as_bytes(),
+        );
+        Ok((&mut resp_buf[..header_len + cert_len], status))
     }
 
     /// Handles `MC_GET_ATTESTATION`.
@@ -886,6 +979,12 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
         c if c == CommandId::MC_VENDOR_PK_HASH_STATUS => size_of::<VendorPkHashStatusResp>(),
         #[cfg(feature = "attested-csr")]
         c if c == CommandId::MC_EXPORT_ATTESTED_CSR => size_of::<ExportAttestedCsrResp>(),
+        c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => {
+            size_of::<MailboxRespHeaderVarSize>()
+                + mcu_caliptra_api::DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN
+                + mcu_caliptra_api::DPE_MAX_LEAF_CERT_SIZE
+        }
+        c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => size_of::<GetDpeCertChainResp>(),
         c if c == CommandId::MC_GET_ATTESTATION => size_of::<McuMailboxResp>().max(
             size_of::<MailboxRespHeaderVarSize>()
                 + GET_ATTESTATION_RESP_PREFIX_LEN

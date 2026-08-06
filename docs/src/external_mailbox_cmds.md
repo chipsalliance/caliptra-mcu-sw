@@ -40,6 +40,8 @@ framing and is not changed by this Runtime ABI.
 | MC_FIRMWARE_VERSION           | 0x4D46_5756 ("MFWV") | Retrieves the version of the target firmware.                                         |
 | MC_DEVICE_CAPABILITIES        | 0x4D43_4150 ("MCAP") | Retrieve the device capabilities.                                                     |
 | MC_EXPORT_ATTESTED_CSR        | 0x4D45_4143 ("MEAC") | Discovers supported device keys or exports an attested CSR, wrapped in a CoseSign1 structure. |
+| MC_DPE_SIGNER_CONTEXT_CERT    | 0x4D44_5343 ("MDSC") | Derives an exported CDI from the selected attestation target and returns its leaf certificate. |
+| MC_GET_DPE_CERTIFICATE_CHAIN  | 0x4D44_4343 ("MDCC") | Retrieves the DPE certificate chain.                                                  |
 | MC_GET_ATTESTATION            | 0x4D47_4154 ("MGAT") | Retrieves signed attestation evidence in a requester-selected format.                 |
 | MC_GET_CERT_CHAIN             | 0x4D47_4343 ("MGCC") | Reserved for future certificate-chain retrieval; not implemented.                    |
 | MC_SET_CERT_CHAIN             | 0x4D53_4343 ("MSCC") | Reserved for future certificate-chain updates; not implemented.                      |

@@ -1774,6 +1774,7 @@ dependencies = [
  "caliptra-mcu-libtock_runtime",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
+ "caliptra-mcu-measurement-api",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-userlog",

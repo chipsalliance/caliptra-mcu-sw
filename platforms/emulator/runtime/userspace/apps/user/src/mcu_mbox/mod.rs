@@ -32,16 +32,18 @@ const fn slot_bytes(len: usize) -> usize {
 ///
 /// * The `McuMailboxReq` allocation made before the request is shrunk.
 /// * `MC_GET_ATTESTATION` (OCP EAT, ML-DSA-87): the request, an evidence-sized
-///   response, and the DPE ML-DSA-87 sign response. This is the largest
-///   path when `attested-csr` is off (12,416 B).
+///   response, the raw COSE signing input, and the DPE ML-DSA-87 sign response.
+///   This is the largest path when `attested-csr` is off (13,440 B).
+/// * `MC_DPE_SIGNER_CONTEXT_CERT`: the request, in-place certificate response,
+///   and nested DPE derive request.
 ///
 /// All remaining commands peak below these.
 #[cfg(feature = "mcu-mbox-service")]
 const BASE_MCU_MBOX_SCRATCH_REQUIRED: usize = {
     use caliptra_mcu_common_commands::CaliptraCmdHandler;
     use caliptra_mcu_mbox_common::messages::{
-        GetAttestationReq, MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp,
-        GET_ATTESTATION_RESP_PREFIX_LEN,
+        DpeSignerContextCertReq, GetAttestationReq, MailboxRespHeaderVarSize, McuMailboxReq,
+        McuMailboxResp, GET_ATTESTATION_RESP_PREFIX_LEN,
     };
 
     const fn max_usize(a: usize, b: usize) -> usize {
@@ -61,17 +63,28 @@ const BASE_MCU_MBOX_SCRATCH_REQUIRED: usize = {
                 + GET_ATTESTATION_RESP_PREFIX_LEN
                 + <crate::caliptra_cmd_handler::CaliptraCmdBackend as CaliptraCmdHandler>::MAX_ATTESTATION_EVIDENCE_LEN,
         ))
+        + slot_bytes(mcu_caliptra_api::DPE_MLDSA87_RAW_MAX_SIZE)
         + slot_bytes(mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK);
 
-    max_usize(initial_req, get_attestation)
+    let dpe_certificate = BITMAP_SLOT_SIZE
+        + slot_bytes(core::mem::size_of::<DpeSignerContextCertReq>())
+        + slot_bytes(
+            core::mem::size_of::<MailboxRespHeaderVarSize>()
+                + mcu_caliptra_api::DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN
+                + mcu_caliptra_api::DPE_MAX_LEAF_CERT_SIZE,
+        )
+        + slot_bytes(mcu_caliptra_api::DPE_DERIVE_CONTEXT_EXPORTED_CDI_SCRATCH_PEAK);
+
+    max_usize(max_usize(initial_req, get_attestation), dpe_certificate)
 };
 
 /// `MC_EXPORT_ATTESTED_CSR` stages up to 12.8 KiB of CSR in one response, so
 /// the pool must hold the bitmap slot, the shrunk request, and that response.
+/// The raw ML-DSA-87 attestation peak is larger.
 #[cfg(all(feature = "mcu-mbox-service", feature = "attested-csr"))]
 const MCU_MBOX_SCRATCH_SIZE: usize = {
     use caliptra_mcu_mbox_common::messages::{ExportAttestedCsrReq, ExportAttestedCsrResp};
-    let declared = 13 * 1024;
+    let declared = 13 * 1024 + 512;
     let attested_csr = BITMAP_SLOT_SIZE
         + slot_bytes(core::mem::size_of::<ExportAttestedCsrReq>())
         + slot_bytes(core::mem::size_of::<ExportAttestedCsrResp>());
@@ -87,11 +100,11 @@ const MCU_MBOX_SCRATCH_SIZE: usize = {
 };
 
 /// Without `attested-csr`, `MC_GET_ATTESTATION` with ML-DSA-87 signing is the
-/// peak (12,416 B with the default evidence configuration). 12.5 KiB leaves
+/// peak (13,440 B with the default evidence configuration). 13.5 KiB leaves
 /// six spare slots.
 #[cfg(all(feature = "mcu-mbox-service", not(feature = "attested-csr")))]
 const MCU_MBOX_SCRATCH_SIZE: usize = {
-    let declared = 12 * 1024 + 512;
+    let declared = 13 * 1024 + 512;
     assert!(
         declared >= BASE_MCU_MBOX_SCRATCH_REQUIRED,
         "MCU_MBOX_SCRATCH_SIZE cannot hold the MC_GET_ATTESTATION / request-receive peak"

@@ -324,3 +324,16 @@ pub async fn encode_measurement_evidence<A: ScratchAlloc>(
         .ok_or(MeasurementApiError::AttestationDisabled)?;
     api.encode_measurement_evidence(alloc, buffer).await
 }
+
+/// Derive an exported CDI certificate and stash its handle under the Measurement API lock.
+pub async fn export_cdi_and_stash<A: ScratchAlloc>(
+    alloc: &A,
+    profile: DpeProfile,
+    cert_out: &mut [u8],
+) -> MeasurementApiResult<usize> {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.export_cdi_and_stash(alloc, profile, cert_out).await
+}
