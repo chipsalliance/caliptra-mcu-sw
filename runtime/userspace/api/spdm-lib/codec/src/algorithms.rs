@@ -67,6 +67,27 @@ def_flag_set_le! {
 }
 
 def_flag_set_le! {
+  /// PqcAsymAlgo / PqcAsymSel.
+    pub struct PqcAsymAlgos(U32: u32) {
+        MLDSA_44 = 1 << 0,
+        MLDSA_65 = 1 << 1,
+        MLDSA_87 = 1 << 2,
+        SLHDSA_SHA2_128S = 1 << 3,
+        SLHDSA_SHAKE_128S = 1 << 4,
+        SLHDSA_SHA2_128F = 1 << 5,
+        SLHDSA_SHAKE_128F = 1 << 6,
+        SLHDSA_SHA2_192S = 1 << 7,
+        SLHDSA_SHAKE_192S = 1 << 8,
+        SLHDSA_SHA2_192F = 1 << 9,
+        SLHDSA_SHAKE_192F = 1 << 10,
+        SLHDSA_SHA2_256S = 1 << 11,
+        SLHDSA_SHAKE_256S = 1 << 12,
+        SLHDSA_SHA2_256F = 1 << 13,
+        SLHDSA_SHAKE_256F = 1 << 14,
+    }
+}
+
+def_flag_set_le! {
   /// BaseHashAlgo / BaseHashSel.
     pub struct HashAlgos(U32: u32) {
         SHA_256 = 1 << 0,
@@ -109,6 +130,15 @@ def_flag_set_le! {
     }
 }
 
+def_flag_set_le! {
+  /// KEMAlg.AlgSupported.
+    pub struct KemAlgos(U16: u16) {
+        ML_KEM512 = 1 << 0,
+        ML_KEM768 = 1 << 1,
+        ML_KEM1024 = 1 << 2,
+    }
+}
+
 // ---- AlgType discriminants -------------------------------------------------
 
 /// `AlgType` byte values for AlgStruct entries.
@@ -117,6 +147,8 @@ pub mod alg_type {
     pub const AEAD: u8 = 0x03;
     pub const REQ_BASE_ASYM: u8 = 0x04;
     pub const KEY_SCHEDULE: u8 = 0x05;
+    pub const REQ_PQC_ASYM: u8 = 0x06;
+    pub const KEM: u8 = 0x07;
 }
 
 // ---- NEGOTIATE_ALGORITHMS request wire types -------------------------------
@@ -138,7 +170,10 @@ pub struct NegotiateAlgorithmsReqBodyFixed {
     pub other_param_support: OtherParamSupport,
     pub base_asym_algo: AsymAlgos,
     pub base_hash_algo: HashAlgos,
-    pub reserved1: [u8; 12],
+    /// Requester supported PQC asymmetric key signature algorithms.
+    /// Since V1.4, reserved in V1.3 and prior.
+    pub pqc_asym_algo: PqcAsymAlgos,
+    pub reserved1: [u8; 8],
     pub ext_asym_count: u8,
     pub ext_hash_count: u8,
     /// Byte 28: Reserved.
@@ -173,7 +208,10 @@ pub struct AlgorithmsRspBodyFixed {
     pub meas_hash_algo: MeasHashAlgos,
     pub base_asym_sel: AsymAlgos,
     pub base_hash_sel: HashAlgos,
-    pub reserved3: [u8; 12],
+    /// Selected PQC asymmetric key signature algorithm.
+    /// Since V1.4, reserved in V1.3 and prior.
+    pub pqc_asym_sel: PqcAsymAlgos,
+    pub reserved3: [u8; 8],
     pub ext_asym_sel_count: u8,
     pub ext_hash_sel_count: u8,
     pub reserved4: [u8; 2],
@@ -192,9 +230,10 @@ const _: () =
 pub struct AlgStructEntry {
     /// One of [`alg_type`] constants.
     pub alg_type: u8,
-    /// `FixedAlgCount[3:0] | ExtAlgCount[7:4]`. We always emit
+    /// `ExtAlgCount[3:0] | FixedAlgCount[7:4]`. We always emit
     /// `FixedAlgCount = 2` (one 16-bit AlgSupported bitmap, no
     /// external algs).
+    /// `FixedAlgCount` + 2 shall be a multiple of 4.
     pub alg_count_etc: u8,
     pub alg_supported: U16,
 }
@@ -242,6 +281,7 @@ pub struct AlgorithmsRsp {
     pub meas_hash_algo: MeasHashAlgos,
     pub base_asym_sel: AsymAlgos,
     pub base_hash_sel: HashAlgos,
+    pub pqc_asym_sel: PqcAsymAlgos,
     /// AlgStruct entries to advertise; `None` slots are skipped.
     pub alg_structs: [Option<AlgStructEntry>; MAX_ALG_STRUCT_ENTRIES],
 }
@@ -271,7 +311,8 @@ impl ResponseBody for AlgorithmsRsp {
             meas_hash_algo: self.meas_hash_algo,
             base_asym_sel: self.base_asym_sel,
             base_hash_sel: self.base_hash_sel,
-            reserved3: [0; 12],
+            pqc_asym_sel: self.pqc_asym_sel,
+            reserved3: [0; 8],
             ext_asym_sel_count: 0,
             ext_hash_sel_count: 0,
             reserved4: [0; 2],
