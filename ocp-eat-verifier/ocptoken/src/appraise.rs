@@ -81,10 +81,13 @@ pub(crate) fn run(
 
     // Phase 5: Verifier Augmentation
     println!("\nPhase 5: Verifier Augmentation");
-    println!("Running Verifier-generated checks (freshness, debug status)...");
+    println!("Running Verifier-generated checks and recording informational claims...");
     for check in &report.verifier_checks {
         let mark = if check.passed { "PASS" } else { "FAIL" };
         println!("  [{}] {}: {}", mark, check.name, check.detail);
+    }
+    for claim in &report.verifier_claims {
+        println!("  [INFO] {}: {}", claim.name, claim.detail);
     }
 
     // Phase 6: Attestation Result

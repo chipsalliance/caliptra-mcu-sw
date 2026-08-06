@@ -69,6 +69,15 @@ pub enum BootKind {
     HitlessUpdate,
 }
 
+/// Policy for when evidence generation becomes available after boot init.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum EvidenceReadinessPolicy {
+    /// Evidence can be emitted immediately after Measurement API boot init.
+    ReadyAfterBootInit,
+    /// Evidence is blocked until all initial SoC image measurements are stashed.
+    RequireInitialSocLoadComplete,
+}
+
 /// Attestation availability state owned by the Measurement API.
 ///
 /// Later Measurement API entry points gate evidence generation and component
@@ -77,6 +86,9 @@ pub enum BootKind {
 pub enum AttestationState {
     /// Boot initialization has not completed yet.
     Uninitialized,
+    /// Boot policy/root state is initialized, but initial SoC image
+    /// measurements are not yet complete.
+    InitialMeasurementsPending,
     /// Measurement state is valid; attestation flows may run.
     Active,
     /// Measurement state is invalid; normal attestation flows are blocked
@@ -94,10 +106,13 @@ pub async fn init<A: ApiAlloc>(
     manifest_bytes: &'static [u8],
     soc_image_load_fw_ids: &'static [u32],
     boot_kind: BootKind,
+    readiness_policy: EvidenceReadinessPolicy,
     alloc: &A,
 ) -> MeasurementApiResult {
     let mut api = MeasurementApi::<DefaultSyscalls>::new(manifest_bytes, soc_image_load_fw_ids)?;
-    let result = api.measurement_boot_init(boot_kind, alloc).await;
+    let result = api
+        .measurement_boot_init(boot_kind, readiness_policy, alloc)
+        .await;
     let mut guard = MEASUREMENT_API.lock().await;
     guard.replace(api);
     result
@@ -126,6 +141,15 @@ pub async fn authorize_and_stash<A: ApiAlloc>(
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
     api.authorize_and_stash(alloc, fw_id, metadata).await
+}
+
+/// Mark initial SoC image measurements complete after regular image loading.
+pub async fn mark_initial_soc_load_complete() -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.mark_initial_soc_load_complete()
 }
 
 /// Fetch a DPE leaf certificate slice for the configured attestation target.

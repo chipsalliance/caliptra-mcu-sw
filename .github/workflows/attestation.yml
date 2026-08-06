@@ -15,6 +15,26 @@ env:
 jobs:
   attestation_e2e:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ocp-eat-non-tcb
+            runtime_feature: test-mctp-spdm-attestation
+            test_name: test_mctp_spdm_attestation::test::test_mctp_spdm_attestation
+            appraise: true
+          - name: ocp-eat-tcb
+            runtime_feature: test-mctp-spdm-attestation-tcb
+            test_name: test_mctp_spdm_attestation::test::test_mctp_spdm_attestation_tcb
+            appraise: true
+          - name: ocp-eat-mixed
+            runtime_feature: test-mctp-spdm-attestation-mixed
+            test_name: test_mctp_spdm_attestation::test::test_mctp_spdm_attestation_mixed
+            appraise: true
+          - name: pcr-quote
+            runtime_feature: test-mctp-spdm-attestation-pcr-quote
+            test_name: test_mctp_spdm_attestation_pcr_quote::test::test_mctp_spdm_attestation_pcr_quote
+            appraise: false
 
     env:
       CARGO_INCREMENTAL: 0
@@ -105,11 +125,12 @@ jobs:
       # ---- Build firmware with test features enabled -------------------------------
       - name: Build firmware with test SPDM responder features
         run: |
-          cargo xtask all-build --separate-runtimes --runtime-features test-mctp-spdm-attestation \
+          cargo xtask all-build --separate-runtimes --runtime-features ${{ matrix.runtime_feature }} \
             --vendor "$ATTESTATION_VENDOR" --model "$ATTESTATION_MODEL"
 
       # ---- Generate reference CoRIM values -------------------------------
       - name: Generate reference-value CoRIM
+        if: matrix.appraise
         run: |
           cat > /tmp/corim-config.json << EOF
           {
@@ -121,14 +142,14 @@ jobs:
             }
           }
           EOF
-          cargo xtask corim gen-refval --bundle target/all-fw.zip --config /tmp/corim-config.json
+          cargo xtask corim gen-refval --bundle target/all-fw.zip --feature ${{ matrix.runtime_feature }} --config /tmp/corim-config.json
 
       # ---- Upload Reference CoRIM artifacts -------------------------------
       - name: Upload Reference CoRIM artifacts
-        if: always()
+        if: always() && matrix.appraise
         uses: actions/upload-artifact@v7
         with:
-          name: attestation-artifacts
+          name: attestation-artifacts-${{ matrix.name }}
           path: |
             attestation-artifacts/
 
@@ -142,7 +163,7 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
           CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
         run: |
-          cargo t -p caliptra-mcu-tests-integration -- --include-ignored --nocapture --exact test_mctp_spdm_attestation::test::test_mctp_spdm_attestation
+          cargo t -p caliptra-mcu-tests-integration -- --include-ignored --nocapture --exact ${{ matrix.test_name }}
 
       - name: Upload attestation logs
         if: always()
@@ -150,7 +171,7 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
-          name: spdm-mctp-attestation-test-results
+          name: spdm-mctp-attestation-${{ matrix.name }}-test-results
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/spdm_requester_emu_output.txt
             ${{ env.SPDM_VALIDATOR_DIR }}/caliptra-evidence.pcap
@@ -165,6 +186,7 @@ jobs:
 
       # ---- Authenticate attestation inputs against Trust Anchor Store -------------------------------
       - name: Prepare Attestation Artifacts and Build Trust Anchor Store
+        if: matrix.appraise
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
           CORIM_DIR: ${{ github.workspace }}/attestation-artifacts/refval-corim
@@ -201,6 +223,7 @@ jobs:
 
       # ---- Authenticate, verify, and display EAT claims -------------------------------
       - name: Authenticate and verify attestation inputs
+        if: matrix.appraise
         working-directory: ocp-eat-verifier
         env:
           EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
@@ -213,14 +236,14 @@ jobs:
             -c $EVIDENCE_DIR/certificate_chain_slot_00.der
 
       # ---- Appraise evidence against reference values (OCP EAT Verifier Algorithm) -------------------------------
-      # TODO: Re-enable once ocptoken supports spdm-lib EAT format
-      # - name: Appraise evidence against reference values
-      #   working-directory: ocp-eat-verifier
-      #   env:
-      #     EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
-      #     TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
-      #     SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
-      #   run: |
-      #     ./target/release/ocptoken appraise \
-      #       -e $EVIDENCE_DIR/measurement_block_fd.bin \
-      #       -c $EVIDENCE_DIR/certificate_chain_slot_00.der
+      - name: Appraise evidence against reference values
+        if: matrix.appraise
+        working-directory: ocp-eat-verifier
+        env:
+          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
+          TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
+          SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
+        run: |
+          ./target/release/ocptoken appraise \
+            -e $EVIDENCE_DIR/measurement_block_fd.bin \
+            -c $EVIDENCE_DIR/certificate_chain_slot_00.der

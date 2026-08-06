@@ -68,6 +68,8 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-defmt-logging-vdm",
     "test-exit-immediately",
     "test-mctp-spdm-attestation",
+    "test-mctp-spdm-attestation-tcb",
+    "test-mctp-spdm-attestation-mixed",
     "test-mctp-spdm-attestation-pcr-quote",
     "test-mctp-spdm-responder-conformance",
     "test-external-otp",
