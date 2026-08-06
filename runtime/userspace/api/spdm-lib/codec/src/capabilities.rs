@@ -14,7 +14,7 @@
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::flag_macros::def_flag_set_le;
-use crate::{ReqRespCode, ResponseBody, WireError, WireWriter};
+use crate::{ReqRespCode, ResponseBody, SpdmVersion, WireError, WireWriter};
 
 def_flag_set_le! {
     /// SPDM capability bitfield (DSP0274 §10.5.1 Table 11). Constants
@@ -96,12 +96,23 @@ impl CapabilitiesBody {
 
     /// Practical upper bound on CTExponent (CT = 2^32 µs ≈ 1.2 h).
     pub const MAX_CT_EXPONENT: u8 = 32;
+
+    /// V1.0/1.1 CAPABILITIES body size (DSP0274 1.1.1 §10.3, tables 175/176):
+    /// `Param1(1) | Param2(1) | Reserved(1) | CTExponent(1) | Reserved(2) |
+    /// Flags(4)` = 10 bytes. This is the 18-byte V1.2+ body **without** the
+    /// trailing `DataTransferSize(4)` and `MaxSPDMmsgSize(4)` fields, which were
+    /// added in V1.2. The V1.1 request carries the same 10-byte layout as the
+    /// response (both directions share the shape, as in V1.2+).
+    pub const SIZE_V11: usize = 10;
 }
 
 const _: () = assert!(core::mem::size_of::<CapabilitiesBody>() == CapabilitiesBody::SIZE);
 
 /// Builder for a CAPABILITIES response.
 pub struct CapabilitiesRsp {
+    /// Negotiated SPDM version. Selects the wire shape: V1.1 emits the 10-byte
+    /// legacy body (no DataTransferSize/MaxSPDMmsgSize); V1.2+ emits 18 bytes.
+    pub version: SpdmVersion,
     pub ct_exponent: u8,
     pub flags: CapFlags,
     pub data_transfer_size: u32,
@@ -112,19 +123,95 @@ impl ResponseBody for CapabilitiesRsp {
     const RESPONSE_CODE: ReqRespCode = ReqRespCode::CAPABILITIES;
 
     fn body_size(&self) -> usize {
-        CapabilitiesBody::SIZE
+        // V1.1 omits DataTransferSize + MaxSPDMmsgSize.
+        if self.version < SpdmVersion::V12 {
+            CapabilitiesBody::SIZE_V11
+        } else {
+            CapabilitiesBody::SIZE
+        }
     }
 
     fn encode_body(&self, w: &mut WireWriter<'_>) -> Result<(), WireError> {
-        w.write(&CapabilitiesBody {
+        // V1.0/1.1 stop after the 4-byte Flags field. The first 10 bytes
+        // of CapabilitiesBody are byte-identical to the V1.1 body, so write the
+        // shared prefix and only append DataTransferSize/MaxSPDMmsgSize for V1.2+.
+        w.write(&CapabilitiesBodyV11 {
             param1: 0,
             param2: 0,
             reserved: 0,
             ct_exponent: self.ct_exponent,
             reserved2: [0; 2],
             flags: self.flags,
-            data_transfer_size: U32::new(self.data_transfer_size),
-            max_spdm_msg_size: U32::new(self.max_spdm_msg_size),
-        })
+        })?;
+        if self.version >= SpdmVersion::V12 {
+            w.write(&U32::new(self.data_transfer_size))?;
+            w.write(&U32::new(self.max_spdm_msg_size))?;
+        }
+        Ok(())
+    }
+}
+
+/// 10-byte V1.0/1.1 CAPABILITIES body (DSP0274 1.1.1 §10.3). Byte-identical to
+/// the leading 10 bytes of [`CapabilitiesBody`]; used for both the V1.1
+/// GET_CAPABILITIES request decode and the CAPABILITIES response encode.
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Copy, Clone, Default)]
+#[repr(C)]
+pub struct CapabilitiesBodyV11 {
+    pub param1: u8,
+    pub param2: u8,
+    pub reserved: u8,
+    pub ct_exponent: u8,
+    pub reserved2: [u8; 2],
+    pub flags: CapFlags,
+}
+
+impl CapabilitiesBodyV11 {
+    pub const SIZE: usize = CapabilitiesBody::SIZE_V11;
+}
+
+const _: () = assert!(core::mem::size_of::<CapabilitiesBodyV11>() == CapabilitiesBodyV11::SIZE);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::builder::ResponseBody;
+    use crate::wire::WireWriter;
+
+    fn rsp(version: SpdmVersion) -> CapabilitiesRsp {
+        CapabilitiesRsp {
+            version,
+            ct_exponent: 20,
+            flags: CapFlags::CERT | CapFlags::CHAL,
+            data_transfer_size: 4096,
+            max_spdm_msg_size: 4096,
+        }
+    }
+
+    #[test]
+    fn v11_capabilities_body_is_10_bytes_without_transfer_sizes() {
+        // V1.1 CAPABILITIES has no DataTransferSize/MaxSPDMmsgSize.
+        let body = rsp(SpdmVersion::V11);
+        assert_eq!(body.body_size(), CapabilitiesBody::SIZE_V11);
+        assert_eq!(body.body_size(), 10);
+
+        let mut buf = [0u8; 32];
+        let mut w = WireWriter::new(&mut buf);
+        body.encode_body(&mut w).unwrap();
+        // Flags occupy bytes 6..10; nothing follows them for V1.1.
+        assert_eq!(&buf[6..10], &0x0000_0006u32.to_le_bytes()); // CERT|CHAL = bits 1,2
+    }
+
+    #[test]
+    fn v12_capabilities_body_is_18_bytes_with_transfer_sizes() {
+        let body = rsp(SpdmVersion::V12);
+        assert_eq!(body.body_size(), CapabilitiesBody::SIZE);
+        assert_eq!(body.body_size(), 18);
+
+        let mut buf = [0u8; 32];
+        let mut w = WireWriter::new(&mut buf);
+        body.encode_body(&mut w).unwrap();
+        // DataTransferSize at bytes 10..14, MaxSPDMmsgSize at 14..18.
+        assert_eq!(&buf[10..14], &4096u32.to_le_bytes());
+        assert_eq!(&buf[14..18], &4096u32.to_le_bytes());
     }
 }

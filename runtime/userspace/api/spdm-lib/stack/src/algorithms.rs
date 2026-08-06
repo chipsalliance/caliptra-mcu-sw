@@ -244,7 +244,12 @@ fn build_response_body<S, L>(
     peer: &PeerAlgs,
     secure_message_supported: bool,
 ) -> AlgorithmsRsp {
-    let mut other_param_support = state.other_param_support & fixed.other_param_support;
+    // OtherParamSupport is SPDM 1.2+ only; suppress for SPDM 1.1.
+    let mut other_param_support = if state.version < SpdmVersion::V12 {
+        OtherParamSupport::EMPTY
+    } else {
+        state.other_param_support & fixed.other_param_support
+    };
     let (dhe, aead, key_schedule) = if secure_message_supported {
         (
             state.dhe & peer.dhe,

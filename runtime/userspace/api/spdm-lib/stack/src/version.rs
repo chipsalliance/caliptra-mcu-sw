@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! GET_VERSION → VERSION handler (DSP0274 §10.2).
+//! GET_VERSION -> VERSION handler (DSP0274 section 10.2).
 //!
 //! Per spec the VERSION response's SPDMVersion field is **always
 //! V1.0** — version negotiation happens later, in GET_CAPABILITIES.
@@ -17,10 +17,10 @@ use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_VERSION_MISMATCH};
 use crate::stack::{ConnectionState, Phase};
 
 /// Versions advertised by the responder, in descending order of preference.
-///
-/// V1.2 is the floor because our CAPABILITIES / ALGORITHMS request
-/// bodies only support the V1.2+ wire shape.
-pub(crate) const SUPPORTED_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V13, SpdmVersion::V12];
+/// V1.1 satisfies OCP 2.7 SPDM-1 backward-compatibility; the CAPABILITIES /
+/// ALGORITHMS handlers gate 1.2+ caps off for a V1.1 peer.
+pub(crate) const SUPPORTED_VERSIONS: &[SpdmVersion] =
+    &[SpdmVersion::V13, SpdmVersion::V12, SpdmVersion::V11];
 
 /// Handles a `GET_VERSION` request and produces the matching `VERSION` response.
 ///
@@ -42,7 +42,7 @@ pub(crate) const SUPPORTED_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V13, SpdmVe
 ///
 /// * `Ok(PalBytes)` — The fully-encoded `VERSION` response (transport
 ///   header + SPDM common header + body). Always carries
-///   [`SpdmVersion::V10`] per DSP0274 §10.2.
+///   [`SpdmVersion::V10`] per DSP0274 section 10.2.
 ///
 /// # Errors
 ///
@@ -57,7 +57,7 @@ pub(crate) async fn handle_get_version<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &Pal::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    // DSP0274 §10.2 Table 8: GET_VERSION header version shall be 0x10.
+    // DSP0274 section 10.2 Table 8: GET_VERSION header version shall be 0x10.
     let req = io.request();
     let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != SpdmVersion::V10.to_u8() {
@@ -74,7 +74,7 @@ pub(crate) async fn handle_get_version<'a, Pal: SpdmPal>(
     let spdm_len = body.encoded_size();
     let resp = build_response(pal, io, SpdmVersion::V10, &body)?;
 
-    // DSP0274 §10.4.1: GET_VERSION + VERSION contribute to VCA.
+    // DSP0274 section 10.4.1: GET_VERSION + VERSION contribute to VCA.
     // Use spdm_len to exclude any transport-layer padding (e.g. DOE DWORD alignment).
     let head = pal.header_size();
     state.transcript.append_vca(pal, io, io.request()).await?;
@@ -85,4 +85,19 @@ pub(crate) async fn handle_get_version<'a, Pal: SpdmPal>(
 
     state.phase = Phase::AfterVersion;
     Ok(resp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn advertises_v11_through_v13_in_preference_order() {
+        // V1.1 must be advertised for backward compatibility, in descending
+        // preference.
+        assert_eq!(
+            SUPPORTED_VERSIONS,
+            &[SpdmVersion::V13, SpdmVersion::V12, SpdmVersion::V11]
+        );
+    }
 }
