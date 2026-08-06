@@ -47,10 +47,12 @@ const DOE_TYPE_SECURE_SPDM: u8 = 2;
 
 /// Default SPDM `DataTransferSize` (payload bytes) when a caller uses
 /// [`McuSpdmDoeTransport::new`]. This is a transport convenience default,
-/// **not** a profile policy: an OCP NVMe integration selects its own value
-/// via [`McuSpdmDoeTransport::with_transfer_size`] and validates the OCP
-/// minimum once at initialization (the transport itself carries no OCP rule).
-const DEFAULT_TRANSFER_SIZE: usize = 4096;
+/// **not** a profile policy: an OCP NVMe integration selects a larger value
+/// (e.g. 4 KiB) via [`McuSpdmDoeTransport::with_transfer_size`] and validates
+/// the OCP minimum once at initialization (the transport itself carries no OCP
+/// rule). The generic default is kept small so a stock integration uses a
+/// modest transfer buffer and chunks larger messages.
+const DEFAULT_TRANSFER_SIZE: usize = 1024;
 
 /// PCIe DOE-based SPDM PAL transport.
 ///

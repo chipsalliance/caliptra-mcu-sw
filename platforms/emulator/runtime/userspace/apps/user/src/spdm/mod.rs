@@ -25,7 +25,7 @@ use caliptra_mcu_spdm_pal::{
     BitmapAllocator, McuSpdmPal, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE,
 };
 use caliptra_mcu_spdm_stack::SpdmStack;
-#[cfg(feature = "spdm-doe-ocp-transfer-size")]
+#[cfg(feature = "ocp-nvme-profile")]
 use caliptra_mcu_spdm_traits::SpdmPalTransport;
 use caliptra_mcu_spdm_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
@@ -53,14 +53,18 @@ use embassy_sync::signal::Signal;
 /// `header + mtu` response allocation, and the advertised `MaxSPDMmsgSize`
 /// reserves that headroom (see `usable_large_capacity` in the stack). At a
 /// 4 KiB MTU a 12 KiB pool leaves less than one frame usable, so CHUNK is
-/// stripped from the advertised capabilities. Enable `spdm-large-scratch` to
-/// grow the pool to 20 KiB (~8 KiB usable large-message capacity), which keeps
+/// stripped from the advertised capabilities. The `ocp-nvme-profile` feature
+/// grows the pool to 20 KiB (~8 KiB usable large-message capacity), which keeps
 /// CHUNK advertised at a 4 KiB DataTransferSize at the cost of ~8 KiB BSS per
-/// responder task. Sizing is an integrator decision, hence a Cargo feature
-/// rather than a hard-coded bump.
-#[cfg(feature = "spdm-large-scratch")]
+/// responder task.
+///
+/// This is only the reference app's OCP NVMe demonstration profile. Sizing is
+/// an integrator decision: the reusable libraries expose the transfer-size and
+/// allocator APIs, so an integrator configures its own pool directly rather
+/// than through this feature.
+#[cfg(feature = "ocp-nvme-profile")]
 const SPDM_SCRATCH_SIZE: usize = 20 * 1024;
-#[cfg(not(feature = "spdm-large-scratch"))]
+#[cfg(not(feature = "ocp-nvme-profile"))]
 const SPDM_SCRATCH_SIZE: usize = 12 * 1024;
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
@@ -194,12 +198,16 @@ async fn spdm_mctp_responder() {
 async fn spdm_doe_responder() {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
-    // OCP 2.7 SPDM-14 requires a 4 KiB DataTransferSize. That minimum is
-    // integrator/profile policy, so it is selected here (via a Cargo feature)
-    // rather than baked into the reusable DOE transport, which carries no
-    // profile rule of its own. Without the feature the transport uses its own
-    // default DataTransferSize and the stack chunks larger messages as usual.
-    #[cfg(feature = "spdm-doe-ocp-transfer-size")]
+    // OCP Datacenter NVMe SSD SPDM (OCP 2.7 SPDM-14) requires a 4 KiB
+    // DataTransferSize; see the Security section of the "OCP Datacenter NVMe
+    // SSD Specification v2.7", published under OCP Storage at
+    // https://www.opencompute.org/documents. That minimum is
+    // integrator/profile policy, so this reference app selects it here (behind
+    // the `ocp-nvme-profile` feature) rather than baking it into the reusable
+    // DOE transport, which carries no profile rule of its own. Without the
+    // feature the transport uses its own default DataTransferSize and the stack
+    // chunks larger messages as usual.
+    #[cfg(feature = "ocp-nvme-profile")]
     let doe_transport = {
         const OCP_MIN_DATA_TRANSFER_SIZE: usize = 4096;
         let doe_transport = McuSpdmDoeTransport::with_transfer_size(
@@ -224,7 +232,7 @@ async fn spdm_doe_responder() {
         }
         doe_transport
     };
-    #[cfg(not(feature = "spdm-doe-ocp-transfer-size"))]
+    #[cfg(not(feature = "ocp-nvme-profile"))]
     let doe_transport = {
         let doe_transport = McuSpdmDoeTransport::new(doe::driver_num::DOE_SPDM);
         if !doe_transport.exists() {
