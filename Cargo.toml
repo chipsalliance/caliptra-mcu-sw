@@ -106,6 +106,7 @@ members = [
     "runtime/userspace/userlog",
     "tests/hello",
     "tests/integration",
+    "tools/fw-signer",
     "tools/pk-hash-checker",
     "xtask",
 ]
@@ -247,6 +248,7 @@ caliptra-mcu-fusegen = { path = "provisioning/fuses/fusegen" }
 caliptra-mcu-i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 caliptra-mcu-libtockasync = { path = "runtime/userspace/libtockasync" }
 caliptra-mcu-builder = { path = "builder" }
+caliptra-mcu-fw-signer = { path = "tools/fw-signer" }
 caliptra-mcu-components = { path = "runtime/kernel/components" }
 caliptra-mcu-config = { path = "common/config" }
 caliptra-mcu-command-auth-challenge-signer = { path = "common/command-auth-challenge-signer" }
