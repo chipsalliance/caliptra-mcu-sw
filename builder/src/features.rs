@@ -52,6 +52,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-rom-flash-access",
     "test-mcu-svn-gt-fuse",
     "test-mcu-svn-lt-fuse",
+    "test-ekp",
 ];
 
 pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
