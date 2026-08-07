@@ -9,6 +9,7 @@ pub const CALIPTRA_FMC_RT_IDENTIFIER: u32 = 0x00000000;
 pub const SOC_MANIFEST_IDENTIFIER: u32 = 0x00000001;
 pub const MCU_RT_IDENTIFIER: u32 = 0x00000002;
 pub const SOC_IMAGES_BASE_IDENTIFIER: u32 = 0x00001000;
+pub const IMAGE_FILENAME_SIZE: usize = 64;
 
 pub const HEADER_VERSION: u16 = 0x0002;
 
@@ -47,11 +48,21 @@ pub struct ImageHeader {
     pub identifier: u32,
     pub offset: u32,
     pub size: u32,
+    pub filename: [u8; IMAGE_FILENAME_SIZE],
     pub image_checksum: u32,
     pub image_header_checksum: u32,
 }
 
 impl ImageHeader {
+    pub fn filename_str(&self) -> Result<&str, core::str::Utf8Error> {
+        let length = self
+            .filename
+            .iter()
+            .position(|&byte| byte == 0)
+            .unwrap_or(self.filename.len());
+        core::str::from_utf8(&self.filename[..length])
+    }
+
     pub fn verify(&self) -> bool {
         0u32.wrapping_sub(
             self.as_bytes()[..offset_of!(ImageHeader, image_header_checksum)]
