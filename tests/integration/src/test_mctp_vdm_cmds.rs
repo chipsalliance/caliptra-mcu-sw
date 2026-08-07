@@ -297,8 +297,14 @@ pub mod test {
             Ok(())
         }
 
+        fn test_production_backend(&mut self) -> Result<(), VdmTransportError> {
+            info!("Testing production CaliptraCmdBackend dispatch...");
+            let request = FirmwareVersionRequest::new(0);
+            self.send_request_expect_error(&request, VdmCompletionCode::UnsupportedOperation)
+        }
+
         /// Spawn test thread and run tests.
-        pub fn run(socket: MctpVdmSocket, debug_level: LevelFilter) {
+        pub fn run(socket: MctpVdmSocket, debug_level: LevelFilter, production_backend: bool) {
             caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
                 wait_for_runtime_start();
                 if !caliptra_mcu_testing_common::is_emulator_running() {
@@ -311,20 +317,25 @@ pub mod test {
                 info!("Running MCTP VDM Command Tests");
                 let mut test = VdmCmdTest::new(socket);
 
-                if let Err(e) = test.run_all_tests() {
+                let result = if production_backend {
+                    test.test_production_backend()
+                } else {
+                    test.run_all_tests()
+                };
+                if let Err(e) = result {
                     info!("VDM test failed: {:?}", e);
                     exit(-1);
-                } else {
-                    info!("All VDM tests passed!");
-                    caliptra_mcu_testing_common::stop_emulator();
-                    exit(0);
                 }
+
+                info!("All VDM tests passed!");
+                caliptra_mcu_testing_common::stop_emulator();
+                exit(0);
             });
         }
     }
 
     /// Start VDM command test with the given feature.
-    pub fn start_vdm_test(feature: &str, debug_level: LevelFilter) {
+    pub fn start_vdm_test(feature: &str, debug_level: LevelFilter, production_backend: bool) {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -369,7 +380,7 @@ pub mod test {
         let vdm_transport =
             MctpVdmTransport::new(hw.i3c_port().unwrap(), hw.i3c_address().unwrap().into());
         let vdm_socket = vdm_transport.create_socket().unwrap();
-        VdmCmdTest::run(vdm_socket, debug_level);
+        VdmCmdTest::run(vdm_socket, debug_level, production_backend);
 
         let test = finish_runtime_hw_model(&mut hw);
 
@@ -382,6 +393,11 @@ pub mod test {
 
     #[test]
     fn test_mctp_vdm_cmds() {
-        start_vdm_test("test-mctp-vdm-cmds", LevelFilter::Info);
+        start_vdm_test("test-mctp-vdm-cmds", LevelFilter::Info, false);
+    }
+
+    #[test]
+    fn test_mctp_vdm_production_backend() {
+        start_vdm_test("test-mctp-vdm-production", LevelFilter::Info, true);
     }
 }
