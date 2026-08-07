@@ -41,6 +41,17 @@ impl BootFlow for FwBoot {
 
         // Jump to firmware
         caliptra_mcu_romtime::println!("[mcu-rom] Jumping to firmware");
+        #[cfg(all(target_arch = "riscv32", feature = "rom-from-ram"))]
+        {
+            let pc: u32;
+            unsafe {
+                core::arch::asm!("auipc {pc}, 0", pc = out(reg) pc);
+            }
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] FwBoot::run() currently executing from {}",
+                caliptra_mcu_romtime::HexWord(pc)
+            );
+        }
         env.mci
             .set_flow_milestone(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
         crate::call_hook(params.hooks, |h| h.post_fw_boot());

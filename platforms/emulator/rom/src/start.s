@@ -63,7 +63,6 @@ copy_data:
     addi t1, t1, 4
     j copy_data
 end_copy_data:
-
     # call main entry point
     call main
 

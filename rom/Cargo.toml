@@ -44,3 +44,5 @@ svn-manifest = []
 # `FirmwareBootReset`. Used by the DOT manifest hitless-update integration
 # test to exercise `FwHitlessUpdate::run` without a real PLDM update flow.
 test-force-hitless-update = []
+# Debug prints of the execution address in cold_boot.rs/fw_boot.rs.
+rom-from-ram = []

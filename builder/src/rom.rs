@@ -31,9 +31,12 @@ pub fn rom_build(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     };
     let rom_size = rom_size_for_platform(platform.unwrap_or("emulator"));
     let rom_binary = common.release_dir().map(|t| t.join(format!("{rom}.bin")))?;
+    let rom_from_ram = features
+        .map(|f| f.split(',').any(|x| x == "rom-from-ram"))
+        .unwrap_or(false);
     let build_cmd = Commands::Build {
         common,
-        ld: LdArgs::default(),
+        ld: rom_ld_args(platform.unwrap_or("emulator"), &target_name, rom_from_ram),
         build: BuildArgs {
             rom_features: features.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             no_default_features: true,
@@ -86,6 +89,18 @@ pub fn rom_size_for_platform(platform: &str) -> usize {
     }
 }
 
+/// Selects the rom-from-ram SRAM layout when explicitly enabled for
+/// `mcu-rom-emulator`.
+pub(crate) fn rom_ld_args(platform: &str, crate_name: &str, rom_from_ram: bool) -> LdArgs {
+    match (platform, crate_name) {
+        ("emulator", "mcu-rom-emulator") if rom_from_ram => LdArgs {
+            rom_ld_base: Some(PROJECT_ROOT.join("firmware-bundler/data/rom-ram-text-layout.ld")),
+            ..Default::default()
+        },
+        _ => LdArgs::default(),
+    }
+}
+
 pub fn test_rom_build(args: &CaliptraBuildArgs) -> Result<String> {
     let platform = args.platform.unwrap_or("emulator");
     let fwid = args
@@ -124,10 +139,11 @@ pub fn test_rom_build(args: &CaliptraBuildArgs) -> Result<String> {
     if platform != "emulator" {
         features.push("fpga_realtime");
     }
+    let rom_from_ram = features.contains(&"rom-from-ram");
 
     let build_cmd = Commands::Build {
         common,
-        ld: LdArgs::default(),
+        ld: rom_ld_args(platform, fwid.crate_name, rom_from_ram),
         build: BuildArgs {
             rom_features: Some(features.join(",")),
             no_default_features: true,

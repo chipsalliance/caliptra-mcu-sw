@@ -31,6 +31,7 @@ use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,
 };
+use caliptra_mcu_config_emulator::MCU_ROM_RAM_TEXT_SIZE;
 use caliptra_mcu_rom_common::flash::flash_partition::FlashPartition;
 use caliptra_mcu_rom_common::hil::FlashStorage;
 use caliptra_mcu_rom_common::memory::SimpleFlash;
@@ -177,7 +178,72 @@ pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_emulator::EMULATOR
 #[used]
 pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS;
 
+/// Number of 4 KiB blocks of MCU SRAM firmware execution is allowed to use.
+/// With `rom-from-ram`, excludes the SRAM block reserved for copied ROM
+/// logic so firmware never loads on top of code the ROM is still running.
+#[cfg(feature = "rom-from-ram")]
+fn mcu_fw_sram_exec_region_size() -> u32 {
+    (MCU_MEMORY_MAP.sram_size - MCU_ROM_RAM_TEXT_SIZE) / 4096
+}
+
+#[cfg(not(feature = "rom-from-ram"))]
+fn mcu_fw_sram_exec_region_size() -> u32 {
+    (MCU_MEMORY_MAP.sram_size - MCU_MEMORY_MAP.storage_size) / 4096
+        - caliptra_mcu_rom_common::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS
+        - 1
+}
+
+// Linker-provided addresses of the `.ram_text` block; pure address markers,
+// so only ever take their address (`addr_of!`), never read as data.
+#[cfg(feature = "rom-from-ram")]
+extern "C" {
+    static ROM_RAM_TEXT_LOAD: u8;
+    static ROM_RAM_TEXT_START: u8;
+    static ROM_RAM_TEXT_END: u8;
+}
+
+/// Copies `.ram_text` from its ROM load address to SRAM. Must run before
+/// anything reachable from `.ram_text` (i.e. `rom_common`) is called.
+#[cfg(feature = "rom-from-ram")]
+fn copy_ram_text() {
+    unsafe {
+        let load = core::ptr::addr_of!(ROM_RAM_TEXT_LOAD);
+        let start = core::ptr::addr_of!(ROM_RAM_TEXT_START) as *mut u8;
+        let end = core::ptr::addr_of!(ROM_RAM_TEXT_END);
+        let len = end as usize - start as usize;
+        core::ptr::copy_nonoverlapping(load, start, len);
+    }
+}
+
+/// Hand-off point from ROM into `.ram_text`. `#[inline(never)]` keeps it a
+/// standalone symbol so `auipc` reads its own (SRAM) address, not a caller's.
+#[cfg(feature = "rom-from-ram")]
+#[link_section = ".ram_text"]
+#[inline(never)]
+fn rom_common(params: RomParameters) {
+    let pc: u32;
+    unsafe {
+        core::arch::asm!("auipc {pc}, 0", pc = out(reg) pc);
+    }
+    caliptra_mcu_romtime::println!(
+        "[mcu-rom] rom_common executing from SRAM at {}",
+        HexWord(pc)
+    );
+    caliptra_mcu_rom_common::rom_start(params);
+}
+
+/// Without `rom-from-ram`, a plain alias for `rom_start`.
+#[cfg(not(feature = "rom-from-ram"))]
+fn rom_common(params: RomParameters) {
+    caliptra_mcu_rom_common::rom_start(params);
+}
+
+/// ROM-resident entry point.
+#[link_section = ".text"]
 pub extern "C" fn rom_entry() -> ! {
+    #[cfg(feature = "rom-from-ram")]
+    copy_ram_text();
+
     unsafe {
         #[allow(static_mut_refs)]
         caliptra_mcu_romtime::set_printer(&mut EMULATOR_WRITER);
@@ -250,7 +316,7 @@ pub extern "C" fn rom_entry() -> ! {
             _ => fatal_error(EmulatorError::InvalidPartitionId.into()),
         };
 
-        caliptra_mcu_rom_common::rom_start(RomParameters {
+        rom_common(RomParameters {
             flash_partition_driver: Some(&mut flash_image_partition_driver),
             dot_flash: Some(dot_flash),
             owner_pk_hash_policy: read_owner_pk_hash_policy(),
@@ -261,6 +327,7 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
+            mcu_fw_sram_exec_region_size: Some(mcu_fw_sram_exec_region_size()),
             ..Default::default()
         });
     } else if cfg!(any(
@@ -283,14 +350,15 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
+            mcu_fw_sram_exec_region_size: Some(mcu_fw_sram_exec_region_size()),
             ..Default::default()
         };
-        caliptra_mcu_rom_common::rom_start(rom_parameters);
+        rom_common(rom_parameters);
     } else if cfg!(any(
         feature = "test-fw-manifest-dot",
         feature = "test-fw-manifest-dot-hitless"
     )) {
-        caliptra_mcu_rom_common::rom_start(RomParameters {
+        rom_common(RomParameters {
             dot_flash: Some(dot_flash),
             owner_pk_hash_policy: read_owner_pk_hash_policy(),
             fw_manifest_dot_enabled: true,
@@ -302,6 +370,7 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
+            mcu_fw_sram_exec_region_size: Some(mcu_fw_sram_exec_region_size()),
             ..Default::default()
         });
     } else if cfg!(feature = "test-svn-manifest") {
@@ -325,7 +394,7 @@ pub extern "C" fn rom_entry() -> ! {
                 fuse_entry: SOC_IMAGE_MIN_SVN_1,
             },
         ];
-        caliptra_mcu_rom_common::rom_start(RomParameters {
+        rom_common(RomParameters {
             dot_flash: Some(dot_flash),
             owner_pk_hash_policy: read_owner_pk_hash_policy(),
             svn_manifest_enabled: true,
@@ -338,6 +407,7 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
+            mcu_fw_sram_exec_region_size: Some(mcu_fw_sram_exec_region_size()),
             ..Default::default()
         });
     } else if cfg!(feature = "flash-boot") {
@@ -356,7 +426,7 @@ pub extern "C" fn rom_entry() -> ! {
 
         caliptra_mcu_romtime::println!("[mcu-rom] Booting from flash");
 
-        caliptra_mcu_rom_common::rom_start(RomParameters {
+        rom_common(RomParameters {
             flash_partition_driver: Some(&mut flash_partition),
             dot_flash: Some(dot_flash),
             owner_pk_hash_policy: read_owner_pk_hash_policy(),
@@ -368,6 +438,7 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
+            mcu_fw_sram_exec_region_size: Some(mcu_fw_sram_exec_region_size()),
             ..Default::default()
         });
     } else {
@@ -417,7 +488,7 @@ pub extern "C" fn rom_entry() -> ! {
 
         let hooks = LoggingRomHooks;
 
-        caliptra_mcu_rom_common::rom_start(RomParameters {
+        rom_common(RomParameters {
             dot_flash: Some(dot_flash),
             owner_pk_hash_policy: read_owner_pk_hash_policy(),
             cptra_mbox_axi_users: mbox_axi_users,
@@ -532,11 +603,7 @@ pub extern "C" fn rom_entry() -> ! {
             } else {
                 &[]
             },
-            mcu_fw_sram_exec_region_size: Some(
-                (MCU_MEMORY_MAP.sram_size - MCU_MEMORY_MAP.storage_size) / 4096
-                    - caliptra_mcu_rom_common::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS
-                    - 1,
-            ),
+            mcu_fw_sram_exec_region_size: Some(mcu_fw_sram_exec_region_size()),
             ..Default::default()
         });
     }

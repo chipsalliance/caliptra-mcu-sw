@@ -1089,6 +1089,18 @@ impl BootFlow for ColdBoot {
                 .modify(ResetReason::FwBootUpdReset::CLEAR + ResetReason::FwHitlessUpdReset::SET);
         }
 
+        #[cfg(all(target_arch = "riscv32", feature = "rom-from-ram"))]
+        {
+            let pc: u32;
+            unsafe {
+                core::arch::asm!("auipc {pc}, 0", pc = out(reg) pc);
+            }
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] ColdBoot::run() executing from {} before warm reset",
+                HexWord(pc)
+            );
+        }
+
         mci.trigger_warm_reset();
         caliptra_mcu_romtime::println!("[mcu-rom] ERROR: Still running after reset request!");
         fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);

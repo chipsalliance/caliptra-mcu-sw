@@ -38,9 +38,12 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let runtime_bin = release_dir.join(&output_name);
 
     let runtime_features = features.filter(|s| !s.is_empty()).map(|f| f.to_string());
+    // This path never threads ROM-specific features through, so rom-from-ram
+    // can never be "explicitly passed" here -- always pass `false`.
+    let ld = crate::rom::rom_ld_args(platform_str, &format!("mcu-rom-{platform_str}"), false);
     let bundle_cmd = BundleCommands::Bundle {
         common,
-        ld: LdArgs::default(),
+        ld,
         build: BuildArgs {
             runtime_features,
             no_default_features: args.no_default_features,
