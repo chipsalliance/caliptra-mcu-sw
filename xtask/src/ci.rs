@@ -98,7 +98,43 @@ fn box_cache(val: impl Cache + 'static) -> Box<dyn Cache> {
     Box::new(val)
 }
 
-fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
+struct FileRestoreGuard {
+    path: PathBuf,
+    contents: Option<Vec<u8>>,
+}
+
+impl FileRestoreGuard {
+    fn new(path: PathBuf) -> io::Result<Self> {
+        let contents = match fs::read(&path) {
+            Ok(contents) => Some(contents),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => None,
+            Err(err) => return Err(err),
+        };
+        Ok(Self { path, contents })
+    }
+}
+
+impl Drop for FileRestoreGuard {
+    fn drop(&mut self) {
+        let result = match &self.contents {
+            Some(contents) => fs::write(&self.path, contents),
+            None => match fs::remove_file(&self.path) {
+                Ok(()) => Ok(()),
+                Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+                Err(err) => Err(err),
+            },
+        };
+        if let Err(err) = result {
+            eprintln!("Unable to restore {}: {err}", self.path.display());
+        }
+    }
+}
+
+fn build_runtime(workspace: &Path, target_dir: &Path) -> Result<PathBuf> {
+    // Historical manifests can make Cargo normalize their checked-in lockfile.
+    // Restore it before size-history checks out the next commit.
+    let _cargo_lock = FileRestoreGuard::new(workspace.join("Cargo.lock"))?;
+
     // FPGA does not have a `*-devel.toml` manifest variant (HW-fixed SRAM);
     // still exercise the `release` cargo feature / `release` cargo profile
     // against its single 512 KB layout so size regressions and
@@ -177,7 +213,7 @@ impl CaliptraElfSizeGenerator {
         let target_dir = workspace.join("target");
 
         if self.build {
-            build_runtime(&target_dir).map_err(other_err)?;
+            build_runtime(workspace, &target_dir).map_err(other_err)?;
         }
 
         let elf_bytes = get_elf_bytes(&target_dir, self.fwid)?;
@@ -221,7 +257,7 @@ impl SramOverflowGenerator {
     fn measure(&self, workspace: &Path) -> Option<u64> {
         let target_dir = workspace.join("target");
 
-        match build_runtime(&target_dir) {
+        match build_runtime(workspace, &target_dir) {
             Ok(_) => Some(0), // Fits in SRAM
             Err(e) => {
                 let msg = format!("{:?}", e);
@@ -258,5 +294,29 @@ impl ArtifactBuilder for SramOverflowGenerator {
 
     fn build_and_measure(&self, workspace: &Path) -> Option<u64> {
         self.measure(workspace)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_restore_guard_restores_original_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let existing = temp.path().join("existing.lock");
+        fs::write(&existing, b"original").unwrap();
+        {
+            let _guard = FileRestoreGuard::new(existing.clone()).unwrap();
+            fs::write(&existing, b"modified").unwrap();
+        }
+        assert_eq!(fs::read(&existing).unwrap(), b"original");
+
+        let absent = temp.path().join("absent.lock");
+        {
+            let _guard = FileRestoreGuard::new(absent.clone()).unwrap();
+            fs::write(&absent, b"created").unwrap();
+        }
+        assert!(!absent.exists());
     }
 }
