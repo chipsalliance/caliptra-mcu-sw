@@ -213,153 +213,192 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
     let enum_cmd = caliptra_mcu_mbox_common::messages::OcpLockEnumerateHpkeHandlesReq::default();
     let enum_resp = hw.mailbox_execute_req(enum_cmd)?;
 
-    // Find the handle associated with ECDHE (ECDH_P384_HKDF_SHA384_AES_256_GCM)
-    let handle = enum_resp.hpke_handles[..enum_resp.hpke_handle_count as usize]
-        .iter()
-        .find(|h| {
-            h.hpke_algorithm
-                == caliptra_api::mailbox::HpkeAlgorithms::ECDH_P384_HKDF_SHA384_AES_256_GCM
-        })
-        .expect("Failed to find ECDHE HPKE handle")
-        .clone();
+    let handles = &enum_resp.hpke_handles[..enum_resp.hpke_handle_count as usize];
+    assert_eq!(handles.len(), 3, "Expected 3 HPKE handles");
 
-    // 2. Get OCP LOCK Endorsement Certificate from MCU Mailbox
-    let cmd = caliptra_mcu_mbox_common::messages::GetOcpLockEndorsementCertReq {
-        hdr: caliptra_mcu_mbox_common::messages::MailboxReqHeader::default(),
-        hpke_handle: handle,
-    };
+    for handle in handles {
+        // 2. Get OCP LOCK Endorsement Certificate from MCU Mailbox
+        let cmd = caliptra_mcu_mbox_common::messages::GetOcpLockEndorsementCertReq {
+            hdr: caliptra_mcu_mbox_common::messages::MailboxReqHeader::default(),
+            hpke_handle: handle.clone(),
+        };
 
-    let resp = hw.mailbox_execute_req(cmd)?;
+        let resp = hw.mailbox_execute_req(cmd)?;
 
-    let cert_len = resp.hdr.data_len as usize;
-    assert!(cert_len > 0, "Certificate length should be greater than 0");
-    assert!(
-        cert_len <= caliptra_mcu_mbox_common::messages::MAX_RESP_DATA_SIZE,
-        "Certificate length should be within limits"
-    );
+        let cert_len = resp.hdr.data_len as usize;
+        assert!(cert_len > 0, "Certificate length should be greater than 0");
+        assert!(
+            cert_len <= caliptra_mcu_mbox_common::messages::MAX_RESP_DATA_SIZE,
+            "Certificate length should be within limits"
+        );
 
-    // Verify it looks like a DER certificate (starts with 0x30)
-    assert_eq!(
-        resp.data[0], 0x30,
-        "Certificate should start with ASN.1 SEQUENCE tag (0x30)"
-    );
+        // Verify it looks like a DER certificate (starts with 0x30)
+        assert_eq!(
+            resp.data[0], 0x30,
+            "Certificate should start with ASN.1 SEQUENCE tag (0x30)"
+        );
 
-    let endorsement_cert_der = &resp.data[..cert_len];
-    let endorsement_cert = X509::from_der(endorsement_cert_der)
-        .expect("Failed to parse endorsement certificate as DER");
+        let endorsement_cert_der = &resp.data[..cert_len];
+        let endorsement_cert = X509::from_der(endorsement_cert_der)
+            .expect("Failed to parse endorsement certificate as DER");
 
-    // Verify the issuer name is what we expected ("DPE Leaf")
-    let issuer_name = endorsement_cert.issuer_name();
-    let issuer_entry = issuer_name
-        .entries()
-        .next()
-        .expect("No entries in issuer name");
-    assert_eq!(
-        issuer_entry.data().as_slice(),
-        b"DPE Leaf",
-        "Issuer name should match what we requested"
-    );
+        // Verify the issuer name is what we expected ("DPE Leaf")
+        let issuer_name = endorsement_cert.issuer_name();
+        let issuer_entry = issuer_name
+            .entries()
+            .next()
+            .expect("No entries in issuer name");
+        assert_eq!(
+            issuer_entry.data().as_slice(),
+            b"DPE Leaf",
+            "Issuer name should match what we requested"
+        );
 
-    // Verify the subject name is what we expected
-    let subject_name = endorsement_cert.subject_name();
-    let entry = subject_name
-        .entries()
-        .next()
-        .expect("No entries in subject name");
-    assert_eq!(
-        entry.data().as_slice(),
-        b"Caliptra MCU OCP LOCK Endorsement",
-        "Subject name should match what we requested"
-    );
+        // Verify the subject name is what we expected
+        let subject_name = endorsement_cert.subject_name();
+        let entry = subject_name
+            .entries()
+            .next()
+            .expect("No entries in subject name");
+        assert_eq!(
+            entry.data().as_slice(),
+            b"Caliptra MCU OCP LOCK Endorsement",
+            "Subject name should match what we requested"
+        );
 
-    // 3. Verify HPKE Identifiers Extension is present and correct (using x509_parser)
-    let mut parser = X509CertificateParser::new().with_deep_parse_extensions(true);
-    let parsed_cert = match parser.parse(endorsement_cert_der) {
-        Ok((_, parsed_cert)) => parsed_cert,
-        Err(e) => panic!("x509 parsing failed: {:?}", e),
-    };
+        // 3. Verify HPKE Identifiers Extension is present and correct (using x509_parser)
+        let mut parser = X509CertificateParser::new().with_deep_parse_extensions(true);
+        let parsed_cert = match parser.parse(endorsement_cert_der) {
+            Ok((_, parsed_cert)) => parsed_cert,
+            Err(e) => panic!("x509 parsing failed: {:?}", e),
+        };
 
-    // Verify Serial Number is the expected 20-byte constant [0x7F; 20]
-    assert_eq!(
-        parsed_cert.tbs_certificate.serial.to_bytes_be(),
-        &[0x7F; 20],
-        "Certificate serial number mismatch!"
-    );
+        // Verify Serial Number is the expected 20-byte constant [0x7F; 20]
+        assert_eq!(
+            parsed_cert.tbs_certificate.serial.to_bytes_be(),
+            &[0x7F; 20],
+            "Certificate serial number mismatch!"
+        );
 
-    // Verify Basic Constraints (critical, not a CA)
-    let basic_constraints = parsed_cert
-        .basic_constraints()
-        .expect("Failed to parse basic constraints")
-        .expect("Basic constraints extension missing");
-    assert!(
-        basic_constraints.critical,
-        "Basic constraints should be critical"
-    );
-    assert!(
-        !basic_constraints.value.ca,
-        "Certificate should not be a CA"
-    );
+        // Verify Basic Constraints (critical, not a CA)
+        let basic_constraints = parsed_cert
+            .basic_constraints()
+            .expect("Failed to parse basic constraints")
+            .expect("Basic constraints extension missing");
+        assert!(
+            basic_constraints.critical,
+            "Basic constraints should be critical"
+        );
+        assert!(
+            !basic_constraints.value.ca,
+            "Certificate should not be a CA"
+        );
 
-    // Verify Key Usage (critical, key encipherment only)
-    let key_usage = parsed_cert
-        .key_usage()
-        .expect("Failed to parse key usage")
-        .expect("Key usage extension missing");
-    assert!(key_usage.critical, "Key usage should be critical");
-    assert!(
-        key_usage.value.key_encipherment(),
-        "Key usage should allow key encipherment"
-    );
-    assert!(
-        !key_usage.value.key_cert_sign(),
-        "Key usage should not allow key cert sign"
-    );
-    assert!(
-        !key_usage.value.digital_signature(),
-        "Key usage should not allow digital signature"
-    );
+        // Verify Key Usage (critical, key encipherment only)
+        let key_usage = parsed_cert
+            .key_usage()
+            .expect("Failed to parse key usage")
+            .expect("Key usage extension missing");
+        assert!(key_usage.critical, "Key usage should be critical");
+        assert!(
+            key_usage.value.key_encipherment(),
+            "Key usage should allow key encipherment"
+        );
+        assert!(
+            !key_usage.value.key_cert_sign(),
+            "Key usage should not allow key cert sign"
+        );
+        assert!(
+            !key_usage.value.digital_signature(),
+            "Key usage should not allow digital signature"
+        );
 
-    let hpke_oid = x509_parser::oid_registry::asn1_rs::oid!(2.23.133 .21 .1 .1);
-    let hpke_ext = parsed_cert
-        .tbs_certificate
-        .extensions()
-        .iter()
-        .find(|e| e.oid == hpke_oid)
-        .expect("HPKE Identifiers extension not found in certificate!");
+        let hpke_oid = x509_parser::oid_registry::asn1_rs::oid!(2.23.133 .21 .1 .1);
+        let hpke_ext = parsed_cert
+            .tbs_certificate
+            .extensions()
+            .iter()
+            .find(|e| e.oid == hpke_oid)
+            .expect("HPKE Identifiers extension not found in certificate!");
 
-    // Verify HPKE Identifiers Extension is NOT critical
-    assert!(
-        !hpke_ext.critical,
-        "HPKE Identifiers extension should not be critical"
-    );
+        // Verify HPKE Identifiers Extension is NOT critical
+        assert!(
+            !hpke_ext.critical,
+            "HPKE Identifiers extension should not be critical"
+        );
 
-    let (_, seq) =
-        parse_ber_sequence(hpke_ext.value).expect("Failed to parse HPKE identifiers sequence");
+        let (_, seq) =
+            parse_ber_sequence(hpke_ext.value).expect("Failed to parse HPKE identifiers sequence");
 
-    let items = seq
-        .content
-        .as_sequence()
-        .expect("HPKE Identifiers extension is not a sequence");
+        let items = seq
+            .content
+            .as_sequence()
+            .expect("HPKE Identifiers extension is not a sequence");
 
-    assert_eq!(
-        items.len(),
-        3,
-        "HPKE Identifiers sequence must have exactly 3 items"
-    );
+        assert_eq!(
+            items.len(),
+            3,
+            "HPKE Identifiers sequence must have exactly 3 items"
+        );
 
-    let kem_id = items[0]
-        .as_u32()
-        .expect("Failed to parse KEM ID as integer");
-    let kdf_id = items[1]
-        .as_u32()
-        .expect("Failed to parse KDF ID as integer");
-    let aead_id = items[2]
-        .as_u32()
-        .expect("Failed to parse AEAD ID as integer");
+        let kem_id = items[0]
+            .as_u32()
+            .expect("Failed to parse KEM ID as integer");
+        let kdf_id = items[1]
+            .as_u32()
+            .expect("Failed to parse KDF ID as integer");
+        let aead_id = items[2]
+            .as_u32()
+            .expect("Failed to parse AEAD ID as integer");
 
-    assert_eq!(kem_id, 17, "KEM ID mismatch (expected 17 for P384)");
-    assert_eq!(kdf_id, 2, "KDF ID mismatch (expected 2 for HKDF-SHA384)");
-    assert_eq!(aead_id, 2, "AEAD ID mismatch (expected 2 for AES-256-GCM)");
+        let expected_kem_id = match handle.hpke_algorithm {
+            caliptra_api::mailbox::HpkeAlgorithms::ECDH_P384_HKDF_SHA384_AES_256_GCM => 17,
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_HKDF_SHA384_AES_256_GCM => 66,
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_ECDH_P384_HKDF_SHA384_AES_256_GCM => 81,
+            _ => panic!("Unknown HPKE algorithm"),
+        };
+
+        assert_eq!(kem_id, expected_kem_id, "KEM ID mismatch");
+        assert_eq!(kdf_id, 2, "KDF ID mismatch (expected 2 for HKDF-SHA384)");
+        assert_eq!(aead_id, 2, "AEAD ID mismatch (expected 2 for AES-256-GCM)");
+
+        // Verify SPKI Algorithm OID
+        let expected_spki_oid = match handle.hpke_algorithm {
+            caliptra_api::mailbox::HpkeAlgorithms::ECDH_P384_HKDF_SHA384_AES_256_GCM => {
+                x509_parser::oid_registry::asn1_rs::oid!(1.2.840.10045.2.1)
+            }
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_HKDF_SHA384_AES_256_GCM => {
+                x509_parser::oid_registry::asn1_rs::oid!(2.16.840.1.101.3.4.4.3)
+            }
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_ECDH_P384_HKDF_SHA384_AES_256_GCM => {
+                x509_parser::oid_registry::asn1_rs::oid!(1.3.6.1.5.5.7.6.63)
+            }
+            _ => panic!("Unknown HPKE algorithm"),
+        };
+
+        assert_eq!(
+            parsed_cert.tbs_certificate.public_key().algorithm.algorithm,
+            expected_spki_oid,
+            "SPKI Algorithm OID mismatch"
+        );
+
+        let expected_key_len = match handle.hpke_algorithm {
+            caliptra_api::mailbox::HpkeAlgorithms::ECDH_P384_HKDF_SHA384_AES_256_GCM => 97,
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_HKDF_SHA384_AES_256_GCM => 1568,
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_ECDH_P384_HKDF_SHA384_AES_256_GCM => 1665,
+            _ => panic!("Unknown HPKE algorithm"),
+        };
+        assert_eq!(
+            parsed_cert
+                .tbs_certificate
+                .public_key()
+                .subject_public_key
+                .data
+                .len(),
+            expected_key_len,
+            "Public key length mismatch"
+        );
+    }
 
     Ok(())
 }
