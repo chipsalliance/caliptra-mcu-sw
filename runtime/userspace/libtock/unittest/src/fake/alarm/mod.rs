@@ -1,7 +1,9 @@
 //! Fake implementation of the Alarm API.
 //!
-//! Supports frequency and set_relative.
-//! Will schedule the upcall immediately.
+//! Supports frequency, time, and set_relative.
+//! Will schedule the upcall immediately. Each set_relative advances the virtual
+//! `now` counter by its relative argument, so a consumer that sleeps and then
+//! reads time (command TIME) observes the clock move forward monotonically.
 
 use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 use core::cell::Cell;
@@ -38,6 +40,10 @@ impl crate::fake::SyscallDriver for Alarm {
         match command_number {
             command::EXISTS => crate::command_return::success(),
             command::FREQUENCY => crate::command_return::success_u32(self.frequency_hz),
+            // Current value of the virtual monotonic tick counter. Each
+            // SET_RELATIVE advances `now` by its relative argument (below), so a
+            // consumer that sleeps then reads TIME observes time moving forward.
+            command::TIME => crate::command_return::success_u32(self.now.get().0),
             command::SET_RELATIVE => {
                 // We're not actually sleeping, just ticking the timer.
                 // The semantics of sleeping aren't clear,
