@@ -86,7 +86,7 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    #[cfg_attr(not(feature = "fpga_realtime"), ignore)]
+    #[cfg(feature = "fpga_realtime")]
     #[test]
     fn test_mctp_capsule_loopback_after_hitless_update_reset() {
         use crate::test_fpga_flash_ctrl::test::run_imaginary_flash_controller_service_with_init;
