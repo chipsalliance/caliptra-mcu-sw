@@ -51,5 +51,9 @@ pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
     crate::test::e2e_tests()?;
     crate::test::test_hello_c_emulator()?;
     crate::rom::build_all_variants(rom_variants)?;
+
+    // Fail if the user-app's largest stack frame approaches its budget. Catches
+    // the per-function frame growth the section-size check cannot see.
+    crate::stack_guard::run()?;
     Ok(())
 }

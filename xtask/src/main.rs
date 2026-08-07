@@ -27,6 +27,7 @@ mod registers;
 mod rom;
 mod runtime;
 mod sizes;
+mod stack_guard;
 mod test;
 mod vertex_ai;
 
@@ -153,6 +154,10 @@ enum Commands {
         #[arg(long)]
         variants: Option<String>,
     },
+    /// Fail if the user-app's worst-case stack usage (from `.stack_sizes`)
+    /// approaches its `[[app]].stack` budget. Unlike the section-size check,
+    /// this catches per-function frame growth.
+    StackGuard,
     /// Build emulator binary and package it in emulators.zip
     EmulatorBuild {
         #[arg(long)]
@@ -672,6 +677,7 @@ fn main() {
                 )
             })
         }
+        Commands::StackGuard => stack_guard::run(),
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
                 caliptra_fw,
