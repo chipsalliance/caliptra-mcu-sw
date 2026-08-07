@@ -67,7 +67,7 @@ impl<'a> FlashPartition<'a> {
     ///
     /// Returns `Ok(())` if the read operation is successful.
     /// Returns `Err(FlashDrvError::SIZE)` if the requested range exceeds the partition size, or propagates errors from the underlying flash controller.
-    pub fn read(&self, partition_offset: usize, buf: &'a mut [u8]) -> Result<(), FlashDrvError> {
+    pub fn read(&self, partition_offset: usize, buf: &mut [u8]) -> Result<(), FlashDrvError> {
         if partition_offset + buf.len() > self.length {
             return Err(FlashDrvError::SIZE);
         }
@@ -122,5 +122,23 @@ impl<'a> FlashPartition<'a> {
 
     pub fn name(&self) -> &'static str {
         self.name
+    }
+}
+
+impl FlashStorage for FlashPartition<'_> {
+    fn read(&self, buffer: &mut [u8], address: usize) -> Result<(), FlashDrvError> {
+        FlashPartition::read(self, address, buffer)
+    }
+
+    fn write(&self, buffer: &[u8], address: usize) -> Result<(), FlashDrvError> {
+        FlashPartition::write(self, address, buffer)
+    }
+
+    fn erase(&self, address: usize, length: usize) -> Result<(), FlashDrvError> {
+        FlashPartition::erase(self, address, length)
+    }
+
+    fn capacity(&self) -> usize {
+        self.length
     }
 }

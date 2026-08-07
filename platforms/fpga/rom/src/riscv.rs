@@ -237,14 +237,20 @@ pub extern "C" fn rom_entry() -> ! {
 
     // DOT flash is backed by the secondary flash controller.
     let secondary_flash_ctrl = FpgaFlashCtrl::initialize_flash_ctrl(SECONDARY_FLASH_CTRL_BASE);
-    let dot_flash: &dyn caliptra_mcu_rom_common::hil::FlashStorage = &secondary_flash_ctrl;
+    let dot_flash = caliptra_mcu_rom_common::flash::flash_partition::FlashPartition::new(
+        &secondary_flash_ctrl,
+        "DOT blob",
+        caliptra_mcu_config_fpga::flash::DOT_BLOB_PARTITION.offset,
+        caliptra_mcu_config_fpga::flash::DOT_BLOB_PARTITION.size,
+    )
+    .unwrap();
 
     caliptra_mcu_rom_common::rom_start(RomParameters {
         lifecycle_transition,
         burn_lifecycle_tokens,
         program_field_entropy: [program_field_entropy; 4],
         // The DOT/recovery FPGA tests inject OTP fuses (DOT state + the
-        // vendor recovery PK hash in the scrambled VENDOR_SECRET_PROD
+        // DOT recovery key hash in the scrambled VENDOR_SECRET_PROD
         // partition) through the hw-model OTP backdoor. That backdoor image is
         // not formatted for the OTP controller's background integrity/
         // consistency checks, which then fault the controller on real
@@ -254,7 +260,7 @@ pub extern "C" fn rom_entry() -> ! {
         otp_enable_integrity_check: !cfg!(feature = "test-i3c-services"),
         otp_enable_consistency_check: !cfg!(feature = "test-i3c-services"),
         flash_partition_driver: Some(&mut flash_partition),
-        dot_flash: Some(dot_flash),
+        dot_flash: Some(&dot_flash),
         owner_pk_hash_policy: read_owner_pk_hash_policy(),
         cptra_mbox_axi_users: mbox_axi_users,
         cptra_fuse_axi_user: axi_user0,

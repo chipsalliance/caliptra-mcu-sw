@@ -26,6 +26,7 @@ zerocopy.workspace = true
 
 [features]
 default = []
+device-ownership-transfer = []
 periodic-fips-self-test = []
 release = [
 	"dep:defmt",

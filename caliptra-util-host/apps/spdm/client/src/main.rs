@@ -12,7 +12,7 @@ use caliptra_spdm_requester::{SpdmConfig, SpdmRequester, SpdmSocketDeviceIo, Spd
 use caliptra_spdm_vdm_client::config::{self, TestConfig};
 use caliptra_spdm_vdm_client::{
     validator, AsymmetricCommandAuthorizer, CommandAuthChallengeSigner, DebugUnlockKeys,
-    DebugUnlockSigner, LocalDebugUnlockSigner, SpdmVdmClient,
+    DebugUnlockSigner, HybridMessageSigner, LocalDebugUnlockSigner, SpdmVdmClient,
 };
 use clap::Parser;
 
@@ -119,6 +119,25 @@ fn main() -> Result<()> {
             anyhow::bail!("Both ecc_auth_key and mldsa_auth_key must be provided for asymmetric authorization");
         }
     };
+    let dot_signer: Option<Box<dyn HybridMessageSigner>> = if config.dot.enabled {
+        match (&config.dot.ecc_lak_private_key, &config.dot.mldsa_lak_seed) {
+            (Some(hex_ecc), Some(hex_mldsa)) => {
+                let ecc_key = hex::decode(hex_ecc)?;
+                let mldsa_key = hex::decode(hex_mldsa)?;
+                Some(Box::new(AsymmetricCommandAuthorizer::new(
+                    &ecc_key, &mldsa_key,
+                )?))
+            }
+            (None, None) => None,
+            _ => {
+                anyhow::bail!(
+                    "Both ecc_lak_private_key and mldsa_lak_seed must be provided for DOT"
+                );
+            }
+        }
+    } else {
+        None
+    };
 
     println!(
         "[caliptra-spdm-validator] Connecting to bridge at {}",
@@ -149,6 +168,7 @@ fn main() -> Result<()> {
             &config,
             debug_unlock_signer.as_deref(),
             fe_prog_authorizer.as_deref(),
+            dot_signer.as_deref(),
             true,
         )
     };

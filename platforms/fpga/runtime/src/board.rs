@@ -16,7 +16,9 @@ use caliptra_mcu_components::{
     dpe_handle_store_component_static, flash_partition_component_static,
     instantiate_flash_partitions,
 };
-use caliptra_mcu_config_fpga::flash::{EMULATED_EXT_OTP_PARTITION, STAGING_PARTITION};
+use caliptra_mcu_config_fpga::flash::{
+    DOT_BLOB_PARTITION, EMULATED_EXT_OTP_PARTITION, STAGING_PARTITION,
+};
 use caliptra_mcu_config_fpga::flash_partition_list_imaginary_flash;
 use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use caliptra_mcu_registers_generated::mci;
@@ -156,7 +158,7 @@ struct VeeR {
     mctp_caliptra: &'static caliptra_mcu_capsules_runtime::mctp::driver::MCTPDriver<'static>,
     // active_image_par: &'static caliptra_mcu_capsules_runtime::flash_partition::FlashPartition<'static>,
     // recovery_image_par: &'static caliptra_mcu_capsules_runtime::flash_partition::FlashPartition<'static>,
-    staging_partition: [Option<&'static FlashPartition<'static>>; 1],
+    flash_partitions: [Option<&'static FlashPartition<'static>>; 2],
     mailbox: &'static caliptra_mcu_capsules_runtime::mailbox::Mailbox<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
@@ -214,15 +216,15 @@ impl SyscallDriverLookup for VeeR {
             // caliptra_mcu_capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM => {
             //     f(Some(self.recovery_image_par))
             // }
-            caliptra_mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL => {
-                if let Some(partition) = self.staging_partition[0] {
+            n if n == caliptra_mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL
+                || n == caliptra_mcu_config::DOT_BLOB_STORE_DRIVER_NUM as usize =>
+            {
+                for partition in self.flash_partitions.iter().flatten() {
                     if partition.get_driver_num() == driver_num {
-                        return f(Some(partition));
-                    } else {
-                        return f(None);
+                        return f(Some(*partition));
                     }
                 }
-                return f(None);
+                f(None)
             }
             caliptra_mcu_capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             caliptra_mcu_capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
@@ -701,10 +703,10 @@ pub unsafe fn main() {
     .finalize(components::flash_mux_component_static!(
         caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl
     ));
-    let mut staging_partition: [Option<&'static FlashPartition<'static>>; 1] = [None; 1];
+    let mut flash_partitions: [Option<&'static FlashPartition<'static>>; 2] = [None; 2];
     instantiate_flash_partitions!(
         flash_partition_list_imaginary_flash,
-        staging_partition,
+        flash_partitions,
         board_kernel,
         mux_mcu_mbox_flash,
         caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl,
@@ -823,23 +825,20 @@ pub unsafe fn main() {
     )
     .finalize(external_otp_component_static!());
 
-    // DPE Handle Store + Software PCR Store: backed by the persistent storage
+    // DPE Handle Store + Software PCR Store: backed by persistent storage
     // SRAM reservation (_sstorage.._estorage).  The region is split as:
-    //   [_sstorage .. _sstorage + DPE_STORE_SIZE)  → DPE Handle Store
-    //   [_sstorage + DPE_STORE_SIZE .. _estorage)   → Software PCR Store
+    //   [_sstorage .. +0x400) - DPE Handle Store
+    //   [+0x400 .. _estorage) - Software PCR Store
     // When built outside the firmware-bundler (e.g. cargo check), _sstorage ==
     // _estorage == 0 so both slices are empty, which is safe.
-    const DPE_STORE_SIZE: usize = 0x400; // 1 KiB → DPE Handle Store
-    const PCR_STORE_SIZE: usize = 0xC00; // 3 KiB → Software PCR Store
+    const DPE_STORE_SIZE: usize = 0x400;
     let (dpe_handle_store, pcr_store) = {
         let start = addr_of!(_sstorage) as *mut u8;
         let end = addr_of!(_estorage) as usize;
         let total_len = end.saturating_sub(start as usize);
         let dpe_len = DPE_STORE_SIZE.min(total_len);
-        let pcr_len = PCR_STORE_SIZE.min(total_len.saturating_sub(dpe_len));
         let full: &'static mut [u8] = core::slice::from_raw_parts_mut(start, total_len);
-        let (dpe_sram, rest) = full.split_at_mut(dpe_len);
-        let pcr_sram = &mut rest[..pcr_len];
+        let (dpe_sram, pcr_sram) = full.split_at_mut(dpe_len);
         let dpe = caliptra_mcu_components::dpe_handle_store::DpeHandleStoreComponent::new(
             board_kernel,
             caliptra_mcu_capsules_runtime::dpe_handle_store::DRIVER_NUM,
@@ -906,7 +905,7 @@ pub unsafe fn main() {
             mctp_caliptra,
             //active_image_par,
             //recovery_image_par,
-            staging_partition,
+            flash_partitions,
             mailbox,
             mci,
             mcu_mbox0,

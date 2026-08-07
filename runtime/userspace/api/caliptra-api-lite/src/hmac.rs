@@ -15,7 +15,7 @@ use crate::import::cm_import;
 use crate::types::{CmKeyUsage, Cmk, CMK_SIZE};
 use crate::wire::{
     mbox_execute, pad4, populate_checksum, CMD_CM_HKDF_EXPAND, CMD_CM_HKDF_EXTRACT, CMD_CM_HMAC,
-    CM_HASH_ALGO_SHA384, MAX_CMB_DATA_SIZE, MBOX_RESP_HEADER_SIZE,
+    CM_HASH_ALGO_SHA384, CM_HASH_ALGO_SHA512, MAX_CMB_DATA_SIZE, MBOX_RESP_HEADER_SIZE,
 };
 use crate::ApiAlloc;
 
@@ -119,6 +119,31 @@ pub async fn cm_hmac<A: ApiAlloc>(
     data: &[u8],
     out: &mut [u8],
 ) -> McuResult<usize> {
+    cm_hmac_with_algorithm(alloc, cmk, CM_HASH_ALGO_SHA384, data, out).await
+}
+
+/// Compute HMAC-SHA512 over `data` using `cmk` as the key.
+#[inline(never)]
+pub async fn cm_hmac_sha512<A: ApiAlloc>(
+    alloc: &A,
+    cmk: &Cmk,
+    data: &[u8],
+    out: &mut [u8; CMB_HMAC_MAX_SIZE],
+) -> McuResult<()> {
+    let len = cm_hmac_with_algorithm(alloc, cmk, CM_HASH_ALGO_SHA512, data, out).await?;
+    if len != CMB_HMAC_MAX_SIZE {
+        return Err(INTERNAL_BUG);
+    }
+    Ok(())
+}
+
+async fn cm_hmac_with_algorithm<A: ApiAlloc>(
+    alloc: &A,
+    cmk: &Cmk,
+    hash_algorithm: u32,
+    data: &[u8],
+    out: &mut [u8],
+) -> McuResult<usize> {
     if data.len() > MAX_CMB_DATA_SIZE {
         return Err(INVARIANT);
     }
@@ -129,7 +154,7 @@ pub async fn cm_hmac<A: ApiAlloc>(
     req.fill(0);
     let pfx = HmacReqPrefix::mut_from_bytes(&mut req[..prefix_len]).map_err(|_| INVARIANT)?;
     pfx.cmk = cmk.0;
-    pfx.hash_algorithm = U32::new(CM_HASH_ALGO_SHA384);
+    pfx.hash_algorithm = U32::new(hash_algorithm);
     pfx.data_size = U32::new(data.len() as u32);
     req[prefix_len..prefix_len + data.len()].copy_from_slice(data);
     populate_checksum(CMD_CM_HMAC, &mut req)?;

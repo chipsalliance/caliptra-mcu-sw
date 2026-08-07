@@ -26,7 +26,7 @@ pub use validator::{all_passed, print_summary, run_all, ValidationResult, Valida
 
 // Re-export the command authorizer trait and types from the common crate
 pub use caliptra_mcu_command_auth_challenge_signer::{
-    AsymmetricCommandAuthorizer, CommandAuthChallengeSigner,
+    AsymmetricCommandAuthorizer, CommandAuthChallengeSigner, HybridMessageSigner,
 };
 
 // Re-export the debug unlock signer trait and types from the common crate
@@ -39,17 +39,25 @@ use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrRes
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
+use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
+    DotDisableRequest, DotLockRequest, DotTransitionResponse, DotUnlockChallengeResponse,
+    DotUnlockRequest, GetDotBackupBlobResponse,
+};
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgResponse, GetAuthCmdChallengeResponse,
 };
-use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmTransport,
 };
 use caliptra_mcu_core_util_host_transport::Transport;
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
+};
+use caliptra_util_host_commands::api::device_ownership_transfer::{
+    caliptra_cmd_dot_disable, caliptra_cmd_dot_lock, caliptra_cmd_dot_unlock,
+    caliptra_cmd_dot_unlock_challenge, caliptra_cmd_get_dot_backup_blob,
 };
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
@@ -167,6 +175,41 @@ impl<'a> SpdmVdmClient<'a> {
         let mut session = self.create_session()?;
         caliptra_cmd_fe_prog(&mut session, &request)
             .map_err(|e| anyhow::anyhow!("FeProg failed: {:?}", e))
+    }
+
+    /// Lock device ownership using the supplied CAK, LAK public keys, and signature.
+    pub fn dot_lock(&mut self, request: &DotLockRequest) -> Result<DotTransitionResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_lock(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_LOCK failed: {:?}", e))
+    }
+
+    /// Permanently disable device ownership using the supplied LAK and signature.
+    pub fn dot_disable(&mut self, request: &DotDisableRequest) -> Result<DotTransitionResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_disable(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_DISABLE failed: {:?}", e))
+    }
+
+    /// Request the challenge for a subsequent DOT_UNLOCK command.
+    pub fn dot_unlock_challenge(&mut self) -> Result<DotUnlockChallengeResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_unlock_challenge(&mut session)
+            .map_err(|e| anyhow::anyhow!("DOT_UNLOCK_CHALLENGE failed: {:?}", e))
+    }
+
+    /// Unlock device ownership using the LAK public keys and challenge signature.
+    pub fn dot_unlock(&mut self, request: &DotUnlockRequest) -> Result<DotTransitionResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_unlock(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_UNLOCK failed: {:?}", e))
+    }
+
+    /// Retrieve an authenticated copy of the current ODD-state DOT blob.
+    pub fn get_dot_backup_blob(&mut self) -> Result<GetDotBackupBlobResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_get_dot_backup_blob(&mut session)
+            .map_err(|e| anyhow::anyhow!("GET_DOT_BACKUP_BLOB failed: {:?}", e))
     }
 
     fn create_session(&mut self) -> Result<CaliptraSession> {

@@ -617,7 +617,7 @@ mod test {
     }
 
     /// Build an OTP image for the DOT override / I3C recovery flow with the
-    /// given SHA-384 vendor recovery PK hash burned in.
+    /// given SHA-384 DOT recovery key hash burned in.
     ///
     /// `pk_hash` is the digest in natural (FIPS) byte order. The
     /// `VENDOR_RECOVERY_PK_HASH` fuse uses the caliptra-sw fuse layout — each

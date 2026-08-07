@@ -82,6 +82,11 @@ These commands support common Caliptra management functions, including querying 
 | MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | See [fuses spec](fuses.md) for details                                                |
+| MC_DOT_LOCK                    | 0x4D44_4C4B ("MDLK") | Lock DOT ownership and commit the transition.                                         |
+| MC_DOT_DISABLE                 | 0x4D44_4453 ("MDDS") | Commit the DOT disabled state.                                                        |
+| MC_DOT_UNLOCK_CHALLENGE        | 0x4D44_5543 ("MDUC") | Request a one-time DOT unlock challenge.                                              |
+| MC_DOT_UNLOCK                  | 0x4D44_554C ("MDUL") | Verify the challenge response and unlock DOT.                                         |
+| MC_GET_DOT_BACKUP_BLOB         | 0x4D44_4F54 ("MDOT") | Retrieve the authenticated current ODD-state DOT blob for backup.                     |
 
 ## Command Format
 

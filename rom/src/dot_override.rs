@@ -12,8 +12,8 @@ Abstract:
 
     This module implements the `RecoveryTransport` trait using MCI mailbox 0
     to communicate with the BMC for DOT override operations.
-    The BMC provides its VendorKey public keys (ECC P-384 + MLDSA-87) and signs
-    a challenge with both VendorKey.priv keys.
+    The BMC provides its DOT recovery public keys (ECC P-384 + MLDSA-87) and
+    signs a challenge with both DOT recovery private keys.
 
     See docs/src/dot.md for full protocol documentation.
 

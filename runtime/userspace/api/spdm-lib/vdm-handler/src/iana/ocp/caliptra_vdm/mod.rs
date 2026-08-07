@@ -284,6 +284,16 @@ where
                 )
                 .await
             }
+            #[cfg(feature = "device-ownership-transfer")]
+            Ok(CaliptraVdmCommand::DeviceOwnershipTransfer) => {
+                commands::device_ownership_transfer::handle(
+                    self.commands,
+                    cmd_req,
+                    scratch,
+                    payload,
+                )
+                .await
+            }
             Ok(CaliptraVdmCommand::AuthorizedCommand) => {
                 commands::authorized_command::handle(self.authorization, cmd_req, scratch, payload)
                     .await
@@ -321,6 +331,7 @@ mod tests {
     };
     use mcu_error::McuResult;
     use std::boxed::Box;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
     use std::vec;
     use std::vec::Vec;
@@ -427,6 +438,11 @@ mod tests {
     struct TestCommands {
         csr_len: usize,
         authorized_token: Mutex<Option<Vec<u8>>>,
+        dot_lock_calls: AtomicUsize,
+        dot_disable_calls: AtomicUsize,
+        dot_challenge_calls: AtomicUsize,
+        dot_unlock_calls: AtomicUsize,
+        dot_backup_calls: AtomicUsize,
     }
 
     impl TestCommands {
@@ -434,6 +450,11 @@ mod tests {
             Self {
                 csr_len,
                 authorized_token: Mutex::new(None),
+                dot_lock_calls: AtomicUsize::new(0),
+                dot_disable_calls: AtomicUsize::new(0),
+                dot_challenge_calls: AtomicUsize::new(0),
+                dot_unlock_calls: AtomicUsize::new(0),
+                dot_backup_calls: AtomicUsize::new(0),
             }
         }
 
@@ -510,6 +531,53 @@ mod tests {
                 .lock()
                 .unwrap()
                 .replace(token_data.to_vec());
+            Ok(())
+        }
+
+        async fn dot_lock<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _request: &caliptra_mcu_mbox_common::messages::DotLockPayload,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_lock_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+
+        async fn dot_disable<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_disable_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+
+        async fn dot_unlock_challenge<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<
+            [u8; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN],
+        > {
+            self.dot_challenge_calls.fetch_add(1, Ordering::Relaxed);
+            Ok([0xA5; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
+        }
+
+        async fn dot_unlock<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _request: &caliptra_mcu_mbox_common::messages::DotUnlockPayload,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_unlock_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+
+        async fn dot_get_backup_blob<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_backup_calls.fetch_add(1, Ordering::Relaxed);
+            blob.fill(0x5A);
             Ok(())
         }
     }
@@ -681,6 +749,163 @@ mod tests {
                 CaliptraCompletionCode::UnsupportedOperation as u8,
             ]
         );
+    }
+
+    #[cfg(not(feature = "device-ownership-transfer"))]
+    #[test]
+    fn device_ownership_transfer_is_unsupported_when_disabled() {
+        let cmds = TestCommands::new(0);
+        let (response, inline, _) = dispatch(
+            &cmds,
+            &[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+            ],
+            16,
+            0,
+        );
+
+        assert_inline(response, 3);
+        assert_eq!(
+            inline[2],
+            CaliptraCompletionCode::UnsupportedOperation as u8
+        );
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_lock_dispatches_through_device_ownership_transfer() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, DotLockPayload};
+        use zerocopy::IntoBytes;
+
+        let cmds = TestCommands::new(0);
+        let mut payload = DotLockPayload::default();
+        payload.cak[0] = 1;
+        payload.lak_ecc_pub_x[0] = 1;
+        payload.lak_mldsa_pub[0] = 1;
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_LOCK.0.to_le_bytes());
+        request.extend_from_slice(payload.as_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(cmds.dot_lock_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_disable_dispatches_through_device_ownership_transfer() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, DotDisablePayload};
+        use zerocopy::IntoBytes;
+
+        let cmds = TestCommands::new(0);
+        let mut payload = DotDisablePayload::default();
+        payload.lak_ecc_pub_x[0] = 1;
+        payload.lak_mldsa_pub[0] = 1;
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_DISABLE.0.to_le_bytes());
+        request.extend_from_slice(payload.as_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(cmds.dot_disable_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_unlock_challenge_dispatches_through_device_ownership_transfer() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, AUTH_CMD_NONCE_LEN};
+
+        let cmds = TestCommands::new(0);
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_UNLOCK_CHALLENGE.0.to_le_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 64, 0);
+
+        assert_inline(response, 3 + AUTH_CMD_NONCE_LEN);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(
+            &inline[3..3 + AUTH_CMD_NONCE_LEN],
+            &[0xA5; AUTH_CMD_NONCE_LEN]
+        );
+        assert_eq!(cmds.dot_challenge_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_unlock_dispatches_through_device_ownership_transfer() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, DotUnlockPayload};
+        use zerocopy::IntoBytes;
+
+        let cmds = TestCommands::new(0);
+        let mut payload = DotUnlockPayload::default();
+        payload.lak_ecc_pub_x[0] = 1;
+        payload.lak_mldsa_pub[0] = 1;
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_UNLOCK.0.to_le_bytes());
+        request.extend_from_slice(payload.as_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(cmds.dot_unlock_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_get_backup_blob_dispatches_through_device_ownership_transfer() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, DOT_BLOB_SIZE};
+
+        let cmds = TestCommands::new(0);
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_GET_DOT_BACKUP_BLOB.0.to_le_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 3 + DOT_BLOB_SIZE, 0);
+
+        assert_inline(response, 3 + DOT_BLOB_SIZE);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(&inline[3..], &[0x5A; DOT_BLOB_SIZE]);
+        assert_eq!(cmds.dot_backup_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_get_backup_blob_rejects_request_payload() {
+        use caliptra_mcu_mbox_common::messages::CommandId;
+
+        let cmds = TestCommands::new(0);
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_GET_DOT_BACKUP_BLOB.0.to_le_bytes());
+        request.push(0);
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+        assert_eq!(cmds.dot_backup_calls.load(Ordering::Relaxed), 0);
     }
 
     #[test]

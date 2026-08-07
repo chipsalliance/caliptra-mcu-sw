@@ -33,6 +33,7 @@ caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-mbox-lib.workspace = true
 caliptra-mcu-mbox-common.workspace = true
+caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-mctp-vdm-common.workspace = true
 caliptra-mcu-mctp-vdm-lib.workspace = true
 portable-atomic.workspace = true
@@ -68,6 +69,8 @@ toml.workspace = true
 default = ["all-features"]
 # Caliptra MCU features
 all-features = [
+  "dot-mci-mailbox",
+  "dot-spdm-vdm",
   "spdm",
   "streaming-boot",
   "flash-boot",
@@ -81,6 +84,15 @@ streaming-boot = []
 flash-boot = []
 firmware-update = []
 mcu-mbox-service = []
+dot-mci-mailbox = [
+  "mcu-mbox-service",
+  "caliptra-mcu-mbox-lib/device-ownership-transfer",
+]
+dot-spdm-vdm = [
+  "spdm",
+  "caliptra-mcu-spdm-vdm-handler/device-ownership-transfer",
+  "caliptra-mcu-spdm-stack/generic-large-request",
+]
 # Test-only mock command HANDLER: device-identity queries (firmware version,
 # device ID, UID, capabilities) return hardcoded `config::TEST_*` values for
 # integration tests. Off by default — production wires the real
@@ -166,13 +178,13 @@ test-mcu-mbox-fips-periodic = ["mcu-mbox-test-handlers", "caliptra-mcu-mbox-lib/
 test-mctp-vdm-cmds = ["mctp-vdm-service"]
 test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
 test-caliptra-util-host-validator = ["mcu-mbox-test-handlers"]
-test-mcu-mbox-cmds = ["mcu-mbox-test-handlers"]
+test-mcu-mbox-cmds = ["mcu-mbox-test-handlers", "dot-mci-mailbox"]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-test-handlers"]
 test-pldm-discovery = []
 test-pldm-fw-update = []
 test-pldm-fw-update-e2e = []
 test-pldm-streaming-boot = ["streaming-boot"]
-test-caliptra-util-host-spdm-vdm-validator = ["spdm"]
+test-caliptra-util-host-spdm-vdm-validator = ["spdm", "dot-spdm-vdm"]
 test-mctp-spdm-attestation = ["spdm", "flash-boot"]
 test-mctp-spdm-attestation-tcb = ["spdm", "flash-boot"]
 test-mctp-spdm-attestation-mixed = ["spdm", "flash-boot"]

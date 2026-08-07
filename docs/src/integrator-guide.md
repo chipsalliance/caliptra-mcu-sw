@@ -82,15 +82,43 @@ platform wants immutable ROM code to perform the fuse burn. See
 for the exact header format and power-loss windows.
 
 For platforms that expose runtime DOT commands directly, the runtime must follow
-the same ordering rules: write the DOT blob expected by the post-transition fuse
-state, verify it can be recovered if power is lost, and only then ask ROM or the
-trusted fuse-burning path to advance the fuse. Maintaining redundant active and
-backup DOT blobs is strongly recommended for mutable locking deployments.
+the same ordering rules: derive and write the DOT blob expected by the
+post-transition fuse state, verify the stored bytes, and only then burn and
+verify the next fuse bit. Maintaining redundant active and backup DOT blobs is
+strongly recommended for mutable locking deployments.
 
-### Vendor recovery PK hash
+### Runtime DOT transport features
 
-The `vendor_recovery_pk_hash` fuse stores the SHA-384 hash of the vendor recovery
-public key (VendorKey) used for `DOT_OVERRIDE` — a catastrophic recovery
+Runtime DOT commands are opt-in per transport in the reference user app:
+
+- `dot-mci-mailbox` exposes DOT commands through the MCI mailbox service.
+- `dot-spdm-vdm` exposes DOT commands through the Caliptra SPDM VDM handler.
+
+Both transports invoke the same Runtime backend, which authenticates the
+command, seals and verifies the target blob, and burns and verifies the fuse
+before returning success with reset required.
+
+`GET_DOT_BACKUP_BLOB` (`MDOT`) is available through both DOT transport features.
+It returns only a blob that Runtime authenticates for the current ODD fuse state;
+the platform or BMC must persist those opaque bytes outside the active DOT
+partition for use by a configured ROM backup-recovery handler.
+
+`DOT_LOCK` and `DOT_DISABLE` currently perform the DOT-native LAK
+proof-of-possession check but are not yet wrapped by the generic
+`AuthorizedCommand` policy. Products must not expose these commands to an
+untrusted requester unless open claiming is an explicit product policy. A
+follow-up change will add the generic authorization wrapper without replacing
+the native LAK verification.
+
+The default `all-features` build enables both. Integrators using a selected
+feature set may enable either transport independently or omit both. These
+features do not affect firmware-manifest DOT processing or ROM I3C recovery
+services.
+
+### DOT recovery key hash
+
+The `vendor_recovery_pk_hash` fuse stores the SHA-384 hash of the DOT recovery
+public key used for `DOT_OVERRIDE` — a catastrophic recovery
 command that force-unlocks the DOT state when no backup DOT blob is available
 (e.g., RMA scenarios). This fuse is **optional**: if your deployment does not
 require vendor-level catastrophic recovery, it can be left unprovisioned.
@@ -104,7 +132,7 @@ a write-once hash, not a monotonic counter. The on-OTP byte layout matches the
 Provision this fuse only if the product intentionally supports vendor override.
 Leaving it zero permanently disables `DOT_OVERRIDE` for that part; recovery must
 then rely on a valid backup DOT blob or a platform-specific recovery mechanism.
-If provisioned, protect the corresponding VendorKey private keys as catastrophic
+If provisioned, protect the corresponding DOT recovery private keys as catastrophic
 recovery credentials.
 
 ### DOT locked-state recovery policy
@@ -583,14 +611,17 @@ the address space as follows:
 ├─────────────────────────────────────────────────────────────┤  ← _sstorage
 │  Persistent storage  (storage_size)                         │
 │  · DPE Handle Store  (first DPE_STORE_SIZE bytes)           │
-│  · Software PCR Store (remainder)                           │
+│  · Software PCR Store                                       │
+│  · DOT transition state (final 128 bytes)                   │
 └─────────────────────────────────────────────────────────────┘  ← _estorage
 ```
 
 The linker symbols `_sstorage` and `_estorage` mark the boundaries of
 the persistent storage region and are generated automatically by the
 firmware-bundler.  The kernel reads them at boot to initialise the DPE
-Handle Store and Software PCR Store capsules.
+Handle Store, Software PCR Store, and DOT transition state capsules. The
+reference 4 KiB layout assigns 1 KiB to DPE handles, 2944 bytes to 26 Software
+PCR records, and the final 128 bytes to DOT transition state.
 
 The ITCM / DTCM split point is calculated by the firmware-bundler
 (roughly half of total SRAM) and varies by build profile.

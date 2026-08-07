@@ -54,7 +54,7 @@ pub struct RecoveryPkHash(pub [u32; 12]);
 /// Convert a 48-byte recovery PK hash payload read from OTP into a
 /// [`RecoveryPkHash`] by reversing the bytes within each 4-byte word.
 ///
-/// The vendor recovery PK hash fuse uses the same on-OTP layout as
+/// The DOT recovery key hash fuse uses the same on-OTP layout as
 /// caliptra-sw's `cptra_ss_owner_pk_hash` and debug-unlock vendor PK hash
 /// fuses: each 4-byte word is stored byte-reversed relative to the natural
 /// (FIPS-standard) SHA-384 byte order. After reversing within each word,
@@ -103,7 +103,7 @@ impl DotFuses {
         otp.read_entry_raw(fuses::DOT_FUSE_ARRAY, &mut raw)?;
         let burned = raw.iter().map(|b| b.count_ones() as u16).sum::<u16>();
 
-        // vendor_recovery_pk_hash: 48 bytes (384 bits) in the non-secret
+        // DOT recovery key hash (`vendor_recovery_pk_hash`): 48 bytes (384 bits) in the non-secret
         // VENDOR_NON_SECRET_PROD partition, physically contiguous from the
         // entry offset (the 384-bit field spans the 32-byte entry plus the
         // next slot).
@@ -639,7 +639,7 @@ pub(crate) struct OverrideAuth<'a> {
 pub trait RecoveryTransport {
     /// Wait for a DOT_UNLOCK_CHALLENGE request from the BMC.
     ///
-    /// Returns the VendorKey public keys that will be used for signature verification.
+    /// Returns the DOT recovery public keys that will be used for signature verification.
     fn wait_for_override_request(&self) -> McuResult<OverrideRequest<'_>>;
 
     /// Send a challenge nonce to the BMC.
@@ -1082,9 +1082,9 @@ pub fn dot_recovery_flow(
 /// Performs DOT override with challenge/response authentication.
 ///
 /// This implements the DOT_OVERRIDE flow:
-/// 1. Wait for override request from BMC (includes VendorKey public keys: ECC + MLDSA)
+/// 1. Wait for override request from BMC (includes DOT recovery public keys: ECC + MLDSA)
 /// 2. Verify device is in ODD (locked) state
-/// 3. Verify vendor public key hash matches vendor recovery PK hash in OTP fuses
+/// 3. Verify the public key hash matches the DOT recovery key hash in OTP fuses
 /// 4. Generate random challenge and send to BMC
 /// 5. Receive and verify ECDSA P-384 and MLDSA-87 signatures over challenge
 /// 6. Burn DOT fuse (n→n+1) to transition to EVEN state
@@ -1137,7 +1137,7 @@ pub fn dot_override_challenge_flow(
 
     let fuse_hash_bytes: [u8; 48] = transmute!(recovery_pk_hash.0);
     if !constant_time_eq::constant_time_eq(&computed_hash, &fuse_hash_bytes) {
-        caliptra_mcu_romtime::println!("[mcu-rom-dot] Vendor recovery PK hash mismatch");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] DOT recovery key hash mismatch");
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
         return Err(McuError::ROM_DOT_OVERRIDE_PK_HASH_MISMATCH);
@@ -1250,7 +1250,7 @@ fn create_and_seal_dot_blob(
             cak: cak.clone(),
             lak_pub: lak.clone(),
             unlock_method: CHALLENGE_RESPONSE,
-            reserved: [0u8; 3],
+            reserved: [0; 3],
         },
         hmac: [0u32; 16],
     };

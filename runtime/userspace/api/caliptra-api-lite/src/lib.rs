@@ -61,6 +61,8 @@ mod rng;
 mod sha;
 #[cfg(feature = "mailbox-io")]
 mod slice;
+#[cfg(feature = "mailbox-io")]
+mod stable_key;
 mod types;
 #[cfg(feature = "mailbox-io")]
 mod wire;
@@ -107,7 +109,7 @@ pub use fe_prog::fe_prog;
 #[cfg(feature = "mailbox-io")]
 pub use fw_info::{fw_info, FwInfo};
 #[cfg(feature = "mailbox-io")]
-pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
+pub use hmac::{cm_hmac, cm_hmac_sha512, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
 #[cfg(feature = "mailbox-io")]
 pub use import::{cm_delete, cm_import};
 #[cfg(feature = "mailbox-io")]
@@ -123,6 +125,8 @@ pub use rng::rng_generate;
 pub use sha::{
     sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
 };
+#[cfg(feature = "mailbox-io")]
+pub use stable_key::{derive_stable_key, StableKeyType, CM_STABLE_KEY_INFO_SIZE};
 pub use types::{CmKeyUsage, Cmk, CMK_SIZE};
 
 #[cfg(feature = "mailbox-io")]

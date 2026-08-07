@@ -3,7 +3,10 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(async_fn_in_trait)]
 
-use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_mcu_mbox_common::messages::{
+    CommandId, DotDisablePayload, DotLockPayload, DotUnlockPayload, HybridSignature,
+    AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
+};
 use mcu_caliptra_api_lite::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
@@ -281,6 +284,60 @@ pub trait CaliptraCmdHandler {
         partition: u32,
     ) -> CaliptraCmdResult<()> {
         let _ = (alloc, partition);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Verify and commit a persistent DOT lock transition.
+    async fn dot_lock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotLockPayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Verify and commit a persistent DOT disabled-state transition.
+    async fn dot_disable<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotDisablePayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Authenticate the current DOT blob and generate a one-time unlock challenge.
+    async fn dot_unlock_challenge<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+    ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
+        let _ = alloc;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Verify and commit an ODD-to-EVEN DOT unlock transition.
+    async fn dot_unlock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotUnlockPayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Authenticate and return the current ODD-state DOT blob for backup.
+    ///
+    /// No LAK signature is required: the opaque blob contains public key
+    /// hashes and an HMAC, not secret key material. Transport access remains a
+    /// platform policy decision, and implementations must verify the HMAC
+    /// before returning bytes.
+    async fn dot_get_backup_blob<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &mut [u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, blob);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }

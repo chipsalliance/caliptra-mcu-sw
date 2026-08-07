@@ -43,6 +43,8 @@ rv32i.workspace = true
 [features]
 default = []
 debug = []
+dot-mci-mailbox = []
+dot-spdm-vdm = []
 # Production / minimal-size build.  Strips:
 #   - kernel `debug!()` macro          (via kernel/no_debug_panics)
 #   - romtime `print!`/`println!`      (via caliptra-mcu-romtime/no-print)
@@ -70,7 +72,7 @@ test-sw-pcr-store = []
 test-exit-immediately = []
 test-caliptra-util-host-validator = []
 test-caliptra-util-host-mctp-vdm-validator = []
-test-caliptra-util-host-spdm-vdm-validator = []
+test-caliptra-util-host-spdm-vdm-validator = ["dot-spdm-vdm"]
 test-i3c-simple = []
 test-i3c-constant-writes = []
 test-flash-based-boot = []

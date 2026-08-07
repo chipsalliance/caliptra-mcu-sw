@@ -1440,6 +1440,343 @@ mod test {
         (pk_bytes.to_vec(), sk)
     }
 
+    #[test]
+    fn test_runtime_dot_lock_commits_transition() {
+        use caliptra_mcu_mbox_common::messages::{
+            CommandId as McuCommandId, DotLockPayload, DotLockReq, GetDotBackupBlobReq,
+            HybridSignature,
+        };
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (ecc_pub_x, ecc_pub_y, ecc_private) = generate_random_ecc_keys();
+        let (mldsa_public, mldsa_private) = generate_random_mldsa_keys();
+        let lak_hash = compute_recovery_pk_hash(&ecc_pub_x, &ecc_pub_y, &mldsa_public);
+        let cak = [0xA5; 48];
+
+        let mut transcript = [0u8; 100];
+        transcript[..4].copy_from_slice(&McuCommandId::MC_DOT_LOCK.0.to_be_bytes());
+        transcript[4..52].copy_from_slice(&cak);
+        transcript[52..].copy_from_slice(&lak_hash);
+
+        let signing_key = SigningKey::from_bytes((&ecc_private).into()).unwrap();
+        let digest = Sha384::digest(transcript);
+        let ecc_signature: p384::ecdsa::Signature = signing_key.sign_prehash(&digest).unwrap();
+        let mldsa_signature = mldsa_private
+            .try_sign_with_seed(&[0u8; 32], &transcript, &[])
+            .unwrap();
+
+        let mut hybrid_signature = HybridSignature {
+            ecc_sig_r: ecc_signature.r().to_bytes().into(),
+            ecc_sig_s: ecc_signature.s().to_bytes().into(),
+            ..Default::default()
+        };
+        hybrid_signature.mldsa_sig[..mldsa_signature.len()].copy_from_slice(&mldsa_signature);
+
+        let payload = DotLockPayload {
+            cak,
+            lak_ecc_pub_x: ecc_pub_x,
+            lak_ecc_pub_y: ecc_pub_y,
+            lak_mldsa_pub: mldsa_public.try_into().unwrap(),
+            signature: hybrid_signature,
+        };
+
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let mut bad_payload = payload.clone();
+        bad_payload.signature.ecc_sig_r[0] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotLockReq {
+                payload: bad_payload,
+                ..Default::default()
+            })
+            .is_err());
+
+        let response = hw
+            .mailbox_execute_req(DotLockReq {
+                payload: payload.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(hw
+            .mailbox_execute_req(DotLockReq {
+                payload,
+                ..Default::default()
+            })
+            .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] & 1,
+            1
+        );
+        let dot_blob = hw.read_dot_flash();
+        assert!(dot_blob[..DOT_BLOB_SIZE].iter().any(|byte| *byte != 0));
+        let backup = hw
+            .mailbox_execute_req(GetDotBackupBlobReq::default())
+            .unwrap();
+        assert_eq!(&backup.blob, &dot_blob[..DOT_BLOB_SIZE]);
+
+        let mut corrupted_blob = dot_blob.clone();
+        corrupted_blob[DOT_BLOB_SIZE - 1] ^= 1;
+        hw.write_dot_flash(&corrupted_blob).unwrap();
+        assert!(hw
+            .mailbox_execute_req(GetDotBackupBlobReq::default())
+            .is_err());
+
+        corrupted_blob = dot_blob;
+        corrupted_blob[0] ^= 1;
+        hw.write_dot_flash(&corrupted_blob).unwrap();
+        assert!(hw
+            .mailbox_execute_req(GetDotBackupBlobReq::default())
+            .is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_get_backup_blob_rejects_even_state() {
+        use caliptra_mcu_mbox_common::messages::GetDotBackupBlobReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: true,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        assert!(hw
+            .mailbox_execute_req(GetDotBackupBlobReq::default())
+            .is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_disable_commits_transition() {
+        use caliptra_mcu_mbox_common::messages::{
+            CommandId as McuCommandId, DotDisablePayload, DotDisableReq, HybridSignature,
+        };
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (ecc_pub_x, ecc_pub_y, ecc_private) = generate_random_ecc_keys();
+        let (mldsa_public, mldsa_private) = generate_random_mldsa_keys();
+        let lak_hash = compute_recovery_pk_hash(&ecc_pub_x, &ecc_pub_y, &mldsa_public);
+
+        let mut transcript = [0u8; 52];
+        transcript[..4].copy_from_slice(&McuCommandId::MC_DOT_DISABLE.0.to_be_bytes());
+        transcript[4..].copy_from_slice(&lak_hash);
+
+        let signing_key = SigningKey::from_bytes((&ecc_private).into()).unwrap();
+        let digest = Sha384::digest(transcript);
+        let ecc_signature: p384::ecdsa::Signature = signing_key.sign_prehash(&digest).unwrap();
+        let mldsa_signature = mldsa_private
+            .try_sign_with_seed(&[0u8; 32], &transcript, &[])
+            .unwrap();
+        let mut hybrid_signature = HybridSignature {
+            ecc_sig_r: ecc_signature.r().to_bytes().into(),
+            ecc_sig_s: ecc_signature.s().to_bytes().into(),
+            ..Default::default()
+        };
+        hybrid_signature.mldsa_sig[..mldsa_signature.len()].copy_from_slice(&mldsa_signature);
+
+        let payload = DotDisablePayload {
+            lak_ecc_pub_x: ecc_pub_x,
+            lak_ecc_pub_y: ecc_pub_y,
+            lak_mldsa_pub: mldsa_public.try_into().unwrap(),
+            signature: hybrid_signature,
+        };
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let response = hw
+            .mailbox_execute_req(DotDisableReq {
+                payload,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] & 1,
+            1
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        assert!(blob.cak.iter().all(|word| *word == 0));
+        assert!(blob.lak_pub.iter().any(|word| *word != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_unlock_challenge() {
+        use caliptra_mcu_mbox_common::messages::DotUnlockChallengeReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak());
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_locked_otp_memory()),
+            dot_flash_initial_contents: Some(blob.to_flash_contents()),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let first = hw
+            .mailbox_execute_req(DotUnlockChallengeReq::default())
+            .unwrap();
+        assert!(first.challenge.iter().any(|byte| *byte != 0));
+        assert!(hw
+            .mailbox_execute_req(DotUnlockChallengeReq::default())
+            .is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_unlock() {
+        use caliptra_mcu_mbox_common::messages::{
+            CommandId as McuCommandId, DotUnlockChallengeReq, DotUnlockPayload, DotUnlockReq,
+            HybridSignature,
+        };
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (ecc_pub_x, ecc_pub_y, ecc_private) = generate_random_ecc_keys();
+        let (mldsa_public, mldsa_private) = generate_random_mldsa_keys();
+        let lak_hash = compute_recovery_pk_hash(&ecc_pub_x, &ecc_pub_y, &mldsa_public);
+        let mut lak_words = [0u32; 12];
+        for (word, bytes) in lak_words.iter_mut().zip(lak_hash.chunks_exact(4)) {
+            *word = u32::from_le_bytes(bytes.try_into().unwrap());
+        }
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), lak_words);
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_locked_otp_memory()),
+            dot_flash_initial_contents: Some(blob.to_flash_contents()),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let challenge = hw
+            .mailbox_execute_req(DotUnlockChallengeReq::default())
+            .unwrap()
+            .challenge;
+        let mut transcript = [0u8; 52];
+        transcript[..4].copy_from_slice(&McuCommandId::MC_DOT_UNLOCK.0.to_be_bytes());
+        transcript[4..].copy_from_slice(&challenge);
+
+        let signing_key = SigningKey::from_bytes((&ecc_private).into()).unwrap();
+        let digest = Sha384::digest(transcript);
+        let ecc_signature: p384::ecdsa::Signature = signing_key.sign_prehash(&digest).unwrap();
+        let mldsa_signature = mldsa_private
+            .try_sign_with_seed(&[0u8; 32], &transcript, &[])
+            .unwrap();
+        let mut hybrid_signature = HybridSignature {
+            ecc_sig_r: ecc_signature.r().to_bytes().into(),
+            ecc_sig_s: ecc_signature.s().to_bytes().into(),
+            ..Default::default()
+        };
+        hybrid_signature.mldsa_sig[..mldsa_signature.len()].copy_from_slice(&mldsa_signature);
+        let payload = DotUnlockPayload {
+            lak_ecc_pub_x: ecc_pub_x,
+            lak_ecc_pub_y: ecc_pub_y,
+            lak_mldsa_pub: mldsa_public.try_into().unwrap(),
+            signature: hybrid_signature,
+        };
+
+        let mut bad_payload = payload.clone();
+        bad_payload.signature.ecc_sig_r[0] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotUnlockReq {
+                payload: bad_payload,
+                ..Default::default()
+            })
+            .is_err());
+        let response = hw
+            .mailbox_execute_req(DotUnlockReq {
+                payload: payload.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(hw
+            .mailbox_execute_req(DotUnlockReq {
+                payload,
+                ..Default::default()
+            })
+            .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            2
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        assert!(blob.cak.iter().all(|word| *word == 0));
+        assert!(blob.lak_pub.iter().all(|word| *word == 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Computes SHA-384 of the combined vendor public keys using the
     /// caliptra-sw owner-PK-hash convention: the ECC public key is
     /// per-dword byte-reversed before hashing, the MLDSA public key is
@@ -1476,7 +1813,7 @@ mod test {
     }
 
     /// Creates OTP memory for override testing.
-    /// Includes locked state fuses AND the vendor recovery PK hash.
+    /// Includes locked state fuses AND the DOT recovery key hash.
     ///
     /// `pk_hash` is the digest in natural (FIPS) byte order. The
     /// `VENDOR_RECOVERY_PK_HASH` fuse uses the caliptra-sw fuse layout — each
@@ -1587,7 +1924,7 @@ mod test {
     /// Test DOT override challenge/response success.
     ///
     /// Host sends override challenge request via MCI mbox0 with vendor public keys,
-    /// ROM generates challenge, host signs challenge with VendorKey.priv (ECDSA + MLDSA),
+    /// ROM generates challenge, host signs it with the DOT recovery private keys (ECDSA + MLDSA),
     /// ROM verifies both signatures, burns fuse, and erases DOT blob.
     #[test]
     fn test_dot_override_challenge_success() {
@@ -1599,12 +1936,12 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        // Generate random ECC P-384 key pair for VendorKey
-        println!("[TEST] Generating random VendorKey ECC key pair...");
+        // Generate a random ECC P-384 DOT recovery key pair.
+        println!("[TEST] Generating random DOT recovery ECC key pair...");
         let (vendor_pub_x, vendor_pub_y, vendor_priv_bytes) = generate_random_ecc_keys();
 
-        // Generate random MLDSA-87 key pair for VendorKey
-        println!("[TEST] Generating random VendorKey MLDSA key pair...");
+        // Generate a random MLDSA-87 DOT recovery key pair.
+        println!("[TEST] Generating random DOT recovery MLDSA key pair...");
         let (mldsa_pub, mldsa_priv) = generate_random_mldsa_keys();
 
         // Compute vendor PK hash (ECC + MLDSA) for OTP fuses
@@ -1640,7 +1977,7 @@ mod test {
             challenge.len()
         );
 
-        // Step 3: Sign the challenge with VendorKey.priv (ECDSA + MLDSA)
+        // Step 3: Sign the challenge with the DOT recovery private keys (ECDSA + MLDSA).
         println!("[TEST] Signing challenge with ECDSA...");
         let challenge_hash: [u8; 48] = {
             let mut hasher = Sha384::new();
@@ -1762,7 +2099,7 @@ mod test {
     /// Regression test for the recovery-PK-hash / owner-PK-hash fuse layout
     /// alignment.
     ///
-    /// Burns a vendor recovery PK hash into OTP using the *exact same*
+    /// Burns a DOT recovery key hash into OTP using the *exact same*
     /// storage convention an integrator would use for
     /// `cptra_ss_owner_pk_hash` (big-endian decode into `[u32; 12]`, stored
     /// little-endian). The DOT override flow must accept that layout and
@@ -1821,7 +2158,7 @@ mod test {
             .expect("Expected challenge data from ROM");
         assert_eq!(challenge.len(), 48, "Challenge should be 48 bytes");
 
-        // Sign the challenge with VendorKey.priv (ECDSA + MLDSA).
+        // Sign the challenge with the DOT recovery private keys (ECDSA + MLDSA).
         let challenge_hash: [u8; 48] = {
             let mut hasher = Sha384::new();
             hasher.update(&challenge);
@@ -2134,6 +2471,9 @@ mod test {
             "Expected 1 fuse burned by manifest LOCK, found {}",
             burned
         );
+        let dot_flash = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_flash[..DOT_BLOB_SIZE]).unwrap();
+        assert_eq!(blob.reserved[0] & 1, 0);
 
         println!("[TEST] Firmware manifest LOCK command successfully burned lock fuse");
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
