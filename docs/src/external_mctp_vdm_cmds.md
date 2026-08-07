@@ -59,3 +59,5 @@ The command codes below use the Caliptra range reserved in the [OCP command regi
 | `0x02`       | DeviceCapabilities | Retrieve device capabilities.          |
 | `0x03`       | GetDebugLog        | Retrieve the MCU runtime debug log.    |
 | `0x04`       | ClearDebugLog      | Clear the MCU runtime debug log.       |
+
+Support for these commands is advertised in the `external_commands` field returned by `DeviceCapabilities`. See [Device Capabilities](caliptra_common_commands.md#device-capabilities).

@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use caliptra_builder::{elf_size, FwId};
 use elf::endian::LittleEndian;
 use size_history::{
@@ -99,17 +99,27 @@ fn box_cache(val: impl Cache + 'static) -> Box<dyn Cache> {
 }
 
 fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
+    let lock_path = target_dir
+        .parent()
+        .context("size-history target directory has no workspace parent")?
+        .join("Cargo.lock");
+    let original_lock = fs::read(&lock_path).context("failed to snapshot Cargo.lock")?;
+
     // FPGA does not have a `*-devel.toml` manifest variant (HW-fixed SRAM);
     // still exercise the `release` cargo feature / `release` cargo profile
     // against its single 512 KB layout so size regressions and
     // release-only `cfg`s are caught.
-    caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
-        platform: Some("fpga"),
-        features: Some("release"),
-        profile: Some("release"),
-        target_dir: Some(target_dir.to_path_buf()),
-        ..Default::default()
-    })
+    let result =
+        caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
+            platform: Some("fpga"),
+            features: Some("release"),
+            profile: Some("release"),
+            target_dir: Some(target_dir.to_path_buf()),
+            ..Default::default()
+        });
+
+    fs::write(&lock_path, original_lock).context("failed to restore Cargo.lock")?;
+    result
 }
 
 fn get_elf_bytes(target_dir: &Path, fwid: FwId<'_>) -> io::Result<Vec<u8>> {

@@ -9,7 +9,7 @@ use caliptra_mcu_core_util_host_transport::{MailboxDriver, MailboxError};
 
 // Buffer length constants
 const RESPONSE_BUFFER_SIZE: usize = 1024; // Increased for SHA context (200 bytes) + overhead
-const CAPABILITIES_ARRAY_SIZE: usize = 32;
+const CAPABILITIES_ARRAY_SIZE: usize = 36;
 const SHA_CONTEXT_SIZE: usize = 200; // Matches CMB_SHA_CONTEXT_SIZE from caliptra-api
 const MAX_HASH_SIZE: usize = 64;
 
@@ -62,21 +62,16 @@ impl MockMailbox {
         match external_cmd {
             0x4D43_4150 => {
                 // MC_DEVICE_CAPABILITIES ("MCAP")
-                // Mock capabilities response with proper external structure (32-byte caps array)
+                // Mock capabilities response with proper external structure (36-byte caps array)
                 let mut payload = Vec::new();
                 payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
 
-                // Build capabilities array
                 let mut caps = [0u8; CAPABILITIES_ARRAY_SIZE];
-                // capabilities (bytes 0-3)
-                caps[0..4].copy_from_slice(&0x000001F3u32.to_le_bytes());
-                // max_cert_size (bytes 4-7)
-                caps[4..8].copy_from_slice(&4096u32.to_le_bytes());
-                // max_csr_size (bytes 8-11)
-                caps[8..12].copy_from_slice(&2048u32.to_le_bytes());
-                // device_lifecycle (bytes 12-15)
-                caps[12..16].copy_from_slice(&1u32.to_le_bytes());
-                // Remaining bytes stay 0
+                caps[7] = 1;
+                caps[15] = 1;
+                caps[20..24].copy_from_slice(&0x000000FFu32.to_be_bytes());
+                caps[24..28].copy_from_slice(&0x000200EFu32.to_be_bytes());
+                caps[28..32].copy_from_slice(&0x00000009u32.to_be_bytes());
 
                 payload.extend_from_slice(&caps);
 

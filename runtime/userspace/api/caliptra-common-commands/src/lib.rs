@@ -109,12 +109,14 @@ pub struct GetLogResult {
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, Immutable, PartialEq, Eq)]
 pub struct DeviceCapabilities {
-    pub caliptra_rt: [u8; 8],  // Bytes [0:7]
-    pub caliptra_fmc: [u8; 4], // Bytes [8:11]
-    pub caliptra_rom: [u8; 4], // Bytes [12:15]
-    pub mcu_rt: [u8; 8],       // Bytes [16:23]
-    pub mcu_rom: [u8; 4],      // Bytes [24:27]
-    pub reserved: [u8; 4],     // Bytes [28:31]
+    pub caliptra_rt: [u8; 8],            // Bytes [0:7], big-endian
+    pub caliptra_fmc: [u8; 4],           // Bytes [8:11], big-endian
+    pub caliptra_rom: [u8; 4],           // Bytes [12:15], big-endian
+    pub mcu_rom: [u8; 4],                // Bytes [16:19], big-endian
+    pub mcu_rt: [u8; 4],                 // Bytes [20:23], big-endian
+    pub external_commands: [u8; 4],      // Bytes [24:27], big-endian
+    pub authorized_subcommands: [u8; 4], // Bytes [28:31], big-endian
+    pub reserved: [u8; 4],               // Bytes [32:35], zero
 }
 
 /// Debug unlock challenge response returned by `request_debug_unlock`.

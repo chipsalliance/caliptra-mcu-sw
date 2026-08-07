@@ -52,10 +52,19 @@ fn test_get_device_capabilities_basic() {
             );
 
             // Basic validation that we got a response
-            println!("Device capabilities: 0x{:08X}", capabilities.capabilities);
-            println!("Max cert size: {}", capabilities.max_cert_size);
-            println!("Max CSR size: {}", capabilities.max_csr_size);
-            println!("Device lifecycle: {}", capabilities.device_lifecycle);
+            println!(
+                "MCU Runtime capabilities: 0x{:08X}",
+                capabilities.mcu_runtime_capabilities()
+            );
+            println!(
+                "External commands: 0x{:08X}",
+                capabilities.external_command_capabilities()
+            );
+            assert_eq!(capabilities.external_command_capabilities(), 0x0002_00EF);
+            assert_eq!(
+                capabilities.authorized_subcommand_capabilities(),
+                0x0000_0009
+            );
 
             println!("All device capabilities fields verified successfully!");
         }
