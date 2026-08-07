@@ -16,7 +16,9 @@ use caliptra_mcu_components::{
     dpe_handle_store_component_static, flash_partition_component_static,
     instantiate_flash_partitions,
 };
-use caliptra_mcu_config_fpga::flash::{EMULATED_EXT_OTP_PARTITION, STAGING_PARTITION};
+use caliptra_mcu_config_fpga::flash::{
+    DOT_BLOB_PARTITION, EMULATED_EXT_OTP_PARTITION, STAGING_PARTITION,
+};
 use caliptra_mcu_config_fpga::flash_partition_list_imaginary_flash;
 use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use caliptra_mcu_registers_generated::mci;
