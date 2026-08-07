@@ -42,7 +42,7 @@ flags = 0
 svn = 7
 
 [fe_prog]
-# FE_PROG is not part of the fuse VDM validation sequence.
+# FE_PROG runs only in the isolated "fe-prog" suite.
 enabled = false
 partition = 0
 

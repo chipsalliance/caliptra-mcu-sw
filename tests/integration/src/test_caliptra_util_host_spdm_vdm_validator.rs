@@ -359,6 +359,10 @@ mod test {
         "authorization"
     );
     isolated_fuse_suite_test!(
+        test_caliptra_util_host_spdm_vdm_validator_fe_prog,
+        "fe-prog"
+    );
+    isolated_fuse_suite_test!(
         test_caliptra_util_host_spdm_vdm_validator_provision_vendor_pk_hash,
         "provision-vendor-pk-hash"
     );

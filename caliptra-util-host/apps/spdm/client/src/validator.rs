@@ -802,6 +802,7 @@ fn run_fuse_suite(
             ));
             results
         }
+        "fe-prog" => vec![run_fe_prog(client, 0, Some(authorizer), verbose)],
         "provision-vendor-pk-hash" => vec![
             expect_completion(
                 "PVPK invalid slot",
