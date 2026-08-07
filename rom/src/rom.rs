@@ -38,7 +38,6 @@ use caliptra_mcu_romtime::otp::{Otp, PROD_DEBUG_UNLOCK_PK_ENTRIES};
 use caliptra_mcu_romtime::LifecycleControllerState;
 use caliptra_mcu_romtime::LifecycleHashedTokens;
 use caliptra_mcu_romtime::LifecycleToken;
-use caliptra_mcu_romtime::Mci;
 use caliptra_mcu_romtime::PqcKeyType;
 use caliptra_mcu_romtime::{HexWord, McuBootMilestones, StaticRef};
 use core::marker::PhantomData;
@@ -112,6 +111,10 @@ pub struct FuseParams<'a, 'b> {
     pub ocp_lock_config: Option<&'b mut caliptra_mcu_romtime::ocp_lock::RomConfig<'a>>,
     /// Policy for selecting the vendor public key slot.
     pub vendor_key_policy: Option<&'a dyn VendorKeyPolicy>,
+    /// Rotate default selection to the next functional vendor public key slot.
+    pub vendor_pk_hash_rotation: bool,
+    /// Populate UDS and FE registers from non-secret test OTP partitions.
+    pub populate_non_secret_test_seeds: bool,
     /// Number of production debug unlock authentication public key hashes
     /// programmed into the MCI PK hash register bank. When `None`, defaults
     /// to the number of entries in `PROD_DEBUG_UNLOCK_PK_ENTRIES`.
@@ -129,8 +132,6 @@ pub struct FuseState {
 
 impl Soc {
     pub const BOOT_FSM_DONE: u32 = 4;
-    pub const PK_HASH_SKIP_LOCK_STRAPPING_MASK: u32 = 0x1;
-    pub const PK_HASH_ROTATION_STRAPPING_MASK: u32 = 0x1 << 1;
 
     pub const fn new(registers: StaticRef<soc::regs::Soc>) -> Self {
         Soc { registers }
@@ -285,11 +286,7 @@ impl Soc {
         self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
 
         // Select the vendor public key slot to use.
-        let default_policy = DefaultVendorKeyPolicy::new(
-            mci.registers.mci_reg_generic_input_wires[1].get()
-                & Self::PK_HASH_ROTATION_STRAPPING_MASK
-                != 0,
-        );
+        let default_policy = DefaultVendorKeyPolicy::new(params.vendor_pk_hash_rotation);
         let policy = params.vendor_key_policy.unwrap_or(&default_policy);
         let pk_hash_idx = policy
             .select_key(otp)
@@ -497,7 +494,7 @@ impl Soc {
             .set(num_pk_hashes);
 
         // We use non secret production fuses to have caliptra tests pass some initial fuse values
-        if cfg!(feature = "core_test") {
+        if params.populate_non_secret_test_seeds {
             // UDS Seed from fuses (split into low and high 256-bit halves)
 
             let uds_seed_lo_offset = fuses::FPGA_TEST_UDS_SEED_LO.byte_offset;
@@ -644,10 +641,8 @@ impl Soc {
         })
     }
 
-    pub fn pk_hash_volatile_lock(&self, otp: &Otp, mci: &Mci, selected_index: usize) {
-        // Read generic input wires to check for provisioning mode.
-        let input_wires = mci.registers.mci_reg_generic_input_wires[1].get();
-        if (input_wires & Self::PK_HASH_SKIP_LOCK_STRAPPING_MASK) != 0 {
+    pub fn pk_hash_volatile_lock(&self, otp: &Otp, skip_lock: bool, selected_index: usize) {
+        if skip_lock {
             caliptra_mcu_romtime::println!(
               "[mcu-fuse-write] PK Hash provisioning mode detected, skipping vendor PK hash lock."
           );
@@ -984,8 +979,43 @@ pub struct RomParameters<'a> {
     pub otp_check_timeout_override: Option<u32>,
     /// Request recovery boot (AXI recovery bypass).
     pub request_recovery_boot: bool,
+    /// Optional additional recovery request, queried after OTP initialization.
+    /// Reference tests use this to sample the harness after the boot-go pause.
+    pub recovery_boot_requested: Option<fn() -> bool>,
+    /// Optional encrypted firmware boot policy, queried before firmware download.
+    /// Reference tests use this to sample the harness at the download checkpoint.
+    pub encrypted_boot_requested: Option<fn() -> bool>,
+    /// Populate UDS and FE registers from non-secret test OTP partitions.
+    /// Production platforms must leave this disabled.
+    pub populate_non_secret_test_seeds: bool,
+    /// Skip reporting HEK metadata to Caliptra ROM for reference core tests.
+    pub skip_hek_metadata_report: bool,
     /// Request network boot through the Network Coprocessor.
     pub request_network_boot: bool,
+    /// Skip the volatile lock on vendor PK hash slots after key selection.
+    ///
+    /// This is intended for controlled provisioning flows. Production
+    /// platforms should leave it false unless their provisioning policy
+    /// requires adding another vendor PK hash before reset.
+    pub skip_vendor_pk_hash_volatile_lock: bool,
+    /// Ask the default vendor key policy to select the next functional PK hash
+    /// slot. Ignored when `vendor_key_policy` supplies a custom policy.
+    pub vendor_pk_hash_rotation: bool,
+    /// Optional platform callback invoked immediately after Caliptra boot-go is
+    /// asserted. The reference `core_test` platform uses it to wait for a test
+    /// harness signal without making the common ROM depend on input wires.
+    ///
+    /// A plain function pointer keeps this interface allocation-free and avoids
+    /// retaining callback state in ROM. The callback must provide any required
+    /// timeout or error handling itself and must return before boot can proceed.
+    pub post_caliptra_boot_go: Option<fn()>,
+    /// Optional platform callback invoked after Caliptra fuse writes complete.
+    /// The reference `core_test` platform uses it to wait for a test harness
+    /// signal without making the common ROM depend on input wires.
+    ///
+    /// This has the same allocation-free and timeout requirements as
+    /// `post_caliptra_boot_go`.
+    pub post_caliptra_fuses_written: Option<fn()>,
     /// By default, we will set recovery status as successful after loading MCU firmware.
     /// Set this to true if you want to leave recovery status as open for further firmware image loading.
     /// Note that in 2.0, Caliptra already sets recovery status as successful so there may be a race
@@ -1095,15 +1125,6 @@ pub fn rom_start(mut params: RomParameters) {
             DeviceLifecycle::Value::DeviceManufacturing => "Manufacturing",
             DeviceLifecycle::Value::DeviceProduction => "Production",
         }
-    );
-
-    caliptra_mcu_romtime::println!(
-        "[mcu-rom] MCI generic input wires[0]: {}",
-        HexWord(mci.registers.mci_reg_generic_input_wires[0].get())
-    );
-    caliptra_mcu_romtime::println!(
-        "[mcu-rom] MCI generic input wires[1]: {}",
-        HexWord(mci.registers.mci_reg_generic_input_wires[1].get())
     );
 
     // Read and print the reset reason register

@@ -742,6 +742,15 @@ mod test {
     }
 
     pub fn start_runtime_hw_model(params: TestParams) -> DefaultHwModel {
+        // Boot mode is a ROM build policy, not a production input wire.
+        // Normalize before selecting prebuilts so flash boot never silently
+        // uses a baseline streaming ROM.
+        let params = TestParams {
+            rom_feature: params
+                .rom_feature
+                .or(params.flash_boot.then_some("flash-boot")),
+            ..params
+        };
         let TestBinaries {
             vendor_pk_hash_u8,
             caliptra_rom,

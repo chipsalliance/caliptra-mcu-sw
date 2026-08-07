@@ -40,7 +40,6 @@ default = ["hw-2-1"]              # default is 2.1
 cfi = []
 hw-2-1 = []
 network-boot = ["caliptra-mcu-boot-source-protocol", "caliptra-mcu-network-drivers", "caliptra-mcu-network-hil"]
-core_test = ["caliptra-mcu-romtime/core_test"]
 # Test-only: enables extra diagnostics in the I3C services / DOT recovery path.
 test-i3c-services = []
 # Test-only: enables DOT recovery reset coordination for ROM integration tests.

@@ -53,7 +53,7 @@ and written to Caliptra's `FUSE_*` registers or `SS_STRAP_GENERIC[*]` /
 | `cptra_itrng_health_test_window_size` | 16 bits | Written to `SS_STRAP_GENERIC[2]` bits\[15:0\] |
 | `cptra_itrng_entropy_config_0` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_0` |
 | `cptra_itrng_entropy_config_1` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_1` |
-| `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` | 8 bits | Owner manifest min SVN floor (upcoming Caliptra requirement). Planned for `SS_STRAP_GENERIC[3]` bits\[7:0\]; the reference MCU ROM does not yet forward it. PK-hash skip-lock and rotation are already read from `mci_reg_generic_input_wires[1]` bits\[0\] and \[1\], respectively. |
+| `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` | 8 bits | Owner manifest min SVN floor (upcoming Caliptra requirement). Planned for `SS_STRAP_GENERIC[3]` bits\[7:0\]; the reference MCU ROM does not yet forward it. Vendor PK hash locking and rotation are configured through `RomParameters`; reference `core_test` builds derive those parameters from MCI generic input wires 1 bits 0 and 1. |
 
 ### Optional fuses
 
@@ -167,9 +167,9 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   a monotonically increasing anti-rollback value — see encoding table below).
   Required by an upcoming Caliptra ROM change that reads the owner manifest min
   SVN floor from this strap during owner manifest verification. The reference
-  MCU ROM does not yet read this OTP field or forward it. PK-hash skip-lock and
-  rotation no longer occupy this strap: MCU ROM reads
-  `mci_reg_generic_input_wires[1]` bits\[0\] and \[1\], respectively. Builds
+  MCU ROM does not yet read this OTP field or forward it. Vendor PK hash skip-lock and
+  rotation are independent `RomParameters` fields; only reference `core_test`
+  builds map MCI generic input wires 1 bits 0 and 1 to those fields. Builds
   with `stable-owner-key` currently set `SS_STRAP_GENERIC[3]` bit\[0\], so the
   owner manifest min SVN implementation must preserve or reconcile that use.
 
@@ -283,12 +283,11 @@ fault tolerance without causing ECC integrity issues.
 | `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) |
 | `SOC_IMAGE_MIN_SVN_{0..M}` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) each |
 
-*Note: Fields with `OneHot` or `OneHotLinearOr` monotonic bit-count layouts (`dot_fuse_array`, `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `SOC_IMAGE_MIN_SVN_{0..M}`) must reside in a non-ECC protected partition (e.g., `VENDOR_TEST_PARTITION` in the reference map) because ECC calculation forbids subsequent write operations once a partition has been programmed.*
+_Note: Fields with `OneHot` or `OneHotLinearOr` monotonic bit-count layouts (`dot_fuse_array`, `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `SOC_IMAGE_MIN_SVN_{0..M}`) must reside in a non-ECC protected partition (e.g., `VENDOR_TEST_PARTITION` in the reference map) because ECC calculation forbids subsequent write operations once a partition has been programmed._
 
 TODO: there are only 32 LMS revocation bits specificed in the reference fuse map, but with redundant encoding, we would get 16 or fewer bits, unless  they are backed with HW redundancy.
 
 TODO: the vendor_pk_hash_valid is inconsistent with the HW subsystem specification. Tracking in https://github.com/chipsalliance/caliptra-mcu-sw/issues/1186
-
 
 ## Vendor PK Hash Fuse Encoding Example
 
