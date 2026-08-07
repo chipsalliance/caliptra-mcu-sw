@@ -298,6 +298,56 @@ Command Code: `0x4D50_5554` ("MPUT")
 
 Payload semantics are defined by [Authorize Debug Unlock Token](caliptra_common_commands.md#authorize-debug-unlock-token).
 
+#### MCU Mailbox Flow
+
+Production debug unlock over the MCU mailbox is a two-command flow:
+
+1. The host sends `MC_PRODUCTION_DEBUG_UNLOCK_REQ` with the requested `unlock_level`.
+2. The MCU returns `unique_device_identifier` and a 48-byte `challenge`.
+3. The host constructs the signed token over `unique_device_identifier || unlock_level || reserved || challenge`.
+4. The host signs that message twice:
+   - ECDSA P-384 over the SHA-384 digest
+   - ML-DSA over the SHA-512 digest
+5. The host sends `MC_PRODUCTION_DEBUG_UNLOCK_TOKEN` with the original challenge data, both public keys, and both signatures.
+6. The MCU verifies the token and unlocks the requested debug level if all checks succeed.
+
+```mermaid
+sequenceDiagram
+    participant Host
+    participant MCU
+
+    Host->>MCU: MC_PRODUCTION_DEBUG_UNLOCK_REQ(unlock_level)
+    MCU-->>Host: UDI + challenge
+    Note over Host: Build message = UDI || unlock_level || reserved || challenge
+    Note over Host: Sign with ECDSA P-384 and ML-DSA
+    Host->>MCU: MC_PRODUCTION_DEBUG_UNLOCK_TOKEN(token)
+    Note over MCU: Verify challenge, UDI, public keys, and signatures
+    MCU-->>Host: fips_status
+```
+
+#### Host-Side Token Construction
+
+The host constructs the token fields as follows:
+
+| **Field** | **Source** |
+|-----------|------------|
+| `unique_device_identifier` | Copied from `MC_PRODUCTION_DEBUG_UNLOCK_REQ` response |
+| `unlock_level` | Same value used in the request |
+| `reserved` | Zero-filled |
+| `challenge` | Copied from `MC_PRODUCTION_DEBUG_UNLOCK_REQ` response |
+| `ecc_public_key` | Public key paired with the ECDSA signing key |
+| `mldsa_public_key` | Public key paired with the ML-DSA signing key |
+| `ecc_signature` | Signature over the mailbox message using ECDSA P-384 |
+| `mldsa_signature` | Signature over the mailbox message using ML-DSA |
+
+The reference host implementation is in `caliptra-util-host/apps/mailbox/client/src/validator.rs`, where the validator:
+
+1. Calls the mailbox request command to fetch the challenge.
+2. Uses the debug unlock signer to build the token.
+3. Sends the mailbox token command to complete the unlock flow.
+
+The signing abstraction is implemented in `common/debug-unlock-signer/src/lib.rs` and the local software signer is in `common/debug-unlock-signer/src/local.rs`.
+
 {{#include fuse_api_cmd.md}}
 
 ### Cryptographic Command Format
