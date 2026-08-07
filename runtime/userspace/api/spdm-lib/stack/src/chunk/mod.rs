@@ -362,7 +362,7 @@ pub(crate) fn validate_buffered_large_response<Pal: SpdmPal>(
     let capacity = if let Some(buf) = state.large_msg_ctx.get_buffer() {
         buf.len()
     } else {
-        crate::stack::usable_large_capacity(pal)
+        pal.large_capacity()
     };
 
     if large_resp_len > capacity || large_resp_len > state.effective_max_spdm_msg_size(pal) {

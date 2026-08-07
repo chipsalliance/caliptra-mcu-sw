@@ -213,7 +213,7 @@ impl<S, L> ConnectionState<S, L> {
     }
 
     pub(crate) fn effective_max_spdm_msg_size<Pal: SpdmPal>(&self, pal: &Pal) -> usize {
-        let local = usable_large_capacity(pal).max(pal.mtu());
+        let local = pal.large_capacity().max(pal.mtu());
         let peer = if self.peer_max_spdm_msg_size == 0 {
             local
         } else {
@@ -228,32 +228,6 @@ impl<S, L> ConnectionState<S, L> {
         // TODO: add MLDSA-87 mapping once codec and DPE support it.
         SpdmPalAsymAlgo::EccP384
     }
-}
-
-/// Scratch the responder must keep free alongside the large-message buffer for
-/// non-chunk allocations (peak ~2.4 KB during certify_key kid computation).
-const LARGE_MSG_SCRATCH_RESERVE: usize = 2 * 1024;
-
-/// Bytes reserved from the raw allocator pool so a buffered large response can
-/// always allocate its next CHUNK_GET exchange.
-///
-/// While a buffered large response occupies the pool, CHUNK_GET still receives
-/// the request (`header + mtu`) and allocates a per-chunk response
-/// (`header + <= mtu`). Both must fit alongside the buffered response plus
-/// transient hash/transcript scratch, so reserve room for two `header + mtu`
-/// buffers and [`LARGE_MSG_SCRATCH_RESERVE`].
-pub(crate) fn large_msg_headroom<Pal: SpdmPal>(pal: &Pal) -> usize {
-    2 * (pal.header_size() + pal.mtu()) + LARGE_MSG_SCRATCH_RESERVE
-}
-
-/// Largest single large message the responder can buffer while still leaving
-/// [`large_msg_headroom`] free for the in-flight CHUNK_GET exchange.
-///
-/// This is the value the stack advertises as `MaxSPDMmsgSize` and enforces when
-/// renting a large buffer, so a buffered response can never starve its own next
-/// chunk allocation.
-pub(crate) fn usable_large_capacity<Pal: SpdmPal>(pal: &Pal) -> usize {
-    pal.large_capacity().saturating_sub(large_msg_headroom(pal))
 }
 
 impl<S, L: core::ops::DerefMut<Target = [u8]>> ConnectionState<S, L> {
@@ -374,7 +348,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
     /// removed from the advertised capabilities.
     pub fn with_vdm_backend(pal: Pal, vdm_backend: Vdm) -> Self {
         let mut state = ConnectionState::<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>::default();
-        if usable_large_capacity(&pal) < pal.mtu() {
+        if pal.large_capacity() < pal.mtu() {
             state.cap_flags =
                 CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
         }

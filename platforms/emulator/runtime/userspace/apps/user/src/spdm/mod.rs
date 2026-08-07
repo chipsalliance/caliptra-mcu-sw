@@ -50,10 +50,10 @@ use embassy_sync::signal::Signal;
 ///
 /// The default 12 KiB is the compact footprint. It must also leave room for
 /// CHUNK_GET: a buffered large response coexists with a per-chunk
-/// `header + mtu` response allocation, and the advertised `MaxSPDMmsgSize`
-/// reserves that headroom (see `usable_large_capacity` in the stack). At a
-/// 4 KiB MTU a 12 KiB pool leaves less than one frame usable, so CHUNK is
-/// stripped from the advertised capabilities. The `ocp-nvme-profile` feature
+/// `header + mtu` response allocation, and the PAL's `large_capacity()` reserves
+/// that headroom from this pool (the advertised `MaxSPDMmsgSize` derives from
+/// it). At a 4 KiB MTU a 12 KiB pool leaves less than one frame usable, so CHUNK
+/// is stripped from the advertised capabilities. The `ocp-nvme-profile` feature
 /// grows the pool to 20 KiB (~8 KiB usable large-message capacity), which keeps
 /// CHUNK advertised at a 4 KiB DataTransferSize at the cost of ~8 KiB BSS per
 /// responder task.

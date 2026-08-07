@@ -91,7 +91,7 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
     // Advertise a MaxSPDMmsgSize that reserves CHUNK_GET transfer-buffer
     // headroom, so a buffered large response can always allocate its next chunk.
     let max_spdm_msg_size = if flags.contains(CapFlags::CHUNK) {
-        crate::stack::usable_large_capacity(pal).max(mtu)
+        pal.large_capacity().max(mtu)
     } else {
         mtu
     } as u32;

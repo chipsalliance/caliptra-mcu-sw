@@ -2,17 +2,18 @@
 
 //! CHUNK_GET large-response sizing + drive tests at a 4 KiB `DataTransferSize`.
 //!
-//! These cover the transfer-buffer headroom accounting introduced so a buffered
-//! large response can always allocate its next chunk: the advertised /
-//! effective `MaxSPDMmsgSize` reserves [`large_msg_headroom`], and a pool too
-//! small to hold one transport-sized message after that reservation strips
-//! CHUNK from the advertised capabilities.
+//! These cover how the stack consumes `pal.large_capacity()` — the PAL-reported
+//! usable large-message capacity (already net of CHUNK_GET transfer-buffer
+//! headroom): the advertised / effective `MaxSPDMmsgSize` tracks it, and a
+//! capacity too small to hold one transport-sized message strips CHUNK from the
+//! advertised capabilities. The headroom reservation itself is a PAL concern,
+//! covered against the real allocator in the `pal` crate.
 
 extern crate std;
 
 use caliptra_mcu_spdm_codec::{
-    CapFlags, ChunkResponseBody, ReqRespCode, SpdmMsgHdrPdu, SpdmVersion,
-    CHUNK_ATTR_LAST_CHUNK, CHUNK_RESPONSE_FIXED_BODY_SIZE, LARGE_RESPONSE_SIZE_FIELD_SIZE,
+    CapFlags, ChunkResponseBody, ReqRespCode, SpdmMsgHdrPdu, SpdmVersion, CHUNK_ATTR_LAST_CHUNK,
+    CHUNK_RESPONSE_FIXED_BODY_SIZE, LARGE_RESPONSE_SIZE_FIELD_SIZE,
 };
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use futures::executor::block_on;
@@ -21,20 +22,25 @@ use std::vec::Vec;
 use zerocopy::FromBytes;
 
 use crate::chunk::LargeResponse;
-use crate::stack::{
-    large_msg_headroom, usable_large_capacity, ConnectionState, Phase, SpdmStack,
-};
+use crate::stack::{ConnectionState, Phase, SpdmStack};
 
 #[path = "support.rs"]
 mod support;
 use support::*;
 
 const MTU: usize = 4096;
-const POOL_20K: usize = 20 * 1024;
-const POOL_12K: usize = 12 * 1024;
+/// A PAL usable large-message capacity (already net of CHUNK_GET headroom) that
+/// holds at least one transport frame, so CHUNK stays advertised. Corresponds to
+/// a ~20 KiB pool at a 4 KiB MTU.
+const USABLE_KEEPS_CHUNK: usize = 10 * 1024;
+/// A usable capacity below one transport frame, so CHUNK is stripped. Corresponds
+/// to a ~12 KiB pool (only ~2 KiB usable after headroom).
+const USABLE_STRIPS_CHUNK: usize = 2 * 1024;
 /// Backing pool held by the buffered large response in the drive test.
 const LARGE_RESP_SIZE: usize = 8 * 1024;
 
+/// `large_capacity` is the PAL's usable large-message capacity (already net of
+/// any CHUNK_GET headroom the PAL reserves) — the stack consumes it directly.
 fn pal_with(mtu: usize, large_capacity: usize) -> TestPal {
     TestPal {
         mtu,
@@ -52,23 +58,12 @@ fn chunk_ready_state() -> ConnectionState<TestHashState, Vec<u8>> {
     state
 }
 
-/// TestPal reports `header_size() == 0`, so the headroom formula reduces to
-/// `2 * mtu + LARGE_MSG_SCRATCH_RESERVE`. Assert the helper agrees and that
-/// `usable_large_capacity` subtracts exactly that from the raw pool.
-#[test]
-fn headroom_reserves_two_frames_plus_scratch() {
-    let pal = pal_with(MTU, POOL_20K);
-    // 2 KiB scratch reserve + two header+mtu frames (header 0 here).
-    assert_eq!(large_msg_headroom(&pal), 2 * MTU + 2 * 1024);
-    assert_eq!(usable_large_capacity(&pal), POOL_20K - (2 * MTU + 2 * 1024));
-}
-
 /// The advertised `MaxSPDMmsgSize` (CAPABILITIES) and the effective size both
-/// reflect the headroom-reserved usable capacity, not the raw pool.
+/// reflect the PAL's usable large-message capacity.
 #[test]
 fn capabilities_and_effective_size_match_usable_capacity() {
-    let pal = pal_with(MTU, POOL_20K);
-    let usable = usable_large_capacity(&pal);
+    let pal = pal_with(MTU, USABLE_KEEPS_CHUNK);
+    let usable = pal.large_capacity();
 
     // Drive the CAPABILITIES handler with a V1.2 CHUNK-capable peer and read
     // the MaxSPDMmsgSize it advertises straight off the wire.
@@ -83,7 +78,10 @@ fn capabilities_and_effective_size_match_usable_capacity() {
     req.extend_from_slice(&(MTU as u32).to_le_bytes()); // MaxSPDMmsgSize
     let io = TestIo::message(req);
 
-    let resp = block_on(crate::capabilities::handle_get_capabilities(&mut state, &pal, &io)).unwrap();
+    let resp = block_on(crate::capabilities::handle_get_capabilities(
+        &mut state, &pal, &io,
+    ))
+    .unwrap();
 
     // header_size() == 0, so the SPDM body starts at offset 0:
     // version | code | CapabilitiesBodyV11(10) | DataTransferSize(4) | MaxSPDMmsgSize(4)
@@ -101,19 +99,19 @@ fn capabilities_and_effective_size_match_usable_capacity() {
     assert_eq!(state.effective_max_spdm_msg_size(&pal), usable.max(MTU));
 }
 
-/// A 20 KiB pool leaves >= one transport frame usable after headroom, so CHUNK
-/// stays advertised; a 12 KiB pool does not, so CHUNK is stripped at build.
+/// A usable capacity >= one transport frame keeps CHUNK advertised; a usable
+/// capacity below one frame strips CHUNK at build.
 #[test]
-fn chunk_strips_when_pool_cannot_hold_one_frame() {
-    let pal_20k = pal_with(MTU, POOL_20K);
-    assert!(usable_large_capacity(&pal_20k) >= MTU);
-    let stack_20k: SpdmStack<TestPal> = SpdmStack::new(pal_20k);
-    assert!(stack_20k.state.cap_flags.contains(CapFlags::CHUNK));
+fn chunk_strips_when_capacity_cannot_hold_one_frame() {
+    let pal_keep = pal_with(MTU, USABLE_KEEPS_CHUNK);
+    assert!(pal_keep.large_capacity() >= MTU);
+    let stack_keep: SpdmStack<TestPal> = SpdmStack::new(pal_keep);
+    assert!(stack_keep.state.cap_flags.contains(CapFlags::CHUNK));
 
-    let pal_12k = pal_with(MTU, POOL_12K);
-    assert!(usable_large_capacity(&pal_12k) < MTU);
-    let stack_12k: SpdmStack<TestPal> = SpdmStack::new(pal_12k);
-    assert!(!stack_12k.state.cap_flags.contains(CapFlags::CHUNK));
+    let pal_strip = pal_with(MTU, USABLE_STRIPS_CHUNK);
+    assert!(pal_strip.large_capacity() < MTU);
+    let stack_strip: SpdmStack<TestPal> = SpdmStack::new(pal_strip);
+    assert!(!stack_strip.state.cap_flags.contains(CapFlags::CHUNK));
 }
 
 /// Seed a buffered large response and walk it out over CHUNK_GET, asserting each
@@ -121,7 +119,7 @@ fn chunk_strips_when_pool_cannot_hold_one_frame() {
 /// advances monotonically to the terminal LAST_CHUNK.
 #[test]
 fn chunk_get_walks_buffered_response_over_4k_frames() {
-    let pal = pal_with(MTU, POOL_20K);
+    let pal = pal_with(MTU, USABLE_KEEPS_CHUNK);
     let mut state = chunk_ready_state();
 
     // Fill a large buffer with an identifiable pattern and park it as a
@@ -145,8 +143,7 @@ fn chunk_get_walks_buffered_response_over_4k_frames() {
         let io = TestIo::message(req.clone());
         let rsp = block_on(crate::chunk::handle_chunk_get(&mut state, &pal, &io, &req)).unwrap();
 
-        let (body, _) =
-            ChunkResponseBody::ref_from_prefix(&rsp[SpdmMsgHdrPdu::SIZE..]).unwrap();
+        let (body, _) = ChunkResponseBody::ref_from_prefix(&rsp[SpdmMsgHdrPdu::SIZE..]).unwrap();
         let chunk_size = body.chunk_size.get() as usize;
         let last = (body.chunk_sender_attr & CHUNK_ATTR_LAST_CHUNK) != 0;
         assert_eq!(body.handle, handle);
@@ -154,14 +151,25 @@ fn chunk_get_walks_buffered_response_over_4k_frames() {
 
         // Chunk payload must fit one effective frame, minus the CHUNK_RESPONSE
         // fixed body and (on the first chunk) the LargeResponseSize field.
-        let extra = if seq == 0 { LARGE_RESPONSE_SIZE_FIELD_SIZE } else { 0 };
+        let extra = if seq == 0 {
+            LARGE_RESPONSE_SIZE_FIELD_SIZE
+        } else {
+            0
+        };
         let max_chunk = state.effective_data_transfer_size(&pal)
             - (SpdmMsgHdrPdu::SIZE + CHUNK_RESPONSE_FIXED_BODY_SIZE + extra);
-        assert!(chunk_size <= max_chunk, "chunk {} exceeds frame budget", seq);
+        assert!(
+            chunk_size <= max_chunk,
+            "chunk {} exceeds frame budget",
+            seq
+        );
 
         // Verify the emitted chunk bytes are the parked buffer's slice.
         let payload_off = SpdmMsgHdrPdu::SIZE + CHUNK_RESPONSE_FIXED_BODY_SIZE + extra;
-        for (j, b) in rsp[payload_off..payload_off + chunk_size].iter().enumerate() {
+        for (j, b) in rsp[payload_off..payload_off + chunk_size]
+            .iter()
+            .enumerate()
+        {
             assert_eq!(*b, (total + j) as u8);
         }
 
@@ -180,7 +188,12 @@ fn chunk_get_walks_buffered_response_over_4k_frames() {
 /// Builds a CHUNK_GET request: SPDM header + ChunkGetReqBody(param1=0, handle,
 /// chunk_seq_num).
 fn chunk_get_request(handle: u8, seq: u16) -> Vec<u8> {
-    let mut req = vec![SpdmVersion::V12.to_u8(), ReqRespCode::CHUNK_GET.0, 0, handle];
+    let mut req = vec![
+        SpdmVersion::V12.to_u8(),
+        ReqRespCode::CHUNK_GET.0,
+        0,
+        handle,
+    ];
     req.extend_from_slice(&seq.to_le_bytes());
     req
 }

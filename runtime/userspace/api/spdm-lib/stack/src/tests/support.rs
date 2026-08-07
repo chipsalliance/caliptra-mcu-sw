@@ -99,8 +99,10 @@ impl<T> DerefMut for TestBox<'_, T> {
 
 pub struct TestPal {
     pub mtu: usize,
-    /// Backing large-message pool capacity, independent of `mtu` so tests can
-    /// exercise the CHUNK_GET headroom accounting.
+    /// Usable large-message capacity reported verbatim by `large_capacity()`
+    /// (already net of any CHUNK_GET headroom a real PAL would reserve), kept
+    /// independent of `mtu` so tests can exercise the CHUNK advertise/strip and
+    /// large-response validation paths.
     pub large_capacity: usize,
     pub supported_slots: u8,
     pub authorized: bool,
@@ -117,8 +119,8 @@ impl Default for TestPal {
     fn default() -> Self {
         Self {
             mtu: 1024,
-            // Generous by default so existing chunk tests keep ample usable
-            // capacity after the CHUNK_GET headroom reservation.
+            // Generous by default so existing chunk tests have ample usable
+            // large-message capacity.
             large_capacity: 64 * 1024,
             supported_slots: u8::MAX,
             authorized: true,
