@@ -25,8 +25,9 @@ use zerocopy::FromBytes;
 
 use crate::build::{alloc_padded, build_error_response};
 use crate::error::{
-    SpdmError, SpdmResult, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST, SPDM_SESSION_REQUIRED,
-    SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
+    SpdmError, SpdmResult, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST, SPDM_REQUEST_RESYNCH,
+    SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST,
+    SPDM_VERSION_MISMATCH,
 };
 use crate::key_schedule::SessionKeyType;
 use crate::session::{SessionInfo, SessionManager, SessionState};
@@ -115,6 +116,16 @@ pub struct ConnectionState<S, L> {
     // ---- Connection-scoped negotiation -----------------------------------
     /// Current connection phase.
     pub phase: Phase,
+    /// Resynchronization latch (OCP 2.7 SPDM-19).
+    ///
+    /// Set when an out-of-order request is detected. Once set, **every**
+    /// subsequent request on this connection is answered with
+    /// `ERROR(RequestResynch, 0x43)` until a `GET_VERSION` is received and
+    /// successfully processed - `GET_VERSION` clears the latch by way of
+    /// [`Self::reset_negotiation`]. The latch lives inside `ConnectionState`,
+    /// which is per-connection, so a resync on one transport cannot leak into
+    /// another connection's state.
+    pub resync_required: bool,
     /// Negotiated SPDM version. Defaults to the minimum supported
     /// version (V1.2) and is overwritten on a successful
     /// `GET_CAPABILITIES`.
@@ -185,6 +196,7 @@ impl<S, L> ConnectionState<S, L> {
             key_schedule: KeyScheduleAlgos::SPDM,
 
             phase: Phase::Start,
+            resync_required: false,
             version: SpdmVersion::V12,
             peer_data_transfer_size: 0,
             peer_max_spdm_msg_size: 0,
@@ -228,12 +240,33 @@ impl<S, L> ConnectionState<S, L> {
         // TODO: add MLDSA-87 mapping once codec and DPE support it.
         SpdmPalAsymAlgo::EccP384
     }
+
+    /// Records an out-of-order request and returns the error to send back.
+    ///
+    /// Per OCP 2.7 SPDM-19, a request received out
+    /// of order is answered with `ERROR(RequestResynch, 0x43)` - and every
+    /// subsequent request must get the same error until `GET_VERSION` resets
+    /// the connection. This latches [`Self::resync_required`] so the dispatcher
+    /// short-circuits all following requests; the handler simply
+    /// `return Err(state.out_of_order())`.
+    ///
+    /// It also nullifies the running transcript (DSP0274 1.4.0 section 17,
+    /// General ordering rules): an out-of-order request invalidates any
+    /// partially-accumulated VCA/M1/L1 context, so it must not be carried into
+    /// the post-resync negotiation.
+    pub(crate) fn out_of_order(&mut self) -> SpdmError {
+        self.resync_required = true;
+        self.transcript.reset();
+        SPDM_REQUEST_RESYNCH
+    }
 }
 
 impl<S, L: core::ops::DerefMut<Target = [u8]>> ConnectionState<S, L> {
     /// Resets the connection-level large message context, securely wiping any buffered bytes.
     pub(crate) fn reset_negotiation(&mut self) {
         self.phase = Phase::Start;
+        // GET_VERSION is the only thing that clears the resync latch (SPDM-19).
+        self.resync_required = false;
         self.version = SpdmVersion::V12;
         self.peer_data_transfer_size = 0;
         self.peer_max_spdm_msg_size = 0;
@@ -576,6 +609,12 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
     code: ReqRespCode,
     vdm: &Vdm,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
+    // OCP 2.7 SPDM-19: once the resync latch is set,
+    // every request except GET_VERSION is answered with ERROR(RequestResynch)
+    // until a GET_VERSION resets the connection (which clears the latch below).
+    if state.resync_required && code != ReqRespCode::GET_VERSION {
+        return Err(SPDM_REQUEST_RESYNCH);
+    }
     abort_chunk_reassembly_if_interrupted(state, pal, io, vdm, code).await;
     if code != ReqRespCode::CHUNK_GET
         && code != ReqRespCode::CHUNK_SEND
@@ -789,6 +828,12 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
         SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
     abort_chunk_reassembly_if_interrupted(state, pal, io, vdm, spdm_hdr.code).await;
     let session_state = sessions.find(session_id).ok_or(SPDM_UNSPECIFIED)?.state;
+
+    // A request that is not valid for the current session phase is an
+    // unexpected request: DSP0274 1.4.0 section 7 (SPDM message exchanges)
+    // requires ERROR(UnexpectedRequest, 0x04) for a request received with a
+    // valid session ID, not RequestResynch (which is reserved for
+    // out-of-session resynchronization).
     let response_key_type = validate_message_allowed_phase(spdm_hdr.code, session_state)?;
 
     // After decoding secure inner SPDM code, ensure stale large-message reassembly/response state is cleared.
@@ -1104,3 +1149,7 @@ fn decode_header(req: &[u8]) -> (ReqRespCode, SpdmVersion) {
 #[cfg(all(test, feature = "set-certificate"))]
 #[path = "tests/stack_set_certificate.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/resync.rs"]
+mod resync_tests;
