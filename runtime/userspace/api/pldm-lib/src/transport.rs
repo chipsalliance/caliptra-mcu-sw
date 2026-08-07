@@ -5,7 +5,10 @@ use caliptra_mcu_libsyscall_caliptra::mctp::{Mctp, MessageInfo};
 use caliptra_mcu_pldm_common::util::mctp_transport::{
     MctpCommonHeader, MCTP_COMMON_HEADER_OFFSET, MCTP_PLDM_MSG_TYPE,
 };
+use core::sync::atomic::{AtomicU8, Ordering};
 use mcu_error::McuResult;
+
+static DISCOVERED_UA_EID: AtomicU8 = AtomicU8::new(0);
 
 pub enum PldmTransportType {
     Mctp,
@@ -23,6 +26,13 @@ impl MctpTransport {
             mctp: Mctp::new(drv_num),
             cur_resp_ctx: None,
             cur_req_ctx: None,
+        }
+    }
+
+    pub fn ua_eid(&self) -> u8 {
+        match DISCOVERED_UA_EID.load(Ordering::Relaxed) {
+            0 => crate::config::UA_EID,
+            eid => eid,
         }
     }
 
@@ -88,6 +98,9 @@ impl MctpTransport {
             Err(errors::UNEXPECTED_MESSAGE_TYPE)?;
         }
 
+        if msg_info.eid != 0 {
+            DISCOVERED_UA_EID.store(msg_info.eid, Ordering::Relaxed);
+        }
         self.cur_resp_ctx = Some(msg_info);
 
         Ok(())
@@ -111,5 +124,25 @@ impl MctpTransport {
         self.cur_resp_ctx = None;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ua_eid_is_shared_across_transport_instances() {
+        DISCOVERED_UA_EID.store(0, Ordering::Relaxed);
+        let responder = MctpTransport::new(1);
+        let initiator = MctpTransport::new(1);
+
+        assert_eq!(initiator.ua_eid(), crate::config::UA_EID);
+
+        DISCOVERED_UA_EID.store(11, Ordering::Relaxed);
+        assert_eq!(responder.ua_eid(), 11);
+        assert_eq!(initiator.ua_eid(), 11);
+
+        DISCOVERED_UA_EID.store(0, Ordering::Relaxed);
     }
 }

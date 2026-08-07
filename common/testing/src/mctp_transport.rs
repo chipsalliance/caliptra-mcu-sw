@@ -44,6 +44,7 @@ struct MctpPldmSocketData {
 impl PldmSocket for MctpPldmSocket {
     fn send(&self, payload: &[u8]) -> Result<(), PldmTransportError> {
         let mut mctp_util = MctpUtil::new();
+        mctp_util.set_src_eid(self.source.0);
         let mut mctp_common_header = MctpCommonHeader(0);
         mctp_common_header.set_ic(0);
         mctp_common_header.set_msg_type(MCTP_PLDM_MSG_TYPE);
