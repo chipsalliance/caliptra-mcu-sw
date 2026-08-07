@@ -5,11 +5,11 @@ use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
 };
 use caliptra_mcu_flash_image::{
-    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, HEADER_VERSION, MCU_RT_IDENTIFIER,
-    SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
+    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, HEADER_VERSION, IMAGE_FILENAME_SIZE,
+    MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
 };
 use std::fs::{File, OpenOptions};
-use std::io::{self, Error, ErrorKind, Read, Seek, Write};
+use std::io::{Error, ErrorKind, Read, Seek, Write};
 use std::mem::offset_of;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -32,11 +32,11 @@ pub struct FirmwareImage<'a> {
 }
 
 impl<'a> FirmwareImage<'a> {
-    pub fn new(identifier: u32, content: &'a [u8]) -> io::Result<Self> {
-        Ok(Self {
+    pub fn new(identifier: u32, content: &'a [u8]) -> Self {
+        Self {
             identifier,
             data: content,
-        })
+        }
     }
 }
 
@@ -209,19 +209,19 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
     let content;
     if let Some(caliptra_fw_path) = caliptra_fw_path {
         content = load_file(&caliptra_fw_path.to_string_lossy())?;
-        images.push(FirmwareImage::new(CALIPTRA_FMC_RT_IDENTIFIER, &content)?);
+        images.push(FirmwareImage::new(CALIPTRA_FMC_RT_IDENTIFIER, &content));
     }
 
     let content;
     if let Some(soc_manifest_path) = soc_manifest_path {
         content = load_file(&soc_manifest_path.to_string_lossy())?;
-        images.push(FirmwareImage::new(SOC_MANIFEST_IDENTIFIER, &content)?);
+        images.push(FirmwareImage::new(SOC_MANIFEST_IDENTIFIER, &content));
     }
 
     let content;
     if let Some(mcu_runtime_path) = mcu_runtime_path {
         content = load_file(&mcu_runtime_path.to_string_lossy())?;
-        images.push(FirmwareImage::new(MCU_RT_IDENTIFIER, &content)?);
+        images.push(FirmwareImage::new(MCU_RT_IDENTIFIER, &content));
     }
 
     // Load SOC images into a buffer
@@ -242,10 +242,10 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
         } else {
             SOC_IMAGES_BASE_IDENTIFIER + i as u32
         };
-        images.push(FirmwareImage::new(identifier, soc_img)?);
+        images.push(FirmwareImage::new(identifier, soc_img));
     }
 
-    let image_info = generate_image_info(images.clone());
+    let image_info = generate_image_info(images.clone(), args.network_image_filename.as_deref())?;
 
     let flash_image = FlashImage::new(&images, &image_info);
     flash_image.write_to_file(offset, output_path)?;
@@ -253,7 +253,18 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<ImageHeader> {
+pub fn generate_image_info(
+    images: Vec<FirmwareImage>,
+    network_image_filename: Option<&str>,
+) -> Result<Vec<ImageHeader>> {
+    let mut filename = [0; IMAGE_FILENAME_SIZE];
+    if let Some(network_image_filename) = network_image_filename {
+        if network_image_filename.len() > IMAGE_FILENAME_SIZE {
+            bail!("Network image filename exceeds {IMAGE_FILENAME_SIZE} bytes");
+        }
+        filename[..network_image_filename.len()].copy_from_slice(network_image_filename.as_bytes());
+    }
+
     let mut info = Vec::new();
     let mut offset = std::mem::size_of::<FlashHeader>() as u32
         + (std::mem::size_of::<ImageHeader>() * images.len()) as u32;
@@ -262,6 +273,7 @@ pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<ImageHeader> {
             identifier: image.identifier,
             offset,
             size: image.data.len() as u32,
+            filename,
             image_checksum: calculate_checksum(image.data),
             image_header_checksum: 0,
         };
@@ -271,7 +283,7 @@ pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<ImageHeader> {
         info.push(header);
         offset += image.data.len() as u32;
     }
-    info
+    Ok(info)
 }
 
 /// Build a flash image from raw firmware data and return it as bytes.
@@ -322,7 +334,7 @@ pub fn build_flash_image_bytes(
         return Vec::new();
     }
 
-    let image_info = generate_image_info(images.clone());
+    let image_info = generate_image_info(images.clone(), None).unwrap();
     let flash_image = FlashImage::new(&images, &image_info);
     flash_image.to_bytes()
 }
@@ -386,7 +398,7 @@ mod tests {
     use super::*;
     use crate::{ImageCfg, PROJECT_ROOT};
     use std::fs::{self, File};
-    use std::io::Write;
+    use std::io::{self, Write};
     use tempfile::NamedTempFile;
 
     /// Helper function to create a temporary file with specific content
@@ -434,6 +446,7 @@ mod tests {
             soc_manifest: Some(soc_manifest.path().to_path_buf()),
             mcu_firmware: Some(mcu_runtime.path().to_path_buf()),
             soc_image_paths,
+            network_image_filename: Some("network-image.bin".into()),
             offset: 0,
             output_path: Some(output_path.to_string()),
             ..Default::default()
@@ -485,6 +498,7 @@ mod tests {
                 image_header.size as usize,
                 expected_images[i].1.len().next_multiple_of(4)
             );
+            assert_eq!(image_header.filename_str().unwrap(), "network-image.bin");
 
             image_headers.push(image_header);
         }
@@ -531,7 +545,7 @@ mod tests {
             },
         ];
         // Create a flash image from the mutable slice
-        let image_info = generate_image_info(expected_images.to_vec());
+        let image_info = generate_image_info(expected_images.to_vec(), None).unwrap();
         let flash_image = FlashImage::new(&expected_images, &image_info);
         flash_image
             .write_to_file(0, image_path)
@@ -566,7 +580,7 @@ mod tests {
                 data: b"Valid SOC Manifest Data",
             },
         ];
-        let image_info = generate_image_info(images.to_vec());
+        let image_info = generate_image_info(images.to_vec(), None).unwrap();
         let flash_image = FlashImage::new(&images, &image_info);
         flash_image
             .write_to_file(0, image_path)
@@ -654,5 +668,19 @@ mod tests {
         let offset1 = offset0 + IMAGE_INFO_SIZE;
         let img1 = ImageHeader::read_from_bytes(&data[offset1..offset1 + IMAGE_INFO_SIZE]).unwrap();
         assert_eq!(img1.identifier, 6);
+    }
+
+    #[test]
+    fn test_network_image_filename_length() {
+        let images = vec![FirmwareImage::new(1, b"image")];
+        let image_info = generate_image_info(images.clone(), None).unwrap();
+        assert_eq!(image_info[0].filename_str().unwrap(), "");
+
+        let max_length_filename = "a".repeat(IMAGE_FILENAME_SIZE);
+        let image_info = generate_image_info(images.clone(), Some(&max_length_filename)).unwrap();
+        assert_eq!(image_info[0].filename, max_length_filename.as_bytes());
+
+        let overlong_filename = "a".repeat(IMAGE_FILENAME_SIZE + 1);
+        assert!(generate_image_info(images, Some(&overlong_filename)).is_err());
     }
 }
