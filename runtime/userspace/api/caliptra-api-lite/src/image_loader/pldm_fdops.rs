@@ -2,15 +2,18 @@
 
 extern crate alloc;
 
-use super::pldm_client::{FW_UPDATE_TASK_YIELD, PLDM_DAEMON_TASK_YIELD};
-use super::pldm_context::{State, DOWNLOAD_CTX, FW_UPDATE_HOOKS, PLDM_STATE};
-use crate::MAX_PLDM_TRANSFER_SIZE;
+use super::pldm_client::{IMAGE_LOADING_TASK_YIELD, PLDM_TASK_YIELD};
+use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
+use caliptra_mcu_libsyscall_caliptra::dma::{
+    AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
+};
 use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
+use caliptra_mcu_pldm_common::message::firmware_update::request_fw_data::MAX_PLDM_FW_DATA_SIZE as MAX_PLDM_TRANSFER_SIZE;
 use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::{
@@ -21,62 +24,93 @@ use caliptra_mcu_pldm_lib::errors as pldm_errors;
 use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps};
 use mcu_error::McuResult;
 
-const ESTIMATED_ACTIVATION_TIME_SECS: u16 = 600; // 10 minutes estimated activation time including reset
+pub struct StreamingFdOps<'a, D: DMAMapping> {
+    descriptors: &'a [Descriptor],
+    fw_params: &'a FirmwareParameters,
+    dma_mapping: &'a D,
+}
 
-pub struct UpdateFdOps {}
+impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
+    /// Creates a new instance of the StreamingFdOps.
+    pub const fn new(
+        descriptors: &'a [Descriptor],
+        fw_params: &'a FirmwareParameters,
+        dma_mapping: &'a D,
+    ) -> Self {
+        Self {
+            descriptors,
+            fw_params,
+            dma_mapping,
+        }
+    }
 
-impl UpdateFdOps {
-    /// Creates a new instance of the UpdateFdOps.
-    pub fn new() -> Self {
-        Self {}
+    async fn copy_buffer_to_load_address(
+        &self,
+        load_address: AXIAddr,
+        offset: usize,
+        data: &[u8],
+        dma_mapping: &impl DMAMapping,
+    ) -> McuResult<()> {
+        let dma_syscall: DMASyscall = DMASyscall::new();
+        let source_address = dma_mapping
+            .mcu_sram_to_mcu_axi(data.as_ptr() as u32)
+            .map_err(|_| pldm_errors::FW_DOWNLOAD_ERROR)?;
+
+        let transaction = DMATransaction {
+            byte_count: data.len(),
+            source: DMASource::Address(source_address),
+            dest_addr: load_address + offset as u64,
+        };
+        dma_syscall.xfer(&transaction).await.unwrap();
+
+        Ok(())
     }
 
     async fn copy_data_to_buffer(&self, _offset: usize, data: &[u8]) -> McuResult<()> {
         let state = PLDM_STATE.lock(|state| *state.borrow());
-        if state != State::DownloadingImage {
-            return Err(pldm_errors::FW_DOWNLOAD_ERROR);
-        }
-        let write_offset = DOWNLOAD_CTX.lock(|ctx| {
+        let dma_params = DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
             ctx.total_downloaded += data.len();
-            ctx.current_offset - ctx.initial_offset
+            let start = ctx.current_offset - ctx.initial_offset;
+
+            if state == State::DownloadingHeader {
+                let end = (start + data.len()).min(ctx.header.len());
+                ctx.header[start..end].copy_from_slice(&data[..end - start]);
+            } else if state == State::DownloadingToc {
+                let end = (start + data.len()).min(ctx.image_info.len());
+                ctx.image_info[start..end].copy_from_slice(&data[..end - start]);
+            } else if state == State::DownloadingImage {
+                return Some((ctx.load_address, start));
+            }
+
+            None
         });
-        let staging_memory = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().staging_memory);
-        if let Some(staging_area) = staging_memory {
-            return staging_area
-                .write(write_offset, data)
-                .await
-                .map_err(|_| pldm_errors::FW_DOWNLOAD_ERROR);
+        if let Some(dma_params) = dma_params {
+            return self
+                .copy_buffer_to_load_address(dma_params.0, dma_params.1, data, self.dma_mapping)
+                .await;
         }
-        Err(pldm_errors::FW_DOWNLOAD_ERROR)
+        Ok(())
     }
 }
 
 #[async_trait(?Send)]
-impl FdOps for UpdateFdOps {
+impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
     fn get_device_identifiers(&self, device_identifiers: &mut [Descriptor]) -> McuResult<usize> {
-        let descriptors = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().descriptors);
-        if let Some(descriptors) = descriptors {
-            descriptors.iter().enumerate().for_each(|(i, descriptor)| {
+        self.descriptors
+            .iter()
+            .enumerate()
+            .for_each(|(i, descriptor)| {
                 if i < device_identifiers.len() {
                     device_identifiers[i] = *descriptor;
                 }
             });
-            Ok(descriptors.len())
-        } else {
-            Err(pldm_errors::DEVICE_IDENTIFIERS_ERROR)
-        }
+        Ok(self.descriptors.len())
     }
 
     fn get_firmware_parms(&self, firmware_params: &mut FirmwareParameters) -> McuResult<()> {
-        let fw_params = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().fw_params);
-        if let Some(fw_params) = fw_params {
-            // Clone the firmware parameters to avoid borrowing issues
-            *firmware_params = fw_params.clone();
-            Ok(())
-        } else {
-            Err(pldm_errors::FIRMWARE_PARAMETERS_ERROR)
-        }
+        *firmware_params = (*self.fw_params).clone();
+        Ok(())
     }
 
     async fn get_xfer_size(&self, ua_transfer_size: usize) -> McuResult<usize> {
@@ -99,31 +133,6 @@ impl FdOps for UpdateFdOps {
                 return Ok(ComponentResponseCode::CompPrerequisitesNotMet);
             }
         }
-        let staging_memory = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().staging_memory);
-        if let Some(staging_area) = staging_memory {
-            if staging_area.size() < component.comp_image_size.unwrap_or(0) as usize {
-                // Staging area is not large enough for the component
-                return Ok(ComponentResponseCode::CompPrerequisitesNotMet);
-            }
-        } else {
-            return Ok(ComponentResponseCode::CompPrerequisitesNotMet);
-        }
-
-        // Notify the application that a firmware update is available.
-        // The hook can reject the update to protect flash from wear-out.
-        if _op == ComponentOperation::UpdateComponent {
-            let hooks = FW_UPDATE_HOOKS.lock(|h| *h.borrow());
-            if let Some(hooks) = hooks {
-                if hooks.on_fw_update_request(component).is_err() {
-                    return Ok(ComponentResponseCode::CompPrerequisitesNotMet);
-                }
-            }
-        }
-
-        DOWNLOAD_CTX.lock(|ctx| {
-            let mut ctx = ctx.borrow_mut();
-            ctx.total_length = component.comp_image_size.unwrap_or(0) as usize;
-        });
 
         Ok(component.evaluate_update_eligibility(fw_params))
     }
@@ -132,6 +141,22 @@ impl FdOps for UpdateFdOps {
         &self,
         _component: &FirmwareComponent,
     ) -> McuResult<(usize, usize)> {
+        let should_yield = PLDM_STATE.lock(|state| {
+            let mut state = state.borrow_mut();
+            if *state == State::Initializing {
+                *state = State::Initialized;
+                return true;
+            } else if *state == State::HeaderDownloadComplete || *state == State::ImageDownloadReady
+            {
+                return true;
+            }
+            false
+        });
+        if should_yield {
+            IMAGE_LOADING_TASK_YIELD.signal(());
+            PLDM_TASK_YIELD.wait().await;
+        }
+
         let (offset, request_length) = DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
 
@@ -157,25 +182,39 @@ impl FdOps for UpdateFdOps {
     ) -> McuResult<TransferResult> {
         self.copy_data_to_buffer(offset, data).await?;
         // update self.download_ctx
-        DOWNLOAD_CTX.lock(|ctx| {
+        let should_yield = DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
             if ctx.total_downloaded >= ctx.total_length {
                 PLDM_STATE.lock(|state| {
                     let mut state = state.borrow_mut();
-                    if *state == State::DownloadingImage {
+                    if *state == State::DownloadingHeader {
+                        *state = State::HeaderDownloadComplete;
+                        return false;
+                    } else if *state == State::DownloadingToc {
+                        *state = State::TocDownloadComplete;
+                        return true;
+                    } else if *state == State::DownloadingImage {
                         *state = State::ImageDownloadComplete;
+                        return true;
                     }
+                    false
                 })
             } else {
                 ctx.current_offset += data.len();
+                false
             }
         });
+
+        if should_yield {
+            IMAGE_LOADING_TASK_YIELD.signal(());
+            PLDM_TASK_YIELD.wait().await;
+        }
 
         Ok(TransferResult::TransferSuccess)
     }
 
     fn is_download_complete(&self, _component: &FirmwareComponent) -> bool {
-        PLDM_STATE.lock(|state| *state.borrow() == State::ImageDownloadComplete)
+        DOWNLOAD_CTX.lock(|ctx| ctx.borrow().download_complete)
     }
 
     fn query_download_progress(
@@ -192,17 +231,9 @@ impl FdOps for UpdateFdOps {
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
     ) -> McuResult<VerifyResult> {
-        // Transition to Verify state
-        PLDM_STATE.lock(|state| {
-            let mut state = state.borrow_mut();
-            *state = State::Verifying;
-        });
-        // Pass control to firmware update task
-        FW_UPDATE_TASK_YIELD.signal(());
-
-        // Wait for the firmware update task to complete verification
-        PLDM_DAEMON_TASK_YIELD.wait().await;
-
+        // For streaming boot, the firmware images are verified during DOWNLOAD state.
+        // This verify function is called when the device is in the VERIFY PLDM state (after DOWNLOAD state).
+        // Therefore, since images have already been verified, at this stage, we return 100% progress.
         *progress_percent = ProgressPercent::new(100).unwrap();
         let verify_result = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().verify_result);
         Ok(verify_result)
@@ -213,20 +244,9 @@ impl FdOps for UpdateFdOps {
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
     ) -> McuResult<ApplyResult> {
-        // Transition to Verify state
-        PLDM_STATE.lock(|state| {
-            let mut state = state.borrow_mut();
-            *state = State::Apply;
-        });
-        // Pass control to firmware update task
-        FW_UPDATE_TASK_YIELD.signal(());
-
-        // Wait for the firmware update task to complete verification
-        PLDM_DAEMON_TASK_YIELD.wait().await;
-
+        // For streaming boot, apply is not applicable, so we return 100% progress.
         *progress_percent = ProgressPercent::new(100).unwrap();
-        let apply_result = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().apply_result);
-        Ok(apply_result)
+        Ok(ApplyResult::ApplySuccess)
     }
 
     fn cancel_update_component(&self, _component: &FirmwareComponent) -> McuResult<()> {
@@ -235,12 +255,8 @@ impl FdOps for UpdateFdOps {
     }
 
     fn activate(&self, _self_contained_activation: u8, estimated_time: &mut u16) -> McuResult<u8> {
-        *estimated_time = ESTIMATED_ACTIVATION_TIME_SECS;
-        PLDM_STATE.lock(|state| {
-            let mut state = state.borrow_mut();
-            *state = State::Activate;
-        });
-        FW_UPDATE_TASK_YIELD.signal(());
+        *estimated_time = 0;
+        // Activate is not applicable for streaming boot, so we return success.
         Ok(0) // PLDM completion code for success
     }
 }

@@ -7,6 +7,18 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = { workspace = true, optional = true }
+caliptra-api = { workspace = true, optional = true }
+caliptra-auth-man-types = { workspace = true, optional = true }
+caliptra-image-types = { workspace = true, default-features = false, optional = true }
+caliptra-mcu-flash-image = { workspace = true, optional = true }
+caliptra-mcu-libtock_console = { workspace = true, optional = true }
+caliptra-mcu-libtockasync = { workspace = true, optional = true }
+caliptra-mcu-pldm-common = { workspace = true, optional = true }
+caliptra-mcu-pldm-lib = { workspace = true, optional = true }
+caliptra-mcu-userlog = { workspace = true, optional = true }
+embassy-executor = { workspace = true, optional = true }
+embassy-sync = { workspace = true, optional = true }
 mcu-error = { workspace = true, optional = true }
 caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
 caliptra-mcu-libtock_platform = { workspace = true, optional = true }
@@ -15,6 +27,18 @@ zerocopy = { workspace = true }
 [features]
 default = ["mailbox-io"]
 mailbox-io = [
+    "dep:async-trait",
+    "dep:caliptra-api",
+    "dep:caliptra-auth-man-types",
+    "dep:caliptra-image-types",
+    "dep:caliptra-mcu-flash-image",
+    "dep:caliptra-mcu-libtock_console",
+    "dep:caliptra-mcu-libtockasync",
+    "dep:caliptra-mcu-pldm-common",
+    "dep:caliptra-mcu-pldm-lib",
+    "dep:caliptra-mcu-userlog",
+    "dep:embassy-executor",
+    "dep:embassy-sync",
     "dep:mcu-error",
     "dep:caliptra-mcu-libsyscall-caliptra",
     "dep:caliptra-mcu-libtock_platform",

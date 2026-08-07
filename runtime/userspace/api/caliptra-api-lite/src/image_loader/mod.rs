@@ -19,11 +19,9 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use caliptra_mcu_libsyscall_caliptra::{dma::AXIAddr, mailbox::Mailbox};
 use caliptra_mcu_libtock_platform::ErrorCode;
 
-use caliptra_mcu_libtockasync::TockExecutor;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
-use caliptra_mcu_pldm_lib::daemon::PldmService;
 use dma_transfer::DmaTransfer;
 use embassy_executor::Spawner;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
@@ -34,11 +32,6 @@ pub const IMAGE_MEASUREMENT_DIGEST_SIZE: usize = 48;
 pub struct LoadedImage {
     pub image_size: u32,
     pub measurement: [u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
-}
-
-pub struct PldmInstance<'a> {
-    pub pldm_service: Option<PldmService<'a>>,
-    pub executor: TockExecutor,
 }
 
 #[async_trait(?Send)]

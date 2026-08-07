@@ -13,7 +13,9 @@ use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_mcu_mbox_common::messages::HybridSignature;
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
     fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
     request_debug_unlock_challenge, rng_generate, ApiAlloc, McuErrorCode,
@@ -92,8 +94,10 @@ pub async fn export_idevid_csr(algorithm: u32, out: &mut [u8]) -> CaliptraCmdRes
     }
 }
 
-pub async fn generate_auth_challenge<A: ApiAlloc>(alloc: &A) -> CaliptraCmdResult<[u8; 32]> {
-    let mut challenge = [0u8; 32];
+pub async fn generate_auth_challenge<A: ApiAlloc>(
+    alloc: &A,
+) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
+    let mut challenge = [0u8; AUTH_CMD_NONCE_LEN];
     rng_generate(alloc, &mut challenge)
         .await
         .map_err(map_mcu_err)?;
@@ -103,28 +107,31 @@ pub async fn generate_auth_challenge<A: ApiAlloc>(alloc: &A) -> CaliptraCmdResul
 pub async fn verify_authorized_signatures(
     cmd_id: u32,
     payload: &[u8],
-    challenge: &[u8; 32],
+    challenge: &[u8; AUTH_CMD_NONCE_LEN],
     ecc_pub_x: [u8; 48],
     ecc_pub_y: [u8; 48],
-    mldsa_pub: [u8; 2592],
+    mldsa_pub: &[u8; 2592],
     sig: &HybridSignature,
 ) -> CaliptraCmdResult<()> {
-    let mut message = ArrayVec::<u8, 256>::new();
-    message
+    // Pre-image = cmd_id(BE,4) || payload || challenge(48), built from the raw
+    // payload (no inner hash), mirroring prod-debug-unlock. Each leg verifies a
+    // digest of it: ECDSA over SHA-384(pre-image), ML-DSA over SHA-512(pre-image).
+    let mut pre_image = ArrayVec::<u8, 256>::new();
+    pre_image
         .try_extend_from_slice(&cmd_id.to_be_bytes())
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-    message
+    pre_image
         .try_extend_from_slice(payload)
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-    message
+    pre_image
         .try_extend_from_slice(challenge)
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
 
     let mailbox = Mailbox::new();
 
-    // 1. Verify ECC P-384 Signature using Caliptra Mailbox
+    // 1. Verify ECC P-384 Signature using Caliptra Mailbox (over SHA-384(pre-image)).
     let mut hash = [0u8; 48];
-    HashContext::hash_all(HashAlgoType::SHA384, message.as_slice(), &mut hash)
+    HashContext::hash_all(HashAlgoType::SHA384, pre_image.as_slice(), &mut hash)
         .await
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
@@ -148,21 +155,34 @@ pub async fn verify_authorized_signatures(
         .await
         .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
 
-    // 2. Verify ML-DSA-87 Signature using Caliptra Mailbox
-    let mut mldsa_req = MldsaVerifyReq {
-        hdr: MailboxReqHeader::default(),
-        pub_key: mldsa_pub,
-        signature: sig.mldsa_sig,
-        message_size: message.len() as u32,
-        message: [0u8; caliptra_api::mailbox::MAX_CMB_DATA_SIZE],
-    };
-    mldsa_req.message[..message.len()].copy_from_slice(message.as_slice());
+    // 2. Verify ML-DSA-87 Signature using Caliptra Mailbox (over SHA-512(pre-image)).
+    let mut mldsa_msg = [0u8; 64];
+    HashContext::hash_all(HashAlgoType::SHA512, pre_image.as_slice(), &mut mldsa_msg)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
-    let mut mldsa_resp = MailboxRespHeader::default();
+    // Use a shared static buffer behind an async Mutex to avoid inflating
+    // the async task future by ~11 KB.  The guard is held across `.await`.
+    // SAFETY: MldsaVerifyReq derives FromBytes, so all-zeros is a valid repr.
+    static MLDSA_REQ: Mutex<CriticalSectionRawMutex, core::mem::MaybeUninit<MldsaVerifyReq>> =
+        Mutex::new(core::mem::MaybeUninit::zeroed());
 
-    let mldsa_req_bytes = mldsa_req
+    let mut guard = MLDSA_REQ.lock().await;
+    // SAFETY: MldsaVerifyReq derives FromBytes — all-zeros (from the static
+    // initializer) and any byte pattern we write are valid representations.
+    let req: &mut MldsaVerifyReq = unsafe { guard.assume_init_mut() };
+    req.hdr = MailboxReqHeader::default();
+    req.pub_key = *mldsa_pub;
+    req.signature = sig.mldsa_sig;
+    req.message_size = mldsa_msg.len() as u32;
+    req.message = [0u8; caliptra_api::mailbox::MAX_CMB_DATA_SIZE];
+    req.message[..mldsa_msg.len()].copy_from_slice(&mldsa_msg);
+
+    let mldsa_req_bytes = req
         .as_bytes_partial_mut()
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+
+    let mut mldsa_resp = MailboxRespHeader::default();
     let mldsa_resp_bytes = mldsa_resp.as_mut_bytes();
 
     let cmd_mldsa_verify: u32 = caliptra_api::mailbox::CommandId::MLDSA87_SIGNATURE_VERIFY.into();

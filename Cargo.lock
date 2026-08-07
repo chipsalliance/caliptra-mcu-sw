@@ -1046,6 +1046,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2",
  "subst",
  "tempfile",
  "toml 0.8.23",
@@ -5412,9 +5413,21 @@ checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 name = "mcu-caliptra-api-lite"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "caliptra-api",
+ "caliptra-auth-man-types",
+ "caliptra-image-types",
+ "caliptra-mcu-flash-image",
  "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtockasync",
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-lib",
  "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-userlog",
+ "embassy-executor",
+ "embassy-sync",
  "zerocopy",
 ]
 

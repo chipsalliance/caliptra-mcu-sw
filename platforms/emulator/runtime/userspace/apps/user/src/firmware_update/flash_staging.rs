@@ -10,7 +10,7 @@ use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use core::fmt::Write;
 
-use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
+use mcu_caliptra_api_lite::firmware_update::StagingMemory;
 
 pub static STAGING_MEMORY: embassy_sync::lazy_lock::LazyLock<SpiFlashStagingMemory> =
     embassy_sync::lazy_lock::LazyLock::new(SpiFlashStagingMemory::new);
