@@ -86,8 +86,7 @@ impl<'a> CmdInterface<'a> {
         transport: &mut MctpTransport,
         msg_buf: &mut [u8],
     ) -> McuResult<()> {
-        // Retrieve the UA EID from the configuration
-        let ua_eid: u8 = crate::config::UA_EID;
+        let ua_eid = transport.ua_eid();
 
         // Prepare the request payload
         let payload = construct_mctp_pldm_msg(msg_buf).map_err(|_| errors::UTIL_ERROR)?;
