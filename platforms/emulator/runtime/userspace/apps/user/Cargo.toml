@@ -90,6 +90,18 @@ ocp-lock = [
     "caliptra-mcu-common-commands/ocp-lock",
 ]
 doe = []
+# ocp-nvme-profile: the reference app's OCP Datacenter NVMe SSD (OCP 2.7
+# SPDM-14) demonstration profile. Bundles the two settings that profile needs:
+#  - configure the DOE responder for a 4 KiB DataTransferSize and enforce that
+#    minimum once at init (else the DOE transport uses its small default and the
+#    stack chunks larger messages);
+#  - grow the per-task SPDM bitmap pool from 12 KiB to 20 KiB so a 4 KiB
+#    DataTransferSize responder retains usable CHUNK_GET large-message capacity
+#    (~8 KiB) after transfer-buffer headroom, at ~8 KiB BSS per responder task.
+# This is only the reference demonstration; integrators configure transfer size
+# and allocator sizing directly in their own app via the library APIs rather
+# than through this feature.
+ocp-nvme-profile = []
 userspace-log = [
   "dep:defmt",
   "caliptra-mcu-libapi-caliptra/release",

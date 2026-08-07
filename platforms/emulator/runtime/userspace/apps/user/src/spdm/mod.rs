@@ -25,6 +25,8 @@ use caliptra_mcu_spdm_pal::{
     BitmapAllocator, McuSpdmPal, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE,
 };
 use caliptra_mcu_spdm_stack::SpdmStack;
+#[cfg(feature = "ocp-nvme-profile")]
+use caliptra_mcu_spdm_traits::SpdmPalTransport;
 use caliptra_mcu_spdm_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
@@ -45,6 +47,24 @@ use embassy_sync::signal::Signal;
 /// Must hold `MEAS_RECORD_BUF_SIZE + MeasurementProvider::SCRATCH_SIZE`
 /// plus transient DPE/SHA mailbox buffers (peak ~2.4 KB during
 /// certify_key for kid computation).
+///
+/// The default 12 KiB is the compact footprint. It must also leave room for
+/// CHUNK_GET: a buffered large response coexists with a per-chunk
+/// `header + mtu` response allocation, and the PAL's `large_capacity()` reserves
+/// that headroom from this pool (the advertised `MaxSPDMmsgSize` derives from
+/// it). At a 4 KiB MTU a 12 KiB pool leaves less than one frame usable, so CHUNK
+/// is stripped from the advertised capabilities. The `ocp-nvme-profile` feature
+/// grows the pool to 20 KiB (~8 KiB usable large-message capacity), which keeps
+/// CHUNK advertised at a 4 KiB DataTransferSize at the cost of ~8 KiB BSS per
+/// responder task.
+///
+/// This is only the reference app's OCP NVMe demonstration profile. Sizing is
+/// an integrator decision: the reusable libraries expose the transfer-size and
+/// allocator APIs, so an integrator configures its own pool directly rather
+/// than through this feature.
+#[cfg(feature = "ocp-nvme-profile")]
+const SPDM_SCRATCH_SIZE: usize = 20 * 1024;
+#[cfg(not(feature = "ocp-nvme-profile"))]
 const SPDM_SCRATCH_SIZE: usize = 12 * 1024;
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
@@ -178,11 +198,49 @@ async fn spdm_mctp_responder() {
 async fn spdm_doe_responder() {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
-    let doe_transport = McuSpdmDoeTransport::new(doe::driver_num::DOE_SPDM);
-    if !doe_transport.exists() {
-        crate::log_info!(cw, "SPDM_DOE: No DOE device, exiting");
-        return;
-    }
+    // OCP Datacenter NVMe SSD SPDM (OCP 2.7 SPDM-14) requires a 4 KiB
+    // DataTransferSize; see the Security section of the "OCP Datacenter NVMe
+    // SSD Specification v2.7", published under OCP Storage at
+    // https://www.opencompute.org/documents/datacenter-nvme-ssd-specification-v2-7-final-pdf-1.
+    // That minimum is integrator/profile policy, so this reference app selects
+    // it here (behind the `ocp-nvme-profile` feature) rather than baking it into
+    // the reusable DOE transport, which carries no profile rule of its own.
+    // Without the feature the transport uses its own default DataTransferSize
+    // and the stack chunks larger messages as usual.
+    #[cfg(feature = "ocp-nvme-profile")]
+    let doe_transport = {
+        const OCP_MIN_DATA_TRANSFER_SIZE: usize = 4096;
+        let doe_transport = McuSpdmDoeTransport::with_transfer_size(
+            doe::driver_num::DOE_SPDM,
+            OCP_MIN_DATA_TRANSFER_SIZE,
+        );
+        if !doe_transport.exists() {
+            crate::log_info!(cw, "SPDM_DOE: No DOE device, exiting");
+            return;
+        }
+        // Enforce the OCP minimum once at init against the driver-bounded MTU. A
+        // short driver MTU exits this task gracefully rather than panicking deep
+        // in the transport.
+        let doe_mtu = SpdmPalTransport::mtu(&doe_transport);
+        if doe_mtu < OCP_MIN_DATA_TRANSFER_SIZE {
+            crate::log_info!(
+                cw,
+                "SPDM_DOE: DataTransferSize 0x{} < OCP min, exiting",
+                crate::Hex32(doe_mtu as u32)
+            );
+            return;
+        }
+        doe_transport
+    };
+    #[cfg(not(feature = "ocp-nvme-profile"))]
+    let doe_transport = {
+        let doe_transport = McuSpdmDoeTransport::new(doe::driver_num::DOE_SPDM);
+        if !doe_transport.exists() {
+            crate::log_info!(cw, "SPDM_DOE: No DOE device, exiting");
+            return;
+        }
+        doe_transport
+    };
 
     #[repr(C, align(64))]
     struct ScratchBuf([u8; SPDM_SCRATCH_SIZE]);

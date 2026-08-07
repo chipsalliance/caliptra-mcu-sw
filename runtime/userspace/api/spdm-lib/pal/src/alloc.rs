@@ -26,6 +26,10 @@ use super::measurements::MeasurementProvider;
 use super::*;
 use core::cell::Cell;
 
+/// Scratch the responder must keep free alongside the large-message buffer for
+/// non-chunk allocations (peak ~2.4 KB during certify_key kid computation).
+const LARGE_MSG_SCRATCH_RESERVE: usize = 2 * 1024;
+
 impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
     type Box<'a, T>
         = McuSpdmBox<'a, T>
@@ -77,8 +81,23 @@ impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
         self.allocator.alloc_bytes(len)
     }
 
+    /// Largest single large SPDM message this responder can buffer while still
+    /// leaving room for the in-flight CHUNK_GET exchange.
+    ///
+    /// This is the raw allocator capacity (largest contiguous free run) minus
+    /// the CHUNK_GET headroom: while a buffered large response occupies the
+    /// pool, CHUNK_GET still receives the request (`header + mtu`) and allocates
+    /// a per-chunk response (`header + <= mtu`), and both must fit alongside the
+    /// buffered response plus transient hash/transcript scratch. Reserving that
+    /// headroom here — an integrator memory-budget decision that depends on this
+    /// PAL's allocator and transport geometry — lets the generic stack consume
+    /// the value directly for CHUNK advertisement and validation without owning
+    /// any sizing policy of its own.
     fn large_capacity(&self) -> usize {
-        self.allocator.largest_free_run() * crate::BITMAP_SLOT_SIZE
+        let pool = self.allocator.largest_free_run() * crate::BITMAP_SLOT_SIZE;
+        let headroom =
+            2 * (self.transport_header_size() + self.transport_mtu()) + LARGE_MSG_SCRATCH_RESERVE;
+        pool.saturating_sub(headroom)
     }
 
     type LargeBuf = BitmapBytes<'static>;
@@ -1080,5 +1099,51 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// With a 4 KiB `DataTransferSize`, a buffered CHUNK_GET large response must
+    /// be able to allocate its per-chunk response
+    /// (`header + mtu`) for the full transfer. `large_capacity()` returns a value
+    /// that already reserves this headroom; this test proves the reservation is
+    /// load-bearing against the real allocator: a `usable`-sized buffer leaves
+    /// room to chunk, while a buffer sized to the full raw pool starves the next
+    /// chunk allocation.
+    #[test]
+    fn headroom_lets_buffered_response_allocate_next_chunk() {
+        const MTU: usize = 4096;
+        // DOE header.
+        const HEADER: usize = 8;
+        // The same headroom formula `large_capacity()` applies, reusing the
+        // in-module `LARGE_MSG_SCRATCH_RESERVE`: two header+mtu frames + reserve.
+        const HEADROOM: usize = 2 * (HEADER + MTU) + LARGE_MSG_SCRATCH_RESERVE;
+
+        let (alloc, _buf) = make_alloc(20 * 1024);
+        let pool = alloc.num_slots() * BITMAP_SLOT_SIZE;
+        let usable = pool.saturating_sub(HEADROOM);
+        assert!(usable >= MTU, "20 KiB pool must leave one usable frame");
+
+        // A buffered response sized to `usable` coexists with a fresh
+        // header+mtu chunk-response allocation — the CHUNK_GET happy path.
+        {
+            let _large = alloc.alloc_bytes(usable).expect("usable large buffer");
+            let chunk = alloc.alloc_bytes(HEADER + MTU);
+            assert!(
+                chunk.is_ok(),
+                "headroom must leave room for one header+mtu chunk response"
+            );
+        }
+        assert_eq!(alloc.live_slots(), 0);
+
+        // A buffer sized to the full raw pool (i.e. ignoring headroom) leaves
+        // nothing for the next chunk — the starvation the reservation prevents.
+        {
+            let _greedy = alloc.alloc_bytes(pool).expect("full-pool buffer");
+            let chunk = alloc.alloc_bytes(HEADER + MTU);
+            assert!(
+                chunk.is_err(),
+                "full-pool buffer must starve the next chunk allocation"
+            );
+        }
+        assert_eq!(alloc.live_slots(), 0);
     }
 }
