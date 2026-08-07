@@ -141,10 +141,14 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
     let mut m1_hash = [0u8; SHA384_HASH_SIZE];
     state.transcript.finalize_m1(pal, io, &mut m1_hash).await?;
 
-    // Compute TBS hash in-place over the M1 hash.
-    compute_tbs_hash(pal, io, signing_context(state.version), &mut m1_hash)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
+    // The signing-context prefix was introduced in V1.2; a V1.0/1.1 Responder
+    // signs the raw M1 hash with no prefix (DSP0274 1.1.1 section 10.9.2).
+    if state.version >= SpdmVersion::V12 {
+        // Compute TBS hash in-place over the M1 hash.
+        compute_tbs_hash(pal, io, signing_context(state.version), &mut m1_hash)
+            .await
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+    }
 
     // Sign the TBS hash directly into the response's signature slot.
     let sig_slot = resp
