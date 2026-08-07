@@ -201,12 +201,12 @@ async fn spdm_doe_responder() {
     // OCP Datacenter NVMe SSD SPDM (OCP 2.7 SPDM-14) requires a 4 KiB
     // DataTransferSize; see the Security section of the "OCP Datacenter NVMe
     // SSD Specification v2.7", published under OCP Storage at
-    // https://www.opencompute.org/documents. That minimum is
-    // integrator/profile policy, so this reference app selects it here (behind
-    // the `ocp-nvme-profile` feature) rather than baking it into the reusable
-    // DOE transport, which carries no profile rule of its own. Without the
-    // feature the transport uses its own default DataTransferSize and the stack
-    // chunks larger messages as usual.
+    // https://www.opencompute.org/documents/datacenter-nvme-ssd-specification-v2-7-final-pdf-1.
+    // That minimum is integrator/profile policy, so this reference app selects
+    // it here (behind the `ocp-nvme-profile` feature) rather than baking it into
+    // the reusable DOE transport, which carries no profile rule of its own.
+    // Without the feature the transport uses its own default DataTransferSize
+    // and the stack chunks larger messages as usual.
     #[cfg(feature = "ocp-nvme-profile")]
     let doe_transport = {
         const OCP_MIN_DATA_TRANSFER_SIZE: usize = 4096;
