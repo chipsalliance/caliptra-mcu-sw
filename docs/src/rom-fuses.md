@@ -53,7 +53,7 @@ and written to Caliptra's `FUSE_*` registers or `SS_STRAP_GENERIC[*]` /
 | `cptra_itrng_health_test_window_size` | 16 bits | Written to `SS_STRAP_GENERIC[2]` bits\[15:0\] |
 | `cptra_itrng_entropy_config_0` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_0` |
 | `cptra_itrng_entropy_config_1` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_1` |
-| `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` | 8 bits | Owner manifest min SVN floor (upcoming Caliptra requirement). Written to `SS_STRAP_GENERIC[3]` bits\[7:0\]. **Upcoming:** the existing PK-hash skip-lock and PK-hash rotation straps on `SS_STRAP_GENERIC[3]` bits\[1:0\] are moving to MCI generic input wires (`mci_reg_generic_input_wires[*]`), so the full low byte will be available for this fuse value once that change lands. |
+| `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` | 8 bits | Owner manifest min SVN floor (upcoming Caliptra requirement). Written to `SS_STRAP_GENERIC[3]` bits\[7:0\]. Vendor PK hash locking and rotation are configured through `RomParameters`; reference `core_test` builds derive those parameters from MCI generic input wires 1 bits 0 and 1. |
 
 ### Optional fuses
 
@@ -166,14 +166,10 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   `Single{bits:8}` raw u8 (recommended `LinearOr{bits:8, dupe:3}` since this is
   a monotonically increasing anti-rollback value — see encoding table below).
   Required by an upcoming Caliptra ROM change that reads the owner manifest min
-  SVN floor from this strap during owner manifest verification. **Upcoming:**
-  bits\[1:0\] of `SS_STRAP_GENERIC[3]` are currently used as platform hardware
-  straps (PK-hash skip-lock and PK-hash rotation); both are moving to MCI
-  generic input wires (`mci_reg_generic_input_wires[*]`) so the full low byte
-  of `SS_STRAP_GENERIC[3]` will be available for this fuse value. MCU ROM
-  consumers of the PK-hash straps (see `PK_HASH_SKIP_LOCK_STRAPPING_MASK` and
-  `PK_HASH_ROTATION_STRAPPING_MASK` in `rom/src/rom.rs`) will need to be
-  retargeted to the new MCI input-wire bits when that change lands.
+  SVN floor from this strap during owner manifest verification. The vendor PK
+  hash skip-lock and rotation policies are independent `RomParameters` fields;
+  only reference `core_test` platform builds map MCI generic input wires 1 bits
+  0 and 1 to those fields.
 
 - **OTP status register offset** — hard-coded in MCU ROM (not from OTP).
   Written to `SS_STRAP_GENERIC[0]` bits\[15:0\]; Caliptra ROM reads this strap
@@ -285,11 +281,9 @@ fault tolerance without causing ECC integrity issues.
 | `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) |
 | `SOC_IMAGE_MIN_SVN_{0..M}` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) each |
 
-*Note: Fields with `OneHot` or `OneHotLinearOr` monotonic bit-count layouts (`dot_fuse_array`, `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `SOC_IMAGE_MIN_SVN_{0..M}`) must reside in a non-ECC protected partition (e.g., `VENDOR_TEST_PARTITION` in the reference map) because ECC calculation forbids subsequent write operations once a partition has been programmed.*
+_Note: Fields with `OneHot` or `OneHotLinearOr` monotonic bit-count layouts (`dot_fuse_array`, `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `SOC_IMAGE_MIN_SVN_{0..M}`) must reside in a non-ECC protected partition (e.g., `VENDOR_TEST_PARTITION` in the reference map) because ECC calculation forbids subsequent write operations once a partition has been programmed._
 
 TODO: there are only 32 LMS revocation bits specificed in the reference fuse map, but with redundant encoding, we would get 16 or fewer bits, unless  they are backed with HW redundancy.
-
-
 
 ## Vendor PK Hash Fuse Encoding Example
 
