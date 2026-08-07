@@ -9,6 +9,7 @@ use core::marker::PhantomData;
 pub const DPE_HANDLE_STORE_DRIVER_NUM: u32 = 0x8000_0020;
 pub const DPE_HANDLE_RECORD_SIZE: usize = 32;
 pub const POLICY_DIGEST_SIZE: usize = 48;
+pub const EXPORTED_CDI_SIZE: usize = 32;
 
 // ---------------------------------------------------------------------------
 // Record type
@@ -132,6 +133,14 @@ impl<S: Syscalls> DpeHandleStore<S> {
     ) -> Result<(), ErrorCode> {
         allow_ro_command_unallow::<S>(self.driver_num, cmd::VALIDATE_STORE, 0, policy_digest)
     }
+
+    pub fn read_exported_cdi(&self, out: &mut [u8; EXPORTED_CDI_SIZE]) -> Result<(), ErrorCode> {
+        allow_rw_command_unallow::<S>(self.driver_num, cmd::READ_EXPORTED_CDI, 0, out)
+    }
+
+    pub fn write_exported_cdi(&self, cdi: &[u8; EXPORTED_CDI_SIZE]) -> Result<(), ErrorCode> {
+        allow_ro_command_unallow::<S>(self.driver_num, cmd::WRITE_EXPORTED_CDI, 0, cdi)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -199,6 +208,8 @@ mod cmd {
     pub const MARK_ATTESTATION_TARGET: u32 = 5;
     pub const READ_ATTESTATION_TARGET: u32 = 6;
     pub const VALIDATE_STORE: u32 = 7;
+    pub const READ_EXPORTED_CDI: u32 = 8;
+    pub const WRITE_EXPORTED_CDI: u32 = 9;
 }
 
 mod rw_allow {
