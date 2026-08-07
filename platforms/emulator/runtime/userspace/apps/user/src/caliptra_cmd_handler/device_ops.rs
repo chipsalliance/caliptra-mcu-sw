@@ -302,8 +302,14 @@ pub async fn revoke_vendor_pub_key<A: ApiAlloc>(
 ) -> CaliptraCmdResult<()> {
     let key_type = RevokeVendorPubKeyType::try_from(key_type)
         .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+    if vendor_pk_hash_slot as usize >= otp::MAX_NUM_VENDOR_PK_HASH {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
     let otp = Otp::<DefaultSyscalls>::new();
-    if !otp.valid_vendor_pk_hash_slot(vendor_pk_hash_slot) {
+    if !otp
+        .vendor_pk_hash_slot_is_valid(vendor_pk_hash_slot)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?
+    {
         return Err(CaliptraCompletionCode::InvalidParameter);
     }
     let pk_hash_from_slot = otp
@@ -351,7 +357,10 @@ pub fn revoke_vendor_pk_hash(vendor_pk_hash_slot: u32) -> CaliptraCmdResult<()> 
     // A cleared validity bit is the persistent indication that this slot was
     // already revoked. Preserve the mailbox policy's idempotent behavior
     // without attempting to read a now-invalid slot.
-    if !otp.valid_vendor_pk_hash_slot(vendor_pk_hash_slot) {
+    if !otp
+        .vendor_pk_hash_slot_is_valid(vendor_pk_hash_slot)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?
+    {
         return Ok(());
     }
 
