@@ -99,25 +99,26 @@ impl<S: Syscalls> Otp<S> {
         S::command(self.driver_num, cmd::OTP_WRITE_RAW, data, mask).to_result::<(), ErrorCode>()
     }
 
-    /// Check whether a given vendor pk hash slot is marked valid (has not been marked invalid).
-    ///
-    /// Also returns `false` if the slot ID is invalid or reading of the mask fails.
-    pub fn valid_vendor_pk_hash_slot(&self, slot: u32) -> bool {
+    /// Check whether a vendor PK hash slot is marked valid (not revoked).
+    pub fn vendor_pk_hash_slot_is_valid(&self, slot: u32) -> Result<bool, ErrorCode> {
         if slot as usize >= MAX_NUM_VENDOR_PK_HASH {
-            return false;
+            return Err(ErrorCode::Invalid);
         }
 
-        let Ok(valid_mask) = self.read(reg::VENDOR_PK_HASH_VALID, 0) else {
-            return false;
-        };
+        let valid_mask = self.read(reg::VENDOR_PK_HASH_VALID, 0)?;
         // Bit value `1` means revoked
-        (valid_mask & (1 << slot)) == 0
+        Ok((valid_mask & (1 << slot)) == 0)
+    }
+
+    /// Check whether a vendor PK hash slot is valid, returning `false` on errors.
+    pub fn valid_vendor_pk_hash_slot(&self, slot: u32) -> bool {
+        self.vendor_pk_hash_slot_is_valid(slot).unwrap_or(false)
     }
 
     /// Read a vendor PK hash from fuses
     pub fn read_vendor_pk_hash(&self, slot: u32) -> Result<[u8; VENDOR_PK_HASH_SIZE], ErrorCode> {
         let reg = reg::vendor_pk_hash_reg_by_slot(slot).ok_or(ErrorCode::Invalid)?;
-        if !self.valid_vendor_pk_hash_slot(slot) {
+        if !self.vendor_pk_hash_slot_is_valid(slot)? {
             Err(ErrorCode::Invalid)?;
         }
 
@@ -138,7 +139,7 @@ impl<S: Syscalls> Otp<S> {
         key_type: RevokeVendorPubKeyType,
         key_index: u32,
     ) -> Result<(), ErrorCode> {
-        if !self.valid_vendor_pk_hash_slot(vendor_pk_hash_slot) {
+        if !self.vendor_pk_hash_slot_is_valid(vendor_pk_hash_slot)? {
             Err(ErrorCode::Invalid)?;
         }
 
@@ -184,7 +185,7 @@ impl<S: Syscalls> Otp<S> {
 
         let reg = reg::vendor_pk_hash_reg_by_slot(slot).ok_or(ErrorCode::Invalid)?;
 
-        if !self.valid_vendor_pk_hash_slot(slot) {
+        if !self.vendor_pk_hash_slot_is_valid(slot)? {
             // Error when the slot was already marked as invalid
             return Err(ErrorCode::Invalid);
         }
@@ -226,9 +227,9 @@ impl<S: Syscalls> Otp<S> {
             Err(ErrorCode::Invalid)?
         }
 
-        if !self.valid_vendor_pk_hash_slot(vendor_pk_hash_slot) {
+        if !self.vendor_pk_hash_slot_is_valid(vendor_pk_hash_slot)? {
             // Return early if the slot is already marked invalid
-            Ok(())?;
+            return Ok(());
         }
 
         // Check if the slot is provisioned to not burn an empty slot
@@ -351,4 +352,59 @@ pub mod reg {
     pub const FUSE_READ: u32 = 30;
     pub const FUSE_WRITE: u32 = 31;
     pub const FUSE_LOCK_PARTITION: u32 = 32;
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use caliptra_mcu_libtock_platform::CommandReturn;
+    use caliptra_mcu_libtock_unittest::{command_return, fake, DriverInfo};
+    use std::rc::Rc;
+
+    struct OtpDriver {
+        valid_mask: Result<u32, ErrorCode>,
+    }
+
+    impl fake::SyscallDriver for OtpDriver {
+        fn info(&self) -> DriverInfo {
+            DriverInfo::new(OTP_DRIVER_NUM)
+        }
+
+        fn command(&self, command_id: u32, reg_offset: u32, _index: u32) -> CommandReturn {
+            match command_id {
+                cmd::OTP_SET_REGISTER => command_return::success(),
+                cmd::OTP_READ if reg_offset == reg::VENDOR_PK_HASH_VALID => match self.valid_mask {
+                    Ok(mask) => command_return::success_u32(mask),
+                    Err(error) => command_return::failure(error),
+                },
+                _ => command_return::failure(ErrorCode::NoSupport),
+            }
+        }
+    }
+
+    fn otp_with_valid_mask(
+        valid_mask: Result<u32, ErrorCode>,
+    ) -> (fake::Kernel, Otp<fake::Syscalls>) {
+        let kernel = fake::Kernel::new();
+        kernel.add_driver(&Rc::new(OtpDriver { valid_mask }));
+        (kernel, Otp::new())
+    }
+
+    #[test]
+    fn validity_read_failure_is_not_reported_as_revoked() {
+        let (_kernel, otp) = otp_with_valid_mask(Err(ErrorCode::Fail));
+
+        assert_eq!(otp.vendor_pk_hash_slot_is_valid(1), Err(ErrorCode::Fail));
+        assert_eq!(otp.revoke_vendor_pk_hash(1), Err(ErrorCode::Fail));
+    }
+
+    #[test]
+    fn revoking_an_already_revoked_slot_is_idempotent() {
+        let (_kernel, otp) = otp_with_valid_mask(Ok(1 << 1));
+
+        assert_eq!(otp.vendor_pk_hash_slot_is_valid(1), Ok(false));
+        assert_eq!(otp.revoke_vendor_pk_hash(1), Ok(()));
+    }
 }

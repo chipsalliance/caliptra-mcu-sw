@@ -76,7 +76,10 @@ all-features = [
   "userspace-log",
   "mctp-vdm-service",
 ]
-spdm = ["mcu-mbox-service"]
+spdm = [
+  "mcu-mbox-service",
+  "caliptra-mcu-spdm-stack/generic-large-request",
+]
 streaming-boot = []
 flash-boot = []
 firmware-update = []

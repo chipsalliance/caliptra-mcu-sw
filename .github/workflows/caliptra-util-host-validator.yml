@@ -195,14 +195,12 @@ jobs:
           cargo test --package caliptra-mcu-tests-integration --lib -- test_mctp_vdm_validator::test::test_caliptra_util_host_mctp_vdm_validator --nocapture --include-ignored
           sccache --show-stats
 
-      - name: Run Caliptra Util Host SPDM VDM validator tests (production mode)
+      - name: Run Caliptra Util Host SPDM VDM authorized command suites
         run: |
-          cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator --exact --nocapture --include-ignored
-          sccache --show-stats
-
-      - name: Run Caliptra Util Host SPDM VDM validator tests (manufacturing mode)
-        run: |
-          cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator_mfg_mode --exact --nocapture --include-ignored
+          test_filter="test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator_"
+          test_count=$(cargo test --package caliptra-mcu-tests-integration --lib -- "$test_filter" --list | grep -c ': test$')
+          test "$test_count" -gt 0
+          cargo test --package caliptra-mcu-tests-integration --lib -- "$test_filter" --nocapture --include-ignored
           sccache --show-stats
 
       - name: Run OCP Device Identity provisioning test
