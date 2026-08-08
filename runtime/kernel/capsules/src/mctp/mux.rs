@@ -29,6 +29,7 @@ pub struct MuxMCTPDriver<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> {
     mctp_device: &'a dyn MCTPTransportBinding<'a>,
     next_msg_tag: Cell<u8>, //global msg tag. increment by 1 for next tag upto 7 and wrap around.
     local_eid: Cell<u8>,
+    uuid: [u8; 16],
     mtu: Cell<usize>,
     // List of outstanding send requests
     sender_list: List<'a, MCTPTxState<'a, A, M>>,
@@ -43,6 +44,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
     pub fn new(
         mctp_device: &'a dyn MCTPTransportBinding<'a>,
         local_eid: u8,
+        uuid: [u8; 16],
         mtu: usize,
         tx_pkt_buf: &'static mut [u8],
         rx_pkt_buf: &'static mut [u8],
@@ -52,6 +54,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
             mctp_device,
             next_msg_tag: Cell::new(0),
             local_eid: Cell::new(local_eid),
+            uuid,
             mtu: Cell::new(mtu),
             sender_list: List::new(),
             receiver_list: List::new(),
@@ -172,6 +175,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
                     msg_buf,
                     self.get_local_eid(),
                     advertised_msg_types,
+                    &self.uuid,
                     &mut resp_buf[mctp_ctrl_hdr_start..],
                 );
 

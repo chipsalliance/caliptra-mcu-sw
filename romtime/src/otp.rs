@@ -366,6 +366,21 @@ impl Otp {
         self.read_data(byte_offset, data.len(), data)
     }
 
+    /// Reads the 16-byte manufacturer serial number from the IDevID UEID fuse.
+    pub fn read_idevid_manufacturer_serial_number(&self) -> McuResult<[u8; 16]> {
+        const MANUFACTURER_SERIAL_NUMBER_OFFSET: usize = 12 * size_of::<u32>();
+        let mut serial_number = [0u8; 16];
+        self.read_otp_data(
+            fuses::OTP_CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR.byte_offset
+                + MANUFACTURER_SERIAL_NUMBER_OFFSET,
+            &mut serial_number,
+        )?;
+        if serial_number.iter().all(|&byte| byte == 0) {
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+        Ok(serial_number)
+    }
+
     /// Reads a u32 from OTP at the given byte offset.
     pub fn read_u32_at(&self, byte_offset: usize) -> McuResult<u32> {
         let mut data = [0u8; 4];
