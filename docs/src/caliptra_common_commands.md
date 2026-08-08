@@ -59,9 +59,9 @@ Retrieves the version of the target firmware.
 
 **Request Payload**:
 
-| Byte(s) | Name       | Type | Description                                                                                                                                                 |
-| ------- | ---------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0:3     | area_index | u32  | Area Index: <br>- `00h` = Caliptra core firmware <br>- `01h` = MCU runtime firmware <br>- `02h` = SoC firmware <br>Additional indexes are firmware-specific |
+| Byte(s) | Name       | Type | Description                                                                                                                                                                                                   |
+| ------- | ---------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0:3     | area_index | u32  | Area Index: <br>- `00h` = Caliptra core firmware <br>- `01h` = MCU Runtime firmware <br>- `02h` = Optional integrator-defined aggregate SoC firmware-set version <br>Additional indexes are firmware-specific |
 
 **Response Payload**:
 
@@ -69,15 +69,80 @@ Retrieves the version of the target firmware.
 | ------- | ------- | ------ | --------------------------------------- |
 | 0:31    | version | u8[32] | Firmware Version Number in ASCII format |
 
+Versions use `major.minor.patch` ASCII format. Index `02h` returns `UnsupportedOperation` when the integrator does not provide a single aggregate SoC firmware-set version. Individual SoC component versions may use firmware-specific additional indexes.
+
 ### Device Capabilities
 
 **Request Payload**: Empty
 
 **Response Payload**:
 
-| Byte(s) | Name | Type   | Description                                                                                                                                                                                                                                                                    |
-| ------- | ---- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0:31    | caps | u8[32] | Device Capabilities: <br>- Bytes [0:7]: Reserved for Caliptra RT <br>- Bytes [8:11]: Reserved for Caliptra FMC <br>- Bytes [12:15]: Reserved for Caliptra ROM <br>- Bytes [16:23]: Reserved for MCU RT <br>- Bytes [24:27]: Reserved for MCU ROM <br>- Bytes [28:31]: Reserved |
+| Byte(s) | Name                   | Type  | Description                                                 |
+| ------- | ---------------------- | ----- | ----------------------------------------------------------- |
+| 0:7     | caliptra_rt            | u64   | Caliptra Runtime capabilities, copied from Core, big-endian |
+| 8:11    | caliptra_fmc           | u32   | Caliptra FMC capabilities, copied from Core, big-endian     |
+| 12:15   | caliptra_rom           | u32   | Caliptra ROM capabilities, copied from Core, big-endian     |
+| 16:19   | mcu_rom                | u32   | MCU ROM capabilities, big-endian                            |
+| 20:23   | mcu_rt                 | u32   | MCU Runtime feature capabilities, big-endian                |
+| 24:27   | external_commands      | u32   | Supported top-level common commands, big-endian             |
+| 28:31   | authorized_subcommands | u32   | Supported subcommands under `AuthorizedCommand`, big-endian |
+| 32:35   | reserved               | u8[4] | Reserved; responders set to zero                            |
+
+`external_commands` covers the OCP command codes `01h` through `20h`. Command code `N` maps to bitmap bit `N - 1`, allowing all 32 top-level codes to fit in this field. This is Caliptra common-command discovery carried by `DeviceCapabilities`; it is not MCTP Control Protocol command discovery.
+
+**External Common-Command Capability Flags**:
+
+| Bitmap Bit | Command Code | Command                     | Transport |
+| ---------- | ------------ | --------------------------- | --------- |
+| 0          | `01h`        | `FirmwareVersion`           | MCTP VDM  |
+| 1          | `02h`        | `DeviceCapabilities`        | MCTP VDM  |
+| 2          | `03h`        | `GetDebugLog`               | MCTP VDM  |
+| 3          | `04h`        | `ClearDebugLog`             | MCTP VDM  |
+| 4          | `05h`        | `GetAttestation`            | SPDM VDM  |
+| 5          | `06h`        | `RequestDebugUnlock`        | SPDM VDM  |
+| 6          | `07h`        | `AuthorizeDebugUnlockToken` | SPDM VDM  |
+| 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM  |
+| 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM  |
+
+This table defines the bit assignment for every allocated command code. A responder sets a bit only when the corresponding command is implemented. `GetAttestation` is defined but not yet implemented, so its bit remains zero. `AuthorizedCommand` is set when its wrapper and at least one authorized subcommand are implemented.
+
+**Authorized-Subcommand Capability Flags**:
+
+| Bitmap Bit | Subcommand                   | Status      |
+| ---------- | ---------------------------- | ----------- |
+| 0          | `GetAuthChallenge`           | Implemented |
+| 1          | `ProvisionVendorPkHash`      | Planned     |
+| 2          | `FuseIncreaseCaliptraMinSvn` | Planned     |
+| 3          | `ProgramFieldEntropy`        | Implemented |
+| 4          | `FuseRevokeVendorPublicKey`  | Planned     |
+| 5          | `FuseRevokeVendorPkHash`     | Planned     |
+| 6          | `FuseLockPartition`          | Planned     |
+| 7:31       | Reserved                     | —           |
+
+The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
+
+**MCU Runtime Capability Flags**:
+
+| Bit | Name                  | Description                                           |
+| --- | --------------------- | ----------------------------------------------------- |
+| 0   | `FLASH_BOOT`          | MCU Runtime supports flash-based image loading        |
+| 1   | `STREAMING_BOOT`      | MCU Runtime supports streaming image loading          |
+| 2   | `FIRMWARE_UPDATE`     | MCU Runtime supports firmware update                  |
+| 3   | `SPDM_RESPONDER`      | MCU Runtime includes the SPDM responder               |
+| 4   | `MCTP_VDM_RESPONDER`  | MCU Runtime includes the MCTP VDM responder           |
+| 5   | `USERSPACE_DEBUG_LOG` | MCU Runtime includes userspace debug logging          |
+| 6   | `MCI_MAILBOX_SERVICE` | MCU Runtime includes the external MCI mailbox service |
+| 7   | `DOE`                 | MCU Runtime includes the DOE transport                |
+
+The `mcu_rom` field is reserved for a future versioned ROM-to-Runtime capability handoff. Until that handoff is specified, responders set `mcu_rom` to zero and the following assignments are not advertised.
+
+**Proposed MCU ROM Capability Flags**:
+
+| Bit | Name                 | Description                              |
+| --- | -------------------- | ---------------------------------------- |
+| 0   | `STREAMING_BOOT_I3C` | MCU ROM supports streaming boot over I3C |
+| 1   | `FLASH_BOOT`         | MCU ROM supports flash boot              |
+| 2   | `NETWORK_BOOT`       | MCU ROM supports network boot            |
 
 ### Get Debug Log
 

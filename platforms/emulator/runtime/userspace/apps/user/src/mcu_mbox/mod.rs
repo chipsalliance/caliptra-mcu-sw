@@ -2,8 +2,6 @@
 
 #[cfg(feature = "mcu-mbox-service")]
 pub(crate) mod cmd_auth_mock;
-#[cfg(feature = "mcu-mbox-test-handlers")]
-mod cmd_handler_mock;
 
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -80,11 +78,7 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
             unsafe { MCU_MBOX_ALLOC_CELL.init_once(scratch_ptr, MCU_MBOX_SCRATCH_SIZE) };
         let scratch = McuMboxScratchAlloc(scratch_allocator);
 
-        // Command handler shared with the Caliptra SPDM VDM backend.
-        // Test builds can still replace it with the dedicated integration mock.
-        #[cfg(feature = "mcu-mbox-test-handlers")]
-        let handler = cmd_handler_mock::NonCryptoCmdHandlerMock;
-        #[cfg(not(feature = "mcu-mbox-test-handlers"))]
+        // Command handler shared with the MCTP and SPDM VDM backends.
         let handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
         // Authorizer: HMAC-based command authorization stays wired in production
         // (uses a placeholder test key for now; to be replaced with real

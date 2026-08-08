@@ -40,10 +40,10 @@ pub fn run_caliptra_util_host_validator() {
                 max_connections: 10,
             },
             device_capabilities: Some(DeviceCapabilitiesConfig {
-                capabilities: 0x04030201,
-                max_cert_size: 134678021,
-                max_csr_size: 202050057,
-                device_lifecycle: 269422093,
+                capabilities: [
+                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 0, 0, 0, 0, 0, 0, 0,
+                    0x40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                ],
                 fips_status: 0x00000000,
             }),
             firmware_version: Some(FirmwareVersionConfig {

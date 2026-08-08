@@ -87,6 +87,8 @@ These command codes are assigned from the Caliptra range reserved in the [OCP co
 
 R = Required, O = Optional
 
+Implemented commands are advertised in the `external_commands` field returned by `DeviceCapabilities`. Implemented operations under `AuthorizedCommand` are advertised individually in `authorized_subcommands`. Recognized but unimplemented commands are not advertised. See [Device Capabilities](caliptra_common_commands.md#device-capabilities).
+
 ## Authorization-Gated Subcommands
 
 The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are carried under `AuthorizedCommand`. Only subcommands marked Supported are currently dispatched; requests for Planned subcommands return `InvalidParameter`. `AuthorizedCommand` does not define the authorization mechanism by itself. The concrete SPDM authorization mechanism and message flow are still under design and will be specified separately.
