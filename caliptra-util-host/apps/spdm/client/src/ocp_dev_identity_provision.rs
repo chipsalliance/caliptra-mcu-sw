@@ -51,6 +51,13 @@ pub struct ProvisionOptions {
     pub key_pair_id: u8,
     /// DER X.509 root certificate that authenticates the initial Vendor slot.
     pub vendor_trust_anchor: PathBuf,
+    /// Optional path to write the verified inner PKCS#10 CSR (DER).
+    pub csr_out: Option<PathBuf>,
+    /// Optional path to write the raw attested CSR COSE_Sign1/CWT envelope.
+    pub cose_out: Option<PathBuf>,
+    /// Stop after the attested CSR has been exported and verified, without
+    /// issuing or installing an Owner/LDevID certificate chain.
+    pub extract_only: bool,
 }
 
 impl Default for ProvisionOptions {
@@ -60,6 +67,9 @@ impl Default for ProvisionOptions {
             slot_id: DEFAULT_OWNER_SLOT_ID,
             key_pair_id: DEFAULT_LDEVID_KEY_PAIR_ID,
             vendor_trust_anchor: default_vendor_trust_anchor_path(),
+            csr_out: None,
+            cose_out: None,
+            extract_only: false,
         }
     }
 }
@@ -68,7 +78,12 @@ impl Default for ProvisionOptions {
 ///
 /// This authenticates Vendor slot 0, validates an attested LDevID CSR, issues
 /// and installs an Owner/LDevID chain, verifies the returned chain, performs
-/// Owner-slot attestation, and sends STOP to the test bridge.
+/// Owner-slot proof-of-possession authentication, and sends STOP to the test
+/// bridge.
+///
+/// When [`ProvisionOptions::extract_only`] is set, the flow stops once the
+/// attested CSR has been exported and cryptographically verified against the
+/// authenticated Vendor chain; nothing is issued or installed on the device.
 pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
     println!(
         "[ocp_dev_identity_provision_tool] Connecting to bridge at {}",
@@ -124,6 +139,11 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
     }
     verify_spdm_root_hash(vendor_chain.root_hash, vendor_certs[0])
         .context("Vendor slot SPDM certificate chain root hash mismatch")?;
+    println!(
+        "[ocp_dev_identity_provision_tool] Vendor slot {} certificate chain verified via GET_CERTIFICATE ({} certs, root hash OK)",
+        VENDOR_SLOT_ID,
+        vendor_certs.len()
+    );
 
     let nonce = random_nonce()?;
     let csr = export_attested_csr(
@@ -137,6 +157,26 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
         "[ocp_dev_identity_provision_tool] ExportAttestedCsr key_pair_id={} returned {} bytes",
         options.key_pair_id, csr.data_len
     );
+
+    if let Some(path) = &options.cose_out {
+        write_artifact(
+            path,
+            csr.csr_bytes(),
+            "attested CSR COSE_Sign1/CWT envelope",
+        )?;
+    }
+    if let Some(path) = &options.csr_out {
+        write_artifact(path, &csr_der, "verified LDevID PKCS#10 CSR (DER)")?;
+    }
+
+    if options.extract_only {
+        println!(
+            "[ocp_dev_identity_provision_tool] Extract-only mode: skipping Owner/LDevID issuance and SET_CERTIFICATE"
+        );
+        println!("[ocp_dev_identity_provision_tool] Sending STOP to bridge");
+        stop_io.send_stop()?;
+        return Ok(());
+    }
 
     let cert_chain = issue_test_owner_ldev_id_chain_from_csr(&csr_der, &owner_root)
         .context("failed to issue test Owner/LDevID certificate chain from attested CSR")?;
@@ -196,6 +236,25 @@ pub fn default_vendor_trust_anchor_path() -> PathBuf {
         .parent()
         .map(|spdm_dir| spdm_dir.join("certs/test_vendor_root.der"))
         .unwrap_or_else(|| PathBuf::from("certs/test_vendor_root.der"))
+}
+
+/// Write a DER artifact to `path`, creating parent directories as needed.
+fn write_artifact(path: &PathBuf, bytes: &[u8], description: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create output directory {}", parent.display())
+            })?;
+        }
+    }
+    fs::write(path, bytes)
+        .with_context(|| format!("failed to write {description} to {}", path.display()))?;
+    println!(
+        "[ocp_dev_identity_provision_tool] Wrote {description} ({} bytes) to {}",
+        bytes.len(),
+        path.display()
+    );
+    Ok(())
 }
 
 fn validate_owner_chain<'a>(der: &'a [u8], source: &str) -> Result<Vec<&'a [u8]>> {
@@ -869,5 +928,38 @@ mod tests {
     fn synthetic_cert_for_key(signing_key: &SigningKey) -> Vec<u8> {
         let name = Name::from_str("CN=COSE signer").unwrap();
         build_test_ca_certificate(1, name.clone(), name, None, 0, signing_key).unwrap()
+    }
+
+    #[test]
+    fn test_write_artifact_creates_missing_parent_directories() {
+        let dir = std::env::temp_dir().join(format!(
+            "ldevid-artifact-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join("nested").join("ldevid_csr.der");
+
+        write_artifact(&path, b"\x30\x82\x01\x00", "test artifact").unwrap();
+
+        assert_eq!(fs::read(&path).unwrap(), b"\x30\x82\x01\x00");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_write_artifact_overwrites_existing_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "ldevid-artifact-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join("ldevid_csr.der");
+
+        write_artifact(&path, b"stale", "test artifact").unwrap();
+        write_artifact(&path, b"fresh", "test artifact").unwrap();
+
+        assert_eq!(fs::read(&path).unwrap(), b"fresh");
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

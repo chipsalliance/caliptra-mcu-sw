@@ -10,6 +10,12 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+    // Without these, a build script run performed before libspdm was built
+    // stays cached, and the crate keeps linking with the `-l` fallback even
+    // after LIBSPDM_LIB_DIR is populated.
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=LIBSPDM_LIB_DIR");
+
     let lib_dir = env::var("LIBSPDM_LIB_DIR").unwrap_or_else(|_| {
         // Default: look relative to the caliptra-util-host workspace target directory
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -20,6 +26,7 @@ fn main() {
     });
 
     let lib_dir = PathBuf::from(&lib_dir);
+    println!("cargo:rerun-if-changed={}", lib_dir.display());
     if lib_dir.exists() {
         println!("cargo:rustc-link-search=native={}", lib_dir.display());
         println!("cargo:rustc-link-arg=-L{}", lib_dir.display());

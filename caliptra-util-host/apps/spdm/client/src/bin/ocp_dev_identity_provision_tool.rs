@@ -4,6 +4,10 @@
 //!
 //! Authenticates the Vendor slot, provisions an Owner/LDevID chain from an
 //! attested CSR, and verifies the installed Owner slot.
+//!
+//! With `--extract-only` the tool stops after exporting and verifying the
+//! attested LDevID CSR, which (combined with `--csr-out`) allows the CSR to be
+//! inspected with standard tooling such as `openssl req`.
 
 use std::path::PathBuf;
 
@@ -33,6 +37,19 @@ struct Args {
     /// DER X.509 root certificate used to authenticate the initial Vendor slot.
     #[arg(long, default_value_os_t = default_vendor_trust_anchor_path())]
     vendor_trust_anchor: PathBuf,
+
+    /// Write the verified inner PKCS#10 LDevID CSR (DER) to this path.
+    #[arg(long)]
+    csr_out: Option<PathBuf>,
+
+    /// Write the raw attested CSR COSE_Sign1/CWT envelope to this path.
+    #[arg(long)]
+    cose_out: Option<PathBuf>,
+
+    /// Export and verify the attested CSR only; do not issue or install an
+    /// Owner/LDevID certificate chain.
+    #[arg(long, default_value_t = false)]
+    extract_only: bool,
 }
 
 fn main() -> Result<()> {
@@ -48,5 +65,8 @@ fn main() -> Result<()> {
         slot_id: args.slot_id,
         key_pair_id: args.key_pair_id,
         vendor_trust_anchor: args.vendor_trust_anchor,
+        csr_out: args.csr_out,
+        cose_out: args.cose_out,
+        extract_only: args.extract_only,
     })
 }

@@ -132,11 +132,22 @@ mod test {
             thread::sleep(Duration::from_millis(500));
 
             let bridge_addr = format!("127.0.0.1:{}", bridge_port);
-            let mut child = Command::new(&tool_bin)
-                .arg("--server")
+            let mut cmd = Command::new(&tool_bin);
+            cmd.arg("--server")
                 .arg(&bridge_addr)
                 .arg("--vendor-trust-anchor")
-                .arg(&vendor_trust_anchor)
+                .arg(&vendor_trust_anchor);
+
+            // Optional extra arguments (e.g. `--extract-only --csr-out <path>`)
+            // let the demo script reuse this harness without changing CI
+            // behaviour, which leaves the variable unset.
+            if let Ok(extra_args) = std::env::var("OCP_DEV_IDENTITY_PROVISION_TOOL_ARGS") {
+                for arg in extra_args.split_whitespace() {
+                    cmd.arg(arg);
+                }
+            }
+
+            let mut child = cmd
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit())
                 .spawn()
