@@ -7,6 +7,7 @@
         - [DOT I3C Recovery Protocol](./dot_i3c.md)
     - [ROM Fuses](./rom-fuses.md)
     - [SVN Anti-Rollback](./svn.md)
+    - [Vendor PK Hash Management Firmware Header](./vendor-pk-hash-management.md)
 - [Runtime Specification](./runtime.md)
     - [Firmware Format](./firmware_format.md)
     - [PLDM Package](./pldm_package.md)
