@@ -63,6 +63,11 @@ static CERT_STORE_DONE: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 /// Cert store init state: 0 = uninit, 1 = in progress, 2 = done.
 static CERT_STORE_STATE: AtomicU8 = AtomicU8::new(0);
 
+/// Fired once with the cert-store init outcome, for the ML-DSA installer task.
+/// Separate from [`CERT_STORE_DONE`] because `Signal::wait` consumes the value
+/// and the responders are already contending for that one.
+static CERT_STORE_READY: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+
 #[cfg(feature = "test-mctp-spdm-attestation-pcr-quote")]
 fn measurement_provider(
 ) -> caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider {
@@ -92,11 +97,13 @@ async fn ensure_cert_store_init<A: mcu_caliptra_api_lite::ApiAlloc>(
             if let Err(e) = cert_store::populate_idev(alloc).await {
                 CERT_STORE_STATE.store(0, Ordering::Release);
                 CERT_STORE_DONE.signal(false);
+                CERT_STORE_READY.signal(false);
                 return Err(e);
             }
             let r = cert_store::setup_endorsements(&CERT_STORE, alloc).await;
             CERT_STORE_STATE.store(if r.is_ok() { 2 } else { 0 }, Ordering::Release);
             CERT_STORE_DONE.signal(r.is_ok());
+            CERT_STORE_READY.signal(r.is_ok());
             r
         }
         1 => {
@@ -124,6 +131,44 @@ pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
             crate::log_error!(cw, "SPDM: Failed to spawn DOE responder");
         }
     }
+    if spawner.spawn(idev_mldsa_installer()).is_err() {
+        crate::log_error!(cw, "SPDM: Failed to spawn ML-DSA IDevID installer");
+    }
+}
+
+/// Install the IDevID ML-DSA-87 certificate once the responders are serving.
+///
+/// Its own task because the install is ~1,900 sequential 4-byte OTP reads —
+/// doing it inside `ensure_cert_store_init` delayed responder startup past the
+/// point where an already-connected requester gives up. It waits for the ECC
+/// cert store to be ready so the two installs do not contend for the mailbox,
+/// and nothing can read the ML-DSA chain yet, so ordering after SPDM comes up
+/// costs nothing.
+#[embassy_executor::task]
+async fn idev_mldsa_installer() {
+    // Wait for cert-store init (driven by whichever responder wins the race)
+    // before adding mailbox traffic of our own. A dedicated signal, because
+    // `CERT_STORE_DONE.wait()` consumes the value the responders need.
+    if !CERT_STORE_READY.wait().await {
+        return;
+    }
+
+    // Sized for one ML-DSA-87 certificate (Caliptra caps it at 8192) plus the
+    // allocator bitmap and the 8-byte mailbox response — not the responders'
+    // 12 KiB, since this task only ever stages the certificate.
+    const MLDSA_SCRATCH_SIZE: usize = 9 * 1024;
+
+    #[repr(C, align(64))]
+    struct ScratchBuf([u8; MLDSA_SCRATCH_SIZE]);
+    static mut MLDSA_SCRATCH: ScratchBuf = ScratchBuf([0u8; MLDSA_SCRATCH_SIZE]);
+    // SAFETY: this task is the sole owner of `MLDSA_SCRATCH`.
+    let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(MLDSA_SCRATCH.0.as_mut_ptr()) };
+    debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
+    static MLDSA_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
+    let allocator: &'static BitmapAllocator =
+        unsafe { MLDSA_ALLOC_CELL.init_once(scratch_ptr, MLDSA_SCRATCH_SIZE) };
+
+    cert_store::populate_idev_mldsa(allocator).await;
 }
 
 #[embassy_executor::task]
