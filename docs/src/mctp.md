@@ -8,6 +8,33 @@ Caliptra MCTP endpoint has only one EID and supports dynamic assignment by the M
 MCTP Packets are delivered over physical I3C medium using I3C transfers. Caliptra MCTP endpoint always plays the role of I3C Target and is
 managed by an external I3C controller. Minimum transmission size is based on the MCTP baseline MTU (for I3C it is 69 bytes: 64 bytes MCTP payload + 4 bytes MCTP header + 1 byte PEC). Larger than the baseline transfer may be possible after discovery and negotiation with the I3C controller. The negotiated MTU size will be queried from the I3C Target peripheral driver by MCTP capsule.
 
+## MCTP Control Messages
+
+The MCTP capsule handles the following MCTP Control Protocol commands:
+
+| Command | Command code |
+| --- | ---: |
+| Set Endpoint ID | `0x01` |
+| Get Endpoint ID | `0x02` |
+| Get Endpoint UUID | `0x03` |
+| Get MCTP Version Support | `0x04` |
+| Get Message Type Support | `0x05` |
+| Get Vendor Defined Message Support | `0x06` |
+
+### Get Endpoint UUID
+
+Get Endpoint UUID has no request data. A successful response contains a completion code of `0x00`, followed by the endpoint's 16-byte UUID. The UUID bytes are returned in the same order in which the board supplies them to the MCTP component.
+
+The board configures the endpoint UUID when it initializes the MCTP mux:
+
+```rust
+let mux_mctp = MCTPMuxComponent::new(i3c_target, mux_alarm)
+    .with_uuid(endpoint_uuid)
+    .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
+```
+
+`endpoint_uuid` must be a stable, platform-specific `[u8; 16]` value. If `with_uuid` is omitted, the component reports the nil UUID (`00000000-0000-0000-0000-000000000000`).
+
 
 ## MCTP Send Sequence
 

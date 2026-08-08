@@ -561,6 +561,10 @@ pub unsafe fn main() {
         VeeRDefaultPeripherals,
         VeeRDefaultPeripherals::new(emulator_peripherals, mux_alarm, &MCU_MEMORY_MAP, mci_regs)
     );
+    let mctp_endpoint_uuid = peripherals
+        .otp
+        .read_idevid_manufacturer_serial_number()
+        .unwrap_or_else(|err| panic!("failed to read MCTP endpoint UUID from OTP: {:?}", err));
 
     let mci = caliptra_mcu_components::mci::MciComponent::new(
         board_kernel,
@@ -681,6 +685,7 @@ pub unsafe fn main() {
     );
     let mux_mctp =
         caliptra_mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
+            .with_uuid(mctp_endpoint_uuid)
             .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
 
     let mctp_spdm = caliptra_mcu_components::mctp_driver::MCTPDriverComponent::new(

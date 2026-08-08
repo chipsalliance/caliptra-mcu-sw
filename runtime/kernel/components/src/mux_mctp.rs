@@ -13,6 +13,7 @@
 //! let mux_mctp = caliptra_mcu_components::mux_mctp::MCTPMuxComponent::new(
 //!    i3c,
 //!    mux_alarm)
+//! .with_uuid(endpoint_uuid)
 //! .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
 //! ```
 //!

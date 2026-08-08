@@ -158,9 +158,10 @@ impl MCTPCtrlCmdTests {
             MCTPCtrlCmdTests::GetEID => {
                 get_eid_resp_bytes(CmdCompletionCode::Success, TEST_TARGET_EID + 1)
             }
-            MCTPCtrlCmdTests::GetEndpointUUID => {
-                get_endpoint_uuid_resp_bytes(CmdCompletionCode::Success, &[0; 16])
-            }
+            MCTPCtrlCmdTests::GetEndpointUUID => get_endpoint_uuid_resp_bytes(
+                CmdCompletionCode::Success,
+                &caliptra_mcu_config_emulator::EMULATOR_UEID_SERIAL_NUMBER,
+            ),
             MCTPCtrlCmdTests::GetMctpVersionSupportMctpBase
             | MCTPCtrlCmdTests::GetMctpVersionSupportMctpControlProtocol => {
                 // Backward compatibility with MCTP base/control protocol 1.0, 1.1, and 1.2.
