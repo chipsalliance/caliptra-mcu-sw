@@ -356,7 +356,10 @@ dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "a26db5b869
 crypto = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "a26db5b869f13f0d2c5762b75f8892b9fe2d8055", default-features = false }
 platform = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "a26db5b869f13f0d2c5762b75f8892b9fe2d8055", default-features = false }
 
-size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", package = "caliptra-size-history", rev = "64e75e17e1a2eb07ff8dd6698932af82182da85e" }
+# TODO: repoint at chipsalliance/caliptra-infra once PR #76 merges, and replace
+# this rev with the resulting upstream commit. Pinned to the fork meanwhile so
+# CI picks up the size-history worktree-reset fix; see PR body.
+size-history = { git = "https://github.com/RaunakGu/caliptra-infra.git", package = "caliptra-size-history", rev = "20aeb2e6441c" }
 
 # local caliptra dependency; useful when developing
 # caliptra-api = { path = "../caliptra-sw/api" }
