@@ -419,6 +419,10 @@ fn emit_attestation_evidence_ready() {}
 
 #[allow(dead_code)]
 async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {
+    if fw_id_list.is_empty() {
+        return Ok(());
+    }
+
     let fw_ids = {
         let mut ids = [0u32; ActivateFirmwareReq::MAX_FW_ID_COUNT];
         for (i, fw_id) in fw_id_list.iter().enumerate() {
