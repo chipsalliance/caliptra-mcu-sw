@@ -36,6 +36,12 @@ impl MctpTransport {
         }
     }
 
+    pub fn bind_ua_eid(&self, eid: u8) {
+        if eid != 0 {
+            DISCOVERED_UA_EID.store(eid, Ordering::Relaxed);
+        }
+    }
+
     pub async fn send_request(&mut self, dest_eid: u8, req: &[u8]) -> McuResult<()> {
         let mctp_hdr = MctpCommonHeader(req[MCTP_COMMON_HEADER_OFFSET]);
         if mctp_hdr.ic() != 0 || mctp_hdr.msg_type() != MCTP_PLDM_MSG_TYPE {
@@ -79,7 +85,7 @@ impl MctpTransport {
         Ok(())
     }
 
-    pub async fn receive_request(&mut self, req: &mut [u8]) -> McuResult<()> {
+    pub async fn receive_request(&mut self, req: &mut [u8]) -> McuResult<u8> {
         // Reset msg buffer
         req.fill(0);
         let (req_len, msg_info) = self
@@ -98,12 +104,10 @@ impl MctpTransport {
             Err(errors::UNEXPECTED_MESSAGE_TYPE)?;
         }
 
-        if msg_info.eid != 0 {
-            DISCOVERED_UA_EID.store(msg_info.eid, Ordering::Relaxed);
-        }
+        let requester_eid = msg_info.eid;
         self.cur_resp_ctx = Some(msg_info);
 
-        Ok(())
+        Ok(requester_eid)
     }
 
     pub async fn send_response(&mut self, resp: &[u8]) -> McuResult<()> {
@@ -139,7 +143,7 @@ mod tests {
 
         assert_eq!(initiator.ua_eid(), crate::config::UA_EID);
 
-        DISCOVERED_UA_EID.store(11, Ordering::Relaxed);
+        responder.bind_ua_eid(11);
         assert_eq!(responder.ua_eid(), 11);
         assert_eq!(initiator.ua_eid(), 11);
 
