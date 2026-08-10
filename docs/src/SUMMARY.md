@@ -20,7 +20,7 @@
         - [TDISP](./tdisp.md)
         - [In-field Provisioning and Management of SPDM Certificate Slots](./cert_slot_mgmt.md)
     - [Attestation](./attestation.md)
-        - [Architecture](./attestation-architecture.md)
+        - [Design Specification](./attestation-design.md)
         - [Measurement API](./attestation-measurement-api.md)
         - [Static Integrator Configuration](./static_integrator_configuration.md)
         - [Tock Capsules](./attestation-tock-capsules.md)
