@@ -1,485 +1,91 @@
 // Licensed under the Apache-2.0 license
 
-extern crate alloc;
-use alloc::boxed::Box;
-#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-use alloc::vec::Vec;
-
-#[cfg(any(
-    feature = "test-pldm-discovery",
-    feature = "test-pldm-fw-update",
-    feature = "test-pldm-fw-update-e2e"
-))]
-mod pldm_fdops_mock;
-
-mod config;
-
-use async_trait::async_trait;
-use caliptra_api::mailbox::{
-    ActivateFirmwareReq, ActivateFirmwareResp, CommandId, MailboxReqHeader,
-};
 #[allow(unused)]
-use caliptra_mcu_config::boot;
+use libsyscall_caliptra::system::System;
 #[allow(unused)]
-use caliptra_mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus, RollbackEnable};
-#[allow(unused)]
-use caliptra_mcu_config_emulator::flash::{
-    PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
-    PARTITION_TABLE,
-};
-#[allow(unused)]
-use caliptra_mcu_libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
-use caliptra_mcu_libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
-#[allow(unused)]
-use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
-use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
-use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
-#[allow(unused)]
-use caliptra_mcu_libsyscall_caliptra::system::System;
-use caliptra_mcu_libtock_console::Console;
-use caliptra_mcu_libtock_platform::ErrorCode;
-#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-use caliptra_mcu_measurement_api::{ImageHashSource, ImageMetadata};
-#[allow(unused)]
-#[cfg(any(
-    feature = "streaming-boot",
-    feature = "test-pldm-discovery",
-    feature = "test-pldm-fw-update",
-    feature = "test-pldm-fw-update-e2e",
-    feature = "test-pldm-streaming-boot"
-))]
-use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
-#[allow(unused)]
-#[cfg(any(
-    feature = "streaming-boot",
-    feature = "test-pldm-discovery",
-    feature = "test-pldm-fw-update",
-    feature = "test-pldm-fw-update-e2e",
-    feature = "test-pldm-streaming-boot"
-))]
-use caliptra_mcu_pldm_lib::daemon::PldmService;
-#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-use caliptra_mcu_spdm_pal::{BitmapAllocator, BITMAP_SLOT_SIZE};
-#[allow(unused_imports)]
-use core::fmt::Write;
-#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-use core::ptr::NonNull;
+use libtock_platform::ErrorCode;
 
 #[allow(unused)]
-use crate::EXECUTOR;
+use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
 #[allow(unused)]
-#[cfg(not(any(
-    feature = "streaming-boot",
-    feature = "test-pldm-discovery",
-    feature = "test-pldm-fw-update",
-    feature = "test-pldm-fw-update-e2e",
-    feature = "test-pldm-streaming-boot"
-)))]
-use caliptra_mcu_libapi_caliptra::image_loading::{
-    dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader,
-};
+use mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
 #[allow(unused)]
-#[cfg(any(
-    feature = "streaming-boot",
-    feature = "test-pldm-discovery",
-    feature = "test-pldm-fw-update",
-    feature = "test-pldm-fw-update-e2e",
-    feature = "test-pldm-streaming-boot"
-))]
-use caliptra_mcu_libapi_caliptra::image_loading::{
-    dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams,
-    PldmImageLoader,
-};
-use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use mcu_config::flash::FlashPartition;
 #[allow(unused)]
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-#[allow(unused)]
-use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
-#[allow(unused)]
-use zerocopy::{FromBytes, IntoBytes};
+use mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
 
-const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
-#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-const IMAGE_LOAD_MEASUREMENT_SCRATCH_SIZE: usize = 4096;
-#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-const IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS: usize =
-    IMAGE_LOAD_MEASUREMENT_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
-
-#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-#[repr(C, align(64))]
-#[derive(Clone, Copy)]
-struct ImageLoadMeasurementScratchSlot([u8; BITMAP_SLOT_SIZE]);
+use libsyscall_caliptra::dma::DMAMapping;
+use user_app_common::IDENTITY_DMA_MAPPING;
 
 #[embassy_executor::task]
-pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
-    let mbox_sram = caliptra_mcu_libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
-        caliptra_mcu_libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
-    );
-    let mci = MciSyscall::<DefaultSyscalls>::new();
-    let reset_reason = mci.read(RESET_REASON, 0).unwrap();
-    let mcu_fw_hitless_update_reset = reset_reason & RESET_REASON_FW_HITLESS_UPD_RESET_MASK
-        == RESET_REASON_FW_HITLESS_UPD_RESET_MASK;
-    if mcu_fw_hitless_update_reset {
-        // Device rebooted due to firmware update
-        // MCU SRAM lock is acquired prior to rebooting the device
-        // The lock is needed so that Caliptra can write the updated firmware from MCU MBOX SRAM to MCU SRAM
-        // After the update reboot, lock is no longer needed, so release it here
-        mbox_sram.release_lock().unwrap();
-    }
-    #[cfg(any(
-        feature = "streaming-boot",
-        all(feature = "flash-boot", not(feature = "firmware-update")),
-        feature = "test-pldm-discovery",
-        feature = "test-pldm-fw-update",
-        feature = "test-pldm-fw-update-e2e",
-        feature = "test-streaming-boot-flash-write-back",
-    ))]
-    {
-        // Release SRAM lock, in case previous session hasn't released it
-        // If MCU is not the lock owner, then this should be no-op
-        if mbox_sram.acquire_lock().is_err() {
-            mbox_sram.release_lock().unwrap();
-            mbox_sram.acquire_lock().unwrap();
-        }
-        match image_loading(
-            &EMULATED_DMA_MAPPING,
-            soc_image_load_list,
-            mcu_fw_hitless_update_reset,
-        )
-        .await
-        {
-            Ok(_) => {}
-            Err(_) => System::exit(1),
-        }
-        mbox_sram.release_lock().unwrap();
-        #[cfg(not(feature = "firmware-update"))]
-        System::exit(0);
-    }
+pub async fn image_loading_task() {
+    let spawner = crate::EXECUTOR.get().spawner();
+    user_app_common::image_loader::image_loading_task_body(
+        &IDENTITY_DMA_MAPPING,
+        spawner,
+        EmulatorHook,
+    )
+    .await;
+
     // After image loading, proceed to firmware update if enabled
     #[cfg(any(
-        feature = "test-firmware-activate",
-        feature = "test-firmware-update-streaming"
+        feature = "test-firmware-update-streaming",
+        feature = "test-firmware-update-flash"
     ))]
     {
-        if mbox_sram.acquire_lock().is_err() {
-            mbox_sram.release_lock().unwrap();
-            mbox_sram.acquire_lock().unwrap();
-        }
-        match crate::firmware_update::firmware_update(&FPGA_DMA_MAPPING, soc_image_load_list).await
-        {
-            Ok(_) => System::exit(0),
-            Err(_) => System::exit(1),
-        }
-        // MBOX SRAM lock will be released after reboot
-    }
-    #[cfg(all(
-        feature = "firmware-update",
-        not(feature = "test-firmware-update-streaming")
-    ))]
-    {
-        if mbox_sram.acquire_lock().is_err() {
-            mbox_sram.release_lock().unwrap();
-            mbox_sram.acquire_lock().unwrap();
-        }
-        match crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING, soc_image_load_list)
-            .await
-        {
-            Ok(_) => System::exit(0),
-            Err(_) => System::exit(1),
-        }
-        // MBOX SRAM lock will be released after reboot
-    }
-}
-
-#[allow(dead_code)]
-#[allow(unused_variables)]
-async fn image_loading<D: DMAMapping>(
-    dma_mapping: &'static D,
-    soc_image_load_list: &'static [u32],
-    mcu_fw_hitless_update_reset: bool,
-) -> Result<(), ErrorCode> {
-    let mut console_writer = Console::<DefaultSyscalls>::writer();
-    crate::log_info!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
-    #[cfg(feature = "streaming-boot")]
-    {
-        let fw_params = PldmFirmwareDeviceParams {
-            descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
-            fw_params: config::streaming_boot_consts::STREAMING_BOOT_FIRMWARE_PARAMS.get(),
-        };
-        let pldm_image_loader =
-            PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
-        load_soc_images(&pldm_image_loader, soc_image_load_list, false)
-            .await
-            .inspect_err(|_e| {
-                // Report load/authorization failure to the PLDM Update Agent
-                let _ = pldm_image_loader.finalize(VerifyResult::VerifyFailedFdSecurityChecks);
-            })?;
-        // Close the PLDM session on success
-        pldm_image_loader.finalize(VerifyResult::VerifySuccess)?;
-        // Wait for the PLDM service to fully complete the protocol before proceeding
-        pldm_image_loader.wait_for_service_stopped().await;
-        // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
-        activate_soc_images(soc_image_load_list).await?;
-    }
-    #[cfg(feature = "flash-boot")]
-    {
-        let mut boot_config = FlashBootConfig::new();
-        let active_partition_id = boot_config
-            .get_active_partition()
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        let active_partition = boot_config
-            .get_partition_from_id(active_partition_id)
-            .map_err(|_| ErrorCode::Fail)?;
-
-        let active = (active_partition_id, active_partition);
-
-        let pending = {
-            let pending_partition_id = boot_config.get_pending_partition().await;
-            if pending_partition_id.is_ok() {
-                let pending_partition_id = pending_partition_id.unwrap();
-                let pending_partition = boot_config
-                    .get_partition_from_id(pending_partition_id)
-                    .map_err(|_| ErrorCode::Fail)?;
-
-                Some((pending_partition_id, pending_partition))
-            } else {
-                None
-            }
-        };
-
-        let load_partition = if let Some((pending_partition_id, pending_partition)) = pending {
-            (pending_partition_id, pending_partition)
-        } else {
-            // No pending partition, use the active one
-            active
-        };
-
-        let buffered_dma =
-            FlashReaderDma::new(SpiFlash::new(load_partition.1.driver_num), dma_mapping);
-        let flash_syscall = SpiFlash::new(load_partition.1.driver_num);
-        let flash_image_loader = FlashImageLoader::new(flash_syscall, &buffered_dma);
-        let component_update = pending.is_some() && mcu_fw_hitless_update_reset;
-
-        if pending.is_some() && !mcu_fw_hitless_update_reset {
-            // In the full MCU firmware-update hitless path, FirmwareUpdater already
-            // sets the auth manifest before reset. Keep this call for direct
-            // pending-partition boot and future SoC-only update paths until the
-            // platform owns an explicit "auth manifest already set" signal.
-            // Depending on whether the SoC manifest preamble DPE contexts are
-            // updated during hitless update, setting the manifest here may also
-            // create mismatched journey measurements.
-            flash_image_loader.set_auth_manifest().await?;
-        }
-
-        load_soc_images(&flash_image_loader, soc_image_load_list, component_update).await?;
-        boot_config
-            .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        boot_config
-            .set_active_partition(load_partition.0)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        activate_soc_images(soc_image_load_list).await?
-    }
-
-    #[cfg(any(
-        feature = "test-pldm-discovery",
-        feature = "test-pldm-fw-update",
-        feature = "test-pldm-fw-update-e2e"
-    ))]
-    {
-        let fdops = pldm_fdops_mock::FdOpsObject::new();
-        let mut pldm_service = PldmService::init(&fdops, EXECUTOR.get().spawner());
-        crate::log_info!(
-            console_writer,
-            "PLDM_APP: Starting PLDM service for testing..."
+        let mbox_sram = libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
+            libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
         );
-        if let Err(e) = pldm_service.start().await {
-            crate::log_error!(
-                console_writer,
-                "PLDM_APP: Error starting PLDM service: {}",
-                crate::Dbg(e)
-            );
+        if mbox_sram.acquire_lock().is_err() {
+            mbox_sram.release_lock().unwrap();
+            mbox_sram.acquire_lock().unwrap();
         }
-        pldm_fdops_mock::FdOpsObject::wait_for_pldm_done().await;
+        match crate::firmware_update::firmware_update(&IDENTITY_DMA_MAPPING).await {
+            Ok(_) => System::exit(0),
+            Err(_) => System::exit(1),
+        }
     }
-    Ok(())
 }
 
-#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn load_soc_images(
-    loader: &impl ImageLoader,
-    soc_image_load_list: &'static [u32],
-    component_update: bool,
-) -> Result<(), ErrorCode> {
-    let mut scratch = Vec::new();
-    scratch
-        .try_reserve_exact(IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS)
-        .map_err(|_| ErrorCode::Fail)?;
-    scratch.resize(
-        IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS,
-        ImageLoadMeasurementScratchSlot([0; BITMAP_SLOT_SIZE]),
-    );
-    let Some(scratch_ptr) = NonNull::new(scratch.as_mut_ptr().cast::<u8>()) else {
-        return Err(ErrorCode::Fail);
-    };
-    // SAFETY: `scratch_ptr` points at aligned heap memory owned by `scratch`.
-    // `scratch` stays alive for all Measurement API calls below, and allocator
-    // buffers do not escape those calls.
-    let allocator =
-        unsafe { BitmapAllocator::new(scratch_ptr, IMAGE_LOAD_MEASUREMENT_SCRATCH_SIZE) };
+/// Emulator-specific hook: runs flash-based boot after the shared image loading.
+struct EmulatorHook;
 
-    for fw_id in soc_image_load_list {
-        let loaded = loader.load(*fw_id).await?;
-        let metadata = if component_update {
-            ImageMetadata::component_update(
-                ImageHashSource::LoadAddress,
-                loaded.image_size,
-                loaded.measurement,
-                0,
-                0,
+impl<D: DMAMapping> user_app_common::image_loader::AsyncPlatformHook<D> for EmulatorHook {
+    #[allow(unused_variables)]
+    async fn run(self, dma_mapping: &'static D) -> bool {
+        #[cfg(any(
+            feature = "test-flash-based-boot",
+            feature = "test-firmware-update-flash",
+        ))]
+        {
+            let mut boot_config = FlashBootConfig::new();
+            if let Err(_) = user_app_common::image_loader::flash_based_boot(
+                dma_mapping,
+                &mut boot_config,
+                |_cfg, partition_id| match partition_id {
+                    PartitionId::A => Ok(IMAGE_A_PARTITION),
+                    PartitionId::B => Ok(IMAGE_B_PARTITION),
+                    _ => Err(ErrorCode::Fail),
+                },
             )
-        } else {
-            ImageMetadata::initial_load_from_load_address(loaded.image_size, loaded.measurement)
-        };
-        caliptra_mcu_measurement_api::authorize_and_stash(&allocator, *fw_id, metadata)
             .await
-            .map_err(|_| ErrorCode::Fail)?;
-    }
-    Ok(())
-}
-
-#[allow(dead_code)]
-async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {
-    let fw_ids = {
-        let mut ids = [0u32; ActivateFirmwareReq::MAX_FW_ID_COUNT];
-        for (i, fw_id) in fw_id_list.iter().enumerate() {
-            ids[i] = *fw_id;
+            {
+                System::exit(1);
+            }
         }
-        ids
-    };
-    let mut req = ActivateFirmwareReq {
-        hdr: MailboxReqHeader { chksum: 0 },
-        fw_id_count: fw_id_list.len() as u32,
-        fw_ids,
-        mcu_fw_image_size: 0, // MCU image is not activated here
-        flags: 0,
-    };
 
-    let req = req.as_mut_bytes();
-    let mailbox = Mailbox::<DefaultSyscalls>::new();
+        // When firmware update features are active, don't exit yet -
+        // the caller will proceed to firmware_update.
+        #[cfg(any(
+            feature = "test-firmware-update-streaming",
+            feature = "test-firmware-update-flash"
+        ))]
+        return true;
 
-    mailbox
-        .populate_checksum(CommandId::ACTIVATE_FIRMWARE.into(), req)
-        .unwrap();
-    let response_buffer = &mut [0u8; core::mem::size_of::<ActivateFirmwareResp>()];
-    loop {
-        let result = mailbox
-            .execute(CommandId::ACTIVATE_FIRMWARE.into(), req, response_buffer)
-            .await;
-        match result {
-            Ok(_) => return Ok(()),
-            Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-            Err(_) => return Err(ErrorCode::Fail),
-        }
-    }
-}
-
-pub struct EmulatedDMAMap {}
-impl DMAMapping for EmulatedDMAMap {
-    fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
-        Ok(addr as AXIAddr)
-    }
-
-    fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
-        // Caliptra's External Test SRAM at 0x8000_0000 maps to
-        // the MCU's External SRAM at 0xB00C_0000 (same backing store via events).
-        const CPTRA_EXT_SRAM_BASE: u64 = 0x8000_0000;
-        const CPTRA_EXT_SRAM_SIZE: u64 = 0x0010_0000; // 1MB
-        const MCU_EXT_SRAM_BASE: u64 = 0xB00C_0000;
-        if (CPTRA_EXT_SRAM_BASE..CPTRA_EXT_SRAM_BASE + CPTRA_EXT_SRAM_SIZE).contains(&addr) {
-            Ok(MCU_EXT_SRAM_BASE + (addr - CPTRA_EXT_SRAM_BASE))
-        } else {
-            Ok(addr)
-        }
-    }
-}
-
-#[allow(dead_code)]
-pub static EMULATED_DMA_MAPPING: EmulatedDMAMap = EmulatedDMAMap {};
-
-pub struct FpgaDMAMap {}
-impl DMAMapping for FpgaDMAMap {
-    fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
-        Ok(addr as AXIAddr)
-    }
-
-    fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
-        // FPGA: Caliptra and MCU share the same AXI address space
-        Ok(addr)
-    }
-}
-
-#[allow(dead_code)]
-pub static FPGA_DMA_MAPPING: FpgaDMAMap = FpgaDMAMap {};
-
-/// This is the size of the buffer used for DMA transfers.
-const MAX_DMA_TRANSFER_SIZE: usize = 128;
-
-/// Flash-backed DmaTransfer that buffers through SRAM.
-/// Reads from SPI flash into a stack buffer, then
-/// DMAs from the buffer to the destination.
-pub struct FlashReaderDma<D: DMAMapping + 'static> {
-    flash: SpiFlash,
-    dma_mapping: &'static D,
-}
-
-#[allow(dead_code)]
-impl<D: DMAMapping + 'static> FlashReaderDma<D> {
-    pub fn new(flash: SpiFlash, dma_mapping: &'static D) -> Self {
-        Self { flash, dma_mapping }
-    }
-}
-
-impl<D: DMAMapping + 'static> DMAMapping for FlashReaderDma<D> {
-    fn mcu_sram_to_mcu_axi(&self, sram_addr: u32) -> Result<AXIAddr, ErrorCode> {
-        self.dma_mapping.mcu_sram_to_mcu_axi(sram_addr)
-    }
-
-    fn cptra_axi_to_mcu_axi(&self, cptra_addr: u64) -> Result<AXIAddr, ErrorCode> {
-        self.dma_mapping.cptra_axi_to_mcu_axi(cptra_addr)
-    }
-}
-
-#[async_trait(?Send)]
-impl<D: DMAMapping + 'static> DmaTransfer for FlashReaderDma<D> {
-    fn max_transfer_size(&self) -> usize {
-        MAX_DMA_TRANSFER_SIZE
-    }
-
-    async fn transfer(
-        &self,
-        src_offset: usize,
-        dest_addr: AXIAddr,
-        length: usize,
-    ) -> Result<(), ErrorCode> {
-        use caliptra_mcu_libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
-        let dma_syscall: DMASyscall = DMASyscall::new();
-        let mut buffer = [0u8; MAX_DMA_TRANSFER_SIZE];
-        self.flash
-            .read(src_offset, length, &mut buffer[..length])
-            .await?;
-        let source_address = self
-            .dma_mapping
-            .mcu_sram_to_mcu_axi(buffer.as_ptr() as u32)?;
-        dma_syscall
-            .xfer(&DMATransaction {
-                byte_count: length,
-                source: DMASource::Address(source_address),
-                dest_addr,
-            })
-            .await
+        #[cfg(not(any(
+            feature = "test-firmware-update-streaming",
+            feature = "test-firmware-update-flash"
+        )))]
+        false
     }
 }

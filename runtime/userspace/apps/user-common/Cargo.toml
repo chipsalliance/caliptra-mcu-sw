@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "user-app"
+name = "user-app-common"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -15,17 +15,11 @@ embassy-executor.workspace = true
 embassy-sync.workspace = true
 external-cmds-common.workspace = true
 libapi-caliptra.workspace = true
-libapi-emulated-caliptra.workspace = true
 libsyscall-caliptra.workspace = true
 libtock_console.workspace = true
-libtock_debug_panic.workspace = true
 libtock_platform.workspace = true
-libtock_runtime.workspace = true
-libtock.workspace = true
 libtockasync.workspace = true
 mcu-config.workspace = true
-mcu-config-emulator.workspace = true
-mcu-config-fpga.workspace = true
 mcu-mbox-lib.workspace = true
 mcu-mbox-common.workspace = true
 mctp-vdm-common.workspace = true
@@ -37,16 +31,10 @@ pldm-lib.workspace = true
 romtime.workspace = true
 spdm-lib.workspace = true
 static_cell.workspace = true
-user-app-common.workspace = true
 zerocopy.workspace = true
-
-[target.'cfg(not(target_arch = "riscv32"))'.dependencies]
-libtock_unittest.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
-embedded-alloc.workspace = true
-portable-atomic = { workspace = true, features = ["critical-section"] }
 
 [features]
 default = []
@@ -55,7 +43,7 @@ hw-2-1 = []
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []
-test-caliptra-util-host-validator = ["user-app-common/test-caliptra-util-host-validator"]
+test-caliptra-util-host-validator = []
 test-doe-transport-loopback = []
 test-doe-discovery = []
 test-doe-user-loopback = []
@@ -64,15 +52,15 @@ test-exit-immediately = []
 test-get-device-state = []
 test-i3c-simple = []
 test-i3c-constant-writes = []
-test-flash-based-boot = ["user-app-common/test-flash-based-boot"]
+test-flash-based-boot = []
 test-flash-ctrl-init = []
 test-flash-ctrl-read-write-page = []
 test-flash-ctrl-erase-page = []
 test-flash-storage-read-write = []
 test-flash-storage-erase = []
 test-flash-usermode = []
-test-firmware-update-flash = ["user-app-common/test-firmware-update-flash"]
-test-firmware-update-streaming = ["user-app-common/test-firmware-update-streaming"]
+test-firmware-update-flash = []
+test-firmware-update-streaming = []
 test-fpga-flash-ctrl = []
 test-log-flash-linear = []
 test-log-flash-circular = []
@@ -82,21 +70,21 @@ test-mci = []
 test-mctp-ctrl-cmds = []
 test-mctp-capsule-loopback = []
 test-mctp-user-loopback = []
-test-mctp-vdm-cmds = ["user-app-common/test-mctp-vdm-cmds"]
+test-mctp-vdm-cmds = []
 test-mcu-mbox-driver = []
 test-mcu-mbox-soc-requester-loopback = []
 test-mcu-mbox-usermode = []
-test-mcu-mbox-cmds = ["user-app-common/test-mcu-mbox-cmds"]
-test-mcu-mbox-fips-self-test = ["user-app-common/test-mcu-mbox-fips-self-test"]
+test-mcu-mbox-cmds = []
+test-mcu-mbox-fips-self-test = []
+test-mcu-mbox-fips-periodic = ["mcu-mbox-lib/periodic-fips-self-test"]
 test-mcu-rom-flash-access = []
 test-mcu-svn-gt-fuse = []
 test-mcu-svn-lt-fuse = []
 test-pldm-request-response = []
-test-pldm-discovery = ["user-app-common/test-pldm-discovery"]
-test-pldm-fw-update = ["user-app-common/test-pldm-fw-update"]
-test-pldm-fw-update-e2e = ["user-app-common/test-pldm-fw-update-e2e"]
-test-pldm-streaming-boot = ["user-app-common/test-pldm-streaming-boot"]
-test-mctp-spdm-responder-conformance = ["spdm-lib/large-buffer", "user-app-common/test-mctp-spdm-responder-conformance"]
-test-doe-spdm-responder-conformance = ["spdm-lib/large-buffer", "user-app-common/test-doe-spdm-responder-conformance"]
-test-doe-spdm-tdisp-ide-validator = ["user-app-common/test-doe-spdm-tdisp-ide-validator"]
-test-mcu-mbox-fips-periodic = ["mcu-mbox-lib/periodic-fips-self-test", "user-app-common/test-mcu-mbox-fips-periodic"]
+test-pldm-discovery = []
+test-pldm-fw-update = []
+test-pldm-fw-update-e2e = []
+test-pldm-streaming-boot = []
+test-mctp-spdm-responder-conformance = ["spdm-lib/large-buffer"]
+test-doe-spdm-responder-conformance = ["spdm-lib/large-buffer"]
+test-doe-spdm-tdisp-ide-validator = []
