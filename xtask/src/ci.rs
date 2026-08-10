@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use caliptra_builder::{elf_size, FirmwareType, FwId};
 use elf::endian::LittleEndian;
 use size_history::{
@@ -99,11 +99,11 @@ fn box_cache(val: impl Cache + 'static) -> Box<dyn Cache> {
 }
 
 fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
-    let lockfile_path = target_dir
+    let lock_path = target_dir
         .parent()
-        .ok_or_else(|| anyhow::anyhow!("target directory has no workspace parent"))?
+        .context("size-history target directory has no workspace parent")?
         .join("Cargo.lock");
-    let lockfile = fs::read(&lockfile_path)?;
+    let original_lock = fs::read(&lock_path).context("failed to snapshot Cargo.lock")?;
 
     // FPGA does not have a `*-devel.toml` manifest variant (HW-fixed SRAM);
     // still exercise the `release` cargo feature / `release` cargo profile
@@ -119,7 +119,7 @@ fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
             ..Default::default()
         });
 
-    fs::write(lockfile_path, lockfile)?;
+    fs::write(&lock_path, original_lock).context("failed to restore Cargo.lock")?;
     result
 }
 

@@ -119,10 +119,22 @@ impl<'a> MailboxClient<'a> {
         match caliptra_cmd_get_device_capabilities(&mut session) {
             Ok(response) => {
                 println!("✓ GetDeviceCapabilities succeeded!");
-                println!("  Capabilities: 0x{:08X}", response.capabilities);
-                println!("  Max certificate size: {} bytes", response.max_cert_size);
-                println!("  Max CSR size: {} bytes", response.max_csr_size);
-                println!("  Device lifecycle: {}", response.device_lifecycle);
+                println!(
+                    "  Caliptra RT capabilities: 0x{:016X}",
+                    response.caliptra_runtime_capabilities()
+                );
+                println!(
+                    "  MCU RT capabilities: 0x{:08X}",
+                    response.mcu_runtime_capabilities()
+                );
+                println!(
+                    "  External commands: 0x{:08X}",
+                    response.external_command_capabilities()
+                );
+                println!(
+                    "  Authorized subcommands: 0x{:08X}",
+                    response.authorized_subcommand_capabilities()
+                );
                 println!("  FIPS status: {}", response.common.fips_status);
                 Ok(response)
             }

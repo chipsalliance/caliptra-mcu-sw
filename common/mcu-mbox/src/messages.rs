@@ -33,7 +33,7 @@ use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromB
 
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
-pub const DEVICE_CAPS_SIZE: usize = 32;
+pub const DEVICE_CAPS_SIZE: usize = 36;
 pub const MAX_UUID_SIZE: usize = 32;
 pub const MAX_FUSE_DATA_BYTES: usize = 512;
 pub const MAX_FUSE_DATA_WORDS: usize = MAX_FUSE_DATA_BYTES / 4;
@@ -761,11 +761,21 @@ impl Request for DeviceCapsReq {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct DeviceCapsResp {
     pub hdr: MailboxRespHeader,
     pub caps: [u8; DEVICE_CAPS_SIZE],
 }
+
+impl Default for DeviceCapsResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            caps: [0u8; DEVICE_CAPS_SIZE],
+        }
+    }
+}
+
 impl Response for DeviceCapsResp {}
 
 #[derive(Debug, PartialEq, Eq)]
