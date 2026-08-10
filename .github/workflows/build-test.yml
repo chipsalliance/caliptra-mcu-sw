@@ -97,7 +97,7 @@ jobs:
   build-firmware:
     runs-on: e2-standard-16-big-disk
     needs: [build-xtask]
-    timeout-minutes: 45
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
