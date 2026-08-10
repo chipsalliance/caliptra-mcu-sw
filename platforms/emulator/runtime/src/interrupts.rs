@@ -12,6 +12,7 @@ pub const RECOVERY_FLASH_CTRL_EVENT_IRQ: u8 = 0x15;
 pub const RECOVERY_FLASH_CTRL_ERROR_IRQ: u8 = 0x16;
 pub const DMA_EVENT_IRQ: u8 = 0x17;
 pub const DMA_ERROR_IRQ: u8 = 0x18;
+#[cfg(any(feature = "doe", feature = "test-doe-transport-loopback"))]
 pub const DOE_MBOX_EVENT_IRQ: u8 = 0x19;
 
 pub struct EmulatorPeripherals<'a> {
@@ -19,6 +20,7 @@ pub struct EmulatorPeripherals<'a> {
     pub primary_flash_ctrl: caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl<'a>,
     pub secondary_flash_ctrl: caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl<'a>,
     pub dma: caliptra_mcu_dma_driver::axicdma::AxiCDMA<'a, InternalTimers<'a>>,
+    #[cfg(any(feature = "doe", feature = "test-doe-transport-loopback"))]
     pub doe_transport: caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport<'a, InternalTimers<'a>>,
 }
 
@@ -37,6 +39,7 @@ impl<'a> EmulatorPeripherals<'a> {
                 false,
                 Some(alarm),
             ),
+            #[cfg(any(feature = "doe", feature = "test-doe-transport-loopback"))]
             doe_transport: caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport::new(
                 caliptra_mcu_doe_mbox_driver::DOE_MBOX_BASE,
                 alarm,
@@ -50,6 +53,7 @@ impl<'a> EmulatorPeripherals<'a> {
         self.primary_flash_ctrl.init();
         self.secondary_flash_ctrl.init();
         self.dma.init();
+        #[cfg(any(feature = "doe", feature = "test-doe-transport-loopback"))]
         self.doe_transport.init();
     }
 }
@@ -72,7 +76,9 @@ impl<'a> InterruptService for EmulatorPeripherals<'a> {
         } else if interrupt == DMA_ERROR_IRQ as u32 || interrupt == DMA_EVENT_IRQ as u32 {
             self.dma.handle_interrupt();
             return true;
-        } else if interrupt == DOE_MBOX_EVENT_IRQ as u32 {
+        }
+        #[cfg(any(feature = "doe", feature = "test-doe-transport-loopback"))]
+        if interrupt == DOE_MBOX_EVENT_IRQ as u32 {
             self.doe_transport.handle_interrupt();
             return true;
         }
