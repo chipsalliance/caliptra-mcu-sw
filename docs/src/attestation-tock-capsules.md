@@ -57,18 +57,20 @@ The DPE Handle Storage capsule stores `fw_id`-keyed DPE context handle records f
 ### Record format
 
 ```Rust
-pub const DPE_HANDLE_STORE_MAGIC: u32 = 0x4450_4553; // "DPES"
-pub const DPE_HANDLE_STORE_VERSION: u16 = 1;
+pub const DPE_HANDLE_STORE_MAGIC: u32 = 0xD9E4_C7A1;
+pub const DPE_HANDLE_STORE_VERSION: u8 = 1;
 
 pub struct DpeHandleStoreHeader {
     magic: u32,
-    version: u16,
+    version: u8,
+    _pad0: u8,
     header_size: u16,
     record_size: u16,
     record_capacity: u16,
-    record_count: u16,
+    record_count: u32,
     attestation_target_fw_id: u32,
-    measurement_policy_digest: [u8; 48],
+    _pad1: [u8; 4],
+    attestation_policy_digest: [u8; 48],
 }
 
 pub struct DpeHandleRecord {
@@ -80,13 +82,15 @@ pub struct DpeHandleRecord {
 }
 ```
 
+The serialized `DpeHandleStoreHeader` is 72 bytes.
+
 The capsule maintains an ordered record log. Records in `records[0..record_count]` are valid. The last record in that range is the active DPE leaf. The active leaf is derived from storage and is not stored as a separate field.
 
 The attestation target is tracked by `attestation_target_fw_id` in the store header. DPE handle records do not carry a per-record target flag.
 
 `parent_fw_id` is stored instead of duplicating the parent context handle. DPE commands can rotate parent handles, so the current parent handle must be read from the parent record when needed.
 
-The DPE Handle Storage capsule creates the header when `measurement_boot_init()` calls `INITIALIZE_STORE` on cold boot. The capsule fills the structural fields from its assigned SRAM subregion: `magic`, `version`, `header_size`, `record_size`, `record_capacity`, `record_count = 0`, and an invalid `attestation_target_fw_id`. `measurement_boot_init()` supplies `measurement_policy_digest`, the SHA-384 digest of the canonical Attestation Manifest and ordered SoC image load list embedded in the authenticated MCU Runtime image:
+The DPE Handle Storage capsule creates the header when `measurement_boot_init()` calls `INITIALIZE_STORE` on cold boot. The capsule fills the structural fields from its assigned SRAM subregion: `magic`, `version`, `header_size`, `record_size`, `record_capacity`, `record_count = 0`, and an invalid `attestation_target_fw_id`. `measurement_boot_init()` supplies `measurement_policy_digest`, the SHA-384 digest of the canonical Attestation Manifest and ordered SoC image load list embedded in the authenticated MCU Runtime image. The capsule stores this value in the header's `attestation_policy_digest` field:
 
 ```text
 measurement_policy_digest = SHA384(
@@ -108,8 +112,8 @@ pub struct DpeHandleStore<S: Syscalls> {
 impl<S: Syscalls> DpeHandleStore<S> {
     pub fn new(driver_num: u32) -> Self;
     pub fn exists(&self) -> Result<(), ErrorCode>;
-    pub fn initialize(&self, measurement_policy_digest: &[u8; 48]) -> Result<(), ErrorCode>;
-    pub fn validate(&self, measurement_policy_digest: &[u8; 48]) -> Result<(), ErrorCode>;
+    pub fn initialize_store(&self, policy_digest: &[u8; 48]) -> Result<(), ErrorCode>;
+    pub fn validate_store(&self, policy_digest: &[u8; 48]) -> Result<(), ErrorCode>;
     pub fn read_record(&self, fw_id: u32, out: &mut DpeHandleRecord) -> Result<(), ErrorCode>;
     pub fn write_record(&self, fw_id: u32, record: &DpeHandleRecord) -> Result<(), ErrorCode>;
     pub fn read_leaf_record(&self, out: &mut DpeHandleRecord) -> Result<(), ErrorCode>;
@@ -294,8 +298,8 @@ pub struct SoftwarePcrStore<S: Syscalls> {
 impl<S: Syscalls> SoftwarePcrStore<S> {
     pub fn new(driver_num: u32) -> Self;
     pub fn exists(&self) -> Result<(), ErrorCode>;
-    pub fn initialize(&self) -> Result<(), ErrorCode>;
-    pub fn validate(&self) -> Result<(), ErrorCode>;
+    pub fn initialize_store(&self) -> Result<(), ErrorCode>;
+    pub fn validate_store(&self) -> Result<(), ErrorCode>;
     pub fn read_measurement(&self, fw_id: u32, out: &mut MeasurementRecord) -> Result<(), ErrorCode>;
     pub fn create_measurement(&self, fw_id: u32, record: &MeasurementRecord) -> Result<(), ErrorCode>;
     pub fn update_measurement(&self, fw_id: u32, record: &MeasurementRecord) -> Result<(), ErrorCode>;

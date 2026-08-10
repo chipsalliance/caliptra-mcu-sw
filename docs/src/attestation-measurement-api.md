@@ -10,7 +10,7 @@ This API is internal to MCU Runtime tasks. Requester-facing signed-Evidence retr
 * PCIe DOE requesters, such as confidential-compute PCIe devices, use SPDM over DOE.
 * SoC-local requesters, such as an AP OS or TEE, can use the MCU mailbox path once defined.
 
-Those requester-facing transport APIs are outside the scope of this document.
+SPDM can carry the signed OCP EAT through `GET_MEASUREMENTS` measurement block index `0xFD` or through the Caliptra `GET_ATTESTATION` SPDM VDM command. The MCU mailbox path can also expose Caliptra `GET_ATTESTATION` for SoC-local requesters. Those requester-facing transport APIs are outside the scope of this document.
 
 ![Measurement API surface](images/attestation_measurement_api.svg)
 

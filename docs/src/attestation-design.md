@@ -1,6 +1,6 @@
-# Attestation Architecture
+# Attestation Design Specification
 
-This document describes the attestation architecture for devices that integrate the Caliptra Subsystem, including Caliptra Core and MCU Runtime, to provide attesting environments for platform and SoC inventory attestation.
+This design specification describes the attestation architecture for devices that integrate the Caliptra Subsystem, including Caliptra Core and MCU Runtime, to provide attesting environments for platform and SoC inventory attestation.
 
 The architecture shows how Caliptra Core and MCU Runtime build and maintain the DICE/DPE trust chain, how downstream SoC measurements are collected, and how the DICE/DPE certificate chain and OCP EAT claims together describe comprehensive device state.
 
@@ -20,8 +20,8 @@ Detailed DPE command semantics, handle lifecycle mechanics, Caliptra ROM boot in
 
 | Term | Definition |
 | --- | --- |
-| TCB Component | Firmware or hardware whose integrity directly affects the device security posture. In this architecture, integrator-selected SoC TCB components are represented as DPE contexts. TCB components on the selected attestation-key path are represented in the DICE/DPE certificate chain and are not repeated as OCP EAT inventory claims. TCB components outside that path are reported as OCP EAT inventory claims. |
-| Non-TCB Component | Firmware or hardware whose claims are collected by MCU Runtime but do not participate in CDI or attestation key derivation. These claims are managed in Software PCR Storage backed by access-protected MCU SRAM and included directly as OCP EAT inventory claims. |
+| SoC TCB Component | Caliptra subsystem policy classification for a configured downstream SoC component whose measurement is represented as DPE-backed TCI state. MCU Runtime manages the DPE handles for these contexts. SoC TCB components on the selected attestation-key path are represented in the DICE/DPE certificate chain and are not repeated as OCP EAT inventory claims. SoC TCB components outside that path are reported as OCP EAT inventory claims. |
+| SoC Non-TCB Component | Caliptra subsystem policy classification for a configured downstream SoC component whose measurement is represented as a structured record in Software PCR Storage backed by access-protected MCU SRAM. MCU Runtime manages this state, and these components are included as OCP EAT inventory claims. |
 | DPE Context Tree | Directed tree of DPE contexts maintained by the Caliptra DPE instance. The tree mirrors the layered DICE trust chain. |
 | AK | Attestation key derived by DPE through `CertifyKey` at a selected DPE context. |
 | AK Target Node | Configured DPE context used for `CertifyKey`. It determines which DPE ancestry contributes to the attestation key. |
@@ -98,6 +98,8 @@ Choosing the AK node controls which DPE ancestry contributes to AK derivation. D
 | TCB components on the AK lineage | DICE/DPE certificate chain |
 | Integrator-selected TCB contexts outside the AK lineage | OCP EAT claims assembled by MCU Runtime |
 | Non-TCB components | OCP EAT claims assembled by MCU Runtime from Software PCR Storage |
+
+The SoC TCB / SoC non-TCB classification selects the backing and provenance of the measurement state. AK-lineage inclusion is a separate policy choice. A SoC TCB component is DPE-backed, but it contributes to AK derivation only if it is on the selected AK lineage; otherwise it is appraised as an OCP EAT claim.
 
 `CertifyKey` establishes the AK identity. MCU Runtime assembles OCP EAT claims and the COSE signing structure, then asks Caliptra Core to sign the corresponding bytes using the configured AK. Caliptra Core does not need to interpret the OCP EAT or COSE format.
 
