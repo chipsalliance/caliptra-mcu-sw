@@ -443,8 +443,11 @@ impl Bus for McuRootBus {
                         .regs
                         .lock()
                         .unwrap()
-                        .read_mcu_mbox0_csr_mbox_sram(index)
+                        .read_mcu_mbox0_csr_mbox_sram(index / 4)
                 });
+                // `index` walks byte offsets while the register accessor takes a
+                // word index. Caliptra decodes the response little-endian, which
+                // matches the little-endian serialization used here.
                 let data: Vec<u8> = data
                     .flat_map(|val| val.to_le_bytes().to_vec())
                     .take(len)
@@ -518,18 +521,6 @@ impl Bus for McuRootBus {
                 let ram_size = ram.len() as usize;
                 let len = len.min(ram_size - start);
                 let data = ram.data()[start..start + len].to_vec();
-
-                // Caliptra's incoming_event uses words_from_bytes_be_vec (big-endian)
-                // then write_word stores in little-endian. To preserve the original
-                // byte ordering, we reverse each 4-byte chunk before sending.
-                let data: Vec<u8> = data
-                    .chunks(4)
-                    .flat_map(|chunk| {
-                        let mut reversed = chunk.to_vec();
-                        reversed.reverse();
-                        reversed
-                    })
-                    .collect();
 
                 if let Some(event_sender) = self.event_sender.as_ref() {
                     event_sender

@@ -19,6 +19,7 @@ use caliptra_emu_bus::Ram;
 use caliptra_emu_bus::{Clock, Event};
 use caliptra_emu_cpu::{Cpu, CpuArgs, CpuOrgArgs, InstrTracer, Pic};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
+use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
@@ -359,13 +360,27 @@ impl McuHwModel for ModelEmulated {
             [0, wire1]
         };
         let mci_regs = ext_mci.regs.clone();
+        // Give MCI a view of Caliptra's SoC interface registers so the hitless
+        // update reset can coordinate through ss_generic_fw_exec_ctrl, matching
+        // the standalone emulator. Without this the MCU reboots immediately on
+        // an ACTIVATE_FIRMWARE reset, before Caliptra has completed the command.
+        let soc_ifc = unsafe {
+            caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
+                0x3003_0000 as *mut u32,
+                BusMmio::new(
+                    caliptra_cpu
+                        .bus
+                        .soc_to_caliptra_bus(MailboxRequester::Caliptra),
+                ),
+            )
+        };
         let mci = Mci::new(
             &clock.clone(),
             ext_mci,
             Rc::new(RefCell::new(mci_irq)),
             Some(mcu_mailbox0),
             Some(mcu_mailbox1),
-            None,
+            Some(soc_ifc),
             mci_generic_input_wires,
             Rc::new(Cell::new(true)),
         );

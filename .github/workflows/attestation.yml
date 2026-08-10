@@ -14,7 +14,13 @@ env:
 
 jobs:
   attestation_e2e:
+    name: attestation-e2e (${{ matrix.name }})
     runs-on: ubuntu-24.04
+    # The hitless variants drive a full PLDM update and MCU reboot, so they run
+    # noticeably longer than the cold-boot ones. A failure in the activation
+    # handshake shows up as a hang rather than an error, so cap the job instead
+    # of letting it occupy a runner until the 6 hour default expires.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +36,18 @@ jobs:
           - name: ocp-eat-mixed
             runtime_feature: test-mctp-spdm-attestation-mixed
             test_name: test_mctp_spdm_attestation::test::test_mctp_spdm_attestation_mixed
+            appraise: true
+          - name: ocp-eat-hitless-non-tcb
+            runtime_feature: test-mctp-spdm-attestation-hitless
+            test_name: test_mctp_spdm_attestation::test::test_mctp_spdm_attestation_hitless
+            appraise: true
+          - name: ocp-eat-hitless-tcb
+            runtime_feature: test-mctp-spdm-attestation-hitless-tcb
+            test_name: test_mctp_spdm_attestation::test::test_mctp_spdm_attestation_hitless_tcb
+            appraise: true
+          - name: ocp-eat-hitless-mixed
+            runtime_feature: test-mctp-spdm-attestation-hitless-mixed
+            test_name: test_mctp_spdm_attestation::test::test_mctp_spdm_attestation_hitless_mixed
             appraise: true
           - name: pcr-quote
             runtime_feature: test-mctp-spdm-attestation-pcr-quote
@@ -129,7 +147,7 @@ jobs:
             --vendor "$ATTESTATION_VENDOR" --model "$ATTESTATION_MODEL"
 
       # ---- Generate reference CoRIM values -------------------------------
-      - name: Generate reference-value CoRIM
+      - name: Generate cold-boot reference-value CoRIM
         if: matrix.appraise
         run: |
           cat > /tmp/corim-config.json << EOF
@@ -138,11 +156,31 @@ jobs:
             "model": "${ATTESTATION_MODEL}",
             "output_dir": "attestation-artifacts/refval-corim",
             "signing": {
-              "test_key": "caliptra-corim-test-signing-key"
+              "test_key": "caliptra-corim-test-signing-key",
+              "keys_dir": "attestation-artifacts/fake_keys"
             }
           }
           EOF
           cargo xtask corim gen-refval --bundle target/all-fw.zip --feature ${{ matrix.runtime_feature }} --config /tmp/corim-config.json
+
+      # The hitless update package ships a different SoC payload, so the
+      # post-update evidence must be appraised against its own reference
+      # values. Both CoRIMs share `keys_dir` so one signer is trusted.
+      - name: Generate post-hitless-update reference-value CoRIM
+        if: matrix.appraise && contains(matrix.runtime_feature, 'hitless')
+        run: |
+          cat > /tmp/corim-config-post-update.json << EOF
+          {
+            "vendor": "${ATTESTATION_VENDOR}",
+            "model": "${ATTESTATION_MODEL}",
+            "output_dir": "attestation-artifacts/refval-corim-post-update",
+            "signing": {
+              "test_key": "caliptra-corim-test-signing-key",
+              "keys_dir": "attestation-artifacts/fake_keys"
+            }
+          }
+          EOF
+          cargo xtask corim gen-refval --bundle target/all-fw.zip --feature ${{ matrix.runtime_feature }} --config /tmp/corim-config-post-update.json --post-update
 
       # ---- Upload Reference CoRIM artifacts -------------------------------
       - name: Upload Reference CoRIM artifacts
@@ -154,11 +192,19 @@ jobs:
             attestation-artifacts/
 
       # ---- Run SPDM attestation test on MCTP transport -------------------------------
-      - name: Generate SPDM nonce
+      - name: Generate cold-boot SPDM nonce
         run: |
-          echo "SPDM_NONCE=$(openssl rand -hex 32)" >> $GITHUB_ENV
+          echo "SPDM_NONCE_COLD_BOOT=$(openssl rand -hex 32)" >> $GITHUB_ENV
 
-      - name: Run SPDM attestation test on MCTP transport
+      # The hitless tests run a second SPDM session after the update reset. It
+      # gets its own nonce so each appraisal binds to its own freshness
+      # challenge instead of both replaying the same one.
+      - name: Generate post-hitless-update SPDM nonce
+        if: contains(matrix.runtime_feature, 'hitless')
+        run: |
+          echo "SPDM_NONCE_POST_UPDATE=$(openssl rand -hex 32)" >> $GITHUB_ENV
+
+      - name: Run SPDM attestation test on MCTP transport (${{ contains(matrix.runtime_feature, 'hitless') && 'cold boot + hitless update' || 'cold boot' }})
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
           CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
@@ -177,72 +223,132 @@ jobs:
             ${{ env.SPDM_VALIDATOR_DIR }}/caliptra-evidence.pcap
             ${{ env.SPDM_VALIDATOR_DIR }}/measurement_block_fd.bin
             ${{ env.SPDM_VALIDATOR_DIR }}/certificate_chain_slot_00.der
+            ${{ env.SPDM_VALIDATOR_DIR }}/cold-boot/measurement_block_fd.bin
+            ${{ env.SPDM_VALIDATOR_DIR }}/cold-boot/certificate_chain_slot_00.der
 
       - name: Display SPDM attestation test results
+        # Most useful precisely when the test failed, so do not let the earlier
+        # failure skip it.
+        if: always()
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
-          cat $SPDM_VALIDATOR_DIR/spdm_requester_emu_output.txt
+          cat $SPDM_VALIDATOR_DIR/spdm_requester_emu_output.txt \
+            || echo "No SPDM requester output was produced."
 
-      # ---- Authenticate attestation inputs against Trust Anchor Store -------------------------------
-      - name: Prepare Attestation Artifacts and Build Trust Anchor Store
+      # ---- Collect the evidence produced by each SPDM session ---------------
+      # The SPDM requester always writes to fixed filenames. On hitless legs the
+      # test preserves the cold-boot session's output under `cold-boot/` before
+      # the post-update session overwrites them.
+      - name: Collect cold-boot evidence
         if: matrix.appraise
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
-          CORIM_DIR: ${{ github.workspace }}/attestation-artifacts/refval-corim
-          SIGNED_CORIM_DIR: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
+          SRC_SUBDIR: ${{ contains(matrix.runtime_feature, 'hitless') && '/cold-boot' || '' }}
+          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence-cold-boot
         run: |
-          # Copy evidence artifacts
-          EVIDENCE_DIR="attestation-artifacts/evidence"
           mkdir -p "$EVIDENCE_DIR"
-          cp $SPDM_VALIDATOR_DIR/measurement_block_fd.bin "$EVIDENCE_DIR/"
-          cp $SPDM_VALIDATOR_DIR/certificate_chain_slot_00.der "$EVIDENCE_DIR/"
-          echo "Copied evidence artifacts:"
+          cp "$SPDM_VALIDATOR_DIR$SRC_SUBDIR/measurement_block_fd.bin" "$EVIDENCE_DIR/"
+          cp "$SPDM_VALIDATOR_DIR$SRC_SUBDIR/certificate_chain_slot_00.der" "$EVIDENCE_DIR/"
           ls -la "$EVIDENCE_DIR"
 
-          # Copy only the signed CoRIM files into a dedicated directory.
-          mkdir -p "$SIGNED_CORIM_DIR"
-          cp "$CORIM_DIR"/signed-*.cbor "$SIGNED_CORIM_DIR/"
-          echo "Copied signed Reference CoRIM artifacts:"
-          ls -la "$SIGNED_CORIM_DIR" | sort
+      - name: Collect post-hitless-update evidence
+        if: matrix.appraise && contains(matrix.runtime_feature, 'hitless')
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence-post-update
+        run: |
+          mkdir -p "$EVIDENCE_DIR"
+          cp "$SPDM_VALIDATOR_DIR/measurement_block_fd.bin" "$EVIDENCE_DIR/"
+          cp "$SPDM_VALIDATOR_DIR/certificate_chain_slot_00.der" "$EVIDENCE_DIR/"
+          ls -la "$EVIDENCE_DIR"
 
-          # Build Trust Anchor Store
-          TA_STORE_DIR="attestation-artifacts/ta_store"
+      # ---- Build the Trust Anchor Store -------------------------------------
+      - name: Build Trust Anchor Store
+        if: matrix.appraise
+        env:
+          CORIM_KEYS_DIR: ${{ github.workspace }}/attestation-artifacts/fake_keys
+          TA_STORE_DIR: ${{ github.workspace }}/attestation-artifacts/ta_store
+        run: |
+          # Stage the signed CoRIMs on their own so the appraise steps do not
+          # have to pick them out of the generator's working directory.
+          for phase in "" "-post-update"; do
+            src="attestation-artifacts/refval-corim$phase"
+            [[ -d "$src" ]] || continue
+            dst="attestation-artifacts/signed-refval-corim$phase"
+            mkdir -p "$dst"
+            cp "$src"/signed-*.cbor "$dst/"
+            echo "Staged signed reference CoRIM: $dst"
+            ls -la "$dst" | sort
+          done
+
           mkdir -p "$TA_STORE_DIR/roots" "$TA_STORE_DIR/endorsement-certs"
 
-          # Copy the test root CA cert which endorsed the device ID cert into roots/
+          # The test root CA that endorsed the device ID cert.
           cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der \
             "$TA_STORE_DIR/roots/slot0_ecc_test_root_ca.der"
 
-          # Copy the CoRIM signing certificate into roots/ and endorsement-certs/
-          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/roots/corim_signing_cert.der"
-          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/endorsement-certs/corim_signing_cert.der"
+          # All reference-value CoRIMs share one signer, so a single cert covers
+          # both the cold-boot and post-update appraisals.
+          cp "$CORIM_KEYS_DIR/signing-cert.der" "$TA_STORE_DIR/roots/corim_signing_cert.der"
+          cp "$CORIM_KEYS_DIR/signing-cert.der" "$TA_STORE_DIR/endorsement-certs/corim_signing_cert.der"
 
           echo "Trust Anchor Store contents:"
           find "$TA_STORE_DIR" -type f | sort
 
-      # ---- Authenticate, verify, and display EAT claims -------------------------------
-      - name: Authenticate and verify attestation inputs
+      # ---- Authenticate and appraise each phase separately ------------------
+      - name: Build OCP EAT verifier
+        if: matrix.appraise
+        working-directory: ocp-eat-verifier
+        run: cargo build --release -p ocptoken
+
+      - name: Authenticate cold-boot evidence
         if: matrix.appraise
         working-directory: ocp-eat-verifier
         env:
-          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
+          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence-cold-boot
           TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
           SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
         run: |
-          cargo build --release -p ocptoken
           ./target/release/ocptoken authenticate --show-claims \
             -e $EVIDENCE_DIR/measurement_block_fd.bin \
             -c $EVIDENCE_DIR/certificate_chain_slot_00.der
 
-      # ---- Appraise evidence against reference values (OCP EAT Verifier Algorithm) -------------------------------
-      - name: Appraise evidence against reference values
+      - name: Authenticate post-hitless-update evidence
+        if: matrix.appraise && contains(matrix.runtime_feature, 'hitless')
+        working-directory: ocp-eat-verifier
+        env:
+          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence-post-update
+          TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
+          SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim-post-update
+        run: |
+          ./target/release/ocptoken authenticate --show-claims \
+            -e $EVIDENCE_DIR/measurement_block_fd.bin \
+            -c $EVIDENCE_DIR/certificate_chain_slot_00.der
+
+      - name: Appraise cold-boot evidence against reference values
         if: matrix.appraise
         working-directory: ocp-eat-verifier
         env:
-          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
+          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence-cold-boot
           TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
           SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
+          SPDM_NONCE: ${{ env.SPDM_NONCE_COLD_BOOT }}
+        run: |
+          ./target/release/ocptoken appraise \
+            -e $EVIDENCE_DIR/measurement_block_fd.bin \
+            -c $EVIDENCE_DIR/certificate_chain_slot_00.der
+
+      # After a hitless update the device reports the update package's SoC
+      # payload, which is appraised against the post-update reference values.
+      - name: Appraise post-hitless-update evidence against reference values
+        if: matrix.appraise && contains(matrix.runtime_feature, 'hitless')
+        working-directory: ocp-eat-verifier
+        env:
+          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence-post-update
+          TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
+          SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim-post-update
+          SPDM_NONCE: ${{ env.SPDM_NONCE_POST_UPDATE }}
         run: |
           ./target/release/ocptoken appraise \
             -e $EVIDENCE_DIR/measurement_block_fd.bin \

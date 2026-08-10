@@ -280,17 +280,25 @@ pub fn execute_spdm_tee_io_validator(transport: &'static str) {
 }
 
 pub fn execute_spdm_attestation(transport: &'static str) {
-    execute_spdm_attestation_with_port(transport, None);
+    execute_spdm_attestation_with_port(transport, None, None);
 }
 
-pub fn execute_spdm_attestation_with_port(transport: &'static str, port: Option<u16>) {
+/// `nonce` overrides the `SPDM_NONCE` the requester uses for
+/// GET_MEASUREMENTS. Passing a distinct value per SPDM session keeps the
+/// resulting evidence replay-distinguishable; `None` inherits the ambient
+/// environment.
+pub fn execute_spdm_attestation_with_port(
+    transport: &'static str,
+    port: Option<u16>,
+    nonce: Option<String>,
+) {
     crate::spawn_with_emulator_state(move || {
         println!("Starting spdm_requester_emu process. Waiting for SPDM listener to start...");
         while !SERVER_LISTENING.load(Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
 
-        match start_spdm_attestation_with_port(transport, port) {
+        match start_spdm_attestation_with_port(transport, port, nonce.clone()) {
             Ok(mut child) => {
                 while crate::is_emulator_running() {
                     match child.try_wait() {
@@ -376,6 +384,7 @@ pub fn start_spdm_responder_validator(transport: &'static str) -> io::Result<Chi
 fn start_spdm_attestation_with_port(
     transport: &'static str,
     port: Option<u16>,
+    nonce: Option<String>,
 ) -> io::Result<Child> {
     spawn_validator_binary(
         "spdm_requester_emu",
@@ -391,6 +400,9 @@ fn start_spdm_attestation_with_port(
                 .arg("caliptra-evidence.pcap");
             if let Some(port) = port {
                 cmd.arg("--port").arg(port.to_string());
+            }
+            if let Some(nonce) = nonce {
+                cmd.env("SPDM_NONCE", nonce);
             }
         },
     )
