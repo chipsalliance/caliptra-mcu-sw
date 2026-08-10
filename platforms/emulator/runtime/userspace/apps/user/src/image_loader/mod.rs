@@ -159,11 +159,14 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
         }
         mbox_sram.release_lock().unwrap();
         emit_attestation_evidence_ready();
-        #[cfg(all(
-            not(feature = "firmware-update"),
-            not(feature = "test-mctp-spdm-attestation"),
-            not(feature = "test-mctp-spdm-attestation-tcb"),
-            not(feature = "test-mctp-spdm-attestation-mixed")
+        #[cfg(any(
+            feature = "test-xtask-runtime",
+            all(
+                not(feature = "firmware-update"),
+                not(feature = "test-mctp-spdm-attestation"),
+                not(feature = "test-mctp-spdm-attestation-tcb"),
+                not(feature = "test-mctp-spdm-attestation-mixed")
+            )
         ))]
         System::exit(0);
     }

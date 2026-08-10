@@ -212,9 +212,12 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
             flash_image.as_ref().unwrap().to_str().unwrap(),
         ]);
     }
-    Command::new("cargo")
+    let status = Command::new("cargo")
         .args(cargo_run_args)
         .current_dir(&*PROJECT_ROOT)
         .status()?;
+    if !status.success() {
+        return Err(anyhow!("runtime emulator exited with status {status}"));
+    }
     Ok(())
 }
