@@ -150,11 +150,13 @@ jobs:
 
           # Build ROM and runtime binaries
           echo "Cross compiling FPGA binaries"
-          cargo xtask-fpga fpga build \
-            --configuration subsystem \
+          cargo xtask all-build \
+            --output all-fw.zip \
+            --platform fpga \
             --rom-features "core_test" \
             --mcu_cfg mcu,0x0,0xB00C0000,2,2,2,test-fpga-flash-ctrl \
-            --separate-runtimes
+            --separate-runtimes \
+            --runtime-features test-mctp-spdm-attestation-pcr-quote,test-mctp-spdm-responder-conformance
           sccache --show-stats
 
           mkdir -p /tmp/caliptra-binaries

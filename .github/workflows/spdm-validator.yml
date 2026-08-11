@@ -103,13 +103,18 @@ jobs:
         run: |
           echo "SPDM_NONCE=$(openssl rand -hex 32)" >> $GITHUB_ENV
 
+      - name: Build SPDM validator firmware bundle
+        run: |
+          cargo xtask all-build --separate-runtimes \
+            --runtime-features test-mctp-spdm-responder-conformance,test-mctp-spdm-attestation-pcr-quote,test-doe-spdm-responder-conformance,test-doe-spdm-tdisp-ide-validator
+
       - name: Run SPDM validator tests on MCTP transport
         env:
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
           echo "SPDM_NONCE in MCTP stage: ${SPDM_NONCE}"
           echo "SPDM_NONCE length: ${#SPDM_NONCE}"
-          cargo xtask all-build
           cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
@@ -142,16 +147,16 @@ jobs:
 
       - name: Run SPDM attestation test on MCTP transport (PCR Quote measurements)
         env:
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
-          cargo xtask all-build
           cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_attestation_pcr_quote --nocapture --include-ignored
 
       - name: Run SPDM validator tests on DOE transport
         env:
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
-          cargo xtask all-build
           cargo t -p caliptra-mcu-tests-integration -- --test test_doe_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
@@ -206,9 +211,9 @@ jobs:
 
       - name: Run CCC spdm-requester-emu tests for TDISP+IDE
         env:
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
         run: |
-          cargo xtask all-build
           cargo t -p caliptra-mcu-tests-integration -- --test test_doe_spdm_tdisp_ide_validator --nocapture --include-ignored
           sccache --show-stats
 
