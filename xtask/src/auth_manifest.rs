@@ -34,7 +34,7 @@ pub struct AuthManifestKeyPaths {
 pub enum AuthManifestCommands {
     /// Create an Authentication Manifest
     Create {
-        /// List of soc images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>
+        /// List of soc images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]
         /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = true)]
         images: Vec<ImageCfg>,

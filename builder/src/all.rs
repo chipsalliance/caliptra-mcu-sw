@@ -586,6 +586,8 @@ pub struct AllBuildArgs<'a> {
     pub separate_runtimes: bool,
     pub soc_images: Option<Vec<ImageCfg>>,
     pub mcu_cfgs: Option<Vec<ImageCfg>>,
+    pub caliptra_firmware_network_filename: Option<&'a str>,
+    pub soc_manifest_network_filename: Option<&'a str>,
     pub pldm_manifest: Option<&'a str>,
     pub vendor: Option<&'a str>,
     pub model: Option<&'a str>,
@@ -602,6 +604,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         separate_runtimes,
         soc_images,
         mcu_cfgs,
+        caliptra_firmware_network_filename,
+        soc_manifest_network_filename,
         pldm_manifest,
         vendor,
         model,
@@ -786,7 +790,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         fpga: platform == "fpga",
         mcu_firmware: Some(mcu_runtime.into()),
         soc_images: effective_soc_images.clone(),
-        mcu_image_cfg,
+        mcu_image_cfg: mcu_image_cfg.clone(),
         vendor: vendor.map(|s| s.to_string()),
         model: model.map(|s| s.to_string()),
         ..Default::default()
@@ -816,19 +820,22 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         ..Default::default()
     });
     let caliptra_fw_key2 = builder_key2.get_caliptra_fw()?;
-    let flash_image = create_flash_image(
-        Some(caliptra_fw.clone()),
-        Some(soc_manifest.clone()),
-        Some(mcu_runtime.into()),
-        effective_soc_images
+    let flash_image = create_flash_image(FlashImageBuildArgs {
+        caliptra_fw_path: Some(caliptra_fw.clone()),
+        soc_manifest_path: Some(soc_manifest.clone()),
+        mcu_runtime_path: Some(mcu_runtime.into()),
+        mcu_image_cfg: mcu_image_cfg.clone(),
+        caliptra_firmware_network_filename,
+        soc_manifest_network_filename,
+        soc_images_paths: effective_soc_images
             .clone()
             .unwrap_or_default()
             .iter()
             .map(|img| img.path.clone())
             .collect(),
-        effective_soc_images.clone(),
-        false, // Base flash image is not for flash-based boot
-    )?;
+        soc_images: effective_soc_images.clone(),
+        is_flash_based_boot: false,
+    })?;
     let pldm_manifest_decoded = match pldm_manifest {
         Some(path) => {
             let mut file = std::fs::File::open(path)?;
@@ -993,14 +1000,17 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             // Clone paths for potential second use
             let feature_soc_images_paths_clone = feature_soc_images_paths.clone();
 
-            let feature_flash_image = create_flash_image(
-                Some(caliptra_fw.clone()),
-                Some(feature_soc_manifest_file.path().to_path_buf()),
-                Some(feature_runtime_file.path().to_path_buf()),
-                feature_soc_images_paths,
-                feature_soc_images.clone(),
+            let feature_flash_image = create_flash_image(FlashImageBuildArgs {
+                caliptra_fw_path: Some(caliptra_fw.clone()),
+                soc_manifest_path: Some(feature_soc_manifest_file.path().to_path_buf()),
+                mcu_runtime_path: Some(feature_runtime_file.path().to_path_buf()),
+                mcu_image_cfg: mcu_image_cfg.clone(),
+                caliptra_firmware_network_filename,
+                soc_manifest_network_filename,
+                soc_images_paths: feature_soc_images_paths,
+                soc_images: feature_soc_images.clone(),
                 is_flash_based_boot,
-            )?;
+            })?;
 
             // For firmware update tests, create a separate "update" flash image WITHOUT partition table
             // This is used for the PLDM update package (the downloaded firmware)
@@ -1009,14 +1019,17 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 || *feature == "test-streaming-boot-flash-write-back"
                 || *feature == "test-firmware-activate";
             let feature_update_flash_image = if is_firmware_update_feature {
-                Some(create_flash_image(
-                    Some(caliptra_fw.clone()),
-                    Some(feature_soc_manifest_file.path().to_path_buf()),
-                    Some(feature_runtime_file.path().to_path_buf()),
-                    feature_soc_images_paths_clone,
-                    feature_soc_images.clone(),
-                    false, // No partition table for update image
-                )?)
+                Some(create_flash_image(FlashImageBuildArgs {
+                    caliptra_fw_path: Some(caliptra_fw.clone()),
+                    soc_manifest_path: Some(feature_soc_manifest_file.path().to_path_buf()),
+                    mcu_runtime_path: Some(feature_runtime_file.path().to_path_buf()),
+                    mcu_image_cfg: mcu_image_cfg.clone(),
+                    caliptra_firmware_network_filename,
+                    soc_manifest_network_filename,
+                    soc_images_paths: feature_soc_images_paths_clone,
+                    soc_images: feature_soc_images.clone(),
+                    is_flash_based_boot: false,
+                })?)
             } else {
                 None
             };
@@ -1291,14 +1304,31 @@ fn add_bytes_to_zip(
     Ok(())
 }
 
-fn create_flash_image(
+struct FlashImageBuildArgs<'a> {
     caliptra_fw_path: Option<PathBuf>,
     soc_manifest_path: Option<PathBuf>,
     mcu_runtime_path: Option<PathBuf>,
+    mcu_image_cfg: Option<ImageCfg>,
+    caliptra_firmware_network_filename: Option<&'a str>,
+    soc_manifest_network_filename: Option<&'a str>,
     soc_images_paths: Vec<PathBuf>,
     soc_images: Option<Vec<ImageCfg>>,
     is_flash_based_boot: bool,
-) -> Result<PathBuf> {
+}
+
+fn create_flash_image(args: FlashImageBuildArgs<'_>) -> Result<PathBuf> {
+    let FlashImageBuildArgs {
+        caliptra_fw_path,
+        soc_manifest_path,
+        mcu_runtime_path,
+        mcu_image_cfg,
+        caliptra_firmware_network_filename,
+        soc_manifest_network_filename,
+        soc_images_paths,
+        soc_images,
+        is_flash_based_boot,
+    } = args;
+
     let flash_image_path = tempfile::NamedTempFile::new()
         .expect("Failed to create flash image file")
         .path()
@@ -1315,8 +1345,11 @@ fn create_flash_image(
 
     crate::flash_image::flash_image_create(&CaliptraBuildArgs {
         caliptra_firmware: caliptra_fw_path,
+        caliptra_firmware_network_filename: caliptra_firmware_network_filename.map(str::to_string),
         soc_manifest: soc_manifest_path,
+        soc_manifest_network_filename: soc_manifest_network_filename.map(str::to_string),
         mcu_firmware: mcu_runtime_path,
+        mcu_image_cfg,
         soc_image_paths: Some(
             soc_images_paths
                 .iter()

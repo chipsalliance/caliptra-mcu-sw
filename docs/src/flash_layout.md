@@ -43,7 +43,7 @@ The Header section contains the metadata for the images.
 
 | Field          | Size (bytes) | Description                                                                                                                                |
 | -------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Header Version | 2            | The header version format, allowing for backward compatibility if the package format changes over time.<br />(Current version is `0x0002`) |
+| Header Version | 2            | The header version format, allowing for backward compatibility if the package format changes over time.<br />(Current version is `0x0003`) |
 | Image Count    | 2            | The number of images contained in the `Payload`.<br />Each image will have its own image information section.                                      |
 | Payload Offset | 4            | Offset in bytes of the header to where the first byte of the Payload is located.  |
 | Header Checksum | 4            | Checksum calculated for the header excluding this field  |

@@ -5,8 +5,8 @@ use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
 };
 use caliptra_mcu_flash_image::{
-    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, HEADER_VERSION, MCU_RT_IDENTIFIER,
-    SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
+    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, HEADER_VERSION, MAX_FILENAME_LEN,
+    MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
 };
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error, ErrorKind, Read, Seek, Write};
@@ -29,13 +29,25 @@ pub struct FlashImagePayload<'a> {
 pub struct FirmwareImage<'a> {
     pub identifier: u32,
     pub data: &'a [u8],
+    pub filename: [u8; MAX_FILENAME_LEN],
 }
 
 impl<'a> FirmwareImage<'a> {
-    pub fn new(identifier: u32, content: &'a [u8]) -> io::Result<Self> {
+    pub fn new(identifier: u32, content: &'a [u8], filename: Option<&[u8]>) -> io::Result<Self> {
+        let mut fname = [0u8; MAX_FILENAME_LEN];
+        if let Some(name) = filename {
+            if name.len() > MAX_FILENAME_LEN {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidInput,
+                    format!("network filename exceeds {MAX_FILENAME_LEN} bytes"),
+                ));
+            }
+            fname[..name.len()].copy_from_slice(name);
+        }
         Ok(Self {
             identifier,
             data: content,
+            filename: fname,
         })
     }
 }
@@ -67,6 +79,16 @@ impl<'a> FlashImage<'a> {
         }
         for image in self.payload.images {
             bytes.extend_from_slice(image.data);
+        }
+        bytes
+    }
+
+    /// Convert just the flash header and image headers to a byte vector.
+    pub fn to_toc_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(self.header.as_bytes());
+        for info in self.payload.image_info {
+            bytes.extend_from_slice(info.as_bytes());
         }
         bytes
     }
@@ -209,19 +231,36 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
     let content;
     if let Some(caliptra_fw_path) = caliptra_fw_path {
         content = load_file(&caliptra_fw_path.to_string_lossy())?;
-        images.push(FirmwareImage::new(CALIPTRA_FMC_RT_IDENTIFIER, &content)?);
+        images.push(FirmwareImage::new(
+            CALIPTRA_FMC_RT_IDENTIFIER,
+            &content,
+            args.caliptra_firmware_network_filename
+                .as_deref()
+                .map(str::as_bytes),
+        )?);
     }
 
     let content;
     if let Some(soc_manifest_path) = soc_manifest_path {
         content = load_file(&soc_manifest_path.to_string_lossy())?;
-        images.push(FirmwareImage::new(SOC_MANIFEST_IDENTIFIER, &content)?);
+        images.push(FirmwareImage::new(
+            SOC_MANIFEST_IDENTIFIER,
+            &content,
+            args.soc_manifest_network_filename
+                .as_deref()
+                .map(str::as_bytes),
+        )?);
     }
 
     let content;
     if let Some(mcu_runtime_path) = mcu_runtime_path {
         content = load_file(&mcu_runtime_path.to_string_lossy())?;
-        images.push(FirmwareImage::new(MCU_RT_IDENTIFIER, &content)?);
+        let filename = args
+            .mcu_image_cfg
+            .as_ref()
+            .and_then(|config| config.network_filename.as_deref())
+            .map(str::as_bytes);
+        images.push(FirmwareImage::new(MCU_RT_IDENTIFIER, &content, filename)?);
     }
 
     // Load SOC images into a buffer
@@ -242,7 +281,13 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
         } else {
             SOC_IMAGES_BASE_IDENTIFIER + i as u32
         };
-        images.push(FirmwareImage::new(identifier, soc_img)?);
+        let filename = args
+            .soc_images
+            .as_ref()
+            .and_then(|images| images.get(i))
+            .and_then(|config| config.network_filename.as_deref())
+            .map(str::as_bytes);
+        images.push(FirmwareImage::new(identifier, soc_img, filename)?);
     }
 
     let image_info = generate_image_info(images.clone());
@@ -262,6 +307,7 @@ pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<ImageHeader> {
             identifier: image.identifier,
             offset,
             size: image.data.len() as u32,
+            filename: image.filename,
             image_checksum: calculate_checksum(image.data),
             image_header_checksum: 0,
         };
@@ -301,6 +347,7 @@ pub fn build_flash_image_bytes(
         images.push(FirmwareImage {
             identifier: CALIPTRA_FMC_RT_IDENTIFIER,
             data,
+            filename: [0u8; MAX_FILENAME_LEN],
         });
     }
 
@@ -308,6 +355,7 @@ pub fn build_flash_image_bytes(
         images.push(FirmwareImage {
             identifier: SOC_MANIFEST_IDENTIFIER,
             data,
+            filename: [0u8; MAX_FILENAME_LEN],
         });
     }
 
@@ -315,6 +363,7 @@ pub fn build_flash_image_bytes(
         images.push(FirmwareImage {
             identifier: MCU_RT_IDENTIFIER,
             data,
+            filename: [0u8; MAX_FILENAME_LEN],
         });
     }
 
@@ -386,7 +435,7 @@ mod tests {
     use super::*;
     use crate::{ImageCfg, PROJECT_ROOT};
     use std::fs::{self, File};
-    use std::io::Write;
+    use std::io::{self, Write};
     use tempfile::NamedTempFile;
 
     /// Helper function to create a temporary file with specific content
@@ -431,9 +480,27 @@ mod tests {
         // Build the flash image
         flash_image_create(&CaliptraBuildArgs {
             caliptra_firmware: Some(caliptra_fw.path().to_path_buf()),
+            caliptra_firmware_network_filename: Some("caliptra.bin".into()),
             soc_manifest: Some(soc_manifest.path().to_path_buf()),
+            soc_manifest_network_filename: Some("soc-manifest.bin".into()),
             mcu_firmware: Some(mcu_runtime.path().to_path_buf()),
+            mcu_image_cfg: Some(ImageCfg {
+                network_filename: Some("mcu-runtime.bin".into()),
+                ..Default::default()
+            }),
             soc_image_paths,
+            soc_images: Some(vec![
+                ImageCfg {
+                    image_id: SOC_IMAGES_BASE_IDENTIFIER,
+                    network_filename: Some("soc-image-1.bin".into()),
+                    ..Default::default()
+                },
+                ImageCfg {
+                    image_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
+                    network_filename: Some("soc-image-2.bin".into()),
+                    ..Default::default()
+                },
+            ]),
             offset: 0,
             output_path: Some(output_path.to_string()),
             ..Default::default()
@@ -466,6 +533,13 @@ mod tests {
             (SOC_IMAGES_BASE_IDENTIFIER, soc_image1_content),
             (SOC_IMAGES_BASE_IDENTIFIER + 1, soc_image2_content),
         ];
+        let expected_filenames = [
+            b"caliptra.bin".as_slice(),
+            b"soc-manifest.bin".as_slice(),
+            b"mcu-runtime.bin".as_slice(),
+            b"soc-image-1.bin".as_slice(),
+            b"soc-image-2.bin".as_slice(),
+        ];
         let mut image_headers = Vec::new();
 
         for (i, _item) in expected_images
@@ -485,7 +559,13 @@ mod tests {
                 image_header.size as usize,
                 expected_images[i].1.len().next_multiple_of(4)
             );
-
+            assert_eq!(
+                &image_header.filename[..expected_filenames[i].len()],
+                expected_filenames[i]
+            );
+            assert!(image_header.filename[expected_filenames[i].len()..]
+                .iter()
+                .all(|byte| *byte == 0));
             image_headers.push(image_header);
         }
 
@@ -512,22 +592,27 @@ mod tests {
             FirmwareImage {
                 identifier: CALIPTRA_FMC_RT_IDENTIFIER,
                 data: b"Caliptra Firmware Data - ABCDEFGH",
+                filename: [0u8; MAX_FILENAME_LEN],
             },
             FirmwareImage {
                 identifier: SOC_MANIFEST_IDENTIFIER,
                 data: b"Soc Manifest Data - 123456789",
+                filename: [0u8; MAX_FILENAME_LEN],
             },
             FirmwareImage {
                 identifier: MCU_RT_IDENTIFIER,
                 data: b"MCU Runtime Data - QWERTYUI",
+                filename: [0u8; MAX_FILENAME_LEN],
             },
             FirmwareImage {
                 identifier: SOC_IMAGES_BASE_IDENTIFIER,
                 data: b"Soc Image 1 Data - ZXCVBNMLKJ",
+                filename: [0u8; MAX_FILENAME_LEN],
             },
             FirmwareImage {
                 identifier: SOC_IMAGES_BASE_IDENTIFIER + 1,
                 data: b"Soc Image 2 Data - POIUYTREWQ",
+                filename: [0u8; MAX_FILENAME_LEN],
             },
         ];
         // Create a flash image from the mutable slice
@@ -560,10 +645,12 @@ mod tests {
             FirmwareImage {
                 identifier: CALIPTRA_FMC_RT_IDENTIFIER,
                 data: b"Valid Caliptra Firmware Data",
+                filename: [0u8; MAX_FILENAME_LEN],
             },
             FirmwareImage {
                 identifier: SOC_MANIFEST_IDENTIFIER,
                 data: b"Valid SOC Manifest Data",
+                filename: [0u8; MAX_FILENAME_LEN],
             },
         ];
         let image_info = generate_image_info(images.to_vec());
@@ -654,5 +741,21 @@ mod tests {
         let offset1 = offset0 + IMAGE_INFO_SIZE;
         let img1 = ImageHeader::read_from_bytes(&data[offset1..offset1 + IMAGE_INFO_SIZE]).unwrap();
         assert_eq!(img1.identifier, 6);
+    }
+
+    #[test]
+    fn test_firmware_image_filename() {
+        let filename = vec![b'a'; MAX_FILENAME_LEN];
+        let image = FirmwareImage::new(1, b"image", Some(&filename)).unwrap();
+        assert_eq!(image.filename, filename[..]);
+
+        let image_info = generate_image_info(vec![image]);
+        assert_eq!(image_info[0].filename, filename[..]);
+
+        let filename = vec![b'a'; MAX_FILENAME_LEN + 1];
+        let err = FirmwareImage::new(1, b"image", Some(&filename))
+            .err()
+            .unwrap();
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 }
