@@ -97,7 +97,7 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
         // Authorizer: HMAC-based command authorization stays wired in production
         // (uses a placeholder test key for now; to be replaced with real
         // provisioned key material later).
-        let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer::new(true);
         let mut transport = caliptra_mcu_mbox_lib::transport::McuMboxTransport::new(
             caliptra_mcu_libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         );

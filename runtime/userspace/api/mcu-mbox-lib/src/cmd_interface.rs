@@ -3,46 +3,30 @@
 use crate::errors;
 use crate::transport::McuMboxTransport;
 use caliptra_mcu_common_commands::{
-    AsymAlgo, CaliptraCmdHandler, CaliptraCompletionCode, CommandAuthorizer, DebugUnlockChallenge,
-    DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult, PkiEntitySlot,
-    EVIDENCE_FORMAT_QUERY,
+    AsymAlgo, CaliptraCmdHandler, CommandAuthorizer, DebugUnlockChallenge, DeviceCapabilities,
+    EvidenceFormat, FirmwareVersion, GetLogResult, PkiEntitySlot, EVIDENCE_FORMAT_QUERY,
 };
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
-use caliptra_mcu_libsyscall_caliptra::{otp, DefaultSyscalls};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, ExportAttestedCsrReq,
-    FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
-    FuseIncreaseCaliptraMinSvnResp, FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq,
-    FuseReadResp, FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
-    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
-    GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
-    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
-    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE,
-    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    FirmwareVersionReq, FirmwareVersionResp, GetAttestationReq, GetAuthCmdChallengeReq,
+    GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader, MailboxRespHeader,
+    MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp, McuProdDebugUnlockReqReq,
+    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, McuResponseVarSize, DEVICE_CAPS_SIZE,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
     McuFipsPeriodicStatusResp,
 };
-use caliptra_mcu_otp_fuse::fuse_read_dai_params;
 use core::sync::atomic::{AtomicBool, Ordering};
 use mcu_caliptra_api::{raw, ApiAlloc, ApiAllocPool};
-use mcu_error::{McuErrorCode, McuResult};
+use mcu_error::McuResult;
 use zerocopy::{FromBytes, IntoBytes};
 
 pub trait McuMboxScratch: ApiAlloc + ApiAllocPool {
     fn shrink(buf: &mut Self::Buf<'_>, new_len: usize) -> McuResult<()>;
-}
-
-fn map_common_cmd_error(error: CaliptraCompletionCode) -> McuErrorCode {
-    match error {
-        CaliptraCompletionCode::InvalidParameter => errors::INVALID_PARAMS,
-        _ => errors::MCU_MBOX_COMMON,
-    }
 }
 
 /// Command interface for handling MCU mailbox commands.
@@ -592,239 +576,27 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        let cmd = self
-            .cmd_authorizer
-            .is_authorized(self.scratch, cmd_id, req)
-            .await
-            .map_err(|_| errors::UNAUTHORIZED_COMMAND)?;
-        match cmd_id {
-            CommandId::MC_PROVISION_VENDOR_PK_HASH => {
-                self.handle_provision_vendor_pk_hash(cmd, resp_buf).await
-            }
-            CommandId::MC_PROVISION_OWNER_PK_HASH => {
-                self.handle_provision_owner_pk_hash(cmd, resp_buf).await
-            }
-            CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
-                self.handle_increase_caliptra_min_svn(cmd, resp_buf).await
-            }
-            CommandId::MC_FE_PROG => self.handle_fe_prog(cmd, resp_buf).await,
-            CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
-                self.handle_revoke_vendor_pub_key(cmd, resp_buf).await
-            }
-            CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => {
-                self.handle_revoke_vendor_pk_hash(cmd, resp_buf).await
-            }
-            CommandId::MC_FUSE_READ => self.handle_fuse_read(cmd, resp_buf).await,
-            CommandId::MC_FUSE_WRITE => self.handle_fuse_write(cmd, resp_buf).await,
-            CommandId::MC_FUSE_LOCK_PARTITION => {
-                self.handle_fuse_lock_partition(cmd, resp_buf).await
-            }
-            _ => Err(errors::UNSUPPORTED_COMMAND),
-        }
-    }
+        let req_payload = req
+            .get(size_of::<MailboxReqHeader>()..)
+            .ok_or(errors::INVALID_PARAMS)?;
+        let (resp_hdr, resp_payload) = resp_buf
+            .split_at_mut_checked(size_of::<MailboxRespHeader>())
+            .ok_or(errors::INVALID_PARAMS)?;
 
-    async fn handle_fuse_read<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        // Decode the request
-        let req = FuseReadReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let (resp, _) =
-            FuseReadResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        let bytes_written = caliptra_mcu_common_commands::AuthorizedCmdExecutor::execute(
+            self.cmd_authorizer,
+            self.scratch,
+            cmd_id,
+            req_payload,
+            resp_payload,
+        )
+        .await
+        .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
-        *resp = FuseReadResp::default();
-
-        let params = fuse_read_dai_params(req.partition, req.entry, MAX_FUSE_DATA_SIZE / 4)
-            .map_err(|_| errors::INVALID_PARAMS)?;
-
-        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
-
-        // Create a iterator over the words in the response that yields at most `params.words_to_read`
-        // (which is less or equal to the words in resp.data).
-        let words = resp.data.chunks_exact_mut(4).take(params.words_to_read);
-        for (i, word) in words.enumerate() {
-            let data = otp
-                .read_raw(params.base_word_addr as u32, i as u32)
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-            let bytes = data.to_ne_bytes();
-            word.copy_from_slice(&bytes);
-        }
-
-        resp.length_bits = params.valid_bits;
-
-        Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
-    }
-
-    async fn handle_fuse_write<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        // Decode the request
-        let req = FuseWriteReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let (resp, _) =
-            FuseWriteResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
-
-        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
-
-        otp.write_raw(req.word_addr, req.data, req.mask)
-            .map_err(|e| match e {
-                caliptra_mcu_libtock_platform::ErrorCode::Fail => errors::MCU_MBOX_COMMON,
-                caliptra_mcu_libtock_platform::ErrorCode::Invalid => errors::INVALID_PARAMS,
-                _ => errors::MCU_MBOX_COMMON,
-            })?;
-
-        *resp = FuseWriteResp::default();
-
-        Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
-    }
-
-    async fn handle_fuse_lock_partition<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        // Decode the request
-        let req = FuseLockPartitionReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let (resp, _) =
-            FuseLockPartitionResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
-
-        self.non_crypto_cmds_handler
-            .fuse_lock_partition(req.partition)
-            .await
-            .map_err(map_common_cmd_error)?;
-
-        *resp = FuseLockPartitionResp::default();
-        Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
-    }
-
-    async fn handle_provision_vendor_pk_hash<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        let req =
-            ProvisionVendorPkHashReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let res = match self
-            .non_crypto_cmds_handler
-            .provision_vendor_pk_hash(req.slot, &req.hash)
-            .await
-        {
-            Ok(()) => MbxCmdStatus::Complete,
-            Err(_) => MbxCmdStatus::Failure,
-        };
-        let resp = ProvisionVendorPkHashResp::default();
-        let resp_slice = &mut resp_buf[..size_of::<ProvisionVendorPkHashResp>()];
-        resp.write_to(resp_slice).unwrap();
-        Ok((resp_slice, res))
-    }
-
-    async fn handle_provision_owner_pk_hash<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        let req =
-            ProvisionOwnerPkHashReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        self.non_crypto_cmds_handler
-            .provision_owner_pk_hash(&req.hash)
-            .await
-            .map_err(map_common_cmd_error)?;
-
-        let resp = ProvisionOwnerPkHashResp::default();
-        let resp_bytes = resp.as_bytes();
-        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-        Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
-    }
-
-    async fn handle_increase_caliptra_min_svn<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        if resp_buf.len() < core::mem::size_of::<FuseIncreaseCaliptraMinSvnResp>() {
-            return Err(errors::INVALID_PARAMS);
-        }
-
-        // Decode the request
-        let req = FuseIncreaseCaliptraMinSvnReq::ref_from_bytes(req)
-            .map_err(|_| errors::INVALID_PARAMS)?;
-
-        self.non_crypto_cmds_handler
-            .increase_caliptra_min_svn(self.scratch, req.svn)
-            .await
-            .map_err(map_common_cmd_error)?;
-
-        let resp = FuseIncreaseCaliptraMinSvnResp::default();
-        let resp_bytes = resp.as_bytes();
-        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-        Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
-    }
-
-    async fn handle_fe_prog<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        // Decode the request
-        let req = McuFeProgReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let (resp, _) =
-            FuseWriteResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
-
-        self.non_crypto_cmds_handler
-            .program_field_entropy(self.scratch, req.partition)
-            .await
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
-
-        *resp = FuseWriteResp::default();
-        let resp_len = resp.as_bytes().len();
-        Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
-    }
-
-    async fn handle_revoke_vendor_pub_key<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        let req =
-            FuseRevokeVendorPubKeyReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let (resp, _) = FuseRevokeVendorPubKeyResp::mut_from_prefix(resp_buf)
-            .map_err(|_| errors::INVALID_PARAMS)?;
-        self.non_crypto_cmds_handler
-            .revoke_vendor_pub_key(
-                self.scratch,
-                req.vendor_pk_hash_slot,
-                req.key_type,
-                req.key_index,
-            )
-            .await
-            .map_err(map_common_cmd_error)?;
-
-        *resp = FuseRevokeVendorPubKeyResp::default();
-        let len = size_of_val(resp);
-        Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
-    }
-
-    async fn handle_revoke_vendor_pk_hash<'r>(
-        &self,
-        req: &[u8],
-        resp_buf: &'r mut [u8],
-    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        // Decode the request
-        let req =
-            FuseRevokeVendorPkHashReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let (resp, _) = FuseRevokeVendorPkHashResp::mut_from_prefix(resp_buf)
-            .map_err(|_| errors::INVALID_PARAMS)?;
-
-        self.non_crypto_cmds_handler
-            .revoke_vendor_pk_hash(req.vendor_pk_hash_slot)
-            .await
-            .map_err(map_common_cmd_error)?;
-
-        *resp = FuseRevokeVendorPkHashResp::default();
-        let resp_len = resp.as_bytes().len();
-        Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
+        let hdr = MailboxRespHeader::default();
+        resp_hdr.copy_from_slice(hdr.as_bytes());
+        let total_resp_len = size_of::<MailboxRespHeader>() + bytes_written;
+        Ok((&mut resp_buf[..total_resp_len], MbxCmdStatus::Complete))
     }
 
     #[cfg(feature = "periodic-fips-self-test")]

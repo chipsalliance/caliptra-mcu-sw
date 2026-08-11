@@ -11,7 +11,6 @@
 mod commands;
 
 use caliptra_mcu_common_commands::CaliptraCmdHandler;
-use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_codec::StandardsBodyId;
 use caliptra_mcu_spdm_traits::{
     McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
@@ -21,11 +20,6 @@ use mcu_error::codes::INVARIANT;
 pub use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult, CaliptraVdmCommand, CaliptraVdmResult,
     CALIPTRA_VDM_COMMAND_VERSION, CALIPTRA_VENDOR_ID,
-};
-pub use commands::authorized_command::{
-    FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
-    INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
-    PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
@@ -73,10 +67,6 @@ pub trait CaliptraVdmStreamOps {
 }
 
 /// Platform hook for the shared command-authorization service.
-///
-/// Each `payload` is the exact little-endian wire payload preceding `sig`.
-/// Implementations must verify `cmd_id(BE) || payload || challenge(48)` without
-/// re-encoding parsed fields.
 pub trait CaliptraVdmAuthorization {
     async fn get_auth_challenge<A: SpdmPalAlloc>(
         &self,
@@ -84,101 +74,14 @@ pub trait CaliptraVdmAuthorization {
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize>;
 
-    #[allow(clippy::too_many_arguments)]
-    async fn provision_vendor_pk_hash<A: SpdmPalAlloc>(
+    /// Executes an authorized command given its sub-command ID and wire payload.
+    async fn execute_authorized_command<A: SpdmPalAlloc>(
         &self,
-        slot: u32,
-        hash: &[u8; 48],
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
+        cmd_id: u32,
+        req: &[u8],
         scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn provision_owner_pk_hash<A: SpdmPalAlloc>(
-        &self,
-        hash: &[u8; 48],
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn increase_caliptra_min_svn<A: SpdmPalAlloc>(
-        &self,
-        flags: u32,
-        svn: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn program_field_entropy<A: SpdmPalAlloc>(
-        &self,
-        partition: u32,
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn revoke_vendor_pub_key<A: SpdmPalAlloc>(
-        &self,
-        reserved: u32,
-        slot: u32,
-        key_type: u32,
-        key_index: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn revoke_vendor_pk_hash<A: SpdmPalAlloc>(
-        &self,
-        reserved: u32,
-        slot: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn fuse_lock_partition<A: SpdmPalAlloc>(
-        &self,
-        partition: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<usize>;
 }
 
 /// Caliptra VDM backend with separate shared-command, stream, and authorization hooks.
@@ -494,6 +397,11 @@ mod tests {
     use caliptra_mcu_common_commands::{
         AsymAlgo, DeviceCapabilities, EvidenceFormat, FirmwareVersion, PkiEntitySlot,
     };
+    use caliptra_mcu_mbox_common::messages::{
+        CommandId, FuseIncreaseCaliptraMinSvnReqPayload, FuseLockPartitionReqPayload,
+        FuseRevokeVendorPkHashReqPayload, FuseRevokeVendorPubKeyReqPayload, HybridSignature,
+        McuFeProgReqPayload, ProvisionVendorPkHashReqPayload, AUTH_CMD_NONCE_LEN,
+    };
 
     /// Stand-in for an ECC PCR quote: small enough to prove the per-format
     /// reservation is narrower than the backend-wide maximum.
@@ -503,14 +411,23 @@ mod tests {
     use caliptra_mcu_spdm_traits::{
         SpdmPalAlloc, SpdmPalIo, SpdmPalIoKind, SpdmVdmBackend, VdmResponse, VdmResponseBuffer,
     };
+    use commands::authorized_command::GET_AUTH_CHALLENGE_CMD_ID;
     use mcu_error::McuResult;
     use std::boxed::Box;
     use std::sync::Mutex;
     use std::vec;
     use std::vec::Vec;
-    use zerocopy::IntoBytes;
+    use zerocopy::{FromBytes, IntoBytes};
 
     use super::*;
+
+    const PROVISION_VENDOR_PK_HASH_CMD_ID: u32 = CommandId::MC_PROVISION_VENDOR_PK_HASH.0;
+    const PROVISION_OWNER_PK_HASH_CMD_ID: u32 = CommandId::MC_PROVISION_OWNER_PK_HASH.0;
+    const INCREASE_CALIPTRA_MIN_SVN_CMD_ID: u32 = CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN.0;
+    const REVOKE_VENDOR_PUB_KEY_CMD_ID: u32 = CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY.0;
+    const REVOKE_VENDOR_PK_HASH_CMD_ID: u32 = CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH.0;
+    const FE_PROG_CMD_ID: u32 = CommandId::MC_FE_PROG.0;
+    const FUSE_LOCK_PARTITION_CMD_ID: u32 = CommandId::MC_FUSE_LOCK_PARTITION.0;
 
     struct TestIo;
 
@@ -852,122 +769,90 @@ mod tests {
             Ok(48)
         }
 
-        async fn provision_vendor_pk_hash<A: SpdmPalAlloc>(
+        async fn execute_authorized_command<A: SpdmPalAlloc>(
             &self,
-            slot: u32,
-            hash: &[u8; 48],
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
+            cmd_id: u32,
+            req: &[u8],
             _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(PROVISION_VENDOR_PK_HASH_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::ProvisionVendorPkHash {
-                slot,
-                hash: *hash,
-            })
-        }
+            _out: &mut [u8],
+        ) -> CaliptraVdmResult<usize> {
+            const AUTH_BLOCK_LEN: usize =
+                AUTH_CMD_NONCE_LEN + 48 + 48 + 2592 + core::mem::size_of::<HybridSignature>();
 
-        async fn provision_owner_pk_hash<A: SpdmPalAlloc>(
-            &self,
-            hash: &[u8; 48],
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(PROVISION_OWNER_PK_HASH_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::ProvisionOwnerPkHash { hash: *hash })
-        }
+            if req.len() < AUTH_BLOCK_LEN {
+                return Err(CaliptraCompletionCode::InvalidPayloadSize);
+            }
+            let payload_len = req.len() - AUTH_BLOCK_LEN;
+            let cmd_payload = &req[..payload_len];
+            let sig_bytes = &req[req.len() - core::mem::size_of::<HybridSignature>()..];
+            let sig = HybridSignature::read_from_bytes(sig_bytes)
+                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
 
-        async fn increase_caliptra_min_svn<A: SpdmPalAlloc>(
-            &self,
-            flags: u32,
-            svn: u32,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::IncreaseCaliptraMinSvn { flags, svn })
-        }
+            self.verify_test_signature(cmd_id, cmd_payload, &sig)?;
 
-        #[allow(clippy::too_many_arguments)]
-        async fn program_field_entropy<A: SpdmPalAlloc>(
-            &self,
-            _partition: u32,
-            _sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            Ok(())
-        }
+            let operation = match CommandId::from(cmd_id) {
+                CommandId::MC_PROVISION_VENDOR_PK_HASH => {
+                    let req_payload = ProvisionVendorPkHashReqPayload::read_from_bytes(cmd_payload)
+                        .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+                    AuthorizedOperation::ProvisionVendorPkHash {
+                        slot: req_payload.slot,
+                        hash: req_payload.hash,
+                    }
+                }
+                CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
+                    let req_payload =
+                        FuseIncreaseCaliptraMinSvnReqPayload::read_from_bytes(cmd_payload)
+                            .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+                    AuthorizedOperation::IncreaseCaliptraMinSvn {
+                        flags: req_payload.flags,
+                        svn: req_payload.svn,
+                    }
+                }
+                CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
+                    let req_payload =
+                        FuseRevokeVendorPubKeyReqPayload::read_from_bytes(cmd_payload)
+                            .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+                    AuthorizedOperation::RevokeVendorPubKey {
+                        reserved: req_payload.reserved,
+                        slot: req_payload.vendor_pk_hash_slot,
+                        key_type: req_payload.key_type,
+                        key_index: req_payload.key_index,
+                    }
+                }
+                CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => {
+                    let req_payload =
+                        FuseRevokeVendorPkHashReqPayload::read_from_bytes(cmd_payload)
+                            .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+                    AuthorizedOperation::RevokeVendorPkHash {
+                        reserved: req_payload.reserved,
+                        slot: req_payload.vendor_pk_hash_slot,
+                    }
+                }
+                CommandId::MC_PROVISION_OWNER_PK_HASH => {
+                    let hash: [u8; 48] = cmd_payload
+                        .try_into()
+                        .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+                    AuthorizedOperation::ProvisionOwnerPkHash { hash }
+                }
+                CommandId::MC_FUSE_LOCK_PARTITION => {
+                    let req_payload = FuseLockPartitionReqPayload::read_from_bytes(cmd_payload)
+                        .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+                    AuthorizedOperation::FuseLockPartition {
+                        partition: req_payload.partition,
+                    }
+                }
+                CommandId::MC_FE_PROG => {
+                    let req_payload = McuFeProgReqPayload::read_from_bytes(cmd_payload)
+                        .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+                    AuthorizedOperation::FuseLockPartition {
+                        partition: req_payload.partition,
+                    }
+                }
+                _ => return Err(CaliptraCompletionCode::UnsupportedOperation),
+            };
 
-        async fn revoke_vendor_pub_key<A: SpdmPalAlloc>(
-            &self,
-            reserved: u32,
-            slot: u32,
-            key_type: u32,
-            key_index: u32,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(REVOKE_VENDOR_PUB_KEY_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::RevokeVendorPubKey {
-                reserved,
-                slot,
-                key_type,
-                key_index,
-            })
-        }
-
-        async fn revoke_vendor_pk_hash<A: SpdmPalAlloc>(
-            &self,
-            reserved: u32,
-            slot: u32,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(REVOKE_VENDOR_PK_HASH_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::RevokeVendorPkHash { reserved, slot })
-        }
-
-        async fn fuse_lock_partition<A: SpdmPalAlloc>(
-            &self,
-            partition: u32,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(FUSE_LOCK_PARTITION_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::FuseLockPartition { partition })
+            self.complete_authorized(operation)?;
+            Ok(0)
         }
     }
 

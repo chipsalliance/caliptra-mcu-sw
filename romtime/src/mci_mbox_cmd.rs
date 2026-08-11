@@ -184,8 +184,8 @@ fn handle_fuse_read(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mcu
 
     let req = FuseReadReq::ref_from_bytes(&buf[..size_of::<FuseReadReq>()])
         .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
-    let partition = req.partition;
-    let entry = req.entry;
+    let partition = req.payload.partition;
+    let entry = req.payload.entry;
     crate::println!(
         "[mci-mbox] IFPR: partition={}, entry={}",
         HexWord(partition),
@@ -233,11 +233,16 @@ fn handle_fuse_write(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mc
 
     crate::println!(
         "[mci-mbox] IFPW: word_addr={:08X}, mask={:032b}",
-        req.word_addr,
-        req.mask,
+        req.payload.word_addr,
+        req.payload.mask,
     );
 
-    fuse_write_dai(otp, req.word_addr, req.data, req.mask)?;
+    fuse_write_dai(
+        otp,
+        req.payload.word_addr,
+        req.payload.data,
+        req.payload.mask,
+    )?;
 
     crate::println!("[mci-mbox] IFPW: success");
     Ok(RESP_HDR_BYTES)
@@ -257,7 +262,7 @@ fn handle_fuse_lock_partition(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<
 
     let req = FuseLockPartitionReq::ref_from_bytes(&buf[..size_of::<FuseLockPartitionReq>()])
         .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
-    let partition = req.partition;
+    let partition = req.payload.partition;
     crate::println!("[mci-mbox] IFPK: partition={}", HexWord(partition));
 
     fuse_lock_partition_dai(otp, partition)?;

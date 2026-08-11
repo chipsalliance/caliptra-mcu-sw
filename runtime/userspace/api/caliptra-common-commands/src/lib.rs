@@ -6,6 +6,8 @@
 use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature, AUTH_CMD_NONCE_LEN};
 use mcu_caliptra_api::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
+pub mod authorized_command;
+pub use authorized_command::AuthorizedCmdExecutor;
 
 pub const MAX_ATTESTED_CSR_DATA_LEN: usize = 12_800;
 pub const MAX_FW_VERSION_LEN: usize = 32;
@@ -423,72 +425,6 @@ pub trait CaliptraCmdHandler {
     ///   does not provide this log on the current platform.
     async fn clear_log(&self, log_type: u32) -> CaliptraCmdResult<()> {
         let _ = log_type;
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    /// Provision a vendor public-key hash in an OTP slot.
-    async fn provision_vendor_pk_hash(&self, slot: u32, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
-        let _ = (slot, hash);
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    /// Provision the owner public-key hash in OTP.
-    async fn provision_owner_pk_hash(&self, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
-        let _ = hash;
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    /// Increase the minimum allowed Caliptra firmware SVN.
-    async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        svn: u32,
-    ) -> CaliptraCmdResult<()> {
-        let _ = (alloc, svn);
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    /// Revoke one vendor public key in a provisioned public-key-hash slot.
-    async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        vendor_pk_hash_slot: u32,
-        key_type: u32,
-        key_index: u32,
-    ) -> CaliptraCmdResult<()> {
-        let _ = (alloc, vendor_pk_hash_slot, key_type, key_index);
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    /// Revoke a provisioned vendor public-key-hash slot.
-    async fn revoke_vendor_pk_hash(&self, vendor_pk_hash_slot: u32) -> CaliptraCmdResult<()> {
-        let _ = vendor_pk_hash_slot;
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    /// Program field entropy for a given partition.
-    ///
-    /// Over both the MCU mailbox and VDM paths, the dispatch layer verifies
-    /// authorization via `CommandAuthorizer::verify_signatures` before invoking
-    /// this transport-agnostic handler.
-    ///
-    /// # Arguments
-    /// * `partition` - The partition index to program.
-    ///
-    /// # Returns
-    /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn program_field_entropy<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        partition: u32,
-    ) -> CaliptraCmdResult<()> {
-        let _ = (alloc, partition);
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    /// Lock an OTP partition against further writes.
-    async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
-        let _ = partition;
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }

@@ -6,7 +6,9 @@ use anyhow::Result;
 use caliptra_api::{calc_checksum, error::CaliptraError, mailbox::FwInfoResp, SocManager};
 use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
-use caliptra_mcu_mbox_common::messages::FuseIncreaseCaliptraMinSvnReq;
+use caliptra_mcu_mbox_common::messages::{
+    FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnReqPayload,
+};
 use caliptra_mcu_romtime::McuBootMilestones;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -63,7 +65,10 @@ fn test_increase_caliptra_svn() -> Result<()> {
 
     // Check setting the SVN to 0 fails
     let cmd = FuseIncreaseCaliptraMinSvnReq {
-        svn: 0,
+        payload: FuseIncreaseCaliptraMinSvnReqPayload {
+            svn: 0,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);
@@ -72,7 +77,10 @@ fn test_increase_caliptra_svn() -> Result<()> {
     // Check requesting to increase SVN past what is currently running returns an error.
     // Running SVN is 7, so requesting 8 should fail.
     let cmd = FuseIncreaseCaliptraMinSvnReq {
-        svn: 8,
+        payload: FuseIncreaseCaliptraMinSvnReqPayload {
+            svn: 8,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);
@@ -80,7 +88,10 @@ fn test_increase_caliptra_svn() -> Result<()> {
 
     // Check trying to burn a value greater than 128 returns an error.
     let cmd = FuseIncreaseCaliptraMinSvnReq {
-        svn: 129,
+        payload: FuseIncreaseCaliptraMinSvnReqPayload {
+            svn: 129,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);
@@ -88,14 +99,20 @@ fn test_increase_caliptra_svn() -> Result<()> {
 
     // Send a command to increase the Caliptra minimum SVN fuses to 7.
     let cmd = FuseIncreaseCaliptraMinSvnReq {
-        svn: 7,
+        payload: FuseIncreaseCaliptraMinSvnReqPayload {
+            svn: 7,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let _resp = execute_authorized_req(&mut hw, cmd)?;
 
     // Check requesting twice to burn the SVN of the value currently in fuses passes.
     let cmd = FuseIncreaseCaliptraMinSvnReq {
-        svn: 7,
+        payload: FuseIncreaseCaliptraMinSvnReqPayload {
+            svn: 7,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let _resp = execute_authorized_req(&mut hw, cmd)?;
@@ -137,7 +154,10 @@ fn test_increase_caliptra_svn() -> Result<()> {
     // Check trying to burn a lower SVN returns an error.
     // Current fuses are 7, so trying to burn 6 should fail.
     let cmd = FuseIncreaseCaliptraMinSvnReq {
-        svn: 6,
+        payload: FuseIncreaseCaliptraMinSvnReqPayload {
+            svn: 6,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let resp = execute_authorized_req(&mut hw, cmd);
@@ -225,7 +245,10 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
 
     // Send a command to increase the Caliptra minimum SVN fuses to 128.
     let cmd = FuseIncreaseCaliptraMinSvnReq {
-        svn: 128,
+        payload: FuseIncreaseCaliptraMinSvnReqPayload {
+            svn: 128,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let _resp = execute_authorized_req(&mut hw, cmd)?;
