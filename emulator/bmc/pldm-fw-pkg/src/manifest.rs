@@ -19,6 +19,25 @@ use uuid::Uuid;
 
 use crc::{Crc, CRC_32_ISO_HDLC};
 
+fn component_bitmap_bit_length(component_count: usize) -> io::Result<u16> {
+    let component_count = u16::try_from(component_count).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "component count exceeds the PLDM bitmap length field",
+        )
+    })?;
+
+    component_count
+        .max(1)
+        .checked_next_multiple_of(8)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "component bitmap bit length exceeds the PLDM bitmap length field",
+            )
+        })
+}
+
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct FirmwareManifest {
     pub package_header_information: PackageHeaderInformation,
@@ -427,7 +446,8 @@ impl FirmwareManifest {
             &self.component_image_information,
         )?;
 
-        let component_bitmap_bit_length = self.component_image_information.len() as u16;
+        let component_bitmap_bit_length =
+            component_bitmap_bit_length(self.component_image_information.len())?;
 
         // Encode firmware_device_id_records
         let num_firmware_records = self.firmware_device_id_records.len() as u8;
@@ -453,7 +473,7 @@ impl FirmwareManifest {
             &self.firmware_device_id_records,
             &self.downstream_device_id_records,
             &self.component_image_information,
-        ) as u32;
+        )? as u32;
         buffer.write_all(&num_components.to_le_bytes())?;
         for component in &self.component_image_information {
             offset += component.encode(&mut buffer, offset)?;
@@ -656,7 +676,7 @@ impl PackageHeaderInformation {
         firmware_device_records: &[FirmwareDeviceIdRecord],
         downstream_device_records: &Option<Vec<DownstreamDeviceIdRecord>>,
         component_image_information: &[ComponentImageInformation],
-    ) -> u16 {
+    ) -> io::Result<u16> {
         // Calculate the size of the header
         let mut size = 0;
         size += 16; // package_header_identifier
@@ -670,7 +690,8 @@ impl PackageHeaderInformation {
             size += version_string.len() as u16;
         }
 
-        let component_bitmap_length = component_image_information.len() as u16;
+        let component_bitmap_length =
+            component_bitmap_bit_length(component_image_information.len())?;
         size += 1; // device_id_record_count
         for record in firmware_device_records {
             size += record.total_bytes(component_bitmap_length) as u16;
@@ -690,7 +711,7 @@ impl PackageHeaderInformation {
 
         size += 4; // package_header_checksum
         size += 4; // pldm_fw_package_payload_checksum
-        size
+        Ok(size)
     }
 
     fn encode(
@@ -708,13 +729,14 @@ impl PackageHeaderInformation {
             firmware_device_record,
             downstream_device_record,
             component_image_information,
-        );
+        )?;
         buffer.write_all(&header_size.to_le_bytes())?; // TODO: add size for firmware_device_id_records, downstream_device_id_records, component_image_information
 
         let timestamp: Timestamp104 = Timestamp104::from_datetime(self.package_release_date_time);
         timestamp.encode(buffer)?;
 
-        let component_bitmap_bit_length = component_image_information.len() as u16;
+        let component_bitmap_bit_length =
+            component_bitmap_bit_length(component_image_information.len())?;
         buffer.write_all(&component_bitmap_bit_length.to_le_bytes())?;
         buffer.push(self.package_version_string_type.to_u8().unwrap_or(0));
 
@@ -1602,5 +1624,32 @@ impl ComponentImageInformation {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn component_bitmap_bit_length_is_a_nonzero_multiple_of_eight() {
+        for (component_count, expected_bit_length) in [(0, 8), (1, 8), (8, 8), (9, 16)] {
+            let components = vec![ComponentImageInformation::default(); component_count];
+            let mut encoded = Vec::new();
+            PackageHeaderInformation::default()
+                .encode(&mut encoded, &[], &None, &components)
+                .unwrap();
+
+            let (_, bit_length) = PackageHeaderInformation::decode(&mut &encoded[..]).unwrap();
+            assert_eq!(bit_length, expected_bit_length);
+            assert_ne!(bit_length, 0);
+            assert_eq!(bit_length % 8, 0);
+        }
+    }
+
+    #[test]
+    fn component_bitmap_bit_length_rejects_unrepresentable_counts() {
+        assert!(component_bitmap_bit_length(u16::MAX as usize).is_err());
+        assert!(component_bitmap_bit_length(u16::MAX as usize + 1).is_err());
     }
 }
