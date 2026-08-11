@@ -2366,7 +2366,7 @@ dependencies = [
 [[package]]
 name = "caliptra-size-history"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-infra.git?rev=64e75e17e1a2eb07ff8dd6698932af82182da85e#64e75e17e1a2eb07ff8dd6698932af82182da85e"
+source = "git+https://github.com/chipsalliance/caliptra-infra.git?rev=c7497382a9d338430bcbe79f4e54c94ff7c297c3#c7497382a9d338430bcbe79f4e54c94ff7c297c3"
 dependencies = [
  "ghac",
  "prost 0.13.2",
@@ -3118,7 +3118,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 2.0.109",
+ "syn 1.0.109",
 ]
 
 [[package]]
