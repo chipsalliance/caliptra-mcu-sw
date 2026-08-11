@@ -49,6 +49,10 @@ pub enum MeasurementApiError {
     InvalidSoftwarePcrStoreState = 0x000d,
     /// The caller-provided evidence output buffer is too small.
     EvidenceBufferTooSmall = 0x000e,
+    /// An exported CDI handle has not been derived or is uninitialized.
+    ExportedCdiNotDerived = 0x000f,
+    /// An exported CDI handle has already been derived.
+    ExportedCdiAlreadyDerived = 0x0010,
 }
 
 /// Convenience alias for a Measurement API operation result. `T` defaults to
@@ -91,6 +95,8 @@ mod tests {
             (MeasurementApiError::ComponentUpdateUnsupported, 0x000c),
             (MeasurementApiError::InvalidSoftwarePcrStoreState, 0x000d),
             (MeasurementApiError::EvidenceBufferTooSmall, 0x000e),
+            (MeasurementApiError::ExportedCdiNotDerived, 0x000f),
+            (MeasurementApiError::ExportedCdiAlreadyDerived, 0x0010),
         ] {
             let mcu: McuErrorCode = err.into();
             assert_eq!(mcu.domain(), domain::ATTESTATION);

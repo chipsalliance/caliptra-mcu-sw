@@ -37,6 +37,9 @@ pub const DPE_CONTEXT_HANDLE_SIZE: usize = 16;
 
 pub type DpeContextHandle = [u8; DPE_CONTEXT_HANDLE_SIZE];
 
+/// Exported CDI handle width.
+pub const EXPORTED_CDI_SIZE: usize = 32;
+
 /// SHA-384 TCI measurement width used by DPE P-384 / SHA-384 `DeriveContext`.
 pub const DPE_TCI_MEASUREMENT_SIZE: usize = 48;
 
@@ -179,6 +182,17 @@ struct DeriveContextRespBody {
     parent_handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
 }
 
+/// `dpe::response::DeriveContextExportedCdiResp` prefix (fixed portion before certificate bytes).
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct DeriveContextExportedCdiRespPrefix {
+    _resp_hdr: [u8; 12],
+    handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    parent_handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    exported_cdi: [u8; EXPORTED_CDI_SIZE],
+    cert_size: U32,
+}
+
 /// `dpe::response::UpdateContextMeasurementResp`.
 #[repr(C)]
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
@@ -277,6 +291,10 @@ const _: () = assert!(
     size_of::<DeriveContextRespBody>() == 12 + DPE_CONTEXT_HANDLE_SIZE + DPE_CONTEXT_HANDLE_SIZE
 );
 const _: () = assert!(
+    size_of::<DeriveContextExportedCdiRespPrefix>()
+        == 12 + DPE_CONTEXT_HANDLE_SIZE + DPE_CONTEXT_HANDLE_SIZE + EXPORTED_CDI_SIZE + 4
+);
+const _: () = assert!(
     size_of::<UpdateContextMeasurementRespBody>()
         == 12 + DPE_CONTEXT_HANDLE_SIZE + DPE_CONTEXT_HANDLE_SIZE
 );
@@ -307,12 +325,33 @@ pub struct DpeDeriveContextFlags(u32);
 impl DpeDeriveContextFlags {
     /// No request flags.
     pub const EMPTY: Self = Self(0);
+    /// Create an X.509 certificate.
+    pub const CREATE_CERTIFICATE: Self = Self(1u32 << 22);
+    /// Derive an exported CDI.
+    pub const EXPORT_CDI: Self = Self(1u32 << 23);
+    /// Allow the derived child context to create X.509 certificates.
+    pub const INPUT_ALLOW_X509: Self = Self(1u32 << 25);
+    /// Allow the derived child context to export CDI.
+    pub const ALLOW_NEW_CONTEXT_TO_EXPORT: Self = Self(1u32 << 26);
     /// Keep the parent context and return its rotated handle.
     pub const RETAIN_PARENT_CONTEXT: Self = Self(1u32 << 29);
 
     /// Return the raw DPE flag bits.
     pub const fn bits(self) -> u32 {
         self.0
+    }
+}
+
+impl core::ops::BitOr for DpeDeriveContextFlags {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl core::ops::BitOrAssign for DpeDeriveContextFlags {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
     }
 }
 
@@ -334,6 +373,19 @@ pub struct DpeDeriveContextResult {
     pub child_handle: DpeContextHandle,
     /// Rotated parent context handle.
     pub parent_handle: DpeContextHandle,
+}
+
+/// Handles and certificate returned by one DPE `DeriveContext` command with `EXPORT_CDI`.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct DpeDeriveContextExportedCdiResult {
+    /// New child context handle.
+    pub child_handle: DpeContextHandle,
+    /// Rotated parent context handle.
+    pub parent_handle: DpeContextHandle,
+    /// Derived 32-byte exported CDI handle.
+    pub exported_cdi: [u8; EXPORTED_CDI_SIZE],
+    /// Certificate size in bytes written into the destination buffer.
+    pub cert_size: usize,
 }
 
 /// Parameters for one DPE `UpdateContextMeasurement` command.
@@ -428,6 +480,69 @@ fn parse_derive_context_response(rsp: &[u8], rsp_len: usize) -> McuResult<DpeDer
     Ok(DpeDeriveContextResult {
         child_handle: body.handle,
         parent_handle: body.parent_handle,
+    })
+}
+
+/// Invoke DPE `DeriveContext` with `EXPORT_CDI`, returning the child handle, rotated parent handle,
+/// 32-byte exported CDI handle, and copying the emitted leaf certificate into `cert_dst`.
+#[inline(never)]
+pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
+    alloc: &A,
+    params: &DpeDeriveContextParams,
+    cert_dst: &mut [u8],
+) -> McuResult<DpeDeriveContextExportedCdiResult> {
+    let req = build_derive_context_req(alloc, params)?;
+    let max_resp_len = size_of::<InvokeDpeRespPrefix>()
+        + size_of::<DeriveContextExportedCdiRespPrefix>()
+        + cert_dst.len().min(DPE_MAX_LEAF_CERT_SIZE);
+    let mut rsp = alloc.alloc(max_resp_len)?;
+    let rsp_len = mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
+    parse_derive_context_exported_cdi_response(&rsp, rsp_len, cert_dst)
+}
+
+fn parse_derive_context_exported_cdi_response(
+    rsp: &[u8],
+    rsp_len: usize,
+    cert_dst: &mut [u8],
+) -> McuResult<DpeDeriveContextExportedCdiResult> {
+    let resp_body_off = size_of::<InvokeDpeRespPrefix>();
+    let prefix_len = size_of::<DeriveContextExportedCdiRespPrefix>();
+    if rsp_len < resp_body_off + size_of::<DpeResponseHdr>() {
+        return Err(INTERNAL_BUG);
+    }
+    let dpe_hdr = DpeResponseHdr::ref_from_bytes(internal_slice(
+        rsp,
+        resp_body_off,
+        size_of::<DpeResponseHdr>(),
+    )?)
+    .map_err(|_| INTERNAL_BUG)?;
+    if dpe_hdr.magic.get() != DPE_RESPONSE_MAGIC || dpe_hdr.status.get() != 0 {
+        return Err(INTERNAL_BUG);
+    }
+    if rsp_len < resp_body_off + prefix_len {
+        return Err(INTERNAL_BUG);
+    }
+    let prefix = DeriveContextExportedCdiRespPrefix::ref_from_bytes(internal_slice(
+        rsp,
+        resp_body_off,
+        prefix_len,
+    )?)
+    .map_err(|_| INTERNAL_BUG)?;
+
+    let cert_size = prefix.cert_size.get() as usize;
+    let cert_off = resp_body_off + prefix_len;
+    if cert_off + cert_size > rsp_len || cert_size > cert_dst.len() {
+        return Err(INTERNAL_BUG);
+    }
+    let cert = internal_slice(rsp, cert_off, cert_size)?;
+    let out = cert_dst.get_mut(..cert_size).ok_or(INTERNAL_BUG)?;
+    copy_bytes(out, cert)?;
+
+    Ok(DpeDeriveContextExportedCdiResult {
+        child_handle: prefix.handle,
+        parent_handle: prefix.parent_handle,
+        exported_cdi: prefix.exported_cdi,
+        cert_size,
     })
 }
 
@@ -1354,5 +1469,51 @@ mod tests {
         let rsp = [0u8; 8 + DPE_TCI_MEASUREMENT_SIZE * 2 - 1];
 
         assert!(parse_get_tagged_tci_response(&rsp, rsp.len()).is_err());
+    }
+
+    #[test]
+    fn derive_context_exported_cdi_reads_handles_cdi_and_cert() {
+        let child_handle = [0x11u8; DPE_CONTEXT_HANDLE_SIZE];
+        let parent_handle = [0x22u8; DPE_CONTEXT_HANDLE_SIZE];
+        let exported_cdi = [0x33u8; EXPORTED_CDI_SIZE];
+        let cert_data = [0x55u8; 64];
+
+        let prefix_len = size_of::<DeriveContextExportedCdiRespPrefix>();
+        let resp_body_off = size_of::<InvokeDpeRespPrefix>();
+        let mut rsp = [0u8; 12 + 80 + 64];
+
+        rsp[resp_body_off..resp_body_off + 4].copy_from_slice(&DPE_RESPONSE_MAGIC.to_le_bytes());
+        rsp[resp_body_off + 8..resp_body_off + 12]
+            .copy_from_slice(&DPE_PROFILE_P384_SHA384.to_le_bytes());
+        rsp[resp_body_off + 12..resp_body_off + 12 + DPE_CONTEXT_HANDLE_SIZE]
+            .copy_from_slice(&child_handle);
+        rsp[resp_body_off + 12 + DPE_CONTEXT_HANDLE_SIZE
+            ..resp_body_off + 12 + DPE_CONTEXT_HANDLE_SIZE * 2]
+            .copy_from_slice(&parent_handle);
+        rsp[resp_body_off + 12 + DPE_CONTEXT_HANDLE_SIZE * 2
+            ..resp_body_off + 12 + DPE_CONTEXT_HANDLE_SIZE * 2 + EXPORTED_CDI_SIZE]
+            .copy_from_slice(&exported_cdi);
+        rsp[resp_body_off + 12 + DPE_CONTEXT_HANDLE_SIZE * 2 + EXPORTED_CDI_SIZE
+            ..resp_body_off + prefix_len]
+            .copy_from_slice(&(cert_data.len() as u32).to_le_bytes());
+        rsp[resp_body_off + prefix_len..].copy_from_slice(&cert_data);
+
+        let mut cert_dst = [0u8; 128];
+        let result =
+            parse_derive_context_exported_cdi_response(&rsp, rsp.len(), &mut cert_dst).unwrap();
+
+        assert_eq!(result.child_handle, child_handle);
+        assert_eq!(result.parent_handle, parent_handle);
+        assert_eq!(result.exported_cdi, exported_cdi);
+        assert_eq!(result.cert_size, cert_data.len());
+        assert_eq!(&cert_dst[..cert_data.len()], &cert_data);
+    }
+
+    #[test]
+    fn derive_context_flags_bitor() {
+        let flags = DpeDeriveContextFlags::EXPORT_CDI
+            | DpeDeriveContextFlags::CREATE_CERTIFICATE
+            | DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT;
+        assert_eq!(flags.bits(), (1u32 << 23) | (1u32 << 22) | (1u32 << 29));
     }
 }

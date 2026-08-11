@@ -25,3 +25,9 @@ fpga = [
     "caliptra-mcu-bare-metal-io/fpga",
     "caliptra-mcu-provisioning-common/fpga",
 ]
+
+[[bin]]
+name = "caliptra-mcu-provisioning-test-unlocked-fw"
+path = "src/main.rs"
+test = false
+

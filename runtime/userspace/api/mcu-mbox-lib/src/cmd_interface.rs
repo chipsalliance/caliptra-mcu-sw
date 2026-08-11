@@ -554,10 +554,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             return Err(errors::INVALID_PARAMS);
         }
 
-        let mut cert_ctx = caliptra_mcu_libapi_caliptra::certificate::CertContext::new();
-        let ret = cert_ctx
-            .dpe_signer_context_cert(&mut resp_buf[header_len..])
-            .await;
+        let ret = caliptra_mcu_measurement_api::export_cdi_and_stash(
+            self.scratch,
+            &mut resp_buf[header_len..],
+        )
+        .await;
 
         let (mbox_cmd_status, cert_len) = match ret {
             Ok(len) => (MbxCmdStatus::Complete, len),
@@ -1277,6 +1278,12 @@ fn response_buffer_size(cmd: u32) -> usize {
         #[cfg(feature = "ocp-lock")]
         c if c == CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES => {
             size_of::<OcpLockEnumerateHpkeHandlesResp>()
+        }
+        c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => {
+            size_of::<MailboxRespHeaderVarSize>() + 2048
+        }
+        c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
+            size_of::<MailboxRespHeaderVarSize>() + 1024
         }
         _ => size_of::<McuMailboxResp>(),
     }

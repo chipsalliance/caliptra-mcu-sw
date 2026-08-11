@@ -12,6 +12,7 @@ caliptra-api.workspace = true
 caliptra-error.workspace = true
 caliptra-auth-man-types.workspace = true
 critical-section.workspace = true
+dpe.workspace = true
 embassy-executor.workspace = true
 caliptra-mcu-libapi-caliptra.workspace = true
 caliptra-mcu-libapi-emulated-caliptra.workspace = true
