@@ -397,7 +397,7 @@ dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "337f7e4151
 # caliptra-infra dependencies; keep git revs in sync
 caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-infra", rev = "e061f229d5d284ce39387eb104f3022053c6c772" }
 
-size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", package = "caliptra-size-history", rev = "64e75e17e1a2eb07ff8dd6698932af82182da85e" }
+size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", package = "caliptra-size-history", rev = "c7497382a9d338430bcbe79f4e54c94ff7c297c3" }
 
 # local caliptra dependency; useful when developing
 # caliptra-sw deps:
