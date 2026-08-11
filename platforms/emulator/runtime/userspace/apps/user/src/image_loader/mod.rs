@@ -159,14 +159,11 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
         }
         mbox_sram.release_lock().unwrap();
         emit_attestation_evidence_ready();
-        #[cfg(any(
-            feature = "test-xtask-runtime",
-            all(
-                not(feature = "firmware-update"),
-                not(feature = "test-mctp-spdm-attestation"),
-                not(feature = "test-mctp-spdm-attestation-tcb"),
-                not(feature = "test-mctp-spdm-attestation-mixed")
-            )
+        #[cfg(all(
+            not(feature = "firmware-update"),
+            not(feature = "test-mctp-spdm-attestation"),
+            not(feature = "test-mctp-spdm-attestation-tcb"),
+            not(feature = "test-mctp-spdm-attestation-mixed")
         ))]
         System::exit(0);
     }
@@ -243,6 +240,10 @@ async fn image_loading<D: DMAMapping>(
         pldm_image_loader.wait_for_service_stopped().await;
         // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
         activate_soc_images(soc_image_load_list).await?;
+        #[cfg(feature = "test-xtask-runtime")]
+        {
+            System::exit(0);
+        }
     }
     #[cfg(feature = "flash-boot")]
     {
