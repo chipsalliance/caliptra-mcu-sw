@@ -21,7 +21,7 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 use crate::slice::{checked_slice, checked_slice_mut, copy_bytes};
 use crate::wire::{
     pad4, populate_checksum, CMB_SHA_CONTEXT_SIZE, CMD_CM_SHA_FINAL, CMD_CM_SHA_INIT,
-    CMD_CM_SHA_UPDATE, CM_HASH_ALGO_SHA384, MAX_CMB_DATA_SIZE,
+    CMD_CM_SHA_UPDATE, CM_HASH_ALGO_SHA384, CM_HASH_ALGO_SHA512, MAX_CMB_DATA_SIZE,
 };
 use crate::ApiAlloc;
 
@@ -91,6 +91,8 @@ impl<B: Deref<Target = [u8]> + DerefMut> HashState<B> {
 pub enum HashAlgo {
     /// SHA-384 (48-byte digest).
     Sha384,
+    /// SHA-512 (64-byte digest).
+    Sha512,
 }
 
 impl HashAlgo {
@@ -100,6 +102,7 @@ impl HashAlgo {
     pub const fn hash_size(self) -> usize {
         match self {
             HashAlgo::Sha384 => 48,
+            HashAlgo::Sha512 => 64,
         }
     }
 }
@@ -297,5 +300,6 @@ async fn execute(cmd: u32, req: &[u8], rsp: &mut [u8]) -> McuResult<usize> {
 fn algo_code(algo: HashAlgo) -> u32 {
     match algo {
         HashAlgo::Sha384 => CM_HASH_ALGO_SHA384,
+        HashAlgo::Sha512 => CM_HASH_ALGO_SHA512,
     }
 }

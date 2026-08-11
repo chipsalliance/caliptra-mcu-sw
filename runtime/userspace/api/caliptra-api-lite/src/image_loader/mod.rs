@@ -9,8 +9,9 @@ mod pldm_fdops;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+pub use caliptra_api::mailbox::GetImageInfoResp;
 use caliptra_api::mailbox::{
-    CommandId, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader, MailboxRespHeader, Request,
+    CommandId, GetImageInfoReq, MailboxReqHeader, MailboxRespHeader, Request,
 };
 use caliptra_mcu_flash_image::{FlashHeader, SOC_MANIFEST_IDENTIFIER};
 use caliptra_mcu_libsyscall_caliptra::dma::DMAMapping;
@@ -213,6 +214,10 @@ fn convert_dma_cptra_addr_to_mcu_addr(
     dma_mapping
         .cptra_axi_to_mcu_axi(caliptra_axi_addr)
         .map_err(|_| ErrorCode::Fail)
+}
+
+pub async fn core_image_info(image_id: u32) -> Result<GetImageInfoResp, ErrorCode> {
+    get_image_info(&Mailbox::new(), image_id).await
 }
 
 async fn get_image_info(mailbox: &Mailbox, image_id: u32) -> Result<GetImageInfoResp, ErrorCode> {

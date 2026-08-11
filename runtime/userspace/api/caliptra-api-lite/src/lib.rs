@@ -96,7 +96,7 @@ pub use debug_unlock::{
 };
 #[cfg(feature = "mailbox-io")]
 pub use dpe::{
-    dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
+    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
     dpe_derive_context, dpe_get_cert_chain_chunk, dpe_get_tagged_tci, dpe_rotate_context_default,
     dpe_sign_ecc_p384, dpe_tag_tci, dpe_update_context_measurement, walk_dpe_chain, DpeChainSink,
     DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeDeriveContextResult,
@@ -114,6 +114,8 @@ pub use fe_prog::fe_prog;
 pub use fw_info::{fw_info, FwInfo};
 #[cfg(feature = "mailbox-io")]
 pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
+#[cfg(feature = "mailbox-io")]
+pub use image_loader::{core_image_info, GetImageInfoResp};
 #[cfg(feature = "mailbox-io")]
 pub use import::{cm_delete, cm_import};
 #[cfg(feature = "mailbox-io")]

@@ -362,8 +362,9 @@ pub trait CommandAuthorizer {
     ///   wire (hash-anchored device-side before use)
     /// * `sig` - The hybrid signature received from the host
     #[allow(clippy::too_many_arguments)]
-    async fn verify_signatures(
+    async fn verify_signatures<Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
         nonce: &[u8; AUTH_CMD_NONCE_LEN],

@@ -210,6 +210,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         // for step-0 anchor + ECDSA + ML-DSA.
         authorizer
             .verify_signatures(
+                scratch,
                 FE_PROG_CMD_ID,
                 &partition.to_le_bytes(),
                 nonce,

@@ -19,7 +19,6 @@ use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
 };
-use caliptra_mcu_libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
 use caliptra_mcu_libsyscall_caliptra::dma::{
@@ -45,10 +44,13 @@ use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
 use core::mem::offset_of;
 
-use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use crate::{
+    sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
+};
 
-pub struct FirmwareUpdater<'a, D: DMAMapping> {
+pub struct FirmwareUpdater<'a, D: DMAMapping, A: ApiAlloc> {
     staging_memory: &'static dyn StagingMemory,
+    alloc: &'a A,
     mailbox: Mailbox,
     params: &'a PldmFirmwareDeviceParams,
     soc_image_load_fw_ids: &'a [u32],
@@ -71,9 +73,10 @@ pub enum CaliptraFwAction {
     Load = 2,
 }
 
-impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
+impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
     pub fn new(
         staging_memory: &'static dyn StagingMemory,
+        alloc: &'a A,
         params: &'a PldmFirmwareDeviceParams,
         soc_image_load_fw_ids: &'a [u32],
         dma_mapping: &'a D,
@@ -82,6 +85,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
     ) -> Self {
         Self {
             staging_memory,
+            alloc,
             mailbox: Mailbox::new(),
             params,
             soc_image_load_fw_ids,
@@ -514,30 +518,29 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             }
 
             // Compute SHA-384 of the downloaded image
-            let mut hasher = HashContext::new();
-            hasher
-                .init(HashAlgoType::SHA384, None)
+            let hash_context = self
+                .alloc
+                .alloc(SHA_CONTEXT_SIZE)
+                .map_err(|_| ErrorCode::Fail)?;
+            let mut hasher = sha_init(self.alloc, hash_context, HashAlgo::Sha384, &[])
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
-            let mut buffer = [0u8; MAX_CRYPTO_MBOX_DATA_SIZE / 2];
+            let mut buffer = [0u8; SHA_CHUNK_SIZE];
             let mut total_bytes_read = 0;
             let img_offset = image_header.offset as usize;
             let img_size = image_header.size as usize;
             while total_bytes_read < img_size {
-                let bytes_to_read =
-                    (img_size - total_bytes_read).min(MAX_CRYPTO_MBOX_DATA_SIZE / 2);
+                let bytes_to_read = (img_size - total_bytes_read).min(SHA_CHUNK_SIZE);
                 self.staging_memory
                     .read(img_offset + total_bytes_read, &mut buffer[..bytes_to_read])
                     .await?;
-                hasher
-                    .update(&buffer[..bytes_to_read])
+                sha_update(self.alloc, &mut hasher, &buffer[..bytes_to_read])
                     .await
                     .map_err(|_| ErrorCode::Fail)?;
                 total_bytes_read += bytes_to_read;
             }
             let mut hash = [0u8; 48];
-            hasher
-                .finalize(&mut hash)
+            sha_finish(self.alloc, &mut hasher, &mut hash)
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
 
@@ -865,16 +868,18 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         len: usize,
         metadata: &AuthManifestImageMetadata,
     ) -> Result<(), ErrorCode> {
-        let mut hasher = HashContext::new();
-        hasher
-            .init(HashAlgoType::SHA384, None)
+        let hash_context = self
+            .alloc
+            .alloc(SHA_CONTEXT_SIZE)
+            .map_err(|_| ErrorCode::Fail)?;
+        let mut hasher = sha_init(self.alloc, hash_context, HashAlgo::Sha384, &[])
             .await
             .map_err(|_| ErrorCode::Fail)?;
-        let mut buffer = [0u8; MAX_CRYPTO_MBOX_DATA_SIZE / 2]; // Size decreased to avoid stack overflow
+        let mut buffer = [0u8; SHA_CHUNK_SIZE];
         let mut hash = [0u8; 48]; // SHA-384 produces a 48-byte hash
         let mut total_bytes_read = 0;
         while total_bytes_read < len {
-            let bytes_to_read = (len - total_bytes_read).min(MAX_CRYPTO_MBOX_DATA_SIZE / 2);
+            let bytes_to_read = (len - total_bytes_read).min(SHA_CHUNK_SIZE);
             self.staging_memory
                 .read(
                     image_offset + total_bytes_read,
@@ -882,15 +887,13 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
                 )
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
-            hasher
-                .update(&buffer[..bytes_to_read])
+            sha_update(self.alloc, &mut hasher, &buffer[..bytes_to_read])
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
             total_bytes_read += bytes_to_read;
         }
 
-        hasher
-            .finalize(&mut hash)
+        sha_finish(self.alloc, &mut hasher, &mut hash)
             .await
             .map_err(|_| ErrorCode::Fail)?;
 

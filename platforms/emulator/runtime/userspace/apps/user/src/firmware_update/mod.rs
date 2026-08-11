@@ -4,6 +4,7 @@ mod config;
 pub mod flash_staging;
 
 extern crate alloc;
+use alloc::vec::Vec;
 use caliptra_mcu_libsyscall_caliptra::dma::DMAMapping;
 use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -21,7 +22,15 @@ use mcu_caliptra_api_lite::firmware_update::{FirmwareUpdater, PldmFirmwareDevice
 use mcu_caliptra_api_lite::firmware_update::FirmwareUpdateHooks;
 
 use caliptra_mcu_libtock_platform::ErrorCode;
+use caliptra_mcu_spdm_pal::{BitmapAllocator, BITMAP_SLOT_SIZE};
+use core::ptr::NonNull;
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
+const FW_UPDATE_SCRATCH_SIZE: usize = 4096;
+const FW_UPDATE_SCRATCH_SLOTS: usize = FW_UPDATE_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
+
+#[repr(C, align(64))]
+#[derive(Clone, Copy)]
+struct FwUpdateScratchSlot([u8; BITMAP_SLOT_SIZE]);
 
 #[allow(dead_code)]
 pub async fn firmware_update<D: DMAMapping>(
@@ -37,6 +46,19 @@ pub async fn firmware_update<D: DMAMapping>(
         // Device rebooted due to firmware update, skip firmware update
         return Ok(());
     }
+
+    let mut scratch = Vec::new();
+    scratch
+        .try_reserve_exact(FW_UPDATE_SCRATCH_SLOTS)
+        .map_err(|_| ErrorCode::Fail)?;
+    scratch.resize(
+        FW_UPDATE_SCRATCH_SLOTS,
+        FwUpdateScratchSlot([0; BITMAP_SLOT_SIZE]),
+    );
+    let scratch_ptr = NonNull::new(scratch.as_mut_ptr().cast::<u8>()).ok_or(ErrorCode::Fail)?;
+    // SAFETY: `scratch` owns this aligned memory for the lifetime of every updater below.
+    let allocator = unsafe { BitmapAllocator::new(scratch_ptr, FW_UPDATE_SCRATCH_SIZE) };
+
     crate::log_info!(console_writer, "[FW Upd] Start");
     #[cfg(feature = "test-firmware-update-streaming")]
     {
@@ -51,6 +73,7 @@ pub async fn firmware_update<D: DMAMapping>(
             unsafe { core::mem::transmute(&mut staging_memory) };
         let mut updater = FirmwareUpdater::new(
             staging_memory,
+            &allocator,
             &fw_params,
             soc_image_load_list,
             dma_mapping,
@@ -116,6 +139,7 @@ pub async fn firmware_update<D: DMAMapping>(
         };
         let mut updater = FirmwareUpdater::new(
             staging_memory,
+            &allocator,
             &fw_params,
             soc_image_load_list,
             dma_mapping,
@@ -136,6 +160,7 @@ pub async fn firmware_update<D: DMAMapping>(
         staging_memory.erase().await?;
         let mut updater = FirmwareUpdater::new(
             staging_memory,
+            &allocator,
             &fw_params,
             soc_image_load_list,
             dma_mapping,
@@ -174,6 +199,7 @@ pub async fn firmware_update<D: DMAMapping>(
 
         let mut updater = FirmwareUpdater::new(
             staging_memory,
+            &allocator,
             &fw_params,
             soc_image_load_list,
             dma_mapping,

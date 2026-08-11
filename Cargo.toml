@@ -71,7 +71,6 @@ members = [
     "runtime/kernel/drivers/i3c",
     "runtime/kernel/drivers/mcu_mbox",
     "runtime/kernel/veer",
-    "runtime/userspace/api/caliptra-api",
     "runtime/userspace/api/caliptra-common-commands",
     "runtime/userspace/api/attestation-evidence",
     "runtime/userspace/api/measurement-api",
@@ -311,7 +310,6 @@ caliptra-mcu-spdm-errors = { path = "runtime/userspace/api/spdm-lib/errors" }
 caliptra-mcu-spdm-vdm-handler = { path = "runtime/userspace/api/spdm-lib/vdm-handler" }
 caliptra-mcu-libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 caliptra-mcu-userlog = { path = "runtime/userspace/userlog" }
-caliptra-mcu-libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }
 caliptra-mcu-libapi-emulated-caliptra = { path = "platforms/emulator/runtime/userspace/api/caliptra-api" }
 
 # libtock dependencies

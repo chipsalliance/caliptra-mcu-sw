@@ -578,49 +578,6 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     Ok(cert_size)
 }
 
-/// Invoke DPE `CertifyKey` (P-384 / SHA-384, X.509 format) for the
-/// default context handle and the given 48-byte `label`. Writes the
-/// emitted leaf certificate DER into `dst` and returns the rotated context
-/// handle plus the number of bytes actually written.
-///
-/// Prefer [`dpe_certify_key_cert_slice`] when the caller only needs a
-/// slice of the certificate.
-#[inline(never)]
-pub async fn dpe_certify_key<A: ApiAlloc>(
-    alloc: &A,
-    handle: Option<&DpeContextHandle>,
-    label: &[u8; DPE_LABEL_LEN],
-    dst: &mut [u8],
-) -> McuResult<(DpeContextHandle, usize)> {
-    if dst.is_empty() {
-        return Err(INVARIANT);
-    }
-
-    let max_size = CERTIFY_KEY_P384_RESP_PREFIX_LEN
-        .checked_add(dst.len())
-        .ok_or(INVARIANT)?
-        .min(DPE_MAX_CHUNK_SIZE);
-    let chunk =
-        certify_key_chunks_response(alloc, label, dpe_handle_or_default(handle), 0, max_size)
-            .await?;
-    let response = chunk.chunk()?;
-    validate_certify_key_prefix(response)?;
-    let cert_size = read_le_u32(response, CERTIFY_KEY_RESP_CERT_SIZE_OFF)? as usize;
-    let cert_start = CERTIFY_KEY_P384_RESP_PREFIX_LEN;
-    let cert_end = cert_start.checked_add(cert_size).ok_or(INVARIANT)?;
-    let cert = internal_slice(response, cert_start, cert_end - cert_start)?;
-    if cert_size > dst.len() {
-        return Err(INVARIANT);
-    }
-    let out = dst.get_mut(..cert_size).ok_or(INTERNAL_BUG)?;
-    copy_bytes(out, cert)?;
-
-    if cert_size > dst.len() {
-        return Err(INTERNAL_BUG);
-    }
-    Ok((chunk.next_handle, cert_size))
-}
-
 /// Return the DER leaf certificate length emitted by DPE `CertifyKey`
 /// without fetching the certificate body, along with the rotated context handle.
 #[inline(never)]
