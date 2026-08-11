@@ -282,7 +282,7 @@ async fn run_optimized_download(
     msg_buffer: &mut [u8],
     session: &mut TransferSession,
 ) -> McuResult<bool> {
-    let ua_eid: u8 = crate::config::UA_EID;
+    let ua_eid = transport.ua_eid();
     let ops = cmd_interface.ops();
 
     // Check for cancellation (atomic, no mutex)
