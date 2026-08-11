@@ -136,6 +136,7 @@ test-pldm-request-response = []
 # --- Test features: kernel-only ---
 test-get-alarm-expired = []
 test-exit-immediately = []
+test-xtask-runtime = []
 test-i3c-simple = []
 test-i3c-constant-writes = []
 test-flash-ctrl-init = []

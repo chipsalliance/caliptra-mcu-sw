@@ -220,6 +220,10 @@ async fn image_loading<D: DMAMapping>(
         pldm_image_loader.wait_for_service_stopped().await;
         // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
         activate_soc_images(soc_image_load_list).await?;
+        #[cfg(feature = "test-xtask-runtime")]
+        {
+            System::exit(0);
+        }
     }
     #[cfg(feature = "flash-boot")]
     {
@@ -353,6 +357,10 @@ async fn load_soc_images(
 
 #[allow(dead_code)]
 async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {
+    if fw_id_list.is_empty() {
+        return Ok(());
+    }
+
     let fw_ids = {
         let mut ids = [0u32; ActivateFirmwareReq::MAX_FW_ID_COUNT];
         for (i, fw_id) in fw_id_list.iter().enumerate() {
