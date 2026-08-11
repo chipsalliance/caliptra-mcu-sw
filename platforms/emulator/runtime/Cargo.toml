@@ -100,6 +100,7 @@ test-mci = []
 test-sw-pcr-store = []
 # Kernel only test
 test-exit-immediately = []
+test-xtask-runtime = []
 test-caliptra-util-host-validator = ["mcu-mbox-service"]
 test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
 test-caliptra-util-host-spdm-vdm-validator = ["spdm"]

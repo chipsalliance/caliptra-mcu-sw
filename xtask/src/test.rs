@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Context, Result};
-use caliptra_mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
+use caliptra_mcu_builder::{rom_build, CaliptraBuilder, ImageCfg, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
-use crate::emulator_cbinding;
+use crate::{emulator_cbinding, Commands};
 
 pub(crate) struct TestArgs<'a> {
     pub archive: Option<&'a str>,
@@ -140,6 +140,34 @@ pub(crate) fn e2e_tests() -> Result<()> {
     println!("Running: e2e tests");
 
     test_hello()
+}
+
+pub(crate) fn test_xtask_runtime() -> Result<()> {
+    println!("Running: xtask runtime smoke test");
+
+    CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs::default())
+        .write_attestation_manifest_config(&[ImageCfg {
+            image_id: 0x1000,
+            ..Default::default()
+        }])?;
+
+    crate::runtime::runtime_run(Commands::Runtime {
+        hw_revision: semver::Version::new(2, 0, 0),
+        trace: false,
+        i3c_port: None,
+        features: vec!["test-xtask-runtime".to_string()],
+        no_stdin: true,
+        caliptra_rom: None,
+        caliptra_firmware: None,
+        device_security_state: caliptra_api_types::DeviceLifecycle::Production as u32,
+        soc_manifest: None,
+        vendor_pk_hash: None,
+        streaming_boot: None,
+        soc_images: None,
+        flash_image: None,
+        dccm_offset: None,
+        dccm_size: None,
+    })
 }
 
 fn build_hello_binary() -> Result<()> {

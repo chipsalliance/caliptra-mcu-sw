@@ -49,6 +49,8 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         },
         ..Default::default()
     })?;
+    CaliptraBuilder::new(&CaliptraBuildArgs::default())
+        .write_attestation_manifest_config(soc_images.as_deref().unwrap_or(&[]))?;
     let features_str = features.join(",");
     let tock_binary = runtime_build_with_apps(&CaliptraBuildArgs {
         features: if features.is_empty() {
@@ -229,9 +231,12 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     if ocp_lock_enabled {
         cargo_run_args.push("--ocp-lock");
     }
-    Command::new("cargo")
+    let status = Command::new("cargo")
         .args(cargo_run_args)
         .current_dir(&*PROJECT_ROOT)
         .status()?;
+    if !status.success() {
+        return Err(anyhow!("runtime emulator exited with status {status}"));
+    }
     Ok(())
 }
