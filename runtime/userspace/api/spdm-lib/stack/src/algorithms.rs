@@ -282,3 +282,182 @@ fn build_response_body<S, L>(
 fn multi_key_cap_allows_connection(local: CapFlags, peer: CapFlags) -> bool {
     matches!(local.multi_key_field(), 0b01 | 0b10) && matches!(peer.multi_key_field(), 0b01 | 0b10)
 }
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use crate::stack::ConnectionState;
+    use caliptra_mcu_spdm_codec::{
+        alg_type, AlgorithmsRspBodyFixed, AsymAlgos, HashAlgos, MeasHashAlgos, MeasSpec,
+        ReqRespCode,
+    };
+    use caliptra_mcu_spdm_traits::SpdmPalHash;
+    use futures::executor::block_on;
+    use std::vec;
+    use std::vec::Vec;
+    use zerocopy::{little_endian::U16, FromBytes, IntoBytes};
+
+    use crate::measurements::support;
+    use support::{test_digest, TestHashState, TestIo, TestPal};
+
+    fn negotiate_request(base_asym_algo: AsymAlgos, include_req_base_asym: bool) -> Vec<u8> {
+        let mut alg_structs = vec![
+            AlgStructEntry::dhe(DheAlgos::SECP_384_R1),
+            AlgStructEntry::aead(AeadAlgos::AES_256_GCM),
+        ];
+        if include_req_base_asym {
+            alg_structs.push(AlgStructEntry {
+                alg_type: alg_type::REQ_BASE_ASYM,
+                alg_count_etc: AlgStructEntry::FIXED_ALG_COUNT_ETC,
+                alg_supported: U16::new(AsymAlgos::ECDSA_ECC_NIST_P384.into_bits() as u16),
+            });
+        }
+        alg_structs.push(AlgStructEntry::key_schedule(KeyScheduleAlgos::SPDM));
+
+        let total_len = SpdmMsgHdrPdu::SIZE
+            + NegotiateAlgorithmsReqBodyFixed::SIZE
+            + alg_structs.len() * AlgStructEntry::SIZE;
+        let fixed = NegotiateAlgorithmsReqBodyFixed {
+            num_alg_struct: alg_structs.len() as u8,
+            param2: 0,
+            length: U16::new(total_len as u16),
+            measurement_spec: MeasSpec::DMTF,
+            other_param_support: OtherParamSupport::OPAQUE_DATA_FMT1,
+            base_asym_algo,
+            base_hash_algo: HashAlgos::SHA_384,
+            reserved1: [0; 12],
+            ext_asym_count: 0,
+            ext_hash_count: 0,
+            reserved2: 0,
+            mel_spec_or_reserved: 0,
+        };
+
+        let mut request = Vec::with_capacity(total_len);
+        request.extend_from_slice(
+            SpdmMsgHdrPdu::new(SpdmVersion::V12, ReqRespCode::NEGOTIATE_ALGORITHMS).as_bytes(),
+        );
+        request.extend_from_slice(fixed.as_bytes());
+        for entry in &alg_structs {
+            request.extend_from_slice(entry.as_bytes());
+        }
+        assert_eq!(request.len(), total_len);
+        request
+    }
+
+    fn run_negotiate(request: Vec<u8>) -> (ConnectionState<TestHashState, Vec<u8>>, Vec<u8>) {
+        let pal = TestPal::default();
+        let mut state = ConnectionState {
+            phase: Phase::AfterCapabilities,
+            ..ConnectionState::default()
+        };
+        let io = TestIo::message(request);
+        let response = block_on(handle_negotiate_algorithms(&mut state, &pal, &io)).unwrap();
+        (state, response[..].to_vec())
+    }
+
+    fn assert_algorithms_response(
+        response: &[u8],
+        expected_base_asym: AsymAlgos,
+        expected_entries: &[AlgStructEntry],
+    ) {
+        let expected_len = SpdmMsgHdrPdu::SIZE
+            + AlgorithmsRspBodyFixed::SIZE
+            + expected_entries.len() * AlgStructEntry::SIZE;
+        assert_eq!(response.len(), expected_len);
+
+        let (header, body) = SpdmMsgHdrPdu::ref_from_prefix(response).unwrap();
+        assert_eq!(header.version, SpdmVersion::V12.to_u8());
+        assert_eq!(header.code, ReqRespCode::ALGORITHMS);
+        let fixed = AlgorithmsRspBodyFixed::ref_from_bytes(
+            body.get(..AlgorithmsRspBodyFixed::SIZE).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(fixed.num_alg_struct as usize, expected_entries.len());
+        assert_eq!(fixed.length.get() as usize, response.len());
+        assert_eq!(
+            fixed.measurement_spec_sel.into_bits(),
+            MeasSpec::DMTF.into_bits()
+        );
+        assert_eq!(
+            fixed.other_param_support.into_bits(),
+            OtherParamSupport::OPAQUE_DATA_FMT1.into_bits()
+        );
+        assert_eq!(
+            fixed.meas_hash_algo.into_bits(),
+            MeasHashAlgos::SHA_384.into_bits()
+        );
+        assert_eq!(
+            fixed.base_asym_sel.into_bits(),
+            expected_base_asym.into_bits()
+        );
+        assert_eq!(
+            fixed.base_hash_sel.into_bits(),
+            HashAlgos::SHA_384.into_bits()
+        );
+        assert_eq!(fixed.reserved3, [0; 12]);
+        assert_eq!(fixed.ext_asym_sel_count, 0);
+        assert_eq!(fixed.ext_hash_sel_count, 0);
+        assert_eq!(fixed.reserved4, [0; 2]);
+
+        let mut expected_struct_bytes = Vec::new();
+        for entry in expected_entries {
+            expected_struct_bytes.extend_from_slice(entry.as_bytes());
+        }
+        assert_eq!(
+            body.get(AlgorithmsRspBodyFixed::SIZE..).unwrap(),
+            expected_struct_bytes.as_slice()
+        );
+    }
+
+    fn assert_response_was_appended_to_vca(
+        state: &mut ConnectionState<TestHashState, Vec<u8>>,
+        response: &[u8],
+    ) {
+        let pal = TestPal::default();
+        let io = TestIo::message(Vec::new());
+        let mut digest = [0; support::SHA384_DIGEST_SIZE];
+        block_on(pal.hash_finish(&io, state.transcript.vca.as_mut().unwrap(), &mut digest))
+            .unwrap();
+        assert_eq!(digest, test_digest(response));
+    }
+
+    #[test]
+    fn algorithms_omits_peer_only_req_base_asym_structure_from_response_and_vca() {
+        let request = negotiate_request(AsymAlgos::ECDSA_ECC_NIST_P384, true);
+        let (mut state, response) = run_negotiate(request);
+        let expected_entries = [
+            AlgStructEntry::dhe(DheAlgos::SECP_384_R1),
+            AlgStructEntry::aead(AeadAlgos::AES_256_GCM),
+            AlgStructEntry::key_schedule(KeyScheduleAlgos::SPDM),
+        ];
+
+        assert_algorithms_response(&response, AsymAlgos::ECDSA_ECC_NIST_P384, &expected_entries);
+        assert_eq!(
+            state.negotiated_base_asym_sel.into_bits(),
+            AsymAlgos::ECDSA_ECC_NIST_P384.into_bits()
+        );
+        assert_eq!(state.phase, Phase::AfterAlgorithms);
+        assert_response_was_appended_to_vca(&mut state, &response);
+    }
+
+    #[test]
+    fn algorithms_keeps_zero_base_asym_selection_and_advances_state_without_common_algorithm() {
+        let request = negotiate_request(AsymAlgos::EMPTY, false);
+        let (mut state, response) = run_negotiate(request);
+        let expected_entries = [
+            AlgStructEntry::dhe(DheAlgos::SECP_384_R1),
+            AlgStructEntry::aead(AeadAlgos::AES_256_GCM),
+            AlgStructEntry::key_schedule(KeyScheduleAlgos::SPDM),
+        ];
+
+        assert_algorithms_response(&response, AsymAlgos::EMPTY, &expected_entries);
+        assert_eq!(
+            state.negotiated_base_asym_sel.into_bits(),
+            AsymAlgos::EMPTY.into_bits()
+        );
+        assert_eq!(state.phase, Phase::AfterAlgorithms);
+        assert_response_was_appended_to_vca(&mut state, &response);
+    }
+}
