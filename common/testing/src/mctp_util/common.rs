@@ -66,7 +66,6 @@ impl MctpUtil {
 
     pub fn new_req(&mut self, msg_tag: u8) {
         self.dest_eid = 0;
-        self.src_eid = LOCAL_TEST_ENDPOINT_EID;
         self.msg_tag = msg_tag;
         self.tag_owner = 1;
     }
@@ -593,6 +592,19 @@ impl MctpUtil {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_request_preserves_configured_source_eid() {
+        let mut mctp = MctpUtil::new();
+        mctp.set_src_eid(11);
+        mctp.new_req(0);
+
+        let packets = mctp.packetize(&[0]);
+        let header: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
+            MCTPHdr::read_from_bytes(&packets[0][..MCTP_HDR_SIZE]).unwrap();
+
+        assert_eq!(header.src_eid(), 11);
+    }
 
     #[test]
     fn test_mctp_packetize_assembly() {

@@ -148,13 +148,14 @@ impl<'a> FirmwareDeviceContext<'a> {
         }
     }
 
-    pub async fn request_update_rsp(&self, payload: &mut [u8]) -> McuResult<usize> {
+    pub async fn request_update_rsp(&self, payload: &mut [u8]) -> McuResult<(usize, bool)> {
         // Check if FD is in idle state. Otherwise returns 'ALREADY_IN_UPDATE_MODE' completion code
         if self.internal.is_update_mode() {
-            return generate_failure_response(
+            let len = generate_failure_response(
                 payload,
                 FwUpdateCompletionCode::AlreadyInUpdateMode as u8,
-            );
+            )?;
+            return Ok((len, false));
         }
 
         // Set timestamp for FD T1 timeout
@@ -164,10 +165,11 @@ impl<'a> FirmwareDeviceContext<'a> {
         let req = RequestUpdateRequest::decode(payload).map_err(|_| errors::CODEC_ERROR)?;
         let ua_transfer_size = req.fixed.max_transfer_size as usize;
         if ua_transfer_size < PLDM_FWUP_BASELINE_TRANSFER_SIZE {
-            return generate_failure_response(
+            let len = generate_failure_response(
                 payload,
                 FwUpdateCompletionCode::InvalidTransferLength as u8,
-            );
+            )?;
+            return Ok((len, false));
         }
 
         // Get the transfer size for the firmware update operation
@@ -194,10 +196,11 @@ impl<'a> FirmwareDeviceContext<'a> {
                 // Move FD state to 'LearnComponents'
                 self.internal
                     .set_fd_state(FirmwareDeviceState::LearnComponents);
-                Ok(bytes)
+                Ok((bytes, true))
             }
             Err(_) => {
                 generate_failure_response(payload, PldmBaseCompletionCode::InvalidLength as u8)
+                    .map(|len| (len, false))
             }
         }
     }
@@ -1108,6 +1111,7 @@ mod test {
         ActivateFirmwareRequest, ActivateFirmwareResponse, SelfContainedActivationRequest,
     };
     use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+    use caliptra_mcu_pldm_common::message::firmware_update::request_update::RequestUpdateRequest;
     use caliptra_mcu_pldm_common::message::firmware_update::update_component::{
         UpdateComponentRequest, UpdateComponentResponse,
     };
@@ -1238,6 +1242,54 @@ mod test {
             &ver_str,
         );
         req.encode(payload).unwrap()
+    }
+
+    fn encode_request_update(payload: &mut [u8], max_transfer_size: u32) -> usize {
+        let ver_str = PldmFirmwareString::new("UTF-8", "fw-v2.0").unwrap();
+        let req = RequestUpdateRequest::new(
+            1,
+            PldmMsgType::Request,
+            max_transfer_size,
+            1,
+            1,
+            0,
+            &ver_str,
+        );
+        req.encode(payload).unwrap()
+    }
+
+    #[test]
+    fn test_request_update_acceptance() {
+        let mock_ops = MockFdOps;
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+        let mut payload = [0u8; 256];
+
+        encode_request_update(&mut payload, PLDM_FWUP_BASELINE_TRANSFER_SIZE as u32);
+        let (_, accepted) = block_on(fd_ctx.request_update_rsp(&mut payload)).unwrap();
+
+        assert!(accepted);
+        assert_eq!(
+            fd_ctx.internal.get_fd_state(),
+            FirmwareDeviceState::LearnComponents
+        );
+
+        encode_request_update(&mut payload, PLDM_FWUP_BASELINE_TRANSFER_SIZE as u32);
+        let (_, accepted) = block_on(fd_ctx.request_update_rsp(&mut payload)).unwrap();
+        assert!(!accepted);
+    }
+
+    #[test]
+    fn test_invalid_request_update_is_not_accepted() {
+        let mock_ops = MockFdOps;
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+        let mut payload = [0u8; 256];
+
+        encode_request_update(&mut payload, (PLDM_FWUP_BASELINE_TRANSFER_SIZE - 1) as u32);
+        let (_, accepted) = block_on(fd_ctx.request_update_rsp(&mut payload)).unwrap();
+        assert!(!accepted);
+
+        let mut malformed_payload = [0u8; 2];
+        assert!(block_on(fd_ctx.request_update_rsp(&mut malformed_payload)).is_err());
     }
 
     // =========================================================================
