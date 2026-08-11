@@ -61,6 +61,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
 
+const STREAMING_BOOT_UA_EID: u8 = 11;
+
 // Type aliases for external shim callbacks
 pub type ExternalReadCallback =
     Box<dyn Fn(caliptra_emu_types::RvSize, caliptra_emu_types::RvAddr, &mut u32) -> bool>;
@@ -1052,8 +1054,13 @@ impl Emulator {
             // Start the PLDM Daemon
             i3c_controller_join_handle = Some(i3c_controller.start());
             let pldm_transport = MctpTransport::new(cli.i3c_port.unwrap(), i3c_dynamic_address);
+            let ua_eid = if test_feature == "test-pldm-streaming-boot" {
+                STREAMING_BOOT_UA_EID
+            } else {
+                LOCAL_TEST_ENDPOINT_EID
+            };
             let pldm_socket = pldm_transport
-                .create_socket(EndpointId(LOCAL_TEST_ENDPOINT_EID), EndpointId(0))
+                .create_socket(EndpointId(ua_eid), EndpointId(0))
                 .unwrap();
             if test_feature == "test-pldm-streaming-boot" {
                 // If we are running the PLDM daemon from an integration test,

@@ -14,8 +14,8 @@ caliptra-mcu-capsules-emulator.workspace = true
 caliptra-mcu-capsules-runtime.workspace = true
 capsules-system.workspace = true
 components.workspace = true
-caliptra-mcu-doe-transport.workspace = true
-caliptra-mcu-doe-mbox-driver.workspace = true
+caliptra-mcu-doe-transport = { workspace = true, optional = true }
+caliptra-mcu-doe-mbox-driver = { workspace = true, optional = true }
 caliptra-mcu-dma-driver.workspace = true
 caliptra-mcu-external-otp-driver.workspace = true
 caliptra-mcu-external-otp-emulator.workspace = true
@@ -41,14 +41,42 @@ rv32i.workspace = true
 
 
 [features]
-default = []
+default = ["all-features"]
+all-features = [
+	"spdm",
+	"streaming-boot",
+	"flash-boot",
+	"firmware-update",
+	"doe",
+	"userspace-log",
+	"mctp-vdm-service",
+]
+spdm = ["mcu-mbox-service"]
+streaming-boot = []
+# Flash partitions and logging use the same flash mux. Keep the logging
+# FlashUser registered for boot and update images so partition I/O retains the
+# working mux topology used by the full kernel.
+flash-boot = ["userspace-log"]
+firmware-update = ["userspace-log"]
+mcu-mbox-service = []
+mctp-vdm-service = []
+doe = [
+	"spdm",
+	"dep:caliptra-mcu-doe-transport",
+	"dep:caliptra-mcu-doe-mbox-driver",
+]
+userspace-log = []
 debug = []
 # Production / minimal-size build.  Strips:
 #   - kernel `debug!()` macro          (via kernel/no_debug_panics)
 #   - romtime `print!`/`println!`      (via caliptra-mcu-romtime/no-print)
 #   - DebugWriter, Console, LowLevelDebug, ProcessConsole, ProcessPrinter
 # Default (off) = full debug / interactive experience.
-release = ["kernel/no_debug_panics", "caliptra-mcu-romtime/no-print"]
+release = [
+	"userspace-log",
+	"kernel/no_debug_panics",
+	"caliptra-mcu-romtime/no-print",
+]
 hw-2-1 = []
 # Example app test features
 test-caliptra-certs = []
@@ -56,12 +84,15 @@ test-caliptra-crypto = []
 test-caliptra-mailbox = []
 test-do-nothing = []
 test-dma = []
-test-doe-transport-loopback = []
-test-doe-discovery = []
-test-doe-user-loopback = []
+test-doe-transport-loopback = [
+	"dep:caliptra-mcu-doe-transport",
+	"dep:caliptra-mcu-doe-mbox-driver",
+]
+test-doe-discovery = ["doe"]
+test-doe-user-loopback = ["doe"]
 test-dpe-handle-store = []
 test-get-device-state = []
-test-log-flash-usermode = ["crash-log"]
+test-log-flash-usermode = ["crash-log", "userspace-log"]
 test-mbox-sram = []
 test-external-otp = []
 test-mci = []
@@ -69,56 +100,56 @@ test-sw-pcr-store = []
 # Kernel only test
 test-exit-immediately = []
 test-xtask-runtime = []
-test-caliptra-util-host-validator = []
-test-caliptra-util-host-mctp-vdm-validator = []
-test-caliptra-util-host-spdm-vdm-validator = []
+test-caliptra-util-host-validator = ["mcu-mbox-service"]
+test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
+test-caliptra-util-host-spdm-vdm-validator = ["spdm"]
 test-i3c-simple = []
 test-i3c-constant-writes = []
-test-flash-based-boot = []
+test-flash-based-boot = ["flash-boot"]
 test-flash-ctrl-init = []
 test-flash-ctrl-read-write-page = []
 test-flash-ctrl-erase-page = []
 test-flash-storage-read-write = []
 test-flash-storage-erase = []
-test-flash-usermode = []
-test-firmware-activate = []
-test-firmware-update-flash = []
-test-firmware-update-reject = []
-test-firmware-update-streaming = []
+test-flash-usermode = ["flash-boot"]
+test-firmware-activate = ["firmware-update"]
+test-firmware-update-flash = ["flash-boot", "firmware-update"]
+test-firmware-update-reject = ["flash-boot", "firmware-update"]
+test-firmware-update-streaming = ["firmware-update"]
 test-fpga-flash-ctrl = []
 test-log-flash-circular = []
 test-log-flash-linear = []
-test-defmt-logging-mailbox = []
-test-defmt-logging-release = []
-test-defmt-logging-vdm = []
+test-defmt-logging-mailbox = ["userspace-log", "mcu-mbox-service"]
+test-defmt-logging-release = ["userspace-log", "mcu-mbox-service"]
+test-defmt-logging-vdm = ["userspace-log", "mcu-mbox-service", "mctp-vdm-service"]
 test-firmware-v2 = []
 test-mcu-mbox-driver = []
-test-mcu-mbox-cmds = []
-test-mcu-mbox-fips-self-test = []
-test-mcu-mbox-fips-periodic = []
+test-mcu-mbox-cmds = ["mcu-mbox-service"]
+test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
+test-mcu-mbox-fips-periodic = ["mcu-mbox-service"]
 test-mcu-mbox-soc-requester-loopback = []
-test-mcu-mbox-usermode = []
-test-mctp-ctrl-cmds = []
+test-mcu-mbox-usermode = ["mcu-mbox-service"]
+test-mctp-ctrl-cmds = ["spdm", "streaming-boot", "mctp-vdm-service"]
 test-mctp-capsule-loopback = []
-test-mctp-user-loopback = []
-test-mctp-vdm-cmds = []
+test-mctp-user-loopback = ["mctp-vdm-service"]
+test-mctp-vdm-cmds = ["mctp-vdm-service", "userspace-log"]
 test-mcu-rom-flash-access = []
 test-mcu-svn-gt-fuse = []
 test-mcu-svn-lt-fuse = []
-test-pldm-request-response = []
-test-pldm-discovery = []
-test-pldm-fw-update = []
-test-pldm-fw-update-e2e = []
-test-pldm-streaming-boot = []
-test-streaming-boot-flash-write-back = []
-test-mctp-spdm-responder-conformance = []
-test-mctp-spdm-attestation = []
-test-mctp-spdm-attestation-tcb = []
-test-mctp-spdm-attestation-mixed = []
-test-mctp-spdm-attestation-pcr-quote = []
-test-mctp-spdm-set-certificate = []
-test-doe-spdm-responder-conformance = []
-test-doe-spdm-tdisp-ide-validator = []
+test-pldm-request-response = ["streaming-boot"]
+test-pldm-discovery = ["streaming-boot"]
+test-pldm-fw-update = ["firmware-update"]
+test-pldm-fw-update-e2e = ["firmware-update"]
+test-pldm-streaming-boot = ["streaming-boot"]
+test-streaming-boot-flash-write-back = ["streaming-boot", "firmware-update"]
+test-mctp-spdm-responder-conformance = ["spdm"]
+test-mctp-spdm-attestation = ["spdm", "flash-boot"]
+test-mctp-spdm-attestation-tcb = ["spdm", "flash-boot"]
+test-mctp-spdm-attestation-mixed = ["spdm", "flash-boot"]
+test-mctp-spdm-attestation-pcr-quote = ["spdm"]
+test-mctp-spdm-set-certificate = ["spdm", "flash-boot"]
+test-doe-spdm-responder-conformance = ["doe"]
+test-doe-spdm-tdisp-ide-validator = ["doe"]
 test-warm-reset = []
 active-i3c1 = ["caliptra-mcu-config-emulator/active-i3c1"]
 crash-log = ["caliptra-mcu-config-emulator/crash-log"]
