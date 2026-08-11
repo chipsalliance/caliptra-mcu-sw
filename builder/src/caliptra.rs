@@ -1120,6 +1120,7 @@ fn main() -> Result<()> {
 #[derive(Debug, Clone)]
 pub struct ImageCfg {
     pub path: PathBuf,
+    pub network_filename: Option<String>,
     pub load_addr: u64,
     pub staging_addr: u64,
     pub image_id: u32,
@@ -1133,6 +1134,7 @@ impl Default for ImageCfg {
     fn default() -> Self {
         ImageCfg {
             path: PathBuf::new(),
+            network_filename: None,
             load_addr: 0,
             staging_addr: 0,
             image_id: 0,
@@ -1151,13 +1153,17 @@ impl FromStr for ImageCfg {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split(',').collect();
-        if !(7..=9).contains(&parts.len()) {
+        if !(7..=10).contains(&parts.len()) {
             return Err(
-                "Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>]]".into(),
+                "Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]".into(),
             );
         }
 
         let path = PathBuf::from(parts[0]);
+        let network_filename = parts
+            .get(9)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
         let load_addr = u64::from_str_radix(parts[1].trim_start_matches("0x"), 16)
             .map_err(|e: ParseIntError| e.to_string())?;
         let staging_addr = u64::from_str_radix(parts[2].trim_start_matches("0x"), 16)
@@ -1179,6 +1185,7 @@ impl FromStr for ImageCfg {
 
         Ok(ImageCfg {
             path,
+            network_filename,
             load_addr,
             staging_addr,
             image_id,
@@ -1194,6 +1201,20 @@ impl FromStr for ImageCfg {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_image_cfg_optional_network_filename() {
+        let config: ImageCfg =
+            "image.bin,0x80000000,0x60000000,2,3,4,test-feature,true,false,tftp/image.bin"
+                .parse()
+                .unwrap();
+        assert_eq!(config.network_filename.as_deref(), Some("tftp/image.bin"));
+
+        let config: ImageCfg = "image.bin,0x80000000,0x60000000,2,3,4,test-feature"
+            .parse()
+            .unwrap();
+        assert_eq!(config.network_filename, None);
+    }
 
     #[test]
     fn test_create_unsigned_auth_manifest_and_request() {
