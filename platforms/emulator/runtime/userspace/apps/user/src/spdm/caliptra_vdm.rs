@@ -8,9 +8,12 @@ use caliptra_mcu_common_commands::{
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
-use caliptra_mcu_spdm_traits::SpdmPalAlloc;
+use caliptra_mcu_spdm_traits::{
+    McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
+};
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
-    CaliptraCompletionCode, CaliptraVdmAuthorization, CaliptraVdmResult, CaliptraVdmStreamOps,
+    CaliptraCompletionCode, CaliptraVdm, CaliptraVdmAuthorization, CaliptraVdmResult,
+    CaliptraVdmStreamOps,
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -31,6 +34,130 @@ static DEBUG_UNLOCK_TOKEN_STREAM: Mutex<CriticalSectionRawMutex, bool> = Mutex::
 
 pub struct CaliptraVdmStreamHook;
 pub struct CaliptraVdmAuthorizationHook;
+
+type EnabledVdm =
+    CaliptraVdm<'static, CaliptraCmdBackend, CaliptraVdmStreamHook, CaliptraVdmAuthorizationHook>;
+
+/// Common backend type for MCTP and DOE so the SPDM stack is instantiated once.
+/// DOE uses the disabled variant and continues to reject all VDM registry IDs.
+pub struct AppVdmBackend(Option<EnabledVdm>);
+
+impl AppVdmBackend {
+    pub fn enabled(
+        commands: &'static CaliptraCmdBackend,
+        stream: &'static CaliptraVdmStreamHook,
+        authorization: &'static CaliptraVdmAuthorizationHook,
+    ) -> Self {
+        Self(Some(CaliptraVdm::new(commands, stream, authorization)))
+    }
+
+    pub const fn disabled() -> Self {
+        Self(None)
+    }
+}
+
+impl SpdmVdmBackend for AppVdmBackend {
+    const USES_LARGE_RESPONSE: bool = EnabledVdm::USES_LARGE_RESPONSE;
+    const LARGE_RESPONSE_CAPACITY: usize = EnabledVdm::LARGE_RESPONSE_CAPACITY;
+
+    fn large_response_capacity(&self, req: &[u8]) -> usize {
+        self.0
+            .as_ref()
+            .map_or(0, |backend| backend.large_response_capacity(req))
+    }
+
+    fn match_id(&self, registry: &VdmRegistry<'_>) -> bool {
+        self.0
+            .as_ref()
+            .is_some_and(|backend| backend.match_id(registry))
+    }
+
+    async fn start_authorize_debug_unlock_token_stream<Alloc, Io>(
+        &self,
+        req_len: usize,
+        first: &[u8],
+        alloc: &Alloc,
+        io: &Io,
+    ) -> McuResult<bool>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        match &self.0 {
+            Some(backend) => {
+                backend
+                    .start_authorize_debug_unlock_token_stream(req_len, first, alloc, io)
+                    .await
+            }
+            None => Ok(false),
+        }
+    }
+
+    async fn continue_authorize_debug_unlock_token_stream<Alloc, Io>(
+        &self,
+        chunk: &[u8],
+        alloc: &Alloc,
+        io: &Io,
+    ) -> McuResult<()>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        match &self.0 {
+            Some(backend) => {
+                backend
+                    .continue_authorize_debug_unlock_token_stream(chunk, alloc, io)
+                    .await
+            }
+            None => Err(mcu_error::codes::NOT_IMPLEMENTED),
+        }
+    }
+
+    async fn finish_authorize_debug_unlock_token_stream<Alloc, Io>(
+        &self,
+        rsp: VdmResponseBuffer<'_, Alloc, Io>,
+    ) -> McuResult<VdmResponse>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        match &self.0 {
+            Some(backend) => {
+                backend
+                    .finish_authorize_debug_unlock_token_stream(rsp)
+                    .await
+            }
+            None => Err(mcu_error::codes::NOT_IMPLEMENTED),
+        }
+    }
+
+    async fn abort_authorize_debug_unlock_token_stream<Alloc, Io>(&self, alloc: &Alloc, io: &Io)
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        if let Some(backend) = &self.0 {
+            backend
+                .abort_authorize_debug_unlock_token_stream(alloc, io)
+                .await;
+        }
+    }
+
+    async fn handle_request<Alloc, Io>(
+        &self,
+        req: &[u8],
+        rsp: VdmResponseBuffer<'_, Alloc, Io>,
+    ) -> McuResult<VdmResponse>
+    where
+        Alloc: SpdmPalAlloc,
+        Io: SpdmPalIo,
+    {
+        match &self.0 {
+            Some(backend) => backend.handle_request(req, rsp).await,
+            None => Err(mcu_error::codes::NOT_IMPLEMENTED),
+        }
+    }
+}
 
 impl CaliptraVdmStreamOps for CaliptraVdmStreamHook {
     async fn start_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(

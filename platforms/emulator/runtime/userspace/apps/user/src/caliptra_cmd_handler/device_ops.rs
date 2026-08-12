@@ -2,18 +2,20 @@
 
 #![allow(dead_code)]
 
+extern crate alloc;
+
+use alloc::boxed::Box;
 use arrayvec::ArrayVec;
-use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, MldsaVerifyReq};
+use async_trait::async_trait;
+use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader};
 use caliptra_mcu_common_commands::{
     CaliptraCmdResult, CaliptraCompletionCode, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
-use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
+use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
     fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384, hash_all,
     request_debug_unlock_challenge, rng_generate, ApiAlloc, HashAlgo, McuErrorCode,
@@ -23,6 +25,91 @@ use zerocopy::IntoBytes;
 
 const ALGO_ECC_P384: u32 = 0x0001;
 const ALGO_MLDSA87: u32 = 0x0002;
+
+struct SegmentedPayloadStream<'a, const N: usize> {
+    segments: [&'a [u8]; N],
+    segment: usize,
+    offset: usize,
+}
+
+impl<'a, const N: usize> SegmentedPayloadStream<'a, N> {
+    fn new(segments: [&'a [u8]; N]) -> Self {
+        Self {
+            segments,
+            segment: 0,
+            offset: 0,
+        }
+    }
+    fn read_into(&mut self, buffer: &mut [u8]) -> usize {
+        let mut written = 0;
+        while written < buffer.len() && self.segment < N {
+            let remaining = &self.segments[self.segment][self.offset..];
+            let count = remaining.len().min(buffer.len() - written);
+            buffer[written..written + count].copy_from_slice(&remaining[..count]);
+            written += count;
+            self.offset += count;
+
+            if self.offset == self.segments[self.segment].len() {
+                self.segment += 1;
+                self.offset = 0;
+            }
+        }
+        written
+    }
+}
+
+#[async_trait(?Send)]
+impl<const N: usize> PayloadStream for SegmentedPayloadStream<'_, N> {
+    fn size(&self) -> usize {
+        self.segments.iter().map(|segment| segment.len()).sum()
+    }
+
+    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
+        Ok(self.read_into(buffer))
+    }
+}
+
+fn mailbox_checksum_segments<const N: usize>(command: u32, segments: [&[u8]; N]) -> u32 {
+    let sum = command
+        .to_le_bytes()
+        .iter()
+        .chain(segments.iter().flat_map(|segment| segment.iter()))
+        .fold(0u32, |sum, byte| sum.wrapping_add(*byte as u32));
+    0u32.wrapping_sub(sum)
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use std::vec::Vec;
+
+    #[test]
+    fn segmented_payload_preserves_wire_order_and_checksum() {
+        let command = 0x4d4c_4453;
+        let segments: [&[u8]; 4] = [&[1, 2, 3], &[], &[4, 5], &[6]];
+        let mut stream = SegmentedPayloadStream::new(segments);
+        let mut actual = Vec::new();
+        let mut chunk = [0u8; 2];
+
+        loop {
+            let len = stream.read_into(&mut chunk);
+            if len == 0 {
+                break;
+            }
+            actual.extend_from_slice(&chunk[..len]);
+        }
+
+        assert_eq!(actual, [1, 2, 3, 4, 5, 6]);
+        let mut request = Vec::from([0u8; 4]);
+        request.extend_from_slice(&actual);
+        assert_eq!(
+            mailbox_checksum_segments(command, segments),
+            caliptra_api::calc_checksum(command, &request)
+        );
+    }
+}
 
 pub async fn request_debug_unlock<A: ApiAlloc>(
     alloc: &A,
@@ -168,39 +255,28 @@ pub async fn verify_authorized_signatures<A: ApiAlloc>(
     .await
     .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
-    // Use a shared static buffer behind an async Mutex to avoid inflating
-    // the async task future by ~11 KB.  The guard is held across `.await`.
-    // SAFETY: MldsaVerifyReq derives FromBytes, so all-zeros is a valid repr.
-    static MLDSA_REQ: Mutex<CriticalSectionRawMutex, core::mem::MaybeUninit<MldsaVerifyReq>> =
-        Mutex::new(core::mem::MaybeUninit::zeroed());
-
-    let mut guard = MLDSA_REQ.lock().await;
-    // SAFETY: MldsaVerifyReq derives FromBytes — all-zeros (from the static
-    // initializer) and any byte pattern we write are valid representations.
-    let req: &mut MldsaVerifyReq = unsafe { guard.assume_init_mut() };
-    req.hdr = MailboxReqHeader::default();
-    req.pub_key = *mldsa_pub;
-    req.signature = sig.mldsa_sig;
-    req.message_size = mldsa_msg.len() as u32;
-    req.message = [0u8; caliptra_api::mailbox::MAX_CMB_DATA_SIZE];
-    req.message[..mldsa_msg.len()].copy_from_slice(&mldsa_msg);
-
-    let mldsa_req_bytes = req
-        .as_bytes_partial_mut()
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-
     let mut mldsa_resp = MailboxRespHeader::default();
     let mldsa_resp_bytes = mldsa_resp.as_mut_bytes();
-
     let cmd_mldsa_verify: u32 = caliptra_api::mailbox::CommandId::MLDSA87_SIGNATURE_VERIFY.into();
+    let message_size = (mldsa_msg.len() as u32).to_le_bytes();
+    let segments = [
+        mldsa_pub.as_slice(),
+        sig.mldsa_sig.as_slice(),
+        message_size.as_slice(),
+        mldsa_msg.as_slice(),
+    ];
+    let checksum = mailbox_checksum_segments(cmd_mldsa_verify, segments);
+    let mut payload = SegmentedPayloadStream::new(segments);
 
-    mcu_caliptra_api_lite::raw::raw_mailbox_execute(
-        cmd_mldsa_verify,
-        mldsa_req_bytes,
-        mldsa_resp_bytes,
-    )
-    .await
-    .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    Mailbox::<DefaultSyscalls>::new()
+        .execute_with_payload_stream(
+            cmd_mldsa_verify,
+            Some(&checksum.to_le_bytes()),
+            &mut payload,
+            mldsa_resp_bytes,
+        )
+        .await
+        .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
 
     Ok(())
 }

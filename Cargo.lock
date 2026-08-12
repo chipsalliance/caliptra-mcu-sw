@@ -1917,7 +1917,6 @@ name = "caliptra-mcu-mbox-lib"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-common-commands",
- "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_alarm",
  "caliptra-mcu-libtock_console",
