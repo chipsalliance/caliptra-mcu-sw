@@ -13,12 +13,13 @@ use caliptra_mcu_common_commands::{
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
-use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libsyscall_caliptra::otp::{Otp, RevokeVendorPubKeyType};
+use caliptra_mcu_libsyscall_caliptra::{caliptra, otp, DefaultSyscalls};
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use mcu_caliptra_api_lite::{
-    fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384, hash_all,
-    request_debug_unlock_challenge, rng_generate, ApiAlloc, HashAlgo, McuErrorCode,
+    fe_prog, fw_info, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
+    hash_all, request_debug_unlock_challenge, rng_generate, ApiAlloc, HashAlgo, McuErrorCode,
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
 use zerocopy::IntoBytes;
@@ -279,6 +280,121 @@ pub async fn verify_authorized_signatures<A: ApiAlloc>(
         .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
 
     Ok(())
+}
+
+pub fn provision_vendor_pk_hash(slot: u32, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
+    Otp::<DefaultSyscalls>::new()
+        .provision_vendor_pk_hash(slot, hash)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+}
+
+pub async fn increase_caliptra_min_svn<A: ApiAlloc>(alloc: &A, svn: u32) -> CaliptraCmdResult<()> {
+    if svn == 0 || svn > 128 {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
+    let caliptra_fw_info = fw_info(alloc)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if svn > caliptra_fw_info.fw_svn {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
+    let otp = Otp::<DefaultSyscalls>::new();
+    let mut current_fuses = [0u32; 4];
+    for (i, fuse) in current_fuses.iter_mut().enumerate() {
+        *fuse = otp
+            .read(otp::reg::CALIPTRA_FW_SVN, i as u32)
+            .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    }
+
+    let fuse = u128::from_le_bytes(current_fuses.as_bytes().try_into().unwrap());
+    let fused_min_svn = 128 - fuse.leading_zeros();
+    if svn < fused_min_svn {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+    if svn == fused_min_svn {
+        return Ok(());
+    }
+
+    let new_fuse_svn = if svn == 128 {
+        u128::MAX
+    } else {
+        !(u128::MAX << svn)
+    };
+    for (i, (current, new_bytes)) in current_fuses
+        .iter()
+        .zip(new_fuse_svn.as_bytes().chunks_exact(4))
+        .enumerate()
+    {
+        let new_svn_word = u32::from_le_bytes(new_bytes.try_into().unwrap());
+        if *current != new_svn_word {
+            otp.write(otp::reg::CALIPTRA_FW_SVN, i as u32, new_svn_word)
+                .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+        }
+    }
+    Ok(())
+}
+
+pub async fn revoke_vendor_pub_key<A: ApiAlloc>(
+    alloc: &A,
+    vendor_pk_hash_slot: u32,
+    key_type: u32,
+    key_index: u32,
+) -> CaliptraCmdResult<()> {
+    let key_type = RevokeVendorPubKeyType::try_from(key_type)
+        .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+    let otp = Otp::<DefaultSyscalls>::new();
+    if !otp.valid_vendor_pk_hash_slot(vendor_pk_hash_slot) {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
+    let caliptra_info = fw_info(alloc)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    let booted_pk_hash = caliptra::Caliptra::<DefaultSyscalls>::new()
+        .read_vendor_pk_hash()
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    let pk_hash_from_slot = otp
+        .read_vendor_pk_hash(vendor_pk_hash_slot)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+
+    if booted_pk_hash == pk_hash_from_slot {
+        const FW_VERIFICATION_PQC_TYPE_MLDSA: u32 = 1;
+        const FW_VERIFICATION_PQC_TYPE_LMS: u32 = 3;
+        let same_key = match (key_type, caliptra_info.image_manifest_pqc_type) {
+            (RevokeVendorPubKeyType::Ecdsa384, _) => {
+                key_index == caliptra_info.vendor_ecc384_pub_key_index
+            }
+            (RevokeVendorPubKeyType::Lms, FW_VERIFICATION_PQC_TYPE_LMS)
+            | (RevokeVendorPubKeyType::Mldsa87, FW_VERIFICATION_PQC_TYPE_MLDSA) => {
+                key_index == caliptra_info.vendor_pqc_pub_key_index
+            }
+            _ => false,
+        };
+        if same_key {
+            return Err(CaliptraCompletionCode::InvalidParameter);
+        }
+    }
+
+    otp.revoke_vendor_pub_key(vendor_pk_hash_slot, key_type, key_index)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+}
+
+pub fn revoke_vendor_pk_hash(vendor_pk_hash_slot: u32) -> CaliptraCmdResult<()> {
+    let otp = Otp::<DefaultSyscalls>::new();
+    let booted_pk_hash = caliptra::Caliptra::<DefaultSyscalls>::new()
+        .read_vendor_pk_hash()
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    let pk_hash_from_slot = otp
+        .read_vendor_pk_hash(vendor_pk_hash_slot)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if booted_pk_hash == pk_hash_from_slot {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
+    otp.revoke_vendor_pk_hash(vendor_pk_hash_slot)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
 }
 
 pub async fn program_field_entropy<A: ApiAlloc>(
