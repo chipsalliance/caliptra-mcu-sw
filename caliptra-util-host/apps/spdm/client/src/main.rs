@@ -46,6 +46,10 @@ struct Args {
     /// Debug unlock level (1-8)
     #[arg(long)]
     unlock_level: Option<u8>,
+
+    /// Run one isolated authorized-fuse validator suite.
+    #[arg(long, value_name = "SUITE")]
+    fuse_suite: Option<String>,
 }
 
 impl Args {
@@ -77,6 +81,9 @@ impl Args {
         if let Some(unlock_level) = self.unlock_level {
             config.debug_unlock.unlock_level = unlock_level;
         }
+        if let Some(fuse_suite) = self.fuse_suite {
+            config.validation.fuse_suite = Some(fuse_suite);
+        }
 
         Ok(config)
     }
@@ -103,9 +110,9 @@ fn main() -> Result<()> {
         };
     let config = args.into_config()?;
 
-    let fe_prog_authorizer: Option<Box<dyn CommandAuthChallengeSigner>> = match (
-        &config.fe_prog.ecc_auth_key,
-        &config.fe_prog.mldsa_auth_key,
+    let command_authorizer: Option<Box<dyn CommandAuthChallengeSigner>> = match (
+        &config.authorized_commands.ecc_auth_key,
+        &config.authorized_commands.mldsa_auth_key,
     ) {
         (Some(hex_ecc), Some(hex_mldsa)) => {
             let ecc_key = hex::decode(hex_ecc)?;
@@ -148,20 +155,19 @@ fn main() -> Result<()> {
             &mut client,
             &config,
             debug_unlock_signer.as_deref(),
-            fe_prog_authorizer.as_deref(),
+            command_authorizer.as_deref(),
             true,
         )
     };
     validator::print_summary(&results);
 
+    if !validator::all_passed(&results) {
+        anyhow::bail!("Some tests FAILED");
+    }
+
     println!("[caliptra-spdm-validator] Sending STOP to bridge");
     stop_io.send_stop()?;
-
-    if validator::all_passed(&results) {
-        Ok(())
-    } else {
-        anyhow::bail!("Some tests FAILED")
-    }
+    Ok(())
 }
 
 fn parse_key_ids(s: &str) -> Result<Vec<u32>> {

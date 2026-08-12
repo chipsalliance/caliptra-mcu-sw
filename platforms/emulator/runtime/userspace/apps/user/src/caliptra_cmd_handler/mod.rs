@@ -65,7 +65,11 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
 fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
     if cfg!(feature = "spdm") {
         AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
+            | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
+            | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
             | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
+            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
+            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
     } else {
         AuthorizedSubcommandCapabilities::empty()
     }
@@ -302,7 +306,11 @@ mod tests {
         assert_eq!(
             authorized.contains(
                 AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
+                    | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
+                    | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
                     | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
+                    | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
+                    | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             ),
             cfg!(feature = "spdm")
         );
