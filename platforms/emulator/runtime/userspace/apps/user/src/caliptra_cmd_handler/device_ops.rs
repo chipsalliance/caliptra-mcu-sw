@@ -19,8 +19,9 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use mcu_caliptra_api_lite::{
     fe_prog, fw_info, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
-    hash_all, request_debug_unlock_challenge, rng_generate, ApiAlloc, HashAlgo, McuErrorCode,
-    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
+    hash_all, request_debug_unlock_challenge, rng_generate, sha_finish, sha_init, sha_update,
+    ApiAlloc, HashAlgo, McuErrorCode, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
+    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN, SHA_CONTEXT_SIZE,
 };
 use zerocopy::IntoBytes;
 
@@ -201,6 +202,26 @@ pub async fn verify_authorized_signatures<A: ApiAlloc>(
     mldsa_pub: &[u8; 2592],
     sig: &HybridSignature,
 ) -> CaliptraCmdResult<()> {
+    let context = alloc
+        .alloc(SHA_CONTEXT_SIZE)
+        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
+    let mut anchor = sha_init(alloc, context, HashAlgo::Sha384, &ecc_pub_x)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    sha_update(alloc, &mut anchor, &ecc_pub_y)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    sha_update(alloc, &mut anchor, mldsa_pub)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    let mut pk_hash = [0u8; 48];
+    sha_finish(alloc, &mut anchor, &mut pk_hash)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if pk_hash != crate::auth_keys::AUTH_PK_HASH {
+        return Err(CaliptraCompletionCode::AccessDenied);
+    }
+
     // Pre-image = cmd_id(BE,4) || payload || challenge(48), built from the raw
     // payload (no inner hash), mirroring prod-debug-unlock. Each leg verifies a
     // digest of it: ECDSA over SHA-384(pre-image), ML-DSA over SHA-512(pre-image).
@@ -348,6 +369,12 @@ pub async fn revoke_vendor_pub_key<A: ApiAlloc>(
     if !otp.valid_vendor_pk_hash_slot(vendor_pk_hash_slot) {
         return Err(CaliptraCompletionCode::InvalidParameter);
     }
+    let pk_hash_from_slot = otp
+        .read_vendor_pk_hash(vendor_pk_hash_slot)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if pk_hash_from_slot.iter().all(|byte| *byte == 0) {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
 
     let caliptra_info = fw_info(alloc)
         .await
@@ -355,10 +382,6 @@ pub async fn revoke_vendor_pub_key<A: ApiAlloc>(
     let booted_pk_hash = caliptra::Caliptra::<DefaultSyscalls>::new()
         .read_vendor_pk_hash()
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    let pk_hash_from_slot = otp
-        .read_vendor_pk_hash(vendor_pk_hash_slot)
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-
     if booted_pk_hash == pk_hash_from_slot {
         const FW_VERIFICATION_PQC_TYPE_MLDSA: u32 = 1;
         const FW_VERIFICATION_PQC_TYPE_LMS: u32 = 3;
@@ -382,7 +405,19 @@ pub async fn revoke_vendor_pub_key<A: ApiAlloc>(
 }
 
 pub fn revoke_vendor_pk_hash(vendor_pk_hash_slot: u32) -> CaliptraCmdResult<()> {
+    const MAX_VENDOR_PK_HASH_SLOTS: u32 = 16;
+    if vendor_pk_hash_slot >= MAX_VENDOR_PK_HASH_SLOTS {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
     let otp = Otp::<DefaultSyscalls>::new();
+    // A cleared validity bit is the persistent indication that this slot was
+    // already revoked. Preserve the mailbox policy's idempotent behavior
+    // without attempting to read a now-invalid slot.
+    if !otp.valid_vendor_pk_hash_slot(vendor_pk_hash_slot) {
+        return Ok(());
+    }
+
     let booted_pk_hash = caliptra::Caliptra::<DefaultSyscalls>::new()
         .read_vendor_pk_hash()
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;

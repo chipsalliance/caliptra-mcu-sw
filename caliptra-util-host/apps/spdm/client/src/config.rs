@@ -16,11 +16,23 @@ pub struct TestConfig {
     #[serde(default)]
     pub spdm: SpdmTestConfig,
     #[serde(default)]
+    pub validation: ValidationConfig,
+    #[serde(default)]
     pub export_attested_csr: ExportAttestedCsrConfig,
     #[serde(default)]
     pub debug_unlock: DebugUnlockConfig,
     #[serde(default)]
+    pub authorized_commands: AuthorizedCommandsConfig,
+    #[serde(default)]
     pub fe_prog: FeProgConfig,
+    #[serde(default)]
+    pub provision_vendor_pk_hash: ProvisionVendorPkHashConfig,
+    #[serde(default)]
+    pub increase_caliptra_min_svn: IncreaseCaliptraMinSvnConfig,
+    #[serde(default)]
+    pub revoke_vendor_pub_key: RevokeVendorPubKeyConfig,
+    #[serde(default)]
+    pub revoke_vendor_pk_hash: RevokeVendorPkHashConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -45,6 +57,13 @@ fn default_server_address() -> String {
 pub struct SpdmTestConfig {
     #[serde(default)]
     pub slot_id: u8,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ValidationConfig {
+    /// Optional isolated validator suite selected by the integration harness.
+    #[serde(default)]
+    pub fuse_suite: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -102,13 +121,78 @@ impl Default for DebugUnlockConfig {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct FeProgConfig {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
-    pub partition: u32,
+pub struct AuthorizedCommandsConfig {
     #[serde(default)]
     pub ecc_auth_key: Option<String>,
     #[serde(default)]
     pub mldsa_auth_key: Option<String>,
+    #[serde(default)]
+    pub negative_authorization_tests: bool,
+    #[serde(default)]
+    pub policy_rejection_tests: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FeProgConfig {
+    #[serde(default)]
+    pub partition: u32,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for FeProgConfig {
+    fn default() -> Self {
+        Self {
+            partition: 0,
+            enabled: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ProvisionVendorPkHashConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub slot: u32,
+    #[serde(default)]
+    pub hash: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct IncreaseCaliptraMinSvnConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub flags: u32,
+    #[serde(default)]
+    pub svn: u32,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct RevokeVendorPubKeyConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub reserved: u32,
+    #[serde(default)]
+    pub vendor_pk_hash_slot: u32,
+    #[serde(default)]
+    pub key_type: u32,
+    #[serde(default)]
+    pub key_index: u32,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct RevokeVendorPkHashConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub reserved: u32,
+    #[serde(default)]
+    pub vendor_pk_hash_slot: u32,
+}
+
+fn default_true() -> bool {
+    true
 }

@@ -130,7 +130,14 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         x if x == CaliptraCommandId::ProdDebugUnlockToken as u32 => {
             Some(CaliptraVdmCommand::AuthorizeDebugUnlockToken)
         }
-        x if x == CaliptraCommandId::FeProg as u32 => Some(CaliptraVdmCommand::AuthorizedCommand),
+        x if x == CaliptraCommandId::FeProg as u32
+            || x == CaliptraCommandId::ProvisionVendorPkHash as u32
+            || x == CaliptraCommandId::FuseIncreaseCaliptraMinSvn as u32
+            || x == CaliptraCommandId::FuseRevokeVendorPubKey as u32
+            || x == CaliptraCommandId::FuseRevokeVendorPkHash as u32 =>
+        {
+            Some(CaliptraVdmCommand::AuthorizedCommand)
+        }
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(CaliptraVdmCommand::AuthorizedCommand)
         }
@@ -184,6 +191,19 @@ mod tests {
             command_id_to_vdm(CaliptraCommandId::ProdDebugUnlockReq as u32),
             Some(CaliptraVdmCommand::RequestDebugUnlock)
         );
+        for id in [
+            CaliptraCommandId::GetAuthCmdChallenge,
+            CaliptraCommandId::FeProg,
+            CaliptraCommandId::ProvisionVendorPkHash,
+            CaliptraCommandId::FuseIncreaseCaliptraMinSvn,
+            CaliptraCommandId::FuseRevokeVendorPubKey,
+            CaliptraCommandId::FuseRevokeVendorPkHash,
+        ] {
+            assert_eq!(
+                command_id_to_vdm(id as u32),
+                Some(CaliptraVdmCommand::AuthorizedCommand)
+            );
+        }
         // Unsupported command
         assert_eq!(command_id_to_vdm(CaliptraCommandId::HashInit as u32), None);
     }

@@ -389,23 +389,17 @@ pub trait CommandAuthorizer {
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError>;
 
-    /// Verify signatures over a command using the stored challenge.
-    ///
-    /// This is transport-agnostic: the caller provides the raw command ID
-    /// (which may differ between mailbox and SPDM VDM namespaces), the
-    /// command payload, and the received signature.
-    ///
-    /// Consumes the stored challenge (one-time use).
-    ///
-    /// # Arguments
-    /// * `cmd_id` - Raw command identifier (u32, serialized big-endian in verification)
-    /// * `payload` - Command-specific payload bytes
-    /// * `sig` - The hybrid signature received from the host
+    /// Verify signatures over a command using the stored challenge and wire keys.
+    #[allow(clippy::too_many_arguments)]
     async fn verify_signatures<Alloc: ApiAlloc>(
         &mut self,
         alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
         sig: &HybridSignature,
     ) -> Result<(), AuthorizationError>;
 
