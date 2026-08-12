@@ -28,7 +28,6 @@ use caliptra_mcu_spdm_stack::SpdmStack;
 #[cfg(feature = "doe")]
 use caliptra_mcu_spdm_transports::McuSpdmDoeTransport;
 use caliptra_mcu_spdm_transports::McuSpdmMctpTransport;
-use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 use caliptra_mcu_spdm_vdm_handler::pci_sig::{
     ide_km::PciSigIdeKmTdispVdm,
@@ -44,10 +43,11 @@ use embassy_sync::signal::Signal;
 
 /// Bitmap allocator pool size per responder task.
 ///
-/// Must hold `MEAS_RECORD_BUF_SIZE + MeasurementProvider::SCRATCH_SIZE`
-/// plus transient DPE/SHA mailbox buffers (peak ~2.4 KB during
-/// certify_key for kid computation).
-const SPDM_SCRATCH_SIZE: usize = 12 * 1024;
+/// MCTP hosts Caliptra VDM and must hold a buffered large request while its
+/// handler uses transient DPE/SHA mailbox workspaces.
+const MCTP_SPDM_SCRATCH_SIZE: usize = 12 * 1024;
+/// DOE needs room for measurement records and secure-session crypto workspaces.
+const DOE_SPDM_SCRATCH_SIZE: usize = 12 * 1024;
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
@@ -131,8 +131,8 @@ async fn spdm_mctp_responder() {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
     #[repr(C, align(64))]
-    struct ScratchBuf([u8; SPDM_SCRATCH_SIZE]);
-    static mut MCTP_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_SCRATCH_SIZE]);
+    struct ScratchBuf([u8; MCTP_SPDM_SCRATCH_SIZE]);
+    static mut MCTP_SCRATCH: ScratchBuf = ScratchBuf([0u8; MCTP_SPDM_SCRATCH_SIZE]);
     // SAFETY: this task is the sole owner of `MCTP_SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(MCTP_SCRATCH.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
@@ -141,7 +141,7 @@ async fn spdm_mctp_responder() {
     // MCTP responder task. Backing memory (`MCTP_SCRATCH`) is `'static`.
     static MCTP_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
     let allocator: &'static BitmapAllocator =
-        unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, SPDM_SCRATCH_SIZE) };
+        unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, MCTP_SPDM_SCRATCH_SIZE) };
 
     {
         if let Err(e) = ensure_cert_store_init(allocator).await {
@@ -172,7 +172,7 @@ async fn spdm_mctp_responder() {
     static STREAM: caliptra_vdm::CaliptraVdmStreamHook = caliptra_vdm::CaliptraVdmStreamHook;
     static AUTHORIZATION: caliptra_vdm::CaliptraVdmAuthorizationHook =
         caliptra_vdm::CaliptraVdmAuthorizationHook;
-    let vdm = CaliptraVdm::new(&COMMANDS, &STREAM, &AUTHORIZATION);
+    let vdm = caliptra_vdm::AppVdmBackend::enabled(&COMMANDS, &STREAM, &AUTHORIZATION);
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 
     crate::log_info!(cw, "SPDM_MCTP: starting spdm-lib MCTP run loop");
@@ -197,8 +197,8 @@ async fn spdm_doe_responder() {
     }
 
     #[repr(C, align(64))]
-    struct ScratchBuf([u8; SPDM_SCRATCH_SIZE]);
-    static mut DOE_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_SCRATCH_SIZE]);
+    struct ScratchBuf([u8; DOE_SPDM_SCRATCH_SIZE]);
+    static mut DOE_SCRATCH: ScratchBuf = ScratchBuf([0u8; DOE_SPDM_SCRATCH_SIZE]);
     // SAFETY: this task is the sole owner of `DOE_SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(DOE_SCRATCH.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
@@ -207,7 +207,7 @@ async fn spdm_doe_responder() {
     // DOE responder task. Backing memory (`DOE_SCRATCH`) is `'static`.
     static DOE_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
     let allocator: &'static BitmapAllocator =
-        unsafe { DOE_ALLOC_CELL.init_once(scratch_ptr, SPDM_SCRATCH_SIZE) };
+        unsafe { DOE_ALLOC_CELL.init_once(scratch_ptr, DOE_SPDM_SCRATCH_SIZE) };
 
     {
         if let Err(e) = ensure_cert_store_init(allocator).await {
@@ -235,7 +235,8 @@ async fn spdm_doe_responder() {
         ),
     );
     #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
-    let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
+    let mut stack =
+        SpdmStack::<_, 1, _>::with_vdm_backend(pal, caliptra_vdm::AppVdmBackend::disabled());
 
     crate::log_info!(cw, "SPDM_DOE: starting spdm-lib DOE run loop");
     if let Err(e) = stack.run().await {

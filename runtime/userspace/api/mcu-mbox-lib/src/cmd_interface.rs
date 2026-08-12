@@ -595,16 +595,34 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             return Err(errors::INVALID_PARAMS);
         }
 
-        let mut cert_ctx = caliptra_mcu_libapi_caliptra::certificate::CertContext::new();
-        let ret = cert_ctx
-            .cert_chain_chunk(
-                req.offset as usize,
-                &mut resp_buf[header_len..header_len + requested_size],
+        let mut cert_len = 0;
+        let mut ret = Ok(());
+        while cert_len < requested_size {
+            let chunk_len =
+                (requested_size - cert_len).min(mcu_caliptra_api_lite::DPE_MAX_CHUNK_SIZE);
+            let chunk = &mut resp_buf[header_len + cert_len..header_len + cert_len + chunk_len];
+            match mcu_caliptra_api_lite::dpe_get_cert_chain_chunk(
+                self.scratch,
+                req.offset + cert_len as u32,
+                chunk,
             )
-            .await;
+            .await
+            {
+                Ok(len) => {
+                    cert_len += len;
+                    if len < chunk_len {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    ret = Err(err);
+                    break;
+                }
+            }
+        }
 
         let (mbox_cmd_status, cert_len) = match ret {
-            Ok(len) => (MbxCmdStatus::Complete, len),
+            Ok(()) => (MbxCmdStatus::Complete, cert_len),
             Err(_) => (MbxCmdStatus::Failure, 0),
         };
 
