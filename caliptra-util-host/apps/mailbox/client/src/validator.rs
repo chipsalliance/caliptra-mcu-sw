@@ -1581,8 +1581,28 @@ impl Validator {
             }
         };
 
+        let (ecc_pub_x, ecc_pub_y, mldsa_pub) = match authorizer.public_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let error_str = format!("CommandAuthChallengeSigner::public_keys failed: {}", e);
+                eprintln!("✗ FeProg validation FAILED: {}", error_str);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_str),
+                };
+            }
+        };
+
         // Step 3: Submit FE_PROG with the signatures
-        let request = FeProgRequest { partition, sig };
+        let request = FeProgRequest {
+            partition,
+            sig,
+            nonce: challenge_resp.challenge,
+            ecc_pub_x,
+            ecc_pub_y,
+            mldsa_pub,
+        };
 
         match client.fe_prog(&request) {
             Ok(_) => {

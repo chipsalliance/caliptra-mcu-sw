@@ -78,9 +78,7 @@ impl From<SpdmVdmError> for TransportError {
                 TransportError::ConnectionFailed(Some("SPDM VDM communication error"))
             }
             SpdmVdmError::BufferOverflow => TransportError::BufferError("Buffer overflow"),
-            SpdmVdmError::DeviceError(_) => {
-                TransportError::ConnectionFailed(Some("SPDM VDM device error"))
-            }
+            SpdmVdmError::DeviceError(code) => TransportError::DeviceError(code),
             SpdmVdmError::CodecError => TransportError::InvalidMessage,
             SpdmVdmError::SessionError => {
                 TransportError::ConnectionFailed(Some("SPDM session error"))
@@ -112,6 +110,18 @@ impl<'a> SpdmVdmTransport<'a> {
             response_len: 0,
             has_response: false,
         }
+    }
+
+    /// Send a raw Caliptra VDM payload without local command encoding.
+    ///
+    /// This is intended for protocol validators that must exercise malformed
+    /// requests against the responder rather than rejecting them locally.
+    pub fn send_raw_vdm(
+        &mut self,
+        request: &[u8],
+        response: &mut [u8],
+    ) -> Result<usize, SpdmVdmError> {
+        self.driver.send_receive_vdm(request, response)
     }
 
     /// Process a command: encode internal request → VDM payload, send, decode response.

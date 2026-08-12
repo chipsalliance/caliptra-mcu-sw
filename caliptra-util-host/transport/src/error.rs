@@ -60,6 +60,9 @@ pub enum TransportError {
     /// OSAL error
     OsalError(OsalError),
 
+    /// Device returned a protocol completion code.
+    DeviceError(u8),
+
     /// Custom transport error
     Custom(&'static str),
 }
@@ -102,6 +105,9 @@ impl fmt::Display for TransportError {
             TransportError::MessageTooLarge(msg) => write!(f, "Message too large: {}", msg),
             TransportError::ParseError(msg) => write!(f, "Parse error: {}", msg),
             TransportError::PluginError(msg) => write!(f, "Plugin error: {}", msg),
+            TransportError::DeviceError(code) => {
+                write!(f, "Device completion code: {code:#04x}")
+            }
             TransportError::Custom(msg) => write!(f, "Custom error: {}", msg),
         }
     }
