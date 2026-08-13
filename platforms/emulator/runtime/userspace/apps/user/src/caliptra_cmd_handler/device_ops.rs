@@ -3,7 +3,7 @@
 use arrayvec::ArrayVec;
 use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, MldsaVerifyReq};
 use caliptra_mcu_common_commands::{
-    CaliptraCmdResult, CaliptraCompletionCode, DEBUG_UNLOCK_CHALLENGE_SIZE,
+    CaliptraCmdResult, CaliptraCompletionCode, GetLogResult, LogType, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
@@ -27,6 +27,16 @@ use zerocopy::IntoBytes;
 
 const ALGO_ECC_P384: u32 = 0x0001;
 const ALGO_MLDSA87: u32 = 0x0002;
+
+pub async fn get_debug_log(log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
+    LogType::try_from(log_type)?;
+    super::debug_log::drain(data).await
+}
+
+pub async fn clear_debug_log(log_type: u32) -> CaliptraCmdResult<()> {
+    LogType::try_from(log_type)?;
+    super::debug_log::clear().await
+}
 
 pub async fn request_debug_unlock<A: ApiAlloc>(
     alloc: &A,
