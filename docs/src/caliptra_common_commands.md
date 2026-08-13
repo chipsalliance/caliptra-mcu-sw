@@ -116,7 +116,8 @@ This table defines the bit assignment for every allocated command code. A respon
 | 4          | `FuseRevokeVendorPublicKey`  | Planned     |
 | 5          | `FuseRevokeVendorPkHash`     | Planned     |
 | 6          | `FuseLockPartition`          | Implemented |
-| 7:31       | Reserved                     | —           |
+| 7          | `ProvisionOwnerPkHash`       | Implemented |
+| 8:31       | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
 

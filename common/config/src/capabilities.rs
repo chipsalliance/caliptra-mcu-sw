@@ -35,6 +35,7 @@ bitflags::bitflags! {
         const FUSE_REVOKE_VENDOR_PUBLIC_KEY = 1 << 4;
         const FUSE_REVOKE_VENDOR_PK_HASH = 1 << 5;
         const FUSE_LOCK_PARTITION = 1 << 6;
+        const PROVISION_OWNER_PK_HASH = 1 << 7;
     }
 }
 
@@ -87,6 +88,10 @@ mod tests {
         assert_eq!(
             AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION.bits(),
             1 << 6
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH.bits(),
+            1 << 7
         );
     }
 }

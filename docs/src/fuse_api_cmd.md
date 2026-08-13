@@ -95,6 +95,32 @@ Command Code: `0x5056_504b` ("PVPK")
 Caveats:
 * Fails if the slot already contains data
 
+### MC_PROVISION_OWNER_PK_HASH
+
+Provision `CPTRA_SS_OWNER_PK_HASH` using its 48-byte dword-reversed OTP
+representation.
+
+Command Code: `0x504F_504B` ("POPK")
+
+*Table: `MC_PROVISION_OWNER_PK_HASH` input arguments*
+| **Name** | **Type**    | **Description**              |
+| -------- | ----------- | ---------------------------- |
+| chksum   | u32         |                              |
+| hash     | \[u8; 48\] | New owner public-key hash    |
+
+*Table: `MC_PROVISION_OWNER_PK_HASH` output arguments*
+| **Name**    | **Type** | **Description**           |
+| ----------- | -------- | ------------------------- |
+| chksum      | u32      |                           |
+| fips_status | u32      | FIPS approved or an error |
+
+Caveats:
+* The all-zero hash is rejected.
+* Reprovisioning the identical hash is idempotent.
+* Provisioning a different hash after any owner-hash data has been burned is rejected.
+* After verifying the hash, the command burns and verifies bit 0 of `CPTRA_SS_OWNER_PK_HASH_VALID` as the commit marker.
+* The newly provisioned owner hash is consumed by MCU ROM on the next reset.
+
 ### MC_FUSE_REVOKE_VENDOR_PUB_KEY
 
 Revoke one vendor firmware verification key within a vendor PK hash slot.

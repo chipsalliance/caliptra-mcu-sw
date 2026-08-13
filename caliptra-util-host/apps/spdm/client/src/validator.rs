@@ -19,7 +19,7 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
     MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID,
     MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
-    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID, MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompletionCode};
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
@@ -32,7 +32,8 @@ const IMPLEMENTED_AUTHORIZED_SUBCOMMANDS: u32 = (1 << 0)
     | (1 << 3)
     | (1 << 4)
     | (1 << 5)
-    | (1 << 6);
+    | (1 << 6)
+    | (1 << 7);
 
 /// Result of a single validation check.
 #[derive(Debug, Clone)]
@@ -162,6 +163,14 @@ pub fn run_all(
             client,
             config.provision_vendor_pk_hash.slot,
             &config.provision_vendor_pk_hash.hash,
+            command_authorizer,
+            verbose,
+        ));
+    }
+    if config.provision_owner_pk_hash.enabled {
+        results.push(run_provision_owner_pk_hash(
+            client,
+            &config.provision_owner_pk_hash.hash,
             command_authorizer,
             verbose,
         ));
@@ -415,6 +424,48 @@ pub fn run_provision_vendor_pk_hash(
     }
 }
 
+pub fn run_provision_owner_pk_hash(
+    client: &mut SpdmVdmClient,
+    hash_hex: &str,
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    _verbose: bool,
+) -> ValidationResult {
+    let test_name = "ProvisionOwnerPkHash";
+    let hash_vec = match hex::decode(hash_hex) {
+        Ok(hash) if hash.len() == 48 => hash,
+        Ok(hash) => {
+            return ValidationResult::fail(
+                test_name,
+                format!("hash must be 48 bytes, got {}", hash.len()),
+            )
+        }
+        Err(error) => {
+            return ValidationResult::fail(test_name, format!("invalid hash hex: {error}"))
+        }
+    };
+    let hash: [u8; 48] = hash_vec.try_into().unwrap();
+    let auth = match authorize_command(
+        client,
+        MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
+        &hash,
+        authorizer,
+    ) {
+        Ok(auth) => auth,
+        Err(error) => return ValidationResult::fail(test_name, error),
+    };
+    match client.provision_owner_pk_hash(
+        &hash,
+        &auth.sig,
+        &auth.nonce,
+        &auth.ecc_pub_x,
+        &auth.ecc_pub_y,
+        &auth.mldsa_pub,
+    ) {
+        Ok(_) => ValidationResult::pass(test_name, "hash provisioned"),
+        Err(error) => ValidationResult::fail(test_name, error.to_string()),
+    }
+}
+
 pub fn run_increase_caliptra_min_svn(
     client: &mut SpdmVdmClient,
     flags: u32,
@@ -548,6 +599,31 @@ fn signed_provision_vendor_pk_hash(
     client
         .provision_vendor_pk_hash(
             slot,
+            hash,
+            &auth.sig,
+            &auth.nonce,
+            &auth.ecc_pub_x,
+            &auth.ecc_pub_y,
+            &auth.mldsa_pub,
+        )
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
+fn signed_provision_owner_pk_hash(
+    client: &mut SpdmVdmClient,
+    hash: &[u8; 48],
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let auth = authorize_command(
+        client,
+        MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
+        hash,
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .provision_owner_pk_hash(
             hash,
             &auth.sig,
             &auth.nonce,
@@ -938,6 +1014,26 @@ fn run_fuse_suite(
                 "PVPK conflicting hash rejected",
                 signed_provision_vendor_pk_hash(client, 1, &other_hash, authorizer),
                 CaliptraVdmCompletionCode::OperationFailed,
+            ),
+        ],
+        "provision-owner-pk-hash" => vec![
+            expect_completion(
+                "POPK rejects zero hash",
+                signed_provision_owner_pk_hash(client, &[0; 48], authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+            expect_success(
+                "POPK programs and reads back hash",
+                signed_provision_owner_pk_hash(client, &hash, authorizer),
+            ),
+            expect_success(
+                "POPK same hash is idempotent",
+                signed_provision_owner_pk_hash(client, &hash, authorizer),
+            ),
+            expect_completion(
+                "POPK conflicting hash rejected",
+                signed_provision_owner_pk_hash(client, &other_hash, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
             ),
         ],
         "increase-min-svn" => vec![

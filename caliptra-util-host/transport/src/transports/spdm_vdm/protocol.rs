@@ -135,7 +135,8 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
             || x == CaliptraCommandId::FuseIncreaseCaliptraMinSvn as u32
             || x == CaliptraCommandId::FuseRevokeVendorPubKey as u32
             || x == CaliptraCommandId::FuseRevokeVendorPkHash as u32
-            || x == CaliptraCommandId::FuseLockPartition as u32 =>
+            || x == CaliptraCommandId::FuseLockPartition as u32
+            || x == CaliptraCommandId::ProvisionOwnerPkHash as u32 =>
         {
             Some(CaliptraVdmCommand::AuthorizedCommand)
         }

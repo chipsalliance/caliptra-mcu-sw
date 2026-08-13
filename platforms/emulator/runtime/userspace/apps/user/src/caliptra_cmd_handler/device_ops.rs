@@ -246,6 +246,15 @@ pub fn provision_vendor_pk_hash(slot: u32, hash: &[u8; 48]) -> CaliptraCmdResult
         .map_err(|_| CaliptraCompletionCode::OperationFailed)
 }
 
+pub fn provision_owner_pk_hash(hash: &[u8; 48]) -> CaliptraCmdResult<()> {
+    Otp::<DefaultSyscalls>::new()
+        .provision_owner_pk_hash(hash)
+        .map_err(|error| match error {
+            ErrorCode::Invalid => CaliptraCompletionCode::InvalidParameter,
+            _ => CaliptraCompletionCode::OperationFailed,
+        })
+}
+
 pub fn fuse_lock_partition(partition: u32) -> CaliptraCmdResult<()> {
     Otp::<DefaultSyscalls>::new()
         .lock_partition(partition)

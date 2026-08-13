@@ -17,8 +17,9 @@ use caliptra_mcu_mbox_common::messages::{
     GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader, MailboxRespHeader,
     MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE,
-    MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE,
+    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -208,6 +209,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                     self.handle_get_auth_cmd_challenge(req, resp_buf).await
                 }
                 inner @ CommandId::MC_PROVISION_VENDOR_PK_HASH
+                | inner @ CommandId::MC_PROVISION_OWNER_PK_HASH
                 | inner @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
                 | inner @ CommandId::MC_FE_PROG
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH
@@ -561,6 +563,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             CommandId::MC_PROVISION_VENDOR_PK_HASH => {
                 self.handle_provision_vendor_pk_hash(cmd, resp_buf).await
             }
+            CommandId::MC_PROVISION_OWNER_PK_HASH => {
+                self.handle_provision_owner_pk_hash(cmd, resp_buf).await
+            }
             CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
                 self.handle_increase_caliptra_min_svn(cmd, resp_buf).await
             }
@@ -675,6 +680,24 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let resp_slice = &mut resp_buf[..size_of::<ProvisionVendorPkHashResp>()];
         resp.write_to(resp_slice).unwrap();
         Ok((resp_slice, res))
+    }
+
+    async fn handle_provision_owner_pk_hash<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req =
+            ProvisionOwnerPkHashReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        self.non_crypto_cmds_handler
+            .provision_owner_pk_hash(&req.hash)
+            .await
+            .map_err(map_common_cmd_error)?;
+
+        let resp = ProvisionOwnerPkHashResp::default();
+        let resp_bytes = resp.as_bytes();
+        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+        Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
     }
 
     async fn handle_increase_caliptra_min_svn<'r>(

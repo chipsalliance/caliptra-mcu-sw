@@ -363,6 +363,10 @@ mod test {
         "provision-vendor-pk-hash"
     );
     isolated_fuse_suite_test!(
+        test_caliptra_util_host_spdm_vdm_validator_provision_owner_pk_hash,
+        "provision-owner-pk-hash"
+    );
+    isolated_fuse_suite_test!(
         test_caliptra_util_host_spdm_vdm_validator_increase_min_svn,
         "increase-min-svn"
     );

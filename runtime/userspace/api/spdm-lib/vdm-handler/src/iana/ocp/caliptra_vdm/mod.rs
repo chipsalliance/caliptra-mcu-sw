@@ -24,8 +24,8 @@ pub use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
 };
 pub use commands::authorized_command::{
     FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
-    INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_VENDOR_PK_HASH_CMD_ID,
-    REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
+    INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
+    PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
@@ -85,6 +85,19 @@ pub trait CaliptraVdmAuthorization {
     async fn provision_vendor_pk_hash<A: SpdmPalAlloc>(
         &self,
         slot: u32,
+        hash: &[u8; 48],
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn provision_owner_pk_hash<A: SpdmPalAlloc>(
+        &self,
         hash: &[u8; 48],
         payload: &[u8],
         sig: &HybridSignature,
@@ -507,6 +520,9 @@ mod tests {
             slot: u32,
             hash: [u8; 48],
         },
+        ProvisionOwnerPkHash {
+            hash: [u8; 48],
+        },
         IncreaseCaliptraMinSvn {
             flags: u32,
             svn: u32,
@@ -700,6 +716,21 @@ mod tests {
                 slot,
                 hash: *hash,
             })
+        }
+
+        async fn provision_owner_pk_hash<A: SpdmPalAlloc>(
+            &self,
+            hash: &[u8; 48],
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(PROVISION_OWNER_PK_HASH_CMD_ID, payload, sig)?;
+            self.complete_authorized(AuthorizedOperation::ProvisionOwnerPkHash { hash: *hash })
         }
 
         async fn increase_caliptra_min_svn<A: SpdmPalAlloc>(
@@ -1069,6 +1100,11 @@ mod tests {
                 },
             ),
             (
+                PROVISION_OWNER_PK_HASH_CMD_ID,
+                vec![0xC3; 48],
+                AuthorizedOperation::ProvisionOwnerPkHash { hash: [0xC3; 48] },
+            ),
+            (
                 INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
                 {
                     let mut payload = vec![];
@@ -1144,6 +1180,7 @@ mod tests {
     fn authorized_fuse_commands_reject_missing_truncated_and_oversized_signatures() {
         let payloads = [
             (PROVISION_VENDOR_PK_HASH_CMD_ID, vec![0u8; 52]),
+            (PROVISION_OWNER_PK_HASH_CMD_ID, vec![0u8; 48]),
             (INCREASE_CALIPTRA_MIN_SVN_CMD_ID, vec![0u8; 8]),
             (REVOKE_VENDOR_PUB_KEY_CMD_ID, vec![0u8; 16]),
             (REVOKE_VENDOR_PK_HASH_CMD_ID, vec![0u8; 8]),

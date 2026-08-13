@@ -26,6 +26,7 @@ struct FeProgVdmReq {
     sig: HybridSignature,
 }
 const PROVISION_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 48;
+const PROVISION_OWNER_PK_HASH_PAYLOAD_LEN: usize = 48;
 const INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN: usize = 4 + 4;
 const REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN: usize = 4 + 4 + 4 + 4;
 const REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 4;
@@ -63,6 +64,8 @@ const _: () = assert!(
 pub const GET_AUTH_CHALLENGE_CMD_ID: u32 = 0x4D41_4343;
 /// MC_PROVISION_VENDOR_PK_HASH sub-command (`PVPK`).
 pub const PROVISION_VENDOR_PK_HASH_CMD_ID: u32 = 0x5056_504B;
+/// MC_PROVISION_OWNER_PK_HASH sub-command (`POPK`).
+pub const PROVISION_OWNER_PK_HASH_CMD_ID: u32 = CommandId::MC_PROVISION_OWNER_PK_HASH.0;
 /// MC_FUSE_INCREASE_CALIPTRA_MIN_SVN sub-command (`MCMS`).
 pub const INCREASE_CALIPTRA_MIN_SVN_CMD_ID: u32 = 0x4D43_4D53;
 /// MC_FE_PROG sub-command (`MCFP`).
@@ -98,6 +101,9 @@ where
         GET_AUTH_CHALLENGE_CMD_ID => handle_get_auth_challenge(cmds, payload, scratch, out).await,
         PROVISION_VENDOR_PK_HASH_CMD_ID => {
             handle_provision_vendor_pk_hash(cmds, payload, scratch, out).await
+        }
+        PROVISION_OWNER_PK_HASH_CMD_ID => {
+            handle_provision_owner_pk_hash(cmds, payload, scratch, out).await
         }
         INCREASE_CALIPTRA_MIN_SVN_CMD_ID => {
             handle_increase_caliptra_min_svn(cmds, payload, scratch, out).await
@@ -159,6 +165,40 @@ where
     finish_authorized_command(
         cmds.provision_vendor_pk_hash(
             slot,
+            hash,
+            parsed.payload,
+            parsed.sig,
+            parsed.nonce,
+            parsed.ecc_pub_x,
+            parsed.ecc_pub_y,
+            parsed.mldsa_pub,
+            scratch,
+        )
+        .await,
+        out,
+    )
+}
+
+async fn handle_provision_owner_pk_hash<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    let parsed = match split_authorized_request(req, PROVISION_OWNER_PK_HASH_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
+    };
+    let hash = match <&[u8; ECC_P384_COORD_SIZE]>::try_from(parsed.payload) {
+        Ok(hash) => hash,
+        Err(_) => return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    };
+    finish_authorized_command(
+        cmds.provision_owner_pk_hash(
             hash,
             parsed.payload,
             parsed.sig,

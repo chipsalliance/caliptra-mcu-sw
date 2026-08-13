@@ -50,6 +50,7 @@ pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID: u32 = 0x4D43_4D53;
 pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID: u32 = 0x4D52_564B;
 pub const MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID: u32 = 0x5256_4B48;
 pub const MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID: u32 = 0x4946_504B;
+pub const MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID: u32 = 0x504F_504B;
 
 // ---- Get Authorization Command Challenge ----
 
@@ -240,6 +241,12 @@ authorized_fuse_command!(
     FuseLockPartitionResponse,
     FuseLockPartition,
     { partition: u32 }
+);
+authorized_fuse_command!(
+    ProvisionOwnerPkHashRequest,
+    ProvisionOwnerPkHashResponse,
+    ProvisionOwnerPkHash,
+    { hash: [u8; 48] }
 );
 
 // ---- Placeholder fuse commands ----
