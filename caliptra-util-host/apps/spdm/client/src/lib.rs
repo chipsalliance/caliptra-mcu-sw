@@ -74,6 +74,7 @@ pub struct SpdmVdmClient<'a> {
     transport: SpdmVdmTransport<'a>,
 }
 
+#[allow(clippy::too_many_arguments)]
 impl<'a> SpdmVdmClient<'a> {
     /// Create a new SpdmVdmClient with the provided VDM driver.
     pub fn new(driver: &'a mut dyn SpdmVdmDriver) -> Self {
