@@ -16,7 +16,8 @@ mod initial_load;
 pub(crate) mod read;
 
 use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
-    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, POLICY_DIGEST_SIZE,
+    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, EXPORTED_CDI_SIZE,
+    POLICY_DIGEST_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
     SoftwarePcrStore, SOFT_PCR_STORE_DRIVER_NUM,
@@ -26,9 +27,10 @@ use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
 use mcu_caliptra_api_lite::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
-    dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci, sha_finish, sha_init, sha_update,
-    ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle, HashAlgo,
-    DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
+    dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci,
+    sha_finish, sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
+    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, HashAlgo, DPE_LABEL_LEN,
+    DPE_TCI_MEASUREMENT_SIZE, SHA_CONTEXT_SIZE,
 };
 
 use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
@@ -349,6 +351,60 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
         self.write_attestation_target_handle(target, next_handle)?;
         Ok(signature_len)
+    }
+
+    /// Derive an exported CDI context from the active attestation target, persist the
+    /// 32-byte exported CDI handle in DPE handle storage, persist the rotated target handle
+    /// returned by DPE, and write the emitted leaf certificate into `cert_out`.
+    pub async fn export_cdi_and_stash<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        cert_out: &mut [u8],
+    ) -> MeasurementApiResult<usize> {
+        self.attestation_state_active()?;
+
+        let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        let mut existing_cdi = [0u8; EXPORTED_CDI_SIZE];
+        if dpe_store.read_exported_cdi(&mut existing_cdi).is_ok()
+            && existing_cdi != [0u8; EXPORTED_CDI_SIZE]
+        {
+            return Err(MeasurementApiError::ExportedCdiAlreadyDerived);
+        }
+
+        let target = self.read_attestation_target_record()?;
+        let params = DpeDeriveContextParams {
+            parent_handle: target.context_handle,
+            measurement: [0u8; DPE_TCI_MEASUREMENT_SIZE],
+            flags: DpeDeriveContextFlags::EXPORT_CDI
+                | DpeDeriveContextFlags::CREATE_CERTIFICATE
+                | DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT,
+            tci_type: 0,
+            target_locality: 0,
+            svn: 0,
+        };
+        let derived = dpe_derive_context_exported_cdi(alloc, &params, cert_out)
+            .await
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+
+        dpe_store
+            .write_exported_cdi(&derived.exported_cdi)
+            .map_err(|_| self.enter_error_state(MeasurementApiError::StoreFailed))?;
+
+        self.write_attestation_target_handle(target, derived.parent_handle)?;
+        Ok(derived.cert_size)
+    }
+
+    /// Read the stored 32-byte exported CDI handle from DPE handle storage into `cdi_out`.
+    pub fn read_exported_cdi(&self, cdi_out: &mut [u8; EXPORTED_CDI_SIZE]) -> MeasurementApiResult {
+        self.attestation_state_active()?;
+        let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        dpe_store
+            .read_exported_cdi(cdi_out)
+            .map_err(|_| MeasurementApiError::StoreFailed)?;
+        if *cdi_out == [0u8; EXPORTED_CDI_SIZE] {
+            return Err(MeasurementApiError::ExportedCdiNotDerived);
+        }
+        Ok(())
     }
 
     /// Read stored measurement state for one manifest `fw_id`.
@@ -694,5 +750,16 @@ mod tests {
             context_handle: [0u8; 16],
             ..valid
         }));
+    }
+
+    #[test]
+    fn read_exported_cdi_fails_when_uninitialized() {
+        let bytes = valid_manifest_with_entries(&[(0x1000, 0)]);
+        let api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[0x1000]).unwrap();
+        let mut cdi = [0u8; EXPORTED_CDI_SIZE];
+        assert_eq!(
+            api.read_exported_cdi(&mut cdi),
+            Err(MeasurementApiError::AttestationDisabled)
+        );
     }
 }

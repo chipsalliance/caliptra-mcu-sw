@@ -27,6 +27,7 @@ static MEASUREMENT_API: Mutex<
 
 pub const ATTESTATION_P384_DIGEST_SIZE: usize = 48;
 pub const ATTESTATION_P384_SIGNATURE_SIZE: usize = 96;
+pub const EXPORTED_CDI_SIZE: usize = 32;
 
 /// Builds evidence token buffers and the to-be-signed digest while Measurement
 /// API keeps measurement state locked.
@@ -227,4 +228,27 @@ pub async fn encode_measurement_evidence<A: ApiAlloc>(
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
     api.encode_measurement_evidence(alloc, buffer).await
+}
+
+/// Derive an exported CDI context from the configured attestation target, persist the
+/// 32-byte exported CDI handle in DPE handle storage, update the rotated target handle,
+/// and write the emitted leaf certificate into `cert_out`.
+pub async fn export_cdi_and_stash<A: ApiAlloc>(
+    alloc: &A,
+    cert_out: &mut [u8],
+) -> MeasurementApiResult<usize> {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.export_cdi_and_stash(alloc, cert_out).await
+}
+
+/// Retrieve the stashed 32-byte exported CDI handle via an outparam.
+pub async fn read_exported_cdi(cdi_out: &mut [u8; EXPORTED_CDI_SIZE]) -> MeasurementApiResult {
+    let guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_ref()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.read_exported_cdi(cdi_out)
 }

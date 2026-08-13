@@ -8,8 +8,8 @@ mod test {
     };
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_mbox_common::messages::{
-        GetOcpLockEpochKeyReportReq, MailboxReqHeader, MailboxRespHeaderVarSize, McuMailboxReq,
-        SekState,
+        DpeSignerContextCertReq, GetOcpLockEpochKeyReportReq, MailboxReqHeader,
+        MailboxRespHeaderVarSize, McuMailboxReq, SekState,
     };
     use caliptra_mcu_romtime::McuBootMilestones;
     use minicbor::data::Type;
@@ -242,6 +242,12 @@ mod test {
             hw.mci_boot_milestones()
                 .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
         });
+
+        // Initialize DPE signer by retrieving the signer context certificate
+        let dpe_req = DpeSignerContextCertReq::default();
+        let _dpe_resp = hw
+            .mailbox_execute_req(dpe_req)
+            .expect("DPE signer context cert request failed");
 
         let nonce = [0xAAu8; 32];
         let sek_state = SekState::Programmed;

@@ -70,7 +70,9 @@ async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
         &DpeDeriveContextParams {
             parent_handle: parent.context_handle,
             measurement: metadata.measurement,
-            flags: DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT,
+            flags: DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT
+                | DpeDeriveContextFlags::ALLOW_NEW_CONTEXT_TO_EXPORT
+                | DpeDeriveContextFlags::INPUT_ALLOW_X509,
             tci_type: entry.fw_id,
             target_locality: 0,
             svn: metadata.svn,

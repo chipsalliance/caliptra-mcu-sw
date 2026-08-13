@@ -1,17 +1,21 @@
 // Licensed under the Apache-2.0 license
 
 use crate::error::{CaliptraApiError, CaliptraApiResult};
+use crate::mailbox_api::execute_mailbox_cmd;
 use crate::ocp_lock::OcpLockSigner;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
-    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM,
+use caliptra_api::mailbox::{
+    CommandId, MailboxReqHeader, SignWithExportedEcdsaReq, SignWithExportedEcdsaResp,
 };
+use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
+    DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, EXPORTED_CDI_SIZE,
+};
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use core::mem::size_of;
-use dpe::commands::{Command, SignP384Cmd};
-use dpe::response::SignP384Resp;
-use zerocopy::TryFromBytes;
+use dpe::commands::Command;
+use zerocopy::{FromBytes, IntoBytes};
 
 #[async_trait]
 pub trait DpeTransport: Send + Sync {
@@ -19,18 +23,23 @@ pub trait DpeTransport: Send + Sync {
 }
 
 pub struct CaliptraDpeSigner<'a> {
-    transport: &'a dyn DpeTransport,
+    mailbox: &'a Mailbox,
 }
 
 impl<'a> CaliptraDpeSigner<'a> {
-    pub fn new(transport: &'a dyn DpeTransport) -> Self {
-        Self { transport }
+    pub fn new(mailbox: &'a Mailbox) -> Self {
+        Self { mailbox }
     }
 }
 
 #[async_trait]
 impl<'a> OcpLockSigner for CaliptraDpeSigner<'a> {
-    async fn sign(&self, label: &[u8], data: &[u8], signature: &mut [u8]) -> CaliptraApiResult<()> {
+    async fn sign(
+        &self,
+        _label: &[u8],
+        data: &[u8],
+        signature: &mut [u8],
+    ) -> CaliptraApiResult<()> {
         if signature.len() < 96 {
             return Err(CaliptraApiError::InvalidArgBufferTooSmall);
         }
@@ -39,42 +48,36 @@ impl<'a> OcpLockSigner for CaliptraDpeSigner<'a> {
             .try_into()
             .map_err(|_| CaliptraApiError::InvalidArgDigestSize)?;
 
-        let mut label_padded = [0u8; 48];
-        if label.len() > 48 {
-            return Err(CaliptraApiError::InvalidArgSize);
-        }
-        label_padded[..label.len()].copy_from_slice(label);
-
         let dpe_store = DpeHandleStore::<DefaultSyscalls>::new(DPE_HANDLE_STORE_DRIVER_NUM);
-        let mut target = DpeHandleRecord::default();
-        let handle = if dpe_store.read_attestation_target(&mut target).is_ok() {
-            dpe::context::ContextHandle(target.context_handle)
-        } else {
-            dpe::context::ContextHandle::default()
-        };
-
-        let dpe_cmd = SignP384Cmd {
-            handle,
-            label: label_padded,
-            flags: dpe::commands::SignFlags::empty(),
-            digest,
-        };
-
-        let command = Command::from(&dpe_cmd);
-
-        let mut resp_buf = [0u8; size_of::<SignP384Resp>()];
-        let len = self.transport.invoke(&command, &mut resp_buf).await?;
-
-        let dpe_resp = SignP384Resp::try_ref_from_bytes(&resp_buf[..len])
+        let mut exported_cdi = [0u8; EXPORTED_CDI_SIZE];
+        dpe_store
+            .read_exported_cdi(&mut exported_cdi)
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
-        if target.context_handle != [0u8; 16] {
-            target.context_handle = dpe_resp.new_context_handle.0;
-            let _ = dpe_store.write_record(target.fw_id, &target);
+        if exported_cdi == [0u8; EXPORTED_CDI_SIZE] {
+            return Err(CaliptraApiError::InvalidResponse);
         }
 
-        signature[0..48].clone_from_slice(&dpe_resp.sig_r);
-        signature[48..96].clone_from_slice(&dpe_resp.sig_s);
+        let mut req = SignWithExportedEcdsaReq {
+            hdr: MailboxReqHeader::default(),
+            exported_cdi_handle: exported_cdi,
+            tbs: digest,
+        };
+
+        let mut resp_bytes = [0u8; size_of::<SignWithExportedEcdsaResp>()];
+        execute_mailbox_cmd(
+            self.mailbox,
+            CommandId::SIGN_WITH_EXPORTED_ECDSA.into(),
+            req.as_mut_bytes(),
+            &mut resp_bytes,
+        )
+        .await?;
+
+        let (resp, _) = SignWithExportedEcdsaResp::read_from_prefix(&resp_bytes)
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+
+        signature[0..48].copy_from_slice(&resp.signature_r);
+        signature[48..96].copy_from_slice(&resp.signature_s);
 
         Ok(())
     }

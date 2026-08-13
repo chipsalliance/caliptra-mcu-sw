@@ -4,7 +4,8 @@ use crate::test::{start_runtime_hw_model, TestParams};
 use anyhow::Result;
 use caliptra_mcu_hw_model::McuHwModel;
 use caliptra_mcu_mbox_common::messages::{
-    OcpLockRotateHekReq, OcpLockRotateHekResp, OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
+    DpeSignerContextCertReq, OcpLockRotateHekReq, OcpLockRotateHekResp, OcpLockSetPermaHekReq,
+    OcpLockSetPermaHekResp,
 };
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_romtime::McuBootMilestones;
@@ -210,6 +211,25 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
     });
 
+    // 1. Fetch DPE Signer Context Certificate via MC_DPE_SIGNER_CONTEXT_CERT
+    let dpe_req = DpeSignerContextCertReq::default();
+    let dpe_resp = hw.mailbox_execute_req(dpe_req)?;
+    let dpe_cert_len = dpe_resp.hdr.data_len as usize;
+    assert!(
+        dpe_cert_len > 0,
+        "DPE Signer Context Certificate length should be greater than 0"
+    );
+    let dpe_cert_der = &dpe_resp.cert_data[..dpe_cert_len];
+    assert_eq!(
+        dpe_cert_der[0], 0x30,
+        "DPE Signer Context Certificate should start with ASN.1 SEQUENCE tag 0x30"
+    );
+    let dpe_cert = X509::from_der(dpe_cert_der)
+        .expect("Failed to parse DPE signer context certificate as DER");
+    let dpe_pubkey = dpe_cert
+        .public_key()
+        .expect("Failed to extract public key from DPE signer context certificate");
+
     let enum_cmd = caliptra_mcu_mbox_common::messages::OcpLockEnumerateHpkeHandlesReq::default();
     let enum_resp = hw.mailbox_execute_req(enum_cmd)?;
 
@@ -241,6 +261,14 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
         let endorsement_cert_der = &resp.data[..cert_len];
         let endorsement_cert = X509::from_der(endorsement_cert_der)
             .expect("Failed to parse endorsement certificate as DER");
+
+        // Verify that the certificate from MC_DPE_SIGNER_CONTEXT_CERT is the signing issuer of the OCP LOCK endorsement certificate
+        assert!(
+            endorsement_cert
+                .verify(&dpe_pubkey)
+                .expect("Failed to verify endorsement cert against DPE signer cert public key"),
+            "DPE signer context certificate should be the valid signing issuer of the OCP LOCK endorsement certificate"
+        );
 
         // Verify the issuer name is what we expected ("DPE Leaf")
         let issuer_name = endorsement_cert.issuer_name();
