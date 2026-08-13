@@ -733,6 +733,7 @@ mod tests {
         dot_rotate_calls: AtomicUsize,
         dot_status_calls: AtomicUsize,
         dot_recovery_calls: AtomicUsize,
+        dot_override_challenge_calls: AtomicUsize,
         dot_challenge_calls: AtomicUsize,
         dot_unlock_calls: AtomicUsize,
         dot_backup_calls: AtomicUsize,
@@ -765,6 +766,7 @@ mod tests {
                 dot_rotate_calls: AtomicUsize::new(0),
                 dot_status_calls: AtomicUsize::new(0),
                 dot_recovery_calls: AtomicUsize::new(0),
+                dot_override_challenge_calls: AtomicUsize::new(0),
                 dot_challenge_calls: AtomicUsize::new(0),
                 dot_unlock_calls: AtomicUsize::new(0),
                 dot_backup_calls: AtomicUsize::new(0),
@@ -975,6 +977,18 @@ mod tests {
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             self.dot_recovery_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
+        }
+
+        async fn dot_override_challenge<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _request: &caliptra_mcu_mbox_common::messages::DotOverrideChallengePayload,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<
+            [u8; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN],
+        > {
+            self.dot_override_challenge_calls
+                .fetch_add(1, Ordering::Relaxed);
+            Ok([0xC3; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
         }
 
         async fn dot_unlock_challenge<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
@@ -1867,6 +1881,38 @@ mod tests {
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
         assert_eq!(cmds.dot_recovery_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_override_challenge_dispatches_through_device_ownership_transfer() {
+        use caliptra_mcu_mbox_common::messages::{
+            CommandId, DotOverrideChallengePayload, AUTH_CMD_NONCE_LEN,
+        };
+
+        let cmds = TestCommands::new(0);
+        let payload = DotOverrideChallengePayload::default();
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_OVERRIDE_CHALLENGE.0.to_le_bytes());
+        request.extend_from_slice(payload.as_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 64, 0);
+        assert_inline(response, 3 + AUTH_CMD_NONCE_LEN);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(
+            &inline[3..3 + AUTH_CMD_NONCE_LEN],
+            &[0xC3; AUTH_CMD_NONCE_LEN]
+        );
+        assert_eq!(cmds.dot_override_challenge_calls.load(Ordering::Relaxed), 1);
+
+        request.pop();
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+        assert_eq!(cmds.dot_override_challenge_calls.load(Ordering::Relaxed), 1);
     }
 
     #[cfg(feature = "device-ownership-transfer")]

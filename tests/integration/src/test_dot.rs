@@ -1877,6 +1877,63 @@ mod test {
     }
 
     #[test]
+    fn test_runtime_dot_override_challenge() {
+        use caliptra_mcu_mbox_common::messages::{
+            DotOverrideChallengePayload, DotOverrideChallengeReq,
+        };
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (recovery_ecc_pub_x, recovery_ecc_pub_y, _) = generate_random_ecc_keys();
+        let (recovery_mldsa_pub, _) = generate_random_mldsa_keys();
+        let recovery_hash = compute_recovery_pk_hash(
+            &recovery_ecc_pub_x,
+            &recovery_ecc_pub_y,
+            &recovery_mldsa_pub,
+        );
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak()).to_flash_contents();
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_challenge_recovery_otp_memory(&recovery_hash)),
+            dot_flash_initial_contents: Some(blob),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let mut wrong_x = recovery_ecc_pub_x;
+        wrong_x[0] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotOverrideChallengeReq {
+                payload: DotOverrideChallengePayload {
+                    recovery_ecc_pub_x: wrong_x,
+                    recovery_ecc_pub_y,
+                    recovery_mldsa_pub: recovery_mldsa_pub.clone().try_into().unwrap(),
+                },
+                ..Default::default()
+            })
+            .is_err());
+
+        let response = hw
+            .mailbox_execute_req(DotOverrideChallengeReq {
+                payload: DotOverrideChallengePayload {
+                    recovery_ecc_pub_x,
+                    recovery_ecc_pub_y,
+                    recovery_mldsa_pub: recovery_mldsa_pub.try_into().unwrap(),
+                },
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(response.challenge.iter().any(|byte| *byte != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
     fn test_runtime_dot_unlock_challenge() {
         use caliptra_mcu_mbox_common::messages::DotUnlockChallengeReq;
 

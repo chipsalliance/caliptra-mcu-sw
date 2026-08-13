@@ -158,6 +158,7 @@ impl CommandId {
     pub const MC_DOT_UNLOCK_CHALLENGE: Self = Self(0x4D44_5543); // "MDUC"
     pub const MC_DOT_UNLOCK: Self = Self(0x4D44_554C); // "MDUL"
     pub const MC_GET_DOT_BACKUP_BLOB: Self = Self(0x4D44_4242); // "MDBB"
+    pub const MC_DOT_OVERRIDE_CHALLENGE: Self = Self(0x444F_5457); // "DOTW"
 }
 
 impl From<u32> for CommandId {
@@ -238,6 +239,7 @@ pub enum McuMailboxReq {
     DotRotate(DotRotateReq),
     DotRecovery(DotRecoveryReq),
     DotStatus(DotStatusReq),
+    DotOverrideChallenge(DotOverrideChallengeReq),
     DotUnlockChallenge(DotUnlockChallengeReq),
     DotUnlock(DotUnlockReq),
     GetDotBackupBlob(GetDotBackupBlobReq),
@@ -305,6 +307,7 @@ impl McuMailboxReq {
             McuMailboxReq::DotRotate(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotRecovery(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotStatus(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotOverrideChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotUnlock(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetDotBackupBlob(req) => Ok(req.as_bytes()),
@@ -372,6 +375,7 @@ impl McuMailboxReq {
             McuMailboxReq::DotRotate(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotRecovery(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotStatus(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotOverrideChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotUnlock(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetDotBackupBlob(req) => Ok(req.as_mut_bytes()),
@@ -441,6 +445,7 @@ impl McuMailboxReq {
             McuMailboxReq::DotRotate(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotRecovery(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotStatus(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotOverrideChallenge(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotUnlockChallenge(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotUnlock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::GetDotBackupBlob(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
@@ -532,6 +537,7 @@ pub enum McuMailboxResp {
     DotRotate(DotRotateResp),
     DotRecovery(DotRecoveryResp),
     DotStatus(DotStatusResp),
+    DotOverrideChallenge(DotOverrideChallengeResp),
     DotUnlockChallenge(DotUnlockChallengeResp),
     DotUnlock(DotUnlockResp),
     GetDotBackupBlob(GetDotBackupBlobResp),
@@ -657,6 +663,7 @@ impl McuMailboxResp {
             McuMailboxResp::DotRotate(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotRecovery(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotStatus(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotOverrideChallenge(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotUnlock(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetDotBackupBlob(resp) => Ok(resp.as_bytes()),
@@ -722,6 +729,7 @@ impl McuMailboxResp {
             McuMailboxResp::DotRotate(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotRecovery(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotStatus(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotOverrideChallenge(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotUnlock(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetDotBackupBlob(resp) => Ok(resp.as_mut_bytes()),
@@ -2074,6 +2082,65 @@ pub struct DotStatusResp {
 impl Response for DotStatusResp {}
 
 #[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotOverrideChallengePayload {
+    pub recovery_ecc_pub_x: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub recovery_ecc_pub_y: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub recovery_mldsa_pub: [u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
+}
+
+impl Default for DotOverrideChallengePayload {
+    fn default() -> Self {
+        Self {
+            recovery_ecc_pub_x: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            recovery_ecc_pub_y: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            recovery_mldsa_pub: [0; DOT_MLDSA_PUBLIC_KEY_SIZE],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotOverrideChallengeReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub payload: DotOverrideChallengePayload,
+}
+
+impl Default for DotOverrideChallengeReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_OVERRIDE_CHALLENGE.0,
+            payload: DotOverrideChallengePayload::default(),
+        }
+    }
+}
+
+impl Request for DotOverrideChallengeReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotOverrideChallengeResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotOverrideChallengeResp {
+    pub hdr: MailboxRespHeader,
+    pub challenge: [u8; AUTH_CMD_NONCE_LEN],
+}
+
+impl Default for DotOverrideChallengeResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            challenge: [0; AUTH_CMD_NONCE_LEN],
+        }
+    }
+}
+
+impl Response for DotOverrideChallengeResp {}
+
+#[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct DotUnlockChallengeReq {
     pub hdr: MailboxReqHeader,
@@ -2335,6 +2402,22 @@ mod tests {
         assert_eq!(
             core::mem::size_of::<DotStatusResp>(),
             core::mem::size_of::<MailboxRespHeader>() + core::mem::size_of::<u32>()
+        );
+    }
+
+    #[test]
+    fn dot_override_challenge_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_OVERRIDE_CHALLENGE.0, 0x444F_5457);
+        assert_eq!(
+            core::mem::size_of::<DotOverrideChallengeReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+                + core::mem::size_of::<u32>()
+                + 2 * DOT_ECC_PUBLIC_KEY_COORD_SIZE
+                + DOT_MLDSA_PUBLIC_KEY_SIZE
+        );
+        assert_eq!(
+            DotOverrideChallengeReq::default().subcommand,
+            CommandId::MC_DOT_OVERRIDE_CHALLENGE.0
         );
     }
 

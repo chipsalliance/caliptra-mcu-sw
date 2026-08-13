@@ -1,7 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_common_commands::CaliptraCmdHandler;
-use caliptra_mcu_mbox_common::messages::{CommandId, DotStatus, DotUnlockPayload};
+use caliptra_mcu_mbox_common::messages::{
+    CommandId, DotOverrideChallengePayload, DotStatus, DotUnlockPayload,
+};
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult,
 };
@@ -16,6 +18,7 @@ pub const DOT_STATUS_CMD_ID: u32 = CommandId::MC_DOT_STATUS.0;
 pub const DOT_UNLOCK_CHALLENGE_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK_CHALLENGE.0;
 pub const DOT_UNLOCK_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK.0;
 pub const GET_DOT_BACKUP_BLOB_CMD_ID: u32 = CommandId::MC_GET_DOT_BACKUP_BLOB.0;
+pub const DOT_OVERRIDE_CHALLENGE_CMD_ID: u32 = CommandId::MC_DOT_OVERRIDE_CHALLENGE.0;
 
 pub(crate) async fn handle<H, A>(
     commands: &H,
@@ -42,8 +45,42 @@ where
         }
         DOT_STATUS_CMD_ID => handle_dot_status(commands, &request[4..], output).await,
         DOT_RECOVERY_CMD_ID => handle_dot_recovery(commands, &request[4..], scratch, output).await,
+        DOT_OVERRIDE_CHALLENGE_CMD_ID => {
+            handle_dot_override_challenge(commands, &request[4..], scratch, output).await
+        }
         DOT_UNLOCK_CMD_ID => handle_dot_unlock(commands, &request[4..], scratch, output).await,
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    }
+}
+
+async fn handle_dot_override_challenge<H, A>(
+    commands: &H,
+    request: &[u8],
+    scratch: &A,
+    output: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraCmdHandler,
+    A: SpdmPalAlloc,
+{
+    let Ok(request) = DotOverrideChallengePayload::ref_from_bytes(request) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    };
+    let Some((completion, challenge_out)) = output.split_first_mut() else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+    let Some(challenge_out) =
+        challenge_out.get_mut(..caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN)
+    else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+    match commands.dot_override_challenge(scratch, request).await {
+        Ok(challenge) => {
+            *completion = CaliptraCompletionCode::Success as u8;
+            challenge_out.copy_from_slice(&challenge);
+            CaliptraVdmCmdResult::Response(1 + challenge_out.len())
+        }
+        Err(error) => CaliptraVdmCmdResult::Error(super::map_common_completion(error)),
     }
 }
 
