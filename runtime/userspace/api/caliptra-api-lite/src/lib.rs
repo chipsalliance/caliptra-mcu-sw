@@ -76,7 +76,7 @@ pub use aes_gcm::{
     spdm_aes_gcm_encrypt_init, spdm_aes_gcm_encrypt_update, Aes256GcmTag, AesGcmCtx,
 };
 #[cfg(feature = "mailbox-io")]
-pub use alloc::ApiAlloc;
+pub use alloc::{ApiAlloc, ApiAllocPool};
 #[cfg(feature = "mailbox-io")]
 pub use auth_stash::{
     authorize_and_stash, AuthorizeAndStashFlags, AuthorizeAndStashParams, ImageHashSource,
@@ -120,8 +120,8 @@ pub use import::{cm_delete, cm_import};
 pub use pcr::{extend_pcr31, PCR31_INDEX, PCR31_MEASUREMENT_SIZE};
 #[cfg(feature = "mailbox-io")]
 pub use pcr_quote::{
-    pcr_quote_ecc384, pcr_quote_mldsa87, PCR_QUOTE_ECC384_LEN, PCR_QUOTE_MAX_LEN,
-    PCR_QUOTE_MLDSA87_LEN,
+    pcr_quote_ecc384, pcr_quote_mldsa87, PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_ECC384_LEN,
+    PCR_QUOTE_MAX_BUF_LEN, PCR_QUOTE_MAX_LEN, PCR_QUOTE_MLDSA87_BUF_LEN, PCR_QUOTE_MLDSA87_LEN,
 };
 #[cfg(feature = "mailbox-io")]
 pub use rng::rng_generate;

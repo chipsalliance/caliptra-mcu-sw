@@ -135,6 +135,9 @@ impl CommandId {
 
     // Certificate commands
     pub const MC_EXPORT_ATTESTED_CSR: Self = Self(0x4D45_4143); // "MEAC"
+
+    // Attestation commands
+    pub const MC_GET_ATTESTATION: Self = Self(0x4D47_4154); // "MGAT"
 }
 
 impl From<u32> for CommandId {
@@ -205,6 +208,7 @@ pub enum McuMailboxReq {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashReq),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
+    GetAttestation(GetAttestationReq),
 }
 
 impl McuMailboxReq {
@@ -260,6 +264,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
+            McuMailboxReq::GetAttestation(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -315,6 +320,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::GetAttestation(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -372,6 +378,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
+            McuMailboxReq::GetAttestation(_) => CommandId::MC_GET_ATTESTATION,
         }
     }
 
@@ -1586,6 +1593,74 @@ impl Default for ExportAttestedCsrResp {
 }
 impl McuResponseVarSize for ExportAttestedCsrResp {}
 
+// ============================================================================
+// MC_GET_ATTESTATION Command (0x4D47_4154 - "MGAT")
+// ============================================================================
+
+/// MC_GET_ATTESTATION request: retrieve signed attestation evidence.
+///
+/// `evidence_format` selects among the formats the responder was built with;
+/// `0` queries the supported-format bitmap instead of returning evidence. The
+/// format and algorithm values match [`caliptra_mcu_common_commands`]'s
+/// `EvidenceFormat` / `EvidenceAlgorithm`.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetAttestationReq {
+    pub hdr: MailboxReqHeader,
+    /// Evidence format (0=query supported formats, 1=OCP EAT, 2=PCR Quote)
+    pub evidence_format: u32,
+    /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
+    pub algorithm: u32,
+    /// 32-byte nonce for freshness
+    pub nonce: [u8; 32],
+}
+impl Request for GetAttestationReq {
+    const ID: CommandId = CommandId::MC_GET_ATTESTATION;
+    type Resp = GetAttestationResp;
+}
+
+/// Bytes of `MC_GET_ATTESTATION` response data that precede the evidence.
+///
+/// The response body is `[evidence_format:u32][evidence...]`, and
+/// `MailboxRespHeaderVarSize::data_len` covers both, so a generic var-size
+/// reader yields the whole body and the command-specific parser splits off this
+/// prefix.
+pub const GET_ATTESTATION_RESP_PREFIX_LEN: usize = 4;
+
+/// Maximum `MC_GET_ATTESTATION` response data: the echoed format plus evidence.
+///
+/// Larger than [`MAX_RESP_DATA_SIZE`] because attestation evidence can exceed
+/// 4 KiB: an ML-DSA-87 PCR quote is 6388 bytes. Rounded up to 8 KiB for
+/// headroom.
+///
+/// This bounds the *decode* type only. The responder never allocates this
+/// struct: it sizes its response buffer from
+/// `CaliptraCmdHandler::MAX_ATTESTATION_EVIDENCE_LEN`, which is derived from
+/// the evidence generators the build actually enables, and frames the response
+/// in place.
+pub const MAX_ATTESTATION_RESP_DATA_SIZE: usize = 8 * 1024;
+
+/// MC_GET_ATTESTATION response: `[evidence_format:u32][evidence...]`.
+///
+/// Deliberately absent from [`McuMailboxResp`]: that enum sizes every command's
+/// response allocation by its largest variant, so including an
+/// attestation-sized array here would enlarge the buffer for every command.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetAttestationResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub data: [u8; MAX_ATTESTATION_RESP_DATA_SIZE], // variable length
+}
+impl Default for GetAttestationResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            data: [0u8; MAX_ATTESTATION_RESP_DATA_SIZE],
+        }
+    }
+}
+impl McuResponseVarSize for GetAttestationResp {}
+
 /// MC_PROVISION_VENDOR_PK_HASH request: Provision a new vendor PK hash
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
@@ -1631,6 +1706,38 @@ impl Default for HybridSignature {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn get_attestation_wire_layout() {
+        assert_eq!(CommandId::MC_GET_ATTESTATION.0, 0x4D47_4154); // "MGAT"
+                                                                  // hdr(4) + evidence_format(4) + algorithm(4) + nonce(32)
+        assert_eq!(core::mem::size_of::<GetAttestationReq>(), 44);
+
+        let req = GetAttestationReq {
+            hdr: MailboxReqHeader { chksum: 0xABCD },
+            evidence_format: 2,
+            algorithm: 1,
+            nonce: [0x5A; 32],
+        };
+        let parsed = GetAttestationReq::read_from_bytes(req.as_bytes()).unwrap();
+        assert_eq!(parsed.hdr.chksum, 0xABCD);
+        assert_eq!(parsed.evidence_format, 2);
+        assert_eq!(parsed.algorithm, 1);
+        assert_eq!(parsed.nonce, [0x5A; 32]);
+    }
+
+    #[test]
+    fn get_attestation_resp_is_excluded_from_the_shared_response_union() {
+        // The response carries attestation-sized evidence, so folding it into
+        // `McuMailboxResp` would enlarge every other command's allocation.
+        assert!(
+            core::mem::size_of::<GetAttestationResp>() > core::mem::size_of::<McuMailboxResp>()
+        );
+        assert_eq!(
+            core::mem::size_of::<GetAttestationResp>(),
+            core::mem::size_of::<MailboxRespHeaderVarSize>() + MAX_ATTESTATION_RESP_DATA_SIZE
+        );
+    }
 
     #[test]
     fn test_fuse_command_ids() {

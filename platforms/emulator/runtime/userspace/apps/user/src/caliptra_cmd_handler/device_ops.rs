@@ -2,8 +2,12 @@
 
 use arrayvec::ArrayVec;
 use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, MldsaVerifyReq};
+use caliptra_mcu_attestation_evidence::encode_signed_ocp_eat;
+#[cfg(feature = "pcr-quote")]
+use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
 use caliptra_mcu_common_commands::{
-    CaliptraCmdResult, CaliptraCompletionCode, GetLogResult, LogType, DEBUG_UNLOCK_CHALLENGE_SIZE,
+    CaliptraCmdResult, CaliptraCompletionCode, EvidenceAlgorithm, EvidenceFormat, GetLogResult,
+    LogType, ATTESTATION_NONCE_LEN, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
@@ -12,7 +16,11 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::otp::{Otp, RevokeVendorPubKeyType};
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp, DefaultSyscalls};
 use caliptra_mcu_libtock_platform::ErrorCode;
+// The AK label lives with the SPDM cert store because that is what mints the
+// leaf certificate; attestation evidence must be signed under the same label so
+// the leaf cert in the SPDM chain is the one that verifies it.
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
@@ -94,6 +102,47 @@ pub async fn export_attested_csr(
         _ => return Err(CaliptraCompletionCode::InvalidParameter),
     };
     result.map_err(map_mcu_err)
+}
+
+/// Generate signed attestation evidence for `GET_ATTESTATION`.
+///
+/// Both formats sign with [`DPE_LEAF_LABEL`], the same DPE leaf key the SPDM
+/// certificate chain terminates in. That is a requirement, not a convenience:
+/// a verifier that obtained the chain over SPDM must be able to verify evidence
+/// fetched over the MCU mailbox, and vice versa.
+///
+/// Unsupported `(format, algorithm)` pairs are rejected by the transports via
+/// `CaliptraCmdHandler::attestation_evidence_len` before they reach here; the
+/// arms below are the same set, so the two stay consistent.
+pub async fn get_attestation<A: ApiAlloc>(
+    alloc: &A,
+    format: EvidenceFormat,
+    algorithm: EvidenceAlgorithm,
+    nonce: &[u8; ATTESTATION_NONCE_LEN],
+    out: &mut [u8],
+) -> CaliptraCmdResult<usize> {
+    match (format, algorithm) {
+        // The EAT is a COSE_Sign1 whose signature is sized as ECDSA P-384, so
+        // there is no ML-DSA EAT to dispatch to yet.
+        (EvidenceFormat::OcpEat, EvidenceAlgorithm::EccP384) => {
+            // `SIGNED_OCP_EAT_WORKSPACE_SIZE` is 0: the encoder builds the token
+            // in `out`, so no scratch is needed.
+            encode_signed_ocp_eat(alloc, &DPE_LEAF_LABEL, nonce, &mut [], out)
+                .await
+                .map_err(map_mcu_err)
+        }
+        #[cfg(feature = "pcr-quote")]
+        (EvidenceFormat::PcrQuote, algo) => {
+            let algo = match algo {
+                EvidenceAlgorithm::EccP384 => PcrQuoteAlgorithm::Ecc384,
+                EvidenceAlgorithm::Mldsa87 => PcrQuoteAlgorithm::Mldsa87,
+            };
+            encode_pcr_quote(alloc, algo, Some(nonce), out)
+                .await
+                .map_err(map_mcu_err)
+        }
+        _ => Err(CaliptraCompletionCode::UnsupportedOperation),
+    }
 }
 
 pub async fn export_idevid_csr(algorithm: u32, out: &mut [u8]) -> CaliptraCmdResult<usize> {

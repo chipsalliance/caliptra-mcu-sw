@@ -26,7 +26,7 @@ The following table describes the commands defined under this specification. The
 | Device Capabilities             | R   | MCTP VDM, MCI Mailbox | Retrieve device capabilities.                                                                                                        |
 | Get Debug Log                   | R   | MCTP VDM, MCI Mailbox | Retrieve debug log.                                                                                                                  |
 | Clear Debug Log                 | R   | MCTP VDM, MCI Mailbox | Clear debug log.                                                                                                                     |
-| Get Attestation                 | O   | SPDM VDM              | Retrieve attestation evidence. MCI Mailbox support is TBD.                                                                           |
+| Get Attestation                 | O   | SPDM VDM, MCI Mailbox | Retrieve signed attestation evidence in a requester-selected format.                                                                 |
 | Request Debug Unlock            | O   | SPDM VDM, MCI Mailbox | Request debug unlock in production environment.                                                                                      |
 | Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
 | Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias).                                             |
@@ -175,11 +175,87 @@ Clears the debug log in the MCU Runtime. No authorization is required.
 
 ### Get Attestation
 
-Retrieves attestation evidence. This command is assigned to SPDM VDM IANA. MCI Mailbox support and the payload format are TBD.
+Retrieves signed attestation evidence bound to a requester-supplied nonce.
 
-**Request Payload**: TBD
+Unlike the SPDM `GET_MEASUREMENTS` measurement block, which carries whichever
+evidence format the device was built with, `GET_ATTESTATION` lets the requester
+choose the format at runtime. The set of formats a device can produce is still
+fixed at build time by the evidence generators it links; the requester discovers
+that set with the format-discovery query below rather than assuming it.
 
-**Response Payload**: TBD
+All formats are signed with the same device attestation key that terminates the
+device's SPDM certificate chain, so evidence retrieved over the MCI mailbox
+verifies against a chain retrieved over SPDM, and vice versa.
+
+#### Evidence Formats
+
+| Value    | Name        | Description                                                                                        |
+| -------- | ----------- | -------------------------------------------------------------------------------------------------- |
+| `0x0000` | (query)     | Reserved. Not a format: selects the format-discovery query described below.                        |
+| `0x0001` | OCP EAT     | Signed OCP Entity Attestation Token (COSE_Sign1) carrying CoRIM concise evidence.                  |
+| `0x0002` | PCR Quote   | Caliptra PCR quote.                                                                                |
+
+Not every `(evidence_format, algorithm)` pair is valid. A device that supports a
+format need not support it under every algorithm; the OCP EAT is a COSE_Sign1
+whose signature is ES384, so it has no ML-DSA-87 form. A request naming an
+unsupported pair is rejected with `UNSUPPORTED_OPERATION` before any evidence is
+generated.
+
+#### Format Discovery
+
+A request with `evidence_format` = `0x0000` is a query, not an evidence request.
+The device responds successfully with a bitmap of the formats it can produce
+instead of evidence. Bit *n* of the bitmap is set when the device supports the
+format whose wire value is *n*; bit 0 is therefore never set.
+
+Requesters should issue this query before requesting evidence rather than
+inferring support from device capabilities, because the supported set depends on
+which evidence generators the integrator built into the device.
+
+**Request Payload**:
+
+| Byte(s) | Name            | Type   | Description                                                                                       |
+| ------- | --------------- | ------ | ------------------------------------------------------------------------------------------------- |
+| 0:3     | evidence_format | u32    | Requested evidence format, or `0x0000` for the format-discovery query                             |
+| 4:7     | algorithm       | u32    | Asymmetric Algorithm: <br>- `0x0001` = ECC P-384 <br>- `0x0002` = ML-DSA-87 <br>Ignored for the query |
+| 8:39    | nonce           | u8[32] | 32-byte nonce bound into the signed evidence for freshness. Ignored for the query.                |
+
+**Response Payload**:
+
+| Byte(s) | Name            | Type          | Description                                                                                                    |
+| ------- | --------------- | ------------- | -------------------------------------------------------------------------------------------------------------- |
+| 0:3     | evidence_format | u32           | Echo of the requested `evidence_format`, so a response is self-describing                                      |
+| 4:N     | data            | u8[]          | For a format request: the signed evidence blob. For the query (`evidence_format` = `0x0000`): a `u32` bitmap of supported formats. |
+
+The evidence blob is variable length and is delimited by the transport's own
+length field. The two transports scope that field differently, so a requester
+must not reuse one convention for the other:
+
+| Transport   | Length field                          | Counts                                            |
+| ----------- | ------------------------------------- | ------------------------------------------------- |
+| SPDM VDM    | `data_len`, framed after `evidence_format` | The evidence bytes only                      |
+| MCI Mailbox | `MailboxRespHeaderVarSize.data_len`   | The `evidence_format` field plus the evidence bytes |
+
+For the MCI mailbox the evidence length is therefore `data_len - 4`.
+
+Evidence is signed, so a truncated response is not a shorter answer but an
+unverifiable one. A device that cannot fit the evidence in the response buffer
+fails the command rather than returning truncated evidence.
+
+#### Transport Sizing
+
+Attestation evidence can exceed the size of every other common command response
+(an ML-DSA-87 PCR quote is 6388 bytes), so both transports size their response
+buffers from the evidence generators the device actually builds:
+
+- **SPDM VDM** uses the large-response (chunked) path when the evidence does not
+  fit in a single message, and reserves only what the requested format needs.
+  Integrators must ensure the advertised `MaxSPDMmsgSize` covers the largest
+  evidence the device can produce; see
+  [SPDM VDM commands](caliptra_spdm_vdm_cmds.md).
+- **MCI Mailbox** allocates a response buffer sized for the largest supported
+  evidence for this command only, so no other command's response allocation
+  grows.
 
 ### Request Debug Unlock
 

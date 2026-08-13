@@ -11,7 +11,7 @@
 //!   Response: [version(1), command_code(1), completion_code(1), data...]
 //!
 //! Currently supported commands:
-//! - GetAttestation (0x05) — recognized by the responder, handler TBD
+//! - GetAttestation (0x05)
 //! - RequestDebugUnlock (0x06)
 //! - AuthorizeDebugUnlockToken (0x07)
 //! - ExportAttestedCsr (0x08)
@@ -141,6 +141,85 @@ pub fn handle_export_attested_csr(
     let copy_len = resp_bytes.len().min(response_buffer.len());
     response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
     Ok(copy_len)
+}
+
+// ---------------------------------------------------------------------------
+// GetAttestation (CaliptraCommandId::GetAttestation)
+// ---------------------------------------------------------------------------
+
+/// Encode a `GET_ATTESTATION` request and decode the evidence response.
+///
+/// The device may answer either inline or over the SPDM chunked large-response
+/// path; both arrive here already reassembled by the driver, so this only has
+/// to parse the framed payload.
+///
+/// Response data (after the 3-byte VDM header) is:
+///   `[evidence_format: u32 LE, data_len: u32 LE, data...]`
+///
+/// A discovery query (`evidence_format == 0` in the request) echoes format 0
+/// and carries a 4-byte supported-format bitmap in `data`.
+pub fn handle_get_attestation(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let req = attestation::GetAttestationRequest::from_bytes(payload)
+        .map_err(|_| TransportError::InvalidMessage)?;
+
+    // VDM payload: [evidence_format(4), algorithm(4), nonce(32)]
+    let vdm_payload = req.as_bytes();
+
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(
+        CaliptraVdmCommand::GetAttestation,
+        vdm_payload,
+        driver,
+        &mut resp_buf,
+    )?;
+
+    let data = &resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len];
+
+    // Response fields precede the evidence: [evidence_format(4), data_len(4)]
+    const RESP_FIELDS_LEN: usize = 8;
+    if data.len() < RESP_FIELDS_LEN {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let evidence_format = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    let evidence_len = u32::from_le_bytes([data[4], data[5], data[6], data[7]]) as usize;
+    let evidence_end = RESP_FIELDS_LEN + evidence_len;
+
+    if evidence_end > data.len() {
+        return Err(TransportError::BufferError(
+            "GetAttestation data_len exceeds response",
+        ));
+    }
+    // Signed evidence that is silently truncated is unverifiable rather than
+    // merely short, so reject instead of clamping.
+    if evidence_len > attestation::MAX_ATTESTATION_DATA_SIZE {
+        return Err(TransportError::BufferError(
+            "GetAttestation data_len exceeds maximum evidence size",
+        ));
+    }
+
+    let mut evidence = [0u8; attestation::MAX_ATTESTATION_DATA_SIZE];
+    evidence[..evidence_len].copy_from_slice(&data[RESP_FIELDS_LEN..evidence_end]);
+
+    let internal_resp = attestation::GetAttestationResponse {
+        common: CommonResponse { fips_status: 0 },
+        evidence_format,
+        data_len: evidence_len as u32,
+        data: evidence,
+    };
+
+    let resp_bytes = internal_resp.as_bytes();
+    if response_buffer.len() < resp_bytes.len() {
+        return Err(TransportError::BufferError(
+            "GetAttestation response buffer too small",
+        ));
+    }
+    response_buffer[..resp_bytes.len()].copy_from_slice(resp_bytes);
+    Ok(resp_bytes.len())
 }
 
 // ---------------------------------------------------------------------------
@@ -413,6 +492,118 @@ mod tests {
         let mut response = vec![CALIPTRA_VDM_COMMAND_VERSION, command as u8, 0];
         response.extend_from_slice(data);
         response
+    }
+
+    fn attestation_response(evidence_format: u32, evidence: &[u8]) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(&evidence_format.to_le_bytes());
+        data.extend_from_slice(&(evidence.len() as u32).to_le_bytes());
+        data.extend_from_slice(evidence);
+        success_response(CaliptraVdmCommand::GetAttestation, &data)
+    }
+
+    #[test]
+    fn get_attestation_encodes_request_and_decodes_evidence() {
+        let evidence = vec![0xA5u8; 512];
+        let req = attestation::GetAttestationRequest::new(
+            attestation::EvidenceFormat::PcrQuote,
+            attestation::EvidenceAlgorithm::EccP384,
+            &[0x42u8; 32],
+        );
+        let mut driver = FakeDriver {
+            response: attestation_response(attestation::EvidenceFormat::PcrQuote as u32, &evidence),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer =
+            vec![0u8; core::mem::size_of::<attestation::GetAttestationResponse>()];
+
+        let written = handle_get_attestation(req.as_bytes(), &mut driver, &mut response_buffer)
+            .expect("GetAttestation should be accepted");
+        assert_eq!(written, response_buffer.len());
+
+        assert_eq!(
+            &driver.last_request[..2],
+            &[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::GetAttestation as u8,
+            ]
+        );
+        assert_eq!(&driver.last_request[2..], req.as_bytes());
+
+        let resp = attestation::GetAttestationResponse::read_from_bytes(&response_buffer).unwrap();
+        assert_eq!(
+            resp.validate_evidence_payload(attestation::EvidenceFormat::PcrQuote),
+            Ok(evidence.len())
+        );
+        assert_eq!(resp.evidence_bytes(), &evidence[..]);
+    }
+
+    #[test]
+    fn get_attestation_query_returns_supported_format_bitmap() {
+        let bitmap = attestation::EvidenceFormat::OcpEat.bit();
+        let mut driver = FakeDriver {
+            response: attestation_response(
+                attestation::EVIDENCE_FORMAT_QUERY,
+                &bitmap.to_le_bytes(),
+            ),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer =
+            vec![0u8; core::mem::size_of::<attestation::GetAttestationResponse>()];
+
+        handle_get_attestation(
+            attestation::GetAttestationRequest::query().as_bytes(),
+            &mut driver,
+            &mut response_buffer,
+        )
+        .expect("format query should be accepted");
+
+        let resp = attestation::GetAttestationResponse::read_from_bytes(&response_buffer).unwrap();
+        assert_eq!(resp.supported_formats(), Ok(bitmap));
+    }
+
+    #[test]
+    fn get_attestation_rejects_data_len_beyond_response() {
+        // Claim more evidence than the frame actually carries.
+        let mut response =
+            attestation_response(attestation::EvidenceFormat::OcpEat as u32, &[0x11u8; 16]);
+        let len_at = VDM_RESPONSE_HEADER_SIZE + 4;
+        response[len_at..len_at + 4].copy_from_slice(&4096u32.to_le_bytes());
+
+        let mut driver = FakeDriver {
+            response,
+            last_request: Vec::new(),
+        };
+        let mut response_buffer =
+            vec![0u8; core::mem::size_of::<attestation::GetAttestationResponse>()];
+
+        assert!(handle_get_attestation(
+            attestation::GetAttestationRequest::query().as_bytes(),
+            &mut driver,
+            &mut response_buffer,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn get_attestation_rejects_undersized_response_buffer() {
+        let mut driver = FakeDriver {
+            response: attestation_response(
+                attestation::EvidenceFormat::OcpEat as u32,
+                &[0x11u8; 16],
+            ),
+            last_request: Vec::new(),
+        };
+        // Truncating signed evidence makes it unverifiable, so this must fail
+        // rather than return a short response.
+        let mut response_buffer = [0u8; 64];
+
+        assert!(handle_get_attestation(
+            attestation::GetAttestationRequest::query().as_bytes(),
+            &mut driver,
+            &mut response_buffer,
+        )
+        .is_err());
     }
 
     #[test]

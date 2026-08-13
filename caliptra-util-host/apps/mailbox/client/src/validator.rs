@@ -3,6 +3,9 @@
 use crate::{MailboxClient, TestConfig, UdpTransportDriver};
 use anyhow::Result;
 use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
+use caliptra_mcu_core_util_host_command_types::attestation::{
+    formats_from_bitmap, EvidenceAlgorithm, EvidenceFormat,
+};
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 use caliptra_mcu_core_util_host_command_types::crypto_aes::AesMode;
 use caliptra_mcu_core_util_host_command_types::crypto_hmac::CmKeyUsage;
@@ -169,6 +172,10 @@ impl Validator {
         // Run ExportAttestedCsr validation tests for all key IDs and algorithms
         let export_csr_results = self.validate_export_attested_csr_all(&mut client);
         results.extend(export_csr_results);
+
+        // Run GetAttestation validation tests for every advertised format
+        let get_attestation_results = self.validate_get_attestation_all(&mut client);
+        results.extend(get_attestation_results);
 
         if self.verbose {
             self.print_summary(&results);
@@ -1712,6 +1719,168 @@ impl Validator {
                 }
             },
             Err(e) => {
+                eprintln!("✗ {} validation FAILED: {}", test_name, e);
+                ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(e.to_string()),
+                }
+            }
+        }
+    }
+
+    /// Validate GET_ATTESTATION over the MCI mailbox.
+    ///
+    /// The device's supported formats are compile-time selected, so this first
+    /// issues a discovery query and drives whatever the device advertises,
+    /// keeping the test aligned with the firmware's feature set rather than
+    /// hardcoding an expectation that breaks on a differently-configured build.
+    ///
+    /// TODO(follow-up PR): verify the returned evidence cryptographically —
+    /// fetch the AK certificate chain (`ExportAttestedCsr` / the SPDM cert
+    /// chain), then (a) verify the COSE_Sign1 envelope over the OCP EAT and
+    /// check the nonce appears in the `eat_nonce` claim, and (b) parse the PCR
+    /// quote structure and verify its signature and nonce. Both formats sign
+    /// under `DPE_LEAF_LABEL`, so mailbox-fetched evidence verifies against the
+    /// same leaf key an SPDM requester would use.
+    fn validate_get_attestation_all(&self, client: &mut MailboxClient) -> Vec<ValidationResult> {
+        let mut results = Vec::new();
+
+        // TODO: enable MLDSA87 when ML-DSA evidence generation is verified in
+        // the emulator; an ML-DSA EAT also exceeds the current scratch budget.
+        let algorithm = EvidenceAlgorithm::EccP384;
+        let nonce: [u8; 32] = [0xA5; 32];
+
+        let query_name = "GetAttestation(query)".to_string();
+        let bitmap = match client.get_attestation_formats() {
+            Ok(response) => match response.supported_formats() {
+                Ok(0) => {
+                    let detail = "device advertises no evidence formats".to_string();
+                    eprintln!("✗ {} validation FAILED: {}", query_name, detail);
+                    results.push(ValidationResult {
+                        test_name: query_name,
+                        passed: false,
+                        error_message: Some(detail),
+                    });
+                    return results;
+                }
+                Ok(bitmap) => {
+                    println!(
+                        "✓ {} validation PASSED (supported formats: {:#010x})",
+                        query_name, bitmap
+                    );
+                    results.push(ValidationResult {
+                        test_name: query_name,
+                        passed: true,
+                        error_message: None,
+                    });
+                    bitmap
+                }
+                Err(e) => {
+                    let detail = e.to_string();
+                    eprintln!("✗ {} validation FAILED: {}", query_name, detail);
+                    results.push(ValidationResult {
+                        test_name: query_name,
+                        passed: false,
+                        error_message: Some(detail),
+                    });
+                    return results;
+                }
+            },
+            Err(e) => {
+                let detail = e.to_string();
+                eprintln!("✗ {} validation FAILED: {}", query_name, detail);
+                results.push(ValidationResult {
+                    test_name: query_name,
+                    passed: false,
+                    error_message: Some(detail),
+                });
+                return results;
+            }
+        };
+
+        for format in formats_from_bitmap(bitmap) {
+            results.push(self.validate_get_attestation(client, format, algorithm, &nonce));
+        }
+
+        // Negative case: a format the device did not advertise must be refused
+        // rather than answered with evidence.
+        if let Some(unsupported) = EvidenceFormat::ALL
+            .iter()
+            .copied()
+            .find(|f| bitmap & f.bit() == 0)
+        {
+            let test_name = format!("GetAttestation(unsupported {})", unsupported.name());
+            results.push(
+                match client.get_attestation(unsupported, algorithm, &nonce) {
+                    Ok(_) => {
+                        let detail = "device returned evidence for a format it does not advertise"
+                            .to_string();
+                        eprintln!("✗ {} validation FAILED: {}", test_name, detail);
+                        ValidationResult {
+                            test_name,
+                            passed: false,
+                            error_message: Some(detail),
+                        }
+                    }
+                    Err(e) => {
+                        println!("✓ {} validation PASSED (rejected: {})", test_name, e);
+                        ValidationResult {
+                            test_name,
+                            passed: true,
+                            error_message: None,
+                        }
+                    }
+                },
+            );
+        }
+
+        results
+    }
+
+    fn validate_get_attestation(
+        &self,
+        client: &mut MailboxClient,
+        format: EvidenceFormat,
+        algorithm: EvidenceAlgorithm,
+        nonce: &[u8; 32],
+    ) -> ValidationResult {
+        let test_name = format!("GetAttestation({}/{})", format.name(), algorithm.name());
+
+        if self.verbose {
+            println!(
+                "\n=== Validating GetAttestation: {} {} ===",
+                format.name(),
+                algorithm.name()
+            );
+        }
+
+        match client.get_attestation(format, algorithm, nonce) {
+            Ok(response) => match response.validate_evidence_payload(format) {
+                Ok(len) => {
+                    println!(
+                        "✓ {} validation PASSED (evidence size: {} bytes)",
+                        test_name, len
+                    );
+                    ValidationResult {
+                        test_name,
+                        passed: true,
+                        error_message: None,
+                    }
+                }
+                Err(e) => {
+                    let detail = e.to_string();
+                    eprintln!("✗ {} validation FAILED: {}", test_name, detail);
+                    ValidationResult {
+                        test_name,
+                        passed: false,
+                        error_message: Some(detail),
+                    }
+                }
+            },
+            Err(e) => {
+                // The device advertised this format in the bitmap, so refusing
+                // it is a contradiction, not a tolerable skip.
                 eprintln!("✗ {} validation FAILED: {}", test_name, e);
                 ValidationResult {
                     test_name,

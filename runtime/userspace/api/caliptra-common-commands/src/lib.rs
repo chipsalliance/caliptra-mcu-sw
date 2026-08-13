@@ -69,6 +69,74 @@ pub struct FirmwareVersion {
     pub ver_str: [u8; MAX_FW_VERSION_LEN],
 }
 
+/// Attestation evidence formats carried by `GET_ATTESTATION`.
+///
+/// Wire-stable: these values appear verbatim in the `evidence_format` field of
+/// both the SPDM VDM and MCU mailbox requests.
+///
+/// `0` is reserved on the wire as the format-discovery query and therefore has
+/// no enum variant; the dispatch layer handles it before decoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum EvidenceFormat {
+    /// Signed OCP Entity Attestation Token carrying CoRIM concise evidence.
+    OcpEat = 1,
+    /// Caliptra PCR quote.
+    PcrQuote = 2,
+}
+
+/// Wire value reserved for the format-discovery query.
+///
+/// A request carrying this `evidence_format` returns the responder's
+/// [`EvidenceFormat`] bitmap instead of evidence.
+pub const EVIDENCE_FORMAT_QUERY: u32 = 0;
+
+/// Nonce length for `GET_ATTESTATION`, matching `EXPORT_ATTESTED_CSR`.
+pub const ATTESTATION_NONCE_LEN: usize = 32;
+
+impl EvidenceFormat {
+    /// Bit position of this format in a supported-formats bitmap.
+    ///
+    /// Bit `n` is set when the responder supports the format whose wire value
+    /// is `n`, so bit 0 is never set (it is the query sentinel).
+    pub const fn bit(self) -> u32 {
+        1u32 << (self as u32)
+    }
+}
+
+impl TryFrom<u32> for EvidenceFormat {
+    type Error = CaliptraCompletionCode;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(EvidenceFormat::OcpEat),
+            2 => Ok(EvidenceFormat::PcrQuote),
+            _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
+/// Signing algorithms selectable by `GET_ATTESTATION`.
+///
+/// Values match the `algorithm` field already used by `EXPORT_ATTESTED_CSR`
+/// (`0x0001` = ECC384, `0x0002` = MLDSA87).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum EvidenceAlgorithm {
+    EccP384 = 1,
+    Mldsa87 = 2,
+}
+
+impl TryFrom<u32> for EvidenceAlgorithm {
+    type Error = CaliptraCompletionCode;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(EvidenceAlgorithm::EccP384),
+            2 => Ok(EvidenceAlgorithm::Mldsa87),
+            _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
 /// Log type identifiers used by `get_log` / `clear_log`.
 ///
 /// These values are wire-stable (carried in the MCU mailbox `log_type` field
@@ -190,6 +258,67 @@ pub trait CaliptraCmdHandler {
         csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         let _ = (alloc, algorithm, csr_buf);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Bitmap of [`EvidenceFormat`]s this build can produce.
+    ///
+    /// Bit `n` is set when the format whose wire value is `n` is supported; see
+    /// [`EvidenceFormat::bit`]. Returned verbatim to a requester that issues a
+    /// [`EVIDENCE_FORMAT_QUERY`] request.
+    ///
+    /// Implementors must keep this consistent with
+    /// [`attestation_evidence_len`](Self::attestation_evidence_len): a format
+    /// advertised here must report a non-zero length for at least one
+    /// algorithm.
+    const SUPPORTED_EVIDENCE_FORMATS: u32 = 0;
+
+    /// Largest evidence this build can emit for any supported format and
+    /// algorithm.
+    ///
+    /// This is the worst case across every enabled evidence generator and is
+    /// what transports use to size static contracts (VDM large-response
+    /// capacity, mailbox response buffers). Per-request buffers should use the
+    /// narrower [`attestation_evidence_len`](Self::attestation_evidence_len)
+    /// instead, so that an ECC quote does not reserve an ML-DSA-sized buffer.
+    const MAX_ATTESTATION_EVIDENCE_LEN: usize = 0;
+
+    /// Upper bound, in bytes, on evidence for one specific format and
+    /// algorithm; `0` when the pair is not supported by this build.
+    ///
+    /// Transports call this before generating evidence so they can reserve
+    /// exactly what the requested pair needs and reject unsupported pairs
+    /// without allocating.
+    fn attestation_evidence_len(format: EvidenceFormat, algorithm: EvidenceAlgorithm) -> usize {
+        let _ = (format, algorithm);
+        0
+    }
+
+    /// Generates signed attestation evidence in the requested format.
+    ///
+    /// # Arguments
+    /// * `format` - Evidence encoding; see [`EvidenceFormat`].
+    /// * `algorithm` - Signing algorithm; see [`EvidenceAlgorithm`].
+    /// * `nonce` - Requester-supplied freshness nonce, bound into the evidence.
+    /// * `out` - Destination buffer. Callers must size it to at least
+    ///   [`attestation_evidence_len`](Self::attestation_evidence_len) for the
+    ///   requested pair.
+    ///
+    /// # Returns
+    /// * `Ok(usize)` - Number of evidence bytes written into `out`.
+    /// * `Err(CaliptraCompletionCode::UnsupportedOperation)` - The
+    ///   format/algorithm pair is not enabled in this build.
+    /// * `Err(CaliptraCompletionCode::InsufficientResources)` - `out` is too
+    ///   small for the generated evidence.
+    async fn get_attestation<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        format: EvidenceFormat,
+        algorithm: EvidenceAlgorithm,
+        nonce: &[u8; ATTESTATION_NONCE_LEN],
+        out: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let _ = (alloc, format, algorithm, nonce, out);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 

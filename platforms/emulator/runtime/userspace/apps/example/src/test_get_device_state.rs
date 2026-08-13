@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 use caliptra_mcu_attestation_evidence::pcr_quote::{
-    encode_pcr_quote, PcrQuoteAlgorithm, PCR_QUOTE_MAX_SIZE,
+    encode_pcr_quote, PcrQuoteAlgorithm, PCR_QUOTE_MAX_BUF_SIZE,
 };
 use caliptra_mcu_libapi_caliptra::evidence::device_state::*;
 use caliptra_mcu_romtime::{println, test_exit};
@@ -17,7 +17,7 @@ struct PcrQuoteScratchSlot([u8; BITMAP_SLOT_SIZE]);
 static PCR_QUOTE_ALLOCATOR: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
 static mut PCR_QUOTE_SCRATCH: [PcrQuoteScratchSlot; PCR_QUOTE_SCRATCH_SLOTS] =
     [PcrQuoteScratchSlot([0; BITMAP_SLOT_SIZE]); PCR_QUOTE_SCRATCH_SLOTS];
-static mut PCR_QUOTE_BUFFER: [u8; PCR_QUOTE_MAX_SIZE] = [0; PCR_QUOTE_MAX_SIZE];
+static mut PCR_QUOTE_BUFFER: [u8; PCR_QUOTE_MAX_BUF_SIZE] = [0; PCR_QUOTE_MAX_BUF_SIZE];
 
 pub(crate) fn init_pcr_quote_allocator() -> &'static BitmapAllocator {
     let scratch_ptr =

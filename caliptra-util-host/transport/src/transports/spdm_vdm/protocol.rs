@@ -121,6 +121,9 @@ pub enum SpdmVdmProtocolError {
 pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
     use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
     match command_id {
+        x if x == CaliptraCommandId::GetAttestation as u32 => {
+            Some(CaliptraVdmCommand::GetAttestation)
+        }
         x if x == CaliptraCommandId::ExportAttestedCsr as u32 => {
             Some(CaliptraVdmCommand::ExportAttestedCsr)
         }

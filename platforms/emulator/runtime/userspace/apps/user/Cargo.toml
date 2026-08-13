@@ -15,6 +15,7 @@ critical-section.workspace = true
 embassy-executor.workspace = true
 embassy-sync.workspace = true
 caliptra-image-types.workspace = true
+caliptra-mcu-attestation-evidence.workspace = true
 caliptra-mcu-common-commands.workspace = true
 caliptra-mcu-flash-image.workspace = true
 caliptra-mcu-measurement-api.workspace = true
@@ -79,6 +80,13 @@ mcu-mbox-service = []
 # rewired to track the rotated handle.
 measurement-boot-init = []
 mctp-vdm-service = []
+# Enables the Caliptra PCR quote evidence generator. Adds `PcrQuote` to the
+# `GET_ATTESTATION` supported-format bitmap on both transports and, through
+# spdm-pal, allows the SPDM measurement block to carry a quote.
+pcr-quote = [
+  "caliptra-mcu-attestation-evidence/pcr-quote",
+  "caliptra-mcu-spdm-pal/pcr-quote",
+]
 debug = []
 hw-2-1 = []
 doe = ["spdm"]
@@ -174,7 +182,7 @@ test-mctp-spdm-attestation-mixed = ["spdm", "flash-boot"]
 test-mctp-spdm-attestation-hitless = ["spdm", "flash-boot", "firmware-update"]
 test-mctp-spdm-attestation-hitless-tcb = ["spdm", "flash-boot", "firmware-update"]
 test-mctp-spdm-attestation-hitless-mixed = ["spdm", "flash-boot", "firmware-update"]
-test-mctp-spdm-attestation-pcr-quote = ["spdm", "caliptra-mcu-spdm-pal/pcr-quote"]
+test-mctp-spdm-attestation-pcr-quote = ["spdm", "pcr-quote"]
 test-mctp-spdm-responder-conformance = ["spdm"]
 # Test-only SPDM SET_CERTIFICATE path. Enables flash-backed certificate
 # installation without production authorization/key-binding.

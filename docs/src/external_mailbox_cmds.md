@@ -36,6 +36,7 @@ These commands support common Caliptra management functions, including querying 
 | MC_FIRMWARE_VERSION           | 0x4D46_5756 ("MFWV") | Retrieves the version of the target firmware.                                         |
 | MC_DEVICE_CAPABILITIES        | 0x4D43_4150 ("MCAP") | Retrieve the device capabilities.                                                     |
 | MC_EXPORT_ATTESTED_CSR        | 0x4D45_4143 ("MEAC") | Exports an attested CSR for a specified device key, wrapped in a CoseSign1 structure. |
+| MC_GET_ATTESTATION            | 0x4D47_4154 ("MGAT") | Retrieves signed attestation evidence in a requester-selected format.                 |
 | MC_GET_LOG                    | 0x4D47_4C47 ("MGLG") | Retrieves the debug log                                                               |
 | MC_CLEAR_LOG                  | 0x4D43_4C47 ("MCLG") | Clears the debug log                                                                  |
 | MC_FIPS_SELF_TEST_START       | 0x4D46_5354 ("MFST") | Starts the FIPS self-test to exercise the crypto engine.                              |
@@ -119,6 +120,39 @@ Exports an attested Certificate Signing Request (CSR) for a specified device key
 Command Code: `0x4D45_4143` ("MEAC")
 
 Payload semantics are defined by [Export Attested CSR](caliptra_common_commands.md#export-attested-csr).
+
+### MC_GET_ATTESTATION
+
+Retrieves signed attestation evidence bound to a requester-supplied nonce.
+
+Command Code: `0x4D47_4154` ("MGAT")
+
+Payload semantics, the evidence format values, and the format-discovery query
+are defined by [Get Attestation](caliptra_common_commands.md#get-attestation).
+
+MCI mailbox request payload:
+
+| **Name**        | **Type** | **Description**                                                          |
+| --------------- | -------- | ------------------------------------------------------------------------ |
+| chksum          | u32      | Request checksum.                                                        |
+| evidence_format | u32      | Requested evidence format, or `0x0000` for the format-discovery query.   |
+| algorithm       | u32      | Asymmetric algorithm. Ignored for the query.                             |
+| nonce           | u8[32]   | 32-byte freshness nonce bound into the evidence. Ignored for the query.  |
+
+MCI mailbox response payload:
+
+| **Name**        | **Type**       | **Description**                                                                       |
+| --------------- | -------------- | ------------------------------------------------------------------------------------- |
+| chksum          | u32            | Response checksum.                                                                    |
+| fips_status     | u32            | FIPS approved or an error.                                                            |
+| data_len        | u32            | Length in bytes of `evidence_format` plus `evidence`.                                 |
+| evidence_format | u32            | Echo of the requested `evidence_format`.                                              |
+| evidence        | u8[data_len-4] | Signed evidence blob, or a `u32` supported-format bitmap when responding to the query. |
+
+The response buffer for this command is sized from the evidence generators the
+device builds, so it is independent of every other mailbox command's response
+size. A request the device cannot satisfy in full fails rather than returning
+truncated evidence, which would not verify.
 
 ### MC_GET_LOG
 

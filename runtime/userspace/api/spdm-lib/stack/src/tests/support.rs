@@ -142,6 +142,14 @@ impl mcu_caliptra_api_lite::ApiAlloc for TestPal {
     }
 }
 
+impl mcu_caliptra_api_lite::ApiAllocPool for TestPal {
+    type Pool = Self;
+
+    fn pool(&self) -> &Self::Pool {
+        self
+    }
+}
+
 impl SpdmPalAlloc for TestPal {
     type Box<'a, T>
         = TestBox<'a, T>

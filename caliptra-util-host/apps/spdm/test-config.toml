@@ -20,6 +20,16 @@ key_ids = [1, 2, 3]
 # ECC384 = 1, MlDsa87 = 2
 algorithm = 1
 
+[get_attestation]
+# Signing algorithm: ECC384 = 1, MlDsa87 = 2
+algorithm = 1
+# 32-byte freshness nonce, hex-encoded. Omit for a fixed test pattern.
+# nonce = "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+#
+# The evidence formats exercised are not configured here: the validator queries
+# the device for its supported-format bitmap and drives whatever it advertises,
+# so this test tracks the firmware's build-time feature set automatically.
+
 [authorized_commands]
 # Test-only authorization keys. Production integrations must provide their own key source.
 ecc_auth_key = "3da9e680aff5a1cea96a3e89810286fb3b3030a9c924ad2f2031a07d294052a97cafa1fc6ea760a43db763ca9f2f7036"

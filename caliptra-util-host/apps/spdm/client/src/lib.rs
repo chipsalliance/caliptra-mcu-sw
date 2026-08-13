@@ -35,6 +35,9 @@ pub use caliptra_mcu_debug_unlock_signer::{
 };
 
 use anyhow::Result;
+use caliptra_mcu_core_util_host_command_types::attestation::{
+    EvidenceAlgorithm, EvidenceFormat, GetAttestationResponse,
+};
 use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
@@ -51,6 +54,9 @@ use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
 };
 use caliptra_mcu_core_util_host_transport::Transport;
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_util_host_commands::api::attestation::{
+    caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
+};
 use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
@@ -116,6 +122,32 @@ impl<'a> SpdmVdmClient<'a> {
         let mut session = self.create_session()?;
         caliptra_cmd_export_attested_csr(&mut session, device_key_id, algorithm, nonce)
             .map_err(|e| anyhow::anyhow!("ExportAttestedCsr failed: {:?}", e))
+    }
+
+    /// Retrieve signed attestation evidence from the device.
+    ///
+    /// # Parameters
+    /// - `format`: Evidence format (OCP EAT or PCR quote)
+    /// - `algorithm`: Signing algorithm (ECC P-384 or ML-DSA-87)
+    /// - `nonce`: 32-byte nonce for freshness, bound into the signed evidence
+    pub fn get_attestation(
+        &mut self,
+        format: EvidenceFormat,
+        algorithm: EvidenceAlgorithm,
+        nonce: &[u8; 32],
+    ) -> Result<GetAttestationResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_get_attestation(&mut session, format, algorithm, nonce)
+            .map_err(|e| anyhow::anyhow!("GetAttestation failed: {:?}", e))
+    }
+
+    /// Query which evidence formats the device supports.
+    ///
+    /// Returns a response whose `supported_formats()` decodes the bitmap.
+    pub fn get_attestation_formats(&mut self) -> Result<GetAttestationResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_get_attestation_formats(&mut session)
+            .map_err(|e| anyhow::anyhow!("GetAttestation format query failed: {:?}", e))
     }
 
     /// Request a production debug unlock challenge.
@@ -187,6 +219,9 @@ impl<'a> SpdmVdmClient<'a> {
         caliptra_cmd_fe_prog(&mut session, &request)
     }
 
+    // Authorization requires the full key material and signature inline; the
+    // wrapper mirrors the request struct one-to-one.
+    #[allow(clippy::too_many_arguments)]
     pub fn provision_vendor_pk_hash(
         &mut self,
         slot: u32,
@@ -212,6 +247,9 @@ impl<'a> SpdmVdmClient<'a> {
         caliptra_cmd_provision_vendor_pk_hash(&mut session, &request)
     }
 
+    // Authorization requires the full key material and signature inline; the
+    // wrapper mirrors the request struct one-to-one.
+    #[allow(clippy::too_many_arguments)]
     pub fn fuse_increase_caliptra_min_svn(
         &mut self,
         flags: u32,
@@ -237,6 +275,9 @@ impl<'a> SpdmVdmClient<'a> {
         caliptra_cmd_fuse_increase_caliptra_min_svn(&mut session, &request)
     }
 
+    // Authorization requires the full key material and signature inline; the
+    // wrapper mirrors the request struct one-to-one.
+    #[allow(clippy::too_many_arguments)]
     pub fn fuse_revoke_vendor_pub_key(
         &mut self,
         reserved: u32,
@@ -266,6 +307,9 @@ impl<'a> SpdmVdmClient<'a> {
         caliptra_cmd_fuse_revoke_vendor_pub_key(&mut session, &request)
     }
 
+    // Authorization requires the full key material and signature inline; the
+    // wrapper mirrors the request struct one-to-one.
+    #[allow(clippy::too_many_arguments)]
     pub fn fuse_revoke_vendor_pk_hash(
         &mut self,
         reserved: u32,
