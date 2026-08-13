@@ -217,6 +217,13 @@ impl<S: Syscalls> Otp<S> {
     }
 
     /// Provision the owner public-key hash in its write-once OTP entry.
+    ///
+    /// # Reset safety
+    ///
+    /// Current MCU ROM consumes `CPTRA_SS_OWNER_PK_HASH` without checking
+    /// `CPTRA_SS_OWNER_PK_HASH_VALID`. Provisioning must not be interrupted by
+    /// reset or power loss; otherwise ROM can consume a partial hash and the
+    /// intended hash may no longer be programmable.
     pub fn provision_owner_pk_hash(
         &self,
         new_hash: &[u8; OWNER_PK_HASH_SIZE],

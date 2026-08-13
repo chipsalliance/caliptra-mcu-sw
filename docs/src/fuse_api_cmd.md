@@ -118,7 +118,8 @@ Caveats:
 * The all-zero hash is rejected.
 * Reprovisioning the identical hash is idempotent.
 * Provisioning a different hash after any owner-hash data has been burned is rejected.
-* After verifying the hash, the command burns and verifies bit 0 of `CPTRA_SS_OWNER_PK_HASH_VALID` as the commit marker.
+* After verifying the hash, the command burns and verifies bit 0 of `CPTRA_SS_OWNER_PK_HASH_VALID` for use as a commit marker by ROM versions that enforce it.
+* Current MCU ROM does not check `CPTRA_SS_OWNER_PK_HASH_VALID` before consuming the hash. Provisioning must not be interrupted by reset or power loss; an interruption can cause ROM to consume a partial hash and prevent retrying the intended hash.
 * The newly provisioned owner hash is consumed by MCU ROM on the next reset.
 
 ### MC_FUSE_REVOKE_VENDOR_PUB_KEY
