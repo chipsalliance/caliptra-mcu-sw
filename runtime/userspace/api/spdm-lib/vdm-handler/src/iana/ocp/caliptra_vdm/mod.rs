@@ -30,11 +30,14 @@ pub use commands::authorized_command::{
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
 const VDM_HEADER_LEN: usize = 2;
+/// Caliptra VDM large-response framing prefix:
+/// `[command_version, command_code, completion, data_len]`.
+const LARGE_PAYLOAD_HEADER_LEN: usize = VDM_HEADER_LEN + 1 + 4;
 /// Maximum CSR/log payload staged in one Caliptra VDM response.
 const MAX_LARGE_COMMAND_DATA_LEN: usize = 4 * 1024;
 /// Maximum complete Caliptra VDM large payload:
 /// `[command_version, command_code, completion, data_len, data...]`.
-const MAX_LARGE_VDM_PAYLOAD_LEN: usize = VDM_HEADER_LEN + 1 + 4 + MAX_LARGE_COMMAND_DATA_LEN;
+const MAX_LARGE_VDM_PAYLOAD_LEN: usize = LARGE_PAYLOAD_HEADER_LEN + MAX_LARGE_COMMAND_DATA_LEN;
 
 /// Platform hook for SPDM-specific Caliptra VDM stream state.
 pub trait CaliptraVdmStreamOps {
@@ -195,16 +198,90 @@ impl<'a, H, S, A> CaliptraVdm<'a, H, S, A> {
     }
 }
 
+/// Largest large-response buffer this backend can ever rent, given `H`.
+///
+/// Worst case across every large-capable command. The attestation term is
+/// derived from the evidence generators the build actually enables rather than
+/// declared independently, so it stays correct when the integrator changes the
+/// enabled formats, claim set, or signing algorithm.
+///
+/// Exposed as a free `const fn` so integrators can assert their declared
+/// `MaxSPDMmsgSize` covers it at build time: the rented buffer comes out of the
+/// SPDM scratch pool, and a pool that cannot serve this much turns an otherwise
+/// valid `GET_ATTESTATION` into a runtime allocation failure.
+pub const fn large_response_capacity<H: CaliptraCmdHandler>() -> usize {
+    let attestation = commands::get_attestation::LARGE_PREFIX_LEN + H::MAX_ATTESTATION_EVIDENCE_LEN;
+    if attestation > MAX_LARGE_VDM_PAYLOAD_LEN {
+        attestation
+    } else {
+        MAX_LARGE_VDM_PAYLOAD_LEN
+    }
+}
+
+/// Caliptra VDM framing an inbound streamed request carries on top of its
+/// mailbox payload.
+///
+/// Streamed requests (the debug unlock token, and anything else routed through
+/// [`CaliptraVdmStreamOps`]) never materialize in the SPDM scratch pool, so
+/// they cost no pool memory. They still bound `MaxSPDMmsgSize`, because the
+/// `CHUNK_SEND` admission check rejects any message larger than the advertised
+/// value *before* the streaming path is reached. Integrators add this to their
+/// largest streamed payload to size that declaration.
+pub const LARGE_REQUEST_FRAMING_LEN: usize = VDM_HEADER_LEN;
+
 impl<H, S, A> SpdmVdmBackend for CaliptraVdm<'_, H, S, A>
 where
     H: CaliptraCmdHandler,
     S: CaliptraVdmStreamOps,
     A: CaliptraVdmAuthorization,
 {
-    // Caliptra VDM can emit responses (CSRs, logs) larger than one transport
-    // frame, so the stack provisions the buffered large-response path.
+    // Caliptra VDM can emit responses (CSRs, attestation evidence, logs) larger
+    // than one transport frame, so the stack provisions the buffered
+    // large-response path.
     const USES_LARGE_RESPONSE: bool = true;
-    const LARGE_RESPONSE_CAPACITY: usize = MAX_LARGE_VDM_PAYLOAD_LEN;
+    const LARGE_RESPONSE_CAPACITY: usize = large_response_capacity::<H>();
+
+    /// Reserves the persistent large-message buffer only for the commands that
+    /// can actually overflow one transport frame, sized to that command's own
+    /// worst case rather than the backend-wide maximum.
+    ///
+    /// Debug-unlock and authorization commands always answer inline, so they
+    /// reserve nothing.
+    fn large_response_capacity(&self, req: &[u8]) -> usize {
+        let Some(command) = req
+            .get(1)
+            .copied()
+            .and_then(|code| CaliptraVdmCommand::try_from(code).ok())
+        else {
+            return 0;
+        };
+
+        match command {
+            CaliptraVdmCommand::ExportAttestedCsr => {
+                LARGE_PAYLOAD_HEADER_LEN + MAX_LARGE_COMMAND_DATA_LEN
+            }
+            // Evidence size depends on the requested format and algorithm, so
+            // reserve only what this specific pair needs: an ECC PCR quote must
+            // not rent an ML-DSA-sized buffer. Malformed requests, discovery
+            // queries, and unsupported pairs all report length 0 and are
+            // answered inline.
+            CaliptraVdmCommand::GetAttestation => {
+                let body = &req[VDM_HEADER_LEN.min(req.len())..];
+                match commands::get_attestation::decode_format(body) {
+                    Some((format, algorithm)) => {
+                        match H::attestation_evidence_len(format, algorithm) {
+                            0 => 0,
+                            len => commands::get_attestation::LARGE_PREFIX_LEN + len,
+                        }
+                    }
+                    None => 0,
+                }
+            }
+            CaliptraVdmCommand::RequestDebugUnlock
+            | CaliptraVdmCommand::AuthorizeDebugUnlockToken
+            | CaliptraVdmCommand::AuthorizedCommand => 0,
+        }
+    }
 
     fn match_id(&self, registry: &VdmRegistry<'_>) -> bool {
         registry.standard_id == StandardsBodyId::Iana.as_u16()
@@ -372,6 +449,17 @@ where
                 )
                 .await
             }
+            Ok(CaliptraVdmCommand::GetAttestation) => {
+                commands::get_attestation::handle(
+                    self.commands,
+                    cmd_req,
+                    command_code,
+                    payload,
+                    large,
+                    scratch,
+                )
+                .await
+            }
             Ok(CaliptraVdmCommand::AuthorizedCommand) => {
                 commands::authorized_command::handle(self.authorization, cmd_req, scratch, payload)
                     .await
@@ -403,7 +491,15 @@ mod tests {
     use core::pin::Pin;
     use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
-    use caliptra_mcu_common_commands::{DeviceCapabilities, FirmwareVersion};
+    use caliptra_mcu_common_commands::{
+        AsymAlgo, DeviceCapabilities, EvidenceFormat, FirmwareVersion, PkiEntitySlot,
+    };
+
+    /// Stand-in for an ECC PCR quote: small enough to prove the per-format
+    /// reservation is narrower than the backend-wide maximum.
+    const TEST_QUOTE_ECC_LEN: usize = 1840;
+    /// Stand-in for the largest evidence this test build can emit.
+    const TEST_MAX_EVIDENCE_LEN: usize = 6388;
     use caliptra_mcu_spdm_traits::{
         SpdmPalAlloc, SpdmPalIo, SpdmPalIoKind, SpdmVdmBackend, VdmResponse, VdmResponseBuffer,
     };
@@ -457,6 +553,14 @@ mod tests {
 
         fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
             Ok(vec![0u8; len])
+        }
+    }
+
+    impl mcu_caliptra_api_lite::ApiAllocPool for TestAlloc {
+        type Pool = Self;
+
+        fn pool(&self) -> &Self::Pool {
+            self
         }
     }
 
@@ -544,6 +648,7 @@ mod tests {
 
     struct TestCommands {
         csr_len: usize,
+        evidence_len: usize,
         authorized_token: Mutex<Option<Vec<u8>>>,
         authorized_operation: Mutex<Option<AuthorizedOperation>>,
         authorization_error: Mutex<Option<CaliptraCompletionCode>>,
@@ -555,6 +660,19 @@ mod tests {
         fn new(csr_len: usize) -> Self {
             Self {
                 csr_len,
+                evidence_len: 0,
+                authorized_token: Mutex::new(None),
+                authorized_operation: Mutex::new(None),
+                authorization_error: Mutex::new(None),
+                enforce_authorization: false,
+                challenge: Mutex::new(None),
+            }
+        }
+
+        fn with_evidence(csr_len: usize, evidence_len: usize) -> Self {
+            Self {
+                csr_len,
+                evidence_len,
                 authorized_token: Mutex::new(None),
                 authorized_operation: Mutex::new(None),
                 authorization_error: Mutex::new(None),
@@ -643,6 +761,41 @@ mod tests {
             out.caliptra_rt = [0x11; 8];
             out.mcu_rt = [0x22; 4];
             Ok(())
+        }
+
+        // Both formats are advertised, but only PcrQuote/EccP384 and
+        // OcpEat/EccP384 report a length, so ML-DSA pairs exercise the
+        // unsupported-pair path.
+        const SUPPORTED_EVIDENCE_FORMATS: u32 =
+            EvidenceFormat::OcpEat.bit() | EvidenceFormat::PcrQuote.bit();
+        const MAX_ATTESTATION_EVIDENCE_LEN: usize = TEST_MAX_EVIDENCE_LEN;
+
+        fn attestation_evidence_len(format: EvidenceFormat, algorithm: AsymAlgo) -> usize {
+            match (format, algorithm) {
+                (EvidenceFormat::PcrQuote, AsymAlgo::EccP384) => TEST_QUOTE_ECC_LEN,
+                (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => TEST_MAX_EVIDENCE_LEN,
+                _ => 0,
+            }
+        }
+
+        async fn get_attestation<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _format: EvidenceFormat,
+            _algorithm: AsymAlgo,
+            _entity: caliptra_mcu_common_commands::PkiEntitySlot,
+            _nonce: &[u8; 32],
+            out: &mut [u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
+            if out.len() < self.evidence_len {
+                return Err(
+                    caliptra_mcu_common_commands::CaliptraCompletionCode::InsufficientResources,
+                );
+            }
+            for (i, byte) in out[..self.evidence_len].iter_mut().enumerate() {
+                *byte = (0xA0 + i) as u8;
+            }
+            Ok(self.evidence_len)
         }
 
         async fn export_attested_csr<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
@@ -938,6 +1091,181 @@ mod tests {
         req
     }
 
+    fn backend_capacity(req: &[u8]) -> usize {
+        let cmds = TestCommands::new(0);
+        CaliptraVdm::new(&cmds, &cmds, &cmds).large_response_capacity(req)
+    }
+
+    #[test]
+    fn large_capacity_reserved_only_for_export_attested_csr() {
+        assert_eq!(
+            backend_capacity(&export_attested_csr_req()),
+            LARGE_PAYLOAD_HEADER_LEN + MAX_LARGE_COMMAND_DATA_LEN
+        );
+
+        for command in [
+            CaliptraVdmCommand::GetAttestation,
+            CaliptraVdmCommand::RequestDebugUnlock,
+            CaliptraVdmCommand::AuthorizeDebugUnlockToken,
+            CaliptraVdmCommand::AuthorizedCommand,
+        ] {
+            let req = [CALIPTRA_VDM_COMMAND_VERSION, command as u8];
+            assert_eq!(backend_capacity(&req), 0, "{command:?} must stay inline");
+        }
+    }
+
+    #[test]
+    fn large_capacity_is_zero_for_undecodable_requests() {
+        assert_eq!(backend_capacity(&[]), 0);
+        assert_eq!(backend_capacity(&[CALIPTRA_VDM_COMMAND_VERSION]), 0);
+        assert_eq!(backend_capacity(&[CALIPTRA_VDM_COMMAND_VERSION, 0xFF]), 0);
+    }
+
+    fn get_attestation_req(format: u32, algorithm: u32) -> Vec<u8> {
+        get_attestation_req_for(format, algorithm, PkiEntitySlot::Vendor as u32)
+    }
+
+    fn get_attestation_req_for(format: u32, algorithm: u32, entity: u32) -> Vec<u8> {
+        let mut req = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::GetAttestation as u8,
+        ];
+        req.extend_from_slice(&format.to_le_bytes());
+        req.extend_from_slice(&algorithm.to_le_bytes());
+        req.extend_from_slice(&entity.to_le_bytes());
+        req.extend_from_slice(&[0x5A; 32]);
+        req
+    }
+
+    const GA_PREFIX: usize = commands::get_attestation::INLINE_PREFIX_LEN;
+
+    /// The whole point of the per-request hook: an ECC quote must not rent an
+    /// ML-DSA-sized buffer, and unserviceable requests must rent nothing.
+    #[test]
+    fn large_capacity_for_get_attestation_tracks_the_requested_format() {
+        let quote = get_attestation_req(EvidenceFormat::PcrQuote as u32, AsymAlgo::EccP384 as u32);
+        assert_eq!(
+            backend_capacity(&quote),
+            commands::get_attestation::LARGE_PREFIX_LEN + TEST_QUOTE_ECC_LEN
+        );
+
+        let eat = get_attestation_req(EvidenceFormat::OcpEat as u32, AsymAlgo::EccP384 as u32);
+        assert_eq!(
+            backend_capacity(&eat),
+            commands::get_attestation::LARGE_PREFIX_LEN + TEST_MAX_EVIDENCE_LEN
+        );
+        assert!(backend_capacity(&eat) > backend_capacity(&quote));
+
+        // Discovery query, unsupported pair, and malformed body all answer
+        // inline and must not reserve the large buffer.
+        for req in [
+            get_attestation_req(0, 0),
+            get_attestation_req(EvidenceFormat::PcrQuote as u32, AsymAlgo::Mldsa87 as u32),
+            get_attestation_req(0xDEAD_BEEF, AsymAlgo::EccP384 as u32),
+            vec![
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::GetAttestation as u8,
+            ],
+        ] {
+            assert_eq!(backend_capacity(&req), 0);
+        }
+    }
+
+    #[test]
+    fn get_attestation_query_returns_supported_format_bitmap() {
+        let cmds = TestCommands::new(0);
+        let (response, inline, _) = dispatch(&cmds, &get_attestation_req(0, 0), 64, 0);
+
+        assert_inline(response, 2 + GA_PREFIX + 4);
+        assert_eq!(inline[1], CaliptraVdmCommand::GetAttestation as u8);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        // Echoed format is the query sentinel, and the bitmap is the payload.
+        assert_eq!(u32::from_le_bytes(inline[3..7].try_into().unwrap()), 0);
+        assert_eq!(u32::from_le_bytes(inline[7..11].try_into().unwrap()), 4);
+        assert_eq!(
+            u32::from_le_bytes(inline[11..15].try_into().unwrap()),
+            EvidenceFormat::OcpEat.bit() | EvidenceFormat::PcrQuote.bit()
+        );
+    }
+
+    #[test]
+    fn get_attestation_uses_inline_response_when_it_fits() {
+        let cmds = TestCommands::with_evidence(0, 12);
+        let req = get_attestation_req(EvidenceFormat::PcrQuote as u32, AsymAlgo::EccP384 as u32);
+        let (response, inline, _) = dispatch(&cmds, &req, 64, 64);
+
+        assert_inline(response, 2 + GA_PREFIX + 12);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(
+            u32::from_le_bytes(inline[3..7].try_into().unwrap()),
+            EvidenceFormat::PcrQuote as u32
+        );
+        assert_eq!(u32::from_le_bytes(inline[7..11].try_into().unwrap()), 12);
+        assert_eq!(inline[11], 0xA0);
+    }
+
+    #[test]
+    fn get_attestation_uses_large_response_when_inline_is_too_small() {
+        let cmds = TestCommands::with_evidence(0, 64);
+        let req = get_attestation_req(EvidenceFormat::PcrQuote as u32, AsymAlgo::EccP384 as u32);
+        let (response, _, large) = dispatch(&cmds, &req, 16, 256);
+
+        assert_large(response, commands::get_attestation::LARGE_PREFIX_LEN + 64);
+        assert_eq!(large[0], CALIPTRA_VDM_COMMAND_VERSION);
+        assert_eq!(large[1], CaliptraVdmCommand::GetAttestation as u8);
+        assert_eq!(large[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(
+            u32::from_le_bytes(large[3..7].try_into().unwrap()),
+            EvidenceFormat::PcrQuote as u32
+        );
+        assert_eq!(u32::from_le_bytes(large[7..11].try_into().unwrap()), 64);
+        assert_eq!(large[commands::get_attestation::LARGE_PREFIX_LEN], 0xA0);
+    }
+
+    /// A format/algorithm pair the build cannot serve is refused before any
+    /// evidence generation is attempted, and is distinguishable from a
+    /// malformed request.
+    #[test]
+    fn get_attestation_rejects_unsupported_and_malformed_requests() {
+        let cmds = TestCommands::with_evidence(0, 12);
+
+        let cases = [
+            (
+                get_attestation_req(EvidenceFormat::PcrQuote as u32, AsymAlgo::Mldsa87 as u32),
+                CaliptraCompletionCode::UnsupportedOperation,
+            ),
+            (
+                get_attestation_req(0x99, AsymAlgo::EccP384 as u32),
+                CaliptraCompletionCode::InvalidParameter,
+            ),
+            (
+                get_attestation_req(EvidenceFormat::OcpEat as u32, 0x99),
+                CaliptraCompletionCode::InvalidParameter,
+            ),
+            (
+                get_attestation_req_for(
+                    EvidenceFormat::OcpEat as u32,
+                    AsymAlgo::EccP384 as u32,
+                    0x99,
+                ),
+                CaliptraCompletionCode::InvalidParameter,
+            ),
+            (
+                vec![
+                    CALIPTRA_VDM_COMMAND_VERSION,
+                    CaliptraVdmCommand::GetAttestation as u8,
+                ],
+                CaliptraCompletionCode::InvalidPayloadSize,
+            ),
+        ];
+
+        for (req, expected) in cases {
+            let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
+            assert_inline(response, 3);
+            assert_eq!(inline[2], expected as u8, "unexpected code for {req:02X?}");
+        }
+    }
+
     #[test]
     fn bad_command_version_returns_vdm_completion() {
         let cmds = TestCommands::new(0);
@@ -979,13 +1307,14 @@ mod tests {
 
     #[test]
     fn unsupported_command_returns_vdm_completion() {
+        // 0x7E is not a defined Caliptra VDM command code.
+        const UNKNOWN_COMMAND: u8 = 0x7E;
+        assert!(CaliptraVdmCommand::try_from(UNKNOWN_COMMAND).is_err());
+
         let cmds = TestCommands::new(0);
         let (response, inline, _) = dispatch(
             &cmds,
-            &[
-                CALIPTRA_VDM_COMMAND_VERSION,
-                CaliptraVdmCommand::GetAttestation as u8,
-            ],
+            &[CALIPTRA_VDM_COMMAND_VERSION, UNKNOWN_COMMAND],
             32,
             0,
         );
@@ -995,7 +1324,7 @@ mod tests {
             &inline[..3],
             &[
                 CALIPTRA_VDM_COMMAND_VERSION,
-                CaliptraVdmCommand::GetAttestation as u8,
+                UNKNOWN_COMMAND,
                 CaliptraCompletionCode::UnsupportedOperation as u8,
             ]
         );

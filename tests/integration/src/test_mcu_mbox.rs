@@ -12,7 +12,7 @@ pub mod test {
         },
         SocManager,
     };
-    use caliptra_mcu_config::capabilities::McuRuntimeCapabilities;
+    use caliptra_mcu_config::capabilities::{ExternalCommandCapabilities, McuRuntimeCapabilities};
     use caliptra_mcu_hw_model::mcu_mbox_transport::{
         McuMailboxError, McuMailboxResponse, McuMailboxTransport,
     };
@@ -520,6 +520,11 @@ pub mod test {
                     c[..16].copy_from_slice(&self.core_capabilities);
                     c[20..24].copy_from_slice(
                         &McuRuntimeCapabilities::MCI_MAILBOX_SERVICE
+                            .bits()
+                            .to_be_bytes(),
+                    );
+                    c[24..28].copy_from_slice(
+                        &ExternalCommandCapabilities::GET_ATTESTATION
                             .bits()
                             .to_be_bytes(),
                     );

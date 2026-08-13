@@ -41,13 +41,125 @@ use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 
+/// Largest single in-flight SPDM message (request or response) this responder
+/// supports.
+///
+/// This is a contract, not a measurement: it is advertised verbatim as
+/// `MaxSPDMmsgSize` in `CAPABILITIES`, so each responder scratch pool must be
+/// able to satisfy it. Raising this requires raising both scratch pools; the
+/// assertions below enforce that.
+///
+/// Sized to cover both directions, because `MaxSPDMmsgSize` caps every SPDM
+/// message and the `CHUNK_SEND` admission check compares against it before the
+/// streaming path is reached:
+///
+/// * Responses — the largest evidence this build can emit (an ML-DSA-87 PCR
+///   quote is 6388 bytes) plus SPDM and vendor-defined framing.
+/// * Requests — the production debug unlock token (7504 bytes of ML-DSA-87 key
+///   and signature material) plus framing. This one is streamed into the
+///   Caliptra mailbox and never occupies the scratch pool, but declaring a
+///   smaller `MaxSPDMmsgSize` would have the responder reject it outright.
+///
+/// The assertions below check both against what the build actually enables, so
+/// turning on a larger generator or a larger inbound command fails the build
+/// rather than failing at runtime.
+const MAX_SPDM_MSG_SIZE: usize = {
+    let declared = 8 * 1024;
+    assert!(
+        declared
+            >= caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::large_response_capacity::<
+                crate::caliptra_cmd_handler::CaliptraCmdBackend,
+            >(),
+        "MaxSPDMmsgSize is smaller than the largest Caliptra VDM response this build can \
+         produce; raise MAX_SPDM_MSG_SIZE (and both scratch pools with it) or disable an \
+         evidence generator"
+    );
+    assert!(
+        declared >= MAX_STREAMED_VDM_REQUEST_LEN,
+        "MaxSPDMmsgSize is smaller than the largest Caliptra VDM request this build must \
+         accept (the debug unlock token); raise MAX_SPDM_MSG_SIZE and both scratch pools with it"
+    );
+    declared
+};
+
+/// Largest streamed Caliptra VDM request this responder must accept.
+///
+/// The production debug unlock token dominates every other inbound request: it
+/// carries an ML-DSA-87 public key and signature. It is streamed into the
+/// Caliptra mailbox and never occupies the scratch pool, so it costs no memory
+/// here, but [`MAX_SPDM_MSG_SIZE`] must still admit it.
+const MAX_STREAMED_VDM_REQUEST_LEN: usize =
+    caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::LARGE_REQUEST_FRAMING_LEN
+        + core::mem::size_of::<mcu_caliptra_api_lite::mailbox::ProductionAuthDebugUnlockToken>();
+
+/// Conservative upper bound on transport MTU. The real MTU is a runtime
+/// transport property, so the budget uses a declared ceiling instead.
+const MAX_TRANSPORT_MTU: usize = 1024;
+
+/// Pool-resident state that survives across requests once a secure session is
+/// established: the `SessionInfo` box (key schedule holds up to nine 128-byte
+/// CMKs) plus the VCA / M1 / L1 / TH hash contexts (200 bytes each, one slot
+/// run apiece). Measured at roughly 2.3 KiB; rounded up for slot granularity.
+const SESSION_WORKING_SET: usize = 2560;
+
+/// Peak transient mailbox/DPE/SHA working set, measured during `certify_key`
+/// kid computation.
+///
+/// This is the one term in the budget that cannot be derived from a declared
+/// constant; it must be re-measured if the certificate or DPE paths change.
+const TRANSIENT_MAILBOX_PEAK: usize = 2560;
+
+/// Peak concurrent allocation while building a chunked large response: the
+/// rented large buffer plus the inline response buffer allocated alongside it.
+///
+/// The receive buffer is not counted: it is shrunk to the actual frame length
+/// immediately after receive, and the request that triggers a large response
+/// is always a single small frame.
+const LARGE_MSG_PATH_PEAK: usize = MAX_SPDM_MSG_SIZE + MAX_TRANSPORT_MTU;
+
+/// Peak concurrent allocation on the certificate / secure-session path: the
+/// mailbox working set plus the secured-message plaintext and ciphertext
+/// staging buffers.
+const CRYPTO_PATH_PEAK: usize = TRANSIENT_MAILBOX_PEAK + 2 * MAX_TRANSPORT_MTU;
+
+/// Minimum scratch pool that can satisfy [`MAX_SPDM_MSG_SIZE`].
+///
+/// The two request paths are mutually exclusive: a single request either
+/// builds a large chunked response or runs the certificate/crypto path, never
+/// both. Likewise the stack rents exactly one large buffer, for a `CHUNK_SEND`
+/// reassembly or a `CHUNK_GET` response but not both. So the transient term is
+/// a max, not a sum, laid on top of the session state that persists across
+/// requests.
+const fn required_scratch() -> usize {
+    let transient_peak = if LARGE_MSG_PATH_PEAK > CRYPTO_PATH_PEAK {
+        LARGE_MSG_PATH_PEAK
+    } else {
+        CRYPTO_PATH_PEAK
+    };
+    SESSION_WORKING_SET + transient_peak
+}
+
 /// Bitmap allocator pool size per responder task.
 ///
 /// MCTP hosts Caliptra VDM and must hold a buffered large request while its
 /// handler uses transient DPE/SHA mailbox workspaces.
-const MCTP_SPDM_SCRATCH_SIZE: usize = 12 * 1024;
+const MCTP_SPDM_SCRATCH_SIZE: usize = {
+    let declared = 12 * 1024;
+    assert!(
+        declared >= required_scratch(),
+        "MCTP SPDM scratch pool is too small for the configured MAX_SPDM_MSG_SIZE"
+    );
+    declared
+};
 /// DOE needs room for measurement records and secure-session crypto workspaces.
-const DOE_SPDM_SCRATCH_SIZE: usize = 12 * 1024;
+const DOE_SPDM_SCRATCH_SIZE: usize = {
+    let declared = 12 * 1024;
+    assert!(
+        declared >= required_scratch(),
+        "DOE SPDM scratch pool is too small for the configured MAX_SPDM_MSG_SIZE"
+    );
+    declared
+};
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
@@ -164,7 +276,15 @@ async fn spdm_mctp_responder() {
 
     // SAFETY: `allocator` is the `&'static` handle obtained above and is
     // exclusive to this task.
-    let pal = unsafe { McuSpdmPal::new(transport, allocator, &CERT_STORE, measurement_provider()) };
+    let pal = unsafe {
+        McuSpdmPal::new(
+            transport,
+            allocator,
+            &CERT_STORE,
+            measurement_provider(),
+            MAX_SPDM_MSG_SIZE,
+        )
+    };
     // MCTP hosts the IANA / Caliptra VDM backend (plaintext today). DOE uses
     // the default NoVdmBackend unless the TDISP/IDE validator feature wires PCI-SIG.
     static COMMANDS: crate::caliptra_cmd_handler::CaliptraCmdBackend =
@@ -223,7 +343,15 @@ async fn spdm_doe_responder() {
     let transport = alloc::boxed::Box::new(doe_transport);
     // SAFETY: `allocator` is the `&'static` handle obtained above and is
     // exclusive to this task.
-    let pal = unsafe { McuSpdmPal::new(transport, allocator, &CERT_STORE, measurement_provider()) };
+    let pal = unsafe {
+        McuSpdmPal::new(
+            transport,
+            allocator,
+            &CERT_STORE,
+            measurement_provider(),
+            MAX_SPDM_MSG_SIZE,
+        )
+    };
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(
         pal,

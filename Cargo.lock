@@ -1878,6 +1878,7 @@ dependencies = [
  "clap 4.5.51",
  "ecdsa",
  "fips204",
+ "getrandom 0.2.16",
  "p384",
  "sha2",
  "zerocopy",
@@ -1932,6 +1933,7 @@ dependencies = [
  "dpe",
  "embassy-executor",
  "embassy-sync",
+ "futures",
  "mcu-caliptra-api-lite",
  "zerocopy",
 ]
@@ -7963,6 +7965,7 @@ dependencies = [
  "async-trait",
  "caliptra-api",
  "caliptra-image-types",
+ "caliptra-mcu-attestation-evidence",
  "caliptra-mcu-common-commands",
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
