@@ -17,23 +17,17 @@ use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
-    MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID,
-    MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
-    MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID, MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
+    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompletionCode};
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_util_host_commands::api::CaliptraApiError;
 
-const IMPLEMENTED_AUTHORIZED_SUBCOMMANDS: u32 = (1 << 0)
-    | (1 << 1)
-    | (1 << 2)
-    | (1 << 3)
-    | (1 << 4)
-    | (1 << 5)
-    | (1 << 6)
-    | (1 << 7);
+const IMPLEMENTED_AUTHORIZED_SUBCOMMANDS: u32 =
+    (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7);
 
 /// Result of a single validation check.
 #[derive(Debug, Clone)]
@@ -941,14 +935,11 @@ pub fn run_fuse_policy_rejection_tests(
     ]
 }
 
-fn run_authorized_subcommand_capability_test(
-    client: &mut SpdmVdmClient,
-) -> ValidationResult {
+fn run_authorized_subcommand_capability_test(client: &mut SpdmVdmClient) -> ValidationResult {
     match client.get_device_capabilities() {
         Ok(capabilities) => {
             let advertised = capabilities.authorized_subcommand_capabilities();
-            if advertised & IMPLEMENTED_AUTHORIZED_SUBCOMMANDS
-                == IMPLEMENTED_AUTHORIZED_SUBCOMMANDS
+            if advertised & IMPLEMENTED_AUTHORIZED_SUBCOMMANDS == IMPLEMENTED_AUTHORIZED_SUBCOMMANDS
             {
                 ValidationResult::pass(
                     "Authorized fuse capability advertisement",

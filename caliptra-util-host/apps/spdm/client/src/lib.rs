@@ -59,10 +59,9 @@ use caliptra_util_host_commands::api::debug_unlock::{
 use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_capabilities;
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_caliptra_min_svn,
-    caliptra_cmd_fuse_lock_partition,
-    caliptra_cmd_fuse_revoke_vendor_pk_hash, caliptra_cmd_fuse_revoke_vendor_pub_key,
-    caliptra_cmd_get_auth_challenge, caliptra_cmd_provision_owner_pk_hash,
-    caliptra_cmd_provision_vendor_pk_hash,
+    caliptra_cmd_fuse_lock_partition, caliptra_cmd_fuse_revoke_vendor_pk_hash,
+    caliptra_cmd_fuse_revoke_vendor_pub_key, caliptra_cmd_get_auth_challenge,
+    caliptra_cmd_provision_owner_pk_hash, caliptra_cmd_provision_vendor_pk_hash,
 };
 use caliptra_util_host_commands::api::{CaliptraApiError, CaliptraResult};
 use caliptra_util_host_session::CaliptraSession;
