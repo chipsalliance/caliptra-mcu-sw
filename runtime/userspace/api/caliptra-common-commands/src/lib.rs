@@ -185,8 +185,6 @@ impl TryFrom<u32> for PkiEntitySlot {
 pub enum LogType {
     /// MCU debug log (Tock logging-flash capsule).
     Debug = 0,
-    /// Caliptra attestation log (sourced from Caliptra core).
-    Attestation = 1,
 }
 
 impl TryFrom<u32> for LogType {
@@ -194,7 +192,6 @@ impl TryFrom<u32> for LogType {
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(LogType::Debug),
-            1 => Ok(LogType::Attestation),
             _ => Err(CaliptraCompletionCode::InvalidParameter),
         }
     }

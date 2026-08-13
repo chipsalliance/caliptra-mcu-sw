@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod test {
     use anyhow::Result;
+
     use caliptra_mcu_error::McuError;
     use caliptra_mcu_hw_model::{DefaultHwModel, McuHwModel, McuManager};
     use caliptra_mcu_registers_generated::fuses;

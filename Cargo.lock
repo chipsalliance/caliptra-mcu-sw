@@ -1946,7 +1946,6 @@ name = "caliptra-mcu-mctp-vdm-common"
 version = "0.1.0"
 dependencies = [
  "bitfield",
- "caliptra-api",
  "zerocopy",
 ]
 
@@ -1967,7 +1966,7 @@ dependencies = [
  "defmt",
  "embassy-executor",
  "embassy-sync",
- "embedded-alloc",
+ "mcu-caliptra-api",
  "zerocopy",
 ]
 
