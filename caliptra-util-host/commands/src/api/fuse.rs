@@ -14,10 +14,10 @@
 use crate::api::{CaliptraApiError, CaliptraResult};
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgRequest, FeProgResponse, FuseIncreaseCaliptraMinSvnRequest,
-    FuseIncreaseCaliptraMinSvnResponse, FuseRevokeVendorPkHashRequest,
-    FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
-    GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse, ProvisionVendorPkHashRequest,
-    ProvisionVendorPkHashResponse,
+    FuseIncreaseCaliptraMinSvnResponse, FuseLockPartitionRequest, FuseLockPartitionResponse,
+    FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
+    FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
+    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::{CaliptraSession, SessionError};
@@ -116,4 +116,11 @@ authorized_fuse_api!(
     FuseRevokeVendorPkHashResponse,
     FuseRevokeVendorPkHash,
     "FuseRevokeVendorPkHash command execution failed"
+);
+authorized_fuse_api!(
+    caliptra_cmd_fuse_lock_partition,
+    FuseLockPartitionRequest,
+    FuseLockPartitionResponse,
+    FuseLockPartition,
+    "FuseLockPartition command execution failed"
 );

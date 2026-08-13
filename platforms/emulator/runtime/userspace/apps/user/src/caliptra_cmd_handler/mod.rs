@@ -70,6 +70,7 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
+            | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
     } else {
         AuthorizedSubcommandCapabilities::empty()
     }
@@ -208,6 +209,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 
     async fn provision_vendor_pk_hash(&self, slot: u32, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
         device_ops::provision_vendor_pk_hash(slot, hash)
+    }
+
+    async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
+        device_ops::fuse_lock_partition(partition)
     }
 
     async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(

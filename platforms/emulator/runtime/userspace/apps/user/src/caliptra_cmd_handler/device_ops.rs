@@ -246,6 +246,15 @@ pub fn provision_vendor_pk_hash(slot: u32, hash: &[u8; 48]) -> CaliptraCmdResult
         .map_err(|_| CaliptraCompletionCode::OperationFailed)
 }
 
+pub fn fuse_lock_partition(partition: u32) -> CaliptraCmdResult<()> {
+    Otp::<DefaultSyscalls>::new()
+        .lock_partition(partition)
+        .map_err(|error| match error {
+            ErrorCode::Invalid => CaliptraCompletionCode::InvalidParameter,
+            _ => CaliptraCompletionCode::OperationFailed,
+        })
+}
+
 pub async fn increase_caliptra_min_svn<A: ApiAlloc>(alloc: &A, svn: u32) -> CaliptraCmdResult<()> {
     if svn == 0 || svn > 128 {
         return Err(CaliptraCompletionCode::InvalidParameter);

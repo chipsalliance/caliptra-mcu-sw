@@ -5,7 +5,7 @@
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
 use crate::iana::ocp::caliptra_vdm::CaliptraVdmAuthorization;
-use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult, CaliptraVdmResult,
 };
@@ -29,6 +29,7 @@ const PROVISION_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 48;
 const INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN: usize = 4 + 4;
 const REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN: usize = 4 + 4 + 4 + 4;
 const REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 4;
+const FUSE_LOCK_PARTITION_PAYLOAD_LEN: usize = 4;
 
 const _: () = assert!(
     core::mem::size_of::<FeProgVdmReq>()
@@ -70,6 +71,8 @@ pub const FE_PROG_CMD_ID: u32 = 0x4D43_4650;
 pub const REVOKE_VENDOR_PUB_KEY_CMD_ID: u32 = 0x4D52_564B;
 /// MC_FUSE_REVOKE_VENDOR_PK_HASH sub-command (`RVKH`).
 pub const REVOKE_VENDOR_PK_HASH_CMD_ID: u32 = 0x5256_4B48;
+/// MC_FUSE_LOCK_PARTITION sub-command (`IFPK`).
+pub const FUSE_LOCK_PARTITION_CMD_ID: u32 = CommandId::MC_FUSE_LOCK_PARTITION.0;
 
 pub(crate) async fn handle<H, A>(
     cmds: &H,
@@ -106,6 +109,7 @@ where
         REVOKE_VENDOR_PK_HASH_CMD_ID => {
             handle_revoke_vendor_pk_hash(cmds, payload, scratch, out).await
         }
+        FUSE_LOCK_PARTITION_CMD_ID => handle_fuse_lock_partition(cmds, payload, scratch, out).await,
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
     }
 }
@@ -296,6 +300,37 @@ where
         cmds.revoke_vendor_pk_hash(
             reserved,
             slot,
+            parsed.payload,
+            parsed.sig,
+            parsed.nonce,
+            parsed.ecc_pub_x,
+            parsed.ecc_pub_y,
+            parsed.mldsa_pub,
+            scratch,
+        )
+        .await,
+        out,
+    )
+}
+
+async fn handle_fuse_lock_partition<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    let parsed = match split_authorized_request(req, FUSE_LOCK_PARTITION_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
+    };
+    let partition = read_u32_le(parsed.payload);
+    finish_authorized_command(
+        cmds.fuse_lock_partition(
+            partition,
             parsed.payload,
             parsed.sig,
             parsed.nonce,

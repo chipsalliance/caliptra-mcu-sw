@@ -319,6 +319,12 @@ pub trait CaliptraCmdHandler {
         let _ = (alloc, partition);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
+
+    /// Lock an OTP partition against further writes.
+    async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
+        let _ = partition;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 }
 
 pub struct AuthorizationError;

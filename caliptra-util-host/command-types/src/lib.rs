@@ -125,6 +125,7 @@ pub enum CaliptraCommandId {
     FuseIncreaseCaliptraMinSvn = 0x8013,
     FuseRevokeVendorPubKey = 0x8014,
     FuseRevokeVendorPkHash = 0x8015,
+    FuseLockPartition = 0x8016,
 }
 
 /// Common response header for all commands

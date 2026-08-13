@@ -42,9 +42,9 @@ use caliptra_mcu_core_util_host_command_types::debug_unlock::{
 use caliptra_mcu_core_util_host_command_types::device_info::GetDeviceCapabilitiesResponse;
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgResponse, FuseIncreaseCaliptraMinSvnRequest, FuseIncreaseCaliptraMinSvnResponse,
-    FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
-    FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeResponse, ProvisionVendorPkHashRequest,
-    ProvisionVendorPkHashResponse,
+    FuseLockPartitionRequest, FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest,
+    FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
+    GetAuthCmdChallengeResponse, ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmError, SpdmVdmTransport,
@@ -58,6 +58,7 @@ use caliptra_util_host_commands::api::debug_unlock::{
 use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_capabilities;
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_caliptra_min_svn,
+    caliptra_cmd_fuse_lock_partition,
     caliptra_cmd_fuse_revoke_vendor_pk_hash, caliptra_cmd_fuse_revoke_vendor_pub_key,
     caliptra_cmd_get_auth_challenge, caliptra_cmd_provision_vendor_pk_hash,
 };
@@ -210,6 +211,29 @@ impl<'a> SpdmVdmClient<'a> {
             .create_session()
             .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
         caliptra_cmd_provision_vendor_pk_hash(&mut session, &request)
+    }
+
+    pub fn fuse_lock_partition(
+        &mut self,
+        partition: u32,
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+    ) -> CaliptraResult<FuseLockPartitionResponse> {
+        let request = FuseLockPartitionRequest {
+            partition,
+            sig: sig.clone(),
+            nonce: *nonce,
+            ecc_pub_x: *ecc_pub_x,
+            ecc_pub_y: *ecc_pub_y,
+            mldsa_pub: *mldsa_pub,
+        };
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
+        caliptra_cmd_fuse_lock_partition(&mut session, &request)
     }
 
     pub fn fuse_increase_caliptra_min_svn(

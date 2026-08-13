@@ -23,8 +23,9 @@ pub use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CALIPTRA_VDM_COMMAND_VERSION, CALIPTRA_VENDOR_ID,
 };
 pub use commands::authorized_command::{
-    FE_PROG_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
-    PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
+    FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
+    INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_VENDOR_PK_HASH_CMD_ID,
+    REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
@@ -141,6 +142,19 @@ pub trait CaliptraVdmAuthorization {
         &self,
         reserved: u32,
         slot: u32,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn fuse_lock_partition<A: SpdmPalAlloc>(
+        &self,
+        partition: u32,
         payload: &[u8],
         sig: &HybridSignature,
         nonce: &[u8; AUTH_CMD_NONCE_LEN],
@@ -507,6 +521,9 @@ mod tests {
             reserved: u32,
             slot: u32,
         },
+        FuseLockPartition {
+            partition: u32,
+        },
     }
 
     struct TestCommands {
@@ -752,6 +769,21 @@ mod tests {
         ) -> CaliptraVdmResult<()> {
             self.verify_test_signature(REVOKE_VENDOR_PK_HASH_CMD_ID, payload, sig)?;
             self.complete_authorized(AuthorizedOperation::RevokeVendorPkHash { reserved, slot })
+        }
+
+        async fn fuse_lock_partition<A: SpdmPalAlloc>(
+            &self,
+            partition: u32,
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(FUSE_LOCK_PARTITION_CMD_ID, payload, sig)?;
+            self.complete_authorized(AuthorizedOperation::FuseLockPartition { partition })
         }
     }
 
@@ -1076,6 +1108,11 @@ mod tests {
                     slot: 4,
                 },
             ),
+            (
+                FUSE_LOCK_PARTITION_CMD_ID,
+                0x0Eu32.to_le_bytes().to_vec(),
+                AuthorizedOperation::FuseLockPartition { partition: 0x0E },
+            ),
         ];
 
         for (sub_cmd, payload, expected) in cases {
@@ -1110,6 +1147,7 @@ mod tests {
             (INCREASE_CALIPTRA_MIN_SVN_CMD_ID, vec![0u8; 8]),
             (REVOKE_VENDOR_PUB_KEY_CMD_ID, vec![0u8; 16]),
             (REVOKE_VENDOR_PK_HASH_CMD_ID, vec![0u8; 8]),
+            (FUSE_LOCK_PARTITION_CMD_ID, vec![0u8; 4]),
         ];
 
         for (sub_cmd, payload) in payloads {

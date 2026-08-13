@@ -84,5 +84,9 @@ mod tests {
             AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY.bits(),
             1 << 3
         );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION.bits(),
+            1 << 6
+        );
     }
 }

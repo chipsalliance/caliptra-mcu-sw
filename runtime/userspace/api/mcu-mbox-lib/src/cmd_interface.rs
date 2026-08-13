@@ -25,7 +25,7 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
     McuFipsPeriodicStatusResp,
 };
-use caliptra_mcu_otp_fuse::{fuse_read_dai_params, PartitionId};
+use caliptra_mcu_otp_fuse::fuse_read_dai_params;
 use core::sync::atomic::{AtomicBool, Ordering};
 use mcu_caliptra_api_lite::{raw, ApiAlloc};
 use mcu_error::{McuErrorCode, McuResult};
@@ -647,11 +647,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let (resp, _) =
             FuseLockPartitionResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
 
-        PartitionId::try_from(req.partition).map_err(|_| errors::INVALID_PARAMS)?;
-
-        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
-        otp.lock_partition(req.partition)
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        self.non_crypto_cmds_handler
+            .fuse_lock_partition(req.partition)
+            .await
+            .map_err(map_common_cmd_error)?;
 
         *resp = FuseLockPartitionResp::default();
         Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))

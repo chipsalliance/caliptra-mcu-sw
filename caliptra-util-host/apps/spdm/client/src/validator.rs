@@ -17,6 +17,7 @@ use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
+    MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID,
     MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
     MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
 };
@@ -30,7 +31,8 @@ const IMPLEMENTED_AUTHORIZED_SUBCOMMANDS: u32 = (1 << 0)
     | (1 << 2)
     | (1 << 3)
     | (1 << 4)
-    | (1 << 5);
+    | (1 << 5)
+    | (1 << 6);
 
 /// Result of a single validation check.
 #[derive(Debug, Clone)]
@@ -652,6 +654,32 @@ fn signed_revoke_vendor_pk_hash(
         .map_err(AuthorizedCommandError::Command)
 }
 
+fn signed_fuse_lock_partition(
+    client: &mut SpdmVdmClient,
+    partition: u32,
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let payload = partition.to_le_bytes();
+    let auth = authorize_command(
+        client,
+        MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID,
+        &payload,
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .fuse_lock_partition(
+            partition,
+            &auth.sig,
+            &auth.nonce,
+            &auth.ecc_pub_x,
+            &auth.ecc_pub_y,
+            &auth.mldsa_pub,
+        )
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
 fn expect_success(test_name: &str, result: Result<(), AuthorizedCommandError>) -> ValidationResult {
     match result {
         Ok(()) => ValidationResult::pass(test_name, "accepted"),
@@ -945,6 +973,21 @@ fn run_fuse_suite(
                 "MCMS rejects decrease",
                 signed_increase_caliptra_min_svn(client, 0, 4, authorizer),
                 CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+        ],
+        "fuse-lock-partition" => vec![
+            expect_completion(
+                "IFPK rejects invalid partition",
+                signed_fuse_lock_partition(client, u32::MAX, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+            expect_success(
+                "IFPK locks partition",
+                signed_fuse_lock_partition(client, 0x0E, authorizer),
+            ),
+            expect_success(
+                "IFPK same partition is idempotent",
+                signed_fuse_lock_partition(client, 0x0E, authorizer),
             ),
         ],
         "revoke-vendor-pub-key" => vec![

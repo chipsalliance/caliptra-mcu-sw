@@ -367,6 +367,10 @@ mod test {
         "increase-min-svn"
     );
     isolated_fuse_suite_test!(
+        test_caliptra_util_host_spdm_vdm_validator_fuse_lock_partition,
+        "fuse-lock-partition"
+    );
+    isolated_fuse_suite_test!(
         test_caliptra_util_host_spdm_vdm_validator_revoke_vendor_pub_key,
         "revoke-vendor-pub-key"
     );
