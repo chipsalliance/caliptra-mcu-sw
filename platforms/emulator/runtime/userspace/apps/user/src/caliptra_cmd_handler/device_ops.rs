@@ -25,8 +25,8 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 // certificate; attestation evidence must be signed under the same label so the
 // leaf cert in the device's chain is the one that verifies it.
 use caliptra_mcu_mbox_common::messages::{
-    DotDisablePayload, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN, DOT_KEY_HASH_SIZE,
-    DOT_MLDSA_PUBLIC_KEY_SIZE,
+    CommandId, DotDisablePayload, DotLockPayload, DotUnlockPayload, HybridSignature,
+    AUTH_CMD_NONCE_LEN, DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL;
@@ -72,7 +72,6 @@ const _: [(); DOT_BLOB_FIELDS_SIZE] = [(); core::mem::size_of::<RuntimeDotBlobFi
 const _: [(); DOT_BLOB_SIZE] = [(); core::mem::size_of::<RuntimeDotBlob>()];
 
 #[derive(Clone, Copy)]
-#[allow(dead_code)]
 struct UnlockContext {
     challenge: [u8; AUTH_CMD_NONCE_LEN],
     lak_hash: [u8; DOT_KEY_HASH_SIZE],
@@ -462,6 +461,54 @@ async fn verify_hybrid_message_parts<A: ApiAlloc>(
     Ok(())
 }
 
+async fn verify_hybrid_message<A: ApiAlloc>(
+    alloc: &A,
+    message: &[u8],
+    ecc_pub_x: &[u8; 48],
+    ecc_pub_y: &[u8; 48],
+    mldsa_pub: &[u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
+    sig: &HybridSignature,
+) -> CaliptraCmdResult<()> {
+    verify_hybrid_message_parts(alloc, message, message, ecc_pub_x, ecc_pub_y, mldsa_pub, sig).await
+}
+
+async fn dot_lak_hash<A: ApiAlloc>(
+    alloc: &A,
+    ecc_pub_x: &[u8; 48],
+    ecc_pub_y: &[u8; 48],
+    mldsa_pub: &[u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
+) -> CaliptraCmdResult<[u8; DOT_KEY_HASH_SIZE]> {
+    let mut ecc_key = [0u8; 96];
+    for (dst, src) in ecc_key[..48]
+        .chunks_exact_mut(4)
+        .zip(ecc_pub_x.chunks_exact(4))
+    {
+        dst.copy_from_slice(src);
+        dst.reverse();
+    }
+    for (dst, src) in ecc_key[48..]
+        .chunks_exact_mut(4)
+        .zip(ecc_pub_y.chunks_exact(4))
+    {
+        dst.copy_from_slice(src);
+        dst.reverse();
+    }
+    let context = alloc
+        .alloc(SHA_CONTEXT_SIZE)
+        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
+    let mut state = sha_init(alloc, context, HashAlgo::Sha384, &ecc_key)
+        .await
+        .map_err(map_mcu_err)?;
+    sha_update(alloc, &mut state, mldsa_pub)
+        .await
+        .map_err(map_mcu_err)?;
+    let mut hash = [0u8; DOT_KEY_HASH_SIZE];
+    sha_finish(alloc, &mut state, &mut hash)
+        .await
+        .map_err(map_mcu_err)?;
+    Ok(hash)
+}
+
 fn read_dot_fuse_count() -> CaliptraCmdResult<u32> {
     let otp = Otp::<DefaultSyscalls>::new();
     let initialized = otp
@@ -769,6 +816,54 @@ pub async fn dot_unlock_challenge<A: ApiAlloc>(
         });
     });
     Ok(challenge)
+}
+
+pub async fn dot_unlock<A: ApiAlloc>(
+    alloc: &A,
+    request: &DotUnlockPayload,
+) -> CaliptraCmdResult<()> {
+    let _guard = DotTransactionGuard::acquire()?;
+    let context = UNLOCK_CONTEXT
+        .lock(|state| *state.borrow())
+        .ok_or(CaliptraCompletionCode::InvalidState)?;
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count != context.fuse_count || current_fuse_count & 1 == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    let lak_hash = dot_lak_hash(
+        alloc,
+        &request.lak_ecc_pub_x,
+        &request.lak_ecc_pub_y,
+        &request.lak_mldsa_pub,
+    )
+    .await?;
+    if !constant_time_eq::constant_time_eq(&lak_hash, &context.lak_hash) {
+        return Err(CaliptraCompletionCode::AccessDenied);
+    }
+
+    let mut transcript = [0u8; 4 + AUTH_CMD_NONCE_LEN];
+    transcript[..4].copy_from_slice(&CommandId::MC_DOT_UNLOCK.0.to_be_bytes());
+    transcript[4..].copy_from_slice(&context.challenge);
+    verify_hybrid_message(
+        alloc,
+        &transcript,
+        &request.lak_ecc_pub_x,
+        &request.lak_ecc_pub_y,
+        &request.lak_mldsa_pub,
+        &request.signature,
+    )
+    .await?;
+    commit_dot_transition(
+        alloc,
+        current_fuse_count,
+        current_fuse_count + 2,
+        [0; DOT_KEY_HASH_SIZE],
+        context.lak_hash,
+    )
+    .await?;
+    UNLOCK_CONTEXT.lock(|state| *state.borrow_mut() = None);
+    Ok(())
 }
 
 pub async fn revoke_vendor_pub_key<A: ApiAlloc>(

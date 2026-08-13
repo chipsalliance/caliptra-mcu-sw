@@ -152,6 +152,7 @@ impl CommandId {
     pub const MC_DOT_LOCK: Self = Self(0x4D44_4C4B); // "MDLK"
     pub const MC_DOT_DISABLE: Self = Self(0x4D44_4453); // "MDDS"
     pub const MC_DOT_UNLOCK_CHALLENGE: Self = Self(0x4D44_5543); // "MDUC"
+    pub const MC_DOT_UNLOCK: Self = Self(0x4D44_554C); // "MDUL"
 }
 
 impl From<u32> for CommandId {
@@ -230,6 +231,7 @@ pub enum McuMailboxReq {
     DotLock(DotLockReq),
     DotDisable(DotDisableReq),
     DotUnlockChallenge(DotUnlockChallengeReq),
+    DotUnlock(DotUnlockReq),
 }
 
 impl McuMailboxReq {
@@ -292,6 +294,7 @@ impl McuMailboxReq {
             McuMailboxReq::DotLock(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotDisable(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotUnlock(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -354,6 +357,7 @@ impl McuMailboxReq {
             McuMailboxReq::DotLock(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotDisable(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotUnlock(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -418,6 +422,7 @@ impl McuMailboxReq {
             McuMailboxReq::DotLock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotDisable(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotUnlockChallenge(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotUnlock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
         }
     }
 
@@ -504,6 +509,7 @@ pub enum McuMailboxResp {
     DotLock(DotLockResp),
     DotDisable(DotDisableResp),
     DotUnlockChallenge(DotUnlockChallengeResp),
+    DotUnlock(DotUnlockResp),
 }
 
 /// A trait for responses with variable size data.
@@ -624,6 +630,7 @@ impl McuMailboxResp {
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotUnlock(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -684,6 +691,7 @@ impl McuMailboxResp {
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotUnlock(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -1950,6 +1958,58 @@ impl Default for DotUnlockChallengeResp {
 
 impl Response for DotUnlockChallengeResp {}
 
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotUnlockPayload {
+    pub lak_ecc_pub_x: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub lak_ecc_pub_y: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub lak_mldsa_pub: [u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
+    pub signature: HybridSignature,
+}
+
+impl Default for DotUnlockPayload {
+    fn default() -> Self {
+        Self {
+            lak_ecc_pub_x: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            lak_ecc_pub_y: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            lak_mldsa_pub: [0; DOT_MLDSA_PUBLIC_KEY_SIZE],
+            signature: HybridSignature::default(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotUnlockReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub payload: DotUnlockPayload,
+}
+
+impl Default for DotUnlockReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_UNLOCK.0,
+            payload: DotUnlockPayload::default(),
+        }
+    }
+}
+
+impl Request for DotUnlockReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotUnlockResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotUnlockResp {
+    pub hdr: MailboxRespHeader,
+    pub reset_required: u32,
+}
+
+impl Response for DotUnlockResp {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2054,6 +2114,23 @@ mod tests {
         assert_eq!(
             core::mem::size_of::<DotUnlockChallengeResp>(),
             core::mem::size_of::<MailboxRespHeader>() + AUTH_CMD_NONCE_LEN
+        );
+    }
+
+    #[test]
+    fn dot_unlock_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_UNLOCK.0, 0x4D44_554C);
+        assert_eq!(
+            core::mem::size_of::<DotUnlockReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+                + core::mem::size_of::<u32>()
+                + 2 * DOT_ECC_PUBLIC_KEY_COORD_SIZE
+                + DOT_MLDSA_PUBLIC_KEY_SIZE
+                + core::mem::size_of::<HybridSignature>()
+        );
+        assert_eq!(
+            DotUnlockReq::default().subcommand,
+            CommandId::MC_DOT_UNLOCK.0
         );
     }
 

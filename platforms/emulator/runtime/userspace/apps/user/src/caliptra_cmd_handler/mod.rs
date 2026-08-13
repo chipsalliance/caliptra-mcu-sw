@@ -14,7 +14,7 @@ use caliptra_mcu_config::capabilities::{
     McuRuntimeCapabilities,
 };
 use caliptra_mcu_config::version::get_mcu_runtime_version;
-use caliptra_mcu_mbox_common::messages::{DotDisablePayload, DotLockPayload};
+use caliptra_mcu_mbox_common::messages::{DotDisablePayload, DotLockPayload, DotUnlockPayload};
 use mcu_caliptra_api::{core_capabilities, core_firmware_version, ApiAlloc};
 #[cfg(feature = "pcr-quote")]
 use mcu_caliptra_api::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
@@ -364,6 +364,14 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         alloc: &Alloc,
     ) -> CaliptraCmdResult<[u8; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN]> {
         device_ops::dot_unlock_challenge(alloc).await
+    }
+
+    async fn dot_unlock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotUnlockPayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_unlock(alloc, request).await
     }
 
     async fn request_debug_unlock<Alloc: ApiAlloc>(
