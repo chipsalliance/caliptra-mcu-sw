@@ -14,6 +14,9 @@
 use crate::config::TestConfig;
 use crate::{AuthorizedCommandData, SpdmVdmClient};
 use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
+use caliptra_mcu_core_util_host_command_types::attestation::{
+    formats_from_bitmap, AsymAlgo, AttestationValidationError, EvidenceFormat, PkiEntitySlot,
+};
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
@@ -124,13 +127,36 @@ pub fn run_all(
         verbose,
     ));
 
-    if config.debug_unlock.enabled {
-        results.push(run_prod_debug_unlock(
+    match config.get_attestation.nonce_bytes() {
+        Ok(nonce) => results.extend(run_get_attestation(
             client,
-            config.debug_unlock.unlock_level,
-            debug_unlock_signer,
+            config.get_attestation.algorithm,
+            &nonce,
             verbose,
-        ));
+        )),
+        Err(e) => results.push(ValidationResult::fail(
+            "GetAttestation(query)",
+            format!("invalid get_attestation config: {e}"),
+        )),
+    }
+
+    if config.debug_unlock.enabled {
+        // Signing a token needs key material the caller supplies with
+        // --debug-unlock-keys-file. Without it the command can only fail, so
+        // report it as skipped rather than as a device failure.
+        if debug_unlock_signer.is_some() {
+            results.push(run_prod_debug_unlock(
+                client,
+                config.debug_unlock.unlock_level,
+                debug_unlock_signer,
+                verbose,
+            ));
+        } else {
+            results.push(ValidationResult::skip(
+                "ProdDebugUnlock",
+                "no debug unlock signer provided",
+            ));
+        }
     }
 
     if config.authorized_commands.negative_authorization_tests {
@@ -248,6 +274,133 @@ pub fn run_export_attested_csr(
             }
         })
         .collect()
+}
+
+/// Validate GET_ATTESTATION over SPDM VDM.
+///
+/// The device's supported formats are compile-time selected, so this first
+/// issues a discovery query and drives whatever the device advertises. That
+/// keeps the test aligned with the firmware feature set instead of hardcoding
+/// an expectation that breaks on a differently-configured build.
+///
+/// Checks performed:
+/// - discovery query returns a well-formed, non-empty bitmap
+/// - every advertised format returns non-empty evidence with the format echoed
+/// - a format the device did not advertise is rejected rather than answered
+///
+/// TODO(follow-up PR): verify the returned evidence cryptographically —
+/// fetch the AK certificate chain over SPDM `GET_CERTIFICATE`, then
+/// (a) verify the COSE_Sign1 envelope over the OCP EAT and check the nonce
+///     appears in the `eat_nonce` claim, and
+/// (b) parse the PCR quote structure and verify its signature and nonce.
+pub fn run_get_attestation(
+    client: &mut SpdmVdmClient,
+    algorithm: u32,
+    nonce: &[u8; 32],
+    verbose: bool,
+) -> Vec<ValidationResult> {
+    let mut results = Vec::new();
+
+    let algorithm = match AsymAlgo::try_from(algorithm) {
+        Ok(a) => a,
+        Err(_) => {
+            results.push(ValidationResult::fail(
+                "GetAttestation(query)",
+                format!("unknown algorithm {:#06x} in config", algorithm),
+            ));
+            return results;
+        }
+    };
+
+    let query_name = "GetAttestation(query)";
+    let bitmap = match client.get_attestation_formats() {
+        Ok(response) => match response.supported_formats() {
+            Ok(0) => {
+                results.push(ValidationResult::fail(
+                    query_name,
+                    "device advertises no evidence formats",
+                ));
+                return results;
+            }
+            Ok(bitmap) => {
+                if verbose {
+                    println!("  supported evidence formats: {:#010x}", bitmap);
+                }
+                results.push(ValidationResult::pass(
+                    query_name,
+                    format!("bitmap {:#010x}", bitmap),
+                ));
+                bitmap
+            }
+            Err(e) => {
+                results.push(ValidationResult::fail(query_name, e.to_string()));
+                return results;
+            }
+        },
+        Err(msg) => {
+            let msg_str = format!("{}", msg);
+            results.push(if msg_str.contains("NotSupported") {
+                ValidationResult::skip(query_name, msg_str)
+            } else {
+                ValidationResult::fail(query_name, msg_str)
+            });
+            return results;
+        }
+    };
+
+    for format in formats_from_bitmap(bitmap) {
+        let test_name = format!("GetAttestation({}/{})", format.name(), algorithm.name());
+        let result = match client.get_attestation(format, algorithm, PkiEntitySlot::Vendor, nonce) {
+            Ok(response) => match response.validate_evidence_payload(format) {
+                Ok(len) => {
+                    if verbose {
+                        println!("  {}: {} bytes of evidence", format.name(), len);
+                    }
+                    ValidationResult::pass(test_name, format!("{} bytes", len))
+                }
+                Err(e @ AttestationValidationError::Empty) => {
+                    ValidationResult::fail(test_name, e.to_string())
+                }
+                Err(e) => ValidationResult::fail(test_name, e.to_string()),
+            },
+            Err(msg) => {
+                let msg_str = format!("{}", msg);
+                if msg_str.contains("NotSupported") {
+                    // The bitmap advertises formats, not format/algorithm
+                    // pairs; a device may support this format only under a
+                    // different algorithm. That is conforming, so record the
+                    // pair as unsupported rather than a bitmap contradiction.
+                    ValidationResult::skip(
+                        test_name,
+                        format!("format/algorithm pair not supported: {}", msg_str),
+                    )
+                } else {
+                    ValidationResult::fail(test_name, msg_str)
+                }
+            }
+        };
+        results.push(result);
+    }
+
+    // Negative case: a format the device did not advertise must be refused.
+    if let Some(unsupported) = EvidenceFormat::ALL
+        .iter()
+        .copied()
+        .find(|f| bitmap & f.bit() == 0)
+    {
+        let test_name = format!("GetAttestation(unsupported {})", unsupported.name());
+        results.push(
+            match client.get_attestation(unsupported, algorithm, PkiEntitySlot::Vendor, nonce) {
+                Ok(_) => ValidationResult::fail(
+                    test_name,
+                    "device returned evidence for a format it does not advertise",
+                ),
+                Err(msg) => ValidationResult::pass(test_name, format!("rejected: {}", msg)),
+            },
+        );
+    }
+
+    results
 }
 
 /// Validate Production Debug Unlock via SPDM VDM.

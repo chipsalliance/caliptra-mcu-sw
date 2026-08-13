@@ -11,7 +11,7 @@ use super::measurements::MeasurementProvider;
 use super::*;
 use caliptra_mcu_spdm_traits::{SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo};
 use mcu_caliptra_api_lite::{
-    sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, HashState, SHA_CONTEXT_SIZE,
+    sha_finish, sha_init, sha_update, ApiAlloc, ApiAllocPool, HashAlgo, HashState, SHA_CONTEXT_SIZE,
 };
 
 impl<M: MeasurementProvider> ApiAlloc for McuSpdmPal<M> {
@@ -26,6 +26,15 @@ impl<M: MeasurementProvider> ApiAlloc for McuSpdmPal<M> {
     }
 }
 
+impl<M: MeasurementProvider> ApiAllocPool for McuSpdmPal<M> {
+    type Pool = BitmapAllocator;
+
+    #[inline]
+    fn pool(&self) -> &Self::Pool {
+        self.allocator
+    }
+}
+
 impl ApiAlloc for BitmapAllocator {
     type Buf<'a>
         = BitmapBytes<'a>
@@ -35,6 +44,15 @@ impl ApiAlloc for BitmapAllocator {
     #[inline]
     fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
         self.alloc_bytes(len)
+    }
+}
+
+impl ApiAllocPool for BitmapAllocator {
+    type Pool = Self;
+
+    #[inline]
+    fn pool(&self) -> &Self::Pool {
+        self
     }
 }
 

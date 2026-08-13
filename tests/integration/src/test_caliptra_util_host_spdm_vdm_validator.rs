@@ -2,10 +2,14 @@
 
 //! Integration test for Caliptra VDM commands over SPDM vendor-defined messages.
 //!
-//! This test spawns the `caliptra-spdm-validator` binary (from caliptra-spdm-vdm-client) which
-//! runs all Caliptra VDM commands against the MCU's SPDM responder. The checked-in
-//! config includes authorized-fuse success, authorization rejection, and fuse-policy
-//! rejection flows against inactive slot 1 in this disposable emulator model.
+//! These tests spawn the `caliptra-spdm-validator` binary (from
+//! caliptra-spdm-vdm-client) against the MCU's SPDM responder in two shapes:
+//!
+//! - the command suite (ExportAttestedCsr, GetAttestation), which needs no
+//!   provisioned fuses;
+//! - one isolated fuse suite per test, selected with `--fuse-suite`. Each runs
+//!   alone against inactive slot 1 in its own disposable emulator model,
+//!   because the operations are destructive and order-dependent.
 
 #[cfg(test)]
 mod test {
@@ -241,6 +245,49 @@ mod test {
             .join("caliptra-util-host/apps/spdm/test-config.toml")
             .to_string_lossy()
             .to_string()
+    }
+
+    /// Exercises the non-fuse command suite: ExportAttestedCsr and
+    /// GetAttestation. The fuse-suite tests below cannot cover these, because
+    /// `--fuse-suite` makes the validator run that suite alone.
+    ///
+    /// No debug-unlock keys are passed, so the validator skips ProdDebugUnlock;
+    /// this test needs neither provisioned fuses nor a Prod lifecycle.
+    #[ignore]
+    #[test]
+    fn test_caliptra_util_host_spdm_vdm_validator_commands() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some(TEST_FEATURE),
+            i3c_port: Some(PortPicker::new().pick().unwrap()),
+            ..Default::default()
+        });
+
+        hw.start_i3c_controller();
+
+        let config_path = test_config_path();
+        let (completed, failed) = run_spdm_vdm_test(
+            hw.i3c_port().unwrap(),
+            hw.i3c_address().unwrap().into(),
+            Duration::from_secs(600),
+            &[
+                "--config",
+                &config_path,
+                "--key-ids",
+                "1,2,3",
+                "--algorithm",
+                "1",
+            ],
+        );
+
+        while !completed.load(Ordering::Relaxed) {
+            hw.step();
+        }
+        assert!(!failed.load(Ordering::Relaxed), "SPDM validator failed");
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     fn run_isolated_fuse_suite(suite: &str) {

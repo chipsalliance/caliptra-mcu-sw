@@ -24,6 +24,9 @@ caliptra-mcu-otp-fuse.workspace = true
 caliptra-mcu-userlog.workspace = true
 zerocopy.workspace = true
 
+[dev-dependencies]
+futures = { workspace = true }
+
 [features]
 default = []
 periodic-fips-self-test = []

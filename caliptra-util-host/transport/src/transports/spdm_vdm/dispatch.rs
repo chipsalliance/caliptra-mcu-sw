@@ -20,6 +20,9 @@ pub type VdmCommandHandlerFn = fn(
 pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
     use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
     match command_id {
+        x if x == CaliptraCommandId::GetAttestation as u32 => {
+            Some(commands::handle_get_attestation)
+        }
         x if x == CaliptraCommandId::ExportAttestedCsr as u32 => {
             Some(commands::handle_export_attested_csr)
         }
@@ -64,6 +67,7 @@ mod tests {
     #[test]
     fn dispatch_and_protocol_mappings_stay_aligned() {
         let ids = [
+            CaliptraCommandId::GetAttestation,
             CaliptraCommandId::ExportAttestedCsr,
             CaliptraCommandId::ProdDebugUnlockReq,
             CaliptraCommandId::ProdDebugUnlockToken,

@@ -13,6 +13,7 @@ pub use zerocopy::{
     FromBytes as ZeroCopyFromBytes, FromZeros as ZeroCopyFromZeros, IntoBytes as ZeroCopyIntoBytes,
 };
 
+pub mod attestation;
 pub mod certificate;
 pub mod crypto_aes;
 pub mod crypto_asymmetric;
@@ -27,6 +28,7 @@ pub mod error;
 pub mod fuse;
 
 // Re-export all types
+pub use attestation::*;
 pub use certificate::*;
 pub use crypto_aes::*;
 pub use crypto_asymmetric::*;
@@ -55,6 +57,7 @@ pub enum CaliptraCommandId {
     GetRtAliasCert = 0x1004,
     ExportAttestedCsr = 0x1005,
     ExportIdevidCsr = 0x1006,
+    GetAttestation = 0x1007,
     GetCertChain = 0x1010,
     StoreCertificate = 0x1011,
     GetCertificate = 0x1012, // Generic get certificate

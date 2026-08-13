@@ -58,7 +58,7 @@ The bridge must already be running before launching the validator.
 | `--server` | `127.0.0.1:2323` | Bridge address (host:port) |
 | `--slot-id` | `0` | SPDM slot ID |
 | `--key-ids` | `0,1,2` | Comma-separated key IDs for ExportAttestedCsr |
-| `--algorithm` | `1` | Algorithm ID (1=EccP384, 2=MlDsa87) |
+| `--algorithm` | `1` | Algorithm ID (1=EccP384, 2=MlDsa87), applied to ExportAttestedCsr and GetAttestation |
 | `--config` | — | Path to a TOML config file (overrides other args) |
 
 ### TOML Configuration
@@ -75,7 +75,30 @@ slot_id = 0
 [export_attested_csr]
 key_ids = [1, 2, 3]
 algorithm = 1
+
+[get_attestation]
+algorithm = 1
+# Optional 32-byte hex nonce; random per run when omitted.
+# nonce = "a5a5...a5"
 ```
+
+### GET_ATTESTATION validation
+
+The validator does not hardcode which evidence formats to request. It first
+issues a `GET_ATTESTATION` discovery query (`evidence_format = 0`), whose
+response carries a supported-format bitmap, then requests evidence for every
+format the device advertises. This keeps the test aligned with the firmware's
+compile-time feature selection (e.g., a build without `pcr-quote` advertises
+only OCP EAT) instead of failing on a differently-configured build.
+
+Checks performed:
+
+- the discovery query returns a well-formed, non-empty bitmap
+- every advertised format returns non-empty evidence, with the format echoed
+  back in the response
+- a format the device did **not** advertise is rejected rather than answered
+
+TODO: cryptographic verification of the evidence.
 
 ## Integration Tests
 

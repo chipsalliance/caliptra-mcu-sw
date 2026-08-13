@@ -2,15 +2,23 @@
 
 use arrayvec::ArrayVec;
 use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, MldsaVerifyReq};
+use caliptra_mcu_attestation_evidence::encode_signed_ocp_eat;
+#[cfg(feature = "pcr-quote")]
+use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
 use caliptra_mcu_common_commands::{
-    CaliptraCmdResult, CaliptraCompletionCode, GetLogResult, LogType, DEBUG_UNLOCK_CHALLENGE_SIZE,
+    AsymAlgo, CaliptraCmdResult, CaliptraCompletionCode, EvidenceFormat, GetLogResult, LogType,
+    PkiEntitySlot, ATTESTATION_NONCE_LEN, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::otp::{Otp, RevokeVendorPubKeyType};
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp, DefaultSyscalls};
 use caliptra_mcu_libtock_platform::ErrorCode;
+// The AK label lives with the cert store because that is what mints the leaf
+// certificate; attestation evidence must be signed under the same label so the
+// leaf cert in the device's chain is the one that verifies it.
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
@@ -93,6 +101,52 @@ pub async fn export_attested_csr(
         _ => return Err(CaliptraCompletionCode::InvalidParameter),
     };
     result.map_err(map_mcu_err)
+}
+
+/// Generate signed attestation evidence for `GET_ATTESTATION`.
+///
+/// Unsupported `(format, algorithm)` pairs are rejected by the transports via
+/// `CaliptraCmdHandler::attestation_evidence_len` before they reach here; the
+/// arms below are the same set, so the two stay consistent.
+///
+/// Only [`PkiEntitySlot::Vendor`] is served. Signing is not slot-aware yet —
+/// every entity resolves to the same vendor DPE leaf — so honoring `Owner`
+/// would return evidence claiming an owner endorsement that was never
+/// selected or provisioned. It is refused until slot-aware key and
+/// certificate selection exists.
+pub async fn get_attestation<A: ApiAlloc>(
+    alloc: &A,
+    format: EvidenceFormat,
+    algorithm: AsymAlgo,
+    entity: PkiEntitySlot,
+    nonce: &[u8; ATTESTATION_NONCE_LEN],
+    out: &mut [u8],
+) -> CaliptraCmdResult<usize> {
+    if entity != PkiEntitySlot::Vendor {
+        return Err(CaliptraCompletionCode::UnsupportedOperation);
+    }
+    match (format, algorithm) {
+        // The EAT signer emits only ES384 today, so there is no ML-DSA EAT to
+        // dispatch to yet.
+        // TODO: add an (OcpEat, Mldsa87) arm when the EAT signer supports
+        // ML-DSA-87, and a matching bound in `evidence_len`.
+        (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => {
+            encode_signed_ocp_eat(alloc, &DPE_LEAF_LABEL, entity as u8, nonce, out)
+                .await
+                .map_err(map_mcu_err)
+        }
+        #[cfg(feature = "pcr-quote")]
+        (EvidenceFormat::PcrQuote, algo) => {
+            let algo = match algo {
+                AsymAlgo::EccP384 => PcrQuoteAlgorithm::Ecc384,
+                AsymAlgo::Mldsa87 => PcrQuoteAlgorithm::Mldsa87,
+            };
+            encode_pcr_quote(alloc, algo, Some(nonce), out)
+                .await
+                .map_err(map_mcu_err)
+        }
+        _ => Err(CaliptraCompletionCode::UnsupportedOperation),
+    }
 }
 
 pub async fn export_idevid_csr(algorithm: u32, out: &mut [u8]) -> CaliptraCmdResult<usize> {

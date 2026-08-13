@@ -10,7 +10,6 @@ use crate::alloc::BitmapAllocator;
 use crate::measurements::MeasurementProvider;
 use caliptra_mcu_attestation_evidence::{
     encode_signed_ocp_eat, ocp_eat::NONCE_LEN, SIGNED_OCP_EAT_MAX_SIZE,
-    SIGNED_OCP_EAT_WORKSPACE_SIZE,
 };
 use caliptra_mcu_spdm_traits::{MeasurementInfo, SPDM_NONCE_LEN};
 use mcu_caliptra_api_lite::DPE_LABEL_LEN;
@@ -27,6 +26,9 @@ const OCP_EAT_MEAS_INFO: [MeasurementInfo; 1] = [MeasurementInfo {
 const OCP_EAT_MEAS_INDEX: u8 = 0xFD;
 const _: () = assert!(SPDM_NONCE_LEN == NONCE_LEN);
 static ZERO_NONCE: [u8; SPDM_NONCE_LEN] = [0u8; SPDM_NONCE_LEN];
+/// SPDM `GET_MEASUREMENTS` names no PKI entity, so this evidence is endorsed by
+/// the vendor hierarchy.
+const VENDOR_PKI_ENTITY_SLOT: u8 = 0;
 
 /// Measurement provider that returns signed OCP EAT evidence.
 pub struct OcpEatMeasurementProvider {
@@ -40,7 +42,9 @@ impl OcpEatMeasurementProvider {
 }
 
 impl MeasurementProvider for OcpEatMeasurementProvider {
-    const SCRATCH_SIZE: usize = SIGNED_OCP_EAT_WORKSPACE_SIZE;
+    /// The EAT is encoded directly into `out` and transient buffers come from
+    /// `alloc`, so no scratch is needed.
+    const SCRATCH_SIZE: usize = 0;
 
     fn measurement_info(&self) -> &[MeasurementInfo] {
         &OCP_EAT_MEAS_INFO
@@ -51,7 +55,7 @@ impl MeasurementProvider for OcpEatMeasurementProvider {
         index: u8,
         nonce: Option<&[u8; SPDM_NONCE_LEN]>,
         out: &mut [u8],
-        scratch: &mut [u8],
+        _scratch: &mut [u8],
         alloc: &BitmapAllocator,
     ) -> McuResult<usize> {
         if index != OCP_EAT_MEAS_INDEX {
@@ -62,7 +66,14 @@ impl MeasurementProvider for OcpEatMeasurementProvider {
         // nonce, bind a zero nonce in the EAT payload and omit the outer SPDM
         // measurement-response signature.
         let eat_nonce = nonce.unwrap_or(&ZERO_NONCE);
-        encode_signed_ocp_eat(alloc, &self.key_label, eat_nonce, scratch, out).await
+        encode_signed_ocp_eat(
+            alloc,
+            &self.key_label,
+            VENDOR_PKI_ENTITY_SLOT,
+            eat_nonce,
+            out,
+        )
+        .await
     }
 }
 
