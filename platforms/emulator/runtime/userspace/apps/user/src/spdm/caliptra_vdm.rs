@@ -137,11 +137,12 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
-        _scratch: &A,
+        scratch: &A,
     ) -> CaliptraVdmResult<()> {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
+                scratch,
                 PROVISION_VENDOR_PK_HASH_CMD_ID,
                 payload,
                 nonce,
@@ -173,6 +174,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
+                scratch,
                 INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
                 payload,
                 nonce,
@@ -245,6 +247,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
+                scratch,
                 REVOKE_VENDOR_PUB_KEY_CMD_ID,
                 payload,
                 nonce,
@@ -274,11 +277,12 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
-        _scratch: &A,
+        scratch: &A,
     ) -> CaliptraVdmResult<()> {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
+                scratch,
                 REVOKE_VENDOR_PK_HASH_CMD_ID,
                 payload,
                 nonce,
