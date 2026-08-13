@@ -1031,9 +1031,9 @@ pub trait StateMachineActions {
     }
 
     fn poll_activation_status(event_queue: Sender<PldmEvents>) {
-        event_queue
-            .send(PldmEvents::Update(Events::GetStatus))
-            .unwrap();
+        // The daemon may already have been stopped, which drops the receiver.
+        // A closed queue just means there is nothing left to poll for.
+        let _ = event_queue.send(PldmEvents::Update(Events::GetStatus));
     }
 
     fn on_activate_firmware_response(

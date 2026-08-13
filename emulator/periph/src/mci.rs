@@ -1416,6 +1416,10 @@ impl MciPeripheral for Mci {
                             self.ext_mci_regs.regs.borrow_mut().reset_status |=
                                 RESET_STATUS_MCU_RESET_MASK;
                         }
+                        // The MCU CPU is halted, so it no longer executes instructions that
+                        // would otherwise keep the bus polled. Keep polling ourselves so we
+                        // observe Caliptra setting FW_EXEC_CTRL[2] and can resume the MCU.
+                        self.timer.schedule_poll_in(1);
                         proceed_with_reboot = false;
                     } else {
                         println!("MCI: Resuming MCU");
