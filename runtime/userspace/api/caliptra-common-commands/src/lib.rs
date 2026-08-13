@@ -4,8 +4,9 @@
 #![allow(async_fn_in_trait)]
 
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotRotatePayload,
-    DotStatus, DotUnlockPayload, HybridSignature, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
+    CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
+    DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+    DOT_BLOB_SIZE,
 };
 use mcu_caliptra_api::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
@@ -547,6 +548,16 @@ pub trait CaliptraCmdHandler {
         alloc: &Alloc,
         request: &DotOverrideChallengePayload,
     ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Verify recovery-key signatures and apply a DOT override transition.
+    async fn dot_override<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotOverridePayload,
+    ) -> CaliptraCmdResult<()> {
         let _ = (alloc, request);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }

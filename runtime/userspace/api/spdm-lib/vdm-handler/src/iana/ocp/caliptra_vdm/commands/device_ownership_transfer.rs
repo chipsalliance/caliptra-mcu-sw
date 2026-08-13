@@ -2,7 +2,7 @@
 
 use caliptra_mcu_common_commands::CaliptraCmdHandler;
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotOverrideChallengePayload, DotStatus, DotUnlockPayload,
+    CommandId, DotOverrideChallengePayload, DotOverridePayload, DotStatus, DotUnlockPayload,
 };
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult,
@@ -19,6 +19,7 @@ pub const DOT_UNLOCK_CHALLENGE_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK_CHALLENGE.
 pub const DOT_UNLOCK_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK.0;
 pub const GET_DOT_BACKUP_BLOB_CMD_ID: u32 = CommandId::MC_GET_DOT_BACKUP_BLOB.0;
 pub const DOT_OVERRIDE_CHALLENGE_CMD_ID: u32 = CommandId::MC_DOT_OVERRIDE_CHALLENGE.0;
+pub const DOT_OVERRIDE_CMD_ID: u32 = CommandId::MC_DOT_OVERRIDE.0;
 
 pub(crate) async fn handle<H, A>(
     commands: &H,
@@ -36,6 +37,9 @@ where
     let subcommand =
         u32::from_le_bytes([subcommand[0], subcommand[1], subcommand[2], subcommand[3]]);
 
+    // Protected commands must arrive as AuthorizedCommand(0x12) -> family
+    // 0x11. Rejecting them on this native 0x11 path prevents authorization
+    // bypass while keeping status, recovery, unlock, and override native.
     match subcommand {
         DOT_LOCK_CMD_ID | DOT_DISABLE_CMD_ID | DOT_ROTATE_CMD_ID | GET_DOT_BACKUP_BLOB_CMD_ID => {
             CaliptraVdmCmdResult::Error(CaliptraCompletionCode::AccessDenied)
@@ -48,8 +52,34 @@ where
         DOT_OVERRIDE_CHALLENGE_CMD_ID => {
             handle_dot_override_challenge(commands, &request[4..], scratch, output).await
         }
+        DOT_OVERRIDE_CMD_ID => handle_dot_override(commands, &request[4..], scratch, output).await,
         DOT_UNLOCK_CMD_ID => handle_dot_unlock(commands, &request[4..], scratch, output).await,
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    }
+}
+
+async fn handle_dot_override<H, A>(
+    commands: &H,
+    request: &[u8],
+    scratch: &A,
+    output: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraCmdHandler,
+    A: SpdmPalAlloc,
+{
+    let Ok(request) = DotOverridePayload::ref_from_bytes(request) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    };
+    if output.is_empty() {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    }
+    match commands.dot_override(scratch, request).await {
+        Ok(()) => {
+            output[0] = CaliptraCompletionCode::Success as u8;
+            CaliptraVdmCmdResult::Response(1)
+        }
+        Err(error) => CaliptraVdmCmdResult::Error(super::map_common_completion(error)),
     }
 }
 

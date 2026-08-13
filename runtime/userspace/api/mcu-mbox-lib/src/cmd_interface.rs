@@ -26,9 +26,9 @@ use caliptra_mcu_mbox_common::messages::{
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
     DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotOverrideChallengeReq,
-    DotOverrideChallengeResp, DotRecoveryReq, DotRecoveryResp, DotRotateReq, DotRotateResp,
-    DotStatus, DotStatusReq, DotStatusResp, DotUnlockChallengeReq, DotUnlockChallengeResp,
-    DotUnlockReq, DotUnlockResp, GetDotBackupBlobReq, GetDotBackupBlobResp,
+    DotOverrideChallengeResp, DotOverrideReq, DotOverrideResp, DotRecoveryReq, DotRecoveryResp,
+    DotRotateReq, DotRotateResp, DotStatus, DotStatusReq, DotStatusResp, DotUnlockChallengeReq,
+    DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp, GetDotBackupBlobReq, GetDotBackupBlobResp,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -442,6 +442,31 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .map_err(|_| errors::INVALID_PARAMS)?;
         *resp = DotOverrideChallengeResp {
             challenge,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_override<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotOverrideReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_OVERRIDE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_override(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotOverrideResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotOverrideResp {
+            reset_required: 1,
             ..Default::default()
         };
         let response_len = resp.as_bytes().len();
@@ -889,6 +914,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        // MCI uses one outer family command. The first payload dword selects
+        // the DOT operation; protected operations retain the exact request and
+        // authorization trailer while native operations dispatch directly.
         let subcommand = req
             .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
             .ok_or(errors::INVALID_PARAMS)?;
@@ -917,6 +945,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             }
             value if value == CommandId::MC_DOT_OVERRIDE_CHALLENGE.0 => {
                 self.handle_dot_override_challenge(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_OVERRIDE.0 => {
+                self.handle_dot_override(req, resp_buf).await
             }
             value if value == CommandId::MC_DOT_UNLOCK.0 => {
                 self.handle_dot_unlock(req, resp_buf).await

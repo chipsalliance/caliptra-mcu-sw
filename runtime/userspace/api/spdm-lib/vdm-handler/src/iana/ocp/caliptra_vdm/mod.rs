@@ -25,9 +25,8 @@ pub use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
 pub use commands::authorized_command::{
     DEVICE_OWNERSHIP_TRANSFER_CMD_ID, DOT_DISABLE_CMD_ID, DOT_LOCK_CMD_ID, DOT_ROTATE_CMD_ID,
     FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
-    GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
-    PROVISION_OWNER_PK_HASH_CMD_ID, PROVISION_VENDOR_PK_HASH_CMD_ID,
-    REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
+    GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
+    PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
@@ -734,6 +733,7 @@ mod tests {
         dot_status_calls: AtomicUsize,
         dot_recovery_calls: AtomicUsize,
         dot_override_challenge_calls: AtomicUsize,
+        dot_override_calls: AtomicUsize,
         dot_challenge_calls: AtomicUsize,
         dot_unlock_calls: AtomicUsize,
         dot_backup_calls: AtomicUsize,
@@ -749,6 +749,16 @@ mod tests {
                 csr_len,
                 evidence_len: 0,
                 authorized_token: Mutex::new(None),
+                dot_lock_calls: AtomicUsize::new(0),
+                dot_disable_calls: AtomicUsize::new(0),
+                dot_rotate_calls: AtomicUsize::new(0),
+                dot_status_calls: AtomicUsize::new(0),
+                dot_recovery_calls: AtomicUsize::new(0),
+                dot_override_challenge_calls: AtomicUsize::new(0),
+                dot_override_calls: AtomicUsize::new(0),
+                dot_challenge_calls: AtomicUsize::new(0),
+                dot_unlock_calls: AtomicUsize::new(0),
+                dot_backup_calls: AtomicUsize::new(0),
                 authorized_operation: Mutex::new(None),
                 authorization_error: Mutex::new(None),
                 enforce_authorization: false,
@@ -767,6 +777,7 @@ mod tests {
                 dot_status_calls: AtomicUsize::new(0),
                 dot_recovery_calls: AtomicUsize::new(0),
                 dot_override_challenge_calls: AtomicUsize::new(0),
+                dot_override_calls: AtomicUsize::new(0),
                 dot_challenge_calls: AtomicUsize::new(0),
                 dot_unlock_calls: AtomicUsize::new(0),
                 dot_backup_calls: AtomicUsize::new(0),
@@ -931,7 +942,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_lock<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn dot_lock<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotLockPayload,
@@ -939,7 +950,7 @@ mod tests {
             self.dot_lock_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
-        async fn dot_disable<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn dot_disable<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
@@ -948,7 +959,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_rotate<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn dot_rotate<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotRotatePayload,
@@ -970,7 +981,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_recovery<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn dot_recovery<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
             _blob: &[u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
@@ -979,7 +990,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_override_challenge<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn dot_override_challenge<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotOverrideChallengePayload,
@@ -991,7 +1002,16 @@ mod tests {
             Ok([0xC3; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
         }
 
-        async fn dot_unlock_challenge<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn dot_override<Alloc: mcu_caliptra_api::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _request: &caliptra_mcu_mbox_common::messages::DotOverridePayload,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_override_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+
+        async fn dot_unlock_challenge<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<
@@ -1000,7 +1020,7 @@ mod tests {
             self.dot_challenge_calls.fetch_add(1, Ordering::Relaxed);
             Ok([0xA5; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
         }
-        async fn dot_unlock<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn dot_unlock<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotUnlockPayload,
@@ -1008,7 +1028,7 @@ mod tests {
             self.dot_unlock_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
-        async fn dot_get_backup_blob<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn dot_get_backup_blob<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
             blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
@@ -2044,6 +2064,32 @@ mod tests {
                 ..3 + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE],
             &[0x22; DEBUG_UNLOCK_CHALLENGE_SIZE]
         );
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_override_dispatches_through_device_ownership_transfer() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, DotOverridePayload};
+
+        let cmds = TestCommands::new(0);
+        let payload = DotOverridePayload::default();
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_OVERRIDE.0.to_le_bytes());
+        request.extend_from_slice(payload.as_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(cmds.dot_override_calls.load(Ordering::Relaxed), 1);
+
+        request.pop();
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+        assert_eq!(cmds.dot_override_calls.load(Ordering::Relaxed), 1);
     }
 
     #[test]

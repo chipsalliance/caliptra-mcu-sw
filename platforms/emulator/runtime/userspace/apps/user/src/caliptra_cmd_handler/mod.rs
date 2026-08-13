@@ -15,8 +15,8 @@ use caliptra_mcu_config::capabilities::{
 };
 use caliptra_mcu_config::version::get_mcu_runtime_version;
 use caliptra_mcu_mbox_common::messages::{
-    DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotRotatePayload, DotStatus,
-    DotUnlockPayload, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
+    DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
+    DotRotatePayload, DotStatus, DotUnlockPayload, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
 };
 use mcu_caliptra_api::{core_capabilities, core_firmware_version, ApiAlloc};
 #[cfg(feature = "pcr-quote")]
@@ -391,6 +391,14 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         request: &DotOverrideChallengePayload,
     ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
         device_ops::dot_override_challenge(alloc, request).await
+    }
+
+    async fn dot_override<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotOverridePayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_override(alloc, request).await
     }
 
     async fn dot_unlock_challenge<Alloc: ApiAlloc>(

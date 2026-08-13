@@ -5,10 +5,6 @@ use caliptra_mcu_common_commands::{
     DeviceCapabilities, FirmwareVersion, GetLogResult, MAX_FW_VERSION_LEN,
 };
 use caliptra_mcu_mbox_common::config;
-use caliptra_mcu_mbox_common::messages::{
-    DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotRotatePayload, DotStatus,
-    DotUnlockPayload, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
-};
 use mcu_caliptra_api::ApiAlloc;
 
 use crate::caliptra_cmd_handler::CaliptraCmdBackend;
@@ -157,74 +153,5 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         CaliptraCmdBackend
             .program_field_entropy(alloc, partition)
             .await
-    }
-
-    async fn dot_lock<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        request: &DotLockPayload,
-    ) -> CaliptraCmdResult<()> {
-        CaliptraCmdBackend.dot_lock(alloc, request).await
-    }
-
-    async fn dot_disable<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        request: &DotDisablePayload,
-    ) -> CaliptraCmdResult<()> {
-        CaliptraCmdBackend.dot_disable(alloc, request).await
-    }
-
-    async fn dot_rotate<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        request: &DotRotatePayload,
-    ) -> CaliptraCmdResult<()> {
-        CaliptraCmdBackend.dot_rotate(alloc, request).await
-    }
-
-    async fn dot_status(&self, status: &mut DotStatus) -> CaliptraCmdResult<()> {
-        CaliptraCmdBackend.dot_status(status).await
-    }
-
-    async fn dot_recovery<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        blob: &[u8; DOT_BLOB_SIZE],
-    ) -> CaliptraCmdResult<()> {
-        CaliptraCmdBackend.dot_recovery(alloc, blob).await
-    }
-
-    async fn dot_override_challenge<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        request: &DotOverrideChallengePayload,
-    ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
-        CaliptraCmdBackend
-            .dot_override_challenge(alloc, request)
-            .await
-    }
-
-    async fn dot_unlock_challenge<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-    ) -> CaliptraCmdResult<[u8; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN]> {
-        CaliptraCmdBackend.dot_unlock_challenge(alloc).await
-    }
-
-    async fn dot_unlock<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        request: &DotUnlockPayload,
-    ) -> CaliptraCmdResult<()> {
-        CaliptraCmdBackend.dot_unlock(alloc, request).await
-    }
-
-    async fn dot_get_backup_blob<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        blob: &mut [u8; DOT_BLOB_SIZE],
-    ) -> CaliptraCmdResult<()> {
-        CaliptraCmdBackend.dot_get_backup_blob(alloc, blob).await
     }
 }

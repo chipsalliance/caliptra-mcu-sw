@@ -25,9 +25,9 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 // certificate; attestation evidence must be signed under the same label so the
 // leaf cert in the device's chain is the one that verifies it.
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotRotatePayload,
-    DotStatus, DotUnlockPayload, HybridSignature, AUTH_CMD_NONCE_LEN, DOT_KEY_HASH_SIZE,
-    DOT_MLDSA_PUBLIC_KEY_SIZE,
+    CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
+    DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+    DOT_BLOB_SIZE, DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL;
@@ -49,8 +49,8 @@ const DOT_LABEL: &[u8; 23] = b"Caliptra DOT stable key";
 const DOT_BLOB_VERSION: u32 = 1;
 const DOT_UNLOCK_METHOD_CHALLENGE_RESPONSE: u8 = 1;
 const DOT_BLOB_FIELDS_SIZE: usize = 104;
-const DOT_HMAC_SIZE: usize = 64;
-const DOT_BLOB_SIZE: usize = DOT_BLOB_FIELDS_SIZE + DOT_HMAC_SIZE;
+const DOT_HMAC_SIZE: usize = DOT_BLOB_SIZE - DOT_BLOB_FIELDS_SIZE;
+const _: [(); 64] = [(); DOT_HMAC_SIZE];
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, FromBytes, IntoBytes, Immutable, KnownLayout, PartialEq, Eq)]
@@ -80,13 +80,15 @@ struct UnlockContext {
 }
 
 #[derive(Clone, Copy)]
-#[allow(dead_code)]
 struct OverrideContext {
     challenge: [u8; AUTH_CMD_NONCE_LEN],
     recovery_hash: [u8; DOT_KEY_HASH_SIZE],
     fuse_count: u32,
 }
 
+// Each native challenge flow permits one outstanding context. Binding the
+// accepted key hash and fuse count prevents a response from being replayed
+// after another command changes the DOT epoch; reset discards both contexts.
 static UNLOCK_CONTEXT: BlockingMutex<CriticalSectionRawMutex, RefCell<Option<UnlockContext>>> =
     BlockingMutex::new(RefCell::new(None));
 static OVERRIDE_CONTEXT: BlockingMutex<CriticalSectionRawMutex, RefCell<Option<OverrideContext>>> =
@@ -94,6 +96,10 @@ static OVERRIDE_CONTEXT: BlockingMutex<CriticalSectionRawMutex, RefCell<Option<O
 
 static DOT_TRANSACTION_BUSY: AtomicBool = AtomicBool::new(false);
 
+/// Serializes blob and OTP operations across both transports.
+///
+/// Callers keep the returned guard in scope across every `await`; otherwise a
+/// second command could observe a partially committed DOT transition.
 struct DotTransactionGuard;
 
 impl DotTransactionGuard {
@@ -492,6 +498,8 @@ async fn dot_lak_hash<A: ApiAlloc>(
     ecc_pub_y: &[u8; 48],
     mldsa_pub: &[u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
 ) -> CaliptraCmdResult<[u8; DOT_KEY_HASH_SIZE]> {
+    // DOT hashes ECC coordinates in Caliptra's hardware word layout: reverse
+    // bytes within each 32-bit word, then append ML-DSA in its wire byte order.
     let mut ecc_key = [0u8; 96];
     for (dst, src) in ecc_key[..48]
         .chunks_exact_mut(4)
@@ -570,6 +578,8 @@ fn read_recovery_pk_hash() -> CaliptraCmdResult<[u8; DOT_KEY_HASH_SIZE]> {
     let otp = Otp::<DefaultSyscalls>::new();
     let base = (fuses::VENDOR_RECOVERY_PK_HASH.byte_offset / 4) as u32;
     let mut hash = [0u8; DOT_KEY_HASH_SIZE];
+    // Reconstruct the canonical digest bytes from the provisioned big-endian
+    // dwords so comparison uses the same representation as dot_lak_hash().
     for (index, chunk) in hash.chunks_exact_mut(4).enumerate() {
         let word = otp
             .read_raw(base, index as u32)
@@ -620,6 +630,55 @@ pub async fn dot_override_challenge<A: ApiAlloc>(
     Ok(challenge)
 }
 
+pub async fn dot_override<A: ApiAlloc>(
+    alloc: &A,
+    request: &DotOverridePayload,
+) -> CaliptraCmdResult<()> {
+    let _guard = DotTransactionGuard::acquire()?;
+    let context = OVERRIDE_CONTEXT
+        .lock(|state| *state.borrow())
+        .ok_or(CaliptraCompletionCode::InvalidState)?;
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count != context.fuse_count || current_fuse_count & 1 == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    let recovery_hash = read_recovery_pk_hash()?;
+    if !constant_time_eq::constant_time_eq(&recovery_hash, &context.recovery_hash) {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    let supplied_hash = dot_lak_hash(
+        alloc,
+        &request.recovery_ecc_pub_x,
+        &request.recovery_ecc_pub_y,
+        &request.recovery_mldsa_pub,
+    )
+    .await?;
+    if !constant_time_eq::constant_time_eq(&recovery_hash, &supplied_hash) {
+        return Err(CaliptraCompletionCode::AccessDenied);
+    }
+    verify_hybrid_message(
+        alloc,
+        &context.challenge,
+        &request.recovery_ecc_pub_x,
+        &request.recovery_ecc_pub_y,
+        &request.recovery_mldsa_pub,
+        &request.signature,
+    )
+    .await?;
+
+    burn_next_dot_fuse(current_fuse_count)?;
+    let blob = seal_dot_blob(
+        alloc,
+        current_fuse_count + 1,
+        [0; DOT_KEY_HASH_SIZE],
+        [0; DOT_KEY_HASH_SIZE],
+    )
+    .await?;
+    write_and_verify_dot_blob(&blob).await?;
+    OVERRIDE_CONTEXT.lock(|state| *state.borrow_mut() = None);
+    Ok(())
+}
+
 fn dot_derivation_info(derivation_value: u32) -> CaliptraCmdResult<[u8; 32]> {
     let derivation_value =
         u16::try_from(derivation_value).map_err(|_| CaliptraCompletionCode::InvalidState)?;
@@ -629,12 +688,28 @@ fn dot_derivation_info(derivation_value: u32) -> CaliptraCmdResult<[u8; 32]> {
     Ok(info)
 }
 
+/// Select the effective-key epoch for a persisted fuse state.
+///
+/// ODD states authenticate their current blob with `n`; EVEN states reserve
+/// `n + 1` for the next blob. Keeping this rule here prevents transition
+/// callers from confusing a raw fuse count with a derivation value.
+fn dot_effective_key_derivation_value(fuse_count: u32) -> CaliptraCmdResult<u32> {
+    if fuse_count & 1 == 0 {
+        fuse_count
+            .checked_add(1)
+            .ok_or(CaliptraCompletionCode::InvalidState)
+    } else {
+        Ok(fuse_count)
+    }
+}
+
 async fn seal_dot_blob<A: ApiAlloc>(
     alloc: &A,
-    derivation_value: u32,
+    fuse_count: u32,
     cak: [u8; DOT_KEY_HASH_SIZE],
     lak_hash: [u8; DOT_KEY_HASH_SIZE],
 ) -> CaliptraCmdResult<RuntimeDotBlob> {
+    let derivation_value = dot_effective_key_derivation_value(fuse_count)?;
     let info = dot_derivation_info(derivation_value)?;
     let key = derive_stable_key(StableKeyType::IDevId, &info)
         .await
@@ -795,6 +870,8 @@ async fn verify_dot_blob<A: ApiAlloc>(
 }
 
 fn burn_next_dot_fuse(current_fuse_count: u32) -> CaliptraCmdResult<()> {
+    // DOT_FUSE_ARRAY is a monotonic bit-count counter: burn the next LSB-first
+    // bit, then re-read the full field to prove exactly one transition landed.
     let word_addr = (fuses::DOT_FUSE_ARRAY.byte_offset / 4) as u32 + current_fuse_count / 32;
     let bit_mask = 1u32 << (current_fuse_count % 32);
     let otp = Otp::<DefaultSyscalls>::new();
@@ -816,23 +893,25 @@ fn burn_next_dot_fuse(current_fuse_count: u32) -> CaliptraCmdResult<()> {
 async fn commit_dot_transition<A: ApiAlloc>(
     alloc: &A,
     current_fuse_count: u32,
-    derivation_value: u32,
+    target_fuse_count: u32,
     cak: [u8; DOT_KEY_HASH_SIZE],
     lak_hash: [u8; DOT_KEY_HASH_SIZE],
 ) -> CaliptraCmdResult<()> {
-    let blob = seal_dot_blob(alloc, derivation_value, cak, lak_hash)
+    // Publish and verify the target-state blob before the one-time fuse write.
+    // In particular, LOCK/DISABLE must not expose a new ODD state before ROM
+    // has a complete blob it can authenticate on the next boot.
+    let blob = seal_dot_blob(alloc, target_fuse_count, cak, lak_hash)
         .await
-        .map_err(|error| {
+        .inspect_err(|&error| {
             caliptra_mcu_romtime::println!("[mcu-rt-dot] Blob sealing failed: {}", error as u8);
-            error
         })?;
-    write_and_verify_dot_blob(&blob).await.map_err(|error| {
-        caliptra_mcu_romtime::println!("[mcu-rt-dot] Blob write failed: {}", error as u8);
-        error
-    })?;
-    burn_next_dot_fuse(current_fuse_count).map_err(|error| {
+    write_and_verify_dot_blob(&blob)
+        .await
+        .inspect_err(|&error| {
+            caliptra_mcu_romtime::println!("[mcu-rt-dot] Blob write failed: {}", error as u8);
+        })?;
+    burn_next_dot_fuse(current_fuse_count).inspect_err(|&error| {
         caliptra_mcu_romtime::println!("[mcu-rt-dot] Fuse burn failed: {}", error as u8);
-        error
     })
 }
 
@@ -911,14 +990,12 @@ pub async fn dot_rotate<A: ApiAlloc>(
     }
 
     let post_burn_fuse_count = current_fuse_count + 2;
-    let derivation_value = if post_burn_fuse_count & 1 == 0 {
-        post_burn_fuse_count + 1
-    } else {
-        post_burn_fuse_count
-    };
+    // Match firmware-manifest ROTATE ordering: advance both fuse bits first,
+    // then seal for the resulting epoch. The blob must never be keyed to the
+    // intermediate parity after only one of the two burns.
     burn_next_dot_fuse(current_fuse_count)?;
     burn_next_dot_fuse(current_fuse_count + 1)?;
-    let blob = seal_dot_blob(alloc, derivation_value, request.cak, request.lak_hash).await?;
+    let blob = seal_dot_blob(alloc, post_burn_fuse_count, request.cak, request.lak_hash).await?;
     write_and_verify_dot_blob(&blob).await
 }
 
@@ -976,6 +1053,9 @@ pub async fn dot_unlock<A: ApiAlloc>(
         return Err(CaliptraCompletionCode::AccessDenied);
     }
 
+    // The HMAC-authenticated blob binds the submitted public keys through
+    // `context.lak_hash`; the native signature then proves possession over the
+    // command-specific, one-time challenge transcript.
     let mut transcript = [0u8; 4 + AUTH_CMD_NONCE_LEN];
     transcript[..4].copy_from_slice(&CommandId::MC_DOT_UNLOCK.0.to_be_bytes());
     transcript[4..].copy_from_slice(&context.challenge);
@@ -991,7 +1071,7 @@ pub async fn dot_unlock<A: ApiAlloc>(
     commit_dot_transition(
         alloc,
         current_fuse_count,
-        current_fuse_count + 2,
+        current_fuse_count + 1,
         [0; DOT_KEY_HASH_SIZE],
         context.lak_hash,
     )
