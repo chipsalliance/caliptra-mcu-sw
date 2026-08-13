@@ -36,8 +36,6 @@ pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 36;
 pub const MAX_UUID_SIZE: usize = 32;
-pub const MAX_FUSE_DATA_BYTES: usize = 512;
-pub const MAX_FUSE_DATA_WORDS: usize = MAX_FUSE_DATA_BYTES / 4;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct McuMboxError(pub NonZeroU32);
@@ -588,7 +586,7 @@ impl McuMailboxResp {
             McuMailboxResp::MldsaCmkVerify(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProdDebugUnlockReq(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProdDebugUnlockToken(resp) => Ok(resp.as_bytes()),
-            McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::FuseRead(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_bytes()),
@@ -645,7 +643,7 @@ impl McuMailboxResp {
             McuMailboxResp::MldsaCmkVerify(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProdDebugUnlockReq(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProdDebugUnlockToken(resp) => Ok(resp.as_mut_bytes()),
-            McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::FuseRead(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_mut_bytes()),
@@ -1383,6 +1381,8 @@ impl Response for McuProdDebugUnlockTokenResp {}
 /// Maximum size of fuse data in bytes for read/write operations.
 /// This should accommodate the largest fuse entry (e.g., 768-bit IDevID cert = 96 bytes).
 pub const MAX_FUSE_DATA_SIZE: usize = 128;
+pub const MAX_FUSE_DATA_BYTES: usize = MAX_FUSE_DATA_SIZE;
+pub const MAX_FUSE_DATA_WORDS: usize = MAX_FUSE_DATA_SIZE / 4;
 
 /// MC_FUSE_READ request: Read fuse values from a partition entry.
 #[repr(C)]
@@ -1407,20 +1407,26 @@ pub struct FuseReadReqPayload {
 
 /// MC_FUSE_READ response: Returns fuse data with length in bits.
 #[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct FuseReadResp {
-    pub hdr: MailboxRespHeaderVarSize,
+    pub hdr: MailboxRespHeader,
+    pub payload: FuseReadRespPayload,
+}
+impl Response for FuseReadResp {}
+
+/// MC_FUSE_READ response payload (excluding the 8-byte MailboxRespHeader).
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseReadRespPayload {
     /// Number of valid bits in the data field
     pub length_bits: u32,
     /// Fuse data (variable length, up to MAX_FUSE_DATA_SIZE bytes)
     pub data: [u8; MAX_FUSE_DATA_SIZE],
 }
-impl McuResponseVarSize for FuseReadResp {}
 
-impl Default for FuseReadResp {
+impl Default for FuseReadRespPayload {
     fn default() -> Self {
         Self {
-            hdr: MailboxRespHeaderVarSize::default(),
             length_bits: 0,
             data: [0u8; MAX_FUSE_DATA_SIZE],
         }
@@ -1920,17 +1926,16 @@ mod tests {
     #[test]
     fn test_fuse_read_resp_serialization() {
         let mut resp = FuseReadResp::default();
-        resp.hdr.hdr.fips_status = 0;
-        resp.hdr.data_len = 8; // 8 bytes of data
-        resp.length_bits = 64;
-        resp.data[0..8].copy_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        resp.hdr.fips_status = 0;
+        resp.payload.length_bits = 64;
+        resp.payload.data[0..8].copy_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
 
         let bytes = resp.as_bytes();
         let parsed = FuseReadResp::read_from_bytes(bytes).unwrap();
-        assert_eq!(parsed.hdr.hdr.fips_status, 0);
-        assert_eq!(parsed.length_bits, 64);
+        assert_eq!(parsed.hdr.fips_status, 0);
+        assert_eq!(parsed.payload.length_bits, 64);
         assert_eq!(
-            &parsed.data[0..8],
+            &parsed.payload.data[0..8],
             &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
         );
     }
@@ -2027,9 +2032,8 @@ mod tests {
     #[test]
     fn test_fuse_read_resp_checksum_with_data() {
         let mut resp = FuseReadResp::default();
-        resp.hdr.data_len = 4;
-        resp.length_bits = 32;
-        resp.data[0..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+        resp.payload.length_bits = 32;
+        resp.payload.data[0..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
 
         let mut mbox_resp = McuMailboxResp::FuseRead(resp);
         mbox_resp.populate_chksum().unwrap();
