@@ -21,6 +21,7 @@
         - [TDISP](./tdisp.md)
         - [In-field Provisioning and Management of SPDM Certificate Slots](./cert_slot_mgmt.md)
         - [SPDM Certificate Store Design](./cert_store_design.md)
+        - [SPDM Certificate Store Synchronization](./cert_store_synchronization.md)
     - [PLDM](./pldm.md)
     - [Firmware Update](./firmware_update.md)
     - [Common Caliptra Commands](./caliptra_common_commands.md)
