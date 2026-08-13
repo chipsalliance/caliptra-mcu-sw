@@ -5,8 +5,8 @@ use caliptra_mcu_spdm_pal::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_S
 use core::ptr::NonNull;
 use mcu_caliptra_api_lite::{
     cm_hmac, cm_import, dpe_certify_key_pubkey, dpe_sign_ecc_p384, ecdh_finish, ecdh_generate,
-    hkdf_expand, hkdf_extract, rng_generate, sha_finish, sha_init, sha_update,
-    spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt, CmKeyUsage, HashAlgo, HkdfSalt,
+    ecdsa_verify, hash_all, hkdf_expand, hkdf_extract, rng_generate, sha_finish, sha_init,
+    sha_update, spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt, CmKeyUsage, HashAlgo, HkdfSalt,
     CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DPE_LABEL_LEN,
     DPE_P384_SIGNATURE_SIZE, SHA_CONTEXT_SIZE,
 };
@@ -103,6 +103,12 @@ pub async fn test_caliptra_ecdh(alloc: &BitmapAllocator) {
 }
 
 pub async fn test_caliptra_hmac(alloc: &BitmapAllocator) {
+    const EXPECTED_MAC: [u8; 48] = [
+        0x35, 0xaa, 0x87, 0xc1, 0xc4, 0x4a, 0xee, 0x6c, 0xf4, 0xb3, 0xf7, 0x4d, 0x45, 0xe4, 0xd8,
+        0x34, 0x84, 0x48, 0x1b, 0x1c, 0xc8, 0xbc, 0x0c, 0x77, 0x95, 0x1b, 0xac, 0x3f, 0xb9, 0x40,
+        0x52, 0x06, 0x1f, 0x38, 0xd2, 0x3d, 0xb0, 0x8e, 0xdf, 0x2d, 0xac, 0xe0, 0x56, 0xb1, 0xbd,
+        0xd3, 0x29, 0x49,
+    ];
     let data = [0u8; 48];
     let cmk = cm_import(alloc, CmKeyUsage::Hmac, &data)
         .await
@@ -117,6 +123,9 @@ pub async fn test_caliptra_hmac(alloc: &BitmapAllocator) {
     cm_hmac(alloc, &okm, &data, &mut mac)
         .await
         .unwrap_or_else(|_| test_exit(1));
+    if mac != EXPECTED_MAC {
+        test_exit(1);
+    }
     println!("HMAC/HKDF test completed successfully: {}", HexBytes(&mac));
 }
 
@@ -159,17 +168,25 @@ pub async fn test_caliptra_aes_gcm_cipher(alloc: &BitmapAllocator) {
 
 pub async fn test_caliptra_ecdsa(alloc: &BitmapAllocator) {
     let label = [0x44; DPE_LABEL_LEN];
+    let message = [0x55; 128];
+    let mut message_hash = [0u8; 48];
+    hash_all(alloc, HashAlgo::Sha384, &message, &mut message_hash)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
     let mut pubkey_x = [0u8; 48];
     let mut pubkey_y = [0u8; 48];
     let handle = dpe_certify_key_pubkey(alloc, None, &label, &mut pubkey_x, &mut pubkey_y)
         .await
         .unwrap_or_else(|_| test_exit(1));
     let mut signature = [0u8; DPE_P384_SIGNATURE_SIZE];
-    let (_, len) = dpe_sign_ecc_p384(alloc, Some(&handle), &label, &[0x55; 48], &mut signature)
+    let (_, len) = dpe_sign_ecc_p384(alloc, Some(&handle), &label, &message_hash, &mut signature)
         .await
         .unwrap_or_else(|_| test_exit(1));
     if len != DPE_P384_SIGNATURE_SIZE {
         test_exit(1);
     }
+    ecdsa_verify(alloc, &pubkey_x, &pubkey_y, &signature, &message_hash)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
     println!("DPE ECDSA signing test completed successfully");
 }

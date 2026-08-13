@@ -166,9 +166,9 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
     #[cfg(feature = "test-get-device-state")]
     {
-        let pcr_quote_alloc = test_get_device_state::init_pcr_quote_allocator();
-        test_get_device_state::test_get_pcr_quote(pcr_quote_alloc).await;
-        test_get_device_state::test_get_fw_info(pcr_quote_alloc).await;
+        let alloc = test_get_device_state::init_pcr_quote_allocator();
+        test_get_device_state::test_get_pcr_quote(alloc).await;
+        test_get_device_state::test_get_fw_info(alloc).await;
         test_get_device_state::test_get_image_info().await;
         test_get_device_state::test_get_fw_version().await;
         System::exit(0);
@@ -189,6 +189,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(feature = "test-caliptra-certs")]
     {
         let alloc = test_caliptra_certs::init_cert_allocator();
+        // test_caliptra_certs::test_get_idev_csr().await;
         test_caliptra_certs::test_populate_idev_ecc384_cert(alloc).await;
         test_caliptra_certs::test_get_cert_chain(alloc).await;
         test_caliptra_certs::test_certify_key(alloc).await;

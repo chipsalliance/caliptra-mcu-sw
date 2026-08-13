@@ -39,6 +39,8 @@ mod dpe;
 #[cfg(feature = "mailbox-io")]
 mod ecdh;
 #[cfg(feature = "mailbox-io")]
+mod ecdsa;
+#[cfg(feature = "mailbox-io")]
 mod fe_prog;
 #[cfg(feature = "mailbox-io")]
 pub mod firmware_update;
@@ -96,7 +98,7 @@ pub use debug_unlock::{
 };
 #[cfg(feature = "mailbox-io")]
 pub use dpe::{
-    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
+    dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
     dpe_derive_context, dpe_get_cert_chain_chunk, dpe_get_tagged_tci, dpe_rotate_context_default,
     dpe_sign_ecc_p384, dpe_tag_tci, dpe_update_context_measurement, walk_dpe_chain, DpeChainSink,
     DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeDeriveContextResult,
@@ -108,6 +110,8 @@ pub use dpe::{
 pub use ecdh::{
     ecdh_finish, ecdh_generate, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
 };
+#[cfg(feature = "mailbox-io")]
+pub use ecdsa::{ecdsa_verify, ECDSA_P384_COORD_SIZE, ECDSA_P384_SIGNATURE_SIZE};
 #[cfg(feature = "mailbox-io")]
 pub use fe_prog::fe_prog;
 #[cfg(feature = "mailbox-io")]
@@ -129,7 +133,8 @@ pub use pcr_quote::{
 pub use rng::rng_generate;
 #[cfg(feature = "mailbox-io")]
 pub use sha::{
-    sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
+    hash_all, sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE,
+    SHA_CONTEXT_SIZE,
 };
 pub use types::{CmKeyUsage, Cmk, CMK_SIZE};
 #[cfg(feature = "mailbox-io")]

@@ -578,6 +578,44 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     Ok(cert_size)
 }
 
+/// Fetch the complete DER leaf certificate emitted by DPE `CertifyKey`.
+///
+/// This composes the bounded size and slice commands so callers with smaller
+/// certificate buffers do not need to implement chunking themselves.
+#[inline(never)]
+pub async fn dpe_certify_key<A: ApiAlloc>(
+    alloc: &A,
+    handle: Option<&DpeContextHandle>,
+    label: &[u8; DPE_LABEL_LEN],
+    dst: &mut [u8],
+) -> McuResult<(DpeContextHandle, usize)> {
+    let (_, cert_size) = dpe_certify_key_cert_size(alloc, handle, label).await?;
+    if cert_size == 0 || cert_size > dst.len() {
+        return Err(INVARIANT);
+    }
+
+    let mut offset = 0;
+    let mut next_handle = None;
+    while offset < cert_size {
+        let end = cert_size.min(offset + DPE_MAX_CHUNK_SIZE);
+        let (rotated_handle, copied) = dpe_certify_key_cert_slice(
+            alloc,
+            handle,
+            label,
+            offset as u32,
+            dst.get_mut(offset..end).ok_or(INVARIANT)?,
+        )
+        .await?;
+        if copied == 0 || copied > end - offset {
+            return Err(INTERNAL_BUG);
+        }
+        next_handle = Some(rotated_handle);
+        offset += copied;
+    }
+
+    Ok((next_handle.ok_or(INTERNAL_BUG)?, cert_size))
+}
+
 /// Return the DER leaf certificate length emitted by DPE `CertifyKey`
 /// without fetching the certificate body, along with the rotated context handle.
 #[inline(never)]

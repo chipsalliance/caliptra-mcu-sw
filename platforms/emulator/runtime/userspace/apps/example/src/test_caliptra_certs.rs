@@ -4,9 +4,9 @@ use caliptra_mcu_romtime::{println, test_exit};
 use caliptra_mcu_spdm_pal::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::ptr::NonNull;
 use mcu_caliptra_api_lite::{
-    dpe_certify_key_cert_size, dpe_get_cert_chain_chunk, dpe_sign_ecc_p384,
-    get_attested_csr_ecc384, get_attested_csr_mldsa87, populate_idev_ecc384_cert, DPE_LABEL_LEN,
-    DPE_MAX_CHUNK_SIZE, DPE_P384_SIGNATURE_SIZE,
+    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_get_cert_chain_chunk,
+    dpe_sign_ecc_p384, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
+    populate_idev_ecc384_cert, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_P384_SIGNATURE_SIZE,
 };
 
 const CERT_SCRATCH_SIZE: usize = 16 * 1024;
@@ -30,6 +30,18 @@ pub fn init_cert_allocator() -> &'static BitmapAllocator {
     let scratch_ptr =
         unsafe { NonNull::new_unchecked(core::ptr::addr_of_mut!(CERT_SCRATCH).cast::<u8>()) };
     unsafe { CERT_ALLOCATOR.init_once(scratch_ptr, CERT_SCRATCH_SIZE) }
+}
+
+pub async fn test_get_idev_csr() {
+    let csr = unsafe { &mut ATTESTED_CSR_BUFFER };
+    let size = get_idev_csr_ecc384(csr)
+        .await
+        .unwrap_or_else(|_| test_exit(1))
+        .unwrap_or_else(|| test_exit(1));
+    if size == 0 {
+        test_exit(1);
+    }
+    println!("IDevID CSR size: {}", size);
 }
 
 const SIGNED_IDEV_CERT_DER: [u8; 541] = [
@@ -99,6 +111,27 @@ pub async fn test_certify_key(alloc: &BitmapAllocator) {
         .await
         .unwrap_or_else(|_| test_exit(1));
     if size == 0 {
+        test_exit(1);
+    }
+    let mut chunk = [0u8; DPE_MAX_CHUNK_SIZE];
+    let mut offset = 0;
+    while offset < size {
+        let requested = (size - offset).min(chunk.len());
+        let (_, copied) = dpe_certify_key_cert_slice(
+            alloc,
+            None,
+            &TEST_KEY_LABEL,
+            offset as u32,
+            &mut chunk[..requested],
+        )
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+        if copied == 0 || copied > requested {
+            test_exit(1);
+        }
+        offset += copied;
+    }
+    if offset != size {
         test_exit(1);
     }
     println!("Attestation key certificate size: {}", size);

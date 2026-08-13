@@ -232,18 +232,18 @@ async fn get_image_info(mailbox: &Mailbox, image_id: u32) -> Result<GetImageInfo
 
     let response_buffer = &mut [0u8; core::mem::size_of::<GetImageInfoResp>()];
 
-    loop {
+    let response_len = loop {
         let result = mailbox
             .execute(GetImageInfoReq::ID.0, req_data, response_buffer)
             .await;
         match result {
-            Ok(_) => break,
+            Ok(response_len) => break response_len,
             Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
             Err(_) => return Err(ErrorCode::Fail),
         }
-    }
+    };
 
-    parse_image_info_response(response_buffer)
+    parse_image_info_response(response_buffer.get(..response_len).ok_or(ErrorCode::Fail)?)
 }
 
 fn parse_image_info_response(response_buffer: &[u8]) -> Result<GetImageInfoResp, ErrorCode> {
@@ -335,5 +335,13 @@ mod tests {
 
         assert_eq!(parsed, expected);
         assert_eq!(parsed.digest, [0xa5; 48]);
+    }
+
+    #[test]
+    fn parse_image_info_response_rejects_truncated_response() {
+        let response = GetImageInfoResp::default();
+        let truncated = &response.as_bytes()[..size_of::<GetImageInfoResp>() - 1];
+
+        assert_eq!(parse_image_info_response(truncated), Err(ErrorCode::Fail));
     }
 }

@@ -221,6 +221,24 @@ pub async fn sha_finish<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
     sha_call(alloc, CMD_CM_SHA_FINAL, None, &[], state, Some(out)).await
 }
 
+/// Hash all of `data` and write the digest to `out`.
+///
+/// `out` must match the selected algorithm's digest size exactly.
+#[inline(never)]
+pub async fn hash_all<A: ApiAlloc>(
+    alloc: &A,
+    algo: HashAlgo,
+    data: &[u8],
+    out: &mut [u8],
+) -> McuResult<()> {
+    if out.len() != algo.hash_size() {
+        return Err(INVARIANT);
+    }
+    let context = alloc.alloc(SHA_CONTEXT_SIZE)?;
+    let mut state = sha_init(alloc, context, algo, data).await?;
+    sha_finish(alloc, &mut state, out).await
+}
+
 // ---------------------------------------------------------------------------
 // Shared private workhorse — one async state machine for all 3 ops.
 // ---------------------------------------------------------------------------

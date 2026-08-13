@@ -15,7 +15,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
     fe_prog, fw_info, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
-    request_debug_unlock_challenge, sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo,
+    hash_all, request_debug_unlock_challenge, sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo,
     McuErrorCode, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN, SHA_CONTEXT_SIZE,
 };
@@ -178,7 +178,9 @@ pub async fn verify_authorized_signatures<A: ApiAlloc>(
     // ECC P-384 over SHA-384(pre-image) (ECDSA takes a 48-byte digest; matches the
     // host's `sign(&pre_image)`, which hashes the pre-image with SHA-384 internally).
     let mut hash = [0u8; 48];
-    hash_all(alloc, HashAlgo::Sha384, pre_image.as_slice(), &mut hash).await?;
+    hash_all(alloc, HashAlgo::Sha384, pre_image.as_slice(), &mut hash)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
     let mut ecc_req = EcdsaVerifyReq {
         hdr: MailboxReqHeader::default(),
@@ -213,7 +215,8 @@ pub async fn verify_authorized_signatures<A: ApiAlloc>(
         pre_image.as_slice(),
         &mut mldsa_msg,
     )
-    .await?;
+    .await
+    .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
     // Use a shared static buffer behind an async Mutex to avoid inflating
     // the async task future by ~11 KB.  The guard is held across `.await`.
@@ -378,23 +381,6 @@ pub fn revoke_vendor_pk_hash(vendor_pk_hash_slot: u32) -> CaliptraCmdResult<()> 
     }
 
     otp.revoke_vendor_pk_hash(vendor_pk_hash_slot)
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)
-}
-
-async fn hash_all<A: ApiAlloc>(
-    alloc: &A,
-    algo: HashAlgo,
-    data: &[u8],
-    hash: &mut [u8],
-) -> CaliptraCmdResult<()> {
-    let hash_context = alloc
-        .alloc(SHA_CONTEXT_SIZE)
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    let mut state = sha_init(alloc, hash_context, algo, data)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    sha_finish(alloc, &mut state, hash)
-        .await
         .map_err(|_| CaliptraCompletionCode::OperationFailed)
 }
 
