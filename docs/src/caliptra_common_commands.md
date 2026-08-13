@@ -110,11 +110,11 @@ This table defines the bit assignment for every allocated command code. A respon
 | Bitmap Bit | Subcommand                   | Status      |
 | ---------- | ---------------------------- | ----------- |
 | 0          | `GetAuthChallenge`           | Implemented |
-| 1          | `ProvisionVendorPkHash`      | Planned     |
-| 2          | `FuseIncreaseCaliptraMinSvn` | Planned     |
+| 1          | `ProvisionVendorPkHash`      | Implemented |
+| 2          | `FuseIncreaseCaliptraMinSvn` | Implemented |
 | 3          | `ProgramFieldEntropy`        | Implemented |
-| 4          | `FuseRevokeVendorPublicKey`  | Planned     |
-| 5          | `FuseRevokeVendorPkHash`     | Planned     |
+| 4          | `FuseRevokeVendorPublicKey`  | Implemented |
+| 5          | `FuseRevokeVendorPkHash`     | Implemented |
 | 6          | `FuseLockPartition`          | Implemented |
 | 7          | `ProvisionOwnerPkHash`       | Implemented |
 | 8:31       | Reserved                     | —           |
