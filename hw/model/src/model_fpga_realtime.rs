@@ -90,6 +90,7 @@ pub struct ModelFpgaRealtime {
     caliptra_firmware: Option<Vec<u8>>,
     soc_manifest: Option<Vec<u8>>,
     mcu_firmware: Option<Vec<u8>>,
+    primary_flash_initial_contents: Option<Vec<u8>>,
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
     /// Per-instance emulator coordination state. Kept alive for as long
     /// as this model exists so worker threads that captured an Arc clone
@@ -98,6 +99,10 @@ pub struct ModelFpgaRealtime {
 }
 
 impl ModelFpgaRealtime {
+    pub fn primary_flash_initial_contents(&self) -> Option<&[u8]> {
+        self.primary_flash_initial_contents.as_deref()
+    }
+
     /// Set or clear the FIPS zeroization PPD signal in the FPGA wrapper
     /// control register (bit 20).
     fn set_fips_zeroization_ppd(&mut self, val: bool) {
@@ -607,6 +612,7 @@ impl McuHwModel for ModelFpgaRealtime {
             caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
             mcu_firmware: Some(params.mcu_firmware.to_vec()).filter(|f| !f.is_empty()),
+            primary_flash_initial_contents: params.primary_flash_initial_contents.map(Vec::from),
             usb_host_controller,
             _state: state,
         };

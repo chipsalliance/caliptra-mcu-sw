@@ -615,6 +615,7 @@ dependencies = [
  "clap 4.6.1",
  "ecdsa",
  "fips204",
+ "getrandom 0.2.17",
  "p384",
  "sha2",
  "zerocopy",

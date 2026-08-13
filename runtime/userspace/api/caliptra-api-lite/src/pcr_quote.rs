@@ -31,6 +31,21 @@ pub const PCR_QUOTE_ECC384_LEN: usize = ECC384_RSP_SIZE - MBOX_RESP_HEADER_SIZE;
 pub const PCR_QUOTE_MLDSA87_LEN: usize = MLDSA87_RSP_SIZE - MBOX_RESP_HEADER_SIZE;
 pub const PCR_QUOTE_MAX_LEN: usize = PCR_QUOTE_MLDSA87_LEN;
 
+/// Buffer capacity `pcr_quote_ecc384` requires in `out`.
+///
+/// Exceeds the quote it produces by the mailbox response header: the response
+/// is received directly into `out` and then shifted down over that header.
+/// Staging it in a separate allocation instead would hold two nearly
+/// quote-sized buffers at once, which for ML-DSA-87 alone exhausts the SPDM
+/// scratch pool. Callers reserving per-request buffers must use these, not the
+/// `*_LEN` constants.
+pub const PCR_QUOTE_ECC384_BUF_LEN: usize = ECC384_RSP_SIZE;
+/// Buffer capacity `pcr_quote_mldsa87` requires in `out`; see
+/// [`PCR_QUOTE_ECC384_BUF_LEN`].
+pub const PCR_QUOTE_MLDSA87_BUF_LEN: usize = MLDSA87_RSP_SIZE;
+/// Worst-case `out` capacity across every PCR quote algorithm.
+pub const PCR_QUOTE_MAX_BUF_LEN: usize = PCR_QUOTE_MLDSA87_BUF_LEN;
+
 #[repr(C)]
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
 struct QuotePcrsReq {
@@ -93,7 +108,10 @@ async fn pcr_quote<A: ApiAlloc>(
     let quote_len = rsp_size
         .checked_sub(MBOX_RESP_HEADER_SIZE)
         .ok_or(INVARIANT)?;
-    if out.len() < quote_len {
+    // `out` must hold the mailbox response header as well as the quote: the
+    // response is received in place and then shifted down over the header.
+    // See `PCR_QUOTE_ECC384_BUF_LEN` for why this is not staged separately.
+    if out.len() < rsp_size {
         return Err(INVARIANT);
     }
 
@@ -106,17 +124,17 @@ async fn pcr_quote<A: ApiAlloc>(
     let checksum = calc_checksum(cmd, &req[4..]);
     req[..4].copy_from_slice(&checksum.to_le_bytes());
 
-    let mut rsp = alloc.alloc(rsp_size)?;
-    let rsp_len = crate::wire::mbox_execute(cmd, &req, &mut rsp).await?;
+    let rsp_len = crate::wire::mbox_execute(cmd, &req, &mut out[..rsp_size]).await?;
     if rsp_len < rsp_size {
         return Err(INVARIANT);
     }
 
-    if rsp[NONCE_OFFSET..NONCE_OFFSET + NONCE_SIZE] != req[4..4 + NONCE_SIZE] {
+    // Offsets are relative to the full response, so check before the shift.
+    if out[NONCE_OFFSET..NONCE_OFFSET + NONCE_SIZE] != req[4..4 + NONCE_SIZE] {
         return Err(INVARIANT);
     }
 
-    out[..quote_len].copy_from_slice(&rsp[MBOX_RESP_HEADER_SIZE..rsp_size]);
+    out.copy_within(MBOX_RESP_HEADER_SIZE..rsp_size, 0);
     Ok(quote_len)
 }
 

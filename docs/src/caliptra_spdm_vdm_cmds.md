@@ -78,7 +78,7 @@ These command codes are assigned from the Caliptra range reserved in the [OCP co
 
 | Command Code | Command Name              | R/O | Description                                                                |
 | ------------ | ------------------------- | --- | -------------------------------------------------------------------------- |
-| `0x05`       | GetAttestation            | O   | Retrieve attestation evidence.                                             |
+| `0x05`       | GetAttestation            | O   | Retrieve signed attestation evidence in a requester-selected format.       |
 | `0x06`       | RequestDebugUnlock        | O   | Request debug unlock in production environment.                            |
 | `0x07`       | AuthorizeDebugUnlockToken | O   | Send debug unlock token to device for authorization.                       |
 | `0x08`       | ExportAttestedCsr         | O   | Export attested CSR for a Caliptra device identity key.                    |

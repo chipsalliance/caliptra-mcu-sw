@@ -17,13 +17,6 @@ use ocp_eat::{cose_sign1_len, ClaimsPayloadLayout, SignedEat};
 
 pub const KID_LEN: usize = 48;
 pub const SIGNED_OCP_EAT_MAX_SIZE: usize = cose_sign1_len(ocp_eat::EAT_PAYLOAD_MAX_SIZE);
-/// Scratch needed to build signed OCP EAT evidence.
-///
-/// All EAT and concise-evidence bytes are encoded directly into `out`; only
-/// transient mailbox/SHA buffers are allocated through [`ApiAlloc`]. Static EAT
-/// claims therefore affect `SIGNED_OCP_EAT_MAX_SIZE` but not caller scratch.
-pub const SIGNED_OCP_EAT_WORKSPACE_SIZE: usize = 0;
-pub const WORKSPACE_SIZE: usize = SIGNED_OCP_EAT_WORKSPACE_SIZE;
 
 const _: () = assert!(SIGNED_OCP_EAT_MAX_SIZE <= u16::MAX as usize);
 const _: () = assert!(ocp_eat::EAT_PAYLOAD_MAX_SIZE > u8::MAX as usize);
@@ -93,16 +86,23 @@ impl<A: ApiAlloc> EvidenceBuilder<A> for SignedOcpEatBuilder<'_> {
 
 /// Encode a signed OCP EAT token containing Measurement API concise evidence.
 ///
-/// `workspace` is retained for API compatibility and may be empty. The encoded
-/// evidence, payload, key identifier, and signature are written directly into
-/// `out`.
+/// `pki_entity_slot` selects the endorsement hierarchy for the signing key.
+///
+/// The encoded evidence, payload, key identifier, and signature are written
+/// directly into `out`; transient mailbox/SHA buffers come from `alloc`.
 pub async fn encode_signed_ocp_eat<A: ApiAlloc>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
+    pki_entity_slot: u8,
     nonce: &[u8],
-    _workspace: &mut [u8],
     out: &mut [u8],
 ) -> McuResult<usize> {
     let mut builder = SignedOcpEatBuilder::new(nonce, out);
-    caliptra_mcu_measurement_api::measure_and_sign_evidence(alloc, key_label, &mut builder).await
+    caliptra_mcu_measurement_api::measure_and_sign_evidence(
+        alloc,
+        key_label,
+        pki_entity_slot,
+        &mut builder,
+    )
+    .await
 }

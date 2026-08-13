@@ -57,10 +57,14 @@ pub fn platform() -> &'static str {
 
 #[cfg(test)]
 mod test {
-    use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
+    use caliptra_mcu_builder::flash_image::{build_flash_image_bytes, write_partition_table};
     use caliptra_mcu_builder::{
         target_dir, CaliptraBuildArgs, CaliptraBuilder, EmulatorBinaries, FirmwareBinaries,
         ImageCfg, TARGET,
+    };
+    use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
+    use caliptra_mcu_config_emulator::flash::{
+        PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION,
     };
     use caliptra_mcu_emulator_periph::TapDevice;
     use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel, McuManager};
@@ -73,6 +77,7 @@ mod test {
         process::Command,
         sync::LazyLock,
     };
+    use zerocopy::FromBytes;
 
     const TEST_HW_REVISION: &str = "2.1.0";
 
@@ -95,6 +100,8 @@ mod test {
         pub rom_only: bool,
         pub include_network_rom: bool,
         pub flash_boot: bool,
+        /// Seed primary flash for a runtime flash loader while ROM boots via recovery.
+        pub seed_primary_flash_image: bool,
         pub network_tap_device: Option<Arc<Mutex<Box<dyn TapDevice>>>>,
         /// If true, set the DOT initialized fuse to enable DOT flow
         pub dot_enabled: bool,
@@ -150,6 +157,7 @@ mod test {
                 rom_only: false,
                 include_network_rom: false,
                 flash_boot: false,
+                seed_primary_flash_image: false,
                 network_tap_device: None,
                 dot_enabled: false,
                 custom_caliptra_fw: None,
@@ -360,6 +368,7 @@ mod test {
         pub mcu_rom: Vec<u8>,
         pub soc_manifest: Vec<u8>,
         pub mcu_runtime: Vec<u8>,
+        pub flash_image: Option<Vec<u8>>,
     }
 
     fn prebuilt_binaries(params: &TestParams, binaries: &'static FirmwareBinaries) -> TestBinaries {
@@ -381,6 +390,7 @@ mod test {
             mcu_rom: binaries.mcu_rom.clone(),
             soc_manifest: binaries.soc_manifest.clone(),
             mcu_runtime: binaries.mcu_runtime.clone(),
+            flash_image: None,
         };
 
         // check for prebuilt binaries for our test feature
@@ -391,6 +401,7 @@ mod test {
             );
             test_binaries.soc_manifest = binaries.test_soc_manifest(feature).expect(&err).clone();
             test_binaries.mcu_runtime = binaries.test_runtime(feature).expect(&err).clone();
+            test_binaries.flash_image = binaries.test_flash_image(feature).ok();
         }
 
         if let Some(rom_feature) = params.rom_feature {
@@ -1221,6 +1232,7 @@ mod test {
             mcu_rom,
             soc_manifest,
             mcu_runtime: mcu_runtime_bytes,
+            flash_image: None,
         }
     }
 
@@ -1232,6 +1244,7 @@ mod test {
             mcu_rom,
             soc_manifest,
             mcu_runtime,
+            flash_image,
         } = match FirmwareBinaries::from_env() {
             Ok(binaries)
                 if params.firmware_prefix.is_none()
@@ -1349,22 +1362,27 @@ mod test {
             None
         };
 
-        // Build flash image for flash-based boot, or use individual images for streaming boot
-        let (flash_image, caliptra_firmware, soc_manifest_bytes, mcu_firmware) =
-            if params.flash_boot {
-                let flash = build_flash_image_bytes(
-                    Some(&caliptra_fw),
-                    Some(&soc_manifest),
-                    Some(&mcu_runtime),
-                );
-                (Some(flash), vec![], vec![], vec![])
-            } else {
-                // For streaming boot, pass individual images to BMC
-                (None, caliptra_fw, soc_manifest, mcu_runtime)
-            };
+        let primary_flash_image = if params.flash_boot || params.seed_primary_flash_image {
+            let mut flash = flash_image.unwrap_or_else(|| {
+                build_flash_image_bytes(Some(&caliptra_fw), Some(&soc_manifest), Some(&mcu_runtime))
+            });
+            if params.seed_primary_flash_image && !params.flash_boot {
+                write_valid_partition_table_for_runtime_flash_load(&mut flash);
+            }
+            Some(flash)
+        } else {
+            None
+        };
+        // ROM flash boot consumes the bundle directly; recovery boot still receives
+        // the individual images while runtime accesses the seeded primary flash.
+        let (caliptra_firmware, soc_manifest_bytes, mcu_firmware) = if params.flash_boot {
+            (vec![], vec![], vec![])
+        } else {
+            (caliptra_fw, soc_manifest, mcu_runtime)
+        };
 
         let primary_flash_initial_contents = build_primary_flash_initial_contents(
-            flash_image,
+            primary_flash_image,
             #[cfg(not(feature = "fpga_realtime"))]
             Some(ECC_DEVID_CERT_DER.as_slice()),
             #[cfg(feature = "fpga_realtime")]
@@ -1416,6 +1434,51 @@ mod test {
             ..Default::default()
         })
         .unwrap()
+    }
+
+    fn write_valid_partition_table_for_runtime_flash_load(flash: &mut Vec<u8>) {
+        if !has_valid_partition_table(flash) {
+            let unpartitioned_flash = std::mem::take(flash);
+            flash.resize(IMAGE_A_PARTITION.offset + unpartitioned_flash.len(), 0xff);
+            flash[IMAGE_A_PARTITION.offset..][..unpartitioned_flash.len()]
+                .copy_from_slice(&unpartitioned_flash);
+        } else if flash.len() < IMAGE_A_PARTITION.offset {
+            flash.resize(IMAGE_A_PARTITION.offset, 0xff);
+        }
+
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut file, flash).unwrap();
+        let mut partition_table = PartitionTable {
+            active_partition: PartitionId::A as u32,
+            partition_a_status: PartitionStatus::Valid as u16,
+            partition_b_status: PartitionStatus::Invalid as u16,
+            rollback_enable: RollbackEnable::Enabled as u32,
+            ..Default::default()
+        };
+        partition_table.populate_checksum(&StandAloneChecksumCalculator::new());
+        write_partition_table(&partition_table, 0, file.path().to_str().unwrap()).unwrap();
+        *flash = std::fs::read(file.path()).unwrap();
+    }
+
+    fn has_valid_partition_table(flash: &[u8]) -> bool {
+        let Ok((partition_table, _)) = PartitionTable::read_from_prefix(flash) else {
+            return false;
+        };
+        partition_table.verify_checksum(&StandAloneChecksumCalculator::new())
+    }
+
+    #[test]
+    fn runtime_seeded_flash_image_wraps_unpartitioned_image_under_active_partition() {
+        let unpartitioned_flash = vec![0x11, 0x22, 0x33, 0x44];
+        let mut flash = unpartitioned_flash.clone();
+
+        write_valid_partition_table_for_runtime_flash_load(&mut flash);
+
+        assert!(has_valid_partition_table(&flash));
+        assert_eq!(
+            &flash[IMAGE_A_PARTITION.offset..IMAGE_A_PARTITION.offset + unpartitioned_flash.len()],
+            unpartitioned_flash.as_slice()
+        );
     }
 
     pub fn finish_runtime_hw_model(hw: &mut DefaultHwModel) -> i32 {
@@ -1853,7 +1916,7 @@ mod test {
                 build_primary_flash_initial_contents, ECC_DEVID_CERT_DER, MLDSA_IDEVID_CERT,
             };
             let primary_flash_initial_contents = build_primary_flash_initial_contents(
-                None,
+                hw.primary_flash_initial_contents().map(Vec::from),
                 Some(&ECC_DEVID_CERT_DER),
                 Some(&MLDSA_IDEVID_CERT),
                 None,

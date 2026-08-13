@@ -178,9 +178,14 @@ pub async fn sign<A: ApiAlloc>(
 /// the `kid`/evidence read and final signature. The caller supplies
 /// `digest_builder` for the transport-neutral payload shape, but that builder
 /// must not call Measurement API while this function holds the lock.
+///
+/// `pki_entity_slot` selects the endorsement hierarchy for the signing key.
+/// TODO: it is unused while every slot signs with the same DPE leaf key; pass
+/// it to the cert store once signing is slot-aware.
 pub async fn measure_and_sign_evidence<A, B>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
+    _pki_entity_slot: u8,
     evidence_builder: &mut B,
 ) -> McuResult<usize>
 where

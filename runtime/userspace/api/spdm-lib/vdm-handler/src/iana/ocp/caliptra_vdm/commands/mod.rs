@@ -8,6 +8,7 @@ use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::CaliptraComple
 pub(crate) mod authorized_command;
 pub(crate) mod debug_unlock;
 pub(crate) mod export_attested_csr;
+pub(crate) mod get_attestation;
 
 pub(crate) fn require_empty(req: &[u8]) -> Result<(), CaliptraCompletionCode> {
     if req.is_empty() {
