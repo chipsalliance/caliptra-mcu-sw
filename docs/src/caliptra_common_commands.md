@@ -26,7 +26,7 @@ The following table describes the commands defined under this specification. The
 | Device Capabilities             | R   | MCTP VDM, MCI Mailbox | Retrieve device capabilities.                                                                                                        |
 | Get Debug Log                   | R   | MCTP VDM, MCI Mailbox | Retrieve debug log.                                                                                                                  |
 | Clear Debug Log                 | R   | MCTP VDM, MCI Mailbox | Clear debug log.                                                                                                                     |
-| Get Attestation                 | O   | SPDM VDM              | Retrieve attestation evidence. MCI Mailbox support is TBD.                                                                           |
+| Get Attestation                 | O   | SPDM VDM, MCI Mailbox | Retrieve signed attestation evidence in a requester-selected format.                                                                 |
 | Request Debug Unlock            | O   | SPDM VDM, MCI Mailbox | Request debug unlock in production environment.                                                                                      |
 | Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
 | Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias).                                             |
@@ -91,19 +91,19 @@ Versions use `major.minor.patch` ASCII format. Index `02h` returns `UnsupportedO
 
 **External Common-Command Capability Flags**:
 
-| Bitmap Bit | Command Code | Command                     | Transport |
-| ---------- | ------------ | --------------------------- | --------- |
-| 0          | `01h`        | `FirmwareVersion`           | MCTP VDM  |
-| 1          | `02h`        | `DeviceCapabilities`        | MCTP VDM  |
-| 2          | `03h`        | `GetDebugLog`               | MCTP VDM  |
-| 3          | `04h`        | `ClearDebugLog`             | MCTP VDM  |
-| 4          | `05h`        | `GetAttestation`            | SPDM VDM  |
-| 5          | `06h`        | `RequestDebugUnlock`        | SPDM VDM  |
-| 6          | `07h`        | `AuthorizeDebugUnlockToken` | SPDM VDM  |
-| 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM  |
-| 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM  |
+| Bitmap Bit | Command Code | Command                     | Transport             |
+| ---------- | ------------ | --------------------------- | --------------------- |
+| 0          | `01h`        | `FirmwareVersion`           | MCTP VDM              |
+| 1          | `02h`        | `DeviceCapabilities`        | MCTP VDM              |
+| 2          | `03h`        | `GetDebugLog`               | MCTP VDM              |
+| 3          | `04h`        | `ClearDebugLog`             | MCTP VDM              |
+| 4          | `05h`        | `GetAttestation`            | SPDM VDM, MCU mailbox |
+| 5          | `06h`        | `RequestDebugUnlock`        | SPDM VDM              |
+| 6          | `07h`        | `AuthorizeDebugUnlockToken` | SPDM VDM              |
+| 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM              |
+| 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM              |
 
-This table defines the bit assignment for every allocated command code. A responder sets a bit only when the corresponding command is implemented. `GetAttestation` is defined but not yet implemented, so its bit remains zero. `AuthorizedCommand` is set when its wrapper and at least one authorized subcommand are implemented.
+This table defines the bit assignment for every allocated command code. A responder sets a bit only when the corresponding command is implemented. `GetAttestation` is set when a responder that carries it is built and the device can produce at least one evidence format. `AuthorizedCommand` is set when its wrapper and at least one authorized subcommand are implemented.
 
 **Authorized-Subcommand Capability Flags**:
 
@@ -176,11 +176,101 @@ Clears the debug log in the MCU Runtime. No authorization is required.
 
 ### Get Attestation
 
-Retrieves attestation evidence. This command is assigned to SPDM VDM IANA. MCI Mailbox support and the payload format are TBD.
+Retrieves signed attestation evidence bound to a requester-supplied nonce.
 
-**Request Payload**: TBD
+The requester selects the evidence format at runtime. The set of formats a
+device can produce is fixed at build time by the evidence generators it links.
+A requester discovers that set with the format-discovery query below.
 
-**Response Payload**: TBD
+All formats are signed with the device attestation key that terminates the
+device's SPDM certificate chain. Evidence retrieved over the MCI mailbox
+verifies against a certificate chain retrieved over SPDM, and the reverse.
+
+#### Evidence Formats
+
+| Value    | Name      | Description                                                                       |
+| -------- | --------- | --------------------------------------------------------------------------------- |
+| `0x0000` | (query)   | Reserved. Selects the format-discovery query.                                     |
+| `0x0001` | OCP EAT   | Signed OCP Entity Attestation Token (COSE_Sign1) carrying OCP EAT profile claims. |
+| `0x0002` | PCR Quote | Caliptra PCR quote.                                                               |
+
+A device that supports a format need not support it under every algorithm. The
+OCP EAT signer emits ES384 only; ML-DSA-87 EATs are not implemented yet. A
+request naming an unsupported `(evidence_format, algorithm)` pair returns
+`UNSUPPORTED_OPERATION` and no evidence is generated.
+
+#### PKI Entity Slot
+
+`pki_entity_slot` names the PKI entity whose hierarchy endorses the signing key.
+
+| Value    | Name   | Description                    |
+| -------- | ------ | ------------------------------ |
+| `0x0000` | Vendor | Device manufacturer hierarchy. |
+| `0x0001` | Owner  | Owner hierarchy. Reserved.     |
+
+A value not listed above returns `INVALID_PARAMS`. `Owner` is reserved and
+returns `UNSUPPORTED_OPERATION` today: signing is not yet slot-aware, so every
+entity would resolve to the same vendor key, and serving it would return
+evidence claiming an endorsement that was never selected or provisioned. Once
+signing is slot-aware, whether an entity can be served follows the provisioning
+state of its endorsement slot.
+
+#### Format Discovery
+
+A request with `evidence_format` = `0x0000` is a query, not an evidence request.
+The device returns a bitmap of the formats it can produce instead of evidence.
+Bit *n* of the bitmap is set when the device supports the format whose wire
+value is *n*; bit 0 is never set.
+
+The supported set depends on which evidence generators the integrator built into
+the device. A requester issues this query before requesting evidence rather than
+inferring the set from `DeviceCapabilities`.
+
+**Request Payload**:
+
+| Byte(s) | Name            | Type   | Description                                                                                          |
+| ------- | --------------- | ------ | ---------------------------------------------------------------------------------------------------- |
+| 0:3     | evidence_format | u32    | Requested evidence format, or `0x0000` for the format-discovery query                                |
+| 4:7     | algorithm       | u32    | Asymmetric Algorithm: <br>- `0x0001` = ECC P-384 <br>- `0x0002` = ML-DSA-87 <br>Ignored for the query request |
+| 8:11    | pki_entity_slot | u32    | PKI entity: <br>- `0x0000` = Vendor <br>- `0x0001` = Owner <br>Ignored for the query request |
+| 12:43   | nonce           | u8[32] | Nonce bound into the signed evidence for freshness. Ignored for the query request.                    |
+
+For the query request, `algorithm`, `pki_entity_slot`, and `nonce` are ignored.
+For an evidence request, a value outside the tables above returns
+`INVALID_PARAMS`.
+
+**Response Payload**:
+
+| Byte(s) | Name            | Type          | Description                                                                                                    |
+| ------- | --------------- | ------------- | -------------------------------------------------------------------------------------------------------------- |
+| 0:3     | evidence_format | u32           | Echo of the requested `evidence_format`                                                                        |
+| 4:N     | data            | u8[]          | For a format request: the signed evidence blob. For the query (`evidence_format` = `0x0000`): a `u32` bitmap of supported formats. |
+
+The evidence blob is variable length, delimited by the transport's length field.
+The transports scope that field differently:
+
+| Transport   | Length field                          | Counts                                            |
+| ----------- | ------------------------------------- | ------------------------------------------------- |
+| SPDM VDM    | `data_len`, framed after `evidence_format` | The evidence bytes only                      |
+| MCI Mailbox | `MailboxRespHeaderVarSize.data_len`   | The `evidence_format` field plus the evidence bytes |
+
+For the MCI mailbox the evidence length is therefore `data_len - 4`.
+
+Truncated evidence cannot pass signature verification, so a device that cannot
+fit the evidence in the response buffer fails the command instead.
+
+#### Transport Sizing
+
+Attestation evidence is variable length, and its size depends on which evidence
+generators the integrator builds into the device. Each transport sizes its
+response buffer from those generators:
+
+- **SPDM VDM** reserves the size the requested format needs. Evidence that does
+  not fit in a single message is returned over the large-response (chunked)
+  path. The advertised `MaxSPDMmsgSize` must cover the largest evidence the
+  device can produce. See [SPDM VDM commands](caliptra_spdm_vdm_cmds.md).
+- **MCI Mailbox** sizes the `GET_ATTESTATION` response buffer for the largest
+  supported evidence. Other commands' response buffers are unaffected.
 
 ### Request Debug Unlock
 

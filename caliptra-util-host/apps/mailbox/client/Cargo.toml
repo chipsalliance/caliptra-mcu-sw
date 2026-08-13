@@ -28,6 +28,7 @@ caliptra-mcu-command-auth-challenge-signer.workspace = true
 caliptra-mcu-debug-unlock-signer.workspace = true
 ecdsa.workspace = true
 fips204.workspace = true
+getrandom.workspace = true
 p384 = { workspace = true, features = ["ecdsa"] }
 sha2.workspace = true
 zerocopy.workspace = true

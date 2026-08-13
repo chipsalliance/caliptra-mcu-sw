@@ -3,8 +3,9 @@
 use crate::errors;
 use crate::transport::McuMboxTransport;
 use caliptra_mcu_common_commands::{
-    CaliptraCmdHandler, CaliptraCompletionCode, CommandAuthorizer, DebugUnlockChallenge,
-    DeviceCapabilities, FirmwareVersion, GetLogResult,
+    AsymAlgo, CaliptraCmdHandler, CaliptraCompletionCode, CommandAuthorizer, DebugUnlockChallenge,
+    DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult, PkiEntitySlot,
+    EVIDENCE_FORMAT_QUERY,
 };
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_libsyscall_caliptra::{otp, DefaultSyscalls};
@@ -13,13 +14,14 @@ use caliptra_mcu_mbox_common::messages::{
     FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
     FuseIncreaseCaliptraMinSvnResp, FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq,
     FuseReadResp, FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
-    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader, MailboxRespHeader,
-    MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
+    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
+    GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
     McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
-    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE, MAX_FUSE_DATA_SIZE,
-    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -28,11 +30,11 @@ use caliptra_mcu_mbox_common::messages::{
 };
 use caliptra_mcu_otp_fuse::fuse_read_dai_params;
 use core::sync::atomic::{AtomicBool, Ordering};
-use mcu_caliptra_api_lite::{raw, ApiAlloc};
+use mcu_caliptra_api_lite::{raw, ApiAlloc, ApiAllocPool};
 use mcu_error::{McuErrorCode, McuResult};
 use zerocopy::{FromBytes, IntoBytes};
 
-pub trait McuMboxScratch: ApiAlloc {
+pub trait McuMboxScratch: ApiAlloc + ApiAllocPool {
     fn shrink(buf: &mut Self::Buf<'_>, new_len: usize) -> McuResult<()>;
 }
 
@@ -142,7 +144,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         };
         Alloc::shrink(&mut req_buf, req_len)?;
 
-        let mut resp_buf = self.scratch.alloc(response_buffer_size(cmd_id))?;
+        let mut resp_buf = self.scratch.alloc(response_buffer_size::<H>(cmd_id))?;
         let status = match self
             .process_request(&mut req_buf, req_len, cmd_id, &mut resp_buf)
             .await
@@ -222,6 +224,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
+                CommandId::MC_GET_ATTESTATION => self.handle_get_attestation(req, resp_buf).await,
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
                 }
@@ -442,6 +445,41 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             size_of::<MailboxRespHeaderVarSize>()
         };
 
+        Ok((&mut resp_buf[..resp_len], mbox_cmd_status))
+    }
+
+    /// Handles `MC_GET_ATTESTATION`.
+    ///
+    /// The response body is `[evidence_format:u32][evidence...]`, framed
+    /// directly in `resp_buf` so the evidence is never copied.
+    ///
+    /// A request whose `evidence_format` is [`EVIDENCE_FORMAT_QUERY`] is a
+    /// capability query and returns the supported-format bitmap instead of
+    /// evidence, mirroring the SPDM VDM transport.
+    async fn handle_get_attestation<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = GetAttestationReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+
+        let (hdr_bytes, body) = resp_buf
+            .split_at_mut_checked(size_of::<MailboxRespHeaderVarSize>())
+            .ok_or(errors::INVALID_PARAMS)?;
+
+        let (mbox_cmd_status, data_len) =
+            match stage_attestation(self.non_crypto_cmds_handler, self.scratch, req, body).await {
+                Ok(len) => (MbxCmdStatus::Complete, len),
+                Err(_) => (MbxCmdStatus::Failure, 0),
+            };
+
+        let hdr = MailboxRespHeaderVarSize {
+            data_len: data_len as u32,
+            ..Default::default()
+        };
+        hdr_bytes.copy_from_slice(hdr.as_bytes());
+
+        let resp_len = size_of::<MailboxRespHeaderVarSize>() + data_len;
         Ok((&mut resp_buf[..resp_len], mbox_cmd_status))
     }
 
@@ -887,13 +925,78 @@ fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
     Some(code)
 }
 
-fn response_buffer_size(cmd: u32) -> usize {
+/// Bytes to allocate for a command's response.
+///
+/// Generic over the handler because `MC_GET_ATTESTATION` is sized from the
+/// evidence generators the build enables rather than from a fixed enum variant.
+/// It is deliberately not a [`McuMailboxResp`] variant: that enum sizes *every*
+/// command's allocation by its largest variant, so folding attestation in would
+/// inflate all of them.
+fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
     match CommandId::from(cmd) {
         c if c == CommandId::MC_MLDSA_CMK_VERIFY || c == CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
             size_of::<MailboxRespHeader>()
         }
+        c if c == CommandId::MC_GET_ATTESTATION => size_of::<McuMailboxResp>().max(
+            size_of::<MailboxRespHeaderVarSize>()
+                + GET_ATTESTATION_RESP_PREFIX_LEN
+                + H::MAX_ATTESTATION_EVIDENCE_LEN,
+        ),
         _ => size_of::<McuMailboxResp>(),
     }
+}
+
+/// Writes the `MC_GET_ATTESTATION` response body into `body` and returns its
+/// length.
+///
+/// A free function rather than a `CmdInterface` method so it can be tested
+/// without standing up a transport.
+async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ApiAllocPool>(
+    handler: &H,
+    alloc: &Alloc,
+    req: &GetAttestationReq,
+    body: &mut [u8],
+) -> McuResult<usize> {
+    let (fmt_bytes, rest) = body
+        .split_at_mut_checked(GET_ATTESTATION_RESP_PREFIX_LEN)
+        .ok_or(errors::BUFFER_TOO_SMALL)?;
+    fmt_bytes.copy_from_slice(&req.evidence_format.to_le_bytes());
+
+    if req.evidence_format == EVIDENCE_FORMAT_QUERY {
+        let bitmap = rest
+            .get_mut(..size_of::<u32>())
+            .ok_or(errors::BUFFER_TOO_SMALL)?;
+        bitmap.copy_from_slice(&H::SUPPORTED_EVIDENCE_FORMATS.to_le_bytes());
+        return Ok(GET_ATTESTATION_RESP_PREFIX_LEN + size_of::<u32>());
+    }
+
+    let format =
+        EvidenceFormat::try_from(req.evidence_format).map_err(|_| errors::INVALID_PARAMS)?;
+    let algorithm = AsymAlgo::try_from(req.algorithm).map_err(|_| errors::INVALID_PARAMS)?;
+    let entity =
+        PkiEntitySlot::try_from(req.pki_entity_slot).map_err(|_| errors::INVALID_PARAMS)?;
+
+    // Reject pairs this build cannot produce before touching the buffer, so an
+    // unsupported request costs nothing.
+    let max_len = H::attestation_evidence_len(format, algorithm);
+    if max_len == 0 {
+        return Err(errors::UNSUPPORTED_COMMAND);
+    }
+
+    // Truncated evidence cannot pass signature verification, so refuse rather
+    // than emit a `Complete` response with partial evidence.
+    let out = rest.get_mut(..max_len).ok_or(errors::BUFFER_TOO_SMALL)?;
+
+    // Hand the handler the underlying pool rather than this wrapper: the SPDM
+    // VDM transport reaches the same handler through a different `ApiAlloc`
+    // wrapper, and instantiating it over the shared pool type keeps one copy of
+    // the evidence-generation code in the image instead of one per transport.
+    let evidence_len = handler
+        .get_attestation(alloc.pool(), format, algorithm, entity, &req.nonce, out)
+        .await
+        .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+    Ok(GET_ATTESTATION_RESP_PREFIX_LEN + evidence_len)
 }
 
 fn populate_response_checksum(resp: &mut [u8]) -> McuResult<()> {
@@ -903,4 +1006,217 @@ fn populate_response_checksum(resp: &mut [u8]) -> McuResult<()> {
     let checksum = raw::mailbox_checksum(0, &resp[size_of::<u32>()..]);
     resp[..size_of::<u32>()].copy_from_slice(&checksum.to_le_bytes());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use caliptra_mcu_mbox_common::messages::MAX_ATTESTATION_RESP_DATA_SIZE;
+    use futures::executor::block_on;
+    use std::vec;
+    use std::vec::Vec;
+
+    const TEST_EAT_LEN: usize = 3059;
+    const TEST_QUOTE_MLDSA_LEN: usize = 6388;
+
+    struct TestAlloc;
+
+    impl ApiAlloc for TestAlloc {
+        type Buf<'a>
+            = Vec<u8>
+        where
+            Self: 'a;
+
+        fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
+            Ok(vec![0; len])
+        }
+    }
+
+    impl ApiAllocPool for TestAlloc {
+        type Pool = Self;
+
+        fn pool(&self) -> &Self::Pool {
+            self
+        }
+    }
+
+    /// Handler advertising both formats, with ML-DSA available only for quotes.
+    /// Mirrors the emulator backend: the EAT is ES384-only today.
+    struct TestHandler;
+
+    impl CaliptraCmdHandler for TestHandler {
+        async fn get_firmware_version(
+            &self,
+            _index: u32,
+            _version: &mut FirmwareVersion,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!("not exercised by the attestation tests")
+        }
+
+        async fn get_device_capabilities(
+            &self,
+            _capabilities: &mut DeviceCapabilities,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!("not exercised by the attestation tests")
+        }
+
+        async fn export_attested_csr<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _device_key_id: u32,
+            _algorithm: u32,
+            _nonce: &[u8; 32],
+            _csr_buf: &mut [u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
+            unimplemented!("not exercised by the attestation tests")
+        }
+
+        async fn request_debug_unlock<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _unlock_level: u8,
+            _challenge: &mut DebugUnlockChallenge,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!("not exercised by the attestation tests")
+        }
+
+        async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _token_data: &[u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!("not exercised by the attestation tests")
+        }
+
+        const SUPPORTED_EVIDENCE_FORMATS: u32 =
+            EvidenceFormat::OcpEat.bit() | EvidenceFormat::PcrQuote.bit();
+        const MAX_ATTESTATION_EVIDENCE_LEN: usize = TEST_QUOTE_MLDSA_LEN;
+
+        fn attestation_evidence_len(format: EvidenceFormat, algorithm: AsymAlgo) -> usize {
+            match (format, algorithm) {
+                (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => TEST_EAT_LEN,
+                (EvidenceFormat::PcrQuote, AsymAlgo::EccP384) => 1840,
+                (EvidenceFormat::PcrQuote, AsymAlgo::Mldsa87) => TEST_QUOTE_MLDSA_LEN,
+                _ => 0,
+            }
+        }
+
+        async fn get_attestation<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            format: EvidenceFormat,
+            algorithm: AsymAlgo,
+            _entity: PkiEntitySlot,
+            nonce: &[u8; 32],
+            out: &mut [u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
+            let len = Self::attestation_evidence_len(format, algorithm);
+            // Evidence shorter than the reservation is the normal case; fill a
+            // recognizable prefix so the test can prove framing offsets.
+            let len = len - 8;
+            out[..4].copy_from_slice(&(format as u32).to_le_bytes());
+            out[4..8].copy_from_slice(&nonce[..4]);
+            out[8..len].fill(0xAB);
+            Ok(len)
+        }
+    }
+
+    fn request(format: u32, algorithm: u32) -> GetAttestationReq {
+        GetAttestationReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            evidence_format: format,
+            algorithm,
+            pki_entity_slot: PkiEntitySlot::Vendor as u32,
+            nonce: [0x5A; 32],
+        }
+    }
+
+    #[test]
+    fn response_buffer_is_sized_from_the_handler_not_a_fixed_variant() {
+        let sized = response_buffer_size::<TestHandler>(CommandId::MC_GET_ATTESTATION.0);
+        assert!(
+            sized
+                >= size_of::<MailboxRespHeaderVarSize>()
+                    + GET_ATTESTATION_RESP_PREFIX_LEN
+                    + TEST_QUOTE_MLDSA_LEN
+        );
+        // Other commands must not grow because attestation needs a big buffer.
+        assert_eq!(
+            response_buffer_size::<TestHandler>(CommandId::MC_FIRMWARE_VERSION.0),
+            size_of::<McuMailboxResp>()
+        );
+    }
+
+    #[test]
+    fn query_returns_the_supported_format_bitmap() {
+        let req = request(EVIDENCE_FORMAT_QUERY, 0);
+        let mut body = vec![0u8; 64];
+        let len = block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)).unwrap();
+
+        assert_eq!(len, 8);
+        assert_eq!(u32::from_le_bytes(body[..4].try_into().unwrap()), 0);
+        assert_eq!(
+            u32::from_le_bytes(body[4..8].try_into().unwrap()),
+            TestHandler::SUPPORTED_EVIDENCE_FORMATS
+        );
+    }
+
+    #[test]
+    fn evidence_is_framed_after_the_echoed_format() {
+        let req = request(EvidenceFormat::PcrQuote as u32, AsymAlgo::Mldsa87 as u32);
+        let mut body = vec![0u8; MAX_ATTESTATION_RESP_DATA_SIZE];
+        let len = block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)).unwrap();
+
+        assert_eq!(
+            len,
+            GET_ATTESTATION_RESP_PREFIX_LEN + TEST_QUOTE_MLDSA_LEN - 8
+        );
+        assert_eq!(
+            u32::from_le_bytes(body[..4].try_into().unwrap()),
+            EvidenceFormat::PcrQuote as u32
+        );
+        // Evidence starts immediately after the echoed format, and the nonce
+        // reached the generator.
+        assert_eq!(
+            u32::from_le_bytes(body[4..8].try_into().unwrap()),
+            EvidenceFormat::PcrQuote as u32
+        );
+        assert_eq!(&body[8..12], &[0x5A; 4]);
+    }
+
+    #[test]
+    fn unsupported_pairs_are_rejected_before_generation() {
+        // The EAT is ES384-only today; ML-DSA-87 is not implemented yet.
+        let req = request(EvidenceFormat::OcpEat as u32, AsymAlgo::Mldsa87 as u32);
+        let mut body = vec![0u8; MAX_ATTESTATION_RESP_DATA_SIZE];
+        assert_eq!(
+            block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)),
+            Err(errors::UNSUPPORTED_COMMAND)
+        );
+
+        // Unknown format and unknown algorithm are parameter errors.
+        let req = request(0xFF, AsymAlgo::EccP384 as u32);
+        assert_eq!(
+            block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)),
+            Err(errors::INVALID_PARAMS)
+        );
+        let req = request(EvidenceFormat::PcrQuote as u32, 0xFF);
+        assert_eq!(
+            block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)),
+            Err(errors::INVALID_PARAMS)
+        );
+    }
+
+    #[test]
+    fn a_buffer_too_small_for_the_reservation_fails_instead_of_truncating() {
+        let req = request(EvidenceFormat::PcrQuote as u32, AsymAlgo::Mldsa87 as u32);
+        // One byte short of the worst case for this pair.
+        let mut body = vec![0u8; GET_ATTESTATION_RESP_PREFIX_LEN + TEST_QUOTE_MLDSA_LEN - 1];
+        assert_eq!(
+            block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)),
+            Err(errors::BUFFER_TOO_SMALL)
+        );
+    }
 }

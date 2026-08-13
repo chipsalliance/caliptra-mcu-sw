@@ -77,6 +77,7 @@ impl Args {
         }
         if let Some(algorithm) = self.algorithm {
             config.export_attested_csr.algorithm = algorithm;
+            config.get_attestation.algorithm = algorithm;
         }
         if let Some(unlock_level) = self.unlock_level {
             config.debug_unlock.unlock_level = unlock_level;

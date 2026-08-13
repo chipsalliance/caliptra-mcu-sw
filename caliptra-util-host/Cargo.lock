@@ -439,21 +439,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
-name = "caliptra-api"
-version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=85981e1bc28662a9a9fa5040cbb38ac46e548217#85981e1bc28662a9a9fa5040cbb38ac46e548217"
-dependencies = [
- "bitflags 2.11.1",
- "caliptra-api-types",
- "caliptra-emu-types",
- "caliptra-error",
- "caliptra-image-types",
- "caliptra-registers",
- "caliptra-ureg",
- "zerocopy",
-]
-
-[[package]]
 name = "caliptra-api-types"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=85981e1bc28662a9a9fa5040cbb38ac46e548217#85981e1bc28662a9a9fa5040cbb38ac46e548217"
@@ -481,11 +466,6 @@ dependencies = [
  "caliptra-registers",
  "ufmt",
 ]
-
-[[package]]
-name = "caliptra-emu-types"
-version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=85981e1bc28662a9a9fa5040cbb38ac46e548217#85981e1bc28662a9a9fa5040cbb38ac46e548217"
 
 [[package]]
 name = "caliptra-error"
@@ -532,6 +512,7 @@ dependencies = [
  "clap 4.6.1",
  "ecdsa",
  "fips204",
+ "getrandom 0.2.17",
  "p384",
  "sha2",
  "zerocopy",
@@ -649,7 +630,6 @@ name = "caliptra-mcu-mctp-vdm-common"
 version = "0.1.0"
 dependencies = [
  "bitfield",
- "caliptra-api",
  "zerocopy",
 ]
 

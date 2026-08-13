@@ -7,7 +7,7 @@ use caliptra_api::{
     mailbox::{CapabilitiesResp, CommandId, MailboxReqHeader},
     SocManager,
 };
-use caliptra_mcu_config::capabilities::McuRuntimeCapabilities;
+use caliptra_mcu_config::capabilities::{ExternalCommandCapabilities, McuRuntimeCapabilities};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
     DeviceCapsReq, FirmwareVersionReq, GetAuthCmdChallengeReq, McuFeProgReq,
@@ -125,7 +125,10 @@ fn test_device_capabilities_cmd() -> Result<()> {
         u32::from_be_bytes(resp.caps[20..24].try_into().unwrap()),
         McuRuntimeCapabilities::MCI_MAILBOX_SERVICE.bits()
     );
-    assert_eq!(u32::from_be_bytes(resp.caps[24..28].try_into().unwrap()), 0);
+    assert_eq!(
+        u32::from_be_bytes(resp.caps[24..28].try_into().unwrap()),
+        ExternalCommandCapabilities::GET_ATTESTATION.bits()
+    );
     assert_eq!(u32::from_be_bytes(resp.caps[28..32].try_into().unwrap()), 0);
     assert_eq!(&resp.caps[32..], &[0; 4]);
     Ok(())

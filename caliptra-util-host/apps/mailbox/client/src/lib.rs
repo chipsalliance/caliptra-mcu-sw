@@ -26,6 +26,9 @@ pub use caliptra_mcu_command_auth_challenge_signer::{
 pub use caliptra_mcu_core_util_host_mailbox_test_config::*;
 
 use anyhow::Result;
+use caliptra_mcu_core_util_host_command_types::attestation::{
+    AsymAlgo, EvidenceFormat, GetAttestationResponse, PkiEntitySlot,
+};
 use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
 use caliptra_mcu_core_util_host_command_types::crypto_aes::{
     AesMode, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE,
@@ -52,6 +55,9 @@ use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse,
 };
 use caliptra_mcu_core_util_host_transport::Mailbox;
+use caliptra_util_host_commands::api::attestation::{
+    caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
+};
 use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
@@ -870,6 +876,75 @@ impl<'a> MailboxClient<'a> {
             Err(e) => {
                 eprintln!("✗ ExportAttestedCsr failed: {:?}", e);
                 Err(anyhow::anyhow!("ExportAttestedCsr command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Retrieve signed attestation evidence from the device
+    pub fn get_attestation(
+        &mut self,
+        format: EvidenceFormat,
+        algorithm: AsymAlgo,
+        entity: PkiEntitySlot,
+        nonce: &[u8; 32],
+    ) -> Result<GetAttestationResponse> {
+        println!("Executing GetAttestation command...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_get_attestation(&mut session, format, algorithm, entity, nonce) {
+            Ok(response) => {
+                println!("✓ GetAttestation succeeded!");
+                println!(
+                    "  format: {}, evidence length: {} bytes",
+                    format.name(),
+                    response.data_len
+                );
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ GetAttestation failed: {:?}", e);
+                Err(anyhow::anyhow!("GetAttestation command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Query which evidence formats the device supports
+    ///
+    /// The returned response carries a supported-format bitmap, decodable with
+    /// `supported_formats()`.
+    pub fn get_attestation_formats(&mut self) -> Result<GetAttestationResponse> {
+        println!("Executing GetAttestation format query...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_get_attestation_formats(&mut session) {
+            Ok(response) => {
+                println!("✓ GetAttestation format query succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ GetAttestation format query failed: {:?}", e);
+                Err(anyhow::anyhow!(
+                    "GetAttestation format query failed: {:?}",
+                    e
+                ))
             }
         }
     }

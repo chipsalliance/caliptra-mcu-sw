@@ -46,6 +46,15 @@ impl mcu_caliptra_api_lite::ApiAlloc for McuMboxScratchAlloc {
 }
 
 #[cfg(feature = "mcu-mbox-service")]
+impl mcu_caliptra_api_lite::ApiAllocPool for McuMboxScratchAlloc {
+    type Pool = BitmapAllocator;
+
+    fn pool(&self) -> &Self::Pool {
+        self.0
+    }
+}
+
+#[cfg(feature = "mcu-mbox-service")]
 impl McuMboxScratch for McuMboxScratchAlloc {
     fn shrink(buf: &mut BitmapBytes<'_>, new_len: usize) -> mcu_error::McuResult<()> {
         buf.shrink(new_len)

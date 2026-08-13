@@ -3,9 +3,11 @@
 pub(crate) mod debug_log;
 pub(crate) mod device_ops;
 
+use caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
 use caliptra_mcu_common_commands::{
-    CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, FirmwareVersion, GetLogResult,
+    AsymAlgo, CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
+    DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult, PkiEntitySlot,
+    ATTESTATION_NONCE_LEN,
 };
 use caliptra_mcu_config::capabilities::{
     encode_capabilities, AuthorizedSubcommandCapabilities, ExternalCommandCapabilities,
@@ -13,6 +15,8 @@ use caliptra_mcu_config::capabilities::{
 };
 use caliptra_mcu_config::version::get_mcu_runtime_version;
 use mcu_caliptra_api_lite::{core_capabilities, core_firmware_version, ApiAlloc};
+#[cfg(feature = "pcr-quote")]
+use mcu_caliptra_api_lite::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
 
 pub struct CaliptraCmdBackend;
 
@@ -59,8 +63,79 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
             | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
             | ExternalCommandCapabilities::AUTHORIZED_COMMAND;
     }
+    // GET_ATTESTATION is transport-agnostic: it is reachable over the SPDM VDM
+    // transport and the MCU mailbox, so advertise it whenever either responder
+    // is built and this build can produce at least one evidence format.
+    if (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+        && SUPPORTED_EVIDENCE_FORMATS != 0
+    {
+        capabilities |= ExternalCommandCapabilities::GET_ATTESTATION;
+    }
     capabilities
 }
+
+/// Upper bound, in bytes, on evidence for one `(format, algorithm)` pair; `0`
+/// when this build cannot produce it.
+///
+/// Every bound comes from the generator that would actually run, so the
+/// transports' buffer reservations follow automatically when a generator is
+/// enabled, disabled, or resized. Nothing here is an independently declared
+/// number.
+const fn evidence_len(format: EvidenceFormat, algorithm: AsymAlgo) -> usize {
+    match (format, algorithm) {
+        // The EAT signer emits only ES384 today, so there is no ML-DSA EAT
+        // length to report yet.
+        (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => SIGNED_OCP_EAT_MAX_SIZE,
+        #[cfg(feature = "pcr-quote")]
+        (EvidenceFormat::PcrQuote, AsymAlgo::EccP384) => PCR_QUOTE_ECC384_BUF_LEN,
+        #[cfg(feature = "pcr-quote")]
+        (EvidenceFormat::PcrQuote, AsymAlgo::Mldsa87) => PCR_QUOTE_MLDSA87_BUF_LEN,
+        _ => 0,
+    }
+}
+
+/// Every `(format, algorithm)` pair `GET_ATTESTATION` can name, in bitmap and
+/// worst-case-size order. Keeping one list means the bitmap, the worst-case
+/// bound, and the per-pair lookup cannot drift apart.
+const EVIDENCE_PAIRS: [(EvidenceFormat, AsymAlgo); 4] = [
+    (EvidenceFormat::OcpEat, AsymAlgo::EccP384),
+    (EvidenceFormat::OcpEat, AsymAlgo::Mldsa87),
+    (EvidenceFormat::PcrQuote, AsymAlgo::EccP384),
+    (EvidenceFormat::PcrQuote, AsymAlgo::Mldsa87),
+];
+
+/// Bitmap of formats this build can produce, returned for a format-discovery
+/// query. A format is advertised when at least one algorithm works for it.
+const SUPPORTED_EVIDENCE_FORMATS: u32 = {
+    let mut bits = 0u32;
+    let mut i = 0;
+    while i < EVIDENCE_PAIRS.len() {
+        let (format, algorithm) = EVIDENCE_PAIRS[i];
+        if evidence_len(format, algorithm) != 0 {
+            bits |= format.bit();
+        }
+        i += 1;
+    }
+    bits
+};
+
+/// Worst case across every enabled generator. Transports use this to size
+/// static contracts (the VDM large-response capacity and the mailbox response
+/// allocation); the per-request path still uses the per-pair value so a small
+/// format never reserves the large one's buffer.
+const MAX_ATTESTATION_EVIDENCE_LEN: usize = {
+    let mut max = 0;
+    let mut i = 0;
+    while i < EVIDENCE_PAIRS.len() {
+        let (format, algorithm) = EVIDENCE_PAIRS[i];
+        let len = evidence_len(format, algorithm);
+        if len > max {
+            max = len;
+        }
+        i += 1;
+    }
+    max
+};
 
 fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
     if cfg!(feature = "spdm") {
@@ -182,6 +257,25 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         csr_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         device_ops::export_idevid_csr(algorithm, csr_buf).await
+    }
+
+    const SUPPORTED_EVIDENCE_FORMATS: u32 = SUPPORTED_EVIDENCE_FORMATS;
+    const MAX_ATTESTATION_EVIDENCE_LEN: usize = MAX_ATTESTATION_EVIDENCE_LEN;
+
+    fn attestation_evidence_len(format: EvidenceFormat, algorithm: AsymAlgo) -> usize {
+        evidence_len(format, algorithm)
+    }
+
+    async fn get_attestation<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        format: EvidenceFormat,
+        algorithm: AsymAlgo,
+        entity: PkiEntitySlot,
+        nonce: &[u8; ATTESTATION_NONCE_LEN],
+        out: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        device_ops::get_attestation(alloc, format, algorithm, entity, nonce, out).await
     }
 
     /// Drain entries of `log_type` from the backing store.
@@ -319,10 +413,10 @@ mod tests {
             runtime.contains(McuRuntimeCapabilities::DOE),
             cfg!(feature = "doe")
         );
-        assert_eq!(commands.bits() & command_capability_for_test(0x05), 0);
-    }
-
-    const fn command_capability_for_test(command_code: u8) -> u32 {
-        1u32 << (command_code as u32 - 1)
+        assert_eq!(
+            commands.contains(ExternalCommandCapabilities::GET_ATTESTATION),
+            (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+                && SUPPORTED_EVIDENCE_FORMATS != 0
+        );
     }
 }

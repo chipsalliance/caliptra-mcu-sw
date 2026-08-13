@@ -20,6 +20,8 @@ pub struct TestConfig {
     #[serde(default)]
     pub export_attested_csr: ExportAttestedCsrConfig,
     #[serde(default)]
+    pub get_attestation: GetAttestationConfig,
+    #[serde(default)]
     pub debug_unlock: DebugUnlockConfig,
     #[serde(default)]
     pub authorized_commands: AuthorizedCommandsConfig,
@@ -89,6 +91,60 @@ impl Default for ExportAttestedCsrConfig {
         Self {
             key_ids: default_key_ids(),
             algorithm: default_algorithm(),
+        }
+    }
+}
+
+/// Configuration for the `GET_ATTESTATION` validation.
+///
+/// The set of formats to exercise is not configured here: the validator asks
+/// the device for its supported-format bitmap and drives that, so the test
+/// tracks the firmware's build-time feature set automatically.
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetAttestationConfig {
+    #[serde(default = "default_algorithm")]
+    pub algorithm: u32,
+    /// 32-byte freshness nonce, hex-encoded. Randomly generated when unset.
+    #[serde(default)]
+    pub nonce: Option<String>,
+}
+
+impl Default for GetAttestationConfig {
+    fn default() -> Self {
+        Self {
+            algorithm: default_algorithm(),
+            nonce: None,
+        }
+    }
+}
+
+impl GetAttestationConfig {
+    /// Returns the configured nonce, or a freshly generated random one.
+    ///
+    /// A nonce is always sent; the only choice is whether it is pinned. It is
+    /// random by default because a hardcoded value makes the request identical
+    /// on every run, which a replayed or cached response would satisfy. Pin it
+    /// in config only to reproduce a specific failure.
+    pub fn nonce_bytes(&self) -> anyhow::Result<[u8; 32]> {
+        match &self.nonce {
+            None => {
+                let mut out = [0u8; 32];
+                getrandom::getrandom(&mut out)
+                    .map_err(|e| anyhow::anyhow!("failed to generate a random nonce: {e}"))?;
+                Ok(out)
+            }
+            Some(hex) => {
+                let raw = hex.trim().trim_start_matches("0x");
+                if raw.len() != 64 {
+                    anyhow::bail!("get_attestation.nonce must be 64 hex characters (32 bytes)");
+                }
+                let mut out = [0u8; 32];
+                for (i, byte) in out.iter_mut().enumerate() {
+                    *byte = u8::from_str_radix(&raw[i * 2..i * 2 + 2], 16)
+                        .map_err(|_| anyhow::anyhow!("get_attestation.nonce is not valid hex"))?;
+                }
+                Ok(out)
+            }
         }
     }
 }
