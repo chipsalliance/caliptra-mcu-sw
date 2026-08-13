@@ -2,12 +2,28 @@
 
 use crate::test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams};
 use anyhow::Result;
+use caliptra_api::{
+    calc_checksum,
+    mailbox::{CapabilitiesResp, CommandId, MailboxReqHeader},
+    SocManager,
+};
+use caliptra_mcu_config::capabilities::McuRuntimeCapabilities;
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    DpeSignerContextCertReq, FirmwareVersionReq, GetAuthCmdChallengeReq, GetDpeCertChainReq,
-    McuFeProgReq,
+    DeviceCapsReq, DpeSignerContextCertReq, FirmwareVersionReq, GetAuthCmdChallengeReq,
+    GetDpeCertChainReq, McuFeProgReq,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
+use zerocopy::{FromBytes, IntoBytes};
+
+fn semantic_version(packed_version: u32) -> String {
+    format!(
+        "{}.{}.{}",
+        (packed_version >> 24) & 0xff,
+        (packed_version >> 16) & 0xff,
+        packed_version & 0xffff
+    )
+}
 
 #[test]
 fn test_invalid_mailbox_cmd() -> Result<()> {
@@ -47,14 +63,72 @@ fn test_firmware_version_cmd() -> Result<()> {
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
     });
 
-    let cmd = FirmwareVersionReq::default();
-    let resp = hw.mailbox_execute_req(cmd)?;
+    let caliptra_runtime_version = hw
+        .caliptra_soc_manager()
+        .soc_ifc()
+        .cptra_fw_rev_id()
+        .at(1)
+        .read();
+    let expected_versions = [
+        semantic_version(caliptra_runtime_version),
+        semantic_version(caliptra_mcu_config::version::get_mcu_runtime_version()),
+    ];
 
-    let expected_version = caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[0];
-    assert_eq!(resp.hdr.data_len, expected_version.len() as u32);
-    let resp_version_str = std::str::from_utf8(&resp.version[..resp.hdr.data_len as usize])
-        .expect("Version string is not valid UTF-8");
-    assert_eq!(resp_version_str, expected_version);
+    for (index, expected_version) in expected_versions.iter().enumerate() {
+        let cmd = FirmwareVersionReq {
+            index: index as u32,
+            ..Default::default()
+        };
+        let resp = hw.mailbox_execute_req(cmd)?;
+
+        assert_eq!(resp.hdr.data_len, expected_version.len() as u32);
+        let resp_version_str = std::str::from_utf8(&resp.version[..resp.hdr.data_len as usize])
+            .expect("Version string is not valid UTF-8");
+        assert_eq!(resp_version_str, expected_version);
+    }
+
+    for index in [2, 99] {
+        let cmd = FirmwareVersionReq {
+            index,
+            ..Default::default()
+        };
+        assert!(hw.mailbox_execute_req(cmd).is_err());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_device_capabilities_cmd() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let core_req = MailboxReqHeader {
+        chksum: calc_checksum(CommandId::CAPABILITIES.into(), &[]),
+    };
+    let core_resp = hw
+        .caliptra_mailbox_execute(CommandId::CAPABILITIES.into(), core_req.as_bytes())?
+        .expect("Core CAPABILITIES returned no response");
+    let core_caps = CapabilitiesResp::read_from_bytes(&core_resp)
+        .expect("invalid Core CAPABILITIES response")
+        .capabilities;
+
+    let resp = hw.mailbox_execute_req(DeviceCapsReq::default())?;
+    assert_eq!(&resp.caps[..16], &core_caps);
+    assert_eq!(u32::from_be_bytes(resp.caps[16..20].try_into().unwrap()), 0);
+    assert_eq!(
+        u32::from_be_bytes(resp.caps[20..24].try_into().unwrap()),
+        McuRuntimeCapabilities::MCI_MAILBOX_SERVICE.bits()
+    );
+    assert_eq!(u32::from_be_bytes(resp.caps[24..28].try_into().unwrap()), 0);
+    assert_eq!(u32::from_be_bytes(resp.caps[28..32].try_into().unwrap()), 0);
+    assert_eq!(&resp.caps[32..], &[0; 4]);
     Ok(())
 }
 
@@ -74,7 +148,10 @@ fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
     let cmd = GetAuthCmdChallengeReq::default();
     let resp = hw.mailbox_execute_req(cmd)?;
 
-    assert_eq!(resp.challenge.len(), 32);
+    assert_eq!(
+        resp.challenge.len(),
+        caliptra_mcu_command_auth_challenge_signer::AUTH_CMD_NONCE_LEN
+    );
     assert!(
         resp.challenge
             .iter()

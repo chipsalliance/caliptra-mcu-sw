@@ -61,14 +61,21 @@ defmt = { workspace = true, optional = true }
 
 [build-dependencies]
 caliptra-mcu-measurement-api.workspace = true
-caliptra-ocp-eat.workspace = true
 serde.workspace = true
 toml.workspace = true
 
 [features]
 default = ["all-features"]
 # Caliptra MCU features
-all-features = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe", "userspace-log"]
+all-features = [
+  "spdm",
+  "streaming-boot",
+  "flash-boot",
+  "firmware-update",
+  "doe",
+  "userspace-log",
+  "mctp-vdm-service",
+]
 spdm = ["mcu-mbox-service"]
 streaming-boot = []
 flash-boot = []
@@ -80,7 +87,6 @@ mcu-mbox-service = []
 # rewired to track the rotated handle.
 measurement-boot-init = []
 mctp-vdm-service = []
-mcu-mbox-test-handlers = ["mcu-mbox-service"]
 debug = []
 hw-2-1 = []
 ocp-lock = [
@@ -89,7 +95,7 @@ ocp-lock = [
     "caliptra-mcu-mbox-lib/ocp-lock",
     "caliptra-mcu-common-commands/ocp-lock",
 ]
-doe = []
+doe = ["spdm"]
 # ocp-nvme-profile: the reference app's OCP Datacenter NVMe SSD (OCP 2.7
 # SPDM-14) demonstration profile. Bundles the two settings that profile needs:
 #  - configure the DOE responder for a 4 KiB DataTransferSize and enforce that
@@ -142,6 +148,7 @@ test-pldm-request-response = []
 # --- Test features: kernel-only ---
 test-get-alarm-expired = []
 test-exit-immediately = []
+test-xtask-runtime = []
 test-i3c-simple = []
 test-i3c-constant-writes = []
 test-flash-ctrl-init = []
@@ -172,9 +179,9 @@ test-streaming-boot-flash-write-back = ["streaming-boot", "firmware-update"]
 test-mcu-mbox-fips-periodic = ["mcu-mbox-service", "caliptra-mcu-mbox-lib/periodic-fips-self-test"]
 test-mctp-vdm-cmds = ["mctp-vdm-service"]
 test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
-test-caliptra-util-host-validator = ["mcu-mbox-test-handlers"]
-test-mcu-mbox-cmds = ["mcu-mbox-test-handlers"]
-test-mcu-mbox-fips-self-test = ["mcu-mbox-test-handlers"]
+test-caliptra-util-host-validator = ["mcu-mbox-service"]
+test-mcu-mbox-cmds = ["mcu-mbox-service"]
+test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
 test-ocp-lock = ["ocp-lock"]
 test-handoff = ["caliptra-mcu-libapi-caliptra/ocp-lock"]
 test-pldm-discovery = []
@@ -183,7 +190,7 @@ test-pldm-fw-update-e2e = []
 test-pldm-streaming-boot = ["streaming-boot"]
 test-caliptra-util-host-spdm-vdm-validator = ["spdm"]
 test-mctp-spdm-attestation = ["spdm"]
-test-mctp-spdm-attestation-pcr-quote = ["spdm"]
+test-mctp-spdm-attestation-pcr-quote = ["spdm", "caliptra-mcu-spdm-pal/pcr-quote"]
 test-mctp-spdm-responder-conformance = ["spdm"]
 # Test-only SPDM SET_CERTIFICATE path. Enables flash-backed certificate
 # installation without production authorization/key-binding.

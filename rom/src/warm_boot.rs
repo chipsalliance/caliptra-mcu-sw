@@ -39,6 +39,27 @@ impl BootFlow for WarmBoot {
         let soc = &env.soc;
         let straps = env.straps.deref();
 
+        caliptra_mcu_romtime::println!("[mcu-rom] Initializing I3C");
+        if straps.active_i3c == 1 {
+            caliptra_mcu_romtime::println!("[mcu-rom] Initializing I3C1 (active)");
+            env.i3c1.configure(crate::I3cConfig {
+                static_addr: straps.i3c1_static_addr,
+                recovery_enabled: false,
+                dcr: crate::i3c::MCTP_DCR,
+                timings: params.i3c1_timings.unwrap_or_default(),
+            });
+            env.i3c1.disable_recovery();
+        } else {
+            env.i3c.configure(crate::I3cConfig {
+                static_addr: straps.i3c_static_addr,
+                recovery_enabled: false,
+                dcr: crate::i3c::MCTP_DCR,
+                timings: params.i3c_timings.unwrap_or_default(),
+            });
+            env.i3c.disable_recovery();
+        }
+        mci.set_flow_checkpoint(McuRomBootStatus::I3cInitialized.into());
+
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra boot go");
         crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());
         mci.caliptra_boot_go();

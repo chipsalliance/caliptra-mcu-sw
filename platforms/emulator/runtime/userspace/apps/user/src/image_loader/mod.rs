@@ -67,6 +67,11 @@ use core::ptr::NonNull;
 
 #[allow(unused)]
 use crate::EXECUTOR;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+#[allow(unused)]
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+#[allow(unused)]
+use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 #[allow(unused)]
 #[cfg(not(any(
     feature = "streaming-boot",
@@ -75,7 +80,7 @@ use crate::EXECUTOR;
     feature = "test-pldm-fw-update-e2e",
     feature = "test-pldm-streaming-boot"
 )))]
-use caliptra_mcu_libapi_caliptra::image_loading::{
+use mcu_caliptra_api_lite::image_loader::{
     dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader,
 };
 #[allow(unused)]
@@ -86,15 +91,10 @@ use caliptra_mcu_libapi_caliptra::image_loading::{
     feature = "test-pldm-fw-update-e2e",
     feature = "test-pldm-streaming-boot"
 ))]
-use caliptra_mcu_libapi_caliptra::image_loading::{
+use mcu_caliptra_api_lite::image_loader::{
     dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams,
     PldmImageLoader,
 };
-use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-#[allow(unused)]
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-#[allow(unused)]
-use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 #[allow(unused)]
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -220,6 +220,10 @@ async fn image_loading<D: DMAMapping>(
         pldm_image_loader.wait_for_service_stopped().await;
         // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
         activate_soc_images(soc_image_load_list).await?;
+        #[cfg(feature = "test-xtask-runtime")]
+        {
+            System::exit(0);
+        }
     }
     #[cfg(feature = "flash-boot")]
     {
@@ -353,6 +357,10 @@ async fn load_soc_images(
 
 #[allow(dead_code)]
 async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {
+    if fw_id_list.is_empty() {
+        return Ok(());
+    }
+
     let fw_ids = {
         let mut ids = [0u32; ActivateFirmwareReq::MAX_FW_ID_COUNT];
         for (i, fw_id) in fw_id_list.iter().enumerate() {

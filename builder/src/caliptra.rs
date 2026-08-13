@@ -3,6 +3,7 @@
 //! Wrappers around the Caliptra builder library to make it easier to build
 //! the ROM, firwmare, and SoC manifest.
 
+use crate::offline_signing::{create_signing_request, SigningRequestJson};
 use crate::target_dir;
 use anyhow::{bail, Context, Result};
 use caliptra_auth_man_gen::{
@@ -69,6 +70,25 @@ impl ImageGeneratorExecutable for RawExecutable {
 pub struct AuthManifestOwnerConfig {
     pub pub_keys: AuthManifestPubKeysConfig,
     pub priv_keys: Option<AuthManifestPrivKeysConfig>,
+}
+
+/// Paths to public key files used for generating unsigned authorization manifests.
+#[derive(Default, Clone, Debug)]
+pub struct AuthManifestPubKeysPaths<'a> {
+    pub vendor_fw_ecc_pub_key: Option<&'a Path>,
+    pub vendor_fw_lms_pub_key: Option<&'a Path>,
+    pub vendor_fw_mldsa_pub_key: Option<&'a Path>,
+    pub vendor_man_ecc_pub_key: Option<&'a Path>,
+    pub vendor_man_lms_pub_key: Option<&'a Path>,
+    pub vendor_man_mldsa_pub_key: Option<&'a Path>,
+    pub owner_fw_ecc_pub_key: Option<&'a Path>,
+    pub owner_fw_lms_pub_key: Option<&'a Path>,
+    pub owner_fw_mldsa_pub_key: Option<&'a Path>,
+    pub owner_man_ecc_pub_key: Option<&'a Path>,
+    pub owner_man_lms_pub_key: Option<&'a Path>,
+    pub owner_man_mldsa_pub_key: Option<&'a Path>,
+    /// Optional PQC key type for the manifest (defaults to LMS if not specified).
+    pub pqc_key_type: Option<FwVerificationPqcKeyType>,
 }
 
 #[derive(Clone)]
@@ -920,11 +940,187 @@ fn main() -> Result<()> {
         let gen = AuthManifestGenerator::new(Crypto::default());
         gen.generate(&gen_config).unwrap()
     }
+
+    /// Generates an unsigned authorization manifest and exports a `SigningRequestJson` for offline signing.
+    pub fn get_unsigned_auth_manifest(
+        &mut self,
+        name: Option<&str>,
+        pub_key_paths: Option<&AuthManifestPubKeysPaths>,
+    ) -> Result<(PathBuf, SigningRequestJson)> {
+        if self.mcu_firmware.is_none() {
+            bail!("MCU firmware is required to build auth manifest");
+        }
+        let mcu_fw_metadata =
+            self.get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
+        let soc_images_metadata = self.get_soc_images_metadata()?;
+        let mut metadata = vec![mcu_fw_metadata];
+        metadata.extend(soc_images_metadata);
+
+        let manifest = Self::create_unsigned_auth_manifest_with_metadata(
+            metadata,
+            self.soc_manifest_svn.unwrap_or(0),
+            pub_key_paths,
+        )?;
+
+        let signing_request = create_signing_request(&manifest)?;
+
+        let path = name
+            .map(PathBuf::from)
+            .unwrap_or_else(|| target_dir().join("soc-manifest"));
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, manifest.as_bytes())?;
+        self.write_attestation_manifest_config(self.soc_images.as_deref().unwrap_or(&[]))?;
+        self.soc_manifest = Some(path.clone());
+
+        Ok((path, signing_request))
+    }
+
+    /// Creates an unsigned `AuthorizationManifest` with the specified image metadata list and public key paths.
+    fn create_unsigned_auth_manifest_with_metadata(
+        image_metadata_list: Vec<AuthManifestImageMetadata>,
+        svn: u32,
+        pub_key_paths: Option<&AuthManifestPubKeysPaths>,
+    ) -> Result<AuthorizationManifest> {
+        use zerocopy::FromBytes;
+
+        let empty_paths = AuthManifestPubKeysPaths::default();
+        let keys = pub_key_paths.unwrap_or(&empty_paths);
+
+        let vendor_fw_ecc_pub = if let Some(path) = keys.vendor_fw_ecc_pub_key {
+            Crypto::ecc_pub_key_from_pem(path)?
+        } else {
+            VENDOR_ECC_KEY_0_PUBLIC
+        };
+        let vendor_fw_lms_pub = if let Some(path) = keys.vendor_fw_lms_pub_key {
+            caliptra_image_types::ImageLmsPublicKey::read_from_bytes(&std::fs::read(path)?)
+                .map_err(|_| {
+                    anyhow::anyhow!("Failed to parse LMS public key from {}", path.display())
+                })?
+        } else {
+            VENDOR_LMS_KEY_0_PUBLIC
+        };
+        let vendor_fw_mldsa_pub = if let Some(path) = keys.vendor_fw_mldsa_pub_key {
+            Crypto::mldsa_pub_key_from_file(path)?
+        } else {
+            VENDOR_MLDSA_KEY_0_PUBLIC
+        };
+
+        let vendor_man_ecc_pub = if let Some(path) = keys.vendor_man_ecc_pub_key {
+            Crypto::ecc_pub_key_from_pem(path)?
+        } else {
+            VENDOR_ECC_KEY_1_PUBLIC
+        };
+        let vendor_man_lms_pub = if let Some(path) = keys.vendor_man_lms_pub_key {
+            caliptra_image_types::ImageLmsPublicKey::read_from_bytes(&std::fs::read(path)?)
+                .map_err(|_| {
+                    anyhow::anyhow!("Failed to parse LMS public key from {}", path.display())
+                })?
+        } else {
+            VENDOR_LMS_KEY_1_PUBLIC
+        };
+        let vendor_man_mldsa_pub = if let Some(path) = keys.vendor_man_mldsa_pub_key {
+            Crypto::mldsa_pub_key_from_file(path)?
+        } else {
+            VENDOR_MLDSA_KEY_0_PUBLIC
+        };
+
+        let owner_fw_ecc_pub = if let Some(path) = keys.owner_fw_ecc_pub_key {
+            Crypto::ecc_pub_key_from_pem(path)?
+        } else {
+            OWNER_ECC_KEY_PUBLIC
+        };
+        let owner_fw_lms_pub = if let Some(path) = keys.owner_fw_lms_pub_key {
+            caliptra_image_types::ImageLmsPublicKey::read_from_bytes(&std::fs::read(path)?)
+                .map_err(|_| {
+                    anyhow::anyhow!("Failed to parse LMS public key from {}", path.display())
+                })?
+        } else {
+            OWNER_LMS_KEY_PUBLIC
+        };
+        let owner_fw_mldsa_pub = if let Some(path) = keys.owner_fw_mldsa_pub_key {
+            Crypto::mldsa_pub_key_from_file(path)?
+        } else {
+            OWNER_MLDSA_KEY_PUBLIC
+        };
+
+        let owner_man_ecc_pub = if let Some(path) = keys.owner_man_ecc_pub_key {
+            Crypto::ecc_pub_key_from_pem(path)?
+        } else {
+            OWNER_ECC_KEY_PUBLIC
+        };
+        let owner_man_lms_pub = if let Some(path) = keys.owner_man_lms_pub_key {
+            caliptra_image_types::ImageLmsPublicKey::read_from_bytes(&std::fs::read(path)?)
+                .map_err(|_| {
+                    anyhow::anyhow!("Failed to parse LMS public key from {}", path.display())
+                })?
+        } else {
+            OWNER_LMS_KEY_PUBLIC
+        };
+        let owner_man_mldsa_pub = if let Some(path) = keys.owner_man_mldsa_pub_key {
+            Crypto::mldsa_pub_key_from_file(path)?
+        } else {
+            OWNER_MLDSA_KEY_PUBLIC
+        };
+
+        let vendor_fw_key_info = AuthManifestGeneratorKeyConfig {
+            pub_keys: AuthManifestPubKeysConfig {
+                ecc_pub_key: vendor_fw_ecc_pub,
+                lms_pub_key: vendor_fw_lms_pub,
+                mldsa_pub_key: vendor_fw_mldsa_pub,
+            },
+            priv_keys: None,
+        };
+
+        let vendor_man_key_info = AuthManifestGeneratorKeyConfig {
+            pub_keys: AuthManifestPubKeysConfig {
+                ecc_pub_key: vendor_man_ecc_pub,
+                lms_pub_key: vendor_man_lms_pub,
+                mldsa_pub_key: vendor_man_mldsa_pub,
+            },
+            priv_keys: None,
+        };
+
+        let owner_fw_key_info = AuthManifestGeneratorKeyConfig {
+            pub_keys: AuthManifestPubKeysConfig {
+                ecc_pub_key: owner_fw_ecc_pub,
+                lms_pub_key: owner_fw_lms_pub,
+                mldsa_pub_key: owner_fw_mldsa_pub,
+            },
+            priv_keys: None,
+        };
+
+        let owner_man_key_info = AuthManifestGeneratorKeyConfig {
+            pub_keys: AuthManifestPubKeysConfig {
+                ecc_pub_key: owner_man_ecc_pub,
+                lms_pub_key: owner_man_lms_pub,
+                mldsa_pub_key: owner_man_mldsa_pub,
+            },
+            priv_keys: None,
+        };
+
+        let gen_config = AuthManifestGeneratorConfig {
+            vendor_fw_key_info: Some(vendor_fw_key_info),
+            vendor_man_key_info: Some(vendor_man_key_info),
+            owner_fw_key_info: Some(owner_fw_key_info),
+            owner_man_key_info: Some(owner_man_key_info),
+            image_metadata_list,
+            version: 1,
+            flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
+            pqc_key_type: keys.pqc_key_type.unwrap_or(FwVerificationPqcKeyType::LMS),
+            svn,
+        };
+
+        let gen = AuthManifestGenerator::new(Crypto::default());
+        gen.generate(&gen_config)
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct ImageCfg {
     pub path: PathBuf,
+    pub network_filename: Option<String>,
     pub load_addr: u64,
     pub staging_addr: u64,
     pub image_id: u32,
@@ -938,6 +1134,7 @@ impl Default for ImageCfg {
     fn default() -> Self {
         ImageCfg {
             path: PathBuf::new(),
+            network_filename: None,
             load_addr: 0,
             staging_addr: 0,
             image_id: 0,
@@ -956,13 +1153,17 @@ impl FromStr for ImageCfg {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split(',').collect();
-        if !(7..=9).contains(&parts.len()) {
+        if !(7..=10).contains(&parts.len()) {
             return Err(
-                "Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>]]".into(),
+                "Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]".into(),
             );
         }
 
         let path = PathBuf::from(parts[0]);
+        let network_filename = parts
+            .get(9)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
         let load_addr = u64::from_str_radix(parts[1].trim_start_matches("0x"), 16)
             .map_err(|e: ParseIntError| e.to_string())?;
         let staging_addr = u64::from_str_radix(parts[2].trim_start_matches("0x"), 16)
@@ -984,6 +1185,7 @@ impl FromStr for ImageCfg {
 
         Ok(ImageCfg {
             path,
+            network_filename,
             load_addr,
             staging_addr,
             image_id,
@@ -993,5 +1195,87 @@ impl FromStr for ImageCfg {
             is_ak_target,
             feature,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_image_cfg_optional_network_filename() {
+        let config: ImageCfg =
+            "image.bin,0x80000000,0x60000000,2,3,4,test-feature,true,false,tftp/image.bin"
+                .parse()
+                .unwrap();
+        assert_eq!(config.network_filename.as_deref(), Some("tftp/image.bin"));
+
+        let config: ImageCfg = "image.bin,0x80000000,0x60000000,2,3,4,test-feature"
+            .parse()
+            .unwrap();
+        assert_eq!(config.network_filename, None);
+    }
+
+    #[test]
+    fn test_create_unsigned_auth_manifest_and_request() {
+        let metadata = vec![AuthManifestImageMetadata {
+            fw_id: 1,
+            component_id: 2,
+            ..Default::default()
+        }];
+
+        let manifest =
+            CaliptraBuilder::create_unsigned_auth_manifest_with_metadata(metadata, 10, None)
+                .unwrap();
+
+        assert_eq!(manifest.preamble.version, 1);
+        assert_eq!(manifest.preamble.svn, 10);
+        assert_eq!(
+            manifest.preamble.vendor_pub_keys_signatures.ecc_sig.r,
+            [0u32; 12]
+        );
+        assert_eq!(
+            manifest.preamble.owner_pub_keys_signatures.ecc_sig.r,
+            [0u32; 12]
+        );
+
+        let req = create_signing_request(&manifest).unwrap();
+        assert_eq!(req.version, 1);
+        assert_eq!(
+            req.requests.vendor_pub_keys_signatures.digest_sha384.len(),
+            96
+        );
+        assert_eq!(
+            req.requests.owner_pub_keys_signatures.digest_sha384.len(),
+            96
+        );
+        assert_eq!(req.requests.vendor_imc_signatures.digest_sha384.len(), 96);
+        assert_eq!(req.requests.owner_imc_signatures.digest_sha384.len(), 96);
+    }
+
+    #[test]
+    fn test_create_unsigned_auth_manifest_mldsa() {
+        let metadata = vec![AuthManifestImageMetadata {
+            fw_id: 1,
+            component_id: 2,
+            ..Default::default()
+        }];
+
+        let key_paths = AuthManifestPubKeysPaths {
+            pqc_key_type: Some(FwVerificationPqcKeyType::MLDSA),
+            ..Default::default()
+        };
+
+        let manifest = CaliptraBuilder::create_unsigned_auth_manifest_with_metadata(
+            metadata,
+            1,
+            Some(&key_paths),
+        )
+        .unwrap();
+
+        assert_eq!(manifest.preamble.version, 1);
+
+        let req = create_signing_request(&manifest).unwrap();
+        assert_eq!(req.version, 1);
     }
 }

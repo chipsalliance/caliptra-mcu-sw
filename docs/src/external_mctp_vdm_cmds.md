@@ -25,8 +25,10 @@ The IANA Enterprise ID is a 32-bit unsigned integer assigned by IANA. The messag
 This section describes the MCTP message format used to support Caliptra subsystem external command protocol. The request/response message body encapsulates the Vendor Defined MCTP message within the MCTP transport. Details of MCTP message encapsulation can be found in the MCTP Base Specification. The MCTP Get Vendor Defined Message Support command allows discovery of the vendor-defined messages supported by an endpoint. This discovery process identifies the vendor organization and the supported message types. The format of this request is specified in the MCTP Base Specification.
 
 For the Caliptra external command protocol, the following information is returned in response to the MCTP Get Vendor Defined Message Support request:
+- **Vendor ID Set Selector**: `0xFF` (no more capability sets after the Caliptra capability set)
 - **Vendor ID Format**: `1`
 - **OCP Vendor ID**: `42623`
+- **Command Set Type / Version**: `0x0001`
 
 The following table describes the Caliptra MCTP VDM (IANA) message body layout. Byte offsets are zero-based from the first byte of the MCTP message body.
 
@@ -57,3 +59,5 @@ The command codes below use the Caliptra range reserved in the [OCP command regi
 | `0x02`       | DeviceCapabilities | Retrieve device capabilities.          |
 | `0x03`       | GetDebugLog        | Retrieve the MCU runtime debug log.    |
 | `0x04`       | ClearDebugLog      | Clear the MCU runtime debug log.       |
+
+Support for these commands is advertised in the `external_commands` field returned by `DeviceCapabilities`. See [Device Capabilities](caliptra_common_commands.md#device-capabilities).

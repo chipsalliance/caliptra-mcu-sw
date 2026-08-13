@@ -9,7 +9,11 @@
 //! `measurement_boot_init`.
 
 mod component_update;
+#[allow(dead_code)]
+mod evidence;
 mod initial_load;
+#[allow(dead_code)]
+pub(crate) mod read;
 
 use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
     DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, POLICY_DIGEST_SIZE,
@@ -301,17 +305,22 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         key_label: &[u8; DPE_LABEL_LEN],
         kid: &mut [u8; crate::ATTESTATION_P384_DIGEST_SIZE],
     ) -> MeasurementApiResult {
-        let mut pubkey_x = [0u8; crate::ATTESTATION_P384_DIGEST_SIZE];
-        let mut pubkey_y = [0u8; crate::ATTESTATION_P384_DIGEST_SIZE];
-        self.leaf_pubkey(alloc, key_label, &mut pubkey_x, &mut pubkey_y)
-            .await?;
+        let mut pubkey_y_buf = alloc
+            .alloc(crate::ATTESTATION_P384_DIGEST_SIZE)
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+        let pubkey_y = pubkey_y_buf
+            .get_mut(..crate::ATTESTATION_P384_DIGEST_SIZE)
+            .and_then(|buf| buf.first_chunk_mut::<{ crate::ATTESTATION_P384_DIGEST_SIZE }>())
+            .ok_or(MeasurementApiError::DpeCommandFailed)?;
+
+        self.leaf_pubkey(alloc, key_label, kid, pubkey_y).await?;
         let ctx = alloc
             .alloc(SHA_CONTEXT_SIZE)
             .map_err(|_| MeasurementApiError::DigestFailed)?;
-        let mut state = sha_init(alloc, ctx, HashAlgo::Sha384, &pubkey_x)
+        let mut state = sha_init(alloc, ctx, HashAlgo::Sha384, kid)
             .await
             .map_err(|_| MeasurementApiError::DigestFailed)?;
-        sha_update(alloc, &mut state, &pubkey_y)
+        sha_update(alloc, &mut state, pubkey_y)
             .await
             .map_err(|_| MeasurementApiError::DigestFailed)?;
         sha_finish(alloc, &mut state, kid)
@@ -340,6 +349,62 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
         self.write_attestation_target_handle(target, next_handle)?;
         Ok(signature_len)
+    }
+
+    /// Read stored measurement state for one manifest `fw_id`.
+    ///
+    /// This is an internal Measurement API primitive for evidence generation and
+    /// diagnostics. Transport code should not iterate policy or call it directly.
+    #[allow(dead_code)]
+    pub(crate) async fn read_measurement<A: ApiAlloc>(
+        &self,
+        alloc: &A,
+        fw_id: u32,
+    ) -> MeasurementApiResult<read::MeasurementValue> {
+        read::read_measurement(self, alloc, fw_id).await
+    }
+
+    /// Return whether a TCB measurement should be included for the selected AK.
+    ///
+    /// TCB records on the selected AK lineage are omitted because they are
+    /// already represented by the selected DPE context; sibling TCBs remain
+    /// eligible for evidence.
+    #[allow(dead_code)]
+    pub(crate) fn should_include_tcb_measurement(&self, fw_id: u32) -> MeasurementApiResult<bool> {
+        read::should_include_tcb_measurement(self, fw_id)
+    }
+
+    /// Encode concise measurement evidence for all eligible manifest entries.
+    ///
+    /// Measurement API owns manifest iteration and selected-AK lineage policy;
+    /// callers provide only the output buffer. On success the returned length is
+    /// the complete encoded evidence size. A too-small buffer returns
+    /// [`MeasurementApiError::EvidenceBufferTooSmall`] without returning a
+    /// partial length.
+    pub async fn encode_measurement_evidence<A: ApiAlloc>(
+        &self,
+        alloc: &A,
+        buffer: &mut [u8],
+    ) -> MeasurementApiResult<usize> {
+        self.attestation_state_active()?;
+        let measurement_count = self.evidence_measurement_count()?;
+        let mut encoder = evidence::MeasurementEvidenceEncoder::new(
+            buffer,
+            self.manifest.vendor(),
+            self.manifest.model(),
+            measurement_count,
+        )?;
+        for entry in self.manifest.entries() {
+            if !evidence::inventory_evidence_eligible(entry) {
+                continue;
+            }
+            if entry.is_tcb() && !self.should_include_tcb_measurement(entry.fw_id)? {
+                continue;
+            }
+            let measurement = self.read_measurement(alloc, entry.fw_id).await?;
+            encoder.encode_measurement(&measurement)?;
+        }
+        encoder.finish()
     }
 
     /// Current attestation availability state.
@@ -382,6 +447,22 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     fn enter_error_state(&mut self, error: MeasurementApiError) -> MeasurementApiError {
         self.state = AttestationState::Error;
         error
+    }
+
+    fn evidence_measurement_count(&self) -> MeasurementApiResult<usize> {
+        let mut count = 0usize;
+        for entry in self.manifest.entries() {
+            if !evidence::inventory_evidence_eligible(entry) {
+                continue;
+            }
+            if entry.is_tcb() && !self.should_include_tcb_measurement(entry.fw_id)? {
+                continue;
+            }
+            count = count
+                .checked_add(1)
+                .ok_or(MeasurementApiError::InvalidManifest)?;
+        }
+        Ok(count)
     }
 }
 

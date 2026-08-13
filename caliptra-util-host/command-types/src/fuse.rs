@@ -3,21 +3,26 @@
 //! Fuse Commands
 //!
 //! Command structures for fuse operations including authorized commands
-//! that require a challenge-response HMAC flow.
+//! that require a challenge-response dual-signature flow.
 //!
 //! ## Authorization Flow
 //!
 //! Authorized commands (e.g., `FeProg`) require the caller to:
 //! 1. Request a challenge nonce via `GetAuthCmdChallenge`
-//! 2. Compute HMAC-SHA384 over `cmd_id(BE) || cmd_body || challenge`
-//! 3. Send the command with the 48-byte MAC appended
+//! 2. Build the pre-image `cmd_id(BE) || cmd_body || nonce` and sign it with both
+//!    ECC P-384 (over `SHA-384(pre-image)`) and ML-DSA-87 (over
+//!    `SHA-512(pre-image)`), mirroring the prod-debug-unlock idiom
+//! 3. Send the command with the hybrid ECDSA-P384 + ML-DSA-87 signature appended
 
 use crate::{CaliptraCommandId, CommandRequest, CommandResponse, CommonResponse};
 use caliptra_mcu_mbox_common::messages::HybridSignature;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-/// Size of the authorization challenge nonce in bytes
-pub const AUTH_CMD_CHALLENGE_SIZE: usize = 32;
+/// Size of the authorization challenge nonce in bytes.
+///
+/// Re-exported from `caliptra-mcu-mbox-common`, the single source of truth for
+/// the nonce width, so the host and device never diverge.
+pub use caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN as AUTH_CMD_CHALLENGE_SIZE;
 
 /// Canonical command identifier for the GET_AUTH_CMD_CHALLENGE command used in sub-command dispatch.
 ///
@@ -36,8 +41,9 @@ pub const MC_FE_PROG_CANONICAL_CMD_ID: u32 = 0x4D43_4650;
 
 /// Request a challenge nonce for authorizing privileged commands.
 ///
-/// The returned challenge must be included in the HMAC computation
-/// for the subsequent authorized command.
+/// The returned challenge must be bound into the signed pre-image
+/// (`cmd_id || cmd_body || nonce`), signed with both ECDSA-P384
+/// (over SHA-384) and ML-DSA-87 (over SHA-512) for the subsequent command.
 #[repr(C)]
 #[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
 pub struct GetAuthCmdChallengeRequest {
@@ -76,9 +82,9 @@ impl CommandResponse for GetAuthCmdChallengeResponse {}
 /// Request to program field entropy for a given OTP partition.
 ///
 /// This is an authorized command — the caller must first obtain a challenge
-/// via `GetAuthCmdChallenge`, compute ECC and ML-DSA signatures over
-/// `cmd_id(BE) || partition(LE) || challenge`, and place the resulting
-/// signatures in the `sig` field.
+/// via `GetAuthCmdChallenge`, build the pre-image `cmd_id(BE) || partition(LE)
+/// || nonce`, sign it with ECC P-384 (over `SHA-384(pre-image)`) and ML-DSA-87
+/// (over `SHA-512(pre-image)`), and place the resulting signatures in `sig`.
 #[repr(C)]
 #[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct FeProgRequest {

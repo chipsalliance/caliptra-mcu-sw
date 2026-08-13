@@ -9,6 +9,7 @@ members = [
     "common/flash-image",
     "common/mcu-mbox",
     "common/otp-digest",
+    "common/otp-fuse",
     "common/otp-lifecycle",
     "common/mctp-vdm",
     "common/ocp",
@@ -87,6 +88,7 @@ members = [
     "runtime/kernel/veer",
     "runtime/userspace/api/caliptra-api",
     "runtime/userspace/api/caliptra-common-commands",
+    "runtime/userspace/api/attestation-evidence",
     "runtime/userspace/api/measurement-api",
     "runtime/userspace/api/mcu-mbox-lib",
     "runtime/userspace/api/mctp-vdm-lib",
@@ -119,6 +121,7 @@ members = [
     "runtime/userspace/userlog",
     "tests/hello",
     "tests/integration",
+    "tools/fw-signer",
     "tools/pk-hash-checker",
     "xtask",
 ]
@@ -267,6 +270,7 @@ caliptra-mcu-fusegen = { path = "provisioning/fuses/fusegen" }
 caliptra-mcu-i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 caliptra-mcu-libtockasync = { path = "runtime/userspace/libtockasync" }
 caliptra-mcu-builder = { path = "builder" }
+caliptra-mcu-fw-signer = { path = "tools/fw-signer" }
 caliptra-mcu-components = { path = "runtime/kernel/components" }
 caliptra-mcu-config = { path = "common/config" }
 caliptra-mcu-command-auth-challenge-signer = { path = "common/command-auth-challenge-signer" }
@@ -294,6 +298,7 @@ caliptra-mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
 caliptra-mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
 caliptra-mcu-mbox-common = { path = "common/mcu-mbox" }
 caliptra-mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
+caliptra-mcu-otp-fuse = { path = "common/otp-fuse" }
 caliptra-mcu-otp-lifecycle = { path = "common/otp-lifecycle" }
 caliptra-mcu-platforms-common = { path = "platforms/common" }
 caliptra-mcu-rom-common = { path = "rom" }
@@ -326,6 +331,7 @@ caliptra-mcu-bare-metal-io = { path = "runtime/bare-metal/io" }
 caliptra-mcu-xtask = { path = "xtask" }
 
 # App related dependencies
+caliptra-mcu-attestation-evidence = { path = "runtime/userspace/api/attestation-evidence" }
 caliptra-mcu-common-commands = { path = "runtime/userspace/api/caliptra-common-commands" }
 caliptra-mcu-measurement-api = { path = "runtime/userspace/api/measurement-api" }
 caliptra-mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
@@ -391,7 +397,7 @@ dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "337f7e4151
 # caliptra-infra dependencies; keep git revs in sync
 caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-infra", rev = "e061f229d5d284ce39387eb104f3022053c6c772" }
 
-size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", package = "caliptra-size-history", rev = "64e75e17e1a2eb07ff8dd6698932af82182da85e" }
+size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", package = "caliptra-size-history", rev = "c7497382a9d338430bcbe79f4e54c94ff7c297c3" }
 
 # local caliptra dependency; useful when developing
 # caliptra-sw deps:

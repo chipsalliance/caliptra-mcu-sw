@@ -166,7 +166,7 @@ mod test {
                 Some(seeded),
             );
 
-            hw.step_until_output_contains("Starting MCTP VDM service for integration tests")
+            hw.step_until_output_contains("Starting MCTP VDM service")
                 .expect("MCU did not enter MCTP VDM service");
             std::thread::sleep(std::time::Duration::from_millis(200));
         }

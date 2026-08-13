@@ -172,10 +172,7 @@ pub fn handle_device_capabilities(
         common: CommonResponse {
             fips_status: vdm_resp.completion_code,
         },
-        capabilities: u32::from_le_bytes([caps[0], caps[1], caps[2], caps[3]]),
-        max_cert_size: u32::from_le_bytes([caps[4], caps[5], caps[6], caps[7]]),
-        max_csr_size: u32::from_le_bytes([caps[8], caps[9], caps[10], caps[11]]),
-        device_lifecycle: u32::from_le_bytes([caps[12], caps[13], caps[14], caps[15]]),
+        caps,
     };
 
     let resp_bytes = internal_resp.as_bytes();

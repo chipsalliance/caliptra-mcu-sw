@@ -172,9 +172,7 @@ mod tests {
             Self: 'a;
 
         fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
-            let mut buf = Vec::new();
-            buf.resize(len, 0);
-            Ok(buf)
+            Ok(std::vec![0; len])
         }
     }
 

@@ -55,6 +55,10 @@ pub(crate) const CMD_CERTIFY_KEY_CHUNKS: u32 = 0x434B_4348; // "CKCH"
 /// Mirrored from `caliptra-api::CommandId::DPE_TAG_TCI`.
 pub(crate) const CMD_DPE_TAG_TCI: u32 = 0x5451_4754; // "TGQT"
 
+/// Caliptra mailbox command ID for the top-level `DPE_GET_TAGGED_TCI` command.
+/// Mirrored from `caliptra-api::CommandId::DPE_GET_TAGGED_TCI`.
+pub(crate) const CMD_DPE_GET_TAGGED_TCI: u32 = 0x4754_4744; // "GTGD"
+
 /// DPE per-command-header magic (`CommandHdr::DPE_COMMAND_MAGIC`).
 pub(crate) const DPE_COMMAND_MAGIC: u32 = 0x4450_4543; // "DPEC"
 
@@ -85,8 +89,14 @@ pub(crate) const DPE_CMD_ROTATE_CONTEXT_HANDLE: u32 = 0x0e;
 /// `QUOTE_PCRS_ECC384` command ID.
 pub(crate) const CMD_QUOTE_PCRS_ECC384: u32 = 0x5043_5251; // "PCRQ"
 
+/// `QUOTE_PCRS_MLDSA87` command ID.
+pub(crate) const CMD_QUOTE_PCRS_MLDSA87: u32 = 0x5043_524d; // "PCRM"
+
 /// `EXTEND_PCR` command ID.
 pub(crate) const CMD_EXTEND_PCR: u32 = 0x5043_5245; // "PCRE"
+
+/// `GET_IDEV_ECC384_CSR` command ID.
+pub(crate) const CMD_GET_IDEV_ECC384_CSR: u32 = 0x4944_4352; // "IDCR"
 
 /// `GET_ATTESTED_ECC384_CSR` command ID.
 pub(crate) const CMD_GET_ATTESTED_ECC384_CSR: u32 = 0x4145_4352; // "AECR"

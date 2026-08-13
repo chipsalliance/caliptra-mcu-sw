@@ -46,10 +46,12 @@ pub struct ExtCmdGetDeviceCapabilitiesResponse {
     /// - Bytes [0:7]: Reserved for Caliptra RT
     /// - Bytes [8:11]: Reserved for Caliptra FMC
     /// - Bytes [12:15]: Reserved for Caliptra ROM
-    /// - Bytes [16:23]: Reserved for MCU RT
-    /// - Bytes [24:27]: Reserved for MCU ROM
-    /// - Bytes [28:31]: Reserved
-    pub caps: [u8; 32],
+    /// - Bytes [16:19]: MCU ROM capabilities
+    /// - Bytes [20:23]: MCU RT feature capabilities
+    /// - Bytes [24:27]: External Caliptra common-command bitmap
+    /// - Bytes [28:31]: Authorized-subcommand bitmap
+    /// - Bytes [32:35]: Reserved, zero
+    pub caps: [u8; 36],
 }
 
 impl FromInternalRequest<GetDeviceCapabilitiesRequest> for ExtCmdGetDeviceCapabilitiesRequest {
@@ -66,30 +68,7 @@ impl ToInternalResponse<GetDeviceCapabilitiesResponse> for ExtCmdGetDeviceCapabi
             common: CommonResponse {
                 fips_status: self.fips_status,
             },
-            capabilities: u32::from_le_bytes([
-                self.caps[0],
-                self.caps[1],
-                self.caps[2],
-                self.caps[3],
-            ]),
-            max_cert_size: u32::from_le_bytes([
-                self.caps[4],
-                self.caps[5],
-                self.caps[6],
-                self.caps[7],
-            ]),
-            max_csr_size: u32::from_le_bytes([
-                self.caps[8],
-                self.caps[9],
-                self.caps[10],
-                self.caps[11],
-            ]),
-            device_lifecycle: u32::from_le_bytes([
-                self.caps[12],
-                self.caps[13],
-                self.caps[14],
-                self.caps[15],
-            ]),
+            caps: self.caps,
         }
     }
 }
@@ -116,17 +95,14 @@ impl ToInternalResponse<GetFirmwareVersionResponse> for ExtCmdGetFirmwareVersion
             .unwrap_or("")
             .trim_end_matches('\0');
 
-        if let Some((version_part, _)) = version_str.split_once(' ') {
-            // Try to parse semantic version
-            for (part_index, part) in version_part.split('.').take(4).enumerate() {
-                if let Ok(num) = part.parse::<u32>() {
-                    version[part_index] = num;
-                }
+        let (version_part, commit_part) = version_str.split_once(' ').unwrap_or((version_str, ""));
+        for (part_index, part) in version_part.split('.').take(4).enumerate() {
+            if let Ok(num) = part.parse::<u32>() {
+                version[part_index] = num;
             }
         }
 
-        // Extract commit ID if present after version (after space)
-        if let Some((_, commit_part)) = version_str.split_once(' ') {
+        if !commit_part.is_empty() {
             let commit_bytes = commit_part.as_bytes();
             let copy_len = core::cmp::min(commit_bytes.len(), 20);
             commit_id[..copy_len].copy_from_slice(&commit_bytes[..copy_len]);
@@ -154,9 +130,9 @@ pub struct ExtCmdGetFirmwareVersionRequest {
     pub chksum: u32,
 
     /// Firmware index:
-    /// - 0x00 = Caliptra core firmware
-    /// - 0x01 = MCU runtime firmware
-    /// - 0x02 = SoC firmware
+    /// - 0x00 = Active Caliptra Runtime firmware
+    /// - 0x01 = MCU Runtime firmware
+    /// - 0x02 = Optional integrator-defined aggregate SoC firmware-set version
     ///   Additional indexes are firmware-specific
     pub index: u32,
 }
@@ -278,3 +254,18 @@ define_command!(
     ExtCmdGetFirmwareVersionRequest,
     ExtCmdGetFirmwareVersionResponse
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plain_semantic_firmware_version_is_parsed() {
+        let response = ExtCmdGetFirmwareVersionResponse::from_mcu_data(0, 0, 5, b"2.0.0");
+
+        let internal = response.to_internal();
+
+        assert_eq!(internal.version, [2, 0, 0, 0]);
+        assert_eq!(internal.commit_id, [0; 20]);
+    }
+}

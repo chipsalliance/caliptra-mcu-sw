@@ -76,28 +76,20 @@ mod test {
             .path()
             .to_path_buf();
 
-        let caliptra_fw_path_str = caliptra_fw_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
-        let soc_manifest_path_str = soc_manifest_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
-        let mcu_runtime_path_str = mcu_runtime_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
-        caliptra_mcu_builder::flash_image::flash_image_create_inner(
-            &caliptra_fw_path_str,
-            &soc_manifest_path_str,
-            &mcu_runtime_path_str,
-            &Some(
+        caliptra_mcu_builder::flash_image::flash_image_create(&CaliptraBuildArgs {
+            caliptra_firmware: caliptra_fw_path,
+            soc_manifest: soc_manifest_path,
+            mcu_firmware: mcu_runtime_path,
+            soc_image_paths: Some(
                 soc_images_paths
                     .iter()
                     .map(|p| p.to_string_lossy().to_string())
                     .collect(),
             ),
-            flash_offset,
-            flash_image_path.to_str().unwrap(),
-        )
+            offset: flash_offset,
+            output_path: Some(flash_image_path.to_string_lossy().to_string()),
+            ..Default::default()
+        })
         .expect("Failed to create flash image");
 
         if let Some(partition_table) = partition_table {

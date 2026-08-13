@@ -1,27 +1,63 @@
 // Licensed under the Apache-2.0 license
 
 use crate::interrupts::FpgaPeripherals;
-use crate::{MCU_MEMORY_MAP, MCU_STRAPS};
+use crate::MCU_MEMORY_MAP;
+#[cfg(any(
+    feature = "spdm",
+    feature = "streaming-boot",
+    feature = "firmware-update",
+    feature = "mctp-vdm-service",
+    feature = "test-mctp-capsule-loopback"
+))]
+use crate::MCU_STRAPS;
 use arrayvec::ArrayVec;
+#[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
 use caliptra_mcu_capsules_runtime::flash_partition::FlashPartition;
+#[cfg(any(
+    feature = "spdm",
+    feature = "streaming-boot",
+    feature = "firmware-update",
+    feature = "mctp-vdm-service"
+))]
 use caliptra_mcu_capsules_runtime::mctp::base_protocol::MessageType;
+#[cfg(feature = "mcu-mbox-service")]
 use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
+use caliptra_mcu_components::dpe_handle_store_component_static;
 use caliptra_mcu_components::external_otp_component_static;
+#[cfg(feature = "userspace-log")]
+use caliptra_mcu_components::instantiate_logging_flash;
 use caliptra_mcu_components::mbox_sram_component_static;
+#[cfg(any(
+    feature = "spdm",
+    feature = "streaming-boot",
+    feature = "firmware-update",
+    feature = "mctp-vdm-service"
+))]
 use caliptra_mcu_components::mctp_driver_component_static;
+#[cfg(any(
+    feature = "spdm",
+    feature = "streaming-boot",
+    feature = "firmware-update",
+    feature = "mctp-vdm-service",
+    feature = "test-mctp-capsule-loopback"
+))]
 use caliptra_mcu_components::mctp_mux_component_static;
+#[cfg(feature = "mcu-mbox-service")]
 use caliptra_mcu_components::mcu_mbox_component_static;
 use caliptra_mcu_components::soft_pcr_store_component_static;
-use caliptra_mcu_components::{
-    dpe_handle_store_component_static, flash_partition_component_static,
-    instantiate_flash_partitions, instantiate_logging_flash,
-};
-#[cfg(feature = "crash-log")]
+#[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
+use caliptra_mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
+#[cfg(all(feature = "userspace-log", feature = "crash-log"))]
 use caliptra_mcu_config_fpga::flash::CRASH_LOG_PARTITION;
-use caliptra_mcu_config_fpga::flash::{
-    EMULATED_EXT_OTP_PARTITION, LOGGING_PARTITION, STAGING_PARTITION,
-};
-use caliptra_mcu_config_fpga::{flash_partition_list_imaginary_flash, logging_flash_list};
+use caliptra_mcu_config_fpga::flash::EMULATED_EXT_OTP_PARTITION;
+#[cfg(feature = "userspace-log")]
+use caliptra_mcu_config_fpga::flash::LOGGING_PARTITION;
+#[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
+use caliptra_mcu_config_fpga::flash::STAGING_PARTITION;
+#[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
+use caliptra_mcu_config_fpga::flash_partition_list_imaginary_flash;
+#[cfg(feature = "userspace-log")]
+use caliptra_mcu_config_fpga::logging_flash_list;
 use caliptra_mcu_platforms_common::handoff::HandOff;
 use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use caliptra_mcu_registers_generated::mci;
@@ -33,6 +69,11 @@ use caliptra_mcu_tock_veer::pic::Pic;
 use caliptra_mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+#[cfg(any(
+    feature = "userspace-log",
+    feature = "flash-boot",
+    feature = "firmware-update"
+))]
 use capsules_core::virtualizers::virtual_flash;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
@@ -155,18 +196,24 @@ struct VeeR {
     scheduler: &'static CooperativeSched<'static>,
     scheduler_timer:
         &'static VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>,
+    #[cfg(feature = "spdm")]
     mctp_spdm: &'static caliptra_mcu_capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    #[cfg(feature = "spdm")]
     mctp_secure_spdm: &'static caliptra_mcu_capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    #[cfg(any(feature = "streaming-boot", feature = "firmware-update"))]
     mctp_pldm: &'static caliptra_mcu_capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    #[cfg(feature = "mctp-vdm-service")]
     mctp_caliptra: &'static caliptra_mcu_capsules_runtime::mctp::driver::MCTPDriver<'static>,
     // active_image_par: &'static caliptra_mcu_capsules_runtime::flash_partition::FlashPartition<'static>,
     // recovery_image_par: &'static caliptra_mcu_capsules_runtime::flash_partition::FlashPartition<'static>,
+    #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
     staging_partition: [Option<&'static FlashPartition<'static>>; 1],
     mailbox: &'static caliptra_mcu_capsules_runtime::mailbox::Mailbox<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
     mci: &'static caliptra_mcu_capsules_runtime::mci::Mci,
+    #[cfg(feature = "mcu-mbox-service")]
     mcu_mbox0: &'static caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver<
         'static,
         caliptra_mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>,
@@ -179,6 +226,7 @@ struct VeeR {
     external_otp: &'static caliptra_mcu_capsules_runtime::external_otp::ExternalOtpCapsule<'static>,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, FpgaExiter>,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
+    #[cfg(feature = "userspace-log")]
     logging_flash: [Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
     >; caliptra_mcu_config_fpga::flash::LOGGING_FLASH_INSTANCE_COUNT],
@@ -202,15 +250,19 @@ impl SyscallDriverLookup for VeeR {
             capsules_core::low_level_debug::DRIVER_NUM => {
                 f(self.lldb.map(|l| l as &dyn kernel::syscall::SyscallDriver))
             }
+            #[cfg(feature = "spdm")]
             caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM => {
                 f(Some(self.mctp_spdm))
             }
+            #[cfg(feature = "spdm")]
             caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM => {
                 f(Some(self.mctp_secure_spdm))
             }
+            #[cfg(any(feature = "streaming-boot", feature = "firmware-update"))]
             caliptra_mcu_capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => {
                 f(Some(self.mctp_pldm))
             }
+            #[cfg(feature = "mctp-vdm-service")]
             caliptra_mcu_capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => {
                 f(Some(self.mctp_caliptra))
             }
@@ -220,6 +272,7 @@ impl SyscallDriverLookup for VeeR {
             // caliptra_mcu_capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM => {
             //     f(Some(self.recovery_image_par))
             // }
+            #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
             caliptra_mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL => {
                 if let Some(partition) = self.staging_partition[0] {
                     if partition.get_driver_num() == driver_num {
@@ -232,6 +285,7 @@ impl SyscallDriverLookup for VeeR {
             }
             caliptra_mcu_capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             caliptra_mcu_capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
+            #[cfg(feature = "mcu-mbox-service")]
             caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => {
                 f(Some(self.mcu_mbox0))
             }
@@ -244,6 +298,7 @@ impl SyscallDriverLookup for VeeR {
             }
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
             caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
+            #[cfg(feature = "userspace-log")]
             n if caliptra_mcu_config_fpga::flash::LOGGING_FLASH_DRIVER_NUMS
                 .iter()
                 .any(|d| *d as usize == n) =>
@@ -665,27 +720,42 @@ pub unsafe fn main() {
         caliptra_mcu_romtime::println!("[mcu-runtime] ProcessPrinter initialized");
     }
 
-    // Select which I3C core to use for MCTP transport based on platform strap.
-    if MCU_STRAPS.active_i3c > 1 {
+    #[cfg(any(
+        feature = "spdm",
+        feature = "streaming-boot",
+        feature = "firmware-update",
+        feature = "mctp-vdm-service",
+        feature = "test-mctp-capsule-loopback"
+    ))]
+    let mux_mctp = {
+        if MCU_STRAPS.active_i3c > 1 {
+            caliptra_mcu_romtime::println!(
+                "[mcu-runtime] WARNING: invalid active_i3c value {}, falling back to 0",
+                MCU_STRAPS.active_i3c
+            );
+        }
+        let active_i3c_core = if MCU_STRAPS.active_i3c == 1 {
+            &peripherals.i3c1
+        } else {
+            &peripherals.i3c
+        };
         caliptra_mcu_romtime::println!(
-            "[mcu-runtime] WARNING: invalid active_i3c value {}, falling back to 0",
+            "[mcu-runtime] Active I3C core for MCTP: {}",
             MCU_STRAPS.active_i3c
         );
-    }
-    let active_i3c_core = if MCU_STRAPS.active_i3c == 1 {
-        &peripherals.i3c1
-    } else {
-        &peripherals.i3c
-    };
-    caliptra_mcu_romtime::println!(
-        "[mcu-runtime] Active I3C core for MCTP: {}",
-        MCU_STRAPS.active_i3c
-    );
-    let mux_mctp =
         caliptra_mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
-            .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
+            .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding))
+    };
+    #[cfg(any(
+        feature = "spdm",
+        feature = "streaming-boot",
+        feature = "firmware-update",
+        feature = "mctp-vdm-service",
+        feature = "test-mctp-capsule-loopback"
+    ))]
     caliptra_mcu_romtime::println!("[mcu-runtime] MCTP mux initialized");
 
+    #[cfg(feature = "spdm")]
     let mctp_spdm = caliptra_mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
@@ -693,8 +763,10 @@ pub unsafe fn main() {
         MessageType::Spdm,
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
+    #[cfg(feature = "spdm")]
     caliptra_mcu_romtime::println!("[mcu-runtime] MCTP SPDM driver component initialized");
 
+    #[cfg(feature = "spdm")]
     let mctp_secure_spdm = caliptra_mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM,
@@ -702,8 +774,10 @@ pub unsafe fn main() {
         MessageType::SecureSpdm,
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
+    #[cfg(feature = "spdm")]
     caliptra_mcu_romtime::println!("[mcu-runtime] MCTP Secure SPDM driver component initialized");
 
+    #[cfg(any(feature = "streaming-boot", feature = "firmware-update"))]
     let mctp_pldm = caliptra_mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM,
@@ -711,8 +785,10 @@ pub unsafe fn main() {
         MessageType::Pldm,
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
+    #[cfg(any(feature = "streaming-boot", feature = "firmware-update"))]
     caliptra_mcu_romtime::println!("[mcu-runtime] MCTP PLDM driver component initialized");
 
+    #[cfg(feature = "mctp-vdm-service")]
     let mctp_caliptra = caliptra_mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
@@ -720,6 +796,7 @@ pub unsafe fn main() {
         MessageType::Caliptra,
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
+    #[cfg(feature = "mctp-vdm-service")]
     caliptra_mcu_romtime::println!("[mcu-runtime] MCTP Caliptra driver component initialized");
 
     let mci = caliptra_mcu_components::mci::MciComponent::new(
@@ -750,7 +827,9 @@ pub unsafe fn main() {
     .finalize(components::flash_mux_component_static!(
         caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl
     ));
+    #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
     let mut staging_partition: [Option<&'static FlashPartition<'static>>; 1] = [None; 1];
+    #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
     instantiate_flash_partitions!(
         flash_partition_list_imaginary_flash,
         staging_partition,
@@ -759,14 +838,18 @@ pub unsafe fn main() {
         caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl,
         caliptra_mcu_flash_ctrl_fpga::ERASE_SECTOR_SIZE
     );
+    #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
     caliptra_mcu_romtime::println!("[mcu-runtime] Flash partition component initialized");
 
     // Logging flash capsules (array-based, supports crash-log second instance)
+    #[cfg(feature = "userspace-log")]
     let mut logging_flash: [Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
-    >; caliptra_mcu_config_fpga::flash::LOGGING_FLASH_INSTANCE_COUNT] =
+    >;
+        caliptra_mcu_config_fpga::flash::LOGGING_FLASH_INSTANCE_COUNT] =
         [None; caliptra_mcu_config_fpga::flash::LOGGING_FLASH_INSTANCE_COUNT];
 
+    #[cfg(feature = "userspace-log")]
     instantiate_logging_flash!(
         logging_flash_list,
         logging_flash,
@@ -776,6 +859,7 @@ pub unsafe fn main() {
         caliptra_mcu_flash_ctrl_fpga::PAGE_SIZE,
         true
     );
+    #[cfg(feature = "userspace-log")]
     caliptra_mcu_romtime::println!("[mcu-runtime] Logging flash component initialized");
 
     #[cfg(feature = "ocp-lock")]
@@ -911,6 +995,7 @@ pub unsafe fn main() {
         (dpe, pcr)
     };
 
+    #[cfg(feature = "mcu-mbox-service")]
     let mcu_mbox0 = caliptra_mcu_components::mcu_mbox::McuMboxComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
@@ -933,8 +1018,17 @@ pub unsafe fn main() {
         .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
-    caliptra_mcu_romtime::println!("MUX MCTP enable");
-    mux_mctp.enable();
+    #[cfg(any(
+        feature = "spdm",
+        feature = "streaming-boot",
+        feature = "firmware-update",
+        feature = "mctp-vdm-service",
+        feature = "test-mctp-capsule-loopback"
+    ))]
+    {
+        caliptra_mcu_romtime::println!("MUX MCTP enable");
+        mux_mctp.enable();
+    }
 
     caliptra_mcu_romtime::println!("MCU initialization complete.");
     caliptra_mcu_romtime::println!("Entering main loop.");
@@ -956,21 +1050,28 @@ pub unsafe fn main() {
             lldb,
             scheduler,
             scheduler_timer,
+            #[cfg(feature = "spdm")]
             mctp_spdm,
+            #[cfg(feature = "spdm")]
             mctp_secure_spdm,
+            #[cfg(any(feature = "streaming-boot", feature = "firmware-update"))]
             mctp_pldm,
+            #[cfg(feature = "mctp-vdm-service")]
             mctp_caliptra,
             //active_image_par,
             //recovery_image_par,
+            #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
             staging_partition,
             mailbox,
             mci,
+            #[cfg(feature = "mcu-mbox-service")]
             mcu_mbox0,
             mcu_mbox1_staging_sram,
             otp,
             external_otp,
             system,
             dma,
+            #[cfg(feature = "userspace-log")]
             logging_flash,
             dpe_handle_store,
             pcr_store,

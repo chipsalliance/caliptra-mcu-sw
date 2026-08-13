@@ -90,7 +90,7 @@ enum Commands {
         #[arg(long)]
         streaming_boot: Option<PathBuf>,
 
-        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>
+        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]
         /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2,2,test-flash-based-boot
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
@@ -190,13 +190,13 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         separate_runtimes: bool,
 
-        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>
+        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]
         /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2,2,test-flash-based-boot
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
 
         // MCU configuration to include in the SoC manifest
-        // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<feature>
+        // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]
         // Example: --mcu_cfg mcu,0x10000000,0x10000000,1,1,test-dma
         #[arg(
             long = "mcu_cfg",
@@ -205,6 +205,14 @@ enum Commands {
             required = false
         )]
         mcu_cfgs: Option<Vec<ImageCfg>>,
+
+        /// TFTP filename for the Caliptra FMC/RT image.
+        #[arg(long)]
+        caliptra_firmware_network_filename: Option<String>,
+
+        /// TFTP filename for the SoC manifest image.
+        #[arg(long)]
+        soc_manifest_network_filename: Option<String>,
 
         /// Path to the PLDM manifest TOML file
         #[arg(short, long, value_name = "MANIFEST", required = false)]
@@ -625,6 +633,8 @@ fn main() {
             separate_runtimes,
             soc_images,
             mcu_cfgs,
+            caliptra_firmware_network_filename,
+            soc_manifest_network_filename,
             pldm_manifest,
             vendor,
             model,
@@ -639,6 +649,8 @@ fn main() {
             separate_runtimes: *separate_runtimes,
             soc_images: soc_images.clone(),
             mcu_cfgs: mcu_cfgs.clone(),
+            caliptra_firmware_network_filename: caliptra_firmware_network_filename.as_deref(),
+            soc_manifest_network_filename: soc_manifest_network_filename.as_deref(),
             pldm_manifest: pldm_manifest.as_deref(),
             vendor: vendor.as_deref(),
             model: model.as_deref(),
@@ -723,14 +735,14 @@ fn main() {
                 mcu_runtime,
                 soc_images,
                 output,
-            } => caliptra_mcu_builder::flash_image::flash_image_create_inner(
-                caliptra_fw,
-                soc_manifest,
-                mcu_runtime,
-                soc_images,
-                0,
-                output,
-            ),
+            } => caliptra_mcu_builder::flash_image::flash_image_create(&CaliptraBuildArgs {
+                caliptra_firmware: caliptra_fw.as_ref().map(PathBuf::from),
+                soc_manifest: soc_manifest.as_ref().map(PathBuf::from),
+                mcu_firmware: mcu_runtime.as_ref().map(PathBuf::from),
+                soc_image_paths: soc_images.clone(),
+                output_path: Some(output.clone()),
+                ..Default::default()
+            }),
             FlashImageCommands::Verify { file, offset } => {
                 caliptra_mcu_builder::flash_image::flash_image_verify(file, *offset)
             }
@@ -812,7 +824,30 @@ fn main() {
                 images,
                 mcu_image,
                 output,
-            } => auth_manifest::create(images, mcu_image, output),
+                signing_request,
+                key_paths,
+                svn,
+            } => auth_manifest::create(
+                images,
+                mcu_image,
+                output,
+                signing_request.as_deref(),
+                key_paths,
+                *svn,
+            ),
+            AuthManifestCommands::AttachSignatures {
+                unsigned_manifest,
+                signatures,
+                vendor_fw_pub_key,
+                owner_fw_pub_key,
+                output,
+            } => auth_manifest::attach_signatures(
+                unsigned_manifest,
+                signatures,
+                vendor_fw_pub_key.as_deref(),
+                owner_fw_pub_key.as_deref(),
+                output,
+            ),
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
         Commands::Corim { subcommand } => match subcommand {

@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Execute get device capabilities command
     let capabilities = caliptra_cmd_get_device_capabilities(&mut session)?;
-    println!("Device capabilities: 0x{:08X}", capabilities.capabilities);
+    println!("MCU Runtime capabilities: 0x{:08X}", capabilities.mcu_runtime_capabilities());
 
     Ok(())
 }
@@ -81,7 +81,7 @@ int main() {
     // Execute get device capabilities command
     result = caliptra_cmd_get_device_capabilities_c_impl(session, &capabilities);
     if (result == CaliptraSuccess) {
-        printf("Device capabilities: 0x%08X\n", capabilities.capabilities);
+        printf("MCU Runtime capability byte: 0x%02X\n", capabilities.caps[23]);
     } else {
         printf("Failed to get device capabilities\n");
     }

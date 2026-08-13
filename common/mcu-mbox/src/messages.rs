@@ -33,7 +33,7 @@ use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromB
 
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
-pub const DEVICE_CAPS_SIZE: usize = 32;
+pub const DEVICE_CAPS_SIZE: usize = 36;
 pub const MAX_UUID_SIZE: usize = 32;
 pub const MAX_FUSE_DATA_BYTES: usize = 512;
 pub const MAX_FUSE_DATA_WORDS: usize = MAX_FUSE_DATA_BYTES / 4;
@@ -761,11 +761,21 @@ impl Request for DeviceCapsReq {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct DeviceCapsResp {
     pub hdr: MailboxRespHeader,
     pub caps: [u8; DEVICE_CAPS_SIZE],
 }
+
+impl Default for DeviceCapsResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            caps: [0u8; DEVICE_CAPS_SIZE],
+        }
+    }
+}
+
 impl Response for DeviceCapsResp {}
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1472,6 +1482,13 @@ pub struct FuseLockPartitionResp {
 }
 impl Response for FuseLockPartitionResp {}
 
+/// Width, in bytes, of the authorized-command challenge nonce.
+///
+/// Single source of truth for the nonce size — every authorized-command site
+/// (challenge response, signer, device verifier, transports, tests) references
+/// this constant instead of a hard-coded `48`.
+pub const AUTH_CMD_NONCE_LEN: usize = 48;
+
 /// MC_GET_AUTH_CMD_CHALLENGE request: Get a challenge nonce to prove freshness in auth commands
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
@@ -1487,11 +1504,21 @@ impl Request for GetAuthCmdChallengeReq {
 
 /// MC_GET_AUTH_CMD_CHALLENGE response: Indicates success or failure.
 #[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct GetAuthCmdChallengeResp {
     pub hdr: MailboxRespHeader,
     pub reserved: u32,
-    pub challenge: [u8; 32],
+    pub challenge: [u8; AUTH_CMD_NONCE_LEN],
+}
+// `[u8; AUTH_CMD_NONCE_LEN]` does not implement `Default` via derive, so provide it by hand.
+impl Default for GetAuthCmdChallengeResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            reserved: 0,
+            challenge: [0u8; AUTH_CMD_NONCE_LEN],
+        }
+    }
 }
 impl Response for GetAuthCmdChallengeResp {}
 

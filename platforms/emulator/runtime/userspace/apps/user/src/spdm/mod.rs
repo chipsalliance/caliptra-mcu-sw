@@ -10,12 +10,12 @@ extern crate alloc;
 
 mod caliptra_vdm;
 mod cert_store;
-mod device_measurements;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 mod pci_sig_vdm;
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 use self::pci_sig_vdm::{emulated_ide_km::EmulatedIdeDriver, emulated_tdisp::EmulatedTdispDriver};
+#[cfg(feature = "doe")]
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -27,7 +27,9 @@ use caliptra_mcu_spdm_pal::{
 use caliptra_mcu_spdm_stack::SpdmStack;
 #[cfg(feature = "ocp-nvme-profile")]
 use caliptra_mcu_spdm_traits::SpdmPalTransport;
-use caliptra_mcu_spdm_transports::{McuSpdmDoeTransport, McuSpdmMctpTransport};
+#[cfg(feature = "doe")]
+use caliptra_mcu_spdm_transports::McuSpdmDoeTransport;
+use caliptra_mcu_spdm_transports::McuSpdmMctpTransport;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 use caliptra_mcu_spdm_vdm_handler::pci_sig::{
@@ -82,13 +84,15 @@ static CERT_STORE_DONE: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 static CERT_STORE_STATE: AtomicU8 = AtomicU8::new(0);
 
 #[cfg(feature = "test-mctp-spdm-attestation-pcr-quote")]
-fn measurement_provider() -> device_measurements::pcr_quote::PcrQuoteMeasurementProvider {
-    device_measurements::pcr_quote::PcrQuoteMeasurementProvider::new()
+fn measurement_provider(
+) -> caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider {
+    caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider::new()
 }
 
 #[cfg(not(feature = "test-mctp-spdm-attestation-pcr-quote"))]
-fn measurement_provider() -> device_measurements::ocp_eat::OcpEatMeasurementProvider {
-    device_measurements::ocp_eat::OcpEatMeasurementProvider::new(
+fn measurement_provider(
+) -> caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider {
+    caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider::new(
         caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL,
     )
 }
@@ -127,15 +131,18 @@ async fn ensure_cert_store_init<A: mcu_caliptra_api_lite::ApiAlloc>(
     }
 }
 
-/// Spawn SPDM responder tasks (MCTP + DOE) on the given executor.
+/// Spawn SPDM responder tasks on the given executor.
 pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
     if spawner.spawn(spdm_mctp_responder()).is_err() {
         crate::log_error!(cw, "SPDM: Failed to spawn MCTP responder");
     }
-    if spawner.spawn(spdm_doe_responder()).is_err() {
-        crate::log_error!(cw, "SPDM: Failed to spawn DOE responder");
+    #[cfg(feature = "doe")]
+    {
+        if spawner.spawn(spdm_doe_responder()).is_err() {
+            crate::log_error!(cw, "SPDM: Failed to spawn DOE responder");
+        }
     }
 }
 
@@ -180,8 +187,12 @@ async fn spdm_mctp_responder() {
     let pal = unsafe { McuSpdmPal::new(transport, allocator, &CERT_STORE, measurement_provider()) };
     // MCTP hosts the IANA / Caliptra VDM backend (plaintext today). DOE uses
     // the default NoVdmBackend unless the TDISP/IDE validator feature wires PCI-SIG.
-    static MCTP_VDM_HOOK: caliptra_vdm::CaliptraVdmHook = caliptra_vdm::CaliptraVdmHook;
-    let vdm = CaliptraVdm::new(&MCTP_VDM_HOOK);
+    static COMMANDS: crate::caliptra_cmd_handler::CaliptraCmdBackend =
+        crate::caliptra_cmd_handler::CaliptraCmdBackend;
+    static STREAM: caliptra_vdm::CaliptraVdmStreamHook = caliptra_vdm::CaliptraVdmStreamHook;
+    static AUTHORIZATION: caliptra_vdm::CaliptraVdmAuthorizationHook =
+        caliptra_vdm::CaliptraVdmAuthorizationHook;
+    let vdm = CaliptraVdm::new(&COMMANDS, &STREAM, &AUTHORIZATION);
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 
     crate::log_info!(cw, "SPDM_MCTP: starting spdm-lib MCTP run loop");
@@ -194,6 +205,7 @@ async fn spdm_mctp_responder() {
     }
 }
 
+#[cfg(feature = "doe")]
 #[embassy_executor::task]
 async fn spdm_doe_responder() {
     let mut cw = Console::<DefaultSyscalls>::writer();

@@ -74,7 +74,7 @@
 //!
 //! // Execute high-level commands
 //! let capabilities = caliptra_cmd_get_device_capabilities(&mut session)?;
-//! println!("Device capabilities: 0x{:08X}", capabilities.capabilities);
+//! println!("MCU Runtime capabilities: 0x{:08X}", capabilities.mcu_runtime_capabilities());
 //!
 //! let firmware_version = caliptra_cmd_get_firmware_version(&mut session, 0)?;
 //! println!("Firmware version: {}.{}.{}.{}",

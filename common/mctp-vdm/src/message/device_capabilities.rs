@@ -8,7 +8,7 @@ use crate::protocol::{VdmCommand, VdmMsgHeader};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 /// Size of device capabilities data.
-pub const DEVICE_CAPS_SIZE: usize = 32;
+pub const DEVICE_CAPS_SIZE: usize = 36;
 
 /// Device Capabilities Request.
 ///
@@ -39,13 +39,15 @@ impl Default for DeviceCapabilitiesRequest {
 ///
 /// Response Payload:
 /// - Bytes 0:3 - completion_code (u32): Command completion status
-/// - Bytes 4:35 - caps (u8[32]): Device Capabilities
+/// - Bytes 4:39 - caps (u8[36]): Device Capabilities
 ///   - Bytes [0:7]: Reserved for Caliptra RT
 ///   - Bytes [8:11]: Reserved for Caliptra FMC
 ///   - Bytes [12:15]: Reserved for Caliptra ROM
-///   - Bytes [16:23]: Reserved for MCU RT
-///   - Bytes [24:27]: Reserved for MCU ROM
-///   - Bytes [28:31]: Reserved
+///   - Bytes [16:19]: MCU ROM capabilities
+///   - Bytes [20:23]: MCU RT feature capabilities
+///   - Bytes [24:27]: External Caliptra common-command bitmap
+///   - Bytes [28:31]: Authorized-subcommand bitmap
+///   - Bytes [32:35]: Reserved, zero
 #[derive(Debug, Clone, Copy, PartialEq, FromBytes, IntoBytes, Immutable)]
 #[repr(C, packed)]
 pub struct DeviceCapabilitiesResponse {
@@ -53,7 +55,7 @@ pub struct DeviceCapabilitiesResponse {
     pub hdr: VdmMsgHeader,
     /// Command completion status.
     pub completion_code: u32,
-    /// Device capabilities (32 bytes).
+    /// Device capabilities (36 bytes).
     pub caps: [u8; DEVICE_CAPS_SIZE],
 }
 

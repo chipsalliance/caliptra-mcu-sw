@@ -15,10 +15,10 @@ use core::fmt::Write;
 use crate::EXECUTOR;
 
 #[cfg(feature = "firmware-update")]
-use caliptra_mcu_libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
+use mcu_caliptra_api_lite::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 
 #[cfg(feature = "flash-boot")]
-use caliptra_mcu_libapi_caliptra::firmware_update::FirmwareUpdateHooks;
+use mcu_caliptra_api_lite::firmware_update::FirmwareUpdateHooks;
 
 use caliptra_mcu_libtock_platform::ErrorCode;
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
@@ -41,9 +41,7 @@ pub async fn firmware_update<D: DMAMapping>(
     #[cfg(feature = "test-firmware-update-streaming")]
     {
         use crate::EXECUTOR;
-        use caliptra_mcu_libapi_caliptra::firmware_update::{
-            FirmwareUpdater, PldmFirmwareDeviceParams,
-        };
+        use mcu_caliptra_api_lite::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
             fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
@@ -154,7 +152,7 @@ pub async fn firmware_update<D: DMAMapping>(
     #[cfg(feature = "test-firmware-activate")]
     {
         use caliptra_mcu_flash_image::FlashHeader;
-        use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
+        use mcu_caliptra_api_lite::firmware_update::StagingMemory;
         use zerocopy::FromBytes;
 
         let fw_params = PldmFirmwareDeviceParams {
@@ -207,12 +205,12 @@ mod external_memory {
     extern crate alloc;
     use alloc::boxed::Box;
     use async_trait::async_trait;
-    use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
     use caliptra_mcu_libsyscall_caliptra::dma::{
         DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
     };
     use caliptra_mcu_libtock_platform::ErrorCode;
     use core::fmt::Debug;
+    use mcu_caliptra_api_lite::firmware_update::StagingMemory;
 
     use crate::image_loader::EMULATED_DMA_MAPPING;
 
@@ -293,10 +291,10 @@ mod dummy_flash {
     use alloc::boxed::Box;
     use async_trait::async_trait;
     use caliptra_mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL;
-    use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
     use caliptra_mcu_libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
     use caliptra_mcu_libtock_platform::ErrorCode;
     use core::fmt::Debug;
+    use mcu_caliptra_api_lite::firmware_update::StagingMemory;
 
     pub struct ExternalFlash {
         flash_syscall: FlashSyscall,
@@ -346,7 +344,6 @@ mod flash_memory {
     use async_trait::async_trait;
     use caliptra_mcu_config::boot::{BootConfigAsync, PartitionStatus};
     use caliptra_mcu_config_emulator::flash::STAGING_PARTITION;
-    use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
     use caliptra_mcu_libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
     use caliptra_mcu_libsyscall_caliptra::{
         flash::{FlashCapacity, SpiFlash as FlashSyscall},
@@ -354,6 +351,7 @@ mod flash_memory {
     };
     use caliptra_mcu_libtock_platform::ErrorCode;
     use core::fmt::Debug;
+    use mcu_caliptra_api_lite::firmware_update::StagingMemory;
 
     use caliptra_mcu_libtock_console::Console;
     #[allow(unused_imports)]

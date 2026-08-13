@@ -110,6 +110,8 @@ pub struct TestPal {
     pub write_error: Option<McuErrorCode>,
     pub erase_error: Option<McuErrorCode>,
     pub cert_chain: &'static [u8],
+    pub measurement_info: &'static [MeasurementInfo],
+    pub measurement_value: &'static [u8],
     pub op: RefCell<Option<StoreOp>>,
     pub stream_cert: RefCell<Vec<u8>>,
     pub stream_aborts: Cell<usize>,
@@ -128,6 +130,8 @@ impl Default for TestPal {
             write_error: None,
             erase_error: None,
             cert_chain: TEST_CERT_CHAIN,
+            measurement_info: &[],
+            measurement_value: &[],
             op: RefCell::new(None),
             stream_cert: RefCell::new(Vec::new()),
             stream_aborts: Cell::new(0),
@@ -175,6 +179,15 @@ impl SpdmPalAlloc for TestPal {
 
     fn alloc_large_buf(&self, len: usize) -> McuResult<Self::LargeBuf> {
         Ok(vec![0u8; len])
+    }
+
+    fn large_buf_into_bytes(
+        &self,
+        mut buf: Self::LargeBuf,
+        len: usize,
+    ) -> McuResult<Self::Bytes<'_>> {
+        buf.truncate(len);
+        Ok(buf)
     }
 
     type PersistentBox<T: Sized + 'static> = Box<T>;
@@ -486,17 +499,27 @@ impl SpdmPalCertStore for TestPal {
 
 impl SpdmPalMeasurements for TestPal {
     fn measurement_info(&self) -> &[MeasurementInfo] {
-        &[]
+        self.measurement_info
     }
 
     async fn get_measurement_value(
         &self,
         _io: &Self::Io<'_>,
-        _index: u8,
+        index: u8,
         _nonce: Option<&[u8; SPDM_NONCE_LEN]>,
-        _out: &mut [u8],
+        out: &mut [u8],
     ) -> McuResult<usize> {
-        Err(mcu_error::codes::NOT_IMPLEMENTED)
+        if !self.measurement_info.iter().any(|info| info.index == index)
+            || self.measurement_value.len() > out.len()
+        {
+            return Err(mcu_error::codes::NOT_IMPLEMENTED);
+        }
+
+        let dst = out
+            .get_mut(..self.measurement_value.len())
+            .ok_or(mcu_error::codes::NOT_IMPLEMENTED)?;
+        dst.copy_from_slice(self.measurement_value);
+        Ok(self.measurement_value.len())
     }
 }
 

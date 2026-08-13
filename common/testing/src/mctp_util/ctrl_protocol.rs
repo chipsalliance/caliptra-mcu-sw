@@ -2,9 +2,14 @@
 
 use crate::mctp_util::base_protocol::MctpMsgType;
 use bitfield::bitfield;
+use caliptra_mcu_mctp_vdm_common::protocol::CALIPTRA_IANA_ENTERPRISE_ID_BYTES;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const MCTP_CTRL_MSG_HDR_SIZE: usize = 2;
+pub const VENDOR_ID_SET_SELECTOR_NO_MORE: u8 = 0xFF;
+pub const VENDOR_ID_FORMAT_IANA: u8 = 0x01;
+pub const CALIPTRA_IANA_VDM_COMMAND_SET_TYPE: [u8; 2] = [0x00, 0x01];
+
 pub fn set_eid_req_bytes(op: SetEIDOp, eid: u8) -> Vec<u8> {
     let mut req_bytes: [u8; 2] = [0; 2];
     let cmd: &mut SetEIDReq<[u8; 2]> = SetEIDReq::mut_from_bytes(&mut req_bytes).unwrap();
@@ -65,6 +70,16 @@ pub fn generate_msg_type_support_resp_bytes(cc: u8, supported_types: &[MctpMsgTy
     resp_bytes
 }
 
+pub fn get_vendor_defined_msg_support_resp_bytes() -> Vec<u8> {
+    let mut resp_bytes = Vec::new();
+    resp_bytes.push(CmdCompletionCode::Success as u8);
+    resp_bytes.push(VENDOR_ID_SET_SELECTOR_NO_MORE);
+    resp_bytes.push(VENDOR_ID_FORMAT_IANA);
+    resp_bytes.extend_from_slice(&CALIPTRA_IANA_ENTERPRISE_ID_BYTES);
+    resp_bytes.extend_from_slice(&CALIPTRA_IANA_VDM_COMMAND_SET_TYPE);
+    resp_bytes
+}
+
 bitfield! {
     #[repr(C)]
     #[derive(Clone, FromBytes, IntoBytes, Immutable)]
@@ -96,18 +111,21 @@ pub enum MCTPCtrlCmd {
     GetEID = 2,
     GetMctpVersionSupport = 4,
     GetMsgTypeSupport = 5,
-    Unsupported,
+    GetVendorDefinedMsgSupport = 6,
 }
 
-impl From<u8> for MCTPCtrlCmd {
-    fn from(val: u8) -> MCTPCtrlCmd {
-        match val {
-            1 => MCTPCtrlCmd::SetEID,
-            2 => MCTPCtrlCmd::GetEID,
-            4 => MCTPCtrlCmd::GetMctpVersionSupport,
-            5 => MCTPCtrlCmd::GetMsgTypeSupport,
-            _ => MCTPCtrlCmd::Unsupported,
-        }
+impl TryFrom<u8> for MCTPCtrlCmd {
+    type Error = ();
+
+    fn try_from(val: u8) -> Result<Self, Self::Error> {
+        Ok(match val {
+            1 => Self::SetEID,
+            2 => Self::GetEID,
+            4 => Self::GetMctpVersionSupport,
+            5 => Self::GetMsgTypeSupport,
+            6 => Self::GetVendorDefinedMsgSupport,
+            _ => return Err(()),
+        })
     }
 }
 

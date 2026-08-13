@@ -350,13 +350,6 @@ pub(crate) fn validate_buffered_large_response<Pal: SpdmPal>(
     pal: &Pal,
     large_resp_len: usize,
 ) -> SpdmResult<()> {
-    if state.large_msg_ctx.request_in_progress()
-        || state.large_msg_ctx.response_in_progress()
-        || !state.chunking_enabled()
-    {
-        return Err(SPDM_UNSPECIFIED);
-    }
-
     // Check against allocated buffer capacity if already active, else check remaining PAL capacity.
     // We don't double-revalidate against remaining free pool once rented.
     let capacity = if let Some(buf) = state.large_msg_ctx.get_buffer() {
@@ -365,7 +358,31 @@ pub(crate) fn validate_buffered_large_response<Pal: SpdmPal>(
         pal.large_capacity()
     };
 
-    if large_resp_len > capacity || large_resp_len > state.effective_max_spdm_msg_size(pal) {
+    validate_buffered_large_response_with_capacity(state, pal, large_resp_len, capacity)
+}
+
+pub(crate) fn validate_buffered_large_response_with_capacity<Pal: SpdmPal>(
+    state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &Pal,
+    large_resp_len: usize,
+    capacity: usize,
+) -> SpdmResult<()> {
+    if state.large_msg_ctx.request_in_progress()
+        || state.large_msg_ctx.response_in_progress()
+        || !state.chunking_enabled()
+    {
+        return Err(SPDM_UNSPECIFIED);
+    }
+
+    let local_max_spdm_msg_size = capacity.max(pal.mtu());
+    let peer_max_spdm_msg_size = if state.peer_max_spdm_msg_size == 0 {
+        local_max_spdm_msg_size
+    } else {
+        state.peer_max_spdm_msg_size as usize
+    };
+    let effective_max_spdm_msg_size = local_max_spdm_msg_size.min(peer_max_spdm_msg_size);
+
+    if large_resp_len > capacity || large_resp_len > effective_max_spdm_msg_size {
         return Err(SPDM_UNSPECIFIED);
     }
     Ok(())

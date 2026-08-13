@@ -3,7 +3,8 @@
 // NOTE: Do not call `caliptra_mcu_romtime::println!` from this test.
 
 use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
-    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, POLICY_DIGEST_SIZE,
+    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, EXPORTED_CDI_SIZE,
+    POLICY_DIGEST_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 
@@ -26,6 +27,11 @@ pub(crate) fn test_dpe_handle_store() {
     let mut out = DpeHandleRecord::default();
     assert!(store.read_leaf_record(&mut out).is_err());
     assert!(store.read_attestation_target(&mut out).is_err());
+
+    // Exported CDI must be all zeros after initialization.
+    let mut cdi_out = [0xFFu8; EXPORTED_CDI_SIZE];
+    store.read_exported_cdi(&mut cdi_out).unwrap();
+    assert_eq!(cdi_out, [0u8; EXPORTED_CDI_SIZE]);
 
     // Write a root record (fw_id 0x0001, no parent).
     let root = DpeHandleRecord {
@@ -84,6 +90,12 @@ pub(crate) fn test_dpe_handle_store() {
     // validate_store still succeeds (state is consistent).
     store.validate_store(&policy_digest).unwrap();
 
+    // Test writing and reading exported CDI.
+    let test_cdi = [0x55u8; EXPORTED_CDI_SIZE];
+    store.write_exported_cdi(&test_cdi).unwrap();
+    store.read_exported_cdi(&mut cdi_out).unwrap();
+    assert_eq!(cdi_out, test_cdi);
+
     // Re-initialize clears everything.
     let new_digest = [0x11u8; POLICY_DIGEST_SIZE];
     store.initialize_store(&new_digest).unwrap();
@@ -93,4 +105,8 @@ pub(crate) fn test_dpe_handle_store() {
     // Old digest no longer matches.
     assert!(store.validate_store(&policy_digest).is_err());
     store.validate_store(&new_digest).unwrap();
+
+    // Exported CDI must be cleared after re-initialization.
+    store.read_exported_cdi(&mut cdi_out).unwrap();
+    assert_eq!(cdi_out, [0u8; EXPORTED_CDI_SIZE]);
 }

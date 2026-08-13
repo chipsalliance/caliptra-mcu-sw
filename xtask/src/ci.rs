@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use caliptra_builder::{elf_size, FirmwareType, FwId};
 use elf::endian::LittleEndian;
 use size_history::{
@@ -10,7 +10,7 @@ use size_history::{
 use std::path::{Path, PathBuf};
 use std::{env, error::Error, fs, io};
 
-const CACHE_FORMAT_VERSION: &str = "main-2.1-v1";
+const CACHE_FORMAT_VERSION: &str = "main-2.1-v2";
 
 pub const MCU_KERNEL_FPGA: FwId = FwId {
     crate_name: "mcu-runtime-fpga",
@@ -73,6 +73,13 @@ pub(crate) fn size_history() -> Result<(), anyhow::Error> {
             SizeType::Stack,
             false,
         )))
+        .add_builder(Box::new(CaliptraElfSizeGenerator::new(
+            "App .bss size",
+            MCU_USER_FPGA,
+            SizeType::Bss,
+            false,
+        )))
+        .add_builder(Box::new(SramOverflowGenerator))
         .run()
         .map_err(|e| anyhow::anyhow!("{}", e))
 }
@@ -92,11 +99,11 @@ fn box_cache(val: impl Cache + 'static) -> Box<dyn Cache> {
 }
 
 fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
-    let lockfile_path = target_dir
+    let lock_path = target_dir
         .parent()
-        .ok_or_else(|| anyhow::anyhow!("target directory has no workspace parent"))?
+        .context("size-history target directory has no workspace parent")?
         .join("Cargo.lock");
-    let lockfile = fs::read(&lockfile_path)?;
+    let original_lock = fs::read(&lock_path).context("failed to snapshot Cargo.lock")?;
 
     // FPGA does not have a `*-devel.toml` manifest variant (HW-fixed SRAM);
     // still exercise the `release` cargo feature / `release` cargo profile
@@ -112,7 +119,7 @@ fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
             ..Default::default()
         });
 
-    fs::write(lockfile_path, lockfile)?;
+    fs::write(&lock_path, original_lock).context("failed to restore Cargo.lock")?;
     result
 }
 
@@ -130,9 +137,17 @@ fn other_err(e: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Erro
 }
 
 pub fn elf_stack_size(elf_bytes: &[u8]) -> io::Result<u64> {
+    elf_section_size(elf_bytes, ".stack")
+}
+
+pub fn elf_bss_size(elf_bytes: &[u8]) -> io::Result<u64> {
+    elf_section_size(elf_bytes, ".bss")
+}
+
+fn elf_section_size(elf_bytes: &[u8], section_name: &str) -> io::Result<u64> {
     let elf = elf::ElfBytes::<LittleEndian>::minimal_parse(elf_bytes).map_err(other_err)?;
-    let Ok(Some(section)) = elf.section_header_by_name(".stack") else {
-        return Err(other_err("ELF file has no .stack section"));
+    let Ok(Some(section)) = elf.section_header_by_name(section_name) else {
+        return Err(other_err(format!("ELF file has no {section_name} section")));
     };
 
     let mut min_addr = u64::MAX;
@@ -148,6 +163,7 @@ pub fn elf_stack_size(elf_bytes: &[u8]) -> io::Result<u64> {
 enum SizeType {
     Instruction,
     Stack,
+    Bss,
 }
 
 /// Builds Caliptra firmware using runtime_build_with_apps and measures ELF size.
@@ -179,6 +195,8 @@ impl CaliptraElfSizeGenerator {
 
         if self.size_type == SizeType::Stack {
             elf_stack_size(&elf_bytes)
+        } else if self.size_type == SizeType::Bss {
+            elf_bss_size(&elf_bytes)
         } else {
             elf_size(&elf_bytes)
         }
@@ -198,5 +216,58 @@ impl ArtifactBuilder for CaliptraElfSizeGenerator {
                 None
             }
         }
+    }
+}
+
+/// Reports how many bytes the combined kernel + user-app exceeds the FPGA SRAM
+/// budget.  Returns 0 when everything fits.
+struct SramOverflowGenerator;
+
+impl SramOverflowGenerator {
+    /// Run the bundler build and either:
+    /// - Return 0 if it succeeds (everything fits)
+    /// - Parse the overflow from the error message if it fails with
+    ///   "Bytes X would exceed remaining memory space Y" → overflow = X - Y
+    /// - Return None if the build fails for an unrelated reason
+    fn measure(&self, workspace: &Path) -> Option<u64> {
+        let target_dir = workspace.join("target");
+
+        match build_runtime(&target_dir) {
+            Ok(_) => Some(0), // Fits in SRAM
+            Err(e) => {
+                let msg = format!("{:?}", e);
+                // Parse "Bytes <needed> would exceed remaining memory space <available>"
+                parse_overflow_from_error(&msg)
+            }
+        }
+    }
+}
+
+/// Parse the SRAM overflow from the bundler's error message.
+/// Expected format: "Bytes <needed> would exceed remaining memory space <available>"
+fn parse_overflow_from_error(msg: &str) -> Option<u64> {
+    let bytes_prefix = "Bytes ";
+    let middle = " would exceed remaining memory space ";
+    let bytes_idx = msg.find(bytes_prefix)?;
+    let after_bytes = &msg[bytes_idx + bytes_prefix.len()..];
+    let middle_idx = after_bytes.find(middle)?;
+    let needed: u64 = after_bytes[..middle_idx].trim().parse().ok()?;
+    let after_middle = &after_bytes[middle_idx + middle.len()..];
+    // Take digits only (stop at any non-digit)
+    let available_str: String = after_middle
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    let available: u64 = available_str.parse().ok()?;
+    Some(needed.saturating_sub(available))
+}
+
+impl ArtifactBuilder for SramOverflowGenerator {
+    fn name(&self) -> &str {
+        "SRAM overflow"
+    }
+
+    fn build_and_measure(&self, workspace: &Path) -> Option<u64> {
+        self.measure(workspace)
     }
 }

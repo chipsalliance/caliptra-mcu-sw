@@ -44,7 +44,7 @@ pub use rom::*;
 mod rom_env;
 pub use rom_env::*;
 mod i3c;
-pub use i3c::{I3cConfig, I3cTimings};
+pub use i3c::{I3cConfig, I3cTimings, MCTP_DCR};
 mod i3c_mailbox;
 pub use i3c_mailbox::{DotContext, I3cMailboxHandler};
 mod mailbox;

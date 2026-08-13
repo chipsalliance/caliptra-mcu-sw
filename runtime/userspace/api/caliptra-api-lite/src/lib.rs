@@ -29,27 +29,32 @@ mod alloc;
 #[cfg(feature = "mailbox-io")]
 mod auth_stash;
 #[cfg(feature = "mailbox-io")]
+mod capabilities;
+#[cfg(feature = "mailbox-io")]
 mod cert;
 #[cfg(feature = "mailbox-io")]
 mod debug_unlock;
 #[cfg(feature = "mailbox-io")]
-mod device_state;
-#[cfg(feature = "mailbox-io")]
 mod dpe;
-pub mod eat;
 #[cfg(feature = "mailbox-io")]
 mod ecdh;
 #[cfg(feature = "mailbox-io")]
 mod fe_prog;
 #[cfg(feature = "mailbox-io")]
+pub mod firmware_update;
+#[cfg(feature = "mailbox-io")]
 mod fw_info;
 #[cfg(feature = "mailbox-io")]
 mod hmac;
+#[cfg(feature = "mailbox-io")]
+pub mod image_loader;
 #[cfg(feature = "mailbox-io")]
 mod import;
 pub mod mailbox;
 #[cfg(feature = "mailbox-io")]
 mod pcr;
+#[cfg(feature = "mailbox-io")]
+mod pcr_quote;
 #[cfg(feature = "mailbox-io")]
 pub mod raw;
 #[cfg(feature = "mailbox-io")]
@@ -57,10 +62,10 @@ mod rng;
 #[cfg(feature = "mailbox-io")]
 mod sha;
 #[cfg(feature = "mailbox-io")]
-pub mod signed_eat;
-#[cfg(feature = "mailbox-io")]
 mod slice;
 mod types;
+#[cfg(feature = "mailbox-io")]
+mod version;
 #[cfg(feature = "mailbox-io")]
 mod wire;
 
@@ -78,23 +83,26 @@ pub use auth_stash::{
     AUTHORIZE_AND_STASH_CONTEXT_SIZE, AUTHORIZE_AND_STASH_MEASUREMENT_SIZE,
 };
 #[cfg(feature = "mailbox-io")]
-pub use cert::{get_attested_csr_ecc384, get_attested_csr_mldsa87, populate_idev_ecc384_cert};
+pub use capabilities::{core_capabilities, CORE_CAPABILITIES_SIZE};
+#[cfg(feature = "mailbox-io")]
+pub use cert::{
+    get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
+    populate_idev_ecc384_cert,
+};
 #[cfg(feature = "mailbox-io")]
 pub use debug_unlock::{
     request_debug_unlock_challenge, DEBUG_UNLOCK_CHALLENGE_LEN,
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
 #[cfg(feature = "mailbox-io")]
-pub use device_state::{get_pcr_value, pcr_quote_ecc384, PCR_QUOTE_ECC384_LEN};
-#[cfg(feature = "mailbox-io")]
 pub use dpe::{
     dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
-    dpe_derive_context, dpe_get_cert_chain_chunk, dpe_rotate_context_default, dpe_sign_ecc_p384,
-    dpe_tag_tci, dpe_update_context_measurement, walk_dpe_chain, DpeChainSink, DpeContextHandle,
-    DpeDeriveContextFlags, DpeDeriveContextParams, DpeDeriveContextResult,
-    DpeUpdateContextMeasurementParams, DpeUpdateContextMeasurementResult, DPE_CONTEXT_HANDLE_SIZE,
-    DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE, DPE_P384_SIGNATURE_SIZE,
-    DPE_TCI_MEASUREMENT_SIZE,
+    dpe_derive_context, dpe_get_cert_chain_chunk, dpe_get_tagged_tci, dpe_rotate_context_default,
+    dpe_sign_ecc_p384, dpe_tag_tci, dpe_update_context_measurement, walk_dpe_chain, DpeChainSink,
+    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeDeriveContextResult,
+    DpeTaggedTci, DpeUpdateContextMeasurementParams, DpeUpdateContextMeasurementResult,
+    DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE,
+    DPE_P384_SIGNATURE_SIZE, DPE_TCI_MEASUREMENT_SIZE,
 };
 #[cfg(feature = "mailbox-io")]
 pub use ecdh::{
@@ -111,12 +119,19 @@ pub use import::{cm_delete, cm_import};
 #[cfg(feature = "mailbox-io")]
 pub use pcr::{extend_pcr31, PCR31_INDEX, PCR31_MEASUREMENT_SIZE};
 #[cfg(feature = "mailbox-io")]
+pub use pcr_quote::{
+    pcr_quote_ecc384, pcr_quote_mldsa87, PCR_QUOTE_ECC384_LEN, PCR_QUOTE_MAX_LEN,
+    PCR_QUOTE_MLDSA87_LEN,
+};
+#[cfg(feature = "mailbox-io")]
 pub use rng::rng_generate;
 #[cfg(feature = "mailbox-io")]
 pub use sha::{
     sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
 };
 pub use types::{CmKeyUsage, Cmk, CMK_SIZE};
+#[cfg(feature = "mailbox-io")]
+pub use version::{core_firmware_version, CoreFirmwareVersion};
 
 #[cfg(feature = "mailbox-io")]
 pub use mcu_error::{McuErrorCode, McuResult};

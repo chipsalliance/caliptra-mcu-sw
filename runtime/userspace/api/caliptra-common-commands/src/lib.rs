@@ -7,7 +7,7 @@
 use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::SekState;
-use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature};
+use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature, AUTH_CMD_NONCE_LEN};
 use mcu_caliptra_api_lite::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
@@ -113,12 +113,14 @@ pub struct GetLogResult {
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, Immutable, PartialEq, Eq)]
 pub struct DeviceCapabilities {
-    pub caliptra_rt: [u8; 8],  // Bytes [0:7]
-    pub caliptra_fmc: [u8; 4], // Bytes [8:11]
-    pub caliptra_rom: [u8; 4], // Bytes [12:15]
-    pub mcu_rt: [u8; 8],       // Bytes [16:23]
-    pub mcu_rom: [u8; 4],      // Bytes [24:27]
-    pub reserved: [u8; 4],     // Bytes [28:31]
+    pub caliptra_rt: [u8; 8],            // Bytes [0:7], big-endian
+    pub caliptra_fmc: [u8; 4],           // Bytes [8:11], big-endian
+    pub caliptra_rom: [u8; 4],           // Bytes [12:15], big-endian
+    pub mcu_rom: [u8; 4],                // Bytes [16:19], big-endian
+    pub mcu_rt: [u8; 4],                 // Bytes [20:23], big-endian
+    pub external_commands: [u8; 4],      // Bytes [24:27], big-endian
+    pub authorized_subcommands: [u8; 4], // Bytes [28:31], big-endian
+    pub reserved: [u8; 4],               // Bytes [32:35], zero
 }
 
 /// Debug unlock challenge response returned by `request_debug_unlock`.
@@ -190,16 +192,21 @@ pub trait CaliptraCmdHandler {
     /// Exports an IDevID CSR (manufacturing mode only).
     ///
     /// # Arguments
+    /// * `alloc` - Scratch allocator for mailbox operations.
     /// * `algorithm` - The asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87).
     /// * `csr_buf` - Mutable buffer to write the CSR DER data into directly.
     ///
     /// # Returns
     /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
-    async fn export_idevid_csr(
+    async fn export_idevid_csr<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         algorithm: u32,
         csr_buf: &mut [u8],
-    ) -> CaliptraCmdResult<usize>;
+    ) -> CaliptraCmdResult<usize> {
+        let _ = (alloc, algorithm, csr_buf);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 
     /// Requests a production debug unlock challenge.
     ///
@@ -370,8 +377,8 @@ pub trait CommandAuthorizer {
     /// Get the challenge from the last call to `MC_GET_AUTH_CMD_CHALLENGE`.
     ///
     /// This consumes the challenge so it can only be used once.
-    fn take_challenge(&mut self) -> Option<[u8; 32]>;
+    fn take_challenge(&mut self) -> Option<[u8; AUTH_CMD_NONCE_LEN]>;
 
     /// Set the challenge nonce to be used on the next authorized command.
-    fn set_challenge(&mut self, challenge: [u8; 32]);
+    fn set_challenge(&mut self, challenge: [u8; AUTH_CMD_NONCE_LEN]);
 }

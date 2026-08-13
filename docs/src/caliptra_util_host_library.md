@@ -519,7 +519,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get device capabilities
     let capabilities = caliptra_cmd_get_device_capabilities(&mut session)?;
-    println!("Device capabilities: 0x{:08x}", capabilities.capabilities);
+    println!(
+        "MCU Runtime capabilities: 0x{:08x}",
+        capabilities.mcu_runtime_capabilities()
+    );
 
     // Disconnect
     session.disconnect()?;

@@ -1,11 +1,24 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, Context, Result};
-use caliptra_image_gen::to_hw_format;
-use caliptra_image_types::{ImageEccSignature, ImagePqcSignature};
-use p384::ecdsa::Signature;
+use caliptra_auth_man_types::{AuthManifestFlags, AuthManifestPreamble, AuthorizationManifest};
+use caliptra_image_crypto::RustCrypto as Crypto;
+use caliptra_image_gen::{from_hw_format, to_hw_format, ImageGeneratorCrypto};
+use caliptra_image_types::{
+    ImageEccPubKey, ImageEccSignature, ImageLmsPublicKey, ImageLmsSignature, ImageMldsaPubKey,
+    ImageMldsaSignature, ImagePqcSignature,
+};
+use openssl::{
+    pkey::Public,
+    pkey_ctx::PkeyCtx,
+    pkey_ml_dsa::{PKeyMlDsaBuilder, Variant},
+    signature::Signature as OsslSignature,
+};
+use p384::ecdsa::{signature::hazmat::PrehashVerifier, Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use zerocopy::IntoBytes;
+use sha2::{Digest, Sha384};
+use std::path::Path;
+use zerocopy::{FromBytes, IntoBytes};
 
 /// Request payload containing signature targets to be signed offline.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -49,6 +62,64 @@ pub struct SignatureEntry {
     pub ecc_sig: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pqc_sig: Option<String>,
+}
+
+fn sha384_hex(data: &[u8]) -> String {
+    let mut hasher = Sha384::new();
+    hasher.update(data);
+    hex::encode(hasher.finalize())
+}
+
+/// Generate a `SigningRequestJson` containing SHA-384 targets and hex payloads from an unsigned `AuthorizationManifest`.
+pub fn create_signing_request(
+    manifest: &caliptra_auth_man_types::AuthorizationManifest,
+) -> Result<SigningRequestJson> {
+    let preamble_bytes = manifest.preamble.as_bytes();
+
+    let vendor_range = AuthManifestPreamble::vendor_signed_data_range();
+    let vendor_payload = preamble_bytes
+        .get(vendor_range.start as usize..vendor_range.end as usize)
+        .ok_or_else(|| anyhow!("Invalid vendor signed data range"))?;
+    let vendor_digest = sha384_hex(vendor_payload);
+
+    let owner_range = AuthManifestPreamble::owner_pub_keys_range();
+    let owner_payload = preamble_bytes
+        .get(owner_range.start as usize..owner_range.end as usize)
+        .ok_or_else(|| anyhow!("Invalid owner pub keys range"))?;
+    let owner_digest = sha384_hex(owner_payload);
+
+    let imc_payload = manifest.image_metadata_col.as_bytes();
+    let imc_digest = sha384_hex(imc_payload);
+
+    Ok(SigningRequestJson {
+        version: 1,
+        requests: SigningRequests {
+            vendor_pub_keys_signatures: SignatureRequestEntry {
+                ecc_key: "vendor_fw_ecc_key".to_string(),
+                pqc_key: "vendor_fw_pqc_key".to_string(),
+                digest_sha384: vendor_digest,
+                payload_hex: hex::encode(vendor_payload),
+            },
+            owner_pub_keys_signatures: SignatureRequestEntry {
+                ecc_key: "owner_fw_ecc_key".to_string(),
+                pqc_key: "owner_fw_pqc_key".to_string(),
+                digest_sha384: owner_digest,
+                payload_hex: hex::encode(owner_payload),
+            },
+            vendor_imc_signatures: SignatureRequestEntry {
+                ecc_key: "vendor_man_ecc_key".to_string(),
+                pqc_key: "vendor_man_pqc_key".to_string(),
+                digest_sha384: imc_digest.clone(),
+                payload_hex: hex::encode(imc_payload),
+            },
+            owner_imc_signatures: SignatureRequestEntry {
+                ecc_key: "owner_man_ecc_key".to_string(),
+                pqc_key: "owner_man_pqc_key".to_string(),
+                digest_sha384: imc_digest,
+                payload_hex: hex::encode(imc_payload),
+            },
+        },
+    })
 }
 
 pub trait ImageEccSignatureExt: Sized {
@@ -131,9 +202,241 @@ impl ImagePqcSignatureExt for ImagePqcSignature {
                 non_zero_len
             ));
         }
-        // TODO(timothytrippel): cryptographically verify the PQ signatures.
+        // TODO(timothytrippel): Cryptographically verify PQC signatures (LMS / ML-DSA-87).
         Ok(())
     }
+}
+/// Perform cryptographic verification of an ECDSA P-384 signature over a 48-byte digest against an `ImageEccPubKey`.
+pub fn verify_ecdsa384_signature(
+    digest: &[u8; 48],
+    pub_key: &ImageEccPubKey,
+    sig: &ImageEccSignature,
+) -> Result<()> {
+    let x_bytes: [u8; 48] = from_hw_format(&pub_key.x);
+    let y_bytes: [u8; 48] = from_hw_format(&pub_key.y);
+
+    let mut encoded_point = [0u8; 97];
+    encoded_point[0] = 0x04;
+    encoded_point[1..49].copy_from_slice(&x_bytes);
+    encoded_point[49..97].copy_from_slice(&y_bytes);
+
+    let verifying_key = VerifyingKey::from_sec1_bytes(&encoded_point)
+        .map_err(|e| anyhow!("Failed to parse public key for verification: {}", e))?;
+
+    let r_bytes: [u8; 48] = from_hw_format(&sig.r);
+    let s_bytes: [u8; 48] = from_hw_format(&sig.s);
+
+    let mut sig_bytes = [0u8; 96];
+    sig_bytes[..48].copy_from_slice(&r_bytes);
+    sig_bytes[48..].copy_from_slice(&s_bytes);
+
+    let signature = Signature::from_slice(&sig_bytes)
+        .map_err(|e| anyhow!("Failed to parse signature bytes for verification: {}", e))?;
+
+    verifying_key
+        .verify_prehash(digest, &signature)
+        .map_err(|e| anyhow!("ECDSA P-384 signature verification failed: {}", e))
+}
+
+/// Perform cryptographic verification of an LMS signature over a 48-byte digest against an `ImageLmsPublicKey`.
+pub fn verify_lms_signature(
+    _digest: &[u8; 48],
+    _pub_key: &ImageLmsPublicKey,
+    _sig: &ImageLmsSignature,
+) -> Result<()> {
+    eprintln!("WARNING: LMS signature cryptographic verification is not yet implemented.");
+    // TODO(timothytrippel): Cryptographically verify LMS signatures.
+    Ok(())
+}
+
+/// Perform cryptographic verification of an ML-DSA-87 signature over a message against an `ImageMldsaPubKey`.
+pub fn verify_mldsa_signature(
+    msg: &[u8],
+    pub_key: &ImageMldsaPubKey,
+    sig: &ImageMldsaSignature,
+) -> Result<()> {
+    let builder = PKeyMlDsaBuilder::<Public>::new(Variant::MlDsa87, pub_key.0.as_bytes(), None)?;
+    let pkey = builder.build()?;
+    let mut algo = OsslSignature::for_ml_dsa(Variant::MlDsa87)?;
+    let mut ctx = PkeyCtx::new(&pkey)?;
+    ctx.verify_message_init(&mut algo)?;
+    match ctx.verify(msg, &sig.0.as_bytes()[..4627]) {
+        Ok(true) => Ok(()),
+        _ => anyhow::bail!("ML-DSA-87 signature verification failed against ImageMldsaPubKey"),
+    }
+}
+
+/// Attach signatures from a `SignaturesJson` file to an unsigned authorization manifest binary, verify all signatures, and save the resulting `signed_auth_manifest.bin`.
+pub fn attach_auth_manifest_signatures(
+    unsigned_manifest_path: &Path,
+    signatures_path: &Path,
+    vendor_fw_pub_key_path: Option<&Path>,
+    owner_fw_pub_key_path: Option<&Path>,
+    output_path: &Path,
+) -> Result<()> {
+    // Load unsigned manifest.
+    let manifest_bytes = std::fs::read(unsigned_manifest_path).with_context(|| {
+        format!(
+            "Failed to read unsigned manifest file {}",
+            unsigned_manifest_path.display()
+        )
+    })?;
+    let mut manifest = AuthorizationManifest::read_from_bytes(&manifest_bytes)
+        .map_err(|e| anyhow!("Failed to parse unsigned manifest: {:?}", e))?;
+
+    // Load signatures.
+    let sig_file_content = std::fs::read_to_string(signatures_path).with_context(|| {
+        format!(
+            "Failed to read signatures file {}",
+            signatures_path.display()
+        )
+    })?;
+    let sigs_json: SignaturesJson = serde_json::from_str(&sig_file_content).with_context(|| {
+        format!(
+            "Failed to parse signatures JSON file {}",
+            signatures_path.display()
+        )
+    })?;
+
+    let flags = AuthManifestFlags::from(manifest.preamble.flags);
+    let vendor_sig_required = flags.contains(AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED);
+
+    // Vendor Pub Keys Signatures (signed by Vendor FW Root key over Vendor Manifest Public Keys)
+    if let Some(entry) = &sigs_json.vendor_pub_keys_signatures {
+        if let Some(ecc_hex) = &entry.ecc_sig {
+            manifest.preamble.vendor_pub_keys_signatures.ecc_sig =
+                ImageEccSignature::try_from_hex(ecc_hex)?;
+        }
+        if let Some(pqc_hex) = &entry.pqc_sig {
+            let pqc_sig = ImagePqcSignature::try_from_hex(pqc_hex)?;
+            pqc_sig
+                .verify()
+                .context("Vendor public keys PQC signature verification failed")?;
+            manifest.preamble.vendor_pub_keys_signatures.pqc_sig = pqc_sig;
+        }
+
+        if let Some(vendor_fw_pub_path) = vendor_fw_pub_key_path {
+            let vendor_fw_pub = Crypto::ecc_pub_key_from_pem(vendor_fw_pub_path)?;
+            let vendor_range = AuthManifestPreamble::vendor_signed_data_range();
+            let vendor_data = manifest
+                .preamble
+                .as_bytes()
+                .get(vendor_range.start as usize..vendor_range.end as usize)
+                .ok_or_else(|| anyhow!("Invalid vendor signed data range"))?;
+            let digest: [u8; 48] = sha2::Sha384::digest(vendor_data).into();
+            verify_ecdsa384_signature(
+                &digest,
+                &vendor_fw_pub,
+                &manifest.preamble.vendor_pub_keys_signatures.ecc_sig,
+            )
+            .context(
+                "Vendor public keys signature verification failed against provided vendor FW key",
+            )?;
+        }
+    }
+
+    // Owner Pub Keys Signatures (signed by Owner FW Root key over Owner Manifest Public Keys)
+    let owner_pub_sigs = sigs_json
+        .owner_pub_keys_signatures
+        .as_ref()
+        .ok_or_else(|| anyhow!("owner_pub_keys_signatures is required in signatures JSON"))?;
+    let ecc_hex = owner_pub_sigs
+        .ecc_sig
+        .as_ref()
+        .ok_or_else(|| anyhow!("ecc_sig is required in owner_pub_keys_signatures"))?;
+    let pqc_hex = owner_pub_sigs
+        .pqc_sig
+        .as_ref()
+        .ok_or_else(|| anyhow!("pqc_sig is required in owner_pub_keys_signatures"))?;
+
+    manifest.preamble.owner_pub_keys_signatures.ecc_sig = ImageEccSignature::try_from_hex(ecc_hex)?;
+    let pqc_sig = ImagePqcSignature::try_from_hex(pqc_hex)?;
+    pqc_sig
+        .verify()
+        .context("Owner public keys PQC signature verification failed")?;
+    manifest.preamble.owner_pub_keys_signatures.pqc_sig = pqc_sig;
+
+    if let Some(owner_fw_pub_path) = owner_fw_pub_key_path {
+        let owner_fw_pub = Crypto::ecc_pub_key_from_pem(owner_fw_pub_path)?;
+        let owner_data = manifest.preamble.owner_pub_keys.as_bytes();
+        let digest: [u8; 48] = sha2::Sha384::digest(owner_data).into();
+        verify_ecdsa384_signature(
+            &digest,
+            &owner_fw_pub,
+            &manifest.preamble.owner_pub_keys_signatures.ecc_sig,
+        )
+        .context("Owner public keys signature verification failed against provided owner FW key")?;
+    }
+
+    // IMC Digest for Manifest key verification
+    let imc_data = manifest.image_metadata_col.as_bytes();
+    let imc_digest: [u8; 48] = sha2::Sha384::digest(imc_data).into();
+
+    // Vendor IMC Signatures (signed by Vendor Manifest key; verified against embedded
+    // Vendor Manifest Public Key: `preamble.vendor_pub_keys`)
+    if let Some(entry) = &sigs_json.vendor_imc_signatures {
+        let ecc_hex = entry
+            .ecc_sig
+            .as_ref()
+            .ok_or_else(|| anyhow!("ecc_sig is required in vendor_imc_signatures"))?;
+        let pqc_hex = entry
+            .pqc_sig
+            .as_ref()
+            .ok_or_else(|| anyhow!("pqc_sig is required in vendor_imc_signatures"))?;
+
+        manifest.preamble.vendor_image_metdata_signatures.ecc_sig =
+            ImageEccSignature::try_from_hex(ecc_hex)?;
+        let pqc_sig = ImagePqcSignature::try_from_hex(pqc_hex)?;
+        pqc_sig
+            .verify()
+            .context("Vendor IMC PQC signature verification failed")?;
+        manifest.preamble.vendor_image_metdata_signatures.pqc_sig = pqc_sig;
+
+        verify_ecdsa384_signature(
+            &imc_digest,
+            &manifest.preamble.vendor_pub_keys.ecc_pub_key,
+            &manifest.preamble.vendor_image_metdata_signatures.ecc_sig,
+        )
+        .context("Vendor IMC signature verification failed against embedded vendor manifest key")?;
+    } else if vendor_sig_required {
+        anyhow::bail!("vendor_imc_signatures is required in signatures JSON when VENDOR_SIGNATURE_REQUIRED flag is set");
+    }
+
+    // Owner IMC Signatures (signed by Owner Manifest key; verified against embedded
+    // Owner Manifest Public Key: `preamble.owner_pub_keys`)
+    let owner_imc_sigs = sigs_json
+        .owner_imc_signatures
+        .as_ref()
+        .ok_or_else(|| anyhow!("owner_imc_signatures is required in signatures JSON"))?;
+    let ecc_hex = owner_imc_sigs
+        .ecc_sig
+        .as_ref()
+        .ok_or_else(|| anyhow!("ecc_sig is required in owner_imc_signatures"))?;
+    let pqc_hex = owner_imc_sigs
+        .pqc_sig
+        .as_ref()
+        .ok_or_else(|| anyhow!("pqc_sig is required in owner_imc_signatures"))?;
+
+    manifest.preamble.owner_image_metdata_signatures.ecc_sig =
+        ImageEccSignature::try_from_hex(ecc_hex)?;
+    let pqc_sig = ImagePqcSignature::try_from_hex(pqc_hex)?;
+    pqc_sig
+        .verify()
+        .context("Owner IMC PQC signature verification failed")?;
+    manifest.preamble.owner_image_metdata_signatures.pqc_sig = pqc_sig;
+
+    verify_ecdsa384_signature(
+        &imc_digest,
+        &manifest.preamble.owner_pub_keys.ecc_pub_key,
+        &manifest.preamble.owner_image_metdata_signatures.ecc_sig,
+    )
+    .context("Owner IMC signature verification failed against embedded owner manifest key")?;
+
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(output_path, manifest.as_bytes())?;
+    Ok(())
 }
 
 #[cfg(test)]

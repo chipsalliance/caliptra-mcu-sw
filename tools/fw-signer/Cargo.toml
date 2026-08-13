@@ -1,0 +1,28 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-fw-signer"
+version = "0.1.0"
+edition = "2021"
+description = "Helper library and standalone CLI tool (fw-signer) to generate offline signatures.json from signing_request.json using a key manifest for Caliptra auth manifests"
+
+[[bin]]
+name = "fw-signer"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+caliptra-image-crypto.workspace = true
+caliptra-image-gen.workspace = true
+caliptra-image-types.workspace = true
+caliptra-mcu-builder.workspace = true
+clap.workspace = true
+hex.workspace = true
+openssl.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zerocopy.workspace = true
+
+[dev-dependencies]
+caliptra-image-fake-keys.workspace = true
+tempfile.workspace = true

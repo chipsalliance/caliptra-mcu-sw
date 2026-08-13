@@ -7,7 +7,8 @@ use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::wire::{
-    calc_checksum, CMD_GET_ATTESTED_ECC384_CSR, CMD_GET_ATTESTED_MLDSA87_CSR, MBOX_RESP_HEADER_SIZE,
+    calc_checksum, CMD_GET_ATTESTED_ECC384_CSR, CMD_GET_ATTESTED_MLDSA87_CSR,
+    CMD_GET_IDEV_ECC384_CSR, MBOX_RESP_HEADER_SIZE,
 };
 use crate::ApiAlloc;
 
@@ -56,23 +57,53 @@ pub async fn populate_idev_ecc384_cert<A: ApiAlloc>(alloc: &A, cert: &[u8]) -> M
 }
 
 // ---------------------------------------------------------------------------
-// GET_ATTESTED_*_CSR — alloc-backed, in-place response handling
+// GET_*_CSR — in-place response handling
 // ---------------------------------------------------------------------------
+
+/// Bytes preceding variable CSR data in a mailbox response:
+/// `MailboxRespHeader(8) | data_size(4)`.
+const CSR_RSP_PREFIX_LEN: usize = MBOX_RESP_HEADER_SIZE + 4;
+
+/// Issue `GET_IDEV_ECC384_CSR` and write the returned CSR DER bytes into
+/// `csr_out`. Returns `Ok(None)` when the CSR is not provisioned.
+#[inline(never)]
+pub async fn get_idev_csr_ecc384(csr_out: &mut [u8]) -> McuResult<Option<usize>> {
+    if csr_out.len() <= CSR_RSP_PREFIX_LEN {
+        return Err(INVARIANT);
+    }
+
+    let mut req = [0u8; 4];
+    req.copy_from_slice(&calc_checksum(CMD_GET_IDEV_ECC384_CSR, &[]).to_le_bytes());
+
+    let actual = crate::wire::mbox_execute(CMD_GET_IDEV_ECC384_CSR, &req, csr_out).await?;
+    if actual < CSR_RSP_PREFIX_LEN {
+        return Err(INVARIANT);
+    }
+    let data_size = u32::from_le_bytes([csr_out[8], csr_out[9], csr_out[10], csr_out[11]]);
+    if data_size == u32::MAX {
+        return Ok(None);
+    }
+    let data_size = data_size as usize;
+    if data_size == 0
+        || data_size > csr_out.len() - CSR_RSP_PREFIX_LEN
+        || CSR_RSP_PREFIX_LEN + data_size > actual
+    {
+        return Err(INVARIANT);
+    }
+    csr_out.copy_within(CSR_RSP_PREFIX_LEN..CSR_RSP_PREFIX_LEN + data_size, 0);
+    Ok(Some(data_size))
+}
 
 /// `GET_ATTESTED_*_CSR` request size on the wire:
 /// `chksum(4) | key_id(4) | nonce(32)` = 40 B.
 const ATTESTED_CSR_REQ_LEN: usize = 40;
-
-/// Bytes preceding the CSR data in the mailbox response:
-/// `MailboxRespHeader(8) | data_size(4)` = 12 B.
-const ATTESTED_CSR_RSP_PREFIX_LEN: usize = MBOX_RESP_HEADER_SIZE + 4;
 
 /// Issue `GET_ATTESTED_ECC384_CSR` and write the returned CSR DER bytes into
 /// `csr_out`, returning the number of bytes written.
 ///
 /// `csr_out` is also used as the mailbox response buffer for the duration of
 /// the call; on return, only the CSR data occupies its prefix. The caller must
-/// provide a `csr_out` of at least [`ATTESTED_CSR_RSP_PREFIX_LEN`] bytes plus
+/// provide a `csr_out` of at least [`CSR_RSP_PREFIX_LEN`] bytes plus
 /// the expected CSR size.
 #[inline(never)]
 pub async fn get_attested_csr_ecc384(
@@ -100,7 +131,7 @@ async fn get_attested_csr_inner(
     nonce: &[u8; 32],
     csr_out: &mut [u8],
 ) -> McuResult<usize> {
-    if csr_out.len() <= ATTESTED_CSR_RSP_PREFIX_LEN {
+    if csr_out.len() <= CSR_RSP_PREFIX_LEN {
         return Err(INVARIANT);
     }
 
@@ -116,19 +147,16 @@ async fn get_attested_csr_inner(
     // Use the caller's buffer as the mailbox response buffer; afterwards
     // memmove the CSR data over the response prefix.
     let actual = crate::wire::mbox_execute(cmd, &req, csr_out).await?;
-    if actual < ATTESTED_CSR_RSP_PREFIX_LEN {
+    if actual < CSR_RSP_PREFIX_LEN {
         return Err(INVARIANT);
     }
     let data_size = u32::from_le_bytes([csr_out[8], csr_out[9], csr_out[10], csr_out[11]]) as usize;
     if data_size == 0
-        || data_size > csr_out.len() - ATTESTED_CSR_RSP_PREFIX_LEN
-        || ATTESTED_CSR_RSP_PREFIX_LEN + data_size > actual
+        || data_size > csr_out.len() - CSR_RSP_PREFIX_LEN
+        || CSR_RSP_PREFIX_LEN + data_size > actual
     {
         return Err(INVARIANT);
     }
-    csr_out.copy_within(
-        ATTESTED_CSR_RSP_PREFIX_LEN..ATTESTED_CSR_RSP_PREFIX_LEN + data_size,
-        0,
-    );
+    csr_out.copy_within(CSR_RSP_PREFIX_LEN..CSR_RSP_PREFIX_LEN + data_size, 0);
     Ok(data_size)
 }

@@ -65,6 +65,7 @@ caliptra-mcu-testing-common.workspace = true
 caliptra-mcu-network-config.workspace = true
 openssl.workspace = true
 caliptra-mcu-xtask.workspace = true
+caliptra-mcu-fw-signer.workspace = true
 p384 = { workspace = true, features = ["ecdsa"] }
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-fw-pkg.workspace = true
