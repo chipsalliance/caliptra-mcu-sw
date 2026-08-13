@@ -12,8 +12,9 @@ use caliptra_mcu_attestation_evidence::encode_signed_ocp_eat;
 #[cfg(feature = "pcr-quote")]
 use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
 use caliptra_mcu_common_commands::{
-    AsymAlgo, CaliptraCmdResult, CaliptraCompletionCode, EvidenceFormat, PkiEntitySlot,
-    ATTESTATION_NONCE_LEN, DEBUG_UNLOCK_CHALLENGE_SIZE, DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
+    AsymAlgo, CaliptraCmdResult, CaliptraCompletionCode, EvidenceFormat, GetLogResult, LogType,
+    PkiEntitySlot, ATTESTATION_NONCE_LEN, DEBUG_UNLOCK_CHALLENGE_SIZE,
+    DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
@@ -199,6 +200,16 @@ mod tests {
             caliptra_api::calc_checksum(command, &request)
         );
     }
+}
+
+pub async fn get_debug_log(log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
+    LogType::try_from(log_type)?;
+    super::debug_log::drain(data).await
+}
+
+pub async fn clear_debug_log(log_type: u32) -> CaliptraCmdResult<()> {
+    LogType::try_from(log_type)?;
+    super::debug_log::clear().await
 }
 
 pub async fn request_debug_unlock<A: ApiAlloc>(

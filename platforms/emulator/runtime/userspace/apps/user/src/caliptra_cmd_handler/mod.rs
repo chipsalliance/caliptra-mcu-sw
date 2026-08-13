@@ -6,7 +6,7 @@ pub(crate) mod device_ops;
 use caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
 use caliptra_mcu_common_commands::{
     AsymAlgo, CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult, LogType, PkiEntitySlot,
+    DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult, PkiEntitySlot,
     ATTESTATION_NONCE_LEN,
 };
 use caliptra_mcu_config::capabilities::{
@@ -303,26 +303,17 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 
     /// Drain entries of `log_type` from the backing store.
     ///
-    /// `LogType::Debug` is backed by the Tock logging-flash capsule via
+    /// The debug log is backed by the Tock logging-flash capsule via
     /// [`LoggingSyscall`](caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall);
     /// the kernel cursor is advanced as entries are consumed and any entry
     /// that does not fit is held over for the next call.
-    ///
-    /// `LogType::Attestation` returns `UnsupportedOperation` until the
-    /// Caliptra-mailbox-backed implementation lands.
     async fn get_log(&self, log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
-        match LogType::try_from(log_type)? {
-            LogType::Debug => debug_log::drain(data).await,
-            LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
-        }
+        device_ops::get_debug_log(log_type, data).await
     }
 
     /// Erase the log of `log_type` and reset the read cursor.
     async fn clear_log(&self, log_type: u32) -> CaliptraCmdResult<()> {
-        match LogType::try_from(log_type)? {
-            LogType::Debug => debug_log::clear().await,
-            LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
-        }
+        device_ops::clear_debug_log(log_type).await
     }
 
     async fn provision_vendor_pk_hash(&self, slot: u32, hash: &[u8; 48]) -> CaliptraCmdResult<()> {

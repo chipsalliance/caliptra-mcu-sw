@@ -344,7 +344,7 @@ fn test_fe_prog_authorized_req() -> Result<()> {
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
             vendor_pk_hash: vendor_pk_hash_arr,
-            soc_manifest: soc_manifest,
+            soc_manifest,
         }),
         lifecycle_controller_state: Some(LifecycleControllerState::Prod),
         ..Default::default()
