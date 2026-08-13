@@ -5,10 +5,9 @@
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
 use crate::iana::ocp::caliptra_vdm::CaliptraVdmAuthorization;
-use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, HybridSignature,
-    AUTH_CMD_NONCE_LEN,
-};
+use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature, AUTH_CMD_NONCE_LEN};
+#[cfg(feature = "device-ownership-transfer")]
+use caliptra_mcu_mbox_common::messages::{DotDisablePayload, DotLockPayload, DotRotatePayload};
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult, CaliptraVdmResult,
 };
@@ -25,9 +24,13 @@ const INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN: usize = 4 + 4;
 const REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN: usize = 4 + 4 + 4 + 4;
 const REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 4;
 const FUSE_LOCK_PARTITION_PAYLOAD_LEN: usize = 4;
+#[cfg(feature = "device-ownership-transfer")]
 const DOT_LOCK_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotLockPayload>();
+#[cfg(feature = "device-ownership-transfer")]
 const DOT_DISABLE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotDisablePayload>();
+#[cfg(feature = "device-ownership-transfer")]
 const DOT_ROTATE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotRotatePayload>();
+#[cfg(feature = "device-ownership-transfer")]
 const DOT_BACKUP_PAYLOAD_LEN: usize = 4;
 
 /// MC_GET_AUTH_CMD_CHALLENGE sub-command (`MACC`).
@@ -104,6 +107,7 @@ where
     }
 }
 
+#[cfg(feature = "device-ownership-transfer")]
 async fn handle_device_ownership_transfer<H, A>(
     cmds: &H,
     req: &[u8],
@@ -129,6 +133,7 @@ where
     }
 }
 
+#[cfg(feature = "device-ownership-transfer")]
 async fn handle_dot_lock<H, A>(
     cmds: &H,
     req: &[u8],
@@ -162,6 +167,7 @@ where
     )
 }
 
+#[cfg(feature = "device-ownership-transfer")]
 async fn handle_dot_disable<H, A>(
     cmds: &H,
     req: &[u8],
@@ -195,6 +201,7 @@ where
     )
 }
 
+#[cfg(feature = "device-ownership-transfer")]
 async fn handle_dot_rotate<H, A>(
     cmds: &H,
     req: &[u8],
@@ -237,6 +244,7 @@ where
     )
 }
 
+#[cfg(feature = "device-ownership-transfer")]
 async fn handle_dot_get_backup_blob<H, A>(
     cmds: &H,
     req: &[u8],

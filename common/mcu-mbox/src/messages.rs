@@ -2073,7 +2073,9 @@ impl Request for DotStatusReq {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+#[derive(
+    Debug, Default, Clone, Copy, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq,
+)]
 pub struct DotStatus {
     pub enabled: u8,
     pub locked: u8,
