@@ -1825,6 +1825,58 @@ mod test {
     }
 
     #[test]
+    fn test_runtime_dot_recovery() {
+        use caliptra_mcu_mbox_common::messages::DotRecoveryReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let backup = create_valid_dot_blob(get_owner_pk_hash(), test_lak()).to_flash_contents();
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_locked_otp_memory()),
+            dot_flash_initial_contents: Some(backup.clone()),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let mut corrupted = backup.clone();
+        corrupted[DOT_BLOB_SIZE - 1] ^= 1;
+        hw.write_dot_flash(&corrupted).unwrap();
+
+        let response = hw
+            .mailbox_execute_req(DotRecoveryReq {
+                blob: backup[..DOT_BLOB_SIZE].try_into().unwrap(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert_eq!(
+            &hw.read_dot_flash()[..DOT_BLOB_SIZE],
+            &backup[..DOT_BLOB_SIZE]
+        );
+
+        let mut invalid_backup: [u8; DOT_BLOB_SIZE] = backup[..DOT_BLOB_SIZE].try_into().unwrap();
+        invalid_backup[DOT_BLOB_SIZE - 1] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotRecoveryReq {
+                blob: invalid_backup,
+                ..Default::default()
+            })
+            .is_err());
+        assert_eq!(
+            &hw.read_dot_flash()[..DOT_BLOB_SIZE],
+            &backup[..DOT_BLOB_SIZE]
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
     fn test_runtime_dot_unlock_challenge() {
         use caliptra_mcu_mbox_common::messages::DotUnlockChallengeReq;
 

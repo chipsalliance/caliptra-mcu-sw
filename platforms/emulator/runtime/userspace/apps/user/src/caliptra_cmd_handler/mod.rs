@@ -376,6 +376,14 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         Ok(())
     }
 
+    async fn dot_recovery<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &[u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_recovery(alloc, blob).await
+    }
+
     async fn dot_unlock_challenge<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,

@@ -187,6 +187,14 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         CaliptraCmdBackend.dot_status(status).await
     }
 
+    async fn dot_recovery<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &[u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        CaliptraCmdBackend.dot_recovery(alloc, blob).await
+    }
+
     async fn dot_unlock_challenge<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,

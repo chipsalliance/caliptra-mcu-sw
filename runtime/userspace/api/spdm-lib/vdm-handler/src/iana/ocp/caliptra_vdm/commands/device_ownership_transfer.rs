@@ -11,6 +11,7 @@ use zerocopy::{FromBytes, IntoBytes};
 pub const DOT_LOCK_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 pub const DOT_ROTATE_CMD_ID: u32 = CommandId::MC_DOT_ROTATE.0;
+pub const DOT_RECOVERY_CMD_ID: u32 = CommandId::MC_DOT_RECOVERY.0;
 pub const DOT_STATUS_CMD_ID: u32 = CommandId::MC_DOT_STATUS.0;
 pub const DOT_UNLOCK_CHALLENGE_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK_CHALLENGE.0;
 pub const DOT_UNLOCK_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK.0;
@@ -40,8 +41,35 @@ where
             handle_dot_unlock_challenge(commands, &request[4..], scratch, output).await
         }
         DOT_STATUS_CMD_ID => handle_dot_status(commands, &request[4..], output).await,
+        DOT_RECOVERY_CMD_ID => handle_dot_recovery(commands, &request[4..], scratch, output).await,
         DOT_UNLOCK_CMD_ID => handle_dot_unlock(commands, &request[4..], scratch, output).await,
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    }
+}
+
+async fn handle_dot_recovery<H, A>(
+    commands: &H,
+    request: &[u8],
+    scratch: &A,
+    output: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraCmdHandler,
+    A: SpdmPalAlloc,
+{
+    let Ok(blob) = <&[u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE]>::try_from(request)
+    else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    };
+    if output.is_empty() {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    }
+    match commands.dot_recovery(scratch, blob).await {
+        Ok(()) => {
+            output[0] = CaliptraCompletionCode::Success as u8;
+            CaliptraVdmCmdResult::Response(1)
+        }
+        Err(error) => CaliptraVdmCmdResult::Error(super::map_common_completion(error)),
     }
 }
 

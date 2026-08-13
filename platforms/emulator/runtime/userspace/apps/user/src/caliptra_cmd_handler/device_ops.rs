@@ -540,6 +540,21 @@ pub fn dot_status() -> CaliptraCmdResult<DotStatus> {
     })
 }
 
+pub async fn dot_recovery<A: ApiAlloc>(
+    alloc: &A,
+    blob: &[u8; DOT_BLOB_SIZE],
+) -> CaliptraCmdResult<()> {
+    let _guard = DotTransactionGuard::acquire()?;
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count & 1 == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    let blob = RuntimeDotBlob::read_from_bytes(blob)
+        .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+    verify_dot_blob(alloc, current_fuse_count, &blob).await?;
+    write_and_verify_dot_blob(&blob).await
+}
+
 fn dot_derivation_info(derivation_value: u32) -> CaliptraCmdResult<[u8; 32]> {
     let derivation_value =
         u16::try_from(derivation_value).map_err(|_| CaliptraCompletionCode::InvalidState)?;
@@ -688,6 +703,15 @@ async fn read_and_verify_dot_blob<A: ApiAlloc>(
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
     let blob = RuntimeDotBlob::read_from_bytes(&bytes)
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    verify_dot_blob(alloc, derivation_value, &blob).await?;
+    Ok(blob)
+}
+
+async fn verify_dot_blob<A: ApiAlloc>(
+    alloc: &A,
+    derivation_value: u32,
+    blob: &RuntimeDotBlob,
+) -> CaliptraCmdResult<()> {
     if blob.fields.version != DOT_BLOB_VERSION {
         return Err(CaliptraCompletionCode::InvalidState);
     }
@@ -702,7 +726,7 @@ async fn read_and_verify_dot_blob<A: ApiAlloc>(
     if !constant_time_eq::constant_time_eq(&expected, &blob.hmac) {
         return Err(CaliptraCompletionCode::AccessDenied);
     }
-    Ok(blob)
+    Ok(())
 }
 
 fn burn_next_dot_fuse(current_fuse_count: u32) -> CaliptraCmdResult<()> {

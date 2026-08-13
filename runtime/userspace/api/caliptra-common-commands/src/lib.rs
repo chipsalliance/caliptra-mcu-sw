@@ -531,6 +531,16 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Authenticate and restore a DOT blob for the current locked fuse epoch.
+    async fn dot_recovery<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &[u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, blob);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Authenticate the current DOT blob and generate a one-time unlock challenge.
     async fn dot_unlock_challenge<Alloc: ApiAlloc>(
         &self,
