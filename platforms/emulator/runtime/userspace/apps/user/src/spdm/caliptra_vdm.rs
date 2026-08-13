@@ -583,6 +583,37 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .await
             .map_err(map_common_completion)
     }
+
+    async fn dot_get_backup_blob<A: SpdmPalAlloc>(
+        &self,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+        blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
+    ) -> CaliptraVdmResult<()> {
+        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        authorizer
+            .verify_signatures(
+                scratch,
+                DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
+                payload,
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            )
+            .await
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        CaliptraCmdBackend
+            .dot_get_backup_blob(scratch, blob)
+            .await
+            .map_err(map_common_completion)
+    }
 }
 
 fn map_mailbox_error(error: MailboxError) -> CaliptraCompletionCode {

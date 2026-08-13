@@ -902,6 +902,21 @@ pub async fn dot_unlock<A: ApiAlloc>(
     Ok(())
 }
 
+pub async fn dot_get_backup_blob<A: ApiAlloc>(
+    alloc: &A,
+    output: &mut [u8; DOT_BLOB_SIZE],
+) -> CaliptraCmdResult<()> {
+    let _guard = DotTransactionGuard::acquire()?;
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count & 1 == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    let blob = read_and_verify_dot_blob(alloc, current_fuse_count).await?;
+    output.copy_from_slice(blob.as_bytes());
+    Ok(())
+}
+
 pub async fn revoke_vendor_pub_key<A: ApiAlloc>(
     alloc: &A,
     vendor_pk_hash_slot: u32,

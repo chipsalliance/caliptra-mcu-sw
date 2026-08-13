@@ -25,8 +25,9 @@ pub use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
 pub use commands::authorized_command::{
     DEVICE_OWNERSHIP_TRANSFER_CMD_ID, DOT_DISABLE_CMD_ID, DOT_LOCK_CMD_ID, DOT_ROTATE_CMD_ID,
     FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
-    INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
-    PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
+    GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
+    PROVISION_OWNER_PK_HASH_CMD_ID, PROVISION_VENDOR_PK_HASH_CMD_ID,
+    REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
@@ -218,6 +219,19 @@ pub trait CaliptraVdmAuthorization {
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
         scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn dot_get_backup_blob<A: SpdmPalAlloc>(
+        &self,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+        blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
     ) -> CaliptraVdmResult<()>;
 }
 
@@ -719,6 +733,7 @@ mod tests {
         dot_rotate_calls: AtomicUsize,
         dot_challenge_calls: AtomicUsize,
         dot_unlock_calls: AtomicUsize,
+        dot_backup_calls: AtomicUsize,
         authorized_operation: Mutex<Option<AuthorizedOperation>>,
         authorization_error: Mutex<Option<CaliptraCompletionCode>>,
         enforce_authorization: bool,
@@ -748,6 +763,7 @@ mod tests {
                 dot_rotate_calls: AtomicUsize::new(0),
                 dot_challenge_calls: AtomicUsize::new(0),
                 dot_unlock_calls: AtomicUsize::new(0),
+                dot_backup_calls: AtomicUsize::new(0),
                 authorized_operation: Mutex::new(None),
                 authorization_error: Mutex::new(None),
                 enforce_authorization: false,
@@ -952,6 +968,15 @@ mod tests {
             self.dot_unlock_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
+        async fn dot_get_backup_blob<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_backup_calls.fetch_add(1, Ordering::Relaxed);
+            blob.fill(0x5A);
+            Ok(())
+        }
     }
 
     impl CaliptraVdmStreamOps for TestCommands {}
@@ -1143,6 +1168,23 @@ mod tests {
                 cak: request.cak,
                 lak_hash: request.lak_hash,
             })
+        }
+
+        async fn dot_get_backup_blob<A: SpdmPalAlloc>(
+            &self,
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+            blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(DEVICE_OWNERSHIP_TRANSFER_CMD_ID, payload, sig)?;
+            self.dot_backup_calls.fetch_add(1, Ordering::Relaxed);
+            blob.fill(0x5A);
+            Ok(())
         }
     }
 
@@ -1750,6 +1792,49 @@ mod tests {
         assert_eq!(cmds.dot_unlock_calls.load(Ordering::Relaxed), 1);
     }
 
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn direct_dot_get_backup_blob_is_rejected() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, DOT_BLOB_SIZE};
+
+        let cmds = TestCommands::new(0);
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_GET_DOT_BACKUP_BLOB.0.to_le_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 3 + DOT_BLOB_SIZE, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+        assert_eq!(cmds.dot_backup_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn authorized_dot_get_backup_blob_dispatches_through_dot_family() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, DOT_BLOB_SIZE};
+
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let signed_payload = CommandId::MC_GET_DOT_BACKUP_BLOB.0.to_le_bytes();
+        let sig = test_signature(
+            DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
+            &signed_payload,
+            &TEST_AUTH_CHALLENGE,
+        );
+        let request =
+            authorized_req_with_sig(DEVICE_OWNERSHIP_TRANSFER_CMD_ID, &signed_payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &request, 3 + DOT_BLOB_SIZE, 0);
+
+        assert_inline(response, 3 + DOT_BLOB_SIZE);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(&inline[3..], &[0x5A; DOT_BLOB_SIZE]);
+        assert_eq!(cmds.dot_backup_calls.load(Ordering::Relaxed), 1);
+    }
+
     #[test]
     fn fe_prog_accepts_unaligned_wire_payload() {
         let cmds = TestCommands::new(0);
@@ -1984,6 +2069,11 @@ mod tests {
                 );
                 payload
             }),
+            #[cfg(feature = "device-ownership-transfer")]
+            (
+                DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
+                GET_DOT_BACKUP_BLOB_CMD_ID.to_le_bytes().to_vec(),
+            ),
         ];
 
         for (sub_cmd, payload) in payloads {

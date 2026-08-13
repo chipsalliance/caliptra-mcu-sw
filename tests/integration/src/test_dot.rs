@@ -1511,6 +1511,80 @@ mod test {
     }
 
     #[test]
+    fn test_runtime_dot_get_backup_blob() {
+        use crate::runtime::execute_authorized_req;
+        use caliptra_mcu_mbox_common::messages::{DotLockPayload, DotLockReq, GetDotBackupBlobReq};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload: DotLockPayload {
+                    cak: [0xA5; 48],
+                    lak_hash: [0x5A; 48],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let dot_blob = hw.read_dot_flash();
+        let backup = execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).unwrap();
+        assert_eq!(&backup.blob, &dot_blob[..DOT_BLOB_SIZE]);
+
+        let mut corrupted_blob = dot_blob.clone();
+        corrupted_blob[DOT_BLOB_SIZE - 1] ^= 1;
+        hw.write_dot_flash(&corrupted_blob).unwrap();
+        assert!(execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).is_err());
+
+        corrupted_blob = dot_blob;
+        corrupted_blob[0] ^= 1;
+        hw.write_dot_flash(&corrupted_blob).unwrap();
+        assert!(execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_get_backup_blob_rejects_even_state() {
+        use crate::runtime::execute_authorized_req;
+        use caliptra_mcu_mbox_common::messages::GetDotBackupBlobReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: true,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        assert!(execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
     fn test_runtime_dot_disable_commits_transition() {
         use crate::runtime::{execute_authorized_req, execute_authorized_req_tampered};
         use caliptra_mcu_mbox_common::messages::{

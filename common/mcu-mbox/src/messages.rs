@@ -35,6 +35,7 @@ use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout};
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 36;
+pub const DOT_BLOB_SIZE: usize = 168;
 pub const MAX_UUID_SIZE: usize = 32;
 pub const MAX_FUSE_DATA_BYTES: usize = 512;
 pub const MAX_FUSE_DATA_WORDS: usize = MAX_FUSE_DATA_BYTES / 4;
@@ -154,6 +155,7 @@ impl CommandId {
     pub const MC_DOT_ROTATE: Self = Self(0x4D44_5254); // "MDRT"
     pub const MC_DOT_UNLOCK_CHALLENGE: Self = Self(0x4D44_5543); // "MDUC"
     pub const MC_DOT_UNLOCK: Self = Self(0x4D44_554C); // "MDUL"
+    pub const MC_GET_DOT_BACKUP_BLOB: Self = Self(0x4D44_4242); // "MDBB"
 }
 
 impl From<u32> for CommandId {
@@ -234,6 +236,7 @@ pub enum McuMailboxReq {
     DotRotate(DotRotateReq),
     DotUnlockChallenge(DotUnlockChallengeReq),
     DotUnlock(DotUnlockReq),
+    GetDotBackupBlob(GetDotBackupBlobReq),
 }
 
 impl McuMailboxReq {
@@ -298,6 +301,7 @@ impl McuMailboxReq {
             McuMailboxReq::DotRotate(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotUnlock(req) => Ok(req.as_bytes()),
+            McuMailboxReq::GetDotBackupBlob(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -362,6 +366,7 @@ impl McuMailboxReq {
             McuMailboxReq::DotRotate(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotUnlock(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::GetDotBackupBlob(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -428,6 +433,7 @@ impl McuMailboxReq {
             McuMailboxReq::DotRotate(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotUnlockChallenge(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotUnlock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::GetDotBackupBlob(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
         }
     }
 
@@ -516,6 +522,7 @@ pub enum McuMailboxResp {
     DotRotate(DotRotateResp),
     DotUnlockChallenge(DotUnlockChallengeResp),
     DotUnlock(DotUnlockResp),
+    GetDotBackupBlob(GetDotBackupBlobResp),
 }
 
 /// A trait for responses with variable size data.
@@ -638,6 +645,7 @@ impl McuMailboxResp {
             McuMailboxResp::DotRotate(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotUnlock(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::GetDotBackupBlob(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -700,6 +708,7 @@ impl McuMailboxResp {
             McuMailboxResp::DotRotate(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotUnlock(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::GetDotBackupBlob(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -2069,6 +2078,45 @@ pub struct DotUnlockResp {
 
 impl Response for DotUnlockResp {}
 
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct GetDotBackupBlobReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+}
+
+impl Default for GetDotBackupBlobReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_GET_DOT_BACKUP_BLOB.0,
+        }
+    }
+}
+
+impl Request for GetDotBackupBlobReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = GetDotBackupBlobResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct GetDotBackupBlobResp {
+    pub hdr: MailboxRespHeader,
+    pub blob: [u8; DOT_BLOB_SIZE],
+}
+
+impl Default for GetDotBackupBlobResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            blob: [0; DOT_BLOB_SIZE],
+        }
+    }
+}
+
+impl Response for GetDotBackupBlobResp {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2205,6 +2253,23 @@ mod tests {
         assert_eq!(
             DotUnlockReq::default().subcommand,
             CommandId::MC_DOT_UNLOCK.0
+        );
+    }
+
+    #[test]
+    fn get_dot_backup_blob_wire_contract() {
+        assert_eq!(CommandId::MC_GET_DOT_BACKUP_BLOB.0, 0x4D44_4242);
+        assert_eq!(
+            core::mem::size_of::<GetDotBackupBlobReq>(),
+            core::mem::size_of::<MailboxReqHeader>() + core::mem::size_of::<u32>()
+        );
+        assert_eq!(
+            GetDotBackupBlobReq::default().subcommand,
+            CommandId::MC_GET_DOT_BACKUP_BLOB.0
+        );
+        assert_eq!(
+            core::mem::size_of::<GetDotBackupBlobResp>(),
+            core::mem::size_of::<MailboxRespHeader>() + DOT_BLOB_SIZE
         );
     }
 

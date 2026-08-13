@@ -4,8 +4,8 @@ use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisableReq, DotLockReq, DotRotateReq, FuseIncreaseCaliptraMinSvnReq,
     FuseLockPartitionReq, FuseReadReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
-    FuseWriteReq, HybridSignature, MailboxReqHeader, McuFeProgReq, ProvisionOwnerPkHashReq,
-    ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
+    FuseWriteReq, GetDotBackupBlobReq, HybridSignature, MailboxReqHeader, McuFeProgReq,
+    ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
 };
 use core::cell::RefCell;
 use core::mem::{offset_of, size_of};
@@ -100,6 +100,9 @@ impl CommandAuthorizer for MockCommandAuthorizer {
                     value if value == CommandId::MC_DOT_LOCK.0 => size_of::<DotLockReq>(),
                     value if value == CommandId::MC_DOT_DISABLE.0 => size_of::<DotDisableReq>(),
                     value if value == CommandId::MC_DOT_ROTATE.0 => size_of::<DotRotateReq>(),
+                    value if value == CommandId::MC_GET_DOT_BACKUP_BLOB.0 => {
+                        size_of::<GetDotBackupBlobReq>()
+                    }
                     _ => return Err(AuthorizationError),
                 }
             }

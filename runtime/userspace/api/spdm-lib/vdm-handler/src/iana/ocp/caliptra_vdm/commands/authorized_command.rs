@@ -28,6 +28,7 @@ const FUSE_LOCK_PARTITION_PAYLOAD_LEN: usize = 4;
 const DOT_LOCK_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotLockPayload>();
 const DOT_DISABLE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotDisablePayload>();
 const DOT_ROTATE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotRotatePayload>();
+const DOT_BACKUP_PAYLOAD_LEN: usize = 4;
 
 /// MC_GET_AUTH_CMD_CHALLENGE sub-command (`MACC`).
 pub const GET_AUTH_CHALLENGE_CMD_ID: u32 = 0x4D41_4343;
@@ -53,6 +54,8 @@ pub const DOT_LOCK_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 /// DOT_ROTATE sub-command (`MDRT`).
 pub const DOT_ROTATE_CMD_ID: u32 = CommandId::MC_DOT_ROTATE.0;
+/// GET_DOT_BACKUP_BLOB sub-command (`MDBB`).
+pub const GET_DOT_BACKUP_BLOB_CMD_ID: u32 = CommandId::MC_GET_DOT_BACKUP_BLOB.0;
 
 pub(crate) async fn handle<H, A>(
     cmds: &H,
@@ -121,6 +124,7 @@ where
         DOT_LOCK_CMD_ID => handle_dot_lock(cmds, req, scratch, out).await,
         DOT_DISABLE_CMD_ID => handle_dot_disable(cmds, req, scratch, out).await,
         DOT_ROTATE_CMD_ID => handle_dot_rotate(cmds, req, scratch, out).await,
+        GET_DOT_BACKUP_BLOB_CMD_ID => handle_dot_get_backup_blob(cmds, req, scratch, out).await,
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
     }
 }
@@ -231,6 +235,49 @@ where
         .await,
         out,
     )
+}
+
+async fn handle_dot_get_backup_blob<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    let parsed = match split_authorized_request(req, DOT_BACKUP_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
+    };
+    let Some((completion, blob)) = out.split_first_mut() else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+    let Some(blob) = blob.get_mut(..caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+    let blob = <&mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE]>::try_from(blob)
+        .expect("fixed-size DOT blob slice");
+    match cmds
+        .dot_get_backup_blob(
+            parsed.payload,
+            parsed.sig,
+            parsed.nonce,
+            parsed.ecc_pub_x,
+            parsed.ecc_pub_y,
+            parsed.mldsa_pub,
+            scratch,
+            blob,
+        )
+        .await
+    {
+        Ok(()) => {
+            *completion = CaliptraCompletionCode::Success as u8;
+            CaliptraVdmCmdResult::Response(1 + blob.len())
+        }
+        Err(code) => CaliptraVdmCmdResult::Error(code),
+    }
 }
 
 async fn handle_get_auth_challenge<H, A>(

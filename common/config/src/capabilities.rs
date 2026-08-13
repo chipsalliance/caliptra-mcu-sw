@@ -40,6 +40,7 @@ bitflags::bitflags! {
         const DOT_LOCK = 1 << 8;
         const DOT_DISABLE = 1 << 9;
         const DOT_ROTATE = 1 << 10;
+        const GET_DOT_BACKUP_BLOB = 1 << 11;
     }
 }
 
@@ -100,5 +101,9 @@ mod tests {
         assert_eq!(AuthorizedSubcommandCapabilities::DOT_LOCK.bits(), 1 << 8);
         assert_eq!(AuthorizedSubcommandCapabilities::DOT_DISABLE.bits(), 1 << 9);
         assert_eq!(AuthorizedSubcommandCapabilities::DOT_ROTATE.bits(), 1 << 10);
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB.bits(),
+            1 << 11
+        );
     }
 }

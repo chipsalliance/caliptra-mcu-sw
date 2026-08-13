@@ -27,6 +27,7 @@ use caliptra_mcu_mbox_common::messages::{
 use caliptra_mcu_mbox_common::messages::{
     DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotRotateReq, DotRotateResp,
     DotUnlockChallengeReq, DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp,
+    GetDotBackupBlobReq, GetDotBackupBlobResp,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -420,6 +421,28 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
     }
 
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_get_backup_blob<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let request =
+            GetDotBackupBlobReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if request.subcommand != CommandId::MC_GET_DOT_BACKUP_BLOB.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        let (resp, _) =
+            GetDotBackupBlobResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        self.non_crypto_cmds_handler
+            .dot_get_backup_blob(self.scratch, &mut resp.blob)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        resp.hdr = MailboxRespHeader::default();
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
     async fn handle_device_caps<'r>(
         &self,
         req: &[u8],
@@ -766,6 +789,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                     value if value == CommandId::MC_DOT_ROTATE.0 => {
                         self.handle_dot_rotate(cmd, resp_buf).await
                     }
+                    value if value == CommandId::MC_GET_DOT_BACKUP_BLOB.0 => {
+                        self.handle_dot_get_backup_blob(cmd, resp_buf).await
+                    }
                     _ => Err(errors::UNSUPPORTED_COMMAND),
                 }
             }
@@ -791,7 +817,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             value
                 if value == CommandId::MC_DOT_LOCK.0
                     || value == CommandId::MC_DOT_DISABLE.0
-                    || value == CommandId::MC_DOT_ROTATE.0 =>
+                    || value == CommandId::MC_DOT_ROTATE.0
+                    || value == CommandId::MC_GET_DOT_BACKUP_BLOB.0 =>
             {
                 self.handle_authorized_command(
                     CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
@@ -1133,7 +1160,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
                 + H::MAX_ATTESTATION_EVIDENCE_LEN,
         ),
         #[cfg(feature = "device-ownership-transfer")]
-        CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => size_of::<DotUnlockChallengeResp>(),
+        CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => size_of::<GetDotBackupBlobResp>(),
         _ => size_of::<McuMailboxResp>(),
     }
 }

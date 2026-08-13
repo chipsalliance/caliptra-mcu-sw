@@ -15,7 +15,7 @@ use caliptra_mcu_config::capabilities::{
 };
 use caliptra_mcu_config::version::get_mcu_runtime_version;
 use caliptra_mcu_mbox_common::messages::{
-    DotDisablePayload, DotLockPayload, DotRotatePayload, DotUnlockPayload,
+    DotDisablePayload, DotLockPayload, DotRotatePayload, DotUnlockPayload, DOT_BLOB_SIZE,
 };
 use mcu_caliptra_api::{core_capabilities, core_firmware_version, ApiAlloc};
 #[cfg(feature = "pcr-quote")]
@@ -158,7 +158,8 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
     if cfg!(feature = "dot-spdm-vdm") {
         capabilities |= AuthorizedSubcommandCapabilities::DOT_LOCK
             | AuthorizedSubcommandCapabilities::DOT_DISABLE
-            | AuthorizedSubcommandCapabilities::DOT_ROTATE;
+            | AuthorizedSubcommandCapabilities::DOT_ROTATE
+            | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB;
     }
     capabilities
 }
@@ -385,6 +386,14 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_unlock(alloc, request).await
     }
 
+    async fn dot_get_backup_blob<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &mut [u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_get_backup_blob(alloc, blob).await
+    }
+
     async fn request_debug_unlock<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
@@ -468,6 +477,7 @@ mod tests {
                 AuthorizedSubcommandCapabilities::DOT_LOCK
                     | AuthorizedSubcommandCapabilities::DOT_DISABLE
                     | AuthorizedSubcommandCapabilities::DOT_ROTATE
+                    | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB
             ),
             cfg!(feature = "dot-spdm-vdm")
         );
