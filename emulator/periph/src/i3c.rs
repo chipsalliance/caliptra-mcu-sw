@@ -272,7 +272,7 @@ impl I3c {
                         .read_recovery_interface(caliptra_emu_types::RvSize::Word, *start_addr)
                     {
                         Ok(data) => {
-                            response.extend_from_slice(&data.to_be_bytes());
+                            response.extend_from_slice(&data.to_le_bytes());
                         }
                         Err(err) => {
                             println!("[I3C-Emulator] Error reading recovery interface: {:?}", err);

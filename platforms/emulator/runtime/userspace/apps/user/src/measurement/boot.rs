@@ -92,7 +92,10 @@ pub(crate) async fn boot_init(
         if cfg!(any(
             feature = "test-mctp-spdm-attestation",
             feature = "test-mctp-spdm-attestation-tcb",
-            feature = "test-mctp-spdm-attestation-mixed"
+            feature = "test-mctp-spdm-attestation-mixed",
+            feature = "test-mctp-spdm-attestation-hitless",
+            feature = "test-mctp-spdm-attestation-hitless-tcb",
+            feature = "test-mctp-spdm-attestation-hitless-mixed"
         )) {
             EvidenceReadinessPolicy::RequireInitialSocLoadComplete
         } else {

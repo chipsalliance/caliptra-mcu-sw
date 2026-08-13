@@ -709,6 +709,13 @@ impl Emulator {
                 None,
             );
         }
+        if test_feature.starts_with("test-mctp-spdm-attestation") {
+            i3c_controller_join_handle = Some(i3c_controller.start());
+            println!(
+                "Starting external MCTP SPDM attestation test transport for target {:?}",
+                i3c.get_dynamic_address().unwrap()
+            );
+        }
         if test_feature == "test-doe-spdm-responder-conformance" {
             if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
                 println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");

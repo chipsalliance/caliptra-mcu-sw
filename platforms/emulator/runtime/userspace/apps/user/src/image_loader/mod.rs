@@ -135,6 +135,9 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
         feature = "test-pldm-fw-update",
         feature = "test-pldm-fw-update-e2e",
         feature = "test-streaming-boot-flash-write-back",
+        feature = "test-mctp-spdm-attestation-hitless",
+        feature = "test-mctp-spdm-attestation-hitless-tcb",
+        feature = "test-mctp-spdm-attestation-hitless-mixed",
     ))]
     {
         // Release SRAM lock, in case previous session hasn't released it
@@ -158,6 +161,25 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
             }
         }
         mbox_sram.release_lock().unwrap();
+        if hitless_attestation_test_enabled() {
+            emit_attestation_evidence_ready();
+            #[cfg(any(
+                feature = "test-mctp-spdm-attestation-hitless",
+                feature = "test-mctp-spdm-attestation-hitless-tcb",
+                feature = "test-mctp-spdm-attestation-hitless-mixed"
+            ))]
+            if !mcu_fw_hitless_update_reset {
+                EXECUTOR
+                    .get()
+                    .spawner()
+                    .spawn(hitless_attestation_firmware_update_task(
+                        soc_image_load_list,
+                    ))
+                    .map_err(|_| System::exit(1))
+                    .ok();
+            }
+            return;
+        }
         emit_attestation_evidence_ready();
         #[cfg(all(
             not(feature = "firmware-update"),
@@ -194,7 +216,10 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
         not(feature = "test-firmware-update-streaming"),
         not(feature = "test-mctp-spdm-attestation"),
         not(feature = "test-mctp-spdm-attestation-tcb"),
-        not(feature = "test-mctp-spdm-attestation-mixed")
+        not(feature = "test-mctp-spdm-attestation-mixed"),
+        not(feature = "test-mctp-spdm-attestation-hitless"),
+        not(feature = "test-mctp-spdm-attestation-hitless-tcb"),
+        not(feature = "test-mctp-spdm-attestation-hitless-mixed")
     ))]
     {
         if mbox_sram.acquire_lock().is_err() {
@@ -308,7 +333,10 @@ async fn image_loading<D: DMAMapping>(
         #[cfg(any(
             feature = "test-mctp-spdm-attestation",
             feature = "test-mctp-spdm-attestation-tcb",
-            feature = "test-mctp-spdm-attestation-mixed"
+            feature = "test-mctp-spdm-attestation-mixed",
+            feature = "test-mctp-spdm-attestation-hitless",
+            feature = "test-mctp-spdm-attestation-hitless-tcb",
+            feature = "test-mctp-spdm-attestation-hitless-mixed"
         ))]
         {
             return Ok(());
@@ -406,7 +434,10 @@ async fn load_soc_images(
 #[cfg(any(
     feature = "test-mctp-spdm-attestation",
     feature = "test-mctp-spdm-attestation-tcb",
-    feature = "test-mctp-spdm-attestation-mixed"
+    feature = "test-mctp-spdm-attestation-mixed",
+    feature = "test-mctp-spdm-attestation-hitless",
+    feature = "test-mctp-spdm-attestation-hitless-tcb",
+    feature = "test-mctp-spdm-attestation-hitless-mixed"
 ))]
 fn emit_attestation_evidence_ready() {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
@@ -416,10 +447,53 @@ fn emit_attestation_evidence_ready() {
 #[cfg(not(any(
     feature = "test-mctp-spdm-attestation",
     feature = "test-mctp-spdm-attestation-tcb",
-    feature = "test-mctp-spdm-attestation-mixed"
+    feature = "test-mctp-spdm-attestation-mixed",
+    feature = "test-mctp-spdm-attestation-hitless",
+    feature = "test-mctp-spdm-attestation-hitless-tcb",
+    feature = "test-mctp-spdm-attestation-hitless-mixed"
 )))]
 #[allow(dead_code)]
 fn emit_attestation_evidence_ready() {}
+
+#[cfg(any(
+    feature = "test-mctp-spdm-attestation-hitless",
+    feature = "test-mctp-spdm-attestation-hitless-tcb",
+    feature = "test-mctp-spdm-attestation-hitless-mixed"
+))]
+fn hitless_attestation_test_enabled() -> bool {
+    true
+}
+
+#[cfg(not(any(
+    feature = "test-mctp-spdm-attestation-hitless",
+    feature = "test-mctp-spdm-attestation-hitless-tcb",
+    feature = "test-mctp-spdm-attestation-hitless-mixed"
+)))]
+fn hitless_attestation_test_enabled() -> bool {
+    false
+}
+
+#[cfg(any(
+    feature = "test-mctp-spdm-attestation-hitless",
+    feature = "test-mctp-spdm-attestation-hitless-tcb",
+    feature = "test-mctp-spdm-attestation-hitless-mixed"
+))]
+#[embassy_executor::task]
+async fn hitless_attestation_firmware_update_task(soc_image_load_list: &'static [u32]) {
+    let mbox_sram = caliptra_mcu_libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
+        caliptra_mcu_libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
+    );
+    if mbox_sram.acquire_lock().is_err() {
+        mbox_sram.release_lock().unwrap();
+        mbox_sram.acquire_lock().unwrap();
+    }
+    if crate::firmware_update::firmware_update(&EMULATED_DMA_MAPPING, soc_image_load_list)
+        .await
+        .is_err()
+    {
+        System::exit(1);
+    }
+}
 
 #[allow(dead_code)]
 async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {
