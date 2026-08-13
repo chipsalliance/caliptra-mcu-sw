@@ -10,6 +10,7 @@ use zerocopy::FromBytes;
 
 pub const DOT_LOCK_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
+pub const DOT_ROTATE_CMD_ID: u32 = CommandId::MC_DOT_ROTATE.0;
 pub const DOT_UNLOCK_CHALLENGE_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK_CHALLENGE.0;
 pub const DOT_UNLOCK_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK.0;
 
@@ -30,7 +31,7 @@ where
         u32::from_le_bytes([subcommand[0], subcommand[1], subcommand[2], subcommand[3]]);
 
     match subcommand {
-        DOT_LOCK_CMD_ID | DOT_DISABLE_CMD_ID => {
+        DOT_LOCK_CMD_ID | DOT_DISABLE_CMD_ID | DOT_ROTATE_CMD_ID => {
             CaliptraVdmCmdResult::Error(CaliptraCompletionCode::AccessDenied)
         }
         DOT_UNLOCK_CHALLENGE_CMD_ID => {

@@ -162,6 +162,10 @@ mod test {
     /// Caller MUST hold `TEST_LOCK` before calling this function, since it builds and runs
     /// firmware internally via `start_runtime_hw_model`.
     fn compute_hmac(blob: &[u8]) -> Vec<u8> {
+        compute_hmac_for_derivation(blob, 1)
+    }
+
+    fn compute_hmac_for_derivation(blob: &[u8], derivation_value: u16) -> Vec<u8> {
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some("test-do-nothing"),
             ..Default::default()
@@ -177,9 +181,7 @@ mod test {
             ..Default::default()
         };
         req.info[..23].copy_from_slice(b"Caliptra DOT stable key");
-        // EVEN state (burned=0) derives with n+1 = 1 per spec
-        req.info[23] = 1;
-        req.info[24] = 0;
+        req.info[23..25].copy_from_slice(&derivation_value.to_le_bytes());
         let req = req.as_mut_bytes();
         let chksum = calc_checksum(CommandId::CM_DERIVE_STABLE_KEY.into(), req);
         req[..4].copy_from_slice(&chksum.to_le_bytes());
@@ -1573,6 +1575,133 @@ mod test {
         let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
         assert!(blob.cak.iter().all(|word| *word == 0));
         assert!(blob.lak_pub.iter().any(|word| *word != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_rotate_commits_transition() {
+        use crate::runtime::{execute_authorized_req, execute_authorized_req_tampered};
+        use caliptra_mcu_mbox_common::messages::{
+            DotRotatePayload, DotRotateReq, MailboxReqHeader,
+        };
+        use core::mem::size_of;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let cak = [0xA5; 48];
+        let lak_hash = [0x5A; 48];
+        let payload = DotRotatePayload {
+            min_fuse_count: 2,
+            cak,
+            lak_hash,
+        };
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: true,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload: DotRotatePayload {
+                    min_fuse_count: 0,
+                    cak: [0; 48],
+                    lak_hash,
+                },
+                ..Default::default()
+            },
+        )
+        .is_err());
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload: DotRotatePayload {
+                    min_fuse_count: 2,
+                    cak,
+                    lak_hash: [0; 48],
+                },
+                ..Default::default()
+            },
+        )
+        .is_err());
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            0
+        );
+        assert!(hw.read_dot_flash()[..DOT_BLOB_SIZE]
+            .iter()
+            .all(|byte| *byte == 0));
+
+        let body_offset = size_of::<MailboxReqHeader>() + size_of::<u32>();
+        assert!(execute_authorized_req_tampered(
+            &mut hw,
+            DotRotateReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+            |request| request[body_offset] ^= 1,
+        )
+        .is_err());
+
+        let response = execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(response.reset_required, 1);
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            2
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        let mut expected_cak = [0u32; 12];
+        let mut expected_lak = [0u32; 12];
+        for (word, bytes) in expected_cak.iter_mut().zip(cak.chunks_exact(4)) {
+            *word = u32::from_le_bytes(bytes.try_into().unwrap());
+        }
+        for (word, bytes) in expected_lak.iter_mut().zip(lak_hash.chunks_exact(4)) {
+            *word = u32::from_le_bytes(bytes.try_into().unwrap());
+        }
+        assert_eq!(blob.cak, expected_cak);
+        assert_eq!(blob.lak_pub, expected_lak);
+        let rotated_blob_fields = blob.data_for_hmac();
+        let rotated_blob_hmac = blob.hmac.as_bytes().to_vec();
+
+        execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            2
+        );
+        drop(hw);
+
+        let expected_hmac = compute_hmac_for_derivation(&rotated_blob_fields, 3);
+        assert_eq!(
+            rotated_blob_hmac, expected_hmac,
+            "EVEN-state ROTATE blob must use the post-rotation n+1 effective key"
+        );
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }

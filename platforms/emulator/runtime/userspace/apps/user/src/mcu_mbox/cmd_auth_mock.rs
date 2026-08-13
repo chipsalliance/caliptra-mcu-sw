@@ -2,9 +2,9 @@
 
 use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisableReq, DotLockReq, FuseIncreaseCaliptraMinSvnReq, FuseLockPartitionReq,
-    FuseReadReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, FuseWriteReq,
-    HybridSignature, MailboxReqHeader, McuFeProgReq, ProvisionOwnerPkHashReq,
+    CommandId, DotDisableReq, DotLockReq, DotRotateReq, FuseIncreaseCaliptraMinSvnReq,
+    FuseLockPartitionReq, FuseReadReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
+    FuseWriteReq, HybridSignature, MailboxReqHeader, McuFeProgReq, ProvisionOwnerPkHashReq,
     ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
 };
 use core::cell::RefCell;
@@ -99,6 +99,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
                 match u32::from_le_bytes(subcommand.try_into().map_err(|_| AuthorizationError)?) {
                     value if value == CommandId::MC_DOT_LOCK.0 => size_of::<DotLockReq>(),
                     value if value == CommandId::MC_DOT_DISABLE.0 => size_of::<DotDisableReq>(),
+                    value if value == CommandId::MC_DOT_ROTATE.0 => size_of::<DotRotateReq>(),
                     _ => return Err(AuthorizationError),
                 }
             }

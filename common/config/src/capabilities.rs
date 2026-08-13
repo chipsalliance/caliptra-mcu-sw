@@ -39,6 +39,7 @@ bitflags::bitflags! {
         const PROVISION_OWNER_PK_HASH = 1 << 7;
         const DOT_LOCK = 1 << 8;
         const DOT_DISABLE = 1 << 9;
+        const DOT_ROTATE = 1 << 10;
     }
 }
 
@@ -98,5 +99,6 @@ mod tests {
         );
         assert_eq!(AuthorizedSubcommandCapabilities::DOT_LOCK.bits(), 1 << 8);
         assert_eq!(AuthorizedSubcommandCapabilities::DOT_DISABLE.bits(), 1 << 9);
+        assert_eq!(AuthorizedSubcommandCapabilities::DOT_ROTATE.bits(), 1 << 10);
     }
 }

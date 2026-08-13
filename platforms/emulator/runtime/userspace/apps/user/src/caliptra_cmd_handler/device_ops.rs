@@ -25,8 +25,8 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 // certificate; attestation evidence must be signed under the same label so the
 // leaf cert in the device's chain is the one that verifies it.
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, DotUnlockPayload, HybridSignature,
-    AUTH_CMD_NONCE_LEN, DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
+    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, DotUnlockPayload,
+    HybridSignature, AUTH_CMD_NONCE_LEN, DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL;
@@ -469,7 +469,10 @@ async fn verify_hybrid_message<A: ApiAlloc>(
     mldsa_pub: &[u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
     sig: &HybridSignature,
 ) -> CaliptraCmdResult<()> {
-    verify_hybrid_message_parts(alloc, message, message, ecc_pub_x, ecc_pub_y, mldsa_pub, sig).await
+    verify_hybrid_message_parts(
+        alloc, message, message, ecc_pub_x, ecc_pub_y, mldsa_pub, sig,
+    )
+    .await
 }
 
 async fn dot_lak_hash<A: ApiAlloc>(
@@ -786,6 +789,39 @@ pub async fn dot_disable<A: ApiAlloc>(
         request.lak_hash,
     )
     .await
+}
+
+pub async fn dot_rotate<A: ApiAlloc>(
+    alloc: &A,
+    request: &DotRotatePayload,
+) -> CaliptraCmdResult<()> {
+    let _guard = DotTransactionGuard::acquire()?;
+    if request.cak.iter().all(|byte| *byte == 0) {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
+    if request.lak_hash.iter().all(|byte| *byte == 0) {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count >= request.min_fuse_count {
+        return Ok(());
+    }
+    if current_fuse_count > 254 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    let post_burn_fuse_count = current_fuse_count + 2;
+    let derivation_value = if post_burn_fuse_count & 1 == 0 {
+        post_burn_fuse_count + 1
+    } else {
+        post_burn_fuse_count
+    };
+    burn_next_dot_fuse(current_fuse_count)?;
+    burn_next_dot_fuse(current_fuse_count + 1)?;
+    let blob = seal_dot_blob(alloc, derivation_value, request.cak, request.lak_hash).await?;
+    write_and_verify_dot_blob(&blob).await
 }
 
 pub async fn dot_unlock_challenge<A: ApiAlloc>(

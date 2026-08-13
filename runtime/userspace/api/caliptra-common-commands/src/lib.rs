@@ -4,8 +4,8 @@
 #![allow(async_fn_in_trait)]
 
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, DotUnlockPayload, HybridSignature,
-    AUTH_CMD_NONCE_LEN,
+    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, DotUnlockPayload,
+    HybridSignature, AUTH_CMD_NONCE_LEN,
 };
 use mcu_caliptra_api::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
@@ -510,6 +510,16 @@ pub trait CaliptraCmdHandler {
         &self,
         alloc: &Alloc,
         request: &DotDisablePayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Rotate the DOT epoch by two fuse bits and reseal ownership state.
+    async fn dot_rotate<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotRotatePayload,
     ) -> CaliptraCmdResult<()> {
         let _ = (alloc, request);
         Err(CaliptraCompletionCode::UnsupportedOperation)

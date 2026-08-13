@@ -25,8 +25,8 @@ use caliptra_mcu_mbox_common::messages::{
 };
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
-    DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotUnlockChallengeReq,
-    DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp,
+    DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotRotateReq, DotRotateResp,
+    DotUnlockChallengeReq, DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -336,6 +336,31 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let (resp, _) =
             DotDisableResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
         *resp = DotDisableResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_rotate<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotRotateReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_ROTATE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_rotate(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotRotateResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotRotateResp {
             reset_required: 1,
             ..Default::default()
         };
@@ -738,6 +763,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                     value if value == CommandId::MC_DOT_DISABLE.0 => {
                         self.handle_dot_disable(cmd, resp_buf).await
                     }
+                    value if value == CommandId::MC_DOT_ROTATE.0 => {
+                        self.handle_dot_rotate(cmd, resp_buf).await
+                    }
                     _ => Err(errors::UNSUPPORTED_COMMAND),
                 }
             }
@@ -760,7 +788,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
             .ok_or(errors::INVALID_PARAMS)?;
         match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?) {
-            value if value == CommandId::MC_DOT_LOCK.0 || value == CommandId::MC_DOT_DISABLE.0 => {
+            value
+                if value == CommandId::MC_DOT_LOCK.0
+                    || value == CommandId::MC_DOT_DISABLE.0
+                    || value == CommandId::MC_DOT_ROTATE.0 =>
+            {
                 self.handle_authorized_command(
                     CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
                     req,

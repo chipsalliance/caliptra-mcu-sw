@@ -151,6 +151,7 @@ impl CommandId {
     pub const MC_DEVICE_OWNERSHIP_TRANSFER: Self = Self(0x0000_0011);
     pub const MC_DOT_LOCK: Self = Self(0x4D44_4C4B); // "MDLK"
     pub const MC_DOT_DISABLE: Self = Self(0x4D44_4453); // "MDDS"
+    pub const MC_DOT_ROTATE: Self = Self(0x4D44_5254); // "MDRT"
     pub const MC_DOT_UNLOCK_CHALLENGE: Self = Self(0x4D44_5543); // "MDUC"
     pub const MC_DOT_UNLOCK: Self = Self(0x4D44_554C); // "MDUL"
 }
@@ -230,6 +231,7 @@ pub enum McuMailboxReq {
     // Device Ownership Transfer commands
     DotLock(DotLockReq),
     DotDisable(DotDisableReq),
+    DotRotate(DotRotateReq),
     DotUnlockChallenge(DotUnlockChallengeReq),
     DotUnlock(DotUnlockReq),
 }
@@ -293,6 +295,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetAttestation(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotDisable(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotRotate(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotUnlock(req) => Ok(req.as_bytes()),
         }
@@ -356,6 +359,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetAttestation(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotDisable(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotRotate(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotUnlock(req) => Ok(req.as_mut_bytes()),
         }
@@ -421,6 +425,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetAttestation(_) => CommandId::MC_GET_ATTESTATION,
             McuMailboxReq::DotLock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotDisable(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotRotate(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotUnlockChallenge(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotUnlock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
         }
@@ -508,6 +513,7 @@ pub enum McuMailboxResp {
     // Device Ownership Transfer commands
     DotLock(DotLockResp),
     DotDisable(DotDisableResp),
+    DotRotate(DotRotateResp),
     DotUnlockChallenge(DotUnlockChallengeResp),
     DotUnlock(DotUnlockResp),
 }
@@ -629,6 +635,7 @@ impl McuMailboxResp {
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotRotate(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotUnlock(resp) => Ok(resp.as_bytes()),
         }
@@ -690,6 +697,7 @@ impl McuMailboxResp {
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotRotate(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotUnlock(resp) => Ok(resp.as_mut_bytes()),
         }
@@ -1919,6 +1927,57 @@ pub struct DotDisableResp {
 
 impl Response for DotDisableResp {}
 
+/// Transport-neutral DOT_ROTATE payload.
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotRotatePayload {
+    pub min_fuse_count: u32,
+    pub cak: [u8; DOT_KEY_HASH_SIZE],
+    pub lak_hash: [u8; DOT_KEY_HASH_SIZE],
+}
+
+impl Default for DotRotatePayload {
+    fn default() -> Self {
+        Self {
+            min_fuse_count: 0,
+            cak: [0; DOT_KEY_HASH_SIZE],
+            lak_hash: [0; DOT_KEY_HASH_SIZE],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotRotateReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub payload: DotRotatePayload,
+}
+
+impl Default for DotRotateReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_ROTATE.0,
+            payload: DotRotatePayload::default(),
+        }
+    }
+}
+
+impl Request for DotRotateReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotRotateResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotRotateResp {
+    pub hdr: MailboxRespHeader,
+    pub reset_required: u32,
+}
+
+impl Response for DotRotateResp {}
+
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct DotUnlockChallengeReq {
@@ -2097,6 +2156,21 @@ mod tests {
         assert_eq!(
             DotDisableReq::default().subcommand,
             CommandId::MC_DOT_DISABLE.0
+        );
+    }
+
+    #[test]
+    fn dot_rotate_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_ROTATE.0, 0x4D44_5254);
+        assert_eq!(
+            core::mem::size_of::<DotRotateReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+                + 2 * core::mem::size_of::<u32>()
+                + 2 * DOT_KEY_HASH_SIZE
+        );
+        assert_eq!(
+            DotRotateReq::default().subcommand,
+            CommandId::MC_DOT_ROTATE.0
         );
     }
 

@@ -14,7 +14,9 @@ use caliptra_mcu_config::capabilities::{
     McuRuntimeCapabilities,
 };
 use caliptra_mcu_config::version::get_mcu_runtime_version;
-use caliptra_mcu_mbox_common::messages::{DotDisablePayload, DotLockPayload, DotUnlockPayload};
+use caliptra_mcu_mbox_common::messages::{
+    DotDisablePayload, DotLockPayload, DotRotatePayload, DotUnlockPayload,
+};
 use mcu_caliptra_api::{core_capabilities, core_firmware_version, ApiAlloc};
 #[cfg(feature = "pcr-quote")]
 use mcu_caliptra_api::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
@@ -155,7 +157,8 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
     }
     if cfg!(feature = "dot-spdm-vdm") {
         capabilities |= AuthorizedSubcommandCapabilities::DOT_LOCK
-            | AuthorizedSubcommandCapabilities::DOT_DISABLE;
+            | AuthorizedSubcommandCapabilities::DOT_DISABLE
+            | AuthorizedSubcommandCapabilities::DOT_ROTATE;
     }
     capabilities
 }
@@ -359,6 +362,14 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_disable(alloc, request).await
     }
 
+    async fn dot_rotate<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotRotatePayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_rotate(alloc, request).await
+    }
+
     async fn dot_unlock_challenge<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
@@ -456,6 +467,7 @@ mod tests {
             authorized.contains(
                 AuthorizedSubcommandCapabilities::DOT_LOCK
                     | AuthorizedSubcommandCapabilities::DOT_DISABLE
+                    | AuthorizedSubcommandCapabilities::DOT_ROTATE
             ),
             cfg!(feature = "dot-spdm-vdm")
         );

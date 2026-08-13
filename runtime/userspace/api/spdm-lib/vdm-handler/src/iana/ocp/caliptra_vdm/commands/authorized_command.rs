@@ -6,7 +6,8 @@ use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
 use crate::iana::ocp::caliptra_vdm::CaliptraVdmAuthorization;
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, HybridSignature,
+    AUTH_CMD_NONCE_LEN,
 };
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult, CaliptraVdmResult,
@@ -26,6 +27,7 @@ const REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 4;
 const FUSE_LOCK_PARTITION_PAYLOAD_LEN: usize = 4;
 const DOT_LOCK_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotLockPayload>();
 const DOT_DISABLE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotDisablePayload>();
+const DOT_ROTATE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotRotatePayload>();
 
 /// MC_GET_AUTH_CMD_CHALLENGE sub-command (`MACC`).
 pub const GET_AUTH_CHALLENGE_CMD_ID: u32 = 0x4D41_4343;
@@ -49,6 +51,8 @@ pub const DEVICE_OWNERSHIP_TRANSFER_CMD_ID: u32 = CommandId::MC_DEVICE_OWNERSHIP
 pub const DOT_LOCK_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 /// DOT_DISABLE sub-command (`MDDS`).
 pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
+/// DOT_ROTATE sub-command (`MDRT`).
+pub const DOT_ROTATE_CMD_ID: u32 = CommandId::MC_DOT_ROTATE.0;
 
 pub(crate) async fn handle<H, A>(
     cmds: &H,
@@ -116,6 +120,7 @@ where
     match read_u32_le(subcommand) {
         DOT_LOCK_CMD_ID => handle_dot_lock(cmds, req, scratch, out).await,
         DOT_DISABLE_CMD_ID => handle_dot_disable(cmds, req, scratch, out).await,
+        DOT_ROTATE_CMD_ID => handle_dot_rotate(cmds, req, scratch, out).await,
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
     }
 }
@@ -173,6 +178,48 @@ where
     finish_authorized_command(
         cmds.dot_disable(
             request,
+            parsed.payload,
+            parsed.sig,
+            parsed.nonce,
+            parsed.ecc_pub_x,
+            parsed.ecc_pub_y,
+            parsed.mldsa_pub,
+            scratch,
+        )
+        .await,
+        out,
+    )
+}
+
+async fn handle_dot_rotate<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    let parsed = match split_authorized_request(req, DOT_ROTATE_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
+    };
+    let payload = &parsed.payload[4..];
+    let Ok(cak) = <[u8; 48]>::try_from(&payload[4..52]) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter);
+    };
+    let Ok(lak_hash) = <[u8; 48]>::try_from(&payload[52..100]) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter);
+    };
+    let request = DotRotatePayload {
+        min_fuse_count: read_u32_le(&payload[..4]),
+        cak,
+        lak_hash,
+    };
+    finish_authorized_command(
+        cmds.dot_rotate(
+            &request,
             parsed.payload,
             parsed.sig,
             parsed.nonce,
