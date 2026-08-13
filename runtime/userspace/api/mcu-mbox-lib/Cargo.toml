@@ -30,6 +30,7 @@ futures = { workspace = true }
 [features]
 default = []
 disable-lms-sig-verify = []
+device-ownership-transfer = []
 periodic-fips-self-test = []
 release = [
 	"dep:defmt",

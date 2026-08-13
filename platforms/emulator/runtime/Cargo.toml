@@ -42,8 +42,13 @@ rv32i.workspace = true
 
 [features]
 default = ["all-features"]
+# Runtime-kernel features are forwarded to the bundled user app. Keep both DOT
+# gates in the default set so an app with DOT commands always has its storage
+# syscall and transport drivers instantiated by the kernel.
 all-features = [
 	"spdm",
+	"dot-mci-mailbox",
+	"dot-spdm-vdm",
 	"streaming-boot",
 	"flash-boot",
 	"firmware-update",
@@ -67,6 +72,8 @@ doe = [
 ]
 userspace-log = []
 debug = []
+dot-mci-mailbox = []
+dot-spdm-vdm = []
 # Production / minimal-size build.  Strips:
 #   - kernel `debug!()` macro          (via kernel/no_debug_panics)
 #   - romtime `print!`/`println!`      (via caliptra-mcu-romtime/no-print)
@@ -124,7 +131,7 @@ test-defmt-logging-release = ["userspace-log", "mcu-mbox-service"]
 test-defmt-logging-vdm = ["userspace-log", "mcu-mbox-service", "mctp-vdm-service"]
 test-firmware-v2 = []
 test-mcu-mbox-driver = []
-test-mcu-mbox-cmds = ["mcu-mbox-service"]
+test-mcu-mbox-cmds = ["mcu-mbox-service", "dot-mci-mailbox"]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
 test-mcu-mbox-fips-periodic = ["mcu-mbox-service"]
 test-mcu-mbox-soc-requester-loopback = []

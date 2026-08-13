@@ -1440,6 +1440,74 @@ mod test {
         (pk_bytes.to_vec(), sk)
     }
 
+    #[test]
+    fn test_runtime_dot_lock_commits_transition() {
+        use crate::runtime::{execute_authorized_req, execute_authorized_req_tampered};
+        use caliptra_mcu_mbox_common::messages::{DotLockPayload, DotLockReq, MailboxReqHeader};
+        use core::mem::size_of;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let cak = [0xA5; 48];
+        let payload = DotLockPayload {
+            cak,
+            lak_hash: [0x5A; 48],
+        };
+
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let body_offset = size_of::<MailboxReqHeader>() + size_of::<u32>();
+        assert!(execute_authorized_req_tampered(
+            &mut hw,
+            DotLockReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+            |request| request[body_offset] ^= 1,
+        )
+        .is_err());
+
+        let response = execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload,
+                ..Default::default()
+            },
+        )
+        .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] & 1,
+            1
+        );
+        let dot_blob = hw.read_dot_flash();
+        assert!(dot_blob[..DOT_BLOB_SIZE].iter().any(|byte| *byte != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Computes SHA-384 of the combined vendor public keys using the
     /// caliptra-sw owner-PK-hash convention: the ECC public key is
     /// per-dword byte-reversed before hashing, the MLDSA public key is
@@ -2134,6 +2202,9 @@ mod test {
             "Expected 1 fuse burned by manifest LOCK, found {}",
             burned
         );
+        let dot_flash = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_flash[..DOT_BLOB_SIZE]).unwrap();
+        assert_eq!(blob.reserved[0] & 1, 0);
 
         println!("[TEST] Firmware manifest LOCK command successfully burned lock fuse");
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

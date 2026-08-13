@@ -14,6 +14,7 @@ use caliptra_mcu_config::capabilities::{
     McuRuntimeCapabilities,
 };
 use caliptra_mcu_config::version::get_mcu_runtime_version;
+use caliptra_mcu_mbox_common::messages::DotLockPayload;
 use mcu_caliptra_api::{core_capabilities, core_firmware_version, ApiAlloc};
 #[cfg(feature = "pcr-quote")]
 use mcu_caliptra_api::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
@@ -138,18 +139,21 @@ const MAX_ATTESTATION_EVIDENCE_LEN: usize = {
 };
 
 fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
+    let mut capabilities = AuthorizedSubcommandCapabilities::empty();
     if cfg!(feature = "spdm") {
-        AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
+        capabilities |= AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
             | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
             | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
-            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
-    } else {
-        AuthorizedSubcommandCapabilities::empty()
+            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH;
     }
+    if cfg!(feature = "dot-spdm-vdm") {
+        capabilities |= AuthorizedSubcommandCapabilities::DOT_LOCK;
+    }
+    capabilities
 }
 
 fn write_firmware_version(
@@ -335,6 +339,14 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::program_field_entropy(alloc, partition).await
     }
 
+    async fn dot_lock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotLockPayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_lock(alloc, request).await
+    }
+
     async fn request_debug_unlock<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
@@ -408,6 +420,10 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             ),
             cfg!(feature = "spdm")
+        );
+        assert_eq!(
+            authorized.contains(AuthorizedSubcommandCapabilities::DOT_LOCK),
+            cfg!(feature = "dot-spdm-vdm")
         );
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::DOE),

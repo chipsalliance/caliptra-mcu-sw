@@ -3,7 +3,9 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(async_fn_in_trait)]
 
-use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_mcu_mbox_common::messages::{
+    CommandId, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+};
 use mcu_caliptra_api::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
@@ -489,6 +491,16 @@ pub trait CaliptraCmdHandler {
     /// Lock an OTP partition against further writes.
     async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
         let _ = partition;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Verify and commit a persistent DOT lock transition.
+    async fn dot_lock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotLockPayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }

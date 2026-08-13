@@ -2,7 +2,7 @@
 
 use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, FuseIncreaseCaliptraMinSvnReq, FuseLockPartitionReq, FuseReadReq,
+    CommandId, DotLockReq, FuseIncreaseCaliptraMinSvnReq, FuseLockPartitionReq, FuseReadReq,
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, FuseWriteReq, HybridSignature,
     MailboxReqHeader, McuFeProgReq, ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq,
     AUTH_CMD_NONCE_LEN,
@@ -92,6 +92,15 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             CommandId::MC_FUSE_READ => size_of::<FuseReadReq>(),
             CommandId::MC_FUSE_WRITE => size_of::<FuseWriteReq>(),
             CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionReq>(),
+            CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
+                let subcommand = req
+                    .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+                    .ok_or(AuthorizationError)?;
+                match u32::from_le_bytes(subcommand.try_into().map_err(|_| AuthorizationError)?) {
+                    value if value == CommandId::MC_DOT_LOCK.0 => size_of::<DotLockReq>(),
+                    _ => return Err(AuthorizationError),
+                }
+            }
             _ => return Err(AuthorizationError),
         };
 

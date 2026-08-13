@@ -145,6 +145,11 @@ impl CommandId {
 
     // Attestation commands
     pub const MC_GET_ATTESTATION: Self = Self(0x4D47_4154); // "MGAT"
+
+    // The outer family ID is used as the MCI command and authorization domain.
+    // The FourCC values below are little-endian u32 subcommands in its payload.
+    pub const MC_DEVICE_OWNERSHIP_TRANSFER: Self = Self(0x0000_0011);
+    pub const MC_DOT_LOCK: Self = Self(0x4D44_4C4B); // "MDLK"
 }
 
 impl From<u32> for CommandId {
@@ -219,6 +224,8 @@ pub enum McuMailboxReq {
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
     GetAttestation(GetAttestationReq),
+    // Device Ownership Transfer commands
+    DotLock(DotLockReq),
 }
 
 impl McuMailboxReq {
@@ -278,6 +285,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotLock(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -337,6 +345,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotLock(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -398,6 +407,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
             McuMailboxReq::GetAttestation(_) => CommandId::MC_GET_ATTESTATION,
+            McuMailboxReq::DotLock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
         }
     }
 
@@ -480,6 +490,8 @@ pub enum McuMailboxResp {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
+    // Device Ownership Transfer commands
+    DotLock(DotLockResp),
 }
 
 /// A trait for responses with variable size data.
@@ -597,6 +609,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -654,6 +667,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -1764,7 +1778,7 @@ pub struct ProvisionOwnerPkHashResp {
 impl Response for ProvisionOwnerPkHashResp {}
 
 #[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct HybridSignature {
     pub ecc_sig_r: [u8; ECC384_SCALAR_BYTE_SIZE],
     pub ecc_sig_s: [u8; ECC384_SCALAR_BYTE_SIZE],
@@ -1780,6 +1794,59 @@ impl Default for HybridSignature {
         }
     }
 }
+
+pub const DOT_KEY_HASH_SIZE: usize = 48;
+pub const DOT_ECC_PUBLIC_KEY_COORD_SIZE: usize = 48;
+pub const DOT_MLDSA_PUBLIC_KEY_SIZE: usize = 2592;
+
+/// Transport-neutral DOT_LOCK payload.
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotLockPayload {
+    pub cak: [u8; DOT_KEY_HASH_SIZE],
+    pub lak_hash: [u8; DOT_KEY_HASH_SIZE],
+}
+
+impl Default for DotLockPayload {
+    fn default() -> Self {
+        Self {
+            cak: [0; DOT_KEY_HASH_SIZE],
+            lak_hash: [0; DOT_KEY_HASH_SIZE],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotLockReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub payload: DotLockPayload,
+}
+
+impl Default for DotLockReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_LOCK.0,
+            payload: DotLockPayload::default(),
+        }
+    }
+}
+
+impl Request for DotLockReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotLockResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotLockResp {
+    pub hdr: MailboxRespHeader,
+    pub reset_required: u32,
+}
+
+impl Response for DotLockResp {}
 
 #[cfg(test)]
 mod tests {
@@ -1841,6 +1908,19 @@ mod tests {
         assert_eq!(CommandId::MC_FUSE_WRITE.0, 0x4946_5057); // "IFPW"
         assert_eq!(CommandId::MC_FUSE_LOCK_PARTITION.0, 0x4946_504B); // "IFPK"
         assert_eq!(CommandId::MC_PROVISION_OWNER_PK_HASH.0, 0x504F_504B); // "POPK"
+    }
+
+    #[test]
+    fn dot_lock_wire_contract() {
+        assert_eq!(CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0, 0x11);
+        assert_eq!(CommandId::MC_DOT_LOCK.0, 0x4D44_4C4B);
+        assert_eq!(
+            core::mem::size_of::<DotLockReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+                + core::mem::size_of::<u32>()
+                + 2 * DOT_KEY_HASH_SIZE
+        );
+        assert_eq!(DotLockReq::default().subcommand, CommandId::MC_DOT_LOCK.0);
     }
 
     #[test]

@@ -36,6 +36,7 @@ bitflags::bitflags! {
         const FUSE_REVOKE_VENDOR_PK_HASH = 1 << 5;
         const FUSE_LOCK_PARTITION = 1 << 6;
         const PROVISION_OWNER_PK_HASH = 1 << 7;
+        const DOT_LOCK = 1 << 8;
     }
 }
 
@@ -93,5 +94,6 @@ mod tests {
             AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH.bits(),
             1 << 7
         );
+        assert_eq!(AuthorizedSubcommandCapabilities::DOT_LOCK.bits(), 1 << 8);
     }
 }

@@ -5,7 +5,9 @@
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
 use crate::iana::ocp::caliptra_vdm::CaliptraVdmAuthorization;
-use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_mcu_mbox_common::messages::{
+    CommandId, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+};
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult, CaliptraVdmResult,
 };
@@ -22,6 +24,7 @@ const INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN: usize = 4 + 4;
 const REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN: usize = 4 + 4 + 4 + 4;
 const REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 4;
 const FUSE_LOCK_PARTITION_PAYLOAD_LEN: usize = 4;
+const DOT_LOCK_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotLockPayload>();
 
 /// MC_GET_AUTH_CMD_CHALLENGE sub-command (`MACC`).
 pub const GET_AUTH_CHALLENGE_CMD_ID: u32 = 0x4D41_4343;
@@ -39,6 +42,10 @@ pub const REVOKE_VENDOR_PUB_KEY_CMD_ID: u32 = 0x4D52_564B;
 pub const REVOKE_VENDOR_PK_HASH_CMD_ID: u32 = 0x5256_4B48;
 /// MC_FUSE_LOCK_PARTITION sub-command (`IFPK`).
 pub const FUSE_LOCK_PARTITION_CMD_ID: u32 = CommandId::MC_FUSE_LOCK_PARTITION.0;
+/// Device Ownership Transfer command family (`0x11`).
+pub const DEVICE_OWNERSHIP_TRANSFER_CMD_ID: u32 = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0;
+/// DOT_LOCK sub-command (`MDLK`).
+pub const DOT_LOCK_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 
 pub(crate) async fn handle<H, A>(
     cmds: &H,
@@ -79,6 +86,71 @@ where
             handle_revoke_vendor_pk_hash(cmds, payload, scratch, out).await
         }
         FUSE_LOCK_PARTITION_CMD_ID => handle_fuse_lock_partition(cmds, payload, scratch, out).await,
+        #[cfg(feature = "device-ownership-transfer")]
+        DEVICE_OWNERSHIP_TRANSFER_CMD_ID => {
+            handle_device_ownership_transfer(cmds, payload, scratch, out).await
+        }
+        _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    }
+}
+
+async fn handle_device_ownership_transfer<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    // `req` starts with the little-endian DOT FourCC and remains byte-exact
+    // through authorization. The platform therefore verifies the common
+    // transcript `family 0x11 (BE) || req || nonce` without re-encoding fields.
+    let Some(subcommand) = req.get(..4) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    };
+    match read_u32_le(subcommand) {
+        DOT_LOCK_CMD_ID => handle_dot_lock(cmds, req, scratch, out).await,
+        _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    }
+}
+
+async fn handle_dot_lock<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    let parsed = match split_authorized_request(req, DOT_LOCK_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
+    };
+    let subcommand = read_u32_le(&parsed.payload[..4]);
+    match subcommand {
+        DOT_LOCK_CMD_ID => {
+            let Ok(request) = DotLockPayload::ref_from_bytes(&parsed.payload[4..]) else {
+                return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter);
+            };
+            finish_authorized_command(
+                cmds.dot_lock(
+                    request,
+                    parsed.payload,
+                    parsed.sig,
+                    parsed.nonce,
+                    parsed.ecc_pub_x,
+                    parsed.ecc_pub_y,
+                    parsed.mldsa_pub,
+                    scratch,
+                )
+                .await,
+                out,
+            )
+        }
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
     }
 }
